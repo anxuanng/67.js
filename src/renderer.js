@@ -80,14 +80,15 @@ export class Renderer67 {
     this.inverseViewProjection = mat4.create();
     this.program = compileProgram(this.context, benchmark ? benchmarkVertexShader : vertexShader, benchmark ? benchmarkFragmentShader : fragmentShader);
     this.depthProgram = compileProgram(this.context, depthVertexShader, depthFragmentShader);
-    this.uniforms = Object.fromEntries(['viewProjection', 'lightProjection', 'eye', 'armorColor', 'armorSurface', 'exposure', 'inspection', 'shadowMap', 'time', 'wind', 'worldMode', 'daylight', 'lightDirection', 'fogColor', 'fogDensity', 'waterRipple', 'rippleTime', 'explosionProgress', 'explosionCenter'].map((name) => [name, this.context.getUniformLocation(this.program, name)]));
+    this.uniforms = Object.fromEntries(['viewProjection', 'lightProjection', 'eye', 'armorColor', 'armorSurface', 'exposure', 'inspection', 'shadowMap', 'time', 'wind', 'worldMode', 'daylight', 'lightDirection', 'fogColor', 'fogDensity', 'waterRipple', 'rippleTime', 'explosionProgress', 'explosionCenter', 'assemblyAmount'].map((name) => [name, this.context.getUniformLocation(this.program, name)]));
     if (!benchmark) {
       this.postProgram = compileProgram(this.context, fullscreenVertex, postFragment);
       this.skyProgram = compileProgram(this.context, fullscreenVertex, skyFragment);
-      this.postUniforms = Object.fromEntries(['frameTexture', 'resolution', 'monochrome', 'fade', 'cinematic', 'time'].map((name) => [name, this.context.getUniformLocation(this.postProgram, name)]));
+      this.postUniforms = Object.fromEntries(['frameTexture', 'resolution', 'monochrome', 'fade', 'cinematic', 'time', 'volumeExplosion', 'explosionProgress', 'inverseViewProjection', 'eye'].map((name) => [name, this.context.getUniformLocation(this.postProgram, name)]));
       this.skyUniforms = Object.fromEntries(['skyTop', 'skyBottom', 'sunDirection', 'inverseViewProjection', 'eye', 'time', 'daylight'].map((name) => [name, this.context.getUniformLocation(this.skyProgram, name)]));
     }
     this.depthUniform = this.context.getUniformLocation(this.depthProgram, 'lightProjection');
+    this.depthAssemblyUniform = this.context.getUniformLocation(this.depthProgram, 'assemblyAmount');
     this.partCount = parts.length;
     this.triangles = parts.reduce((total, part) => total + part.geometry.indices.length / 3, 0);
     groupParts(ground ? [...parts, groundPart()] : parts, batching).forEach((group) => this.batches.push(this.uploadBatch(group)));
@@ -116,7 +117,7 @@ export class Renderer67 {
       context.vertexAttribPointer(location, 3, context.FLOAT, false, 0, 0);
     }
     this.uploadBuffer(context.ELEMENT_ARRAY_BUFFER, geometry.indices);
-    const stride = 32;
+    const stride = 35;
     const instanceData = new Float32Array(parts.length * stride);
     const normalMatrix = mat3.create();
     parts.forEach((part, index) => {
@@ -126,12 +127,14 @@ export class Renderer67 {
       instanceData.set(normalMatrix, offset + 16);
       instanceData.set(part.material.color, offset + 25);
       instanceData.set([part.material.metallic, part.material.roughness, part.material.emission ?? 0, MATERIAL_TAGS[part.material.tag] ?? 0], offset + 28);
+      instanceData.set(part.assembly?.offset ?? [0, 0, 0], offset + 32);
     });
     this.uploadBuffer(context.ARRAY_BUFFER, instanceData);
     for (let column = 0; column < 4; column++) this.attribute(2 + column, 4, stride * 4, column * 16);
     for (let column = 0; column < 3; column++) this.attribute(6 + column, 3, stride * 4, 64 + column * 12);
     this.attribute(9, 3, stride * 4, 100);
     this.attribute(10, 4, stride * 4, 112);
+    this.attribute(11, 3, stride * 4, 128);
     context.bindVertexArray(null);
     return { vertexArray, indexCount: geometry.indices.length, instanceCount: parts.length, floor: parts[0].material.tag === 'floor' };
   }
@@ -144,14 +147,15 @@ export class Renderer67 {
 
   createShadowMap() {
     const context = this.context;
-    this.shadowTexture = context.createTexture();
+    const allocateShadow = !this.shadowTexture;
+    if (allocateShadow) this.shadowTexture = context.createTexture();
     context.bindTexture(context.TEXTURE_2D, this.shadowTexture);
-    context.texImage2D(context.TEXTURE_2D, 0, context.DEPTH_COMPONENT24, 2048, 2048, 0, context.DEPTH_COMPONENT, context.UNSIGNED_INT, null);
+    if (allocateShadow) context.texImage2D(context.TEXTURE_2D, 0, context.DEPTH_COMPONENT24, 2048, 2048, 0, context.DEPTH_COMPONENT, context.UNSIGNED_INT, null);
     context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MIN_FILTER, context.NEAREST);
     context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MAG_FILTER, context.NEAREST);
     context.texParameteri(context.TEXTURE_2D, context.TEXTURE_WRAP_S, context.CLAMP_TO_EDGE);
     context.texParameteri(context.TEXTURE_2D, context.TEXTURE_WRAP_T, context.CLAMP_TO_EDGE);
-    this.shadowFramebuffer = context.createFramebuffer();
+    if (!this.shadowFramebuffer) this.shadowFramebuffer = context.createFramebuffer();
     context.bindFramebuffer(context.FRAMEBUFFER, this.shadowFramebuffer);
     context.framebufferTexture2D(context.FRAMEBUFFER, context.DEPTH_ATTACHMENT, context.TEXTURE_2D, this.shadowTexture, 0);
     context.drawBuffers([context.NONE]);
@@ -168,6 +172,7 @@ export class Renderer67 {
     context.clear(context.DEPTH_BUFFER_BIT);
     context.useProgram(this.depthProgram);
     context.uniformMatrix4fv(this.depthUniform, false, this.lightProjection);
+    context.uniform1f(this.depthAssemblyUniform, this.assemblyAmount ?? 0);
     context.enable(context.POLYGON_OFFSET_FILL);
     context.polygonOffset(1, 1);
     for (const batch of this.batches) if (!batch.floor) this.drawBatch(batch);
@@ -260,6 +265,10 @@ export class Renderer67 {
     context.uniform1f(this.postUniforms.fade, frame.fade ?? 0);
     context.uniform1f(this.postUniforms.cinematic, frame.cinematic ? 1 : 0);
     context.uniform1f(this.postUniforms.time, frame.time ?? 0);
+    context.uniform1f(this.postUniforms.volumeExplosion, frame.volumeExplosion ? 1 : 0);
+    context.uniform1f(this.postUniforms.explosionProgress, frame.explosionProgress ?? 1);
+    context.uniformMatrix4fv(this.postUniforms.inverseViewProjection, false, this.inverseViewProjection);
+    context.uniform3fv(this.postUniforms.eye, frame.eye);
     context.drawArrays(context.TRIANGLES, 0, 3);
   }
 
@@ -272,6 +281,11 @@ export class Renderer67 {
     const { eye, target = [0, 1.2, 0], armorColor = [0.53, 0.39, 0.24], armorSurface = [0.88, 0.32], exposure = 1, inspection = false } = frame;
     const start = performance.now();
     const context = this.context;
+    const assemblyAmount = Math.max(0, Math.min(1, frame.assemblyAmount ?? 0));
+    if (this.assemblyAmount !== assemblyAmount) {
+      this.assemblyAmount = assemblyAmount;
+      this.createShadowMap();
+    }
     if (frame.fov) mat4.perspective(this.projection, frame.fov * Math.PI / 180, this.canvas.width / this.canvas.height, 0.1, this.world ? 600 : 100);
     mat4.lookAt(this.view, eye, target, [0, 1, 0]);
     mat4.multiply(this.viewProjection, this.projection, this.view);
@@ -303,6 +317,7 @@ export class Renderer67 {
     context.uniform1f(this.uniforms.rippleTime, frame.rippleTime ?? -1000);
     context.uniform1f(this.uniforms.explosionProgress, frame.explosionProgress ?? 1);
     context.uniform3fv(this.uniforms.explosionCenter, environment.explosionCenter);
+    context.uniform1f(this.uniforms.assemblyAmount, assemblyAmount);
     context.activeTexture(context.TEXTURE0);
     context.bindTexture(context.TEXTURE_2D, this.shadowTexture);
     context.uniform1i(this.uniforms.shadowMap, 0);

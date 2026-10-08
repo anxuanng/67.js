@@ -1,35 +1,35 @@
 {
   "graphics": {
-    "parts": 252,
-    "triangles": 206432,
-    "calls": 9,
+    "parts": 574,
+    "triangles": 860380,
+    "calls": 8,
     "glError": 0,
     "gpu": "ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 (0x00002487) Direct3D11 vs_5_0 ps_5_0, D3D11)"
   },
   "results": [
     {
       "name": "67.js instanced",
-      "milliseconds": 0.005625000223517418,
-      "calls": 9,
+      "milliseconds": 0.015000000596046448,
+      "calls": 8,
       "pixelAgreement": 1
     },
     {
       "name": "67.js individual",
-      "milliseconds": 0.0318750012665987,
-      "calls": 253,
-      "pixelAgreement": 0.9999951171875
+      "milliseconds": 1.8168749995529652,
+      "calls": 575,
+      "pixelAgreement": 0.99999755859375
     },
     {
       "name": "Three.js instanced",
-      "milliseconds": 0.016875000670552254,
-      "calls": 9,
-      "pixelAgreement": 0.999990234375
+      "milliseconds": 0.030000001192092896,
+      "calls": 8,
+      "pixelAgreement": 0.9999674479166667
     },
     {
       "name": "Three.js individual",
-      "milliseconds": 0.4237500000745058,
-      "calls": 253,
-      "pixelAgreement": 0.9999951171875
+      "milliseconds": 1.9962499998509884,
+      "calls": 575,
+      "pixelAgreement": 0.9999698893229166
     }
   ],
   "resolution": [

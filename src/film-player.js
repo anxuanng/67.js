@@ -25,6 +25,8 @@ const titleText = document.querySelector('#title-text');
 const subtitleText = document.querySelector('#subtitle-text');
 const flash = document.querySelector('#film-flash');
 const scenes = createFilmScenes();
+const score = exporting ? null : new Audio('./media/critical.mp4');
+if (score) score.preload = 'none';
 let renderer = null;
 let activeScene = null;
 let currentTime = 0;
@@ -49,7 +51,8 @@ function renderAt(time) {
     renderer?.dispose();
     renderer = null;
     activeScene = null;
-    renderer = new Renderer67(canvas, scene.parts, {
+    const parts = sample.scene === 'ignition' ? scene.parts.filter(part => !['fire', 'smoke'].includes(part.material.tag)) : scene.parts;
+    renderer = new Renderer67(canvas, parts, {
       world: true,
       ground: scene.ground,
       environment: scene.environment,
@@ -68,6 +71,7 @@ function renderAt(time) {
     fade: sample.fade,
     cinematic: true,
     explosionProgress: sample.explosionProgress,
+    volumeExplosion: sample.scene === 'ignition',
     environment: scene.environment,
   });
   currentTime = sample.time;
@@ -90,9 +94,15 @@ function setPlaying(value) {
   animationFrame = 0;
   if (playing) {
     if (currentTime >= FILM_DURATION) renderAt(0);
+    if (score) {
+      score.currentTime = currentTime;
+      score.play().catch(() => {
+        document.querySelector('.film-caption').textContent = '⚠ Score unavailable. The 3D film continues.';
+      });
+    }
     playbackOrigin = performance.now() - currentTime * 1000;
     animationFrame = requestAnimationFrame(advance);
-  }
+  } else score?.pause();
 }
 
 function showError(error) {
@@ -106,7 +116,8 @@ function showError(error) {
 function advance(timestamp) {
   if (!playing) return;
   try {
-    renderAt((timestamp - playbackOrigin) / 1000);
+    const seconds = score && !score.paused && score.readyState >= 2 ? score.currentTime : (timestamp - playbackOrigin) / 1000;
+    renderAt(seconds);
     if (currentTime >= FILM_DURATION) setPlaying(false);
     else animationFrame = requestAnimationFrame(advance);
   } catch (error) {
@@ -152,6 +163,7 @@ window.__film = {
   sampleFilm,
   renderAt,
   duration: FILM_DURATION,
+  score,
   exporting,
   options: { width, height, samples, memoryBudgetMiB },
 };

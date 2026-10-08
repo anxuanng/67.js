@@ -16,8 +16,61 @@ uniform float monochrome;
 uniform float fade;
 uniform float cinematic;
 uniform float time;
+uniform float volumeExplosion;
+uniform float explosionProgress;
+uniform mat4 inverseViewProjection;
+uniform vec3 eye;
 out vec4 outputColor;
 float luminance(vec3 color) { return dot(color, vec3(0.299, 0.587, 0.114)); }
+float hash(vec3 position) { return fract(sin(dot(position, vec3(127.1, 311.7, 74.7))) * 43758.5453); }
+float cloudNoise(vec3 position) {
+  vec3 cell = floor(position);
+  vec3 fraction = fract(position);
+  fraction = fraction * fraction * (3.0 - 2.0 * fraction);
+  float lower = mix(mix(hash(cell), hash(cell + vec3(1,0,0)), fraction.x), mix(hash(cell + vec3(0,1,0)), hash(cell + vec3(1,1,0)), fraction.x), fraction.y);
+  float upper = mix(mix(hash(cell + vec3(0,0,1)), hash(cell + vec3(1,0,1)), fraction.x), mix(hash(cell + vec3(0,1,1)), hash(cell + vec3(1,1,1)), fraction.x), fraction.y);
+  return mix(lower, upper, fraction.z);
+}
+vec3 explosion(vec3 background) {
+  vec4 endpoint = inverseViewProjection * vec4(textureCoordinate * 2.0 - 1.0, 1.0, 1.0);
+  vec3 direction = normalize(endpoint.xyz / endpoint.w - eye);
+  float scale = 0.03 + explosionProgress * 0.97;
+  vec3 center = vec3(0,12,0) * scale;
+  float radius = 15.0 * scale;
+  vec3 relative = eye - center;
+  float projected = dot(relative, direction);
+  float discriminant = projected * projected - dot(relative, relative) + radius * radius;
+  if (discriminant <= 0.0) return background;
+  float entry = max(0.0, -projected - sqrt(discriminant));
+  float exitDistance = -projected + sqrt(discriminant);
+  float stepSize = (exitDistance - entry) / 36.0;
+  vec3 accumulated = vec3(0);
+  float transmittance = 1.0;
+  for (int stepIndex = 0; stepIndex < 36; stepIndex++) {
+    vec3 position = (eye + direction * (entry + (float(stepIndex) + 0.5) * stepSize)) / scale;
+    if (position.y < 0.0) continue;
+    vec3 flow = position * 0.56 - vec3(0, time * 0.55, 0);
+    float noise = cloudNoise(flow) * 0.68 + cloudNoise(flow * 2.1 + vec3(5.4,1.7,9.1)) * 0.32;
+    float fireShape = 1.0 - length((position - vec3(0,7,0)) / vec3(7.0,7.6,7.0));
+    float capShape = 1.0 - length((position - vec3(0,18,0)) / vec3(9.4,5.7,9.4));
+    float stemShape = min(1.0 - length(position.xz) / 3.5, min((position.y - 8.0) / 3.0, (19.0 - position.y) / 3.0));
+    float fireDensity = smoothstep(0.0, 0.32, fireShape + (noise - 0.5) * 0.6);
+    float smokeDensity = smoothstep(0.0, 0.3, max(capShape, stemShape) + (noise - 0.5) * 0.45);
+    float density = max(fireDensity * 0.7, smokeDensity * 1.2);
+    float opacity = 1.0 - exp(-density * stepSize / scale * 0.30);
+    float temperature = clamp(fireShape * 0.9 + noise * 0.65, 0.0, 1.0);
+    vec3 fireColor = mix(vec3(0.45,0.018,0.001), vec3(2.5,0.9,0.09), smoothstep(0.25,0.95,temperature));
+    fireColor = mix(fireColor, vec3(4.0,2.8,1.5), smoothstep(0.92,1.0,temperature));
+    vec3 smokeColor = vec3(0.11,0.085,0.062) * (0.4 + noise * 0.8);
+    smokeColor += vec3(0.18,0.028,0.002) * max(0.0,1.0 - abs(position.y - 11.0) / 7.0);
+    vec3 color = mix(smokeColor, fireColor, fireDensity / max(0.001,fireDensity + smokeDensity));
+    accumulated += color * opacity * transmittance;
+    transmittance *= 1.0 - opacity;
+    if (transmittance < 0.02) break;
+  }
+  accumulated = accumulated / (accumulated + 0.5);
+  return accumulated + background * transmittance;
+}
 void main() {
   vec2 texel = 1.0 / resolution;
   vec3 center = texture(frameTexture, textureCoordinate).rgb;
@@ -40,6 +93,7 @@ void main() {
   float secondLuma = luminance(second);
   vec3 color = secondLuma < minimumLuma || secondLuma > maximumLuma ? first : second;
   if (maximumLuma - minimumLuma < max(0.03, maximumLuma * 0.125)) color = center;
+  if (volumeExplosion > 0.5) color = explosion(color);
   color = mix(color, vec3(luminance(color)), monochrome);
   vec2 centered = textureCoordinate * 2.0 - 1.0;
   color *= 1.0 - cinematic * 0.20 * dot(centered, centered);

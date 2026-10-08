@@ -1,0 +1,29 @@
+{
+  "scene": "film",
+  "kind": "video",
+  "backend": "cpu",
+  "preset": "cpu",
+  "width": 640,
+  "height": 360,
+  "actualRenderSize": {
+    "width": 640,
+    "height": 360,
+    "reduced": false
+  },
+  "fps": 12,
+  "duration": 2,
+  "memoryBudgetMiB": 192,
+  "peakEstimatedRenderBytes": 23381640,
+  "peakNodeBytes": 165179392,
+  "peakBrowserHeap": 5058368,
+  "maximumPendingFrames": 1,
+  "firstFrameBytes": 1449,
+  "elapsedSeconds": 7.3255598,
+  "graphics": {
+    "gpu": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+    "samples": 1,
+    "glError": 0
+  },
+  "output": "film-cpu-trial.mp4",
+  "errors": []
+}

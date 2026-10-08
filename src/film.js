@@ -181,7 +181,7 @@ function createIgnition(meshes) {
     add('Rolling smoke crown', 'sphere', [Math.cos(angle) * radius, height, Math.sin(angle) * radius], [size * 1.3, size, size * 1.3], 'smoke');
   }
   for (let index = 0; index < 6; index++) {
-    add('Dust shock ring', 'gasRing', [0, 0.2 + index * 0.14, 0], [10 + index * 2.3, 10 + index * 2.3, 2.5], 'smoke', [HALF_PI, 0, index * 0.07]);
+    add('Dust shock ring', 'gasRing', [0, 0.12 + index * 0.03, 0], [10 + index * 2.3, 10 + index * 2.3, 0.12], 'smoke', [HALF_PI, 0, 0]);
   }
   for (let index = 0; index < 130; index++) {
     const angle = index * 2.399963;

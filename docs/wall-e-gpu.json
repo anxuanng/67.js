@@ -1,0 +1,30 @@
+{
+  "scene": "object",
+  "kind": "image",
+  "backend": "gpu",
+  "preset": "high",
+  "assembly": 0,
+  "width": 1920,
+  "height": 1080,
+  "actualRenderSize": {
+    "width": 1920,
+    "height": 1080,
+    "reduced": false
+  },
+  "fps": 24,
+  "duration": null,
+  "memoryBudgetMiB": 512,
+  "peakEstimatedRenderBytes": 125184212,
+  "peakNodeBytes": 130011136,
+  "peakBrowserHeap": 0,
+  "maximumPendingFrames": 0,
+  "firstFrameBytes": 316128,
+  "elapsedSeconds": 1.6807979,
+  "graphics": {
+    "gpu": "ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 (0x00002487) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+    "samples": 4,
+    "glError": 0
+  },
+  "output": "wall-e.png",
+  "errors": []
+}

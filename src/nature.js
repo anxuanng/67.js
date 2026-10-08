@@ -368,8 +368,8 @@ export function createNatureWorld({ seed = 67, detail = 'balanced' } = {}) {
     camera,
     bounds: worldBounds(parts),
     environment: {
-      fogColor: [0.43, 0.58, 0.62],
-      fogDensity: 0.0065,
+      fogColor: [0.16, 0.23, 0.26],
+      fogDensity: 0.0045,
       skyTop: [0.24, 0.48, 0.7],
       skyBottom: [0.78, 0.86, 0.87],
       lightDirection: [-0.46, 0.77, 0.44],

@@ -1,16 +1,18 @@
 # 67.js
 
-67.js is an experimental WebGL2 renderer with an original procedural 3D model and an interactive object studio.
-The demo runs without Three.js. The performance comparison loads Three.js only when requested.
+67.js is an experimental WebGL2 renderer with an explodable WALL·E study, an interactive nature world and a deterministic 3D short film.
+The viewers run without Three.js. The optional benchmark loads Three.js separately.
 
-![The mechanical specimen rendered by 67.js](docs/specimen.png)
+![WALL·E rendered by 67.js](docs/wall-e.png)
 
-The specimen contains 252 parts and 206,432 triangles across eight shared geometries.
-The renderer submits nine draw calls, including the studio floor.
-Its materials use a GGX lighting model, analytical studio reflections, a static shadow map and ACES tone mapping.
+The WALL·E study contains 574 parts, 860,380 triangles and seven shared geometries.
+The studio submits eight geometry draws, including the floor.
+Its slider separates 20 assemblies to expose batteries, circuit boards, motors, gears and optical mechanisms.
+The layer controls show the shell, the interior or both. GLB export preserves the selected layers, finish and explosion amount.
 
-The studio supports orbiting, zooming, three finishes, exposure adjustment, surface inspection and GLB export.
-The exported model opens in glTF viewers. Blender supports importing this GLB format.
+The renderer uses sampled fillets, GGX lighting, shadows, explicit MSAA, FXAA, specular filtering and ACES tone mapping.
+It reuses geometry buffers during explosion and refreshes shadows without allocating another shadow texture.
+The studio renders on demand. Continuous animation pauses in hidden tabs.
 
 ## Run
 
@@ -19,64 +21,95 @@ The exported model opens in glTF viewers. Blender supports importing this GLB fo
 3. Run `npm run dev`.
 4. Open the URL printed by Vite.
 
-## Checks
+| Page | Experience |
+| --- | --- |
+| `/` | WALL·E studio with orbit, zoom, explosion, layers, finishes and GLB export. |
+| `/nature.html` | Silverwater valley with viewpoints, daylight, wind, detail settings and water ripples. |
+| `/film.html` | CRITICAL, a 32-second procedural film with playback and timeline controls. |
 
-1. Run `npm test` to check geometry and GLB export with an independent glTF loader.
-2. Run `npm run build` to create the production site in `dist/`.
+CRITICAL combines mechanical details, atomic orbits, waves, a desert test tower and a volumetric ignition sequence.
+It uses an original synthesized score. The playable MP4 is in `public/media/critical.mp4`.
+The nature world uses seeded terrain and instanced vegetation. Its balanced preset contains 2,673 parts and 585,470 triangles.
+
+## Render images and video
+
+1. Run `npm run score` to generate the original soundtrack.
+2. Choose a command below for the required scene and backend.
+3. Inspect the output and its JSON report.
+
+```powershell
+npm run render -- --kind image --scene object --backend gpu --preset high --output artifacts/wall-e.png
+npm run render -- --kind image --scene nature --backend gpu --preset high --output artifacts/nature.png
+npm run render -- --kind image --scene object --backend cpu --preset cpu --output artifacts/wall-e-cpu.png
+npm run render -- --kind video --scene film --backend gpu --preset balanced --encoder gpu --output public/media/critical.mp4
+```
+
+| Preset | Dimensions | MSAA samples | FPS | Target budget |
+| --- | --- | ---: | ---: | ---: |
+| `preview` | 960 × 540 | 2 | 24 | 256 MiB |
+| `balanced` | 1280 × 720 | 4 | 24 | 384 MiB |
+| `high` | 1920 × 1080 | 4 | 24 | 512 MiB |
+| `cpu` | 640 × 360 | 1 | 12 | 192 MiB |
+
+GPU rendering uses hardware WebGL. CPU rendering explicitly requests and verifies ANGLE SwiftShader.
+The encoder independently supports two-thread libx264 or NVIDIA NVENC.
+The exporter streams one frame at a time and waits for encoder backpressure.
+It keeps one live scene renderer and disables development reloads during capture.
+
+The planner reduces render dimensions before targets exceed their estimated budget.
+The estimate includes geometry, shadows, targets and frame staging. It excludes some browser and driver allocations.
+The report records actual dimensions, estimated render memory, Node RSS and sampled browser JavaScript heap.
+Node and JavaScript heap guards stop capture above 512 MiB and 256 MiB respectively.
+These guards cannot guarantee that every driver or system allocation succeeds.
+
+## Skills
+
+The repository includes two reusable Codex skills.
+
+- [build-67js-scene](skills/build-67js-scene/SKILL.md) covers geometry, materials, cameras, interaction and anti-aliasing.
+- [render-67js-media](skills/render-67js-media/SKILL.md) covers CPU/GPU presets, streaming exports and memory measurements.
+
+## Checks and performance
+
+1. Run `npm test` to validate geometry, scene budgets, the timeline and independent GLB loading.
+2. Run `npm run build` to create all three production pages in `dist/`.
 3. Run `npm run smoke` to exercise the studio in headless Chrome.
 
-The smoke script uses installed Chrome on Windows, or Playwright Chromium on other platforms.
-If Chromium is missing, run `npx playwright install chromium`.
-The smoke saves screenshots, a GLB and benchmark results under the ignored `artifacts/` directory.
+The smoke saves rendered screenshots, a GLB and benchmark results under the ignored `artifacts/` directory.
+The benchmark compares identical geometry, camera, resolution and flat shaders with both instanced and individual draws.
+It measures CPU submission over 120 samples after warmup, with GPU synchronization outside the timed region.
 
-## Performance
+The results establish no general speed advantage or visual parity with Three.js or Blender.
+Vite serves COOP and COEP headers for fine browser timers. Other hosts need equivalent headers for comparable timing.
+Detailed measured results and limits are in [verification.md](docs/verification.md).
 
-The benchmark compares 67.js and Three.js with identical geometry, camera, resolution and flat shaders.
-Each renderer runs with instancing and with individual meshes.
-It measures CPU draw submission, with GPU synchronization outside the timed region.
-The reported value is the median of 120 samples after 30 warmup samples.
-Each sample averages eight submissions to reduce clock rounding.
+## API
 
-The local Chrome run on an RTX 3060 measured these medians.
-
-| Renderer | CPU milliseconds | Draw calls |
-| --- | ---: | ---: |
-| 67.js, instanced | 0.0056 | 9 |
-| Three.js, instanced | 0.0169 | 9 |
-| 67.js, individual | 0.0319 | 253 |
-| Three.js, individual | 0.4238 | 253 |
-
-These results apply to this static scene and CPU submission only.
-The benchmark images agreed on more than 99.99% of color channels within one byte of tolerance.
-They do not establish a general speed advantage, GPU performance or matching image quality against Three.js or Blender.
-Vite serves isolation headers for finer browser timers. Other hosts need equivalent COOP and COEP headers for comparable measurements.
-
-## Renderer shape
-
-`createModel()` returns a flat array of parts.
-Each part has a shared geometry, a column-major transform, a name and a metallic/roughness material.
-`Renderer67` groups parts by geometry identity and uploads transforms, normal matrices and materials as instance attributes.
-The studio renders on demand, with continuous rendering enabled only for auto orbit.
-Hidden tabs stop rendering. Static shadows do not rerender during camera movement.
+`createModel()` returns shared geometries, column-major matrices, linear RGB materials and optional assembly offsets.
+`Renderer67` groups geometry identities into instanced batches.
 
 ```js
 import { Renderer67 } from './src/renderer.js';
 import { createModel } from './src/model.js';
 
-const renderer = new Renderer67(canvas, createModel());
-renderer.render({ eye: [4, 3, 5], target: [0, 1.35, 0] });
-// Call resize() after changing the canvas dimensions.
-// Call dispose() when the viewer is removed.
+const renderer = new Renderer67(canvas, createModel(), {
+  samples: 4,
+  memoryBudgetMiB: 256,
+});
+renderer.render({ eye: [4, 3, 7], target: [0, 1.5, 0], assemblyAmount: 0.5 });
+// Call resize() after CSS dimensions change.
+// Call dispose() before replacing the renderer.
 ```
 
-This prototype focuses on static procedural objects.
-It does not yet support animation, texture maps, asset loading, ray tracing or a general scene graph.
-Blender-level realism remains a visual target, rather than a verified equivalence claim.
+This prototype supports procedural scenes and authored animation. It lacks texture loading, ray tracing and a general scene graph.
+Blender-level realism remains a visual target.
 
-## References
+## Credits
 
-- [Three.js](https://threejs.org/) and its [source repository](https://github.com/mrdoob/three.js/).
-- [Blender source](https://projects.blender.org/blender/blender).
-- [gl-matrix](https://github.com/toji/gl-matrix) supplies the matrix operations.
+WALL·E is a Disney/Pixar character. This repository authors its study as procedural geometry without external model assets.
+CRITICAL draws inspiration from the visual themes of the [official Oppenheimer trailer](https://www.youtube.com/watch?v=bK6ldnjE3Y0).
+It includes no film footage, dialogue or soundtrack samples.
 
-The geometry and model in this repository are original. No Blender source or external model assets are included.
+- [Three.js](https://threejs.org/) and its [source](https://github.com/mrdoob/three.js/) provide the benchmark reference.
+- [Blender](https://projects.blender.org/blender/blender) provides the visual quality target.
+- [gl-matrix](https://github.com/toji/gl-matrix) supplies matrix operations.

@@ -6,11 +6,11 @@ import { downloadGlb } from './export.js';
 const canvas = document.querySelector('#viewport');
 const parts = createModel();
 const finishes = {
-  titanium: { name: 'Titanium', color: [0.53, 0.39, 0.24], surface: [0.88, 0.32] },
+  yellow: { name: 'Factory yellow', color: [0.62, 0.34, 0.035], surface: [0.48, 0.43] },
   ceramic: { name: 'Ceramic', color: [0.7, 0.77, 0.74], surface: [0.05, 0.24] },
   graphite: { name: 'Graphite', color: [0.10, 0.14, 0.17], surface: [0.65, 0.4] },
 };
-const state = { azimuth: 0.48, elevation: 0.18, distance: 6.4, finish: 'titanium', exposure: 1, inspection: false, rotating: false };
+const state = { azimuth: 0.48, elevation: 0.18, distance: 7.8, finish: 'yellow', exposure: 1, inspection: false, rotating: false, assembly: 0, layer: 'all' };
 let renderer;
 let scheduledFrame = 0;
 let lastTime = 0;
@@ -29,8 +29,9 @@ function notify(message, failure = false) {
 
 function camera() {
   const mobile = canvas.clientWidth <= 700;
-  const distance = state.distance;
-  const target = [0, mobile ? 1.5 : 1.35, 0];
+  if (renderer) renderer.projection[8] = mobile || state.exporting ? 0 : -0.25 + state.assembly * 0.15;
+  const distance = state.distance * (mobile ? 0.78 : 1) + state.assembly * (mobile ? 4.5 : 6);
+  const target = [0, (mobile ? 1.5 : 1.35) + state.assembly * 0.35, 0];
   return {
     target,
     eye: [Math.sin(state.azimuth) * Math.cos(state.elevation) * distance, target[1] + Math.sin(state.elevation) * distance, Math.cos(state.azimuth) * Math.cos(state.elevation) * distance],
@@ -38,6 +39,7 @@ function camera() {
     armorSurface: finishes[state.finish].surface,
     exposure: state.exposure,
     inspection: state.inspection,
+    assemblyAmount: state.assembly,
   };
 }
 
@@ -59,14 +61,28 @@ function invalidate() {
 }
 
 function initialize() {
-  renderer = new Renderer67(canvas, parts);
-  document.querySelector('#parts').textContent = `${parts.length} parts · ${Math.round(renderer.triangles / 1000)}k triangles`;
-  document.querySelector('#calls').textContent = `${renderer.batches.length} draw calls`;
+  const visibleParts = state.layer === 'all' ? parts : parts.filter((part) => part.assembly?.layer === state.layer);
+  renderer = new Renderer67(canvas, visibleParts, { shadowBounds: { extent: 5, eye: [-3, 7, 4], target: [0, 1.5, 0] } });
+  document.querySelector('#parts').textContent = `${visibleParts.length} parts · ${Math.round(renderer.triangles / 1000)}k triangles`;
+  document.querySelector('#calls').textContent = `${renderer.batches.length} geometry draws`;
   invalidate();
   window.__studio = { parts, get renderer() { return renderer; }, state, camera, invalidate };
 }
 
 try { initialize(); } catch (error) { notify(error.message, true); }
+
+document.querySelector('#assembly').addEventListener('input', (event) => {
+  state.assembly = Number(event.target.value) / 100;
+  document.querySelector('#assembly-value').textContent = `${event.target.value}%`;
+  event.target.setAttribute('aria-valuetext', state.assembly === 0 ? 'Assembled' : state.assembly === 1 ? 'Fully exploded' : `${event.target.value}% exploded`);
+  invalidate();
+});
+document.querySelectorAll('[data-layer]').forEach((button) => button.addEventListener('click', () => {
+  state.layer = button.dataset.layer;
+  document.querySelectorAll('[data-layer]').forEach((control) => control.setAttribute('aria-pressed', String(control === button)));
+  renderer?.dispose();
+  try { initialize(); } catch (error) { notify(error.message, true); }
+}));
 
 canvas.addEventListener('pointerdown', (event) => {
   if (event.button !== 0) return;
@@ -100,7 +116,7 @@ canvas.addEventListener('keydown', (event) => {
   if (event.key.toLowerCase() === 'r') document.querySelector('#reset').click();
 });
 document.querySelector('#reset').addEventListener('click', () => {
-  Object.assign(state, { azimuth: 0.48, elevation: 0.18, distance: 6.4 });
+  Object.assign(state, { azimuth: 0.48, elevation: 0.18, distance: 7.8 });
   invalidate();
 });
 document.querySelectorAll('[data-finish]').forEach((button) => button.addEventListener('click', () => {
@@ -138,7 +154,12 @@ document.querySelector('#quality').addEventListener('change', (event) => {
 document.querySelector('#export').addEventListener('click', () => {
   try {
     const finish = finishes[state.finish];
-    const exported = parts.map((part) => part.material.tag === 'armor' ? { ...part, material: { ...part.material, color: finish.color, metallic: finish.surface[0], roughness: finish.surface[1] } } : part);
+    const exported = parts.filter((part) => state.layer === 'all' || part.assembly?.layer === state.layer).map((part) => {
+      const matrix = new Float32Array(part.matrix);
+      for (let axis = 0; axis < 3; axis++) matrix[12 + axis] += (part.assembly?.offset[axis] ?? 0) * state.assembly;
+      const material = part.material.tag === 'armor' ? { ...part.material, color: finish.color, metallic: finish.surface[0], roughness: finish.surface[1] } : part.material;
+      return { ...part, matrix, material };
+    });
     downloadGlb(exported);
     notify('GLB exported. Open it in Blender or another glTF viewer.');
   } catch (error) { notify(`Export failed: ${error.message}`, true); }
@@ -172,6 +193,7 @@ canvas.addEventListener('webglcontextlost', (event) => {
   event.preventDefault();
   cancelAnimationFrame(scheduledFrame);
   scheduledFrame = 0;
+  renderer?.dispose();
   renderer = null;
   notify('Graphics context lost. Waiting for the browser to restore it.', true);
 });

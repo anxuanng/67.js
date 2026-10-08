@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#25292d" />
-    <meta name="description" content="67.js. A small WebGL2 engine, a detailed procedural object, and a browser 3D studio." />
+    <meta name="description" content="Explore WALL·E inside and out. An explodable procedural 3D study rendered with 67.js." />
     <title>67.js · Object studio</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='15' fill='%2325292d'/%3E%3Ctext x='7' y='45' font-family='sans-serif' font-weight='bold' font-size='38' fill='%23b7eddf'%3E67%3C/text%3E%3C/svg%3E" />
   </head>
@@ -13,26 +13,32 @@
       <canvas id="viewport" tabindex="0" aria-label="3D model. Drag or use arrow keys to orbit. Scroll or use plus and minus to zoom."></canvas>
       <header class="toolbar">
         <a class="brand" href="./" aria-label="67.js home">67<span>.js</span></a>
-        <span class="studio-name">Object studio</span>
+        <nav class="studio-nav" aria-label="Scenes"><a href="./" aria-current="page">Object</a><a href="./nature.html">Nature</a><a href="./film.html">Film</a></nav>
         <div class="toolbar-actions">
           <button id="reset" title="Reset camera (R)">Reset view</button>
           <button id="export" class="primary">Export GLB <span aria-hidden="true">↗</span></button>
         </div>
       </header>
       <section class="object-info" aria-labelledby="object-title">
-        <h1 id="object-title">A little machine. <br />A lot of detail.</h1>
-        <p id="model-description">An original mechanical specimen. <br />Built from geometry. Rendered in your browser.</p>
-        <div class="object-caption"><span class="status-dot" aria-hidden="true">●</span> <span id="model-name">Specimen 01</span><span class="caption-separator">/</span><span>Procedural model</span></div>
+        <h1 id="object-title">WALL·E, <br />inside out.</h1>
+        <p id="model-description">Pull apart the shell. Explore the machinery. <br />Slide back to bring him together.</p>
+        <div class="object-caption"><span class="status-dot" aria-hidden="true">●</span> <span id="model-name">WALL·E study</span><span class="caption-separator">/</span><span>Procedural geometry</span></div>
       </section>
       <aside class="controls" aria-label="Model appearance">
+        <div class="assembly-control">
+          <label for="assembly">Explode model <output id="assembly-value">0%</output></label>
+          <input id="assembly" type="range" min="0" max="100" step="1" value="0" aria-valuetext="Assembled" />
+          <div class="assembly-endpoints"><span>Assembled</span><span>Exploded</span></div>
+          <div class="layer-actions" role="group" aria-label="Model layers"><button data-layer="all" aria-pressed="true">All</button><button data-layer="exterior" aria-pressed="false">Shell</button><button data-layer="interior" aria-pressed="false">Inside</button></div>
+        </div>
         <fieldset>
           <legend>Finish</legend>
           <div class="finishes">
-            <button class="swatch selected" data-finish="titanium" aria-label="Titanium finish" aria-pressed="true" style="--swatch:#c29a62"></button>
+            <button class="swatch selected" data-finish="yellow" aria-label="Yellow finish" aria-pressed="true" style="--swatch:#d8a33c"></button>
             <button class="swatch" data-finish="ceramic" aria-label="Ceramic finish" aria-pressed="false" style="--swatch:#d7e0de"></button>
             <button class="swatch" data-finish="graphite" aria-label="Graphite finish" aria-pressed="false" style="--swatch:#59666e"></button>
           </div>
-          <span id="finish-name">Titanium</span>
+          <span id="finish-name">Factory yellow</span>
         </fieldset>
         <label class="exposure-label" for="exposure">Exposure <output id="exposure-value">1.0</output></label>
         <input id="exposure" type="range" min="0.5" max="1.8" step="0.1" value="1" />
