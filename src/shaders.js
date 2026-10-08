@@ -14,8 +14,8 @@ uniform float explosionProgress;
 uniform vec3 explosionCenter;
 out vec3 worldPosition;
 out vec3 worldNormal;
-out vec3 baseColor;
-out vec4 surface;
+flat out vec3 baseColor;
+flat out vec4 surface;
 out vec4 shadowPosition;
 void main() {
   vec4 world = instanceMatrix * vec4(position, 1.0);
@@ -73,8 +73,8 @@ export const fragmentShader = `#version 300 es
 precision highp float;
 in vec3 worldPosition;
 in vec3 worldNormal;
-in vec3 baseColor;
-in vec4 surface;
+flat in vec3 baseColor;
+flat in vec4 surface;
 in vec4 shadowPosition;
 uniform vec3 eye;
 uniform vec3 armorColor;
