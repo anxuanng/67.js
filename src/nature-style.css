@@ -1,0 +1,79 @@
+:root { font-family: system-ui, sans-serif; color: #f5f7f2; background: #17231f; color-scheme: dark; font-synthesis: none; }
+* { box-sizing: border-box; }
+body { margin: 0; }
+main { height: 100dvh; min-height: 540px; position: relative; overflow: hidden; }
+button, select, input { font: inherit; }
+button, a, label, .metrics, .hint { -webkit-user-select: none; user-select: none; }
+button, select { color: inherit; border: 0; cursor: pointer; }
+button { padding: 11px 16px; border-radius: 8px; background: #f5f7f21a; white-space: nowrap; }
+button:hover { background: #f5f7f22b; }
+button:disabled { cursor: wait; opacity: .55; }
+a { color: inherit; text-decoration: none; }
+:focus-visible { outline: 2px solid #deefb5; outline-offset: 4px; }
+#viewport { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+#viewport:focus-visible { outline-offset: -5px; }
+.world-header { position: absolute; top: 22px; left: 28px; right: 28px; display: flex; align-items: center; gap: 32px; text-shadow: 0 1px 14px #13201c66; }
+.brand { font-size: 26px; font-weight: 700; letter-spacing: -1px; }
+.brand span { font-weight: 400; opacity: .8; }
+nav { display: flex; gap: 5px; }
+nav a { font-size: 14px; padding: 9px 13px; border-radius: 6px; }
+nav a[aria-current] { background: #16211f7a; }
+nav a:hover { background: #16211f55; }
+#save-image { margin-left: auto; background: #16211fbb; font-size: 14px; }
+#save-image:hover { background: #16211fe6; }
+.landscape-title { position: absolute; left: 32px; bottom: 156px; text-shadow: 0 2px 20px #11201988; pointer-events: none; }
+h1 { margin: 0 0 6px; font-size: clamp(26px, 3vw, 42px); font-weight: 500; letter-spacing: -1.3px; }
+.landscape-title p { margin: 0; font-size: 15px; color: #f5f7f2dd; }
+.landscape-controls { position: absolute; bottom: 52px; left: 28px; right: 28px; display: flex; align-items: center; gap: 28px; padding: 18px 22px; background: #17231feb; border-radius: 12px; backdrop-filter: blur(18px); }
+.landscape-controls label { display: flex; align-items: center; gap: 12px; font-size: 14px; color: #d5dfd6; }
+select { padding: 9px 28px 9px 11px; border-radius: 6px; background: #f5f7f20d; font-size: 14px; }
+option { background: #22352b; }
+.landscape-controls .range-control { display: block; width: 150px; }
+.range-control span { display: flex; justify-content: space-between; margin-bottom: 5px; }
+output { color: #a8baa9; font-size: 12px; }
+input[type='range'] { display: block; width: 100%; height: 17px; margin: 0; accent-color: #c5dcaa; cursor: pointer; }
+#motion { margin-left: auto; font-size: 14px; }
+footer { position: absolute; left: 32px; right: 32px; bottom: 15px; display: flex; justify-content: space-between; gap: 18px; font-size: 12px; color: #f5f7f2d9; text-shadow: 0 1px 8px #10201c; }
+footer p { margin: 0; }
+.metrics { display: flex; gap: 20px; font-variant-numeric: tabular-nums; }
+#notice { position: absolute; right: 28px; bottom: 224px; max-width: min(380px, calc(100% - 56px)); padding: 15px 20px; margin: 0; border-radius: 9px; color: #17231f; background: #f5f7f2; font-size: 14px; box-shadow: 0 8px 24px #0b1c1b33; }
+#notice[data-failure='true'] { color: #914222; }
+[hidden] { display: none !important; }
+@media (max-width: 1050px) {
+  .landscape-controls { gap: 15px; }
+  .landscape-controls .range-control { width: 110px; }
+  .landscape-controls label { gap: 7px; }
+}
+@media (max-width: 760px) {
+  .world-header { top: 16px; left: 18px; right: 18px; gap: 14px; }
+  .brand { font-size: 23px; }
+  nav a { font-size: 13px; padding: 8px 9px; }
+  #save-image { padding: 9px 10px; font-size: 12px; }
+  .landscape-title { left: 22px; bottom: 252px; }
+  .landscape-controls { left: 16px; right: 16px; bottom: 54px; padding: 16px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 20px; }
+  .landscape-controls .range-control { width: 100%; }
+  .view-control { grid-column: 1 / -1; }
+  .view-control select { flex: 1; }
+  .landscape-controls select { min-width: 0; max-width: 100%; }
+  .landscape-controls label { justify-content: space-between; }
+  #motion { width: 100%; padding: 10px; }
+  footer { left: 20px; right: 20px; bottom: 13px; font-size: 11px; }
+  .hint { display: none; }
+  .metrics { width: 100%; justify-content: space-between; gap: 10px; }
+  #notice { bottom: 330px; right: 16px; max-width: calc(100% - 32px); }
+}
+@media (max-width: 360px) {
+  .world-header { gap: 8px; }
+  nav { gap: 0; }
+  nav a { font-size: 12px; padding: 8px 7px; }
+  #save-image { font-size: 11px; padding: 9px 8px; }
+  .landscape-controls label[for='detail'] { display: block; }
+  #detail { width: 100%; margin-top: 5px; font-size: 13px; }
+  #motion { align-self: end; font-size: 13px; }
+  .landscape-title { bottom: 280px; }
+}
+@media (max-height: 650px) and (min-width: 761px) {
+  main { min-height: 400px; }
+  .landscape-title { bottom: 138px; }
+}
+@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto; } }

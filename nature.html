@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#17231f" />
+    <meta name="description" content="Explore a living alpine valley, built entirely from geometry in 67.js." />
+    <title>67.js · Silverwater valley</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='15' fill='%2317231f'/%3E%3Ctext x='7' y='45' font-family='sans-serif' font-weight='bold' font-size='38' fill='%23c9e4cc'%3E67%3C/text%3E%3C/svg%3E" />
+  </head>
+  <body>
+    <main>
+      <canvas id="viewport" tabindex="0" aria-label="Silverwater valley. Drag or use arrow keys to orbit; scroll or use plus and minus to zoom. Click the water to make a ripple."></canvas>
+      <header class="world-header">
+        <a class="brand" href="./index.html" aria-label="67.js home">67<span>.js</span></a>
+        <nav aria-label="Scenes">
+          <a href="./index.html">Object</a>
+          <a href="./nature.html" aria-current="page">Nature</a>
+          <a href="./film.html">Film</a>
+        </nav>
+        <button id="save-image">Save PNG <span aria-hidden="true">↗</span></button>
+      </header>
+      <div class="landscape-title">
+        <h1>Silverwater valley</h1>
+        <p>Take a breath. Stay a while.</p>
+      </div>
+      <section class="landscape-controls" aria-label="Landscape controls">
+        <label class="view-control" for="viewpoint">View
+          <select id="viewpoint"></select>
+        </label>
+        <label class="range-control" for="daylight"><span>Light <output id="daylight-value">Day</output></span>
+          <input id="daylight" type="range" min="0" max="1" step="0.01" value="1" aria-label="Daylight, from dusk to day" />
+        </label>
+        <label class="range-control" for="wind"><span>Wind <output id="wind-value">Gentle</output></span>
+          <input id="wind" type="range" min="0" max="1" step="0.01" value="0.35" />
+        </label>
+        <label for="detail">Detail
+          <select id="detail"><option value="low">Low</option><option value="balanced" selected>Balanced</option><option value="high">High</option></select>
+        </label>
+        <button id="motion" aria-pressed="false">Pause motion</button>
+      </section>
+      <footer>
+        <p class="hint">Drag to explore · Click the water</p>
+        <div class="metrics" aria-label="Renderer statistics"><span id="geometry-stat"></span><span id="memory-stat"></span></div>
+      </footer>
+      <p id="notice" role="status" hidden></p>
+    </main>
+    <script type="module" src="/src/nature-viewer.js"></script>
+  </body>
+</html>
