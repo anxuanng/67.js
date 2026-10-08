@@ -1,0 +1,16 @@
+{
+  "name": "67.js",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "A focused WebGL2 renderer and procedural 3D studio",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "vite build",
+    "preview": "vite preview --host 127.0.0.1",
+    "test": "node --test",
+    "smoke": "node scripts/smoke.mjs"
+  },
+  "dependencies": { "gl-matrix": "3.4.4" },
+  "devDependencies": { "vite": "8.0.3", "playwright": "1.58.2", "three": "0.186.0" }
+}
