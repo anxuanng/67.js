@@ -99,6 +99,10 @@ test('model respects the renderer contract, instancing and authored bounds', () 
   }
   const minimum = [Infinity, Infinity, Infinity];
   const maximum = [-Infinity, -Infinity, -Infinity];
+  const expandedMinimum = [Infinity, Infinity, Infinity];
+  const expandedMaximum = [-Infinity, -Infinity, -Infinity];
+  const sections = new Map();
+  let triangleCount = 0;
   for (const part of parts) {
     assert.ok(part.name);
     assert.ok(part.matrix instanceof Float32Array);
@@ -109,6 +113,20 @@ test('model respects the renderer contract, instancing and authored bounds', () 
     assert.ok(part.material.metallic >= 0 && part.material.metallic <= 1);
     assert.ok(part.material.roughness > 0 && part.material.roughness <= 1);
     assert.ok(part.material.emission >= 0);
+    assert.ok(['exterior', 'interior'].includes(part.assembly.layer));
+    assert.ok(part.assembly.section.length > 3);
+    assert.equal(part.assembly.offset.length, 3);
+    assert.ok(part.assembly.offset.every(Number.isFinite));
+    if (part.assembly.layer === 'interior') {
+      assert.ok(part.assembly.offset.every(value => Math.abs(value) <= 0.4));
+    }
+    const section = sections.get(part.assembly.section);
+    if (section) {
+      assert.deepEqual(part.assembly, section, 'components in a mechanical section travel together');
+    } else {
+      sections.set(part.assembly.section, part.assembly);
+    }
+    triangleCount += part.geometry.indices.length / 3;
     const matrix = part.matrix;
     const positions = part.geometry.positions;
     for (let offset = 0; offset < positions.length; offset += 3) {
@@ -116,11 +134,24 @@ test('model respects the renderer contract, instancing and authored bounds', () 
         const world = matrix[axis] * positions[offset] + matrix[axis + 4] * positions[offset + 1] + matrix[axis + 8] * positions[offset + 2] + matrix[axis + 12];
         minimum[axis] = Math.min(minimum[axis], world);
         maximum[axis] = Math.max(maximum[axis], world);
+        expandedMinimum[axis] = Math.min(expandedMinimum[axis], world + part.assembly.offset[axis]);
+        expandedMaximum[axis] = Math.max(expandedMaximum[axis], world + part.assembly.offset[axis]);
       }
     }
   }
-  assert.ok(minimum[1] >= 0);
+  assert.ok(minimum[1] >= 0.045);
   assert.ok(maximum[1] <= 3);
-  assert.ok(Math.max(Math.abs(minimum[0]), Math.abs(maximum[0]), Math.abs(minimum[2]), Math.abs(maximum[2])) <= 2.3);
-  console.log(JSON.stringify({ parts: parts.length, geometries: geometries.size, bounds: { minimum, maximum } }));
+  assert.ok(Math.max(Math.abs(minimum[0]), Math.abs(maximum[0])) <= 1.3);
+  assert.ok(Math.max(Math.abs(minimum[2]), Math.abs(maximum[2])) <= 1);
+  assert.ok(expandedMinimum[1] >= 0.045);
+  assert.ok(expandedMaximum[1] <= 4.5);
+  assert.ok(Math.max(Math.abs(expandedMinimum[0]), Math.abs(expandedMaximum[0])) <= 3.4);
+  assert.ok(Math.max(Math.abs(expandedMinimum[2]), Math.abs(expandedMaximum[2])) <= 2.8);
+  assert.ok(parts.filter(part => part.assembly.layer === 'interior').length > 100);
+  assert.ok(parts.filter(part => part.assembly.layer === 'exterior').length > 100);
+  assert.ok(sections.size >= 15);
+  assert.ok(triangleCount < 1000000, 'assembled scene stays below one million triangles');
+  const meshBytes = Array.from(geometries).reduce((sum, mesh) => sum + mesh.positions.byteLength + mesh.normals.byteLength + mesh.indices.byteLength, 0);
+  assert.ok(meshBytes < 1500000, 'geometry remains suitable for a compact export');
+  console.log(JSON.stringify({ parts: parts.length, geometries: geometries.size, triangleCount, meshBytes, sections: sections.size, bounds: { minimum, maximum }, expandedBounds: { minimum: expandedMinimum, maximum: expandedMaximum } }));
 });
