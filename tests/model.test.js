@@ -39,14 +39,64 @@ test('closed primitive surfaces have finite unit normals and outward winding', (
 });
 
 test('partial armor arc keeps its winding', () => {
-  validateGeometry(torus(0.12, 44, 12, Math.PI * 0.84, Math.PI * 0.08));
+  const mesh = torus(0.12, 80, 24, Math.PI * 0.84, Math.PI * 0.08);
+  assert.ok(validateGeometry(mesh) > 0);
+  assertClosedJoins(mesh, false);
+});
+
+function assertClosedJoins(mesh, smoothNormals = true) {
+  const vertexKeys = [];
+  const normalsAtPosition = new Map();
+  for (let offset = 0; offset < mesh.positions.length; offset += 3) {
+    const key = Array.from(mesh.positions.slice(offset, offset + 3), value => Math.round(value * 100000)).join(',');
+    vertexKeys.push(key);
+    const normal = Array.from(mesh.normals.slice(offset, offset + 3));
+    const previousNormal = normalsAtPosition.get(key);
+    if (previousNormal && smoothNormals) {
+      assert.ok(normal.every((value, axis) => Math.abs(value - previousNormal[axis]) < 1e-5), 'smooth normals match at patch joins');
+    }
+    normalsAtPosition.set(key, normal);
+  }
+  const edgeCounts = new Map();
+  for (let offset = 0; offset < mesh.indices.length; offset += 3) {
+    const triangle = Array.from(mesh.indices.slice(offset, offset + 3), index => vertexKeys[index]);
+    assert.equal(new Set(triangle).size, 3, 'joins do not produce collapsed triangles');
+    for (let edge = 0; edge < 3; edge++) {
+      const edgeKey = [triangle[edge], triangle[(edge + 1) % 3]].sort().join('|');
+      edgeCounts.set(edgeKey, (edgeCounts.get(edgeKey) ?? 0) + 1);
+    }
+  }
+  assert.ok(Array.from(edgeCounts.values()).every(count => count === 2), 'each welded edge has two adjacent triangles');
+}
+
+test('rounded box fillets are sampled locally with closed smooth patch joins', () => {
+  for (const bevel of [0.015, 0.08, 0.18]) {
+    const mesh = box(bevel, 6);
+    validateGeometry(mesh);
+    assertClosedJoins(mesh);
+    assert.ok(Array.from(mesh.positions).every(value => Math.abs(value) <= 0.500001));
+    const intermediateNormals = new Set(Array.from(mesh.normals).filter(value => value > 0.01 && value < 0.99).map(value => value.toFixed(3)));
+    assert.ok(intermediateNormals.size > 15, 'fillets carry enough normal samples for continuous highlights');
+  }
+  validateGeometry(box(0));
+});
+
+test('cylinder rim fillets join flat caps and walls without gaps or normal discontinuities', () => {
+  const mesh = cylinder();
+  assertClosedJoins(mesh);
+  assert.ok(Array.from(mesh.positions).every((value, index) => Math.abs(value) <= (index % 3 === 1 ? 0.500001 : 1.000001)));
+  const rimNormals = Array.from(mesh.normals).filter((value, index) => index % 3 === 1 && value > 0.01 && value < 0.99);
+  assert.ok(new Set(rimNormals.map(value => value.toFixed(3))).size >= 5);
 });
 
 test('model respects the renderer contract, instancing and authored bounds', () => {
   const parts = createModel();
-  assert.ok(parts.length > 200);
+  assert.ok(parts.length >= 252);
   const geometries = new Set(parts.map(part => part.geometry));
   assert.ok(geometries.size < 12, 'repeated details reuse geometry identities');
+  for (const mesh of geometries) {
+    validateGeometry(mesh);
+  }
   const minimum = [Infinity, Infinity, Infinity];
   const maximum = [-Infinity, -Infinity, -Infinity];
   for (const part of parts) {

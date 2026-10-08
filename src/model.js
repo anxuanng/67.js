@@ -6,10 +6,10 @@ const QUARTER_TURN = Math.PI / 2;
 
 const materials = {
   armor: { tag: 'armor', color: [0.53, 0.39, 0.24], metallic: 0.88, roughness: 0.32, emission: 0 },
-  pale: { tag: 'armor', color: [0.67, 0.56, 0.39], metallic: 0.8, roughness: 0.29, emission: 0 },
-  dark: { tag: 'graphite', color: [0.032, 0.045, 0.047], metallic: 0.76, roughness: 0.38, emission: 0 },
+  pale: { tag: 'satin', color: [0.61, 0.6, 0.52], metallic: 0.78, roughness: 0.25, emission: 0 },
+  dark: { tag: 'graphite', color: [0.032, 0.045, 0.047], metallic: 0.76, roughness: 0.29, emission: 0 },
   rubber: { tag: 'rubber', color: [0.012, 0.018, 0.02], metallic: 0.08, roughness: 0.66, emission: 0 },
-  steel: { tag: 'steel', color: [0.29, 0.34, 0.34], metallic: 0.96, roughness: 0.25, emission: 0 },
+  steel: { tag: 'steel', color: [0.43, 0.48, 0.47], metallic: 0.96, roughness: 0.22, emission: 0 },
   copper: { tag: 'copper', color: [0.52, 0.19, 0.075], metallic: 0.9, roughness: 0.31, emission: 0 },
   mint: { tag: 'light', color: [0.16, 0.8, 0.61], metallic: 0.15, roughness: 0.18, emission: 2.6 },
   lens: { tag: 'lens', color: [0.018, 0.16, 0.13], metallic: 0.68, roughness: 0.12, emission: 0.15 },
@@ -25,14 +25,15 @@ function transform(position, scale, rotation) {
 export function createModel() {
   const parts = [];
   const meshes = {
-    plate: box(),
+    plate: box(0.08, 3),
+    shell: box(0.18, 8),
     sphere: sphere(),
     cylinder: cylinder(),
     bolt: cylinder(6),
-    ring: torus(0.065),
-    heavyRing: torus(0.15),
+    ring: torus(0.045),
+    heavyRing: torus(0.105),
     fineRing: torus(0.022),
-    brow: torus(0.12, 44, 12, HALF_TURN * 0.84, HALF_TURN * 0.08),
+    brow: torus(0.09, 80, 24, HALF_TURN * 0.84, HALF_TURN * 0.08),
   };
   function add(name, mesh, position, scale, material = 'armor', rotation = [0, 0, 0]) {
     parts.push({ name, geometry: meshes[mesh], matrix: transform(position, scale, rotation), material: materials[material] });
@@ -78,22 +79,30 @@ export function createModel() {
   for (let index = 0; index < 7; index++) {
     add('Neck compression collar', 'cylinder', [0, 0.66 + index * 0.074, -0.12], [0.29, 0.033, 0.29], index % 2 ? 'steel' : 'dark');
   }
-  plate('Lower jaw chassis', [0, 1.19, 0.035], [1.35, 0.26, 0.84], 'dark');
-  plate('Lower jaw armor', [0, 1.22, 0.49], [1.18, 0.2, 0.16], 'armor');
+  add('Lower jaw chassis', 'shell', [0, 1.19, 0.035], [1.24, 0.24, 0.75], 'dark');
+  add('Lower jaw armor', 'shell', [0, 1.22, 0.49], [1.09, 0.16, 0.17], 'armor');
   plate('Jaw inset panel', [0, 1.225, 0.58], [0.66, 0.065, 0.035], 'rubber');
   for (let index = 0; index < 9; index++) {
     plate('Jaw grille', [-0.28 + index * 0.07, 1.225, 0.607], [0.025, 0.055, 0.012], 'steel');
   }
 
   add('Inner pressure vessel', 'sphere', [0, 1.83, -0.03], [0.82, 0.73, 0.61], 'dark');
-  plate('Rear controller enclosure', [0, 1.86, -0.51], [0.96, 1.02, 0.3], 'dark');
-  plate('Rear service hatch', [0, 1.86, -0.685], [0.72, 0.8, 0.045], 'armor');
+  add('Rear controller enclosure', 'shell', [0, 1.86, -0.51], [0.96, 1.02, 0.3], 'dark');
+  add('Rear service hatch', 'shell', [0, 1.86, -0.685], [0.72, 0.8, 0.045], 'armor');
   for (const side of [-1, 1]) {
-    plate('Cheek armor', [side * 0.72, 1.73, 0.19], [0.3, 0.89, 0.72], 'armor', [0, side * 0.12, side * -0.12]);
-    plate('Temple armor', [side * 0.67, 2.22, -0.025], [0.36, 0.34, 0.93], 'pale', [0, 0, side * 0.13]);
-    plate('Cheek inset', [side * 0.86, 1.69, 0.23], [0.035, 0.47, 0.42], 'rubber');
+    add('Cheek armor', 'shell', [side * 0.71, 1.69, 0.27], [0.24, 0.79, 0.6], 'armor', [0, side * 0.18, side * -0.16]);
+    add('Temple sculpted cap', 'sphere', [side * 0.62, 2.25, -0.035], [0.26, 0.22, 0.49], 'pale');
+    add('Temporal bearing body', 'cylinder', [side * 0.79, 1.93, -0.1], [0.34, 0.19, 0.34], 'dark', [0, 0, QUARTER_TURN]);
+    add('Temporal bearing retaining ring', 'ring', [side * 0.905, 1.93, -0.1], [0.29, 0.29, 0.29], 'armor', [0, QUARTER_TURN, 0]);
+    add('Temporal silver locking ring', 'fineRing', [side * 0.916, 1.93, -0.1], [0.235, 0.235, 0.235], 'steel', [0, QUARTER_TURN, 0]);
+    add('Temporal bearing cover', 'cylinder', [side * 0.902, 1.93, -0.1], [0.205, 0.042, 0.205], 'dark', [0, 0, QUARTER_TURN]);
+    for (let index = 0; index < 6; index++) {
+      const angle = index / 6 * Math.PI * 2;
+      bolt('Temporal bearing fastener', [side * 0.925, 1.93 + Math.cos(angle) * 0.26, -0.1 + Math.sin(angle) * 0.26], 0.019, [0, 0, QUARTER_TURN]);
+    }
+    add('Cheek inset', 'shell', [side * 0.836, 1.61, 0.19], [0.035, 0.35, 0.36], 'rubber');
     for (let index = 0; index < 8; index++) {
-      plate('Side cooling lamella', [side * 0.89, 1.46 + index * 0.065, 0.14], [0.095, 0.023, 0.48], 'steel', [0, 0.1 * side, 0]);
+      plate('Side cooling lamella', [side * 0.865, 1.42 + index * 0.048, 0.17], [0.074, 0.018, 0.34], 'steel', [0, 0.1 * side, 0]);
     }
     for (const height of [1.39, 2.08]) {
       bolt('Cheek face fastener', [side * 0.72, height, 0.578]);
@@ -111,6 +120,13 @@ export function createModel() {
 
   // Nested lens rings carry the focal point; the pupil remains dark inside a luminous annulus.
   barrel('Optic pressure housing', [0, 1.87, 0.5], 0.645, 0.34);
+  for (let index = 0; index < 4; index++) {
+    ring('Optic barrel machining groove', [0, 1.87, 0.48 + index * 0.053], 0.641, 'steel', 'fineRing', 0.45);
+  }
+  for (let index = 0; index < 48; index++) {
+    const angle = index / 48 * Math.PI * 2;
+    plate('Focus grip flute', [Math.cos(angle) * 0.642, 1.87 + Math.sin(angle) * 0.642, 0.576], [0.015, 0.026, 0.135], 'dark', [0, 0, angle]);
+  }
   barrel('Optic machined bezel', [0, 1.87, 0.695], 0.61, 0.14, 'armor');
   ring('Bezel raised rim', [0, 1.87, 0.77], 0.56, 'pale', 'heavyRing', 0.48);
   barrel('Optic inner recess', [0, 1.87, 0.772], 0.51, 0.05, 'rubber');
@@ -131,12 +147,13 @@ export function createModel() {
   }
   for (let index = 0; index < 12; index++) {
     const angle = index / 12 * Math.PI * 2;
-    plate('Iris radial segment', [Math.cos(angle) * 0.26, 1.87 + Math.sin(angle) * 0.26, 0.906], [0.105, 0.016, 0.012], 'steel', [0, 0, angle + 0.55]);
+    plate('Iris radial segment', [Math.cos(angle) * 0.26, 1.87 + Math.sin(angle) * 0.26, 0.906], [0.128, 0.033, 0.008], 'dark', [0, 0, angle + 0.7]);
   }
   add('Interrupted armored brow', 'brow', [0, 1.88, 0.46], [0.77, 0.72, 0.75], 'armor');
-  plate('Crown bridge', [0, 2.5, 0.01], [0.89, 0.16, 0.88], 'pale', [-0.075, 0, 0]);
+  add('Crown sculpted shell', 'sphere', [0, 2.38, -0.03], [0.64, 0.22, 0.53], 'pale');
+  add('Crown bridge', 'shell', [0, 2.525, -0.055], [0.65, 0.095, 0.63], 'armor', [-0.075, 0, 0]);
   for (let index = -2; index <= 2; index++) {
-    plate('Crown graphite seam', [index * 0.14, 2.59, -0.05], [0.022, 0.012, 0.57], 'dark');
+    plate('Crown graphite seam', [index * 0.11, 2.576, -0.05], [0.011, 0.01, 0.42], 'dark');
   }
   for (const side of [-1, 1]) {
     plate('Brow hinge', [side * 0.56, 2.37, 0.48], [0.21, 0.1, 0.22], 'steel', [0, 0, side * -0.45]);
@@ -144,7 +161,7 @@ export function createModel() {
   }
 
   // Offset rangefinder and copper aerial break the symmetry without competing with the lens.
-  plate('Rangefinder mounting wing', [0.96, 2.12, 0.13], [0.43, 0.38, 0.59], 'dark');
+  add('Rangefinder mounting wing', 'shell', [0.94, 2.12, 0.13], [0.32, 0.29, 0.47], 'dark');
   barrel('Rangefinder brass body', [1.03, 2.13, 0.44], 0.175, 0.26, 'armor');
   ring('Rangefinder ring', [1.03, 2.13, 0.585], 0.142, 'steel', 'heavyRing', 0.55);
   barrel('Rangefinder glass', [1.03, 2.13, 0.592], 0.117, 0.026, 'lens');
