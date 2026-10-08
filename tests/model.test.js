@@ -1,0 +1,76 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import { box, cylinder, sphere, torus } from '../src/geometry.js';
+import { createModel } from '../src/model.js';
+
+function validateGeometry(mesh) {
+  assert.ok(mesh.positions instanceof Float32Array);
+  assert.ok(mesh.normals instanceof Float32Array);
+  assert.ok(mesh.indices instanceof Uint32Array);
+  assert.equal(mesh.positions.length, mesh.normals.length);
+  assert.equal(mesh.indices.length % 3, 0);
+  for (let offset = 0; offset < mesh.normals.length; offset += 3) {
+    const normal = mesh.normals.slice(offset, offset + 3);
+    assert.ok(Math.abs(Math.hypot(...normal) - 1) < 1e-5, 'unit vertex normal');
+  }
+  let signedVolume = 0;
+  for (let offset = 0; offset < mesh.indices.length; offset += 3) {
+    const vertices = Array.from(mesh.indices.slice(offset, offset + 3), index => {
+      assert.ok(index < mesh.positions.length / 3, 'index is in range');
+      return Array.from(mesh.positions.slice(index * 3, index * 3 + 3));
+    });
+    const [first, second, third] = vertices;
+    const edgeA = second.map((value, axis) => value - first[axis]);
+    const edgeB = third.map((value, axis) => value - first[axis]);
+    const cross = [edgeA[1] * edgeB[2] - edgeA[2] * edgeB[1], edgeA[2] * edgeB[0] - edgeA[0] * edgeB[2], edgeA[0] * edgeB[1] - edgeA[1] * edgeB[0]];
+    assert.ok(Math.hypot(...cross) > 1e-10, 'nondegenerate triangle');
+    const normalSum = [0, 1, 2].map(axis => Array.from(mesh.indices.slice(offset, offset + 3)).reduce((sum, index) => sum + mesh.normals[index * 3 + axis], 0));
+    assert.ok(cross.reduce((sum, value, axis) => sum + value * normalSum[axis], 0) > 0, 'outward counterclockwise winding');
+    signedVolume += first[0] * (second[1] * third[2] - second[2] * third[1]) + first[1] * (second[2] * third[0] - second[0] * third[2]) + first[2] * (second[0] * third[1] - second[1] * third[0]);
+  }
+  return signedVolume / 6;
+}
+
+test('closed primitive surfaces have finite unit normals and outward winding', () => {
+  for (const mesh of [sphere(), cylinder(), cylinder(6), torus(), box()]) {
+    assert.ok(validateGeometry(mesh) > 0, 'positive signed volume');
+    assert.ok(Array.from(mesh.positions).every(Number.isFinite));
+  }
+});
+
+test('partial armor arc keeps its winding', () => {
+  validateGeometry(torus(0.12, 44, 12, Math.PI * 0.84, Math.PI * 0.08));
+});
+
+test('model respects the renderer contract, instancing and authored bounds', () => {
+  const parts = createModel();
+  assert.ok(parts.length > 200);
+  const geometries = new Set(parts.map(part => part.geometry));
+  assert.ok(geometries.size < 12, 'repeated details reuse geometry identities');
+  const minimum = [Infinity, Infinity, Infinity];
+  const maximum = [-Infinity, -Infinity, -Infinity];
+  for (const part of parts) {
+    assert.ok(part.name);
+    assert.ok(part.matrix instanceof Float32Array);
+    assert.equal(part.matrix.length, 16);
+    assert.ok(Array.from(part.matrix).every(Number.isFinite));
+    assert.equal(part.matrix[15], 1);
+    assert.ok(part.material.color.every(value => value >= 0 && value <= 1));
+    assert.ok(part.material.metallic >= 0 && part.material.metallic <= 1);
+    assert.ok(part.material.roughness > 0 && part.material.roughness <= 1);
+    assert.ok(part.material.emission >= 0);
+    const matrix = part.matrix;
+    const positions = part.geometry.positions;
+    for (let offset = 0; offset < positions.length; offset += 3) {
+      for (let axis = 0; axis < 3; axis++) {
+        const world = matrix[axis] * positions[offset] + matrix[axis + 4] * positions[offset + 1] + matrix[axis + 8] * positions[offset + 2] + matrix[axis + 12];
+        minimum[axis] = Math.min(minimum[axis], world);
+        maximum[axis] = Math.max(maximum[axis], world);
+      }
+    }
+  }
+  assert.ok(minimum[1] >= 0);
+  assert.ok(maximum[1] <= 3);
+  assert.ok(Math.max(Math.abs(minimum[0]), Math.abs(maximum[0]), Math.abs(minimum[2]), Math.abs(maximum[2])) <= 2.3);
+  console.log(JSON.stringify({ parts: parts.length, geometries: geometries.size, bounds: { minimum, maximum } }));
+});
