@@ -1,0 +1,45 @@
+{
+  "graphics": {
+    "parts": 252,
+    "triangles": 206432,
+    "calls": 9,
+    "glError": 0,
+    "gpu": "ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 (0x00002487) Direct3D11 vs_5_0 ps_5_0, D3D11)"
+  },
+  "results": [
+    {
+      "name": "67.js instanced",
+      "milliseconds": 0.005625000223517418,
+      "calls": 9,
+      "pixelAgreement": 1
+    },
+    {
+      "name": "67.js individual",
+      "milliseconds": 0.0318750012665987,
+      "calls": 253,
+      "pixelAgreement": 0.9999951171875
+    },
+    {
+      "name": "Three.js instanced",
+      "milliseconds": 0.016875000670552254,
+      "calls": 9,
+      "pixelAgreement": 0.999990234375
+    },
+    {
+      "name": "Three.js individual",
+      "milliseconds": 0.4237500000745058,
+      "calls": 253,
+      "pixelAgreement": 0.9999951171875
+    }
+  ],
+  "resolution": [
+    640,
+    480
+  ],
+  "samples": 120,
+  "submissionsPerSample": 8,
+  "isolated": true,
+  "metric": "CPU draw submission median milliseconds, GPU synchronization outside timed region",
+  "browser": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/154.0.0.0 Safari/537.36",
+  "errors": []
+}

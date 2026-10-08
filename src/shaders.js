@@ -1,0 +1,156 @@
+export const vertexShader = `#version 300 es
+precision highp float;
+layout(location=0) in vec3 position;
+layout(location=1) in vec3 normal;
+layout(location=2) in mat4 instanceMatrix;
+layout(location=6) in mat3 instanceNormal;
+layout(location=9) in vec3 instanceColor;
+layout(location=10) in vec4 instanceSurface;
+uniform mat4 viewProjection;
+uniform mat4 lightProjection;
+out vec3 worldPosition;
+out vec3 worldNormal;
+out vec3 baseColor;
+out vec4 surface;
+out vec4 shadowPosition;
+void main() {
+  vec4 world = instanceMatrix * vec4(position, 1.0);
+  worldPosition = world.xyz;
+  worldNormal = normalize(instanceNormal * normal);
+  baseColor = instanceColor;
+  surface = instanceSurface;
+  shadowPosition = lightProjection * world;
+  gl_Position = viewProjection * world;
+}`;
+
+export const depthVertexShader = `#version 300 es
+precision highp float;
+layout(location=0) in vec3 position;
+layout(location=2) in mat4 instanceMatrix;
+uniform mat4 lightProjection;
+void main() {
+  gl_Position = lightProjection * instanceMatrix * vec4(position, 1.0);
+}`;
+
+export const depthFragmentShader = `#version 300 es
+precision highp float;
+void main() {}
+`;
+
+export const benchmarkVertexShader = `#version 300 es
+precision highp float;
+layout(location=0) in vec3 position;
+layout(location=2) in mat4 instanceMatrix;
+layout(location=9) in vec3 instanceColor;
+uniform mat4 viewProjection;
+out vec3 color;
+void main() {
+  color = instanceColor;
+  gl_Position = viewProjection * instanceMatrix * vec4(position, 1.0);
+}`;
+
+export const benchmarkFragmentShader = `#version 300 es
+precision highp float;
+in vec3 color;
+out vec4 outputColor;
+void main() { outputColor = vec4(color, 1.0); }
+`;
+
+export const fragmentShader = `#version 300 es
+precision highp float;
+in vec3 worldPosition;
+in vec3 worldNormal;
+in vec3 baseColor;
+in vec4 surface;
+in vec4 shadowPosition;
+uniform vec3 eye;
+uniform vec3 armorColor;
+uniform vec2 armorSurface;
+uniform float exposure;
+uniform float inspection;
+uniform sampler2D shadowMap;
+out vec4 outputColor;
+const float PI = 3.14159265359;
+
+vec3 fresnel(float cosine, vec3 reflectance) {
+  return reflectance + (1.0 - reflectance) * pow(1.0 - cosine, 5.0);
+}
+
+float shadowVisibility(vec3 normal) {
+  vec3 projected = shadowPosition.xyz / shadowPosition.w * 0.5 + 0.5;
+  if (projected.z > 1.0 || projected.z < 0.0 || any(lessThan(projected.xy, vec2(0.0))) || any(greaterThan(projected.xy, vec2(1.0)))) return 1.0;
+  float bias = max(0.0006, 0.002 * (1.0 - dot(normal, normalize(vec3(-3.0, 6.0, 4.0)))));
+  float visibility = 0.0;
+  vec2 texel = 1.0 / vec2(textureSize(shadowMap, 0));
+  for (int row = -1; row <= 1; row++) {
+    for (int column = -1; column <= 1; column++) {
+      float depth = texture(shadowMap, projected.xy + vec2(column, row) * texel * 2.5).r;
+      visibility += projected.z - bias <= depth ? 1.0 : 0.18;
+    }
+  }
+  return visibility / 9.0;
+}
+
+vec3 studio(vec3 direction, float roughness) {
+  vec3 color = mix(vec3(0.025, 0.035, 0.045), vec3(0.22, 0.25, 0.27), smoothstep(-0.3, 0.8, direction.y));
+  float blur = roughness * 0.35;
+  float key = smoothstep(0.80 - blur, 0.87, dot(direction, normalize(vec3(-3.0, 5.0, 4.0))));
+  float rim = smoothstep(0.90 - blur, 0.97, dot(direction, normalize(vec3(4.0, 2.0, -3.0))));
+  float strip = exp(-pow((direction.x + 0.6) / (0.035 + blur), 2.0)) * smoothstep(-0.1, 0.6, direction.y);
+  return color + key * vec3(2.8, 2.2, 1.6) + rim * vec3(0.5, 1.6, 1.5) + strip * vec3(0.7);
+}
+
+vec3 illuminate(vec3 normal, vec3 viewDirection, vec3 lightDirection, vec3 radiance, vec3 color, float metallic, float roughness) {
+  vec3 halfway = normalize(viewDirection + lightDirection);
+  float normalLight = max(dot(normal, lightDirection), 0.0);
+  float normalView = max(dot(normal, viewDirection), 0.001);
+  float normalHalf = max(dot(normal, halfway), 0.0);
+  float alpha = roughness * roughness;
+  float denominator = normalHalf * normalHalf * (alpha * alpha - 1.0) + 1.0;
+  float distribution = alpha * alpha / max(PI * denominator * denominator, 0.00001);
+  float masking = pow(roughness + 1.0, 2.0) / 8.0;
+  float geometry = normalView / (normalView * (1.0 - masking) + masking);
+  geometry *= normalLight / (normalLight * (1.0 - masking) + masking);
+  vec3 reflectance = fresnel(max(dot(halfway, viewDirection), 0.0), mix(vec3(0.04), color, metallic));
+  vec3 specular = distribution * geometry * reflectance / max(4.0 * normalView * normalLight, 0.001);
+  vec3 diffuse = (1.0 - reflectance) * (1.0 - metallic) * color / PI;
+  return (diffuse + specular) * radiance * normalLight;
+}
+
+vec3 toneMap(vec3 color) {
+  return clamp((color * (2.51 * color + 0.03)) / (color * (2.43 * color + 0.59) + 0.14), 0.0, 1.0);
+}
+
+void main() {
+  vec3 normal = normalize(worldNormal);
+  vec3 viewDirection = normalize(eye - worldPosition);
+  vec3 color = mix(baseColor, armorColor, step(0.5, surface.w) * (1.0 - step(1.5, surface.w)));
+  float metallic = surface.x;
+  float roughness = clamp(surface.y, 0.075, 1.0);
+  if (surface.w > 0.5 && surface.w < 1.5) {
+    metallic = armorSurface.x;
+    roughness = armorSurface.y;
+  }
+  float visibility = shadowVisibility(normal);
+  vec3 radiance = illuminate(normal, viewDirection, normalize(vec3(-3.0, 6.0, 4.0)), vec3(6.5, 5.7, 4.7) * visibility, color, metallic, roughness);
+  radiance += illuminate(normal, viewDirection, normalize(vec3(4.0, 2.0, -3.0)), vec3(1.4, 3.4, 3.2), color, metallic, roughness);
+  radiance += illuminate(normal, viewDirection, normalize(vec3(1.0, 2.0, 5.0)), vec3(0.8, 0.9, 1.1), color, metallic, roughness);
+  vec3 reflectance = fresnel(max(dot(normal, viewDirection), 0.0), mix(vec3(0.04), color, metallic));
+  radiance += studio(reflect(-viewDirection, normal), roughness) * reflectance * (1.0 - roughness * 0.55);
+  radiance += color * (1.0 - metallic) * vec3(0.16, 0.20, 0.22) * (0.45 + 0.55 * max(normal.y, 0.0));
+  radiance += color * surface.z;
+  if (surface.w > 1.5) {
+    float contact = 1.0 - 0.45 * exp(-dot(worldPosition.xz, worldPosition.xz) * 1.4);
+    radiance = vec3(0.034, 0.041, 0.046) * (0.4 + visibility * 0.6) * contact;
+    float fog = 1.0 - exp(-length(worldPosition.xz) * 0.05);
+    radiance = mix(radiance, vec3(0.018, 0.022, 0.026), fog);
+  }
+  if (inspection > 0.5) radiance = normal * 0.5 + 0.5;
+  outputColor = vec4(pow(toneMap(radiance * exposure), vec3(1.0 / 2.2)), 1.0);
+  if (surface.w > 1.5 && inspection < 0.5) {
+    float distanceFade = exp(-length(worldPosition.xz) * 0.08);
+    float contact = 1.0 - 0.1 * exp(-dot(worldPosition.xz, worldPosition.xz) * 1.4);
+    vec3 floorColor = mix(vec3(0.145, 0.162, 0.177), vec3(0.17, 0.19, 0.205), distanceFade);
+    outputColor = vec4(floorColor * (0.72 + 0.28 * visibility) * contact, 1.0);
+  }
+}`;
