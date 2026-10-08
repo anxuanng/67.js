@@ -33,8 +33,8 @@ try {
     const extension = context.getExtension('WEBGL_debug_renderer_info');
     return { parts: renderer.partCount, triangles: renderer.triangles, calls: renderer.batches.length, glError: context.getError(), gpu: extension ? context.getParameter(extension.UNMASKED_RENDERER_WEBGL) : 'unavailable' };
   });
-  assert.equal(graphics.parts, 252);
-  assert.equal(graphics.calls, 9);
+  assert.equal(graphics.parts, 325);
+  assert.equal(graphics.calls, 10);
   assert.equal(graphics.glError, 0);
   await page.getByRole('button', { name: 'Ceramic finish' }).click();
   assert.equal(await page.locator('#finish-name').textContent(), 'Ceramic');
@@ -57,7 +57,7 @@ try {
   await page.waitForFunction(() => window.__benchmarkReport, null, { timeout: 90000 });
   const report = await page.evaluate(() => window.__benchmarkReport);
   assert.equal(report.results.length, 4);
-  assert.deepEqual(report.results.map((result) => result.calls), [9, 253, 9, 253]);
+  assert.deepEqual(report.results.map((result) => result.calls), [10, 326, 10, 326]);
   assert.ok(report.results.every((result) => result.pixelAgreement > 0.999), JSON.stringify(report.results));
   await page.getByRole('button', { name: 'Back to model' }).click();
   await page.setViewportSize({ width: 390, height: 844 });

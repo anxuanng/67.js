@@ -8,6 +8,10 @@ layout(location=9) in vec3 instanceColor;
 layout(location=10) in vec4 instanceSurface;
 uniform mat4 viewProjection;
 uniform mat4 lightProjection;
+uniform float time;
+uniform float wind;
+uniform float explosionProgress;
+uniform vec3 explosionCenter;
 out vec3 worldPosition;
 out vec3 worldNormal;
 out vec3 baseColor;
@@ -15,6 +19,15 @@ out vec4 surface;
 out vec4 shadowPosition;
 void main() {
   vec4 world = instanceMatrix * vec4(position, 1.0);
+  if (instanceSurface.w == 4.0 || instanceSurface.w == 7.0) {
+    world.x += sin(time * 1.2 + world.z * 0.31 + world.x * 0.17) * wind * 0.10 * max(position.y + 0.5, 0.0);
+  }
+  if (instanceSurface.w == 3.0) {
+    world.y += sin(world.x * 1.4 + time * 0.8) * 0.025 + sin(world.z * 1.8 - time) * 0.02;
+  }
+  if (instanceSurface.w == 8.0 || instanceSurface.w == 9.0) {
+    world.xyz = mix(explosionCenter, world.xyz, 0.03 + explosionProgress * 0.97);
+  }
   worldPosition = world.xyz;
   worldNormal = normalize(instanceNormal * normal);
   baseColor = instanceColor;
@@ -68,6 +81,15 @@ uniform vec3 armorColor;
 uniform vec2 armorSurface;
 uniform float exposure;
 uniform float inspection;
+uniform float worldMode;
+uniform float time;
+uniform float daylight;
+uniform vec3 lightDirection;
+uniform vec3 fogColor;
+uniform float fogDensity;
+uniform vec3 waterRipple;
+uniform float rippleTime;
+uniform float explosionProgress;
 uniform sampler2D shadowMap;
 out vec4 outputColor;
 const float PI = 3.14159265359;
@@ -79,7 +101,7 @@ vec3 fresnel(float cosine, vec3 reflectance) {
 float shadowVisibility(vec3 normal) {
   vec3 projected = shadowPosition.xyz / shadowPosition.w * 0.5 + 0.5;
   if (projected.z > 1.0 || projected.z < 0.0 || any(lessThan(projected.xy, vec2(0.0))) || any(greaterThan(projected.xy, vec2(1.0)))) return 1.0;
-  float bias = max(0.0006, 0.002 * (1.0 - dot(normal, normalize(vec3(-3.0, 6.0, 4.0)))));
+  float bias = max(0.0006, 0.002 * (1.0 - dot(normal, normalize(lightDirection))));
   float visibility = 0.0;
   vec2 texel = 1.0 / vec2(textureSize(shadowMap, 0));
   for (int row = -1; row <= 1; row++) {
@@ -131,23 +153,52 @@ void main() {
     metallic = armorSurface.x;
     roughness = armorSurface.y;
   }
+  vec3 normalChange = max(abs(dFdx(normal)), abs(dFdy(normal)));
+  roughness = clamp(sqrt(roughness * roughness + dot(normalChange, normalChange) * 0.3), 0.075, 1.0);
+  if (surface.w == 3.0) {
+    normal = normalize(vec3(-cos(worldPosition.x * 1.4 + time * 0.8) * 0.035, 1.0, -cos(worldPosition.z * 1.8 - time) * 0.036));
+    float radius = length(worldPosition.xz - waterRipple.xz);
+    float age = time - rippleTime;
+    float wave = sin(radius * 11.0 - age * 8.0) * exp(-abs(radius - age * 1.4) * 1.5) * exp(-age * 0.7) * step(0.0, age);
+    normal.xz += normalize(worldPosition.xz - waterRipple.xz + 0.001) * wave * 0.07;
+    normal = normalize(normal);
+    color = mix(color, vec3(0.10, 0.23, 0.25), pow(1.0 - max(dot(normal, viewDirection), 0.0), 4.0));
+    roughness = 0.16;
+  }
+  if (surface.w == 5.0) {
+    float mottling = sin(worldPosition.x * 3.3) * sin(worldPosition.z * 4.1) * 0.5 + sin(worldPosition.x * 0.9 + worldPosition.z * 1.7) * 0.5;
+    color *= 0.94 + mottling * 0.06;
+  }
   float visibility = shadowVisibility(normal);
-  vec3 radiance = illuminate(normal, viewDirection, normalize(vec3(-3.0, 6.0, 4.0)), vec3(6.5, 5.7, 4.7) * visibility, color, metallic, roughness);
-  radiance += illuminate(normal, viewDirection, normalize(vec3(4.0, 2.0, -3.0)), vec3(1.4, 3.4, 3.2), color, metallic, roughness);
-  radiance += illuminate(normal, viewDirection, normalize(vec3(1.0, 2.0, 5.0)), vec3(0.8, 0.9, 1.1), color, metallic, roughness);
+  vec3 keyColor = mix(vec3(5.2, 4.7, 4.1), vec3(3.7, 3.4, 2.9) * daylight, worldMode);
+  vec3 radiance = illuminate(normal, viewDirection, normalize(lightDirection), keyColor * visibility, color, metallic, roughness);
+  radiance += illuminate(normal, viewDirection, normalize(vec3(4.0, 2.0, -3.0)), mix(vec3(0.8, 2.0, 1.8), vec3(0.12, 0.17, 0.20) * daylight, worldMode), color, metallic, roughness);
+  radiance += illuminate(normal, viewDirection, normalize(vec3(1.0, 2.0, 5.0)), vec3(0.6, 0.7, 0.8) * mix(1.0, 0.25 * daylight, worldMode), color, metallic, roughness);
   vec3 reflectance = fresnel(max(dot(normal, viewDirection), 0.0), mix(vec3(0.04), color, metallic));
-  radiance += studio(reflect(-viewDirection, normal), roughness) * reflectance * (1.0 - roughness * 0.55);
-  radiance += color * (1.0 - metallic) * vec3(0.16, 0.20, 0.22) * (0.45 + 0.55 * max(normal.y, 0.0));
+  radiance += studio(reflect(-viewDirection, normal), roughness) * reflectance * (1.0 - roughness * 0.55) * mix(1.0, 0.5 * daylight, worldMode);
+  radiance += color * (1.0 - metallic) * mix(vec3(0.16, 0.20, 0.22), vec3(0.19, 0.25, 0.30) * max(daylight, 0.08), worldMode) * (0.45 + 0.55 * max(normal.y, 0.0));
+  if (surface.w == 4.0 || surface.w == 7.0) radiance += color * max(dot(-normal, normalize(lightDirection)), 0.0) * 0.3 * daylight;
   radiance += color * surface.z;
-  if (surface.w > 1.5) {
+  if (surface.w == 2.0) {
     float contact = 1.0 - 0.45 * exp(-dot(worldPosition.xz, worldPosition.xz) * 1.4);
     radiance = vec3(0.034, 0.041, 0.046) * (0.4 + visibility * 0.6) * contact;
     float fog = 1.0 - exp(-length(worldPosition.xz) * 0.05);
     radiance = mix(radiance, vec3(0.018, 0.022, 0.026), fog);
   }
+  if (surface.w == 8.0) {
+    float turbulence = sin(worldPosition.x * 3.0 + time * 4.0) * sin(worldPosition.y * 4.2 - time * 3.0) * sin(worldPosition.z * 3.7);
+    float heat = clamp(0.65 + turbulence * 0.3 - explosionProgress * 0.25, 0.0, 1.0);
+    radiance = mix(vec3(3.0, 0.12, 0.01), vec3(18.0, 9.0, 1.0), heat) * max(0.15, surface.z);
+  }
+  if (surface.w == 9.0) {
+    float turbulence = sin(worldPosition.x * 2.0 + time) * sin(worldPosition.y * 3.3 - time * 0.6);
+    radiance = color * (0.5 + turbulence * 0.15) + vec3(0.8, 0.10, 0.015) * max(0.0, 1.0 - explosionProgress) * max(0.0, -normal.y);
+  }
+  float fog = 1.0 - exp(-length(worldPosition - eye) * fogDensity);
+  radiance = mix(radiance, fogColor, fog * worldMode);
   if (inspection > 0.5) radiance = normal * 0.5 + 0.5;
   outputColor = vec4(pow(toneMap(radiance * exposure), vec3(1.0 / 2.2)), 1.0);
-  if (surface.w > 1.5 && inspection < 0.5) {
+  if (surface.w == 2.0 && inspection < 0.5) {
     float distanceFade = exp(-length(worldPosition.xz) * 0.08);
     float contact = 1.0 - 0.1 * exp(-dot(worldPosition.xz, worldPosition.xz) * 1.4);
     vec3 floorColor = mix(vec3(0.145, 0.162, 0.177), vec3(0.17, 0.19, 0.205), distanceFade);

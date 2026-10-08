@@ -14,5 +14,5 @@ test('exported GLB loads with an independent glTF loader and preserves every par
   let meshCount = 0;
   gltf.scene.traverse((node) => { if (node.isMesh) meshCount++; });
   assert.equal(meshCount, parts.length);
-  assert.ok(binary.byteLength < 500000);
+  assert.ok(binary.byteLength < 1024 * 1024);
 });
