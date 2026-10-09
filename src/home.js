@@ -116,7 +116,8 @@ if (downloads) {
   const libraryLinks = [...document.querySelectorAll('.navigation nav a')];
   let navigationPending = false;
   function updateNavigation() {
-    const activeHash = downloads.getBoundingClientRect().top <= innerHeight * 0.6 ? '#downloads' : '#examples';
+    const bounds = downloads.getBoundingClientRect();
+    const activeHash = bounds.top <= innerHeight * 0.6 && bounds.bottom > 0 ? '#downloads' : '#examples';
     for (const link of libraryLinks) {
       if (new URL(link.href).hash === activeHash) {
         link.setAttribute('aria-current', 'location');
@@ -163,3 +164,9 @@ document.querySelectorAll('.example img').forEach(image => {
 window.__home = { state, loadRelease };
 loadRelease();
 window.addEventListener('pageshow', event => { if (event.persisted) loadRelease(); });
+
+if (document.querySelector('#home-preview')) {
+  import('./home-preview.js').catch(() => {
+    document.querySelector('#home-preview-status').textContent = '3D preview could not load. Reload the page to retry.';
+  });
+}

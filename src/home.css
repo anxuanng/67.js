@@ -126,7 +126,14 @@ button:hover { background:var(--border); }
 .hero-actions a { padding:12px 18px; border-radius:var(--radius); background:var(--text); color:var(--window); font-size:14px; }
 .hero-actions a+ a { background:var(--bg); color:var(--text); border:1px solid var(--border); }
 .feature-showcase { margin:26px 0 42px; border-radius:var(--panel-radius); background:#171717; overflow:hidden; position:relative; }
-.feature-showcase video { display:block; width:100%; aspect-ratio:16/9; background:#171717; }
+.live-showcase canvas { display:block; width:100%; height:clamp(280px,42vw,540px); touch-action:pan-y; cursor:grab; }
+.live-showcase canvas:active { cursor:grabbing; }
+.live-showcase canvas:focus-visible { outline-offset:-4px; }
+.preview-tools { display:flex; flex-wrap:wrap; justify-content:center; gap:8px; padding:16px; }
+.preview-tools button { min-height:40px; background:#2f2f2f; color:#ececec; }
+.preview-tools button[aria-pressed=true] { background:#ececec; color:#171717; }
+#home-preview-status { position:absolute; top:20px; left:20px; right:20px; margin:0; font-size:13px; color:#ececec; pointer-events:none; }
+main > .downloads { margin:28px 0 36px; }
 .showcase-caption { display:flex; justify-content:space-between; flex-wrap:wrap; gap:16px; padding:22px 24px; color:#ececec; }
 .showcase-caption p { margin:6px 0 0; color:#b4b4b4; }
 .showcase-caption a { align-self:center; border-radius:var(--radius); padding:12px 18px; background:#ececec; color:#171717; font-size:14px; }

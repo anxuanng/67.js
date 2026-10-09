@@ -52,6 +52,8 @@ try {
       assert.equal(await page.locator('.navigation a[href*="getting-started.html"]').count(), 0, 'Getting started still has separate navigation');
     }
     if (route === '/') {
+      assert.equal(await page.locator('video').count(), 0, 'Homepage still embeds video');
+      assert.ok(await page.evaluate(() => document.querySelector('#downloads').compareDocumentPosition(document.querySelector('.live-showcase')) & Node.DOCUMENT_POSITION_FOLLOWING));
       assert.equal(await page.locator('[data-package-manager]').count(), 4);
       assert.equal(await page.locator('[data-release-tarball], [data-release-module]').count(), 0);
       const scenePaths = await page.locator('.gallery .example').evaluateAll(links => links.map(link => new URL(link.href).pathname));
@@ -67,6 +69,24 @@ try {
         assert.equal(await page.evaluate(() => window.__copiedText), expectedCommand);
       }
       report.interactions.push('Unified package managers, unique showcase scenes and synchronized Downloads navigation');
+      await page.locator('#home-preview').scrollIntoViewIfNeeded();
+      await page.waitForFunction(() => window.__homePreview?.renderer && window.__homePreview.state.visible);
+      const initialDistance = await page.evaluate(() => window.__homePreview.state.distance);
+      await page.locator('#preview-zoom-in').click();
+      assert.ok(await page.evaluate(() => window.__homePreview.state.distance) < initialDistance);
+      await page.locator('#home-preview').focus();
+      await page.keyboard.press('ArrowRight');
+      assert.ok(await page.evaluate(() => window.__homePreview.state.yaw) > 0.6);
+      await page.locator('#preview-reset').click();
+      assert.equal(await page.evaluate(() => window.__homePreview.state.yaw), 0.6);
+      await page.locator('#preview-play').click();
+      await page.waitForFunction(() => window.__homePreview.state.time > 3.1);
+      await page.locator('#preview-play').click();
+      assert.equal(await page.evaluate(() => window.__homePreview.state.playing), false);
+      assert.equal(await page.evaluate(() => window.__homePreview.renderer.context.getError()), 0);
+      assert.ok(await page.evaluate(() => window.__homePreview.renderer.memoryPlan.estimatedBytes) <= 192 * 1048576);
+      await page.screenshot({ path:'artifacts/home-live-preview.png' });
+      report.interactions.push('Live homepage 3D, keyboard rotation, zoom, reset and animation');
     }
     if (route === '/getting-started.html') {
       assert.match(page.url(), /\/docs(?:\.html)?#install$/);

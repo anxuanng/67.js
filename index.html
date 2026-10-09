@@ -23,18 +23,6 @@
     </aside>
     <main id="content">
       <header class="introduction"><div><h1>Your 3D scene,<br />from browser to film</h1><p>67.js brings browser 3D, animation and image/video export into one workflow. Create interactive experiences and export the same scene as images or video</p><div class="hero-actions"><a href="./object.html" data-icon="cube">Try the object studio</a><a href="./docs.html#install" data-icon="code">Build your first scene</a></div></div></header>
-      <section class="feature-showcase" aria-label="67.js rendered animation showcase"><video controls playsinline preload="none" poster="./previews/motion.webp" width="960" height="540"><source src="./media/clockwork.mp4" type="video/mp4"/><p>Your browser cannot play this film. <a href="./motion.html">Open the interactive scene</a>.</p></video><div class="showcase-caption"><div><h2>Clockwork orbit</h2><p>A real 67.js render. Open the scene to scrub time and change the frame.</p></div><a href="./motion.html" data-icon="film">Explore the scene</a></div></section>
-      <section class="workflow" aria-label="What you can build"><div><span data-icon="cube"></span><h3>Build and inspect</h3><p>Shared meshes, materials and cameras. Pull a machine apart, explore a world, or bring your own GLB.</p></div><div><span data-icon="film"></span><h3>Make it move</h3><p>Sample keyframes at any time. Give visitors controls and keep the same timeline for your film.</p></div><div><span data-icon="image"></span><h3>Export the result</h3><p>Produce images and videos on GPU or CPU with explicit render budgets and one capture frame at a time.</p></div></section>
-      <section id="examples" class="examples" aria-labelledby="examples-title">
-        <h2 id="examples-title">Interactive showcase</h2><p>Explore a machine, a world, a film or your own model</p>
-        <div class="gallery">
-          <a class="example" href="./object.html"><img src="./previews/wall-e.webp" alt="WALL·E model rendered in 67.js" width="1280" height="720" fetchpriority="high" /><div class="example-caption"><h3>WALL·E</h3><span>Object studio <span aria-hidden="true">↗</span></span></div><p>Explore the exterior or separate 574 parts to inspect the machinery</p></a>
-          <a class="example" href="./nature.html"><img src="./previews/nature.webp" alt="A winding stream through Silverwater valley" width="1280" height="720" /><div class="example-caption"><h3>Silverwater valley</h3><span>Nature <span aria-hidden="true">↗</span></span></div><p>Move through the landscape and change the light and wind</p></a>
-          <a class="example" href="./film.html"><img src="./previews/film-contact.webp" alt="Scenes from CRITICAL, a procedural 3D short film" width="1280" height="720" loading="lazy" /><div class="example-caption"><h3>CRITICAL</h3><span>Short film <span aria-hidden="true">↗</span></span></div><p>Watch a deterministic film with an original synthesized score</p></a>
-          <a class="example" href="./view2d.html"><img src="./previews/view2d.webp" alt="A flat orbital poster rendered through an orthographic camera" width="960" height="540" loading="lazy" /><div class="example-caption"><h3>Orbital field</h3><span>2D and views <span aria-hidden="true">↗</span></span></div><p>Pan a vector scene or inspect a model from front, right and top</p></a>
-          <a class="example" href="./assets.html"><img src="./previews/assets.webp" alt="An imported geometric study displayed in the asset viewer" width="960" height="540" loading="lazy" /><div class="example-caption"><h3>Your models</h3><span>GLB assets <span aria-hidden="true">↗</span></span></div><p>Open a GLB, inspect its materials and sample node animation</p></a>
-        </div>
-      </section>
       <section id="downloads" class="downloads" aria-labelledby="downloads-title">
         <div class="section-heading"><h2 id="downloads-title">Downloads</h2><span data-release-version>Loading release</span></div>
         <p>Choose your package manager and install the current release</p>
@@ -52,6 +40,24 @@
         </div>
         <div class="release-links"><a href="./docs.html">Documentation</a><a href="./logo.svg" download>Logo SVG</a><a href="./changelog.md">Changelog</a><span data-release-commit>Release commit</span><a data-release-api aria-disabled="true">API reference ↗</a></div>
       </section>
+      <section class="feature-showcase live-showcase" aria-label="Interactive 3D preview">
+        <canvas id="home-preview" tabindex="0" aria-label="Clockwork 3D model. Drag or use arrow keys to rotate. Use plus and minus to zoom."></canvas>
+        <p id="home-preview-status" role="status">Loading 3D preview…</p>
+        <div class="preview-tools" role="group" aria-label="3D preview controls"><button id="preview-play" aria-pressed="false">Animate</button><button id="preview-zoom-in" aria-label="Zoom in">+</button><button id="preview-zoom-out" aria-label="Zoom out">−</button><button id="preview-reset">Reset view</button></div>
+        <div class="showcase-caption"><div><h2>Clockwork orbit</h2><p>Live 3D in your browser. Drag to rotate, zoom in and animate the mechanism.</p></div><a href="./motion.html" data-icon="cube">Open the full studio</a></div>
+      </section>
+      <section class="workflow" aria-label="What you can build"><div><span data-icon="cube"></span><h3>Build and inspect</h3><p>Shared meshes, materials and cameras. Pull a machine apart, explore a world, or bring your own GLB.</p></div><div><span data-icon="film"></span><h3>Make it move</h3><p>Sample keyframes at any time. Give visitors controls and keep the same timeline for your film.</p></div><div><span data-icon="image"></span><h3>Export the result</h3><p>Produce images and videos on GPU or CPU with explicit render budgets and one capture frame at a time.</p></div></section>
+      <section id="examples" class="examples" aria-labelledby="examples-title">
+        <h2 id="examples-title">Interactive showcase</h2><p>Explore a machine, a world, a film or your own model</p>
+        <div class="gallery">
+          <a class="example" href="./object.html"><img src="./previews/wall-e.webp" alt="WALL·E model rendered in 67.js" width="1280" height="720" fetchpriority="high" /><div class="example-caption"><h3>WALL·E</h3><span>Object studio <span aria-hidden="true">↗</span></span></div><p>Explore the exterior or separate 574 parts to inspect the machinery</p></a>
+          <a class="example" href="./nature.html"><img src="./previews/nature.webp" alt="A winding stream through Silverwater valley" width="1280" height="720" /><div class="example-caption"><h3>Silverwater valley</h3><span>Nature <span aria-hidden="true">↗</span></span></div><p>Move through the landscape and change the light and wind</p></a>
+          <a class="example" href="./film.html"><img src="./previews/film-contact.webp" alt="Scenes from CRITICAL, a procedural 3D short film" width="1280" height="720" loading="lazy" /><div class="example-caption"><h3>CRITICAL</h3><span>Short film <span aria-hidden="true">↗</span></span></div><p>Watch a deterministic film with an original synthesized score</p></a>
+          <a class="example" href="./view2d.html"><img src="./previews/view2d.webp" alt="A flat orbital poster rendered through an orthographic camera" width="960" height="540" loading="lazy" /><div class="example-caption"><h3>Orbital field</h3><span>2D and views <span aria-hidden="true">↗</span></span></div><p>Pan a vector scene or inspect a model from front, right and top</p></a>
+          <a class="example" href="./assets.html"><img src="./previews/assets.webp" alt="An imported geometric study displayed in the asset viewer" width="960" height="540" loading="lazy" /><div class="example-caption"><h3>Your models</h3><span>GLB assets <span aria-hidden="true">↗</span></span></div><p>Open a GLB, inspect its materials and sample node animation</p></a>
+        </div>
+      </section>
+
     </main>
     <script type="module" src="/src/home.js"></script>
   </body>
