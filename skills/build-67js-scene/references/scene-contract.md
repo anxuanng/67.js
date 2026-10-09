@@ -111,6 +111,10 @@ Skinning and textured materials still reject at export. Check the decoder's capa
 
 The optional `{ shadows: false }` update option suits flat scenes without moving shadow casters.
 
+Static `sculptGeometry` strokes return new geometry before renderer upload. Read `docs/sculpt.md` for seam and work limits.
+`createSurfacePatch` clips a curved overlay with target-local clearance. Read `docs/surface.md` and share the target's retained matrix.
+It rejects skin, morph, assembly and procedural targets. It does not detect arbitrary mesh penetration or provide animated shrinkwrap.
+
 `cameraView('front' | 'right' | 'top')` returns an orthographic camera with the correct up vector.
 `fitOrthographicHeight(bounds, view, aspect)` frames both model width and height.
 The `unlit` tag and a front orthographic camera produce flat XY geometry.

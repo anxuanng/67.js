@@ -170,6 +170,9 @@ The source trailer includes an [offline physics recording](docs/film-physics.md)
 The source renderer also supports [relative GPU morph targets](docs/morph-targets.md) for position and normal changes before skinning, including deterministic eyelid animation in the film. This feature is not in the published `0.3.3` package.
 The source [glTF morph bridge](docs/gltf-morph.md) preserves relative targets, independent instance weights and linear, step or cubic weight animations.
 The source [GLB exporter](docs/export-glb.md) preserves opaque vertex colors, UVs and independent HDR emission alongside static morph snapshots.
+
+Source-only [sculpt brushes](docs/sculpt.md) apply bounded inflation, directional displacement and neighborhood smoothing through serializable strokes.
+The [surface patch addon](docs/surface.md) clips a badge onto a curved mesh with geometric clearance and follows its retained rigid transform.
 The trailer's rigid actor joints now use authored clips, with attached headwear and hands moving together.
 The [optional asset addon](docs/gltf.md) loads glTF/GLB meshes, base-color textures, opaque vertex colors and rigid node animation.
 

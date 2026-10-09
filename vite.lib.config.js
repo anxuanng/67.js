@@ -19,6 +19,8 @@ export default defineConfig({
         canvas2d: 'src/canvas2d.js',
         gltf: 'src/gltf.js',
         modeling: 'src/modeling.js',
+        sculpt: 'src/sculpt.js',
+        surface: 'src/surface.js',
         physics: 'src/physics.js',
       },
       formats: ['es'],

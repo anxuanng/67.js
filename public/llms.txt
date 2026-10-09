@@ -82,6 +82,13 @@ The source GLB exporter preserves opaque linear vertex colors, UVs and independe
 Read `docs/export-glb.md` in the matching checkout. Exported GLBs contain a static pose, not serialized animation clips or skeletons.
 Texture export remains unsupported and fails explicitly. Procedural shaders and scene environments are not serialized into glTF materials.
 
+Source-only `addons/sculpt` accepts serializable inflate, displace and smooth strokes and returns new static geometry.
+Read `docs/sculpt.md`. Construct the result before the renderer: changing uploaded CPU positions does not update GPU geometry buffers.
+
+Source-only `addons/surface` creates projector-clipped curved patches. Read `docs/surface.md` for target-local projector and clearance units.
+Share the target's retained matrix to follow rigid motion. Skin, morph, assembly and procedural targets reject rather than returning stale patches.
+Surface clearance prevents overlapping layers in this workflow. It does not detect general mesh penetration or provide whole-object shrinkwrap.
+
 GLB support excludes transparent and double-sided materials and compressed geometry. Unsupported features require visible errors.
 
 The optional GLB decoder uses Three.js GLTFLoader. The renderer remains 67.js.

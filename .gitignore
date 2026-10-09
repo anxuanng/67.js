@@ -12,6 +12,8 @@ public/morph-targets.md
 public/skinning.md
 public/physics.md
 public/export-glb.md
+public/sculpt.md
+public/surface.md
 artifacts/
 .env
 .env.*

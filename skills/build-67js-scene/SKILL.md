@@ -24,6 +24,8 @@ Use `simplify-code` and `engineering-workflows` for implementation.
 - Recorded contacts or articulated physics use optional `src/physics.js` and the checkout's `docs/physics.md`.
 - A flat scene or axis view uses `src/canvas2d.js`, `src/camera.js` and `src/view2d.js`.
 - A GLB asset viewer uses the optional `src/gltf.js` addon and `src/asset-viewer.js`.
+- Static brush sculpting uses optional `src/sculpt.js` and the checkout's `docs/sculpt.md`.
+- A curved surface badge uses optional `src/surface.js` and the checkout's `docs/surface.md`.
 - An image or video export uses `render-67js-media`.
 
 Read [scene-contract.md](references/scene-contract.md) before creating parts or changing materials.

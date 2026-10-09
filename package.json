@@ -35,7 +35,9 @@
     "docs/film-physics.md",
     "docs/morph-targets.md",
     "docs/gltf-morph.md",
-    "docs/export-glb.md"
+    "docs/export-glb.md",
+    "docs/sculpt.md",
+    "docs/surface.md"
   ],
   "main": "./build/67.module.js",
   "module": "./build/67.module.js",
@@ -48,6 +50,8 @@
     "./addons/canvas2d": "./build/canvas2d.js",
     "./addons/gltf": "./build/gltf.js",
     "./addons/modeling": "./build/modeling.js",
+    "./addons/sculpt": "./build/sculpt.js",
+    "./addons/surface": "./build/surface.js",
     "./addons/physics": "./build/physics.js",
     "./package.json": "./package.json"
   },
