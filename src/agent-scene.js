@@ -4,6 +4,7 @@ import { lathe, extrude, tube } from './modeling.js';
 import { createSceneGraph } from './scene-graph.js';
 import { applyProjection } from './camera.js';
 import { normalizeAgentLook } from './agent-look.js';
+import { normalizeAgentMotion, compileAgentMotion } from './agent-motion.js';
 export { normalizeAgentLook, resolveAgentShadow } from './agent-look.js';
 
 const DEFAULT_LIMITS = Object.freeze({
@@ -36,11 +37,13 @@ export const AGENT_SCENE_CAPABILITIES = Object.freeze({
   operations: Object.freeze([
     'set-node', 'set-material', 'set-camera', 'add-node', 'remove-node',
     'add-geometry', 'remove-geometry', 'add-material', 'remove-material',
-    'set-environment', 'set-effects', 'set-shadow',
+    'set-environment', 'set-effects', 'set-shadow', 'set-motion',
   ]),
   materialTags: Object.freeze(['surface', 'unlit']),
   fixedResources: false, dynamicTopology: true, checkpoints: true, positiveScaleOnly: true,
   authoredLook: true, maxPointLights: 8,
+  proceduralMotion: true,
+  motionLimits: Object.freeze({ maxTracks: 128, maxKeyframesPerTrack: 64, maxKeyframes: 2048, maxDuration: 30 }),
 });
 
 function knownKeys(value, allowed, label) {
@@ -383,6 +386,11 @@ function compile(recipe, geometries, localBounds, limits) {
       matrix: mat4.fromRotationTranslationScale(mat4.create(), node.rotation, node.translation, node.scale),
       geometry: geometries.get(node.geometry), material: materials.get(node.material) };
   }), limits);
+  validateGraph(graph, localBounds);
+  return graph;
+}
+
+function validateGraph(graph, localBounds) {
   const normal = mat3.create();
   for (const node of graph.nodes) {
     if (!mat3.normalFromMat4(normal, node.worldMatrix) || !normal.every(Number.isFinite)) {
@@ -404,7 +412,6 @@ function compile(recipe, geometries, localBounds, limits) {
       }
     }
   }
-  return graph;
 }
 
 function boundsFor(geometry, matrix) {
@@ -423,7 +430,7 @@ function boundsFor(geometry, matrix) {
 
 function normalizeRecipe(input, limits) {
   let recipe = copiedJson(input, limits.maxRecipeBytes);
-  knownKeys(recipe, ['format', 'schemaVersion', 'geometries', 'materials', 'nodes', 'camera', 'environment', 'effects', 'shadow'], 'recipe');
+  knownKeys(recipe, ['format', 'schemaVersion', 'geometries', 'materials', 'nodes', 'camera', 'environment', 'effects', 'shadow', 'motion'], 'recipe');
   if (recipe.format !== '67js.scene' || recipe.schemaVersion !== 1) {
     throw new RangeError('Expected 67js.scene schemaVersion 1.');
   }
@@ -447,6 +454,9 @@ function normalizeRecipe(input, limits) {
     }
   }
   Object.assign(recipe, normalizeAgentLook(look));
+  if (Object.hasOwn(recipe, 'motion')) {
+    recipe.motion = normalizeAgentMotion(recipe.motion, recipe);
+  }
   recipe = copiedJson(recipe, limits.maxRecipeBytes);
   return recipe;
 }
@@ -492,6 +502,71 @@ function retainedMatrices(parts) {
       throw new RangeError('Retained render matrices must not be detached.');
     }
   }
+}
+
+function cameraPoseFrom(pose) {
+  const camera = cameraFrom({
+    eye: Array.from(pose.eye), target: Array.from(pose.target), up: Array.from(pose.up),
+    fov: pose.fov, near: pose.near, far: pose.far,
+  });
+  const view = mat4.lookAt(mat4.create(), camera.eye, camera.target, camera.up);
+  for (const aspect of [1 / 16, 16]) {
+    const projection = applyProjection(mat4.create(), camera, aspect);
+    const combined = mat4.multiply(mat4.create(), projection, view);
+    if (![projection, combined].every(matrix => matrix.every(Number.isFinite))) {
+      throw new RangeError('Motion camera matrices exceed the supported Float32 aspect range.');
+    }
+  }
+  return camera;
+}
+
+// Candidate buffers are private. A failed seek cannot publish half a pose to render handles.
+function stagePose(stagedState, time) {
+  const sampled = time === null ? null : stagedState.motionSampler?.sample(time);
+  const graph = stagedState.poseGraph ?? stagedState.graph;
+  if (stagedState.poseGraph) {
+    for (const node of stagedState.recipe.nodes) {
+      const patch = sampled?.nodes.get(node.id);
+      const translation = patch?.translation ?? node.translation;
+      const rotation = patch?.rotation ?? node.rotation;
+      const scale = patch?.scale ?? node.scale;
+      if (Array.from(scale).some(component => !Number.isFinite(Math.fround(component)) || Math.fround(component) <= 0)) {
+        throw new RangeError('Motion scale must remain positive at Float32 precision.');
+      }
+      mat4.fromRotationTranslationScale(graph.getNode(node.id).localMatrix, rotation, translation, scale);
+    }
+    graph.update();
+    validateGraph(graph, stagedState.localBounds);
+  }
+  const materialUpdates = [];
+  for (const material of stagedState.recipe.materials) {
+    const patch = sampled?.materials.get(material.id);
+    let snapshot = material;
+    if (patch) {
+      const definition = { ...material, ...patch };
+      for (const field of ['color', 'emissiveColor']) {
+        if (definition[field]) {
+          definition[field] = Array.from(definition[field]);
+        }
+      }
+      snapshot = immutableMaterial(materialFrom(definition));
+    }
+    materialUpdates.push({ holder: stagedState.materialHandles.get(material.id).holder, snapshot });
+  }
+  const camera = sampled?.camera ? cameraPoseFrom(sampled.camera) : stagedState.recipe.camera;
+  retainedMatrices(stagedState.parts);
+  return { graph, materialUpdates, camera, time };
+}
+
+function publishPose(stagedState, pose) {
+  for (const part of stagedState.parts) {
+    Float32Array.prototype.set.call(part.matrix, pose.graph.getNode(part.name).worldMatrix);
+  }
+  for (const update of pose.materialUpdates) {
+    update.holder.snapshot = update.snapshot;
+  }
+  stagedState.renderCamera = pose.camera;
+  stagedState.motionTime = pose.time;
 }
 
 function removeNode(candidate, operation) {
@@ -605,7 +680,6 @@ export function createAgentScene(input, inputLimits = {}) {
     const localBounds = new Map([...geometryRecords.values()].map(record => [record.geometry, record.bounds]));
     const graph = compile(recipe, geometries, localBounds, limits);
     const materialHandles = new Map();
-    const materialUpdates = [];
     for (const material of recipe.materials) {
       const snapshot = immutableMaterial(material);
       const preferredHandle = preferred?.materialHandles.get(material.id);
@@ -613,7 +687,6 @@ export function createAgentScene(input, inputLimits = {}) {
       const existing = [preferredHandle, activeHandle].find(handle => handle?.holder.snapshot.tag === material.tag);
       const handle = existing ?? materialHandle(snapshot);
       materialHandles.set(material.id, handle);
-      materialUpdates.push({ holder: handle.holder, snapshot });
     }
     const activeParts = new Map(state?.parts.map(part => [part.name, part]) ?? []);
     const preferredParts = new Map(preferred?.parts.map(part => [part.name, part]) ?? []);
@@ -631,21 +704,21 @@ export function createAgentScene(input, inputLimits = {}) {
     retainedMatrices(nextParts);
     const sameParts = state && state.parts.length === nextParts.length &&
       state.parts.every((part, index) => part === nextParts[index]);
-    return {
-      recipe, geometryRecords, geometries, graph, materialHandles, materialUpdates,
+    const stagedState = {
+      recipe, geometryRecords, geometries, graph, materialHandles,
       parts: sameParts ? state.parts : Object.freeze(nextParts),
       topologyChanged: Boolean(state && !sameParts),
       stats: geometryStats(geometryRecords.values()),
     };
+    stagedState.localBounds = localBounds;
+    stagedState.motionSampler = compileAgentMotion(recipe.motion ?? null, recipe);
+    stagedState.poseGraph = stagedState.motionSampler ? compile(recipe, geometries, localBounds, limits) : null;
+    stagedState.initialPose = stagePose(stagedState, stagedState.motionSampler ? 0 : null);
+    return stagedState;
   }
 
   function commit(stagedState, incrementRevision) {
-    for (const part of stagedState.parts) {
-      Float32Array.prototype.set.call(part.matrix, stagedState.graph.getNode(part.name).worldMatrix);
-    }
-    for (const update of stagedState.materialUpdates) {
-      update.holder.snapshot = update.snapshot;
-    }
+    publishPose(stagedState, stagedState.initialPose);
     if (stagedState.topologyChanged) {
       topologyRevision++;
     }
@@ -677,7 +750,20 @@ export function createAgentScene(input, inputLimits = {}) {
       return topologyRevision;
     },
     get camera() {
-      return structuredClone(state.recipe.camera);
+      return structuredClone(state.renderCamera);
+    },
+    get motionTime() {
+      return state.motionTime;
+    },
+    sampleMotion(time) {
+      if (time !== null && (!Number.isFinite(time) || time < 0 || time > 3600)) {
+        throw new RangeError('Motion time must be null or within zero and 3600 seconds.');
+      }
+      if (time !== null && !state.motionSampler) {
+        throw new RangeError('This procedural recipe has no motion.');
+      }
+      publishPose(state, stagePose(state, time));
+      return state.motionTime;
     },
     get environment() {
       return structuredClone(state.recipe.environment);
@@ -701,6 +787,14 @@ export function createAgentScene(input, inputLimits = {}) {
       const removedNodes = new Set();
       const removedMaterials = new Set();
       for (const operation of operations) {
+        if (operation.type === 'set-motion') {
+          knownKeys(operation, ['type', 'motion'], 'operation');
+          if (!Object.hasOwn(operation, 'motion')) {
+            throw new TypeError('set-motion requires motion; use null to clear it.');
+          }
+          candidate.motion = operation.motion;
+          continue;
+        }
         const lookField = Object.hasOwn(LOOK_OPERATION_FIELDS, operation.type) ? LOOK_OPERATION_FIELDS[operation.type] : null;
         if (lookField) {
           knownKeys(operation, ['type', lookField], 'operation');
@@ -813,6 +907,8 @@ export function createAgentScene(input, inputLimits = {}) {
       const resident = geometryStats(ownedGeometryRecords());
       return {
         revision, topologyRevision,
+        motion: state.recipe.motion ? { duration: state.recipe.motion.duration, loop: state.recipe.motion.loop, tracks: state.recipe.motion.tracks.length, time: state.motionTime } : null,
+        boundsSpace: 'authored-base-world',
         counts: {
           nodes: state.recipe.nodes.length, parts: state.parts.length,
           geometries: state.geometries.size, materials: state.recipe.materials.length,

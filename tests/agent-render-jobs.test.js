@@ -38,6 +38,32 @@ async function writeImage({ directory, progress }) {
   return { artifacts: [{ temporary: 'render.png.partial', filename: 'render.png', mimeType: 'image/png' }], metrics: { maximumPendingFrames: 1 } };
 }
 
+test('motion job ranges use immutable recipe duration, loops and actual sample times across restart', async context => {
+  const root = await temporary(context);
+  const controller = await createAgentRenderJobs({ root, limits, run: writeImage });
+  const input = request();
+  input.snapshot.recipe = { format: '67js.scene', motion: { duration: 1, loop: false } };
+  input.settings.motion = { start: 1 };
+  const submitted = await controller.submit(input);
+  await terminal(controller, submitted.jobId);
+  assert.equal(controller.status(submitted.jobId).settings.motion.start, 1);
+  input.settings = { kind: 'stills', width: 64, height: 64, duration: 1, motion: { start: 0.1 } };
+  await assert.rejects(controller.submit(input), /Motion range/);
+  input.snapshot.recipe.motion.loop = true;
+  input.settings.motion.start = 3600;
+  await assert.rejects(controller.submit(input), /motion end/);
+  input.settings.motion.start = null;
+  await assert.rejects(controller.submit(input), /motion start/);
+  input.snapshot.recipe = { format: '67js.asset', motion: { duration: 1 } };
+  input.settings.motion.start = 0;
+  await assert.rejects(controller.submit(input), /procedural recipe/);
+  await controller.close();
+  const reopened = await createAgentRenderJobs({ root, limits, run: writeImage });
+  assert.equal(reopened.status(submitted.jobId).settings.motion.start, 1);
+  await reopened.release(submitted.jobId);
+  await reopened.close();
+});
+
 test('real files publish after success with copied snapshots, hashes and restart persistence', async context => {
   const root = await temporary(context);
   const started = deferred();

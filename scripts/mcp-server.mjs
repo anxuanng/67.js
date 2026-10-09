@@ -106,6 +106,36 @@ const geometry = z.discriminatedUnion('type', [
   z.strictObject({ id: identifier, type: z.literal('extrude'), contour: ring, holes: z.array(ring).max(128).optional(), depth: finite.optional(), steps: detail(1, 256), bevel: finite.optional(), bevelThickness: finite.optional(), bevelSegments: detail(1, 32) }),
   z.strictObject({ id: identifier, type: z.literal('tube'), path: z.array(vector3).min(2).max(4096), radius: finite.optional(), segments, radialSegments: detail(3, 128), closed: z.boolean().optional() }),
 ]);
+function motionTrack(kind, property, value, tangent) {
+  return z.strictObject({
+    kind: z.literal(kind),
+    ...(kind === 'camera' ? {} : { id: identifier }),
+    property: z.literal(property),
+    interpolation: z.enum(['LINEAR', 'STEP', 'SMOOTH', 'CUBICSPLINE']).optional(),
+    keyframes: z.array(z.strictObject({
+      time: z.number().min(0).max(30), value,
+      inTangent: tangent.optional(), outTangent: tangent.optional(),
+    })).min(1).max(64),
+  });
+}
+const motion = z.strictObject({
+  duration: z.number().min(0.1).max(30),
+  loop: z.boolean().optional(),
+  tracks: z.array(z.union([
+    motionTrack('node', 'translation', vector3, vector3),
+    motionTrack('node', 'rotation', quaternion, quaternion),
+    motionTrack('node', 'scale', z.tuple([positive, positive, positive]), vector3),
+    motionTrack('material', 'color', color, vector3),
+    motionTrack('material', 'emissiveColor', z.tuple([nonnegative, nonnegative, nonnegative]), vector3),
+    motionTrack('material', 'emission', nonnegative, finite),
+    motionTrack('material', 'metallic', unit, finite),
+    motionTrack('material', 'roughness', unit, finite),
+    motionTrack('camera', 'eye', vector3, vector3),
+    motionTrack('camera', 'target', vector3, vector3),
+    motionTrack('camera', 'fov', finite.gt(0).lt(180), finite),
+    motionTrack('camera', 'roll', finite, finite),
+  ])).min(1).max(128),
+}).describe('One absolute-time procedural clip. Local node transforms propagate through parents. Cubic tangents are derivatives per second. Backend checks references, duplicate tracks, 2048 total keys and every sampled pose.');
 const recipe = z.strictObject({
   format: z.literal('67js.scene'),
   schemaVersion: z.literal(1),
@@ -116,6 +146,7 @@ const recipe = z.strictObject({
   environment: environment.optional(),
   effects: effects.optional(),
   shadow: shadow.optional(),
+  motion: motion.nullable().optional(),
 }).describe('Bounded scene recipe. Backend validates references, mesh resource pairs, hierarchy, geometry budgets and camera consistency.');
 const assetRecipe = z.strictObject({
   format: z.literal('67js.asset'),
@@ -136,6 +167,7 @@ const operation = z.discriminatedUnion('type', [
   z.strictObject({ type: z.literal('set-node'), id: identifier, geometry: identifier.optional(), material: identifier.optional(), ...nodeFields }),
   z.strictObject({ type: z.literal('set-material'), id: identifier, ...materialFields }),
   z.strictObject({ type: z.literal('set-camera'), ...cameraFields }),
+  z.strictObject({ type: z.literal('set-motion'), motion: motion.nullable() }),
   z.strictObject({ type: z.literal('set-environment'), environment }),
   z.strictObject({ type: z.literal('set-effects'), effects }),
   z.strictObject({ type: z.literal('set-shadow'), shadow }),
@@ -159,8 +191,9 @@ const renderSettings = z.strictObject({
   fps: z.number().int().min(1).max(30).optional(),
   duration: z.number().min(0.1).max(30).optional(),
   animation: z.strictObject({ clip: z.number().int().min(0), start: z.number().min(0).max(3600).optional() }).optional(),
+  motion: z.strictObject({ start: z.number().min(0).max(3600).optional() }).optional(),
   rendererTime: z.strictObject({ start: z.number().min(0).max(3600).optional(), rate: z.number().min(-16).max(16).optional() }).optional(),
-}).describe('Immutable snapshot render: one PNG, eight evenly spaced PNGs, or CPU H.264 MP4. Video dimensions must be even. Defaults: 24 fps, one second. Animation must fit the selected imported clip.');
+}).describe('Immutable snapshot render: one PNG, eight evenly spaced PNGs, or CPU H.264 MP4. Video dimensions must be even. Defaults: 24 fps, one second. Use motion.start for procedural recipe tracks or animation for an imported clip. Omitted motion holds time zero. Nonlooping samples must fit the authored duration.');
 const readOnly = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false };
 const edit = { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false };
 
@@ -195,8 +228,8 @@ export function createAgentMcpServer(runtime, { version = packageMetadata.versio
   register('scene_asset_catalog', 'List content-bound GLB IDs from the configured local asset directory. No arbitrary paths or downloads.', z.strictObject({}), readOnly, async () => jsonResult(await runtime.assetCatalog()));
   register('scene_create_asset', 'Create the active scene from a catalog GLB and editable asset recipe. Preserves supported maps, skins, morphs and clips. Dispose the existing scene first.', z.strictObject({ recipe: assetRecipe }), { ...edit, destructiveHint: false }, async argumentsValue => jsonResult(await runtime.createAsset(argumentsValue)));
   register('scene_inspect', 'Read revision, counts and selected nodes. Bounds describe authored geometry rather than shader displacement.', z.strictObject({ ...sessionFields, ids: z.array(identifier).max(4096).optional().describe('Selected node IDs. Omit to inspect scene order.'), limit: z.number().int().min(1).max(4096).optional().describe('Maximum returned node records. Defaults to 64.'), includeBounds: z.boolean().optional().describe('Include world geometry bounds. Defaults to false.') }), readOnly, async argumentsValue => jsonResult(await runtime.inspect(argumentsValue)));
-  register('scene_apply', 'Atomically edit transforms, look, camera or materials. Procedural scenes support membership commands. Imported assets support set-root and absolute set-animation sampling. Successful batches increment revision once.', z.strictObject({ ...sessionFields, expectedRevision, operations: z.array(operation).min(1).max(256).describe('Node/material/camera/root/animation commands use flat fields. Look patches and add commands contain nested records. Backend validates each scene mode before publication.') }), edit, async argumentsValue => jsonResult(await runtime.apply(argumentsValue)));
-  register('scene_look', 'Render the active scene as a bounded PNG image for visual assessment.', z.strictObject({ ...sessionFields, width: z.number().int().min(64).max(1024).default(768).describe('PNG width in pixels.'), height: z.number().int().min(64).max(1024).default(512).describe('PNG height in pixels.') }), readOnly, async argumentsValue => {
+  register('scene_apply', 'Atomically edit transforms, look, camera or materials. Procedural scenes support membership and set-motion authoring. Imported assets support set-root and absolute set-animation sampling. Successful batches increment revision once.', z.strictObject({ ...sessionFields, expectedRevision, operations: z.array(operation).min(1).max(256).describe('Node/material/camera/root/animation commands use flat fields. Motion, look patches and add commands contain nested records. Backend validates each scene mode before publication.') }), edit, async argumentsValue => jsonResult(await runtime.apply(argumentsValue)));
+  register('scene_look', 'Render the active scene as a bounded PNG. Optional procedural motionTime seeks without changing revision; null restores the authored base pose. Omit to retain the last preview pose.', z.strictObject({ ...sessionFields, motionTime: z.number().min(0).max(3600).nullable().optional(), width: z.number().int().min(64).max(1024).default(768).describe('PNG width in pixels.'), height: z.number().int().min(64).max(1024).default(512).describe('PNG height in pixels.') }), readOnly, async argumentsValue => {
     const { data, mimeType, metadata } = await runtime.look(argumentsValue);
     return { content: [{ type: 'image', data, mimeType }, { type: 'text', text: JSON.stringify(metadata) }], structuredContent: metadata };
   });

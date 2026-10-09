@@ -133,6 +133,8 @@ The packaged [MCP server](docs/mcp.md) connects these sessions to a persistent b
 Agents receive PNG previews and structured scene metadata through the stdio tools.
 
 Version `0.6.0` adds [snapshot render jobs](docs/agent-render-jobs.md) for PNG images, eight-frame still sequences and silent MP4 video.
+Version `0.7.0` adds [agent motion](docs/agent-motion.md) for local joints, materials and authored camera moves.
+Recipes, checkpoints and job snapshots retain the keyframes. Preview seeks preserve revisions and reuse geometry.
 Agents can poll progress, cancel jobs, retrieve verified artifacts and release retained outputs.
 The source pose, revision and checkpoints remain intact while a job temporarily leases the preview renderer.
 

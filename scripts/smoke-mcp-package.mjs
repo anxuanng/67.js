@@ -155,7 +155,7 @@ for (const era of ['modern', 'legacy']) {
   assert.doesNotMatch(diagnostics, /cleanup failed|shutdown failed/);
   assert.throws(() => process.kill(processId, 0), /ESRCH/);
 }
-const report = { packageName: metadata.name, version: metadata.version, archiveBytes: packed.size,
+const report = { packageName: metadata.name, version: metadata.version, archiveBytes: packed.size, cli,
   published, protocolOnly,
   runtimeDevelopmentDependencies: false, nativeShimVersion: true, builtOutputHashesMatch: true,
   sourceCommit: manifest.sourceCommit, eofWithActiveScene: !protocolOnly, results };

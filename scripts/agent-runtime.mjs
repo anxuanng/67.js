@@ -236,6 +236,7 @@ export function createAgentRuntime({ backend = 'gpu', browser: browserPath, memo
           : settings.kind === 'stills' ? settings.duration * frame / (settings.frameCount - 1) : 0;
         const frameInput = { sessionId: jobId,
           rendererTime: (settings.rendererTime?.start ?? 0) + elapsed * (settings.rendererTime?.rate ?? 1),
+          ...(settings.motion ? { motionTime: settings.motion.start + elapsed } : {}),
           ...(settings.animation ? { animation: { clip: settings.animation.clip, time: settings.animation.start + elapsed } } : {}) };
         const renderStarted = performance.now();
         const rendered = await jobPage.evaluate(input => window.__agentPreview.frame(input), frameInput);
@@ -317,7 +318,7 @@ export function createAgentRuntime({ backend = 'gpu', browser: browserPath, memo
           encoder: 'CPU H.264', audio: false, previewSuspendedDuringJob: true,
           records: jobRoot ? (await jobs()).list().map(record => ({ jobId: record.jobId, state: record.state,
             sourceRevision: record.sourceRevision, progress: record.progress })) : [] },
-        unsupported: ['remote asset providers', 'arbitrary code execution', 'animation authoring', 'job audio'],
+        unsupported: ['remote asset providers', 'arbitrary code execution', 'imported animation track authoring', 'job audio'],
       };
     },
     create({ recipe }) {
@@ -365,7 +366,8 @@ export function createAgentRuntime({ backend = 'gpu', browser: browserPath, memo
           throw new RangeError('Preview dimensions must be integers from 64 to 1024.');
         }
         await page.setViewportSize({ width, height });
-        const result = await invoke('look', { sessionId: input.sessionId });
+        const result = await invoke('look', { sessionId: input.sessionId,
+          ...(input.motionTime !== undefined ? { motionTime: input.motionTime } : {}) });
         if (Buffer.byteLength(result.data, 'base64') > MAXIMUM_IMAGE_BYTES) {
           throw new Error('The PNG exceeds the 1 MiB image response budget. Request a smaller preview.');
         }

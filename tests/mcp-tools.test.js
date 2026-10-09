@@ -43,9 +43,13 @@ async function connect(context) {
       scene.apply(operations, { expectedRevision });
       return status();
     },
-    async look({ width, height }) {
+    async look({ width, height, motionTime }) {
       calls++;
-      return { data: png, mimeType: 'image/png', metadata: { sessionId, revision: scene.revision, width, height, backend: 'fake' } };
+      if (motionTime !== undefined) {
+        scene.sampleMotion(motionTime);
+      }
+      return { data: png, mimeType: 'image/png', metadata: { sessionId, revision: scene.revision,
+        motionTime: scene.motionTime, width, height, backend: 'fake' } };
     },
     async checkpoint() {
       const checkpointId = randomUUID();
@@ -125,6 +129,7 @@ test('SDK advertises the complete strict JSON contract and truthful annotations'
   const look = tools.find(tool => tool.name === 'scene_look');
   assert.equal(look.annotations.readOnlyHint, true);
   assert.equal(look.inputSchema.properties.width.maximum, 1024);
+  assert.ok(look.inputSchema.properties.motionTime);
 });
 
 test('SDK rejects unknown fields, missing revisions, invalid vectors and oversized inputs before runtime dispatch', async context => {
@@ -137,6 +142,8 @@ test('SDK rejects unknown fields, missing revisions, invalid vectors and oversiz
   await rejected(client, 'scene_render_result', { jobId: '../video.mp4' });
   await rejected(client, 'scene_inspect', { sessionId: 'not-a-uuid' });
   await rejected(client, 'scene_look', { sessionId, width: 1025 });
+  await rejected(client, 'scene_look', { sessionId, motionTime: -1 });
+  await rejected(client, 'scene_apply', { sessionId, expectedRevision: 0, operations: [{ type: 'set-motion' }] });
   await rejected(client, 'scene_asset_catalog', { path: 'C:/private/file.glb' });
   await rejected(client, 'scene_create_asset', { recipe: { format: '67js.asset', schemaVersion: 1, assetId: '../file.glb' } });
   await rejected(client, 'scene_create_asset', { recipe: { format: '67js.asset', schemaVersion: 1, assetId: 'a'.repeat(64), root: { javascript: 'run' } } });
@@ -151,6 +158,26 @@ test('SDK rejects unknown fields, missing revisions, invalid vectors and oversiz
   await rejected(client, 'scene_create', { recipe: { ...recipe(), geometries: [{ id: 'sphere', type: 'sphere', segments: 2049 }] } });
   await rejected(client, 'scene_create', { recipe: { ...recipe(), nodes: Array.from({ length: 4097 }, () => ({ id: 'node' })) } });
   assert.equal(boundary.calls(), 0);
+});
+
+test('real SDK round trip authors motion, seeks without revisions and rejects unknown track fields', async context => {
+  const { client, sessionId } = await connect(context);
+  const motion = { duration: 1, tracks: [{ kind: 'node', id: 'mesh', property: 'translation',
+    keyframes: [{ time: 0, value: [0, 0, 0] }, { time: 1, value: [1, 0, 0] }] }] };
+  await client.callTool({ name: 'scene_create', arguments: { recipe: { ...recipe(), motion } } });
+  for (const motionTime of [1, 0.2, 0, null]) {
+    const looked = await client.callTool({ name: 'scene_look', arguments: { sessionId, motionTime } });
+    assert.equal(looked.isError, undefined);
+    assert.equal(looked.structuredContent.revision, 0);
+    assert.equal(looked.structuredContent.motionTime, motionTime);
+  }
+  const exported = await client.callTool({ name: 'scene_export_recipe', arguments: { sessionId } });
+  assert.equal(exported.structuredContent.recipe.motion.tracks[0].property, 'translation');
+  await rejected(client, 'scene_apply', { sessionId, expectedRevision: 0, operations: [{ type: 'set-motion',
+    motion: { ...motion, tracks: [{ ...motion.tracks[0], javascript: 'run()' }] } }] });
+  const cleared = await client.callTool({ name: 'scene_apply', arguments: { sessionId, expectedRevision: 0,
+    operations: [{ type: 'set-motion', motion: null }] } });
+  assert.equal(cleared.structuredContent.revision, 1);
 });
 
 test('real SDK calls preserve atomic revisions, checkpoints, recipe snapshots and PNG content', async context => {

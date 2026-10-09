@@ -116,19 +116,22 @@ Static `sculptGeometry` strokes return new geometry before renderer upload. Read
 It rejects skin, morph, assembly and procedural targets. It does not detect arbitrary mesh penetration or provide animated shrinkwrap.
 
 Static `createMeshQueryIndex` copies geometry into an owned disposable BVH. Read `docs/mesh-query.md` for numerical and work limits.
-Pass current affine matrices to `createMeshPairQuery(...).evaluate()`; rebuild indices after editing geometry.
+Pass current affine matrices to `createMeshPairQuery(...).evaluate()`. Rebuild indices after editing geometry.
 Closed-solid containment requires two `solid: true` indices. Surface contact does not prove volume penetration or z-fighting.
+
 Use `docs/primitives.md` for exact seam closure and preallocation bounds. Preserve indeterminate and budget errors rather than reporting a miss.
 
 Static `shrinkwrapGeometry(source, target, options)` returns new target-local geometry and query statistics.
 Read `docs/shrinkwrap.md` for nearest/project modes, total query budgets and explicit miss handling.
 Share the target matrix with the wrapped part. Local distances are not world distances under nonuniform target scale.
 Compute once before renderer upload. Matching topology permits relative morph animation instead of rebuilding the BVH every frame.
+
 Vertex clearance does not certify every triangle interior against a curved or nonconvex target. Use the clipping patch for conforming surface overlays.
 
 Use `createSurfaceAttachment(target, { triangle, barycentric, clearance })` for a rigid accessory following a posed triangle.
 Read `docs/surface-attachment.md`. Share its retained `matrix` with the accessory, update the target pose, then update the attachment before renderer upload.
 The frame follows relative morphs before four-influence skinning. Clearance uses world units and the geometric triangle normal.
+
 Bind immutable geometry once. This sparse point attachment does not deform the accessory or certify clearance over its footprint.
 The surface-attachment addon is included in npm `0.4.1`.
 
@@ -136,29 +139,43 @@ Agent authoring uses `createAgentScene(recipe, limits)` from `67js/addons/agent-
 This addon is included in npm `0.5.0` and later.
 Read `docs/agent-scene.md` for schema version one, immutable resources and atomic topology commands.
 Start with capabilities and bounded inspection. Edit stable IDs through one `apply` batch with the current `expectedRevision`.
+
 Checkpoint before uncertain changes, inspect and render the result, then restore or release the checkpoint.
 For rigid, untextured scenes, compare `session.topologyRevision` with the uploaded revision after successful edits.
 Call `renderer.replaceParts(session.parts)` for changed topology or `renderer.updateParts(session.parts)` for retained parts, then render the detached camera.
+
 Use add/remove commands for nodes and shared resources, and `set-node` geometry/material fields for rebinding.
-Release unused checkpoints before increasing detail; active, checkpoint and staged geometry share a peak allocation budget.
-Keep JSON commands and snapshots exposed to agents; retained matrices and immutable geometry belong to the renderer adapter.
+Release unused checkpoints before increasing detail. Active, checkpoint and staged geometry share a peak allocation budget.
+
+Keep JSON commands and snapshots exposed to agents. Retained matrices and immutable geometry belong to the renderer adapter.
 Do not inspect all vertex bounds in a frame loop. Memory estimates cover unique geometry arrays, not total RAM or VRAM.
-The scene addon does not implement MCP transport, asset search, animation authoring, or render jobs.
+
+The scene addon does not implement MCP transport, asset search, or render jobs.
+
+Release `0.7.0` adds recipe-owned procedural motion. Read `docs/agent-motion.md` before authoring local node, material or camera tracks.
+Use `set-motion` for revisioned edits and `sampleMotion(time)` for transient poses. Sampling preserves geometry, canonical recipes and revisions.
+Use `sampleMotion(null)` for the authored base pose. Inspection bounds remain authored-base-world, independent of transient motion.
 
 For a configured MCP client, use the packaged `67js-mcp` server documented in `docs/mcp.md`.
 Call `scene_capabilities`, create one JSON scene, inspect IDs, checkpoint, apply a small batch, and assess `scene_look` PNG content.
 Use the revision returned by each committed apply or restore. A response with `committed: true` and `renderSucceeded: false` still advances revision.
-Inspect or export the canonical recipe after a render failure; do not retry the edit with its old revision.
+Inspect or export the canonical recipe after a render failure. Do not retry the edit with its old revision.
+
 The server retains one renderer, bounds image dimensions and payloads, and closes its browser on stdio EOF.
-Export the recipe before disposal. Animation authoring and video jobs remain unsupported by these tools.
+Export the recipe before disposal. Release `0.6.0` includes bounded snapshot PNG, still and MP4 jobs documented in `docs/agent-render-jobs.md`.
+Release `0.7.0` supports procedural `motionTime` preview seeks and `settings.motion.start` in jobs. Imported tracks retain their separate clip workflow.
+
 For imported models, read `docs/agent-asset.md`, configure `--assets` with an absolute local GLB directory, then select a digest from `scene_asset_catalog`.
-Use `scene_create_asset` with a `67js.asset` recipe; supported texture maps, skinning, morphs and existing clips remain attached to decoded meshes.
+Use `scene_create_asset` with a `67js.asset` recipe. Supported texture maps, skinning, morphs and existing clips remain attached to decoded meshes.
 Edit imported models through `set-root`, factor-only `set-material`, look commands and absolute `set-animation` sampling. Imported topology is immutable.
-Use `{ type: 'set-animation', time }` to sample the current clip; `{ type: 'set-animation', clip: null }` restores the decoded pose.
+
+Use `{ type: 'set-animation', time }` to sample the current clip. `{ type: 'set-animation', clip: null }` restores the decoded pose.
 Bounds describe authored base geometry, not the deformed skin/morph silhouette. Check the rendered PNG before accepting framing.
+
 Read `docs/agent-look.md` for authored lighting, fog, effects and shadow coverage, included in npm `0.5.0`.
 Use atomic `set-environment`, `set-effects` and `set-shadow` partial records instead of editing renderer internals through MCP.
-Nested volumeFog/bloom fields merge; pointLights replaces the full list. Point lights do not cast local shadows.
+Nested `volumeFog` and `bloom` fields merge. The `pointLights` field replaces the full list. Point lights do not cast local shadows.
+
 Volume fog requires opaque HDR/depth rendering. The preview adapter allocates depth support at creation and rejects unsupported fog before commit.
 Keep key-light direction aligned with the derived shadow projector. The optional addon exports `resolveAgentShadow` for custom adapters.
 Checkpoint before relighting, inspect the actual image and restore or export the complete recipe. Look changes retain topology and geometry.

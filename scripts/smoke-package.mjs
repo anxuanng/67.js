@@ -168,6 +168,22 @@ if (${!published}) {
   agentScene.restore(lookCheckpoint, { expectedRevision: agentScene.revision });
   assert.deepEqual(agentScene.exportRecipe(), originalLook);
   agentScene.releaseCheckpoint(lookCheckpoint);
+  const motionCheckpoint = agentScene.checkpoint();
+  const authoredRecipe = agentScene.exportRecipe();
+  agentScene.apply([{ type: 'set-motion', motion: { duration: 1, tracks: [{
+    kind: 'node', id: 'object', property: 'translation', interpolation: 'SMOOTH',
+    keyframes: [{ time: 0, value: [0, 0, 0] }, { time: 1, value: [3, 0, 0] }],
+  }] } }], { expectedRevision: agentScene.revision });
+  const motionRevision = agentScene.revision;
+  agentScene.sampleMotion(1);
+  assert.equal(agentPart.matrix[12], 3);
+  agentScene.sampleMotion(0);
+  assert.equal(agentPart.matrix[12], 0);
+  assert.equal(agentScene.revision, motionRevision);
+  assert.equal(agentScene.parts[0], agentPart);
+  agentScene.restore(motionCheckpoint, { expectedRevision: agentScene.revision });
+  assert.deepEqual(agentScene.exportRecipe(), authoredRecipe);
+  agentScene.releaseCheckpoint(motionCheckpoint);
   const { createAgentAssetScene } = await import('67js/addons/agent-asset');
   const parsedAgentAsset = await parseGltf(exportGlb(agentScene.parts));
   const importedSession = createAgentAssetScene(parsedAgentAsset, { format: '67js.asset', schemaVersion: 1, assetId: '0'.repeat(64) });

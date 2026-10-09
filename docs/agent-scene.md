@@ -8,6 +8,9 @@ It does not execute JavaScript, access the DOM, or provide an MCP transport.
 Recipes also retain [lighting, fog, effects and directional shadow coverage](agent-look.md).
 Their patches and checkpoints share the same atomic revision contract as model edits.
 
+Release `0.7.0` adds optional [procedural motion](agent-motion.md) and transient `sampleMotion(time)` seeks.
+Recipe edits retain authored keyframes. Sampling preserves revisions and geometry while updating rendered transforms, materials and camera.
+
 ```js
 import { Renderer67 } from '67js';
 import { createAgentScene, AGENT_SCENE_CAPABILITIES } from '67js/addons/agent-scene';

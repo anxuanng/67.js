@@ -1,5 +1,28 @@
 # Release verification
 
+## 0.7.0
+
+Source checks used Windows Node.js, installed Chrome with CPU SwiftShader and FFmpeg H.264 encoding.
+Registry publication and live deployment require separate checks against the pushed commit.
+
+| Check | Measured result |
+| --- | --- |
+| Node tests | 402 tests passed. |
+| Motion authoring | Local parent joints, material channels and camera paths sampled without changing authored recipes, revision or topology. |
+| Atomicity | Invalid cubic scale, material overshoot, composed graph overflow and camera crossings preserved the previous pose. |
+| Native image | The articulated lamp changed pose through actual MCP PNG previews. Shuffled seeks reproduced PNG bytes exactly. |
+| Native video | The fixture produced eighteen decoded frames in a three-second H.264 MP4 with BT.709 metadata. First and last frames differed. |
+| Jobs | Eight stills, completion and active cancellation preserved a nonzero source preview pose. Checkpoint restore reproduced the initial PNG. |
+| Installed package | A clean project omitted development dependencies and source files. Modern and legacy SDK calls retained imported textures, skins and exact undo. |
+| Cleanup | The installed motion CLI exited after disposal and MCP connection closure. |
+
+The bounded public contract review found no significant findings within its source scope.
+This review used one model family because the other reviewer remained unavailable. Its coverage is weaker than a completed cross review.
+
+Representative square and portrait lamp frames were inspected.
+These fixtures establish deterministic authoring and export behavior. They do not establish cinematic quality or hardware GPU performance.
+Imported node-track authoring, motion mixing controls, character asset quality and broader agent modeling tools remain unfinished.
+
 ## 0.6.0
 
 Source checks used Windows Node.js, installed Chrome with CPU SwiftShader and FFmpeg H.264 encoding.

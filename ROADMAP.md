@@ -21,7 +21,9 @@ This document separates shipping capabilities from work in progress. Performance
 - Static sculpt brushes, clipped surface patches, shrinkwrap and bounded mesh contact and containment queries.
 
 Version `0.5.0` includes agent scenes with stable IDs, atomic resource/node edits and checkpoints.
-Its stdio MCP server supplies twelve schema-backed tools and persistent CPU/GPU image previews.
+Version `0.6.0` adds persistent snapshot jobs with progress, cancellation and verified image/video outputs.
+Version `0.7.0` adds recipe-owned procedural motion with deterministic node, material and camera sampling.
+The stdio MCP server supplies seventeen schema-backed tools and persistent CPU/GPU image previews.
 Recipes retain lighting, volumetric fog, grading and directional shadow coverage with atomic edits and undo.
 Imported asset sessions retain supported textures, rigs, morphs and clips from a configured local GLB catalog.
 
@@ -30,8 +32,8 @@ The npm package includes the prebuilt `67js-mcp` command with lazy browser start
 ## Next
 
 1. Extend imported asset sessions with node-level editing, topology changes and deformed geometry diagnostics.
-2. Extend MCP visual feedback with bounded multi-angle and absolute animation-time previews.
-3. Persistent render jobs with progress, cancellation, explicit CPU/GPU budgets and deterministic image and video export.
+2. Extend MCP visual feedback with bounded multi-angle previews and compact rendered diagnostics.
+3. Extend render jobs with hardware encoder selection, audio, longer sequences and measured adaptive output quality.
 4. Geometry, rig and asset diagnostics that help agents correct intersections, invalid transforms and unsupported materials.
 5. Agent workflows for imported assets, sculpting, surface fitting, lighting and animation, verified against rendered reference scenes.
 6. GPU timing and adaptive quality based on measured frame time, with stable resolution changes and explicit minimum quality.

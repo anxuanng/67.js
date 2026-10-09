@@ -4,7 +4,7 @@ Release `0.6.0` includes five MCP tools for asynchronous image and video renderi
 
 ## Agent workflow
 
-1. Install `67js` with `npm install 67js@npm:@codepawlhq/67js@0.6.0`.
+1. Install `67js` with `npm install 67js@npm:@codepawlhq/67js@0.7.0`.
 2. Launch `npx 67js-mcp --backend cpu --jobs C:/projects/my-scene/render-jobs`.
 3. Create a scene and inspect its current revision.
 4. Submit `scene_render_submit` with the session ID, current revision and render settings.
@@ -39,8 +39,13 @@ Video uses CPU H.264 encoding, even dimensions and one streamed frame at a time.
 The render backend can use GPU or CPU. Memory limits can reduce the actual output dimensions.
 Results report actual dimensions and measured timings. They do not embed video bytes or include audio.
 
-Static procedural scenes remain static unless a shader uses renderer time.
-Imported clips use explicit absolute sampling. The job tools do not author new animation tracks.
+Release `0.7.0` samples recipe-owned [procedural motion](agent-motion.md) with `settings.motion: { start: 0 }`.
+Job frames use `start + elapsed`. Omission holds the initial motion pose.
+Nonlooping samples must fit the motion duration. Looping samples wrap and remain bounded by 3600 absolute seconds.
+
+Creation and edits author tracks through scene recipes and `set-motion`, before job submission.
+Static recipes remain static unless a shader uses renderer time.
+Imported clips retain separate absolute sampling through `settings.animation`.
 
 ## Controller API
 

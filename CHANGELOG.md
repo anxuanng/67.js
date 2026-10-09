@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.7.0
+
+- Author bounded procedural motion in agent recipes with local node, material and camera tracks.
+- Reuse linear, step, smooth and cubic interpolation with looping and absolute-time preview seeks.
+- Validate the complete sampled pose before publishing transforms, material handles or camera changes.
+- Preserve authored recipes, revisions, geometry identities and checkpoints during transient seeks.
+- Sample procedural motion in PNG, still sequence and MP4 snapshot jobs while retaining the source preview pose.
+
 ## 0.6.0
 
 - Add five MCP tools for asynchronous snapshot rendering, progress, cancellation, results and output release.

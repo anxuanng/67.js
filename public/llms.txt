@@ -9,6 +9,13 @@ The installed package determines available APIs. Release metadata describes the 
 
 Version `0.5.0` adds `67js/addons/agent-scene` and the `67js-mcp` command.
 Version `0.6.0` adds asynchronous snapshot render jobs. Read `/agent-render-jobs.md` for submission, progress, cancellation and artifact results.
+
+Version `0.7.0` adds recipe motion and atomic set-motion authoring. Read `/agent-motion.md` before generating tracks.
+Use scene_look motionTime for absolute procedural preview seeks. Omit it to preserve the last pose, or use null for the authored base.
+
+Preview seeks do not advance revisions. Creation, edits and restore sample zero when motion exists.
+Jobs use settings.motion.start plus elapsed time. Imported clips and renderer shader time retain separate controls.
+
 Read `/agent-scene.md` for versioned JSON recipes, stable IDs, expected revisions, atomic edits and bounded checkpoints.
 Use `session.inspect()` for compact object facts and `session.exportRecipe()` for detached JSON.
 Keep renderer-facing geometry immutable. Call `renderer.updateParts(session.parts)` after a successful edit or restore.
@@ -42,7 +49,7 @@ Removing a parent requires `recursive: true` or reparenting/removing its childre
 Active, checkpoint and staged geometry share a budget. Release unused checkpoints before increasing detail.
 Topology changes reconcile rigid, untextured GPU parts. Geometry stays immutable and surviving shared buffers remain allocated.
 
-It exposes no arbitrary code, file access, asset providers, animation authoring or video jobs.
+Tools accept bounded JSON and configured local assets. They expose no arbitrary code, remote asset providers or caller-selected file paths.
 
 - [Release metadata](https://67js.codepawl.com/release.json): package name, version, publication status, install command, module URL and commit.
 - [Complete plain-text guide](https://67js.codepawl.com/guide.md): renderer, parts, materials, cameras, animation, lifecycle, export and troubleshooting.

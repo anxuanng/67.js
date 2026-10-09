@@ -51,8 +51,8 @@ function jsonCopy(value, maximum = MAXIMUM_JSON_BYTES) {
   return JSON.parse(text);
 }
 
-function settingsFrom(input, clips) {
-  objectKeys(input, ['kind', 'width', 'height', 'fps', 'duration', 'animation', 'rendererTime'], 'settings');
+function settingsFrom(input, clips, recipe) {
+  objectKeys(input, ['kind', 'width', 'height', 'fps', 'duration', 'animation', 'motion', 'rendererTime'], 'settings');
   if (!['image', 'stills', 'video'].includes(input.kind)) throw new TypeError('kind must be image, stills or video.');
   const width = boundedNumber(input.width, 64, 1024, 'width', true);
   const height = boundedNumber(input.height, 64, 1024, 'height', true);
@@ -62,6 +62,23 @@ function settingsFrom(input, clips) {
   const frameCount = input.kind === 'image' ? 1 : input.kind === 'stills' ? 8 : Math.ceil(fps * duration);
   if (frameCount > 900) throw new RangeError('Job exceeds 900 frames.');
   const result = { kind: input.kind, width, height, fps, duration, frameCount };
+  const lastSampleTime = input.kind === 'image' ? 0 : input.kind === 'stills' ? duration : (frameCount - 1) / fps;
+  if (input.motion !== undefined) {
+    objectKeys(input.motion, ['start'], 'motion');
+    if (recipe?.format !== '67js.scene' || !recipe.motion) {
+      throw new RangeError('Motion settings require a procedural recipe with authored motion.');
+    }
+    const motionDuration = boundedNumber(recipe.motion.duration, 0.1, 30, 'motion duration');
+    if (recipe.motion.loop !== undefined && typeof recipe.motion.loop !== 'boolean') {
+      throw new TypeError('Motion loop must be boolean.');
+    }
+    const start = boundedNumber(input.motion.start === undefined ? 0 : input.motion.start, 0, 3600, 'motion start');
+    boundedNumber(start + lastSampleTime, 0, 3600, 'motion end');
+    if (!recipe.motion.loop && start + lastSampleTime > motionDuration) {
+      throw new RangeError('Motion range exceeds the authored duration.');
+    }
+    result.motion = { start };
+  }
   if (input.animation !== undefined) {
     objectKeys(input.animation, ['clip', 'start'], 'animation');
     const clip = boundedNumber(input.animation.clip, 0, clips.length - 1, 'clip', true);
@@ -75,7 +92,6 @@ function settingsFrom(input, clips) {
   } else {
     result.rendererTime = { start: 0, rate: 1 };
   }
-  const lastSampleTime = input.kind === 'image' ? 0 : input.kind === 'stills' ? duration : (frameCount - 1) / fps;
   boundedNumber(result.rendererTime.start + lastSampleTime * result.rendererTime.rate, 0, 3600, 'renderer time end');
   return result;
 }
@@ -273,7 +289,7 @@ export async function createAgentRenderJobs({ root, run, limits: inputLimits = {
         if (asset.sha256 !== snapshot.recipe.assetId) throw new Error('Persisted asset does not match its recipe digest.');
       }
       const { frameCount, ...inputSettings } = record.settings;
-      const settings = settingsFrom(inputSettings, snapshot.clips ?? []);
+      const settings = settingsFrom(inputSettings, snapshot.clips ?? [], snapshot.recipe);
       if (frameCount !== settings.frameCount) throw new Error('Invalid persisted frame count.');
       record.settings = settings;
       objectKeys(record.progress, ['frames', 'maximumPendingFrames'], 'persisted progress');
@@ -412,7 +428,7 @@ export async function createAgentRenderJobs({ root, run, limits: inputLimits = {
       const recipe = jsonCopy(input.snapshot.recipe);
       if (!recipe || typeof recipe !== 'object' || Array.isArray(recipe)) throw new TypeError('Snapshot recipe must be a JSON object.');
       const snapshotMetadata = jsonCopy({ recipe, clips });
-      const settings = settingsFrom(input.settings, clips);
+      const settings = settingsFrom(input.settings, clips, recipe);
       if (input.snapshot.assetBytes !== undefined && (!Buffer.isBuffer(input.snapshot.assetBytes) || input.snapshot.assetBytes.length > MAXIMUM_ASSET_BYTES || !input.snapshot.assetBytes.length)) throw new RangeError('Asset snapshot must be a nonempty Buffer of at most 16 MiB.');
       const snapshot = { recipe, clips, ...(input.snapshot.assetBytes ? { assetBytes: Buffer.from(input.snapshot.assetBytes) } : {}) };
       if (recipe.format === '67js.asset' && (!snapshot.assetBytes || createHash('sha256').update(snapshot.assetBytes).digest('hex') !== recipe.assetId)) throw new Error('Asset snapshot bytes must match the recipe SHA256 assetId.');

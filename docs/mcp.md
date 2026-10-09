@@ -6,6 +6,7 @@ The [official SDK documentation](https://ts.sdk.modelcontextprotocol.io/v2/) des
 
 Release `0.5.0` exposes twelve tools for bounded JSON scene authoring and local GLB imports.
 Release `0.6.0` adds five render job tools for PNG images, still sequences and MP4 video.
+Release `0.7.0` adds [procedural motion](agent-motion.md), transient preview seeks and motion sampling in snapshot jobs.
 It renders one active scene and returns PNG images through MCP image content.
 Tool results also contain JSON text and structured metadata.
 The image bytes appear only in the image content block.
@@ -26,7 +27,7 @@ The MCP connection uses stdin and stdout, without an HTTP MCP listener.
    ```
 
    Run the installed command with `npx 67js-mcp --backend gpu --memory 192`.
-   For a standalone launch, use `npx --package @codepawlhq/67js@0.6.0 67js-mcp --backend gpu --memory 192`.
+   For a standalone launch, use `npx --package @codepawlhq/67js@0.7.0 67js-mcp --backend gpu --memory 192`.
    `67js-mcp --help` lists options. `67js-mcp --version` reports the installed version.
 
 2. Configure your MCP client with absolute paths to Node and the installed CLI:
@@ -98,7 +99,7 @@ Inspect or export the recipe before retrying. Context loss still permits recipe 
 | `scene_create_asset` | `recipe` using `67js.asset` | Imported scene ID, revision, inspection and render status |
 | `scene_inspect` | `sessionId`, optional `ids`, `limit`, `includeBounds` | Compact node records and revision |
 | `scene_apply` | `sessionId`, `expectedRevision`, `operations` | Updated revision, inspection, and render status |
-| `scene_look` | `sessionId`, optional `width`, `height` | PNG image and metadata |
+| `scene_look` | `sessionId`, optional `width`, `height`, `motionTime` | PNG image and metadata |
 | `scene_checkpoint` | `sessionId` | Checkpoint ID, session ID, and revision |
 | `scene_restore` | `sessionId`, `checkpointId`, `expectedRevision` | Updated revision, inspection, and render status |
 | `scene_release_checkpoint` | `sessionId`, `checkpointId` | Release confirmation |
@@ -114,6 +115,11 @@ The recipe uses `format: '67js.scene'` and `schemaVersion: 1`.
 Supported geometry types are `box`, `cylinder`, `sphere`, `torus`, `lathe`, `extrude`, and `tube`.
 Geometry fields remain flat inside each geometry record.
 Set operations use `set-node`, `set-material`, or `set-camera`, with fields directly on each command.
+
+`set-motion` accepts a complete motion record or `null` to clear it.
+`scene_look` can seek procedural `motionTime` without changing revisions. Omission preserves the last preview pose.
+An explicit `null` restores the authored base pose. Imported assets retain their existing `set-animation` workflow.
+
 `set-node` can rebind a mesh to another geometry/material pair.
 
 The recipe also accepts [authored lighting, fog, effects and shadow coverage](agent-look.md).
@@ -181,7 +187,8 @@ The [asset scene contract](agent-asset.md) defines root transforms, material ove
 Imported scenes retain their decoded topology. Mesh membership edits remain specific to procedural scenes.
 Their bounds describe authored base vertices in the sampled world transforms, without claiming deformed skin or morph bounds.
 
-The tools expose no arbitrary JavaScript execution, URLs, arbitrary caller-selected file paths or animation track authoring.
+The tools expose no arbitrary JavaScript execution, remote URLs or arbitrary caller-selected file paths.
+Imported animation track authoring remains unsupported. Procedural tracks use the bounded motion recipe.
 Render jobs use a configured private store and fixed output filenames.
 
 See [render jobs](agent-render-jobs.md) for the snapshot workflow and storage limits.
@@ -210,3 +217,6 @@ Use `node scripts/smoke-agent-topology.mjs cpu` for software rendering. Both mod
 
 Run `node scripts/smoke-agent-assets.mjs` for actual imported WALL-E and textured rig previews through CPU stdio tools.
 The script checks content IDs, root edits, retained texture decoding, reverse animation sampling and exact checkpoint restoration.
+
+Run `node scripts/smoke-agent-motion.mjs` for procedural motion through actual CPU MCP previews and jobs.
+It checks shuffled PNG seeks, decoded MP4 frames, eight stills, active cancellation, source pose retention and checkpoint restoration.

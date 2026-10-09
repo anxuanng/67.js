@@ -28,7 +28,7 @@ function validatePreviewCamera(camera) {
 }
 
 function candidateCamera(record, operations) {
-  const camera = record.scene.camera;
+  const camera = record.scene.exportRecipe().camera;
   for (const operation of operations) {
     if (operation.type === 'set-camera') {
       for (const field of ['eye', 'target', 'up', 'fov', 'near', 'far']) {
@@ -198,11 +198,14 @@ window.__agentPreview = {
       throw error;
     }
   },
-  frame({ sessionId, animation, rendererTime = 0 }) {
+  frame({ sessionId, animation, motionTime, rendererTime = 0 }) {
     const record = requireSession(sessionId);
     if (!Number.isFinite(rendererTime) || rendererTime < 0 || rendererTime > 3600) throw new RangeError('Invalid render time.');
     if (animation) {
       record.scene.apply([{ type: 'set-animation', clip: animation.clip, time: animation.time }], { expectedRevision: record.scene.revision });
+    }
+    if (motionTime !== undefined) {
+      record.scene.sampleMotion(motionTime);
     }
     draw(record, rendererTime);
     return renderInfo(record.renderer);
@@ -248,15 +251,22 @@ window.__agentPreview = {
     record.scene.apply(operations, { expectedRevision });
     return mutationStatus(record);
   },
-  look({ sessionId }) {
+  look({ sessionId, motionTime }) {
     const record = requireSession(sessionId);
+    if (motionTime !== undefined) {
+      if (typeof record.scene.sampleMotion !== 'function') {
+        throw new RangeError('Procedural motion time is unavailable for imported assets.');
+      }
+      record.scene.sampleMotion(motionTime);
+    }
     draw(record);
     const render = renderInfo(record.renderer);
     record.lastRender = render;
     return {
       data: canvas.toDataURL('image/png').split(',')[1],
       mimeType: 'image/png',
-      metadata: { sessionId, revision: record.scene.revision, topologyRevision: record.scene.topologyRevision, ...render },
+      metadata: { sessionId, revision: record.scene.revision, topologyRevision: record.scene.topologyRevision,
+        motionTime: record.scene.motionTime ?? null, ...render },
     };
   },
   checkpoint({ sessionId, checkpointId }) {

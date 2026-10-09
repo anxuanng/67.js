@@ -1,6 +1,6 @@
 {
   "name": "@codepawlhq/67js",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "private": false,
   "type": "module",
   "description": "JavaScript tools for agent-driven 3D authoring, browser previews and memory-aware CPU/GPU rendering",
@@ -47,7 +47,8 @@
     "docs/mcp.md",
     "docs/agent-look.md",
     "docs/agent-asset.md",
-    "docs/agent-render-jobs.md"
+    "docs/agent-render-jobs.md",
+    "docs/agent-motion.md"
   ],
   "main": "./build/67.module.js",
   "module": "./build/67.module.js",
@@ -99,6 +100,7 @@
     "smoke:agent-look": "node scripts/smoke-agent-look.mjs",
     "smoke:agent-assets": "node scripts/smoke-agent-assets.mjs",
     "smoke:agent-render-jobs": "node scripts/smoke-agent-render-jobs.mjs",
+    "smoke:agent-motion": "node scripts/smoke-agent-motion.mjs",
     "smoke:frame-encoder": "node scripts/smoke-frame-encoder.mjs",
     "smoke:enhancements": "node scripts/smoke-enhancements.mjs",
     "smoke:site": "node scripts/smoke-site.mjs",
