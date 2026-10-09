@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.3.2
+
+- Add transparent render targets with MSAA coverage and continuous homepage animation.
+- Showcase WALL·E with moving caterpillars and a slider that pauses driving until reassembly.
+- Replace the short film with a 187-second Oppenheimer trailer study, 33 shots and 13 procedural sets.
+- Enable HDR in the film player and extend bounded video exports to four minutes.
+- Speed up video capture using high-quality JPEG frames while keeping PNG stills lossless.
+- Add direct CDP capture, fast lossless PNG mode, automatic encoder preflight, stage timings and progress estimates.
+- Simplify Downloads and unify the homepage, Docs and Downloads footer.
+
+
 ## 0.3.1
 
 - Rebuild the homepage around the scene-to-film workflow and a real video showcase.

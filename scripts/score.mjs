@@ -1,9 +1,10 @@
 import { writeFile, mkdir } from 'node:fs/promises';
 import { resolve, dirname } from 'node:path';
+import { FILM_DURATION } from '../src/film.js';
 
 const output = resolve(process.argv[2] ?? 'artifacts/critical-score.wav');
 const sampleRate = 48000;
-const duration = 32;
+const duration = FILM_DURATION;
 const frameCount = sampleRate * duration;
 const data = Buffer.alloc(44 + frameCount * 4);
 data.write('RIFF', 0);
@@ -18,6 +19,7 @@ data.writeUInt16LE(4, 32);
 data.writeUInt16LE(16, 34);
 data.write('data', 36);
 data.writeUInt32LE(frameCount * 4, 40);
+const sequence = [110, 130.8128, 146.8324, 164.8138];
 let seed = 67;
 let filteredNoise = 0;
 let peak = 0;
@@ -28,20 +30,25 @@ for (let index = 0; index < frameCount; index++) {
   const noise = seed / 4294967296 * 2 - 1;
   filteredNoise += (noise - filteredNoise) * 0.03;
   const fade = Math.min(1, time / 1.5) * Math.min(1, (duration - time) / 2);
-  const tension = Math.min(1, time / 19);
+  const tension = Math.min(1, time / 180);
   let value = Math.sin(time * Math.PI * 2 * 55) * 0.05;
   value += Math.sin(time * Math.PI * 2 * 82.4069 + Math.sin(time * 0.6) * 0.1) * 0.035;
   value += Math.sin(time * Math.PI * 2 * 110) * 0.024;
   value += Math.sin(time * Math.PI * 2 * 164.8138) * 0.012;
-  const beatInterval = time < 13.5 ? 1 : 0.5;
+  const beatInterval = time < 85 ? 1.2 : time < 145 ? 0.6 : time < 165 ? 0.4 : 0.25;
   const beatAge = time % beatInterval;
   const pulse = Math.sin(beatAge * Math.PI * 2 * (48 + tension * 6)) * Math.exp(-beatAge * 13);
-  if (time < 19) value += pulse * (0.025 + tension * 0.11);
-  const ignitionAge = time - 19;
+  if (time < 180) value += pulse * (0.025 + tension * 0.11);
+  const ignitionAge = time - 180;
   if (ignitionAge >= 0) {
     value += Math.sin(ignitionAge * Math.PI * 2 * (30 + 20 * Math.exp(-ignitionAge * 2))) * Math.exp(-ignitionAge * 0.9) * 0.32;
     value += filteredNoise * Math.exp(-ignitionAge * 0.4) * 0.65;
   }
+  const note = sequence[Math.floor(time / (time < 145 ? 4 : 1)) % sequence.length];
+  const shimmer = 0.6 + 0.4 * Math.sin(time * Math.PI * 2 * 5);
+  if (time < 180) value += Math.sin(time * Math.PI * 2 * note) * (0.006 + tension * 0.025) * shimmer;
+  const countdownAge = time - Math.floor(time);
+  if (time >= 165 && time < 180) value += Math.sin(countdownAge * Math.PI * 2 * 1800) * Math.exp(-countdownAge * 90) * 0.035;
   value += filteredNoise * 0.03 * tension;
   value = Math.tanh(value * 1.9) * fade * 0.85;
   const right = value + Math.sin(time * Math.PI * 2 * 110.14) * 0.012 * fade;

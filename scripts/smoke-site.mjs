@@ -113,7 +113,7 @@ try {
     }
     if (route === '/downloads.html') {
       await page.waitForFunction(() => window.__home.state.status === 'ready');
-      assert.equal(await page.locator('.package-logo').count(), 4);
+      assert.equal(await page.locator('.package-managers .package-logo').count(), 4);
       assert.equal(await page.locator('[data-package-manager]').count(), 4);
       assert.equal(await page.locator('[data-release-tarball], [data-release-module]').count(), 0);
       for (const [manager, prefix] of [['npm', 'npm install'], ['pnpm', 'pnpm add'], ['yarn', 'yarn add'], ['bun', 'bun add']]) {

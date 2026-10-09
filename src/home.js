@@ -56,9 +56,8 @@ function renderRelease() {
   document.querySelectorAll('[data-package-manager]').forEach(button => {
     button.setAttribute('aria-pressed', String(button.dataset.packageManager === state.packageManager));
   });
-  setText('[data-release-status]', release
-    ? release.registryPublished ? '✓ Install the current published release' : '✓ Install this release from the package archive'
-    : state.status === 'error' ? '⚠ Release information could not load. Retry to get the current files' : '◷ Loading release information');
+  document.querySelectorAll('.release-feedback').forEach(element => { element.hidden = state.status !== 'error'; });
+  setText('[data-release-status]', state.status === 'error' ? 'Release information could not load. Retry to get the current files.' : '');
   setLink('[data-release-tarball]', release ? releaseURL(release.tarball) : null, true);
   setLink('[data-release-module]', release ? releaseURL(release.module) : null, true);
   setLink('[data-release-api]', release ? releaseURL(release.api) : null);
@@ -95,10 +94,12 @@ document.querySelectorAll('[data-copy-install]').forEach(button => {
     if (!state.release) return;
     try {
       await navigator.clipboard.writeText(installCommand());
-      setText('[data-release-status]', '✓ Install command copied');
+      button.textContent = 'Copied';
+      setTimeout(() => { button.textContent = 'Copy command'; }, 2000);
     } catch {
       selectCommand();
-      setText('[data-release-status]', '⚠ Clipboard unavailable. Copy the selected command');
+      document.querySelectorAll('.release-feedback').forEach(element => { element.hidden = false; });
+      setText('[data-release-status]', 'Clipboard unavailable. Copy the selected command.');
     }
   });
 });

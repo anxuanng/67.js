@@ -64,12 +64,12 @@ The library is ESM and bundles its runtime dependencies. Core exports include `R
 | `/` | Installation, downloads, release metadata and examples. |
 | `/object.html` | WALL·E studio with orbit, zoom, explosion, layers, finishes and GLB export. |
 | `/nature.html` | Silverwater valley with viewpoints, daylight, wind, detail settings and water ripples. |
-| `/film.html` | CRITICAL, a 32-second procedural film with playback and timeline controls. |
+| `/film.html` | Oppenheimer, a 187-second procedural trailer study with playback and timeline controls. |
 | `/motion.html` | Clockwork orbit, a 12-second keyframe animation with HDR and landscape, portrait and square framing. |
 | `/view2d.html` | Flat vector scenes and front, right, top or perspective model inspection. |
 | `/assets.html` | GLB loading, texture inspection, rigid animation, orbit controls and PNG capture. |
 
-CRITICAL combines mechanical details, atomic orbits, waves, a desert test tower and a volumetric ignition sequence.
+The Oppenheimer study contains 33 shots across 13 procedural sets: a laboratory, research town, scientist portraits, atomic imagery, a wired Gadget and the night test.
 It uses an original synthesized score. The playable MP4 is in `public/media/critical.mp4`.
 The nature world uses seeded terrain and instanced vegetation. Its balanced preset contains 2,673 parts and 585,470 triangles.
 
@@ -88,6 +88,10 @@ npm run render -- --kind video --scene motion --aspect portrait --backend gpu --
 npm run render -- --kind image --scene view2d --aspect square --backend cpu --preset cpu --output artifacts/poster.png
 npm run render -- --kind video --scene assets --asset model.glb --duration 2 --output artifacts/model.mp4
 ```
+
+Video exports default to JPEG capture at quality 95 and automatically use NVENC when its preflight succeeds, with a CPU encoder fallback. `--backend cpu` defaults to CPU encoding as well. Use `--capture png` for lossless frame capture or `--jpeg-quality 100` for a higher JPEG quality. H.264 delivery remains compressed in either mode.
+
+Progress reports frames per second, speed relative to playback and estimated remaining time. The JSON sidecar separates rendering, capture, encoder backpressure and encoder finalization, alongside peak memory. Capture keeps one pending frame; the encoder applies backpressure rather than buffering a film in memory.
 
 | Preset | Dimensions | MSAA samples | FPS | Target budget |
 | --- | --- | ---: | ---: | ---: |
@@ -157,7 +161,7 @@ Blender-level realism remains a visual target. 67.js does not provide Three.js A
 ## Credits
 
 WALL·E is a Disney/Pixar character. This repository authors its study as procedural geometry without external model assets.
-CRITICAL draws inspiration from the visual themes of the [official Oppenheimer trailer](https://www.youtube.com/watch?v=bK6ldnjE3Y0).
+The Oppenheimer study follows the shot progression of [Universal Pictures’ New Trailer](https://www.youtube.com/watch?v=uYPbbksJxIg) using stylized procedural sets and an original synthesized score.
 It includes no film footage, dialogue or soundtrack samples.
 
 - [Three.js](https://threejs.org/) and its [source](https://github.com/mrdoob/three.js/) provide the benchmark reference.

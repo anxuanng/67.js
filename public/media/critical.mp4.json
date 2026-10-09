@@ -3,6 +3,10 @@
   "kind": "video",
   "backend": "gpu",
   "preset": "balanced",
+  "aspect": "landscape",
+  "start": 0,
+  "encoder": "gpu",
+  "assembly": null,
   "width": 1280,
   "height": 720,
   "actualRenderSize": {
@@ -11,19 +15,35 @@
     "reduced": false
   },
   "fps": 24,
-  "duration": 32,
+  "duration": 187,
   "memoryBudgetMiB": 384,
-  "peakEstimatedRenderBytes": 64853640,
-  "peakNodeBytes": 225230848,
-  "peakBrowserHeap": 7223176,
+  "peakEstimatedRenderBytes": 86978764,
+  "peakNodeBytes": 226672640,
+  "peakBrowserHeap": 10947796,
   "maximumPendingFrames": 1,
-  "firstFrameBytes": 4250,
-  "elapsedSeconds": 256.6760515,
+  "firstFrameBytes": 6158,
+  "elapsedSeconds": 134.85767690000003,
   "graphics": {
     "gpu": "ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 (0x00002487) Direct3D11 vs_5_0 ps_5_0, D3D11)",
     "samples": 4,
+    "capabilities": {
+      "hdr": true,
+      "hdrRequested": true,
+      "hdrFallbackReason": null,
+      "samples": 4,
+      "maximumTextureSize": 16384
+    },
     "glError": 0
   },
   "output": "critical.mp4",
-  "errors": []
+  "errors": [],
+  "webDelivery": {
+    "codec": "h264_nvenc",
+    "targetVideoBitrate": 800000,
+    "maxVideoBitrate": 850000,
+    "audioBitrate": 128000,
+    "bytes": 22757045,
+    "verifiedDuration": 187,
+    "verifiedFrames": 4488
+  }
 }

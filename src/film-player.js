@@ -26,6 +26,7 @@ const titleText = document.querySelector('#title-text');
 const subtitleText = document.querySelector('#subtitle-text');
 const flash = document.querySelector('#film-flash');
 const scenes = createFilmScenes();
+slider.max = String(FILM_DURATION);
 const score = exporting ? null : new Audio('./media/critical.mp4');
 if (score) score.preload = 'none';
 let renderer = null;
@@ -60,10 +61,13 @@ function renderAt(time) {
       shadowBounds: scene.shadowBounds,
       pixelRatio: 1,
       samples,
+      hdr: true,
       memoryBudgetMiB,
     });
     activeScene = sample.scene;
   }
+  scene.animate?.(sample.sceneTime);
+  if (scene.animate) renderer.updateParts(scene.parts);
   renderer.render({
     ...sample.camera,
     time: sample.sceneTime,
@@ -71,6 +75,7 @@ function renderAt(time) {
     monochrome: sample.monochrome,
     fade: sample.fade,
     cinematic: true,
+    effects: sample.effects,
     explosionProgress: sample.explosionProgress,
     volumeExplosion: sample.scene === 'ignition',
     environment: scene.environment,

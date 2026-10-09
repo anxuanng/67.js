@@ -60,11 +60,11 @@ try {
       return { checksum: checksum >>> 0, error: context.getError() };
     }, time);
   }
-  const ignition = await filmPixels(22);
+  const ignition = await filmPixels(183.5);
   await page.screenshot({ path: 'artifacts/film-wide.png' });
   await filmPixels(5.5);
-  await filmPixels(29.5);
-  assert.deepEqual(await filmPixels(22), ignition);
+  await filmPixels(101);
+  assert.deepEqual(await filmPixels(183.5), ignition);
   assert.equal(ignition.error, 0);
   await page.locator('#film-time').fill('1');
   await page.getByRole('button', { name: 'Play film', exact: true }).click();
@@ -72,7 +72,7 @@ try {
   await page.getByRole('button', { name: 'Pause film', exact: true }).click();
   assert.equal(await page.evaluate(() => window.__film.score.paused), true);
   await page.setViewportSize({ width: 320, height: 700 });
-  await page.locator('#film-time').fill('29');
+  await page.locator('#film-time').fill('183.5');
   await page.screenshot({ path: 'artifacts/film-narrow.png' });
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth), 320);
   const controls = await page.locator('.transport button, .transport a').evaluateAll((elements) => elements.map((element) => {

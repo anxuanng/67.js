@@ -1,15 +1,15 @@
 import { chromium } from 'playwright';
 import { spawn } from 'node:child_process';
-import { once } from 'node:events';
 import { mkdir, writeFile, stat } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { resolve, dirname, basename } from 'node:path';
+import { FILM_DURATION } from '../src/film.js';
 import { RENDER_PRESETS } from '../src/budget.js';
 
 function argumentsFrom(values) {
   const result = {};
-  const allowed = new Set(['kind', 'backend', 'scene', 'preset', 'width', 'height', 'fps', 'duration', 'time', 'memory', 'assembly', 'output', 'audio', 'encoder', 'start', 'aspect', 'asset']);
+  const allowed = new Set(['kind', 'backend', 'scene', 'preset', 'width', 'height', 'fps', 'duration', 'time', 'memory', 'assembly', 'output', 'audio', 'encoder', 'start', 'aspect', 'asset', 'capture', 'jpeg-quality']);
   for (let index = 0; index < values.length; index += 2) {
     if (!values[index].startsWith('--') || values[index + 1] === undefined) throw new Error('Every option needs a value.');
     const name = values[index].slice(2);
@@ -45,21 +45,57 @@ export function parseRenderOptions(values) {
   const height = Math.round(numberOption('height', defaultHeight, 64, 4096));
   if (kind === 'video' && (width % 2 || height % 2)) throw new Error('Video dimensions must be even for yuv420p output.');
   const fps = numberOption('fps', preset.fps, 1, 60);
-  const duration = numberOption('duration', scene === 'motion' ? 12 : 32, 0.1, 120);
+  const duration = numberOption('duration', scene === 'film' ? FILM_DURATION : scene === 'motion' ? 12 : 32, 0.1, 240);
   const time = numberOption('time', scene === 'assets' ? 0 : 3, 0, 3600);
   const start = numberOption('start', 0, 0, 3600);
   const memory = numberOption('memory', preset.memoryBudgetMiB, 32, 1024);
   const assembly = numberOption('assembly', 0, 0, 1);
-  const output = resolve(options.output ?? `artifacts/${scene}-${backend}.${kind === 'video' ? 'mp4' : 'png'}`);
-  const encoderBackend = options.encoder ?? 'cpu';
-  if (!['cpu', 'gpu'].includes(encoderBackend)) throw new Error('Encoder must be cpu or gpu.');
+  const captureFormat = options.capture ?? (kind === 'video' ? 'jpeg' : 'png');
+  if (!['jpeg', 'png'].includes(captureFormat)) throw new Error('Capture must be jpeg or png.');
+  const jpegQuality = numberOption('jpeg-quality', 95, 1, 100);
+  if (!Number.isInteger(jpegQuality)) throw new Error('JPEG quality must be an integer.');
+  const output = resolve(options.output ?? `artifacts/${scene}-${backend}.${kind === 'video' ? 'mp4' : captureFormat === 'jpeg' ? 'jpg' : 'png'}`);
+  const encoderBackend = options.encoder ?? (backend === 'cpu' ? 'cpu' : 'auto');
+  if (!['auto', 'cpu', 'gpu'].includes(encoderBackend)) throw new Error('Encoder must be auto, cpu or gpu.');
   const audio = options.audio ?? (scene === 'film' ? 'artifacts/critical-score.wav' : null);
-  return { options, kind, backend, scene, presetName, preset, aspect, width, height, fps, duration, time, start, memory, assembly, output, encoderBackend, audio };
+  return { options, kind, backend, scene, presetName, preset, aspect, width, height, fps, duration, time, start, memory, assembly, output, encoderBackend, audio, captureFormat, jpegQuality };
+}
+
+export async function selectEncoderBackend(requested, probe) {
+  if (!['auto', 'cpu', 'gpu'].includes(requested)) throw new Error('Encoder must be auto, cpu or gpu.');
+  if (requested === 'cpu') return 'cpu';
+  const result = await probe();
+  if (result.available) return 'gpu';
+  if (requested === 'gpu') throw new Error(`NVENC is unavailable: ${result.reason || 'availability probe failed'}`);
+  return 'cpu';
+}
+
+function probeNvenc(ffmpeg) {
+  return new Promise((resolveProbe) => {
+    const probe = spawn(ffmpeg, ['-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'color=black:s=320x240:r=1', '-frames:v', '1', '-c:v', 'h264_nvenc', '-f', 'null', '-'], { windowsHide: true, stdio: ['ignore', 'ignore', 'pipe'] });
+    let tail = '';
+    let timedOut = false;
+    const timeout = setTimeout(() => {
+      timedOut = true;
+      probe.kill();
+    }, 5000);
+    probe.stderr.on('data', data => {
+      tail = (tail + data.toString()).slice(-8192);
+    });
+    probe.on('error', error => {
+      clearTimeout(timeout);
+      resolveProbe({ available: false, reason: error.message });
+    });
+    probe.on('close', code => {
+      clearTimeout(timeout);
+      resolveProbe({ available: code === 0 && !timedOut, reason: timedOut ? 'probe timed out after 5 seconds' : tail.trim() || `probe exited ${code}` });
+    });
+  });
 }
 
 export async function renderMedia(values = process.argv.slice(2)) {
   const plan = parseRenderOptions(values);
-  const { options, kind, backend, scene, presetName, preset, aspect, width, height, fps, time, start, memory, assembly, output, encoderBackend } = plan;
+  const { options, kind, backend, scene, presetName, preset, aspect, width, height, fps, time, start, memory, assembly, output, captureFormat, jpegQuality } = plan;
   let duration = plan.duration;
   if (options.asset) {
     const details = await stat(resolve(options.asset));
@@ -68,6 +104,7 @@ export async function renderMedia(values = process.argv.slice(2)) {
   await mkdir(dirname(output), { recursive: true });
   const root = fileURLToPath(new URL('..', import.meta.url));
   const ffmpeg = process.platform === 'win32' ? resolve(process.env.USERPROFILE, '.local/bin/ffmpeg.exe') : 'ffmpeg';
+  const encoderBackend = kind === 'video' ? await selectEncoderBackend(plan.encoderBackend, () => probeNvenc(ffmpeg)) : null;
   const chrome = 'C:/Program Files/Google/Chrome/Application/chrome.exe';
   const server = spawn(process.execPath, ['node_modules/vite/bin/vite.js', '--config', 'scripts/render-vite.config.mjs', '--host', '127.0.0.1', '--port', '5181', '--strictPort'], { cwd: root, windowsHide: true, stdio: 'pipe' });
   let browser;
@@ -79,6 +116,8 @@ export async function renderMedia(values = process.argv.slice(2)) {
   let maximumPendingFrames = 0;
   let firstFrameBytes = 0;
   let actualRenderSize;
+  let capturedFrames = 0;
+  const stageTimings = { renderSeconds: 0, captureSeconds: 0, encoderBackpressureSeconds: 0, encoderFinishSeconds: 0 };
   const started = performance.now();
   try {
     await new Promise((resolveStarted, reject) => {
@@ -105,10 +144,10 @@ export async function renderMedia(values = process.argv.slice(2)) {
       const failure = await page.locator('#notice').evaluate(element => element.hidden ? null : element.textContent);
       if (failure) throw new Error(`Asset import failed: ${failure}`);
     }
-    const sceneDuration = await page.evaluate(() => window.__scene?.duration ?? (window.__film ? 32 : null));
+    const sceneDuration = await page.evaluate(() => window.__scene?.duration ?? window.__film?.duration);
     if (Number.isFinite(sceneDuration) && sceneDuration > 0) {
       if (start >= sceneDuration) throw new Error('Start time must precede the end of the scene.');
-      if (options.duration === undefined) duration = Math.min(120, sceneDuration - start);
+      if (options.duration === undefined) duration = Math.min(240, sceneDuration - start);
       else if (kind === 'video' && start + duration > sceneDuration + 1e-8) throw new Error('The requested video extends beyond the scene duration.');
       if (kind === 'image' && time > sceneDuration) throw new Error('Image time exceeds the scene duration.');
     }
@@ -136,17 +175,17 @@ export async function renderMedia(values = process.argv.slice(2)) {
     const session = await page.context().newCDPSession(page);
     const render = async (seconds) => {
       if (errors.length) throw new Error(`Browser render errors: ${errors.join('; ')}`);
-      await page.evaluate((value) => {
+      const renderStarted = performance.now();
+      const rendererPlan = await page.evaluate((value) => {
         if (window.__scene) window.__scene.renderAt(value);
         else if (window.renderAt) window.renderAt(value);
         else window.__nature.renderAt(value);
-      }, seconds);
-      const rendererPlan = await page.evaluate(() => {
         const renderer = window.__scene?.renderer ?? window.__film?.renderer ?? window.__nature?.renderer ?? window.__studio?.renderer;
         const glError = renderer.context.getError();
         if (glError !== 0) throw new Error(`WebGL render error ${glError}.`);
         return renderer.memoryPlan;
-      });
+      }, seconds);
+      stageTimings.renderSeconds += (performance.now() - renderStarted) / 1000;
       peakEstimatedRenderBytes = Math.max(peakEstimatedRenderBytes, rendererPlan.estimatedBytes);
       actualRenderSize = { width: rendererPlan.width, height: rendererPlan.height, reduced: rendererPlan.reduced };
       if (rendererPlan.estimatedBytes > memory * 1024 ** 2) throw new Error('Render target exceeded the configured memory budget.');
@@ -156,7 +195,15 @@ export async function renderMedia(values = process.argv.slice(2)) {
     };
     async function capture(seconds) {
       await render(seconds);
-      const image = await page.screenshot({ type: 'png', animations: 'disabled' });
+      const captureStarted = performance.now();
+      const screenshot = await session.send('Page.captureScreenshot', {
+        format: captureFormat,
+        fromSurface: true,
+        ...(captureFormat === 'jpeg' ? { quality: jpegQuality } : { optimizeForSpeed: true }),
+      });
+      const image = Buffer.from(screenshot.data, 'base64');
+      stageTimings.captureSeconds += (performance.now() - captureStarted) / 1000;
+      capturedFrames++;
       if (!firstFrameBytes) firstFrameBytes = image.byteLength;
       return image;
     }
@@ -165,36 +212,71 @@ export async function renderMedia(values = process.argv.slice(2)) {
       if (options.audio && !existsSync(audioPath)) throw new Error('The selected audio file was not found.');
       const audioArguments = audioPath && existsSync(audioPath) ? ['-ss', String(start), '-i', audioPath] : [];
       const codecArguments = encoderBackend === 'gpu' ? ['-c:v', 'h264_nvenc', '-preset', 'p5', '-cq', '20'] : ['-c:v', 'libx264', '-preset', 'fast', '-crf', '18', '-threads', '2'];
-      const encodingArguments = ['-hide_banner', '-loglevel', 'error', '-y', '-f', 'image2pipe', '-framerate', String(fps), '-vcodec', 'png', '-i', 'pipe:0', ...audioArguments, ...codecArguments, '-pix_fmt', 'yuv420p', '-color_primaries', 'bt709', '-color_trc', 'bt709', '-colorspace', 'bt709', '-movflags', '+faststart', ...(audioArguments.length ? ['-c:a', 'aac', '-b:a', '192k', '-shortest'] : []), output];
+      const encodingArguments = ['-hide_banner', '-loglevel', 'error', '-y', '-f', 'image2pipe', '-framerate', String(fps), '-vcodec', captureFormat === 'jpeg' ? 'mjpeg' : 'png', '-i', 'pipe:0', ...audioArguments, ...codecArguments, '-pix_fmt', 'yuv420p', '-color_primaries', 'bt709', '-color_trc', 'bt709', '-colorspace', 'bt709', '-movflags', '+faststart', ...(audioArguments.length ? ['-c:a', 'aac', '-b:a', '192k', '-shortest'] : []), output];
       encoder = spawn(ffmpeg, encodingArguments, { windowsHide: true, stdio: ['pipe', 'ignore', 'pipe'] });
-      encoder.stderr.on('data', (data) => { encoderError += data.toString(); });
-      encoder.on('error', (error) => { encoderError += error.message; });
-      encoder.stdin.on('error', (error) => { encoderError += error.message; });
-      const finished = once(encoder, 'close');
+      const retainEncoderError = value => {
+        encoderError = (encoderError + String(value)).slice(-8192);
+      };
+      encoder.stderr.on('data', retainEncoderError);
+      encoder.on('error', error => retainEncoderError(error.message));
+      encoder.stdin.on('error', error => retainEncoderError(error.message));
+      const finished = new Promise(resolveFinished => {
+        encoder.once('error', () => resolveFinished(-1));
+        encoder.once('close', resolveFinished);
+      });
       const frameCount = Math.ceil(duration * fps);
+      const captureSequenceStarted = performance.now();
       for (let frame = 0; frame < frameCount; frame++) {
         const image = await capture(start + frame / fps);
         maximumPendingFrames = Math.max(maximumPendingFrames, 1);
         if (encoder.exitCode !== null) throw new Error(`Video encoder stopped: ${encoderError}`);
-        if (!encoder.stdin.write(image)) await once(encoder.stdin, 'drain');
+        if (encoder.stdin.destroyed) throw new Error(`Video encoder stopped: ${encoderError}`);
+        if (!encoder.stdin.write(image)) {
+          const waitStarted = performance.now();
+          await new Promise((resolveDrain, rejectDrain) => {
+            const cleanup = () => {
+              encoder.stdin.off('drain', drained);
+              encoder.stdin.off('error', failed);
+              encoder.off('close', closed);
+            };
+            const drained = () => {
+              cleanup();
+              resolveDrain();
+            };
+            const failed = error => {
+              cleanup();
+              rejectDrain(error);
+            };
+            const closed = () => failed(new Error(`Video encoder stopped before draining: ${encoderError}`));
+            encoder.stdin.once('drain', drained);
+            encoder.stdin.once('error', failed);
+            encoder.once('close', closed);
+          });
+          stageTimings.encoderBackpressureSeconds += (performance.now() - waitStarted) / 1000;
+        }
         if (frame % 48 === 0) {
           const { usedSize } = await session.send('Runtime.getHeapUsage');
           peakBrowserHeap = Math.max(peakBrowserHeap, usedSize);
           if (usedSize > 256 * 1024 ** 2) throw new Error('Browser JavaScript heap exceeded 256 MiB. Export stopped.');
-          const message = `Rendered ${frame + 1}/${frameCount} frames`;
+          const elapsed = (performance.now() - captureSequenceStarted) / 1000;
+          const effectiveFps = (frame + 1) / elapsed;
+          const remainingSeconds = (frameCount - frame - 1) / effectiveFps;
+          const message = `Rendered ${frame + 1}/${frameCount} frames | ${effectiveFps.toFixed(1)} fps | ${(effectiveFps / fps).toFixed(2)}x | ETA ${Math.ceil(remainingSeconds)}s`;
           console.log(message);
         }
       }
       encoder.stdin.end();
-      const [exitCode] = await finished;
+      const finishStarted = performance.now();
+      const exitCode = await finished;
+      stageTimings.encoderFinishSeconds = (performance.now() - finishStarted) / 1000;
       if (exitCode !== 0) throw new Error(`Video encoding failed: ${encoderError}`);
     } else if (kind === 'stills') {
       const stillTimes = scene === 'film' && start === 0 && options.duration === undefined
-        ? [2.5, 7.5, 11.5, 15, 18, 22, 25, 29.5]
+        ? [23, 49, 59, 101, 114, 149, 158, 182]
         : Array.from({ length: 8 }, (_, index) => start + duration * (index + 0.5) / 8);
       for (const seconds of stillTimes) {
         const image = await capture(seconds);
-        await writeFile(resolve(dirname(output), `frame-${seconds.toFixed(1)}.png`), image);
+        await writeFile(resolve(dirname(output), `frame-${seconds.toFixed(1)}.${captureFormat === 'jpeg' ? 'jpg' : 'png'}`), image);
       }
     } else {
       await writeFile(output, await capture(time));
@@ -208,7 +290,8 @@ export async function renderMedia(values = process.argv.slice(2)) {
     });
     if (graphics.glError !== 0) throw new Error(`WebGL render error ${graphics.glError}.`);
     if (backend === 'cpu' && !graphics.gpu.toLowerCase().includes('swiftshader')) throw new Error('CPU backend did not select SwiftShader.');
-    const report = { scene, kind, backend, preset: presetName, aspect, start, encoder: kind === 'video' ? encoderBackend : null, assembly: scene === 'object' ? assembly : null, width, height, actualRenderSize, fps, duration: kind === 'video' ? duration : null, memoryBudgetMiB: memory, peakEstimatedRenderBytes, peakNodeBytes, peakBrowserHeap, maximumPendingFrames, firstFrameBytes, elapsedSeconds: (performance.now() - started) / 1000, graphics, output: basename(output), errors };
+    const elapsedSeconds = (performance.now() - started) / 1000;
+    const report = { scene, kind, backend, preset: presetName, aspect, start, encoder: encoderBackend, requestedEncoder: kind === 'video' ? plan.encoderBackend : null, captureFormat, jpegQuality: captureFormat === 'jpeg' ? jpegQuality : null, capturedFrames, stageTimings, effectiveFPS: capturedFrames / elapsedSeconds, speedRatio: kind === 'video' ? capturedFrames / fps / elapsedSeconds : null, assembly: scene === 'object' ? assembly : null, width, height, actualRenderSize, fps, duration: kind === 'video' ? duration : null, memoryBudgetMiB: memory, peakEstimatedRenderBytes, peakNodeBytes, peakBrowserHeap, maximumPendingFrames, firstFrameBytes, elapsedSeconds, graphics, output: basename(output), errors };
     await writeFile(`${output}.json`, JSON.stringify(report, null, 2));
     console.log(JSON.stringify(report, null, 2));
   } finally {
