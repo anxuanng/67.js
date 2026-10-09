@@ -1,7 +1,26 @@
 # 67.js
 
-67.js is an experimental WebGL2 renderer with an explodable WALL·E study, an interactive nature world and a deterministic 3D short film.
-The viewers run without Three.js. The optional benchmark loads Three.js separately.
+67.js is a JavaScript graphics engine for the browser, built around meshes, materials and cameras familiar to Three.js users.
+It combines a focused WebGL2 renderer with interactive scene studios and a workflow for exporting images and cinematic video.
+Its optimization work targets shared geometry, predictable frame allocation and explicit CPU/GPU render budgets.
+
+The current release includes an explodable WALL·E study, an interactive nature world and a deterministic 3D short film.
+The viewers use the 67.js renderer. The optional benchmark loads Three.js for comparison.
+
+## What it includes
+
+- Instanced geometry, PBR lighting, shadows, MSAA, FXAA and specular filtering.
+- On-demand rendering for object inspection and deterministic time sampling for the short film.
+- Interactive studios with orbit controls, material settings, assembly views and GLB export.
+- CPU and GPU image/video export with memory planning and encoder backpressure.
+- A versioned npm package, standalone browser module and release metadata shared by the website and guide.
+
+## Direction
+
+67.js aims to make rendering, interaction and media production available through one browser graphics workflow.
+The next implementation adds HDR targets, bloom, color grading, reusable keyframe animation and orthographic 2D views.
+It also adds glTF asset input and landscape, portrait and square export presets for films and shorts.
+These features are tracked as implementation work. They are not part of the current published API until their release passes verification.
 
 ![WALL·E rendered by 67.js](docs/wall-e.png)
 
@@ -20,7 +39,9 @@ The studio renders on demand. Continuous animation pauses in hidden tabs.
 npm install 67js@npm:@codepawlhq/67js
 ```
 
-The registry package is `@codepawlhq/67js`. Its local alias is `67js`, so imports stay short. The project brand is 67.js. The library is ESM and bundles its runtime dependencies. Core exports include `Renderer67`, `box`, `cylinder`, `sphere`, `torus`, `assemblyOffset`, `exportGlb`, render budget helpers and `VERSION`. Scene constructors are separate addons. Browser module downloads and the guide are available at https://67js.codepawl.com.
+The registry package is `@codepawlhq/67js`. Its local alias is `67js`, so imports stay short. The project brand is 67.js.
+
+The library is ESM and bundles its runtime dependencies. Core exports include `Renderer67`, `box`, `cylinder`, `sphere`, `torus`, `assemblyOffset`, `exportGlb`, render budget helpers and `VERSION`. Scene constructors are separate addons. Browser module downloads and the guide are available at https://67js.codepawl.com.
 
 ## Run
 

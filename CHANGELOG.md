@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.4
+
+- Publish changed versions through GitHub Actions and npm trusted publishing.
+- Skip versions that already exist on the registry.
+
 ## 0.2.3
 
 - Publish the package under the CodePawl organization as `@codepawlhq/67js`.

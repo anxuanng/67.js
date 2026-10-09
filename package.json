@@ -1,9 +1,9 @@
 {
   "name": "@codepawlhq/67js",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "private": false,
   "type": "module",
-  "description": "A focused WebGL2 renderer and procedural 3D studio",
+  "description": "A browser graphics engine for interactive 3D scenes and cinematic media, with bounded CPU/GPU export",
   "license": "MIT",
   "homepage": "https://67js.codepawl.com",
   "repository": {
@@ -39,7 +39,8 @@
     "render": "node scripts/render-media.mjs",
     "score": "node scripts/score.mjs",
     "export:model": "node scripts/export-model.mjs",
-    "smoke:package": "node scripts/smoke-package.mjs"
+    "smoke:package": "node scripts/smoke-package.mjs",
+    "publish:ci": "node scripts/publish-ci.mjs"
   },
   "devDependencies": {
     "gl-matrix": "3.4.4",

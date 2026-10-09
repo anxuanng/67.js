@@ -27,7 +27,8 @@ const packResult = JSON.parse(run(process.execPath, [npmCli, 'pack', '--ignore-s
 const packed = Array.isArray(packResult) ? packResult[0] : packResult[metadata.name];
 if (!packed?.filename) throw new Error('npm pack did not return a package archive.');
 const tarball = `/releases/${packed.filename}`;
-const integrity = `sha512-${createHash('sha512').update(await readFile(resolve(releases, packed.filename))).digest('base64')}`;
+let archive = await readFile(resolve(releases, packed.filename));
+let integrity = `sha512-${createHash('sha512').update(archive).digest('base64')}`;
 await cp(resolve(root, 'build'), resolve(releases, metadata.version), { recursive: true });
 run(process.execPath, ['node_modules/vite/bin/vite.js', 'build', '--config', 'vite.browser.config.js']);
 await copyFile(resolve(root, 'build-browser/67.module.js'), resolve(releases, metadata.version, '67.module.js'));
@@ -35,15 +36,28 @@ await copyFile(resolve(root, 'CHANGELOG.md'), resolve(root, 'public/changelog.md
 
 let registryVersion = null;
 let registryPublished = false;
+let publishedPackage;
 try {
   const response = await fetch(`https://registry.npmjs.org/${encodeURIComponent(metadata.name)}`, { signal: AbortSignal.timeout(5000) });
   if (response.ok) {
     const registry = await response.json();
     registryVersion = registry['dist-tags']?.latest ?? null;
-    registryPublished = Boolean(registry.versions?.[metadata.version]);
+    publishedPackage = registry.versions?.[metadata.version];
+    registryPublished = Boolean(publishedPackage);
   }
 } catch {
   // The downloadable package remains usable when the external registry is unavailable.
+}
+
+if (publishedPackage) {
+  const canonicalURL = new URL(publishedPackage.dist.tarball);
+  if (canonicalURL.origin !== 'https://registry.npmjs.org') throw new Error('Unexpected registry archive origin.');
+  const response = await fetch(canonicalURL, { signal: AbortSignal.timeout(30000) });
+  if (!response.ok) throw new Error(`Canonical package download failed: HTTP ${response.status}.`);
+  archive = Buffer.from(await response.arrayBuffer());
+  integrity = `sha512-${createHash('sha512').update(archive).digest('base64')}`;
+  if (integrity !== publishedPackage.dist.integrity) throw new Error('Canonical package integrity verification failed.');
+  await writeFile(resolve(releases, packed.filename), archive);
 }
 
 const release = {
@@ -57,7 +71,7 @@ const release = {
   registryPublished,
   registryVersion,
   integrity,
-  packageBytes: packed.size,
+  packageBytes: archive.length,
   api: './getting-started.html#api',
   changelog: '/changelog.md',
 };
