@@ -1,12 +1,12 @@
+import { validateMorphGeometry } from './morph.js';
+
 function paddedLength(length) {
   return Math.ceil(length / 4) * 4;
 }
 
 export function exportGlb(parts) {
   for (const part of parts) {
-    if (part.morph || part.geometry.morphTargets !== undefined) {
-      throw new RangeError('GLB export cannot preserve morph targets yet. Bake the pose or export through a tool that preserves the targets.');
-    }
+    validateMorphGeometry(part.geometry, part.morph);
     if (part.skin || part.geometry.skinIndices || part.geometry.skinWeights) {
       throw new RangeError('GLB export cannot preserve skinning yet. Bake the pose or export through a tool that preserves the skeleton.');
     }
@@ -52,10 +52,19 @@ export function exportGlb(parts) {
   }
   for (const part of parts) {
     if (!geometries.has(part.geometry)) {
-      geometries.set(part.geometry, {
+      const geometry = {
         attributes: { POSITION: accessor(part.geometry.positions, 'VEC3', 34962), NORMAL: accessor(part.geometry.normals, 'VEC3', 34962) },
         indices: accessor(part.geometry.indices, 'SCALAR', 34963),
-      });
+      };
+      if (part.geometry.morphTargets) {
+        geometry.targets = part.geometry.morphTargets.map(target => {
+          const channels = {};
+          if (target.positions) channels.POSITION = accessor(target.positions, 'VEC3', 34962);
+          if (target.normals) channels.NORMAL = accessor(target.normals, 'VEC3', 34962);
+          return channels;
+        });
+      }
+      geometries.set(part.geometry, geometry);
     }
     const materialKey = JSON.stringify(part.material);
     if (!materials.has(materialKey)) {
@@ -72,7 +81,9 @@ export function exportGlb(parts) {
       meshes.set(meshKey, document.meshes.length);
       document.meshes.push({ primitives: [{ ...geometry, material }] });
     }
-    document.nodes.push({ name: part.name, mesh: meshes.get(meshKey), matrix: Array.from(part.matrix) });
+    const node = { name: part.name, mesh: meshes.get(meshKey), matrix: Array.from(part.matrix) };
+    if (part.morph) node.weights = Array.from(part.morph.weights);
+    document.nodes.push(node);
   }
   document.buffers.push({ byteLength });
   const json = new TextEncoder().encode(JSON.stringify(document));

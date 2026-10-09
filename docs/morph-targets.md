@@ -123,3 +123,14 @@ It checks independent signed poses, the 64th target, retained buffers, atomic re
 `scripts/smoke-morph-composition.mjs` compares combined skinning, normal deltas, normal cancellation and shadow receivers with CPU-baked geometry.
 The film scientist uses shared eyelid geometry with one retained blink pose per actor.
 Visual quality and frame performance require separate scene measurements.
+
+## GLB snapshots
+
+`exportGlb(parts)` preserves relative position and normal target accessors and each node's current weights.
+Repeated instances retain shared meshes while their signed weights remain independent.
+The export contains editable targets and a static pose, rather than baked vertex positions.
+It does not serialize animation clips. Skinning and material textures still fail explicitly at export.
+The importer must support morph targets before opening the snapshot in 67.js.
+
+The output follows [glTF morph target and node weight semantics](https://registry.khronos.org/glTF/specs/2.0/glTF-2.0.html#morph-targets).
+Export tests inspect the serialized accessors and load the GLB with the independent Three.js loader.

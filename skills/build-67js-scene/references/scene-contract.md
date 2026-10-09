@@ -97,7 +97,8 @@ Targets contain static relative Float32 XYZ deltas, not absolute vertices. At le
 Change retained `part.morph.weights`, then call `renderer.updateParts()` to commit the pose.
 Separate pose identities split batches; repeated parts can share static target geometry.
 Morphs run before skinning and use standard materials. Read `docs/morph-targets.md` for numeric limits and memory costs.
-Do not silently export morphs through `exportGlb`; it currently rejects them. Check the decoder's capabilities before importing shape keys.
+Source `exportGlb(parts)` preserves morph target deltas and current node weights as a static GLB snapshot; it does not serialize animation clips.
+Skinning and textured materials still reject at export. Check the decoder's capabilities before importing shape keys.
 The optional `{ shadows: false }` update option suits flat scenes without moving shadow casters.
 
 `cameraView('front' | 'right' | 'top')` returns an orthographic camera with the correct up vector.
