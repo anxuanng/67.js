@@ -25,7 +25,9 @@ Version `0.6.0` adds persistent snapshot jobs with progress, cancellation and ve
 Version `0.7.0` adds recipe-owned procedural motion with deterministic node, material and camera sampling.
 Version `0.8.0` adds source-node authoring on imported GLBs with retained rigs, morphs, textures and independent clip timing.
 
-The stdio MCP server supplies seventeen schema-backed tools and persistent CPU/GPU image previews.
+Version `0.9.0` adds isolated multi-angle and pose review with unchanged source revision and preview state.
+
+The stdio MCP server supplies eighteen schema-backed tools and persistent CPU/GPU image previews.
 Recipes retain lighting, volumetric fog, grading and directional shadow coverage with atomic edits and undo.
 Imported asset sessions retain supported textures, rigs, morphs and clips from a configured local GLB catalog.
 
@@ -34,7 +36,7 @@ The npm package includes the prebuilt `67js-mcp` command with lazy browser start
 ## Next
 
 1. Extend imported asset sessions with node-level editing, topology changes and deformed geometry diagnostics.
-2. Extend MCP visual feedback with bounded multi-angle previews and compact rendered diagnostics.
+2. Extend visual review with posed geometry bounds, automatic framing and compact rendered diagnostics.
 3. Extend render jobs with hardware encoder selection, audio, longer sequences and measured adaptive output quality.
 4. Geometry, rig and asset diagnostics that help agents correct intersections, invalid transforms and unsupported materials.
 5. Agent workflows for imported assets, sculpting, surface fitting, lighting and animation, verified against rendered reference scenes.
