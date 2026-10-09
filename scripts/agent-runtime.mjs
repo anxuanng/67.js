@@ -1,8 +1,9 @@
 import { createServer } from 'node:http';
 import { randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
+import { readFile } from 'node:fs/promises';
 import { isAbsolute } from 'node:path';
+import packageMetadata from '../package.json' with { type: 'json' };
 import { createAgentScene, AGENT_SCENE_CAPABILITIES } from '../src/agent-scene.js';
 import { createAgentAssetCatalog } from './agent-asset-catalog.mjs';
 
@@ -14,7 +15,8 @@ const EVALUATION_TIMEOUT_MS = 30000;
 const html = '<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;height:100%;background:#182126}canvas{display:block;width:100vw;height:100vh}</style></head><body><canvas></canvas><script type="module" src="/preview.js"></script></body></html>';
 
 /** Local, serialized browser preview. No browser is launched until scene creation. */
-export function createAgentRuntime({ backend = 'gpu', browser: browserPath, memory = 192, assets: assetRoot } = {}) {
+export function createAgentRuntime({ backend = 'gpu', browser: browserPath, memory = 192, assets: assetRoot,
+  previewUrl = new URL('../build/mcp/preview.js', import.meta.url) } = {}) {
   if (!['gpu', 'cpu'].includes(backend)) {
     throw new RangeError('backend must be gpu or cpu.');
   }
@@ -82,26 +84,10 @@ export function createAgentRuntime({ backend = 'gpu', browser: browserPath, memo
     }
     phase = 'starting';
     try {
-      const [{ build }, { chromium }] = await Promise.all([
-        import('vite'),
-        import('playwright'),
+      const [{ chromium }, code] = await Promise.all([
+        import('playwright-core'),
+        readFile(previewUrl, 'utf8'),
       ]);
-      const root = fileURLToPath(new URL('..', import.meta.url));
-      const bundle = await build({
-        root,
-        configFile: false,
-        logLevel: 'silent',
-        build: {
-          write: false,
-          minify: false,
-          lib: { entry: fileURLToPath(new URL('./agent-preview-browser.js', import.meta.url)), formats: ['es'] },
-        },
-      });
-      const outputs = (Array.isArray(bundle) ? bundle : [bundle]).flatMap(result => result.output);
-      if (outputs.length !== 1 || outputs[0].type !== 'chunk' || !outputs[0].isEntry) {
-        throw new Error('The private preview must produce one self-contained module.');
-      }
-      const code = outputs[0].code;
       httpServer = createServer((request, response) => {
         response.setHeader('Cache-Control', 'no-store');
         response.setHeader('Content-Security-Policy', "default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; img-src data: blob:; connect-src blob:");
@@ -118,13 +104,13 @@ export function createAgentRuntime({ backend = 'gpu', browser: browserPath, memo
         httpServer.listen(0, '127.0.0.1', resolve);
       });
       const origin = `http://127.0.0.1:${httpServer.address().port}`;
-      const nativeChrome = 'C:/Program Files/Google/Chrome/Application/chrome.exe';
-      const executablePath = browserPath ?? (existsSync(nativeChrome) ? nativeChrome : undefined);
       const args = ['--enable-webgl', '--ignore-gpu-blocklist', '--disable-renderer-backgrounding'];
       if (backend === 'cpu') {
         args.push('--use-angle=swiftshader', '--enable-unsafe-swiftshader');
       }
-      browserInstance = await chromium.launch({ headless: true, executablePath, args });
+      browserInstance = await chromium.launch({ headless: true, args,
+        ...(browserPath ? { executablePath: browserPath } : { channel: 'chrome' }),
+      });
       page = await browserInstance.newPage({ viewport: { width: 768, height: 512 }, deviceScaleFactor: 1 });
       await page.route('**/*', route => {
         const url = new URL(route.request().url());
@@ -188,7 +174,7 @@ export function createAgentRuntime({ backend = 'gpu', browser: browserPath, memo
         sceneLimits: SCENE_LIMITS,
         preview: { backend, memoryBudgetMiB: memory, maximumWidth: 1024, maximumHeight: 1024, maximumImageBytes: MAXIMUM_IMAGE_BYTES, maximumActiveScenes: 1, maximumQueuedCalls: MAXIMUM_QUEUED_CALLS, evaluationTimeoutMs: EVALUATION_TIMEOUT_MS },
         phase: closing && phase !== 'closed' ? 'closing' : phase,
-        availableIn: 'source after npm 0.4.1',
+        availableIn: packageMetadata.version,
         assets: {
           configured: Boolean(assetRoot), formats: ['self-contained GLB'],
           maximumBytes: 16 * 1024 * 1024, maximumAssets: 64,

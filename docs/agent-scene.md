@@ -1,7 +1,6 @@
 # Agent scene authoring
 
-This addon is available in the current source checkout, after npm release `0.4.1`.
-It is not included in the published `0.4.1` package.
+This addon is included in npm release `0.5.0` and later.
 
 The optional `agent-scene` addon creates bounded CPU scenes from JSON recipes and applies atomic editing commands.
 It returns retained renderer parts with shared geometry and material resources.

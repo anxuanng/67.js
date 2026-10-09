@@ -1,7 +1,6 @@
 # MCP scene authoring
 
-The stdio server is available in the source checkout after npm release `0.4.1`.
-The published `0.4.1` package does not include this server.
+The `67js-mcp` stdio server is included in npm release `0.5.0` and later.
 It uses the maintained MCP TypeScript SDK v2 server and a local browser runtime.
 The [official SDK documentation](https://ts.sdk.modelcontextprotocol.io/v2/) describes its transport and protocol APIs.
 
@@ -12,18 +11,24 @@ The image bytes appear only in the image content block.
 
 ## Requirements and launch
 
-The server requires Node.js 20 or later, installed project dependencies, and a local Chrome or Chromium executable.
-The browser and its build dependencies load when `scene_create` or `scene_create_asset` runs.
-The runtime serves its generated scene page on the loopback interface.
+The server requires Node.js 20.19 or later and an installed Chrome or Chromium executable.
+The npm package contains a prebuilt server and browser preview. A source checkout and Vite are unnecessary.
+The browser driver loads when `scene_create` or `scene_create_asset` runs. It does not download a browser.
+
+The runtime serves its bundled scene page on the loopback interface.
 The MCP connection uses stdin and stdout, without an HTTP MCP listener.
 
-1. Run the server from the source checkout:
+1. Install the package in your project:
 
    ```powershell
-   node scripts/mcp-server.mjs --backend gpu --memory 192
+   npm install 67js@npm:@codepawlhq/67js
    ```
 
-2. Configure your MCP client with absolute paths:
+   Run the installed command with `npx 67js-mcp --backend gpu --memory 192`.
+   For a standalone launch, use `npx --package @codepawlhq/67js@0.5.0 67js-mcp --backend gpu --memory 192`.
+   `67js-mcp --help` lists options. `67js-mcp --version` reports the installed version.
+
+2. Configure your MCP client with absolute paths to Node and the installed CLI:
 
    ```json
    {
@@ -31,7 +36,7 @@ The MCP connection uses stdin and stdout, without an HTTP MCP listener.
        "67js-scene": {
          "command": "C:/Program Files/nodejs/node.exe",
          "args": [
-           "C:/projects/67js/scripts/mcp-server.mjs",
+           "C:/projects/my-scene/node_modules/67js/bin/67js-mcp.mjs",
            "--backend", "gpu",
            "--memory", "192",
            "--browser", "C:/Program Files/Google/Chrome/Application/chrome.exe"
@@ -41,7 +46,8 @@ The MCP connection uses stdin and stdout, without an HTTP MCP listener.
    }
    ```
 
-The browser path is optional when the runtime can locate a supported browser.
+The browser path is optional for a standard Google Chrome installation. Pass `--browser` for another Chromium executable.
+Using Node directly also avoids shell-specific npm launcher behavior in MCP clients on Windows.
 `--backend` accepts `gpu` or `cpu` and defaults to `gpu`.
 `--memory` accepts an integer from 32 to 256 MiB and defaults to 192.
 

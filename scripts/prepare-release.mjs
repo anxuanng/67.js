@@ -19,6 +19,7 @@ function run(executable, argumentsList, capture = false) {
 const commit = run('git', ['rev-parse', 'HEAD'], true);
 if (process.argv.includes('--require-clean') && run('git', ['status', '--porcelain'], true)) throw new Error('Commit release changes before production preparation.');
 run(process.execPath, ['node_modules/vite/bin/vite.js', 'build', '--config', 'vite.lib.config.js']);
+run(process.execPath, ['scripts/build-mcp.mjs']);
 const releases = resolve(root, 'public/releases');
 await mkdir(releases, { recursive: true });
 const npmCli = process.env.npm_execpath ?? resolve(dirname(process.execPath), 'node_modules/npm/bin/npm-cli.js');

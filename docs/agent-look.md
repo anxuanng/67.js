@@ -1,14 +1,13 @@
 # Agent lighting and look
 
-This feature is available in the current source checkout, after npm release `0.4.1`.
-It is not included in the published `0.4.1` package.
+This feature is included in npm release `0.5.0` and later.
 
 Agent scene recipes can contain `environment`, `effects`, and `shadow` objects.
 These fields belong to canonical recipes and checkpoint snapshots.
 Look commands use the same atomic revision checks as node and material commands.
 Failed look validation preserves the previous recipe and revision.
 
-The source helper `normalizeAgentLook({ environment, effects, shadow })` returns detached, fully normalized JSON.
+The optional helper `normalizeAgentLook({ environment, effects, shadow })` returns detached, fully normalized JSON.
 It fills omitted fields without mutating the input.
 `resolveAgentShadow(shadow, lightDirection)` returns detached renderer bounds with `eye`, `target`, `up`, `extent`, `near`, and `far`.
 The helpers do not create geometry, render targets, or GPU resources.

@@ -1,5 +1,25 @@
 # Release verification
 
+## 0.5.0
+
+Source checks used Windows Node.js and installed Chrome with CPU SwiftShader.
+Registry publication and live deployment are verified separately against the pushed commit.
+
+| Check | Measured result |
+| --- | --- |
+| Node tests | 373 tests passed. |
+| Installed CLI | A fresh project installed the archive with development dependencies omitted and scripts disabled. The npm launcher, help and version worked. |
+| Protocol | Modern and legacy SDK clients discovered twelve tools and received the package version. Capabilities did not start a browser. |
+| Actual rendering | Imported fixtures retained one material texture and one skin. Lighting edits changed PNG output, and undo restored the original PNG exactly. |
+| Animation | Sampling an imported clip backward and forward reproduced the same PNG while retaining geometry buffers. |
+| Cleanup | Closing the MCP connection with an active scene closed owned preview resources and exited the server process. |
+| Consumer | The packed core and addons imported correctly, including an actual physics contact simulation. |
+| Licenses | The MCP build reported no missing dependency licenses and recorded output hashes in its manifest. |
+| Website | Homepage and agent docs rendered without horizontal overflow or page errors at 1440 and 390 pixels. |
+
+These checks establish CPU preview behavior. They do not establish hardware GPU performance or cinematic quality.
+MCP animation track authoring, imported topology changes and persistent video jobs remain unsupported.
+
 ## 0.4.0
 
 The source validation used Windows Chrome, ANGLE D3D11 and an RTX 3060.

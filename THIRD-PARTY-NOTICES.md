@@ -76,6 +76,15 @@ CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
 OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+## MCP command and browser preview
+
+The packaged `build/mcp/server.mjs` and `build/mcp/preview.js` bundle the MCP SDK,
+schema validation and rendering dependencies. `build/mcp/LICENSES.md` contains
+their complete license and notice texts, including dependencies embedded in the SDK.
+`build/mcp/manifest.json` records dependency versions, license provenance and output SHA-256 hashes.
+Pinned upstream license copies for embedded dependencies are retained in `licenses/mcp/` in the source repository.
+The external `playwright-core` browser driver includes its own license and notices in its dependency package.
+
 ## Simple Icons (package-manager logos)
 
 The npm, pnpm, Yarn and Bun SVG marks are sourced from Simple Icons and distributed under CC0-1.0. See public/licenses/simple-icons.txt. Brand marks remain subject to their respective trademark rights.

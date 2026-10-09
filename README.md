@@ -124,15 +124,17 @@ The repository includes two reusable Codex skills.
 
 ## Agent authoring
 
-The current source includes [agent scene sessions](docs/agent-scene.md), newer than npm `0.4.1`.
+Version `0.5.0` includes [agent scene sessions](docs/agent-scene.md) and the `67js-mcp` command.
 Agents can author JSON recipes, inspect object bounds, submit atomic edits and restore bounded checkpoints.
 Agents can add or remove nodes and shared resources in the same revisioned command stream.
 The optional addon retains unchanged parts and geometry across supported edits.
 
-The source [MCP server](docs/mcp.md) connects these sessions to a persistent browser renderer.
+The packaged [MCP server](docs/mcp.md) connects these sessions to a persistent browser renderer.
 Agents receive PNG previews and structured scene metadata through twelve stdio tools.
 Agents can author [lights, volumetric fog, grading and shadow coverage](docs/agent-look.md), then restore the complete look from a checkpoint.
-Run `node scripts/mcp-server.mjs --backend gpu --memory 192` from a checkout with project dependencies and a local Chrome installation.
+After installing the package, run `npx 67js-mcp --backend gpu --memory 192` with Node.js 20.19 or later and a local Chrome installation.
+The server and preview are built into the package. The browser driver loads only when a scene is created.
+
 The [asset adapter](docs/agent-asset.md) imports catalog GLBs with supported textures, rigs, morphs and clips.
 Animation track authoring, imported mesh topology edits and persistent video jobs remain implementation work.
 

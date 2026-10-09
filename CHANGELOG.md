@@ -1,10 +1,13 @@
 # Changelog
 
-## Unreleased
+## 0.5.0
 
 - Add atomic agent commands for creating, removing and rebinding nodes and shared resources, with bounded checkpoint geometry ownership.
 - Reconcile rigid untextured renderer topology while retaining unchanged batches and sharing immutable geometry buffers across draws.
-- Add source-checkout MCP tools with strict scene schemas, persistent CPU/GPU previews and bounded PNG responses.
+- Ship the `67js-mcp` npm command with a prebuilt SDK server, browser preview and complete bundled dependency licenses.
+- Add twelve MCP tools with strict scene schemas, persistent CPU/GPU previews and bounded PNG responses.
+- Import local catalog GLBs with supported material maps, rigs, morphs and deterministic clip sampling.
+- Retain authored lighting, volumetric fog, grading and directional shadow coverage across edits and checkpoints.
 - Keep renderer sessions alive across edits and close owned browser resources when the MCP connection ends.
 - Add optional agent scene sessions with stable IDs, shared geometry, revision checks, atomic edits and bounded checkpoints.
 - Prioritize agent authoring, visual feedback and MCP integration in the implementation roadmap.

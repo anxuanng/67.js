@@ -4,20 +4,12 @@ import { constants, setPriority } from 'node:os';
 import { resolve } from 'node:path';
 import { Client } from '@modelcontextprotocol/client';
 import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
-import { skinnedStripAsset } from '../tests/fixtures/skinned-strip.js';
+import { createTexturedRigFixture } from './agent-asset-fixture.mjs';
 
 setPriority(0, constants.priority.PRIORITY_BELOW_NORMAL);
 await mkdir('artifacts/asset-catalog-proof', { recursive: true });
 await writeFile('artifacts/asset-catalog-proof/wall-e.glb', await readFile('public/wall-e.glb'));
-const texturedDocument = JSON.parse(await readFile('tests/fixtures/textured-triangle.gltf', 'utf8'));
-const image = Buffer.from(texturedDocument.images[0].uri.split(',')[1], 'base64');
-const skinned = skinnedStripAsset((document, append) => {
-  append(new Uint8Array(image), 'SCALAR');
-  document.images = [{ bufferView: document.bufferViews.length - 1, mimeType: 'image/png' }];
-  document.textures = [{ source: 0 }];
-  document.materials[0].pbrMetallicRoughness.baseColorTexture = { index: 0 };
-});
-await writeFile('artifacts/asset-catalog-proof/textured-rig.glb', Buffer.from(skinned));
+await writeFile('artifacts/asset-catalog-proof/textured-rig.glb', await createTexturedRigFixture());
 const transport = new StdioClientTransport({ command: process.execPath,
   args: [resolve('scripts/mcp-server.mjs'), '--backend', 'cpu', '--memory', '192', '--assets', resolve('artifacts/asset-catalog-proof')],
   stderr: 'pipe', cwd: process.cwd(),

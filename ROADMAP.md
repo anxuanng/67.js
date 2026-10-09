@@ -20,12 +20,14 @@ This document separates shipping capabilities from work in progress. Performance
 - Optional recorded Rapier physics with contacts, joint limits and bounded motors.
 - Static sculpt brushes, clipped surface patches, shrinkwrap and bounded mesh contact and containment queries.
 
-## Next
-
-The current source, after npm `0.4.1`, includes agent scenes with stable IDs, atomic resource/node edits and checkpoints.
+Version `0.5.0` includes agent scenes with stable IDs, atomic resource/node edits and checkpoints.
 Its stdio MCP server supplies twelve schema-backed tools and persistent CPU/GPU image previews.
 Recipes retain lighting, volumetric fog, grading and directional shadow coverage with atomic edits and undo.
 Imported asset sessions retain supported textures, rigs, morphs and clips from a configured local GLB catalog.
+
+The npm package includes the prebuilt `67js-mcp` command with lazy browser startup and bundled dependency licenses.
+
+## Next
 
 1. Extend imported asset sessions with node-level editing, topology changes and deformed geometry diagnostics.
 2. Extend MCP visual feedback with bounded multi-angle and absolute animation-time previews.

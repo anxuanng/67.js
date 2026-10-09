@@ -133,7 +133,7 @@ Bind immutable geometry once. This sparse point attachment does not deform the a
 The surface-attachment addon is included in npm `0.4.1`.
 
 Agent authoring uses `createAgentScene(recipe, limits)` from `67js/addons/agent-scene`.
-This addon is available in source after npm `0.4.1`; it is not included in that published package.
+This addon is included in npm `0.5.0` and later.
 Read `docs/agent-scene.md` for schema version one, immutable resources and atomic topology commands.
 Start with capabilities and bounded inspection. Edit stable IDs through one `apply` batch with the current `expectedRevision`.
 Checkpoint before uncertain changes, inspect and render the result, then restore or release the checkpoint.
@@ -145,7 +145,7 @@ Keep JSON commands and snapshots exposed to agents; retained matrices and immuta
 Do not inspect all vertex bounds in a frame loop. Memory estimates cover unique geometry arrays, not total RAM or VRAM.
 The scene addon does not implement MCP transport, asset search, animation authoring, or render jobs.
 
-For a configured MCP client, use the separate source-only server documented in `docs/mcp.md`.
+For a configured MCP client, use the packaged `67js-mcp` server documented in `docs/mcp.md`.
 Call `scene_capabilities`, create one JSON scene, inspect IDs, checkpoint, apply a small batch, and assess `scene_look` PNG content.
 Use the revision returned by each committed apply or restore. A response with `committed: true` and `renderSucceeded: false` still advances revision.
 Inspect or export the canonical recipe after a render failure; do not retry the edit with its old revision.
@@ -156,7 +156,7 @@ Use `scene_create_asset` with a `67js.asset` recipe; supported texture maps, ski
 Edit imported models through `set-root`, factor-only `set-material`, look commands and absolute `set-animation` sampling. Imported topology is immutable.
 Use `{ type: 'set-animation', time }` to sample the current clip; `{ type: 'set-animation', clip: null }` restores the decoded pose.
 Bounds describe authored base geometry, not the deformed skin/morph silhouette. Check the rendered PNG before accepting framing.
-Read `docs/agent-look.md` for authored lighting, fog, effects and shadow coverage, available after npm `0.4.1`.
+Read `docs/agent-look.md` for authored lighting, fog, effects and shadow coverage, included in npm `0.5.0`.
 Use atomic `set-environment`, `set-effects` and `set-shadow` partial records instead of editing renderer internals through MCP.
 Nested volumeFog/bloom fields merge; pointLights replaces the full list. Point lights do not cast local shadows.
 Volume fog requires opaque HDR/depth rendering. The preview adapter allocates depth support at creation and rejects unsupported fog before commit.

@@ -1,13 +1,13 @@
 # Imported asset authoring
 
-`src/agent-asset.js` is an optional source module added after 0.4.1. It wraps one
+`67js/addons/agent-asset` is an optional addon available since 0.5.0. It wraps one
 decoded `parseGltf()` asset in a JSON authoring session. It preserves renderer
 geometry, texture descriptors, skins, morph targets, and their typed arrays.
 The module performs CPU validation and creates no GPU resources.
 
 ```js
-import { parseGltf } from './src/gltf.js';
-import { createAgentAssetScene } from './src/agent-asset.js';
+import { parseGltf } from '67js/addons/gltf';
+import { createAgentAssetScene } from '67js/addons/agent-asset';
 
 const asset = await parseGltf(glbBytes);
 const scene = createAgentAssetScene(asset, {

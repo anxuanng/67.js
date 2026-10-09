@@ -7,16 +7,19 @@ The installed package determines available APIs. Release metadata describes the 
 
 ## Read only what your task needs
 
-The current source adds `67js/addons/agent-scene`, newer than npm `0.4.1`.
+Version `0.5.0` adds `67js/addons/agent-scene` and the `67js-mcp` command.
 Read `/agent-scene.md` for versioned JSON recipes, stable IDs, expected revisions, atomic edits and bounded checkpoints.
 Use `session.inspect()` for compact object facts and `session.exportRecipe()` for detached JSON.
 Keep renderer-facing geometry immutable. Call `renderer.updateParts(session.parts)` after a successful edit or restore.
 This addon does not expose an MCP server or a render job queue.
 
-The source checkout provides a separate stdio MCP server in `scripts/mcp-server.mjs`, after npm `0.4.1`.
+The npm package includes a prebuilt stdio MCP server. After alias installation, run `npx 67js-mcp --backend gpu --memory 192` with Node.js 20.19+ and installed Chrome.
+For MCP clients, invoke Node directly with the absolute path to `node_modules/67js/bin/67js-mcp.mjs`. Read `/mcp.md` for configuration.
+The browser starts only when creating a scene. No source checkout, Vite build or browser download is required.
+
 Read `/mcp.md` before configuring it. Start with `scene_capabilities`, create a recipe and inspect its stable IDs.
 
-Read `/agent-asset.md` for source-only imported asset sessions and the `67js/addons/agent-asset` addon.
+Read `/agent-asset.md` for imported asset sessions available since `0.5.0` and the `67js/addons/agent-asset` addon.
 Configure --assets with an absolute GLB directory, then call scene_asset_catalog and scene_create_asset with a content-bound asset ID.
 Imported scenes preserve supported maps, skins, morphs and clips. Their topology remains fixed.
 Use set-root for asset placement and set-animation for absolute clip/time sampling. Checkpoint before sampling or relighting.

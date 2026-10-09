@@ -4,6 +4,7 @@ import * as z from 'zod/v4';
 import { setPriority, constants } from 'node:os';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import packageMetadata from '../package.json' with { type: 'json' };
 
 const finite = z.number().min(-3.4028234663852886e38).max(3.4028234663852886e38);
 const positive = finite.positive();
@@ -157,7 +158,7 @@ function jsonResult(value) {
   return { content: [{ type: 'text', text: JSON.stringify(value) }], structuredContent: value };
 }
 
-export function createAgentMcpServer(runtime, { version = '0.4.1' } = {}) {
+export function createAgentMcpServer(runtime, { version = packageMetadata.version } = {}) {
   const server = new McpServer({ name: '67js-scene', version }, {
     instructions: 'Start with scene_capabilities. Create a procedural recipe with scene_create, or select a configured GLB digest from scene_asset_catalog and use scene_create_asset. Inspect stable IDs and save a checkpoint before editing. Apply small batches with the current expectedRevision and check committed, revision and renderSucceeded. Procedural scenes support topology edits; imported assets preserve decoded meshes and support root, material, look and absolute clip sampling. A committed edit can have a separate renderError; do not retry it with an old revision. Use scene_look to judge the actual image. Restore experiments or release unused checkpoints. Export the final recipe and dispose the scene when finished. No arbitrary JavaScript, remote URLs, file paths or jobs are exposed.',
   });
@@ -197,9 +198,9 @@ export function createAgentMcpServer(runtime, { version = '0.4.1' } = {}) {
   return server;
 }
 
-async function main() {
+export async function runMcpCli({ argumentsValue = process.argv.slice(2),
+  previewUrl = new URL('../build/mcp/preview.js', import.meta.url), version = packageMetadata.version } = {}) {
   const options = { backend: 'gpu', memory: 192 };
-  const argumentsValue = process.argv.slice(2);
   for (let index = 0; index < argumentsValue.length; index += 2) {
     const name = argumentsValue[index];
     const value = argumentsValue[index + 1];
@@ -213,7 +214,7 @@ async function main() {
   }
   setPriority(0, constants.priority.PRIORITY_BELOW_NORMAL);
   const { createAgentRuntime } = await import('./agent-runtime.mjs');
-  const handle = serveStdio(async () => createAgentMcpServer(await createAgentRuntime(options)), {
+  const handle = serveStdio(() => createAgentMcpServer(createAgentRuntime({ ...options, previewUrl }), { version }), {
     transport: new StdioServerTransport(process.stdin, process.stdout, { maxBufferSize: 2 * 1024 * 1024 }),
     onerror: error => console.error(`67js MCP error: ${error.message}`),
   });
@@ -223,7 +224,7 @@ async function main() {
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
-  main().catch(error => {
+  runMcpCli().catch(error => {
     console.error(error.message);
     process.exitCode = 1;
   });
