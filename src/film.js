@@ -6,6 +6,7 @@ import { box, cylinder, sphere, torus } from './geometry.js';
 import { extrude } from './modeling.js';
 import { createAnimationClip, createAnimationPlayer } from './animation.js';
 import { sampleScientistHead } from './film-character.js';
+import { createMorphPose } from './morph.js';
 import { CRADLE, cradlePivot } from './film-physics-definition.js';
 import cradleRecording from './film-physics-clip.json' with { type: 'json' };
 
@@ -121,6 +122,29 @@ function createScientistHeadMesh() {
     geometry.colors[index + 1] = 1 - cheek * 0.085 - underEye * 0.12 - stubble * 0.065;
     geometry.colors[index + 2] = 1 - cheek * 0.10 - underEye * 0.10 - stubble * 0.055;
   }
+  return geometry;
+}
+
+function createEyelidMesh() {
+  const surface = lowerLatitude => sampledSurface(32, 16, (horizontal, vertical) => {
+    const longitude = (0.5 - horizontal) * 2.7;
+    const latitude = 1.48 + vertical * (lowerLatitude - 1.48);
+    const radius = 0.5;
+    return [
+      Math.sin(longitude) * Math.cos(latitude) * radius,
+      Math.sin(latitude) * radius,
+      Math.cos(longitude) * Math.cos(latitude) * radius,
+    ];
+  });
+  const geometry = surface(0.55);
+  const closed = surface(-0.75);
+  const positions = new Float32Array(geometry.positions.length);
+  const normals = new Float32Array(geometry.normals.length);
+  for (let component = 0; component < positions.length; component++) {
+    positions[component] = closed.positions[component] - geometry.positions[component];
+    normals[component] = closed.normals[component] - geometry.normals[component];
+  }
+  geometry.morphTargets = [{ positions, normals }];
   return geometry;
 }
 
@@ -365,6 +389,7 @@ function createIgnition(meshes) {
 function addScientist(builder, position = [0, 0, 0], hat = true, rotation = 0) {
   const { add } = builder;
   const actorName = `Scientist ${builder.parts.length}`;
+  const blinkPose = createMorphPose(1);
   const joints = new Map();
   const transform = point => [position[0] + point[0] * Math.cos(rotation) + point[2] * Math.sin(rotation), position[1] + point[1], position[2] - point[0] * Math.sin(rotation) + point[2] * Math.cos(rotation)];
   const actorMaterials = {
@@ -428,7 +453,8 @@ function addScientist(builder, position = [0, 0, 0], hat = true, rotation = 0) {
     shape('Facial eye white', 'sphere', [side * 0.046, 1.711, 0.079], [0.021, 0.008, 0.013], 'eye');
     shape('Facial blue iris', 'sphere', [side * 0.046, 1.711, 0.0905], [0.0065, 0.0063, 0.0018], 'iris');
     shape('Facial pupil', 'sphere', [side * 0.046, 1.711, 0.092], [0.0027, 0.0034, 0.0009], 'pupil');
-    shape('Facial upper eyelid', 'sphere', [side * 0.046, 1.718, 0.085], [0.023, 0.0047, 0.006], 'skin');
+    const eyelid = shape('Facial upper eyelid', 'eyelid', [side * 0.046, 1.711, 0.085], [0.047, 0.018, 0.017], 'skin');
+    eyelid.morph = blinkPose;
     shape('Facial lower eyelid', 'sphere', [side * 0.046, 1.704, 0.085], [0.022, 0.0035, 0.005], 'skin');
     shape('Facial eyebrow', 'sphere', [side * 0.046, 1.735, 0.09], [0.028, 0.004, 0.005], 'graphite', [0, 0, side * -0.11]);
     shape('Facial nostril', 'sphere', [side * 0.008, 1.66, 0.1245], [0.0038, 0.0022, 0.0018], 'lip');
@@ -721,6 +747,7 @@ function createSparks(meshes) {
 
 function animateSet(parts, sceneName) {
   const animateActors = createFilmActorRig(parts);
+  const blinkPoses = [...new Set(parts.filter(part => part.morph).map(part => part.morph))];
   const animatePhysics = sceneName === 'apparatus' ? createCradleAnimation(parts) : null;
   const moving = parts.filter(part =>
     sceneName === 'sparks' || sceneName === 'atom' ||
@@ -736,6 +763,13 @@ function animateSet(parts, sceneName) {
   }
   return function animate(time) {
     animateActors(time);
+    for (let index = 0; index < blinkPoses.length; index++) {
+      const phase = ((time + index * 0.73) % 3.7 + 3.7) % 3.7;
+      const closure = phase >= 1.8 && phase <= 2.04
+        ? Math.sin((phase - 1.8) / 0.24 * Math.PI) ** 2
+        : 0;
+      blinkPoses[index].weights[0] = closure;
+    }
     animatePhysics?.(time);
     moving.forEach((part, index) => {
       const base = bases[index];
@@ -779,6 +813,7 @@ function animateSet(parts, sceneName) {
 
 export function createFilmScenes() {
   const meshes = {
+    eyelid: createEyelidMesh(),
     box: box(0.025, 2),
     head: createScientistHeadMesh(),
     hatCrown: createFedoraCrown(),

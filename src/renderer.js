@@ -7,6 +7,7 @@ import { resolveEffects } from './effects.js';
 import { createLightingState, updateLightingState } from './lighting.js';
 import { resolveVolumeFog } from './volumetric.js';
 import { validateSkinGeometry, validateSkinPose, skinTextureLayout, packSkinInfluences } from './skinning.js';
+import { validateMorphGeometry, validateMorphPose, validateMorphTransform, packMorphTargets } from './morph.js';
 
 const MATERIAL_TAGS = { armor: 1, floor: 2, water: 3, foliage: 4, terrain: 5, grass: 7, fire: 8, smoke: 9, unlit: 10 };
 const INSTANCE_STRIDE = 41;
@@ -17,6 +18,7 @@ const MAP_FLAGS = ['hasBaseMap', 'hasNormalMap', 'hasMetallicRoughnessMap', 'has
 const DEFAULT_NORMAL_SCALE = [1, 1];
 const PROCEDURAL_MATERIAL_TAGS = new Set(['water', 'foliage', 'grass', 'terrain', 'floor', 'fire', 'smoke']);
 const SKIN_UNIFORMS = ['skinEnabled', 'skinInfluences', 'jointPalette'];
+const MORPH_UNIFORMS = ['morphEnabled', 'morphVertexCount', 'morphTargetCount', 'morphWeights[0]', 'morphTargets'];
 
 function validateMaterialMaps(material) {
   if (PROCEDURAL_MATERIAL_TAGS.has(material.tag)) {
@@ -122,16 +124,21 @@ function groundPart() {
 export function groupParts(parts, batching = true) {
   const groups = new Map();
   const batches = [];
+  const morphInfos = new Map();
   for (const part of parts) {
     validateTransform(part);
     if (part.castShadow !== undefined && typeof part.castShadow !== 'boolean') throw new TypeError('castShadow must be a boolean');
     validateSkinGeometry(part.geometry, part.skin);
     if (part.skin) validateSkinPose(part.skin, part.geometry, part.matrix);
     if (part.skin && PROCEDURAL_MATERIAL_TAGS.has(part.material.tag)) throw new Error('Skinned parts require a standard material tag.');
+    if (!morphInfos.has(part.geometry)) morphInfos.set(part.geometry, validateMorphGeometry(part.geometry, part.morph));
+    else if (part.morph || part.geometry.morphTargets) validateMorphPose(part.morph, morphInfos.get(part.geometry));
+    if (part.morph && PROCEDURAL_MATERIAL_TAGS.has(part.material.tag)) throw new Error('Morphed parts require a standard material tag.');
+    if (part.morph) validateMorphTransform(part.morph, morphInfos.get(part.geometry), part.matrix, part.skin);
     const key = batching ? part.geometry : part;
     if (!groups.has(key)) groups.set(key, new Map());
     let maps = groups.get(key);
-    for (const value of [...materialMapState(part.material), part.skin ?? null, part.castShadow !== false]) {
+    for (const value of [...materialMapState(part.material), part.skin ?? null, part.morph ?? null, part.castShadow !== false]) {
       if (!maps.has(value)) maps.set(value, new Map());
       maps = maps.get(value);
     }
@@ -197,15 +204,27 @@ export class Renderer67 {
     this.partLocations = new Map();
     this.updateBatches = new Set();
     this.updateSkins = new Set();
+    this.updateMorphs = new Set();
     this.skinTextures = new Map();
     this.influenceTextures = new Map();
+    this.morphTextures = new Map();
     this.textures = new Map();
     this.textureBytes = 4;
     this.shadowsDirty = true;
     const groups = groupParts(ground ? [...parts, groundPart()] : parts, batching);
     const textureLimit = this.context.getParameter(this.context.MAX_TEXTURE_SIZE);
     this.hasSkins = groups.some(group => group[0].skin);
+    this.hasMorphs = groups.some(group => group[0].morph);
     if (this.hasSkins && (this.context.getParameter(this.context.MAX_VERTEX_TEXTURE_IMAGE_UNITS) < 2 || this.context.getParameter(this.context.MAX_COMBINED_TEXTURE_IMAGE_UNITS) < 8)) throw new Error('GPU skinning requires two vertex texture units and eight combined texture units.');
+    if (this.hasMorphs && (this.context.getParameter(this.context.MAX_VERTEX_TEXTURE_IMAGE_UNITS) < (this.hasSkins ? 3 : 1) || this.context.getParameter(this.context.MAX_COMBINED_TEXTURE_IMAGE_UNITS) < 9)) throw new Error('GPU morphing requires one additional vertex texture unit and nine combined texture units.');
+    const morphGeometries = new Set();
+    for (const group of groups) {
+      const part = group[0];
+      if (!part.morph || morphGeometries.has(part.geometry)) continue;
+      const texelCount = part.geometry.positions.length / 3 * part.geometry.morphTargets.length * 2;
+      this.textureBytes += skinTextureLayout(texelCount, textureLimit, 2).bytes;
+      morphGeometries.add(part.geometry);
+    }
     const poses = new Set();
     const skinGeometries = new Set();
     for (const group of groups) {
@@ -247,11 +266,12 @@ export class Renderer67 {
     this.inverseViewProjection = mat4.create();
     this.program = compileProgram(this.context, benchmark ? benchmarkVertexShader : vertexShader, benchmark ? benchmarkFragmentShader : fragmentShader);
     this.depthProgram = compileProgram(this.context, depthVertexShader, depthFragmentShader);
-    this.uniforms = Object.fromEntries(['viewProjection', 'lightProjection', 'eye', 'armorColor', 'armorSurface', 'exposure', 'inspection', 'shadowMap', ...MAP_UNIFORMS, ...MAP_FLAGS, ...SKIN_UNIFORMS, 'normalScale', 'occlusionStrength', 'hdrEnabled', 'time', 'wind', 'worldMode', 'daylight', 'lightDirection', 'fogColor', 'fogDensity', 'waterRipple', 'rippleTime', 'explosionProgress', 'explosionCenter', 'assemblyAmount'].map((name) => [name, this.context.getUniformLocation(this.program, name)]));
+    this.uniforms = Object.fromEntries(['viewProjection', 'lightProjection', 'eye', 'armorColor', 'armorSurface', 'exposure', 'inspection', 'shadowMap', ...MAP_UNIFORMS, ...MAP_FLAGS, ...SKIN_UNIFORMS, ...MORPH_UNIFORMS, 'normalScale', 'occlusionStrength', 'hdrEnabled', 'time', 'wind', 'worldMode', 'daylight', 'fogColor', 'lightDirection', 'fogDensity', 'waterRipple', 'rippleTime', 'explosionProgress', 'explosionCenter', 'assemblyAmount'].map((name) => [name, this.context.getUniformLocation(this.program, name)]));
     for (const name of ['pointLightCount', 'pointLightPositions[0]', 'pointLightColors[0]', 'pointLightRadii[0]', 'keyColor', 'fillIntensity', 'ambientIntensity']) {
       this.uniforms[name] = this.context.getUniformLocation(this.program, name);
     }
     this.depthSkinUniforms = Object.fromEntries(SKIN_UNIFORMS.map(name => [name, this.context.getUniformLocation(this.depthProgram, name)]));
+    this.depthMorphUniforms = Object.fromEntries(MORPH_UNIFORMS.map(name => [name, this.context.getUniformLocation(this.depthProgram, name)]));
     if (!benchmark) {
       this.postProgram = compileProgram(this.context, fullscreenVertex, postFragment);
       this.skyProgram = compileProgram(this.context, fullscreenVertex, skyFragment);
@@ -271,7 +291,11 @@ export class Renderer67 {
       this.context.uniform1i(uniforms.skinInfluences, 6);
       this.context.uniform1i(uniforms.jointPalette, 7);
     }
-    for (const unit of [6, 7]) {
+    for (const [program, uniforms] of [[this.program, this.uniforms], [this.depthProgram, this.depthMorphUniforms]]) {
+      this.context.useProgram(program);
+      this.context.uniform1i(uniforms.morphTargets, 8);
+    }
+    for (const unit of [6, 7, 8]) {
       this.context.activeTexture(this.context.TEXTURE0 + unit);
       this.context.bindTexture(this.context.TEXTURE_2D, this.whiteTexture);
     }
@@ -380,8 +404,11 @@ export class Renderer67 {
     const skin = parts[0].skin ?? null;
     const skinTexture = skin ? this.createSkinTexture(this.skinTextures, skin, skin.jointMatrices, 4) : null;
     const influenceTexture = skin ? this.createSkinTexture(this.influenceTextures, geometry, null, 2) : null;
-    const batch = { vertexArray, instanceBuffer, instanceData, textures, mapState, texture: textures[0], map, skin, skinTexture, influenceTexture, indexCount: geometry.indices.length, instanceCount: parts.length, floor: parts[0].material.tag === 'floor', castShadow: parts[0].castShadow !== false };
-    parts.forEach((part, index) => this.partLocations.set(part, { batch, index, geometry: part.geometry, map, mapState, skin, jointMatrices: skin?.jointMatrices, skinIndices: geometry.skinIndices, skinWeights: geometry.skinWeights, normalMatrix: mat3.create(), committedMatrix: batch.instanceData.subarray(index * INSTANCE_STRIDE, index * INSTANCE_STRIDE + 16) }));
+    const morph = parts[0].morph ?? null;
+    const morphTexture = morph ? this.createMorphTexture(geometry, morph) : null;
+    const morphWeights = morph ? new Float32Array(morph.weights) : null;
+    const batch = { vertexArray, instanceBuffer, instanceData, textures, mapState, texture: textures[0], map, skin, skinTexture, influenceTexture, morph, morphTexture, morphWeights, indexCount: geometry.indices.length, instanceCount: parts.length, floor: parts[0].material.tag === 'floor', castShadow: parts[0].castShadow !== false };
+    parts.forEach((part, index) => this.partLocations.set(part, { batch, index, geometry: part.geometry, map, mapState, skin, jointMatrices: skin?.jointMatrices, skinIndices: geometry.skinIndices, skinWeights: geometry.skinWeights, morph, morphWeights: morph?.weights, morphTargets: geometry.morphTargets, normalMatrix: mat3.create(), committedMatrix: batch.instanceData.subarray(index * INSTANCE_STRIDE, index * INSTANCE_STRIDE + 16) }));
     return batch;
   }
 
@@ -392,6 +419,24 @@ export class Renderer67 {
     const layout = skinTextureLayout(texelCount, context.getParameter(context.MAX_TEXTURE_SIZE), groupSize);
     const data = matrices ? new Float32Array(layout.width * layout.height * 4) : packSkinInfluences(identity, layout);
     if (matrices) data.set(matrices);
+    const record = this.createPackedTexture(layout, data);
+    record.pose = matrices ? identity : null;
+    cache.set(identity, record);
+    return record;
+  }
+
+  createMorphTexture(geometry, pose) {
+    if (this.morphTextures.has(geometry)) return this.morphTextures.get(geometry);
+    const info = validateMorphGeometry(geometry, pose);
+    const layout = skinTextureLayout(info.vertexCount * info.targetCount * 2, this.context.getParameter(this.context.MAX_TEXTURE_SIZE), 2);
+    const record = this.createPackedTexture(layout, packMorphTargets(geometry, layout));
+    record.info = info;
+    this.morphTextures.set(geometry, record);
+    return record;
+  }
+
+  createPackedTexture(layout, data) {
+    const context = this.context;
     const texture = context.createTexture();
     context.bindTexture(context.TEXTURE_2D, texture);
     try {
@@ -404,15 +449,15 @@ export class Renderer67 {
       context.deleteTexture(texture);
       throw error;
     }
-    const record = { ...layout, texture, data, pose: matrices ? identity : null };
-    cache.set(identity, record);
-    return record;
+    return { ...layout, texture, data };
   }
 
   updateParts(parts, { shadows = true } = {}) {
     this.updatePartIdentities ??= new Set();
     this.updatePartIdentities.clear();
     this.updateSkins.clear();
+    this.updateMorphs ??= new Set();
+    this.updateMorphs.clear();
     this.updateBatches.clear();
     // Preflight every part before touching packed data or submitting GPU writes.
     for (const part of parts) {
@@ -427,6 +472,12 @@ export class Renderer67 {
         if (PROCEDURAL_MATERIAL_TAGS.has(part.material.tag)) throw new Error('Skinned parts require a standard material tag.');
         validateSkinPose(part.skin, part.geometry, part.matrix);
         this.updateSkins.add(location.batch.skinTexture);
+      }
+      if ((part.morph ?? null) !== (location.morph ?? null) || part.morph?.weights !== location.morphWeights || part.geometry.morphTargets !== location.morphTargets) throw new Error(`Morph identity changes require a new renderer: ${part.name}`);
+      if (part.morph) {
+        if (PROCEDURAL_MATERIAL_TAGS.has(part.material.tag)) throw new Error('Morphed parts require a standard material tag.');
+        validateMorphTransform(part.morph, location.batch.morphTexture.info, part.matrix, part.skin);
+        this.updateMorphs.add(part.morph);
       }
       if ((part.material.map ?? null) !== location.map) throw new Error(`Texture map changes require a new renderer: ${part.name}`);
       validateMaterialMaps(part.material);
@@ -446,6 +497,13 @@ export class Renderer67 {
         validateSkinPose(location.skin, location.geometry, committedMatrix);
       }
     }
+    // Shared weights also affect batches absent from the submitted part list.
+    for (const [part, location] of this.partLocations) {
+      if (!location.morph || this.updatePartIdentities.has(part)) continue;
+      if (!this.updateMorphs.has(location.morph) && !this.updateSkins.has(location.batch.skinTexture)) continue;
+      const committedMatrix = location.committedMatrix ?? location.batch.instanceData.subarray(location.index * INSTANCE_STRIDE, location.index * INSTANCE_STRIDE + 16);
+      validateMorphTransform(location.morph, location.batch.morphTexture.info, committedMatrix, location.skin);
+    }
     this.updateBatches.clear();
     for (const part of parts) {
       const location = this.partLocations.get(part);
@@ -462,6 +520,9 @@ export class Renderer67 {
       record.data.set(pose.jointMatrices);
       this.context.bindTexture(this.context.TEXTURE_2D, record.texture);
       this.context.texSubImage2D(this.context.TEXTURE_2D, 0, 0, 0, record.width, record.height, this.context.RGBA, this.context.FLOAT, record.data);
+    }
+    for (const batch of this.batches ?? []) {
+      if (batch.morph && this.updateMorphs.has(batch.morph)) batch.morphWeights.set(batch.morph.weights);
     }
     if (shadows && parts.length > 0) this.shadowsDirty = true;
     return parts.length;
@@ -693,6 +754,17 @@ export class Renderer67 {
   }
 
   drawBatch(batch, textured = false) {
+    if (this.hasMorphs) {
+      const uniforms = textured ? this.uniforms : this.depthMorphUniforms;
+      this.context.uniform1f(uniforms.morphEnabled, batch.morph ? 1 : 0);
+      if (batch.morph) {
+        this.context.uniform1i(uniforms.morphVertexCount, batch.morphTexture.info.vertexCount);
+        this.context.uniform1i(uniforms.morphTargetCount, batch.morphTexture.info.targetCount);
+        this.context.uniform1fv(uniforms['morphWeights[0]'], batch.morphWeights);
+        this.context.activeTexture(this.context.TEXTURE0 + 8);
+        this.context.bindTexture(this.context.TEXTURE_2D, batch.morphTexture.texture);
+      }
+    }
     if (this.hasSkins) {
       const uniforms = textured ? this.uniforms : this.depthSkinUniforms;
       this.context.uniform1f(uniforms.skinEnabled, batch.skin ? 1 : 0);
@@ -804,13 +876,14 @@ export class Renderer67 {
     if (this.bloomProgram) this.context.deleteProgram(this.bloomProgram);
     for (const texture of this.textures.values()) this.context.deleteTexture(texture);
     this.textures.clear();
-    for (const cache of [this.skinTextures, this.influenceTextures]) {
+    for (const cache of [this.skinTextures, this.influenceTextures, this.morphTextures]) {
       for (const record of cache?.values() ?? []) this.context.deleteTexture(record.texture);
       cache?.clear();
     }
     this.partLocations.clear();
     this.updatePartIdentities?.clear();
     this.updateSkins?.clear();
+    this.updateMorphs?.clear();
     this.updateBatches?.clear();
   }
 }

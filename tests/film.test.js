@@ -88,11 +88,14 @@ test('sets keep shared geometry, valid surfaces and the 384 MiB target budget', 
     assert.ok(triangleCount <= 700000, name);
     const geometries = new Set(scene.parts.map(part => part.geometry));
     // Two shared garment contours replace rectangular collars and lapels.
-    assert.ok(geometries.size <= 14);
+    assert.ok(geometries.size <= 15);
     let geometryBytes = scene.parts.length * 41 * 4;
     for (const geometry of geometries) {
       geometryBytes += geometry.positions.byteLength + geometry.normals.byteLength + geometry.indices.byteLength;
       geometryBytes += geometry.colors?.byteLength ?? 0;
+      for (const target of geometry.morphTargets ?? []) {
+        geometryBytes += (target.positions?.byteLength ?? 0) + (target.normals?.byteLength ?? 0);
+      }
       if (checkedGeometries.has(geometry)) continue;
       checkedGeometries.add(geometry);
       assert.ok(geometry.positions instanceof Float32Array);
@@ -238,4 +241,24 @@ test('narrow portrait shots retain face and headwear through camera moves and ba
     assert.ok(distance(original.camera.target, nearlyWide.camera.target) < 1e-5);
   }
   for (const aspect of [0, -1, NaN, Infinity, 1e-320]) assert.throws(() => sampleFilm(10, { aspect }));
+});
+
+test('scientist blink poses are shared per eye pair and replay across arbitrary seeks', () => {
+  const scene = createFilmScenes().portrait;
+  const eyelids = scene.parts.filter(part => part.name === 'Facial upper eyelid');
+  assert.equal(eyelids.length, 2);
+  assert.equal(eyelids[0].morph, eyelids[1].morph);
+  const weights = eyelids[0].morph.weights;
+  const geometry = eyelids[0].geometry;
+  scene.animate(0);
+  assert.equal(weights[0], 0);
+  scene.animate(1.92);
+  assert.ok(weights[0] > 0.999);
+  scene.animate(11);
+  scene.animate(1.92);
+  assert.ok(weights[0] > 0.999);
+  assert.equal(eyelids[0].morph.weights, weights);
+  assert.equal(eyelids[0].geometry, geometry);
+  scene.animate(3.7);
+  assert.equal(weights[0], 0);
 });

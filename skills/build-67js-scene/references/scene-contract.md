@@ -92,6 +92,12 @@ Camera FOV uses degrees. Film time must be finite and independent of the wall cl
 
 Animation changes existing part matrices and materials. `renderer.updateParts(changedParts)` uploads them through retained instance buffers.
 New part, geometry or texture descriptor identities require a new renderer.
+Source morph parts add `geometry.morphTargets: [{ positions, normals }]` and `morph: createMorphPose(count)`.
+Targets contain static relative Float32 XYZ deltas, not absolute vertices. At least one channel is present.
+Change retained `part.morph.weights`, then call `renderer.updateParts()` to commit the pose.
+Separate pose identities split batches; repeated parts can share static target geometry.
+Morphs run before skinning and use standard materials. Read `docs/morph-targets.md` for numeric limits and memory costs.
+Do not silently export morphs through `exportGlb`; it currently rejects them. Check the decoder's capabilities before importing shape keys.
 The optional `{ shadows: false }` update option suits flat scenes without moving shadow casters.
 
 `cameraView('front' | 'right' | 'top')` returns an orthographic camera with the correct up vector.

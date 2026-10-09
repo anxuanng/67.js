@@ -4,6 +4,9 @@ function paddedLength(length) {
 
 export function exportGlb(parts) {
   for (const part of parts) {
+    if (part.morph || part.geometry.morphTargets !== undefined) {
+      throw new RangeError('GLB export cannot preserve morph targets yet. Bake the pose or export through a tool that preserves the targets.');
+    }
     if (part.skin || part.geometry.skinIndices || part.geometry.skinWeights) {
       throw new RangeError('GLB export cannot preserve skinning yet. Bake the pose or export through a tool that preserves the skeleton.');
     }

@@ -30,3 +30,9 @@ test('GLB export rejects skinning instead of silently saving the undeformed bind
   assert.throws(() => exportGlb([{ ...part, skin: { jointMatrices: new Float32Array(16) } }]), /preserve skinning/);
   assert.throws(() => exportGlb([{ ...part, geometry: { ...part.geometry, skinIndices: new Uint16Array(4) } }]), /preserve skinning/);
 });
+
+test('GLB export rejects morph targets rather than discarding expressions', () => {
+  const part = createModel()[0];
+  assert.throws(() => exportGlb([{ ...part, morph: { weights: new Float32Array(1) } }]), /preserve morph targets/);
+  assert.throws(() => exportGlb([{ ...part, geometry: { ...part.geometry, morphTargets: [] } }]), /preserve morph targets/);
+});

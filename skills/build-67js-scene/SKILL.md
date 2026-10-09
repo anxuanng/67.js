@@ -20,6 +20,7 @@ Use `simplify-code` and `engineering-workflows` for implementation.
 - Local lights use the renderer environment and the checkout's `docs/lighting.md`.
 - Depth-clipped fog uses `{ hdr: true, depth: true }` and the checkout's `docs/volumetric.md`.
 - A skeletal asset uses `src/skinning.js`, `src/gltf.js` and the checkout's `docs/skinning.md`.
+- Relative facial or shape deformation uses `src/morph.js` and the checkout's `docs/morph-targets.md`; check source versus published support first.
 - Recorded contacts or articulated physics use optional `src/physics.js` and the checkout's `docs/physics.md`.
 - A flat scene or axis view uses `src/canvas2d.js`, `src/camera.js` and `src/view2d.js`.
 - A GLB asset viewer uses the optional `src/gltf.js` addon and `src/asset-viewer.js`.

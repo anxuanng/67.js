@@ -164,6 +164,7 @@ The optional [physics addon](docs/physics.md) records Rapier contacts, articulat
 It requires the separate `@dimforge/rapier3d-compat@0.21.0` dependency; the core does not import or bundle that solver.
 Physics is source-only and is not included in the published `0.3.3` package.
 The source trailer includes an [offline physics recording](docs/film-physics.md) of colliding pendulums, played through retained animation tracks without loading a solver in the browser.
+The source renderer also supports [relative GPU morph targets](docs/morph-targets.md) for position and normal changes before skinning, including deterministic eyelid animation in the film. This feature is not in the published `0.3.3` package.
 The trailer's rigid actor joints now use authored clips, with attached headwear and hands moving together.
 The [optional asset addon](docs/gltf.md) loads glTF/GLB meshes, base-color textures, opaque vertex colors and rigid node animation.
 It uses Three.js as a decoder. The core renderer and standalone module remain separate from this dependency.

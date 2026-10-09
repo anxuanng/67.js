@@ -1,3 +1,37 @@
+import { MAX_MORPH_TARGETS } from './morph.js';
+
+const morphingShader = `
+uniform float morphEnabled;
+uniform int morphVertexCount;
+uniform int morphTargetCount;
+uniform float morphWeights[${MAX_MORPH_TARGETS}];
+uniform highp sampler2D morphTargets;
+vec3 morphDelta(int target, int channel) {
+  int index = (target * morphVertexCount + gl_VertexID) * 2 + channel;
+  int width = textureSize(morphTargets, 0).x;
+  return texelFetch(morphTargets, ivec2(index % width, index / width), 0).xyz;
+}
+vec3 morphedPosition(vec3 base) {
+  if (morphEnabled < 0.5) return base;
+  vec3 result = base;
+  for (int target = 0; target < ${MAX_MORPH_TARGETS}; target++) {
+    if (target >= morphTargetCount) break;
+    if (morphWeights[target] != 0.0) result += morphDelta(target, 0) * morphWeights[target];
+  }
+  return result;
+}
+vec3 morphedNormal(vec3 base) {
+  if (morphEnabled < 0.5) return base;
+  vec3 result = base;
+  for (int target = 0; target < ${MAX_MORPH_TARGETS}; target++) {
+    if (target >= morphTargetCount) break;
+    if (morphWeights[target] != 0.0) result += morphDelta(target, 1) * morphWeights[target];
+  }
+  float largest = max(max(abs(result.x), abs(result.y)), abs(result.z));
+  return largest > 0.0 ? normalize(result / largest) : base;
+}
+`;
+
 const skinningShader = `
 uniform float skinEnabled;
 uniform highp sampler2D skinInfluences;
@@ -49,9 +83,10 @@ out vec2 textureUV;
 out vec3 vertexTint;
 flat out vec3 emissionColor;
 ${skinningShader}
+${morphingShader}
 void main() {
   mat4 deformation = skinTransform();
-  vec4 world = instanceMatrix * deformation * vec4(position, 1.0);
+  vec4 world = instanceMatrix * deformation * vec4(morphedPosition(position), 1.0);
   world.xyz += assemblyOffset * assemblyAmount + assemblyDetailOffset * smoothstep(0.3, 1.0, assemblyAmount);
   if (instanceSurface.w == 4.0 || instanceSurface.w == 7.0) {
     world.x += sin(time * 1.2 + world.z * 0.31 + world.x * 0.17) * wind * 0.10 * max(position.y + 0.5, 0.0);
@@ -63,7 +98,8 @@ void main() {
     world.xyz = mix(explosionCenter, world.xyz, 0.03 + explosionProgress * 0.97);
   }
   worldPosition = world.xyz;
-  vec3 deformedNormal = skinEnabled > 0.5 ? transpose(inverse(mat3(deformation))) * normal : normal;
+  vec3 localNormal = morphedNormal(normal);
+  vec3 deformedNormal = skinEnabled > 0.5 ? transpose(inverse(mat3(deformation))) * localNormal : localNormal;
   worldNormal = normalize(instanceNormal * deformedNormal);
   baseColor = instanceColor;
   textureUV = uv;
@@ -83,8 +119,9 @@ layout(location=12) in vec3 assemblyDetailOffset;
 uniform mat4 lightProjection;
 uniform float assemblyAmount;
 ${skinningShader}
+${morphingShader}
 void main() {
-  vec4 world = instanceMatrix * skinTransform() * vec4(position, 1.0);
+  vec4 world = instanceMatrix * skinTransform() * vec4(morphedPosition(position), 1.0);
   world.xyz += assemblyOffset * assemblyAmount + assemblyDetailOffset * smoothstep(0.3, 1.0, assemblyAmount);
   gl_Position = lightProjection * world;
 }`;
@@ -102,9 +139,10 @@ layout(location=9) in vec3 instanceColor;
 uniform mat4 viewProjection;
 out vec3 color;
 ${skinningShader}
+${morphingShader}
 void main() {
   color = instanceColor;
-  gl_Position = viewProjection * instanceMatrix * skinTransform() * vec4(position, 1.0);
+  gl_Position = viewProjection * instanceMatrix * skinTransform() * vec4(morphedPosition(position), 1.0);
 }`;
 
 export const benchmarkFragmentShader = `#version 300 es
