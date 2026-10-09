@@ -8,6 +8,9 @@ layout(location=9) in vec3 instanceColor;
 layout(location=10) in vec4 instanceSurface;
 layout(location=11) in vec3 assemblyOffset;
 layout(location=12) in vec3 assemblyDetailOffset;
+layout(location=13) in vec2 uv;
+layout(location=14) in vec3 vertexColor;
+layout(location=15) in vec3 instanceEmissive;
 uniform mat4 viewProjection;
 uniform mat4 lightProjection;
 uniform float time;
@@ -20,6 +23,9 @@ out vec3 worldNormal;
 flat out vec3 baseColor;
 flat out vec4 surface;
 out vec4 shadowPosition;
+out vec2 textureUV;
+out vec3 vertexTint;
+flat out vec3 emissionColor;
 void main() {
   vec4 world = instanceMatrix * vec4(position, 1.0);
   world.xyz += assemblyOffset * assemblyAmount + assemblyDetailOffset * smoothstep(0.3, 1.0, assemblyAmount);
@@ -35,6 +41,9 @@ void main() {
   worldPosition = world.xyz;
   worldNormal = normalize(instanceNormal * normal);
   baseColor = instanceColor;
+  textureUV = uv;
+  vertexTint = vertexColor;
+  emissionColor = instanceEmissive;
   surface = instanceSurface;
   shadowPosition = lightProjection * world;
   gl_Position = viewProjection * world;
@@ -85,6 +94,9 @@ in vec3 worldNormal;
 flat in vec3 baseColor;
 flat in vec4 surface;
 in vec4 shadowPosition;
+in vec2 textureUV;
+in vec3 vertexTint;
+flat in vec3 emissionColor;
 uniform vec3 eye;
 uniform vec3 armorColor;
 uniform vec2 armorSurface;
@@ -100,6 +112,9 @@ uniform vec3 waterRipple;
 uniform float rippleTime;
 uniform float explosionProgress;
 uniform sampler2D shadowMap;
+uniform sampler2D baseMap;
+uniform float hasBaseMap;
+uniform float hdrEnabled;
 out vec4 outputColor;
 const float PI = 3.14159265359;
 
@@ -156,6 +171,13 @@ void main() {
   vec3 normal = normalize(worldNormal);
   vec3 viewDirection = normalize(eye - worldPosition);
   vec3 color = mix(baseColor, armorColor, step(0.5, surface.w) * (1.0 - step(1.5, surface.w)));
+  color *= vertexTint;
+  if (hasBaseMap > 0.5) color *= texture(baseMap, textureUV).rgb;
+  if (surface.w == 10.0) {
+    vec3 radiance = color * exposure + emissionColor * surface.z;
+    outputColor = vec4(hdrEnabled > 0.5 ? radiance : pow(max(radiance, vec3(0)), vec3(1.0 / 2.2)), 1.0);
+    return;
+  }
   float metallic = surface.x;
   float roughness = clamp(surface.y, 0.075, 1.0);
   if (surface.w > 0.5 && surface.w < 1.5) {
@@ -192,7 +214,7 @@ void main() {
   radiance += studio(reflect(-viewDirection, normal), roughness) * reflectance * (1.0 - roughness * 0.55) * mix(1.0, 0.5 * daylight, worldMode);
   radiance += color * (1.0 - metallic) * mix(vec3(0.16, 0.20, 0.22), vec3(0.19, 0.25, 0.30) * max(daylight, 0.08), worldMode) * (0.45 + 0.55 * max(normal.y, 0.0));
   if (surface.w == 4.0 || surface.w == 7.0) radiance += color * max(dot(-normal, normalize(lightDirection)), 0.0) * 0.3 * daylight;
-  radiance += color * surface.z;
+  radiance += emissionColor * surface.z;
   if (surface.w == 3.0) {
     float reflectivity = 0.20 + 0.65 * pow(1.0 - max(dot(normal, viewDirection), 0.0), 3.0);
     vec3 reflection = mix(vec3(0.12, 0.24, 0.28), vec3(0.40, 0.63, 0.78), clamp(reflect(-viewDirection, normal).y, 0.0, 1.0));
@@ -217,11 +239,12 @@ void main() {
   float fog = 1.0 - exp(-length(worldPosition - eye) * fogDensity);
   radiance = mix(radiance, fogColor, fog * worldMode);
   if (inspection > 0.5) radiance = normal * 0.5 + 0.5;
-  outputColor = vec4(pow(toneMap(radiance * exposure), vec3(1.0 / 2.2)), 1.0);
+  outputColor = vec4(hdrEnabled > 0.5 ? max(radiance * exposure, vec3(0)) : pow(toneMap(radiance * exposure), vec3(1.0 / 2.2)), 1.0);
   if (surface.w == 2.0 && inspection < 0.5) {
     float distanceFade = exp(-length(worldPosition.xz) * 0.08);
     float contact = 1.0 - 0.1 * exp(-dot(worldPosition.xz, worldPosition.xz) * 1.4);
     vec3 floorColor = mix(vec3(0.145, 0.162, 0.177), vec3(0.17, 0.19, 0.205), distanceFade);
-    outputColor = vec4(floorColor * (0.72 + 0.28 * visibility) * contact, 1.0);
+    vec3 result = floorColor * (0.72 + 0.28 * visibility) * contact;
+    outputColor = vec4(hdrEnabled > 0.5 ? pow(result, vec3(2.2)) : result, 1.0);
   }
 }`;

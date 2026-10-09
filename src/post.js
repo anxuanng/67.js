@@ -11,6 +11,12 @@ export const postFragment = `#version 300 es
 precision highp float;
 in vec2 textureCoordinate;
 uniform sampler2D frameTexture;
+uniform sampler2D bloomTexture;
+uniform float bloomStrength;
+uniform float hdrEnabled;
+uniform vec3 grade;
+uniform float vignette;
+uniform float grainAmount;
 uniform vec2 resolution;
 uniform float monochrome;
 uniform float fade;
@@ -93,12 +99,20 @@ void main() {
   float secondLuma = luminance(second);
   vec3 color = secondLuma < minimumLuma || secondLuma > maximumLuma ? first : second;
   if (maximumLuma - minimumLuma < max(0.03, maximumLuma * 0.125)) color = center;
+  if (bloomStrength > 0.0) color += texture(bloomTexture, textureCoordinate).rgb * bloomStrength;
+  if (hdrEnabled > 0.5) {
+    color = clamp((color * (2.51 * color + 0.03)) / (color * (2.43 * color + 0.59) + 0.14), 0.0, 1.0);
+    color = pow(color, vec3(1.0 / 2.2));
+  }
   if (volumeExplosion > 0.5) color = explosion(color);
   color = mix(color, vec3(luminance(color)), monochrome);
+  if (grade.x != 1.0) color = mix(vec3(luminance(color)), color, grade.x);
+  if (grade.y != 1.0) color = (color - 0.5) * grade.y + 0.5;
+  if (grade.z != 0.0) color *= vec3(1.0 + grade.z * 0.1, 1.0, 1.0 - grade.z * 0.1);
   vec2 centered = textureCoordinate * 2.0 - 1.0;
-  color *= 1.0 - cinematic * 0.20 * dot(centered, centered);
+  color *= max(0.0, 1.0 - (cinematic * 0.20 + vignette) * dot(centered, centered));
   float grain = fract(sin(dot(gl_FragCoord.xy + floor(time * 24.0), vec2(12.9898, 78.233))) * 43758.5453) - 0.5;
-  color += grain * 0.018 * cinematic;
+  color += grain * (0.018 * cinematic + grainAmount);
   outputColor = vec4(color * (1.0 - fade), 1.0);
 }`;
 
@@ -112,6 +126,7 @@ uniform mat4 inverseViewProjection;
 uniform vec3 eye;
 uniform float time;
 uniform float daylight;
+uniform float hdrEnabled;
 out vec4 outputColor;
 float noise(vec2 position) {
   return sin(position.x * 2.1 + sin(position.y * 1.3)) * 0.5 + sin(position.y * 2.8 - position.x * 0.8) * 0.3;
@@ -128,5 +143,30 @@ void main() {
   float cloud = smoothstep(0.1, 0.55, noise(cloudPosition) + noise(cloudPosition * 2.4) * 0.25);
   cloud *= smoothstep(0.02, 0.22, direction.y) * (1.0 - smoothstep(0.5, 0.95, direction.y));
   color = mix(color, mix(skyBottom, vec3(0.94, 0.93, 0.85), 0.7), cloud * 0.28 * daylight);
+  outputColor = vec4(hdrEnabled > 0.5 ? pow(max(color, vec3(0)), vec3(2.2)) : color, 1.0);
+}`;
+
+export const bloomFragment = `#version 300 es
+precision highp float;
+in vec2 textureCoordinate;
+uniform sampler2D sourceTexture;
+uniform vec2 texelDirection;
+uniform float threshold;
+uniform float extract;
+out vec4 outputColor;
+vec3 sampleBloom(vec2 coordinate) {
+  vec3 color = texture(sourceTexture, coordinate).rgb;
+  if (extract > 0.5) {
+    float peak = max(color.r, max(color.g, color.b));
+    color *= max(peak - threshold, 0.0) / max(peak, 0.00001);
+  }
+  return color;
+}
+void main() {
+  vec3 color = sampleBloom(textureCoordinate) * 0.227027;
+  color += sampleBloom(textureCoordinate + texelDirection * 1.384615) * 0.316216;
+  color += sampleBloom(textureCoordinate - texelDirection * 1.384615) * 0.316216;
+  color += sampleBloom(textureCoordinate + texelDirection * 3.230769) * 0.070270;
+  color += sampleBloom(textureCoordinate - texelDirection * 3.230769) * 0.070270;
   outputColor = vec4(color, 1.0);
 }`;

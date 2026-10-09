@@ -7,22 +7,45 @@ export const RENDER_PRESETS = Object.freeze({
   cpu: { width: 640, height: 360, samples: 1, fps: 12, memoryBudgetMiB: 192 },
 });
 
-export function estimateFrameBytes(width, height, samples, shadowResolution = 2048) {
-  // Color/depth MSAA, resolve texture, browser buffers and one screenshot/encoder staging frame.
-  return width * height * (8 * Math.max(1, samples) + 20) + shadowResolution ** 2 * 4;
+export function estimateTextureBytes(width, height, { mipmaps = true } = {}) {
+  if (!Number.isInteger(width) || !Number.isInteger(height) || width <= 0 || height <= 0) throw new Error('Texture dimensions must be positive integers.');
+  let bytes = 0;
+  do {
+    bytes += width * height * 4;
+    if (!mipmaps || (width === 1 && height === 1)) break;
+    width = Math.max(1, Math.floor(width / 2));
+    height = Math.max(1, Math.floor(height / 2));
+  } while (true);
+  return bytes;
 }
 
-export function planRenderSize({ width, height, pixelRatio = 1, samples = 4, memoryBudgetMiB = 256, geometryBytes = 0, shadowResolution = 2048, maximumSize = 8192 }) {
+export function estimateFrameBytes(width, height, samples, shadowResolution = 2048, { hdr = false, bloom = false } = {}) {
+  // Color/depth MSAA, resolve texture, browser buffers and one screenshot/encoder staging frame.
+  const colorBytes = hdr ? 8 : 4;
+  const frameBytes = width * height * ((colorBytes + 4) * Math.max(1, samples) + colorBytes + 16);
+  const bloomBytes = bloom ? Math.ceil(width / 2) * Math.ceil(height / 2) * colorBytes * 2 : 0;
+  return frameBytes + bloomBytes + shadowResolution ** 2 * 4;
+}
+
+export function planRenderSize({ width, height, pixelRatio = 1, samples = 4, memoryBudgetMiB = 256, geometryBytes = 0, textureBytes = 0, hdr = false, bloom = false, shadowResolution = 2048, maximumSize = 8192 }) {
   for (const value of [width, height, pixelRatio, samples, memoryBudgetMiB, maximumSize]) {
     if (!Number.isFinite(value) || value <= 0) throw new Error('Render dimensions, sample count and budget must be positive finite numbers.');
   }
   if (geometryBytes < 0 || !Number.isFinite(geometryBytes)) throw new Error('Geometry memory must be a nonnegative finite number.');
-  const available = memoryBudgetMiB * MEBIBYTE - geometryBytes - shadowResolution ** 2 * 4;
-  if (available < 64 * 64 * (8 * samples + 20)) throw new Error('Memory budget cannot hold the scene and a minimum render target. Lower scene detail or increase the budget.');
+  if (textureBytes < 0 || !Number.isFinite(textureBytes)) throw new Error('Texture memory must be a nonnegative finite number.');
+  if (!Number.isFinite(shadowResolution) || shadowResolution < 0) throw new Error('Shadow resolution must be nonnegative and finite.');
+  const available = memoryBudgetMiB * MEBIBYTE - geometryBytes - textureBytes - shadowResolution ** 2 * 4;
+  const bytesPerPixel = (hdr ? 12 : 8) * Math.max(1, samples) + (hdr ? 24 : 20) + (bloom ? hdr ? 4 : 2 : 0);
+  if (available < estimateFrameBytes(64, 64, samples, 0, { hdr, bloom })) throw new Error('Memory budget cannot hold the scene and a minimum render target. Lower scene detail or increase the budget.');
   const requestedWidth = Math.max(1, Math.round(width * pixelRatio));
   const requestedHeight = Math.max(1, Math.round(height * pixelRatio));
-  const scale = Math.min(1, maximumSize / requestedWidth, maximumSize / requestedHeight, Math.sqrt(available / (requestedWidth * requestedHeight * (8 * samples + 20))));
-  const renderWidth = Math.max(1, Math.floor(requestedWidth * scale));
-  const renderHeight = Math.max(1, Math.floor(requestedHeight * scale));
-  return { width: renderWidth, height: renderHeight, samples, estimatedBytes: estimateFrameBytes(renderWidth, renderHeight, samples, shadowResolution) + geometryBytes, reduced: scale < 1 };
+  const scale = Math.min(1, maximumSize / requestedWidth, maximumSize / requestedHeight, Math.sqrt(available / (requestedWidth * requestedHeight * bytesPerPixel)));
+  let renderWidth = Math.max(1, Math.floor(requestedWidth * scale));
+  let renderHeight = Math.max(1, Math.floor(requestedHeight * scale));
+  const budget = memoryBudgetMiB * MEBIBYTE;
+  while (estimateFrameBytes(renderWidth, renderHeight, samples, shadowResolution, { hdr, bloom }) + geometryBytes + textureBytes > budget) {
+    renderWidth = Math.max(1, renderWidth - 1);
+    renderHeight = Math.max(1, renderHeight - 1);
+  }
+  return { width: renderWidth, height: renderHeight, samples, hdr, bloom, textureBytes, estimatedBytes: estimateFrameBytes(renderWidth, renderHeight, samples, shadowResolution, { hdr, bloom }) + geometryBytes + textureBytes, reduced: renderWidth < requestedWidth || renderHeight < requestedHeight };
 }
