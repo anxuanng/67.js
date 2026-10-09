@@ -118,8 +118,15 @@ button:hover { background:var(--border); }
 .package-links .icon { margin:0; }
 @media (max-width:760px) { .package-install { padding:18px; } .package-managers button { padding:10px 12px; } }
 .example img { aspect-ratio:16/9; border-radius:var(--panel-radius); border:1px solid var(--border); }
-.introduction { padding:20px 0 12px; }
-.introduction h1 { max-width:780px; font-size:clamp(34px,4.6vw,62px); line-height:1.06; letter-spacing:-2px; font-weight:600; }
+.hero { display:grid; grid-template-columns:minmax(0,.9fr) minmax(0,1.1fr); align-items:center; gap:40px; margin:16px 0 48px; }
+.hero .introduction { margin:0; padding:20px 0; min-width:0; }
+.hero .feature-showcase { margin:0; min-width:0; }
+.hero .live-showcase canvas { height:clamp(320px,30vw,430px); }
+@media (max-width:960px) {
+  .hero { grid-template-columns:1fr; gap:24px; margin-top:0; }
+  .hero .introduction { padding:10px 0; }
+}
+.introduction h1 { max-width:780px; font-size:clamp(34px,4vw,56px); line-height:1.06; letter-spacing:-2px; font-weight:600; }
 .feature-showcase h2 { margin:0; }
 .introduction p { font-size:17px; max-width:620px; margin:20px 0; }
 .hero-actions { display:flex; flex-wrap:wrap; gap:12px; align-items:center; }
