@@ -112,6 +112,7 @@ SwiftShader also rendered the updated shader without a WebGL error.
 The current trailer does not meet the requested visual quality.
 The current source replaces the scientist's unlit silhouette with lit facial features, shared head attachments and shaped headwear.
 The rendered close-up still looks like a stylized mannequin with insufficient facial likeness.
+The next source build narrows the temples and jaw, defines continuous nose and cheek surfaces, adds subtle vertex-color skin variation and replaces box-shaped lapels and collars with shared extruded contours. These changes remain stylized and do not establish recognizable facial likeness.
 The current source frames portrait shots by output aspect and retains the face and headwear in inspected 540 × 960 renders. Wide cameras retain their authored framing. The subject bounds are authored for these shots; automatic animated-subject framing remains unfinished.
 This source change has not been deployed or published to npm.
 Rigid joint animation and GPU skinning provide motion tools, but do not solve character modeling or material quality by themselves.

@@ -87,10 +87,12 @@ test('sets keep shared geometry, valid surfaces and the 384 MiB target budget', 
     const triangleCount = scene.parts.reduce((total, part) => total + part.geometry.indices.length / 3, 0);
     assert.ok(triangleCount <= 700000, name);
     const geometries = new Set(scene.parts.map(part => part.geometry));
-    assert.ok(geometries.size <= 12);
+    // Two shared garment contours replace rectangular collars and lapels.
+    assert.ok(geometries.size <= 14);
     let geometryBytes = scene.parts.length * 41 * 4;
     for (const geometry of geometries) {
       geometryBytes += geometry.positions.byteLength + geometry.normals.byteLength + geometry.indices.byteLength;
+      geometryBytes += geometry.colors?.byteLength ?? 0;
       if (checkedGeometries.has(geometry)) continue;
       checkedGeometries.add(geometry);
       assert.ok(geometry.positions instanceof Float32Array);
@@ -98,6 +100,10 @@ test('sets keep shared geometry, valid surfaces and the 384 MiB target budget', 
       assert.ok(geometry.indices instanceof Uint32Array);
       assert.equal(geometry.positions.length, geometry.normals.length);
       assert.ok(Array.from(geometry.positions).every(Number.isFinite));
+      if (geometry.colors) {
+        assert.equal(geometry.colors.length, geometry.positions.length);
+        assert.ok(Array.from(geometry.colors).every(value => Number.isFinite(value) && value >= 0 && value <= 1));
+      }
       for (let vertex = 0; vertex < geometry.normals.length; vertex += 3) {
         assert.ok(Math.abs(Math.hypot(...geometry.normals.slice(vertex, vertex + 3)) - 1) < 0.00001);
       }

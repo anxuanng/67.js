@@ -3,7 +3,9 @@ import { createCameraPath } from './camera-path.js';
 import { createFilmActorRig } from './film-rig.js';
 import { fitPerspectiveDistance } from './camera.js';
 import { box, cylinder, sphere, torus } from './geometry.js';
+import { extrude } from './modeling.js';
 import { createAnimationClip, createAnimationPlayer } from './animation.js';
+import { sampleScientistHead } from './film-character.js';
 import { CRADLE, cradlePivot } from './film-physics-definition.js';
 import cradleRecording from './film-physics-clip.json' with { type: 'json' };
 
@@ -89,35 +91,6 @@ function createRidge() {
   });
 }
 
-function createSculptedHead() {
-  return sampledSurface(96, 64, (horizontal, vertical) => {
-    const angle = horizontal * FULL_TURN;
-    const elevation = 0.015 + vertical * (Math.PI - 0.03);
-    const height = Math.cos(elevation);
-    const radius = Math.sin(elevation);
-    const jaw = 0.78 + 0.22 / (1 + Math.exp(-(height + 0.48) * 9));
-    const front = Math.max(0, Math.sin(angle));
-    const horizontalPoint = Math.cos(angle) * radius * jaw;
-    let depth = Math.sin(angle) * radius;
-    function feature(horizontalCenter, verticalCenter, width, length) {
-      const horizontalDistance = (horizontalPoint - horizontalCenter) / width;
-      const verticalDistance = (height - verticalCenter) / length;
-      return Math.exp(-1 * horizontalDistance ** 2 - verticalDistance ** 2);
-    }
-    // Local features avoid a horizontal ridge extending around the whole forehead.
-    let facialDepth = 0.18 * feature(0, 0.05, 0.12, 0.32);
-    facialDepth += 0.22 * feature(0, -0.13, 0.17, 0.13);
-    facialDepth += 0.10 * feature(0, -0.65, 0.37, 0.17);
-    for (const side of [-1, 1]) {
-      facialDepth -= 0.19 * feature(side * 0.42, 0.15, 0.22, 0.12);
-      facialDepth += 0.09 * feature(side * 0.42, 0.31, 0.28, 0.09);
-      facialDepth += 0.12 * feature(side * 0.58, -0.10, 0.24, 0.18);
-    }
-    depth += front ** 4 * facialDepth;
-    return [horizontalPoint, height, depth];
-  });
-}
-
 function createFedoraCrown() {
   return sampledSurface(64, 32, (horizontal, vertical) => {
     const angle = horizontal * FULL_TURN;
@@ -132,6 +105,23 @@ function createFedoraCrown() {
     const pinch = 1 - 0.13 * top * Math.max(0, Math.sin(angle));
     return [horizontalPoint * pinch, height - crease, depth];
   });
+}
+
+function createScientistHeadMesh() {
+  const geometry = sampledSurface(128, 96, sampleScientistHead);
+  geometry.colors = new Float32Array(geometry.positions.length);
+  for (let index = 0; index < geometry.positions.length; index += 3) {
+    const horizontal = geometry.positions[index];
+    const height = geometry.positions[index + 1];
+    const front = Math.max(0, geometry.positions[index + 2]);
+    const cheek = Math.exp(-1 * ((Math.abs(horizontal) - 0.52) / 0.23) ** 2 - ((height + 0.12) / 0.2) ** 2) * front;
+    const underEye = Math.exp(-1 * ((Math.abs(horizontal) - 0.42) / 0.23) ** 2 - ((height - 0.04) / 0.085) ** 2) * front;
+    const stubble = Math.exp(-1 * ((height + 0.55) / 0.23) ** 2) * front;
+    geometry.colors[index] = 1 - underEye * 0.08 - stubble * 0.045;
+    geometry.colors[index + 1] = 1 - cheek * 0.085 - underEye * 0.12 - stubble * 0.065;
+    geometry.colors[index + 2] = 1 - cheek * 0.10 - underEye * 0.10 - stubble * 0.055;
+  }
+  return geometry;
 }
 
 function createFedoraBrim() {
@@ -378,9 +368,10 @@ function addScientist(builder, position = [0, 0, 0], hat = true, rotation = 0) {
   const joints = new Map();
   const transform = point => [position[0] + point[0] * Math.cos(rotation) + point[2] * Math.sin(rotation), position[1] + point[1], position[2] - point[0] * Math.sin(rotation) + point[2] * Math.cos(rotation)];
   const actorMaterials = {
-    skin: { ...materials.skin, color: [0.48, 0.285, 0.19], roughness: 0.58 },
+    skin: { ...materials.skin, color: [0.48, 0.285, 0.19], roughness: 0.72 },
     cloth: { ...materials.cloth, color: [0.075, 0.083, 0.075], roughness: 0.89 },
     graphite: { ...materials.graphite, color: [0.035, 0.031, 0.025], metallic: 0, roughness: 0.83 },
+    lapel: { ...materials.cloth, color: [0.055, 0.061, 0.055], roughness: 0.83 },
     paper: { ...materials.paper, color: [0.8, 0.74, 0.6], roughness: 0.84 },
     black: { ...materials.black, color: [0.012, 0.015, 0.017], roughness: 0.82 },
     eye: { color: [0.57, 0.59, 0.52], metallic: 0, roughness: 0.26, emission: 0 },
@@ -414,18 +405,23 @@ function addScientist(builder, position = [0, 0, 0], hat = true, rotation = 0) {
   for (const side of [-1, 1]) {
     shape('Leather oxford', 'sphere', [side * 0.115, 0.062, 0.052], [0.073, 0.06, 0.15], 'graphite');
     shape('Tailored wool trouser', 'cylinder', [side * 0.108, 0.48, -0.01], [0.084, 0.81, 0.077], 'cloth');
-    shape('Jacket sleeve', 'sphere', [side * 0.245, 1.18, -0.018], [0.076, 0.295, 0.089], 'cloth', [0.04, 0, side * 0.105]);
+    shape('Jacket sleeve', 'sphere', [side * 0.242, 1.17, -0.018], [0.072, 0.28, 0.079], 'cloth', [0.04, 0, side * 0.105]);
     shape('Shirt cuff', 'cylinder', [side * 0.276, 0.94, 0.007], [0.052, 0.04, 0.052], 'paper');
     shape('Resting hand silhouette', 'sphere', [side * 0.28, 0.858, 0.016], [0.047, 0.079, 0.035], 'skin');
-    shape('Notched wool lapel', 'box', [side * 0.059, 1.38, 0.127], [0.06, 0.26, 0.015], 'graphite', [0.14, 0, side * 0.3]);
-    shape('Shirt collar', 'box', [side * 0.039, 1.47, 0.103], [0.064, 0.065, 0.015], 'paper', [0.3, 0, side * 0.36]);
+    const mirror = side < 0 ? Math.PI : 0;
+    shape('Notched wool lapel', 'lapel', [0, 1.32, 0.14], [1, 1, 1], 'lapel', [0, mirror, 0]);
+    shape('Shirt collar', 'shirtCollar', [0, 1.465, 0.145], [1, 1, 1], 'paper', [0, mirror, 0]);
     shape('Ear silhouette', 'sphere', [side * 0.104, 1.668, -0.004], [0.018, 0.036, 0.026], 'skin');
   }
   shape('Sculpted tailored jacket', 'coat', [0, 1.16, 0], [0.25, 0.68, 0.145], 'cloth');
-  shape('Tailored shoulder line', 'sphere', [0, 1.455, -0.005], [0.225, 0.032, 0.105], 'cloth');
-  shape('Shirt front', 'box', [0, 1.385, 0.116], [0.098, 0.205, 0.013], 'paper');
-  shape('Tie knot', 'sphere', [0, 1.444, 0.139], [0.021, 0.021, 0.012], 'graphite');
-  shape('Narrow silk tie', 'box', [0, 1.346, 0.143], [0.022, 0.19, 0.009], 'graphite');
+  shape('Tailored shoulder line', 'sphere', [0, 1.439, -0.012], [0.218, 0.025, 0.094], 'cloth');
+  shape('Shirt front', 'box', [0, 1.39, 0.131], [0.09, 0.2, 0.012], 'paper');
+  shape('Tie knot', 'sphere', [0, 1.448, 0.154], [0.014, 0.016, 0.009], 'graphite');
+  shape('Narrow silk tie', 'box', [0, 1.355, 0.151], [0.019, 0.17, 0.006], 'graphite');
+  shape('Welt breast pocket', 'box', [-0.135, 1.3, 0.13], [0.075, 0.008, 0.007], 'lapel');
+  for (const height of [1.18, 1.08]) {
+    shape('Horn jacket button', 'sphere', [0.017, height, 0.136], [0.009, 0.009, 0.003], 'graphite');
+  }
   shape('Neck', 'cylinder', [0, 1.533, -0.005], [0.053, 0.11, 0.057], 'skin');
   shape('Continuous sculpted head', 'head', [0, 1.686, -0.01], [0.11, 0.163, 0.106], 'skin');
   for (const side of [-1, 1]) {
@@ -435,7 +431,7 @@ function addScientist(builder, position = [0, 0, 0], hat = true, rotation = 0) {
     shape('Facial upper eyelid', 'sphere', [side * 0.046, 1.718, 0.085], [0.023, 0.0047, 0.006], 'skin');
     shape('Facial lower eyelid', 'sphere', [side * 0.046, 1.704, 0.085], [0.022, 0.0035, 0.005], 'skin');
     shape('Facial eyebrow', 'sphere', [side * 0.046, 1.735, 0.09], [0.028, 0.004, 0.005], 'graphite', [0, 0, side * -0.11]);
-    shape('Facial nostril', 'sphere', [side * 0.008, 1.66, 0.118], [0.0038, 0.0022, 0.0018], 'lip');
+    shape('Facial nostril', 'sphere', [side * 0.008, 1.66, 0.1245], [0.0038, 0.0022, 0.0018], 'lip');
     shape('Facial ear concha', 'sphere', [side * 0.117, 1.668, 0.002], [0.0025, 0.017, 0.012], 'lip');
   }
   shape('Facial upper lip', 'sphere', [0, 1.633, 0.096], [0.027, 0.0033, 0.005], 'lip');
@@ -784,10 +780,12 @@ function animateSet(parts, sceneName) {
 export function createFilmScenes() {
   const meshes = {
     box: box(0.025, 2),
-    head: createSculptedHead(),
+    head: createScientistHeadMesh(),
     hatCrown: createFedoraCrown(),
     hatBrim: createFedoraBrim(),
     coat: createCoat(),
+    lapel: extrude([[0.035, 0.15], [0.085, 0.13], [0.115, 0.085], [0.087, 0.066], [0.121, 0.03], [0.014, -0.15], [0.012, 0.025]], { depth: 0.003, bevel: 0.0007, bevelSegments: 2 }),
+    shirtCollar: extrude([[0.009, 0.04], [0.05, 0.02], [0.059, -0.005], [0.025, -0.025]], { depth: 0.003, bevel: 0.0005, bevelSegments: 2 }),
     landscape: createLandscape(),
     ridge: createRidge(),
     cylinder: cylinder(16, 0.02, 2),
