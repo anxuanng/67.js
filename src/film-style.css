@@ -49,6 +49,8 @@ button:hover { background: #ffffff1c; }
 .visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
 .export-mode .player-interface { display: none !important; }
 .export-mode .film-stage { min-height: 0; }
+.film-header { flex-wrap:wrap; }
+.film-header nav { flex-wrap:wrap; }
 @media (max-width: 600px) {
   .film-header { padding: 16px 20px 50px; gap: 16px; }
   .brand { font-size: 22px; }
@@ -63,3 +65,4 @@ button:hover { background: #ffffff1c; }
   .film-title h1 { font-size: 42px; letter-spacing: .17em; padding-left: .17em; }
   .film-error { left: 20px; right: 20px; }
 }
+@media (max-width:600px) { .film-header nav { flex-basis:100%; margin-left:0; gap:6px 18px; } }

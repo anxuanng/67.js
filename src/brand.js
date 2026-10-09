@@ -1,0 +1,39 @@
+import './brand.css';
+
+for (const brand of document.querySelectorAll('a.brand')) {
+  const mark = document.createElement('img');
+  mark.src = '/logo.svg';
+  mark.alt = '';
+  mark.width = mark.height = 34;
+  mark.className = 'brand-mark';
+  brand.prepend(mark);
+}
+
+// Local SVGs share one stroke style and never depend on a third-party icon CDN.
+const paths = {
+  cube:'M12 3 3 8v9l9 5 9-5V8l-9-5ZM3 8l9 5 9-5M12 13v9M7.5 5.5l9 5',
+  book:'M4 4h6a3 3 0 0 1 3 3v14a4 4 0 0 0-4-2H4V4Zm9 3a3 3 0 0 1 3-3h5v15h-4a4 4 0 0 0-4 2',
+  download:'M12 3v12m-5-5 5 5 5-5M4 17v4h16v-4',
+  code:'m8 6-6 6 6 6m8-12 6 6-6 6m-3-15-2 18',
+  film:'M3 4h18v16H3V4Zm4 0v16M17 4v16M3 9h4m-4 6h4m10-6h4m-4 6h4',
+  leaf:'M20 3C8 2 2 8 5 15s15 6 15-12ZM4 21 15 10',
+  image:'M3 3h18v18H3V3Zm0 14 6-6 5 5 3-3 4 4M16 8h.01',
+};
+const labels = { Examples:'cube', Showcase:'cube', Documentation:'book', 'Getting started':'book', Downloads:'download', 'Package source':'code', Object:'cube', Nature:'leaf', Film:'film', Animation:'film', 'Save PNG':'image', 'Export GLB':'download' };
+for (const element of document.querySelectorAll('nav a, [data-icon], #save-image, #export')) {
+  const name = element.dataset.icon ?? labels[element.textContent.trim().replace(/[↓↗]/g, '').trim()];
+  if (!paths[name]) continue;
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('viewBox','0 0 24 24');
+  svg.setAttribute('aria-hidden','true');
+  svg.setAttribute('class','icon');
+  svg.setAttribute('fill','none');
+  svg.setAttribute('stroke','currentColor');
+  svg.setAttribute('stroke-width','1.6');
+  svg.setAttribute('stroke-linecap','round');
+  svg.setAttribute('stroke-linejoin','round');
+  const path = document.createElementNS(svg.namespaceURI,'path');
+  path.setAttribute('d',paths[name]);
+  svg.append(path);
+  element.prepend(svg);
+}

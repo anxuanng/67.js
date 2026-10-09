@@ -77,3 +77,19 @@ footer p { margin: 0; }
   .landscape-title { bottom: 138px; }
 }
 @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto; } }
+.landscape-controls { flex-wrap:wrap; gap:16px 24px; }
+.landscape-controls .demo-presets { margin:0; }
+@media (max-width:760px) {
+  main { height:auto; min-height:100svh; overflow:visible; background:#171717; }
+  .world-header { position:relative; inset:auto; padding:18px 20px; flex-wrap:wrap; gap:14px; text-shadow:none; }
+  .world-header nav { order:3; width:100%; flex-wrap:wrap; }
+  #save-image { margin-left:auto; }
+  .landscape-title { position:relative; inset:auto; margin:8px 22px 22px; text-shadow:none; }
+  .landscape-title p { font-size:13px; }
+  #viewport { position:relative; inset:auto; height:430px; width:100%; }
+  .landscape-controls { position:relative; inset:auto; margin:16px; gap:18px; }
+  .landscape-controls .demo-presets { grid-column:1 / -1; }
+  .landscape-controls label[for=detail] { display:grid; gap:8px; }
+  #detail { margin:0; width:100%; padding:10px; }
+  footer { position:relative; inset:auto; margin:20px; text-shadow:none; }
+}

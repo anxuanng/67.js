@@ -6,12 +6,13 @@
     <meta name="theme-color" content="#171c20" />
     <meta name="description" content="A deterministic 67.js animation with keyframe tracks and landscape, portrait and square compositions." />
     <title>Clockwork orbit · 67.js</title>
+  <link rel="icon" href="/favicon.svg" />
   </head>
   <body>
     <main>
       <header class="interface motion-header">
         <a class="brand" href="./index.html" aria-label="67.js home">67<span>.js</span></a>
-        <nav aria-label="Scenes"><a href="./object.html">Object</a><a href="./nature.html">Nature</a><a href="./film.html">Film</a><a href="./motion.html" aria-current="page">Motion</a></nav>
+        <nav aria-label="Scenes"><a href="./object.html">Object</a><a href="./nature.html">Nature</a><a href="./film.html">Film</a><a href="./motion.html" aria-current="page">Motion</a><a href="./docs.html">Docs</a><a href="./index.html#examples">Showcase</a></nav>
       </header>
       <section class="motion-stage" data-aspect="landscape" aria-label="Clockwork orbit animation">
         <canvas id="motion-canvas" tabindex="0" aria-label="Animated clockwork mechanism. Use Space to pause and arrow keys to move through the timeline."></canvas>
@@ -19,6 +20,7 @@
       <section class="interface motion-controls" aria-label="Animation controls">
         <div class="description"><h1>Clockwork orbit</h1><p>A mechanism in motion, sampled from keyframes</p></div>
         <div class="playback-controls"><button id="motion-play" aria-label="Play animation">▶ Play</button><button id="motion-replay">Replay</button><label for="motion-aspect">Frame <select id="motion-aspect"><option value="landscape">16:9 Landscape</option><option value="portrait">9:16 Portrait</option><option value="square">1:1 Square</option></select></label></div>
+        <div class="motion-details"><label for="motion-look">Look <select id="motion-look"><option value="cinematic">Cinematic</option><option value="neutral">Neutral</option><option value="vivid">Vivid</option></select></label><button id="motion-save">Save this frame</button></div>
         <label class="timeline-label" for="motion-time">Timeline <output id="motion-clock">0.0 / 12.0 s</output></label>
         <input id="motion-time" type="range" min="0" max="12" step="0.01" value="0" />
         <div class="motion-details"><span id="motion-shot">Shot 1 of 3</span><span id="motion-stat"></span></div>

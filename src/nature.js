@@ -1,5 +1,5 @@
 import { mat4, quat } from 'gl-matrix';
-import { cylinder, sphere } from './geometry.js';
+import { box, cylinder, sphere } from './geometry.js';
 
 const FULL_TURN = Math.PI * 2;
 const DETAIL_PRESETS = {
@@ -360,6 +360,29 @@ export function createNatureWorld({ seed = 67, detail = 'balanced' } = {}) {
     add(`Wildflower ${index} blossom`, blossomMesh, [horizontal, ground + height, depth], [1, 1, 1], flowerColors[index % flowerColors.length], [0.1, random() * FULL_TURN, 0.12]);
   }
 
+  const bridgeDepth = -2;
+  const bridgeCenter = streamCenter(bridgeDepth);
+  const bridgeLength = streamWidth(bridgeDepth) * 2 + 3.4;
+  const timberMesh = box(0.045, 2);
+  const fastenerMesh = cylinder(6, 0, 1);
+  const warmWood = material('wood', [0.26, 0.13, 0.045], 0.66);
+  const lightWood = material('wood', [0.34, 0.19, 0.065], 0.72);
+  const iron = material('metal', [0.09, 0.1, 0.095], 0.38, 0.75);
+  for (let plank = 0; plank < 36; plank++) {
+    const x = bridgeCenter - bridgeLength / 2 + (plank + 0.5) * bridgeLength / 36;
+    add(`Footbridge plank ${plank}`, timberMesh, [x, 1.2, bridgeDepth], [bridgeLength / 36 * 0.93, 0.14, 1.7], plank % 3 ? warmWood : lightWood);
+    for (const side of [-1, 1]) add(`Footbridge nail ${plank} ${side}`, fastenerMesh, [x, 1.277, bridgeDepth + side * 0.58], [0.018, 0.018, 0.018], iron);
+  }
+  for (const side of [-1, 1]) {
+    add(`Bridge support ${side}`, timberMesh, [bridgeCenter, 1.04, bridgeDepth + side * 0.6], [bridgeLength + 0.3, 0.26, 0.22], warmWood);
+    add(`Bridge handrail ${side}`, timberMesh, [bridgeCenter, 2.26, bridgeDepth + side * 0.88], [bridgeLength + 0.3, 0.12, 0.13], lightWood);
+    add(`Bridge lower rail ${side}`, timberMesh, [bridgeCenter, 1.73, bridgeDepth + side * 0.88], [bridgeLength, 0.08, 0.1], warmWood);
+    for (let post = 0; post < 7; post++) {
+      const x = bridgeCenter - bridgeLength / 2 + post * bridgeLength / 6;
+      add(`Bridge post ${side} ${post}`, timberMesh, [x, 1.15, bridgeDepth + side * 0.88], [0.13, 2.24, 0.13], warmWood);
+      add(`Bridge post cap ${side} ${post}`, timberMesh, [x, 2.3, bridgeDepth + side * 0.88], [0.21, 0.08, 0.21], iron);
+    }
+  }
   const camera = { eye: [15, 8, 23], target: [-2, 2, -12] };
   return {
     name: 'Silverwater valley',
@@ -379,6 +402,7 @@ export function createNatureWorld({ seed = 67, detail = 'balanced' } = {}) {
       { name: 'By the water', eye: [7, 2.4, 14], target: [-3, 1.5, -15] },
       { name: 'Birch grove', eye: [-18, 4, 17], target: [-3, 3, -7] },
       { name: 'Mountain air', eye: [23, 15, -4], target: [-5, 5, -50] },
+      { name: 'Footbridge', eye: [bridgeCenter + 8, 3.4, 9], target: [bridgeCenter, 1.2, bridgeDepth] },
     ],
   };
 }

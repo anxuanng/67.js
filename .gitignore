@@ -5,6 +5,8 @@ build/
 public/releases/
 public/release.json
 public/changelog.md
+public/guide.md
+public/gltf.md
 artifacts/
 .env
 .env.*

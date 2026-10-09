@@ -30,7 +30,7 @@ try {
   assert.equal(await page.evaluate(() => window.__nature.state.wind), 0.75);
   await page.locator('#viewpoint').selectOption('1');
   await page.locator('#detail').selectOption('low');
-  await page.waitForFunction(() => window.__nature.world.parts.length === 1526);
+  await page.waitForFunction(() => window.__nature.state.detail === 'low' && window.__nature.world.parts.length < 2000);
   await page.locator('#viewpoint').selectOption('0');
   await page.locator('#viewport').click({ position: { x: 720, y: 630 } });
   assert.ok(await page.evaluate(() => window.__nature.state.rippleTime >= 0));

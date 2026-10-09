@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.3.1
+
+- Rebuild the homepage around the scene-to-film workflow and a real video showcase.
+- Add searchable documentation, a plain-text guide and an AI agent entry point.
+- Align site surfaces with CodePawl and add a transparent outline block logo and local SVG icons.
+- Add WALL·E camera compositions, lighting presets, assembly playback and PNG capture.
+- Add nature light presets and HDR grading, clockwork detail, appearance controls and frame capture.
+- Build a timber footbridge with planks, fasteners, rails and a dedicated viewpoint in Silverwater valley.
+- Replace the asset viewer placeholder with an imported clockwork GLB study.
+- Reflow object controls below the canvas on mobile and allow studio navigation to wrap.
+
 ## 0.3.0
 
 - Introduce deterministic keyframe animation and persistent instance updates.

@@ -1,4 +1,5 @@
 import './view2d.css';
+import './brand.js';
 import { vec3 } from 'gl-matrix';
 import { Renderer67 } from './renderer.js';
 import { createModel } from './model.js';

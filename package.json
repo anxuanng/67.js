@@ -1,6 +1,6 @@
 {
   "name": "@codepawlhq/67js",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "private": false,
   "type": "module",
   "description": "A browser graphics engine for interactive worlds, animation and cinematic media, with memory-aware CPU/GPU export",
@@ -19,6 +19,7 @@
     "THIRD-PARTY-NOTICES.md",
     "skills",
     "docs/gltf.md",
+    "docs/guide.md",
     "docs/verification.md",
     "docs/release-verification.md"
   ],
@@ -50,6 +51,7 @@
     "export:model": "node scripts/export-model.mjs",
     "smoke:package": "node scripts/smoke-package.mjs",
     "smoke:enhancements": "node scripts/smoke-enhancements.mjs",
+    "smoke:site": "node scripts/smoke-site.mjs",
     "publish:ci": "node scripts/publish-ci.mjs"
   },
   "devDependencies": {

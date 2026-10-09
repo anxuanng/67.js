@@ -1,6 +1,8 @@
 import './motion-style.css';
+import './brand.js';
 import { Renderer67 } from './renderer.js';
 import { createMotionScene, MOTION_DURATION } from './motion.js';
+import { EFFECT_PRESETS } from './effects.js';
 
 const query = new URLSearchParams(location.search);
 const exporting = query.get('export') === '1';
@@ -40,7 +42,8 @@ function showError(error) {
 function renderAt(time) {
   const frame = scene.sample(time, state.aspect);
   renderer.updateParts(scene.parts, { shadows: true });
-  renderer.render({ ...frame.camera, time: frame.time, exposure: frame.exposure, effects: frame.effects });
+  const look = document.querySelector('#motion-look').value;
+  renderer.render({ ...frame.camera, time: frame.time, exposure: frame.exposure, effects: look === 'cinematic' ? frame.effects : EFFECT_PRESETS[look] });
   state.time = frame.time;
   slider.value = String(state.time);
   slider.setAttribute('aria-valuetext', `${state.time.toFixed(1)} of ${MOTION_DURATION} seconds`);
@@ -82,6 +85,18 @@ function initializeRenderer() {
 }
 
 playButton.addEventListener('click', () => { if (renderer) setPlaying(!state.playing); });
+document.querySelector('#motion-look').addEventListener('change', () => { if (renderer) renderAt(state.time); });
+document.querySelector('#motion-save').addEventListener('click', () => {
+  if (!renderer) return;
+  setPlaying(false);
+  renderAt(state.time);
+  canvas.toBlob(blob => {
+    if (!blob) { showError(new Error('Image capture failed')); return; }
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a'); link.href = url; link.download = '67js-clockwork.png'; link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }, 'image/png');
+});
 document.querySelector('#motion-replay').addEventListener('click', () => {
   if (!renderer) return;
   setPlaying(false);

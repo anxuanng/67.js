@@ -32,6 +32,8 @@ input[type='range'] { grid-column: 1 / -1; margin: -8px 0 0; width: 100%; accent
 .export-mode .interface { display: none !important; }
 .export-mode .motion-stage { position: fixed; inset: 0; max-height: none; margin: 0; border-radius: 0; }
 [hidden] { display: none !important; }
+.motion-header { flex-wrap:wrap; }
+.motion-header nav { flex-wrap:wrap; }
 @media (max-width: 700px) {
   main { padding: 18px 18px 28px; }
   .motion-header { gap: 16px; margin-bottom: 20px; }

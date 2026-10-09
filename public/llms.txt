@@ -1,0 +1,23 @@
+# 67.js
+
+> A WebGL2 graphics toolkit for interactive scenes and deterministic image/video output. Build a scene once, use it on the web, and export its frames.
+
+## Start here
+- [Complete guide](https://67js.codepawl.com/guide.md): install, parts, materials, renderer options, cameras, effects, animation, memory, lifecycle, troubleshooting and agent workflow.
+- [Release metadata](https://67js.codepawl.com/release.json): exact version, published status, package name, installation command and module URL.
+- [Interactive documentation](https://67js.codepawl.com/docs.html): searchable reading interface.
+- [GLB support](https://67js.codepawl.com/gltf.md): supported asset subset and explicit limitations.
+
+## Recipes
+- [Object studio](https://67js.codepawl.com/object.html): shared geometry, orbit, finishes and exploded assemblies.
+- [Nature](https://67js.codepawl.com/nature.html): world lighting, wind and water interaction.
+- [Animation](https://67js.codepawl.com/motion.html): keyframe playback and deterministic seeking.
+- [2D](https://67js.codepawl.com/view2d.html): orthographic views and flat XY geometry.
+- [Assets](https://67js.codepawl.com/assets.html): import an opaque GLB and sample rigid node animation.
+
+## Agent contract
+Install with npm install 67js@npm:@codepawlhq/67js. Core imports use '67js'. Compare VERSION with release metadata. Read the complete guide before generating renderer calls. Reuse geometry object identities, use finite invertible matrices and linear material RGB, set explicit render budgets, pause hidden playback, and dispose resources. Use deterministic timeline samples for offline media.
+
+The package contains skills/build-67js-scene/SKILL.md and skills/render-67js-media/SKILL.md. The media CLI runs from a repository checkout, not the npm package. Capture and inspect real rendered output before reporting success. Report actual dimensions and estimated allocation separately from observed process memory.
+
+Do not invent APIs, claim Three.js compatibility, claim universal speed superiority, or describe 67.js as a complete Blender editor. No WebGPU, skinning, morph targets or transparent material support in this release. Unsupported GLB features must produce visible errors.

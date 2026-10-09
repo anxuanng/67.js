@@ -1,8 +1,10 @@
 import './view2d.css';
+import './brand.js';
 import './asset-viewer.css';
-import { mat4, vec3 } from 'gl-matrix';
-import { Renderer67, box, torus, exportGlb, cameraView, fitOrthographicHeight } from './index.js';
+import { vec3 } from 'gl-matrix';
+import { Renderer67, exportGlb, cameraView, fitOrthographicHeight } from './index.js';
 import { loadGltf, parseGltf } from './gltf.js';
+import { createMotionScene } from './motion.js';
 
 const canvas = document.querySelector('#viewport');
 const parameters = new URLSearchParams(location.search);
@@ -215,7 +217,6 @@ document.querySelector('#save').addEventListener('click', async () => {
 
 window.__assetViewer = { state, openFile, showAsset, get renderer() { return renderer; }, get asset() { return asset; }, renderAt };
 window.__scene = { get renderer() { return renderer; }, get duration() { return duration(); }, pause, renderAt };
-const material = { tag: 'surface', color: [0.16, 0.48, 0.42], metallic: 0.55, roughness: 0.3, emission: 0 };
-const ringMatrix = mat4.fromScaling(mat4.create(), [1.5, 1.5, 1.5]);
-const demo = [{ name: 'Core', geometry: box(), matrix: mat4.create(), material }, { name: 'Ring', geometry: torus(0.08, 64, 16), matrix: ringMatrix, material }];
-try { showAsset(await parseGltf(exportGlb(demo)), 'Machine study'); } catch (error) { notice(error.message, true); }
+const demo = createMotionScene();
+demo.sample(3);
+try { showAsset(await parseGltf(exportGlb(demo.parts)), 'Clockwork GLB study'); } catch (error) { notice(error.message, true); }

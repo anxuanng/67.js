@@ -1,4 +1,5 @@
 import './home.css';
+import './brand.js';
 
 const state = { status: 'loading', release: null };
 

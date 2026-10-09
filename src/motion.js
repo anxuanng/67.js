@@ -83,6 +83,19 @@ export function createMotionScene() {
   }
   add('Lower spindle', 'collar', [0, -0.9, 0], [0.13, 0.75, 0.13], steel);
   add('Spindle tip', 'bead', [0, -1.31, 0], [0.18, 0.18, 0.18], gold);
+  // Radial ribs, luminous collars and orbital markers make the assembly legible at close range.
+  for (let rib = 0; rib < 24; rib++) {
+    const angle = rib / 24 * Math.PI * 2;
+    add(`Cooling rib ${rib}`, 'plate', [Math.cos(angle) * 0.57, 0, Math.sin(angle) * 0.57], [0.035, 1.05, 0.08], steel, [0, -angle * 180 / Math.PI, 0]);
+  }
+  for (const height of [-0.66, 0.66]) {
+    add(`Light collar ${height}`, 'ring', [0, height, 0], [0.67, 0.67, 0.67], glow, [90, 0, 0]);
+  }
+  add('Orbital rail', 'ring', [0, -0.2, 0], [2.2, 2.2, 2.2], dark, [90, 0, 0]);
+  for (let tick = 0; tick < 72; tick++) {
+    const angle = tick / 72 * Math.PI * 2;
+    add(`Orbital index ${tick}`, 'plate', [Math.cos(angle) * 2.2, -0.2, Math.sin(angle) * 2.2], [tick % 6 === 0 ? 0.13 : 0.05, 0.025, 0.025], tick % 6 === 0 ? gold : steel, [0, -angle * 180 / Math.PI, 0]);
+  }
   const clip = createAnimationClip({ duration: MOTION_DURATION, tracks });
   const player = createAnimationPlayer(clip, parts);
   const cameras = [

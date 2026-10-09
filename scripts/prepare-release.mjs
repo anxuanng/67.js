@@ -33,6 +33,8 @@ await cp(resolve(root, 'build'), resolve(releases, metadata.version), { recursiv
 run(process.execPath, ['node_modules/vite/bin/vite.js', 'build', '--config', 'vite.browser.config.js']);
 await copyFile(resolve(root, 'build-browser/67.module.js'), resolve(releases, metadata.version, '67.module.js'));
 await copyFile(resolve(root, 'CHANGELOG.md'), resolve(root, 'public/changelog.md'));
+await copyFile(resolve(root, 'docs/guide.md'), resolve(root, 'public/guide.md'));
+await copyFile(resolve(root, 'docs/gltf.md'), resolve(root, 'public/gltf.md'));
 
 let registryVersion = null;
 let registryPublished = false;
@@ -72,7 +74,7 @@ const release = {
   registryVersion,
   integrity,
   packageBytes: archive.length,
-  api: './getting-started.html#api',
+  api: './docs.html#renderer-reference',
   changelog: '/changelog.md',
 };
 await writeFile(resolve(root, 'public/release.json'), `${JSON.stringify(release, null, 2)}\n`);

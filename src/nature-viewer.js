@@ -1,4 +1,5 @@
 import './nature-style.css';
+import './brand.js';
 import { vec4 } from 'gl-matrix';
 import { Renderer67 } from './renderer.js';
 import { createNatureWorld } from './nature.js';
@@ -63,7 +64,7 @@ function environment() {
 }
 
 function renderFrame() {
-  renderer?.render({ ...camera(), time: state.time, wind: state.wind, waterRipple: state.waterRipple, rippleTime: state.rippleTime, environment: environment() });
+  renderer?.render({ ...camera(), time: state.time, wind: state.wind, waterRipple: state.waterRipple, rippleTime: state.rippleTime, environment: environment(), effects: { saturation: 1.06, contrast: 1.03, temperature: (1 - state.daylight) * 0.1, vignette: 0.07, bloom: { strength: 0.1, threshold: 1.2, radius: 1.3 } } });
 }
 
 function stopAnimation() {
@@ -97,7 +98,7 @@ function updateStatistics() {
 
 function initializeRenderer() {
   renderer = new Renderer67(canvas, world.parts, {
-    world: true, ground: false, environment: world.environment,
+    world: true, ground: false, hdr: true, environment: world.environment,
     pixelRatio: renderParameters.get('export') === '1' ? 1 : 1.25, memoryBudgetMiB: Number(renderParameters.get('memory') ?? 256), samples: Number(renderParameters.get('samples') ?? 4),
   });
   updateStatistics();
@@ -166,6 +167,11 @@ document.querySelector('#wind').addEventListener('input', event => {
   document.querySelector('#wind-value').textContent = state.wind < 0.1 ? 'Still' : state.wind < 0.55 ? 'Gentle' : 'Breezy';
   invalidate();
 });
+document.querySelectorAll('[data-daylight]').forEach(button => button.addEventListener('click', () => {
+  const slider = document.querySelector('#daylight');
+  slider.value = button.dataset.daylight;
+  slider.dispatchEvent(new Event('input', { bubbles: true }));
+}));
 motionButton.addEventListener('click', () => {
   state.paused = !state.paused;
   lastFrameTime = 0;
