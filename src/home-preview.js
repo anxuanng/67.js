@@ -35,11 +35,11 @@ function draw() {
       shadowBounds.target[axis] = shadowTarget[axis] + frame.rootOffset[axis];
     }
     renderer.updateParts(scene.parts);
-    const distance = state.distance * (canvas.clientWidth < 500 ? 1.05 : 1) + state.assembly * 10;
-    const targetHeight = frame.target[1] + state.assembly * 0.35;
+    const distance = state.distance * (canvas.clientWidth < 500 ? 1.05 : 1);
+    const targetHeight = frame.target[1];
     renderer.render({
       eye:[frame.target[0] + Math.sin(state.yaw) * Math.cos(state.pitch) * distance, targetHeight + Math.sin(state.pitch) * distance, frame.target[2] + Math.cos(state.yaw) * Math.cos(state.pitch) * distance],
-      target:[frame.target[0],targetHeight,frame.target[2]], fov:40, time:state.time, exposure:1, armorColor:[0.73,0.43,0.065], armorSurface:[0.62,0.43], assemblyAmount:state.assembly, effects:{ ...frame.effects, vignette:0, grain:0 },
+      target:[frame.target[0],targetHeight,frame.target[2]], fov:40, near:0.025, time:state.time, exposure:1, armorColor:[0.73,0.43,0.065], armorSurface:[0.62,0.43], assemblyAmount:state.assembly, effects:{ ...frame.effects, vignette:0, grain:0 },
     });
   } catch (error) {
     showError(error);
@@ -91,7 +91,7 @@ function initialize() {
 }
 
 function zoom(multiplier) {
-  state.distance = Math.max(4.5, Math.min(14, state.distance * multiplier));
+  state.distance = Math.max(1.2, Math.min(30, state.distance * multiplier));
   draw();
 }
 

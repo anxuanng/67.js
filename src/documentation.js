@@ -219,6 +219,10 @@ function openTopic(focus = false) {
   if (focus) {
     article.focus({ preventScroll: true });
     window.scrollTo({ top: 0 });
+    for (const animation of article.getAnimations()) animation.cancel();
+    if (!matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      article.animate([{ opacity:0.6, transform:'translateY(6px)' }, { opacity:1, transform:'translateY(0)' }], { duration:170, easing:'cubic-bezier(.2,0,0,1)' });
+    }
   }
 }
 

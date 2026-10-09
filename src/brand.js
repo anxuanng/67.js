@@ -1,4 +1,7 @@
+import '@codepawlhq/orglet-ui/tokens.css';
 import './brand.css';
+
+document.documentElement.dataset.theme = 'system';
 
 for (const brand of document.querySelectorAll('a.brand')) {
   const mark = document.createElement('img');

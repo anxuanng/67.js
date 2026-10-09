@@ -1,0 +1,65 @@
+/* OUI supplies the shared palette and controls; 67.js adds pixel surfaces. */
+body:has(.navigation) {
+  --window:var(--org-bg);
+  --bg:var(--org-sidebar);
+  --surface:var(--org-surface);
+  --text:var(--org-text);
+  --muted:var(--org-muted);
+  --border:var(--org-border);
+  --focus:var(--org-focus);
+  --org-radius:14px;
+  --org-control-height:44px;
+  --dither:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='8' shape-rendering='crispEdges'%3E%3Cpath fill='white' fill-opacity='.1' d='M0 0h2v2H0zM4 4h2v2H4zM2 6h1v1H2zM6 2h1v1H6z'/%3E%3C/svg%3E");
+  color:var(--text);
+  background:var(--window);
+}
+@media (prefers-color-scheme:light) {
+  body:has(.navigation) {
+    --org-muted:#595959;
+    --dither:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='8' shape-rendering='crispEdges'%3E%3Cpath fill='black' fill-opacity='.085' d='M0 0h2v2H0zM4 4h2v2H4zM2 6h1v1H2zM6 2h1v1H6z'/%3E%3C/svg%3E");
+  }
+}
+.navigation, .package-install, .site-footer {
+  background-image:var(--dither);
+}
+.preview-assembly {
+  padding:16px 20px;
+  border-radius:24px;
+  background:var(--dither), var(--bg);
+}
+.live-showcase { position:relative; isolation:isolate; }
+.live-showcase::before {
+  content:'';
+  position:absolute;
+  inset:4% 8% 22%;
+  z-index:-1;
+  pointer-events:none;
+  background:var(--dither), radial-gradient(ellipse, color-mix(in srgb,var(--focus) 18%,transparent), transparent 70%);
+  mask-image:radial-gradient(ellipse,black 28%,transparent 72%);
+}
+.oui-control { display:contents; }
+.oui-action { gap:8px; border-radius:14px; }
+.oui-action svg { flex:none; }
+.command-row .oui-action { flex:none; }
+.navigation nav a, .hero-actions a, .package-links a, .footer-links a,
+.oui-action, .example, .docs-topic, .doc-pagination a {
+  transition:transform var(--org-motion-base) var(--org-ease-out), box-shadow var(--org-motion-base) var(--org-ease-out), background-color var(--org-motion-quick) var(--org-ease-out);
+}
+@media (hover:hover) and (prefers-reduced-motion:no-preference) {
+.navigation nav a:hover, .hero-actions a:hover, .oui-action:hover {
+  transform:translateY(-2px);
+  box-shadow:0 6px 20px color-mix(in srgb,var(--focus) 14%,transparent);
+}
+.navigation nav a:active, .hero-actions a:active, .oui-action:active {
+  transform:translateY(0) scale(.97);
+}
+.example:hover { transform:translateY(-4px); }
+.example img { transition:box-shadow var(--org-motion-base) var(--org-ease-out); }
+.example:hover img { box-shadow:0 10px 34px color-mix(in srgb,var(--focus) 18%,transparent); }
+}
+.navigation nav a[aria-current], .package-managers button[aria-pressed='true'] {
+  background-image:var(--dither);
+}
+@media (prefers-reduced-motion:reduce) {
+  .navigation nav a, .hero-actions a, .oui-action, .example { transform:none !important; }
+}

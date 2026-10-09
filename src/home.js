@@ -1,5 +1,11 @@
 import './home.css';
 import './brand.js';
+import './site-theme.css';
+import './site-motion.js';
+
+const copyControls = [];
+const packageControls = [];
+const controls = document.querySelector('[data-copy-install]') ? await import('./site-controls.js') : null;
 
 const state = { status: 'loading', release: null, packageManager: 'npm' };
 const packageCommands = { npm: 'npm install', pnpm: 'pnpm add', yarn: 'yarn add', bun: 'bun add' };
@@ -48,14 +54,12 @@ function setLink(selector, url, download = false) {
 
 function renderRelease() {
   const release = state.release;
-  document.querySelectorAll('[data-copy-install]').forEach(button => { button.disabled = !release; });
+  copyControls.forEach(control => control.update({ disabled:!release }));
   document.querySelectorAll('[data-release-retry]').forEach(button => { button.hidden = state.status !== 'error'; });
   document.querySelectorAll('[data-release-status]').forEach(element => { element.dataset.status = state.status; });
   setText('[data-release-version]', release ? `v${release.version}` : state.status === 'error' ? 'Release unavailable' : 'Loading release');
   setText('[data-install-command]', release ? installCommand() : state.status === 'error' ? 'Release information is unavailable' : 'Loading the release command…');
-  document.querySelectorAll('[data-package-manager]').forEach(button => {
-    button.setAttribute('aria-pressed', String(button.dataset.packageManager === state.packageManager));
-  });
+  packageControls.forEach(({ name, control }) => control.update({ 'aria-pressed':String(name === state.packageManager) }));
   document.querySelectorAll('.release-feedback').forEach(element => { element.hidden = state.status !== 'error'; });
   setText('[data-release-status]', state.status === 'error' ? 'Release information could not load. Retry to get the current files.' : '');
   setLink('[data-release-tarball]', release ? releaseURL(release.tarball) : null, true);
@@ -90,26 +94,32 @@ function selectCommand() {
 }
 
 document.querySelectorAll('[data-copy-install]').forEach(button => {
-  button.addEventListener('click', async () => {
+  const control = controls.mountButton(button, { icon:'copy', onClick:async () => {
     if (!state.release) return;
     try {
       await navigator.clipboard.writeText(installCommand());
-      button.textContent = 'Copied';
-      setTimeout(() => { button.textContent = 'Copy command'; }, 2000);
+      control.update({ label:'Copied', icon:'check' });
+      setTimeout(() => { control.update({ label:'Copy command', icon:'copy' }); }, 2000);
     } catch {
       selectCommand();
       document.querySelectorAll('.release-feedback').forEach(element => { element.hidden = false; });
       setText('[data-release-status]', 'Clipboard unavailable. Copy the selected command.');
     }
-  });
+  } });
+  copyControls.push(control);
 });
-document.querySelectorAll('[data-release-retry]').forEach(button => button.addEventListener('click', loadRelease));
+document.querySelectorAll('[data-release-retry]').forEach(button => {
+  controls.mountButton(button, { hidden:button.hidden, onClick:loadRelease });
+});
 
 document.querySelectorAll('[data-package-manager]').forEach(button => {
-  button.addEventListener('click', () => {
-    state.packageManager = button.dataset.packageManager;
+  const name = button.dataset.packageManager;
+  const control = controls.mountButton(button, { icon:controls.packageLogo(name), onClick:() => {
+    state.packageManager = name;
     renderRelease();
-  });
+    if (!matchMedia('(prefers-reduced-motion: reduce)').matches) document.querySelector('[data-install-command]').animate([{ opacity:0.4 }, { opacity:1 }], { duration:170 });
+  } });
+  packageControls.push({ name, control });
 });
 
 function redirectLegacyDownloads() {
