@@ -23,7 +23,9 @@ function npm(argumentsValue) {
   assert.equal(result.status, 0, result.stderr);
   return result.stdout;
 }
-const packed = JSON.parse(npm(['pack', published ? `${metadata.name}@${metadata.version}` : process.cwd(), '--ignore-scripts', '--json', '--pack-destination', consumer]))[0];
+const packResult = JSON.parse(npm(['pack', published ? `${metadata.name}@${metadata.version}` : process.cwd(), '--ignore-scripts', '--json', '--pack-destination', consumer]));
+const packed = Array.isArray(packResult) ? packResult[0] : packResult[metadata.name];
+assert.ok(packed?.filename, 'npm pack must return the package archive.');
 for (const path of ['bin/67js-mcp.mjs', 'build/mcp/server.mjs', 'build/mcp/preview.js', 'build/mcp/manifest.json', 'build/mcp/LICENSES.md']) {
   assert.ok(packed.files.some(file => file.path === path), `Packed CLI must contain ${path}.`);
 }
