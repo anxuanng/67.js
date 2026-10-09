@@ -93,7 +93,22 @@ Inspect or export the recipe before retrying. Context loss still permits recipe 
 The recipe uses `format: '67js.scene'` and `schemaVersion: 1`.
 Supported geometry types are `box`, `cylinder`, `sphere`, `torus`, `lathe`, `extrude`, and `tube`.
 Geometry fields remain flat inside each geometry record.
-Operations use `set-node`, `set-material`, or `set-camera`, with fields directly on each command.
+Set operations use `set-node`, `set-material`, or `set-camera`, with fields directly on each command.
+`set-node` can rebind a mesh to another geometry/material pair.
+
+Build from an empty recipe by adding resources and nodes in one revisioned batch:
+
+```js
+[
+  { type: 'add-geometry', geometry: { id: 'cube', type: 'box', bevel: 0.04 } },
+  { type: 'add-material', material: { id: 'paint', color: [0.2, 0.6, 0.8] } },
+  { type: 'add-node', node: { id: 'mesh', geometry: 'cube', material: 'paint' } }
+]
+```
+
+Use `remove-node`, `remove-geometry` and `remove-material` with an `id` to remove entries.
+References must resolve after the complete batch. Removing a parent leaves its children unchanged unless `recursive: true` removes its subtree.
+Reparent or remove those children before the parent removal command to avoid rejection.
 The [scene contract](agent-scene.md) defines the geometry fields, transforms, materials, and atomic validation rules.
 
 ## Limits
@@ -124,10 +139,18 @@ An oversized PNG response returns an error. Request a smaller preview rather tha
 Browser evaluations have a 30-second deadline. A timeout closes the preview browser and makes the runtime unavailable.
 Camera matrices must remain finite at every supported preview aspect ratio, from 1:16 to 16:1.
 
-Group and mesh membership, geometry definitions, and material tags remain fixed after creation.
-Adding nodes or changing geometry requires a new scene.
+Geometry resources remain immutable. Remove an unused definition and add its replacement in one batch, or add a new resource ID and rebind its nodes.
+Checkpoints retain their resource handles for exact restoration. Active, checkpoint and staged geometry share a bounded allocation budget.
+Release unused checkpoints to free that ownership before adding detail.
 
-The tools expose no arbitrary JavaScript execution, URLs, file access, asset ingestion, or render jobs.
+The preview reconciles rigid, untextured parts while retaining shader programs, render targets and shared geometry buffers.
+Unchanged draw batches remain allocated. Changed instance groups receive new instance buffers. Retired buffers are released.
+
+Staging must fit alongside the current render allocations, so a replacement can fail its GPU budget even when the final scene alone fits.
+The committed revision and separate render failure remain visible in that case.
+Request a smaller `scene_look` to release large frame targets before retrying reconciliation.
+
+The tools expose no arbitrary JavaScript execution, URLs, file access, asset ingestion, animation authoring, or render jobs.
 The transport supplies a visual feedback loop, but visual quality still depends on the authored scene and image assessment.
 MCP support does not establish Blender feature parity.
 
@@ -143,4 +166,9 @@ These tests do not prove browser launch, GPU rendering, or final visual quality.
 Run `node scripts/smoke-mcp.mjs gpu modern` for a native browser test through real stdio tools.
 Run `node scripts/smoke-mcp.mjs cpu legacy` for the software backend and legacy protocol negotiation.
 Each checks landscape and portrait PNGs, stale revision rejection, exact PNG restoration, session disposal, and process cleanup.
+They build the scene from empty through tool calls, add and remove geometry, and restore the scene after all mesh resources were removed.
 The scripts save images and metadata under `artifacts/`. They use one isolated browser and close it when finished.
+
+Run `node scripts/smoke-agent-topology.mjs` to inspect native GPU allocations during a shared-geometry addition and restoration.
+Its staging-budget failure must allocate no buffers and retain the previous rendered frame.
+Use `node scripts/smoke-agent-topology.mjs cpu` for software rendering. Both modes also verify recovery through a smaller CPU preview under a 32 MiB budget.

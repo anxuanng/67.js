@@ -145,6 +145,18 @@ if (${!published}) {
   agentScene.restore(agentCheckpoint, { expectedRevision: agentScene.revision });
   assert.equal(agentPart.matrix[12], 0);
   agentScene.releaseCheckpoint(agentCheckpoint);
+  const dynamicCheckpoint = agentScene.checkpoint();
+  agentScene.apply([
+    { type: 'add-geometry', geometry: { id: 'ball', type: 'sphere', segments: 12, rings: 8 } },
+    { type: 'add-node', node: { id: 'ball', geometry: 'ball', material: 'paint', translation: [1, 0, 0] } },
+  ], { expectedRevision: agentScene.revision });
+  assert.equal(agentScene.parts.length, 2);
+  assert.equal(agentScene.parts[0], agentPart);
+  assert.equal(agentScene.topologyRevision, 1);
+  agentScene.restore(dynamicCheckpoint, { expectedRevision: agentScene.revision });
+  assert.equal(agentScene.parts.length, 1);
+  assert.equal(agentScene.parts[0], agentPart);
+  agentScene.releaseCheckpoint(dynamicCheckpoint);
 }
 const parts = createModel();
 assert.equal(parts.length, 574);

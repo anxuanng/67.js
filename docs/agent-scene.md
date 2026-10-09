@@ -117,36 +117,84 @@ Each successful application increments the revision once, including a command th
 Stale revisions and invalid commands leave canonical state, published matrices, materials, and the revision unchanged.
 Every command in a batch stages before any command publishes.
 
+Commands run sequentially against a private candidate recipe.
+Final resource references and hierarchy must be valid before publication.
+
 | Operation | Fields |
 | --- | --- |
-| `set-node` | `id`, optional `translation`, `rotation`, `scale`, `parent`, `label` |
+| `set-node` | `id`, optional `translation`, `rotation`, `scale`, `parent`, `label`, `geometry`, `material` |
 | `set-material` | `id`, optional `color`, `metallic`, `roughness`, `emission`, `emissiveColor` |
 | `set-camera` | Optional `eye`, `target`, `up`, `fov`, `near`, `far` directly on the command |
+| `add-geometry` | `geometry`, containing a complete geometry record |
+| `remove-geometry` | `id` |
+| `add-material` | `material`, containing a complete material record |
+| `remove-material` | `id` |
+| `add-node` | `node`, containing a complete node record |
+| `remove-node` | `id`, optional boolean `recursive`, default `false` |
 
-Node membership and resource definitions remain fixed.
 Reparenting changes hierarchy while preserving each node's local transform.
-Adding or removing nodes, changing geometry, and changing material tags require a new session.
+Commands can add or remove nodes and resources.
+Adding a duplicate ID or removing a missing ID fails.
+Resource removal can precede rebinding or dependent node removal in the same batch.
+The final recipe must contain every resource and parent referenced by surviving nodes.
+Mesh nodes require both geometry and material IDs in the final recipe.
+
+Nonrecursive removal rejects a node that has children at that command's position in the batch.
+Child removal or reparenting must precede nonrecursive parent removal.
+Recursive removal explicitly removes that node and its entire current subtree.
+Node removal leaves geometry and materials intact until explicit resource removal.
+Changing a geometry definition or material tag requires removing and adding its resource record.
+Direct `set-material` commands still reject tag changes.
 
 The session copies input recipes and commands.
 `exportRecipe()` and `camera` return detached JSON snapshots.
 Published material objects are frozen and expose immutable arrays through retained getters.
-Renderer parts, matrices, geometries, and material objects retain their identities across successful edits and restores.
 Material reads do not allocate arrays or scan resource collections.
+
+Surviving nodes retain their part and matrix identities when geometry and material bindings retain their resource identities.
+Rebinding replaces the part and its matrix.
+Removing and adding the same node ID also replaces its part.
+
+Geometry identity survives when its ID and complete definition match an active or checkpoint resource.
+Object key order does not affect that comparison.
+Omitted parameters and explicit defaults remain distinct definitions.
+A changed definition creates new immutable geometry and replaces parts bound to that resource.
+Multiple nodes referencing the same resource ID share its geometry.
+
+`parts` returns a frozen current list.
+The list retains its identity while its ordered part identities remain unchanged.
+Transform, material value, camera, and group-only edits can retain the list.
+Removed parts leave the current list and are no longer renderer update targets.
+Removed material handles remain readable with their last committed snapshot.
 
 `parts` is a privileged renderer adapter surface.
 Its geometry typed arrays follow the engine's immutable geometry contract and must never change or detach.
-The session does not duplicate geometry buffers or regenerate geometry during transactions.
+The session does not duplicate geometry buffers or regenerate unchanged geometry during transactions.
 Writes to retained matrices cannot poison the private recipe or inspection transforms.
 
 A successful transaction overwrites those matrices from canonical state.
 Detached matrices reject publication before canonical state changes.
 An agent adapter must expose JSON commands and snapshots rather than renderer typed arrays.
 
+`topologyRevision` starts at zero and increments only when ordered part identities or membership change.
+Restore follows the same rule.
+Failed transactions leave both revisions unchanged.
+Unused resource or group-only edits do not increment `topologyRevision`.
+Renderer adapters can compare it to choose topology replacement or retained instance updates.
+The session does not replace renderer GPU resources itself.
+
 `checkpoint()` returns an opaque, frozen handle that belongs to its session.
 Checkpoint snapshots are private and cannot change through the handle.
+Checkpoints retain recipe snapshots and references to their geometry, material handles, and parts.
+Restore reuses those resources without regenerating geometry.
+Unchanged active parts take priority when their bindings still match.
+Otherwise, restore can recover the checkpoint's original part and matrix identities.
+
 `restore(handle, { expectedRevision })` applies the same atomic validation and increments the revision.
 Released and foreign handles fail.
 `releaseCheckpoint(handle)` frees its slot and does not change the scene revision.
+Released geometry references leave session ownership unless the active scene or another checkpoint still needs them.
+There is no separate unbounded geometry history cache.
 
 ## Budgets and inspection
 
@@ -159,23 +207,32 @@ The optional second constructor argument overrides the following positive intege
 | `maxDepth` | `256`, counting a root as depth one |
 | `maxGeometries` | `256` |
 | `maxMaterials` | `256` |
-| `maxVertices` | `250000`, summed across unique geometries |
+| `maxVertices` | `250000`, across unique active, checkpoint, and staged geometry allocations |
 | `maxGeometryBytes` | `33554432` |
 | `maxOperations` | `256`, per application |
 | `maxCheckpoints` | `8` |
 | `maxRecipeBytes` | `1048576`, also used for each command batch |
 
-Preflight sums conservative vertex counts before any geometry generation.
+Preflight accounts for peak geometry ownership before generating any new resource.
+It counts each unique active or checkpoint allocation once, using actual vertices and typed array bytes.
+New resources contribute their conservative vertex and byte bounds.
 Its byte bound uses 56 bytes per vertex for eight floats and at most six Uint32 indices.
 Actual generated geometry bytes must also fit the budget.
 
-Byte counts include position, normal, UV, and index typed arrays across unique geometries.
-They exclude JavaScript object overhead, temporary generator allocations, transaction matrices, checkpoints, and renderer GPU memory.
+Atomic replacement retains the old active geometry until the candidate commits, so both allocations count during preflight.
+A single replacement can fail even when the final geometry fits alone.
+Checkpoint sharing does not duplicate geometry bytes.
+Unused active resources still count until explicitly removed.
+Releasing checkpoints can free ownership for later additions.
+
+Byte counts include position, normal, UV, and index typed arrays across unique owned geometry allocations.
+They exclude JavaScript objects, temporary generator allocations, transaction matrices, checkpoint recipes, and renderer GPU memory.
+External renderer adapters can retain removed arrays beyond the session's ownership accounting.
 The JSON budget uses conservative UTF-8 traversal accounting and also checks serialized JSON size.
 Normalization can increase serialized size, so normalized recipes also pass the JSON budget.
 Each checkpoint stores at most one normalized recipe within that limit.
 
-`inspect({ ids, limit, includeBounds })` returns compact JSON with the current revision, global counts, and selected node records.
+`inspect({ ids, limit, includeBounds })` returns JSON with both revisions, global counts, and selected node records.
 Its default limit is 64, capped by `maxNodes`.
 Requested IDs must exist.
 
@@ -183,6 +240,9 @@ Requested IDs must exist.
 Global counts include nodes, render parts, unique geometries, materials, and unique geometry vertices.
 `geometryBytes` reports actual unique typed array bytes.
 `estimatedGeometryBytes` reports the conservative preflight bound.
+
+Those fields describe active resources, including unused resources.
+`residentGeometryBytes` and `residentGeometryVertices` include unique active and checkpoint allocations.
 Inspection does not report GPU timing or renderer allocation.
 
 With `includeBounds: true`, each mesh record includes `{ min, max }` from every transformed geometry vertex.
@@ -198,5 +258,12 @@ They describe the authored mesh surface without shader effects or displacement.
 | Validate JSON recipes and typed commands | Bounded inputs, private ownership, atomic batches, and reproducible snapshots | A deliberately limited geometry and editing vocabulary |
 
 The addon uses validated JSON because ownership and atomic editing form its public contract.
-A future MCP adapter can translate tool calls into this API without placing transport logic inside the scene session.
+The separate [source MCP adapter](mcp.md) translates tool calls into this API without placing transport logic inside the scene session.
 This version does not claim Blender feature parity.
+
+| Geometry ownership design | Benefit | Cost |
+| --- | --- | --- |
+| Regenerate the full scene after every command | Simple replacement ownership | Repeated geometry allocation and lost renderer identities |
+| Retain immutable resource records in active state and bounded checkpoints | Shared geometry, replay, stable parts, and peak allocation preflight | Explicit staging and checkpoint ownership accounting |
+
+The addon retains immutable resource records because topology editing must preserve unaffected geometry and renderer handles.

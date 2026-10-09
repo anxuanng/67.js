@@ -56,23 +56,31 @@ try {
   assert.equal(listing.tools.length, 10);
   const capabilities = (await call('scene_capabilities')).structuredContent;
   assert.equal(capabilities.phase, 'idle');
-  const created = (await call('scene_create', { recipe: createAgentPreviewFixture() })).structuredContent;
-  const { sessionId } = created;
+  const fixture = createAgentPreviewFixture();
+  const empty = (await call('scene_create', { recipe: { ...fixture, geometries: [], materials: [], nodes: [] } })).structuredContent;
+  const { sessionId } = empty;
+  assert.equal(empty.inspection.counts.parts, 0);
+  const created = (await call('scene_apply', { sessionId, expectedRevision: 0, operations: [
+    ...fixture.geometries.map(geometry => ({ type: 'add-geometry', geometry })),
+    ...fixture.materials.map(material => ({ type: 'add-material', material })),
+    ...fixture.nodes.map(node => ({ type: 'add-node', node })),
+  ] })).structuredContent;
+  assert.equal(created.renderSucceeded, true);
   assert.equal(created.inspection.counts.parts, 19);
   assert.equal(created.inspection.counts.geometries, 7);
-  assert.equal(created.revision, 0);
+  assert.equal(created.revision, 1);
   assert.match(created.render.graphics, backend === 'gpu' ? /NVIDIA/i : /SwiftShader/i);
   const before = await look(sessionId, 'before');
   const checkpoint = (await call('scene_checkpoint', { sessionId })).structuredContent;
   const edited = (await call('scene_apply', {
-    sessionId, expectedRevision: 0,
+    sessionId, expectedRevision: 1,
     operations: [
       { type: 'set-node', id: 'lamp', translation: [0.18, 0.82, 0] },
       { type: 'set-node', id: 'glow', scale: [0.34, 0.3, 0.34], translation: [0, 0.75, 0] },
       { type: 'set-material', id: 'light', color: [0.9, 0.28, 0.04], emissiveColor: [0.9, 0.28, 0.04] },
     ],
   })).structuredContent;
-  assert.equal(edited.revision, 1);
+  assert.equal(edited.revision, 2);
   assert.equal(edited.committed, true);
   assert.equal(edited.renderSucceeded, true);
   const after = await look(sessionId, 'after');
@@ -82,21 +90,45 @@ try {
   } });
   assert.equal(stale.isError, true);
   const inspection = (await call('scene_inspect', { sessionId, ids: ['lamp', 'glow'], includeBounds: true })).structuredContent;
-  assert.equal(inspection.revision, 1);
+  assert.equal(inspection.revision, 2);
   assert.equal(inspection.nodes.length, 2);
   assert.ok(inspection.nodes[1].bounds);
-  const restoredStatus = (await call('scene_restore', { sessionId, checkpointId: checkpoint.checkpointId, expectedRevision: 1 })).structuredContent;
+  const restoredStatus = (await call('scene_restore', { sessionId, checkpointId: checkpoint.checkpointId, expectedRevision: 2 })).structuredContent;
   assert.equal(restoredStatus.committed, true);
   assert.equal(restoredStatus.renderSucceeded, true);
   const restored = await look(sessionId, 'restored');
   assert.deepEqual(restored.bytes, before.bytes);
+  const enlarged = (await call('scene_apply', { sessionId, expectedRevision: 3, operations: [
+    { type: 'add-geometry', geometry: { id: 'ornament', type: 'sphere', segments: 24, rings: 16 } },
+    { type: 'add-material', material: { id: 'ruby', color: [0.8, 0.04, 0.06], metallic: 0.6, roughness: 0.2 } },
+    { type: 'add-node', node: { id: 'ornament', geometry: 'ornament', material: 'ruby', translation: [-1.2, 0.8, 0], scale: [0.28, 0.28, 0.28] } },
+  ] })).structuredContent;
+  assert.equal(enlarged.renderSucceeded, true);
+  assert.equal(enlarged.inspection.counts.parts, 20);
+  assert.equal(enlarged.render.geometryBuffers, 8);
+  const topology = await look(sessionId, 'topology');
+  assert.notDeepEqual(topology.bytes, before.bytes);
+  await call('scene_restore', { sessionId, checkpointId: checkpoint.checkpointId, expectedRevision: 4 });
+  const topologyRestored = await look(sessionId, 'topology-restored');
+  assert.deepEqual(topologyRestored.bytes, before.bytes);
+  assert.equal(topologyRestored.metadata.geometryBuffers, 7);
+  const removed = (await call('scene_apply', { sessionId, expectedRevision: 5, operations: [
+    { type: 'remove-node', id: 'lamp', recursive: true },
+    ...fixture.geometries.map(geometry => ({ type: 'remove-geometry', id: geometry.id })),
+    ...fixture.materials.map(material => ({ type: 'remove-material', id: material.id })),
+  ] })).structuredContent;
+  assert.equal(removed.renderSucceeded, true);
+  assert.equal(removed.inspection.counts.parts, 0);
+  assert.equal(removed.render.gpuBuffers, 0);
+  await call('scene_restore', { sessionId, checkpointId: checkpoint.checkpointId, expectedRevision: 6 });
+  assert.deepEqual((await look(sessionId, 'recreated')).bytes, before.bytes);
   await call('scene_release_checkpoint', { sessionId, checkpointId: checkpoint.checkpointId });
   const exported = (await call('scene_export_recipe', { sessionId })).structuredContent;
-  assert.equal(exported.revision, 2);
+  assert.equal(exported.revision, 7);
   assert.deepEqual(exported.recipe.nodes.find(node => node.id === 'lamp').translation, [0, 0.82, 0]);
   await writeFile(`artifacts/mcp-${backend}-${era}-recipe.json`, JSON.stringify(exported.recipe, null, 2));
   const portrait = await look(sessionId, 'portrait', 540, 960);
-  await call('scene_apply', { sessionId, expectedRevision: 2, operations: [
+  await call('scene_apply', { sessionId, expectedRevision: 7, operations: [
     { type: 'set-camera', eye: [0, 5.5, 0], target: [0, 1.06, 0], up: [0, 0, -1] },
   ] });
   await look(sessionId, 'top', 540, 960);
@@ -109,7 +141,8 @@ try {
   assert.notEqual(replacement.sessionId, sessionId);
   await call('scene_dispose', { sessionId: replacement.sessionId });
   report = { backend, era, tools: listing.tools.length, parts: created.inspection.counts.parts, geometryBytes: created.inspection.geometryBytes,
-    graphics: created.render.graphics, before: before.metadata, portrait: portrait.metadata, restorePngExact: true, staleRevisionRejected: true };
+    graphics: created.render.graphics, before: before.metadata, portrait: portrait.metadata, restorePngExact: true, staleRevisionRejected: true,
+    builtFromEmpty: true, topologyRestoreExact: true, disposedGeometryBuffers: true };
 } finally {
   await client.close();
 }

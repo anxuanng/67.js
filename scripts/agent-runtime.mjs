@@ -176,7 +176,7 @@ export function createAgentRuntime({ backend = 'gpu', browser: browserPath, memo
         preview: { backend, memoryBudgetMiB: memory, maximumWidth: 1024, maximumHeight: 1024, maximumImageBytes: MAXIMUM_IMAGE_BYTES, maximumActiveScenes: 1, maximumQueuedCalls: MAXIMUM_QUEUED_CALLS, evaluationTimeoutMs: EVALUATION_TIMEOUT_MS },
         phase: closing && phase !== 'closed' ? 'closing' : phase,
         availableIn: 'source after npm 0.4.1',
-        unsupported: ['dynamic node creation', 'asset providers', 'arbitrary code execution', 'animation authoring', 'video jobs'],
+        unsupported: ['asset providers', 'arbitrary code execution', 'animation authoring', 'video jobs'],
       };
     },
     create({ recipe }) {

@@ -10,16 +10,28 @@ const DEFAULT_LIMITS = Object.freeze({
   maxOperations: 256, maxCheckpoints: 8, maxRecipeBytes: 1024 * 1024,
 });
 const CAMERA_DEFAULTS = Object.freeze({ eye: [4, 3, 5], target: [0, 0, 0], up: [0, 1, 0], fov: 45, near: 0.1, far: 1000 });
-const NODE_FIELDS = ['translation', 'rotation', 'scale', 'parent', 'label'];
+const NODE_FIELDS = ['translation', 'rotation', 'scale', 'parent', 'label', 'geometry', 'material'];
 const MATERIAL_FIELDS = ['color', 'metallic', 'roughness', 'emission', 'emissiveColor'];
 const CAMERA_FIELDS = Object.keys(CAMERA_DEFAULTS);
+const ADDITION_FIELDS = Object.freeze({
+  'add-geometry': ['geometries', 'geometry'],
+  'add-material': ['materials', 'material'],
+  'add-node': ['nodes', 'node'],
+});
+const REMOVAL_FIELDS = Object.freeze({
+  'remove-geometry': 'geometries',
+  'remove-material': 'materials',
+});
 
 export const AGENT_SCENE_CAPABILITIES = Object.freeze({
   format: '67js.scene', schemaVersion: 1,
   geometryTypes: Object.freeze(['box', 'cylinder', 'sphere', 'torus', 'lathe', 'extrude', 'tube']),
-  operations: Object.freeze(['set-node', 'set-material', 'set-camera']),
+  operations: Object.freeze([
+    'set-node', 'set-material', 'set-camera', 'add-node', 'remove-node',
+    'add-geometry', 'remove-geometry', 'add-material', 'remove-material',
+  ]),
   materialTags: Object.freeze(['surface', 'unlit']),
-  fixedResources: true, checkpoints: true, positiveScaleOnly: true,
+  fixedResources: false, dynamicTopology: true, checkpoints: true, positiveScaleOnly: true,
 });
 
 function knownKeys(value, allowed, label) {
@@ -208,7 +220,9 @@ function nodeFrom(value) {
     translation: vector(defaultValue(value.translation, [0, 0, 0]), 3, 'translation'),
     rotation: vector(defaultValue(value.rotation, [0, 0, 0, 1]), 4, 'rotation'),
     scale: vector(defaultValue(value.scale, [1, 1, 1]), 3, 'scale') };
-  if (result.parent !== null) identifier(result.parent);
+  if (result.parent !== null) {
+    identifier(result.parent);
+  }
   if (result.label !== undefined && (typeof result.label !== 'string' || result.label.length > 256)) {
     throw new TypeError('label must be a string of at most 256 characters.');
   }
@@ -241,7 +255,9 @@ function cameraFrom(value = {}) {
     throw new RangeError('Camera up must be nonzero.');
   }
   result.up = result.up.map(component => component / upLength);
-  for (const field of ['fov', 'near', 'far']) finite(result[field], field);
+  for (const field of ['fov', 'near', 'far']) {
+    finite(result[field], field);
+  }
   if (Math.fround(result.fov) <= 0 || Math.fround(result.fov) >= 180 || Math.fround(result.near) <= 0 || Math.fround(result.far) <= Math.fround(result.near)) {
     throw new RangeError('Camera needs 0 < fov < 180 and 0 < near < far at Float32 precision.');
   }
@@ -250,9 +266,9 @@ function cameraFrom(value = {}) {
   }
   const direction = result.target.map((component, axis) => component - result.eye[axis]);
   const directionLength = Math.hypot(...direction);
-  const unit = direction.map(component => component / directionLength);
-  const crossLength = Math.hypot(unit[1] * result.up[2] - unit[2] * result.up[1],
-    unit[2] * result.up[0] - unit[0] * result.up[2], unit[0] * result.up[1] - unit[1] * result.up[0]);
+  const unitDirection = direction.map(component => component / directionLength);
+  const crossLength = Math.hypot(unitDirection[1] * result.up[2] - unitDirection[2] * result.up[1],
+    unitDirection[2] * result.up[0] - unitDirection[0] * result.up[2], unitDirection[0] * result.up[1] - unitDirection[1] * result.up[0]);
   if (Math.fround(crossLength) === 0) {
     throw new RangeError('Camera up must not be collinear with the view direction.');
   }
@@ -287,18 +303,27 @@ function geometryEstimate(value) {
     if (!Array.isArray(input) || input.length < minimum || input.length > 4096) {
       throw new RangeError('Geometry point count exceeds its limit.');
     }
-    for (const point of input) vector(point, size, 'geometry point');
+    for (const point of input) {
+      vector(point, size, 'geometry point');
+    }
     return input.length;
   }
   for (const field of GEOMETRY_FIELDS[value.type]) {
-    if (value[field] !== undefined && !['profile', 'contour', 'holes', 'path', 'closed'].includes(field)) finite(value[field], field);
+    if (value[field] !== undefined && !['profile', 'contour', 'holes', 'path', 'closed'].includes(field)) {
+      finite(value[field], field);
+    }
   }
   switch (value.type) {
-    case 'box': return value.bevel === 0 ? 24 : 6 * (2 * detail('subdivisions', 6, 1, 128) + 2) ** 2;
-    case 'cylinder': return (detail('segments', 80, 3, 2048) + 1) * 2 * (detail('bevelSegments', 6, 1, 128) + 1) + 2 * ((value.segments ?? 80) + 2);
-    case 'sphere': return (detail('segments', 64, 3, 2048) + 1) * (detail('rings', 40, 2, 2048) + 1);
-    case 'torus': return (detail('segments', 96, 3, 2048) + 1) * (detail('sides', 24, 3, 128) + 1) + 2 * ((value.sides ?? 24) + 2);
-    case 'lathe': return (detail('segments', 64, 3, 2048) + 1) * points(value.profile, 2, 2);
+    case 'box':
+      return value.bevel === 0 ? 24 : 6 * (2 * detail('subdivisions', 6, 1, 128) + 2) ** 2;
+    case 'cylinder':
+      return (detail('segments', 80, 3, 2048) + 1) * 2 * (detail('bevelSegments', 6, 1, 128) + 1) + 2 * ((value.segments ?? 80) + 2);
+    case 'sphere':
+      return (detail('segments', 64, 3, 2048) + 1) * (detail('rings', 40, 2, 2048) + 1);
+    case 'torus':
+      return (detail('segments', 96, 3, 2048) + 1) * (detail('sides', 24, 3, 128) + 1) + 2 * ((value.sides ?? 24) + 2);
+    case 'lathe':
+      return (detail('segments', 64, 3, 2048) + 1) * points(value.profile, 2, 2);
     case 'tube':
       points(value.path, 3, value.closed ? 3 : 2);
       if (value.closed !== undefined && typeof value.closed !== 'boolean') {
@@ -322,13 +347,20 @@ function geometryEstimate(value) {
 
 function generateGeometry(value, maxVertices) {
   switch (value.type) {
-    case 'box': return box(value.bevel, value.subdivisions);
-    case 'cylinder': return cylinder(value.segments, value.bevel, value.bevelSegments);
-    case 'sphere': return sphere(value.segments, value.rings);
-    case 'torus': return torus(value.tubeRadius, value.segments, value.sides, value.arc, value.start);
-    case 'lathe': return lathe(value.profile, { ...value, maxVertices });
-    case 'extrude': return extrude(value.contour, { ...value, maxVertices });
-    case 'tube': return tube(value.path, { ...value, maxVertices });
+    case 'box':
+      return box(value.bevel, value.subdivisions);
+    case 'cylinder':
+      return cylinder(value.segments, value.bevel, value.bevelSegments);
+    case 'sphere':
+      return sphere(value.segments, value.rings);
+    case 'torus':
+      return torus(value.tubeRadius, value.segments, value.sides, value.arc, value.start);
+    case 'lathe':
+      return lathe(value.profile, { ...value, maxVertices });
+    case 'extrude':
+      return extrude(value.contour, { ...value, maxVertices });
+    case 'tube':
+      return tube(value.path, { ...value, maxVertices });
   }
 }
 
@@ -336,7 +368,7 @@ function compile(recipe, geometries, localBounds, limits) {
   const materials = new Map(recipe.materials.map(material => [material.id, material]));
   const graph = createSceneGraph(recipe.nodes.map(node => {
     if (node.geometry !== undefined && (!geometries.has(node.geometry) || !materials.has(node.material))) {
-      throw new RangeError(`Node ${node.id} references an unknown resource.`);
+      throw new RangeError(`Unknown resource referenced by node ${node.id}.`);
     }
     return { name: node.id, parent: node.parent,
       matrix: mat4.fromRotationTranslationScale(mat4.create(), node.rotation, node.translation, node.scale),
@@ -380,60 +412,233 @@ function boundsFor(geometry, matrix) {
   return { min: minimum, max: maximum };
 }
 
-/** A bounded CPU authoring session. Render adapters must treat geometry as immutable. */
-export function createAgentScene(input, inputLimits = {}) {
-  const limits = resolveLimits(inputLimits);
+function normalizeRecipe(input, limits) {
   let recipe = copiedJson(input, limits.maxRecipeBytes);
   knownKeys(recipe, ['format', 'schemaVersion', 'geometries', 'materials', 'nodes', 'camera'], 'recipe');
   if (recipe.format !== '67js.scene' || recipe.schemaVersion !== 1) {
     throw new RangeError('Expected 67js.scene schemaVersion 1.');
   }
-  recipe.geometries = resources(recipe.geometries, limits.maxGeometries, 'geometries', value => value);
+  recipe.geometries = resources(recipe.geometries, limits.maxGeometries, 'geometries', value => {
+    geometryEstimate(value);
+    const definition = { id: value.id, type: value.type };
+    for (const field of GEOMETRY_FIELDS[value.type]) {
+      if (Object.hasOwn(value, field)) {
+        definition[field] = value[field];
+      }
+    }
+    return definition;
+  });
   recipe.materials = resources(recipe.materials, limits.maxMaterials, 'materials', materialFrom);
   recipe.nodes = resources(recipe.nodes, limits.maxNodes, 'nodes', nodeFrom);
   recipe.camera = cameraFrom(recipe.camera);
-  const estimatedVertices = recipe.geometries.reduce((total, value) => total + geometryEstimate(value), 0);
-  // Every supported generator uses at most six Uint32 indices per vertex and eight floats per vertex.
-  const estimatedGeometryBytes = estimatedVertices * 56;
-  if (estimatedVertices > limits.maxVertices || estimatedGeometryBytes > limits.maxGeometryBytes) {
-    throw new RangeError('Geometry preflight exceeds maxVertices or maxGeometryBytes. Reduce detail.');
-  }
   recipe = copiedJson(recipe, limits.maxRecipeBytes);
-  const geometries = new Map(recipe.geometries.map(value => [value.id, Object.freeze(generateGeometry(value, Math.min(limits.maxVertices, 1_000_000)))]));
-  const localBounds = new Map([...geometries.values()].map(geometry => [geometry, boundsFor(geometry, mat4.create())]));
-  let graph = compile(recipe, geometries, localBounds, limits);
-  const geometryBytes = [...geometries.values()].reduce((total, geometry) => total + Object.values(geometry).reduce((sum, array) => sum + array.byteLength, 0), 0);
-  const vertices = [...geometries.values()].reduce((total, geometry) => total + geometry.positions.length / 3, 0);
-  if (vertices > limits.maxVertices || geometryBytes > limits.maxGeometryBytes) {
-    throw new RangeError('Generated geometry exceeds its budget.');
+  return recipe;
+}
+
+function geometryStats(records) {
+  let vertices = 0;
+  let geometryBytes = 0;
+  let estimatedGeometryBytes = 0;
+  for (const record of records) {
+    vertices += record.vertices;
+    geometryBytes += record.geometryBytes;
+    estimatedGeometryBytes += record.estimatedVertices * 56;
   }
-  let revision = 0;
-  const checkpoints = new Map();
-  let currentMaterials = new Map();
-  function snapshotsFor(materials) {
-    return new Map(materials.map(material => {
-      for (const field of ['color', 'emissiveColor']) {
-        if (material[field]) {
-          Object.freeze(material[field]);
+  return { vertices, geometryBytes, estimatedGeometryBytes };
+}
+
+function materialHandle(snapshot) {
+  const holder = { snapshot };
+  const output = {};
+  for (const field of ['tag', ...MATERIAL_FIELDS]) {
+    Object.defineProperty(output, field, {
+      enumerable: true,
+      get() {
+        return holder.snapshot[field];
+      },
+    });
+  }
+  return { holder, output: Object.freeze(output) };
+}
+
+function immutableMaterial(snapshot) {
+  for (const field of ['color', 'emissiveColor']) {
+    if (snapshot[field]) {
+      Object.freeze(snapshot[field]);
+    }
+  }
+  return Object.freeze(snapshot);
+}
+
+function retainedMatrices(parts) {
+  for (const part of parts) {
+    if (part.matrix.length !== 16 || part.matrix.byteLength !== 64) {
+      throw new RangeError('Retained render matrices must not be detached.');
+    }
+  }
+}
+
+function removeNode(candidate, operation) {
+  knownKeys(operation, ['type', 'id', 'recursive'], 'operation');
+  identifier(operation.id);
+  const recursive = operation.recursive === undefined ? false : operation.recursive;
+  if (typeof recursive !== 'boolean') {
+    throw new TypeError('recursive must be boolean.');
+  }
+  if (!candidate.nodes.some(node => node.id === operation.id)) {
+    throw new RangeError(`Operation ID was not found: ${operation.id}.`);
+  }
+  const children = new Map();
+  for (const node of candidate.nodes) {
+    const siblings = children.get(node.parent) ?? [];
+    siblings.push(node.id);
+    children.set(node.parent, siblings);
+  }
+  if (!recursive && (children.get(operation.id)?.length ?? 0) > 0) {
+    throw new RangeError('Nonrecursive removal cannot remove a node with children. Remove children first or use recursive.');
+  }
+  const removed = new Set([operation.id]);
+  const pending = [operation.id];
+  if (recursive) {
+    for (let cursor = 0; cursor < pending.length; cursor++) {
+      for (const child of children.get(pending[cursor]) ?? []) {
+        if (!removed.has(child)) {
+          removed.add(child);
+          pending.push(child);
         }
       }
-      return [material.id, material];
-    }));
-  }
-  currentMaterials = snapshotsFor(recipe.materials);
-  const materialOutputs = new Map(recipe.materials.map(material => {
-    const output = {};
-    for (const field of ['tag', ...MATERIAL_FIELDS]) {
-      Object.defineProperty(output, field, { enumerable: true, get() {
-        return currentMaterials.get(material.id)[field];
-      } });
     }
-    return [material.id, Object.freeze(output)];
-  }));
-  const parts = Object.freeze(recipe.nodes.filter(node => node.geometry !== undefined).map(node => Object.freeze({
-    name: node.id, geometry: geometries.get(node.geometry), material: materialOutputs.get(node.material),
-    matrix: new Float32Array(graph.getNode(node.id).worldMatrix),
-  })));
+  }
+  candidate.nodes = candidate.nodes.filter(node => !removed.has(node.id));
+  return removed;
+}
+
+/** A bounded CPU authoring session. Render adapters must treat geometry as immutable. */
+export function createAgentScene(input, inputLimits = {}) {
+  const limits = resolveLimits(inputLimits);
+  let state = null;
+  let revision = 0;
+  let topologyRevision = 0;
+  const checkpoints = new Map();
+
+  function ownedGeometryRecords() {
+    const records = new Set(state?.geometryRecords.values() ?? []);
+    for (const checkpoint of checkpoints.values()) {
+      for (const record of checkpoint.geometryRecords.values()) {
+        records.add(record);
+      }
+    }
+    return records;
+  }
+
+  function stage(inputRecipe, preferred = null, removedNodes = new Set(), removedMaterials = new Set()) {
+    const recipe = normalizeRecipe(inputRecipe, limits);
+    if (state) {
+      retainedMatrices(state.parts);
+    }
+    const ownedRecords = ownedGeometryRecords();
+    const availableRecords = new Map();
+    for (const record of ownedRecords) {
+      availableRecords.set(record.signature, record);
+    }
+    const plans = recipe.geometries.map(definition => {
+      const signature = JSON.stringify(definition);
+      const preferredRecord = preferred?.geometryRecords.get(definition.id);
+      const activeRecord = state?.geometryRecords.get(definition.id);
+      const existing = [preferredRecord, activeRecord, availableRecords.get(signature)]
+        .find(record => record?.signature === signature);
+      return { definition, signature, existing, estimatedVertices: geometryEstimate(definition) };
+    });
+    const residentStats = geometryStats(ownedRecords);
+    const pendingPlans = plans.filter(plan => !plan.existing);
+    const pendingVertices = pendingPlans.reduce((total, plan) => total + plan.estimatedVertices, 0);
+    if (residentStats.vertices + pendingVertices > limits.maxVertices ||
+        residentStats.geometryBytes + pendingVertices * 56 > limits.maxGeometryBytes) {
+      throw new RangeError('Geometry preflight exceeds peak maxVertices or maxGeometryBytes across active, checkpoint, and staged resources. Reduce detail or release checkpoints.');
+    }
+
+    // Validate references, hierarchy and matrix arithmetic before generating any new resource.
+    const placeholders = new Map();
+    const placeholderBounds = new Map();
+    for (const plan of plans) {
+      const geometry = plan.existing?.geometry ?? Object.freeze({});
+      placeholders.set(plan.definition.id, geometry);
+      placeholderBounds.set(geometry, plan.existing?.bounds ?? { min: [0, 0, 0], max: [0, 0, 0] });
+    }
+    compile(recipe, placeholders, placeholderBounds, limits);
+
+    const geometryRecords = new Map();
+    for (const plan of plans) {
+      let record = plan.existing;
+      if (!record) {
+        const geometry = Object.freeze(generateGeometry(plan.definition, Math.min(limits.maxVertices, 1_000_000)));
+        const geometryBytes = Object.values(geometry).reduce((total, array) => total + array.byteLength, 0);
+        const vertices = geometry.positions.length / 3;
+        if (vertices > plan.estimatedVertices || geometryBytes > plan.estimatedVertices * 56) {
+          throw new RangeError('Generated geometry exceeds its conservative preflight bound.');
+        }
+        record = Object.freeze({
+          signature: plan.signature, geometry,
+          bounds: boundsFor(geometry, mat4.create()),
+          vertices, geometryBytes, estimatedVertices: plan.estimatedVertices,
+        });
+      }
+      geometryRecords.set(plan.definition.id, record);
+    }
+    const geometries = new Map([...geometryRecords].map(([id, record]) => [id, record.geometry]));
+    const localBounds = new Map([...geometryRecords.values()].map(record => [record.geometry, record.bounds]));
+    const graph = compile(recipe, geometries, localBounds, limits);
+    const materialHandles = new Map();
+    const materialUpdates = [];
+    for (const material of recipe.materials) {
+      const snapshot = immutableMaterial(material);
+      const preferredHandle = preferred?.materialHandles.get(material.id);
+      const activeHandle = removedMaterials.has(material.id) ? null : state?.materialHandles.get(material.id);
+      const existing = [preferredHandle, activeHandle].find(handle => handle?.holder.snapshot.tag === material.tag);
+      const handle = existing ?? materialHandle(snapshot);
+      materialHandles.set(material.id, handle);
+      materialUpdates.push({ holder: handle.holder, snapshot });
+    }
+    const activeParts = new Map(state?.parts.map(part => [part.name, part]) ?? []);
+    const preferredParts = new Map(preferred?.parts.map(part => [part.name, part]) ?? []);
+    const nextParts = recipe.nodes.filter(node => node.geometry !== undefined).map(node => {
+      const geometry = geometries.get(node.geometry);
+      const material = materialHandles.get(node.material).output;
+      const activePart = removedNodes.has(node.id) ? null : activeParts.get(node.id);
+      const existing = [activePart, preferredParts.get(node.id)]
+        .find(part => part?.geometry === geometry && part.material === material);
+      return existing ?? Object.freeze({
+        name: node.id, geometry, material,
+        matrix: new Float32Array(graph.getNode(node.id).worldMatrix),
+      });
+    });
+    retainedMatrices(nextParts);
+    const sameParts = state && state.parts.length === nextParts.length &&
+      state.parts.every((part, index) => part === nextParts[index]);
+    return {
+      recipe, geometryRecords, geometries, graph, materialHandles, materialUpdates,
+      parts: sameParts ? state.parts : Object.freeze(nextParts),
+      topologyChanged: Boolean(state && !sameParts),
+      stats: geometryStats(geometryRecords.values()),
+    };
+  }
+
+  function commit(stagedState, incrementRevision) {
+    for (const part of stagedState.parts) {
+      Float32Array.prototype.set.call(part.matrix, stagedState.graph.getNode(part.name).worldMatrix);
+    }
+    for (const update of stagedState.materialUpdates) {
+      update.holder.snapshot = update.snapshot;
+    }
+    if (stagedState.topologyChanged) {
+      topologyRevision++;
+    }
+    state = stagedState;
+    if (incrementRevision) {
+      revision++;
+    }
+    return revision;
+  }
 
   function expected(options) {
     knownKeys(options, ['expectedRevision'], 'transaction options');
@@ -441,38 +646,25 @@ export function createAgentScene(input, inputLimits = {}) {
       throw new RangeError('expectedRevision must match the current revision.');
     }
   }
-  function publish(candidate) {
-    candidate = copiedJson(candidate, limits.maxRecipeBytes);
-    candidate.nodes = candidate.nodes.map(nodeFrom);
-    candidate.materials = candidate.materials.map(materialFrom);
-    candidate.camera = cameraFrom(candidate.camera);
-    candidate = copiedJson(candidate, limits.maxRecipeBytes);
-    const staged = compile(candidate, geometries, localBounds, limits);
-    const stagedMaterials = snapshotsFor(candidate.materials);
-    for (const part of parts) {
-      if (part.matrix.length !== 16 || part.matrix.byteLength !== 64) {
-        throw new RangeError('Retained render matrices must not be detached.');
-      }
-    }
-    recipe = candidate;
-    currentMaterials = stagedMaterials;
-    graph = staged;
-    for (const part of parts) {
-      part.matrix.set(graph.getNode(part.name).worldMatrix);
-    }
-    revision++;
-    return revision;
-  }
+
+  commit(stage(input), false);
   return Object.freeze({
-    parts, capabilities: AGENT_SCENE_CAPABILITIES, limits,
+    capabilities: AGENT_SCENE_CAPABILITIES,
+    limits,
+    get parts() {
+      return state.parts;
+    },
     get revision() {
       return revision;
     },
+    get topologyRevision() {
+      return topologyRevision;
+    },
     get camera() {
-      return structuredClone(recipe.camera);
+      return structuredClone(state.recipe.camera);
     },
     exportRecipe() {
-      return structuredClone(recipe);
+      return structuredClone(state.recipe);
     },
     apply(inputOperations, options = {}) {
       expected(options);
@@ -480,8 +672,49 @@ export function createAgentScene(input, inputLimits = {}) {
         throw new RangeError('operations must contain 1 to maxOperations commands.');
       }
       const operations = copiedJson(inputOperations, limits.maxRecipeBytes);
-      const candidate = structuredClone(recipe);
+      const candidate = structuredClone(state.recipe);
+      const removedNodes = new Set();
+      const removedMaterials = new Set();
       for (const operation of operations) {
+        const addition = Object.hasOwn(ADDITION_FIELDS, operation.type) ? ADDITION_FIELDS[operation.type] : null;
+        if (addition) {
+          const [collection, field] = addition;
+          knownKeys(operation, ['type', field], 'operation');
+          const record = operation[field];
+          identifier(record?.id);
+          if (operation.type === 'add-geometry') {
+            geometryEstimate(record);
+          } else if (operation.type === 'add-material') {
+            materialFrom(record);
+          } else {
+            nodeFrom(record);
+          }
+          if (candidate[collection].some(existing => existing.id === record.id)) {
+            throw new RangeError(`Duplicate ${collection} ID: ${record.id}.`);
+          }
+          candidate[collection].push(record);
+          continue;
+        }
+        if (operation.type === 'remove-node') {
+          for (const id of removeNode(candidate, operation)) {
+            removedNodes.add(id);
+          }
+          continue;
+        }
+        const removal = Object.hasOwn(REMOVAL_FIELDS, operation.type) ? REMOVAL_FIELDS[operation.type] : null;
+        if (removal) {
+          knownKeys(operation, ['type', 'id'], 'operation');
+          identifier(operation.id);
+          const index = candidate[removal].findIndex(record => record.id === operation.id);
+          if (index < 0) {
+            throw new RangeError(`Operation ID was not found: ${operation.id}.`);
+          }
+          candidate[removal].splice(index, 1);
+          if (operation.type === 'remove-material') {
+            removedMaterials.add(operation.id);
+          }
+          continue;
+        }
         let target;
         let fields;
         if (operation.type === 'set-node') {
@@ -506,7 +739,7 @@ export function createAgentScene(input, inputLimits = {}) {
           }
         }
       }
-      return publish(candidate);
+      return commit(stage(candidate, null, removedNodes, removedMaterials), true);
     },
     inspect(options = {}) {
       knownKeys(options, ['ids', 'limit', 'includeBounds'], 'inspection');
@@ -517,39 +750,62 @@ export function createAgentScene(input, inputLimits = {}) {
       if (options.ids !== undefined && (!Array.isArray(options.ids) || options.ids.length > limits.maxNodes)) {
         throw new RangeError('Inspection IDs exceed maxNodes.');
       }
-      const selected = options.ids === undefined ? recipe.nodes : options.ids.map(id => {
+      const selected = options.ids === undefined ? state.recipe.nodes : options.ids.map(id => {
         identifier(id);
-        const node = recipe.nodes.find(value => value.id === id);
+        const node = state.recipe.nodes.find(value => value.id === id);
         if (!node) {
           throw new RangeError(`Inspection ID was not found: ${id}.`);
         }
         return node;
       });
       const nodes = selected.slice(0, maximum).map(node => {
-        const geometry = geometries.get(node.geometry);
-        const result = { id: node.id, label: node.label ?? node.id, parent: node.parent,
+        const geometry = state.geometries.get(node.geometry);
+        const result = {
+          id: node.id, label: node.label ?? node.id, parent: node.parent,
           geometry: node.geometry ?? null, material: node.material ?? null,
-          vertices: geometry ? geometry.positions.length / 3 : 0, triangles: geometry ? geometry.indices.length / 3 : 0 };
-        if (options.includeBounds) result.bounds = geometry ? boundsFor(geometry, graph.getNode(node.id).worldMatrix) : null;
+          vertices: geometry ? geometry.positions.length / 3 : 0,
+          triangles: geometry ? geometry.indices.length / 3 : 0,
+        };
+        if (options.includeBounds) {
+          result.bounds = geometry ? boundsFor(geometry, state.graph.getNode(node.id).worldMatrix) : null;
+        }
         return result;
       });
-      return { revision, counts: { nodes: recipe.nodes.length, parts: parts.length, geometries: geometries.size, materials: recipe.materials.length, vertices },
-        geometryBytes, estimatedGeometryBytes, nodes, truncated: selected.length > nodes.length };
+      const resident = geometryStats(ownedGeometryRecords());
+      return {
+        revision, topologyRevision,
+        counts: {
+          nodes: state.recipe.nodes.length, parts: state.parts.length,
+          geometries: state.geometries.size, materials: state.recipe.materials.length,
+          vertices: state.stats.vertices,
+        },
+        geometryBytes: state.stats.geometryBytes,
+        estimatedGeometryBytes: state.stats.estimatedGeometryBytes,
+        residentGeometryBytes: resident.geometryBytes,
+        residentGeometryVertices: resident.vertices,
+        nodes, truncated: selected.length > nodes.length,
+      };
     },
     checkpoint() {
       if (checkpoints.size >= limits.maxCheckpoints) {
         throw new RangeError('Checkpoint budget exhausted. Release a checkpoint.');
       }
       const handle = Object.freeze({});
-      checkpoints.set(handle, structuredClone(recipe));
+      checkpoints.set(handle, {
+        recipe: structuredClone(state.recipe),
+        geometryRecords: new Map(state.geometryRecords),
+        materialHandles: new Map(state.materialHandles),
+        parts: state.parts,
+      });
       return handle;
     },
     restore(handle, options = {}) {
       expected(options);
-      if (!checkpoints.has(handle)) {
+      const checkpoint = checkpoints.get(handle);
+      if (!checkpoint) {
         throw new RangeError('Unknown or released checkpoint.');
       }
-      return publish(checkpoints.get(handle));
+      return commit(stage(checkpoint.recipe, checkpoint), true);
     },
     releaseCheckpoint(handle) {
       if (!checkpoints.delete(handle)) {

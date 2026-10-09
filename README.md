@@ -126,12 +126,13 @@ The repository includes two reusable Codex skills.
 
 The current source includes [agent scene sessions](docs/agent-scene.md), newer than npm `0.4.1`.
 Agents can author JSON recipes, inspect object bounds, submit atomic edits and restore bounded checkpoints.
-The optional addon retains renderer-facing parts and geometry across supported edits.
+Agents can add or remove nodes and shared resources in the same revisioned command stream.
+The optional addon retains unchanged parts and geometry across supported edits.
 
 The source [MCP server](docs/mcp.md) connects these sessions to a persistent browser renderer.
 Agents receive PNG previews and structured scene metadata through ten stdio tools.
 Run `node scripts/mcp-server.mjs --backend gpu --memory 192` from a checkout with project dependencies and a local Chrome installation.
-Dynamic node creation, asset ingestion and persistent video jobs remain implementation work.
+Asset ingestion, animation authoring and persistent video jobs remain implementation work.
 
 ## Checks and performance
 

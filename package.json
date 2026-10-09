@@ -83,6 +83,7 @@
     "smoke:package": "node scripts/smoke-package.mjs",
     "mcp": "node scripts/mcp-server.mjs",
     "smoke:mcp": "node scripts/smoke-mcp.mjs",
+    "smoke:agent-topology": "node scripts/smoke-agent-topology.mjs",
     "smoke:enhancements": "node scripts/smoke-enhancements.mjs",
     "smoke:site": "node scripts/smoke-site.mjs",
     "publish:ci": "node scripts/publish-ci.mjs"

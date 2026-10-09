@@ -134,20 +134,23 @@ The surface-attachment addon is included in npm `0.4.1`.
 
 Agent authoring uses `createAgentScene(recipe, limits)` from `67js/addons/agent-scene`.
 This addon is available in source after npm `0.4.1`; it is not included in that published package.
-Read `docs/agent-scene.md` for schema version one and its fixed resource topology.
+Read `docs/agent-scene.md` for schema version one, immutable resources and atomic topology commands.
 Start with capabilities and bounded inspection. Edit stable IDs through one `apply` batch with the current `expectedRevision`.
 Checkpoint before uncertain changes, inspect and render the result, then restore or release the checkpoint.
-Call `renderer.updateParts(session.parts)` after successful edits, then render the detached `session.camera` snapshot.
+For rigid, untextured scenes, compare `session.topologyRevision` with the uploaded revision after successful edits.
+Call `renderer.replaceParts(session.parts)` for changed topology or `renderer.updateParts(session.parts)` for retained parts, then render the detached camera.
+Use add/remove commands for nodes and shared resources, and `set-node` geometry/material fields for rebinding.
+Release unused checkpoints before increasing detail; active, checkpoint and staged geometry share a peak allocation budget.
 Keep JSON commands and snapshots exposed to agents; retained matrices and immutable geometry belong to the renderer adapter.
 Do not inspect all vertex bounds in a frame loop. Memory estimates cover unique geometry arrays, not total RAM or VRAM.
-The scene addon does not implement MCP transport, dynamic node creation, asset search, or render jobs.
+The scene addon does not implement MCP transport, asset search, animation authoring, or render jobs.
 
 For a configured MCP client, use the separate source-only server documented in `docs/mcp.md`.
 Call `scene_capabilities`, create one JSON scene, inspect IDs, checkpoint, apply a small batch, and assess `scene_look` PNG content.
 Use the revision returned by each committed apply or restore. A response with `committed: true` and `renderSucceeded: false` still advances revision.
 Inspect or export the canonical recipe after a render failure; do not retry the edit with its old revision.
 The server retains one renderer, bounds image dimensions and payloads, and closes its browser on stdio EOF.
-Export the recipe before disposal. Dynamic nodes, asset ingestion, animation authoring and video jobs remain unsupported by these tools.
+Export the recipe before disposal. Asset ingestion, animation authoring and video jobs remain unsupported by these tools.
 
 `cameraView('front' | 'right' | 'top')` returns an orthographic camera with the correct up vector.
 `fitOrthographicHeight(bounds, view, aspect)` frames both model width and height.

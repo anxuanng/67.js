@@ -69,7 +69,9 @@ test('shared resources and retained renderer identities survive apply and restor
   assert.equal(parts[0].matrix[12], 4);
   assert.deepEqual(parts[0].material.color, [0.2, 0.4, 0.6]);
   parts.forEach((part, index) => {
-    [part, part.matrix, part.geometry, part.material].forEach((value, component) => assert.equal(value, identities[index][component]));
+    [part, part.matrix, part.geometry, part.material].forEach((value, component) => {
+      assert.equal(value, identities[index][component]);
+    });
   });
   assert.equal(parts[0].material.color, parts[0].material.color);
   assert.equal(session.parts, parts);
@@ -117,11 +119,15 @@ test('hierarchy and actual vertex bounds agree with an independent double precis
   const world = root.multiply(child);
   const minimum = [Infinity, Infinity, Infinity];
   const maximum = [-Infinity, -Infinity, -Infinity];
-  for (const x of [-0.5, 0.5]) for (const y of [-0.5, 0.5]) for (const z of [-0.5, 0.5]) {
-    const point = new Vector3(x, y, z).applyMatrix4(world).toArray();
-    for (let axis = 0; axis < 3; axis++) {
-      minimum[axis] = Math.min(minimum[axis], point[axis]);
-      maximum[axis] = Math.max(maximum[axis], point[axis]);
+  for (const x of [-0.5, 0.5]) {
+    for (const y of [-0.5, 0.5]) {
+      for (const z of [-0.5, 0.5]) {
+        const point = new Vector3(x, y, z).applyMatrix4(world).toArray();
+        for (let axis = 0; axis < 3; axis++) {
+          minimum[axis] = Math.min(minimum[axis], point[axis]);
+          maximum[axis] = Math.max(maximum[axis], point[axis]);
+        }
+      }
     }
   }
   const actual = session.inspect({ ids: ['child'], includeBounds: true }).nodes[0].bounds;
@@ -265,6 +271,253 @@ test('all seven generators remain within conservative aggregate vertex and byte 
   assert.ok(inspection.geometryBytes <= inspection.estimatedGeometryBytes);
   assert.ok(inspection.nodes.every(node => node.bounds.min.every(Number.isFinite)));
   assert.deepEqual(createAgentScene(session.exportRecipe()).inspect(), session.inspect());
-  assert.throws(() => session.apply([{ type: 'set-node', id: 'box', geometry: 'sphere' }], { expectedRevision: 0 }), /Unknown/);
-  assert.throws(() => session.apply([{ type: 'set-material', id: 'material', tag: 'unlit' }], { expectedRevision: 0 }), /Unknown/);
+  const originalBox = session.parts[0];
+  session.apply([{ type: 'set-node', id: 'box', geometry: 'sphere' }], { expectedRevision: 0 });
+  assert.notEqual(session.parts[0], originalBox);
+  assert.equal(session.parts[0].geometry, session.parts[2].geometry);
+  assert.equal(session.topologyRevision, 1);
+  assert.throws(() => session.apply([{ type: 'set-material', id: 'material', tag: 'unlit' }], { expectedRevision: 1 }), /Unknown/);
+});
+
+function emptyRecipe() {
+  return { format: '67js.scene', schemaVersion: 1, geometries: [], materials: [], nodes: [] };
+}
+
+test('topology can grow from an empty session while sharing resources and preserving existing part identities', () => {
+  const session = createAgentScene(emptyRecipe());
+  const emptyParts = session.parts;
+  assert.equal(session.topologyRevision, 0);
+  assert.equal(session.capabilities.fixedResources, false);
+  assert.equal(session.capabilities.dynamicTopology, true);
+  session.apply([
+    { type: 'add-node', node: { id: 'first', parent: 'group', geometry: 'cube', material: 'red' } },
+    { type: 'add-node', node: { id: 'group' } },
+    { type: 'add-material', material: { id: 'red', color: [1, 0, 0] } },
+    { type: 'add-geometry', geometry: { id: 'cube', type: 'box', bevel: 0 } },
+  ], { expectedRevision: 0 });
+  assert.notEqual(session.parts, emptyParts);
+  assert.equal(session.revision, 1);
+  assert.equal(session.topologyRevision, 1);
+  const first = session.parts[0];
+  session.apply([{ type: 'add-node', node: { id: 'second', geometry: 'cube', material: 'red' } }], { expectedRevision: 1 });
+  assert.equal(session.parts[0], first);
+  assert.equal(session.parts[1].geometry, first.geometry);
+  assert.equal(session.parts[1].material, first.material);
+  assert.equal(session.topologyRevision, 2);
+  const retainedList = session.parts;
+  session.apply([
+    { type: 'set-node', id: 'group', translation: [3, 0, 0] },
+    { type: 'set-material', id: 'red', roughness: 0.2 },
+    { type: 'set-camera', fov: 60 },
+    { type: 'add-node', node: { id: 'unused-group' } },
+  ], { expectedRevision: 2 });
+  assert.equal(session.parts, retainedList);
+  assert.equal(first.matrix[12], 3);
+  assert.equal(first.material.roughness, 0.2);
+  assert.equal(session.topologyRevision, 2);
+});
+
+test('topology failures roll back recipes, geometry, materials, matrices and both revisions', () => {
+  const session = createAgentScene(recipe());
+  const before = session.exportRecipe();
+  const parts = session.parts;
+  const matrices = parts.map(part => Array.from(part.matrix));
+  const invalidBatches = [
+    [{ type: 'remove-geometry', id: 'box' }],
+    [{ type: 'remove-material', id: 'finish' }],
+    [{ type: 'add-node', node: { id: 'cycle', parent: 'child' } }, { type: 'set-node', id: 'root', parent: 'cycle' }],
+    [{ type: 'add-node', node: { id: 'mesh', geometry: 'box' } }],
+    [{ type: 'add-node', node: { id: 'mesh', geometry: 'missing', material: 'finish' } }],
+    [{ type: 'add-node', node: { id: 'mesh', parent: 'missing' } }],
+    [{ type: 'add-geometry', geometry: { id: 'box', type: 'sphere' } }],
+    [{ type: 'add-material', material: { id: 'finish' } }],
+    [{ type: 'add-node', node: { id: 'root' } }],
+    [{ type: 'remove-node', id: 'missing' }],
+    [{ type: 'remove-geometry', id: 'missing' }],
+    [{ type: 'remove-material', id: 'missing' }],
+    [{ type: 'add-geometry', geometry: { id: 'invalid', type: 'box', bevel: 2 } }],
+    [{ type: 'add-material', material: { id: 'invalid', roughness: 2 } }],
+    [{ type: 'add-geometry', geometry: { id: 'huge', type: 'sphere', segments: 2048, rings: 2048 } }],
+    [{ type: 'remove-node', id: 'root', recursive: 'true' }],
+    [{ type: 'remove-node', id: 'other', extra: true }],
+    [{ type: 'add-node', node: { id: 'mesh' }, extra: true }],
+    [{ type: 'add-node', node: { id: 'mesh', extra: true } }],
+  ];
+  for (const operations of invalidBatches) {
+    assert.throws(() => session.apply([
+      { type: 'set-material', id: 'finish', color: [1, 0, 0] },
+      { type: 'set-node', id: 'root', translation: [8, 0, 0] },
+      ...operations,
+    ], { expectedRevision: 0 }));
+    assert.deepEqual(session.exportRecipe(), before);
+    assert.equal(session.parts, parts);
+    assert.deepEqual(parts.map(part => Array.from(part.matrix)), matrices);
+    assert.deepEqual(parts[0].material.color, [0.2, 0.4, 0.6]);
+    assert.equal(session.revision, 0);
+    assert.equal(session.topologyRevision, 0);
+  }
+  session.apply([{ type: 'remove-node', id: 'other' }], { expectedRevision: 0 });
+  assert.equal(session.parts[0], parts[0]);
+  assert.equal(session.topologyRevision, 1);
+});
+
+test('node deletion distinguishes nonrecursive rejection from explicit subtree removal', () => {
+  const input = recipe();
+  input.nodes.push({ id: 'grandchild', parent: 'child', geometry: 'box', material: 'finish' });
+  const session = createAgentScene(input);
+  assert.throws(() => session.apply([
+    { type: 'remove-node', id: 'root' }, { type: 'remove-node', id: 'child', recursive: true },
+  ], { expectedRevision: 0 }), /Nonrecursive/);
+  session.apply([{ type: 'remove-node', id: 'root', recursive: true }], { expectedRevision: 0 });
+  assert.deepEqual(session.exportRecipe().nodes.map(node => node.id), ['other']);
+  assert.deepEqual(session.parts.map(part => part.name), ['other']);
+  assert.equal(session.inspect().counts.geometries, 1);
+  session.apply([
+    { type: 'remove-node', id: 'other' },
+    { type: 'remove-material', id: 'finish' },
+    { type: 'remove-geometry', id: 'box' },
+  ], { expectedRevision: 1 });
+  assert.equal(session.parts.length, 0);
+  assert.equal(session.inspect().residentGeometryBytes, 0);
+});
+
+test('resource removal and node rebinding resolve final references after sequential commands', () => {
+  const session = createAgentScene(recipe());
+  const oldParts = session.parts;
+  session.apply([
+    { type: 'remove-geometry', id: 'box' },
+    { type: 'remove-material', id: 'finish' },
+    { type: 'add-geometry', geometry: { id: 'sphere', type: 'sphere', segments: 8, rings: 4 } },
+    { type: 'add-material', material: { id: 'green', color: [0, 1, 0] } },
+    { type: 'set-node', id: 'child', geometry: 'sphere', material: 'green' },
+    { type: 'set-node', id: 'other', geometry: 'sphere', material: 'green' },
+  ], { expectedRevision: 0 });
+  assert.notEqual(session.parts[0], oldParts[0]);
+  assert.notEqual(session.parts[0].matrix, oldParts[0].matrix);
+  assert.equal(session.parts[0].geometry, session.parts[1].geometry);
+  assert.equal(session.parts[0].material, session.parts[1].material);
+  assert.equal(session.topologyRevision, 1);
+  assert.deepEqual(oldParts[0].material.color, [0.2, 0.4, 0.6]);
+  session.apply([{ type: 'set-node', id: 'root', geometry: 'sphere', material: 'green' }], { expectedRevision: 1 });
+  assert.equal(session.parts.length, 3);
+  assert.equal(session.parts[0].name, 'child');
+});
+
+test('unchanged definitions reuse geometry while changed definitions replace bound parts', () => {
+  const session = createAgentScene(recipe());
+  const originalParts = session.parts;
+  session.apply([
+    { type: 'remove-geometry', id: 'box' },
+    { type: 'add-geometry', geometry: { bevel: 0, type: 'box', id: 'box' } },
+  ], { expectedRevision: 0 });
+  assert.equal(session.parts, originalParts);
+  assert.equal(session.topologyRevision, 0);
+  session.apply([
+    { type: 'remove-geometry', id: 'box' },
+    { type: 'add-geometry', geometry: { id: 'box', type: 'sphere', segments: 8, rings: 4 } },
+  ], { expectedRevision: 1 });
+  assert.notEqual(session.parts[0].geometry, originalParts[0].geometry);
+  assert.notEqual(session.parts[0], originalParts[0]);
+  assert.equal(session.parts[0].geometry, session.parts[1].geometry);
+  assert.equal(session.topologyRevision, 1);
+});
+
+test('checkpoints restore removed geometry and parts with bounded private retained identities', () => {
+  const session = createAgentScene(recipe());
+  const originalParts = session.parts;
+  const checkpoint = session.checkpoint();
+  session.apply([
+    { type: 'remove-node', id: 'root', recursive: true },
+    { type: 'remove-node', id: 'other' },
+    { type: 'remove-geometry', id: 'box' },
+    { type: 'remove-material', id: 'finish' },
+  ], { expectedRevision: 0 });
+  assert.equal(session.parts.length, 0);
+  assert.equal(session.inspect().geometryBytes, 0);
+  assert.equal(session.inspect().residentGeometryBytes, 720);
+  session.restore(checkpoint, { expectedRevision: 1 });
+  assert.equal(session.parts[0], originalParts[0]);
+  assert.equal(session.parts[1], originalParts[1]);
+  assert.equal(session.topologyRevision, 2);
+  const restoredList = session.parts;
+  session.restore(checkpoint, { expectedRevision: 2 });
+  assert.equal(session.parts, restoredList);
+  assert.equal(session.topologyRevision, 2);
+  session.releaseCheckpoint(checkpoint);
+  assert.equal(session.inspect().residentGeometryBytes, 720);
+});
+
+test('peak geometry budgets count checkpoint ownership and free it on release', () => {
+  const session = createAgentScene(recipe(), { maxVertices: 24, maxGeometryBytes: 1344 });
+  const originalParts = session.parts;
+  const firstCheckpoint = session.checkpoint();
+  const secondCheckpoint = session.checkpoint();
+  assert.equal(session.inspect().residentGeometryVertices, 24);
+  session.apply([
+    { type: 'remove-node', id: 'root', recursive: true }, { type: 'remove-node', id: 'other' },
+    { type: 'remove-geometry', id: 'box' }, { type: 'remove-material', id: 'finish' },
+  ], { expectedRevision: 0 });
+  const add = [{ type: 'add-geometry', geometry: { id: 'new', type: 'box', bevel: 0 } }];
+  assert.throws(() => session.apply(add, { expectedRevision: 1 }), /peak/);
+  assert.equal(session.revision, 1);
+  session.releaseCheckpoint(firstCheckpoint);
+  assert.throws(() => session.apply(add, { expectedRevision: 1 }), /peak/);
+  session.restore(secondCheckpoint, { expectedRevision: 1 });
+  assert.equal(session.parts[0], originalParts[0]);
+  session.apply([
+    { type: 'remove-node', id: 'root', recursive: true }, { type: 'remove-node', id: 'other' },
+    { type: 'remove-geometry', id: 'box' }, { type: 'remove-material', id: 'finish' },
+  ], { expectedRevision: 2 });
+  session.releaseCheckpoint(secondCheckpoint);
+  assert.equal(session.inspect().residentGeometryBytes, 0);
+  session.apply(add, { expectedRevision: 3 });
+  assert.equal(session.inspect().geometryBytes, 720);
+  assert.equal(session.topologyRevision, 3);
+});
+
+test('atomic replacement budgets include old active resources until commit', () => {
+  const session = createAgentScene(recipe(), { maxGeometryBytes: 1344 });
+  assert.throws(() => session.apply([
+    { type: 'remove-geometry', id: 'box' },
+    { type: 'add-geometry', geometry: { id: 'box', type: 'box', bevel: 0, subdivisions: 1 } },
+  ], { expectedRevision: 0 }), /peak/);
+  assert.equal(session.revision, 0);
+  assert.equal(session.topologyRevision, 0);
+  assert.equal(session.inspect().geometryBytes, 720);
+});
+
+test('new topology enforces world geometry overflow and depth before publishing', () => {
+  const session = createAgentScene(emptyRecipe(), { maxDepth: 1 });
+  const emptyParts = session.parts;
+  assert.throws(() => session.apply([
+    { type: 'add-node', node: { id: 'root' } },
+    { type: 'add-node', node: { id: 'child', parent: 'root' } },
+  ], { expectedRevision: 0 }), /maxDepth/);
+  assert.throws(() => session.apply([
+    { type: 'add-geometry', geometry: { id: 'huge', type: 'lathe', profile: [[1e30, -1], [1e30, 1]], segments: 8 } },
+    { type: 'add-material', material: { id: 'finish' } },
+    { type: 'add-node', node: { id: 'mesh', geometry: 'huge', material: 'finish', scale: [1e30, 1, 1] } },
+  ], { expectedRevision: 0 }), /world geometry bounds/);
+  assert.equal(session.parts, emptyParts);
+  assert.equal(session.revision, 0);
+  assert.equal(session.topologyRevision, 0);
+});
+
+test('topology rejects stale revisions and detached active or checkpoint matrices atomically', () => {
+  const session = createAgentScene(recipe());
+  const checkpoint = session.checkpoint();
+  const oldParts = session.parts;
+  session.apply([{ type: 'remove-node', id: 'other' }], { expectedRevision: 0 });
+  assert.throws(() => session.apply([{ type: 'remove-node', id: 'child' }], { expectedRevision: 0 }), /expectedRevision/);
+  structuredClone(oldParts[1].matrix.buffer, { transfer: [oldParts[1].matrix.buffer] });
+  const before = session.exportRecipe();
+  const parts = session.parts;
+  assert.throws(() => session.restore(checkpoint, { expectedRevision: 1 }), /detached/);
+  assert.deepEqual(session.exportRecipe(), before);
+  assert.equal(session.parts, parts);
+  assert.equal(session.topologyRevision, 1);
+  structuredClone(parts[0].matrix.buffer, { transfer: [parts[0].matrix.buffer] });
+  assert.throws(() => session.apply([{ type: 'remove-node', id: 'child' }], { expectedRevision: 1 }), /detached/);
+  assert.deepEqual(session.exportRecipe(), before);
+  assert.equal(session.revision, 1);
 });

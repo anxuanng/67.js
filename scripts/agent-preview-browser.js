@@ -49,6 +49,9 @@ function renderInfo(renderer) {
     height: canvas.height,
     samples: renderer.capabilities.samples,
     hdr: renderer.capabilities.hdr,
+    geometryBuffers: renderer.geometryBuffers?.size ?? 0,
+    gpuBuffers: renderer.buffers?.length ?? 0,
+    drawBatches: renderer.batches?.length ?? 0,
   };
 }
 
@@ -56,8 +59,15 @@ function draw(record) {
   if (record.renderer.context.isContextLost()) {
     throw new Error('The render context was lost. Export the recipe and dispose this session.');
   }
+  // Shrink the existing target first so a smaller look can recover a staging-budget failure.
   record.renderer.resize();
-  record.renderer.updateParts(record.scene.parts);
+  if (record.rendererTopology !== record.scene.topologyRevision) {
+    record.renderer.replaceParts(record.scene.parts);
+    record.rendererTopology = record.scene.topologyRevision;
+    record.renderer.resize();
+  } else {
+    record.renderer.updateParts(record.scene.parts);
+  }
   record.renderer.render({ ...record.scene.camera, effects });
   const error = record.renderer.context.getError();
   if (error !== 0) {
@@ -71,6 +81,7 @@ function status(record) {
   return {
     sessionId: record.sessionId,
     revision: record.scene.revision,
+    topologyRevision: record.scene.topologyRevision,
     inspection: record.scene.inspect(),
     render,
   };
@@ -109,7 +120,7 @@ window.__agentPreview = {
         samples: backend === 'cpu' ? 1 : 4,
         memoryBudgetMiB,
       });
-      const record = { scene, renderer, sessionId, checkpoints: new Map() };
+      const record = { scene, renderer, sessionId, checkpoints: new Map(), rendererTopology: scene.topologyRevision };
       draw(record);
       const result = status(record);
       if (backend === 'gpu' && /swiftshader|llvmpipe|software/i.test(result.render.graphics)) {
@@ -139,10 +150,12 @@ window.__agentPreview = {
   look({ sessionId }) {
     const record = requireSession(sessionId);
     draw(record);
+    const render = renderInfo(record.renderer);
+    record.lastRender = render;
     return {
       data: canvas.toDataURL('image/png').split(',')[1],
       mimeType: 'image/png',
-      metadata: { sessionId, revision: record.scene.revision, ...renderInfo(record.renderer) },
+      metadata: { sessionId, revision: record.scene.revision, topologyRevision: record.scene.topologyRevision, ...render },
     };
   },
   checkpoint({ sessionId, checkpointId }) {

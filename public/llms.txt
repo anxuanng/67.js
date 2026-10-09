@@ -19,7 +19,15 @@ Read `/mcp.md` before configuring it. Start with `scene_capabilities`, create a 
 Checkpoint, apply small revisioned batches, then use `scene_look` to assess the actual PNG.
 Restore failed experiments and release unused checkpoints. Export the recipe and dispose the scene when finished.
 The runtime keeps one browser scene alive, serializes calls, caps PNG responses and releases resources on stdin EOF.
-It exposes no arbitrary code, file access, asset providers, dynamic node creation or video jobs.
+
+Use `add-geometry`, `add-material` and `add-node` records to build a scene from an empty recipe.
+Use explicit removal commands and `set-node` geometry/material fields to rebind meshes. Final batch references must resolve.
+Removing a parent requires `recursive: true` or reparenting/removing its children in the same batch.
+
+Active, checkpoint and staged geometry share a budget. Release unused checkpoints before increasing detail.
+Topology changes reconcile rigid, untextured GPU parts. Geometry stays immutable and surviving shared buffers remain allocated.
+
+It exposes no arbitrary code, file access, asset providers, animation authoring or video jobs.
 
 - [Release metadata](https://67js.codepawl.com/release.json): package name, version, publication status, install command, module URL and commit.
 - [Complete plain-text guide](https://67js.codepawl.com/guide.md): renderer, parts, materials, cameras, animation, lifecycle, export and troubleshooting.

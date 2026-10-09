@@ -195,3 +195,26 @@ test('SDK stdio EOF closes the runtime without launching a scene', async () => {
   input.destroy();
   output.destroy();
 });
+
+test('SDK dynamic batches create resources, reject dangling edits, and restore scene membership', async context => {
+  const { client, sessionId } = await connect(context);
+  const call = (name, argumentsValue) => client.callTool({ name, arguments: argumentsValue });
+  await call('scene_create', { recipe: { format: '67js.scene', schemaVersion: 1, geometries: [], materials: [], nodes: [] } });
+  const initial = (await call('scene_checkpoint', { sessionId })).structuredContent;
+  const added = await call('scene_apply', { sessionId, expectedRevision: 0, operations: [
+    { type: 'add-geometry', geometry: { id: 'cube', type: 'box' } },
+    { type: 'add-material', material: { id: 'paint', color: [0.2, 0.6, 0.8] } },
+    { type: 'add-node', node: { id: 'group' } },
+    { type: 'add-node', node: { id: 'mesh', parent: 'group', geometry: 'cube', material: 'paint' } },
+  ] });
+  assert.equal(added.isError, undefined);
+  assert.equal(added.structuredContent.inspection.counts.parts, 1);
+  const invalid = await call('scene_apply', { sessionId, expectedRevision: 1, operations: [{ type: 'remove-geometry', id: 'cube' }] });
+  assert.equal(invalid.isError, true);
+  const inspected = (await call('scene_inspect', { sessionId })).structuredContent;
+  assert.equal(inspected.revision, 1);
+  assert.equal(inspected.counts.geometries, 1);
+  const restored = await call('scene_restore', { sessionId, checkpointId: initial.checkpointId, expectedRevision: 1 });
+  assert.equal(restored.structuredContent.inspection.counts.parts, 0);
+  assert.equal(restored.structuredContent.inspection.counts.geometries, 0);
+});

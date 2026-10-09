@@ -11,6 +11,8 @@ const source = (await readFile(new URL('../scripts/agent-preview-browser.js', im
 function previewHarness() {
   let renderError = 0;
   let lost = false;
+  let replacementError = false;
+  let replacementCount = 0;
   const canvas = { width: 768, height: 512 };
   class FaultInjectedRenderer {
     memoryPlan = { estimatedBytes: 1024 };
@@ -23,6 +25,10 @@ function previewHarness() {
     };
     resize() {}
     updateParts() {}
+    replaceParts() {
+      if (replacementError) throw new Error('Injected replacement allocation failure');
+      replacementCount++;
+    }
     render() {}
     dispose() {}
   }
@@ -40,6 +46,8 @@ function previewHarness() {
     preview: context.window.__agentPreview,
     injectError: value => { renderError = value; },
     loseContext: () => { lost = true; },
+    rejectReplacement: value => { replacementError = value; },
+    replacementCount: () => replacementCount,
   };
 }
 
@@ -62,6 +70,33 @@ test('preview rejects a camera that overflows at a permitted aspect before commi
   ] }), /aspect ratios/);
   assert.equal(preview.exportRecipe({ sessionId: 'scene' }).revision, 0);
   assert.deepEqual(preview.exportRecipe({ sessionId: 'scene' }).recipe.nodes[0].translation, [0, 0, 0]);
+});
+
+test('topology driver failure discloses committed recipe and retries reconciliation with the current revision', () => {
+  const harness = previewHarness();
+  const sessionId = 'test-topology';
+  harness.preview.create({ recipe: recipe(), sessionId, memoryBudgetMiB: 192, backend: 'cpu' });
+  const checkpoint = harness.preview.checkpoint({ sessionId, checkpointId: 'initial' });
+  harness.rejectReplacement(true);
+  const added = harness.preview.apply({ sessionId, expectedRevision: 0, operations: [
+    { type: 'add-node', node: { id: 'second', geometry: 'cube', material: 'paint', translation: [2, 0, 0] } },
+  ] });
+  assert.equal(added.committed, true);
+  assert.equal(added.revision, 1);
+  assert.equal(added.renderSucceeded, false);
+  assert.match(added.renderError, /allocation failure/);
+  assert.equal(harness.preview.inspect({ sessionId }).counts.parts, 2);
+  assert.equal(harness.replacementCount(), 0);
+  harness.rejectReplacement(false);
+  const recovered = harness.preview.apply({ sessionId, expectedRevision: 1, operations: [
+    { type: 'set-material', id: 'paint', color: [0.3, 0.6, 0.8] },
+  ] });
+  assert.equal(recovered.renderSucceeded, true);
+  assert.equal(harness.replacementCount(), 1);
+  const restored = harness.preview.restore({ sessionId, checkpointId: checkpoint.checkpointId, expectedRevision: 2 });
+  assert.equal(restored.renderSucceeded, true);
+  assert.equal(harness.preview.inspect({ sessionId }).counts.parts, 1);
+  assert.equal(harness.replacementCount(), 2);
 });
 
 test('driver errors disclose committed revision and context loss preserves recipe recovery', () => {

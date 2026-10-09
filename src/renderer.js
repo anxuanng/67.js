@@ -1,7 +1,7 @@
 import { mat4, mat3 } from 'gl-matrix';
 import { vertexShader, fragmentShader, depthVertexShader, depthFragmentShader, benchmarkVertexShader, benchmarkFragmentShader } from './shaders.js';
 import { fullscreenVertex, postFragment, skyFragment, bloomFragment } from './post.js';
-import { planRenderSize, estimateTextureBytes } from './budget.js';
+import { planRenderSize, estimateTextureBytes, estimateFrameBytes } from './budget.js';
 import { applyProjection } from './camera.js';
 import { resolveEffects } from './effects.js';
 import { createLightingState, updateLightingState } from './lighting.js';
@@ -175,6 +175,29 @@ function sampleCount(context, format, requested) {
   return Math.max(0, ...colorCounts.filter(count => count <= requested && depthCounts.includes(count)));
 }
 
+function geometryBufferBytes(geometry) {
+  return ['positions', 'normals', 'uvs', 'colors', 'indices'].reduce((total, field) => total + (geometry[field]?.byteLength ?? 0), 0);
+}
+
+function validateReplacementGeometry(geometry) {
+  const vertexCount = geometry.positions?.length / 3;
+  if (!(geometry.positions instanceof Float32Array) || !Number.isInteger(vertexCount) || vertexCount < 1 ||
+      !(geometry.normals instanceof Float32Array) || geometry.normals.length !== vertexCount * 3 ||
+      !(geometry.indices instanceof Uint32Array) || geometry.indices.length < 3 || geometry.indices.length % 3 !== 0) {
+    throw new TypeError('Replacement geometry needs matching Float32 positions/normals and Uint32 triangles.');
+  }
+  for (const [field, count] of [['positions', 3], ['normals', 3], ['uvs', 2], ['colors', 3]]) {
+    const values = geometry[field];
+    if (!values && ['uvs', 'colors'].includes(field)) continue;
+    if (!(values instanceof Float32Array) || values.length !== vertexCount * count || !values.every(Number.isFinite)) {
+      throw new TypeError(`Replacement ${field} must contain finite matching Float32 data.`);
+    }
+  }
+  if (!geometry.indices.every(index => index < vertexCount)) {
+    throw new RangeError('Replacement triangle indices must address existing vertices.');
+  }
+}
+
 export class Renderer67 {
   constructor(canvas, parts, { batching = true, pixelRatio = 1.5, benchmark = false, world = false, ground = true, transparent = false, samples = 4, hdr = false, depth = false, memoryBudgetMiB = 256, environment = {}, shadowBounds = {} } = {}) {
     this.canvas = canvas;
@@ -199,6 +222,9 @@ export class Renderer67 {
     this.multisampleSamples = benchmark ? 0 : sampleCount(this.context, this.hdr ? this.context.RGBA16F : this.context.RGBA8, Math.min(samples, this.context.getParameter(this.context.MAX_SAMPLES)));
     this.capabilities = { hdr: this.hdr, hdrRequested: Boolean(hdr), hdrFallbackReason: hdr && !this.hdr ? benchmark ? 'HDR is disabled in benchmark mode' : 'EXT_color_buffer_float is unavailable' : null, samples: this.multisampleSamples };
     this.geometryBytes = 0;
+    this.geometryBuffers = new Map();
+    this.batching = batching;
+    this.groundPart = ground ? groundPart() : null;
     this.buffers = [];
     this.batches = [];
     this.partLocations = new Map();
@@ -211,7 +237,7 @@ export class Renderer67 {
     this.textures = new Map();
     this.textureBytes = 4;
     this.shadowsDirty = true;
-    const groups = groupParts(ground ? [...parts, groundPart()] : parts, batching);
+    const groups = groupParts(this.groundPart ? [...parts, this.groundPart] : parts, batching);
     const textureLimit = this.context.getParameter(this.context.MAX_TEXTURE_SIZE);
     this.hasSkins = groups.some(group => group[0].skin);
     this.hasMorphs = groups.some(group => group[0].morph);
@@ -354,17 +380,39 @@ export class Renderer67 {
 
   uploadBatch(parts) {
     const context = this.context;
-    const geometry = parts[0].geometry;
     const vertexArray = context.createVertexArray();
+    try {
+      return this.uploadBatchData(parts, vertexArray);
+    } catch (error) {
+      context.bindVertexArray(null);
+      context.deleteVertexArray(vertexArray);
+      throw error;
+    }
+  }
+
+  uploadBatchData(parts, vertexArray) {
+    const context = this.context;
+    const geometry = parts[0].geometry;
     context.bindVertexArray(vertexArray);
-    for (const [location, data] of [[0, geometry.positions], [1, geometry.normals]]) {
-      this.uploadBuffer(context.ARRAY_BUFFER, data);
+    let geometryBuffers = this.geometryBuffers.get(geometry);
+    if (!geometryBuffers) {
+      geometryBuffers = new Map();
+      for (const field of ['positions', 'normals', 'uvs', 'colors', 'indices']) {
+        if (geometry[field]) {
+          const target = field === 'indices' ? context.ELEMENT_ARRAY_BUFFER : context.ARRAY_BUFFER;
+          geometryBuffers.set(field, this.uploadBuffer(target, geometry[field]));
+        }
+      }
+      this.geometryBuffers.set(geometry, geometryBuffers);
+    }
+    for (const [location, field] of [[0, 'positions'], [1, 'normals']]) {
+      context.bindBuffer(context.ARRAY_BUFFER, geometryBuffers.get(field));
       context.enableVertexAttribArray(location);
       context.vertexAttribPointer(location, 3, context.FLOAT, false, 0, 0);
     }
     if (geometry.uvs) {
       if (geometry.uvs.length !== geometry.positions.length / 3 * 2) throw new Error('Geometry UV count must match the vertex count.');
-      this.uploadBuffer(context.ARRAY_BUFFER, geometry.uvs);
+      context.bindBuffer(context.ARRAY_BUFFER, geometryBuffers.get('uvs'));
       context.enableVertexAttribArray(13);
       context.vertexAttribPointer(13, 2, context.FLOAT, false, 0, 0);
     } else {
@@ -374,14 +422,14 @@ export class Renderer67 {
     }
     if (geometry.colors) {
       if (geometry.colors.length !== geometry.positions.length) throw new Error('Geometry colors must contain RGB for every vertex.');
-      this.uploadBuffer(context.ARRAY_BUFFER, geometry.colors);
+      context.bindBuffer(context.ARRAY_BUFFER, geometryBuffers.get('colors'));
       context.enableVertexAttribArray(14);
       context.vertexAttribPointer(14, 3, context.FLOAT, false, 0, 0);
     } else {
       context.disableVertexAttribArray(14);
       context.vertexAttrib3f(14, 1, 1, 1);
     }
-    this.uploadBuffer(context.ELEMENT_ARRAY_BUFFER, geometry.indices);
+    context.bindBuffer(context.ELEMENT_ARRAY_BUFFER, geometryBuffers.get('indices'));
     const stride = INSTANCE_STRIDE;
     const instanceData = new Float32Array(parts.length * stride);
     const normalMatrix = mat3.create();
@@ -407,9 +455,114 @@ export class Renderer67 {
     const morph = parts[0].morph ?? null;
     const morphTexture = morph ? this.createMorphTexture(geometry, morph) : null;
     const morphWeights = morph ? new Float32Array(morph.weights) : null;
-    const batch = { vertexArray, instanceBuffer, instanceData, textures, mapState, texture: textures[0], map, skin, skinTexture, influenceTexture, morph, morphTexture, morphWeights, indexCount: geometry.indices.length, instanceCount: parts.length, floor: parts[0].material.tag === 'floor', castShadow: parts[0].castShadow !== false };
+    const batch = { parts: [...parts], vertexArray, instanceBuffer, instanceData, textures, mapState, texture: textures[0], map, skin, skinTexture, influenceTexture, morph, morphTexture, morphWeights, indexCount: geometry.indices.length, instanceCount: parts.length, floor: parts[0].material.tag === 'floor', castShadow: parts[0].castShadow !== false };
     parts.forEach((part, index) => this.partLocations.set(part, { batch, index, geometry: part.geometry, map, mapState, skin, jointMatrices: skin?.jointMatrices, skinIndices: geometry.skinIndices, skinWeights: geometry.skinWeights, morph, morphWeights: morph?.weights, morphTargets: geometry.morphTargets, normalMatrix: mat3.create(), committedMatrix: batch.instanceData.subarray(index * INSTANCE_STRIDE, index * INSTANCE_STRIDE + 16) }));
     return batch;
+  }
+
+  /** Reconcile immutable rigid, untextured geometry without rebuilding programs or render targets. */
+  replaceParts(parts) {
+    if (!Array.isArray(parts) || new Set(parts).size !== parts.length) {
+      throw new TypeError('Scene parts must be an array with distinct object identities.');
+    }
+    for (const location of this.partLocations.values()) {
+      if (location.skin || location.morph || location.morphTargets || location.skinIndices || location.mapState.slice(0, 5).some(Boolean)) {
+        throw new Error('replaceParts currently requires an existing rigid, untextured scene.');
+      }
+    }
+    for (const part of parts) {
+      if (part.skin || part.morph || part.geometry.morphTargets || part.geometry.skinIndices || hasMaterialMap(part.material)) {
+        throw new Error('replaceParts currently requires rigid, untextured parts.');
+      }
+    }
+    const renderParts = this.groundPart ? [...parts, this.groundPart] : parts;
+    const groups = groupParts(renderParts, this.batching);
+    const geometries = new Set(renderParts.map(part => part.geometry));
+    for (const geometry of geometries) {
+      validateReplacementGeometry(geometry);
+    }
+    const retained = new Set();
+    const replacements = groups.map(group => {
+      const first = group[0];
+      const location = this.partLocations.get(first);
+      const batch = location?.batch;
+      const mapState = materialMapState(first.material);
+      const sameParts = batch?.parts.length === group.length && batch.parts.every((part, index) => part === group[index]);
+      const sameState = location?.geometry === first.geometry && batch?.castShadow === (first.castShadow !== false) &&
+        batch.floor === (first.material.tag === 'floor') &&
+        batch.mapState.every((value, index) => value === mapState[index]);
+      if (sameParts && sameState) {
+        retained.add(batch);
+        return { group, batch };
+      }
+      return { group, batch: null };
+    });
+    const newGeometryBytes = [...geometries].filter(geometry => !this.geometryBuffers.has(geometry)).reduce((total, geometry) => total + geometryBufferBytes(geometry), 0);
+    const newInstanceBytes = replacements.filter(item => !item.batch).reduce((total, item) => total + item.group.length * INSTANCE_STRIDE * 4, 0);
+    const frameBytes = estimateFrameBytes(this.canvas.width, this.canvas.height, this.samples, 2048, { hdr: this.hdr, bloom: !this.benchmark, depth: this.depth });
+    const peakBytes = frameBytes + this.textureBytes + this.geometryBytes + newGeometryBytes + newInstanceBytes;
+    if (peakBytes > this.memoryBudgetMiB * 1024 * 1024) {
+      throw new RangeError('Memory budget cannot hold the current scene and staged replacement buffers.');
+    }
+    const previousLocations = this.partLocations;
+    const previousBuffers = [...this.buffers];
+    const previousGeometryBytes = this.geometryBytes;
+    const previousGeometryBuffers = new Map(this.geometryBuffers);
+    const stagedLocations = new Map();
+    const stagedBatches = [];
+    this.partLocations = stagedLocations;
+    try {
+      for (const item of replacements) {
+        if (item.batch) {
+          stagedBatches.push(item.batch);
+          for (const part of item.group) {
+            stagedLocations.set(part, previousLocations.get(part));
+          }
+        } else {
+          stagedBatches.push(this.uploadBatch(item.group));
+        }
+      }
+      const error = this.context.getError();
+      if (error !== 0) {
+        throw new Error(`WebGL replacement allocation failed with error ${error}.`);
+      }
+    } catch (error) {
+      for (const batch of stagedBatches) {
+        if (!retained.has(batch)) this.context.deleteVertexArray(batch.vertexArray);
+      }
+      for (const buffer of this.buffers.slice(previousBuffers.length)) {
+        this.context.deleteBuffer(buffer);
+      }
+      this.context.bindVertexArray(null);
+      this.buffers = previousBuffers;
+      this.geometryBytes = previousGeometryBytes;
+      this.geometryBuffers = previousGeometryBuffers;
+      this.partLocations = previousLocations;
+      throw error;
+    }
+    const releasedBuffers = new Set();
+    for (const batch of this.batches) {
+      if (!retained.has(batch)) {
+        this.context.deleteVertexArray(batch.vertexArray);
+        releasedBuffers.add(batch.instanceBuffer);
+      }
+    }
+    for (const [geometry, buffers] of this.geometryBuffers) {
+      if (!geometries.has(geometry)) {
+        for (const buffer of buffers.values()) releasedBuffers.add(buffer);
+        this.geometryBuffers.delete(geometry);
+      }
+    }
+    for (const buffer of releasedBuffers) this.context.deleteBuffer(buffer);
+    this.buffers = this.buffers.filter(buffer => !releasedBuffers.has(buffer));
+    this.geometryBytes = [...geometries].reduce((total, geometry) => total + geometryBufferBytes(geometry), 0) + renderParts.length * INSTANCE_STRIDE * 4;
+    this.batches = stagedBatches;
+    this.partCount = parts.length;
+    this.triangles = parts.reduce((total, part) => total + part.geometry.indices.length / 3, 0);
+    this.updateBatches.clear();
+    this.shadowsDirty = true;
+    this.updateParts(renderParts);
+    return parts.length;
   }
 
   createSkinTexture(cache, identity, matrices, groupSize) {
@@ -867,6 +1020,7 @@ export class Renderer67 {
     this.releaseFrameTargets();
     this.batches.forEach((batch) => this.context.deleteVertexArray(batch.vertexArray));
     this.buffers.forEach((buffer) => this.context.deleteBuffer(buffer));
+    this.geometryBuffers?.clear();
     this.context.deleteTexture(this.shadowTexture);
     this.context.deleteFramebuffer(this.shadowFramebuffer);
     this.context.deleteProgram(this.program);

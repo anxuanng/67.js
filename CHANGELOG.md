@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Add atomic agent commands for creating, removing and rebinding nodes and shared resources, with bounded checkpoint geometry ownership.
+- Reconcile rigid untextured renderer topology while retaining unchanged batches and sharing immutable geometry buffers across draws.
 - Add source-checkout MCP tools with strict scene schemas, persistent CPU/GPU previews and bounded PNG responses.
 - Keep renderer sessions alive across edits and close owned browser resources when the MCP connection ends.
 - Add optional agent scene sessions with stable IDs, shared geometry, revision checks, atomic edits and bounded checkpoints.

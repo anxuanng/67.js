@@ -24,6 +24,7 @@ const nodeFields = {
   rotation: quaternion.optional().describe('Nonzero local XYZW quaternion. The backend normalizes it.'),
   scale: z.tuple([positive, positive, positive]).optional().describe('Positive local XYZ scale.'),
 };
+const nodeRecord = z.strictObject({ id: identifier, geometry: identifier.optional(), material: identifier.optional(), ...nodeFields });
 const materialFields = {
   color: color.optional().describe('Linear RGB base color, each component between zero and one.'),
   metallic: unit.optional(),
@@ -53,13 +54,19 @@ const recipe = z.strictObject({
   schemaVersion: z.literal(1),
   geometries: z.array(geometry).max(256),
   materials: z.array(z.strictObject({ id: identifier, tag: z.enum(['surface', 'unlit']).optional(), ...materialFields })).max(256),
-  nodes: z.array(z.strictObject({ id: identifier, geometry: identifier.optional(), material: identifier.optional(), ...nodeFields })).max(4096),
+  nodes: z.array(nodeRecord).max(4096),
   camera: z.strictObject(cameraFields).optional(),
 }).describe('Bounded scene recipe. Backend validates references, mesh resource pairs, hierarchy, geometry budgets and camera consistency.');
 const operation = z.discriminatedUnion('type', [
-  z.strictObject({ type: z.literal('set-node'), id: identifier, ...nodeFields }),
+  z.strictObject({ type: z.literal('set-node'), id: identifier, geometry: identifier.optional(), material: identifier.optional(), ...nodeFields }),
   z.strictObject({ type: z.literal('set-material'), id: identifier, ...materialFields }),
   z.strictObject({ type: z.literal('set-camera'), ...cameraFields }),
+  z.strictObject({ type: z.literal('add-node'), node: nodeRecord }),
+  z.strictObject({ type: z.literal('remove-node'), id: identifier, recursive: z.boolean().optional().describe('Remove descendants too. Defaults to false; dangling children reject the batch.') }),
+  z.strictObject({ type: z.literal('add-geometry'), geometry }),
+  z.strictObject({ type: z.literal('remove-geometry'), id: identifier }),
+  z.strictObject({ type: z.literal('add-material'), material: z.strictObject({ id: identifier, tag: z.enum(['surface', 'unlit']).optional(), ...materialFields }) }),
+  z.strictObject({ type: z.literal('remove-material'), id: identifier }),
 ]);
 const sessionFields = { sessionId: z.uuid().describe('Session UUID returned by scene_create.') };
 const checkpointFields = { ...sessionFields, checkpointId: z.uuid().describe('Checkpoint UUID returned by scene_checkpoint for this session.') };
@@ -73,7 +80,7 @@ function jsonResult(value) {
 
 export function createAgentMcpServer(runtime, { version = '0.4.1' } = {}) {
   const server = new McpServer({ name: '67js-scene', version }, {
-    instructions: 'Start with scene_capabilities, then scene_create and scene_inspect. Before editing, save a scene_checkpoint. Apply small batches with the current expectedRevision and check committed, revision and renderSucceeded. A committed edit can have a separate renderError; do not retry it with an old revision. Use scene_look to judge the rendered image. Restore failed experiments or release unused checkpoints. Export the final recipe and dispose the scene when finished. Resources and node membership are fixed. No arbitrary JavaScript, URLs, files or jobs are exposed.',
+    instructions: 'Start with scene_capabilities, then scene_create and scene_inspect. Before editing, save a scene_checkpoint. Apply small batches with the current expectedRevision and check committed, revision and renderSucceeded. Add nodes and shared geometry/material resources through explicit commands; references must resolve in the final batch. Removing a parent requires recursive:true or removing/reparenting its children. A committed edit can have a separate renderError; do not retry it with an old revision. Use scene_look to judge the rendered image. Restore failed experiments or release unused checkpoints. Export the final recipe and dispose the scene when finished. No arbitrary JavaScript, URLs, files or jobs are exposed.',
   });
   let closePromise;
   server.server.onclose = () => {
@@ -96,7 +103,7 @@ export function createAgentMcpServer(runtime, { version = '0.4.1' } = {}) {
   register('scene_capabilities', 'Read supported recipe features and runtime budgets before authoring. Does not launch a browser.', z.strictObject({}), readOnly, async () => jsonResult(await runtime.capabilities()));
   register('scene_create', 'Create the single active render scene from a JSON recipe. Dispose an existing scene first.', z.strictObject({ recipe }), { ...edit, destructiveHint: false }, async argumentsValue => jsonResult(await runtime.create(argumentsValue)));
   register('scene_inspect', 'Read revision, counts and selected nodes. Bounds describe authored geometry rather than shader displacement.', z.strictObject({ ...sessionFields, ids: z.array(identifier).max(4096).optional().describe('Selected node IDs. Omit to inspect scene order.'), limit: z.number().int().min(1).max(4096).optional().describe('Maximum returned node records. Defaults to 64.'), includeBounds: z.boolean().optional().describe('Include world geometry bounds. Defaults to false.') }), readOnly, async argumentsValue => jsonResult(await runtime.inspect(argumentsValue)));
-  register('scene_apply', 'Atomically apply one small command batch. Successful batches increment revision once. Geometry and node membership remain fixed.', z.strictObject({ ...sessionFields, expectedRevision, operations: z.array(operation).min(1).max(256).describe('Commands with flat fields. All commands validate before publication.') }), edit, async argumentsValue => jsonResult(await runtime.apply(argumentsValue)));
+  register('scene_apply', 'Atomically edit transforms, camera, materials or scene membership. Add immutable geometry and shared materials; remove unused resources explicitly. Successful batches increment revision once.', z.strictObject({ ...sessionFields, expectedRevision, operations: z.array(operation).min(1).max(256).describe('Set commands use flat fields; add commands contain node, geometry or material records. Final references and budgets validate before publication.') }), edit, async argumentsValue => jsonResult(await runtime.apply(argumentsValue)));
   register('scene_look', 'Render the active scene as a bounded PNG image for visual assessment.', z.strictObject({ ...sessionFields, width: z.number().int().min(64).max(1024).default(768).describe('PNG width in pixels.'), height: z.number().int().min(64).max(1024).default(512).describe('PNG height in pixels.') }), readOnly, async argumentsValue => {
     const { data, mimeType, metadata } = await runtime.look(argumentsValue);
     return { content: [{ type: 'image', data, mimeType }, { type: 'text', text: JSON.stringify(metadata) }], structuredContent: metadata };
