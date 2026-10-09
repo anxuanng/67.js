@@ -22,7 +22,9 @@ const npmCli = process.env.npm_execpath ?? resolve(dirname(process.execPath), 'n
 // Validate the current source through a separate local pack, without replacing that archive.
 const sourcePack = spawnSync(process.execPath, [npmCli, 'pack', '--ignore-scripts', '--json', '--pack-destination', consumer], { windowsHide: true, encoding: 'utf8' });
 assert.equal(sourcePack.status, 0, sourcePack.stderr);
-const packedSource = JSON.parse(sourcePack.stdout)[0];
+const sourcePackResult = JSON.parse(sourcePack.stdout);
+const packedSource = Array.isArray(sourcePackResult) ? sourcePackResult[0] : sourcePackResult[metadata.name];
+assert.ok(packedSource?.filename, 'npm pack must return a source archive.');
 assert.ok(packedSource.size < 1024 * 1024, 'The current source package must fit within a 1 MiB archive.');
 const sourceArchive = resolve(consumer, packedSource.filename);
 const installed = spawnSync(process.execPath, [npmCli, 'install', `67js@file:${sourceArchive.replaceAll('\\', '/')}`, '@dimforge/rapier3d-compat@0.21.0', '--ignore-scripts', '--no-audit', '--no-fund'], { cwd: consumer, windowsHide: true, encoding: 'utf8' });
