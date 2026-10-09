@@ -38,11 +38,10 @@ function draw() {
 function animate(timestamp) {
   scheduledFrame = 0;
   if (!state.playing || !state.visible || document.hidden || disposed) return;
-  if (!previousTime || timestamp - previousTime >= 1000 / 24) {
-    state.time = (state.time + (previousTime ? Math.min(0.1, (timestamp - previousTime) / 1000) : 0)) % scene.duration;
-    previousTime = timestamp;
-    draw();
-  }
+  const elapsedSeconds = previousTime ? Math.min(0.1, (timestamp - previousTime) / 1000) : 0;
+  state.time = (state.time + elapsedSeconds) % scene.duration;
+  previousTime = timestamp;
+  draw();
   if (state.playing) scheduledFrame = requestAnimationFrame(animate);
 }
 

@@ -18,7 +18,7 @@ try {
         await page.setViewportSize({ width, height: 1000 });
         const linkPositions = await page.locator('.navigation nav a').evaluateAll(links => links.map(link => link.getBoundingClientRect().top));
         assert.ok(linkPositions.every(top => Math.abs(top - linkPositions[0]) < 1), 'Library navigation wraps to another row');
-        const contrast = await page.locator('.navigation nav a[aria-current]').evaluate(link => {
+        const contrast = await page.locator(route === '/' ? '.navigation nav a:first-child' : '.navigation nav a[aria-current]').evaluate(link => {
           const channels = color => color.match(/[\d.]+/g).map(Number);
           const backgrounds = [];
           for (let element = link; element; element = element.parentElement) {

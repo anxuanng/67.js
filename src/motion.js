@@ -70,10 +70,10 @@ export function createMotionScene() {
   for (let pod = 0; pod < 8; pod++) {
     const angle = pod / 8 * Math.PI * 2;
     const name = add(`Orbit pod ${pod}`, 'bead', [Math.cos(angle) * 1.8, 0.2, Math.sin(angle) * 1.8], [0.115, 0.115, 0.115], pod % 2 ? glow : amber);
-    tracks.push({ target: name, property: 'translation', interpolation: 'SMOOTH', keyframes: Array.from({ length: 25 }, (_, index) => {
-      const progress = index / 24;
+    tracks.push({ target: name, property: 'translation', interpolation: 'LINEAR', keyframes: Array.from({ length: 97 }, (_, index) => {
+      const progress = index / 96;
       const orbit = angle + progress * Math.PI * 2;
-      const radius = 1.8 + Math.sin(progress * Math.PI) * 0.2;
+      const radius = 1.8 + Math.sin(progress * Math.PI * 2) * 0.2;
       return { time: progress * MOTION_DURATION, value: [Math.cos(orbit) * radius, 0.25 + Math.sin(orbit * 2) * 0.65, Math.sin(orbit) * radius] };
     }) });
   }

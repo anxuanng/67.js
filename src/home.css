@@ -190,3 +190,6 @@ td, th { text-align:left; padding:12px; border-bottom:0; vertical-align:top; }
 }
 @media (max-width:960px) { .docs-layout { grid-template-columns:1fr; gap:0; } #doc-toc { position:static; max-height:none; display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); } }
 @media (max-width:760px) { .workflow { grid-template-columns:1fr; gap:24px; } .introduction h1 { font-size:38px; letter-spacing:-1.3px; } .docs-page h1 { font-size:32px; } .docs-search input { font-size:16px; } }
+
+.hero-actions a:hover, .hero-actions a:focus-visible { box-shadow:0 0 28px color-mix(in srgb,var(--text) 24%,transparent); }
+.navigation nav a:hover .icon, .navigation nav a:focus-visible .icon { filter:drop-shadow(0 0 5px currentColor); }

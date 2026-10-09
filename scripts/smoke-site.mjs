@@ -49,8 +49,8 @@ try {
     await page.setViewportSize({ width:1440,height:1000 });
     if (['/', '/downloads.html', '/docs.html', '/getting-started.html'].includes(route)) {
       assert.equal(await page.locator('aside.navigation').count(), 0);
-      assert.deepEqual(await page.locator('.navigation nav .nav-label').allTextContents(), ['Downloads', 'Showcase', 'Docs']);
-      assert.equal(await page.locator('.navigation nav a[aria-current="page"]').count(), 1);
+      assert.deepEqual(await page.locator('.navigation nav .nav-label').allTextContents(), ['Downloads', 'Docs']);
+      assert.equal(await page.locator('.navigation nav a[aria-current="page"]').count(), route === '/' ? 0 : 1);
       assert.equal(await page.locator('a[href$="llms.txt"]').count(), 0, 'Machine guide appears in public UI');
       assert.equal(await page.locator('.navigation a[href*="getting-started.html"]').count(), 0, 'Getting started still has separate navigation');
     }
