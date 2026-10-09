@@ -3,6 +3,7 @@ import { createAgentScene } from './agent-scene.js';
 import { fitPerspectiveDistance } from './camera.js';
 import { validateSkinGeometry, validateSkinPose } from './skinning.js';
 import { validateMorphGeometry, validateMorphTransform } from './morph.js';
+import { normalizeAgentMotion, compileAgentMotion } from './agent-motion.js';
 
 const MAX_RECIPE_BYTES = 1024 * 1024;
 const MAX_CHECKPOINTS = 8;
@@ -21,7 +22,7 @@ export const AGENT_ASSET_CAPABILITIES = Object.freeze({
   format: '67js.asset', schemaVersion: 1, fixedTopology: true,
   operations: Object.freeze([
     'set-camera', 'set-environment', 'set-effects', 'set-shadow',
-    'set-root', 'set-animation', 'set-material',
+    'set-root', 'set-animation', 'set-material', 'set-asset-node', 'set-motion',
   ]),
   boundsKind: 'authored-base-world',
 });
@@ -143,38 +144,6 @@ function viewRecipe(input, materials = []) {
   return createAgentScene(recipe, { maxMaterials: Math.max(256, materials.length) }).exportRecipe();
 }
 
-function poseBuffers(sourceParts) {
-  const buffers = new Set();
-  for (const part of sourceParts) {
-    buffers.add(part.matrix);
-    if (part.skin) {
-      buffers.add(part.skin.jointMatrices);
-      if (part.skin.jointWorldMatrices) {
-        buffers.add(part.skin.jointWorldMatrices);
-      }
-    }
-    if (part.morph) {
-      buffers.add(part.morph.weights);
-    }
-  }
-  return [...buffers].map(array => ({ array, length: array.length }));
-}
-
-function snapshotPose(buffers) {
-  return buffers.map(({ array, length }) => {
-    if (!(array instanceof Float32Array) || array.length !== length || array.byteLength !== length * 4) {
-      throw new RangeError('Decoded pose buffers must retain their identities and must not detach.');
-    }
-    return { array, values: new Float32Array(array) };
-  });
-}
-
-function restorePose(snapshot) {
-  for (const { array, values } of snapshot) {
-    Float32Array.prototype.set.call(array, values);
-  }
-}
-
 function geometryMaxima(geometry) {
   const maximum = [0, 0, 0];
   for (let offset = 0; offset < geometry.positions.length; offset += 3) {
@@ -280,7 +249,7 @@ function framedCamera(bounds) {
 /** Own authoring state around one exclusively owned, decoded parseGltf asset. */
 export function createAgentAssetScene(asset, inputRecipe) {
   if (!asset || !Array.isArray(asset.parts) || !asset.parts.length || !Array.isArray(asset.animations) ||
-      typeof asset.applyAnimation !== 'function') {
+      typeof asset.stagePose !== 'function' || !Array.isArray(asset.nodes)) {
     throw new TypeError('createAgentAssetScene requires a decoded parseGltf asset.');
   }
   if (asset.parts.length > 4096 || asset.animations.length > 256 ||
@@ -321,8 +290,7 @@ export function createAgentAssetScene(asset, inputRecipe) {
     };
   });
   const materialRecords = new Map([...materials.values()].map(record => [record.id, record]));
-  const buffers = poseBuffers(sourceParts);
-  const initialPose = snapshotPose(buffers);
+  const sourceNodes = new Map(asset.nodes.map(node => [node.id, structuredClone(node)]));
   const initialRecipe = copiedJson(inputRecipe);
   const assetId = initialRecipe?.assetId;
   if (typeof assetId !== 'string' || !/^[a-f0-9]{64}$/i.test(assetId)) {
@@ -334,6 +302,9 @@ export function createAgentAssetScene(asset, inputRecipe) {
   let materialSnapshots = new Map();
   let matrices = [];
   let revision = 0;
+  let sampler = null;
+  let motionTime = null;
+  let sampledCamera;
   const checkpoints = new Map();
   const materialOutputs = new Map([...materials].map(([source, record]) => {
     const output = {};
@@ -379,7 +350,7 @@ export function createAgentAssetScene(asset, inputRecipe) {
 
   function normalize(input) {
     const candidate = copiedJson(input);
-    knownKeys(candidate, ['format', 'schemaVersion', 'assetId', 'camera', ...LOOK_FIELDS, 'root', 'animation', 'materialOverrides'], 'asset recipe');
+    knownKeys(candidate, ['format', 'schemaVersion', 'assetId', 'camera', ...LOOK_FIELDS, 'root', 'animation', 'materialOverrides', 'nodeOverrides', 'motion'], 'asset recipe');
     if (candidate.format !== '67js.asset' || candidate.schemaVersion !== 1 ||
         typeof candidate.assetId !== 'string' || candidate.assetId.toLowerCase() !== canonicalAssetId) {
       throw new RangeError('Expected the bound 67js.asset schemaVersion 1 assetId.');
@@ -417,15 +388,56 @@ export function createAgentAssetScene(asset, inputRecipe) {
         throw new RangeError('Animation needs an existing clip and time within its duration.');
       }
     }
-    return copiedJson({
+    const nodeOverrides = candidate.nodeOverrides === undefined ? [] : candidate.nodeOverrides;
+    if (!Array.isArray(nodeOverrides) || nodeOverrides.length > sourceNodes.size) {
+      throw new RangeError('nodeOverrides must fit the decoded source-node count.');
+    }
+    const seenNodes = new Set();
+    const normalizedNodes = nodeOverrides.map(override => {
+      knownKeys(override, ['id', ...ROOT_FIELDS], 'node override');
+      const node = sourceNodes.get(override.id);
+      if (!node || seenNodes.has(override.id) || !node.editable) {
+        throw new RangeError('Node override IDs must exist, be editable and be distinct.');
+      }
+      seenNodes.add(override.id);
+      const fields = Object.keys(override).filter(field => field !== 'id');
+      if (!fields.length) {
+        throw new RangeError('Node overrides need at least one local transform component.');
+      }
+      const transform = rootFrom(Object.fromEntries(fields.map(field => [field, override[field]])));
+      return { id: override.id, ...Object.fromEntries(fields.map(field => [field, transform[field]])) };
+    });
+    const result = copiedJson({
       format: '67js.asset', schemaVersion: 1, assetId: canonicalAssetId,
       camera: view.camera, environment: view.environment, effects: view.effects, shadow: view.shadow,
-      root: rootFrom(candidate.root), animation, materialOverrides: normalizedOverrides,
+      root: rootFrom(candidate.root), animation, materialOverrides: normalizedOverrides, nodeOverrides: normalizedNodes,
     });
+    result.motion = normalizeAgentMotion(candidate.motion, motionRecipe(result));
+    return copiedJson(result);
   }
 
-  function publish(input, autoFrame = false, increment = true) {
-    let candidate = normalize(input);
+  function motionRecipe(candidate) {
+    const baselines = new Map([...materialRecords].map(([id, record]) => [id, { id, ...record.baseline }]));
+    for (const override of candidate.materialOverrides) {
+      baselines.set(override.id, { ...baselines.get(override.id), ...override });
+    }
+    return {
+      nodes: [...sourceNodes.values()].filter(node => node.editable),
+      materials: [...baselines.values()], camera: candidate.camera,
+    };
+  }
+
+  function publish(input, autoFrame = false, increment = true, transientTime = undefined, transientAnimation = undefined) {
+    let candidate = transientTime === undefined ? normalize(input) : recipe;
+    if (transientAnimation !== undefined) {
+      candidate = { ...candidate, animation: transientAnimation };
+    }
+    let stagedSampler = transientTime === undefined ? compileAgentMotion(candidate.motion, motionRecipe(candidate)) : sampler;
+    const targetTime = transientTime === undefined ? (candidate.motion ? 0 : null) : transientTime;
+    if (targetTime !== null && !stagedSampler) {
+      throw new RangeError('The asset has no authored motion to sample.');
+    }
+    let sampled = targetTime === null ? null : stagedSampler.sample(targetTime);
     if (asset.parts.length !== records.length) {
       throw new RangeError('Decoded part membership must remain fixed.');
     }
@@ -440,39 +452,47 @@ export function createAgentAssetScene(asset, inputRecipe) {
         throw new RangeError('Decoded resources and retained adapter matrices must not change identity or detach.');
       }
     }
-    const previousPose = snapshotPose(buffers);
+    const nodeOverrides = new Map(candidate.nodeOverrides.map(override => [override.id, override]));
+    for (const [id, patch] of sampled?.nodes ?? []) {
+      const copiedPatch = Object.fromEntries(Object.entries(patch).map(([field, value]) => [field, Array.from(value)]));
+      nodeOverrides.set(id, { ...nodeOverrides.get(id), id, ...copiedPatch });
+    }
+    let transaction;
     try {
-      if (candidate.animation === null) {
-        restorePose(initialPose);
-      } else {
-        asset.applyAnimation(candidate.animation.time, candidate.animation.clip);
-      }
+      transaction = asset.stagePose({ animation: candidate.animation, nodeOverrides: [...nodeOverrides.values()] });
       const rootMatrix = mat4.fromRotationTranslationScale(mat4.create(), candidate.root.rotation, candidate.root.translation, candidate.root.scale);
       const normal = mat3.create();
-      const stagedMatrices = records.map(record => {
-        const world = mat4.multiply(mat4.create(), rootMatrix, record.source.matrix);
+      const stagedMatrices = records.map((record, index) => {
+        const posed = transaction.parts[index];
+        const world = mat4.multiply(mat4.create(), rootMatrix, posed.matrix);
         const determinant = mat4.determinant(world);
         if (!world.every(Number.isFinite) || !Number.isFinite(determinant) || determinant === 0 ||
             !mat3.normalFromMat4(normal, world) || !normal.every(Number.isFinite)) {
           throw new RangeError('Asset root/world matrices must remain finite and nonsingular at Float32 precision.');
         }
-        if (record.source.skin) {
-          validateSkinPose(record.source.skin, record.source.geometry, world);
+        if (posed.skin) {
+          validateSkinPose(posed.skin, record.source.geometry, world);
         }
-        if (record.source.morph) {
-          validateMorphTransform(record.source.morph, morphMetadata.get(record.source.geometry), world, record.source.skin);
+        if (posed.morph) {
+          validateMorphTransform(posed.morph, morphMetadata.get(record.source.geometry), world, posed.skin);
         } else {
-          validatePositionBounds(record.geometry.maxima, world, record.source.skin);
+          validatePositionBounds(record.geometry.maxima, world, posed.skin);
         }
         return world;
       });
       if (autoFrame) {
         candidate.camera = framedCamera(framingBounds(records, stagedMatrices));
         candidate = normalize(candidate);
+        stagedSampler = compileAgentMotion(candidate.motion, motionRecipe(candidate));
+        sampled = targetTime === null ? null : stagedSampler.sample(targetTime);
       }
       const stagedMaterials = new Map([...materialRecords].map(([id, record]) => [id, { ...record.baseline }]));
       for (const override of candidate.materialOverrides) {
         stagedMaterials.set(override.id, { ...stagedMaterials.get(override.id), ...override });
+      }
+      for (const [id, patch] of sampled?.materials ?? []) {
+        const copiedPatch = Object.fromEntries(Object.entries(patch).map(([field, value]) => [field, typeof value === 'number' ? value : Array.from(value)]));
+        stagedMaterials.set(id, { ...stagedMaterials.get(id), ...copiedPatch });
       }
       for (const snapshot of stagedMaterials.values()) {
         for (const field of ['color', 'emissiveColor']) {
@@ -482,25 +502,34 @@ export function createAgentAssetScene(asset, inputRecipe) {
         }
         Object.freeze(snapshot);
       }
+      const stagedCamera = sampled?.camera ? {
+        ...candidate.camera,
+        ...Object.fromEntries(Object.entries(sampled.camera).filter(([field]) => field !== 'projection').map(([field, value]) => [field, ArrayBuffer.isView(value) ? Array.from(value) : value])),
+      } : candidate.camera;
+      // Validate camera geometry through the same canonical view contract.
+      viewRecipe({ camera: stagedCamera });
+      const preparedTransaction = transaction;
+      transaction = null;
+      preparedTransaction.commit();
       for (let index = 0; index < parts.length; index++) {
         Float32Array.prototype.set.call(parts[index].matrix, stagedMatrices[index]);
       }
-      recipe = candidate;
+      if (transientTime === undefined) {
+        recipe = candidate;
+        sampler = stagedSampler;
+      }
       materialSnapshots = stagedMaterials;
-      matrices = stagedMatrices;
+      sampledCamera = stagedCamera;
+      motionTime = targetTime;
+      if (transientTime === undefined) {
+        matrices = stagedMatrices;
+      }
       if (increment) {
         revision++;
       }
       return revision;
     } catch (error) {
-      if (recipe?.animation) {
-        try {
-          asset.applyAnimation(recipe.animation.time, recipe.animation.clip);
-        } catch {
-          // Accessible pose arrays below remain the authoritative rollback snapshot.
-        }
-      }
-      restorePose(previousPose);
+      transaction?.discard();
       throw error;
     }
   }
@@ -522,7 +551,10 @@ export function createAgentAssetScene(asset, inputRecipe) {
       return 0;
     },
     get camera() {
-      return structuredClone(recipe.camera);
+      return structuredClone(sampledCamera);
+    },
+    get motionTime() {
+      return motionTime;
     },
     get environment() {
       return structuredClone(recipe.environment);
@@ -535,6 +567,23 @@ export function createAgentAssetScene(asset, inputRecipe) {
     },
     exportRecipe() {
       return structuredClone(recipe);
+    },
+    sampleMotion(time) {
+      if (time !== null && (!Number.isFinite(time) || time < 0 || time > 3600)) {
+        throw new RangeError('Motion sample time must be null or within zero and 3600.');
+      }
+      publish(recipe, false, false, time);
+      return motionTime;
+    },
+    sampleFrame(input) {
+      const frame = copiedJson(input);
+      knownKeys(frame, ['animation', 'motionTime'], 'asset frame');
+      const time = frame.motionTime === undefined ? motionTime : frame.motionTime;
+      if (time !== null && (!Number.isFinite(time) || time < 0 || time > 3600)) {
+        throw new RangeError('Motion sample time must be null or within zero and 3600.');
+      }
+      publish(recipe, false, false, time, frame.animation);
+      return motionTime;
     },
     apply(inputOperations, options = {}) {
       expected(options);
@@ -569,6 +618,29 @@ export function createAgentAssetScene(asset, inputRecipe) {
             if (Object.hasOwn(operation, field)) {
               candidate.root[field] = operation[field];
             }
+          }
+        } else if (operation.type === 'set-motion') {
+          knownKeys(operation, ['type', 'motion'], 'operation');
+          if (!Object.hasOwn(operation, 'motion')) {
+            throw new TypeError('set-motion requires a motion record or explicit null.');
+          }
+          candidate.motion = operation.motion;
+        } else if (operation.type === 'set-asset-node') {
+          knownKeys(operation, ['type', 'id', ...ROOT_FIELDS], 'operation');
+          if (!sourceNodes.has(operation.id)) {
+            throw new RangeError(`Unknown source-node ID: ${operation.id}.`);
+          }
+          const fields = ROOT_FIELDS.filter(field => Object.hasOwn(operation, field));
+          if (!fields.length) {
+            throw new TypeError('set-asset-node needs a local transform component.');
+          }
+          let override = candidate.nodeOverrides.find(value => value.id === operation.id);
+          if (!override) {
+            override = { id: operation.id };
+            candidate.nodeOverrides.push(override);
+          }
+          for (const field of fields) {
+            override[field] = operation[field];
           }
         } else if (operation.type === 'set-animation') {
           knownKeys(operation, ['type', 'clip', 'time'], 'operation');
@@ -606,11 +678,35 @@ export function createAgentAssetScene(asset, inputRecipe) {
     },
     inspect(inputOptions = {}) {
       const options = copiedJson(inputOptions);
-      knownKeys(options, ['ids', 'limit', 'includeBounds'], 'inspection');
+      knownKeys(options, ['ids', 'limit', 'includeBounds', 'kind', 'offset'], 'inspection');
       const limit = options.limit === undefined ? 64 : options.limit;
       if (!Number.isInteger(limit) || limit < 1 || limit > 256 ||
           (options.includeBounds !== undefined && typeof options.includeBounds !== 'boolean')) {
         throw new RangeError('Inspection needs limit from 1 to 256 and boolean includeBounds.');
+      }
+      const offset = options.offset === undefined ? 0 : options.offset;
+      if (!Number.isInteger(offset) || offset < 0 || offset > 4096 ||
+          (options.kind !== undefined && !['meshes', 'hierarchy'].includes(options.kind))) {
+        throw new RangeError('Inspection kind must be meshes or hierarchy with an offset from zero to 4096.');
+      }
+      if (options.kind === 'hierarchy') {
+        if (options.includeBounds) {
+          throw new TypeError('Hierarchy inspection has no deformed silhouette bounds.');
+        }
+        if (options.ids !== undefined && (!Array.isArray(options.ids) || options.ids.length > sourceNodes.size)) {
+          throw new RangeError('Hierarchy IDs must fit the source-node count.');
+        }
+        const selected = options.ids === undefined ? [...sourceNodes.values()] : options.ids.map(id => {
+          if (!sourceNodes.has(id)) {
+            throw new RangeError(`Unknown source-node ID: ${id}.`);
+          }
+          return sourceNodes.get(id);
+        });
+        const nodes = structuredClone(selected.slice(offset, offset + limit));
+        return { revision, topologyRevision: 0, assetId: canonicalAssetId, kind: 'hierarchy',
+          counts: { nodes: sourceNodes.size, joints: [...sourceNodes.values()].filter(node => node.joint).length },
+          nodes, offset, truncated: offset + nodes.length < selected.length,
+          motion: recipe.motion ? { duration: recipe.motion.duration, loop: recipe.motion.loop, tracks: recipe.motion.tracks.length, time: motionTime } : null };
       }
       if (options.ids !== undefined && (!Array.isArray(options.ids) || options.ids.length > records.length)) {
         throw new RangeError('Inspection IDs must be an array within the decoded part count.');
@@ -622,7 +718,7 @@ export function createAgentAssetScene(asset, inputRecipe) {
         }
         return record;
       });
-      const visible = selected.slice(0, limit);
+      const visible = selected.slice(offset, offset + limit);
       if (options.includeBounds && visible.reduce((total, record) => total + record.source.geometry.positions.length / 3, 0) > MAX_INSPECTION_VERTICES) {
         throw new RangeError('Bounds inspection exceeds two million authored base vertices. Select fewer meshes.');
       }
@@ -657,8 +753,9 @@ export function createAgentAssetScene(asset, inputRecipe) {
         revision, topologyRevision: 0, assetId: canonicalAssetId,
         counts: { nodes: parts.length, parts: parts.length, geometries: geometries.size, materials: materials.size, vertices },
         geometryBytes, animation: structuredClone(recipe.animation),
+        motion: recipe.motion ? { duration: recipe.motion.duration, loop: recipe.motion.loop, tracks: recipe.motion.tracks.length, time: motionTime } : null,
         animations: asset.animations.map((clip, index) => ({ id: index, label: String(clip.name ?? `Clip ${index}`).slice(0, 256), duration: clip.duration })),
-        nodes, truncated: selected.length > nodes.length,
+        nodes, offset, truncated: selected.length > offset + nodes.length,
       };
     },
     checkpoint() {

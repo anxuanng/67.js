@@ -618,7 +618,9 @@ function skinPreflightPlugin(parser, document, primitiveAssociations) {
       const roots = await Promise.all(Array.from(rootIndices, async index => [index, await parser.getDependency('node', index)]));
       originalRoots = new Map(roots);
       for (const [node, association] of parser.associations) {
-        if (node.isMesh) primitiveAssociations.set(node, Object.freeze({ ...association }));
+        if (node.isMesh || Number.isInteger(association?.nodes)) {
+          primitiveAssociations.set(node, Object.freeze({ ...association }));
+        }
       }
     },
     afterRoot(result) {
@@ -805,53 +807,326 @@ export async function parseGltf(data, options = {}) {
     });
     validateNodeTransforms(nodes, pendingNodeMatrix, pendingTransform);
     if (!parts.length) throw new Error('glTF scene contains no supported triangle meshes.');
+    const sourceNodes = new Map();
+    for (const node of nodes) {
+      const index = primitiveAssociations.get(node)?.nodes;
+      if (index === undefined) continue;
+      const id = `node-${index}`;
+      if (sourceNodes.has(id)) {
+        throw new Error('Decoded source node IDs must not alias.');
+      }
+      sourceNodes.set(id, node);
+    }
+    const sourceIds = new Map([...sourceNodes].map(([id, node]) => [node, id]));
+    const jointNodes = new Set(skinBindings.flatMap(binding => binding.node.skeleton.bones));
+    const meshIdsByNode = new Map([...sourceNodes.values()].map(node => [node, []]));
+    for (let index = 0; index < bindings.length; index++) {
+      let ancestor = bindings[index].node;
+      while (ancestor && !sourceIds.has(ancestor)) ancestor = ancestor.parent;
+      if (!ancestor) {
+        throw new Error('Decoded mesh requires a stable source node association.');
+      }
+      meshIdsByNode.get(ancestor).push(`mesh-${index}`);
+    }
+    const nodeMetadata = [...sourceNodes].map(([id, node]) => {
+      let parent = node.parent;
+      while (parent && !sourceIds.has(parent)) parent = parent.parent;
+      const original = document.nodes[Number(id.slice(5))];
+      const composed = new Matrix4().compose(node.position, node.quaternion, node.scale);
+      const authoredMatrix = original.matrix ?? node.matrix.elements;
+      const editable = node.scale.toArray().every(value => value > 0 && Math.fround(value) > 0) &&
+        composed.determinant() > 0 && authoredMatrix.every((value, index) =>
+          Math.abs(value - composed.elements[index]) <= 1e-6 * Math.max(1, Math.abs(value)));
+      const meshIds = meshIdsByNode.get(node);
+      return { id, label: String(original.name ?? id).slice(0, 256), parent: sourceIds.get(parent) ?? null,
+        translation: node.position.toArray(), rotation: node.quaternion.toArray(), scale: node.scale.toArray(),
+        editable, joint: jointNodes.has(node), meshIds };
+    });
+    const metadataById = new Map(nodeMetadata.map(metadata => [metadata.id, metadata]));
+    const candidateParts = bindings.map(binding => ({ ...binding.part, matrix: binding.pendingMatrix }));
+    for (const binding of skinBindings) {
+      const index = bindings.findIndex(transform => transform.node === binding.node);
+      candidateParts[index].skin = Object.assign(binding.pendingPose, {
+        joints: binding.skin.joints, inverseBindMatrices: binding.skin.inverseBindMatrices,
+        jointWorldMatrices: binding.pendingWorld, bindMatrix: binding.skin.bindMatrix,
+      });
+    }
+    for (const binding of morphBindings) {
+      candidateParts[bindings.findIndex(transform => transform.node === binding.node)].morph = binding.pendingPose;
+    }
     const mixer = new AnimationMixer(gltf.scene);
     let disposed = false;
-    function dispose() {
-      if (disposed) return;
-      disposed = true;
-      mixer.stopAllAction();
-      mixer.uncacheRoot(gltf.scene);
-      releaseParsed(gltf);
-      objectUrls.forEach(url => URL.revokeObjectURL(url));
+    let pendingTransaction;
+    let currentAnimation = null;
+
+    function capturePrivatePose() {
+      return nodes.map(node => ({ node, translation: node.position.toArray(), rotation: node.quaternion.toArray(),
+        scale: node.scale.toArray(), matrix: [...node.matrix.elements], world: [...node.matrixWorld.elements],
+        matrixAutoUpdate: node.matrixAutoUpdate, matrixWorldNeedsUpdate: node.matrixWorldNeedsUpdate,
+        weights: node.morphTargetInfluences ? [...node.morphTargetInfluences] : null }));
     }
-    function applyAnimation(time, clipIndex = 0) {
-      if (disposed) throw new Error('The glTF asset was disposed.');
-      if (!Number.isFinite(time)) throw new TypeError('Animation time must be finite.');
-      if (!Number.isInteger(clipIndex) || !gltf.animations[clipIndex]) throw new RangeError('Animation clip index is out of range.');
-      const clip = gltf.animations[clipIndex];
+
+    function restorePrivatePose(snapshot) {
+      for (const entry of snapshot) {
+        entry.node.position.fromArray(entry.translation);
+        entry.node.quaternion.fromArray(entry.rotation);
+        entry.node.scale.fromArray(entry.scale);
+        entry.node.matrix.fromArray(entry.matrix);
+        entry.node.matrixWorld.fromArray(entry.world);
+        entry.node.matrixAutoUpdate = entry.matrixAutoUpdate;
+        entry.node.matrixWorldNeedsUpdate = entry.matrixWorldNeedsUpdate;
+        if (entry.weights) {
+          for (let index = 0; index < entry.weights.length; index++) {
+            entry.node.morphTargetInfluences[index] = entry.weights[index];
+          }
+        }
+      }
+    }
+
+    const basePose = capturePrivatePose();
+
+    function playAnimation(animation) {
       mixer.stopAllAction();
+      restorePrivatePose(basePose);
+      mixer.setTime(0);
+      if (animation === null) {
+        return;
+      }
+      const clip = gltf.animations[animation.clip];
       const action = mixer.clipAction(clip);
       action.reset();
       action.setLoop(LoopOnce, 1);
       action.clampWhenFinished = true;
       action.play();
-      mixer.setTime(Math.max(0, Math.min(time, clip.duration)));
+      mixer.setTime(animation.time);
+    }
+
+    function preparePose() {
       gltf.scene.updateMatrixWorld(true);
       validateNodeTransforms(nodes, pendingNodeMatrix, pendingTransform);
       for (const { node, part, mirrored, matrix, pendingMatrix, skin } of bindings) {
-        if (part.matrix !== matrix || matrix.length !== 16) throw new Error('Imported part matrix identity must remain unchanged.');
-        if (part.skin !== skin) throw new Error('Imported skin pose identity must remain unchanged.');
+        if (part.matrix !== matrix || matrix.length !== 16) {
+          throw new Error('Imported part matrix identity must remain unchanged.');
+        }
+        if (part.skin !== skin) {
+          throw new Error('Imported skin pose identity must remain unchanged.');
+        }
         pendingMatrix.set(node.matrixWorld.elements);
-        for (const value of pendingMatrix) if (!Number.isFinite(value)) throw new Error('Animation creates a non-finite Float32 world matrix.');
+        for (const value of pendingMatrix) {
+          if (!Number.isFinite(value)) {
+            throw new Error('Animation creates a non-finite Float32 world matrix.');
+          }
+        }
         const determinant = node.matrixWorld.determinant();
         const roundedDeterminant = pendingTransform.fromArray(pendingMatrix).determinant();
         if (!Number.isFinite(determinant) || !Number.isFinite(roundedDeterminant) || Math.abs(roundedDeterminant) < 1e-12 || (determinant < 0) !== mirrored || (roundedDeterminant < 0) !== mirrored) {
           throw new Error('Animation creates a singular transform or changes triangle winding.');
         }
       }
-      for (const binding of skinBindings) prepareSkinBinding(binding, binding.geometry);
+      for (const binding of skinBindings) {
+        prepareSkinBinding(binding, binding.geometry);
+      }
       for (const binding of morphBindings) {
-        if (binding.part.morph !== binding.pose) throw new Error('Imported morph pose identity must remain unchanged.');
+        if (binding.part.morph !== binding.pose) {
+          throw new Error('Imported morph pose identity must remain unchanged.');
+        }
         prepareMorphBinding(binding);
         validateMorphTransform(binding.pendingPose, binding.metadata, binding.pendingMatrix, binding.pendingSkin);
       }
-      for (const { matrix, pendingMatrix } of bindings) matrix.set(pendingMatrix);
-      for (const binding of skinBindings) commitSkinBinding(binding);
-      for (const binding of morphBindings) binding.weights.set(binding.pendingPose.weights);
-      return parts;
     }
-    return { parts, skins: skinBindings.map(binding => binding.skin), animations: gltf.animations, applyAnimation, dispose, capabilities: GLTF_CAPABILITIES };
+
+    function knownPoseFields(value, fields, label) {
+      if (!value || Object.getPrototypeOf(value) !== Object.prototype) {
+        throw new TypeError(`${label} must be a plain object.`);
+      }
+      for (const field of Reflect.ownKeys(value)) {
+        const descriptor = Object.getOwnPropertyDescriptor(value, field);
+        if (typeof field !== 'string' || !fields.includes(field) || !descriptor.enumerable || !Object.hasOwn(descriptor, 'value')) {
+          throw new TypeError(`Unknown or unsupported ${label} field: ${String(field)}.`);
+        }
+      }
+    }
+
+    function poseVector(value, length, label) {
+      if (!Array.isArray(value) || value.length !== length || Reflect.ownKeys(value).length !== length + 1) {
+        throw new TypeError(`${label} needs ${length} finite Float32 values.`);
+      }
+      const result = [];
+      for (let index = 0; index < length; index++) {
+        const descriptor = Object.getOwnPropertyDescriptor(value, index);
+        if (!descriptor || !Object.hasOwn(descriptor, 'value') || !Number.isFinite(descriptor.value) || !Number.isFinite(Math.fround(descriptor.value))) {
+          throw new TypeError(`${label} needs ${length} finite Float32 values.`);
+        }
+        result.push(descriptor.value);
+      }
+      return result;
+    }
+
+    function normalizePose(input) {
+      knownPoseFields(input, ['animation', 'nodeOverrides'], 'pose');
+      const animation = input.animation ?? null;
+      if (animation !== null) {
+        knownPoseFields(animation, ['clip', 'time'], 'pose animation');
+        const clip = gltf.animations[animation.clip];
+        if (!Number.isInteger(animation.clip) || !clip || !Number.isFinite(animation.time) || animation.time < 0 || animation.time > clip.duration) {
+          throw new RangeError('Pose animation needs an existing clip and time within its duration.');
+        }
+      }
+      const inputOverrides = input.nodeOverrides === undefined ? [] : input.nodeOverrides;
+      const maximumOverrides = Math.min(4096, sourceNodes.size);
+      if (!Array.isArray(inputOverrides) || inputOverrides.length > maximumOverrides ||
+          Reflect.ownKeys(inputOverrides).length !== inputOverrides.length + 1) {
+        throw new RangeError(`Pose overrides must be a dense array with at most ${maximumOverrides} entries.`);
+      }
+      const seen = new Set();
+      const overrides = [];
+      for (let index = 0; index < inputOverrides.length; index++) {
+        const descriptor = Object.getOwnPropertyDescriptor(inputOverrides, index);
+        if (!descriptor || !Object.hasOwn(descriptor, 'value')) {
+          throw new TypeError('Pose overrides cannot contain holes or accessors.');
+        }
+        const override = descriptor.value;
+        knownPoseFields(override, ['id', 'translation', 'rotation', 'scale'], 'node override');
+        const metadata = metadataById.get(override.id);
+        if (!metadata || seen.has(override.id)) {
+          throw new RangeError('Pose node IDs must exist and be distinct.');
+        }
+        if (!metadata.editable) {
+          throw new RangeError('Authored node poses require a positive TRS base without shear or reflection.');
+        }
+        seen.add(override.id);
+        const result = { id: override.id };
+        for (const field of ['translation', 'rotation', 'scale']) {
+          if (Object.hasOwn(override, field)) {
+            result[field] = poseVector(override[field], field === 'rotation' ? 4 : 3, field);
+          }
+        }
+        if (Object.keys(result).length === 1) {
+          throw new TypeError('A node override needs at least one transform field.');
+        }
+        if (result.rotation) {
+          const length = Math.hypot(...result.rotation);
+          if (!Number.isFinite(length) || length < 1e-8) {
+            throw new RangeError('Pose rotation needs a nonzero quaternion.');
+          }
+          result.rotation = result.rotation.map(value => value / length);
+        }
+        if (result.scale?.some(value => Math.fround(value) <= 0)) {
+          throw new RangeError('Pose scale must be positive at Float32 precision.');
+        }
+        overrides.push(result);
+      }
+      return { animation: animation === null ? null : { ...animation }, overrides };
+    }
+
+    function stagePose(input) {
+      if (disposed) {
+        throw new Error('The glTF asset was disposed.');
+      }
+      if (pendingTransaction) {
+        throw new Error('A pose transaction is already pending. Commit or discard it first.');
+      }
+      const candidate = normalizePose(input);
+      const previousPose = capturePrivatePose();
+      const previousAnimation = currentAnimation;
+      function rollback() {
+        playAnimation(previousAnimation);
+        restorePrivatePose(previousPose);
+      }
+      try {
+        playAnimation(candidate.animation);
+        for (const override of candidate.overrides) {
+          const node = sourceNodes.get(override.id);
+          if (override.translation) {
+            node.position.fromArray(override.translation);
+          }
+          if (override.rotation) {
+            node.quaternion.fromArray(override.rotation);
+          }
+          if (override.scale) {
+            node.scale.fromArray(override.scale);
+          }
+          node.updateMatrix();
+        }
+        preparePose();
+      } catch (error) {
+        rollback();
+        throw error;
+      }
+      let settled = false;
+      function requirePending() {
+        if (disposed) {
+          throw new Error('The glTF asset was disposed.');
+        }
+        if (settled) {
+          throw new Error('The pose transaction is already settled.');
+        }
+      }
+      const transaction = Object.freeze({
+        parts: candidateParts,
+        commit() {
+          requirePending();
+          try {
+            preparePose();
+          } catch (error) {
+            rollback();
+            settled = true;
+            pendingTransaction = null;
+            throw error;
+          }
+          for (const { matrix, pendingMatrix } of bindings) {
+            Float32Array.prototype.set.call(matrix, pendingMatrix);
+          }
+          for (const binding of skinBindings) {
+            commitSkinBinding(binding);
+          }
+          for (const binding of morphBindings) {
+            Float32Array.prototype.set.call(binding.weights, binding.pendingPose.weights);
+          }
+          currentAnimation = candidate.animation;
+          settled = true;
+          pendingTransaction = null;
+          return parts;
+        },
+        discard() {
+          requirePending();
+          rollback();
+          settled = true;
+          pendingTransaction = null;
+          return parts;
+        },
+      });
+      pendingTransaction = transaction;
+      return transaction;
+    }
+
+    function dispose() {
+      if (disposed) {
+        return;
+      }
+      pendingTransaction?.discard();
+      disposed = true;
+      mixer.stopAllAction();
+      mixer.uncacheRoot(gltf.scene);
+      releaseParsed(gltf);
+      objectUrls.forEach(url => URL.revokeObjectURL(url));
+    }
+
+    function applyAnimation(time, clipIndex = 0) {
+      if (disposed) {
+        throw new Error('The glTF asset was disposed.');
+      }
+      if (!Number.isFinite(time)) {
+        throw new TypeError('Animation time must be finite.');
+      }
+      const clip = gltf.animations[clipIndex];
+      if (!Number.isInteger(clipIndex) || !clip) {
+        throw new RangeError('Animation clip index is out of range.');
+      }
+      return stagePose({ animation: { clip: clipIndex, time: Math.max(0, Math.min(time, clip.duration)) } }).commit();
+    }
+    return { parts, skins: skinBindings.map(binding => binding.skin), animations: gltf.animations,
+      get nodes() { return structuredClone(nodeMetadata); }, stagePose, applyAnimation, dispose, capabilities: GLTF_CAPABILITIES };
   } catch (error) {
     if (gltf) releaseParsed(gltf);
     objectUrls.forEach(url => URL.revokeObjectURL(url));

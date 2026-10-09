@@ -201,10 +201,10 @@ window.__agentPreview = {
   frame({ sessionId, animation, motionTime, rendererTime = 0 }) {
     const record = requireSession(sessionId);
     if (!Number.isFinite(rendererTime) || rendererTime < 0 || rendererTime > 3600) throw new RangeError('Invalid render time.');
-    if (animation) {
-      record.scene.apply([{ type: 'set-animation', clip: animation.clip, time: animation.time }], { expectedRevision: record.scene.revision });
-    }
-    if (motionTime !== undefined) {
+    if (record.asset && (animation !== undefined || motionTime !== undefined)) {
+      record.scene.sampleFrame({ ...(animation === undefined ? {} : { animation }),
+        ...(motionTime === undefined ? {} : { motionTime }) });
+    } else if (motionTime !== undefined) {
       record.scene.sampleMotion(motionTime);
     }
     draw(record, rendererTime);

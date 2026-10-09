@@ -10,6 +10,7 @@ The installed package determines available APIs. Release metadata describes the 
 Version `0.5.0` adds `67js/addons/agent-scene` and the `67js-mcp` command.
 Version `0.6.0` adds asynchronous snapshot render jobs. Read `/agent-render-jobs.md` for submission, progress, cancellation and artifact results.
 
+Version `0.8.0` adds imported source-node overrides and motion. Read `/agent-character-motion.md` for joint IDs, layering and pose ownership.
 Version `0.7.0` adds recipe motion and atomic set-motion authoring. Read `/agent-motion.md` before generating tracks.
 Use scene_look motionTime for absolute procedural preview seeks. Omit it to preserve the last pose, or use null for the authored base.
 
@@ -30,6 +31,9 @@ Read `/mcp.md` before configuring it. Start with `scene_capabilities`, create a 
 Read `/agent-asset.md` for imported asset sessions available since `0.5.0` and the `67js/addons/agent-asset` addon.
 Configure --assets with an absolute GLB directory, then call scene_asset_catalog and scene_create_asset with a content-bound asset ID.
 Imported scenes preserve supported maps, skins, morphs and clips. Their topology remains fixed.
+
+Use scene_inspect kind:hierarchy with offset/limit to find source node-N IDs and editable joints. Mesh-N IDs describe primitives.
+Use set-asset-node for local TRS and set-motion for source-node, material and camera tracks. Preserve the decoded rig and textures.
 Use set-root for asset placement and set-animation for absolute clip/time sampling. Checkpoint before sampling or relighting.
 
 Read `/agent-look.md` for recipe environment, effects and shadow fields.

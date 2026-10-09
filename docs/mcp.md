@@ -118,7 +118,8 @@ Set operations use `set-node`, `set-material`, or `set-camera`, with fields dire
 
 `set-motion` accepts a complete motion record or `null` to clear it.
 `scene_look` can seek procedural `motionTime` without changing revisions. Omission preserves the last preview pose.
-An explicit `null` restores the authored base pose. Imported assets retain their existing `set-animation` workflow.
+An explicit `null` restores the authored base pose. Release `0.8.0` also supports imported source-node motion.
+Imported clip sampling remains available through `set-animation`.
 
 `set-node` can rebind a mesh to another geometry/material pair.
 
@@ -188,7 +189,8 @@ Imported scenes retain their decoded topology. Mesh membership edits remain spec
 Their bounds describe authored base vertices in the sampled world transforms, without claiming deformed skin or morph bounds.
 
 The tools expose no arbitrary JavaScript execution, remote URLs or arbitrary caller-selected file paths.
-Imported animation track authoring remains unsupported. Procedural tracks use the bounded motion recipe.
+Release `0.8.0` supports [imported source-node tracks](agent-character-motion.md) through the bounded motion recipe.
+Facial morph track authoring and rig creation remain unsupported.
 Render jobs use a configured private store and fixed output filenames.
 
 See [render jobs](agent-render-jobs.md) for the snapshot workflow and storage limits.
@@ -220,3 +222,5 @@ The script checks content IDs, root edits, retained texture decoding, reverse an
 
 Run `node scripts/smoke-agent-motion.mjs` for procedural motion through actual CPU MCP previews and jobs.
 It checks shuffled PNG seeks, decoded MP4 frames, eight stills, active cancellation, source pose retention and checkpoint restoration.
+
+Run `node scripts/smoke-agent-character.mjs` for a textured nine-joint astronaut through actual CPU previews and snapshot jobs.

@@ -405,6 +405,8 @@ Its [MCP server](/mcp.md) provides seventeen tools for authoring, previewing and
 Release `0.7.0` adds [agent motion](/agent-motion.md) for deterministic joint, material and camera keyframes.
 Read the MCP guide for npm installation, client configuration and CPU/GPU selection.
 The [agent look contract](/agent-look.md) adds retained lighting, volumetric fog, grading and directional shadows to recipe edits and checkpoints.
+Release `0.8.0` adds [imported character motion](/agent-character-motion.md) with editable joints and retained skin, morph and texture resources.
+
 The [asset adapter](/agent-asset.md) imports local catalog GLBs with supported textures, rigs, morphs and deterministic clip sampling.
 
 The addon accepts JSON recipes with stable object IDs, shared geometry and material resources, hierarchy and a camera.

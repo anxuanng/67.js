@@ -1,5 +1,31 @@
 # Release verification
 
+## 0.8.0
+
+Source checks used Windows Node.js, installed Chrome with CPU SwiftShader and FFmpeg H.264 encoding.
+Registry publication and live deployment require separate verification against the pushed commit.
+
+| Check | Measured result |
+| --- | --- |
+| Node tests | 416 tests passed. |
+| Decoder | Stable source-node IDs, cloned skins, local joint overrides and private pose rollback passed. |
+| Imported motion | Joint, material and camera tracks retained geometry, maps, skin palettes and canonical recipes. |
+| Combined clocks | A valid combined pose bypassed an invalid intermediate weighted skin pose through one transient transaction. |
+| Native character | An original astronaut retained nine joints and one embedded texture through actual MCP PNG previews. |
+| Native video | Eighteen decoded frames formed a three-second H.264 MP4 with BT.709 metadata and changing character poses. |
+| Jobs | Eight stills, layered clip/motion sampling and cancellation preserved the source preview pose and revision. |
+| Determinism | Shuffled PNG seeks and checkpoint restoration reproduced exact image bytes. |
+| Installed source package | The clean CLI ran modern and legacy SDK calls without development dependencies or source files. |
+| Cleanup | Disposal and MCP connection closure exited the installed character CLI. |
+
+The bounded review found one combined-clock defect. A single transient pose transaction removed its causal path.
+The source follow-up found no remaining significant findings within its scope.
+Only one model family reviewed the contract because the other reviewer remained unavailable. This gives weaker coverage than a completed cross review.
+
+Square and portrait astronaut frames were inspected. These checks establish recognizable rig authoring, deterministic seeking and bounded CPU export.
+They do not establish cinematic character quality, Blender parity or hardware GPU performance.
+Facial morph authoring, IK, retargeting and automatic rig creation remain unfinished.
+
 ## 0.7.0
 
 Source checks used Windows Node.js, installed Chrome with CPU SwiftShader and FFmpeg H.264 encoding.

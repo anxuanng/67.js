@@ -116,7 +116,8 @@ Authoring changes belong in revisioned recipe transactions.
 Transient sampling must preserve the canonical recipe, source revision, topology revision, and checkpoint contents.
 Checkpoint restore must reconstruct bindings from the restored recipe.
 Job snapshots must retain authored motion independently of imported animation and renderer shader time.
-The helper does not implement mixer controls, imported skin animation authoring, or live playback clocks.
+Release `0.8.0` reuses this motion contract for [imported character joints](agent-character-motion.md).
+The helper does not implement mixer controls, facial morph tracks or live playback clocks.
 
 ## Bounds and checks
 

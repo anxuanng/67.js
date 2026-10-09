@@ -23,6 +23,8 @@ This document separates shipping capabilities from work in progress. Performance
 Version `0.5.0` includes agent scenes with stable IDs, atomic resource/node edits and checkpoints.
 Version `0.6.0` adds persistent snapshot jobs with progress, cancellation and verified image/video outputs.
 Version `0.7.0` adds recipe-owned procedural motion with deterministic node, material and camera sampling.
+Version `0.8.0` adds source-node authoring on imported GLBs with retained rigs, morphs, textures and independent clip timing.
+
 The stdio MCP server supplies seventeen schema-backed tools and persistent CPU/GPU image previews.
 Recipes retain lighting, volumetric fog, grading and directional shadow coverage with atomic edits and undo.
 Imported asset sessions retain supported textures, rigs, morphs and clips from a configured local GLB catalog.

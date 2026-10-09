@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.8.0
+
+- Add stable imported source-node IDs, hierarchy inspection and local joint overrides.
+- Add authored joint, material and camera motion on imported GLBs with independent clip timing.
+- Preserve decoded rigs, morphs and textures through staged pose transactions and failed-pose rollback.
+- Verify a textured nine-joint astronaut through native MCP images, stills and video.
+
 ## 0.7.0
 
 - Author bounded procedural motion in agent recipes with local node, material and camera tracks.

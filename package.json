@@ -1,6 +1,6 @@
 {
   "name": "@codepawlhq/67js",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "private": false,
   "type": "module",
   "description": "JavaScript tools for agent-driven 3D authoring, browser previews and memory-aware CPU/GPU rendering",
@@ -48,7 +48,8 @@
     "docs/agent-look.md",
     "docs/agent-asset.md",
     "docs/agent-render-jobs.md",
-    "docs/agent-motion.md"
+    "docs/agent-motion.md",
+    "docs/agent-character-motion.md"
   ],
   "main": "./build/67.module.js",
   "module": "./build/67.module.js",
@@ -104,7 +105,8 @@
     "smoke:frame-encoder": "node scripts/smoke-frame-encoder.mjs",
     "smoke:enhancements": "node scripts/smoke-enhancements.mjs",
     "smoke:site": "node scripts/smoke-site.mjs",
-    "publish:ci": "node scripts/publish-ci.mjs"
+    "publish:ci": "node scripts/publish-ci.mjs",
+    "smoke:agent-character": "node scripts/smoke-agent-character.mjs"
   },
   "peerDependencies": {
     "@dimforge/rapier3d-compat": "0.21.0"

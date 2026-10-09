@@ -39,6 +39,8 @@ Video uses CPU H.264 encoding, even dimensions and one streamed frame at a time.
 The render backend can use GPU or CPU. Memory limits can reduce the actual output dimensions.
 Results report actual dimensions and measured timings. They do not embed video bytes or include audio.
 
+Release `0.8.0` also samples imported character tracks and can layer them over an independently sampled imported clip.
+
 Release `0.7.0` samples recipe-owned [procedural motion](agent-motion.md) with `settings.motion: { start: 0 }`.
 Job frames use `start + elapsed`. Omission holds the initial motion pose.
 Nonlooping samples must fit the motion duration. Looping samples wrap and remain bounded by 3600 absolute seconds.

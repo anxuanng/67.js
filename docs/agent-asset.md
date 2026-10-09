@@ -59,8 +59,11 @@ material objects in first-use order. Overrides accept `color`, `metallic`,
 domains.
 
 Other glTF material fields and texture descriptors retain their
-decoded values. These commands do not edit alpha modes, maps, skin joints,
+decoded values. These commands do not edit alpha modes, maps, skin bindings,
 vertices, indices, mesh membership, or morph target definitions.
+
+Release `0.8.0` adds [source-node and character motion](agent-character-motion.md).
+Hierarchy inspection exposes joints separately from rendered mesh primitives.
 
 ## Commands and transactions
 
@@ -72,6 +75,8 @@ pose arrays remain unchanged.
 
 | Command | Fields |
 | --- | --- |
+| `set-asset-node` | Existing editable source `id` plus local `translation`, `rotation` or `scale` |
+| `set-motion` | A complete `motion` record or explicit `null` |
 | `set-root` | Optional flat `translation`, `rotation`, `scale` |
 | `set-animation` | Optional `clip`, `time`; `clip:null` restores the captured pose |
 | `set-material` | Existing `id` plus optional editable material fields |

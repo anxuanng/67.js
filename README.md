@@ -142,6 +142,8 @@ Agents can author [lights, volumetric fog, grading and shadow coverage](docs/age
 After installing the package, run `npx 67js-mcp --backend gpu --memory 192` with Node.js 20.19 or later and a local Chrome installation.
 The server and preview are built into the package. The browser driver loads only when a scene is created.
 
+Version `0.8.0` adds [imported character motion](docs/agent-character-motion.md) with stable joint IDs and atomic pose transactions.
+
 The [asset adapter](docs/agent-asset.md) imports catalog GLBs with supported textures, rigs, morphs and clips.
 Animation track authoring, imported mesh topology edits and persistent video jobs remain implementation work.
 

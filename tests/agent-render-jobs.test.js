@@ -56,11 +56,20 @@ test('motion job ranges use immutable recipe duration, loops and actual sample t
   await assert.rejects(controller.submit(input), /motion start/);
   input.snapshot.recipe = { format: '67js.asset', motion: { duration: 1 } };
   input.settings.motion.start = 0;
-  await assert.rejects(controller.submit(input), /procedural recipe/);
+  await assert.rejects(controller.submit(input), /Asset snapshot bytes/);
+  const assetBytes = Buffer.from('owned motion asset bytes');
+  input.snapshot.assetBytes = assetBytes;
+  input.snapshot.recipe.assetId = createHash('sha256').update(assetBytes).digest('hex');
+  input.settings = { kind: 'image', width: 64, height: 64, motion: { start: 0.5 } };
+  const assetSubmitted = await controller.submit(input);
+  assert.equal((await terminal(controller, assetSubmitted.jobId)).state, 'completed');
+  assert.equal(controller.status(assetSubmitted.jobId).settings.motion.start, 0.5);
   await controller.close();
   const reopened = await createAgentRenderJobs({ root, limits, run: writeImage });
   assert.equal(reopened.status(submitted.jobId).settings.motion.start, 1);
+  assert.equal(reopened.status(assetSubmitted.jobId).settings.motion.start, 0.5);
   await reopened.release(submitted.jobId);
+  await reopened.release(assetSubmitted.jobId);
   await reopened.close();
 });
 

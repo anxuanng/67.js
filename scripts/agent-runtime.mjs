@@ -311,14 +311,14 @@ export function createAgentRuntime({ backend = 'gpu', browser: browserPath, memo
           configured: Boolean(assetRoot), formats: ['self-contained GLB'],
           maximumBytes: 16 * 1024 * 1024, maximumAssets: 64,
           maximumVertices: 250000, maximumParts: 4096, maximumTexturePixels: 4194304, maximumJoints: 1024, maximumClips: 256,
-          commands: ['set-root', 'set-animation', 'set-material', 'set-camera', 'set-environment', 'set-effects', 'set-shadow'],
+          commands: ['set-root', 'set-asset-node', 'set-motion', 'set-animation', 'set-material', 'set-camera', 'set-environment', 'set-effects', 'set-shadow'],
         },
         jobs: { configured: Boolean(jobRoot), kinds: ['image', 'stills', 'video'], maximumActiveJobs: 1,
           maximumDuration: 30, maximumFps: 30, maximumFrames: 900, maximumStills: 8,
           encoder: 'CPU H.264', audio: false, previewSuspendedDuringJob: true,
           records: jobRoot ? (await jobs()).list().map(record => ({ jobId: record.jobId, state: record.state,
             sourceRevision: record.sourceRevision, progress: record.progress })) : [] },
-        unsupported: ['remote asset providers', 'arbitrary code execution', 'imported animation track authoring', 'job audio'],
+        unsupported: ['remote asset providers', 'arbitrary code execution', 'imported morph track authoring', 'job audio'],
       };
     },
     create({ recipe }) {

@@ -169,6 +169,14 @@ For imported models, read `docs/agent-asset.md`, configure `--assets` with an ab
 Use `scene_create_asset` with a `67js.asset` recipe. Supported texture maps, skinning, morphs and existing clips remain attached to decoded meshes.
 Edit imported models through `set-root`, factor-only `set-material`, look commands and absolute `set-animation` sampling. Imported topology is immutable.
 
+Release `0.8.0` adds imported source-node overrides and motion. Read `docs/agent-character-motion.md` before editing a rig.
+Inspect `kind: 'hierarchy'` with offset and limit for stable `node-N` IDs, parents, joint flags and editability.
+Use `set-asset-node` for local TRS and `set-motion` for authored tracks. Keep decoded skin bindings, maps and topology unchanged.
+
+The pose layers decoded base, selected clip, static overrides, motion and outer root in that order.
+Use `scene.sampleFrame({ animation, motionTime })` to stage both clocks together. Sequential edits can introduce an invalid intermediate skin pose.
+Discard failed candidate poses before renderer upload. Flat models need a rig before they can deform as characters.
+
 Use `{ type: 'set-animation', time }` to sample the current clip. `{ type: 'set-animation', clip: null }` restores the decoded pose.
 Bounds describe authored base geometry, not the deformed skin/morph silhouette. Check the rendered PNG before accepting framing.
 

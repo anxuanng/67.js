@@ -14,6 +14,8 @@ For MCP snapshot jobs, read the checkout's `docs/agent-render-jobs.md` and verif
 Configure a private job store. Poll status after cancellation before resuming preview edits.
 For procedural motion, read `docs/agent-motion.md` and select `settings.motion.start`. Preview seeks preserve revisions and authored recipes.
 
+For imported character motion from `0.8.0`, read `docs/agent-character-motion.md`. Use independent `settings.animation` and `settings.motion` clocks.
+
 ## Choose and render
 
 1. Check the available GPU memory before a GPU job on a shared machine.

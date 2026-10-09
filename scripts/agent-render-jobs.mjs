@@ -65,8 +65,8 @@ function settingsFrom(input, clips, recipe) {
   const lastSampleTime = input.kind === 'image' ? 0 : input.kind === 'stills' ? duration : (frameCount - 1) / fps;
   if (input.motion !== undefined) {
     objectKeys(input.motion, ['start'], 'motion');
-    if (recipe?.format !== '67js.scene' || !recipe.motion) {
-      throw new RangeError('Motion settings require a procedural recipe with authored motion.');
+    if (!['67js.scene', '67js.asset'].includes(recipe?.format) || !recipe.motion) {
+      throw new RangeError('Motion settings require a recipe with authored motion.');
     }
     const motionDuration = boundedNumber(recipe.motion.duration, 0.1, 30, 'motion duration');
     if (recipe.motion.loop !== undefined && typeof recipe.motion.loop !== 'boolean') {
