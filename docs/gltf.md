@@ -66,6 +66,7 @@ Materials preserve linear `color`, `metallic`, `roughness`, and `emissiveColor` 
 `emission` contains the emissive intensity.
 The `gltf` tag uses standard PBR shading without studio finish overrides.
 An emissive-strength extension preserves its intensity.
+The source [exporter](export-glb.md) preserves opaque colors, UVs and active HDR emission when creating static GLB snapshots.
 
 A base color texture adds this descriptor:
 

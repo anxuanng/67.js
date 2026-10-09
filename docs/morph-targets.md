@@ -133,7 +133,8 @@ The export contains editable targets and a static pose, rather than baked vertex
 It does not serialize animation clips. Skinning and material textures still fail explicitly at export.
 
 The source importer opens these snapshots. Morph import requires authored base normals and rejects tangent targets.
-The exporter still omits vertex colors and UV attributes. This is not a complete asset roundtrip.
+The source [exporter](export-glb.md) also preserves opaque vertex colors, UVs and independent active HDR emission.
+Skinning, textures, procedural shaders and animation clips still prevent a complete asset roundtrip.
 
 The output follows [glTF morph target and node weight semantics](https://registry.khronos.org/glTF/specs/2.0/glTF-2.0.html#morph-targets).
 Export tests inspect the serialized accessors and load the GLB with the independent Three.js loader.

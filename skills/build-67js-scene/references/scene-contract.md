@@ -32,6 +32,7 @@ Each geometry and texture descriptor identity pair becomes one instanced batch.
 Explodable parts also provide `assembly: { layer: 'exterior' | 'interior', section: 'front-panel', offset: [0, 0, 1.7], detailOffset: [0.1, 0.05, 0.3] }`.
 Both offsets are world-space translations. The shader applies `offset * amount + detailOffset * smoothstep(0.3, 1, amount)`.
 The group separates first. Small components separate during the second stage.
+
 Keep each section's offsets consistent so fasteners follow their panel. Base matrices remain assembled.
 
 Changing assembly amount refreshes shadows while reusing the same shadow texture and geometry buffers.
@@ -56,16 +57,19 @@ Interpolated numeric tags can change by tiny amounts and select the wrong shadin
 An outdoor renderer receives `world: true`, `ground: false` and the scene environment.
 The environment provides `fogColor`, `fogDensity`, `skyTop`, `skyBottom`, `lightDirection` and optional `daylight`.
 The sky colors are display RGB. Fog colors are linear RGB.
+
 Local `environment.pointLights` support eight world-space sources with inverse-square falloff.
 Each light provides `position` and optional `color`, `intensity`, `radius` and `range`.
 `keyIntensity`, `fillIntensity` and `ambientIntensity` independently scale existing lighting.
 Read the checkout's `docs/lighting.md` for defaults, numeric limits and frame overrides.
 Point lights currently cast no local shadows. Radius limits attenuation without creating an area emitter.
+
 Source-only `environment.volumeFog` receives directional scattering and shadows in one bounded volume.
 It requires an opaque renderer with `{ hdr: true, depth: true }` and negotiated HDR support.
 Read `docs/volumetric.md` for controls, resource cost and limitations before authoring fog.
 `frame.environment.volumeFog` replaces the entire constructor fog object, with defaults for omitted fields.
 Use absolute frame time for reproducible density drift. Local point lights do not scatter in fog yet.
+
 `part.castShadow: false` omits a mesh from shadows while leaving it visible and opaque.
 Changing its casting regime requires a new renderer. Shadow-casting groups use separate batches.
 
@@ -92,13 +96,19 @@ Camera FOV uses degrees. Film time must be finite and independent of the wall cl
 
 Animation changes existing part matrices and materials. `renderer.updateParts(changedParts)` uploads them through retained instance buffers.
 New part, geometry or texture descriptor identities require a new renderer.
+
 Source morph parts add `geometry.morphTargets: [{ positions, normals }]` and `morph: createMorphPose(count)`.
 Targets contain static relative Float32 XYZ deltas, not absolute vertices. At least one channel is present.
 Change retained `part.morph.weights`, then call `renderer.updateParts()` to commit the pose.
-Separate pose identities split batches; repeated parts can share static target geometry.
+Separate pose identities split batches. Repeated parts can share static target geometry.
+
 Morphs run before skinning and use standard materials. Read `docs/morph-targets.md` for numeric limits and memory costs.
-Source `exportGlb(parts)` preserves morph target deltas and current node weights as a static GLB snapshot; it does not serialize animation clips.
+
+Source `exportGlb(parts)` preserves relative morph targets and current weights as a static GLB snapshot.
+It preserves opaque linear RGB vertex colors, UVs and active independent HDR emission. Read `docs/export-glb.md` for limits.
+It does not serialize animation clips, procedural shaders or scene environments.
 Skinning and textured materials still reject at export. Check the decoder's capabilities before importing shape keys.
+
 The optional `{ shadows: false }` update option suits flat scenes without moving shadow casters.
 
 `cameraView('front' | 'right' | 'top')` returns an orthographic camera with the correct up vector.

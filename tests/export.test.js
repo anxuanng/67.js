@@ -83,3 +83,199 @@ test('GLB morph snapshots retain relative channels, shared meshes and independen
   first.weights[0] = NaN;
   assert.throws(() => exportGlb(parts), /finite Float32/);
 });
+
+function glbDocument(binary) {
+  const view = new DataView(binary);
+  const jsonLength = view.getUint32(12, true);
+  const document = JSON.parse(new TextDecoder().decode(new Uint8Array(binary, 20, jsonLength)));
+  function values(index) {
+    const accessor = document.accessors[index];
+    const bufferView = document.bufferViews[accessor.bufferView];
+    const components = { SCALAR: 1, VEC2: 2, VEC3: 3 }[accessor.type];
+    return Array.from(new Float32Array(binary, 28 + jsonLength + bufferView.byteOffset, accessor.count * components));
+  }
+  return { document, values };
+}
+
+function coloredPart() {
+  const geometry = box();
+  const colorStorage = new Float32Array(geometry.positions.length + 6).fill(99);
+  geometry.colors = colorStorage.subarray(3, colorStorage.length - 3);
+  for (let offset = 0; offset < geometry.colors.length; offset += 3) geometry.colors.set([0.125, 0.5, 0.875], offset);
+  const uvStorage = new Float32Array(geometry.positions.length / 3 * 2 + 4).fill(99);
+  geometry.uvs = uvStorage.subarray(2, uvStorage.length - 2);
+  for (let offset = 0; offset < geometry.uvs.length; offset += 2) geometry.uvs.set([-0.25, 2.5], offset);
+  return { name: 'editable channels', geometry, matrix: mat4.create(), material: {
+    color: [0.25, 0.5, 0.75], metallic: 0.25, roughness: 0.625,
+    emissiveColor: new Float32Array([0.875, 0.125, 0.25]), emission: 12.5,
+  } };
+}
+
+test('GLB keeps editable offset RGB/UV accessors and separate HDR emission with shared meshes', async () => {
+  const part = coloredPart();
+  const binary = exportGlb([part, { ...part, name: 'shared instance' }]);
+  const { document, values } = glbDocument(binary);
+  assert.equal(document.meshes.length, 1);
+  const attributes = document.meshes[0].primitives[0].attributes;
+  assert.equal(document.accessors[attributes.COLOR_0].type, 'VEC3');
+  assert.equal(document.accessors[attributes.TEXCOORD_0].type, 'VEC2');
+  assert.equal(document.accessors[attributes.TEXCOORD_0].count, part.geometry.positions.length / 3);
+  assert.deepEqual(values(attributes.COLOR_0), Array.from(part.geometry.colors));
+  assert.deepEqual(values(attributes.TEXCOORD_0), Array.from(part.geometry.uvs));
+  assert.deepEqual(document.materials[0].pbrMetallicRoughness.baseColorFactor, [0.25, 0.5, 0.75, 1]);
+  assert.deepEqual(document.materials[0].emissiveFactor, [0.875, 0.125, 0.25]);
+  assert.equal(document.materials[0].extensions.KHR_materials_emissive_strength.emissiveStrength, 12.5);
+  assert.deepEqual(document.extensionsRequired, ['KHR_materials_emissive_strength']);
+  const loaded = await new GLTFLoader().parseAsync(binary, '');
+  const meshes = [];
+  loaded.scene.traverse(node => { if (node.isMesh) meshes.push(node); });
+  assert.equal(meshes[0].geometry, meshes[1].geometry);
+  assert.deepEqual(Array.from(meshes[0].geometry.attributes.color.array), Array.from(part.geometry.colors));
+  assert.deepEqual(Array.from(meshes[0].geometry.attributes.uv.array), Array.from(part.geometry.uvs));
+  assert.deepEqual(meshes[0].material.emissive.toArray(), [0.875, 0.125, 0.25]);
+  assert.equal(meshes[0].material.emissiveIntensity, 12.5);
+  const { parseGltf } = await import('../src/gltf.js');
+  const imported = await parseGltf(binary);
+  try {
+    assert.equal(imported.parts[0].geometry, imported.parts[1].geometry);
+    assert.deepEqual(Array.from(imported.parts[0].geometry.colors), Array.from(part.geometry.colors));
+    assert.deepEqual(Array.from(imported.parts[0].geometry.uvs), Array.from(part.geometry.uvs));
+    assert.deepEqual(imported.parts[0].material.emissiveColor, [0.875, 0.125, 0.25]);
+    assert.equal(imported.parts[0].material.emission, 12.5);
+  } finally {
+    imported.dispose();
+  }
+});
+
+test('GLB defaults remain dark without extensions and active emission preserves color and scalar', async () => {
+  for (const emission of [undefined, 0, 1, 0.25, 1000]) {
+    const part = coloredPart();
+    delete part.material.emissiveColor;
+    part.material.emission = emission;
+    const binary = exportGlb([part]);
+    const { document } = glbDocument(binary);
+    assert.deepEqual(document.materials[0].emissiveFactor, emission ? part.material.color : [0, 0, 0]);
+    assert.equal(Boolean(document.extensionsUsed), Boolean(emission && emission !== 1));
+    const loaded = await new GLTFLoader().parseAsync(binary, '');
+    const material = loaded.scene.children[0].material;
+    assert.equal(material.emissive.r * material.emissiveIntensity, part.material.color[0] * (emission ?? 0));
+  }
+});
+
+test('GLB validates every channel and material before binary allocation without clamping', () => {
+  for (const [field, value] of [
+    ['colors', new Float32Array(3)], ['colors', new Float64Array(72)],
+    ['uvs', new Float32Array(3)], ['uvs', new Float64Array(48)],
+    ['positions', new Float64Array(72)], ['normals', new Float32Array(72)],
+    ['indices', new Uint16Array([0, 1, 2])], ['indices', new Uint32Array([0, 1, 4294967295])],
+  ]) {
+    const part = coloredPart();
+    part.geometry[field] = value;
+    assert.throws(() => exportGlb([part]), /GLB/);
+  }
+  for (const [field, invalid] of [['colors', NaN], ['colors', -0.01], ['colors', 1.001], ['uvs', Infinity]]) {
+    const part = coloredPart();
+    part.geometry[field][0] = invalid;
+    assert.throws(() => exportGlb([part]), /finite values/);
+  }
+  for (const [field, invalid] of [
+    ['color', [1.001, 0, 0]], ['color', [0, 0]], ['emissiveColor', [0, NaN, 0]],
+    ['emissiveColor', [-1, 0, 0]], ['metallic', 1.01], ['roughness', -0.01],
+    ['emission', -1], ['emission', Infinity], ['emission', 1e40],
+  ]) {
+    const part = coloredPart();
+    part.material[field] = invalid;
+    assert.throws(() => exportGlb([part]), /GLB/);
+  }
+  const part = coloredPart();
+  part.matrix[3] = 1;
+  assert.throws(() => exportGlb([part]), /affine/);
+  assert.throws(() => exportGlb([]), /nonempty/);
+});
+
+
+test('GLB rejects an invalid later part before allocating its output buffer', () => {
+  const valid = coloredPart();
+  const invalid = coloredPart();
+  invalid.material.emission = Infinity;
+  const NativeArrayBuffer = globalThis.ArrayBuffer;
+  let allocations = 0;
+  globalThis.ArrayBuffer = class extends NativeArrayBuffer {
+    constructor(...argumentsList) {
+      super(...argumentsList);
+      allocations++;
+    }
+  };
+  try {
+    assert.throws(() => exportGlb([valid, invalid]), /GLB emission/);
+    assert.equal(allocations, 0);
+  } finally {
+    globalThis.ArrayBuffer = NativeArrayBuffer;
+  }
+});
+
+test('GLB scans shared static geometry once while preserving different instance materials', () => {
+  const part = coloredPart();
+  const positions = part.geometry.positions;
+  let reads = 0;
+  Object.defineProperty(part.geometry, 'positions', { get() { reads++; return positions; } });
+  exportGlb([part]);
+  const singleReads = reads;
+  reads = 0;
+  const second = { ...part, material: { ...part.material, emissiveColor: [0.125, 0.875, 0.25] } };
+  const { document } = glbDocument(exportGlb([part, second]));
+  assert.equal(reads, singleReads);
+  assert.equal(document.meshes.length, 2);
+  assert.equal(document.meshes[0].primitives[0].attributes.COLOR_0, document.meshes[1].primitives[0].attributes.COLOR_0);
+  assert.deepEqual(document.materials.map(material => material.emissiveFactor), [[0.875, 0.125, 0.25], [0.125, 0.875, 0.25]]);
+});
+
+test('GLB rejects shear and zero scales before output allocation', () => {
+  for (const [offset, value, message] of [[4, 0.5, /shear/], [0, 0, /nonzero scales/], [0, 1e-50, /nonzero scales/]]) {
+    const part = coloredPart();
+    part.matrix = Array.from(part.matrix);
+    part.matrix[offset] = value;
+    const NativeArrayBuffer = globalThis.ArrayBuffer;
+    let allocations = 0;
+    globalThis.ArrayBuffer = class extends NativeArrayBuffer {
+      constructor(...argumentsList) {
+        super(...argumentsList);
+        allocations++;
+      }
+    };
+    try {
+      assert.throws(() => exportGlb([part]), message);
+      assert.equal(allocations, 0);
+    } finally {
+      globalThis.ArrayBuffer = NativeArrayBuffer;
+    }
+  }
+  const scaledShear = coloredPart();
+  mat4.scale(scaledShear.matrix, scaledShear.matrix, [1e-25, 2e-25, 3e-25]);
+  scaledShear.matrix[4] = 1e-25;
+  assert.throws(() => exportGlb([scaledShear]), /shear/);
+});
+
+test('GLB Float32 rotated nonuniform, reflected and tiny TRS transforms roundtrip through Three', async () => {
+  for (const scale of [[0.125, 7, 2.5], [-0.125, 7, 2.5], [0.125, -7, -2.5], [1e-30, 2e-25, -3e-20]]) {
+    const part = coloredPart();
+    mat4.translate(part.matrix, part.matrix, [0.25, -1.5, 3]);
+    mat4.rotateX(part.matrix, part.matrix, 0.47);
+    mat4.rotateY(part.matrix, part.matrix, -0.71);
+    mat4.rotateZ(part.matrix, part.matrix, 1.13);
+    mat4.scale(part.matrix, part.matrix, scale);
+    const binary = exportGlb([part]);
+    assert.deepEqual(glbDocument(binary).document.nodes[0].matrix, Array.from(part.matrix, value => value === 0 ? 0 : value));
+    const loaded = await new GLTFLoader().parseAsync(binary, '');
+    loaded.scene.updateMatrixWorld(true);
+    const actual = loaded.scene.children[0].matrix.elements;
+    for (let column = 0; column < 4; column++) {
+      const magnitude = Math.max(...Array.from(part.matrix.slice(column * 4, column * 4 + 4), Math.abs));
+      for (let row = 0; row < 4; row++) {
+        const offset = column * 4 + row;
+        assert.ok(Number.isFinite(actual[offset]));
+        assert.ok(Math.abs(actual[offset] - part.matrix[offset]) <= magnitude * 1e-6, `scale ${scale}, component ${offset}`);
+      }
+    }
+  }
+});

@@ -1,12 +1,107 @@
-import { validateMorphGeometry } from './morph.js';
+import { validateMorphGeometry, validateMorphPose } from './morph.js';
+
+const EMISSIVE_STRENGTH = 'KHR_materials_emissive_strength';
+const COMPONENT_COUNTS = { SCALAR: 1, VEC2: 2, VEC3: 3 };
+
+function validateFloatChannel(values, length, label, bounded = false) {
+  if (!(values instanceof Float32Array) || values.length !== length) {
+    throw new TypeError(`${label} requires a Float32Array matching the vertex count.`);
+  }
+  for (const value of values) {
+    if (!Number.isFinite(value) || (bounded && (value < 0 || value > 1))) {
+      throw new RangeError(`${label} requires finite values${bounded ? ' within [0,1]' : ''}.`);
+    }
+  }
+}
+
+function validateFactor(value, label, maximum = 1) {
+  if (!Number.isFinite(value) || !Number.isFinite(Math.fround(value)) || value < 0 || value > maximum) {
+    throw new RangeError(`${label} requires a finite nonnegative Float32 value${maximum === 1 ? ' within [0,1]' : ''}.`);
+  }
+}
+
+function validateColor(values, label) {
+  if (!values || values.length !== 3) throw new TypeError(`${label} requires three linear RGB components.`);
+  for (const value of values) validateFactor(value, label);
+}
+
+function validateGeometry(geometry) {
+  const count = geometry?.positions?.length;
+  if (!Number.isSafeInteger(count) || count < 3 || count % 3 !== 0) {
+    throw new TypeError('GLB positions require a nonempty array of XYZ vertices.');
+  }
+  validateFloatChannel(geometry.positions, count, 'GLB positions');
+  validateFloatChannel(geometry.normals, count, 'GLB normals');
+  for (let offset = 0; offset < count; offset += 3) {
+    const length = Math.hypot(geometry.normals[offset], geometry.normals[offset + 1], geometry.normals[offset + 2]);
+    if (Math.abs(length - 1) > 0.001) throw new RangeError('GLB normals require unit vectors.');
+  }
+  if (geometry.colors !== undefined) validateFloatChannel(geometry.colors, count, 'GLB colors', true);
+  if (geometry.uvs !== undefined) validateFloatChannel(geometry.uvs, count / 3 * 2, 'GLB UVs');
+  if (!(geometry.indices instanceof Uint32Array) || geometry.indices.length === 0 || geometry.indices.length % 3 !== 0) {
+    throw new TypeError('GLB indices require a nonempty Uint32Array of triangles.');
+  }
+  for (const index of geometry.indices) {
+    if (index >= count / 3) throw new RangeError('GLB index exceeds the vertex count.');
+  }
+}
+
+function validatePart(part) {
+  if (!part.matrix || part.matrix.length !== 16 || Array.from(part.matrix).some(value => !Number.isFinite(value) || !Number.isFinite(Math.fround(value)))) {
+    throw new RangeError('GLB matrix requires 16 finite components.');
+  }
+  if (part.matrix[3] !== 0 || part.matrix[7] !== 0 || part.matrix[11] !== 0 || part.matrix[15] !== 1) {
+    throw new RangeError('GLB matrix requires an affine transform.');
+  }
+  validateTransformColumns(part.matrix);
+  const material = part.material;
+  if (!material || typeof material !== 'object') throw new TypeError('GLB parts require a material.');
+  validateColor(material.color, 'GLB base color');
+  validateColor(material.emissiveColor ?? material.color, 'GLB emissive color');
+  validateFactor(material.metallic, 'GLB metallic factor');
+  validateFactor(material.roughness, 'GLB roughness factor');
+  validateFactor(material.emission ?? 0, 'GLB emission', Infinity);
+}
+
+function validateTransformColumns(matrix) {
+  const columns = [0, 4, 8].map(offset => {
+    const values = [Math.fround(matrix[offset]), Math.fround(matrix[offset + 1]), Math.fround(matrix[offset + 2])];
+    const length = Math.hypot(...values);
+    // Three's matrix decomposition divides by scale, so zero scales cannot roundtrip.
+    if (length === 0) throw new RangeError('GLB matrix requires nonzero scales.');
+    return values.map(value => value / length);
+  });
+  // Normalized column products remove scale dependence and allow Float32 TRS roundoff.
+  const tolerance = 8 * 2 ** -23;
+  for (let first = 0; first < 3; first++) {
+    for (let second = first + 1; second < 3; second++) {
+      let dot = 0;
+      for (let axis = 0; axis < 3; axis++) dot += columns[first][axis] * columns[second][axis];
+      if (Math.abs(dot) > tolerance) throw new RangeError('GLB matrix cannot preserve shear. Use a transform with orthogonal rotation and scale columns.');
+    }
+  }
+}
 
 function paddedLength(length) {
   return Math.ceil(length / 4) * 4;
 }
 
 export function exportGlb(parts) {
+  if (!Array.isArray(parts) || parts.length === 0) throw new TypeError('GLB export requires a nonempty parts array.');
+  const validatedGeometries = new Set();
+  const morphMetadata = new Map();
   for (const part of parts) {
-    validateMorphGeometry(part.geometry, part.morph);
+    if (!validatedGeometries.has(part?.geometry)) {
+      validateGeometry(part?.geometry);
+      validatedGeometries.add(part.geometry);
+    }
+    validatePart(part);
+    const metadata = morphMetadata.get(part.geometry);
+    if (metadata) {
+      validateMorphPose(part.morph, metadata);
+    } else {
+      morphMetadata.set(part.geometry, validateMorphGeometry(part.geometry, part.morph));
+    }
     if (part.skin || part.geometry.skinIndices || part.geometry.skinWeights) {
       throw new RangeError('GLB export cannot preserve skinning yet. Bake the pose or export through a tool that preserves the skeleton.');
     }
@@ -37,7 +132,7 @@ export function exportGlb(parts) {
     document.bufferViews.push({ buffer: 0, byteOffset: byteLength, byteLength: data.byteLength, target });
     chunks.push({ offset: byteLength, data: new Uint8Array(data.buffer, data.byteOffset, data.byteLength) });
     byteLength += paddedLength(data.byteLength);
-    const entry = { bufferView: viewIndex, componentType: data instanceof Float32Array ? 5126 : 5125, count: type === 'VEC3' ? data.length / 3 : data.length, type };
+    const entry = { bufferView: viewIndex, componentType: data instanceof Float32Array ? 5126 : 5125, count: data.length / COMPONENT_COUNTS[type], type };
     if (type === 'VEC3') {
       entry.min = [Infinity, Infinity, Infinity];
       entry.max = [-Infinity, -Infinity, -Infinity];
@@ -56,6 +151,8 @@ export function exportGlb(parts) {
         attributes: { POSITION: accessor(part.geometry.positions, 'VEC3', 34962), NORMAL: accessor(part.geometry.normals, 'VEC3', 34962) },
         indices: accessor(part.geometry.indices, 'SCALAR', 34963),
       };
+      if (part.geometry.colors) geometry.attributes.COLOR_0 = accessor(part.geometry.colors, 'VEC3', 34962);
+      if (part.geometry.uvs) geometry.attributes.TEXCOORD_0 = accessor(part.geometry.uvs, 'VEC2', 34962);
       if (part.geometry.morphTargets) {
         geometry.targets = part.geometry.morphTargets.map(target => {
           const channels = {};
@@ -69,10 +166,17 @@ export function exportGlb(parts) {
     const materialKey = JSON.stringify(part.material);
     if (!materials.has(materialKey)) {
       materials.set(materialKey, document.materials.length);
-      document.materials.push({
+      const material = {
         pbrMetallicRoughness: { baseColorFactor: [...part.material.color, 1], metallicFactor: part.material.metallic, roughnessFactor: part.material.roughness },
-        emissiveFactor: part.material.color.map((component) => Math.min(1, component * (part.material.emission ?? 0))),
-      });
+        emissiveFactor: (part.material.emission ?? 0) === 0 ? [0, 0, 0] : Array.from(part.material.emissiveColor ?? part.material.color),
+      };
+      const strength = part.material.emission ?? 0;
+      if (strength !== 0 && strength !== 1) {
+        material.extensions = { [EMISSIVE_STRENGTH]: { emissiveStrength: strength } };
+        document.extensionsUsed = [EMISSIVE_STRENGTH];
+        document.extensionsRequired = [EMISSIVE_STRENGTH];
+      }
+      document.materials.push(material);
     }
     const geometry = geometries.get(part.geometry);
     const material = materials.get(materialKey);

@@ -34,7 +34,8 @@
     "docs/volumetric.md",
     "docs/film-physics.md",
     "docs/morph-targets.md",
-    "docs/gltf-morph.md"
+    "docs/gltf-morph.md",
+    "docs/export-glb.md"
   ],
   "main": "./build/67.module.js",
   "module": "./build/67.module.js",

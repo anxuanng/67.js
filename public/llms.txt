@@ -78,6 +78,10 @@ The current source adds GPU skinning, relative POSITION/NORMAL morphs, weight an
 Read `docs/skinning.md`, `docs/morph-targets.md`, `docs/gltf-morph.md` and `docs/physics.md` in the matching checkout before using these features.
 Source morphs require authored base normals. Tangent targets and per-target flat normal generation remain unsupported.
 
+The source GLB exporter preserves opaque linear vertex colors, UVs and independent HDR emission with current morph weights.
+Read `docs/export-glb.md` in the matching checkout. Exported GLBs contain a static pose, not serialized animation clips or skeletons.
+Texture export remains unsupported and fails explicitly. Procedural shaders and scene environments are not serialized into glTF materials.
+
 GLB support excludes transparent and double-sided materials and compressed geometry. Unsupported features require visible errors.
 
 The optional GLB decoder uses Three.js GLTFLoader. The renderer remains 67.js.

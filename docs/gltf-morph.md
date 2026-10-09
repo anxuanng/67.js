@@ -118,7 +118,9 @@ The fixture exports the film portrait as a static GLB, appends explicit weight-a
 It compares open and closed eyelid pixels at an unchanged head pose, checks exact backward-seek reproduction and retains GPU resources across 60 updates.
 Wide and portrait runs report WebGL errors and the renderer memory estimate.
 The fixture verifies imported deformation, not character likeness or cinematic quality.
-The exporter still omits vertex colors and UVs, so this fixture is not a lossless asset round trip.
+
+The source [exporter](export-glb.md) now preserves vertex colors, UVs and independent HDR emission.
+The fixture does not preserve procedural shaders or scene environments, so it is not a complete asset round trip.
 
 `node scripts/smoke-gltf-skin-morph.mjs` imports a GLB containing both bone and weight channels through the built package entry points.
 It isolates morph pixels at a fixed skin pose, verifies exact reverse seeks, retains all three deformation textures and checks disposal.
