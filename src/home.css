@@ -107,6 +107,16 @@ button:hover { background:var(--border); }
 .download { position:relative; padding-right:70px; }
 .download-symbol { position:absolute; right:22px; top:50%; transform:translateY(-50%); display:flex; align-items:center; justify-content:center; width:36px; height:36px; border-radius:12px; background-color:var(--surface); }
 .download-symbol .icon { width:20px; height:20px; margin:0; }
+.package-install { padding:24px; background-color:var(--bg); background-image:var(--dither); border-radius:var(--panel-radius); }
+.package-managers { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:16px; }
+.package-managers button { min-height:40px; padding:10px 16px; background:transparent; color:var(--muted); }
+.package-managers button[aria-pressed=true] { background:var(--surface); color:var(--text); box-shadow:0 0 0 1px var(--border); }
+.package-install .command-row { background:var(--window); border-radius:14px; }
+.package-note { margin:18px 0; font-size:13px; }
+.package-links { display:flex; flex-wrap:wrap; gap:12px 22px; }
+.package-links a { display:inline-flex; align-items:center; gap:8px; font-size:13px; min-height:36px; }
+.package-links .icon { margin:0; }
+@media (max-width:760px) { .package-install { padding:18px; } .package-managers button { padding:10px 12px; } }
 .example img { aspect-ratio:16/9; border-radius:var(--panel-radius); border:1px solid var(--border); }
 .introduction { padding:20px 0 12px; }
 .introduction h1 { max-width:780px; font-size:clamp(34px,4.6vw,62px); line-height:1.06; letter-spacing:-2px; font-weight:600; }

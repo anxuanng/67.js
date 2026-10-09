@@ -68,7 +68,7 @@ window.addEventListener('pagehide', () => {
 The page displays a rounded green cube in a WebGL2 browser. The observer redraws when its canvas changes size.
 
 For a browser import without npm, use the exact `module` URL from [release metadata](/release.json) instead of `67js`.
-The bundled ES module includes its dependencies. Serve the HTML over HTTP. The homepage Downloads section provides the module file.
+The bundled ES module includes its dependencies. Serve the HTML over HTTP. Release metadata provides its URL for browser-only imports.
 
 ## Parts and geometry
 

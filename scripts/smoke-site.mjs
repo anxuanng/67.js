@@ -10,6 +10,12 @@ const errors = [];
 const report = { layouts: [], interactions: [] };
 try {
   const page = await browser.newPage({ viewport:{ width:1440,height:1000 }, colorScheme:'dark', reducedMotion:'reduce' });
+  await page.addInitScript(() => {
+    window.__copiedText = '';
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText: async text => { window.__copiedText = text; } },
+    });
+  });
   page.on('pageerror', error => errors.push(error.message));
   for (const route of ['/', '/docs.html', '/getting-started.html', '/object.html', '/motion.html', '/nature.html', '/assets.html', '/view2d.html', '/film.html']) {
     await page.goto(origin + route);
@@ -46,31 +52,50 @@ try {
       assert.equal(await page.locator('.navigation a[href*="getting-started.html"]').count(), 0, 'Getting started still has separate navigation');
     }
     if (route === '/') {
-      assert.equal(await page.locator('.download .icon').count(), 2);
-      assert.ok(!(await page.locator('.download-links').textContent()).includes('↓'));
+      assert.equal(await page.locator('[data-package-manager]').count(), 4);
+      assert.equal(await page.locator('[data-release-tarball], [data-release-module]').count(), 0);
+      const scenePaths = await page.locator('.gallery .example').evaluateAll(links => links.map(link => new URL(link.href).pathname));
+      assert.equal(new Set(scenePaths).size, scenePaths.length, 'Showcase repeats the same scene');
+      await page.locator('.navigation a[href="/#downloads"]').click();
+      await page.waitForFunction(() => document.querySelector('.navigation a[aria-current]')?.getAttribute('href') === '/#downloads');
+      for (const [manager, prefix] of [['npm', 'npm install'], ['pnpm', 'pnpm add'], ['yarn', 'yarn add'], ['bun', 'bun add']]) {
+        await page.locator(`[data-package-manager="${manager}"]`).click();
+        const expectedCommand = await page.evaluate(prefix => window.__home.state.release.installCommand.replace(/^npm install/, prefix), prefix);
+        assert.equal(await page.locator('[data-install-command]').textContent(), expectedCommand);
+        assert.equal(await page.locator(`[data-package-manager="${manager}"]`).getAttribute('aria-pressed'), 'true');
+        await page.locator('[data-copy-install]').click();
+        assert.equal(await page.evaluate(() => window.__copiedText), expectedCommand);
+      }
+      report.interactions.push('Unified package managers, unique showcase scenes and synchronized Downloads navigation');
     }
     if (route === '/getting-started.html') {
-      assert.match(page.url(), /\/docs\.html#install$/);
+      assert.match(page.url(), /\/docs(?:\.html)?#install$/);
     }
     if (route === '/docs.html') {
-      assert.ok(await page.locator('#doc-article section').count() >= 10);
-      const installGeometry = await page.locator('#install pre').evaluate(block => {
-        const code = block.querySelector('code').getBoundingClientRect();
-        const button = block.querySelector('button').getBoundingClientRect();
-        return { height: block.getBoundingClientRect().height, topDifference: Math.abs(code.top - button.top) };
-      });
-      assert.ok(installGeometry.height < 80, 'Install block has excess blank space');
-      assert.ok(installGeometry.topDifference < 8, 'Copy button is not beside code');
-      assert.equal(await page.locator('#getting-started ol li').count(), 3);
+      assert.ok(await page.locator('#doc-toc a[href^="#"]').count() >= 15);
+      assert.equal(await page.locator('#doc-article section:visible').count(), 1);
       await page.locator('#doc-search').fill('memory');
-      assert.ok(await page.locator('#doc-article section:visible').count() > 0);
+      assert.ok(await page.locator('#doc-toc a:visible').count() > 0);
+      await page.locator('#doc-toc a[href="#performance-and-memory"]').click();
+      assert.match(await page.locator('#doc-article').textContent(), /Performance and memory/);
       await page.locator('#doc-search').fill('no-such-topic-1234');
-      await assert.equal(await page.locator('#doc-article section:visible').count(),0);
-      assert.match(await page.locator('#doc-results').textContent(),/No matching/);
+      assert.equal(await page.locator('#doc-toc a:visible').count(), 0);
+      assert.match(await page.locator('#doc-results').textContent(), /No .*match/i);
       await page.locator('#doc-search').fill('');
       await page.locator('#doc-toc a[href="#models-and-ai-agents"]').click();
       assert.match(page.url(),/models-and-ai-agents/);
-      report.interactions.push('Docs search, empty state and topic links');
+      await page.locator('#doc-toc a[href="#getting-started"]').click();
+      assert.equal(await page.locator('#getting-started ol li').count(), 3);
+      assert.ok(await page.locator('.hljs-keyword').count() > 0);
+      assert.ok(await page.locator('.code-block').count() >= 2);
+      assert.equal(await page.locator('#copy-doc-page').count(), 1);
+      await page.locator('#copy-doc-page').click();
+      assert.match(await page.evaluate(() => window.__copiedText), /^## Getting started/);
+      assert.ok(!(await page.evaluate(() => window.__copiedText)).includes('## Parts and geometry'));
+      const firstCode = page.locator('.code-block').first();
+      await firstCode.locator('.copy-code').click();
+      assert.equal(await page.evaluate(() => window.__copiedText), await firstCode.locator('code').textContent());
+      report.interactions.push('Grouped docs, selected articles, search, deep links and labeled syntax highlighting');
     }
     if (route === '/object.html') {
       await page.locator('[data-view="face"]').click();

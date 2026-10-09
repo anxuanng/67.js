@@ -16,7 +16,7 @@ try {
       await page.goto(origin + route);
       for (const width of [320, 390, 580, 1440]) {
         await page.setViewportSize({ width, height: 1000 });
-        const contrast = await page.locator('nav a[aria-current]').evaluate(link => {
+        const contrast = await page.locator('.navigation nav a[aria-current]').evaluate(link => {
           const channels = color => color.match(/[\d.]+/g).map(Number);
           const backgrounds = [];
           for (let element = link; element; element = element.parentElement) {

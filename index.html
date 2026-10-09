@@ -11,14 +11,13 @@
   <body>
     <a class="skip-link" href="#content">Skip to content</a>
     <aside class="navigation">
-      <a class="brand" href="./index.html" aria-label="67.js home">67<span>.js</span></a>
+      <a class="brand" href="/" aria-label="67.js home">67<span>.js</span></a>
       <p class="library-description">Graphics toolkit by CodePawl</p>
       <span class="version" data-release-version>Loading release</span>
       <nav aria-label="Library">
-        <a href="#examples" aria-current="page">Examples</a>
+        <a href="/#examples" aria-current="page">Showcase</a>
         <a href="./docs.html">Documentation</a>
-        <a href="#downloads">Downloads</a>
-        <a data-release-tarball aria-disabled="true">Package source</a>
+        <a href="/#downloads">Downloads</a>
       </nav>
       <p class="navigation-note"><a href="https://codepawl.com">A CodePawl project ↗</a></p>
     </aside>
@@ -26,27 +25,31 @@
       <header class="introduction"><div><h1>Your 3D scene,<br />from browser to film</h1><p>67.js brings browser 3D, animation and image/video export into one workflow. Create interactive experiences and export the same scene as images or video</p><div class="hero-actions"><a href="./object.html" data-icon="cube">Try the object studio</a><a href="./docs.html#install" data-icon="code">Build your first scene</a></div></div></header>
       <section class="feature-showcase" aria-label="67.js rendered animation showcase"><video controls playsinline preload="none" poster="./previews/motion.webp" width="960" height="540"><source src="./media/clockwork.mp4" type="video/mp4"/><p>Your browser cannot play this film. <a href="./motion.html">Open the interactive scene</a>.</p></video><div class="showcase-caption"><div><h2>Clockwork orbit</h2><p>A real 67.js render. Open the scene to scrub time and change the frame.</p></div><a href="./motion.html" data-icon="film">Explore the scene</a></div></section>
       <section class="workflow" aria-label="What you can build"><div><span data-icon="cube"></span><h3>Build and inspect</h3><p>Shared meshes, materials and cameras. Pull a machine apart, explore a world, or bring your own GLB.</p></div><div><span data-icon="film"></span><h3>Make it move</h3><p>Sample keyframes at any time. Give visitors controls and keep the same timeline for your film.</p></div><div><span data-icon="image"></span><h3>Export the result</h3><p>Produce images and videos on GPU or CPU with explicit render budgets and one capture frame at a time.</p></div></section>
-      <section class="install" aria-label="Install the current release">
-        <div class="install-label"><svg class="npm-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M1.763 0C.786 0 0 .786 0 1.763v20.474C0 23.214.786 24 1.763 24h20.474c.977 0 1.763-.786 1.763-1.763V1.763C24 .786 23.214 0 22.237 0zM5.13 5.323l13.837.019-.009 13.836h-3.464l.01-10.382h-3.456L12.04 19.17H5.113z"/></svg><span>Install with npm</span></div>
-        <div class="command-row"><code data-install-command>Loading the release command…</code><button data-copy-install disabled>Copy command</button></div>
-        <div class="release-feedback"><p data-release-status role="status">◷ Loading release information</p><button data-release-retry hidden>Retry</button></div>
-      </section>
       <section id="examples" class="examples" aria-labelledby="examples-title">
-        <h2 id="examples-title">Try it yourself</h2><p>Each showcase is a working scene with controls you can explore.</p>
+        <h2 id="examples-title">Interactive showcase</h2><p>Explore a machine, a world, a film or your own model</p>
         <div class="gallery">
-          <a class="example" href="./object.html"><img src="./previews/wall-e.webp" alt="WALL·E model rendered in 67.js" width="1280" height="720" fetchpriority="high" /><div class="example-caption"><h3>WALL·E</h3><span>Object studio <span aria-hidden="true">↗</span></span></div><p>Separate 574 parts, inspect the shell and machinery, and save your composition</p></a>
+          <a class="example" href="./object.html"><img src="./previews/wall-e.webp" alt="WALL·E model rendered in 67.js" width="1280" height="720" fetchpriority="high" /><div class="example-caption"><h3>WALL·E</h3><span>Object studio <span aria-hidden="true">↗</span></span></div><p>Explore the exterior or separate 574 parts to inspect the machinery</p></a>
           <a class="example" href="./nature.html"><img src="./previews/nature.webp" alt="A winding stream through Silverwater valley" width="1280" height="720" /><div class="example-caption"><h3>Silverwater valley</h3><span>Nature <span aria-hidden="true">↗</span></span></div><p>Move through the landscape and change the light and wind</p></a>
           <a class="example" href="./film.html"><img src="./previews/film-contact.webp" alt="Scenes from CRITICAL, a procedural 3D short film" width="1280" height="720" loading="lazy" /><div class="example-caption"><h3>CRITICAL</h3><span>Short film <span aria-hidden="true">↗</span></span></div><p>Watch a deterministic film with an original synthesized score</p></a>
-          <a class="example" href="./object.html?explosion=1"><img src="./previews/wall-e-exploded.webp" alt="WALL·E assemblies separated to reveal the internal mechanisms" width="1280" height="720" loading="lazy" /><div class="example-caption"><h3>Inside the machine</h3><span>Exploded assembly <span aria-hidden="true">↗</span></span></div><p>Separate the assemblies to inspect the electronics and mechanisms</p></a>
-          <a class="example" href="./motion.html"><img src="./previews/motion.webp" alt="A luminous clockwork mechanism animated from keyframes" width="960" height="540" loading="lazy" /><div class="example-caption"><h3>Clockwork orbit</h3><span>Animation <span aria-hidden="true">↗</span></span></div><p>Scrub keyframes, switch compositions and render a short film</p></a>
           <a class="example" href="./view2d.html"><img src="./previews/view2d.webp" alt="A flat orbital poster rendered through an orthographic camera" width="960" height="540" loading="lazy" /><div class="example-caption"><h3>Orbital field</h3><span>2D and views <span aria-hidden="true">↗</span></span></div><p>Pan a vector scene or inspect a model from front, right and top</p></a>
           <a class="example" href="./assets.html"><img src="./previews/assets.webp" alt="An imported geometric study displayed in the asset viewer" width="960" height="540" loading="lazy" /><div class="example-caption"><h3>Your models</h3><span>GLB assets <span aria-hidden="true">↗</span></span></div><p>Open a GLB, inspect its materials and sample node animation</p></a>
         </div>
       </section>
       <section id="downloads" class="downloads" aria-labelledby="downloads-title">
         <div class="section-heading"><h2 id="downloads-title">Downloads</h2><span data-release-version>Loading release</span></div>
-        <p>Use the package archive with npm, or import the bundled module directly in your browser</p>
-        <div class="download-links"><a class="download" data-release-tarball aria-disabled="true"><strong>Package archive</strong><span>Install with npm</span><span class="download-symbol" data-icon="download" aria-hidden="true"></span></a><a class="download" data-release-module aria-disabled="true"><strong>Browser module</strong><span>Bundled ES module</span><span class="download-symbol" data-icon="download" aria-hidden="true"></span></a></div>
+        <p>Choose your package manager and install the current release</p>
+        <div class="package-install">
+          <div class="package-managers" role="group" aria-label="Package manager">
+            <button data-package-manager="npm" aria-pressed="true">npm</button>
+            <button data-package-manager="pnpm" aria-pressed="false">pnpm</button>
+            <button data-package-manager="yarn" aria-pressed="false">Yarn</button>
+            <button data-package-manager="bun" aria-pressed="false">Bun</button>
+          </div>
+          <div class="command-row"><code data-install-command>Loading the release command…</code><button data-copy-install disabled>Copy command</button></div>
+          <div class="release-feedback"><p data-release-status role="status">Loading release information</p><button data-release-retry hidden>Retry</button></div>
+          <p class="package-note">The alias keeps imports short: <code>import { Renderer67 } from '67js'</code></p>
+          <div class="package-links"><a href="https://www.npmjs.com/package/@codepawlhq/67js" data-icon="package">View on npm</a><a href="https://github.com/anxuanng/67.js" data-icon="github">Source on GitHub</a><a href="/docs.html#getting-started" data-icon="book">Build your first scene</a></div>
+        </div>
         <div class="release-links"><a href="./docs.html">Documentation</a><a href="./logo.svg" download>Logo SVG</a><a href="./changelog.md">Changelog</a><span data-release-commit>Release commit</span><a data-release-api aria-disabled="true">API reference ↗</a></div>
       </section>
     </main>
