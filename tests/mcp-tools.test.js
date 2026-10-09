@@ -117,6 +117,10 @@ test('SDK advertises the complete strict JSON contract and truthful annotations'
   const variants = recipeSchema.properties.geometries.items.oneOf ?? recipeSchema.properties.geometries.items.anyOf;
   assert.deepEqual(variants.map(variant => variant.properties.type.const), ['box', 'cylinder', 'sphere', 'torus', 'lathe', 'extrude', 'tube']);
   assert.ok(variants.every(variant => variant.additionalProperties === false));
+  assert.equal(recipeSchema.properties.environment.additionalProperties, false);
+  assert.equal(recipeSchema.properties.environment.properties.pointLights.maxItems, 8);
+  assert.equal(recipeSchema.properties.effects.additionalProperties, false);
+  assert.equal(recipeSchema.properties.shadow.additionalProperties, false);
   const look = tools.find(tool => tool.name === 'scene_look');
   assert.equal(look.annotations.readOnlyHint, true);
   assert.equal(look.inputSchema.properties.width.maximum, 1024);

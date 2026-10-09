@@ -16,6 +16,12 @@ This addon does not expose an MCP server or a render job queue.
 The source checkout provides a separate stdio MCP server in `scripts/mcp-server.mjs`, after npm `0.4.1`.
 Read `/mcp.md` before configuring it. Start with `scene_capabilities`, create a recipe and inspect its stable IDs.
 
+Read `/agent-look.md` for recipe environment, effects and shadow fields.
+Use `set-environment`, `set-effects` and `set-shadow` for atomic partial look patches.
+Nested volumeFog/bloom fields merge. pointLights replaces the list. Volume fog requires HDR/depth support.
+
+Checkpoint before relighting, inspect the PNG, then restore or export the full recipe. Point lights do not cast local shadows.
+
 Checkpoint, apply small revisioned batches, then use `scene_look` to assess the actual PNG.
 Restore failed experiments and release unused checkpoints. Export the recipe and dispose the scene when finished.
 The runtime keeps one browser scene alive, serializes calls, caps PNG responses and releases resources on stdin EOF.

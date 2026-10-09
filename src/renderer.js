@@ -706,7 +706,7 @@ export class Renderer67 {
     if (context.checkFramebufferStatus(context.FRAMEBUFFER) !== context.FRAMEBUFFER_COMPLETE) throw new Error('Shadow framebuffer is incomplete.');
     const defaults = this.world ? { eye: [-25, 60, 30], target: [0, 2, -10], extent: 65, near: 1, far: 220 } : { eye: [-3, 6, 4], target: [0, 1, 0], extent: 3.5, near: 0.1, far: 15 };
     const light = { ...defaults, ...this.shadowBounds };
-    const lightView = mat4.lookAt(mat4.create(), light.eye, light.target, [0, 1, 0]);
+    const lightView = mat4.lookAt(mat4.create(), light.eye, light.target, light.up ?? [0, 1, 0]);
     mat4.ortho(this.lightProjection, -light.extent, light.extent, -light.extent, light.extent, light.near, light.far);
     mat4.multiply(this.lightProjection, this.lightProjection, lightView);
     context.viewport(0, 0, 2048, 2048);

@@ -6,6 +6,8 @@ It is not included in the published `0.4.1` package.
 The optional `agent-scene` addon creates bounded CPU scenes from JSON recipes and applies atomic editing commands.
 It returns retained renderer parts with shared geometry and material resources.
 It does not execute JavaScript, access the DOM, or provide an MCP transport.
+Recipes also retain [lighting, fog, effects and directional shadow coverage](agent-look.md).
+Their patches and checkpoints share the same atomic revision contract as model edits.
 
 ```js
 import { Renderer67 } from '67js';

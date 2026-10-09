@@ -40,7 +40,7 @@ const sourceDocuments = [
   'gltf-morph.md', 'morph-targets.md', 'skinning.md', 'physics.md',
   'export-glb.md', 'sculpt.md', 'surface.md', 'mesh-query.md', 'primitives.md', 'shrinkwrap.md',
   'camera-path.md', 'lighting.md', 'volumetric.md', 'film-physics.md',
-  'surface-attachment.md', 'agent-scene.md', 'mcp.md',
+  'surface-attachment.md', 'agent-scene.md', 'mcp.md', 'agent-look.md',
 ];
 for (const name of sourceDocuments) {
   await copyFile(resolve(root, 'docs', name), resolve(root, 'public', name));

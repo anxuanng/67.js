@@ -5,6 +5,7 @@ import { Script, createContext } from 'node:vm';
 import { mat4 } from 'gl-matrix';
 import { createAgentScene } from '../src/agent-scene.js';
 import { applyProjection } from '../src/camera.js';
+import { resolveAgentShadow } from '../src/agent-look.js';
 
 const source = (await readFile(new URL('../scripts/agent-preview-browser.js', import.meta.url), 'utf8')).replace(/^import .+;\r?$/gm, '');
 
@@ -13,10 +14,12 @@ function previewHarness() {
   let lost = false;
   let replacementError = false;
   let replacementCount = 0;
+  let currentRenderer;
   const canvas = { width: 768, height: 512 };
   class FaultInjectedRenderer {
     memoryPlan = { estimatedBytes: 1024 };
     capabilities = { hdr: true, samples: 4 };
+    constructor() { currentRenderer = this; }
     context = {
       isContextLost: () => lost,
       getError: () => renderError,
@@ -37,7 +40,7 @@ function previewHarness() {
     document: { querySelector: () => canvas },
     // The real browser bundles these functions in one realm. Bridge only the VM realm here.
     createAgentScene: input => createAgentScene(JSON.parse(JSON.stringify(input))),
-    applyProjection, mat4,
+    applyProjection, mat4, resolveAgentShadow,
     Renderer67: FaultInjectedRenderer,
   });
   // Evaluate only trusted repository adapter code; inject the driver boundary for failure cases.
@@ -48,8 +51,30 @@ function previewHarness() {
     loseContext: () => { lost = true; },
     rejectReplacement: value => { replacementError = value; },
     replacementCount: () => replacementCount,
+    disableHdr: () => { currentRenderer.capabilities.hdr = false; },
   };
 }
+
+test('HDR fallback rejects enabling or restoring volume fog before canonical publication', () => {
+  const harness = previewHarness();
+  const sessionId = 'fog-fallback';
+  harness.preview.create({ recipe: recipe(), sessionId, backend: 'cpu', memoryBudgetMiB: 192 });
+  harness.preview.apply({ sessionId, expectedRevision: 0, operations: [
+    { type: 'set-environment', environment: { volumeFog: { density: 0.1 } } },
+  ] });
+  harness.preview.checkpoint({ sessionId, checkpointId: 'fog' });
+  harness.preview.apply({ sessionId, expectedRevision: 1, operations: [
+    { type: 'set-environment', environment: { volumeFog: { density: 0 } } },
+  ] });
+  harness.disableHdr();
+  const before = harness.preview.exportRecipe({ sessionId });
+  assert.throws(() => harness.preview.apply({ sessionId, expectedRevision: 2, operations: [
+    { type: 'set-node', id: 'cube', translation: [1, 2, 3] },
+    { type: 'set-environment', environment: { volumeFog: { density: 0.2 } } },
+  ] }), /HDR support/);
+  assert.throws(() => harness.preview.restore({ sessionId, checkpointId: 'fog', expectedRevision: 2 }), /HDR support/);
+  assert.deepEqual(harness.preview.exportRecipe({ sessionId }), before);
+});
 
 function recipe() {
   return { format: '67js.scene', schemaVersion: 1,

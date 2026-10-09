@@ -12,6 +12,52 @@ function recipe() {
       { id: 'other', label: 'Same label', geometry: 'box', material: 'finish' }] };
 }
 
+test('authored look patches preserve resources and undo light, fog, exposure and projector together', () => {
+  const session = createAgentScene(recipe());
+  const before = session.exportRecipe();
+  const parts = session.parts;
+  const checkpoint = session.checkpoint();
+  session.apply([
+    { type: 'set-environment', environment: { world: true, lightDirection: [0, 1, 0], pointLights: [{ position: [1, 2, 3], intensity: 12 }], volumeFog: { density: 0.2 } } },
+    { type: 'set-effects', effects: { exposure: 0.8, bloom: { strength: 0.3 } } },
+    { type: 'set-shadow', shadow: { extent: 10, far: 40 } },
+  ], { expectedRevision: 0 });
+  assert.equal(session.parts, parts);
+  assert.equal(session.topologyRevision, 0);
+  assert.equal(session.environment.volumeFog.density, 0.2);
+  assert.deepEqual(session.environment.volumeFog.minimum, before.environment.volumeFog.minimum);
+  assert.equal(session.effects.bloom.threshold, before.effects.bloom.threshold);
+  const detached = session.environment;
+  detached.pointLights[0].position[0] = 999;
+  assert.equal(session.environment.pointLights[0].position[0], 1);
+  session.apply([{ type: 'set-environment', environment: { pointLights: [] } }], { expectedRevision: 1 });
+  assert.equal(session.environment.pointLights.length, 0);
+  session.restore(checkpoint, { expectedRevision: 2 });
+  assert.deepEqual(session.exportRecipe(), before);
+  assert.equal(session.parts, parts);
+  assert.equal(session.topologyRevision, 0);
+});
+
+test('invalid look in a mixed batch cannot publish transforms, material or render controls', () => {
+  const session = createAgentScene(recipe());
+  const before = session.exportRecipe();
+  const matrix = Array.from(session.parts[0].matrix);
+  for (const invalid of [
+    { type: 'set-environment', environment: { lightDirection: [0, 0, 0] } },
+    { type: 'set-effects', effects: { bloom: { unknown: 1 } } },
+    { type: 'set-shadow', shadow: { near: 15, far: 1 } },
+  ]) {
+    assert.throws(() => session.apply([
+      { type: 'set-node', id: 'child', translation: [9, 8, 7] },
+      { type: 'set-material', id: 'finish', color: [1, 0, 0] },
+      { type: 'set-effects', effects: { exposure: 2 } }, invalid,
+    ], { expectedRevision: 0 }));
+    assert.equal(session.revision, 0);
+    assert.deepEqual(session.exportRecipe(), before);
+    assert.deepEqual(Array.from(session.parts[0].matrix), matrix);
+  }
+});
+
 test('shader arithmetic rejects cancelling product overflow and nonfinite emission atomically', () => {
   const input = recipe();
   const coordinate = Math.fround(1e20);

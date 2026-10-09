@@ -3,6 +3,8 @@ import { box, cylinder, sphere, torus } from './geometry.js';
 import { lathe, extrude, tube } from './modeling.js';
 import { createSceneGraph } from './scene-graph.js';
 import { applyProjection } from './camera.js';
+import { normalizeAgentLook } from './agent-look.js';
+export { normalizeAgentLook, resolveAgentShadow } from './agent-look.js';
 
 const DEFAULT_LIMITS = Object.freeze({
   maxNodes: 4096, maxDepth: 256, maxGeometries: 256, maxMaterials: 256,
@@ -13,6 +15,11 @@ const CAMERA_DEFAULTS = Object.freeze({ eye: [4, 3, 5], target: [0, 0, 0], up: [
 const NODE_FIELDS = ['translation', 'rotation', 'scale', 'parent', 'label', 'geometry', 'material'];
 const MATERIAL_FIELDS = ['color', 'metallic', 'roughness', 'emission', 'emissiveColor'];
 const CAMERA_FIELDS = Object.keys(CAMERA_DEFAULTS);
+const LOOK_OPERATION_FIELDS = Object.freeze({
+  'set-environment': 'environment',
+  'set-effects': 'effects',
+  'set-shadow': 'shadow',
+});
 const ADDITION_FIELDS = Object.freeze({
   'add-geometry': ['geometries', 'geometry'],
   'add-material': ['materials', 'material'],
@@ -29,9 +36,11 @@ export const AGENT_SCENE_CAPABILITIES = Object.freeze({
   operations: Object.freeze([
     'set-node', 'set-material', 'set-camera', 'add-node', 'remove-node',
     'add-geometry', 'remove-geometry', 'add-material', 'remove-material',
+    'set-environment', 'set-effects', 'set-shadow',
   ]),
   materialTags: Object.freeze(['surface', 'unlit']),
   fixedResources: false, dynamicTopology: true, checkpoints: true, positiveScaleOnly: true,
+  authoredLook: true, maxPointLights: 8,
 });
 
 function knownKeys(value, allowed, label) {
@@ -414,7 +423,7 @@ function boundsFor(geometry, matrix) {
 
 function normalizeRecipe(input, limits) {
   let recipe = copiedJson(input, limits.maxRecipeBytes);
-  knownKeys(recipe, ['format', 'schemaVersion', 'geometries', 'materials', 'nodes', 'camera'], 'recipe');
+  knownKeys(recipe, ['format', 'schemaVersion', 'geometries', 'materials', 'nodes', 'camera', 'environment', 'effects', 'shadow'], 'recipe');
   if (recipe.format !== '67js.scene' || recipe.schemaVersion !== 1) {
     throw new RangeError('Expected 67js.scene schemaVersion 1.');
   }
@@ -431,6 +440,13 @@ function normalizeRecipe(input, limits) {
   recipe.materials = resources(recipe.materials, limits.maxMaterials, 'materials', materialFrom);
   recipe.nodes = resources(recipe.nodes, limits.maxNodes, 'nodes', nodeFrom);
   recipe.camera = cameraFrom(recipe.camera);
+  const look = {};
+  for (const field of ['environment', 'effects', 'shadow']) {
+    if (Object.hasOwn(recipe, field)) {
+      look[field] = recipe[field];
+    }
+  }
+  Object.assign(recipe, normalizeAgentLook(look));
   recipe = copiedJson(recipe, limits.maxRecipeBytes);
   return recipe;
 }
@@ -663,6 +679,15 @@ export function createAgentScene(input, inputLimits = {}) {
     get camera() {
       return structuredClone(state.recipe.camera);
     },
+    get environment() {
+      return structuredClone(state.recipe.environment);
+    },
+    get effects() {
+      return structuredClone(state.recipe.effects);
+    },
+    get shadow() {
+      return structuredClone(state.recipe.shadow);
+    },
     exportRecipe() {
       return structuredClone(state.recipe);
     },
@@ -676,6 +701,20 @@ export function createAgentScene(input, inputLimits = {}) {
       const removedNodes = new Set();
       const removedMaterials = new Set();
       for (const operation of operations) {
+        const lookField = Object.hasOwn(LOOK_OPERATION_FIELDS, operation.type) ? LOOK_OPERATION_FIELDS[operation.type] : null;
+        if (lookField) {
+          knownKeys(operation, ['type', lookField], 'operation');
+          const patch = operation[lookField];
+          knownKeys(patch, Object.keys(candidate[lookField]), lookField);
+          const nestedField = lookField === 'environment' ? 'volumeFog' : lookField === 'effects' ? 'bloom' : null;
+          const merged = { ...candidate[lookField], ...patch };
+          if (nestedField && Object.hasOwn(patch, nestedField)) {
+            knownKeys(patch[nestedField], Object.keys(candidate[lookField][nestedField]), nestedField);
+            merged[nestedField] = { ...candidate[lookField][nestedField], ...patch[nestedField] };
+          }
+          candidate[lookField] = merged;
+          continue;
+        }
         const addition = Object.hasOwn(ADDITION_FIELDS, operation.type) ? ADDITION_FIELDS[operation.type] : null;
         if (addition) {
           const [collection, field] = addition;
@@ -783,6 +822,12 @@ export function createAgentScene(input, inputLimits = {}) {
         estimatedGeometryBytes: state.stats.estimatedGeometryBytes,
         residentGeometryBytes: resident.geometryBytes,
         residentGeometryVertices: resident.vertices,
+        look: {
+          world: state.recipe.environment.world,
+          pointLights: state.recipe.environment.pointLights.length,
+          volumeFogDensity: state.recipe.environment.volumeFog.density,
+          exposure: state.recipe.effects.exposure,
+        },
         nodes, truncated: selected.length > nodes.length,
       };
     },

@@ -130,7 +130,7 @@ if (${!published || metadata.version !== '0.4.0'}) {
 }
 solidIndex.dispose();
 if (${!published}) {
-  const { createAgentScene } = await import('67js/addons/agent-scene');
+  const { createAgentScene, resolveAgentShadow } = await import('67js/addons/agent-scene');
   const agentScene = createAgentScene({
     format: '67js.scene', schemaVersion: 1,
     geometries: [{ id: 'cube', type: 'box', bevel: 0 }],
@@ -157,6 +157,17 @@ if (${!published}) {
   assert.equal(agentScene.parts.length, 1);
   assert.equal(agentScene.parts[0], agentPart);
   agentScene.releaseCheckpoint(dynamicCheckpoint);
+  const lookCheckpoint = agentScene.checkpoint();
+  const originalLook = agentScene.exportRecipe();
+  agentScene.apply([
+    { type: 'set-environment', environment: { lightDirection: [0, 1, 0], pointLights: [{ position: [1, 2, 3] }] } },
+    { type: 'set-effects', effects: { exposure: 0.8, bloom: { strength: 0.2 } } },
+  ], { expectedRevision: agentScene.revision });
+  assert.deepEqual(resolveAgentShadow(agentScene.shadow, agentScene.environment.lightDirection).up, [0, 0, 1]);
+  assert.equal(agentScene.parts[0], agentPart);
+  agentScene.restore(lookCheckpoint, { expectedRevision: agentScene.revision });
+  assert.deepEqual(agentScene.exportRecipe(), originalLook);
+  agentScene.releaseCheckpoint(lookCheckpoint);
 }
 const parts = createModel();
 assert.equal(parts.length, 574);

@@ -43,7 +43,8 @@
     "docs/shrinkwrap.md",
     "docs/surface-attachment.md",
     "docs/agent-scene.md",
-    "docs/mcp.md"
+    "docs/mcp.md",
+    "docs/agent-look.md"
   ],
   "main": "./build/67.module.js",
   "module": "./build/67.module.js",
@@ -84,6 +85,7 @@
     "mcp": "node scripts/mcp-server.mjs",
     "smoke:mcp": "node scripts/smoke-mcp.mjs",
     "smoke:agent-topology": "node scripts/smoke-agent-topology.mjs",
+    "smoke:agent-look": "node scripts/smoke-agent-look.mjs",
     "smoke:enhancements": "node scripts/smoke-enhancements.mjs",
     "smoke:site": "node scripts/smoke-site.mjs",
     "publish:ci": "node scripts/publish-ci.mjs"

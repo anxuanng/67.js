@@ -40,6 +40,62 @@ const cameraFields = {
   near: positive.optional().describe('Near clipping distance. Must be less than far.'),
   far: positive.optional().describe('Far clipping distance. Must exceed near.'),
 };
+const bounded = (minimum, maximum) => z.number().min(minimum).max(maximum);
+const boundedVector = (minimum, maximum) => z.tuple([bounded(minimum, maximum), bounded(minimum, maximum), bounded(minimum, maximum)]);
+const volumeFog = z.strictObject({
+  density: bounded(0, 10).optional(),
+  minimum: boundedVector(-1e5, 1e5).optional(),
+  maximum: boundedVector(-1e5, 1e5).optional(),
+  color: color.optional(),
+  ambient: boundedVector(0, 10).optional(),
+  drift: boundedVector(-100, 100).optional(),
+  steps: z.number().int().min(8).max(48).optional(),
+  anisotropy: bounded(-0.9, 0.9).optional(),
+  noiseAmount: unit.optional(),
+  noiseScale: bounded(0.001, 100).optional(),
+  maxDistance: bounded(0.01, 1e4).optional(),
+});
+const environment = z.strictObject({
+  world: z.boolean().optional().describe('Draw the sky and apply surface fog.'),
+  lightDirection: boundedVector(-1e6, 1e6).optional().describe('Nonzero direction toward the key light; shadows follow it.'),
+  keyColor: boundedVector(0, 1000).optional(),
+  keyIntensity: bounded(0, 100).optional(),
+  fillIntensity: bounded(0, 100).optional(),
+  ambientIntensity: bounded(0, 100).optional(),
+  daylight: bounded(0, 100).optional(),
+  pointLights: z.array(z.strictObject({
+    position: boundedVector(-1e6, 1e6),
+    color: color.optional(),
+    intensity: bounded(0, 1e5).optional(),
+    radius: bounded(0.001, 1e6).optional(),
+    range: z.union([z.literal(0), bounded(0.001, 1e6)]).optional(),
+  })).max(8).optional().describe('Replace the entire list; [] removes all point lights. No local shadows.'),
+  skyTop: color.optional(),
+  skyBottom: color.optional(),
+  fogColor: color.optional(),
+  fogDensity: bounded(0, 10).optional(),
+  volumeFog: volumeFog.optional().describe('Bounded depth-clipped directional scattering; requires HDR support.'),
+});
+const effects = z.strictObject({
+  exposure: bounded(0.01, 16).optional(),
+  saturation: bounded(0, 2).optional(),
+  contrast: bounded(0.1, 2).optional(),
+  temperature: bounded(-1, 1).optional(),
+  vignette: unit.optional(),
+  grain: bounded(0, 0.1).optional(),
+  bloom: z.strictObject({
+    strength: bounded(0, 2).optional(),
+    threshold: bounded(0, 10).optional(),
+    radius: bounded(0.1, 4).optional(),
+  }).optional(),
+});
+const shadow = z.strictObject({
+  target: boundedVector(-1e6, 1e6).optional(),
+  extent: bounded(0.01, 1e5).optional(),
+  distance: bounded(0.01, 1e6).optional(),
+  near: bounded(0.001, 1e6).optional(),
+  far: bounded(0.001, 1e6).optional(),
+}).describe('Directional shadow coverage. Backend checks Float32 view/projection consistency.');
 const geometry = z.discriminatedUnion('type', [
   z.strictObject({ id: identifier, type: z.literal('box'), bevel: finite.optional(), subdivisions: detail(1, 128) }),
   z.strictObject({ id: identifier, type: z.literal('cylinder'), segments, bevel: finite.optional(), bevelSegments: detail(1, 128) }),
@@ -56,11 +112,17 @@ const recipe = z.strictObject({
   materials: z.array(z.strictObject({ id: identifier, tag: z.enum(['surface', 'unlit']).optional(), ...materialFields })).max(256),
   nodes: z.array(nodeRecord).max(4096),
   camera: z.strictObject(cameraFields).optional(),
+  environment: environment.optional(),
+  effects: effects.optional(),
+  shadow: shadow.optional(),
 }).describe('Bounded scene recipe. Backend validates references, mesh resource pairs, hierarchy, geometry budgets and camera consistency.');
 const operation = z.discriminatedUnion('type', [
   z.strictObject({ type: z.literal('set-node'), id: identifier, geometry: identifier.optional(), material: identifier.optional(), ...nodeFields }),
   z.strictObject({ type: z.literal('set-material'), id: identifier, ...materialFields }),
   z.strictObject({ type: z.literal('set-camera'), ...cameraFields }),
+  z.strictObject({ type: z.literal('set-environment'), environment }),
+  z.strictObject({ type: z.literal('set-effects'), effects }),
+  z.strictObject({ type: z.literal('set-shadow'), shadow }),
   z.strictObject({ type: z.literal('add-node'), node: nodeRecord }),
   z.strictObject({ type: z.literal('remove-node'), id: identifier, recursive: z.boolean().optional().describe('Remove descendants too. Defaults to false; dangling children reject the batch.') }),
   z.strictObject({ type: z.literal('add-geometry'), geometry }),

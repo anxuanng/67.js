@@ -96,6 +96,13 @@ Geometry fields remain flat inside each geometry record.
 Set operations use `set-node`, `set-material`, or `set-camera`, with fields directly on each command.
 `set-node` can rebind a mesh to another geometry/material pair.
 
+The recipe also accepts [authored lighting, fog, effects and shadow coverage](agent-look.md).
+Use `set-environment`, `set-effects` and `set-shadow` with nested partial records to adjust the look.
+Nested `volumeFog` and `bloom` fields merge. `pointLights` replaces the complete list.
+
+The preview allocates depth support at creation so enabling fog does not recreate render targets.
+Active volume fog requires HDR support. Unsupported previews reject that edit before committing.
+
 Build from an empty recipe by adding resources and nodes in one revisioned batch:
 
 ```js

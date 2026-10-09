@@ -78,11 +78,17 @@ try {
       { type: 'set-node', id: 'lamp', translation: [0.18, 0.82, 0] },
       { type: 'set-node', id: 'glow', scale: [0.34, 0.3, 0.34], translation: [0, 0.75, 0] },
       { type: 'set-material', id: 'light', color: [0.9, 0.28, 0.04], emissiveColor: [0.9, 0.28, 0.04] },
+      { type: 'set-environment', environment: { lightDirection: [0, 1, 0], keyColor: [1, 2, 4], pointLights: [{ position: [1, 1, 1], color: [1, 0.2, 0.05], intensity: 4 }], volumeFog: { density: 0.04 } } },
+      { type: 'set-effects', effects: { exposure: 0.8, bloom: { strength: 0.2 } } },
+      { type: 'set-shadow', shadow: { extent: 5, distance: 9, far: 20 } },
     ],
   })).structuredContent;
   assert.equal(edited.revision, 2);
   assert.equal(edited.committed, true);
   assert.equal(edited.renderSucceeded, true);
+  assert.equal(edited.render.depth, true);
+  assert.equal(edited.inspection.look.pointLights, 1);
+  assert.equal(edited.inspection.look.volumeFogDensity, 0.04);
   const after = await look(sessionId, 'after');
   assert.notDeepEqual(after.bytes, before.bytes);
   const stale = await client.callTool({ name: 'scene_apply', arguments: {

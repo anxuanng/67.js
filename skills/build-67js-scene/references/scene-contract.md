@@ -151,6 +151,12 @@ Use the revision returned by each committed apply or restore. A response with `c
 Inspect or export the canonical recipe after a render failure; do not retry the edit with its old revision.
 The server retains one renderer, bounds image dimensions and payloads, and closes its browser on stdio EOF.
 Export the recipe before disposal. Asset ingestion, animation authoring and video jobs remain unsupported by these tools.
+Read `docs/agent-look.md` for authored lighting, fog, effects and shadow coverage, available after npm `0.4.1`.
+Use atomic `set-environment`, `set-effects` and `set-shadow` partial records instead of editing renderer internals through MCP.
+Nested volumeFog/bloom fields merge; pointLights replaces the full list. Point lights do not cast local shadows.
+Volume fog requires opaque HDR/depth rendering. The preview adapter allocates depth support at creation and rejects unsupported fog before commit.
+Keep key-light direction aligned with the derived shadow projector. The optional addon exports `resolveAgentShadow` for custom adapters.
+Checkpoint before relighting, inspect the actual image and restore or export the complete recipe. Look changes retain topology and geometry.
 
 `cameraView('front' | 'right' | 'top')` returns an orthographic camera with the correct up vector.
 `fitOrthographicHeight(bounds, view, aspect)` frames both model width and height.

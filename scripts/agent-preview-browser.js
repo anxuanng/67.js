@@ -2,10 +2,10 @@ import { createAgentScene } from '../src/agent-scene.js';
 import { Renderer67 } from '../src/renderer.js';
 import { applyProjection } from '../src/camera.js';
 import { mat4 } from 'gl-matrix';
+import { resolveAgentShadow } from '../src/agent-look.js';
 
 let active = null;
 let canvas = document.querySelector('canvas');
-const effects = { bloom: { strength: 0.12, threshold: 1, radius: 1 }, grain: 0, vignette: 0 };
 
 function requireSession(sessionId) {
   if (!active || active.sessionId !== sessionId) {
@@ -49,6 +49,7 @@ function renderInfo(renderer) {
     height: canvas.height,
     samples: renderer.capabilities.samples,
     hdr: renderer.capabilities.hdr,
+    depth: renderer.depth,
     geometryBuffers: renderer.geometryBuffers?.size ?? 0,
     gpuBuffers: renderer.buffers?.length ?? 0,
     drawBatches: renderer.batches?.length ?? 0,
@@ -68,7 +69,17 @@ function draw(record) {
   } else {
     record.renderer.updateParts(record.scene.parts);
   }
-  record.renderer.render({ ...record.scene.camera, effects });
+  const environment = record.scene.environment;
+  const effects = record.scene.effects;
+  const shadow = record.scene.shadow;
+  const shadowKey = JSON.stringify([environment.lightDirection, shadow]);
+  if (record.shadowKey !== shadowKey) {
+    record.renderer.shadowBounds = resolveAgentShadow(shadow, environment.lightDirection);
+    record.renderer.shadowsDirty = true;
+    record.shadowKey = shadowKey;
+  }
+  record.renderer.world = environment.world;
+  record.renderer.render({ ...record.scene.camera, environment, effects, exposure: effects.exposure, time: 0 });
   const error = record.renderer.context.getError();
   if (error !== 0) {
     throw new Error(`WebGL render failed with error ${error}.`);
@@ -116,6 +127,10 @@ window.__agentPreview = {
       renderer = new Renderer67(canvas, scene.parts, {
         ground: false,
         hdr: true,
+        depth: true,
+        world: scene.environment.world,
+        environment: scene.environment,
+        shadowBounds: resolveAgentShadow(scene.shadow, scene.environment.lightDirection),
         pixelRatio: 1,
         samples: backend === 'cpu' ? 1 : 4,
         memoryBudgetMiB,
@@ -144,6 +159,15 @@ window.__agentPreview = {
   apply({ sessionId, operations, expectedRevision }) {
     const record = requireSession(sessionId);
     validatePreviewCamera(candidateCamera(record, operations));
+    let fogDensity = record.scene.environment.volumeFog.density;
+    for (const operation of operations) {
+      if (operation.type === 'set-environment' && Object.hasOwn(operation.environment?.volumeFog ?? {}, 'density')) {
+        fogDensity = operation.environment.volumeFog.density;
+      }
+    }
+    if (fogDensity > 0 && !record.renderer.capabilities.hdr) {
+      throw new Error('Volumetric fog requires HDR support; this preview cannot enable it.');
+    }
     record.scene.apply(operations, { expectedRevision });
     return mutationStatus(record);
   },
@@ -161,7 +185,7 @@ window.__agentPreview = {
   checkpoint({ sessionId, checkpointId }) {
     const record = requireSession(sessionId);
     const handle = record.scene.checkpoint();
-    record.checkpoints.set(checkpointId, handle);
+    record.checkpoints.set(checkpointId, { handle, fogDensity: record.scene.environment.volumeFog.density });
     return { sessionId, checkpointId, revision: record.scene.revision };
   },
   restore({ sessionId, checkpointId, expectedRevision }) {
@@ -169,7 +193,11 @@ window.__agentPreview = {
     if (!record.checkpoints.has(checkpointId)) {
       throw new Error('Unknown or released checkpoint.');
     }
-    record.scene.restore(record.checkpoints.get(checkpointId), { expectedRevision });
+    const checkpoint = record.checkpoints.get(checkpointId);
+    if (checkpoint.fogDensity > 0 && !record.renderer.capabilities.hdr) {
+      throw new Error('Volumetric fog requires HDR support; this preview cannot restore it.');
+    }
+    record.scene.restore(checkpoint.handle, { expectedRevision });
     return mutationStatus(record);
   },
   releaseCheckpoint({ sessionId, checkpointId }) {
@@ -177,7 +205,7 @@ window.__agentPreview = {
     if (!record.checkpoints.has(checkpointId)) {
       throw new Error('Unknown or released checkpoint.');
     }
-    record.scene.releaseCheckpoint(record.checkpoints.get(checkpointId));
+    record.scene.releaseCheckpoint(record.checkpoints.get(checkpointId).handle);
     record.checkpoints.delete(checkpointId);
     return { sessionId, checkpointId, released: true };
   },
