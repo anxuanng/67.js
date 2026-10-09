@@ -32,7 +32,17 @@ function triangleAsset(edit = () => {}) {
     ],
     bufferViews, buffers: [{ byteLength: offset }],
   };
-  edit(document);
+  function appendAccessor(data, type, normalized = false) {
+    chunks.push(data);
+    const bufferView = bufferViews.length;
+    bufferViews.push({ buffer: 0, byteOffset: offset, byteLength: data.byteLength });
+    offset += Math.ceil(data.byteLength / 4) * 4;
+    document.buffers[0].byteLength = offset;
+    const accessor = document.accessors.length;
+    document.accessors.push({ bufferView, componentType: data instanceof Uint8Array ? 5121 : 5126, count: data.length / (type === 'VEC4' ? 4 : 3), type, normalized });
+    return accessor;
+  }
+  edit(document, appendAccessor);
   const json = new TextEncoder().encode(JSON.stringify(document));
   const jsonLength = Math.ceil(json.length / 4) * 4;
   const result = new ArrayBuffer(28 + jsonLength + offset);
@@ -48,7 +58,7 @@ function triangleAsset(edit = () => {}) {
   header.setUint32(20 + jsonLength, offset, true);
   header.setUint32(24 + jsonLength, 0x004e4942, true);
   for (let index = 0; index < chunks.length; index++) {
-    bytes.set(new Uint8Array(chunks[index].buffer), 28 + jsonLength + bufferViews[index].byteOffset);
+    bytes.set(new Uint8Array(chunks[index].buffer, chunks[index].byteOffset, chunks[index].byteLength), 28 + jsonLength + bufferViews[index].byteOffset);
   }
   return result;
 }
@@ -128,7 +138,7 @@ test('unsupported features fail explicitly before loading resources', async () =
   const cases = [
     [document => { document.nodes[1].skin = 0; }, /Skinned/],
     [document => { document.meshes[0].primitives[0].targets = [{ POSITION: 0 }]; }, /Morph/],
-    [document => { document.meshes[0].primitives[0].attributes.COLOR_0 = 0; }, /Vertex colors/],
+    [document => { document.meshes[0].primitives[0].attributes.COLOR_0 = 1; }, /COLOR_0/],
     [document => { document.meshes[0].primitives[0].mode = 1; }, /TRIANGLES/],
     [document => { document.materials[0].alphaMode = 'BLEND'; }, /alpha mode/],
     [document => { document.materials[0].doubleSided = true; }, /Double-sided/],
@@ -192,4 +202,40 @@ test('URL loading streams within maxBytes and cancels oversized responses', asyn
   })));
   await assert.rejects(loadGltf('https://example.invalid/asset.glb', { maxBytes: 80 }), /maxBytes/);
   assert.equal(cancelled, true);
+});
+
+test('linear RGB and normalized Uint8 vertex colors become shared Float32 RGB geometry', async () => {
+  const inputs = [
+    { colors: new Float32Array([0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]), type: 'VEC3', normalized: false },
+    { colors: new Uint8Array([0, 128, 255, 255, 64, 0, 128, 255, 64]), type: 'VEC3', normalized: true },
+    { colors: new Uint8Array([0, 128, 255, 255, 255, 64, 0, 255, 128, 255, 64, 255]), type: 'VEC4', normalized: true },
+  ];
+  for (const input of inputs) {
+    const asset = await parseGltf(triangleAsset((document, append) => {
+      document.meshes[0].primitives[0].attributes.COLOR_0 = append(input.colors, input.type, input.normalized);
+    }));
+    const colors = asset.parts[0].geometry.colors;
+    assert.ok(colors instanceof Float32Array);
+    assert.equal(colors.length, 9);
+    assert.equal(asset.parts[0].geometry, asset.parts[1].geometry);
+    for (let vertex = 0; vertex < 3; vertex++) {
+      for (let component = 0; component < 3; component++) {
+        const value = input.colors[vertex * (input.type === 'VEC4' ? 4 : 3) + component];
+        const expected = input.normalized ? value / 255 : value;
+        assert.ok(Math.abs(colors[vertex * 3 + component] - expected) < 1e-7);
+      }
+    }
+    asset.dispose();
+  }
+});
+
+test('vertex colors reject nonopaque alpha and invalid RGB factors explicitly', async () => {
+  for (const [colors, type, expected] of [
+    [new Float32Array([1, 0, 0, 1, 0, 1, 0, 0.5, 0, 0, 1, 1]), 'VEC4', /Vertex alpha/],
+    [new Float32Array([1, 0, 0, 0, -0.1, 0, 0, 0, 1]), 'VEC3', /COLOR_0 RGB/],
+  ]) {
+    await assert.rejects(parseGltf(triangleAsset((document, append) => {
+      document.meshes[0].primitives[0].attributes.COLOR_0 = append(colors, type);
+    })), expected);
+  }
 });

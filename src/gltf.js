@@ -3,8 +3,8 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
 export const GLTF_CAPABILITIES = Object.freeze({
   formats: ['glb', 'gltf'],
-  supported: ['triangle meshes', 'world transforms', 'rigid node animations', 'PNG/JPEG base color textures', 'TEXCOORD_0', 'metallic roughness factors', 'emissive factors', 'KHR_mesh_quantization', 'KHR_materials_emissive_strength'],
-  unsupported: ['skinning', 'morph targets', 'vertex colors', 'alpha blending or masking', 'double-sided materials', 'normal/occlusion/emissive/metallic-roughness textures', 'texture transforms', 'DRACO', 'KTX2', 'GPU instancing'],
+  supported: ['triangle meshes', 'world transforms', 'rigid node animations', 'PNG/JPEG base color textures', 'TEXCOORD_0', 'linear RGB vertex colors', 'metallic roughness factors', 'emissive factors', 'KHR_mesh_quantization', 'KHR_materials_emissive_strength'],
+  unsupported: ['skinning', 'morph targets', 'vertex alpha below one', 'alpha blending or masking', 'double-sided materials', 'normal/occlusion/emissive/metallic-roughness textures', 'texture transforms', 'DRACO', 'KTX2', 'GPU instancing'],
 });
 
 const DEFAULT_MAX_BYTES = 32 * 1024 * 1024;
@@ -80,12 +80,21 @@ function validateDocument(document, limits) {
     for (const primitive of mesh.primitives ?? []) {
       if ((primitive.mode ?? 4) !== 4) throw new Error('Only glTF TRIANGLES primitives are supported.');
       if (primitive.targets?.length) throw new Error('Morph targets are unsupported.');
-      if (primitive.attributes?.COLOR_0 !== undefined) throw new Error('Vertex colors are unsupported.');
       const position = document.accessors?.[primitive.attributes?.POSITION];
       if (!position || position.type !== 'VEC3' || !Number.isSafeInteger(position.count) || position.count < 3) {
         throw new Error('Each mesh primitive requires a valid POSITION accessor.');
       }
       vertices += position.count;
+      const colorIndex = primitive.attributes?.COLOR_0;
+      if (colorIndex !== undefined) {
+        const color = document.accessors?.[colorIndex];
+        if (!color || !['VEC3', 'VEC4'].includes(color.type) || color.count !== position.count) {
+          throw new Error('COLOR_0 requires RGB or RGBA values matching the POSITION vertex count.');
+        }
+        if (color.componentType !== 5126 && (![5121, 5123].includes(color.componentType) || !color.normalized)) {
+          throw new Error('COLOR_0 requires float or normalized unsigned integer components.');
+        }
+      }
       for (const [name, size] of [['NORMAL', 'VEC3'], ['TEXCOORD_0', 'VEC2']]) {
         const accessorIndex = primitive.attributes?.[name];
         const accessor = document.accessors?.[accessorIndex];
@@ -351,7 +360,29 @@ function convertGeometry(source, mirrored) {
   const uv = source.getAttribute('uv');
   if (uv && uv.count !== position.count) throw new Error('TEXCOORD_0 and POSITION counts must match.');
   if (uv) geometry.uvs = copyAttribute(uv, 2);
+  const color = source.getAttribute('color');
+  if (color) geometry.colors = convertVertexColors(color, position.count);
   return geometry;
+}
+
+function convertVertexColors(attribute, vertexCount) {
+  if (attribute.count !== vertexCount || ![3, 4].includes(attribute.itemSize)) {
+    throw new Error('COLOR_0 requires matching RGB or RGBA vertex values.');
+  }
+  const values = copyAttribute(attribute, attribute.itemSize);
+  const colors = new Float32Array(vertexCount * 3);
+  for (let vertex = 0; vertex < vertexCount; vertex++) {
+    const offset = vertex * attribute.itemSize;
+    if (attribute.itemSize === 4 && values[offset + 3] !== 1) {
+      throw new Error('Vertex alpha is unsupported. Every COLOR_0 alpha value must equal one.');
+    }
+    for (let component = 0; component < 3; component++) {
+      const value = values[offset + component];
+      if (value < 0 || value > 1) throw new Error('COLOR_0 RGB values must be within zero and one.');
+      colors[vertex * 3 + component] = value;
+    }
+  }
+  return colors;
 }
 
 function convertMaterial(source, limits, maps) {
