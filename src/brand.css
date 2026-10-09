@@ -4,16 +4,16 @@
 .brand .brand-mark { flex-shrink:0; width:34px; height:34px; margin-right:10px; }
 button .icon, a .icon { margin-right:7px; }
 body { font-family:ui-sans-serif,-apple-system,system-ui,"Segoe UI",Helvetica,Arial,sans-serif; }
-:focus-visible { outline:2px solid var(--focus); outline-offset:4px; }
-button, select { border-radius:var(--radius); }
+body :focus-visible { outline:2px solid var(--focus); outline-offset:4px; }
+body button, body select { border-radius:var(--radius); }
 button[aria-pressed=true] { background:#ffffff20; color:#fff; }
 .controls button:not(.swatch)[aria-pressed=true], .layer-actions button[aria-pressed=true] { background:#ffffff20; color:#fff; }
-.primary { background:#ececec; color:#171717; }
-.primary:hover { background:#fff; }
-input[type=range] { accent-color:#d7d7d7; }
+body .primary { background:#ececec; color:#171717; }
+body .primary:hover { background:#fff; }
+body input[type=range] { accent-color:#d7d7d7; }
 .studio-nav a[aria-current], nav a[aria-current] { color:#ececec; }
 .toolbar, .world-header { z-index:3; }
-.controls, .landscape-controls { background:#171717e8; border:1px solid #ffffff1c; border-radius:var(--panel-radius); backdrop-filter:blur(16px); }
+body .controls, body .landscape-controls { background:#171717e8; border:1px solid #ffffff1c; border-radius:var(--panel-radius); backdrop-filter:blur(16px); }
 .demo-links { display:flex; gap:12px; font-size:12px; }
 .demo-links a { color:#ddd; text-decoration:none; }
 .demo-presets { display:flex; flex-wrap:wrap; gap:6px; margin:12px 0; }
