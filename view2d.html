@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#1e2327">
+    <title>2D & orthographic views · 67.js</title>
+  </head>
+  <body>
+    <main class="workspace">
+      <header class="toolbar">
+        <a class="brand" href="/">67<span>.js</span></a>
+        <h1>2D & views</h1>
+        <label class="scene-picker">Scene <select id="scene"><option value="poster">Vector poster</option><option value="model">WALL·E</option></select></label>
+        <nav id="view-controls" aria-label="Camera view" hidden>
+          <button data-view="front" aria-pressed="true">Front</button>
+          <button data-view="top" aria-pressed="false">Top</button>
+          <button data-view="right" aria-pressed="false">Right</button>
+          <button data-view="perspective" aria-pressed="false">Perspective</button>
+        </nav>
+        <div class="toolbar-actions"><button id="fit">Fit view</button><button id="download" class="primary">Save PNG <span aria-hidden="true">↗</span></button></div>
+      </header>
+      <section class="stage" aria-label="Interactive scene">
+        <canvas id="viewport" tabindex="0" aria-label="Vector poster. Drag to pan, scroll to zoom. Arrow keys pan, plus and minus zoom."></canvas>
+        <div class="scene-caption"><strong id="scene-title">Orbital field</strong><span id="view-title">Flat vector geometry · orthographic</span></div>
+        <p class="notice" id="notice" role="status" hidden></p>
+      </section>
+      <footer class="timeline">
+        <button id="play" aria-label="Play timeline">▶ Play</button>
+        <label for="time" id="timeline-label">Timeline</label>
+        <input id="time" type="range" min="0" max="8" step="0.01" value="0">
+        <output id="time-value" for="time">0.00 / 8.00 s</output>
+        <span class="metrics" id="metrics"></span>
+      </footer>
+      <p class="hint">Drag to pan · Scroll to zoom · F to fit <a href="/object.html">Open 3D studio ↗</a></p>
+    </main>
+    <script type="module" src="/src/view2d.js"></script>
+  </body>
+</html>
