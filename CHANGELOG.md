@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Add owned, bounded BVH mesh queries for static surface contact, ray hits and validated closed-solid containment.
+- Close primitive seams exactly in Float32 and validate detail counts before geometry allocation.
 - Add retained scene hierarchy, pivots and atomic reparenting with world pose preservation.
 - Add bounded lathe, extrusion with holes and bevels, and curve tube modeling through an optional addon.
 - Add a lantern modeling study with textured materials, orbit controls and PNG capture.

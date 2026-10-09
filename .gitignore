@@ -14,6 +14,8 @@ public/physics.md
 public/export-glb.md
 public/sculpt.md
 public/surface.md
+public/mesh-query.md
+public/primitives.md
 artifacts/
 .env
 .env.*

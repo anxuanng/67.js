@@ -65,7 +65,7 @@ try {
       if (entry.patch) parts.push({ name: 'Badge', geometry: entry.patch, matrix, material: orange, castShadow: false });
       const renderer = new Renderer67(canvas, parts, {
         world: true, ground: false, samples: 2, pixelRatio: 1, hdr: true, memoryBudgetMiB: 96,
-        environment: { keyStrength: 0.8, fillStrength: 0.5, ambientStrength: 0.4 },
+        environment: { keyIntensity: 0.8, fillIntensity: 0.5, ambientIntensity: 0.4 },
       });
       function draw(time) {
         const angle = Math.sin(time) * 0.25;

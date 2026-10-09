@@ -115,6 +115,11 @@ Static `sculptGeometry` strokes return new geometry before renderer upload. Read
 `createSurfacePatch` clips a curved overlay with target-local clearance. Read `docs/surface.md` and share the target's retained matrix.
 It rejects skin, morph, assembly and procedural targets. It does not detect arbitrary mesh penetration or provide animated shrinkwrap.
 
+Static `createMeshQueryIndex` copies geometry into an owned disposable BVH. Read `docs/mesh-query.md` for numerical and work limits.
+Pass current affine matrices to `createMeshPairQuery(...).evaluate()`; rebuild indices after editing geometry.
+Closed-solid containment requires two `solid: true` indices. Surface contact does not prove volume penetration or z-fighting.
+Use `docs/primitives.md` for exact seam closure and preallocation bounds. Preserve indeterminate and budget errors rather than reporting a miss.
+
 `cameraView('front' | 'right' | 'top')` returns an orthographic camera with the correct up vector.
 `fitOrthographicHeight(bounds, view, aspect)` frames both model width and height.
 The `unlit` tag and a front orthographic camera produce flat XY geometry.

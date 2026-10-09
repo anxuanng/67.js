@@ -89,6 +89,12 @@ Source-only `addons/surface` creates projector-clipped curved patches. Read `doc
 Share the target's retained matrix to follow rigid motion. Skin, morph, assembly and procedural targets reject rather than returning stale patches.
 Surface clearance prevents overlapping layers in this workflow. It does not detect general mesh penetration or provide whole-object shrinkwrap.
 
+Source-only `addons/mesh-query` owns copied static geometry in disposable BVH indices. Read `docs/mesh-query.md` before querying.
+Use `solid: true` indices and `mode: 'closed-solids'` to distinguish boundary contact, containment and separation.
+Surface contact does not prove volume penetration or identify z-fighting. Never substitute surface-only results for containment.
+Pass current affine matrices explicitly, rebuild after geometry edits, and preserve budget/precision errors instead of treating them as misses.
+Read `docs/primitives.md` for subdivision bounds and exact seam closure. Skin, morph and shader-deformed surfaces require geometry matching the visible pose.
+
 GLB support excludes transparent and double-sided materials and compressed geometry. Unsupported features require visible errors.
 
 The optional GLB decoder uses Three.js GLTFLoader. The renderer remains 67.js.

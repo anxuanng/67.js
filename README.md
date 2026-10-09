@@ -173,6 +173,11 @@ The source [GLB exporter](docs/export-glb.md) preserves opaque vertex colors, UV
 
 Source-only [sculpt brushes](docs/sculpt.md) apply bounded inflation, directional displacement and neighborhood smoothing through serializable strokes.
 The [surface patch addon](docs/surface.md) clips a badge onto a curved mesh with geometric clearance and follows its retained rigid transform.
+
+Source-only [mesh queries](docs/mesh-query.md) use owned BVH indices to detect boundary contact, ray hits and containment between validated closed solids.
+Surface contact does not measure penetration depth or diagnose z-fighting. Queries accept static geometry and explicit affine transforms.
+The [primitive contract](docs/primitives.md) defines bounded subdivision counts and exact seam closure for mesh validation.
+
 The trailer's rigid actor joints now use authored clips, with attached headwear and hands moving together.
 The [optional asset addon](docs/gltf.md) loads glTF/GLB meshes, base-color textures, opaque vertex colors and rigid node animation.
 

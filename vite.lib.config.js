@@ -21,6 +21,7 @@ export default defineConfig({
         modeling: 'src/modeling.js',
         sculpt: 'src/sculpt.js',
         surface: 'src/surface.js',
+        'mesh-query': 'src/mesh-query.js',
         physics: 'src/physics.js',
       },
       formats: ['es'],

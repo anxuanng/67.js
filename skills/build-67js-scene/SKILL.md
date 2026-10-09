@@ -26,6 +26,7 @@ Use `simplify-code` and `engineering-workflows` for implementation.
 - A GLB asset viewer uses the optional `src/gltf.js` addon and `src/asset-viewer.js`.
 - Static brush sculpting uses optional `src/sculpt.js` and the checkout's `docs/sculpt.md`.
 - A curved surface badge uses optional `src/surface.js` and the checkout's `docs/surface.md`.
+- Static contact, ray hits or closed-solid containment use optional `src/mesh-query.js` and the checkout's `docs/mesh-query.md`.
 - An image or video export uses `render-67js-media`.
 
 Read [scene-contract.md](references/scene-contract.md) before creating parts or changing materials.

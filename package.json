@@ -37,7 +37,9 @@
     "docs/gltf-morph.md",
     "docs/export-glb.md",
     "docs/sculpt.md",
-    "docs/surface.md"
+    "docs/surface.md",
+    "docs/mesh-query.md",
+    "docs/primitives.md"
   ],
   "main": "./build/67.module.js",
   "module": "./build/67.module.js",
@@ -52,6 +54,7 @@
     "./addons/modeling": "./build/modeling.js",
     "./addons/sculpt": "./build/sculpt.js",
     "./addons/surface": "./build/surface.js",
+    "./addons/mesh-query": "./build/mesh-query.js",
     "./addons/physics": "./build/physics.js",
     "./package.json": "./package.json"
   },
@@ -92,6 +95,7 @@
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "three": "0.186.1",
+    "three-mesh-bvh": "0.9.16",
     "vite": "8.3.4",
     "wrangler": "4.149.0"
   }

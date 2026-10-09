@@ -2,6 +2,52 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createHash } from 'node:crypto';
 import { box, cylinder, sphere, torus } from '../src/geometry.js';
+
+test('closed primitives have exact Float32 seams and oppositely oriented paired edges', () => {
+  for (const [name, mesh] of [
+    ['sphere', sphere(16, 12)], ['torus', torus(0.08, 16, 8)],
+    ['cylinder', cylinder(16, 0.025, 3)], ['box', box()],
+  ]) {
+    const vertices = new Map();
+    const welded = [];
+    for (let offset = 0; offset < mesh.positions.length; offset += 3) {
+      const key = mesh.positions.subarray(offset, offset + 3).join(',');
+      if (!vertices.has(key)) vertices.set(key, vertices.size);
+      welded.push(vertices.get(key));
+    }
+    const edges = new Map();
+    for (let offset = 0; offset < mesh.indices.length; offset += 3) {
+      const triangle = Array.from(mesh.indices.subarray(offset, offset + 3), index => welded[index]);
+      assert.equal(new Set(triangle).size, 3, name);
+      for (let corner = 0; corner < 3; corner++) {
+        const first = triangle[corner];
+        const second = triangle[(corner + 1) % 3];
+        const key = `${Math.min(first, second)}:${Math.max(first, second)}`;
+        const edge = edges.get(key) ?? { count: 0, direction: 0 };
+        edge.count++;
+        edge.direction += first < second ? 1 : -1;
+        edges.set(key, edge);
+      }
+    }
+    assert.ok([...edges.values()].every(edge => edge.count === 2 && edge.direction === 0), `${name} has exact closed, oriented edges.`);
+  }
+});
+
+test('primitive validation rejects unsafe allocations and invalid shapes before sampling', () => {
+  assert.throws(() => sphere(2048, 2048), /million vertices/);
+  assert.throws(() => sphere(Infinity, 40), /segments/);
+  assert.throws(() => sphere(64, 0), /rings/);
+  assert.throws(() => torus(1e-50), /positive/);
+  assert.throws(() => torus(0.1, 16, 8, 0), /arc/);
+  assert.throws(() => torus(0.1, 16, 8, 1e-50), /arc/);
+  assert.throws(() => torus(0.1, 16, 8, Math.PI * 3), /arc/);
+  assert.throws(() => torus(0.1, 16, 8, Math.PI, NaN), /Float32/);
+  assert.throws(() => cylinder(16, 0.6), /bevel/);
+  assert.throws(() => cylinder(16, 0.025, 0), /bevelSegments/);
+  assert.throws(() => box(-0.1), /bevel/);
+  assert.throws(() => box(1e-50), /underflow/);
+  assert.throws(() => box(0.08, 1000000), /subdivisions/);
+});
 import { createModel } from '../src/model.js';
 
 test('sphere UVs preserve separate seam coordinates and cover every vertex', () => {
@@ -173,7 +219,7 @@ test('model respects the renderer contract, instancing and authored bounds', () 
   console.log(JSON.stringify({ parts: parts.length, geometries: geometries.size, triangleCount, meshBytes, sections: sections.size, bounds: { minimum, maximum }, expandedBounds: { minimum: expandedMinimum, maximum: expandedMaximum } }));
 });
 
-test('detail metadata preserves the assembled WALL-E appearance byte for byte', () => {
+test('assembled WALL-E geometry and instance snapshot stays stable after exact seam closure', () => {
   const parts = createModel();
   const hash = createHash('sha256');
   for (const part of parts) {
@@ -185,5 +231,5 @@ test('detail metadata preserves the assembled WALL-E appearance byte for byte', 
     }
   }
   assert.equal(parts.length, 574);
-  assert.equal(hash.digest('hex'), '8dc74e090405d078bdde805232da69fd5a5ed20431544d53eb30968e03d9da91');
+  assert.equal(hash.digest('hex'), 'e9479c0c3061a32645e5510346e964be9ac8505135c7342a83295f7373d894b0');
 });

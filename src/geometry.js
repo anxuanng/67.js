@@ -1,4 +1,27 @@
 const FULL_TURN = Math.PI * 2;
+const MAX_PRIMITIVE_VERTICES = 1_000_000;
+
+function integer(value, minimum, maximum, name) {
+  if (!Number.isInteger(value) || value < minimum || value > maximum) {
+    throw new RangeError(`${name} must be an integer from ${minimum} to ${maximum}.`);
+  }
+}
+
+function finiteFloat(value, name) {
+  if (!Number.isFinite(value) || !Number.isFinite(Math.fround(value))) {
+    throw new TypeError(`${name} must be a finite Float32 value.`);
+  }
+}
+
+function primitiveBudget(vertices) {
+  if (vertices > MAX_PRIMITIVE_VERTICES) {
+    throw new RangeError('Primitive exceeds one million vertices. Reduce segments or subdivisions.');
+  }
+}
+
+function periodicAngle(fraction) {
+  return fraction === 1 ? 0 : fraction * FULL_TURN;
+}
 
 function geometry(positions, normals, indices) {
   return {
@@ -49,10 +72,14 @@ function surface(columns, rows, sample) {
 }
 
 export function sphere(segments = 64, rings = 40) {
+  integer(segments, 3, 2048, 'segments');
+  integer(rings, 2, 2048, 'rings');
+  primitiveBudget((segments + 1) * (rings + 1));
   const result = surface(segments, rings, (longitude, latitude) => {
-    const angle = longitude * FULL_TURN;
+    const angle = periodicAngle(longitude);
     const elevation = latitude * Math.PI;
-    const position = [Math.sin(elevation) * Math.cos(angle), Math.cos(elevation), Math.sin(elevation) * Math.sin(angle)];
+    const radial = latitude === 0 || latitude === 1 ? 0 : Math.sin(elevation);
+    const position = [radial * Math.cos(angle), Math.cos(elevation), radial * Math.sin(angle)];
     return { position, normal: position };
   });
   return result;
@@ -60,16 +87,26 @@ export function sphere(segments = 64, rings = 40) {
 
 // The torus lies in XY, facing +Z. Partial arcs are useful for interrupted armor rings.
 export function torus(tubeRadius = 0.08, segments = 96, sides = 24, arc = FULL_TURN, start = 0) {
+  finiteFloat(tubeRadius, 'tubeRadius');
+  finiteFloat(arc, 'arc');
+  finiteFloat(start, 'start');
+  if (Math.fround(tubeRadius) <= 0 || Math.fround(arc) <= 0 || arc > FULL_TURN) {
+    throw new RangeError('tubeRadius must remain positive at Float32 precision and arc must be within (0, 2PI].');
+  }
+  integer(segments, 3, 2048, 'segments');
+  integer(sides, 3, 128, 'sides');
+  primitiveBudget((segments + 1) * (sides + 1) + (arc === FULL_TURN ? 0 : 2 * (sides + 2)));
+  start %= FULL_TURN;
   const body = surface(segments, sides, (along, around) => {
-    const angle = start + along * arc;
-    const tubeAngle = around * FULL_TURN;
+    const angle = start + (arc === FULL_TURN && along === 1 ? 0 : along * arc);
+    const tubeAngle = periodicAngle(around);
     const radial = 1 + tubeRadius * Math.cos(tubeAngle);
     return {
       position: [radial * Math.cos(angle), radial * Math.sin(angle), tubeRadius * Math.sin(tubeAngle)],
       normal: [Math.cos(angle) * Math.cos(tubeAngle), Math.sin(angle) * Math.cos(tubeAngle), Math.sin(tubeAngle)],
     };
   });
-  if (Math.abs(arc - FULL_TURN) < 1e-8) return body;
+  if (arc === FULL_TURN) return body;
   const positions = [...body.positions];
   const normals = [...body.normals];
   const indices = [...body.indices];
@@ -83,7 +120,7 @@ export function torus(tubeRadius = 0.08, segments = 96, sides = 24, arc = FULL_T
     normals.push(...normal);
     uvs.push(0.5, 0.5);
     for (let index = 0; index <= sides; index++) {
-      const tubeAngle = index / sides * FULL_TURN;
+      const tubeAngle = periodicAngle(index / sides);
       const radial = 1 + tubeRadius * Math.cos(tubeAngle);
       positions.push(radial * Math.cos(angle), radial * Math.sin(angle), tubeRadius * Math.sin(tubeAngle));
       normals.push(...normal);
@@ -98,6 +135,13 @@ export function torus(tubeRadius = 0.08, segments = 96, sides = 24, arc = FULL_T
 }
 
 export function cylinder(segments = 80, bevel = 0.025, bevelSegments = 6) {
+  integer(segments, 3, 2048, 'segments');
+  integer(bevelSegments, 1, 128, 'bevelSegments');
+  finiteFloat(bevel, 'bevel');
+  if (bevel < 0 || bevel > 0.5 || bevel > 0 && Math.fround(bevel) === 0) {
+    throw new RangeError('Cylinder bevel must be within zero and 0.5 without Float32 underflow.');
+  }
+  primitiveBudget((segments + 1) * 2 * (bevelSegments + 1) + 2 * (segments + 2));
   const profile = [];
   for (let index = 0; index <= bevelSegments; index++) {
     const angle = -Math.PI / 2 + index / bevelSegments * Math.PI / 2;
@@ -108,7 +152,7 @@ export function cylinder(segments = 80, bevel = 0.025, bevelSegments = 6) {
     profile.push({ radius: 1 - bevel + bevel * Math.cos(angle), height: 0.5 - bevel + bevel * Math.sin(angle), radialNormal: Math.cos(angle), verticalNormal: Math.sin(angle) });
   }
   const wall = surface(segments, profile.length - 1, (along, height) => {
-    const angle = along * FULL_TURN;
+    const angle = periodicAngle(along);
     const ring = profile[Math.round(height * (profile.length - 1))];
     return {
       position: [ring.radius * Math.cos(angle), ring.height, ring.radius * Math.sin(angle)],
@@ -123,7 +167,7 @@ export function cylinder(segments = 80, bevel = 0.025, bevelSegments = 6) {
     positions.push(0, sign * 0.5, 0);
     normals.push(0, sign, 0);
     for (let index = 0; index <= segments; index++) {
-      const angle = index / segments * FULL_TURN;
+      const angle = periodicAngle(index / segments);
       positions.push((1 - bevel) * Math.cos(angle), sign * 0.5, (1 - bevel) * Math.sin(angle));
       normals.push(0, sign, 0);
     }
@@ -136,6 +180,12 @@ export function cylinder(segments = 80, bevel = 0.025, bevelSegments = 6) {
 }
 
 export function box(bevel = 0.08, subdivisions = 6) {
+  finiteFloat(bevel, 'bevel');
+  if (bevel < 0 || bevel > 0.5 || bevel > 0 && Math.fround(bevel) === 0) {
+    throw new RangeError('Box bevel must be within zero and 0.5 without Float32 underflow.');
+  }
+  integer(subdivisions, 1, 128, 'subdivisions');
+  primitiveBudget(bevel === 0 ? 24 : 6 * (2 * subdivisions + 2) ** 2);
   const positions = [];
   const normals = [];
   const indices = [];
