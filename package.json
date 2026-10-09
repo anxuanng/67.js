@@ -1,6 +1,6 @@
 {
-  "name": "67js",
-  "version": "0.2.1",
+  "name": "@codepawl_vn/67js",
+  "version": "0.2.2",
   "private": false,
   "type": "module",
   "description": "A focused WebGL2 renderer and procedural 3D studio",

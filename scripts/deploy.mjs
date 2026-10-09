@@ -17,10 +17,14 @@ run(process.execPath, ['node_modules/vite/bin/vite.js', 'build']);
 run(process.execPath, ['node_modules/wrangler/bin/wrangler.js', 'deploy']);
 const release = JSON.parse(await readFile('dist/release.json', 'utf8'));
 let response;
+let live;
 for (let attempt = 0; attempt < 6; attempt++) {
   try {
-    response = await fetch('https://67js.codepawl.com/release.json', { cache: 'no-store', signal: AbortSignal.timeout(10000) });
-    if (response.ok) break;
+    response = await fetch(`https://67js.codepawl.com/release.json?commit=${commit}`, { cache: 'no-store', signal: AbortSignal.timeout(10000) });
+    if (response.ok) {
+      live = await response.json();
+      if (live.commit === commit && live.version === release.version && live.integrity === release.integrity) break;
+    }
   } catch (error) {
     if (attempt === 5) throw error;
   }
@@ -28,6 +32,5 @@ for (let attempt = 0; attempt < 6; attempt++) {
   await delay(5000);
 }
 if (!response.ok) throw new Error(`Live release verification failed: HTTP ${response.status}.`);
-const live = await response.json();
 if (live.commit !== commit || live.version !== release.version || live.integrity !== release.integrity) throw new Error('Live release differs from the pushed build.');
 console.log(`Verified live ${live.packageName}@${live.version} at ${live.commit}.`);

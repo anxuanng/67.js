@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.2
+
+- Publish under `@codepawl_vn/67js` because npm rejects the unscoped name.
+- Install with the local alias `67js` to preserve the short import path.
+
 ## 0.2.1
 
 - Include the bundled gl-matrix copyright notice in package and browser downloads.
