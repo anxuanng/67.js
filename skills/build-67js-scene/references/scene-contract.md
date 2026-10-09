@@ -120,6 +120,12 @@ Pass current affine matrices to `createMeshPairQuery(...).evaluate()`; rebuild i
 Closed-solid containment requires two `solid: true` indices. Surface contact does not prove volume penetration or z-fighting.
 Use `docs/primitives.md` for exact seam closure and preallocation bounds. Preserve indeterminate and budget errors rather than reporting a miss.
 
+Static `shrinkwrapGeometry(source, target, options)` returns new target-local geometry and query statistics.
+Read `docs/shrinkwrap.md` for nearest/project modes, total query budgets and explicit miss handling.
+Share the target matrix with the wrapped part. Local distances are not world distances under nonuniform target scale.
+Compute once before renderer upload. Matching topology permits relative morph animation instead of rebuilding the BVH every frame.
+Vertex clearance does not certify every triangle interior against a curved or nonconvex target. Use the clipping patch for conforming surface overlays.
+
 `cameraView('front' | 'right' | 'top')` returns an orthographic camera with the correct up vector.
 `fitOrthographicHeight(bounds, view, aspect)` frames both model width and height.
 The `unlit` tag and a front orthographic camera produce flat XY geometry.

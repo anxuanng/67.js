@@ -95,6 +95,11 @@ Surface contact does not prove volume penetration or identify z-fighting. Never 
 Pass current affine matrices explicitly, rebuild after geometry edits, and preserve budget/precision errors instead of treating them as misses.
 Read `docs/primitives.md` for subdivision bounds and exact seam closure. Skin, morph and shader-deformed surfaces require geometry matching the visible pose.
 
+Source-only `addons/shrinkwrap` returns {geometry,stats} in target-local coordinates. Read `docs/shrinkwrap.md` before choosing nearest/project modes.
+Supply sourceToTarget explicitly for different local frames. Share the target matrix with the output part and keep the total callback budget.
+Nearest projection can collapse vertices on coarse meshes; preserve the error and refine the target or choose a suitable projection direction.
+Vertex clearance does not certify whole-triangle clearance. Compatible static output can become a GPU morph target without repeating queries per frame.
+
 GLB support excludes transparent and double-sided materials and compressed geometry. Unsupported features require visible errors.
 
 The optional GLB decoder uses Three.js GLTFLoader. The renderer remains 67.js.

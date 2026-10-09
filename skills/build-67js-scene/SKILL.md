@@ -27,6 +27,7 @@ Use `simplify-code` and `engineering-workflows` for implementation.
 - Static brush sculpting uses optional `src/sculpt.js` and the checkout's `docs/sculpt.md`.
 - A curved surface badge uses optional `src/surface.js` and the checkout's `docs/surface.md`.
 - Static contact, ray hits or closed-solid containment use optional `src/mesh-query.js` and the checkout's `docs/mesh-query.md`.
+- Static vertex wrapping uses optional `src/shrinkwrap.js` and the checkout's `docs/shrinkwrap.md`.
 - An image or video export uses `render-67js-media`.
 
 Read [scene-contract.md](references/scene-contract.md) before creating parts or changing materials.

@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Add bounded nearest-surface and directional shrinkwrap with counted queries, atomic output and shared normal reconstruction.
 - Add owned, bounded BVH mesh queries for static surface contact, ray hits and validated closed-solid containment.
 - Close primitive seams exactly in Float32 and validate detail counts before geometry allocation.
 - Add retained scene hierarchy, pivots and atomic reparenting with world pose preservation.

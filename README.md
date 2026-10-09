@@ -177,6 +177,8 @@ The [surface patch addon](docs/surface.md) clips a badge onto a curved mesh with
 Source-only [mesh queries](docs/mesh-query.md) use owned BVH indices to detect boundary contact, ray hits and containment between validated closed solids.
 Surface contact does not measure penetration depth or diagnose z-fighting. Queries accept static geometry and explicit affine transforms.
 The [primitive contract](docs/primitives.md) defines bounded subdivision counts and exact seam closure for mesh validation.
+The source [shrinkwrap addon](docs/shrinkwrap.md) wraps static vertices with nearest-surface or directional projection queries, preserving topology and UVs.
+Compatible results can become relative GPU morph targets, so animation reuses the computed shape instead of repeating the vertex queries every frame.
 
 The trailer's rigid actor joints now use authored clips, with attached headwear and hands moving together.
 The [optional asset addon](docs/gltf.md) loads glTF/GLB meshes, base-color textures, opaque vertex colors and rigid node animation.

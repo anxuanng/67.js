@@ -274,4 +274,17 @@ Core exports are available from `67js`:
 
 `67js/addons/canvas2d`: 2D recipes. `67js/addons/gltf`: optional asset decoding. These are separate imports to keep the core smaller.
 
-67.js currently targets WebGL2. There is no WebGPU backend, general physics engine, mesh editor, skeletal animation or Blender-style authoring UI. Adaptive quality, GPU timing and picking are roadmap work. See the homepage's release files for the installed version and the roadmap for planned behavior.
+67.js targets WebGL2. The published `0.3.3` package does not include the newer source APIs below. Check the installed package version and release metadata before using them.
+
+## Current source additions
+
+The current checkout adds authoring and animation APIs through separate modules:
+
+- [Scene hierarchy](scene-graph.md), [procedural modeling](modeling.md), [animation curves](animation-curves.md) and [clip mixing](animation-mixer.md).
+- [Skeletal animation](skinning.md), [relative morph targets](morph-targets.md) and [glTF morph animation](gltf-morph.md).
+- [Recorded Rapier physics](physics.md), including contacts, joints, limits and bounded motors.
+- [Static sculpt brushes](sculpt.md), [curved surface patches](surface.md) and [BVH mesh queries](mesh-query.md).
+- [Static shrinkwrap](shrinkwrap.md) through nearest-surface or directional projection, with bounded work and explicit miss handling.
+- [GLB snapshot export](export-glb.md), including vertex colors, UVs, HDR emission and current morph weights.
+
+These APIs do not provide a Blender-style editor, WebGPU backend or general asset compatibility. Mesh queries operate on static geometry. They do not automatically resolve collisions or diagnose z-fighting. The physics addon requires its separate Rapier dependency. See each module's contract for limits and disposal requirements.

@@ -5,6 +5,8 @@ const records = new WeakMap();
 const EPSILON = 1e-9;
 const INDEX_OPTIONS = new Set(['maxTriangles', 'maxVertices', 'memoryBudgetMiB', 'solid', 'maxValidationPairs']);
 const PAIR_OPTIONS = new Set(['mode', 'maxTriangleTests']);
+const NEAREST_OPTIONS = new Set(['maxDistance', 'maxTriangleTests']);
+const PROJECT_OPTIONS = new Set(['origin', 'direction', 'maxDistance', 'maxTriangleTests']);
 const DIRECTIONS = [[0, 0, 1], [1, 0.41421356237, 0.73205080757], [0.61803398875, 1, 0.27182818285], [0.17320508075, 0.44721359550, 1], [-1, 0.31622776602, 0.14142135624], [0.22360679775, -1, 0.70710678118]];
 
 function optionsObject(options, fields) {
@@ -290,6 +292,84 @@ function containment(record, point, counter) {
   throw new RangeError('Solid containment is indeterminate after bounded ray retries.');
 }
 
+function localVector(input, name) {
+  if ((!Array.isArray(input) && !ArrayBuffer.isView(input)) || input.length !== 3 ||
+      !Array.from(input).every(value => typeof value === 'number' && Number.isFinite(value) && Number.isFinite(Math.fround(value)))) {
+    throw new TypeError(`${name} requires three finite Float32-representable components.`);
+  }
+  return new Vector3(...input);
+}
+
+function queryLocalSurface(record, pointInput, directionInput, options) {
+  const originalPoint = localVector(pointInput, 'Query point');
+  const point = originalPoint.clone().sub(record.center).multiplyScalar(1 / record.scale);
+  if (Math.max(...point.toArray().map(Math.abs)) > 1e6) throw new RangeError('Query point exceeds the normalized precision domain.');
+  const maximum = options.maxDistance ?? Infinity;
+  if ((maximum !== Infinity && (!Number.isFinite(maximum) || !Number.isFinite(Math.fround(maximum)))) || maximum < 0) {
+    throw new RangeError('maxDistance must be nonnegative and Float32-representable, or Infinity.');
+  }
+  const counter = budget(integer(options.maxTriangleTests ?? 2_000_000, 100_000_000, 'maxTriangleTests'), 'maxTriangleTests');
+  let ray;
+  if (directionInput !== undefined) {
+    const direction = localVector(directionInput, 'Projection direction');
+    if (direction.length() === 0) throw new RangeError('Projection direction must be nonzero.');
+    ray = new Ray(point, direction.normalize());
+  }
+  let bestDistance = maximum / record.scale;
+  let bestLocalDistance = maximum;
+  let bestTriangle = Infinity;
+  let bestPoint;
+  let bestNormal;
+  let bestWeights;
+  let failure;
+  const candidate = new Vector3();
+  const candidateLocal = new Vector3();
+  const boundsPoint = new Vector3();
+  record.bvh.shapecast({
+    boundsTraverseOrder(bounds) {
+      if (!ray) return bounds.clampPoint(point, boundsPoint).distanceTo(point);
+      // Ray.intersectBox returns the exit when the origin is inside. The lower bound is zero there.
+      if (bounds.containsPoint(point)) return 0;
+      return ray.intersectBox(bounds, boundsPoint) ? boundsPoint.distanceTo(point) : Infinity;
+    },
+    intersectsBounds: (bounds, leaf, score) => Number.isFinite(score) && score <= bestDistance + EPSILON,
+    intersectsTriangle(triangle, triangleIndex) {
+      try {
+        counter.charge();
+        if (ray) {
+          if (!ray.intersectTriangle(triangle.a, triangle.b, triangle.c, false, candidate)) return false;
+        } else {
+          triangle.closestPointToPoint(point, candidate);
+        }
+        const distance = candidate.distanceTo(point);
+        if (!Number.isFinite(distance)) throw new RangeError('Surface query exceeds the numerical precision domain.');
+        candidateLocal.copy(candidate).multiplyScalar(record.scale).add(record.center);
+        const localDistance = candidateLocal.distanceTo(originalPoint);
+        // Apply the caller's cutoff in its original frame, avoiding normalized subtraction at exact endpoints.
+        if (localDistance > bestLocalDistance || (localDistance === bestLocalDistance && triangleIndex >= bestTriangle)) return false;
+        const weights = triangle.getBarycoord(candidate, new Vector3());
+        const normal = triangle.getNormal(new Vector3());
+        if (!weights || !weights.toArray().every(Number.isFinite) || normal.length() === 0) throw new RangeError('Surface query has invalid triangle coordinates.');
+        bestDistance = distance;
+        bestLocalDistance = localDistance;
+        bestTriangle = triangleIndex;
+        bestPoint = candidateLocal.clone();
+        bestWeights = weights;
+        bestNormal = normal;
+        return false;
+      } catch (error) {
+        failure = error;
+        return true;
+      }
+    },
+  });
+  if (failure) throw failure;
+  if (!bestPoint) return { hit: null, triangleTests: counter.tests };
+  const distance = bestLocalDistance;
+  if (!Number.isFinite(distance) || !bestPoint.toArray().every(value => Number.isFinite(Math.fround(value)))) throw new RangeError('Surface query hit exceeds finite Float32 coordinates.');
+  return { hit: { point: bestPoint.toArray(), distance, triangle: bestTriangle, barycentric: bestWeights.toArray(), normal: bestNormal.toArray() }, triangleTests: counter.tests };
+}
+
 /** Copies static geometry into a private normalized BVH. Returned handles expose no Three.js objects. */
 export function createMeshQueryIndex(geometry, options = {}) {
   optionsObject(options, INDEX_OPTIONS);
@@ -321,6 +401,15 @@ export function createMeshQueryIndex(geometry, options = {}) {
       solid,
       memoryPlan,
       info: Object.freeze({ vertexCount: metadata.vertexCount, triangleCount: metadata.triangleCount, estimatedBytes: reservedBytes }),
+      nearest(point, options = {}) {
+        optionsObject(options, NEAREST_OPTIONS);
+        return queryLocalSurface(live(handle), point, undefined, options);
+      },
+      project(ray) {
+        optionsObject(ray, PROJECT_OPTIONS);
+        if (ray.direction === undefined) throw new TypeError('Projection requires direction.');
+        return queryLocalSurface(live(handle), ray.origin, ray.direction, ray);
+      },
       raycast(matrix, ray) {
         const current = live(handle);
         const state = matrixState(current, matrix);

@@ -66,4 +66,8 @@ Skin, morph, assembly and procedural target materials reject explicitly. Their v
 
 Antialiasing, material colors and shadow bias do not repair mesh penetration. This patch is a surface overlay, not a whole-object shrinkwrap modifier.
 
+The source [shrinkwrap addon](shrinkwrap.md) moves existing mesh vertices while retaining topology and UVs.
+Use [mesh queries](mesh-query.md) to check actual triangle contact or validated solid containment.
+Neither tool automatically resolves collisions or binds to an animated skin.
+
 The implementation follows the maintained [Three.js decal API](https://threejs.org/docs/pages/DecalGeometry.html). The distinction between render depth bias and geometry placement also appears in [Three.js material documentation](https://threejs.org/docs/pages/Material.html).

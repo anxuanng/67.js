@@ -143,6 +143,9 @@ A hit returns `{ point, distance, triangle, barycentric }`.
 Rays test both triangle sides.
 Ray hits can land on edges, so a single public ray hit does not establish solid containment.
 
+The source index also supplies counted target-local `nearest()` and `project()` helpers.
+Read the [shrinkwrap query contract](shrinkwrap.md#target-local-query-helpers) before mixing their coordinates with world-space rays.
+
 ## Design choice and references
 
 Two designs were considered: explicit owned indices with matrix arguments, and an implicit scene cache borrowing mutable geometry buffers.

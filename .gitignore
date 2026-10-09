@@ -16,6 +16,11 @@ public/sculpt.md
 public/surface.md
 public/mesh-query.md
 public/primitives.md
+public/shrinkwrap.md
+public/scene-graph.md
+public/modeling.md
+public/animation-curves.md
+public/animation-mixer.md
 artifacts/
 .env
 .env.*
