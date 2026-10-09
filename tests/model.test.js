@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { createHash } from 'node:crypto';
 import { box, cylinder, sphere, torus } from '../src/geometry.js';
 import { createModel } from '../src/model.js';
 
@@ -122,7 +123,8 @@ test('model respects the renderer contract, instancing and authored bounds', () 
     }
     const section = sections.get(part.assembly.section);
     if (section) {
-      assert.deepEqual(part.assembly, section, 'components in a mechanical section travel together');
+      assert.equal(part.assembly.layer, section.layer);
+      assert.deepEqual(part.assembly.offset, section.offset, 'components share their section translation before detail expansion');
     } else {
       sections.set(part.assembly.section, part.assembly);
     }
@@ -154,4 +156,19 @@ test('model respects the renderer contract, instancing and authored bounds', () 
   const meshBytes = Array.from(geometries).reduce((sum, mesh) => sum + mesh.positions.byteLength + mesh.normals.byteLength + mesh.indices.byteLength, 0);
   assert.ok(meshBytes < 1500000, 'geometry remains suitable for a compact export');
   console.log(JSON.stringify({ parts: parts.length, geometries: geometries.size, triangleCount, meshBytes, sections: sections.size, bounds: { minimum, maximum }, expandedBounds: { minimum: expandedMinimum, maximum: expandedMaximum } }));
+});
+
+test('detail metadata preserves the assembled WALL-E appearance byte for byte', () => {
+  const parts = createModel();
+  const hash = createHash('sha256');
+  for (const part of parts) {
+    hash.update(JSON.stringify({ name: part.name, matrix: Array.from(part.matrix), material: part.material }));
+  }
+  for (const mesh of new Set(parts.map(part => part.geometry))) {
+    for (const field of [mesh.positions, mesh.normals, mesh.indices]) {
+      hash.update(new Uint8Array(field.buffer, field.byteOffset, field.byteLength));
+    }
+  }
+  assert.equal(parts.length, 574);
+  assert.equal(hash.digest('hex'), '8dc74e090405d078bdde805232da69fd5a5ed20431544d53eb30968e03d9da91');
 });

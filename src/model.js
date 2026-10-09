@@ -1,5 +1,6 @@
 import { box, cylinder, sphere, torus } from './geometry.js';
 import { mat4, quat } from 'gl-matrix';
+import { addDetailOffsets } from './assembly.js';
 
 const QUARTER_TURN = Math.PI / 2;
 const materials = {
@@ -255,5 +256,5 @@ export function createModel() {
     }
     wire('Head sensor lead', [[horizontal, 2.44, 0.02], [horizontal * 0.8, 2.37, 0.02], [horizontal * 0.35, 2.33, 0.05]], 0.015, 'copper', headCore);
   }
-  return parts;
+  return addDetailOffsets(parts);
 }
