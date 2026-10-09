@@ -1,6 +1,6 @@
 # Sculpt with brush data
 
-Available in the current source, after published version 0.3.3. The optional addon does not add Three.js to the core renderer.
+Available from version `0.4.0`. The optional addon does not add Three.js to the core renderer.
 
 ```js
 import { sphere } from '@codepawlhq/67js';

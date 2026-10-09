@@ -1,5 +1,30 @@
 # Release verification
 
+## 0.4.0
+
+The source validation used Windows Chrome, ANGLE D3D11 and an RTX 3060.
+Publication and deployment require separate registry and live release checks.
+
+| Check | Measured result |
+| --- | --- |
+| Node tests | 295 tests passed for the complete source before release preparation. |
+| Consumer | The packed package imported every addon, including physics, mesh queries and shrinkwrap. |
+| Shrinkwrap | All 1,617 source vertices matched the target in nearest and projection modes at landscape and portrait sizes. |
+| GPU morph reuse | The computed projection and GPU morph endpoint produced identical pixels. Reverse seeks reproduced the original pixels without graphics errors. |
+| Contact query | Both wrapped fixture meshes remained separate from the target in triangle surface queries. This does not certify arbitrary meshes. |
+| Query work | Projection used 12,337 triangle callbacks after pruning, compared with 25,416 before pruning on the same fixture. |
+| Nearest query | 96 queries on a 4,992-triangle fixture matched exhaustive scan distances and points exactly. |
+| Build | The library, website and clean packed consumer passed. |
+
+Nearest query timings were 45.07 ms for index construction and 9.40 ms for 96 queries.
+An exhaustive scan took 33.43 ms for the same queries.
+These fixture measurements do not prove a general performance advantage over Three.js.
+Build the index once and reuse it.
+
+Shrinkwrap accepts static geometry and preserves topology. Clearance applies at vertices and does not guarantee separation over entire triangles.
+Physics recordings do not provide humanoid ragdoll binding. Transparent materials, compressed meshes and ray tracing remain unsupported.
+The procedural scientist still needs a recognizable face and improved cinematic presentation.
+
 ## 0.3.3
 
 These checks used Windows Chrome, ANGLE D3D11 and an RTX 3060.

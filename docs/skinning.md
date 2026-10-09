@@ -1,6 +1,6 @@
 # GPU skeletal deformation
 
-This API exists in the current source checkout. The published `0.3.3` package does not include it yet.
+Available from version `0.4.0`.
 
 `Renderer67` deforms skinned vertices in its color, shadow, and benchmark vertex shaders.
 The implementation uses four normalized influences per vertex and a mesh-local joint palette.

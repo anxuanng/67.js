@@ -1,6 +1,6 @@
 # Camera paths
 
-This API exists in the current source checkout. The published `0.3.3` package does not include it yet.
+Available from version `0.4.0`.
 
 `createCameraPath` samples camera position, target, vertical field of view and roll at an absolute time.
 The trailer uses this API for every shot. Its atom and gadget shots use curved camera moves.
@@ -67,7 +67,7 @@ A parallel up vector fails explicitly. This API does not choose a replacement or
 
 ## Framing a perspective camera
 
-`fitPerspectiveDistance(bounds, view, aspect, padding = 1.15)` returns an eye-to-target distance that contains all eight corners of a world-space axis-aligned box. It preserves the camera direction, up vector and vertical field of view. The target remains the caller's choice; use the bounds center when framing a subject.
+`fitPerspectiveDistance(bounds, view, aspect, padding = 1.15)` returns an eye-to-target distance that contains all eight corners of a world-space axis-aligned box. It preserves the camera direction, up vector and vertical field of view. The caller chooses the target. The bounds center provides a target for framing a subject.
 
 ```js
 import { fitPerspectiveDistance } from '67js';
@@ -82,7 +82,7 @@ view.eye = view.target.map((component, axis) => component + direction[axis] / le
 renderer.render(view);
 ```
 
-Padding applies to horizontal and vertical projected extents. The helper uses `fov = 45`, `near = 0.1` and `far = 100` when omitted, matching ordinary renderer projection defaults. World scenes using a different far plane must supply it explicitly. Invalid bounds, degenerate orientation, impossible clipping and fitted eyes that collapse after Float32 rounding throw. Large world coordinates need a local origin; the helper cannot restore precision lost by GPU matrices.
+Padding applies to horizontal and vertical projected extents. The helper uses `fov = 45`, `near = 0.1` and `far = 100` when omitted, matching ordinary renderer projection defaults. World scenes using a different far plane must supply it explicitly. Invalid bounds, degenerate orientation, impossible clipping and fitted eyes that collapse after Float32 rounding throw. Large world coordinates need a local origin. The helper cannot restore precision lost by GPU matrices.
 
 The film addon accepts `sampleFilm(time, { aspect })`, defaulting to the authored 16:9 ratio. Narrow portrait shots keep their lens and blend toward centered subject framing as the aspect approaches square. Other narrow shots widen vertical field of view to retain authored horizontal coverage. Wide layouts retain the original camera. This is shot-specific framing, not automatic detection of subjects, animated bounds or occlusion.
 

@@ -274,7 +274,7 @@ Core exports are available from `67js`:
 
 `67js/addons/canvas2d`: 2D recipes. `67js/addons/gltf`: optional asset decoding. These are separate imports to keep the core smaller.
 
-67.js targets WebGL2. The published `0.3.3` package does not include the newer source APIs below. Check the installed package version and release metadata before using them.
+67.js targets WebGL2. Version `0.4.0` includes the APIs below. Check the installed package version and release metadata before using them.
 
 ## Current source additions
 

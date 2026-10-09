@@ -1,6 +1,6 @@
 # Primitive shape and resource bounds
 
-These constructor guards and exact closed seams are available in the current source, after published version 0.3.3.
+Available from version `0.4.0`.
 
 ```js
 import { box, sphere, cylinder, torus } from '@codepawlhq/67js';

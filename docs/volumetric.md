@@ -1,6 +1,6 @@
 # Depth-clipped volume fog
 
-This API exists in the source checkout and next library build. Published version `0.3.3` does not include it yet.
+Available from version `0.4.0`.
 
 Enable `{ hdr: true, depth: true }` when constructing an opaque, non-benchmark `Renderer67`. Active fog requires WebGL 2 `EXT_color_buffer_float`. Unsupported HDR negotiation rejects active fog. The depth option retains a resolved depth texture across frames and includes it in `memoryPlan`.
 

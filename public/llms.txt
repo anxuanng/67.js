@@ -73,7 +73,7 @@ Report estimates separately from observed process metrics. Reduce resolution, MS
 67.js currently uses WebGL2. It is not API-compatible with Three.js and is not a complete Blender editor.
 There is no WebGPU backend or complete mesh editor.
 
-The published `0.3.3` package supports rigid GLB animation. A checkout can contain newer features without a package version change.
+Version `0.4.0` includes the APIs below. Check VERSION and release.json against the installed package before using them.
 The current source adds GPU skinning, relative POSITION/NORMAL morphs, weight animation and an optional Rapier physics addon.
 Read `docs/skinning.md`, `docs/morph-targets.md`, `docs/gltf-morph.md` and `docs/physics.md` in the matching checkout before using these features.
 Source morphs require authored base normals. Tangent targets and per-target flat normal generation remain unsupported.
@@ -82,20 +82,20 @@ The source GLB exporter preserves opaque linear vertex colors, UVs and independe
 Read `docs/export-glb.md` in the matching checkout. Exported GLBs contain a static pose, not serialized animation clips or skeletons.
 Texture export remains unsupported and fails explicitly. Procedural shaders and scene environments are not serialized into glTF materials.
 
-Source-only `addons/sculpt` accepts serializable inflate, displace and smooth strokes and returns new static geometry.
+`addons/sculpt` accepts serializable inflate, displace and smooth strokes and returns new static geometry.
 Read `docs/sculpt.md`. Construct the result before the renderer: changing uploaded CPU positions does not update GPU geometry buffers.
 
-Source-only `addons/surface` creates projector-clipped curved patches. Read `docs/surface.md` for target-local projector and clearance units.
+`addons/surface` creates projector-clipped curved patches. Read `docs/surface.md` for target-local projector and clearance units.
 Share the target's retained matrix to follow rigid motion. Skin, morph, assembly and procedural targets reject rather than returning stale patches.
 Surface clearance prevents overlapping layers in this workflow. It does not detect general mesh penetration or provide whole-object shrinkwrap.
 
-Source-only `addons/mesh-query` owns copied static geometry in disposable BVH indices. Read `docs/mesh-query.md` before querying.
+`addons/mesh-query` owns copied static geometry in disposable BVH indices. Read `docs/mesh-query.md` before querying.
 Use `solid: true` indices and `mode: 'closed-solids'` to distinguish boundary contact, containment and separation.
 Surface contact does not prove volume penetration or identify z-fighting. Never substitute surface-only results for containment.
 Pass current affine matrices explicitly, rebuild after geometry edits, and preserve budget/precision errors instead of treating them as misses.
 Read `docs/primitives.md` for subdivision bounds and exact seam closure. Skin, morph and shader-deformed surfaces require geometry matching the visible pose.
 
-Source-only `addons/shrinkwrap` returns {geometry,stats} in target-local coordinates. Read `docs/shrinkwrap.md` before choosing nearest/project modes.
+`addons/shrinkwrap` returns {geometry,stats} in target-local coordinates. Read `docs/shrinkwrap.md` before choosing nearest/project modes.
 Supply sourceToTarget explicitly for different local frames. Share the target matrix with the output part and keep the total callback budget.
 Nearest projection can collapse vertices on coarse meshes; preserve the error and refine the target or choose a suitable projection direction.
 Vertex clearance does not certify whole-triangle clearance. Compatible static output can become a GPU morph target without repeating queries per frame.

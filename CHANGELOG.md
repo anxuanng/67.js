@@ -1,6 +1,12 @@
 # Changelog
 
-## Unreleased
+## 0.4.0
+
+- Add four-influence GPU skinning, relative position/normal morphs and glTF morph weight animation.
+- Add camera paths, local lights and depth-clipped volumetric fog.
+- Add optional recorded Rapier physics with contacts, joint limits and bounded motors.
+- Add static sculpt brushes and projector-clipped surface patches with geometric clearance.
+- Preserve opaque vertex colors, UVs and independent HDR emission in static GLB exports.
 
 - Add bounded nearest-surface and directional shrinkwrap with counted queries, atomic output and shared normal reconstruction.
 - Add owned, bounded BVH mesh queries for static surface contact, ray hits and validated closed-solid containment.

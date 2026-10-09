@@ -2,7 +2,7 @@
 
 The source renderer blends relative position and normal targets on the GPU before skinning.
 Color, benchmark and shadow passes share the same target texture and committed weights.
-This source feature is not yet in the published npm release. The source [glTF bridge](gltf-morph.md) imports relative targets and weight animations.
+Available from version `0.4.0`. The source [glTF bridge](gltf-morph.md) imports relative targets and weight animations.
 The core module exports `createMorphPose` and `MAX_MORPH_TARGETS` without adding a dependency.
 
 Each morph target contains mesh-local changes from the base geometry.

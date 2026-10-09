@@ -1,6 +1,6 @@
 # Fit a patch to a curved surface
 
-Available in the current source, after published version 0.3.3. The optional addon reuses Three.js DecalGeometry without adding it to the core renderer.
+Available from version `0.4.0`. The optional addon reuses Three.js DecalGeometry without adding it to the core renderer.
 
 ```js
 import { sphere } from '@codepawlhq/67js';

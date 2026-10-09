@@ -1,6 +1,6 @@
 # Local lighting
 
-These controls exist in the source checkout and next library build. Published version `0.3.3` does not include them yet.
+Available from version `0.4.0`.
 
 `Renderer67` accepts lighting in its existing `environment` option. `frame.environment` overrides selected fields for each frame. Lights use world-space positions and linear RGB colors. Use meters consistently when authoring a physically scaled scene.
 

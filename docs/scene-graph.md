@@ -1,6 +1,6 @@
 # Scene graph
 
-This API is available in the current source. It is not in the published 0.3.3 package.
+Available from version `0.4.0`.
 
 `createSceneGraph(definitions, options)` builds named nodes with retained local and world matrices.
 Each definition can refer to its parent by name, even when the parent appears later in the array.

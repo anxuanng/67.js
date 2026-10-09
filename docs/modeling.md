@@ -1,6 +1,6 @@
 # Profile, contour and path modeling
 
-These tools are available in the current source. They are not in the published 0.3.3 package.
+Available from version `0.4.0`.
 The optional modeling entry uses the installed Three.js geometry algorithms and converts their output to 67.js meshes.
 The core renderer does not import the modeling addon.
 

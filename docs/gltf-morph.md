@@ -3,7 +3,7 @@
 `parseGltf` imports relative `POSITION` and `NORMAL` morph targets into existing renderer parts.
 The bridge uses the installed Three.js `GLTFLoader` and `AnimationMixer` for decoding and interpolation.
 Each imported part exposes a retained `part.morph.weights` Float32 array.
-This feature is available in the source checkout and next library build, but not in the published `0.3.3` package.
+Available from version `0.4.0`.
 The source renderer applies the imported targets on the GPU before skeletal deformation.
 
 ```js

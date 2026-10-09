@@ -30,3 +30,7 @@ artifacts/
 *.log
 .agents/
 build-browser/
+public/camera-path.md
+public/lighting.md
+public/volumetric.md
+public/film-physics.md

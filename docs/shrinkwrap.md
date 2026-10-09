@@ -176,4 +176,4 @@ const morph = createMorphPose(1);
 Intermediate shapes need their own collision checks.
 Safe endpoints do not prove that an interpolated mesh avoids every obstacle.
 
-These APIs are available in the source build. The published `0.3.3` npm package does not include them.
+Available from version `0.4.0`.

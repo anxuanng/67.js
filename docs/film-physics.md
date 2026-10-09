@@ -1,7 +1,7 @@
 # Physics in the trailer
 
 The opening apparatus shot now includes a five-ball cradle driven by recorded rigid-body contacts and revolute joints.
-This exists in the source checkout and next build. Published package `0.3.3` and the deployed film do not include it yet.
+Available from version `0.4.0`.
 
 ## Authoring and playback
 

@@ -3,7 +3,7 @@
 This optional addon uses Rapier 3D to bake collisions and joint motion into a timeline.
 Scene playback can seek forward or backward without changing the simulation.
 The main renderer does not need Rapier for playback.
-This API is available in the current source checkout and is not included in the published `0.3.3` package.
+Available from version `0.4.0`.
 The library build exports it through `67js/addons/physics` when using the npm alias.
 Rapier is an optional peer dependency and remains outside the core and library archive.
 

@@ -4,7 +4,7 @@
 `downloadGlb(parts)` saves that same snapshot through the browser.
 The exporter stores each part matrix as a root node transform.
 It preserves shared geometry accessors and shared meshes when materials match.
-The extended channels and HDR emission exist in the source checkout, but not in the published `0.3.3` package.
+Available from version `0.4.0`.
 
 ```js
 const geometry = box();

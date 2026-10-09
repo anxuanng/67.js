@@ -157,24 +157,24 @@ renderer.render({ eye: [4, 3, 7], target: [0, 1.5, 0], assemblyAmount: 0.5 });
 The core exports animation helpers, camera views and effect presets. `renderer.updateParts(parts)` uploads changes without replacing geometry buffers.
 The current source adds [camera paths](docs/camera-path.md) with cubic moves, target tracking, roll and focal-length conversion.
 
-It also adds [local lighting](docs/lighting.md) with eight point lights and separate key, fill and ambient controls. These controls remain source-only until the next package release.
+It also adds [local lighting](docs/lighting.md) with eight point lights and separate key, fill and ambient controls. These controls are available from version `0.4.0`.
 The source also adds [depth-clipped volume fog](docs/volumetric.md) with directional scattering, shadow occlusion and deterministic density drift. It requires an opaque HDR renderer with resolved depth enabled.
-These camera helpers are not included in the published `0.3.3` package yet.
+These camera helpers are available from version `0.4.0`.
 The current source also adds [GPU skinning](docs/skinning.md) and skeletal GLB import, with four influences per vertex.
 
 The optional [physics addon](docs/physics.md) records Rapier contacts, articulated joints, hinge and slider limits, and bounded motors into a timeline for repeatable film seeks.
 It requires the separate `@dimforge/rapier3d-compat@0.21.0` dependency. The core does not import or bundle that solver.
-Physics is source-only and is not included in the published `0.3.3` package.
+The physics addon is available from version `0.4.0`.
 The source trailer includes an [offline physics recording](docs/film-physics.md) of colliding pendulums, played through retained animation tracks without loading a solver in the browser.
 
-The source renderer also supports [relative GPU morph targets](docs/morph-targets.md) for position and normal changes before skinning, including deterministic eyelid animation in the film. This feature is not in the published `0.3.3` package.
+The source renderer also supports [relative GPU morph targets](docs/morph-targets.md) for position and normal changes before skinning, including deterministic eyelid animation in the film. This feature is available from version `0.4.0`.
 The source [glTF morph bridge](docs/gltf-morph.md) preserves relative targets, independent instance weights and linear, step or cubic weight animations.
 The source [GLB exporter](docs/export-glb.md) preserves opaque vertex colors, UVs and independent HDR emission alongside static morph snapshots.
 
-Source-only [sculpt brushes](docs/sculpt.md) apply bounded inflation, directional displacement and neighborhood smoothing through serializable strokes.
+[Sculpt brushes](docs/sculpt.md) apply bounded inflation, directional displacement and neighborhood smoothing through serializable strokes.
 The [surface patch addon](docs/surface.md) clips a badge onto a curved mesh with geometric clearance and follows its retained rigid transform.
 
-Source-only [mesh queries](docs/mesh-query.md) use owned BVH indices to detect boundary contact, ray hits and containment between validated closed solids.
+[Mesh queries](docs/mesh-query.md) use owned BVH indices to detect boundary contact, ray hits and containment between validated closed solids.
 Surface contact does not measure penetration depth or diagnose z-fighting. Queries accept static geometry and explicit affine transforms.
 The [primitive contract](docs/primitives.md) defines bounded subdivision counts and exact seam closure for mesh validation.
 The source [shrinkwrap addon](docs/shrinkwrap.md) wraps static vertices with nearest-surface or directional projection queries, preserving topology and UVs.
@@ -185,7 +185,7 @@ The [optional asset addon](docs/gltf.md) loads glTF/GLB meshes, base-color textu
 
 It uses Three.js as a decoder. The core renderer and standalone module remain separate from this dependency.
 
-Skinning, morph targets, transparent materials, compressed assets and ray tracing remain outside this release.
+Transparent materials, compressed assets and ray tracing remain unsupported.
 Blender-level realism remains a visual target. 67.js does not provide Three.js API compatibility.
 
 ## Credits
