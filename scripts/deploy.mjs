@@ -1,5 +1,6 @@
 import { spawnSync } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
+import { setTimeout as delay } from 'node:timers/promises';
 
 function run(executable, argumentsList, capture = false) {
   const result = spawnSync(executable, argumentsList, { windowsHide: true, encoding: 'utf8', stdio: capture ? 'pipe' : 'inherit' });
@@ -15,7 +16,17 @@ run(process.execPath, ['scripts/prepare-release.mjs', '--require-clean']);
 run(process.execPath, ['node_modules/vite/bin/vite.js', 'build']);
 run(process.execPath, ['node_modules/wrangler/bin/wrangler.js', 'deploy']);
 const release = JSON.parse(await readFile('dist/release.json', 'utf8'));
-const response = await fetch('https://67js.codepawl.com/release.json', { cache: 'no-store', signal: AbortSignal.timeout(30000) });
+let response;
+for (let attempt = 0; attempt < 6; attempt++) {
+  try {
+    response = await fetch('https://67js.codepawl.com/release.json', { cache: 'no-store', signal: AbortSignal.timeout(10000) });
+    if (response.ok) break;
+  } catch (error) {
+    if (attempt === 5) throw error;
+  }
+  console.log('Waiting for the custom domain to serve the release.');
+  await delay(5000);
+}
 if (!response.ok) throw new Error(`Live release verification failed: HTTP ${response.status}.`);
 const live = await response.json();
 if (live.commit !== commit || live.version !== release.version || live.integrity !== release.integrity) throw new Error('Live release differs from the pushed build.');

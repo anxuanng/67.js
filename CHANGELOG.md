@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.1
+
+- Include the bundled gl-matrix copyright notice in package and browser downloads.
+
 ## 0.2.0
 
 - Distribute the renderer as an installable ESM package with separate scene addons.

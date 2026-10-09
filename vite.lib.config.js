@@ -1,8 +1,10 @@
+import { readFileSync } from 'node:fs';
 import { defineConfig } from 'vite';
 
 export default defineConfig({
   build: {
     copyPublicDir: false,
+    rolldownOptions: { output: { banner: `/*! ${readFileSync('LICENSE', 'utf8')} */` } },
     outDir: 'build',
     lib: {
       entry: {
