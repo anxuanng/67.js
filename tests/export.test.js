@@ -16,3 +16,11 @@ test('exported GLB loads with an independent glTF loader and preserves every par
   assert.equal(meshCount, parts.length);
   assert.ok(binary.byteLength < 1024 * 1024);
 });
+
+test('GLB export refuses to silently discard any material texture channel', () => {
+  const part = createModel()[0];
+  for (const channel of ['map', 'normalMap', 'metallicRoughnessMap', 'occlusionMap', 'emissiveMap']) {
+    assert.throws(() => exportGlb([{ ...part, material: { ...part.material, [channel]: {} } }]),
+      error => error instanceof RangeError && error.message.includes(channel));
+  }
+});

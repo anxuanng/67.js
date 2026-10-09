@@ -3,6 +3,13 @@ function paddedLength(length) {
 }
 
 export function exportGlb(parts) {
+  for (const part of parts) {
+    for (const channel of ['map', 'normalMap', 'metallicRoughnessMap', 'occlusionMap', 'emissiveMap']) {
+      if (part.material[channel]) {
+        throw new RangeError(`GLB export cannot preserve ${channel} yet. Texture export must be implemented before exporting this material.`);
+      }
+    }
+  }
   const document = {
     asset: { version: '2.0', generator: '67.js' },
     scene: 0,

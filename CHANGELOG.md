@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+- Add Hermite animation curves with explicit tangents and retained playback buffers.
+- Add absolute-time clip mixing, weighted actions and crossfades with deterministic seeking.
+- Import and render normal, metallic/roughness, occlusion and emissive texture maps.
+- Count and release every material texture channel within the existing render budget.
+- Add sphere UVs and preserve normal mapping across small atlas regions.
+- Reuse instance normal matrices and reject GLB exports that would discard material maps.
+- Keep orbital velocity continuous with fewer showcase keyframes.
+
 ## 0.3.3
 
 - Smooth WALL·E assembly changes when visitors tap or drag the slider
