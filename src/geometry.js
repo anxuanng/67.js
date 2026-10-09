@@ -40,12 +40,21 @@ function surface(columns, rows, sample) {
 }
 
 export function sphere(segments = 64, rings = 40) {
-  return surface(segments, rings, (longitude, latitude) => {
+  const result = surface(segments, rings, (longitude, latitude) => {
     const angle = longitude * FULL_TURN;
     const elevation = latitude * Math.PI;
     const position = [Math.sin(elevation) * Math.cos(angle), Math.cos(elevation), Math.sin(elevation) * Math.sin(angle)];
     return { position, normal: position };
   });
+  result.uvs = new Float32Array((segments + 1) * (rings + 1) * 2);
+  for (let row = 0; row <= rings; row++) {
+    for (let column = 0; column <= segments; column++) {
+      const offset = (row * (segments + 1) + column) * 2;
+      result.uvs[offset] = column / segments;
+      result.uvs[offset + 1] = row / rings;
+    }
+  }
+  return result;
 }
 
 // The torus lies in XY, facing +Z. Partial arcs are useful for interrupted armor rings.

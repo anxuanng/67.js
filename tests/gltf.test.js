@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { Texture } from 'three';
 import { mat4 } from 'gl-matrix';
 import { exportGlb } from '../src/export.js';
 import { GLTF_CAPABILITIES, loadGltf, parseGltf } from '../src/gltf.js';
@@ -142,7 +143,7 @@ test('unsupported features fail explicitly before loading resources', async () =
     [document => { document.meshes[0].primitives[0].mode = 1; }, /TRIANGLES/],
     [document => { document.materials[0].alphaMode = 'BLEND'; }, /alpha mode/],
     [document => { document.materials[0].doubleSided = true; }, /Double-sided/],
-    [document => { document.materials[0].normalTexture = { index: 0 }; }, /texture channels/],
+    [document => { document.materials[0].normalTexture = { index: 0 }; }, /normalTexture texture index/],
     [document => { document.extensionsRequired = ['KHR_draco_mesh_compression']; }, /KHR_draco/],
     [document => { document.materials[0].extensions = { KHR_materials_clearcoat: {} }; }, /KHR_materials_clearcoat/],
     [document => { document.buffers[0].uri = 'external.bin'; }, /baseUrl/],
@@ -277,4 +278,90 @@ test('vertex colors reject nonopaque alpha and invalid RGB factors explicitly', 
       document.meshes[0].primitives[0].attributes.COLOR_0 = append(colors, type);
     })), expected);
   }
+});
+
+const PNG_IMAGE = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAEklEQVR4AWI6k2b8H4SZGKAAAAAA//8VS4tGAAAABklEQVQDAEBuBM3uhq5wAAAAAElFTkSuQmCC';
+
+function addMaterialMaps(document) {
+  document.images = [{ uri: PNG_IMAGE }];
+  document.samplers = [{ wrapS: 33071, wrapT: 33648, minFilter: 9728, magFilter: 9729 }];
+  document.textures = [{ source: 0, sampler: 0 }];
+  const material = document.materials[0];
+  material.pbrMetallicRoughness.baseColorTexture = { index: 0 };
+  material.pbrMetallicRoughness.metallicRoughnessTexture = { index: 0 };
+  material.normalTexture = { index: 0, scale: 0.35 };
+  material.occlusionTexture = { index: 0, strength: 0.4 };
+  material.emissiveTexture = { index: 0 };
+}
+
+test('all glTF map channels preserve sampler, linear data, sRGB color, scales, sharing and image disposal', async context => {
+  const previousBitmap = globalThis.createImageBitmap;
+  const previousSelf = globalThis.self;
+  globalThis.self = globalThis;
+  let decoded = 0;
+  let closed = 0;
+  globalThis.createImageBitmap = async () => {
+    decoded++;
+    return { width: 2, height: 2, close() { closed++; } };
+  };
+  context.after(() => {
+    if (previousBitmap) globalThis.createImageBitmap = previousBitmap;
+    else delete globalThis.createImageBitmap;
+    if (previousSelf) globalThis.self = previousSelf;
+    else delete globalThis.self;
+  });
+  const disposedTextures = new Set();
+  const originalDispose = Texture.prototype.dispose;
+  context.mock.method(Texture.prototype, 'dispose', function () {
+    disposedTextures.add(this);
+    return originalDispose.call(this);
+  });
+  const asset = await parseGltf(triangleAsset(addMaterialMaps), { maxTexturePixels: 4 });
+  const material = asset.parts[0].material;
+  assert.equal(material, asset.parts[1].material);
+  assert.deepEqual(material.normalScale, [0.35, 0.35]);
+  assert.equal(material.occlusionStrength, 0.4);
+  assert.equal(material.map, material.emissiveMap);
+  assert.equal(material.normalMap, material.metallicRoughnessMap);
+  assert.equal(material.normalMap, material.occlusionMap);
+  assert.notEqual(material.map, material.normalMap);
+  assert.equal(material.map.image, material.normalMap.image);
+  for (const field of ['map', 'normalMap', 'metallicRoughnessMap', 'occlusionMap', 'emissiveMap']) {
+    const descriptor = material[field];
+    assert.equal(descriptor.colorSpace, ['map', 'emissiveMap'].includes(field) ? 'srgb' : 'linear');
+    assert.equal(descriptor.uvChannel, 0);
+    assert.equal(descriptor.flipY, false);
+    assert.equal(descriptor.wrapS, 33071);
+    assert.equal(descriptor.wrapT, 33648);
+    assert.equal(descriptor.minFilter, 9728);
+    assert.equal(descriptor.magFilter, 9729);
+  }
+  assert.equal(decoded, 1);
+  asset.dispose();
+  asset.dispose();
+  assert.equal(closed, 1);
+  assert.equal(disposedTextures.size, 1);
+  assert.ok(GLTF_CAPABILITIES.supported.includes('normal/occlusion/emissive/metallic-roughness textures'));
+});
+
+test('map preflight rejects unsupported UVs, sampler states, invalid scales and missing geometry UVs', async () => {
+  const changes = [
+    [document => { document.materials[0].normalTexture.texCoord = 1; }, /TEXCOORD_0/],
+    [document => { document.materials[0].normalTexture.scale = 'invalid'; }, /finite float/],
+    [document => { document.materials[0].normalTexture.scale = '1'; }, /finite float/],
+    [document => { document.materials[0].occlusionTexture.strength = 2; }, /strength/],
+    [document => { document.samplers[0].wrapS = 4; }, /wrap mode/],
+    [document => { document.samplers[0].minFilter = 4; }, /filtering/],
+    [document => { document.textures[0].source = 4; }, /image index/],
+    [document => { document.textures[0].sampler = 4; }, /sampler index/],
+    [document => { delete document.meshes[0].primitives[0].attributes.TEXCOORD_0; }, /TEXCOORD_0/],
+    [document => { document.materials[0].emissiveTexture.extensions = { KHR_texture_transform: { offset: [0.2, 0] } }; }, /KHR_texture_transform/],
+  ];
+  for (const [change, expected] of changes) {
+    await assert.rejects(parseGltf(triangleAsset(document => {
+      addMaterialMaps(document);
+      change(document);
+    })), expected);
+  }
+  await assert.rejects(parseGltf(triangleAsset(addMaterialMaps), { maxTexturePixels: 3 }), /maxTexturePixels/);
 });

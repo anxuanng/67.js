@@ -114,6 +114,16 @@ uniform float explosionProgress;
 uniform sampler2D shadowMap;
 uniform sampler2D baseMap;
 uniform float hasBaseMap;
+uniform sampler2D normalMap;
+uniform sampler2D metallicRoughnessMap;
+uniform sampler2D occlusionMap;
+uniform sampler2D emissiveMap;
+uniform float hasNormalMap;
+uniform float hasMetallicRoughnessMap;
+uniform float hasOcclusionMap;
+uniform float hasEmissiveMap;
+uniform vec2 normalScale;
+uniform float occlusionStrength;
 uniform float hdrEnabled;
 out vec4 outputColor;
 const float PI = 3.14159265359;
@@ -190,14 +200,44 @@ vec3 toneMap(vec3 color) {
   return clamp((color * (2.51 * color + 0.03)) / (color * (2.43 * color + 0.59) + 0.14), 0.0, 1.0);
 }
 
+vec3 mappedNormal(vec3 normal) {
+  vec3 positionX = dFdx(worldPosition);
+  vec3 positionY = dFdy(worldPosition);
+  vec2 uvX = dFdx(textureUV);
+  vec2 uvY = dFdy(textureUV);
+  float uvScale = max(max(abs(uvX.x), abs(uvX.y)), max(abs(uvY.x), abs(uvY.y)));
+  if (uvScale == 0.0) return normal;
+  uvX /= uvScale;
+  uvY /= uvScale;
+  float determinant = uvX.x * uvY.y - uvX.y * uvY.x;
+  // Degenerate UVs have no tangent basis and retain the geometric normal.
+  if (abs(determinant) < 1e-7) return normal;
+  vec3 tangent = (positionX * uvY.y - positionY * uvX.y) / determinant;
+  vec3 bitangent = (positionY * uvX.x - positionX * uvY.x) / determinant;
+  tangent -= normal * dot(normal, tangent);
+  float tangentScale = max(max(abs(tangent.x), abs(tangent.y)), abs(tangent.z));
+  if (tangentScale == 0.0) return normal;
+  tangent /= tangentScale;
+  tangent = normalize(tangent);
+  float handedness = dot(cross(normal, tangent), bitangent) < 0.0 ? -1.0 : 1.0;
+  bitangent = normalize(cross(normal, tangent)) * handedness;
+  vec3 sampled = texture(normalMap, textureUV).xyz * 2.0 - 1.0;
+  sampled.xy *= normalScale;
+  vec3 mapped = mat3(tangent, bitangent, normal) * sampled;
+  return dot(mapped, mapped) > 1e-12 ? normalize(mapped) : normal;
+}
+
 void main() {
   vec3 normal = normalize(worldNormal);
+  if (hasNormalMap > 0.5) normal = mappedNormal(normal);
   vec3 viewDirection = normalize(eye - worldPosition);
   vec3 color = mix(baseColor, armorColor, step(0.5, surface.w) * (1.0 - step(1.5, surface.w)));
   color *= vertexTint;
   if (hasBaseMap > 0.5) color *= texture(baseMap, textureUV).rgb;
+  vec3 emission = emissionColor * surface.z;
+  if (hasEmissiveMap > 0.5) emission *= texture(emissiveMap, textureUV).rgb;
   if (surface.w == 10.0) {
-    vec3 radiance = color * exposure + emissionColor * surface.z;
+    vec3 radiance = color * exposure + emission;
     outputColor = vec4(hdrEnabled > 0.5 ? radiance : pow(max(radiance, vec3(0)), vec3(1.0 / 2.2)), 1.0);
     return;
   }
@@ -207,6 +247,12 @@ void main() {
     metallic = armorSurface.x;
     roughness = armorSurface.y;
   }
+  if (hasMetallicRoughnessMap > 0.5) {
+    vec4 sampled = texture(metallicRoughnessMap, textureUV);
+    metallic *= sampled.b;
+    roughness *= sampled.g;
+  }
+  roughness = clamp(roughness, 0.075, 1.0);
   vec3 normalChange = max(abs(dFdx(normal)), abs(dFdy(normal)));
   roughness = clamp(sqrt(roughness * roughness + dot(normalChange, normalChange) * 0.3), 0.075, 1.0);
   if (surface.w == 3.0) {
@@ -245,10 +291,12 @@ void main() {
   radiance += illuminate(normal, viewDirection, normalize(vec3(4.0, 2.0, -3.0)), mix(vec3(0.8, 2.0, 1.8), vec3(0.12, 0.17, 0.20) * daylight, worldMode), color, metallic, roughness);
   radiance += illuminate(normal, viewDirection, normalize(vec3(1.0, 2.0, 5.0)), vec3(0.6, 0.7, 0.8) * mix(1.0, 0.25 * daylight, worldMode), color, metallic, roughness);
   vec3 reflectance = fresnel(max(dot(normal, viewDirection), 0.0), mix(vec3(0.04), color, metallic));
-  radiance += studio(reflect(-viewDirection, normal), roughness) * reflectance * (1.0 - roughness * 0.55) * mix(1.0, 0.5 * daylight, worldMode);
-  radiance += color * (1.0 - metallic) * mix(vec3(0.16, 0.20, 0.22), vec3(0.19, 0.25, 0.30) * max(daylight, 0.08), worldMode) * (0.45 + 0.55 * max(normal.y, 0.0));
+  float occlusion = 1.0;
+  if (hasOcclusionMap > 0.5) occlusion = mix(1.0, texture(occlusionMap, textureUV).r, occlusionStrength);
+  radiance += studio(reflect(-viewDirection, normal), roughness) * reflectance * (1.0 - roughness * 0.55) * mix(1.0, 0.5 * daylight, worldMode) * occlusion;
+  radiance += color * (1.0 - metallic) * mix(vec3(0.16, 0.20, 0.22), vec3(0.19, 0.25, 0.30) * max(daylight, 0.08), worldMode) * (0.45 + 0.55 * max(normal.y, 0.0)) * occlusion;
   if (surface.w == 4.0 || surface.w == 7.0) radiance += color * max(dot(-normal, normalize(lightDirection)), 0.0) * 0.3 * daylight;
-  radiance += emissionColor * surface.z;
+  radiance += emission;
   if (surface.w == 3.0) {
     float reflectivity = 0.20 + 0.65 * pow(1.0 - max(dot(normal, viewDirection), 0.0), 3.0);
     vec3 reflection = mix(vec3(0.12, 0.24, 0.28), vec3(0.40, 0.63, 0.78), clamp(reflect(-viewDirection, normal).y, 0.0, 1.0));

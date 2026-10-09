@@ -7,16 +7,57 @@ import { resolveEffects } from './effects.js';
 
 const MATERIAL_TAGS = { armor: 1, floor: 2, water: 3, foliage: 4, terrain: 5, grass: 7, fire: 8, smoke: 9, unlit: 10 };
 const INSTANCE_STRIDE = 41;
+const ZERO_VECTOR = Object.freeze([0, 0, 0]);
+const MATERIAL_MAPS = ['map', 'normalMap', 'metallicRoughnessMap', 'occlusionMap', 'emissiveMap'];
+const MAP_UNIFORMS = ['baseMap', 'normalMap', 'metallicRoughnessMap', 'occlusionMap', 'emissiveMap'];
+const MAP_FLAGS = ['hasBaseMap', 'hasNormalMap', 'hasMetallicRoughnessMap', 'hasOcclusionMap', 'hasEmissiveMap'];
+const DEFAULT_NORMAL_SCALE = [1, 1];
+const PROCEDURAL_MATERIAL_TAGS = new Set(['water', 'foliage', 'grass', 'terrain', 'floor', 'fire', 'smoke']);
 
-function validateTransform(part) {
-  const finiteFloat = value => Number.isFinite(value) && Number.isFinite(Math.fround(value));
-  if (part.matrix?.length !== 16 || !Array.from(part.matrix).every(finiteFloat)) throw new Error(`Invalid transform: ${part.name}`);
-  const normalMatrix = mat3.normalFromMat4(mat3.create(), part.matrix);
-  if (!normalMatrix || !Array.from(normalMatrix).every(Number.isFinite)) throw new Error(`Singular transform: ${part.name}`);
-  for (const value of [part.material.color, part.material.emissiveColor ?? part.material.color, part.assembly?.offset ?? [0, 0, 0], part.assembly?.detailOffset ?? [0, 0, 0]]) {
-    if (value.length !== 3 || !Array.from(value).every(finiteFloat)) throw new Error(`Invalid instance vector: ${part.name}`);
+function validateMaterialMaps(material) {
+  if (PROCEDURAL_MATERIAL_TAGS.has(material.tag)) {
+    for (let index = 1; index < MATERIAL_MAPS.length; index++) {
+      if (material[MATERIAL_MAPS[index]]) throw new Error('Material maps require a standard PBR material tag. Procedural tags are unsupported.');
+    }
   }
-  if (![part.material.metallic, part.material.roughness, part.material.emission ?? 0].every(finiteFloat)) throw new Error(`Invalid material: ${part.name}`);
+  if (material.tag === 'unlit' && (material.normalMap || material.metallicRoughnessMap || material.occlusionMap)) {
+    throw new Error('Unlit materials support only base and emissive maps.');
+  }
+  const normalScale = material.normalScale ?? DEFAULT_NORMAL_SCALE;
+  if (normalScale.length !== 2 || !Number.isFinite(normalScale[0]) || !Number.isFinite(normalScale[1]) || !Number.isFinite(Math.fround(normalScale[0])) || !Number.isFinite(Math.fround(normalScale[1]))) throw new Error('normalScale must contain two finite floats.');
+  const occlusionStrength = material.occlusionStrength ?? 1;
+  if (!Number.isFinite(occlusionStrength) || occlusionStrength < 0 || occlusionStrength > 1) throw new Error('occlusionStrength must be within zero and one.');
+}
+
+function materialMapState(material) {
+  validateMaterialMaps(material);
+  const normalScale = material.normalScale ?? DEFAULT_NORMAL_SCALE;
+  const occlusionStrength = material.occlusionStrength ?? 1;
+  return [...MATERIAL_MAPS.map(field => material[field] ?? null), normalScale[0], normalScale[1], occlusionStrength];
+}
+
+function hasMaterialMap(material) {
+  return MATERIAL_MAPS.some(field => material[field]);
+}
+
+function finiteFloat(value) {
+  return Number.isFinite(value) && Number.isFinite(Math.fround(value));
+}
+
+function finiteVector(value, size) {
+  if (value?.length !== size) return false;
+  for (let index = 0; index < size; index++) if (!finiteFloat(value[index])) return false;
+  return true;
+}
+
+function validateTransform(part, normalMatrix = mat3.create()) {
+  if (!finiteVector(part.matrix, 16)) throw new Error(`Invalid transform: ${part.name}`);
+  if (!mat3.normalFromMat4(normalMatrix, part.matrix) || !finiteVector(normalMatrix, 9)) throw new Error(`Singular transform: ${part.name}`);
+  if (!finiteVector(part.material.color, 3) || !finiteVector(part.material.emissiveColor ?? part.material.color, 3) ||
+      !finiteVector(part.assembly?.offset ?? ZERO_VECTOR, 3) || !finiteVector(part.assembly?.detailOffset ?? ZERO_VECTOR, 3)) {
+    throw new Error(`Invalid instance vector: ${part.name}`);
+  }
+  if (!finiteFloat(part.material.metallic) || !finiteFloat(part.material.roughness) || !finiteFloat(part.material.emission ?? 0)) throw new Error(`Invalid material: ${part.name}`);
   return normalMatrix;
 }
 
@@ -25,9 +66,12 @@ function packInstance(data, index, part, normalMatrix) {
   data.set(part.matrix, offset);
   data.set(normalMatrix, offset + 16);
   data.set(part.material.color, offset + 25);
-  data.set([part.material.metallic, part.material.roughness, part.material.emission ?? 0, MATERIAL_TAGS[part.material.tag] ?? 0], offset + 28);
-  data.set(part.assembly?.offset ?? [0, 0, 0], offset + 32);
-  data.set(part.assembly?.detailOffset ?? [0, 0, 0], offset + 35);
+  data[offset + 28] = part.material.metallic;
+  data[offset + 29] = part.material.roughness;
+  data[offset + 30] = part.material.emission ?? 0;
+  data[offset + 31] = MATERIAL_TAGS[part.material.tag] ?? 0;
+  data.set(part.assembly?.offset ?? ZERO_VECTOR, offset + 32);
+  data.set(part.assembly?.detailOffset ?? ZERO_VECTOR, offset + 35);
   data.set(part.material.emissiveColor ?? part.material.color, offset + 38);
 }
 
@@ -73,16 +117,24 @@ function groundPart() {
 
 export function groupParts(parts, batching = true) {
   const groups = new Map();
+  const batches = [];
   for (const part of parts) {
     validateTransform(part);
     const key = batching ? part.geometry : part;
     if (!groups.has(key)) groups.set(key, new Map());
-    const maps = groups.get(key);
-    const map = part.material.map ?? null;
-    if (!maps.has(map)) maps.set(map, []);
-    maps.get(map).push(part);
+    let maps = groups.get(key);
+    for (const value of materialMapState(part.material)) {
+      if (!maps.has(value)) maps.set(value, new Map());
+      maps = maps.get(value);
+    }
+    if (!maps.has('parts')) {
+      const batch = [];
+      maps.set('parts', batch);
+      batches.push(batch);
+    }
+    maps.get('parts').push(part);
   }
-  return [...groups.values()].flatMap(maps => [...maps.values()]);
+  return batches;
 }
 
 export function textureDescriptorInfo(map, maximumSize = Infinity) {
@@ -90,6 +142,7 @@ export function textureDescriptorInfo(map, maximumSize = Infinity) {
   const height = map.image?.naturalHeight ?? map.image?.height;
   if (!Number.isInteger(width) || !Number.isInteger(height) || width <= 0 || height <= 0 || width > maximumSize || height > maximumSize) throw new Error('Texture image dimensions are invalid or exceed MAX_TEXTURE_SIZE.');
   if ((map.uvChannel ?? 0) !== 0) throw new Error('Only texture UV channel 0 is supported.');
+  if (map.transform || map.offset || map.repeat || map.rotation !== undefined || map.extensions && Object.keys(map.extensions).length) throw new Error('Texture transforms and extensions are unsupported. Bake them into UV channel 0.');
   if (map.colorSpace && !['srgb', 'linear'].includes(map.colorSpace)) throw new Error('Texture color space must be srgb or linear.');
   const wrapS = map.wrapS ?? 10497;
   const wrapT = map.wrapT ?? 10497;
@@ -128,18 +181,32 @@ export class Renderer67 {
     this.buffers = [];
     this.batches = [];
     this.partLocations = new Map();
+    this.updateBatches = new Set();
     this.textures = new Map();
     this.textureBytes = 4;
     this.shadowsDirty = true;
     const groups = groupParts(ground ? [...parts, groundPart()] : parts, batching);
     const textureLimit = this.context.getParameter(this.context.MAX_TEXTURE_SIZE);
-    const maps = new Set(groups.map(group => group[0].material.map).filter(Boolean));
-    for (const map of maps) this.textureBytes += textureDescriptorInfo(map, textureLimit).bytes;
+    const maps = new Set();
+    for (const group of groups) {
+      for (const field of MATERIAL_MAPS) {
+        const map = group[0].material[field];
+        if (!map) continue;
+        const info = textureDescriptorInfo(map, textureLimit);
+        if (['normalMap', 'metallicRoughnessMap', 'occlusionMap'].includes(field) && map.colorSpace !== 'linear') throw new Error(`${field} requires a linear texture descriptor.`);
+        if (field === 'emissiveMap' && (map.colorSpace ?? 'srgb') !== 'srgb') throw new Error('emissiveMap requires an srgb texture descriptor.');
+        if (!maps.has(map)) this.textureBytes += info.bytes;
+        maps.add(map);
+      }
+    }
     this.capabilities.maximumTextureSize = textureLimit;
     for (const group of groups) {
       const geometry = group[0].geometry;
       if (geometry.uvs && geometry.uvs.length !== geometry.positions.length / 3 * 2) throw new Error('Geometry UV count must match the vertex count.');
-      if (group[0].material.map && !geometry.uvs) throw new Error('Textured geometry requires UV channel 0.');
+      if (hasMaterialMap(group[0].material) && !geometry.uvs) throw new Error('Textured geometry requires UV channel 0.');
+      for (const coordinate of geometry.uvs ?? []) {
+        if (!Number.isFinite(coordinate)) throw new Error('Geometry UVs must be finite.');
+      }
       if (geometry.colors && geometry.colors.length !== geometry.positions.length) throw new Error('Geometry colors must contain RGB for every vertex.');
     }
     const expectedGeometryBytes = groups.reduce((total, group) => total + ['positions', 'normals', 'indices', 'uvs', 'colors'].reduce((bytes, field) => bytes + (group[0].geometry[field]?.byteLength ?? 0), 0) + group.length * INSTANCE_STRIDE * 4, 0);
@@ -151,7 +218,7 @@ export class Renderer67 {
     this.inverseViewProjection = mat4.create();
     this.program = compileProgram(this.context, benchmark ? benchmarkVertexShader : vertexShader, benchmark ? benchmarkFragmentShader : fragmentShader);
     this.depthProgram = compileProgram(this.context, depthVertexShader, depthFragmentShader);
-    this.uniforms = Object.fromEntries(['viewProjection', 'lightProjection', 'eye', 'armorColor', 'armorSurface', 'exposure', 'inspection', 'shadowMap', 'baseMap', 'hasBaseMap', 'hdrEnabled', 'time', 'wind', 'worldMode', 'daylight', 'lightDirection', 'fogColor', 'fogDensity', 'waterRipple', 'rippleTime', 'explosionProgress', 'explosionCenter', 'assemblyAmount'].map((name) => [name, this.context.getUniformLocation(this.program, name)]));
+    this.uniforms = Object.fromEntries(['viewProjection', 'lightProjection', 'eye', 'armorColor', 'armorSurface', 'exposure', 'inspection', 'shadowMap', ...MAP_UNIFORMS, ...MAP_FLAGS, 'normalScale', 'occlusionStrength', 'hdrEnabled', 'time', 'wind', 'worldMode', 'daylight', 'lightDirection', 'fogColor', 'fogDensity', 'waterRipple', 'rippleTime', 'explosionProgress', 'explosionCenter', 'assemblyAmount'].map((name) => [name, this.context.getUniformLocation(this.program, name)]));
     if (!benchmark) {
       this.postProgram = compileProgram(this.context, fullscreenVertex, postFragment);
       this.skyProgram = compileProgram(this.context, fullscreenVertex, skyFragment);
@@ -234,7 +301,7 @@ export class Renderer67 {
       context.enableVertexAttribArray(13);
       context.vertexAttribPointer(13, 2, context.FLOAT, false, 0, 0);
     } else {
-      if (parts[0].material.map) throw new Error('Textured geometry requires UV channel 0.');
+      if (hasMaterialMap(parts[0].material)) throw new Error('Textured geometry requires UV channel 0.');
       context.disableVertexAttribArray(13);
       context.vertexAttrib2f(13, 0, 0);
     }
@@ -265,30 +332,41 @@ export class Renderer67 {
     this.attribute(15, 3, stride * 4, 152);
     context.bindVertexArray(null);
     const map = parts[0].material.map ?? null;
-    const batch = { vertexArray, instanceBuffer, instanceData, texture: this.createTexture(map), map, indexCount: geometry.indices.length, instanceCount: parts.length, floor: parts[0].material.tag === 'floor' };
-    parts.forEach((part, index) => this.partLocations.set(part, { batch, index, geometry: part.geometry, map }));
+    const mapState = materialMapState(parts[0].material);
+    const textures = mapState.slice(0, 5).map(descriptor => this.createTexture(descriptor));
+    const batch = { vertexArray, instanceBuffer, instanceData, textures, mapState, texture: textures[0], map, indexCount: geometry.indices.length, instanceCount: parts.length, floor: parts[0].material.tag === 'floor' };
+    parts.forEach((part, index) => this.partLocations.set(part, { batch, index, geometry: part.geometry, map, mapState, normalMatrix: mat3.create() }));
     return batch;
   }
 
   updateParts(parts, { shadows = true } = {}) {
-    const prepared = parts.map(part => {
+    // Preflight every part before touching packed data or submitting GPU writes.
+    for (const part of parts) {
       const location = this.partLocations.get(part);
       if (!location) throw new Error(`Unknown part identity: ${part.name}`);
       if (part.geometry !== location.geometry) throw new Error(`Geometry changes require a new renderer: ${part.name}`);
       if ((part.material.map ?? null) !== location.map) throw new Error(`Texture map changes require a new renderer: ${part.name}`);
-      return { part, location, normalMatrix: validateTransform(part) };
-    });
-    const batches = new Set();
-    for (const { part, location, normalMatrix } of prepared) {
-      packInstance(location.batch.instanceData, location.index, part, normalMatrix);
-      batches.add(location.batch);
+      validateMaterialMaps(part.material);
+      const normalScale = part.material.normalScale ?? DEFAULT_NORMAL_SCALE;
+      const mapState = location.mapState;
+      for (let index = 0; index < MATERIAL_MAPS.length; index++) {
+        if ((part.material[MATERIAL_MAPS[index]] ?? null) !== mapState[index]) throw new Error(`Material map or scale changes require a new renderer: ${part.name}`);
+      }
+      if (normalScale[0] !== mapState[5] || normalScale[1] !== mapState[6] || (part.material.occlusionStrength ?? 1) !== mapState[7]) throw new Error(`Material map or scale changes require a new renderer: ${part.name}`);
+      validateTransform(part, location.normalMatrix);
     }
-    for (const batch of batches) {
+    this.updateBatches.clear();
+    for (const part of parts) {
+      const location = this.partLocations.get(part);
+      packInstance(location.batch.instanceData, location.index, part, location.normalMatrix);
+      this.updateBatches.add(location.batch);
+    }
+    for (const batch of this.updateBatches) {
       this.context.bindBuffer(this.context.ARRAY_BUFFER, batch.instanceBuffer);
       this.context.bufferSubData(this.context.ARRAY_BUFFER, 0, batch.instanceData);
     }
-    if (shadows && prepared.length > 0) this.shadowsDirty = true;
-    return prepared.length;
+    if (shadows && parts.length > 0) this.shadowsDirty = true;
+    return parts.length;
   }
 
   attribute(location, size, stride, offset) {
@@ -484,10 +562,14 @@ export class Renderer67 {
 
   drawBatch(batch, textured = false) {
     if (textured && !this.benchmark) {
-      this.context.activeTexture(this.context.TEXTURE1);
-      this.context.bindTexture(this.context.TEXTURE_2D, batch.texture);
-      this.context.uniform1i(this.uniforms.baseMap, 1);
-      this.context.uniform1f(this.uniforms.hasBaseMap, batch.map ? 1 : 0);
+      for (let index = 0; index < MATERIAL_MAPS.length; index++) {
+        this.context.activeTexture(this.context.TEXTURE0 + index + 1);
+        this.context.bindTexture(this.context.TEXTURE_2D, batch.textures[index]);
+        this.context.uniform1i(this.uniforms[MAP_UNIFORMS[index]], index + 1);
+        this.context.uniform1f(this.uniforms[MAP_FLAGS[index]], batch.mapState[index] ? 1 : 0);
+      }
+      this.context.uniform2f(this.uniforms.normalScale, batch.mapState[5], batch.mapState[6]);
+      this.context.uniform1f(this.uniforms.occlusionStrength, batch.mapState[7]);
     }
     this.context.bindVertexArray(batch.vertexArray);
     this.context.drawElementsInstanced(this.context.TRIANGLES, batch.indexCount, this.context.UNSIGNED_INT, 0, batch.instanceCount);

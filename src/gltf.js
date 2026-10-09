@@ -1,10 +1,11 @@
 import { AnimationMixer, LoadingManager, LoopOnce } from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { textureDescriptorInfo } from './renderer.js';
 
 export const GLTF_CAPABILITIES = Object.freeze({
   formats: ['glb', 'gltf'],
-  supported: ['triangle meshes', 'world transforms', 'rigid node animations', 'PNG/JPEG base color textures', 'TEXCOORD_0', 'linear RGB vertex colors', 'metallic roughness factors', 'emissive factors', 'KHR_mesh_quantization', 'KHR_materials_emissive_strength'],
-  unsupported: ['skinning', 'morph targets', 'vertex alpha below one', 'alpha blending or masking', 'double-sided materials', 'normal/occlusion/emissive/metallic-roughness textures', 'texture transforms', 'DRACO', 'KTX2', 'GPU instancing'],
+  supported: ['triangle meshes', 'world transforms', 'rigid node animations', 'PNG/JPEG base color textures', 'normal/occlusion/emissive/metallic-roughness textures', 'TEXCOORD_0', 'linear RGB vertex colors', 'metallic roughness factors', 'emissive factors', 'KHR_mesh_quantization', 'KHR_materials_emissive_strength'],
+  unsupported: ['skinning', 'morph targets', 'vertex alpha below one', 'alpha blending or masking', 'double-sided materials', 'texture transforms', 'DRACO', 'KTX2', 'GPU instancing'],
 });
 
 const DEFAULT_MAX_BYTES = 32 * 1024 * 1024;
@@ -12,6 +13,17 @@ const DEFAULT_MAX_VERTICES = 2_000_000;
 const ALLOWED_EXTENSIONS = new Set(['KHR_mesh_quantization', 'KHR_materials_emissive_strength']);
 const WRAPPING = { 1000: 10497, 1001: 33071, 1002: 33648 };
 const FILTERING = { 1003: 9728, 1004: 9984, 1005: 9986, 1006: 9729, 1007: 9985, 1008: 9987 };
+const MATERIAL_TEXTURES = [
+  ['map', 'baseColorTexture', 'srgb'],
+  ['normalMap', 'normalTexture', 'linear'],
+  ['metallicRoughnessMap', 'metallicRoughnessTexture', 'linear'],
+  ['occlusionMap', 'occlusionTexture', 'linear'],
+  ['emissiveMap', 'emissiveTexture', 'srgb'],
+];
+
+function materialTexture(material, field) {
+  return ['baseColorTexture', 'metallicRoughnessTexture'].includes(field) ? material.pbrMetallicRoughness?.[field] : material[field];
+}
 
 function limitsFor(options) {
   const limits = {
@@ -136,12 +148,25 @@ function validateDocument(document, limits) {
     }
     if ((material.alphaMode ?? 'OPAQUE') !== 'OPAQUE') throw new Error(`Unsupported alpha mode: ${material.alphaMode}.`);
     if (material.doubleSided) throw new Error('Double-sided materials are unsupported.');
-    if (material.normalTexture || material.occlusionTexture || material.emissiveTexture || material.pbrMetallicRoughness?.metallicRoughnessTexture) {
-      throw new Error('Only base color textures are supported. Other material texture channels are unsupported.');
+    for (const [, field] of MATERIAL_TEXTURES) {
+      const texture = materialTexture(material, field);
+      if (!texture) continue;
+      if ((texture.texCoord ?? 0) !== 0 || texture.extensions && Object.keys(texture.extensions).length) throw new Error(`${field} requires TEXCOORD_0 without texture transforms.`);
+      if (!Number.isInteger(texture.index) || !document.textures?.[texture.index]) throw new Error(`Invalid ${field} texture index.`);
+      if (field === 'normalTexture' && (!Number.isFinite(texture.scale ?? 1) || !Number.isFinite(Math.fround(texture.scale ?? 1)))) throw new Error('Normal texture scale must be a finite float.');
+      if (field === 'occlusionTexture' && (!Number.isFinite(texture.strength ?? 1) || (texture.strength ?? 1) < 0 || (texture.strength ?? 1) > 1)) throw new Error('Occlusion texture strength must be within zero and one.');
     }
-    const texture = material.pbrMetallicRoughness?.baseColorTexture;
-    if (texture && ((texture.texCoord ?? 0) !== 0 || texture.extensions && Object.keys(texture.extensions).length)) {
-      throw new Error('Base color textures require TEXCOORD_0 without texture transforms.');
+  }
+  for (const texture of document.textures ?? []) {
+    if (!Number.isInteger(texture.source) || !document.images?.[texture.source]) throw new Error('Invalid texture image index.');
+    if (texture.sampler !== undefined && (!Number.isInteger(texture.sampler) || !document.samplers?.[texture.sampler])) throw new Error('Invalid texture sampler index.');
+    const sampler = document.samplers?.[texture.sampler] ?? {};
+    textureDescriptorInfo({ image: { width: 1, height: 1 }, ...sampler });
+  }
+  for (const mesh of document.meshes ?? []) {
+    for (const primitive of mesh.primitives ?? []) {
+      const material = document.materials?.[primitive.material];
+      if (material && MATERIAL_TEXTURES.some(([, field]) => materialTexture(material, field)) && primitive.attributes?.TEXCOORD_0 === undefined) throw new Error('Material textures require TEXCOORD_0.');
     }
   }
   let decodedBytes = 0;
@@ -387,7 +412,7 @@ function convertVertexColors(attribute, vertexCount) {
   return colors;
 }
 
-function convertMaterial(source, limits, maps) {
+function convertMaterial(source, limits, maps, definition = {}) {
   const material = {
     tag: 'gltf',
     color: source.color.toArray(),
@@ -395,25 +420,33 @@ function convertMaterial(source, limits, maps) {
     roughness: source.roughness,
     emission: source.emissiveIntensity ?? 1,
     emissiveColor: source.emissive.toArray(),
+    normalScale: [definition.normalTexture?.scale ?? 1, definition.normalTexture?.scale ?? 1],
+    occlusionStrength: source.aoMapIntensity,
   };
   if (!material.emissiveColor.some(value => value > 0)) material.emission = 0;
   if (!Number.isFinite(Math.fround(material.emission)) || material.emission < 0) throw new Error('Emissive intensity must be a finite nonnegative float.');
-  if (source.map) {
-    if (!maps.has(source.map)) {
-      const image = source.map.image;
-      if (!image || image.width * image.height > limits.maxTexturePixels) throw new Error('Base color image is missing or exceeds maxTexturePixels.');
-      maps.set(source.map, {
+  for (const [field, , colorSpace] of MATERIAL_TEXTURES) {
+    const texture = source[field === 'metallicRoughnessMap' ? 'metalnessMap' : field === 'occlusionMap' ? 'aoMap' : field];
+    if (!texture) continue;
+    if (!maps.has(texture)) maps.set(texture, new Map());
+    const descriptors = maps.get(texture);
+    if (!descriptors.has(colorSpace)) {
+      const image = texture.image;
+      if (!image || image.width * image.height > limits.maxTexturePixels) throw new Error(`${field} image is missing or exceeds maxTexturePixels.`);
+      const descriptor = {
         image,
         uvChannel: 0,
-        wrapS: WRAPPING[source.map.wrapS],
-        wrapT: WRAPPING[source.map.wrapT],
-        minFilter: FILTERING[source.map.minFilter],
-        magFilter: FILTERING[source.map.magFilter],
+        wrapS: WRAPPING[texture.wrapS],
+        wrapT: WRAPPING[texture.wrapT],
+        minFilter: FILTERING[texture.minFilter],
+        magFilter: FILTERING[texture.magFilter],
         flipY: false,
-        colorSpace: 'srgb',
-      });
+        colorSpace,
+      };
+      textureDescriptorInfo(descriptor);
+      descriptors.set(colorSpace, descriptor);
     }
-    material.map = maps.get(source.map);
+    material[field] = descriptors.get(colorSpace);
   }
   return material;
 }
@@ -422,6 +455,7 @@ function releaseParsed(gltf) {
   const geometries = new Set();
   const materials = new Set();
   const textures = new Set();
+  const images = new Set();
   for (const scene of gltf.scenes) {
     scene.traverse(node => {
       if (node.geometry) geometries.add(node.geometry);
@@ -434,9 +468,10 @@ function releaseParsed(gltf) {
   geometries.forEach(geometry => geometry.dispose());
   materials.forEach(material => material.dispose());
   textures.forEach(texture => {
-    texture.image?.close?.();
+    if (texture.image) images.add(texture.image);
     texture.dispose();
   });
+  images.forEach(image => image.close?.());
 }
 
 /** Parse a bounded glTF 2.0 asset into Renderer67 parts. Three.js only decodes the asset. */
@@ -469,8 +504,9 @@ export async function parseGltf(data, options = {}) {
       if (node.isSkinnedMesh || node.morphTargetInfluences?.length) throw new Error('Skinning and morph targets are unsupported.');
       if (Array.isArray(node.material)) throw new Error('Multiple materials on one decoded primitive are unsupported.');
       const materialIndex = gltf.parser.associations.get(node.material)?.materials;
-      if (document.materials?.[materialIndex]?.pbrMetallicRoughness?.baseColorTexture && !node.material.map) {
-        throw new Error('Base color texture failed to decode. Use a valid PNG or JPEG image.');
+      for (const [field, sourceField] of MATERIAL_TEXTURES) {
+        const decodedField = field === 'metallicRoughnessMap' ? 'metalnessMap' : field === 'occlusionMap' ? 'aoMap' : field;
+        if (materialTexture(document.materials?.[materialIndex] ?? {}, sourceField) && !node.material[decodedField]) throw new Error(`${sourceField} failed to decode. Use a valid PNG or JPEG image.`);
       }
       const determinant = node.matrixWorld.determinant();
       if (!Number.isFinite(determinant) || Math.abs(determinant) < 1e-12) throw new Error('Mesh world transform is singular or non-finite.');
@@ -481,10 +517,10 @@ export async function parseGltf(data, options = {}) {
         if (actualVertices > limits.maxVertices) throw new Error('Decoded geometry exceeds maxVertices.');
         geometries.set(geometryKey, convertGeometry(node.geometry, mirrored));
       }
-      if (!materials.has(node.material)) materials.set(node.material, convertMaterial(node.material, limits, maps));
+      if (!materials.has(node.material)) materials.set(node.material, convertMaterial(node.material, limits, maps, document.materials?.[materialIndex]));
       const geometry = geometries.get(geometryKey);
       const material = materials.get(node.material);
-      if (material.map && !geometry.uvs) throw new Error('A base color texture requires TEXCOORD_0.');
+      if (MATERIAL_TEXTURES.some(([field]) => material[field]) && !geometry.uvs) throw new Error('Material textures require TEXCOORD_0.');
       const part = { name: node.name || `glTF mesh ${parts.length + 1}`, geometry, matrix: new Float32Array(node.matrixWorld.elements), material };
       if (!Array.from(part.matrix).every(Number.isFinite)) throw new Error('Mesh world matrix must be finite.');
       parts.push(part);

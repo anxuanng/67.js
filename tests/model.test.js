@@ -4,6 +4,21 @@ import { createHash } from 'node:crypto';
 import { box, cylinder, sphere, torus } from '../src/geometry.js';
 import { createModel } from '../src/model.js';
 
+test('sphere UVs preserve separate seam coordinates and cover every vertex', () => {
+  const segments = 12;
+  const rings = 8;
+  const mesh = sphere(segments, rings);
+  assert.equal(mesh.uvs.length, mesh.positions.length / 3 * 2);
+  for (const value of mesh.uvs) assert.ok(Number.isFinite(value) && value >= 0 && value <= 1);
+  for (let row = 0; row <= rings; row++) {
+    const first = row * (segments + 1);
+    const last = first + segments;
+    assert.equal(mesh.uvs[first * 2], 0);
+    assert.equal(mesh.uvs[last * 2], 1);
+    for (let axis = 0; axis < 3; axis++) assert.ok(Math.abs(mesh.positions[first * 3 + axis] - mesh.positions[last * 3 + axis]) < 1e-6);
+  }
+});
+
 function validateGeometry(mesh) {
   assert.ok(mesh.positions instanceof Float32Array);
   assert.ok(mesh.normals instanceof Float32Array);
