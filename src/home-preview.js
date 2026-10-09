@@ -3,9 +3,8 @@ import { createMotionScene } from './motion.js';
 
 const canvas = document.querySelector('#home-preview');
 const status = document.querySelector('#home-preview-status');
-const playButton = document.querySelector('#preview-play');
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
-const state = { yaw:0.6, pitch:0.28, distance:8, time:3, playing:false, visible:false };
+const state = { yaw:0.6, pitch:0.28, distance:8, time:3, playing:!reducedMotion.matches, visible:false };
 let renderer;
 let scene;
 let scheduledFrame = 0;
@@ -15,10 +14,8 @@ let disposed = false;
 
 function showError(error) {
   state.playing = false;
-  playButton.setAttribute('aria-pressed', 'false');
-  playButton.textContent = 'Animate';
   status.hidden = false;
-  status.textContent = `3D preview unavailable: ${error.message}. Open the full studio to retry.`;
+  status.textContent = `3D preview unavailable: ${error.message}. Reload the page to retry.`;
   cancelAnimationFrame(scheduledFrame);
   scheduledFrame = 0;
 }
@@ -31,7 +28,7 @@ function draw() {
     const distance = state.distance * (canvas.clientWidth < 500 ? 1.25 : 1);
     renderer.render({
       eye:[Math.sin(state.yaw) * Math.cos(state.pitch) * distance, Math.sin(state.pitch) * distance, Math.cos(state.yaw) * Math.cos(state.pitch) * distance],
-      target:[0,0.1,0], fov:40, time:state.time, exposure:1, effects:frame.effects,
+      target:[0,0.1,0], fov:40, time:state.time, exposure:1, effects:{ ...frame.effects, vignette:0, grain:0 },
     });
   } catch (error) {
     showError(error);
@@ -63,7 +60,7 @@ function initialize() {
   try {
     scene = createMotionScene();
     renderer = new Renderer67(canvas, scene.parts, {
-      ground:false, hdr:true, samples:4, pixelRatio:1.25, memoryBudgetMiB:192,
+      ground:false, transparent:true, hdr:true, samples:4, pixelRatio:1.25, memoryBudgetMiB:192,
     });
     window.__homePreview = { renderer, scene, state, draw };
     status.hidden = true;
@@ -83,16 +80,6 @@ function reset() {
   draw();
 }
 
-playButton.addEventListener('click', () => {
-  if (!renderer) return;
-  state.playing = !state.playing;
-  playButton.setAttribute('aria-pressed', String(state.playing));
-  playButton.textContent = state.playing ? 'Pause' : 'Animate';
-  synchronizePlayback();
-});
-document.querySelector('#preview-zoom-in').addEventListener('click', () => zoom(0.85));
-document.querySelector('#preview-zoom-out').addEventListener('click', () => zoom(1.15));
-document.querySelector('#preview-reset').addEventListener('click', reset);
 canvas.addEventListener('pointerdown', event => {
   if (event.button !== 0 || pointer) return;
   pointer = { id:event.pointerId, x:event.clientX, y:event.clientY };
@@ -120,6 +107,12 @@ canvas.addEventListener('wheel', event => {
   zoom(Math.exp(Math.max(-100, Math.min(100, event.deltaY)) * 0.002));
 }, { passive:false });
 canvas.addEventListener('keydown', event => {
+  if (event.code === 'Space') {
+    event.preventDefault();
+    state.playing = !state.playing;
+    synchronizePlayback();
+    return;
+  }
   if (!['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','+','=','-','Home'].includes(event.key)) return;
   event.preventDefault();
   if (event.key === 'ArrowLeft') state.yaw -= 0.12;
@@ -165,10 +158,7 @@ document.addEventListener('visibilitychange', () => {
   synchronizePlayback();
 });
 reducedMotion.addEventListener('change', () => {
-  if (!reducedMotion.matches) return;
-  state.playing = false;
-  playButton.setAttribute('aria-pressed', 'false');
-  playButton.textContent = 'Animate';
+  state.playing = !reducedMotion.matches;
   synchronizePlayback();
 });
 window.addEventListener('pagehide', event => {

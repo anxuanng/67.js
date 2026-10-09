@@ -108,12 +108,13 @@ function sampleCount(context, format, requested) {
 }
 
 export class Renderer67 {
-  constructor(canvas, parts, { batching = true, pixelRatio = 1.5, benchmark = false, world = false, ground = true, samples = 4, hdr = false, memoryBudgetMiB = 256, environment = {}, shadowBounds = {} } = {}) {
+  constructor(canvas, parts, { batching = true, pixelRatio = 1.5, benchmark = false, world = false, ground = true, transparent = false, samples = 4, hdr = false, memoryBudgetMiB = 256, environment = {}, shadowBounds = {} } = {}) {
     this.canvas = canvas;
     if (!Number.isInteger(samples) || samples < 1) throw new Error('MSAA sample count must be a positive integer.');
     if (new Set(parts).size !== parts.length) throw new Error('Scene parts must have distinct object identities for animation.');
-    this.context = canvas.getContext('webgl2', { antialias: true, alpha: false, powerPreference: 'high-performance' });
+    this.context = canvas.getContext('webgl2', { antialias: true, alpha: Boolean(transparent), premultipliedAlpha: true, powerPreference: 'high-performance' });
     if (!this.context) throw new Error('WebGL2 is unavailable. Enable hardware acceleration or use a supported browser.');
+    this.transparent = Boolean(transparent);
     this.pixelRatio = pixelRatio;
     this.benchmark = benchmark;
     this.world = world;
@@ -154,7 +155,7 @@ export class Renderer67 {
     if (!benchmark) {
       this.postProgram = compileProgram(this.context, fullscreenVertex, postFragment);
       this.skyProgram = compileProgram(this.context, fullscreenVertex, skyFragment);
-      this.postUniforms = Object.fromEntries(['frameTexture', 'bloomTexture', 'bloomStrength', 'hdrEnabled', 'grade', 'vignette', 'grainAmount', 'resolution', 'monochrome', 'fade', 'cinematic', 'time', 'volumeExplosion', 'explosionProgress', 'inverseViewProjection', 'eye'].map((name) => [name, this.context.getUniformLocation(this.postProgram, name)]));
+      this.postUniforms = Object.fromEntries(['transparent', 'frameTexture', 'bloomTexture', 'bloomStrength', 'hdrEnabled', 'grade', 'vignette', 'grainAmount', 'resolution', 'monochrome', 'fade', 'cinematic', 'time', 'volumeExplosion', 'explosionProgress', 'inverseViewProjection', 'eye'].map((name) => [name, this.context.getUniformLocation(this.postProgram, name)]));
       this.bloomProgram = compileProgram(this.context, fullscreenVertex, bloomFragment);
       this.bloomUniforms = Object.fromEntries(['sourceTexture', 'texelDirection', 'threshold', 'extract'].map(name => [name, this.context.getUniformLocation(this.bloomProgram, name)]));
       this.skyUniforms = Object.fromEntries(['skyTop', 'skyBottom', 'sunDirection', 'inverseViewProjection', 'eye', 'time', 'daylight', 'hdrEnabled'].map((name) => [name, this.context.getUniformLocation(this.skyProgram, name)]));
@@ -445,6 +446,7 @@ export class Renderer67 {
     context.bindTexture(context.TEXTURE_2D, effects.bloom.strength > 0 ? this.bloomTargets[1].texture : this.whiteTexture);
     context.uniform1i(this.postUniforms.bloomTexture, 2);
     context.uniform1f(this.postUniforms.bloomStrength, effects.bloom.strength);
+    context.uniform1f(this.postUniforms.transparent, this.transparent ? 1 : 0);
     context.uniform1f(this.postUniforms.hdrEnabled, this.hdr ? 1 : 0);
     context.uniform3f(this.postUniforms.grade, effects.saturation, effects.contrast, effects.temperature);
     context.uniform1f(this.postUniforms.vignette, effects.vignette);
@@ -507,7 +509,11 @@ export class Renderer67 {
     mat4.invert(this.inverseViewProjection, this.viewProjection);
     context.bindFramebuffer(context.FRAMEBUFFER, this.benchmark ? null : this.multisampleFramebuffer);
     context.viewport(0, 0, this.canvas.width, this.canvas.height);
-    context.clearColor(0.145, 0.162, 0.177, 1);
+    if (this.transparent) {
+      context.clearColor(0, 0, 0, 0);
+    } else {
+      context.clearColor(0.145, 0.162, 0.177, 1);
+    }
     context.clear(context.COLOR_BUFFER_BIT | context.DEPTH_BUFFER_BIT);
     if (this.world && !this.benchmark) this.drawSky(frame);
     context.enable(context.DEPTH_TEST);

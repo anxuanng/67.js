@@ -11,6 +11,7 @@ export const postFragment = `#version 300 es
 precision highp float;
 in vec2 textureCoordinate;
 uniform sampler2D frameTexture;
+uniform float transparent;
 uniform sampler2D bloomTexture;
 uniform float bloomStrength;
 uniform float hdrEnabled;
@@ -99,6 +100,8 @@ void main() {
   float secondLuma = luminance(second);
   vec3 color = secondLuma < minimumLuma || secondLuma > maximumLuma ? first : second;
   if (maximumLuma - minimumLuma < max(0.03, maximumLuma * 0.125)) color = center;
+  float coverage = texture(frameTexture, textureCoordinate).a;
+  if (transparent > 0.5) color = center / max(coverage, 0.00001);
   if (bloomStrength > 0.0) color += texture(bloomTexture, textureCoordinate).rgb * bloomStrength;
   if (hdrEnabled > 0.5) {
     color = clamp((color * (2.51 * color + 0.03)) / (color * (2.43 * color + 0.59) + 0.14), 0.0, 1.0);
@@ -113,7 +116,8 @@ void main() {
   color *= max(0.0, 1.0 - (cinematic * 0.20 + vignette) * dot(centered, centered));
   float grain = fract(sin(dot(gl_FragCoord.xy + floor(time * 24.0), vec2(12.9898, 78.233))) * 43758.5453) - 0.5;
   color += grain * (0.018 * cinematic + grainAmount);
-  outputColor = vec4(color * (1.0 - fade), 1.0);
+  float alpha = transparent > 0.5 ? coverage : 1.0;
+  outputColor = vec4(color * (1.0 - fade) * alpha, alpha);
 }`;
 
 export const skyFragment = `#version 300 es
