@@ -35,6 +35,11 @@ let currentTime = 0;
 let playing = false;
 let animationFrame = 0;
 let playbackOrigin = 0;
+let scrubbing = false;
+let resumeAfterScrub = false;
+let seekFrame = 0;
+let pendingSeek = null;
+let audioSeekTarget = null;
 
 if (exporting) {
   document.body.classList.add('export-mode');
@@ -81,7 +86,7 @@ function renderAt(time) {
     environment: scene.environment,
   });
   currentTime = sample.time;
-  slider.value = String(currentTime);
+  if (!scrubbing) slider.value = String(currentTime);
   slider.setAttribute('aria-valuetext', `${currentTime.toFixed(1)} of ${FILM_DURATION} seconds`);
   clock.value = `${displayTime(currentTime)} / ${displayTime(FILM_DURATION)}`;
   titleText.textContent = sample.title;
@@ -101,8 +106,10 @@ function setPlaying(value) {
   if (playing) {
     if (currentTime >= FILM_DURATION) renderAt(0);
     if (score) {
+      audioSeekTarget = currentTime;
       score.currentTime = currentTime;
-      score.play().catch(() => {
+      score.play().catch(error => {
+        if (!playing || error.name === 'AbortError') return;
         document.querySelector('.film-caption').textContent = '⚠ Score unavailable. The 3D film continues.';
       });
     }
@@ -120,10 +127,18 @@ function showError(error) {
 }
 
 function advance(timestamp) {
-  if (!playing) return;
+  if (!playing || scrubbing) return;
   try {
-    const seconds = score && !score.paused && score.readyState >= 2 ? score.currentTime : (timestamp - playbackOrigin) / 1000;
-    renderAt(seconds);
+    if (audioSeekTarget !== null && score && !score.paused && score.readyState >= 2) {
+      if (score.seeking || score.currentTime < audioSeekTarget - 0.1) {
+        animationFrame = requestAnimationFrame(advance);
+        return;
+      }
+      audioSeekTarget = null;
+      playbackOrigin = timestamp - currentTime * 1000;
+    }
+    const seconds = score && !score.paused && score.readyState >= 2 && !score.seeking ? score.currentTime : (timestamp - playbackOrigin) / 1000;
+    renderAt(Math.max(currentTime, seconds));
     if (currentTime >= FILM_DURATION) setPlaying(false);
     else animationFrame = requestAnimationFrame(advance);
   } catch (error) {
@@ -131,23 +146,68 @@ function advance(timestamp) {
   }
 }
 
-playButton.addEventListener('click', () => setPlaying(!playing));
+playButton.addEventListener('click', () => {
+  if (scrubbing) finishScrub(false);
+  setPlaying(!playing);
+});
 document.querySelector('#film-replay').addEventListener('click', () => {
+  finishScrub(false);
   setPlaying(false);
   renderAt(0);
   setPlaying(true);
 });
-slider.addEventListener('input', () => {
+function beginScrub() {
+  if (scrubbing) return;
+  resumeAfterScrub = playing;
+  scrubbing = true;
   setPlaying(false);
-  renderAt(Number(slider.value));
+}
+
+function flushSeek() {
+  cancelAnimationFrame(seekFrame);
+  seekFrame = 0;
+  if (pendingSeek === null) return;
+  const destination = pendingSeek;
+  pendingSeek = null;
+  renderAt(destination);
+}
+
+function finishScrub(resume = true) {
+  if (!scrubbing) return;
+  flushSeek();
+  scrubbing = false;
+  slider.value = String(currentTime);
+  const shouldResume = resume && resumeAfterScrub;
+  resumeAfterScrub = false;
+  if (shouldResume) setPlaying(true);
+}
+
+slider.addEventListener('pointerdown', beginScrub);
+slider.addEventListener('input', () => {
+  const destination = Number(slider.value);
+  beginScrub();
+  pendingSeek = destination;
+  if (!seekFrame) seekFrame = requestAnimationFrame(flushSeek);
 });
+slider.addEventListener('change', () => finishScrub());
+window.addEventListener('pointerup', () => finishScrub());
+window.addEventListener('pointercancel', () => finishScrub(false));
+window.addEventListener('blur', () => finishScrub(false));
+slider.addEventListener('blur', () => finishScrub(false));
+slider.addEventListener('keydown', event => {
+  if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown'].includes(event.key)) beginScrub();
+});
+slider.addEventListener('keyup', () => finishScrub());
 document.addEventListener('keydown', event => {
   if (event.code !== 'Space' || event.target.closest('input, button, a')) return;
   event.preventDefault();
   setPlaying(!playing);
 });
 document.addEventListener('visibilitychange', () => {
-  if (document.hidden) setPlaying(false);
+  if (document.hidden) {
+    finishScrub(false);
+    setPlaying(false);
+  }
 });
 window.addEventListener('resize', () => {
   if (!renderer || exporting) return;
@@ -155,6 +215,10 @@ window.addEventListener('resize', () => {
   renderAt(currentTime);
 });
 window.addEventListener('pagehide', () => {
+  cancelAnimationFrame(seekFrame);
+  seekFrame = 0;
+  pendingSeek = null;
+  scrubbing = false;
   setPlaying(false);
   renderer?.dispose();
   renderer = null;
@@ -170,6 +234,9 @@ window.__film = {
   renderAt,
   duration: FILM_DURATION,
   score,
+  get playing() { return playing; },
+  get scrubbing() { return scrubbing; },
+  get currentTime() { return currentTime; },
   exporting,
   options: { width, height, samples, memoryBudgetMiB },
 };

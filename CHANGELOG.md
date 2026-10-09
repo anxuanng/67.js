@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.3.3
+
+- Smooth WALL·E assembly changes when visitors tap or drag the slider
+- Pause driving during assembly changes and gradually resume after complete reassembly
+- Add head tracking, articulated arms and claws, suspension and continuous forward caterpillar movement
+- Keep the camera and shadows aligned with the moving robot
+- Prevent trailer playback and delayed audio seeks from overriding timeline input
+- Rebuild the trailer with detailed machinery, silhouettes, moving vehicles and practical lighting
+- Add filtered terrain grain and surface relief without additional textures
+
 ## 0.3.2
 
 - Add transparent render targets with MSAA coverage and continuous homepage animation.

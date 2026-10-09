@@ -52,6 +52,8 @@ try {
   assert.equal(await page.locator('#finish-name').textContent(), 'Ceramic');
   await page.screenshot({ path: fileURLToPath(new URL('ceramic.png', artifactDirectory)) });
   await page.getByRole('button', { name: 'Yellow finish' }).click();
+  await page.evaluate(() => document.fonts.ready);
+  await page.waitForFunction(() => window.__studio.state.assembly === 0 && window.__studio.renderer.assemblyAmount === 0);
   const assembled = await modelPixels();
   await page.evaluate(() => { window.__shadowBefore = window.__studio.renderer.shadowTexture; });
   for (const value of ['50', '100']) {

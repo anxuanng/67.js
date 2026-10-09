@@ -79,11 +79,13 @@ try {
         slider.dispatchEvent(new Event('input', { bubbles:true }));
         slider.dispatchEvent(new Event('change', { bubbles:true }));
       });
-      assert.equal(await page.evaluate(() => window.__homePreview.state.assembly), 1);
+      assert.equal(await page.evaluate(() => window.__homePreview.state.assemblyTarget), 1);
+      assert.ok(await page.evaluate(() => window.__homePreview.state.assembly) < 1, 'Assembly jumped to the target');
       assert.equal(await page.evaluate(() => window.__homePreview.state.playing), false);
       const frozenTime = await page.evaluate(() => window.__homePreview.state.time);
       await page.waitForTimeout(150);
       assert.equal(await page.evaluate(() => window.__homePreview.state.time), frozenTime);
+      await page.waitForFunction(() => window.__homePreview.state.assembly === 1);
       await page.locator('#home-preview').focus();
       await page.keyboard.press('Space');
       assert.equal(await page.evaluate(() => window.__homePreview.state.playing), false, 'Exploded model resumes from Space');
@@ -92,7 +94,8 @@ try {
         slider.dispatchEvent(new Event('input', { bubbles:true }));
         slider.dispatchEvent(new Event('change', { bubbles:true }));
       });
-      assert.equal(await page.evaluate(() => window.__homePreview.state.playing), true);
+      assert.equal(await page.evaluate(() => window.__homePreview.state.playing), false, 'Drive resumed before reassembly completed');
+      await page.waitForFunction(() => window.__homePreview.state.playing);
       assert.ok(await page.evaluate(() => window.__homePreview.state.speed) < 0.4, 'Drive restarts at full speed');
       await page.waitForFunction(() => window.__homePreview.state.speed === 1);
       await page.emulateMedia({ reducedMotion:'reduce' });

@@ -4,6 +4,7 @@ import { Renderer67 } from './renderer.js';
 import { createModel } from './model.js';
 import { downloadGlb } from './export.js';
 import { assemblyOffset } from './assembly.js';
+import { approachValue } from './preview-transition.js';
 
 const canvas = document.querySelector('#viewport');
 const renderParameters = new URLSearchParams(location.search);
@@ -17,6 +18,7 @@ const state = { azimuth: 0.48, elevation: 0.18, distance: 7.8, finish: 'yellow',
 state.look = 'studio';
 state.targetHeight = 1.35;
 state.touring = false;
+state.assemblyTarget = state.assembly;
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
 const looks = {
   studio: { lightDirection: [-3, 6, 4], temperature: 0, contrast: 1.02 },
@@ -66,6 +68,8 @@ function draw(time) {
     state.assembly = Math.sin(progress * Math.PI) ** 2;
     syncAssembly();
     if (progress === 1) stopTour();
+  } else if (!state.exporting && state.assembly !== state.assemblyTarget) {
+    state.assembly = approachValue(state.assembly, state.assemblyTarget, Math.max(0, Math.min(0.05, (time - lastTime) / 1000)));
   }
   if (state.rotating && !dragging) state.azimuth += Math.min((time - lastTime) / 1000, 0.05) * 0.16;
   lastTime = time;
@@ -74,7 +78,7 @@ function draw(time) {
   frameCount++;
   document.querySelector('#cpu').textContent = `${(cpuTotal / frameCount).toFixed(2)} ms CPU`;
   if (frameCount > 60) { cpuTotal = renderer.cpuMilliseconds; frameCount = 1; }
-  if (state.rotating || state.touring) invalidate();
+  if (state.rotating || state.touring || state.assembly !== state.assemblyTarget) invalidate();
 }
 
 function invalidate() {
@@ -98,19 +102,23 @@ try { initialize(); } catch (error) { notify(error.message, true); }
 
 document.querySelector('#assembly').addEventListener('input', (event) => {
   stopTour();
-  state.assembly = Number(event.target.value) / 100;
+  state.assemblyTarget = Number(event.target.value) / 100;
+  if (reducedMotion.matches) state.assembly = state.assemblyTarget;
+  if (!scheduledFrame) lastTime = performance.now();
   document.querySelector('#assembly-value').textContent = `${event.target.value}%`;
-  event.target.setAttribute('aria-valuetext', state.assembly === 0 ? 'Assembled' : state.assembly === 1 ? 'Fully exploded' : `${event.target.value}% exploded`);
+  event.target.setAttribute('aria-valuetext', state.assemblyTarget === 0 ? 'Assembled' : state.assemblyTarget === 1 ? 'Fully exploded' : `${event.target.value}% exploded`);
   invalidate();
 });
 
 function syncAssembly() {
+  state.assemblyTarget = state.assembly;
   const percent = Math.round(state.assembly * 100);
   document.querySelector('#assembly').value = String(percent);
   document.querySelector('#assembly-value').textContent = `${percent}%`;
   document.querySelector('#assembly').setAttribute('aria-valuetext', `${percent}% exploded`);
 }
 function stopTour() {
+  if (state.touring) state.assemblyTarget = state.assembly;
   state.touring = false;
   document.querySelector('#assembly-tour').textContent = 'Play assembly';
 }
@@ -127,7 +135,7 @@ document.querySelectorAll('[data-view]').forEach(button => button.addEventListen
   stopTour();
   const views = { hero: [0.48, 0.18, 7.8, 1.35, 0], face: [0.12, 0.12, 3.8, 2.55, 0], machine: [0.7, 0.34, 6.8, 1.35, 0.65] };
   const [azimuth, elevation, distance, targetHeight, assembly] = views[button.dataset.view];
-  Object.assign(state, { azimuth, elevation, distance, targetHeight, assembly });
+  Object.assign(state, { azimuth, elevation, distance, targetHeight, assembly, assemblyTarget:assembly });
   document.querySelectorAll('[data-view]').forEach(control => control.setAttribute('aria-pressed', String(control === button)));
   syncAssembly(); invalidate();
 }));
@@ -143,7 +151,14 @@ document.querySelector('#save-model').addEventListener('click', () => {
   }, 'image/png');
 });
 document.addEventListener('visibilitychange', () => { if (document.hidden) stopTour(); });
-reducedMotion.addEventListener('change', event => { if (event.matches) { stopTour(); state.rotating = false; document.querySelector('#rotate').setAttribute('aria-pressed', 'false'); } });
+reducedMotion.addEventListener('change', event => {
+  if (!event.matches) return;
+  stopTour();
+  state.rotating = false;
+  state.assembly = state.assemblyTarget;
+  document.querySelector('#rotate').setAttribute('aria-pressed', 'false');
+  invalidate();
+});
 document.querySelectorAll('[data-layer]').forEach((button) => button.addEventListener('click', () => {
   state.layer = button.dataset.layer;
   document.querySelectorAll('[data-layer]').forEach((control) => control.setAttribute('aria-pressed', String(control === button)));

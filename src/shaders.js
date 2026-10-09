@@ -118,6 +118,29 @@ uniform float hdrEnabled;
 out vec4 outputColor;
 const float PI = 3.14159265359;
 
+float terrainHash(vec2 position) {
+  vec3 seed = fract(vec3(position.xyx) * 0.1031);
+  seed += dot(seed, seed.yzx + 33.33);
+  return fract((seed.x + seed.y) * seed.z);
+}
+
+// Value noise and its analytic gradient avoid extra texture fetches for sand relief.
+vec3 terrainNoise(vec2 position) {
+  vec2 cell = floor(position);
+  vec2 fraction = fract(position);
+  vec2 blend = fraction * fraction * (3.0 - 2.0 * fraction);
+  vec2 derivative = 6.0 * fraction * (1.0 - fraction);
+  float lowerLeft = terrainHash(cell);
+  float lowerRight = terrainHash(cell + vec2(1.0, 0.0));
+  float upperLeft = terrainHash(cell + vec2(0.0, 1.0));
+  float upperRight = terrainHash(cell + vec2(1.0, 1.0));
+  float lower = mix(lowerLeft, lowerRight, blend.x);
+  float upper = mix(upperLeft, upperRight, blend.x);
+  return vec3(mix(lower, upper, blend.y),
+    mix(lowerRight - lowerLeft, upperRight - upperLeft, blend.y) * derivative.x,
+    (upper - lower) * derivative.y);
+}
+
 vec3 fresnel(float cosine, vec3 reflectance) {
   return reflectance + (1.0 - reflectance) * pow(1.0 - cosine, 5.0);
 }
@@ -202,8 +225,19 @@ void main() {
     normal = normalize(normal + vec3(sin(worldPosition.z * 12.0), sin(worldPosition.x * 9.0), cos(worldPosition.y * 11.0)) * 0.06);
   }
   if (surface.w == 5.0) {
-    float mottling = sin(worldPosition.x * 3.3) * sin(worldPosition.z * 4.1) * 0.5 + sin(worldPosition.x * 0.9 + worldPosition.z * 1.7) * 0.5;
-    color *= 0.94 + mottling * 0.06;
+    vec2 terrainPosition = worldPosition.xz + worldPosition.y * vec2(0.31, 0.43);
+    float footprint = max(fwidth(terrainPosition.x), fwidth(terrainPosition.y));
+    vec3 broad = terrainNoise(terrainPosition * 0.32);
+    vec3 ridges = terrainNoise(terrainPosition * 3.2 + vec2(5.2, 11.7));
+    vec3 grains = terrainNoise(terrainPosition * 32.0 + vec2(17.1, 4.3));
+    float ridgeWeight = 1.0 - smoothstep(0.25, 0.8, footprint * 3.2);
+    float grainWeight = 1.0 - smoothstep(0.2, 0.7, footprint * 32.0);
+    float ridgeColor = 1.0 - abs(ridges.x * 2.0 - 1.0);
+    color *= 0.82 + broad.x * 0.26 + (ridgeColor - 0.5) * 0.12 * ridgeWeight + (grains.x - 0.5) * 0.1 * grainWeight;
+    vec2 relief = ridges.yz * 0.08 * ridgeWeight + grains.yz * 0.11 * grainWeight;
+    vec3 perturbation = vec3(-relief.x, 0.0, -relief.y);
+    normal = normalize(normal + perturbation - normal * dot(perturbation, normal));
+    roughness = clamp(roughness + (grains.x - 0.5) * 0.06 * grainWeight, 0.075, 1.0);
   }
   float visibility = shadowVisibility(normal);
   vec3 keyColor = mix(vec3(5.2, 4.7, 4.1), vec3(3.7, 3.4, 2.9) * daylight, worldMode);

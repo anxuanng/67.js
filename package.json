@@ -1,6 +1,6 @@
 {
   "name": "@codepawlhq/67js",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "private": false,
   "type": "module",
   "description": "A browser graphics engine for interactive worlds, animation and cinematic media, with memory-aware CPU/GPU export",
@@ -46,6 +46,7 @@
     "test": "node --test",
     "smoke": "node scripts/smoke.mjs",
     "smoke:scenes": "node scripts/smoke-scenes.mjs",
+    "smoke:transport": "node scripts/smoke-film-transport.mjs",
     "render": "node scripts/render-media.mjs",
     "score": "node scripts/score.mjs",
     "export:model": "node scripts/export-model.mjs",

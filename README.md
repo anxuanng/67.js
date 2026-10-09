@@ -38,6 +38,9 @@ The studio submits eight geometry draws, including the floor.
 Its slider separates all 574 components, including individual fasteners, tread shoes, gears and electronics, to expose batteries, circuit boards, motors, gears and optical mechanisms.
 The layer controls show the shell, the interior or both. GLB export preserves the selected layers, finish and explosion amount.
 
+The homepage character rolls forward, looks around and moves its arms and claws.
+Its assembly slider approaches each selected position smoothly, pauses driving and resumes gradually after complete reassembly.
+
 The renderer uses sampled fillets, GGX lighting, shadows, explicit MSAA, FXAA, specular filtering and ACES tone mapping.
 It reuses geometry buffers during explosion and refreshes shadows without allocating another shadow texture.
 The studio renders on demand. Continuous animation pauses in hidden tabs.
@@ -91,7 +94,7 @@ npm run render -- --kind video --scene assets --asset model.glb --duration 2 --o
 
 Video exports default to JPEG capture at quality 95 and automatically use NVENC when its preflight succeeds, with a CPU encoder fallback. `--backend cpu` defaults to CPU encoding as well. Use `--capture png` for lossless frame capture or `--jpeg-quality 100` for a higher JPEG quality. H.264 delivery remains compressed in either mode.
 
-Progress reports frames per second, speed relative to playback and estimated remaining time. The JSON sidecar separates rendering, capture, encoder backpressure and encoder finalization, alongside peak memory. Capture keeps one pending frame; the encoder applies backpressure rather than buffering a film in memory.
+Progress reports frames per second, speed relative to playback and estimated remaining time. The JSON sidecar separates rendering, capture, encoder backpressure and encoder finalization, alongside peak memory. Capture keeps one pending frame. The encoder applies backpressure rather than buffering a film in memory.
 
 | Preset | Dimensions | MSAA samples | FPS | Target budget |
 | --- | --- | ---: | ---: | ---: |

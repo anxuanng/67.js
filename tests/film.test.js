@@ -24,13 +24,15 @@ test('187-second study has contiguous authored cuts, a late detonation and termi
   assert.equal(sampleFilm(2).fade, 0);
   assert.equal(sampleFilm(FILM_DURATION).fade, 1);
   assert.equal(sampleFilm(180.9).title, '');
-  assert.equal(sampleFilm(183).title, 'OPPENHEIMER');
-  assert.equal(sampleFilm(183).subtitle, 'A 67.js trailer study');
-  assert.equal(sampleFilm(183).titleOpacity, 1);
+  assert.equal(sampleFilm(183).title, '');
+  assert.equal(sampleFilm(185).title, 'OPPENHEIMER');
+  assert.equal(sampleFilm(185).subtitle, 'A 67.js trailer study');
+  assert.equal(sampleFilm(185).titleOpacity, 1);
   assert.equal(sampleFilm(180.9).explosionProgress, 0);
   assert.equal(sampleFilm(181).sceneTime, 0);
   assert.equal(sampleFilm(181).flash, 1);
-  assert.equal(sampleFilm(185).explosionProgress, 1);
+  assert.equal(sampleFilm(183).explosionProgress, 1);
+  assert.ok(sampleFilm(182).explosionProgress > 0.6);
 });
 
 test('random-access frame samples are finite and independent of playback order', () => {
@@ -68,7 +70,7 @@ test('camera motion is continuous and eases to rest within each shot', () => {
   }
 });
 
-test('sets keep shared static geometry, valid surfaces and the 384 MiB target budget', () => {
+test('sets keep shared geometry, valid surfaces and the 384 MiB target budget', () => {
   const scenes = createFilmScenes();
   assert.ok(Object.keys(scenes).length >= 8);
   const referencedSets = new Set(FILM_SHOTS.map(shot => shot.scene));
@@ -120,4 +122,39 @@ test('sets keep shared static geometry, valid surfaces and the 384 MiB target bu
   assert.ok(scenes.portrait.parts.some(part => part.name === 'Fedora sweeping brim'));
   assert.ok(scenes.settlement.parts.some(part => part.name === 'Army jeep chassis'));
   console.log(JSON.stringify(budgets));
+});
+
+
+test('physical motion is visible, deterministic and retains render identities across seeks', () => {
+  const scenes = createFilmScenes();
+  const snapshot = scene => scene.parts.map(part => ({ matrix: Array.from(part.matrix), color: [...part.material.color], emission: part.material.emission }));
+  for (const name of ['sparks', 'atom', 'waves', 'control', 'gadget', 'settlement', 'portrait', 'desert', 'night']) {
+    const scene = scenes[name];
+    const identities = scene.parts.map(part => ({ part, geometry: part.geometry, matrix: part.matrix }));
+    scene.animate(2.75);
+    const expected = snapshot(scene);
+    scene.animate(7.3);
+    assert.notDeepEqual(snapshot(scene), expected, name);
+    scene.animate(0);
+    scene.animate(2.75);
+    assert.deepEqual(snapshot(scene), expected, name);
+    scene.parts.forEach((part, index) => {
+      assert.equal(part, identities[index].part);
+      assert.equal(part.geometry, identities[index].geometry);
+      assert.equal(part.matrix, identities[index].matrix);
+      assert.ok(Array.from(part.matrix).every(Number.isFinite));
+    });
+  }
+});
+
+
+test('tailored figure surfaces face outward and keep a closed shoulder silhouette', () => {
+  const scene = createFilmScenes().portrait;
+  const coat = scene.parts.find(part => part.name === 'Sculpted tailored jacket').geometry;
+  let farthest = 0;
+  for (let index = 3; index < coat.positions.length; index += 3) {
+    if (coat.positions[index] > coat.positions[farthest]) farthest = index;
+  }
+  assert.ok(coat.normals[farthest] > 0.5);
+  assert.ok(scene.parts.some(part => part.name === 'Tailored shoulder line'));
 });

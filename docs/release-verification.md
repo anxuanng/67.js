@@ -1,5 +1,30 @@
 # Release verification
 
+## 0.3.3
+
+These checks used Windows Chrome, ANGLE D3D11 and an RTX 3060.
+
+| Check | Measured result |
+| --- | --- |
+| Node tests | 78 tests passed, including articulated joints, forward track contact, deterministic film motion and assembly interpolation. |
+| Assembly | Native slider taps and interrupted transitions passed at 1440, 390 and 320 pixels. Driving remained paused until complete reassembly. |
+| Motion preferences | Reduced motion snapped assembly to the selected position and kept driving paused. |
+| Moving character | Head, arms and claws rendered correctly at four poses. Camera and shadow bounds followed the root at 120 seconds. |
+| Film transport | Held pointer input, coalesced seeks, delayed audio, keyboard input and paused seeking passed. Real playback resumed without moving behind the selected time. |
+| Terrain | Film sand and nature terrain compiled and rendered without WebGL errors. |
+| Trailer | Sixteen inspected frames cover the rebuilt machinery, silhouettes, jeep, desert, night lighting and ignition. |
+| Full export | 4,488 frames at 1280 × 720 and 24 FPS rendered in 110.13 seconds. The film lasts 187 seconds. |
+| Memory | The export kept one pending frame. Peak renderer allocation was 84.34 MiB, observed Node RSS was 217.34 MiB and sampled browser heap was 19.42 MiB. |
+| Delivery | FFprobe verified H.264, BT.709, 48 kHz stereo AAC and 187 seconds. The delivery file contains 22,729,620 bytes. |
+
+The export used JPEG capture at quality 95 and NVENC encoding.
+The browser player renders the same procedural scene directly through WebGL.
+The downloadable file uses a lower bitrate to fit the hosting asset limit.
+Its encoded Gadget closeup was inspected after compression.
+
+Renderer estimates exclude driver memory and browser RSS.
+The figures remain stylized silhouettes, without photorealistic character assets or recorded performances.
+
 ## 0.3.0
 
 The package is `@codepawlhq/67js`, installed locally through the `67js` alias. The display name remains 67.js.

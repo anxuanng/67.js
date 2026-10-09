@@ -6,6 +6,18 @@
   "aspect": "landscape",
   "start": 0,
   "encoder": "gpu",
+  "requestedEncoder": "auto",
+  "captureFormat": "jpeg",
+  "jpegQuality": 95,
+  "capturedFrames": 4488,
+  "stageTimings": {
+    "renderSeconds": 13.233183899999782,
+    "captureSeconds": 92.94667900000034,
+    "encoderBackpressureSeconds": 1.5668255999998477,
+    "encoderFinishSeconds": 0.6182017000000051
+  },
+  "effectiveFPS": 40.75366571254871,
+  "speedRatio": 1.6980694046895295,
   "assembly": null,
   "width": 1280,
   "height": 720,
@@ -17,12 +29,12 @@
   "fps": 24,
   "duration": 187,
   "memoryBudgetMiB": 384,
-  "peakEstimatedRenderBytes": 86978764,
-  "peakNodeBytes": 226672640,
-  "peakBrowserHeap": 10947796,
+  "peakEstimatedRenderBytes": 88437868,
+  "peakNodeBytes": 227901440,
+  "peakBrowserHeap": 20362648,
   "maximumPendingFrames": 1,
   "firstFrameBytes": 6158,
-  "elapsedSeconds": 134.85767690000003,
+  "elapsedSeconds": 110.1250629,
   "graphics": {
     "gpu": "ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 (0x00002487) Direct3D11 vs_5_0 ps_5_0, D3D11)",
     "samples": 4,
@@ -35,14 +47,14 @@
     },
     "glError": 0
   },
-  "output": "critical.mp4",
+  "output": "oppenheimer-master.mp4",
   "errors": [],
   "webDelivery": {
     "codec": "h264_nvenc",
     "targetVideoBitrate": 800000,
     "maxVideoBitrate": 850000,
     "audioBitrate": 128000,
-    "bytes": 22757045,
+    "bytes": 22729620,
     "verifiedDuration": 187,
     "verifiedFrames": 4488
   }

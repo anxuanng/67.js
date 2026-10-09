@@ -34,19 +34,21 @@ test('preview preserves the assembled model, all instance identities and assembl
   }
 });
 
-test('absolute sampling is deterministic, periodic and rejects invalid seconds', () => {
+test('absolute sampling and gaze are deterministic and reject invalid input', () => {
   const scene = createWallEPreviewScene();
-  const frame = scene.sample(1.25);
+  const interaction = { gaze: [0.5, -0.3] };
+  const frame = structuredClone(scene.sample(1.25, interaction));
   const first = snapshot(scene);
   scene.sample(8);
   scene.sample(-100);
-  assert.deepEqual(scene.sample(1.25), frame);
+  assert.deepEqual(scene.sample(1.25, interaction), frame);
   assert.deepEqual(snapshot(scene), first);
-  scene.sample(scene.duration + 1.25);
-  assert.deepEqual(snapshot(scene), first);
-  assert.deepEqual(frame.target, [0, 1.5, 0]);
+  assert.deepEqual(frame.target, [0, 1.5, 1.25 * scene.driveSpeed]);
+  assert.deepEqual(frame.rootOffset, [0, 0, 1.25 * scene.driveSpeed]);
   assert.equal(frame.effects.bloom.strength, 0);
   for (const invalid of [NaN, Infinity, -Infinity, undefined, '1']) assert.throws(() => scene.sample(invalid), TypeError);
+  for (const gaze of [[NaN, 0], [0], '1', [0, Infinity]]) assert.throws(() => scene.sample(1, { gaze }), TypeError);
+  assert.throws(() => scene.sample(Number.MAX_VALUE), RangeError);
 });
 
 test('both caterpillars circulate with coherent shoe/pad pairs and stationary ground contact', () => {
@@ -89,11 +91,11 @@ test('wheel bolts orbit their own sprockets and retain their radius and x coordi
     const radius = Math.hypot(base[index][13] - base[centerIndex][13], base[index][14] - base[centerIndex][14]);
     close(Math.hypot(part.matrix[13] - center.matrix[13], part.matrix[14] - center.matrix[14]), radius);
     close(part.matrix[12], base[index][12]);
-    assert.ok(Math.hypot(part.matrix[13] - base[index][13], part.matrix[14] - base[index][14] - 0.28) > 0.02);
+    assert.ok(Math.hypot(part.matrix[13] - base[index][13], part.matrix[14] - base[index][14] - 3 * scene.driveSpeed) > 0.02);
   }
 });
 
-test('travel eases through reversals and every transform stays continuous across the loop seam', () => {
+test('forward travel never reverses or resets and articulation stays continuous at period boundaries', () => {
   const scene = createWallEPreviewScene();
   for (const boundary of [3, 9, 12]) {
     scene.sample(boundary - 0.0001);
@@ -101,12 +103,62 @@ test('travel eases through reversals and every transform stays continuous across
     scene.sample(boundary + 0.0001);
     scene.parts.forEach((part, index) => part.matrix.forEach((value, axis) => close(value, before[index][axis], 0.0002)));
   }
-  scene.sample(3);
-  close(scene.parts[0].matrix[14], 0.28);
-  scene.sample(9);
-  close(scene.parts[0].matrix[14], -0.28);
-  for (let time = 0; time < scene.duration; time += 0.125) {
+  let previousTravel = -Infinity;
+  for (let time = -1; time < scene.duration * 2; time += 0.125) {
     scene.sample(time);
+    const travel = scene.parts[0].matrix[14];
+    assert.ok(travel > previousTravel);
+    close(travel, time * scene.driveSpeed);
+    previousTravel = travel;
     for (const part of scene.parts) assert.ok(Array.from(part.matrix).every(Number.isFinite));
   }
+});
+
+test('head, neck, arm and finger joints move attached groups and repeat relative to forward root', () => {
+  const scene = createWallEPreviewScene();
+  const base = snapshot(scene);
+  scene.sample(2.5);
+  const posed = snapshot(scene);
+  const names = ['Neck articulated spine', 'Eye dark glass', 'Upper arm yellow housing', 'Forearm steel linkage', 'Claw palm', 'Claw finger root'];
+  for (const name of names) {
+    const index = scene.parts.findIndex(part => part.name === name);
+    assert.ok(posed[index].slice(0, 12).some((value, axis) => Math.abs(value - base[index][axis]) > 0.001), name);
+  }
+  const eyeParts = scene.parts.flatMap((part, index) => part.name === 'Eye dark glass' || part.name === 'Eye central pupil' ? [index] : []);
+  for (let index = 0; index < eyeParts.length; index += 2) {
+    const glass = eyeParts[index];
+    const pupil = eyeParts[index + 1];
+    const distance = matrices => Math.hypot(...[12, 13, 14].map(axis => matrices[glass][axis] - matrices[pupil][axis]));
+    close(distance(posed), distance(base));
+  }
+  scene.sample(2.5 + scene.duration);
+  for (let index = 0; index < scene.parts.length; index++) {
+    if (scene.parts[index].assembly.section.endsWith('track assembly')) continue;
+    scene.parts[index].matrix.forEach((value, axis) => close(value - (axis === 14 ? scene.duration * scene.driveSpeed : 0), posed[index][axis]));
+  }
+  const root = scene.sample(10000).rootOffset;
+  for (const part of scene.parts) {
+    assert.ok(Math.abs(part.matrix[12]) < 1.6);
+    assert.ok(part.matrix[13] > 0 && part.matrix[13] < 3.3);
+    assert.ok(Math.abs(part.matrix[14] - root[2]) < 1.6);
+  }
+});
+
+test('pointer gaze changes the attached head without changing the drive or arms', () => {
+  const scene = createWallEPreviewScene();
+  scene.sample(2, { gaze: [-1, -1] });
+  const left = snapshot(scene);
+  scene.sample(2, { gaze: [1, 1] });
+  const right = snapshot(scene);
+  for (let index = 0; index < scene.parts.length; index++) {
+    const part = scene.parts[index];
+    if (part.assembly.section.endsWith('track assembly') || part.assembly.section.endsWith('arm and claw')) {
+      assert.deepEqual(right[index], left[index]);
+    }
+  }
+  const eye = scene.parts.findIndex(part => part.name === 'Eye dark glass');
+  assert.ok(Math.abs(right[eye][12] - left[eye][12]) > 0.05);
+  assert.ok(Math.abs(right[eye][13] - left[eye][13]) > 0.02);
+  scene.sample(2, { gaze: [10, 10] });
+  assert.deepEqual(snapshot(scene), right);
 });
