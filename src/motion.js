@@ -50,9 +50,11 @@ export function createMotionScene() {
     for (let tooth = 0; tooth < 20; tooth++) {
       const angle = tooth / 20 * Math.PI * 2;
       const name = add(`Rotor ${layer} tooth ${tooth}`, 'plate', [Math.cos(angle) * 0.73, height, Math.sin(angle) * 0.73], [0.16, 0.085, 0.13], layer % 2 ? steel : gold, [0, -angle * 180 / Math.PI, 0]);
-      tracks.push({ target: name, property: 'translation', keyframes: Array.from({ length: 17 }, (_, index) => {
+      tracks.push({ target: name, property: 'translation', interpolation: 'CUBICSPLINE', keyframes: Array.from({ length: 17 }, (_, index) => {
         const rotationAngle = angle + index / 16 * Math.PI * 2 * (layer % 2 ? -1 : 1);
-        return { time: index / 16 * MOTION_DURATION, value: [Math.cos(rotationAngle) * 0.73, height, Math.sin(rotationAngle) * 0.73] };
+        const speed = Math.PI * 2 / MOTION_DURATION * (layer % 2 ? -1 : 1);
+        const tangent = [-Math.sin(rotationAngle) * 0.73 * speed, 0, Math.cos(rotationAngle) * 0.73 * speed];
+        return { time: index / 16 * MOTION_DURATION, value: [Math.cos(rotationAngle) * 0.73, height, Math.sin(rotationAngle) * 0.73], inTangent: tangent, outTangent: tangent };
       }) });
       tracks.push({ target: name, property: 'rotation', keyframes: Array.from({ length: 17 }, (_, index) => ({ time: index / 16 * MOTION_DURATION, value: rotation([0, 1, 0], -angle - index / 16 * Math.PI * 2 * (layer % 2 ? -1 : 1)) })) });
     }
@@ -70,11 +72,18 @@ export function createMotionScene() {
   for (let pod = 0; pod < 8; pod++) {
     const angle = pod / 8 * Math.PI * 2;
     const name = add(`Orbit pod ${pod}`, 'bead', [Math.cos(angle) * 1.8, 0.2, Math.sin(angle) * 1.8], [0.115, 0.115, 0.115], pod % 2 ? glow : amber);
-    tracks.push({ target: name, property: 'translation', interpolation: 'LINEAR', keyframes: Array.from({ length: 97 }, (_, index) => {
-      const progress = index / 96;
+    tracks.push({ target: name, property: 'translation', interpolation: 'CUBICSPLINE', keyframes: Array.from({ length: 25 }, (_, index) => {
+      const progress = index / 24;
       const orbit = angle + progress * Math.PI * 2;
       const radius = 1.8 + Math.sin(progress * Math.PI * 2) * 0.2;
-      return { time: progress * MOTION_DURATION, value: [Math.cos(orbit) * radius, 0.25 + Math.sin(orbit * 2) * 0.65, Math.sin(orbit) * radius] };
+      const speed = Math.PI * 2 / MOTION_DURATION;
+      const radialSpeed = Math.cos(progress * Math.PI * 2) * 0.2 * speed;
+      const tangent = [
+        Math.cos(orbit) * radialSpeed - Math.sin(orbit) * radius * speed,
+        Math.cos(orbit * 2) * 1.3 * speed,
+        Math.sin(orbit) * radialSpeed + Math.cos(orbit) * radius * speed,
+      ];
+      return { time: progress * MOTION_DURATION, value: [Math.cos(orbit) * radius, 0.25 + Math.sin(orbit * 2) * 0.65, Math.sin(orbit) * radius], inTangent: tangent, outTangent: tangent };
     }) });
   }
   for (let index = 0; index < 16; index++) {
