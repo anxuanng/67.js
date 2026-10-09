@@ -55,3 +55,11 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ## Simple Icons (package-manager logos)
 
 The npm, pnpm, Yarn and Bun SVG marks are sourced from Simple Icons and distributed under CC0-1.0. See public/licenses/simple-icons.txt. Brand marks remain subject to their respective trademark rights.
+
+## Rapier 3D 0.21.0 (optional physics peer dependency)
+
+The physics addon loads `@dimforge/rapier3d-compat` as a separate dependency.
+Rapier is distributed under the Apache License, Version 2.0.
+Its dependency package includes the complete license text.
+Rapier's JavaScript and WASM code are not bundled into the 67.js library archive.
+Source and license: https://github.com/dimforge/rapier.js.

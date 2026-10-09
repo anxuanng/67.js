@@ -4,7 +4,10 @@ import { defineConfig } from 'vite';
 export default defineConfig({
   build: {
     copyPublicDir: false,
-    rolldownOptions: { output: { banner: `/*! ${readFileSync('LICENSE', 'utf8')}\nOptional glTF decoder: ${readFileSync('THIRD-PARTY-NOTICES.md', 'utf8')} */` } },
+    rolldownOptions: {
+      external: ['@dimforge/rapier3d-compat'],
+      output: { banner: `/*! ${readFileSync('LICENSE', 'utf8')}\nThird-party notices: ${readFileSync('THIRD-PARTY-NOTICES.md', 'utf8')} */` },
+    },
     outDir: 'build',
     lib: {
       entry: {
@@ -16,6 +19,7 @@ export default defineConfig({
         canvas2d: 'src/canvas2d.js',
         gltf: 'src/gltf.js',
         modeling: 'src/modeling.js',
+        physics: 'src/physics.js',
       },
       formats: ['es'],
       fileName: (_, entry) => entry === 'core' ? '67.module.js' : `${entry}.js`,

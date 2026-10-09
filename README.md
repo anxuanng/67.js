@@ -158,6 +158,9 @@ The core exports animation helpers, camera views and effect presets. `renderer.u
 The current source adds [camera paths](docs/camera-path.md) with cubic moves, target tracking, roll and focal-length conversion.
 These camera helpers are not included in the published `0.3.3` package yet.
 The current source also adds [GPU skinning](docs/skinning.md) and skeletal GLB import, with four influences per vertex.
+The optional [physics addon](docs/physics.md) records Rapier contacts and articulated joints into a timeline for repeatable film seeks.
+It requires the separate `@dimforge/rapier3d-compat@0.21.0` dependency; the core does not import or bundle that solver.
+Physics is source-only and is not included in the published `0.3.3` package.
 The trailer's rigid actor joints now use authored clips, with attached headwear and hands moving together.
 The [optional asset addon](docs/gltf.md) loads glTF/GLB meshes, base-color textures, opaque vertex colors and rigid node animation.
 It uses Three.js as a decoder. The core renderer and standalone module remain separate from this dependency.

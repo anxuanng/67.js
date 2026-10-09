@@ -28,7 +28,8 @@
     "docs/modeling.md",
     "docs/scene-graph.md",
     "docs/camera-path.md",
-    "docs/skinning.md"
+    "docs/skinning.md",
+    "docs/physics.md"
   ],
   "main": "./build/67.module.js",
   "module": "./build/67.module.js",
@@ -41,6 +42,7 @@
     "./addons/canvas2d": "./build/canvas2d.js",
     "./addons/gltf": "./build/gltf.js",
     "./addons/modeling": "./build/modeling.js",
+    "./addons/physics": "./build/physics.js",
     "./package.json": "./package.json"
   },
   "scripts": {
@@ -63,8 +65,17 @@
     "smoke:site": "node scripts/smoke-site.mjs",
     "publish:ci": "node scripts/publish-ci.mjs"
   },
+  "peerDependencies": {
+    "@dimforge/rapier3d-compat": "0.21.0"
+  },
+  "peerDependenciesMeta": {
+    "@dimforge/rapier3d-compat": {
+      "optional": true
+    }
+  },
   "devDependencies": {
     "@codepawlhq/orglet-ui": "0.2.1",
+    "@dimforge/rapier3d-compat": "0.21.0",
     "gl-matrix": "3.4.4",
     "highlight.js": "11.12.0",
     "playwright": "1.64.0",

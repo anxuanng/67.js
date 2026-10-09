@@ -182,16 +182,29 @@ vec3 fresnel(float cosine, vec3 reflectance) {
   return reflectance + (1.0 - reflectance) * pow(1.0 - cosine, 5.0);
 }
 
+float filteredShadow(vec2 coordinates, float receiverDepth, ivec2 dimensions) {
+  vec2 pixel = coordinates * vec2(dimensions) - 0.5;
+  ivec2 origin = ivec2(floor(pixel));
+  vec2 blend = fract(pixel);
+  ivec2 maximum = dimensions - 1;
+  float lowerLeft = step(receiverDepth, texelFetch(shadowMap, clamp(origin, ivec2(0), maximum), 0).r);
+  float lowerRight = step(receiverDepth, texelFetch(shadowMap, clamp(origin + ivec2(1, 0), ivec2(0), maximum), 0).r);
+  float upperLeft = step(receiverDepth, texelFetch(shadowMap, clamp(origin + ivec2(0, 1), ivec2(0), maximum), 0).r);
+  float upperRight = step(receiverDepth, texelFetch(shadowMap, clamp(origin + ivec2(1, 1), ivec2(0), maximum), 0).r);
+  return mix(mix(lowerLeft, lowerRight, blend.x), mix(upperLeft, upperRight, blend.x), blend.y);
+}
+
 float shadowVisibility(vec3 normal) {
   vec3 projected = shadowPosition.xyz / shadowPosition.w * 0.5 + 0.5;
   if (projected.z > 1.0 || projected.z < 0.0 || any(lessThan(projected.xy, vec2(0.0))) || any(greaterThan(projected.xy, vec2(1.0)))) return 1.0;
   float bias = max(0.0006, 0.002 * (1.0 - dot(normal, normalize(lightDirection))));
   float visibility = 0.0;
-  vec2 texel = 1.0 / vec2(textureSize(shadowMap, 0));
+  ivec2 dimensions = textureSize(shadowMap, 0);
+  vec2 texel = 1.0 / vec2(dimensions);
   for (int row = -1; row <= 1; row++) {
     for (int column = -1; column <= 1; column++) {
-      float depth = texture(shadowMap, projected.xy + vec2(column, row) * texel * 2.5).r;
-      visibility += projected.z - bias <= depth ? 1.0 : 0.18;
+      float comparison = filteredShadow(projected.xy + vec2(column, row) * texel * 2.5, projected.z - bias, dimensions);
+      visibility += mix(0.18, 1.0, comparison);
     }
   }
   return visibility / 9.0;
