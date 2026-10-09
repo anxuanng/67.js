@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#191d22" />
+    <meta name="description" content="Install the current 67.js release and draw a cube with Renderer67." />
+    <title>Getting started · 67.js</title>
+  </head>
+  <body>
+    <a class="skip-link" href="#content">Skip to content</a>
+    <aside class="navigation">
+      <a class="brand" href="./index.html" aria-label="67.js home">67<span>.js</span></a>
+      <p class="library-description">JavaScript 3D library</p>
+      <span class="version" data-release-version>Loading release</span>
+      <nav aria-label="Library">
+        <a href="./index.html#examples">Examples</a>
+        <a href="./getting-started.html" aria-current="page">Getting started</a>
+        <a href="./index.html#downloads">Downloads</a>
+        <a href="https://github.com/anxuanng/67.js" target="_blank" rel="noopener noreferrer">Source on GitHub <span aria-hidden="true">↗</span></a>
+      </nav>
+      <p class="navigation-note">Built with WebGL2<br />Scenes made from geometry</p>
+    </aside>
+    <main id="content" class="docs">
+      <header class="introduction"><div><h1>Draw your first scene</h1><p>Install a release, create a part and give the renderer a camera</p></div></header>
+      <section aria-labelledby="install-title">
+        <h2 id="install-title">Install the current release</h2>
+        <p>Run the command in your project directory. The package exports use the name <code>67js</code>.</p>
+        <div class="install">
+          <div class="install-label"><svg class="npm-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M1.763 0C.786 0 0 .786 0 1.763v20.474C0 23.214.786 24 1.763 24h20.474c.977 0 1.763-.786 1.763-1.763V1.763C24 .786 23.214 0 22.237 0zM5.13 5.323l13.837.019-.009 13.836h-3.464l.01-10.382h-3.456L12.04 19.17H5.113z"/></svg><span>Install with npm</span></div>
+          <div class="command-row"><code data-install-command>Loading the release command…</code><button data-copy-install disabled>Copy command</button></div>
+          <div class="release-feedback"><p data-release-status role="status">◷ Loading release information</p><button data-release-retry hidden>Retry</button></div>
+        </div>
+        <ol><li>Create an HTML page with the canvas below.</li><li>Save the JavaScript example as <code>main.js</code>.</li><li>Serve your project with a tool that resolves package imports, such as Vite.</li></ol>
+        <pre><code>&lt;canvas id="scene" style="width:100vw;height:100vh;display:block"&gt;&lt;/canvas&gt;
+&lt;script type="module" src="./main.js"&gt;&lt;/script&gt;</code></pre>
+        <pre><code id="cube-code">import { Renderer67, box } from '67js';
+
+const canvas = document.querySelector('#scene');
+const parts = [{
+  name: 'My first cube',
+  geometry: box(),
+  matrix: new Float32Array([
+    1, 0, 0, 0,
+    0, 1, 0, 0,
+    0, 0, 1, 0,
+    0, 0, 0, 1,
+  ]),
+  material: {
+    tag: 'surface',
+    color: [0.2, 0.55, 0.38],
+    metallic: 0,
+    roughness: 0.55,
+    emission: 0,
+  },
+}];
+
+const renderer = new Renderer67(canvas, parts, {
+  ground: false,
+  pixelRatio: 1.25,
+  samples: 4,
+  memoryBudgetMiB: 256,
+});
+
+function draw() {
+  renderer.render({ eye: [3, 2, 4], target: [0, 0, 0] });
+}
+
+new ResizeObserver(() =&gt; {
+  renderer.resize();
+  draw();
+}).observe(canvas);
+
+draw();</code></pre>
+        <p>The page displays a green cube. You need a browser with WebGL2 support.</p>
+      </section>
+      <section aria-labelledby="browser-title">
+        <h2 id="browser-title">Import directly in your browser</h2>
+        <p>The bundled module includes its dependencies. Save this example as an HTML page and serve it over HTTP.</p>
+        <pre><code id="browser-code">The browser example appears when the current release loads.</code></pre>
+        <a class="start-link" data-release-module aria-disabled="true">Download the browser module ↓</a>
+      </section>
+      <section id="api" aria-labelledby="api-title">
+        <h2 id="api-title">Renderer67</h2>
+        <p><code>new Renderer67(canvas, parts, options)</code> uploads geometry and creates render targets.</p>
+        <p>Each part has a <code>name</code>, <code>geometry</code>, <code>matrix</code> and <code>material</code>.</p>
+        <ul class="api-list">
+          <li><code>geometry</code> contains <code>positions</code> and <code>normals</code> as <code>Float32Array</code>, and <code>indices</code> as <code>Uint32Array</code>.</li>
+          <li><code>matrix</code> is a column-major <code>Float32Array</code> with 16 values.</li>
+          <li><code>material</code> has linear RGB <code>color</code>, <code>metallic</code>, <code>roughness</code>, <code>emission</code> and a <code>tag</code>.</li>
+        </ul>
+        <p>Reuse a geometry object across parts to batch shared meshes.</p>
+        <pre><code>renderer.render({ eye: [3, 2, 4], target: [0, 0, 0] });
+renderer.resize();   // Update targets after the canvas size changes.
+renderer.dispose(); // Release GPU resources when the scene closes.</code></pre>
+        <p>Set <code>samples</code> and <code>memoryBudgetMiB</code> before creating the renderer. The target planner can reduce render dimensions to fit its estimate.</p>
+        <p>The core exports <code>box</code>, <code>cylinder</code>, <code>sphere</code> and <code>torus</code>. Scene modules use separate addon imports.</p>
+        <div class="release-links"><a data-release-api aria-disabled="true">API for this release ↗</a><a data-release-commit aria-disabled="true">Release commit</a></div>
+      </section>
+    </main>
+    <script type="module" src="/src/home.js"></script>
+  </body>
+</html>
+
