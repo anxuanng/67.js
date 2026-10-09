@@ -193,3 +193,9 @@ td, th { text-align:left; padding:12px; border-bottom:0; vertical-align:top; }
 
 .hero-actions a:hover, .hero-actions a:focus-visible { box-shadow:0 0 28px color-mix(in srgb,var(--text) 24%,transparent); }
 .navigation nav a:hover .icon, .navigation nav a:focus-visible .icon { filter:drop-shadow(0 0 5px currentColor); }
+
+.preview-assembly { width:min(100%,440px); margin:12px auto 0; padding:0 16px; }
+.preview-assembly-label { display:flex; align-items:center; justify-content:space-between; gap:12px; font-size:13px; }
+.preview-assembly-label output { color:var(--muted); font-size:12px; }
+.preview-assembly input { display:block; width:100%; min-height:44px; margin:6px 0; cursor:ew-resize; }
+.preview-assembly p { font-size:12px; text-align:center; margin:0; }

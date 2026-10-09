@@ -1,10 +1,12 @@
 import { Renderer67 } from './renderer.js';
-import { createMotionScene } from './motion.js';
+import { createWallEPreviewScene } from './wall-e-preview-scene.js';
 
 const canvas = document.querySelector('#home-preview');
 const status = document.querySelector('#home-preview-status');
+const assemblySlider = document.querySelector('#preview-assembly');
+const assemblyValue = document.querySelector('#preview-assembly-value');
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
-const state = { yaw:0.6, pitch:0.28, distance:8, time:3, playing:!reducedMotion.matches, visible:false };
+const state = { yaw:0.6, pitch:0.28, distance:7.5, time:0, playing:!reducedMotion.matches, visible:false, assembly:0, speed:0, interacting:false };
 let renderer;
 let scene;
 let scheduledFrame = 0;
@@ -25,10 +27,11 @@ function draw() {
   try {
     const frame = scene.sample(state.time);
     renderer.updateParts(scene.parts);
-    const distance = state.distance * (canvas.clientWidth < 500 ? 1.25 : 1);
+    const distance = state.distance * (canvas.clientWidth < 500 ? 1.05 : 1) + state.assembly * 10;
+    const targetHeight = 1.5 + state.assembly * 0.35;
     renderer.render({
-      eye:[Math.sin(state.yaw) * Math.cos(state.pitch) * distance, Math.sin(state.pitch) * distance, Math.cos(state.yaw) * Math.cos(state.pitch) * distance],
-      target:[0,0.1,0], fov:40, time:state.time, exposure:1, effects:{ ...frame.effects, vignette:0, grain:0 },
+      eye:[Math.sin(state.yaw) * Math.cos(state.pitch) * distance, targetHeight + Math.sin(state.pitch) * distance, Math.cos(state.yaw) * Math.cos(state.pitch) * distance],
+      target:[0,targetHeight,0], fov:40, time:state.time, exposure:1, armorColor:[0.73,0.43,0.065], armorSurface:[0.62,0.43], assemblyAmount:state.assembly, effects:{ ...frame.effects, vignette:0, grain:0 },
     });
   } catch (error) {
     showError(error);
@@ -39,7 +42,8 @@ function animate(timestamp) {
   scheduledFrame = 0;
   if (!state.playing || !state.visible || document.hidden || disposed) return;
   const elapsedSeconds = previousTime ? Math.min(0.1, (timestamp - previousTime) / 1000) : 0;
-  state.time = (state.time + elapsedSeconds) % scene.duration;
+  state.speed = Math.min(1, state.speed + elapsedSeconds / 1.2);
+  state.time += elapsedSeconds * state.speed;
   previousTime = timestamp;
   draw();
   if (state.playing) scheduledFrame = requestAnimationFrame(animate);
@@ -57,7 +61,7 @@ function synchronizePlayback() {
 function initialize() {
   if (renderer || disposed) return;
   try {
-    scene = createMotionScene();
+    scene = createWallEPreviewScene();
     renderer = new Renderer67(canvas, scene.parts, {
       ground:false, transparent:true, hdr:true, samples:4, pixelRatio:1.25, memoryBudgetMiB:192,
     });
@@ -75,9 +79,46 @@ function zoom(multiplier) {
 }
 
 function reset() {
-  Object.assign(state, { yaw:0.6, pitch:0.28, distance:8 });
+  Object.assign(state, { yaw:0.6, pitch:0.28, distance:7.5 });
   draw();
 }
+
+function pauseForAssembly() {
+  state.playing = false;
+  state.speed = 0;
+  synchronizePlayback();
+}
+
+function finishAssemblyInteraction() {
+  state.interacting = false;
+  state.playing = state.assembly === 0 && !reducedMotion.matches;
+  synchronizePlayback();
+}
+
+assemblySlider.addEventListener('pointerdown', () => {
+  state.interacting = true;
+  pauseForAssembly();
+});
+assemblySlider.addEventListener('input', () => {
+  pauseForAssembly();
+  state.assembly = Number(assemblySlider.value) / 100;
+  const description = state.assembly === 0 ? 'Assembled' : Math.round(state.assembly * 100) + '% exploded';
+  assemblyValue.textContent = description;
+  assemblySlider.setAttribute('aria-valuetext', description);
+  draw();
+});
+assemblySlider.addEventListener('change', () => {
+  if (!state.interacting) finishAssemblyInteraction();
+});
+window.addEventListener('pointerup', () => {
+  if (state.interacting) finishAssemblyInteraction();
+});
+window.addEventListener('pointercancel', () => {
+  if (state.interacting) finishAssemblyInteraction();
+});
+assemblySlider.addEventListener('blur', () => {
+  if (state.interacting) finishAssemblyInteraction();
+});
 
 canvas.addEventListener('pointerdown', event => {
   if (event.button !== 0 || pointer) return;
@@ -108,8 +149,11 @@ canvas.addEventListener('wheel', event => {
 canvas.addEventListener('keydown', event => {
   if (event.code === 'Space') {
     event.preventDefault();
-    state.playing = !state.playing;
-    synchronizePlayback();
+    if (state.assembly === 0 && !state.interacting) {
+      state.playing = !state.playing;
+      state.speed = 0;
+      synchronizePlayback();
+    }
     return;
   }
   if (!['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','+','=','-','Home'].includes(event.key)) return;
@@ -157,7 +201,8 @@ document.addEventListener('visibilitychange', () => {
   synchronizePlayback();
 });
 reducedMotion.addEventListener('change', () => {
-  state.playing = !reducedMotion.matches;
+  state.playing = !reducedMotion.matches && state.assembly === 0 && !state.interacting;
+  state.speed = 0;
   synchronizePlayback();
 });
 window.addEventListener('pagehide', event => {

@@ -73,7 +73,28 @@ try {
       assert.equal(await page.locator('.preview-tools, .showcase-caption').count(), 0);
       assert.equal(await page.evaluate(() => window.__homePreview.state.playing), false);
       await page.emulateMedia({ reducedMotion:'no-preference' });
-      await page.waitForFunction(() => window.__homePreview.state.time > 3.1);
+      await page.waitForFunction(() => window.__homePreview.state.time > 0.1);
+      await page.locator('#preview-assembly').evaluate(slider => {
+        slider.value = '100';
+        slider.dispatchEvent(new Event('input', { bubbles:true }));
+        slider.dispatchEvent(new Event('change', { bubbles:true }));
+      });
+      assert.equal(await page.evaluate(() => window.__homePreview.state.assembly), 1);
+      assert.equal(await page.evaluate(() => window.__homePreview.state.playing), false);
+      const frozenTime = await page.evaluate(() => window.__homePreview.state.time);
+      await page.waitForTimeout(150);
+      assert.equal(await page.evaluate(() => window.__homePreview.state.time), frozenTime);
+      await page.locator('#home-preview').focus();
+      await page.keyboard.press('Space');
+      assert.equal(await page.evaluate(() => window.__homePreview.state.playing), false, 'Exploded model resumes from Space');
+      await page.locator('#preview-assembly').evaluate(slider => {
+        slider.value = '0';
+        slider.dispatchEvent(new Event('input', { bubbles:true }));
+        slider.dispatchEvent(new Event('change', { bubbles:true }));
+      });
+      assert.equal(await page.evaluate(() => window.__homePreview.state.playing), true);
+      assert.ok(await page.evaluate(() => window.__homePreview.state.speed) < 0.4, 'Drive restarts at full speed');
+      await page.waitForFunction(() => window.__homePreview.state.speed === 1);
       await page.emulateMedia({ reducedMotion:'reduce' });
       await page.waitForFunction(() => !window.__homePreview.state.playing);
       assert.equal(await page.evaluate(() => window.__homePreview.state.playing), false);
@@ -88,7 +109,7 @@ try {
       assert.equal(await page.evaluate(() => window.__homePreview.renderer.context.getError()), 0);
       assert.ok(await page.evaluate(() => window.__homePreview.renderer.memoryPlan.estimatedBytes) <= 192 * 1048576);
       await page.screenshot({ path:'artifacts/home-live-preview.png' });
-      report.interactions.push('Live homepage 3D, keyboard rotation, zoom, reset and animation');
+      report.interactions.push('Live WALL·E, keyboard orbit, transparent render and paused assembly with gradual drive restart');
     }
     if (route === '/downloads.html') {
       await page.waitForFunction(() => window.__home.state.status === 'ready');
