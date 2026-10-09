@@ -84,20 +84,57 @@ function createRidge() {
 }
 
 function createSculptedHead() {
-  return sampledSurface(64, 48, (horizontal, vertical) => {
+  return sampledSurface(96, 64, (horizontal, vertical) => {
     const angle = horizontal * FULL_TURN;
     const elevation = 0.015 + vertical * (Math.PI - 0.03);
     const height = Math.cos(elevation);
     const radius = Math.sin(elevation);
-    const jaw = 0.77 + 0.23 * Math.min(1, (height + 1) / 0.75);
+    const jaw = 0.78 + 0.22 / (1 + Math.exp(-(height + 0.48) * 9));
     const front = Math.max(0, Math.sin(angle));
     const horizontalPoint = Math.cos(angle) * radius * jaw;
     let depth = Math.sin(angle) * radius;
-    // Nose, brow, cheek and chin belong to the continuous surface, without separate cartoon features.
-    depth += front ** 28 * (0.24 * Math.exp(-1 * ((height + 0.08) / 0.23) ** 2) + 0.12 * Math.exp(-1 * ((height - 0.29) / 0.10) ** 2));
-    depth -= front ** 6 * 0.15 * Math.exp(-1 * ((height - 0.12) / 0.13) ** 2) * (1 - Math.exp(-1 * ((horizontalPoint / 0.24) ** 2)));
-    depth += front ** 12 * 0.11 * Math.exp(-1 * ((height + 0.68) / 0.16) ** 2);
+    function feature(horizontalCenter, verticalCenter, width, length) {
+      const horizontalDistance = (horizontalPoint - horizontalCenter) / width;
+      const verticalDistance = (height - verticalCenter) / length;
+      return Math.exp(-1 * horizontalDistance ** 2 - verticalDistance ** 2);
+    }
+    // Local features avoid a horizontal ridge extending around the whole forehead.
+    let facialDepth = 0.18 * feature(0, 0.05, 0.12, 0.32);
+    facialDepth += 0.22 * feature(0, -0.13, 0.17, 0.13);
+    facialDepth += 0.10 * feature(0, -0.65, 0.37, 0.17);
+    for (const side of [-1, 1]) {
+      facialDepth -= 0.19 * feature(side * 0.42, 0.15, 0.22, 0.12);
+      facialDepth += 0.09 * feature(side * 0.42, 0.31, 0.28, 0.09);
+      facialDepth += 0.12 * feature(side * 0.58, -0.10, 0.24, 0.18);
+    }
+    depth += front ** 4 * facialDepth;
     return [horizontalPoint, height, depth];
+  });
+}
+
+function createFedoraCrown() {
+  return sampledSurface(64, 32, (horizontal, vertical) => {
+    const angle = horizontal * FULL_TURN;
+    const elevation = 0.01 + vertical * (Math.PI - 0.02);
+    const height = Math.cos(elevation) * 0.5;
+    const radius = Math.sin(elevation) ** 0.28;
+    const taper = 0.92 - height * 0.12;
+    const horizontalPoint = Math.cos(angle) * radius * taper;
+    const depth = Math.sin(angle) * radius * taper;
+    const top = Math.exp(-1 * ((height - 0.5) / 0.12) ** 2);
+    const crease = 0.17 * top * Math.exp(-1 * (depth / 0.25) ** 2);
+    const pinch = 1 - 0.13 * top * Math.max(0, Math.sin(angle));
+    return [horizontalPoint * pinch, height - crease, depth];
+  });
+}
+
+function createFedoraBrim() {
+  return sampledSurface(64, 20, (horizontal, vertical) => {
+    const angle = horizontal * FULL_TURN;
+    const elevation = 0.01 + vertical * (Math.PI - 0.02);
+    const radius = Math.sin(elevation);
+    const curl = radius ** 4 * (0.10 * Math.cos(angle) ** 2 - 0.05 * Math.sin(angle));
+    return [Math.cos(angle) * radius, Math.cos(elevation) * 0.035 + curl, Math.sin(angle) * radius];
   });
 }
 
@@ -288,17 +325,24 @@ function addScientist(builder, position = [0, 0, 0], hat = true, rotation = 0) {
   const actorName = `Scientist ${builder.parts.length}`;
   const joints = new Map();
   const transform = point => [position[0] + point[0] * Math.cos(rotation) + point[2] * Math.sin(rotation), position[1] + point[1], position[2] - point[0] * Math.sin(rotation) + point[2] * Math.cos(rotation)];
-  const silhouette = {
-    tag: 'unlit', color: [0.0045, 0.0055, 0.005], metallic: 0, roughness: 1, emission: 0,
+  const actorMaterials = {
+    skin: { ...materials.skin, color: [0.48, 0.285, 0.19], roughness: 0.58 },
+    cloth: { ...materials.cloth, color: [0.075, 0.083, 0.075], roughness: 0.89 },
+    graphite: { ...materials.graphite, color: [0.035, 0.031, 0.025], metallic: 0, roughness: 0.83 },
+    paper: { ...materials.paper, color: [0.8, 0.74, 0.6], roughness: 0.84 },
+    black: { ...materials.black, color: [0.012, 0.015, 0.017], roughness: 0.82 },
+    eye: { color: [0.57, 0.59, 0.52], metallic: 0, roughness: 0.26, emission: 0 },
+    iris: { color: [0.11, 0.23, 0.24], metallic: 0, roughness: 0.24, emission: 0 },
+    pupil: { color: [0.006, 0.008, 0.009], metallic: 0, roughness: 0.16, emission: 0 },
+    lip: { color: [0.28, 0.095, 0.069], metallic: 0, roughness: 0.68, emission: 0 },
   };
-  const collar = { ...silhouette, color: [0.045, 0.042, 0.031] };
   const shape = (name, mesh, point, scale, material, angles = [0, 0, 0]) => {
-    const surface = material === 'paper' ? collar : silhouette;
+    const surface = actorMaterials[material] ?? materials[material];
     const part = add(name, mesh, transform(point), scale, surface);
     const local = quat.fromEuler(quat.create(), ...angles.map(angle => angle * 180 / Math.PI));
     const orientation = quat.multiply(quat.create(), quat.setAxisAngle(quat.create(), [0, 1, 0], rotation), local);
     mat4.fromRotationTranslationScale(part.matrix, orientation, transform(point), scale);
-    const head = name === 'Continuous sculpted head' || name === 'Swept hair' || name === 'Ear silhouette' || name.startsWith('Fedora');
+    const head = name === 'Continuous sculpted head' || name === 'Swept hair' || name === 'Ear silhouette' || name.startsWith('Fedora') || name.startsWith('Facial ');
     const arm = ['Jacket sleeve', 'Shirt cuff', 'Resting hand silhouette'].includes(name);
     if (head || arm) {
       const side = point[0] < 0 ? -1 : 1;
@@ -326,18 +370,30 @@ function addScientist(builder, position = [0, 0, 0], hat = true, rotation = 0) {
     shape('Ear silhouette', 'sphere', [side * 0.104, 1.668, -0.004], [0.018, 0.036, 0.026], 'skin');
   }
   shape('Sculpted tailored jacket', 'coat', [0, 1.16, 0], [0.25, 0.68, 0.145], 'cloth');
-  shape('Tailored shoulder line', 'sphere', [0, 1.442, -0.005], [0.237, 0.055, 0.117], 'cloth');
+  shape('Tailored shoulder line', 'sphere', [0, 1.455, -0.005], [0.225, 0.032, 0.105], 'cloth');
   shape('Shirt front', 'box', [0, 1.385, 0.116], [0.098, 0.205, 0.013], 'paper');
   shape('Tie knot', 'sphere', [0, 1.444, 0.139], [0.021, 0.021, 0.012], 'graphite');
   shape('Narrow silk tie', 'box', [0, 1.346, 0.143], [0.022, 0.19, 0.009], 'graphite');
   shape('Neck', 'cylinder', [0, 1.533, -0.005], [0.053, 0.11, 0.057], 'skin');
   shape('Continuous sculpted head', 'head', [0, 1.686, -0.01], [0.11, 0.163, 0.106], 'skin');
+  for (const side of [-1, 1]) {
+    shape('Facial eye white', 'sphere', [side * 0.046, 1.711, 0.079], [0.021, 0.008, 0.013], 'eye');
+    shape('Facial blue iris', 'sphere', [side * 0.046, 1.711, 0.0905], [0.0065, 0.0063, 0.0018], 'iris');
+    shape('Facial pupil', 'sphere', [side * 0.046, 1.711, 0.092], [0.0027, 0.0034, 0.0009], 'pupil');
+    shape('Facial upper eyelid', 'sphere', [side * 0.046, 1.718, 0.085], [0.023, 0.0047, 0.006], 'skin');
+    shape('Facial lower eyelid', 'sphere', [side * 0.046, 1.704, 0.085], [0.022, 0.0035, 0.005], 'skin');
+    shape('Facial eyebrow', 'sphere', [side * 0.046, 1.735, 0.09], [0.028, 0.004, 0.005], 'graphite', [0, 0, side * -0.11]);
+    shape('Facial nostril', 'sphere', [side * 0.008, 1.66, 0.118], [0.0038, 0.0022, 0.0018], 'lip');
+    shape('Facial ear concha', 'sphere', [side * 0.117, 1.668, 0.002], [0.0025, 0.017, 0.012], 'lip');
+  }
+  shape('Facial upper lip', 'sphere', [0, 1.633, 0.096], [0.027, 0.0033, 0.005], 'lip');
+  shape('Facial lower lip', 'sphere', [0, 1.627, 0.095], [0.026, 0.0038, 0.005], 'lip');
+  shape('Facial mouth seam', 'sphere', [0, 1.631, 0.101], [0.024, 0.0011, 0.001], 'graphite');
   shape('Swept hair', 'sphere', [0, 1.795, -0.038], [0.109, 0.055, 0.086], 'graphite', [-0.2, 0, 0]);
   if (hat) {
-    shape('Fedora sweeping brim', 'cylinder', [0, 1.809, 0], [0.225, 0.014, 0.187], 'cloth', [-0.06, 0, -0.035]);
-    shape('Fedora tapered felt crown', 'cylinder', [0, 1.879, -0.022], [0.132, 0.128, 0.117], 'cloth');
+    shape('Fedora sweeping brim', 'hatBrim', [0, 1.809, 0], [0.195, 0.13, 0.164], 'cloth', [-0.06, 0, -0.035]);
+    shape('Fedora tapered felt crown', 'hatCrown', [0, 1.866, -0.022], [0.137, 0.11, 0.122], 'cloth');
     shape('Fedora grosgrain band', 'cylinder', [0, 1.827, -0.022], [0.137, 0.034, 0.121], 'graphite');
-    shape('Fedora crown crease', 'sphere', [0, 1.944, -0.014], [0.082, 0.002, 0.023], 'black');
   }
 }
 
@@ -437,7 +493,8 @@ function addVehicle(builder, position) {
       add('Wheel axle cap', 'cylinder', place([side * 1.0, 0.47, depth]), [0.073, 0.045, 0.073], 'graphite', [0, 0, HALF_PI]);
       for (let lug = 0; lug < 6; lug++) {
         const angle = lug * FULL_TURN / 6;
-        add('Wheel lug bolt', 'bolt', place([side * 1.02, 0.47 + Math.cos(angle) * 0.11, depth + Math.sin(angle) * 0.11]), [0.014, 0.023, 0.014], 'steel', [0, 0, HALF_PI]);
+        // Wheel fasteners are subpixel in the settlement shots; reuse the hub mesh.
+        add('Wheel lug bolt', 'cylinder', place([side * 1.02, 0.47 + Math.cos(angle) * 0.11, depth + Math.sin(angle) * 0.11]), [0.014, 0.023, 0.014], 'steel', [0, 0, HALF_PI]);
       }
       add('Rolled steel wheel fender', 'box', place([side * 0.74, 0.96, depth]), [0.5, 0.065, 0.93], 'olive');
     }
@@ -586,7 +643,7 @@ function createControl(meshes) {
 function createPortrait(meshes) {
   const builder = createBuilder(meshes);
   addDesert(builder);
-  addScientist(builder, [0, 0, 0], true, 3.36);
+  addScientist(builder, [0, 0, 0], true, -0.22);
   const distantTower = createDesert(meshes).filter(part =>
     part.name.startsWith('Test tower') || part.name.startsWith('Tower') || part.name === 'Suspended test vessel');
   for (const part of distantTower) {
@@ -669,6 +726,8 @@ export function createFilmScenes() {
   const meshes = {
     box: box(0.025, 2),
     head: createSculptedHead(),
+    hatCrown: createFedoraCrown(),
+    hatBrim: createFedoraBrim(),
     coat: createCoat(),
     landscape: createLandscape(),
     ridge: createRidge(),
@@ -711,7 +770,7 @@ export function createFilmScenes() {
     office: set(createOffice(meshes), interior, { extent: 7, target: [0, 1.6, -1], eye: [-8, 7, -4], near: 0.1, far: 30 }, 'office'),
     laboratory: set(createOffice(meshes, true), interior, { extent: 7, target: [0, 1.6, -1], eye: [-8, 7, -4], near: 0.1, far: 30 }, 'laboratory'),
     settlement: set(createSettlement(meshes), desert, desertShadows, 'settlement'),
-    portrait: set(createPortrait(meshes), desert, { extent: 6, target: [0, 1, 0], eye: [-8, 5, -6], near: 0.1, far: 35 }, 'portrait'),
+    portrait: set(createPortrait(meshes), { ...desert, lightDirection: [-0.7, 0.55, 0.8] }, { extent: 6, target: [0, 1, 0], eye: [-8, 5, 6], near: 0.1, far: 35 }, 'portrait'),
     gadget: set(createGadget(meshes), { ...interior, lightDirection: [-0.8, 0.4, 0.5], daylight: 0.9 }, { extent: 5, target: [0, 2.5, -1], eye: [-8, 7, 4], near: 0.1, far: 30 }, 'gadget'),
     control: set(createControl(meshes), { ...interior, lightDirection: [-0.4, 0.9, 0.3] }, { extent: 5, target: [0, 1, 0], eye: [-3, 8, 4], near: 0.1, far: 25 }, 'control'),
     atom: set(createAtom(meshes), { ...studio, daylight: 0.25, fogDensity: 0.035 }, undefined, 'atom'),

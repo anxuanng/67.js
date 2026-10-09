@@ -126,7 +126,7 @@ test('sets keep shared geometry, valid surfaces and the 384 MiB target budget', 
 });
 
 
-test('physical motion is visible, deterministic and retains render identities across seeks', () => {
+test('authored motion is visible, deterministic and retains render identities across seeks', () => {
   const scenes = createFilmScenes();
   const snapshot = scene => scene.parts.map(part => ({ matrix: Array.from(part.matrix), color: [...part.material.color], emission: part.material.emission }));
   for (const name of ['sparks', 'atom', 'waves', 'control', 'gadget', 'settlement', 'portrait', 'desert', 'night']) {
@@ -184,4 +184,22 @@ test('authored actor joints retain attached headwear and hands through holds and
   assert.deepEqual(Array.from(head.matrix), held);
   scene.animate(12);
   assert.deepEqual(Array.from(head.matrix), assembled);
+});
+
+test('facial features share the head joint and remain attached during arbitrary film seeks', () => {
+  const scene = createFilmScenes().portrait;
+  const head = scene.parts.find(part => part.name === 'Continuous sculpted head');
+  const features = scene.parts.filter(part => part.name.startsWith('Facial '));
+  assert.ok(features.length >= 12);
+  assert.notEqual(head.material.tag, 'unlit');
+  const relative = part => Array.from(mat4.multiply(mat4.create(), mat4.invert(mat4.create(), head.matrix), part.matrix));
+  scene.animate(0);
+  const initial = features.map(relative);
+  for (const feature of features) assert.equal(feature.actorJoint, head.actorJoint);
+  for (const time of [10.3, 2.7, 23.9, 0, 5]) {
+    scene.animate(time);
+    features.forEach((feature, index) => {
+      relative(feature).forEach((value, element) => assert.ok(Math.abs(value - initial[index][element]) < 0.00002));
+    });
+  }
 });

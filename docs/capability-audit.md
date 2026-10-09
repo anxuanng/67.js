@@ -97,7 +97,9 @@ Live GPU frame timing and broader scene measurements remain required before clai
 ## Trailer acceptance requirements
 
 The current trailer does not meet the requested visual quality.
-The scientist uses an unlit silhouette, which hides facial structure and prevents clear character recognition.
+The current source replaces the scientist's unlit silhouette with lit facial features, shared head attachments and shaped headwear.
+The rendered close-up still looks like a stylized mannequin, with visible shadow bands and insufficient facial likeness.
+This source change has not been deployed or published to npm.
 Rigid joint animation and GPU skinning provide motion tools, but do not solve character modeling or material quality by themselves.
 
 The environment has procedural shaders, fog, bloom and grading. These features do not yet produce convincing cinematic atmosphere.
