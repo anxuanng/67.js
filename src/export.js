@@ -4,6 +4,9 @@ function paddedLength(length) {
 
 export function exportGlb(parts) {
   for (const part of parts) {
+    if (part.skin || part.geometry.skinIndices || part.geometry.skinWeights) {
+      throw new RangeError('GLB export cannot preserve skinning yet. Bake the pose or export through a tool that preserves the skeleton.');
+    }
     for (const channel of ['map', 'normalMap', 'metallicRoughnessMap', 'occlusionMap', 'emissiveMap']) {
       if (part.material[channel]) {
         throw new RangeError(`GLB export cannot preserve ${channel} yet. Texture export must be implemented before exporting this material.`);

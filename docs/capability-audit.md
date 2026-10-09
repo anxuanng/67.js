@@ -93,3 +93,19 @@ Invalid mixed updates still fail before changing packed instance data or submitt
 Normal scratch buffers belong to uploaded parts and remain bounded by the scene size.
 
 Live GPU frame timing and broader scene measurements remain required before claiming an overall speed improvement.
+
+## Trailer acceptance requirements
+
+The current trailer does not meet the requested visual quality.
+The scientist uses an unlit silhouette, which hides facial structure and prevents clear character recognition.
+Rigid joint animation and GPU skinning provide motion tools, but do not solve character modeling or material quality by themselves.
+
+The environment has procedural shaders, fog, bloom and grading. These features do not yet produce convincing cinematic atmosphere.
+Volumetric lighting, smoke, dust, explosion detail and lighting continuity require visible shot-level validation.
+
+The engine does not yet provide rigid-body physics, collision response, articulated constraints or ragdoll simulation.
+The requested final state includes these systems, with deterministic playback or recorded simulation for arbitrary film seeks.
+Simple sine motion does not satisfy the physics requirement.
+
+Completion requires recognizable characters, a convincing environment and integrated physical interactions, demonstrated in rendered trailer shots.
+Technical fixtures and passing API tests do not establish that result.

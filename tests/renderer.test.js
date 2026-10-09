@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mat4, mat3 } from 'gl-matrix';
 import { Renderer67, groupParts, textureDescriptorInfo } from '../src/renderer.js';
+import { createSkinPose } from '../src/skinning.js';
 
 function part(name, geometry = {}, map) {
   return { name, geometry, matrix: mat4.create(), material: { color: [0.1, 0.2, 0.3], metallic: 0.5, roughness: 0.3, emission: 0, map } };
@@ -13,10 +14,12 @@ function retainedRenderer(parts) {
   const batch = { instanceBuffer: {}, instanceData: new Float32Array(parts.length * 41).fill(7) };
   renderer.context = { ARRAY_BUFFER: 34962, bindBuffer() {}, bufferSubData(target, offset, data) { writes.push({ target, offset, data: Array.from(data) }); } };
   renderer.partLocations = new Map(parts.map((item, index) => [item, {
-    batch, index, geometry: item.geometry, map: item.material.map ?? null, normalMatrix: mat3.create(),
+    batch, index, geometry: item.geometry, map: item.material.map ?? null, normalMatrix: mat3.create(), skin: item.skin ?? null,
+    jointMatrices: item.skin?.jointMatrices, skinIndices: item.geometry.skinIndices, skinWeights: item.geometry.skinWeights,
     mapState: ['map', 'normalMap', 'metallicRoughnessMap', 'occlusionMap', 'emissiveMap'].map(field => item.material[field] ?? null).concat(item.material.normalScale ?? [1, 1], item.material.occlusionStrength ?? 1),
   }]));
   renderer.updateBatches = new Set();
+  renderer.updateSkins = new Set();
   renderer.shadowsDirty = false;
   return { renderer, batch, writes };
 }
@@ -152,11 +155,17 @@ test('map and scale changes reject atomically before retained data uploads', () 
   assert.throws(() => groupParts([procedural]), /Unlit materials/);
 });
 
-function preflightCanvas() {
+function preflightCanvas({ vertexUnits = 2, combinedUnits = 8, maximumSize = 8192 } = {}) {
   const context = {
     MAX_TEXTURE_SIZE: 3379, MAX_SAMPLES: 36183,
+    MAX_VERTEX_TEXTURE_IMAGE_UNITS: 35660, MAX_COMBINED_TEXTURE_IMAGE_UNITS: 35661,
     getInternalformatParameter() { return []; },
-    getParameter(parameter) { return parameter === this.MAX_TEXTURE_SIZE ? 8192 : 4; },
+    getParameter(parameter) {
+      if (parameter === this.MAX_TEXTURE_SIZE) return maximumSize;
+      if (parameter === this.MAX_VERTEX_TEXTURE_IMAGE_UNITS) return vertexUnits;
+      if (parameter === this.MAX_COMBINED_TEXTURE_IMAGE_UNITS) return combinedUnits;
+      return 4;
+    },
     createProgram() { throw new Error('Reached GPU allocation'); },
   };
   return { clientWidth: 64, clientHeight: 64, getContext() { return context; } };
@@ -227,4 +236,157 @@ test('draw batches bind all channels with their flags and scalar uniforms', () =
   assert.ok(uniforms.some(values => values[0] === 'metallicRoughnessMap' && values[1] === 3));
   assert.ok(uniforms.some(values => values[0] === 'normalScale' && values[1] === 0.5 && values[2] === -1));
   assert.ok(uniforms.some(values => values[0] === 'occlusionStrength' && values[1] === 0.4));
+});
+
+function skinGeometry(vertexCount = 3) {
+  const geometry = {
+    positions: new Float32Array(vertexCount * 3), normals: new Float32Array(vertexCount * 3),
+    indices: new Uint32Array([0, 1, 2]), skinIndices: new Uint16Array(vertexCount * 4), skinWeights: new Float32Array(vertexCount * 4),
+  };
+  for (let vertex = 0; vertex < vertexCount; vertex++) geometry.skinWeights[vertex * 4] = 1;
+  return geometry;
+}
+
+test('pose identity partitions batches while shared poses retain instancing and all material maps', () => {
+  const geometry = skinGeometry();
+  const pose = createSkinPose(2);
+  const first = part('first pose', geometry);
+  const second = part('shared pose', geometry);
+  first.skin = pose;
+  second.skin = pose;
+  first.material.normalMap = second.material.normalMap = {};
+  assert.equal(groupParts([first, second]).length, 1);
+  second.skin = createSkinPose(2);
+  assert.equal(groupParts([first, second]).length, 2);
+  second.skin = pose;
+  second.material.emissiveMap = {};
+  assert.equal(groupParts([first, second]).length, 2);
+});
+
+test('GPU skin preflight checks capabilities, texture capacity and retained texture budgets', () => {
+  const item = part('skin', skinGeometry());
+  item.skin = createSkinPose(2);
+  assert.throws(() => new Renderer67(preflightCanvas({ vertexUnits: 1 }), [item], { ground: false }), /vertex texture units/);
+  assert.throws(() => new Renderer67(preflightCanvas({ combinedUnits: 7 }), [item], { ground: false }), /combined texture units/);
+  item.skin = createSkinPose(17);
+  assert.throws(() => new Renderer67(preflightCanvas({ maximumSize: 8 }), [item], { ground: false }), /MAX_TEXTURE_SIZE/);
+  item.geometry = skinGeometry(1000);
+  item.skin = createSkinPose(2);
+  assert.throws(() => new Renderer67(preflightCanvas(), [item], { ground: false, memoryBudgetMiB: 16.16 }), /Memory budget/);
+  const rigid = part('rigid', { positions: item.geometry.positions, normals: item.geometry.normals, indices: item.geometry.indices });
+  assert.throws(() => new Renderer67(preflightCanvas(), [rigid], { ground: false, memoryBudgetMiB: 16.16 }), /Reached GPU allocation/);
+});
+
+test('skin updates retain palette upload data, deduplicate shared poses and reject mixed invalid updates atomically', () => {
+  const geometry = skinGeometry();
+  const pose = createSkinPose(2);
+  const first = part('first', geometry);
+  const second = part('second', geometry);
+  first.skin = second.skin = pose;
+  const { renderer, batch, writes } = retainedRenderer([first, second]);
+  const record = { pose, texture: {}, width: 4, height: 2, data: new Float32Array(pose.jointMatrices) };
+  batch.skinTexture = record;
+  const uploads = [];
+  renderer.context.bindTexture = () => {};
+  renderer.context.texSubImage2D = (...arguments_) => uploads.push(arguments_);
+  pose.jointMatrices[12] = 2;
+  second.matrix[0] = 0;
+  assert.throws(() => renderer.updateParts([first, second]), /Singular/);
+  assert.ok(batch.instanceData.every(value => value === 7));
+  assert.equal(record.data[12], 0);
+  assert.equal(writes.length, 0);
+  assert.equal(uploads.length, 0);
+  second.matrix[0] = 1;
+  const data = record.data;
+  renderer.updateParts([first, second]);
+  assert.equal(record.data, data);
+  assert.equal(uploads.length, 1);
+  assert.equal(uploads[0][8], data);
+  assert.equal(data[12], 2);
+  assert.equal(writes.length, 1);
+  pose.jointMatrices[0] = 0;
+  assert.throws(() => renderer.updateParts([first]), /singular/);
+  assert.equal(uploads.length, 1);
+  pose.jointMatrices[0] = 1;
+  first.skin = createSkinPose(2);
+  assert.throws(() => renderer.updateParts([first]), /Skin identity/);
+  assert.equal(uploads.length, 1);
+});
+
+test('skin palette and influence textures cache by pose and geometry identity and dispose fully', () => {
+  const renderer = Object.create(Renderer67.prototype);
+  const allocations = [];
+  const deleted = [];
+  renderer.context = {
+    getParameter() { return 8192; }, createTexture() { return {}; }, bindTexture() {}, texParameteri() {},
+    texImage2D(...arguments_) { allocations.push(arguments_); }, deleteTexture(texture) { if (texture) deleted.push(texture); },
+    deleteFramebuffer() {}, deleteProgram() {},
+  };
+  renderer.skinTextures = new Map();
+  renderer.influenceTextures = new Map();
+  const pose = createSkinPose(2);
+  const geometry = skinGeometry();
+  const palette = renderer.createSkinTexture(renderer.skinTextures, pose, pose.jointMatrices, 4);
+  const influences = renderer.createSkinTexture(renderer.influenceTextures, geometry, null, 2);
+  assert.equal(renderer.createSkinTexture(renderer.skinTextures, pose, pose.jointMatrices, 4), palette);
+  assert.equal(renderer.createSkinTexture(renderer.influenceTextures, geometry, null, 2), influences);
+  assert.equal(allocations.length, 2);
+  renderer.releaseFrameTargets = () => {};
+  renderer.batches = [];
+  renderer.buffers = [];
+  renderer.textures = new Map();
+  renderer.partLocations = new Map();
+  renderer.dispose();
+  assert.deepEqual(deleted, [palette.texture, influences.texture]);
+  assert.equal(renderer.skinTextures.size, 0);
+  assert.equal(renderer.influenceTextures.size, 0);
+});
+
+test('a shared palette validates consumers outside the submitted update list before any upload', () => {
+  const pose = createSkinPose(2);
+  const first = part('single joint', skinGeometry());
+  const second = part('blended joints', skinGeometry());
+  for (let vertex = 0; vertex < 3; vertex++) {
+    second.geometry.skinIndices[vertex * 4 + 1] = 1;
+    second.geometry.skinWeights[vertex * 4] = 0.5;
+    second.geometry.skinWeights[vertex * 4 + 1] = 0.5;
+  }
+  first.skin = second.skin = pose;
+  const { renderer, batch, writes } = retainedRenderer([first, second]);
+  batch.skinTexture = { pose, texture: {}, data: new Float32Array(pose.jointMatrices) };
+  const uploads = [];
+  renderer.context.bindTexture = () => {};
+  renderer.context.texSubImage2D = () => uploads.push(true);
+  renderer.updateParts([first, second]);
+  writes.length = 0;
+  uploads.length = 0;
+  const before = new Float32Array(batch.instanceData);
+  pose.jointMatrices[16] = -1;
+  pose.jointMatrices[21] = -1;
+  assert.throws(() => renderer.updateParts([first]), /singular/);
+  assert.deepEqual(batch.instanceData, before);
+  assert.equal(writes.length, 0);
+  assert.equal(uploads.length, 0);
+});
+
+test('color, benchmark and shadow passes bind the same skin textures and disable skinning for rigid batches', () => {
+  const renderer = Object.create(Renderer67.prototype);
+  renderer.hasSkins = true;
+  renderer.benchmark = true;
+  renderer.uniforms = { skinEnabled: 'color enabled', skinInfluences: 'color influences', jointPalette: 'color palette' };
+  renderer.depthSkinUniforms = { skinEnabled: 'shadow enabled', skinInfluences: 'shadow influences', jointPalette: 'shadow palette' };
+  const uniforms = [];
+  const bindings = [];
+  renderer.context = {
+    TEXTURE0: 33984, activeTexture(unit) { bindings.push(unit); }, bindTexture() {}, bindVertexArray() {}, drawElementsInstanced() {},
+    uniform1f(name, value) { uniforms.push([name, value]); }, uniform1i(name, value) { uniforms.push([name, value]); },
+  };
+  const batch = { skin: {}, skinTexture: { texture: {} }, influenceTexture: { texture: {} } };
+  renderer.drawBatch(batch, true);
+  renderer.drawBatch(batch);
+  renderer.drawBatch({});
+  assert.deepEqual(bindings, [33990, 33991, 33990, 33991]);
+  assert.ok(uniforms.some(([name, value]) => name === 'color enabled' && value === 1));
+  assert.ok(uniforms.some(([name, value]) => name === 'shadow enabled' && value === 1));
+  assert.deepEqual(uniforms.at(-1), ['shadow enabled', 0]);
 });

@@ -39,6 +39,7 @@ The optional `signal` aborts those fetches.
 | `maxParts` | 20,000 | Declared nodes and decoded mesh parts. |
 | `maxResources` | 64 | Unique resource URIs. |
 | `maxTexturePixels` | 16,777,216 | Combined texture image pixels, checked before decoding. |
+| `maxJoints` | 4,096 | Combined declared joints and joint palettes for instantiated meshes. |
 
 Every numeric limit must be a positive safe integer.
 The importer rejects cyclic hierarchies, multiple parents, and hierarchies deeper than 256 levels.
@@ -89,7 +90,7 @@ The importer rejects a requested texture that fails to decode, rather than retur
 ## Animation and ownership
 
 `animations` contains the decoded Three.js animation clips, including their names, durations, and tracks.
-`applyAnimation(time, clipIndex = 0)` evaluates one rigid node animation at an absolute time in seconds.
+`applyAnimation(time, clipIndex = 0)` evaluates node and joint animation at an absolute time in seconds.
 Time clamps to the selected clip's duration.
 The hook updates the existing part matrices and returns the same `parts` array.
 Seeking in a different order produces the same matrices.
@@ -102,7 +103,8 @@ renderer.render(camera);
 
 Translation, rotation, and scale tracks are supported.
 The importer rejects animation poses that become singular or change triangle winding.
-It does not support skinning or morph targets.
+The current source supports four-influence [GPU skinning](skinning.md). The published `0.3.3` package still supports rigid animation only.
+Morph targets remain unsupported.
 
 The caller owns the Renderer67 instance.
 `asset.dispose()` releases importer textures, image bitmaps, parser resources, and temporary object URLs.
@@ -118,10 +120,11 @@ Disposal is idempotent, and subsequent animation calls fail explicitly.
 The bridge supports triangle meshes, PNG/JPEG base color textures, rigid animations, and metallic-roughness material factors.
 It also supports `KHR_mesh_quantization` and `KHR_materials_emissive_strength`.
 
-The importer rejects alpha blending, alpha masking, double-sided materials, vertex transparency, and additional material texture channels.
+The importer rejects alpha blending, alpha masking, double-sided materials and vertex transparency.
+It supports base-color, normal, metallic-roughness, occlusion and emissive texture channels.
 It rejects texture transforms, DRACO, KTX2, GPU instancing, and unsupported extensions, including optional extensions.
 Line and point primitives are unsupported.
-The bridge does not import cameras, lights, scene environments, or skin data into Renderer67.
+The bridge does not import cameras, lights or scene environments into Renderer67.
 The caller supplies its own camera and lighting.
 
 ## Verification

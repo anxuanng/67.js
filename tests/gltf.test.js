@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { Texture } from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { Matrix4, Vector3 } from 'three';
+import { skinnedStripAsset } from './fixtures/skinned-strip.js';
 import { mat4 } from 'gl-matrix';
 import { exportGlb } from '../src/export.js';
 import { GLTF_CAPABILITIES, loadGltf, parseGltf } from '../src/gltf.js';
@@ -137,7 +140,7 @@ test('mirrored static transforms reverse triangle winding without altering world
 
 test('unsupported features fail explicitly before loading resources', async () => {
   const cases = [
-    [document => { document.nodes[1].skin = 0; }, /Skinned/],
+    [document => { document.nodes[1].skin = 0; }, /skin index/],
     [document => { document.meshes[0].primitives[0].targets = [{ POSITION: 0 }]; }, /Morph/],
     [document => { document.meshes[0].primitives[0].attributes.COLOR_0 = 1; }, /COLOR_0/],
     [document => { document.meshes[0].primitives[0].mode = 1; }, /TRIANGLES/],
@@ -364,4 +367,110 @@ test('map preflight rejects unsupported UVs, sampler states, invalid scales and 
     })), expected);
   }
   await assert.rejects(parseGltf(triangleAsset(addMaterialMaps), { maxTexturePixels: 3 }), /maxTexturePixels/);
+});
+
+function skinPosition(part, vertex) {
+  const result = new Vector3();
+  const input = new Vector3().fromArray(part.geometry.positions, vertex * 3);
+  for (let influence = 0; influence < 4; influence++) {
+    const offset = vertex * 4 + influence;
+    const matrix = new Matrix4().fromArray(part.skin.jointMatrices, part.geometry.skinIndices[offset] * 16);
+    result.addScaledVector(input.clone().applyMatrix4(matrix), part.geometry.skinWeights[offset]);
+  }
+  return result.applyMatrix4(new Matrix4().fromArray(part.matrix));
+}
+
+test('GLB skin import retains inverse binds, ordered bones and deterministic visibly bent poses matching Three', async () => {
+  const data = skinnedStripAsset();
+  const asset = await parseGltf(data);
+  const part = asset.parts[0];
+  const palette = part.skin.jointMatrices;
+  const matrix = part.matrix;
+  assert.equal(asset.skins.length, 1);
+  assert.equal(asset.skins[0], part.skin);
+  assert.deepEqual(part.skin.joints.map(joint => joint.name), ['Root', 'Tip']);
+  assert.deepEqual(part.skin.joints.map(joint => joint.parent), [-1, 0]);
+  assert.equal(part.skin.inverseBindMatrices[29], -1);
+  const restTop = skinPosition(part, 4);
+  const restBottom = skinPosition(part, 0);
+  asset.applyAnimation(2);
+  assert.ok(skinPosition(part, 4).distanceTo(restTop) > 1);
+  assert.ok(skinPosition(part, 0).distanceTo(restBottom) < 1e-6, 'lower vertices stay fixed while upper vertices bend');
+  const bent = Array.from(palette);
+  asset.applyAnimation(0.4);
+  asset.applyAnimation(2);
+  assert.deepEqual(Array.from(palette), bent);
+  asset.applyAnimation(2, 1);
+  asset.applyAnimation(2, 0);
+  assert.deepEqual(Array.from(palette), bent, 'switching clips restores unanimated bone properties');
+  assert.equal(part.skin.jointMatrices, palette);
+  assert.equal(part.matrix, matrix);
+  const decoded = await new GLTFLoader().parseAsync(data, '');
+  decoded.scene.updateMatrixWorld(true);
+  let mesh;
+  decoded.scene.traverse(node => { if (node.isSkinnedMesh) mesh = node; });
+  mesh.skeleton.bones[1].rotation.z = Math.PI / 2;
+  decoded.scene.updateMatrixWorld(true);
+  for (let vertex = 0; vertex < 6; vertex++) {
+    const expected = mesh.applyBoneTransform(vertex, new Vector3().fromBufferAttribute(mesh.geometry.getAttribute('position'), vertex)).applyMatrix4(mesh.matrixWorld);
+    assert.ok(skinPosition(part, vertex).distanceTo(expected) < 1e-6);
+  }
+  mesh.geometry.dispose();
+  mesh.material.dispose();
+  mesh.skeleton.dispose();
+  asset.dispose();
+  assert.throws(() => asset.applyAnimation(1), /disposed/);
+});
+
+test('skin preflight guards joints, influence shapes, raw zero weights, indices and budgets', async () => {
+  const cases = [
+    [document => { document.skins[0].joints = [2, 2]; }, /distinct/],
+    [document => { document.skins[0].joints = [2, 9]; }, /valid node/],
+    [document => { document.accessors[document.skins[0].inverseBindMatrices].type = 'VEC4'; }, /Inverse bind/],
+    [document => { document.meshes[0].primitives[0].attributes.JOINTS_1 = 0; }, /four/],
+    [document => { delete document.meshes[0].primitives[0].attributes.WEIGHTS_0; }, /JOINTS_0/],
+    [(document, append, chunks) => { chunks[document.meshes[0].primitives[0].attributes.WEIGHTS_0].fill(0); }, /positive total/],
+    [(document, append, chunks) => { chunks[document.meshes[0].primitives[0].attributes.JOINTS_0][0] = 9; }, /index/],
+    [(document, append, chunks) => { chunks[document.meshes[0].primitives[0].attributes.WEIGHTS_0][0] = -0.2; }, /weights/],
+  ];
+  for (const [edit, expected] of cases) await assert.rejects(parseGltf(skinnedStripAsset(edit)), expected);
+  await assert.rejects(parseGltf(skinnedStripAsset(), { maxJoints: 1 }), /maxJoints/);
+  await assert.rejects(parseGltf(skinnedStripAsset(document => {
+    document.nodes.push({ name: 'Second strip', mesh: 0, skin: 0 });
+    document.nodes[0].children.push(4);
+  }), { maxJoints: 2 }), /Instanced skin poses/);
+});
+
+test('invalid skeletal animation fails before public matrices or palettes change', async () => {
+  const asset = await parseGltf(skinnedStripAsset((document, append) => {
+    const scales = append(new Float32Array([1, 1, 1, 0, 1, 1]), 'VEC3');
+    document.animations[0].samplers[0].output = scales;
+    document.animations[0].channels[0].target.path = 'scale';
+  }));
+  const part = asset.parts[0];
+  const matrix = Array.from(part.matrix);
+  const palette = Array.from(part.skin.jointMatrices);
+  const world = Array.from(part.skin.jointWorldMatrices);
+  assert.throws(() => asset.applyAnimation(2), /singular/);
+  assert.deepEqual(Array.from(part.matrix), matrix);
+  assert.deepEqual(Array.from(part.skin.jointMatrices), palette);
+  assert.deepEqual(Array.from(part.skin.jointWorldMatrices), world);
+  asset.applyAnimation(0);
+  assert.deepEqual(Array.from(part.skin.jointMatrices), palette);
+  asset.dispose();
+});
+
+test('normalized integer skin weights import correctly and skinned mesh node transforms cancel without reversed winding', async () => {
+  const asset = await parseGltf(skinnedStripAsset((document, append) => {
+    const weights = new Uint8Array([255, 0, 0, 0, 255, 0, 0, 0, 128, 127, 0, 0, 128, 127, 0, 0, 255, 0, 0, 0, 255, 0, 0, 0]);
+    document.meshes[0].primitives[0].attributes.WEIGHTS_0 = append(weights, 'VEC4', true);
+    document.nodes[1].scale = [-1, 1, 1];
+  }));
+  const part = asset.parts[0];
+  assert.deepEqual(Array.from(part.geometry.indices.subarray(0, 3)), [0, 1, 2]);
+  assert.ok(Math.abs(part.geometry.skinWeights[8] - 128 / 255) < 1e-6);
+  assert.ok(skinPosition(part, 0).distanceTo(new Vector3(0.7, 2, 0)) < 1e-6);
+  asset.applyAnimation(2);
+  assert.ok(skinPosition(part, 4).x < 0.1);
+  asset.dispose();
 });

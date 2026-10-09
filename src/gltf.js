@@ -1,11 +1,12 @@
 import { AnimationMixer, LoadingManager, LoopOnce } from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { textureDescriptorInfo } from './renderer.js';
+import { createSkinPose, updateSkinPose, validateSkinGeometry, validateSkinPose } from './skinning.js';
 
 export const GLTF_CAPABILITIES = Object.freeze({
   formats: ['glb', 'gltf'],
-  supported: ['triangle meshes', 'world transforms', 'rigid node animations', 'PNG/JPEG base color textures', 'normal/occlusion/emissive/metallic-roughness textures', 'TEXCOORD_0', 'linear RGB vertex colors', 'metallic roughness factors', 'emissive factors', 'KHR_mesh_quantization', 'KHR_materials_emissive_strength'],
-  unsupported: ['skinning', 'morph targets', 'vertex alpha below one', 'alpha blending or masking', 'double-sided materials', 'texture transforms', 'DRACO', 'KTX2', 'GPU instancing'],
+  supported: ['triangle meshes', 'world transforms', 'rigid node animations', 'four-influence skeletal skinning', 'joint node animations', 'PNG/JPEG base color textures', 'normal/occlusion/emissive/metallic-roughness textures', 'TEXCOORD_0', 'linear RGB vertex colors', 'metallic roughness factors', 'emissive factors', 'KHR_mesh_quantization', 'KHR_materials_emissive_strength'],
+  unsupported: ['more than four skin influences', 'singular weighted skin transforms', 'reflected skin transforms', 'morph targets', 'vertex alpha below one', 'alpha blending or masking', 'double-sided materials', 'texture transforms', 'DRACO', 'KTX2', 'GPU instancing'],
 });
 
 const DEFAULT_MAX_BYTES = 32 * 1024 * 1024;
@@ -32,6 +33,7 @@ function limitsFor(options) {
     maxParts: options.maxParts ?? 20_000,
     maxResources: options.maxResources ?? 64,
     maxTexturePixels: options.maxTexturePixels ?? 16_777_216,
+    maxJoints: options.maxJoints ?? 4096,
   };
   for (const [name, value] of Object.entries(limits)) {
     if (!Number.isSafeInteger(value) || value <= 0) throw new TypeError(`${name} must be a positive safe integer.`);
@@ -97,6 +99,14 @@ function validateDocument(document, limits) {
         throw new Error('Each mesh primitive requires a valid POSITION accessor.');
       }
       vertices += position.count;
+      if (Object.keys(primitive.attributes ?? {}).some(name => /^(JOINTS|WEIGHTS)_/.test(name) && !['JOINTS_0', 'WEIGHTS_0'].includes(name))) throw new Error('Only four JOINTS_0/WEIGHTS_0 skin influences are supported.');
+      const joints = document.accessors?.[primitive.attributes?.JOINTS_0];
+      const weights = document.accessors?.[primitive.attributes?.WEIGHTS_0];
+      if (joints || weights) {
+        if (!joints || !weights || joints.type !== 'VEC4' || weights.type !== 'VEC4' || joints.count !== position.count || weights.count !== position.count) throw new Error('JOINTS_0 and WEIGHTS_0 must contain four values per POSITION.');
+        if (![5121, 5123].includes(joints.componentType) || joints.normalized) throw new Error('JOINTS_0 requires unnormalized unsigned byte or short indices.');
+        if (weights.componentType !== 5126 && (![5121, 5123].includes(weights.componentType) || !weights.normalized)) throw new Error('WEIGHTS_0 requires floats or normalized unsigned integers.');
+      } else if (primitive.attributes?.JOINTS_0 !== undefined || primitive.attributes?.WEIGHTS_0 !== undefined) throw new Error('Invalid skin attribute accessor index.');
       const colorIndex = primitive.attributes?.COLOR_0;
       if (colorIndex !== undefined) {
         const color = document.accessors?.[colorIndex];
@@ -125,14 +135,33 @@ function validateDocument(document, limits) {
   }
   if (vertices > limits.maxVertices || indices > limits.maxVertices * 12) throw new Error('glTF geometry exceeds maxVertices or its index budget.');
   if ((document.nodes?.length ?? 0) > limits.maxParts) throw new Error('glTF nodes exceed maxParts.');
+  let jointCount = 0;
+  for (const skin of document.skins ?? []) {
+    if (!Array.isArray(skin.joints) || !skin.joints.length || new Set(skin.joints).size !== skin.joints.length || skin.joints.some(joint => !Number.isInteger(joint) || !document.nodes?.[joint])) throw new Error('Skin joints require distinct valid node indices.');
+    jointCount += skin.joints.length;
+    if (jointCount > limits.maxJoints || skin.joints.length > 65536) throw new Error('Skin joints exceed maxJoints.');
+    if (skin.skeleton !== undefined && (!Number.isInteger(skin.skeleton) || !document.nodes?.[skin.skeleton])) throw new Error('Invalid skin skeleton node.');
+    if (skin.inverseBindMatrices !== undefined) {
+      const accessor = document.accessors?.[skin.inverseBindMatrices];
+      if (!accessor || accessor.type !== 'MAT4' || accessor.componentType !== 5126 || accessor.normalized || accessor.count !== skin.joints.length) throw new Error('Inverse bind matrices require one float MAT4 per joint.');
+    }
+  }
+  let poseJointCount = 0;
   for (const node of document.nodes ?? []) {
-    if (node.skin !== undefined) throw new Error('Skinned meshes are unsupported.');
+    if (node.skin !== undefined) {
+      if (!Number.isInteger(node.skin) || !document.skins?.[node.skin] || !document.meshes?.[node.mesh]) throw new Error('Invalid skinned mesh or skin index.');
+      for (const primitive of document.meshes[node.mesh].primitives ?? []) {
+        if (primitive.attributes?.JOINTS_0 === undefined || primitive.attributes?.WEIGHTS_0 === undefined) throw new Error('Skinned meshes require JOINTS_0 and WEIGHTS_0.');
+        poseJointCount += document.skins[node.skin].joints.length;
+        if (poseJointCount > limits.maxJoints) throw new Error('Instanced skin poses exceed maxJoints.');
+      }
+    }
     if (node.extensions && Object.keys(node.extensions).length) throw new Error('Node extensions are unsupported.');
   }
   validateHierarchy(document.nodes ?? []);
   for (const animation of document.animations ?? []) {
     for (const channel of animation.channels ?? []) {
-      if (!['translation', 'rotation', 'scale'].includes(channel.target?.path)) throw new Error('Only rigid node translation, rotation and scale animations are supported.');
+      if (!['translation', 'rotation', 'scale'].includes(channel.target?.path)) throw new Error('Only node translation, rotation and scale animations are supported.');
     }
   }
   for (const material of document.materials ?? []) {
@@ -389,7 +418,57 @@ function convertGeometry(source, mirrored) {
   if (uv) geometry.uvs = copyAttribute(uv, 2);
   const color = source.getAttribute('color');
   if (color) geometry.colors = convertVertexColors(color, position.count);
+  const skinIndices = source.getAttribute('skinIndex');
+  const skinWeights = source.getAttribute('skinWeight');
+  if (skinIndices) geometry.skinIndices = new Uint16Array(copyAttribute(skinIndices, 4));
+  if (skinWeights) geometry.skinWeights = copyAttribute(skinWeights, 4);
   return geometry;
+}
+
+function makeSkinBinding(node) {
+  const count = node.skeleton.bones.length;
+  const pose = createSkinPose(count);
+  const pendingPose = createSkinPose(count);
+  const inverseBindMatrices = new Float32Array(count * 16);
+  const jointWorldMatrices = new Float32Array(count * 16);
+  const pendingWorld = new Float32Array(count * 16);
+  const joints = node.skeleton.bones.map((bone, index) => {
+    inverseBindMatrices.set(node.skeleton.boneInverses[index].elements, index * 16);
+    return { name: bone.name, parent: node.skeleton.bones.indexOf(bone.parent) };
+  });
+  const skin = Object.assign(pose, { joints, inverseBindMatrices, jointWorldMatrices, bindMatrix: new Float32Array(node.bindMatrix.elements) });
+  return { node, skin, pendingPose, pendingWorld };
+}
+
+function prepareSkinBinding(binding, geometry) {
+  const { node, skin, pendingPose, pendingWorld } = binding;
+  for (let joint = 0; joint < node.skeleton.bones.length; joint++) pendingWorld.set(node.skeleton.bones[joint].matrixWorld.elements, joint * 16);
+  updateSkinPose(pendingPose, pendingWorld, skin.inverseBindMatrices, node.matrixWorld.elements, skin.bindMatrix);
+  validateSkinPose(pendingPose, geometry, node.matrixWorld.elements);
+}
+
+function commitSkinBinding(binding) {
+  binding.skin.jointMatrices.set(binding.pendingPose.jointMatrices);
+  binding.skin.jointWorldMatrices.set(binding.pendingWorld);
+}
+
+function skinPreflightPlugin(parser, document) {
+  return {
+    name: '67SkinPreflight',
+    async beforeRoot() {
+      for (const node of document.nodes ?? []) {
+        if (node.skin === undefined) continue;
+        const pose = createSkinPose(document.skins[node.skin].joints.length);
+        for (const primitive of document.meshes[node.mesh].primitives) {
+          const [joints, weights] = await Promise.all([
+            parser.getDependency('accessor', primitive.attributes.JOINTS_0),
+            parser.getDependency('accessor', primitive.attributes.WEIGHTS_0),
+          ]);
+          validateSkinGeometry({ positions: { length: weights.count * 3 }, skinIndices: copyAttribute(joints, 4), skinWeights: copyAttribute(weights, 4) }, pose);
+        }
+      }
+    },
+  };
 }
 
 function convertVertexColors(attribute, vertexCount) {
@@ -456,9 +535,11 @@ function releaseParsed(gltf) {
   const materials = new Set();
   const textures = new Set();
   const images = new Set();
+  const skeletons = new Set();
   for (const scene of gltf.scenes) {
     scene.traverse(node => {
       if (node.geometry) geometries.add(node.geometry);
+      if (node.skeleton) skeletons.add(node.skeleton);
       for (const material of Array.isArray(node.material) ? node.material : node.material ? [node.material] : []) {
         materials.add(material);
         for (const value of Object.values(material)) if (value?.isTexture) textures.add(value);
@@ -472,6 +553,7 @@ function releaseParsed(gltf) {
     texture.dispose();
   });
   images.forEach(image => image.close?.());
+  skeletons.forEach(skeleton => skeleton.dispose());
 }
 
 /** Parse a bounded glTF 2.0 asset into Renderer67 parts. Three.js only decodes the asset. */
@@ -491,17 +573,20 @@ export async function parseGltf(data, options = {}) {
   });
   let gltf;
   try {
-    gltf = await new GLTFLoader(manager).parseAsync(data, options.baseUrl ?? '');
+    const loader = new GLTFLoader(manager);
+    loader.register(parser => skinPreflightPlugin(parser, document));
+    gltf = await loader.parseAsync(data, options.baseUrl ?? '');
     gltf.scene.updateMatrixWorld(true);
     const parts = [];
     const bindings = [];
+    const skinBindings = [];
     const geometries = new Map();
     const materials = new Map();
     const maps = new Map();
     let actualVertices = 0;
     gltf.scene.traverse(node => {
       if (!node.isMesh) return;
-      if (node.isSkinnedMesh || node.morphTargetInfluences?.length) throw new Error('Skinning and morph targets are unsupported.');
+      if (node.morphTargetInfluences?.length) throw new Error('Morph targets are unsupported.');
       if (Array.isArray(node.material)) throw new Error('Multiple materials on one decoded primitive are unsupported.');
       const materialIndex = gltf.parser.associations.get(node.material)?.materials;
       for (const [field, sourceField] of MATERIAL_TEXTURES) {
@@ -511,17 +596,26 @@ export async function parseGltf(data, options = {}) {
       const determinant = node.matrixWorld.determinant();
       if (!Number.isFinite(determinant) || Math.abs(determinant) < 1e-12) throw new Error('Mesh world transform is singular or non-finite.');
       const mirrored = determinant < 0;
-      const geometryKey = `${node.geometry.uuid}:${mirrored}`;
+      const geometryMirrored = node.isSkinnedMesh ? false : mirrored;
+      const geometryKey = `${node.geometry.uuid}:${geometryMirrored}`;
       if (!geometries.has(geometryKey)) {
         actualVertices += node.geometry.getAttribute('position').count;
         if (actualVertices > limits.maxVertices) throw new Error('Decoded geometry exceeds maxVertices.');
-        geometries.set(geometryKey, convertGeometry(node.geometry, mirrored));
+        geometries.set(geometryKey, convertGeometry(node.geometry, geometryMirrored));
       }
       if (!materials.has(node.material)) materials.set(node.material, convertMaterial(node.material, limits, maps, document.materials?.[materialIndex]));
       const geometry = geometries.get(geometryKey);
       const material = materials.get(node.material);
       if (MATERIAL_TEXTURES.some(([field]) => material[field]) && !geometry.uvs) throw new Error('Material textures require TEXCOORD_0.');
       const part = { name: node.name || `glTF mesh ${parts.length + 1}`, geometry, matrix: new Float32Array(node.matrixWorld.elements), material };
+      if (node.isSkinnedMesh) {
+        const binding = makeSkinBinding(node);
+        prepareSkinBinding(binding, geometry);
+        commitSkinBinding(binding);
+        part.skin = binding.skin;
+        skinBindings.push({ ...binding, geometry });
+      }
+      validateSkinGeometry(geometry, part.skin);
       if (!Array.from(part.matrix).every(Number.isFinite)) throw new Error('Mesh world matrix must be finite.');
       parts.push(part);
       bindings.push({ node, part, mirrored });
@@ -557,10 +651,12 @@ export async function parseGltf(data, options = {}) {
           throw new Error('Animation creates a singular transform or changes triangle winding.');
         }
       }
+      for (const binding of skinBindings) prepareSkinBinding(binding, binding.geometry);
       for (const { node, part } of bindings) part.matrix.set(node.matrixWorld.elements);
+      for (const binding of skinBindings) commitSkinBinding(binding);
       return parts;
     }
-    return { parts, animations: gltf.animations, applyAnimation, dispose, capabilities: GLTF_CAPABILITIES };
+    return { parts, skins: skinBindings.map(binding => binding.skin), animations: gltf.animations, applyAnimation, dispose, capabilities: GLTF_CAPABILITIES };
   } catch (error) {
     if (gltf) releaseParsed(gltf);
     objectUrls.forEach(url => URL.revokeObjectURL(url));

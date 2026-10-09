@@ -6,6 +6,7 @@ export { box, cylinder, sphere, torus } from './geometry.js';
 export { exportGlb } from './export.js';
 export { createAnimationMixer } from './animation-mixer.js';
 export { createSceneGraph } from './scene-graph.js';
+export { createSkinPose, updateSkinPose } from './skinning.js';
 export { RENDER_PRESETS, planRenderSize, estimateFrameBytes } from './budget.js';
 
 export { assemblyOffset } from './assembly.js';

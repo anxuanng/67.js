@@ -27,7 +27,8 @@
     "docs/material-maps.md",
     "docs/modeling.md",
     "docs/scene-graph.md",
-    "docs/camera-path.md"
+    "docs/camera-path.md",
+    "docs/skinning.md"
   ],
   "main": "./build/67.module.js",
   "module": "./build/67.module.js",

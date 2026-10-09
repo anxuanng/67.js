@@ -1,3 +1,25 @@
+const skinningShader = `
+uniform float skinEnabled;
+uniform highp sampler2D skinInfluences;
+uniform highp sampler2D jointPalette;
+vec4 skinTexel(sampler2D source, int index) {
+  int width = textureSize(source, 0).x;
+  return texelFetch(source, ivec2(index % width, index / width), 0);
+}
+mat4 jointMatrix(int joint) {
+  int offset = joint * 4;
+  return mat4(skinTexel(jointPalette, offset), skinTexel(jointPalette, offset + 1),
+    skinTexel(jointPalette, offset + 2), skinTexel(jointPalette, offset + 3));
+}
+mat4 skinTransform() {
+  if (skinEnabled < 0.5) return mat4(1.0);
+  ivec4 joints = ivec4(skinTexel(skinInfluences, gl_VertexID * 2));
+  vec4 weights = skinTexel(skinInfluences, gl_VertexID * 2 + 1);
+  return jointMatrix(joints.x) * weights.x + jointMatrix(joints.y) * weights.y
+    + jointMatrix(joints.z) * weights.z + jointMatrix(joints.w) * weights.w;
+}
+`;
+
 export const vertexShader = `#version 300 es
 precision highp float;
 layout(location=0) in vec3 position;
@@ -26,8 +48,10 @@ out vec4 shadowPosition;
 out vec2 textureUV;
 out vec3 vertexTint;
 flat out vec3 emissionColor;
+${skinningShader}
 void main() {
-  vec4 world = instanceMatrix * vec4(position, 1.0);
+  mat4 deformation = skinTransform();
+  vec4 world = instanceMatrix * deformation * vec4(position, 1.0);
   world.xyz += assemblyOffset * assemblyAmount + assemblyDetailOffset * smoothstep(0.3, 1.0, assemblyAmount);
   if (instanceSurface.w == 4.0 || instanceSurface.w == 7.0) {
     world.x += sin(time * 1.2 + world.z * 0.31 + world.x * 0.17) * wind * 0.10 * max(position.y + 0.5, 0.0);
@@ -39,7 +63,8 @@ void main() {
     world.xyz = mix(explosionCenter, world.xyz, 0.03 + explosionProgress * 0.97);
   }
   worldPosition = world.xyz;
-  worldNormal = normalize(instanceNormal * normal);
+  vec3 deformedNormal = skinEnabled > 0.5 ? transpose(inverse(mat3(deformation))) * normal : normal;
+  worldNormal = normalize(instanceNormal * deformedNormal);
   baseColor = instanceColor;
   textureUV = uv;
   vertexTint = vertexColor;
@@ -57,8 +82,9 @@ layout(location=11) in vec3 assemblyOffset;
 layout(location=12) in vec3 assemblyDetailOffset;
 uniform mat4 lightProjection;
 uniform float assemblyAmount;
+${skinningShader}
 void main() {
-  vec4 world = instanceMatrix * vec4(position, 1.0);
+  vec4 world = instanceMatrix * skinTransform() * vec4(position, 1.0);
   world.xyz += assemblyOffset * assemblyAmount + assemblyDetailOffset * smoothstep(0.3, 1.0, assemblyAmount);
   gl_Position = lightProjection * world;
 }`;
@@ -75,9 +101,10 @@ layout(location=2) in mat4 instanceMatrix;
 layout(location=9) in vec3 instanceColor;
 uniform mat4 viewProjection;
 out vec3 color;
+${skinningShader}
 void main() {
   color = instanceColor;
-  gl_Position = viewProjection * instanceMatrix * vec4(position, 1.0);
+  gl_Position = viewProjection * instanceMatrix * skinTransform() * vec4(position, 1.0);
 }`;
 
 export const benchmarkFragmentShader = `#version 300 es

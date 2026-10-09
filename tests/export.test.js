@@ -24,3 +24,9 @@ test('GLB export refuses to silently discard any material texture channel', () =
       error => error instanceof RangeError && error.message.includes(channel));
   }
 });
+
+test('GLB export rejects skinning instead of silently saving the undeformed bind mesh', () => {
+  const part = createModel()[0];
+  assert.throws(() => exportGlb([{ ...part, skin: { jointMatrices: new Float32Array(16) } }]), /preserve skinning/);
+  assert.throws(() => exportGlb([{ ...part, geometry: { ...part.geometry, skinIndices: new Uint16Array(4) } }]), /preserve skinning/);
+});
