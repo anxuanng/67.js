@@ -36,3 +36,13 @@ test('invalid or impossible memory requests fail before allocation', () => {
   assert.throws(() => planRenderSize({ width: 1280, height: 720, geometryBytes: 300 * 1024 ** 2, memoryBudgetMiB: 128 }), /cannot hold/);
   assert.throws(() => planRenderSize({ width: Infinity, height: 720 }));
 });
+
+test('resolved depth adds exactly four bytes per pixel and participates in resolution reduction', () => {
+  assert.equal(estimateFrameBytes(540, 960, 4, 2048, { hdr: true, depth: true }) - estimateFrameBytes(540, 960, 4, 2048, { hdr: true }), 540 * 960 * 4);
+  const options = { width: 7680, height: 4320, hdr: true, bloom: true, samples: 4, memoryBudgetMiB: 64 };
+  const ordinary = planRenderSize(options);
+  const resolved = planRenderSize({ ...options, depth: true });
+  assert.ok(resolved.width < ordinary.width);
+  assert.equal(resolved.estimatedBytes, estimateFrameBytes(resolved.width, resolved.height, 4, 2048, { hdr: true, bloom: true, depth: true }));
+  assert.ok(resolved.estimatedBytes <= 64 * 1024 ** 2);
+});

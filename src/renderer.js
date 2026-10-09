@@ -5,6 +5,7 @@ import { planRenderSize, estimateTextureBytes } from './budget.js';
 import { applyProjection } from './camera.js';
 import { resolveEffects } from './effects.js';
 import { createLightingState, updateLightingState } from './lighting.js';
+import { resolveVolumeFog } from './volumetric.js';
 import { validateSkinGeometry, validateSkinPose, skinTextureLayout, packSkinInfluences } from './skinning.js';
 
 const MATERIAL_TAGS = { armor: 1, floor: 2, water: 3, foliage: 4, terrain: 5, grass: 7, fire: 8, smoke: 9, unlit: 10 };
@@ -123,13 +124,14 @@ export function groupParts(parts, batching = true) {
   const batches = [];
   for (const part of parts) {
     validateTransform(part);
+    if (part.castShadow !== undefined && typeof part.castShadow !== 'boolean') throw new TypeError('castShadow must be a boolean');
     validateSkinGeometry(part.geometry, part.skin);
     if (part.skin) validateSkinPose(part.skin, part.geometry, part.matrix);
     if (part.skin && PROCEDURAL_MATERIAL_TAGS.has(part.material.tag)) throw new Error('Skinned parts require a standard material tag.');
     const key = batching ? part.geometry : part;
     if (!groups.has(key)) groups.set(key, new Map());
     let maps = groups.get(key);
-    for (const value of [...materialMapState(part.material), part.skin ?? null]) {
+    for (const value of [...materialMapState(part.material), part.skin ?? null, part.castShadow !== false]) {
       if (!maps.has(value)) maps.set(value, new Map());
       maps = maps.get(value);
     }
@@ -167,22 +169,26 @@ function sampleCount(context, format, requested) {
 }
 
 export class Renderer67 {
-  constructor(canvas, parts, { batching = true, pixelRatio = 1.5, benchmark = false, world = false, ground = true, transparent = false, samples = 4, hdr = false, memoryBudgetMiB = 256, environment = {}, shadowBounds = {} } = {}) {
+  constructor(canvas, parts, { batching = true, pixelRatio = 1.5, benchmark = false, world = false, ground = true, transparent = false, samples = 4, hdr = false, depth = false, memoryBudgetMiB = 256, environment = {}, shadowBounds = {} } = {}) {
     this.canvas = canvas;
     if (!Number.isInteger(samples) || samples < 1) throw new Error('MSAA sample count must be a positive integer.');
     if (new Set(parts).size !== parts.length) throw new Error('Scene parts must have distinct object identities for animation.');
     this.lighting = createLightingState();
     updateLightingState(this.lighting, environment, { world });
+    const volume = resolveVolumeFog(environment.volumeFog);
+    if (volume.density > 0 && (!depth || benchmark || transparent || !hdr)) throw new Error('Volume fog requires depth:true, hdr:true, an opaque canvas and normal rendering');
     this.context = canvas.getContext('webgl2', { antialias: true, alpha: Boolean(transparent), premultipliedAlpha: true, powerPreference: 'high-performance' });
     if (!this.context) throw new Error('WebGL2 is unavailable. Enable hardware acceleration or use a supported browser.');
     this.transparent = Boolean(transparent);
     this.pixelRatio = pixelRatio;
     this.benchmark = benchmark;
+    this.depth = Boolean(depth && !benchmark);
     this.world = world;
     this.environment = environment;
     this.shadowBounds = shadowBounds;
     this.memoryBudgetMiB = memoryBudgetMiB;
     this.hdr = Boolean(hdr && !benchmark && this.context.getExtension('EXT_color_buffer_float'));
+    if (volume.density > 0 && !this.hdr) throw new Error('Volume fog requires EXT_color_buffer_float for HDR rendering');
     this.multisampleSamples = benchmark ? 0 : sampleCount(this.context, this.hdr ? this.context.RGBA16F : this.context.RGBA8, Math.min(samples, this.context.getParameter(this.context.MAX_SAMPLES)));
     this.capabilities = { hdr: this.hdr, hdrRequested: Boolean(hdr), hdrFallbackReason: hdr && !this.hdr ? benchmark ? 'HDR is disabled in benchmark mode' : 'EXT_color_buffer_float is unavailable' : null, samples: this.multisampleSamples };
     this.geometryBytes = 0;
@@ -233,7 +239,7 @@ export class Renderer67 {
       if (geometry.colors && geometry.colors.length !== geometry.positions.length) throw new Error('Geometry colors must contain RGB for every vertex.');
     }
     const expectedGeometryBytes = groups.reduce((total, group) => total + ['positions', 'normals', 'indices', 'uvs', 'colors'].reduce((bytes, field) => bytes + (group[0].geometry[field]?.byteLength ?? 0), 0) + group.length * INSTANCE_STRIDE * 4, 0);
-    planRenderSize({ width: Math.max(1, canvas.clientWidth), height: Math.max(1, canvas.clientHeight), pixelRatio, samples: this.samples, memoryBudgetMiB, geometryBytes: expectedGeometryBytes, textureBytes: this.textureBytes, hdr: this.hdr, bloom: !benchmark, maximumSize: textureLimit });
+    planRenderSize({ width: Math.max(1, canvas.clientWidth), height: Math.max(1, canvas.clientHeight), pixelRatio, samples: this.samples, memoryBudgetMiB, geometryBytes: expectedGeometryBytes, textureBytes: this.textureBytes, hdr: this.hdr, bloom: !benchmark, depth: this.depth, maximumSize: textureLimit });
     this.view = mat4.create();
     this.projection = mat4.create();
     this.viewProjection = mat4.create();
@@ -249,7 +255,7 @@ export class Renderer67 {
     if (!benchmark) {
       this.postProgram = compileProgram(this.context, fullscreenVertex, postFragment);
       this.skyProgram = compileProgram(this.context, fullscreenVertex, skyFragment);
-      this.postUniforms = Object.fromEntries(['transparent', 'frameTexture', 'bloomTexture', 'bloomStrength', 'hdrEnabled', 'grade', 'vignette', 'grainAmount', 'resolution', 'monochrome', 'fade', 'cinematic', 'time', 'volumeExplosion', 'explosionProgress', 'inverseViewProjection', 'eye'].map((name) => [name, this.context.getUniformLocation(this.postProgram, name)]));
+      this.postUniforms = Object.fromEntries(['transparent', 'frameTexture', 'bloomTexture', 'bloomStrength', 'hdrEnabled', 'grade', 'vignette', 'grainAmount', 'resolution', 'monochrome', 'fade', 'cinematic', 'time', 'volumeExplosion', 'explosionProgress', 'inverseViewProjection', 'eye', 'sceneDepth', 'volumeShadowMap', 'volumeLightProjection', 'volumeLightDirection', 'volumeLightColor', 'volumeDensity', 'volumeMinimum', 'volumeMaximum', 'volumeColor', 'volumeAmbient', 'volumeDrift', 'volumeSteps', 'volumeAnisotropy', 'volumeNoiseAmount', 'volumeNoiseScale', 'volumeMaxDistance', 'orthographic'].map((name) => [name, this.context.getUniformLocation(this.postProgram, name)]));
       this.bloomProgram = compileProgram(this.context, fullscreenVertex, bloomFragment);
       this.bloomUniforms = Object.fromEntries(['sourceTexture', 'texelDirection', 'threshold', 'extract'].map(name => [name, this.context.getUniformLocation(this.bloomProgram, name)]));
       this.skyUniforms = Object.fromEntries(['skyTop', 'skyBottom', 'sunDirection', 'inverseViewProjection', 'eye', 'time', 'daylight', 'hdrEnabled'].map((name) => [name, this.context.getUniformLocation(this.skyProgram, name)]));
@@ -374,7 +380,7 @@ export class Renderer67 {
     const skin = parts[0].skin ?? null;
     const skinTexture = skin ? this.createSkinTexture(this.skinTextures, skin, skin.jointMatrices, 4) : null;
     const influenceTexture = skin ? this.createSkinTexture(this.influenceTextures, geometry, null, 2) : null;
-    const batch = { vertexArray, instanceBuffer, instanceData, textures, mapState, texture: textures[0], map, skin, skinTexture, influenceTexture, indexCount: geometry.indices.length, instanceCount: parts.length, floor: parts[0].material.tag === 'floor' };
+    const batch = { vertexArray, instanceBuffer, instanceData, textures, mapState, texture: textures[0], map, skin, skinTexture, influenceTexture, indexCount: geometry.indices.length, instanceCount: parts.length, floor: parts[0].material.tag === 'floor', castShadow: parts[0].castShadow !== false };
     parts.forEach((part, index) => this.partLocations.set(part, { batch, index, geometry: part.geometry, map, mapState, skin, jointMatrices: skin?.jointMatrices, skinIndices: geometry.skinIndices, skinWeights: geometry.skinWeights, normalMatrix: mat3.create(), committedMatrix: batch.instanceData.subarray(index * INSTANCE_STRIDE, index * INSTANCE_STRIDE + 16) }));
     return batch;
   }
@@ -413,6 +419,8 @@ export class Renderer67 {
       this.updatePartIdentities.add(part);
       const location = this.partLocations.get(part);
       if (!location) throw new Error(`Unknown part identity: ${part.name}`);
+      if (part.castShadow !== undefined && typeof part.castShadow !== 'boolean') throw new TypeError('castShadow must be a boolean');
+      if ((part.castShadow !== false) !== location.batch.castShadow) throw new Error(`Shadow casting changes require a new renderer: ${part.name}`);
       if (part.geometry !== location.geometry) throw new Error(`Geometry changes require a new renderer: ${part.name}`);
       if ((part.skin ?? null) !== location.skin || part.skin?.jointMatrices !== location.jointMatrices || part.geometry.skinIndices !== location.skinIndices || part.geometry.skinWeights !== location.skinWeights) throw new Error(`Skin identity changes require a new renderer: ${part.name}`);
       if (part.skin) {
@@ -496,14 +504,14 @@ export class Renderer67 {
     context.uniform1f(this.depthAssemblyUniform, this.assemblyAmount ?? 0);
     context.enable(context.POLYGON_OFFSET_FILL);
     context.polygonOffset(1, 1);
-    for (const batch of this.batches) if (!batch.floor) this.drawBatch(batch);
+    for (const batch of this.batches) if (!batch.floor && batch.castShadow) this.drawBatch(batch);
     context.disable(context.POLYGON_OFFSET_FILL);
     context.bindFramebuffer(context.FRAMEBUFFER, null);
     this.shadowsDirty = false;
   }
 
   resize() {
-    const plan = planRenderSize({ width: Math.max(1, this.canvas.clientWidth), height: Math.max(1, this.canvas.clientHeight), pixelRatio: this.pixelRatio, samples: this.samples, memoryBudgetMiB: this.memoryBudgetMiB, geometryBytes: this.geometryBytes, textureBytes: this.textureBytes, hdr: this.hdr, bloom: !this.benchmark, maximumSize: Math.min(this.context.getParameter(this.context.MAX_RENDERBUFFER_SIZE), this.context.getParameter(this.context.MAX_TEXTURE_SIZE)) });
+    const plan = planRenderSize({ width: Math.max(1, this.canvas.clientWidth), height: Math.max(1, this.canvas.clientHeight), pixelRatio: this.pixelRatio, samples: this.samples, memoryBudgetMiB: this.memoryBudgetMiB, geometryBytes: this.geometryBytes, textureBytes: this.textureBytes, hdr: this.hdr, bloom: !this.benchmark, depth: this.depth, maximumSize: Math.min(this.context.getParameter(this.context.MAX_RENDERBUFFER_SIZE), this.context.getParameter(this.context.MAX_TEXTURE_SIZE)) });
     const { width, height } = plan;
     this.memoryPlan = plan;
     if (this.canvas.width !== width || this.canvas.height !== height) {
@@ -522,6 +530,7 @@ export class Renderer67 {
     if (this.multisampleColor) context.deleteRenderbuffer(this.multisampleColor);
     if (this.multisampleDepth) context.deleteRenderbuffer(this.multisampleDepth);
     if (this.frameTexture) context.deleteTexture(this.frameTexture);
+    if (this.depthTexture) context.deleteTexture(this.depthTexture);
     for (const target of this.bloomTargets ?? []) {
       context.deleteTexture(target.texture);
       context.deleteFramebuffer(target.framebuffer);
@@ -532,6 +541,7 @@ export class Renderer67 {
     this.multisampleColor = null;
     this.multisampleDepth = null;
     this.frameTexture = null;
+    this.depthTexture = null;
   }
 
   allocateFrameTargets(width, height) {
@@ -558,6 +568,16 @@ export class Renderer67 {
     this.resolveFramebuffer = context.createFramebuffer();
     context.bindFramebuffer(context.FRAMEBUFFER, this.resolveFramebuffer);
     context.framebufferTexture2D(context.FRAMEBUFFER, context.COLOR_ATTACHMENT0, context.TEXTURE_2D, this.frameTexture, 0);
+    if (this.depth) {
+      this.depthTexture = context.createTexture();
+      context.bindTexture(context.TEXTURE_2D, this.depthTexture);
+      context.texImage2D(context.TEXTURE_2D, 0, context.DEPTH_COMPONENT24, width, height, 0, context.DEPTH_COMPONENT, context.UNSIGNED_INT, null);
+      context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MIN_FILTER, context.NEAREST);
+      context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MAG_FILTER, context.NEAREST);
+      context.texParameteri(context.TEXTURE_2D, context.TEXTURE_WRAP_S, context.CLAMP_TO_EDGE);
+      context.texParameteri(context.TEXTURE_2D, context.TEXTURE_WRAP_T, context.CLAMP_TO_EDGE);
+      context.framebufferTexture2D(context.FRAMEBUFFER, context.DEPTH_ATTACHMENT, context.TEXTURE_2D, this.depthTexture, 0);
+    }
     if (context.checkFramebufferStatus(context.FRAMEBUFFER) !== context.FRAMEBUFFER_COMPLETE) throw new Error('Resolve framebuffer allocation failed. Choose a lower quality preset.');
     this.bloomWidth = Math.max(1, Math.ceil(width / 2));
     this.bloomHeight = Math.max(1, Math.ceil(height / 2));
@@ -596,11 +616,11 @@ export class Renderer67 {
     context.drawArrays(context.TRIANGLES, 0, 3);
   }
 
-  resolveFrame(frame, effects) {
+  resolveFrame(frame, effects, environment, volume) {
     const context = this.context;
     context.bindFramebuffer(context.READ_FRAMEBUFFER, this.multisampleFramebuffer);
     context.bindFramebuffer(context.DRAW_FRAMEBUFFER, this.resolveFramebuffer);
-    context.blitFramebuffer(0, 0, this.canvas.width, this.canvas.height, 0, 0, this.canvas.width, this.canvas.height, context.COLOR_BUFFER_BIT, context.NEAREST);
+    context.blitFramebuffer(0, 0, this.canvas.width, this.canvas.height, 0, 0, this.canvas.width, this.canvas.height, context.COLOR_BUFFER_BIT | (this.depth ? context.DEPTH_BUFFER_BIT : 0), context.NEAREST);
     if (effects.bloom.strength > 0) this.drawBloom(effects.bloom);
     context.bindFramebuffer(context.FRAMEBUFFER, null);
     context.viewport(0, 0, this.canvas.width, this.canvas.height);
@@ -611,6 +631,27 @@ export class Renderer67 {
     context.activeTexture(context.TEXTURE0);
     context.bindTexture(context.TEXTURE_2D, this.frameTexture);
     context.uniform1i(this.postUniforms.frameTexture, 0);
+    context.activeTexture(context.TEXTURE1);
+    context.bindTexture(context.TEXTURE_2D, this.depthTexture ?? this.whiteTexture);
+    context.uniform1i(this.postUniforms.sceneDepth, 1);
+    context.activeTexture(context.TEXTURE3);
+    context.bindTexture(context.TEXTURE_2D, this.shadowTexture);
+    context.uniform1i(this.postUniforms.volumeShadowMap, 3);
+    context.uniformMatrix4fv(this.postUniforms.volumeLightProjection, false, this.lightProjection);
+    context.uniform3fv(this.postUniforms.volumeLightDirection, environment.lightDirection);
+    context.uniform3fv(this.postUniforms.volumeLightColor, this.lighting.keyColor);
+    context.uniform1f(this.postUniforms.volumeDensity, volume.density);
+    context.uniform3fv(this.postUniforms.volumeMinimum, volume.minimum);
+    context.uniform3fv(this.postUniforms.volumeMaximum, volume.maximum);
+    context.uniform3fv(this.postUniforms.volumeColor, volume.color);
+    context.uniform3fv(this.postUniforms.volumeAmbient, volume.ambient);
+    context.uniform3fv(this.postUniforms.volumeDrift, volume.drift);
+    context.uniform1i(this.postUniforms.volumeSteps, volume.steps);
+    context.uniform1f(this.postUniforms.volumeAnisotropy, volume.anisotropy);
+    context.uniform1f(this.postUniforms.volumeNoiseAmount, volume.noiseAmount);
+    context.uniform1f(this.postUniforms.volumeNoiseScale, volume.noiseScale);
+    context.uniform1f(this.postUniforms.volumeMaxDistance, volume.maxDistance);
+    context.uniform1f(this.postUniforms.orthographic, frame.projection === 'orthographic' ? 1 : 0);
     context.activeTexture(context.TEXTURE2);
     context.bindTexture(context.TEXTURE_2D, effects.bloom.strength > 0 ? this.bloomTargets[1].texture : this.whiteTexture);
     context.uniform1i(this.postUniforms.bloomTexture, 2);
@@ -682,6 +723,14 @@ export class Renderer67 {
     const { eye, target = [0, 1.2, 0], armorColor = [0.53, 0.39, 0.24], armorSurface = [0.88, 0.32], exposure = 1, inspection = false } = frame;
     const effects = resolveEffects(frame.effects);
     const environment = { lightDirection: [-3, 6, 4], fogColor: [0.35, 0.43, 0.43], fogDensity: 0.006, daylight: 1, explosionCenter: [0, 0, 0], ...this.environment, ...frame.environment };
+    const volume = resolveVolumeFog(environment.volumeFog);
+    if (volume.density > 0) {
+      if (!this.depth || !this.hdr || this.transparent || this.benchmark) throw new Error('Volume fog requires depth:true, active HDR and an opaque canvas');
+      if (!Number.isFinite(frame.time ?? 0) || Math.abs(frame.time ?? 0) > 1e6) throw new RangeError('Volume time must be finite and within ±1000000 seconds');
+      const direction = environment.lightDirection;
+      const lightLength = direction?.length === 3 ? Math.hypot(...direction) : NaN;
+      if (!Number.isFinite(lightLength) || lightLength < 1e-6 || !Array.from(direction).every(component => typeof component === 'number' && Math.abs(component) <= 1e6)) throw new RangeError('Volume light direction must have a finite nonzero length and bounded components');
+    }
     updateLightingState(this.lighting, environment, { world: this.world });
     const start = performance.now();
     const context = this.context;
@@ -738,7 +787,7 @@ export class Renderer67 {
     context.uniform1i(this.uniforms.shadowMap, 0);
     for (const batch of this.batches) this.drawBatch(batch, true);
     context.bindVertexArray(null);
-    if (!this.benchmark) this.resolveFrame(frame, effects);
+    if (!this.benchmark) this.resolveFrame(frame, effects, environment, volume);
     this.cpuMilliseconds = performance.now() - start;
   }
 

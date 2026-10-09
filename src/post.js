@@ -27,6 +27,23 @@ uniform float volumeExplosion;
 uniform float explosionProgress;
 uniform mat4 inverseViewProjection;
 uniform vec3 eye;
+uniform sampler2D sceneDepth;
+uniform sampler2D volumeShadowMap;
+uniform mat4 volumeLightProjection;
+uniform vec3 volumeLightDirection;
+uniform vec3 volumeLightColor;
+uniform float volumeDensity;
+uniform vec3 volumeMinimum;
+uniform vec3 volumeMaximum;
+uniform vec3 volumeColor;
+uniform vec3 volumeAmbient;
+uniform vec3 volumeDrift;
+uniform int volumeSteps;
+uniform float volumeAnisotropy;
+uniform float volumeNoiseAmount;
+uniform float volumeNoiseScale;
+uniform float volumeMaxDistance;
+uniform float orthographic;
 out vec4 outputColor;
 float luminance(vec3 color) { return dot(color, vec3(0.299, 0.587, 0.114)); }
 float hash(vec3 position) { return fract(sin(dot(position, vec3(127.1, 311.7, 74.7))) * 43758.5453); }
@@ -78,6 +95,56 @@ vec3 explosion(vec3 background) {
   accumulated = accumulated / (accumulated + 0.5);
   return accumulated + background * transmittance;
 }
+vec3 volumeFog(vec3 background) {
+  vec2 clipXY = textureCoordinate * 2.0 - 1.0;
+  vec4 farPoint = inverseViewProjection * vec4(clipXY, 1.0, 1.0);
+  vec4 nearPoint = inverseViewProjection * vec4(clipXY, -1.0, 1.0);
+  vec3 origin = orthographic > 0.5 ? nearPoint.xyz / nearPoint.w : eye;
+  vec3 direction = normalize(farPoint.xyz - origin * farPoint.w);
+  float depth = texture(sceneDepth, textureCoordinate).r;
+  vec4 surfacePoint = inverseViewProjection * vec4(clipXY, depth * 2.0 - 1.0, 1.0);
+  float surfaceDistance = volumeMaxDistance;
+  if (surfacePoint.w > 0.0) surfaceDistance = max(0.0, dot(surfacePoint.xyz - origin * surfacePoint.w, direction) / surfacePoint.w);
+  float exitDistance = min(volumeMaxDistance, surfaceDistance);
+  float entry = 0.0;
+  for (int axis = 0; axis < 3; axis++) {
+    if (direction[axis] == 0.0) {
+      if (origin[axis] < volumeMinimum[axis] || origin[axis] > volumeMaximum[axis]) return background;
+    } else {
+      float first = (volumeMinimum[axis] - origin[axis]) / direction[axis];
+      float second = (volumeMaximum[axis] - origin[axis]) / direction[axis];
+      entry = max(entry, min(first, second));
+      exitDistance = min(exitDistance, max(first, second));
+    }
+  }
+  if (entry >= exitDistance) return background;
+  float stepSize = (exitDistance - entry) / float(volumeSteps);
+  vec3 lightDirection = normalize(volumeLightDirection);
+  float cosine = dot(direction, lightDirection);
+  float anisotropy = volumeAnisotropy;
+  float phase = (1.0 - anisotropy * anisotropy) / (12.5663706 * pow(1.0 + anisotropy * anisotropy - 2.0 * anisotropy * cosine, 1.5));
+  float jitter = hash(vec3(gl_FragCoord.xy, 0));
+  float transmittance = 1.0;
+  vec3 accumulated = vec3(0);
+  for (int index = 0; index < 48; index++) {
+    if (index >= volumeSteps) break;
+    vec3 position = origin + direction * (entry + (float(index) + jitter) * stepSize);
+    float noise = 1.0;
+    if (volumeNoiseAmount > 0.0) noise = mix(1.0, cloudNoise((position - volumeDrift * time) * volumeNoiseScale) * 2.0, volumeNoiseAmount);
+    float opacity = 1.0 - exp(-volumeDensity * noise * stepSize);
+    vec4 lightPosition = volumeLightProjection * vec4(position, 1);
+    vec3 shadow = lightPosition.xyz / lightPosition.w * 0.5 + 0.5;
+    float visibility = 1.0;
+    if (all(greaterThanEqual(shadow, vec3(0))) && all(lessThanEqual(shadow, vec3(1)))) {
+      visibility = step(shadow.z - 0.0008, texture(volumeShadowMap, shadow.xy).r);
+    }
+    vec3 scattering = volumeColor * (volumeAmbient + volumeLightColor * phase * visibility);
+    accumulated += transmittance * opacity * scattering;
+    transmittance *= 1.0 - opacity;
+    if (transmittance < 0.001) break;
+  }
+  return accumulated + background * transmittance;
+}
 void main() {
   vec2 texel = 1.0 / resolution;
   vec3 center = texture(frameTexture, textureCoordinate).rgb;
@@ -103,6 +170,7 @@ void main() {
   float coverage = texture(frameTexture, textureCoordinate).a;
   if (transparent > 0.5) color = center / max(coverage, 0.00001);
   if (bloomStrength > 0.0) color += texture(bloomTexture, textureCoordinate).rgb * bloomStrength;
+  if (volumeDensity > 0.0) color = volumeFog(color);
   if (hdrEnabled > 0.5) {
     color = clamp((color * (2.51 * color + 0.03)) / (color * (2.43 * color + 0.59) + 0.14), 0.0, 1.0);
     color = pow(color, vec3(1.0 / 2.2));

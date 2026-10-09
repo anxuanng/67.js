@@ -67,6 +67,7 @@ function renderAt(time) {
       pixelRatio: 1,
       samples,
       hdr: true,
+      depth: true,
       memoryBudgetMiB,
     });
     activeScene = sample.scene;

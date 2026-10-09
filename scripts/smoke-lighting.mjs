@@ -93,7 +93,7 @@ try {
       const scene = createFilmScenes().laboratory;
       scene.animate(36);
       const canvas = document.querySelector('canvas');
-      const renderer = new Renderer67(canvas, scene.parts, { ground: false, world: true, environment: scene.environment, shadowBounds: scene.shadowBounds, samples: 4, hdr: true, pixelRatio: 1, memoryBudgetMiB: 384 });
+      const renderer = new Renderer67(canvas, scene.parts, { ground: false, world: true, environment: { ...scene.environment, volumeFog: { density: 0 } }, shadowBounds: scene.shadowBounds, samples: 4, hdr: true, pixelRatio: 1, memoryBudgetMiB: 384 });
       const frame = { ...sampleFilm(36).camera, effects: { grain: 0 }, time: 36 };
       const context = renderer.context;
       const timer = context.getExtension('EXT_disjoint_timer_query_webgl2');

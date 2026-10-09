@@ -116,8 +116,8 @@ The current source frames portrait shots by output aspect and retains the face a
 This source change has not been deployed or published to npm.
 Rigid joint animation and GPU skinning provide motion tools, but do not solve character modeling or material quality by themselves.
 
-The environment has procedural shaders, fog, bloom and grading. These features do not yet produce convincing cinematic atmosphere.
-Volumetric lighting, smoke, dust, explosion detail and lighting continuity require visible shot-level validation.
+The environment has procedural shaders, fog, bloom and grading. Source-only volume fog adds resolved-depth clipping, directional scattering, shadow occlusion and absolute-time density drift. Native GPU fixtures match analytic extinction, block scattering behind opaque casters and reproduce earlier frames after a seek. These features do not yet produce convincing cinematic atmosphere.
+Visible shafts, smoke, dust, explosion detail and lighting continuity still require shot-level improvement and validation.
 
 The current source provides an optional Rapier addon for rigid-body contacts and articulated spherical, revolute and fixed joints.
 A native render fixture records twelve bodies and ten joints, then reproduces the same pose and pixels after a backward seek.

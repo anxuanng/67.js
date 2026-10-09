@@ -11,7 +11,7 @@ function part(name, geometry = {}, map) {
 function retainedRenderer(parts) {
   const writes = [];
   const renderer = Object.create(Renderer67.prototype);
-  const batch = { instanceBuffer: {}, instanceData: new Float32Array(parts.length * 41).fill(7) };
+  const batch = { instanceBuffer: {}, instanceData: new Float32Array(parts.length * 41).fill(7), castShadow: true };
   renderer.context = { ARRAY_BUFFER: 34962, bindBuffer() {}, bufferSubData(target, offset, data) { writes.push({ target, offset, data: Array.from(data) }); } };
   renderer.partLocations = new Map(parts.map((item, index) => [item, {
     batch, index, geometry: item.geometry, map: item.material.map ?? null, normalMatrix: mat3.create(), skin: item.skin ?? null,
@@ -42,6 +42,21 @@ test('batching shares geometry only when texture descriptor identities also matc
   assert.equal(groups.length, 3);
   assert.equal(groups[0].length, 2);
   assert.equal(groupParts(parts, false).length, 4);
+});
+
+test('shadowless parts form separate render batches and cannot change casting after upload', () => {
+  const geometry = {};
+  const caster = part('caster', geometry);
+  const window = { ...part('window', geometry), castShadow: false };
+  const groups = groupParts([caster, window]);
+  assert.equal(groups.length, 2);
+  assert.equal(groups[0][0], caster);
+  assert.equal(groups[1][0], window);
+  const { renderer, writes } = retainedRenderer([caster]);
+  caster.castShadow = false;
+  assert.throws(() => renderer.updateParts([caster]), /Shadow casting/);
+  assert.equal(writes.length, 0);
+  assert.throws(() => groupParts([{ ...window, castShadow: 0 }]), /boolean/);
 });
 
 test('instance animation reuses retained buffers, updates inverse-transpose normals and RGB emission', () => {

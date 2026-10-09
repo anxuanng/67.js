@@ -1,5 +1,9 @@
 # Scene contract
 
+<!-- skill-navigation:start -->
+Read the complete [scene contract](#scene-contract) before creating parts or changing materials. It covers identities, transforms, materials, lighting, fog, animation, cameras and resources in order.
+<!-- skill-navigation:end -->
+
 Each part has these fields.
 
 ```js
@@ -57,6 +61,13 @@ Each light provides `position` and optional `color`, `intensity`, `radius` and `
 `keyIntensity`, `fillIntensity` and `ambientIntensity` independently scale existing lighting.
 Read the checkout's `docs/lighting.md` for defaults, numeric limits and frame overrides.
 Point lights currently cast no local shadows. Radius limits attenuation without creating an area emitter.
+Source-only `environment.volumeFog` receives directional scattering and shadows in one bounded volume.
+It requires an opaque renderer with `{ hdr: true, depth: true }` and negotiated HDR support.
+Read `docs/volumetric.md` for controls, resource cost and limitations before authoring fog.
+`frame.environment.volumeFog` replaces the entire constructor fog object, with defaults for omitted fields.
+Use absolute frame time for reproducible density drift. Local point lights do not scatter in fog yet.
+`part.castShadow: false` omits a mesh from shadows while leaving it visible and opaque.
+Changing its casting regime requires a new renderer. Shadow-casting groups use separate batches.
 
 ```js
 const renderer = new Renderer67(canvas, world.parts, {

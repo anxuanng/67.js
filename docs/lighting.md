@@ -45,7 +45,7 @@ Inputs must be finite numbers. Positions are within ±1,000,000 scene units. Col
 
 Key/fill/ambient intensity is between zero and 100. Key color components are between zero and 1,000. Large coordinates still inherit Float32 rendering precision limits.
 
-Lights currently cast no local shadows and can illuminate through opaque walls. The original directional shadow map remains in use. Point-light shadows, spotlights, area lights, indirect bounces and volumetric scattering remain unfinished.
+Lights currently cast no local shadows and can illuminate through opaque walls. The original directional shadow map remains in use. Source-only [volume fog](volumetric.md) receives directional scattering and shadows. Point-light shadows and scattering, spotlights, area lights and indirect bounces remain unfinished.
 
 ## Animation and resources
 

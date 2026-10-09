@@ -401,7 +401,12 @@ function addScientist(builder, position = [0, 0, 0], hat = true, rotation = 0) {
 function addRoom(builder, laboratory = false) {
   const { add, beam } = builder;
   add('Shadowed floor', 'box', [0, -0.1, 0], [12, 0.15, 12], 'wood');
-  add('Rear plaster wall', 'box', [0, 2.3, -4.8], [12, 4.7, 0.15], 'plaster');
+  add('Rear plaster below windows', 'box', [0, 0.6, -4.8], [12, 1.2, 0.15], 'plaster');
+  add('Rear plaster above windows', 'box', [0, 4.4, -4.8], [12, 0.6, 0.15], 'plaster');
+  const wallPiers = [[-6, -4.46], [-2.74, -1.16], [0.56, 2.14], [3.86, 6]];
+  for (const [left, right] of wallPiers) {
+    add('Plaster pier between openings', 'box', [(left + right) / 2, 2.65, -4.8], [right - left, 2.9, 0.15], 'plaster');
+  }
   add('Side plaster wall', 'box', [-5.8, 2.3, 0], [0.15, 4.7, 12], 'plaster');
   add('Ceiling in shadow', 'box', [0, 4.65, 0], [12, 0.12, 12], 'black');
   for (let plank = 0; plank < 30; plank++) {
@@ -409,7 +414,7 @@ function addRoom(builder, laboratory = false) {
   }
   for (let index = 0; index < 3; index++) {
     const horizontal = -3.6 + index * 3.3;
-    add('Tall luminous window', 'box', [horizontal, 2.65, -4.69], [1.65, 2.8, 0.04], 'window');
+    add('Tall luminous window', 'box', [horizontal, 2.65, -4.69], [1.65, 2.8, 0.04], 'window').castShadow = false;
     for (const side of [-1, 1]) {
       add('Window jamb', 'box', [horizontal + side * 0.86, 2.65, -4.61], [0.09, 2.95, 0.15], 'wood');
     }
@@ -746,9 +751,14 @@ export function createFilmScenes() {
     lightDirection: [-0.4, 0.8, 0.5], daylight: 0.65,
   };
   const interior = {
-    ...studio, fogDensity: 0.006, daylight: 0.75,
+    ...studio, fogDensity: 0, daylight: 0.75,
     skyTop: [0.12, 0.17, 0.18], skyBottom: [0.22, 0.23, 0.18],
-    lightDirection: [-0.85, 0.5, -0.35],
+    lightDirection: [-0.35, 0.55, -0.85],
+    volumeFog: {
+      density: 0.065, minimum: [-5.7, 0.03, -4.7], maximum: [5.7, 4.5, 5.5],
+      color: [0.9, 0.83, 0.7], ambient: [0.02, 0.025, 0.03],
+      anisotropy: 0.45, noiseAmount: 0.35, noiseScale: 0.4, drift: [0.025, 0.01, 0], steps: 24, maxDistance: 15,
+    },
     keyIntensity: 0.7,
     fillIntensity: 0.35,
     ambientIntensity: 0.45,
@@ -774,12 +784,12 @@ export function createFilmScenes() {
   towerParts.push(...towerBuilder.parts);
   return {
     apparatus: set(createApparatus(meshes), studio),
-    office: set(createOffice(meshes), { ...interior, pointLights: [...interior.pointLights, { position: [-1.45, 1.36, 0.25], color: [1, 0.82, 0.57], intensity: 1.8, range: 3, radius: 0.08 }] }, { extent: 7, target: [0, 1.6, -1], eye: [-8, 7, -4], near: 0.1, far: 30 }, 'office'),
-    laboratory: set(createOffice(meshes, true), interior, { extent: 7, target: [0, 1.6, -1], eye: [-8, 7, -4], near: 0.1, far: 30 }, 'laboratory'),
+    office: set(createOffice(meshes), { ...interior, pointLights: [...interior.pointLights, { position: [-1.45, 1.36, 0.25], color: [1, 0.82, 0.57], intensity: 1.8, range: 3, radius: 0.08 }] }, { extent: 7, target: [0, 1.6, -1], eye: [-4, 7, -10], near: 0.1, far: 30 }, 'office'),
+    laboratory: set(createOffice(meshes, true), interior, { extent: 7, target: [0, 1.6, -1], eye: [-4, 7, -10], near: 0.1, far: 30 }, 'laboratory'),
     settlement: set(createSettlement(meshes), desert, desertShadows, 'settlement'),
     portrait: set(createPortrait(meshes), { ...desert, lightDirection: [-0.7, 0.55, 0.8] }, { extent: 6, target: [0, 1, 0], eye: [-8, 5, 6], near: 0.1, far: 35 }, 'portrait'),
-    gadget: set(createGadget(meshes), { ...interior, lightDirection: [-0.8, 0.4, 0.5], daylight: 0.9 }, { extent: 5, target: [0, 2.5, -1], eye: [-8, 7, 4], near: 0.1, far: 30 }, 'gadget'),
-    control: set(createControl(meshes), { ...interior, lightDirection: [-0.4, 0.9, 0.3] }, { extent: 5, target: [0, 1, 0], eye: [-3, 8, 4], near: 0.1, far: 25 }, 'control'),
+    gadget: set(createGadget(meshes), { ...interior, volumeFog: { density: 0 }, lightDirection: [-0.8, 0.4, 0.5], daylight: 0.9 }, { extent: 5, target: [0, 2.5, -1], eye: [-8, 7, 4], near: 0.1, far: 30 }, 'gadget'),
+    control: set(createControl(meshes), interior, { extent: 7, target: [0, 1.6, -1], eye: [-4, 7, -10], near: 0.1, far: 30 }, 'control'),
     atom: set(createAtom(meshes), { ...studio, daylight: 0.25, fogDensity: 0.035 }, undefined, 'atom'),
     waves: set(createWaveChamber(meshes), studio, undefined, 'waves'),
     sparks: set(createSparks(meshes), { ...night, daylight: 0.1 }, undefined, 'sparks'),

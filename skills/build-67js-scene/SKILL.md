@@ -18,6 +18,7 @@ Use `simplify-code` and `engineering-workflows` for implementation.
 - A keyframe scene uses `src/animation.js`, `src/motion.js` and `src/motion-player.js`.
 - An authored camera uses `src/camera-path.js` and the checkout's `docs/camera-path.md`.
 - Local lights use the renderer environment and the checkout's `docs/lighting.md`.
+- Depth-clipped fog uses `{ hdr: true, depth: true }` and the checkout's `docs/volumetric.md`.
 - A skeletal asset uses `src/skinning.js`, `src/gltf.js` and the checkout's `docs/skinning.md`.
 - Recorded contacts or articulated physics use optional `src/physics.js` and the checkout's `docs/physics.md`.
 - A flat scene or axis view uses `src/canvas2d.js`, `src/camera.js` and `src/view2d.js`.

@@ -30,7 +30,8 @@
     "docs/camera-path.md",
     "docs/skinning.md",
     "docs/physics.md",
-    "docs/lighting.md"
+    "docs/lighting.md",
+    "docs/volumetric.md"
   ],
   "main": "./build/67.module.js",
   "module": "./build/67.module.js",
