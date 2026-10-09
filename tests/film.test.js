@@ -4,6 +4,7 @@ import { createFilmScenes, FILM_DURATION, FILM_SHOTS, sampleFilm } from '../src/
 import { resolveEffects } from '../src/effects.js';
 import { planRenderSize } from '../src/budget.js';
 import { mat4 } from 'gl-matrix';
+import { PerspectiveCamera, Vector3 } from 'three';
 
 const distance = (first, second) => Math.hypot(...first.map((value, axis) => value - second[axis]));
 
@@ -202,4 +203,33 @@ test('facial features share the head joint and remain attached during arbitrary 
       relative(feature).forEach((value, element) => assert.ok(Math.abs(value - initial[index][element]) < 0.00002));
     });
   }
+});
+
+test('narrow portrait shots retain face and headwear through camera moves and backward seeks', () => {
+  for (const aspect of [9 / 16, 390 / 844, 1]) {
+    for (const time of [161, 162, 164.9, 150, 145, 153.9, 162]) {
+      const sample = sampleFilm(time, { aspect });
+      const expected = structuredClone(sample);
+      sampleFilm(70, { aspect });
+      assert.deepEqual(sampleFilm(time, { aspect }), expected);
+      assert.equal(sample.camera.fov, sampleFilm(time).camera.fov);
+      const camera = new PerspectiveCamera(sample.camera.fov, aspect, sample.camera.near, sample.camera.far);
+      camera.position.fromArray(sample.camera.eye);
+      camera.up.fromArray(sample.camera.up);
+      camera.lookAt(...sample.camera.target);
+      camera.updateMatrixWorld();
+      for (const point of [[-0.22, 1.92, 0], [0.22, 1.92, 0], [0, 1.61, 0.15]]) {
+        const projected = new Vector3(...point).project(camera);
+        assert.ok(Math.abs(projected.x) < 1 && Math.abs(projected.y) < 1, `${time}: ${point}`);
+      }
+    }
+  }
+  for (const time of [150, 162]) {
+    const original = sampleFilm(time);
+    assert.deepEqual(sampleFilm(time, { aspect: 16 / 9 }), original);
+    const nearlyWide = sampleFilm(time, { aspect: 16 / 9 - 1e-6 });
+    assert.ok(distance(original.camera.eye, nearlyWide.camera.eye) < 1e-5);
+    assert.ok(distance(original.camera.target, nearlyWide.camera.target) < 1e-5);
+  }
+  for (const aspect of [0, -1, NaN, Infinity, 1e-320]) assert.throws(() => sampleFilm(10, { aspect }));
 });

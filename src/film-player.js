@@ -52,7 +52,7 @@ function displayTime(seconds) {
 }
 
 function renderAt(time) {
-  const sample = sampleFilm(time);
+  const sample = sampleFilm(time, { aspect: canvas.clientWidth / canvas.clientHeight });
   const scene = scenes[sample.scene];
   if (activeScene !== sample.scene) {
     renderer?.dispose();

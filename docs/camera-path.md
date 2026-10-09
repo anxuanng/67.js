@@ -65,6 +65,27 @@ Invalid poses and cubic lens overshoot throw before the frame changes.
 Float32 outputs also reject positions that collapse into an identical eye and target after rounding.
 A parallel up vector fails explicitly. This API does not choose a replacement orientation at camera poles.
 
+## Framing a perspective camera
+
+`fitPerspectiveDistance(bounds, view, aspect, padding = 1.15)` returns an eye-to-target distance that contains all eight corners of a world-space axis-aligned box. It preserves the camera direction, up vector and vertical field of view. The target remains the caller's choice; use the bounds center when framing a subject.
+
+```js
+import { fitPerspectiveDistance } from '67js';
+
+const bounds = { minimum: [-0.4, 0, -0.2], maximum: [0.4, 2, 0.25] };
+const view = { eye: [0, 1, 4], target: [0, 1, 0], fov: 30, near: 0.1, far: 100 };
+const aspect = canvas.clientWidth / canvas.clientHeight;
+const distance = fitPerspectiveDistance(bounds, view, aspect);
+const direction = view.eye.map((component, axis) => component - view.target[axis]);
+const length = Math.hypot(...direction);
+view.eye = view.target.map((component, axis) => component + direction[axis] / length * distance);
+renderer.render(view);
+```
+
+Padding applies to horizontal and vertical projected extents. The helper uses `fov = 45`, `near = 0.1` and `far = 100` when omitted, matching ordinary renderer projection defaults. World scenes using a different far plane must supply it explicitly. Invalid bounds, degenerate orientation, impossible clipping and fitted eyes that collapse after Float32 rounding throw. Large world coordinates need a local origin; the helper cannot restore precision lost by GPU matrices.
+
+The film addon accepts `sampleFilm(time, { aspect })`, defaulting to the authored 16:9 ratio. Narrow portrait shots keep their lens and blend toward centered subject framing as the aspect approaches square. Other narrow shots widen vertical field of view to retain authored horizontal coverage. Wide layouts retain the original camera. This is shot-specific framing, not automatic detection of subjects, animated bounds or occlusion.
+
 ## Lens conventions
 
 `fovFromFocalLength` computes vertical field of view from focal length and sensor height.

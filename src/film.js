@@ -1,6 +1,7 @@
 import { mat4, quat, vec3 } from 'gl-matrix';
 import { createCameraPath } from './camera-path.js';
 import { createFilmActorRig } from './film-rig.js';
+import { fitPerspectiveDistance } from './camera.js';
 import { box, cylinder, sphere, torus } from './geometry.js';
 
 export const FILM_DURATION = 187;
@@ -854,12 +855,35 @@ function smoothstep(value) {
   return bounded * bounded * (3 - 2 * bounded);
 }
 
-export function sampleFilm(time) {
+export function sampleFilm(time, { aspect = 16 / 9 } = {}) {
   if (!Number.isFinite(time)) throw new TypeError('Film time must be finite.');
+  if (!Number.isFinite(aspect) || aspect <= 0) throw new RangeError('Film aspect must be positive and finite.');
   const boundedTime = Math.max(0, Math.min(FILM_DURATION, time));
   const shotIndex = FILM_SHOTS.findIndex(candidate => boundedTime < candidate.end);
   const selected = FILM_SHOTS[shotIndex < 0 ? FILM_SHOTS.length - 1 : shotIndex];
   const camera = selected.cameraPath.sample(boundedTime - selected.start);
+  if (aspect < 16 / 9) {
+    if (selected.scene === 'portrait') {
+      const bounds = selected.start === 145
+        ? { minimum: [-0.38, 0, -0.2], maximum: [0.38, 2, 0.25] }
+        : { minimum: [-0.27, 1.22, -0.2], maximum: [0.27, 2, 0.25] };
+      const direction = vec3.subtract([], camera.eye, camera.target);
+      const authoredDistance = Math.hypot(...direction);
+      vec3.scale(direction, direction, 1 / authoredDistance);
+      const center = bounds.minimum.map((value, axis) => (value + bounds.maximum[axis]) / 2);
+      const fittingView = { ...camera, target: center, eye: center.map((value, axis) => value + direction[axis] * authoredDistance) };
+      const distance = Math.max(authoredDistance, fitPerspectiveDistance(bounds, fittingView, aspect, 1.1));
+      const framingAmount = Math.min(1, (16 / 9 - aspect) / (16 / 9 - 1));
+      const framedDistance = authoredDistance + (distance - authoredDistance) * framingAmount;
+      camera.target = camera.target.map((value, axis) => value + (center[axis] - value) * framingAmount);
+      camera.eye = camera.target.map((value, axis) => value + direction[axis] * framedDistance);
+    } else {
+      camera.fov = Math.atan(Math.tan(camera.fov * Math.PI / 360) * (16 / 9) / aspect) * 360 / Math.PI;
+      if (!Number.isFinite(camera.fov) || camera.fov >= 180) {
+        throw new RangeError('Film aspect exceeds the supported lens range.');
+      }
+    }
+  }
   const ignitionTime = boundedTime - 181;
   const flash = ignitionTime >= 0 && ignitionTime < 0.7 ? Math.exp(-ignitionTime * 7) : 0;
   const visibility = smoothstep(boundedTime / 0.8) * (1 - smoothstep((boundedTime - 185.8) / 1.2));
