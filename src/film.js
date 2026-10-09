@@ -1,5 +1,6 @@
 import { mat4, quat, vec3 } from 'gl-matrix';
 import { createCameraPath } from './camera-path.js';
+import { createFilmActorRig } from './film-rig.js';
 import { box, cylinder, sphere, torus } from './geometry.js';
 
 export const FILM_DURATION = 187;
@@ -284,6 +285,8 @@ function createIgnition(meshes) {
 
 function addScientist(builder, position = [0, 0, 0], hat = true, rotation = 0) {
   const { add } = builder;
+  const actorName = `Scientist ${builder.parts.length}`;
+  const joints = new Map();
   const transform = point => [position[0] + point[0] * Math.cos(rotation) + point[2] * Math.sin(rotation), position[1] + point[1], position[2] - point[0] * Math.sin(rotation) + point[2] * Math.cos(rotation)];
   const silhouette = {
     tag: 'unlit', color: [0.0045, 0.0055, 0.005], metallic: 0, roughness: 1, emission: 0,
@@ -295,6 +298,21 @@ function addScientist(builder, position = [0, 0, 0], hat = true, rotation = 0) {
     const local = quat.fromEuler(quat.create(), ...angles.map(angle => angle * 180 / Math.PI));
     const orientation = quat.multiply(quat.create(), quat.setAxisAngle(quat.create(), [0, 1, 0], rotation), local);
     mat4.fromRotationTranslationScale(part.matrix, orientation, transform(point), scale);
+    const head = name === 'Continuous sculpted head' || name === 'Swept hair' || name === 'Ear silhouette' || name.startsWith('Fedora');
+    const arm = ['Jacket sleeve', 'Shirt cuff', 'Resting hand silhouette'].includes(name);
+    if (head || arm) {
+      const side = point[0] < 0 ? -1 : 1;
+      const jointName = head ? `${actorName} head` : `${actorName} arm ${side}`;
+      if (!joints.has(jointName)) {
+        joints.set(jointName, {
+          name: jointName,
+          kind: head ? 'head' : 'arm',
+          pivot: transform(head ? [0, 1.56, -0.005] : [side * 0.205, 1.425, -0.018]),
+          axis: head ? [0, 1, 0] : [Math.cos(rotation), 0, -Math.sin(rotation)],
+        });
+      }
+      part.actorJoint = joints.get(jointName);
+    }
     return part;
   };
   for (const side of [-1, 1]) {
@@ -592,12 +610,11 @@ function createSparks(meshes) {
 }
 
 function animateSet(parts, sceneName) {
+  const animateActors = createFilmActorRig(parts);
   const moving = parts.filter(part =>
     sceneName === 'sparks' || sceneName === 'atom' ||
     (sceneName === 'waves' && part.name !== 'Black reflecting pool') ||
-    Boolean(part.motionGroup) || part.name === 'Meter pointer' || part.name === 'Signal pilot light' ||
-    part.name === 'Continuous sculpted head' || part.name === 'Fedora sweeping brim' ||
-    part.name === 'Fedora tapered felt crown' || part.name === 'Fedora grosgrain band' || part.name === 'Fedora crown crease');
+    Boolean(part.motionGroup) || part.name === 'Meter pointer' || part.name === 'Signal pilot light');
   const bases = moving.map(part => new Float32Array(part.matrix));
   const pivots = moving.map((part, index) => part.motionPivot ?? [bases[index][12] + 0.04, bases[index][13], bases[index][14] - 0.05]);
   const inversePivots = pivots.map(pivot => pivot.map(value => -value));
@@ -607,6 +624,7 @@ function animateSet(parts, sceneName) {
     if (part.name === 'Signal pilot light') part.material = { ...materials.amber };
   }
   return function animate(time) {
+    animateActors(time);
     moving.forEach((part, index) => {
       const base = bases[index];
       part.matrix.set(base);

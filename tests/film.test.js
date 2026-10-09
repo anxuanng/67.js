@@ -3,6 +3,7 @@ import test from 'node:test';
 import { createFilmScenes, FILM_DURATION, FILM_SHOTS, sampleFilm } from '../src/film.js';
 import { resolveEffects } from '../src/effects.js';
 import { planRenderSize } from '../src/budget.js';
+import { mat4 } from 'gl-matrix';
 
 const distance = (first, second) => Math.hypot(...first.map((value, axis) => value - second[axis]));
 
@@ -157,4 +158,30 @@ test('tailored figure surfaces face outward and keep a closed shoulder silhouett
   }
   assert.ok(coat.normals[farthest] > 0.5);
   assert.ok(scene.parts.some(part => part.name === 'Tailored shoulder line'));
+});
+
+test('authored actor joints retain attached headwear and hands through holds and arbitrary seeks', () => {
+  const scene = createFilmScenes().portrait;
+  const head = scene.parts.find(part => part.name === 'Continuous sculpted head');
+  const hat = scene.parts.find(part => part.name === 'Fedora tapered felt crown');
+  const hand = scene.parts.find(part => part.name === 'Resting hand silhouette');
+  const cuff = scene.parts.find(part => part.name === 'Shirt cuff' && part.actorJoint.name === hand.actorJoint.name);
+  const relative = (parent, child) => Array.from(mat4.multiply(mat4.create(), mat4.invert(mat4.create(), parent.matrix), child.matrix));
+  scene.animate(0);
+  const headAttachment = relative(head, hat);
+  const armAttachment = relative(cuff, hand);
+  const assembled = Array.from(head.matrix);
+  scene.animate(5);
+  const held = Array.from(head.matrix);
+  assert.notDeepEqual(held, assembled);
+  scene.animate(6.5);
+  assert.deepEqual(Array.from(head.matrix), held);
+  for (const time of [10.3, 2.7, 23.9, 0, 5]) {
+    scene.animate(time);
+    relative(head, hat).forEach((value, index) => assert.ok(Math.abs(value - headAttachment[index]) < 1e-5));
+    relative(cuff, hand).forEach((value, index) => assert.ok(Math.abs(value - armAttachment[index]) < 1e-5));
+  }
+  assert.deepEqual(Array.from(head.matrix), held);
+  scene.animate(12);
+  assert.deepEqual(Array.from(head.matrix), assembled);
 });
