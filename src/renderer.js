@@ -117,7 +117,7 @@ export class Renderer67 {
       context.vertexAttribPointer(location, 3, context.FLOAT, false, 0, 0);
     }
     this.uploadBuffer(context.ELEMENT_ARRAY_BUFFER, geometry.indices);
-    const stride = 35;
+    const stride = 38;
     const instanceData = new Float32Array(parts.length * stride);
     const normalMatrix = mat3.create();
     parts.forEach((part, index) => {
@@ -128,6 +128,7 @@ export class Renderer67 {
       instanceData.set(part.material.color, offset + 25);
       instanceData.set([part.material.metallic, part.material.roughness, part.material.emission ?? 0, MATERIAL_TAGS[part.material.tag] ?? 0], offset + 28);
       instanceData.set(part.assembly?.offset ?? [0, 0, 0], offset + 32);
+      instanceData.set(part.assembly?.detailOffset ?? [0, 0, 0], offset + 35);
     });
     this.uploadBuffer(context.ARRAY_BUFFER, instanceData);
     for (let column = 0; column < 4; column++) this.attribute(2 + column, 4, stride * 4, column * 16);
@@ -135,6 +136,7 @@ export class Renderer67 {
     this.attribute(9, 3, stride * 4, 100);
     this.attribute(10, 4, stride * 4, 112);
     this.attribute(11, 3, stride * 4, 128);
+    this.attribute(12, 3, stride * 4, 140);
     context.bindVertexArray(null);
     return { vertexArray, indexCount: geometry.indices.length, instanceCount: parts.length, floor: parts[0].material.tag === 'floor' };
   }

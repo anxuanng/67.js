@@ -67,7 +67,7 @@ try {
   const page = await browser.newPage({ viewport: { width, height }, deviceScaleFactor: 1 });
   const errors = [];
   page.on('pageerror', (error) => errors.push(error.message));
-  const route = scene === 'object' ? 'index.html' : `${scene}.html`;
+  const route = scene === 'object' ? 'object.html' : `${scene}.html`;
   const query = new URLSearchParams({ export: '1', width: String(width), height: String(height), memory: String(memory), samples: String(backend === 'cpu' ? 1 : preset.samples) });
   await page.goto(`http://127.0.0.1:5181/${route}?${query}`);
   await page.waitForFunction((mode) => mode === 'film' ? window.__filmReady : mode === 'nature' ? window.__nature : window.__studio, scene, { timeout: 60000 });

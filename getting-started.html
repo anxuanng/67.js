@@ -17,7 +17,7 @@
         <a href="./index.html#examples">Examples</a>
         <a href="./getting-started.html" aria-current="page">Getting started</a>
         <a href="./index.html#downloads">Downloads</a>
-        <a href="https://github.com/anxuanng/67.js" target="_blank" rel="noopener noreferrer">Source on GitHub <span aria-hidden="true">↗</span></a>
+        <a data-release-tarball aria-disabled="true">Package source <span aria-hidden="true">↓</span></a>
       </nav>
       <p class="navigation-note">Built with WebGL2<br />Scenes made from geometry</p>
     </aside>
@@ -95,7 +95,7 @@ renderer.resize();   // Update targets after the canvas size changes.
 renderer.dispose(); // Release GPU resources when the scene closes.</code></pre>
         <p>Set <code>samples</code> and <code>memoryBudgetMiB</code> before creating the renderer. The target planner can reduce render dimensions to fit its estimate.</p>
         <p>The core exports <code>box</code>, <code>cylinder</code>, <code>sphere</code> and <code>torus</code>. Scene modules use separate addon imports.</p>
-        <div class="release-links"><a data-release-api aria-disabled="true">API for this release ↗</a><a data-release-commit aria-disabled="true">Release commit</a></div>
+        <div class="release-links"><a data-release-api aria-disabled="true">API for this release ↗</a><span data-release-commit>Release commit</span></div>
       </section>
     </main>
     <script type="module" src="/src/home.js"></script>

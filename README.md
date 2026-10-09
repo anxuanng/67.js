@@ -7,12 +7,20 @@ The viewers run without Three.js. The optional benchmark loads Three.js separate
 
 The WALL·E study contains 574 parts, 860,380 triangles and seven shared geometries.
 The studio submits eight geometry draws, including the floor.
-Its slider separates 20 assemblies to expose batteries, circuit boards, motors, gears and optical mechanisms.
+Its slider separates all 574 components, including individual fasteners, tread shoes, gears and electronics, to expose batteries, circuit boards, motors, gears and optical mechanisms.
 The layer controls show the shell, the interior or both. GLB export preserves the selected layers, finish and explosion amount.
 
 The renderer uses sampled fillets, GGX lighting, shadows, explicit MSAA, FXAA, specular filtering and ACES tone mapping.
 It reuses geometry buffers during explosion and refreshes shadows without allocating another shadow texture.
 The studio renders on demand. Continuous animation pauses in hidden tabs.
+
+## Install
+
+```sh
+npm install 67js
+```
+
+The package name is `67js`. The project brand is 67.js. The library is ESM and bundles its runtime dependencies. Core exports include `Renderer67`, `box`, `cylinder`, `sphere`, `torus`, `assemblyOffset`, `exportGlb`, render budget helpers and `VERSION`. Scene constructors are separate addons. Browser module downloads and the guide are available at https://67js.codepawl.com.
 
 ## Run
 
@@ -23,7 +31,8 @@ The studio renders on demand. Continuous animation pauses in hidden tabs.
 
 | Page | Experience |
 | --- | --- |
-| `/` | WALL·E studio with orbit, zoom, explosion, layers, finishes and GLB export. |
+| `/` | Installation, downloads, release metadata and examples. |
+| `/object.html` | WALL·E studio with orbit, zoom, explosion, layers, finishes and GLB export. |
 | `/nature.html` | Silverwater valley with viewpoints, daylight, wind, detail settings and water ripples. |
 | `/film.html` | CRITICAL, a 32-second procedural film with playback and timeline controls. |
 
@@ -72,7 +81,7 @@ The repository includes two reusable Codex skills.
 ## Checks and performance
 
 1. Run `npm test` to validate geometry, scene budgets, the timeline and independent GLB loading.
-2. Run `npm run build` to create all three production pages in `dist/`.
+2. Run `npm run build` to create the homepage, guide and three production viewers in `dist/`.
 3. Run `npm run smoke` to exercise the studio in headless Chrome.
 
 The smoke saves rendered screenshots, a GLB and benchmark results under the ignored `artifacts/` directory.
@@ -89,8 +98,8 @@ Detailed measured results and limits are in [verification.md](docs/verification.
 `Renderer67` groups geometry identities into instanced batches.
 
 ```js
-import { Renderer67 } from './src/renderer.js';
-import { createModel } from './src/model.js';
+import { Renderer67 } from '67js';
+import { createModel } from '67js/addons/model';
 
 const renderer = new Renderer67(canvas, createModel(), {
   samples: 4,
@@ -113,3 +122,16 @@ It includes no film footage, dialogue or soundtrack samples.
 - [Three.js](https://threejs.org/) and its [source](https://github.com/mrdoob/three.js/) provide the benchmark reference.
 - [Blender](https://projects.blender.org/blender/blender) provides the visual quality target.
 - [gl-matrix](https://github.com/toji/gl-matrix) supplies matrix operations.
+
+## Release synchronization
+
+`package.json` is the version source. Release preparation builds the npm archive and a standalone browser module.
+It generates `/release.json` with the version, Git commit, package integrity and verified npm publication status.
+The homepage and guide read this endpoint for their commands and downloads.
+
+1. Update the package version and changelog.
+2. Run `npm test` and `npm run build`.
+3. Run `npm run smoke:package`. It verifies a clean consumer installation.
+4. Commit and push the release.
+5. Run `npm publish --access public`. It publishes the library.
+6. Run `npm run deploy`. It verifies the pushed commit, rebuilds and checks the live release.

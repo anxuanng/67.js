@@ -1,5 +1,10 @@
 node_modules/
 dist/
+build/
+.wrangler/
+public/releases/
+public/release.json
+public/changelog.md
 artifacts/
 .env
 .env.*
@@ -8,3 +13,4 @@ artifacts/
 *.key
 *.log
 .agents/
+build-browser/

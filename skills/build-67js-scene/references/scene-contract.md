@@ -25,12 +25,13 @@ The transform is a column-major matrix. Colors are linear RGB.
 Normals are unit vectors. Triangle winding faces outward.
 Each geometry identity becomes one instanced batch.
 
-Explodable parts also provide `assembly: { layer: 'exterior' | 'interior', section: 'front-panel', offset: [0, 0, 1.7] }`.
-The offset is a world-space translation at full explosion. `render({ assemblyAmount: 0.5, ...camera })` applies half the offset in the vertex shader.
+Explodable parts also provide `assembly: { layer: 'exterior' | 'interior', section: 'front-panel', offset: [0, 0, 1.7], detailOffset: [0.1, 0.05, 0.3] }`.
+Both offsets are world-space translations. The shader applies `offset * amount + detailOffset * smoothstep(0.3, 1, amount)`.
+The group separates first. Small components separate during the second stage.
 Keep each section's offsets consistent so fasteners follow their panel. Base matrices remain assembled.
 
 Changing assembly amount refreshes shadows while reusing the same shadow texture and geometry buffers.
-For an exploded GLB, add the current offset to matrix translation entries 12, 13 and 14 before export.
+For an exploded GLB, use `assemblyOffset(part, amount)` from `67js` for matrix translation entries 12, 13 and 14.
 
 The material tags select renderer behavior.
 

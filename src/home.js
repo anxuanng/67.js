@@ -53,7 +53,7 @@ function renderRelease() {
   setLink('[data-release-module]', release ? releaseURL(release.module) : null, true);
   setLink('[data-release-api]', release ? releaseURL(release.api) : null);
   setLink('[data-release-commit]', release ? `https://github.com/anxuanng/67.js/commit/${release.commit}` : null);
-  setText('[data-release-commit]', release ? `Commit ${release.commit.slice(0, 7)} ↗` : 'Release commit');
+  setText('[data-release-commit]', release ? `Commit ${release.commit.slice(0, 7)}` : 'Release commit');
   if (release && document.querySelector('#browser-code')) {
     const cubeCode = document.querySelector('#cube-code').textContent.replace("from '67js'", `from '${releaseURL(release.module)}'`);
     document.querySelector('#browser-code').textContent = `<canvas id="scene" style="width:100vw;height:100vh;display:block"></canvas>\n<script type="module">\n${cubeCode}\n</script>`;

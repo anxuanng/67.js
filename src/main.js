@@ -2,6 +2,7 @@ import './style.css';
 import { Renderer67 } from './renderer.js';
 import { createModel } from './model.js';
 import { downloadGlb } from './export.js';
+import { assemblyOffset } from './assembly.js';
 
 const canvas = document.querySelector('#viewport');
 const parts = createModel();
@@ -10,7 +11,7 @@ const finishes = {
   ceramic: { name: 'Ceramic', color: [0.7, 0.77, 0.74], surface: [0.05, 0.24] },
   graphite: { name: 'Graphite', color: [0.10, 0.14, 0.17], surface: [0.65, 0.4] },
 };
-const state = { azimuth: 0.48, elevation: 0.18, distance: 7.8, finish: 'yellow', exposure: 1, inspection: false, rotating: false, assembly: 0, layer: 'all' };
+const state = { azimuth: 0.48, elevation: 0.18, distance: 7.8, finish: 'yellow', exposure: 1, inspection: false, rotating: false, assembly: Math.max(0, Math.min(1, Number(new URLSearchParams(location.search).get('explosion')) || 0)), layer: 'all' };
 let renderer;
 let scheduledFrame = 0;
 let lastTime = 0;
@@ -30,7 +31,7 @@ function notify(message, failure = false) {
 function camera() {
   const mobile = canvas.clientWidth <= 700;
   if (renderer) renderer.projection[8] = mobile || state.exporting ? 0 : -0.25 + state.assembly * 0.15;
-  const distance = state.distance * (mobile ? 0.78 : 1) + state.assembly * (mobile ? 4.5 : 6);
+  const distance = state.distance * (mobile ? 0.78 : 1) + state.assembly * (mobile ? 8 : 10);
   const target = [0, (mobile ? 1.5 : 1.35) + state.assembly * 0.35, 0];
   return {
     target,
@@ -62,12 +63,16 @@ function invalidate() {
 
 function initialize() {
   const visibleParts = state.layer === 'all' ? parts : parts.filter((part) => part.assembly?.layer === state.layer);
-  renderer = new Renderer67(canvas, visibleParts, { shadowBounds: { extent: 5, eye: [-3, 7, 4], target: [0, 1.5, 0] } });
+  renderer = new Renderer67(canvas, visibleParts, { shadowBounds: { extent: 6, eye: [-3, 7, 4], target: [0, 1.5, 0] } });
   document.querySelector('#parts').textContent = `${visibleParts.length} parts · ${Math.round(renderer.triangles / 1000)}k triangles`;
   document.querySelector('#calls').textContent = `${renderer.batches.length} geometry draws`;
   invalidate();
   window.__studio = { parts, get renderer() { return renderer; }, state, camera, invalidate };
 }
+
+document.querySelector('#assembly').value = String(state.assembly * 100);
+document.querySelector('#assembly-value').textContent = `${state.assembly * 100}%`;
+document.querySelector('#assembly').setAttribute('aria-valuetext', state.assembly === 1 ? 'Fully exploded' : state.assembly === 0 ? 'Assembled' : `${state.assembly * 100}% exploded`);
 
 try { initialize(); } catch (error) { notify(error.message, true); }
 
@@ -156,7 +161,8 @@ document.querySelector('#export').addEventListener('click', () => {
     const finish = finishes[state.finish];
     const exported = parts.filter((part) => state.layer === 'all' || part.assembly?.layer === state.layer).map((part) => {
       const matrix = new Float32Array(part.matrix);
-      for (let axis = 0; axis < 3; axis++) matrix[12 + axis] += (part.assembly?.offset[axis] ?? 0) * state.assembly;
+      const displacement = assemblyOffset(part, state.assembly);
+      for (let axis = 0; axis < 3; axis++) matrix[12 + axis] += displacement[axis];
       const material = part.material.tag === 'armor' ? { ...part.material, color: finish.color, metallic: finish.surface[0], roughness: finish.surface[1] } : part.material;
       return { ...part, matrix, material };
     });

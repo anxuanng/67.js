@@ -36,7 +36,7 @@ try {
       return checksum >>> 0;
     });
   }
-  await page.goto('http://127.0.0.1:5178');
+  await page.goto('http://127.0.0.1:5178/object.html');
   await page.waitForFunction(() => window.__studio?.renderer && document.querySelector('#cpu').textContent.includes('ms CPU'));
   await page.screenshot({ path: fileURLToPath(new URL('desktop.png', artifactDirectory)) });
   const graphics = await page.evaluate(() => {
@@ -69,7 +69,7 @@ try {
   const exportedScene = JSON.parse(exportedBinary.subarray(20, 20 + exportedBinary.readUInt32LE(12)).toString());
   const expectedPanel = await page.evaluate(() => {
     const part = window.__studio.parts.find((part) => Math.abs(part.assembly.offset[2]) > 1);
-    return { name: part.name, translation: part.matrix[14] + part.assembly.offset[2] };
+    return { name: part.name, translation: part.matrix[14] + part.assembly.offset[2] + part.assembly.detailOffset[2] };
   });
   assert.ok(Math.abs(exportedScene.nodes.find((node) => node.name === expectedPanel.name).matrix[14] - expectedPanel.translation) < 0.000001);
   await page.locator('#assembly').fill('0');

@@ -7,6 +7,7 @@ layout(location=6) in mat3 instanceNormal;
 layout(location=9) in vec3 instanceColor;
 layout(location=10) in vec4 instanceSurface;
 layout(location=11) in vec3 assemblyOffset;
+layout(location=12) in vec3 assemblyDetailOffset;
 uniform mat4 viewProjection;
 uniform mat4 lightProjection;
 uniform float time;
@@ -21,7 +22,7 @@ flat out vec4 surface;
 out vec4 shadowPosition;
 void main() {
   vec4 world = instanceMatrix * vec4(position, 1.0);
-  world.xyz += assemblyOffset * assemblyAmount;
+  world.xyz += assemblyOffset * assemblyAmount + assemblyDetailOffset * smoothstep(0.3, 1.0, assemblyAmount);
   if (instanceSurface.w == 4.0 || instanceSurface.w == 7.0) {
     world.x += sin(time * 1.2 + world.z * 0.31 + world.x * 0.17) * wind * 0.10 * max(position.y + 0.5, 0.0);
   }
@@ -44,11 +45,12 @@ precision highp float;
 layout(location=0) in vec3 position;
 layout(location=2) in mat4 instanceMatrix;
 layout(location=11) in vec3 assemblyOffset;
+layout(location=12) in vec3 assemblyDetailOffset;
 uniform mat4 lightProjection;
 uniform float assemblyAmount;
 void main() {
   vec4 world = instanceMatrix * vec4(position, 1.0);
-  world.xyz += assemblyOffset * assemblyAmount;
+  world.xyz += assemblyOffset * assemblyAmount + assemblyDetailOffset * smoothstep(0.3, 1.0, assemblyAmount);
   gl_Position = lightProjection * world;
 }`;
 

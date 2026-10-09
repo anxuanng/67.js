@@ -8,5 +8,5 @@ const headers = {
 export default defineConfig({
   server: { headers },
   preview: { headers },
-  build: { rolldownOptions: { input: { object: 'index.html', nature: 'nature.html', film: 'film.html' } } },
+  build: { rolldownOptions: { input: { home: 'index.html', object: 'object.html', nature: 'nature.html', film: 'film.html', guide: 'getting-started.html' } } },
 });
