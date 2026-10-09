@@ -14,6 +14,11 @@ This document separates shipping capabilities from work in progress. Performance
 - Orthographic front, right and top views, plus flat XY scenes with pan, zoom and capture.
 - glTF/GLB mesh input, base-color textures, opaque vertex colors and rigid node animation.
 - Landscape, portrait and square presets, time ranges and a generic capture interface for scenes and imported assets.
+- Retained scene graphs, lathe and extrusion modeling, authored camera paths and deterministic clip mixing.
+- Four-influence GPU skinning, relative morph targets and glTF morph weight animations.
+- Material maps, local point lights and depth-clipped volumetric fog.
+- Optional recorded Rapier physics with contacts, joint limits and bounded motors.
+- Static sculpt brushes, clipped surface patches, shrinkwrap and bounded mesh contact and containment queries.
 
 ## Next
 
@@ -25,5 +30,7 @@ This document separates shipping capabilities from work in progress. Performance
 
 ## Longer term
 
-Evaluate WebGPU after collecting WebGL2 bottleneck measurements. Add skinning, morph targets and more glTF materials as bounded asset support grows.
+Evaluate WebGPU after collecting WebGL2 bottleneck measurements.
+Extend deformation with surface bindings, remeshing and authored humanoid rigs.
+Improve character assets and cinematic environments through measured rendering and inspected reference frames.
 Blender is the visual quality reference for authored scenes. Rendering parity and universal speed advantages remain goals that need evidence.

@@ -18,17 +18,29 @@ assert.ok((await readFile('build/67.module.js')).length < 150000, 'The core must
 const consumer = await mkdtemp(resolve(tmpdir(), '67js-consumer-'));
 await writeFile(resolve(consumer, 'package.json'), JSON.stringify({ private: true, type: 'module' }));
 const npmCli = process.env.npm_execpath ?? resolve(dirname(process.execPath), 'node_modules/npm/bin/npm-cli.js');
+const published = process.argv.includes('--published');
 // Release preparation preserves the registry archive for an already-published version.
 // Validate the current source through a separate local pack, without replacing that archive.
-const sourcePack = spawnSync(process.execPath, [npmCli, 'pack', '--ignore-scripts', '--json', '--pack-destination', consumer], { windowsHide: true, encoding: 'utf8' });
-assert.equal(sourcePack.status, 0, sourcePack.stderr);
-const sourcePackResult = JSON.parse(sourcePack.stdout);
-const packedSource = Array.isArray(sourcePackResult) ? sourcePackResult[0] : sourcePackResult[metadata.name];
-assert.ok(packedSource?.filename, 'npm pack must return a source archive.');
-assert.ok(packedSource.size < 1024 * 1024, 'The current source package must fit within a 1 MiB archive.');
-const sourceArchive = resolve(consumer, packedSource.filename);
-const installed = spawnSync(process.execPath, [npmCli, 'install', `67js@file:${sourceArchive.replaceAll('\\', '/')}`, '@dimforge/rapier3d-compat@0.21.0', '--ignore-scripts', '--no-audit', '--no-fund'], { cwd: consumer, windowsHide: true, encoding: 'utf8' });
+let installTarget;
+if (published) {
+  assert.equal(release.registryPublished, true, 'Published consumer checks require registry-backed release metadata.');
+  installTarget = `67js@npm:${metadata.name}@${metadata.version}`;
+} else {
+  const sourcePack = spawnSync(process.execPath, [npmCli, 'pack', '--ignore-scripts', '--json', '--pack-destination', consumer], { windowsHide: true, encoding: 'utf8' });
+  assert.equal(sourcePack.status, 0, sourcePack.stderr);
+  const sourcePackResult = JSON.parse(sourcePack.stdout);
+  const packedSource = Array.isArray(sourcePackResult) ? sourcePackResult[0] : sourcePackResult[metadata.name];
+  assert.ok(packedSource?.filename, 'npm pack must return a source archive.');
+  assert.ok(packedSource.size < 1024 * 1024, 'The current source package must fit within a 1 MiB archive.');
+  const sourceArchive = resolve(consumer, packedSource.filename);
+  installTarget = `67js@file:${sourceArchive.replaceAll('\\', '/')}`;
+}
+const installed = spawnSync(process.execPath, [npmCli, 'install', installTarget, '@dimforge/rapier3d-compat@0.21.0', '--ignore-scripts', '--no-audit', '--no-fund'], { cwd: consumer, windowsHide: true, encoding: 'utf8' });
 assert.equal(installed.status, 0, installed.stderr);
+if (published) {
+  const installedLock = JSON.parse(await readFile(resolve(consumer, 'package-lock.json'), 'utf8'));
+  assert.equal(installedLock.packages['node_modules/67js'].integrity, release.integrity, 'Installed npm package differs from release integrity.');
+}
 const example = `import assert from 'node:assert/strict';
 import { VERSION, Renderer67, box, assemblyOffset, cameraView, fitPerspectiveDistance, createAnimationClip, sampleAnimationClip, EFFECT_PRESETS, createMorphPose, MAX_MORPH_TARGETS, exportGlb } from '67js';
 import { createModel } from '67js/addons/model';
@@ -98,6 +110,24 @@ assert.equal(wrappedPatch.stats.missedVertices, 0);
 assert.deepEqual(wrappedPatch.geometry.indices, packedPatch.indices);
 assert.deepEqual(wrappedPatch.geometry.uvs, packedPatch.uvs);
 assert.ok(wrappedPatch.geometry.positions.every((value, index) => index % 3 !== 2 || Math.abs(value - 0.502) < 1e-6));
+if (${!published}) {
+  const { createSurfaceAttachment } = await import('67js/addons/surface-attachment');
+  const attachmentMatrix = new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]);
+  const attachmentMorph = createMorphPose(1);
+  const target = { matrix: attachmentMatrix, morph: attachmentMorph, geometry: {
+    positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]),
+    normals: new Float32Array([0, 0, 1, 0, 0, 1, 0, 0, 1]),
+    indices: new Uint32Array([0, 1, 2]),
+    morphTargets: [{ positions: new Float32Array([0, 0, 0.2, 0, 0, 0.2, 0, 0, 0.2]) }],
+  } };
+  const attachment = createSurfaceAttachment(target, { triangle: 0, barycentric: [0.2, 0.3, 0.5], clearance: 0.002 });
+  const retainedMatrix = attachment.matrix;
+  attachmentMorph.weights[0] = 1;
+  attachmentMatrix[12] = 2;
+  assert.equal(attachment.update(), retainedMatrix);
+  assert.ok(Math.abs(retainedMatrix[12] - 2.3) < 1e-6);
+  assert.ok(Math.abs(retainedMatrix[14] - 0.202) < 1e-6);
+}
 solidIndex.dispose();
 const parts = createModel();
 assert.equal(parts.length, 574);
@@ -142,4 +172,4 @@ console.log('Clean consumer: core, geometry, addons, real physics contact and al
 await writeFile(resolve(consumer, 'check.mjs'), example);
 const result = spawnSync(process.execPath, ['check.mjs'], { cwd: consumer, windowsHide: true, encoding: 'utf8' });
 assert.equal(result.status, 0, result.stderr);
-console.log(result.stdout.trim());
+console.log(`${published ? 'Published npm' : 'Source archive'} ${metadata.version}: ${result.stdout.trim()}`);

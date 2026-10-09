@@ -288,3 +288,6 @@ The current checkout adds authoring and animation APIs through separate modules:
 - [GLB snapshot export](export-glb.md), including vertex colors, UVs, HDR emission and current morph weights.
 
 These APIs do not provide a Blender-style editor, WebGPU backend or general asset compatibility. Mesh queries operate on static geometry. They do not automatically resolve collisions or diagnose z-fighting. The physics addon requires its separate Rapier dependency. See each module's contract for limits and disposal requirements.
+
+The current source also adds [surface attachments](surface-attachment.md), newer than npm `0.4.0`.
+These retained rigid frames follow selected triangles through morphing and skinning without rebuilding a mesh query index each frame.

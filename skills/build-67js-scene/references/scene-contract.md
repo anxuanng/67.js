@@ -64,7 +64,7 @@ Each light provides `position` and optional `color`, `intensity`, `radius` and `
 Read the checkout's `docs/lighting.md` for defaults, numeric limits and frame overrides.
 Point lights currently cast no local shadows. Radius limits attenuation without creating an area emitter.
 
-Source-only `environment.volumeFog` receives directional scattering and shadows in one bounded volume.
+`environment.volumeFog` receives directional scattering and shadows in one bounded volume.
 It requires an opaque renderer with `{ hdr: true, depth: true }` and negotiated HDR support.
 Read `docs/volumetric.md` for controls, resource cost and limitations before authoring fog.
 `frame.environment.volumeFog` replaces the entire constructor fog object, with defaults for omitted fields.
@@ -125,6 +125,12 @@ Read `docs/shrinkwrap.md` for nearest/project modes, total query budgets and exp
 Share the target matrix with the wrapped part. Local distances are not world distances under nonuniform target scale.
 Compute once before renderer upload. Matching topology permits relative morph animation instead of rebuilding the BVH every frame.
 Vertex clearance does not certify every triangle interior against a curved or nonconvex target. Use the clipping patch for conforming surface overlays.
+
+Use `createSurfaceAttachment(target, { triangle, barycentric, clearance })` for a rigid accessory following a posed triangle.
+Read `docs/surface-attachment.md`. Share its retained `matrix` with the accessory, update the target pose, then update the attachment before renderer upload.
+The frame follows relative morphs before four-influence skinning. Clearance uses world units and the geometric triangle normal.
+Bind immutable geometry once. This sparse point attachment does not deform the accessory or certify clearance over its footprint.
+This addon follows the current source and is newer than npm `0.4.0`.
 
 `cameraView('front' | 'right' | 'top')` returns an orthographic camera with the correct up vector.
 `fitOrthographicHeight(bounds, view, aspect)` frames both model width and height.

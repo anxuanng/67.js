@@ -40,7 +40,8 @@
     "docs/surface.md",
     "docs/mesh-query.md",
     "docs/primitives.md",
-    "docs/shrinkwrap.md"
+    "docs/shrinkwrap.md",
+    "docs/surface-attachment.md"
   ],
   "main": "./build/67.module.js",
   "module": "./build/67.module.js",
@@ -57,6 +58,7 @@
     "./addons/surface": "./build/surface.js",
     "./addons/mesh-query": "./build/mesh-query.js",
     "./addons/shrinkwrap": "./build/shrinkwrap.js",
+    "./addons/surface-attachment": "./build/surface-attachment.js",
     "./addons/physics": "./build/physics.js",
     "./package.json": "./package.json"
   },

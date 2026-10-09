@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Add retained rigid surface attachments that follow relative morphs, four-influence skinning and world transforms.
+- Separate source package checks from published npm consumer checks with verified archive integrity.
+
 ## 0.4.0
 
 - Add four-influence GPU skinning, relative position/normal morphs and glTF morph weight animation.

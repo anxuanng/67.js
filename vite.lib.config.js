@@ -23,6 +23,7 @@ export default defineConfig({
         surface: 'src/surface.js',
         'mesh-query': 'src/mesh-query.js',
         shrinkwrap: 'src/shrinkwrap.js',
+        'surface-attachment': 'src/surface-attachment.js',
         physics: 'src/physics.js',
       },
       formats: ['es'],
