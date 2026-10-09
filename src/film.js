@@ -749,6 +749,12 @@ export function createFilmScenes() {
     ...studio, fogDensity: 0.006, daylight: 0.75,
     skyTop: [0.12, 0.17, 0.18], skyBottom: [0.22, 0.23, 0.18],
     lightDirection: [-0.85, 0.5, -0.35],
+    keyIntensity: 0.7,
+    fillIntensity: 0.35,
+    ambientIntensity: 0.45,
+    pointLights: [-2.8, 0, 2.8].map(horizontal => ({
+      position: [horizontal, 3.34, -1], color: [1, 0.71, 0.43], intensity: 18, range: 9, radius: 0.08,
+    })),
   };
   const desert = {
     fogColor: [0.25, 0.20, 0.13], fogDensity: 0.0035,
@@ -768,7 +774,7 @@ export function createFilmScenes() {
   towerParts.push(...towerBuilder.parts);
   return {
     apparatus: set(createApparatus(meshes), studio),
-    office: set(createOffice(meshes), interior, { extent: 7, target: [0, 1.6, -1], eye: [-8, 7, -4], near: 0.1, far: 30 }, 'office'),
+    office: set(createOffice(meshes), { ...interior, pointLights: [...interior.pointLights, { position: [-1.45, 1.36, 0.25], color: [1, 0.82, 0.57], intensity: 1.8, range: 3, radius: 0.08 }] }, { extent: 7, target: [0, 1.6, -1], eye: [-8, 7, -4], near: 0.1, far: 30 }, 'office'),
     laboratory: set(createOffice(meshes, true), interior, { extent: 7, target: [0, 1.6, -1], eye: [-8, 7, -4], near: 0.1, far: 30 }, 'laboratory'),
     settlement: set(createSettlement(meshes), desert, desertShadows, 'settlement'),
     portrait: set(createPortrait(meshes), { ...desert, lightDirection: [-0.7, 0.55, 0.8] }, { extent: 6, target: [0, 1, 0], eye: [-8, 5, 6], near: 0.1, far: 35 }, 'portrait'),

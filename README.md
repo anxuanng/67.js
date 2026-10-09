@@ -156,6 +156,7 @@ renderer.render({ eye: [4, 3, 7], target: [0, 1.5, 0], assemblyAmount: 0.5 });
 
 The core exports animation helpers, camera views and effect presets. `renderer.updateParts(parts)` uploads changes without replacing geometry buffers.
 The current source adds [camera paths](docs/camera-path.md) with cubic moves, target tracking, roll and focal-length conversion.
+It also adds [local lighting](docs/lighting.md) with eight point lights and separate key, fill and ambient controls. These controls remain source-only until the next package release.
 These camera helpers are not included in the published `0.3.3` package yet.
 The current source also adds [GPU skinning](docs/skinning.md) and skeletal GLB import, with four influences per vertex.
 The optional [physics addon](docs/physics.md) records Rapier contacts and articulated joints into a timeline for repeatable film seeks.

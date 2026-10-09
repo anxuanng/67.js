@@ -40,6 +40,7 @@ import { parseGltf } from '67js/addons/gltf';
 import { createPhysicsScene, planPhysicsScene } from '67js/addons/physics';
 assert.equal(VERSION, '${metadata.version}');
 assert.equal(typeof Renderer67, 'function');
+assert.throws(() => new Renderer67({}, [], { environment: { pointLights: Array(9).fill({ position: [0, 1, 0] }) } }), /at most/, 'Packed renderer must validate light limits before requesting a GPU context.');
 assert.ok(box().positions.length > 0);
 const parts = createModel();
 assert.equal(parts.length, 574);

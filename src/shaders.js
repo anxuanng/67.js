@@ -133,6 +133,13 @@ uniform float worldMode;
 uniform float time;
 uniform float daylight;
 uniform vec3 lightDirection;
+uniform int pointLightCount;
+uniform vec4 pointLightPositions[8];
+uniform vec4 pointLightColors[8];
+uniform float pointLightRadii[8];
+uniform vec3 keyColor;
+uniform float fillIntensity;
+uniform float ambientIntensity;
 uniform vec3 fogColor;
 uniform float fogDensity;
 uniform vec3 waterRipple;
@@ -220,8 +227,9 @@ vec3 studio(vec3 direction, float roughness) {
 }
 
 vec3 illuminate(vec3 normal, vec3 viewDirection, vec3 lightDirection, vec3 radiance, vec3 color, float metallic, float roughness) {
-  vec3 halfway = normalize(viewDirection + lightDirection);
   float normalLight = max(dot(normal, lightDirection), 0.0);
+  if (normalLight == 0.0) return vec3(0);
+  vec3 halfway = normalize(viewDirection + lightDirection);
   float normalView = max(dot(normal, viewDirection), 0.001);
   float normalHalf = max(dot(normal, halfway), 0.0);
   float alpha = roughness * roughness;
@@ -326,22 +334,41 @@ void main() {
     roughness = clamp(roughness + (grains.x - 0.5) * 0.06 * grainWeight, 0.075, 1.0);
   }
   float visibility = shadowVisibility(normal);
-  vec3 keyColor = mix(vec3(5.2, 4.7, 4.1), vec3(3.7, 3.4, 2.9) * daylight, worldMode);
   vec3 radiance = illuminate(normal, viewDirection, normalize(lightDirection), keyColor * visibility, color, metallic, roughness);
-  radiance += illuminate(normal, viewDirection, normalize(vec3(4.0, 2.0, -3.0)), mix(vec3(0.8, 2.0, 1.8), vec3(0.12, 0.17, 0.20) * daylight, worldMode), color, metallic, roughness);
-  radiance += illuminate(normal, viewDirection, normalize(vec3(1.0, 2.0, 5.0)), vec3(0.6, 0.7, 0.8) * mix(1.0, 0.25 * daylight, worldMode), color, metallic, roughness);
+  radiance += illuminate(normal, viewDirection, normalize(vec3(4.0, 2.0, -3.0)), mix(vec3(0.8, 2.0, 1.8), vec3(0.12, 0.17, 0.20) * daylight, worldMode) * fillIntensity, color, metallic, roughness);
+  radiance += illuminate(normal, viewDirection, normalize(vec3(1.0, 2.0, 5.0)), vec3(0.6, 0.7, 0.8) * mix(1.0, 0.25 * daylight, worldMode) * fillIntensity, color, metallic, roughness);
+  for (int index = 0; index < 8; index++) {
+    if (index >= pointLightCount) break;
+    vec3 offset = pointLightPositions[index].xyz - worldPosition;
+    float distanceSquared = dot(offset, offset);
+    if (distanceSquared < 1e-12 || pointLightColors[index].w == 0.0) continue;
+    float range = pointLightPositions[index].w;
+    float cutoff = 1.0;
+    if (range > 0.0) {
+      float squaredRatio = distanceSquared / (range * range);
+      float fade = max(1.0 - squaredRatio * squaredRatio, 0.0);
+      cutoff = fade * fade;
+    }
+    if (cutoff == 0.0) continue;
+    float radius = pointLightRadii[index];
+    float attenuation = cutoff / max(distanceSquared, radius * radius);
+    vec3 lightRadiance = pointLightColors[index].rgb * pointLightColors[index].w * attenuation;
+    radiance += illuminate(normal, viewDirection, offset * inversesqrt(distanceSquared), lightRadiance, color, metallic, roughness);
+  }
   vec3 reflectance = fresnel(max(dot(normal, viewDirection), 0.0), mix(vec3(0.04), color, metallic));
   float occlusion = 1.0;
   if (hasOcclusionMap > 0.5) occlusion = mix(1.0, texture(occlusionMap, textureUV).r, occlusionStrength);
-  radiance += studio(reflect(-viewDirection, normal), roughness) * reflectance * (1.0 - roughness * 0.55) * mix(1.0, 0.5 * daylight, worldMode) * occlusion;
-  radiance += color * (1.0 - metallic) * mix(vec3(0.16, 0.20, 0.22), vec3(0.19, 0.25, 0.30) * max(daylight, 0.08), worldMode) * (0.45 + 0.55 * max(normal.y, 0.0)) * occlusion;
-  if (surface.w == 4.0 || surface.w == 7.0) radiance += color * max(dot(-normal, normalize(lightDirection)), 0.0) * 0.3 * daylight;
+  radiance += studio(reflect(-viewDirection, normal), roughness) * reflectance * (1.0 - roughness * 0.55) * mix(1.0, 0.5 * daylight, worldMode) * occlusion * ambientIntensity;
+  radiance += color * (1.0 - metallic) * mix(vec3(0.16, 0.20, 0.22), vec3(0.19, 0.25, 0.30) * max(daylight, 0.08), worldMode) * (0.45 + 0.55 * max(normal.y, 0.0)) * occlusion * ambientIntensity;
+  vec3 keyResponse = keyColor / mix(vec3(5.2, 4.7, 4.1), vec3(3.7, 3.4, 2.9), worldMode);
+  keyResponse *= mix(daylight, 1.0, worldMode);
+  if (surface.w == 4.0 || surface.w == 7.0) radiance += color * max(dot(-normal, normalize(lightDirection)), 0.0) * 0.3 * keyResponse;
   radiance += emission;
   if (surface.w == 3.0) {
     float reflectivity = 0.20 + 0.65 * pow(1.0 - max(dot(normal, viewDirection), 0.0), 3.0);
     vec3 reflection = mix(vec3(0.12, 0.24, 0.28), vec3(0.40, 0.63, 0.78), clamp(reflect(-viewDirection, normal).y, 0.0, 1.0));
-    radiance = mix(radiance * 0.6, reflection * daylight, reflectivity);
-    radiance += vec3(1.0, 0.85, 0.55) * pow(max(dot(reflect(-normalize(lightDirection), normal), viewDirection), 0.0), 220.0) * 2.0 * daylight;
+    radiance = mix(radiance * 0.6, reflection * daylight * ambientIntensity, reflectivity);
+    radiance += vec3(1.0, 0.85, 0.55) * pow(max(dot(reflect(-normalize(lightDirection), normal), viewDirection), 0.0), 220.0) * 2.0 * keyResponse;
   }
   if (surface.w == 2.0) {
     float contact = 1.0 - 0.45 * exp(-dot(worldPosition.xz, worldPosition.xz) * 1.4);
@@ -361,7 +388,7 @@ void main() {
   float fog = 1.0 - exp(-length(worldPosition - eye) * fogDensity);
   radiance = mix(radiance, fogColor, fog * worldMode);
   if (inspection > 0.5) radiance = normal * 0.5 + 0.5;
-  outputColor = vec4(hdrEnabled > 0.5 ? max(radiance * exposure, vec3(0)) : pow(toneMap(radiance * exposure), vec3(1.0 / 2.2)), 1.0);
+  outputColor = vec4(hdrEnabled > 0.5 ? clamp(radiance * exposure, vec3(0), vec3(65504.0)) : pow(toneMap(radiance * exposure), vec3(1.0 / 2.2)), 1.0);
   if (surface.w == 2.0 && inspection < 0.5) {
     float distanceFade = exp(-length(worldPosition.xz) * 0.08);
     float contact = 1.0 - 0.1 * exp(-dot(worldPosition.xz, worldPosition.xz) * 1.4);

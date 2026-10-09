@@ -52,6 +52,11 @@ Interpolated numeric tags can change by tiny amounts and select the wrong shadin
 An outdoor renderer receives `world: true`, `ground: false` and the scene environment.
 The environment provides `fogColor`, `fogDensity`, `skyTop`, `skyBottom`, `lightDirection` and optional `daylight`.
 The sky colors are display RGB. Fog colors are linear RGB.
+Local `environment.pointLights` support eight world-space sources with inverse-square falloff.
+Each light provides `position` and optional `color`, `intensity`, `radius` and `range`.
+`keyIntensity`, `fillIntensity` and `ambientIntensity` independently scale existing lighting.
+Read the checkout's `docs/lighting.md` for defaults, numeric limits and frame overrides.
+Point lights currently cast no local shadows. Radius limits attenuation without creating an area emitter.
 
 ```js
 const renderer = new Renderer67(canvas, world.parts, {

@@ -29,7 +29,8 @@
     "docs/scene-graph.md",
     "docs/camera-path.md",
     "docs/skinning.md",
-    "docs/physics.md"
+    "docs/physics.md",
+    "docs/lighting.md"
   ],
   "main": "./build/67.module.js",
   "module": "./build/67.module.js",

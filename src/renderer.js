@@ -4,6 +4,7 @@ import { fullscreenVertex, postFragment, skyFragment, bloomFragment } from './po
 import { planRenderSize, estimateTextureBytes } from './budget.js';
 import { applyProjection } from './camera.js';
 import { resolveEffects } from './effects.js';
+import { createLightingState, updateLightingState } from './lighting.js';
 import { validateSkinGeometry, validateSkinPose, skinTextureLayout, packSkinInfluences } from './skinning.js';
 
 const MATERIAL_TAGS = { armor: 1, floor: 2, water: 3, foliage: 4, terrain: 5, grass: 7, fire: 8, smoke: 9, unlit: 10 };
@@ -170,6 +171,8 @@ export class Renderer67 {
     this.canvas = canvas;
     if (!Number.isInteger(samples) || samples < 1) throw new Error('MSAA sample count must be a positive integer.');
     if (new Set(parts).size !== parts.length) throw new Error('Scene parts must have distinct object identities for animation.');
+    this.lighting = createLightingState();
+    updateLightingState(this.lighting, environment, { world });
     this.context = canvas.getContext('webgl2', { antialias: true, alpha: Boolean(transparent), premultipliedAlpha: true, powerPreference: 'high-performance' });
     if (!this.context) throw new Error('WebGL2 is unavailable. Enable hardware acceleration or use a supported browser.');
     this.transparent = Boolean(transparent);
@@ -239,6 +242,9 @@ export class Renderer67 {
     this.program = compileProgram(this.context, benchmark ? benchmarkVertexShader : vertexShader, benchmark ? benchmarkFragmentShader : fragmentShader);
     this.depthProgram = compileProgram(this.context, depthVertexShader, depthFragmentShader);
     this.uniforms = Object.fromEntries(['viewProjection', 'lightProjection', 'eye', 'armorColor', 'armorSurface', 'exposure', 'inspection', 'shadowMap', ...MAP_UNIFORMS, ...MAP_FLAGS, ...SKIN_UNIFORMS, 'normalScale', 'occlusionStrength', 'hdrEnabled', 'time', 'wind', 'worldMode', 'daylight', 'lightDirection', 'fogColor', 'fogDensity', 'waterRipple', 'rippleTime', 'explosionProgress', 'explosionCenter', 'assemblyAmount'].map((name) => [name, this.context.getUniformLocation(this.program, name)]));
+    for (const name of ['pointLightCount', 'pointLightPositions[0]', 'pointLightColors[0]', 'pointLightRadii[0]', 'keyColor', 'fillIntensity', 'ambientIntensity']) {
+      this.uniforms[name] = this.context.getUniformLocation(this.program, name);
+    }
     this.depthSkinUniforms = Object.fromEntries(SKIN_UNIFORMS.map(name => [name, this.context.getUniformLocation(this.depthProgram, name)]));
     if (!benchmark) {
       this.postProgram = compileProgram(this.context, fullscreenVertex, postFragment);
@@ -675,6 +681,8 @@ export class Renderer67 {
   render(frame) {
     const { eye, target = [0, 1.2, 0], armorColor = [0.53, 0.39, 0.24], armorSurface = [0.88, 0.32], exposure = 1, inspection = false } = frame;
     const effects = resolveEffects(frame.effects);
+    const environment = { lightDirection: [-3, 6, 4], fogColor: [0.35, 0.43, 0.43], fogDensity: 0.006, daylight: 1, explosionCenter: [0, 0, 0], ...this.environment, ...frame.environment };
+    updateLightingState(this.lighting, environment, { world: this.world });
     const start = performance.now();
     const context = this.context;
     const assemblyAmount = Math.max(0, Math.min(1, frame.assemblyAmount ?? 0));
@@ -706,7 +714,13 @@ export class Renderer67 {
     context.uniform1f(this.uniforms.exposure, exposure);
     context.uniform1f(this.uniforms.inspection, inspection ? 1 : 0);
     context.uniform1f(this.uniforms.hdrEnabled, this.hdr ? 1 : 0);
-    const environment = { lightDirection: [-3, 6, 4], fogColor: [0.35, 0.43, 0.43], fogDensity: 0.006, daylight: 1, explosionCenter: [0, 0, 0], ...this.environment, ...frame.environment };
+    context.uniform1i(this.uniforms.pointLightCount, this.lighting.pointCount);
+    context.uniform4fv(this.uniforms['pointLightPositions[0]'], this.lighting.positions);
+    context.uniform4fv(this.uniforms['pointLightColors[0]'], this.lighting.colors);
+    context.uniform1fv(this.uniforms['pointLightRadii[0]'], this.lighting.radii);
+    context.uniform3fv(this.uniforms.keyColor, this.lighting.keyColor);
+    context.uniform1f(this.uniforms.fillIntensity, this.lighting.fillIntensity);
+    context.uniform1f(this.uniforms.ambientIntensity, this.lighting.ambientIntensity);
     context.uniform1f(this.uniforms.time, frame.time ?? 0);
     context.uniform1f(this.uniforms.wind, frame.wind ?? 0.3);
     context.uniform1f(this.uniforms.worldMode, this.world ? 1 : 0);
