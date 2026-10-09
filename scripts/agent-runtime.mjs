@@ -1,11 +1,13 @@
 import { createServer } from 'node:http';
 import { randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
-import { readFile } from 'node:fs/promises';
-import { isAbsolute } from 'node:path';
+import { readFile, writeFile } from 'node:fs/promises';
+import { isAbsolute, join } from 'node:path';
 import packageMetadata from '../package.json' with { type: 'json' };
 import { createAgentScene, AGENT_SCENE_CAPABILITIES } from '../src/agent-scene.js';
 import { createAgentAssetCatalog } from './agent-asset-catalog.mjs';
+import { createAgentRenderJobs } from './agent-render-jobs.mjs';
+import { createFrameEncoder } from './frame-encoder.mjs';
 
 const EMPTY_RECIPE = { format: '67js.scene', schemaVersion: 1, geometries: [], materials: [], nodes: [] };
 const SCENE_LIMITS = createAgentScene(EMPTY_RECIPE).limits;
@@ -16,7 +18,8 @@ const html = '<!doctype html><html><head><meta charset="utf-8"><style>html,body{
 
 /** Local, serialized browser preview. No browser is launched until scene creation. */
 export function createAgentRuntime({ backend = 'gpu', browser: browserPath, memory = 192, assets: assetRoot,
-  previewUrl = new URL('../build/mcp/preview.js', import.meta.url) } = {}) {
+  jobs: jobRoot, ffmpeg = 'ffmpeg',
+  previewUrl = new URL(/* @vite-ignore */ '../build/mcp/preview.js', import.meta.url) } = {}) {
   if (!['gpu', 'cpu'].includes(backend)) {
     throw new RangeError('backend must be gpu or cpu.');
   }
@@ -29,6 +32,12 @@ export function createAgentRuntime({ backend = 'gpu', browser: browserPath, memo
   if (assetRoot !== undefined && (typeof assetRoot !== 'string' || !isAbsolute(assetRoot))) {
     throw new TypeError('Asset root must be an explicit absolute directory path.');
   }
+  if (jobRoot !== undefined && (typeof jobRoot !== 'string' || !isAbsolute(jobRoot))) {
+    throw new TypeError('Job root must be an explicit absolute directory path.');
+  }
+  if (typeof ffmpeg !== 'string' || !ffmpeg || (ffmpeg !== 'ffmpeg' && (!isAbsolute(ffmpeg) || !existsSync(ffmpeg)))) {
+    throw new TypeError('FFmpeg must be on PATH or configured with an existing absolute executable path.');
+  }
   let phase = 'idle';
   let browserInstance;
   let httpServer;
@@ -38,6 +47,22 @@ export function createAgentRuntime({ backend = 'gpu', browser: browserPath, memo
   let queue = Promise.resolve();
   let closing;
   let catalogPromise;
+  let jobsPromise;
+  function jobs() {
+    if (!jobRoot) throw new Error('Configure --jobs with an absolute output directory before submitting render jobs.');
+    if (!jobsPromise && closing) throw new Error('The agent runtime is closing or closed.');
+    jobsPromise ??= createAgentRenderJobs({ root: jobRoot, run: runJob });
+    return jobsPromise;
+  }
+  async function requirePreviewRenderer() {
+    if (phase !== 'rendering') return;
+    const terminal = ['completed', 'cancelled', 'failed', 'interrupted'];
+    if ((await jobs()).list().some(record => !terminal.includes(record.state))) {
+      throw new Error('The renderer is leased to a render job. Wait for completion or cancel the job.');
+    }
+    // A queued job can be cancelled before its runner acquires the renderer.
+    phase = 'ready';
+  }
   function catalog() {
     if (!assetRoot) throw new Error('Configure --assets with an absolute directory before importing GLB assets.');
     catalogPromise ??= createAgentAssetCatalog(assetRoot);
@@ -167,6 +192,112 @@ export function createAgentRuntime({ backend = 'gpu', browser: browserPath, memo
     }
   }
 
+  async function runJob({ jobId, directory, snapshot, settings, signal, progress }) {
+    let jobPage;
+    let encoder;
+    let suspended = false;
+    const sessionId = activeSessionId;
+    const started = performance.now();
+    const metrics = { backend, requestedWidth: settings.width, requestedHeight: settings.height,
+      renderSeconds: 0, captureSeconds: 0, peakNodeBytes: 0, peakBrowserHeap: 0, maximumPendingFrames: 1 };
+    const abort = () => { jobPage?.close().catch(() => {}); };
+    signal.addEventListener('abort', abort, { once: true });
+    try {
+      signal.throwIfAborted();
+      await enqueue(async () => {
+        await invoke('suspend', { sessionId });
+        suspended = true;
+      });
+      signal.throwIfAborted();
+      jobPage = await browserInstance.newPage({ viewport: { width: settings.width, height: settings.height }, deviceScaleFactor: 1 });
+      signal.throwIfAborted();
+      const origin = `http://127.0.0.1:${httpServer.address().port}`;
+      await jobPage.route('**/*', route => new URL(route.request().url()).origin === origin ? route.continue() : route.abort());
+      jobPage.setDefaultTimeout(15000);
+      await jobPage.goto(origin);
+      await jobPage.waitForFunction(() => Boolean(window.__agentPreview));
+      const input = { sessionId: jobId, recipe: snapshot.recipe, memoryBudgetMiB: memory, backend,
+        ...(snapshot.assetBytes ? { data: snapshot.assetBytes.toString('base64') } : {}) };
+      const created = await jobPage.evaluate(({ method, input }) => window.__agentPreview[method](input),
+        { method: snapshot.assetBytes ? 'createAsset' : 'create', input });
+      const width = settings.kind === 'video' ? Math.floor(created.render.width / 2) * 2 : created.render.width;
+      const height = settings.kind === 'video' ? Math.floor(created.render.height / 2) * 2 : created.render.height;
+      if (width < 64 || height < 64) throw new Error('Render budget reduced the job below its minimum output size.');
+      await jobPage.setViewportSize({ width, height });
+      const session = await jobPage.context().newCDPSession(jobPage);
+      const artifacts = [];
+      if (settings.kind === 'video') {
+        encoder = createFrameEncoder({ executable: ffmpeg, output: join(directory, 'render.mp4.partial'),
+          fps: settings.fps, format: 'jpeg', signal });
+      }
+      for (let frame = 0; frame < settings.frameCount; frame++) {
+        signal.throwIfAborted();
+        const elapsed = settings.kind === 'video' ? frame / settings.fps
+          : settings.kind === 'stills' ? settings.duration * frame / (settings.frameCount - 1) : 0;
+        const frameInput = { sessionId: jobId,
+          rendererTime: (settings.rendererTime?.start ?? 0) + elapsed * (settings.rendererTime?.rate ?? 1),
+          ...(settings.animation ? { animation: { clip: settings.animation.clip, time: settings.animation.start + elapsed } } : {}) };
+        const renderStarted = performance.now();
+        const rendered = await jobPage.evaluate(input => window.__agentPreview.frame(input), frameInput);
+        metrics.renderSeconds += (performance.now() - renderStarted) / 1000;
+        if (backend === 'cpu' && !/swiftshader/i.test(rendered.graphics)) throw new Error('CPU job did not select SwiftShader.');
+        metrics.graphics = rendered.graphics;
+        metrics.width = width;
+        metrics.height = height;
+        metrics.estimatedBytes = rendered.estimatedBytes;
+        const captureStarted = performance.now();
+        const captured = await session.send('Page.captureScreenshot', { fromSurface: true,
+          format: settings.kind === 'video' ? 'jpeg' : 'png',
+          ...(settings.kind === 'video' ? { quality: 95 } : { optimizeForSpeed: true }) });
+        const bytes = Buffer.from(captured.data, 'base64');
+        metrics.captureSeconds += (performance.now() - captureStarted) / 1000;
+        if (bytes.length > MAXIMUM_IMAGE_BYTES) throw new Error('Captured job frame exceeded 1 MiB.');
+        signal.throwIfAborted();
+        if (encoder) await encoder.writeFrame(bytes);
+        else {
+          const filename = settings.kind === 'image' ? 'render.png' : `frame-${frame}.png`;
+          await writeFile(join(directory, `${filename}.partial`), bytes, { flag: 'wx' });
+          artifacts.push({ temporary: `${filename}.partial`, filename, mimeType: 'image/png' });
+        }
+        metrics.peakNodeBytes = Math.max(metrics.peakNodeBytes, process.memoryUsage().rss);
+        const heap = await session.send('Runtime.getHeapUsage');
+        metrics.peakBrowserHeap = Math.max(metrics.peakBrowserHeap, heap.usedSize);
+        if (metrics.peakNodeBytes > 512 * 1024 ** 2 || metrics.peakBrowserHeap > 256 * 1024 ** 2) {
+          throw new Error('Render job exceeded its Node RSS or sampled browser heap guard.');
+        }
+        await progress({ frames: frame + 1, maximumPendingFrames: 1 });
+      }
+      if (encoder) {
+        metrics.encoder = await encoder.finish();
+        artifacts.push({ temporary: 'render.mp4.partial', filename: 'render.mp4', mimeType: 'video/mp4' });
+      }
+      metrics.elapsedSeconds = (performance.now() - started) / 1000;
+      return { artifacts, metrics };
+    } finally {
+      signal.removeEventListener('abort', abort);
+      try { await encoder?.close(); }
+      finally {
+        try {
+          if (jobPage && !jobPage.isClosed()) {
+            try { await jobPage.evaluate(sessionId => window.__agentPreview.dispose({ sessionId }), jobId); }
+            finally { await jobPage.close(); }
+          }
+        }
+        finally {
+          if (suspended && !closing) {
+            try {
+              await enqueue(() => invoke('resume', { sessionId }));
+              phase = 'ready';
+            } catch (error) {
+              phase = 'failed';
+              throw new Error(`Preview recovery failed after render job: ${error.message}`);
+            }
+          } else if (!closing && phase !== 'failed') phase = 'ready';
+        }
+      }
+    }
+  }
+
   return Object.freeze({
     async capabilities() {
       return {
@@ -181,7 +312,12 @@ export function createAgentRuntime({ backend = 'gpu', browser: browserPath, memo
           maximumVertices: 250000, maximumParts: 4096, maximumTexturePixels: 4194304, maximumJoints: 1024, maximumClips: 256,
           commands: ['set-root', 'set-animation', 'set-material', 'set-camera', 'set-environment', 'set-effects', 'set-shadow'],
         },
-        unsupported: ['remote asset providers', 'arbitrary code execution', 'animation authoring', 'video jobs'],
+        jobs: { configured: Boolean(jobRoot), kinds: ['image', 'stills', 'video'], maximumActiveJobs: 1,
+          maximumDuration: 30, maximumFps: 30, maximumFrames: 900, maximumStills: 8,
+          encoder: 'CPU H.264', audio: false, previewSuspendedDuringJob: true,
+          records: jobRoot ? (await jobs()).list().map(record => ({ jobId: record.jobId, state: record.state,
+            sourceRevision: record.sourceRevision, progress: record.progress })) : [] },
+        unsupported: ['remote asset providers', 'arbitrary code execution', 'animation authoring', 'job audio'],
       };
     },
     create({ recipe }) {
@@ -214,10 +350,14 @@ export function createAgentRuntime({ backend = 'gpu', browser: browserPath, memo
       return enqueue(() => invoke('inspect', input));
     },
     apply(input) {
-      return enqueue(() => invoke('apply', input));
+      return enqueue(async () => {
+        await requirePreviewRenderer();
+        return invoke('apply', input);
+      });
     },
     look(input) {
       return enqueue(async () => {
+        await requirePreviewRenderer();
         requireSession(input.sessionId);
         const width = input.width ?? 768;
         const height = input.height ?? 512;
@@ -236,28 +376,80 @@ export function createAgentRuntime({ backend = 'gpu', browser: browserPath, memo
       });
     },
     checkpoint(input) {
-      return enqueue(() => invoke('checkpoint', { ...input, checkpointId: randomUUID() }));
+      return enqueue(async () => {
+        await requirePreviewRenderer();
+        return invoke('checkpoint', { ...input, checkpointId: randomUUID() });
+      });
     },
     restore(input) {
-      return enqueue(() => invoke('restore', input));
+      return enqueue(async () => {
+        await requirePreviewRenderer();
+        return invoke('restore', input);
+      });
     },
     releaseCheckpoint(input) {
-      return enqueue(() => invoke('releaseCheckpoint', input));
+      return enqueue(async () => {
+        await requirePreviewRenderer();
+        return invoke('releaseCheckpoint', input);
+      });
     },
     exportRecipe(input) {
       return enqueue(() => invoke('exportRecipe', input));
     },
     dispose(input) {
       return enqueue(async () => {
+        await requirePreviewRenderer();
         const result = await invoke('dispose', input);
         activeSessionId = null;
         return result;
       });
     },
+    submitJob({ sessionId, expectedRevision, settings }) {
+      return enqueue(async () => {
+        await requirePreviewRenderer();
+        const controller = await jobs();
+        const snapshot = await invoke('snapshot', { sessionId, expectedRevision });
+        const assetBytes = snapshot.recipe.format === '67js.asset' ? await (await catalog()).read(snapshot.recipe.assetId) : undefined;
+        phase = 'rendering';
+        try {
+          return await controller.submit({ sourceRevision: snapshot.sourceRevision,
+            snapshot: { recipe: snapshot.recipe, clips: snapshot.clips, ...(assetBytes ? { assetBytes } : {}) }, settings });
+        } catch (error) {
+          phase = 'ready';
+          throw error;
+        }
+      });
+    },
+    async jobStatus({ jobId }) {
+      const record = (await jobs()).status(jobId);
+      if (phase === 'rendering' && ['completed', 'cancelled', 'failed', 'interrupted'].includes(record.state)) {
+        await requirePreviewRenderer();
+      }
+      return record;
+    },
+    async cancelJob({ jobId }) {
+      return (await jobs()).cancel(jobId);
+    },
+    async jobResult({ jobId }) {
+      const result = (await jobs()).result(jobId);
+      return { ...result, artifacts: result.artifacts.map(artifact => ({
+        ...artifact, path: join(jobRoot, result.jobId, artifact.filename),
+      })) };
+    },
+    async releaseJob({ jobId }) {
+      return (await jobs()).release(jobId);
+    },
     close() {
       if (!closing) {
         phase = 'closing';
-        closing = queue.then(shutdownResources).finally(() => {
+        closing = (async () => {
+          try {
+            if (jobsPromise) await (await jobsPromise).close();
+          } finally {
+            await queue;
+            await shutdownResources();
+          }
+        })().finally(() => {
           activeSessionId = null;
           phase = 'closed';
         });

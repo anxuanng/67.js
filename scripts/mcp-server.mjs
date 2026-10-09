@@ -151,6 +151,16 @@ const operation = z.discriminatedUnion('type', [
 const sessionFields = { sessionId: z.uuid().describe('Session UUID returned by scene_create.') };
 const checkpointFields = { ...sessionFields, checkpointId: z.uuid().describe('Checkpoint UUID returned by scene_checkpoint for this session.') };
 const expectedRevision = z.number().int().min(0).max(Number.MAX_SAFE_INTEGER).describe('Current revision returned by create, inspect, apply or restore. Stale edits fail atomically.');
+const jobFields = { jobId: z.uuid().describe('Render job UUID returned by scene_render_submit or capabilities jobs.records.') };
+const renderSettings = z.strictObject({
+  kind: z.enum(['image', 'stills', 'video']),
+  width: z.number().int().min(64).max(1024),
+  height: z.number().int().min(64).max(1024),
+  fps: z.number().int().min(1).max(30).optional(),
+  duration: z.number().min(0.1).max(30).optional(),
+  animation: z.strictObject({ clip: z.number().int().min(0), start: z.number().min(0).max(3600).optional() }).optional(),
+  rendererTime: z.strictObject({ start: z.number().min(0).max(3600).optional(), rate: z.number().min(-16).max(16).optional() }).optional(),
+}).describe('Immutable snapshot render: one PNG, eight evenly spaced PNGs, or CPU H.264 MP4. Video dimensions must be even. Defaults: 24 fps, one second. Animation must fit the selected imported clip.');
 const readOnly = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false };
 const edit = { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false };
 
@@ -160,7 +170,7 @@ function jsonResult(value) {
 
 export function createAgentMcpServer(runtime, { version = packageMetadata.version } = {}) {
   const server = new McpServer({ name: '67js-scene', version }, {
-    instructions: 'Start with scene_capabilities. Create a procedural recipe with scene_create, or select a configured GLB digest from scene_asset_catalog and use scene_create_asset. Inspect stable IDs and save a checkpoint before editing. Apply small batches with the current expectedRevision and check committed, revision and renderSucceeded. Procedural scenes support topology edits; imported assets preserve decoded meshes and support root, material, look and absolute clip sampling. A committed edit can have a separate renderError; do not retry it with an old revision. Use scene_look to judge the actual image. Restore experiments or release unused checkpoints. Export the final recipe and dispose the scene when finished. No arbitrary JavaScript, remote URLs, file paths or jobs are exposed.',
+    instructions: 'Start with scene_capabilities. Create a procedural recipe with scene_create, or select a configured GLB digest from scene_asset_catalog and use scene_create_asset. Inspect stable IDs and save a checkpoint before editing. Apply small batches with the current expectedRevision and check committed, revision and renderSucceeded. A committed edit can have a separate renderError; do not retry it with an old revision. Use scene_look to judge the actual image. When jobs are configured, scene_render_submit captures an immutable snapshot. Poll scene_render_status, cancel when needed, and retrieve verified local artifact metadata with scene_render_result after completion. Preview rendering and edits pause during a job; source revision and checkpoints survive. Release outputs with scene_render_release. Export the final recipe and dispose the scene when finished. No arbitrary JavaScript, remote URLs or caller-selected output paths are exposed.',
   });
   let closePromise;
   server.server.onclose = () => {
@@ -195,17 +205,22 @@ export function createAgentMcpServer(runtime, { version = packageMetadata.versio
   register('scene_release_checkpoint', 'Release one checkpoint slot. Released or foreign checkpoints fail.', z.strictObject(checkpointFields), edit, async argumentsValue => jsonResult(await runtime.releaseCheckpoint(argumentsValue)));
   register('scene_export_recipe', 'Read a detached canonical JSON recipe for reproduction.', z.strictObject(sessionFields), readOnly, async argumentsValue => jsonResult(await runtime.exportRecipe(argumentsValue)));
   register('scene_dispose', 'Dispose the active scene and its checkpoints, releasing renderer resources.', z.strictObject(sessionFields), edit, async argumentsValue => jsonResult(await runtime.dispose(argumentsValue)));
+  register('scene_render_submit', 'Start one asynchronous snapshot job in the configured private job store. Requires the current revision. Temporarily leases the preview renderer; does not change source revision or checkpoints.', z.strictObject({ ...sessionFields, expectedRevision, settings: renderSettings }), { ...edit, destructiveHint: false }, async argumentsValue => jsonResult(await runtime.submitJob(argumentsValue)));
+  register('scene_render_status', 'Read render job state and durable frame progress. Terminal states are completed, cancelled, failed and interrupted.', z.strictObject(jobFields), readOnly, async argumentsValue => jsonResult(await runtime.jobStatus(argumentsValue)));
+  register('scene_render_cancel', 'Request cancellation of one job. Poll status until terminal before using the preview again.', z.strictObject(jobFields), { ...edit, idempotentHint: true }, async argumentsValue => jsonResult(await runtime.cancelJob(argumentsValue)));
+  register('scene_render_result', 'Read completed local output paths, MIME types, byte counts, SHA-256 digests and measured render metrics. Does not embed video bytes.', z.strictObject(jobFields), readOnly, async argumentsValue => jsonResult(await runtime.jobResult(argumentsValue)));
+  register('scene_render_release', 'Delete the owned files and record for a terminal job, freeing store quota. Active jobs must be cancelled first.', z.strictObject(jobFields), edit, async argumentsValue => jsonResult(await runtime.releaseJob(argumentsValue)));
   return server;
 }
 
 export async function runMcpCli({ argumentsValue = process.argv.slice(2),
-  previewUrl = new URL('../build/mcp/preview.js', import.meta.url), version = packageMetadata.version } = {}) {
+  previewUrl = new URL(/* @vite-ignore */ '../build/mcp/preview.js', import.meta.url), version = packageMetadata.version } = {}) {
   const options = { backend: 'gpu', memory: 192 };
   for (let index = 0; index < argumentsValue.length; index += 2) {
     const name = argumentsValue[index];
     const value = argumentsValue[index + 1];
-    if (!['--backend', '--browser', '--memory', '--assets'].includes(name) || value === undefined) {
-      throw new Error('Use --backend cpu|gpu, --browser <local executable path>, --memory <32..256 MiB>, and --assets <absolute GLB directory>.');
+    if (!['--backend', '--browser', '--memory', '--assets', '--jobs', '--ffmpeg'].includes(name) || value === undefined) {
+      throw new Error('Use --backend cpu|gpu, --browser <local executable path>, --memory <32..256 MiB>, --assets <absolute GLB directory>, --jobs <absolute private output directory>, and --ffmpeg <absolute executable>.');
     }
     options[name.slice(2)] = name === '--memory' ? Number(value) : value;
   }

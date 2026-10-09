@@ -130,7 +130,12 @@ Agents can add or remove nodes and shared resources in the same revisioned comma
 The optional addon retains unchanged parts and geometry across supported edits.
 
 The packaged [MCP server](docs/mcp.md) connects these sessions to a persistent browser renderer.
-Agents receive PNG previews and structured scene metadata through twelve stdio tools.
+Agents receive PNG previews and structured scene metadata through the stdio tools.
+
+Version `0.6.0` adds [snapshot render jobs](docs/agent-render-jobs.md) for PNG images, eight-frame still sequences and silent MP4 video.
+Agents can poll progress, cancel jobs, retrieve verified artifacts and release retained outputs.
+The source pose, revision and checkpoints remain intact while a job temporarily leases the preview renderer.
+
 Agents can author [lights, volumetric fog, grading and shadow coverage](docs/agent-look.md), then restore the complete look from a checkpoint.
 After installing the package, run `npx 67js-mcp --backend gpu --memory 192` with Node.js 20.19 or later and a local Chrome installation.
 The server and preview are built into the package. The browser driver loads only when a scene is created.

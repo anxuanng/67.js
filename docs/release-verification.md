@@ -1,5 +1,28 @@
 # Release verification
 
+## 0.6.0
+
+Source checks used Windows Node.js, installed Chrome with CPU SwiftShader and FFmpeg H.264 encoding.
+Registry publication and live deployment require separate verification against the pushed commit.
+
+| Check | Measured result |
+| --- | --- |
+| Node tests | 384 tests passed. |
+| MCP jobs | The SDK discovered seventeen tools and rendered an eight-frame MP4 with a one-second duration. |
+| Animation | Decoded first and last video frames differed. Snapshot output survived a changed catalog file. |
+| PNG outputs | One image and eight stills contained valid PNG headers and the requested 128 by 128 dimensions. |
+| Source ownership | Render completion and active cancellation preserved source PNG output, revision and retained checkpoints. |
+| Cleanup | Closing the MCP connection during a video job exited the server. Reopening retained verified completed results. |
+| Storage | Real file tests covered incomplete admissions, failed initial writes, output hashes, quotas, aliases and stale locks. |
+| Encoder | The shared pipe encoded a two-second video with eight frames, BT.709 metadata and one pending frame. Cancellation stopped its owned process. |
+
+The public contract review found two storage defects. Atomic admission publication and explicit stale-lock repair removed their causal paths.
+The follow-up found no remaining significant findings within that scope.
+This review used one model family because the other reviewer remained unavailable. It provides weaker coverage than a completed cross review.
+
+These checks establish bounded CPU rendering behavior. They do not establish hardware GPU speed or cinematic quality.
+Jobs encode silent video. They sample imported clips and renderer time without authoring new animation tracks.
+
 ## 0.5.0
 
 Source checks used Windows Node.js and installed Chrome with CPU SwiftShader.

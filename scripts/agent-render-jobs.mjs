@@ -1,0 +1,494 @@
+import { mkdir, open, readFile, writeFile, rename, unlink, rmdir, readdir, lstat, realpath } from 'node:fs/promises';
+import { randomUUID, createHash } from 'node:crypto';
+import { isAbsolute, join, resolve } from 'node:path';
+
+const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
+const STATES = ['queued', 'running', 'finalizing', 'completed', 'cancelling', 'cancelled', 'failed', 'interrupted'];
+const TERMINAL = new Set(['completed', 'cancelled', 'failed', 'interrupted']);
+const DEFAULT_LIMITS = Object.freeze({ maxRecords: 32, maxStoreBytes: 512 * 1024 ** 2, maxOutputBytes: 128 * 1024 ** 2, maxFrameBytes: 1024 ** 2, deadlineMs: 300000, cleanupMs: 5000 });
+const MAXIMUM_JSON_BYTES = 1024 ** 2;
+const MAXIMUM_ASSET_BYTES = 16 * 1024 ** 2;
+const INTERNAL_FILES = new Set(['owner.json', 'snapshot.json', 'asset.glb', 'status.json', 'status.json.pending']);
+
+function objectKeys(value, allowed, label) {
+  if (!value || Object.getPrototypeOf(value) !== Object.prototype) throw new TypeError(`${label} must be a plain object.`);
+  for (const key of Object.keys(value)) {
+    if (!allowed.includes(key)) throw new TypeError(`Unknown ${label} field: ${key}.`);
+  }
+}
+
+function boundedNumber(value, minimum, maximum, label, integer = false) {
+  if (!Number.isFinite(value) || value < minimum || value > maximum || (integer && !Number.isInteger(value))) {
+    throw new RangeError(`${label} must be within ${minimum} and ${maximum}${integer ? ' as an integer' : ''}.`);
+  }
+  return value;
+}
+
+function jsonCopy(value, maximum = MAXIMUM_JSON_BYTES) {
+  const ancestors = new Set();
+  let estimatedBytes = 0;
+  function validate(input, depth) {
+    if (depth > 64) throw new RangeError('JSON nesting exceeds 64 levels.');
+    estimatedBytes += typeof input === 'string' ? Buffer.byteLength(input) : 1;
+    if (estimatedBytes > maximum) throw new RangeError('Snapshot JSON exceeds its byte budget.');
+    if (input === null || typeof input === 'boolean' || typeof input === 'string') return;
+    if (typeof input === 'number' && Number.isFinite(input)) return;
+    if (!input || typeof input !== 'object' || ancestors.has(input)) throw new TypeError('Snapshot must contain finite, acyclic JSON.');
+    if (!Array.isArray(input) && Object.getPrototypeOf(input) !== Object.prototype) throw new TypeError('Snapshot must contain plain JSON.');
+    ancestors.add(input);
+    if (Array.isArray(input) && (input.length > maximum || Object.keys(input).length !== input.length || Object.keys(input).some((key, index) => key !== String(index)))) throw new TypeError('Snapshot arrays must be bounded and dense.');
+    for (const key of Reflect.ownKeys(input)) {
+      if (Array.isArray(input) && key === 'length') continue;
+      const descriptor = Object.getOwnPropertyDescriptor(input, key);
+      if (typeof key !== 'string' || key === '__proto__' || !descriptor.enumerable || !Object.hasOwn(descriptor, 'value')) throw new TypeError('Snapshot accessors and hidden fields are unsupported.');
+      validate(descriptor.value, depth + 1);
+    }
+    ancestors.delete(input);
+  }
+  validate(value, 0);
+  const text = JSON.stringify(value);
+  if (Buffer.byteLength(text) > maximum) throw new RangeError('Snapshot JSON exceeds its byte budget.');
+  return JSON.parse(text);
+}
+
+function settingsFrom(input, clips) {
+  objectKeys(input, ['kind', 'width', 'height', 'fps', 'duration', 'animation', 'rendererTime'], 'settings');
+  if (!['image', 'stills', 'video'].includes(input.kind)) throw new TypeError('kind must be image, stills or video.');
+  const width = boundedNumber(input.width, 64, 1024, 'width', true);
+  const height = boundedNumber(input.height, 64, 1024, 'height', true);
+  if (input.kind === 'video' && (width % 2 || height % 2)) throw new RangeError('Video dimensions must be even.');
+  const fps = boundedNumber(input.fps ?? 24, 1, 30, 'fps', true);
+  const duration = boundedNumber(input.duration ?? 1, 0.1, 30, 'duration');
+  const frameCount = input.kind === 'image' ? 1 : input.kind === 'stills' ? 8 : Math.ceil(fps * duration);
+  if (frameCount > 900) throw new RangeError('Job exceeds 900 frames.');
+  const result = { kind: input.kind, width, height, fps, duration, frameCount };
+  if (input.animation !== undefined) {
+    objectKeys(input.animation, ['clip', 'start'], 'animation');
+    const clip = boundedNumber(input.animation.clip, 0, clips.length - 1, 'clip', true);
+    const start = boundedNumber(input.animation.start ?? 0, 0, clips[clip].duration, 'animation start');
+    if (input.kind !== 'image' && start + duration > clips[clip].duration) throw new RangeError('Animation range exceeds the selected clip duration.');
+    result.animation = { clip, start };
+  }
+  if (input.rendererTime !== undefined) {
+    objectKeys(input.rendererTime, ['start', 'rate'], 'rendererTime');
+    result.rendererTime = { start: boundedNumber(input.rendererTime.start ?? 0, 0, 3600, 'renderer time start'), rate: boundedNumber(input.rendererTime.rate ?? 1, -16, 16, 'renderer time rate') };
+  } else {
+    result.rendererTime = { start: 0, rate: 1 };
+  }
+  const lastSampleTime = input.kind === 'image' ? 0 : input.kind === 'stills' ? duration : (frameCount - 1) / fps;
+  boundedNumber(result.rendererTime.start + lastSampleTime * result.rendererTime.rate, 0, 3600, 'renderer time end');
+  return result;
+}
+
+function artifactNames(kind) {
+  return kind === 'video' ? ['render.mp4'] : kind === 'image' ? ['render.png'] : Array.from({ length: 8 }, (_, index) => `frame-${index}.png`);
+}
+
+function allowedFile(name) {
+  return INTERNAL_FILES.has(name) || /^(?:render\.(?:png|mp4)|frame-[0-7]\.png)(?:\.partial)?$/.test(name);
+}
+
+async function regularFile(path) {
+  const details = await lstat(path);
+  if (!details.isFile() || details.isSymbolicLink() || details.nlink !== 1) throw new Error('Job files must be regular files without links or aliases.');
+  return details;
+}
+
+async function readJson(path, maximum = MAXIMUM_JSON_BYTES) {
+  const details = await regularFile(path);
+  if (details.size > maximum) throw new RangeError('Persisted job JSON exceeds its budget.');
+  return jsonCopy(JSON.parse(await readFile(path, 'utf8')), maximum);
+}
+
+async function hashFile(path, maximum) {
+  const before = await regularFile(path);
+  if (!before.size || before.size > maximum) throw new RangeError('Artifact exceeds its output byte budget or is empty.');
+  const handle = await open(path, 'r');
+  try {
+    const opened = await handle.stat();
+    if (opened.dev !== before.dev || opened.ino !== before.ino || opened.nlink !== 1) throw new Error('Artifact changed while opening.');
+    const hash = createHash('sha256');
+    let bytes = 0;
+    for await (const chunk of handle.createReadStream({ autoClose: false })) {
+      bytes += chunk.length;
+      if (bytes > maximum) throw new RangeError('Artifact exceeds its output byte budget.');
+      hash.update(chunk);
+    }
+    const after = await handle.stat();
+    if (bytes !== before.size || after.size !== before.size || after.mtimeMs !== before.mtimeMs || after.ctimeMs !== before.ctimeMs) throw new Error('Artifact changed while hashing.');
+    return { bytes, sha256: hash.digest('hex') };
+  } finally {
+    await handle.close();
+  }
+}
+
+/** Persistent controller. The trusted runner must stop its owned browser and encoder when aborted. */
+export async function createAgentRenderJobs({ root, run, limits: inputLimits = {} }) {
+  if (typeof root !== 'string' || !isAbsolute(root)) throw new TypeError('Job root must be an explicit absolute directory.');
+  if (typeof run !== 'function') throw new TypeError('run must be an async render callback.');
+  objectKeys(inputLimits, Object.keys(DEFAULT_LIMITS), 'limits');
+  const limits = { ...DEFAULT_LIMITS, ...inputLimits };
+  for (const [key, value] of Object.entries(limits)) boundedNumber(value, 1, DEFAULT_LIMITS[key], key, true);
+  root = resolve(root);
+  await mkdir(root, { recursive: true, mode: 0o700 });
+  const rootDetails = await lstat(root);
+  if (!rootDetails.isDirectory() || rootDetails.isSymbolicLink()) throw new Error('Job root must be a real directory without links.');
+  root = await realpath(root);
+  const lockPath = join(root, 'store.lock');
+  const lockToken = randomUUID();
+  const jobs = new Map();
+  let active;
+  let closed = false;
+  let admission;
+  let storeId;
+  let lockHeld = false;
+
+  async function acquireLock() {
+    try {
+      const lock = await open(lockPath, 'wx', 0o600);
+      try { await lock.writeFile(JSON.stringify({ schemaVersion: 1, pid: process.pid, token: lockToken })); }
+      finally { await lock.close(); }
+      lockHeld = true;
+    } catch (error) {
+      if (error.code !== 'EEXIST') throw error;
+      await regularFile(lockPath);
+      const owner = await readJson(lockPath, 4096);
+      objectKeys(owner, ['schemaVersion', 'pid', 'token'], 'store lock');
+      if (owner.schemaVersion !== 1 || !UUID.test(owner.token)) throw new Error('Unrecognized job store lock.');
+      boundedNumber(owner.pid, 1, 2147483647, 'lock process ID', true);
+      try {
+        process.kill(owner.pid, 0);
+        throw new Error('The job store is already owned by a live process.');
+      } catch (failure) {
+        if (failure.code !== 'ESRCH') throw failure;
+      }
+      throw new Error('Stale job store lock requires explicit repair. Verify that no process owns the store before removing store.lock.');
+    }
+  }
+
+  async function unlock() {
+    if (!lockHeld) return;
+    if ((await readJson(lockPath, 4096)).token !== lockToken) throw new Error('Job store lock ownership changed.');
+    await unlink(lockPath);
+    lockHeld = false;
+  }
+
+  async function directoryFor(jobId) {
+    if (!UUID.test(jobId)) throw new Error('Unknown job ID.');
+    const directory = join(root, jobId);
+    const details = await lstat(directory);
+    if (!details.isDirectory() || details.isSymbolicLink() || await realpath(directory) !== directory) throw new Error('Job directory must remain inside its owned store.');
+    const owner = await readJson(join(directory, 'owner.json'), 4096);
+    objectKeys(owner, ['schemaVersion', 'storeId', 'jobId'], 'job owner');
+    if (owner.schemaVersion !== 1 || owner.storeId !== storeId || owner.jobId !== jobId) throw new Error('Foreign job directory ownership.');
+    for (const filename of await readdir(directory)) {
+      if (!allowedFile(filename)) throw new Error(`Foreign job entry: ${filename}.`);
+      await regularFile(join(directory, filename));
+    }
+    return directory;
+  }
+
+  async function storeBytes() {
+    let bytes = 0;
+    for (const name of await readdir(root)) {
+      if (['store.json', 'store.lock'].includes(name)) {
+        bytes += (await regularFile(join(root, name))).size;
+      } else {
+        if (isPending(name)) {
+          const directory = await pendingDirectory(name);
+          for (const filename of await readdir(directory)) bytes += (await regularFile(join(directory, filename))).size;
+          continue;
+        }
+        if (!UUID.test(name)) throw new Error(`Foreign store entry: ${name}.`);
+        const directory = await directoryFor(name);
+        for (const filename of await readdir(directory)) bytes += (await regularFile(join(directory, filename))).size;
+      }
+    }
+    if (bytes > limits.maxStoreBytes) throw new RangeError('Job store exceeds its total byte budget. Release completed jobs.');
+    return bytes;
+  }
+
+  function isPending(name) {
+    return name.startsWith(`.pending-${storeId}-`) && UUID.test(name.slice(`.pending-${storeId}-`.length));
+  }
+
+  async function pendingDirectory(name) {
+    if (!isPending(name)) throw new Error('Unrecognized pending admission.');
+    const directory = join(root, name);
+    const details = await lstat(directory);
+    if (!details.isDirectory() || details.isSymbolicLink() || await realpath(directory) !== directory) throw new Error('Pending admission must remain inside its owned store.');
+    // Quarantine incomplete writes and foreign files; never interpret their contents.
+    for (const filename of await readdir(directory)) await regularFile(join(directory, filename));
+    return directory;
+  }
+
+  function getJob(jobId) {
+    if (typeof jobId !== 'string' || !UUID.test(jobId) || !jobs.has(jobId)) throw new Error('Unknown job ID.');
+    return jobs.get(jobId);
+  }
+
+  function persist(job, record = job.record) {
+    const text = JSON.stringify(record);
+    job.persistence = job.persistence.then(async () => {
+      const directory = await directoryFor(job.record.jobId);
+      const pending = join(directory, 'status.json.pending');
+      await writeFile(pending, text, { mode: 0o600 });
+      await rename(pending, join(directory, 'status.json'));
+    });
+    return job.persistence;
+  }
+
+  async function recover() {
+    const names = await readdir(root);
+    if (!names.includes('store.json')) {
+      if (names.some(name => name !== 'store.lock')) throw new Error('Job root contains foreign entries without store ownership.');
+      storeId = randomUUID();
+      await writeFile(join(root, 'store.json'), JSON.stringify({ schemaVersion: 1, storeId }), { flag: 'wx', mode: 0o600 });
+    } else {
+      const metadata = await readJson(join(root, 'store.json'), 4096);
+      objectKeys(metadata, ['schemaVersion', 'storeId'], 'store metadata');
+      if (metadata.schemaVersion !== 1 || !UUID.test(metadata.storeId)) throw new Error('Unsupported job store metadata.');
+      storeId = metadata.storeId;
+    }
+    for (const name of await readdir(root)) {
+      if (['store.json', 'store.lock'].includes(name)) continue;
+      if (isPending(name)) {
+        const directory = await pendingDirectory(name);
+        if (!(await readdir(directory)).length) await rmdir(directory);
+        continue;
+      }
+      if (!UUID.test(name)) throw new Error(`Foreign store entry: ${name}.`);
+      const directory = await directoryFor(name);
+      const record = await readJson(join(directory, 'status.json'));
+      objectKeys(record, ['schemaVersion', 'jobId', 'sourceRevision', 'state', 'settings', 'progress', 'artifacts', 'metrics', 'reason'], 'job status');
+      if (record.schemaVersion !== 1 || record.jobId !== name || !STATES.includes(record.state)) throw new Error('Invalid persisted job status.');
+      boundedNumber(record.sourceRevision, 0, Number.MAX_SAFE_INTEGER, 'source revision', true);
+      const snapshot = await readJson(join(directory, 'snapshot.json'));
+      objectKeys(snapshot, ['recipe', 'clips'], 'snapshot');
+      validateClips(snapshot.clips ?? []);
+      if (!snapshot.recipe || typeof snapshot.recipe !== 'object' || Array.isArray(snapshot.recipe)) throw new Error('Persisted snapshot recipe must be an object.');
+      if ((await readdir(directory)).includes('asset.glb') && (await regularFile(join(directory, 'asset.glb'))).size > MAXIMUM_ASSET_BYTES) throw new Error('Persisted asset exceeds its byte budget.');
+      if (snapshot.recipe.format === '67js.asset') {
+        const asset = await hashFile(join(directory, 'asset.glb'), MAXIMUM_ASSET_BYTES);
+        if (asset.sha256 !== snapshot.recipe.assetId) throw new Error('Persisted asset does not match its recipe digest.');
+      }
+      const { frameCount, ...inputSettings } = record.settings;
+      const settings = settingsFrom(inputSettings, snapshot.clips ?? []);
+      if (frameCount !== settings.frameCount) throw new Error('Invalid persisted frame count.');
+      record.settings = settings;
+      objectKeys(record.progress, ['frames', 'maximumPendingFrames'], 'persisted progress');
+      boundedNumber(record.progress.frames, 0, settings.frameCount, 'persisted frames', true);
+      boundedNumber(record.progress.maximumPendingFrames, 0, 1, 'persisted pending frames', true);
+      if (record.metrics !== undefined) record.metrics = jsonCopy(record.metrics, 65536);
+      if (record.reason !== undefined && (typeof record.reason !== 'string' || record.reason.length > 2048)) throw new Error('Invalid persisted job reason.');
+      const namesAllowed = artifactNames(settings.kind);
+      if (!Array.isArray(record.artifacts) || record.artifacts.length > namesAllowed.length) throw new Error('Invalid persisted artifacts.');
+      const seen = new Set();
+      for (const artifact of record.artifacts) {
+        objectKeys(artifact, ['filename', 'mimeType', 'bytes', 'sha256'], 'artifact');
+        if (!namesAllowed.includes(artifact.filename) || seen.has(artifact.filename)) throw new Error('Invalid persisted artifact name.');
+        seen.add(artifact.filename);
+        const actual = await hashFile(join(directory, artifact.filename), settings.kind === 'video' ? limits.maxOutputBytes : limits.maxFrameBytes);
+        if (artifact.mimeType !== (settings.kind === 'video' ? 'video/mp4' : 'image/png') || artifact.bytes !== actual.bytes || artifact.sha256 !== actual.sha256) throw new Error('Persisted artifact integrity failed.');
+      }
+      if (record.state === 'completed' && record.artifacts.length !== namesAllowed.length) throw new Error('Completed job is missing its artifacts.');
+      const job = { record, persistence: Promise.resolve(), settled: Promise.resolve() };
+      jobs.set(name, job);
+      if (!TERMINAL.has(record.state)) {
+        record.state = 'interrupted';
+        record.reason = 'The previous process stopped before the job finished.';
+        record.artifacts = [];
+        await persist(job);
+      }
+    }
+    if (jobs.size > limits.maxRecords) throw new RangeError('Job store exceeds its record budget.');
+    await storeBytes();
+  }
+
+  function validateClips(clips) {
+    if (!Array.isArray(clips) || clips.length > 256) throw new TypeError('Snapshot clips must contain at most 256 durations.');
+    for (const clip of clips) {
+      objectKeys(clip, ['duration'], 'clip');
+      boundedNumber(clip.duration, 0, 3600, 'clip duration');
+    }
+  }
+
+  async function finish(job, snapshot) {
+    const { record, controller } = job;
+    const timer = setTimeout(() => {
+      job.failure = 'Render job exceeded its elapsed deadline.';
+      record.state = 'cancelling';
+      record.reason = job.failure;
+      controller.abort(new Error(job.failure));
+      persist(job).catch(() => {});
+    }, limits.deadlineMs);
+    const renamed = [];
+    try {
+      if (controller.signal.aborted) throw controller.signal.reason;
+      record.state = 'running';
+      await persist(job);
+      const runnerDirectory = await directoryFor(record.jobId);
+      if (controller.signal.aborted) throw controller.signal.reason;
+      const completed = await run({
+        jobId: record.jobId, directory: runnerDirectory, snapshot, settings: structuredClone(record.settings), signal: controller.signal,
+        progress(update) {
+          objectKeys(update, ['frames', 'maximumPendingFrames'], 'progress');
+          if (controller.signal.aborted) throw controller.signal.reason;
+          if (record.state !== 'running') throw new Error('Progress is only accepted while the callback is running.');
+          const frames = boundedNumber(update.frames ?? record.progress.frames, record.progress.frames, record.settings.frameCount, 'captured frames', true);
+          const maximumPendingFrames = boundedNumber(update.maximumPendingFrames ?? record.progress.maximumPendingFrames, 0, 1, 'pending frames', true);
+          record.progress = { frames, maximumPendingFrames: Math.max(record.progress.maximumPendingFrames, maximumPendingFrames) };
+          return persist(job);
+        },
+      });
+      if (controller.signal.aborted) throw controller.signal.reason;
+      record.state = 'finalizing';
+      await persist(job);
+      objectKeys(completed, ['artifacts', 'metrics'], 'runner result');
+      const expected = artifactNames(record.settings.kind);
+      if (!Array.isArray(completed.artifacts) || completed.artifacts.length !== expected.length) throw new Error('Runner did not return the required fixed artifacts.');
+      const directory = await directoryFor(record.jobId);
+      const metrics = jsonCopy(completed.metrics ?? {}, 65536);
+      const artifacts = [];
+      const seen = new Set();
+      let outputBytes = 0;
+      for (const output of completed.artifacts) {
+        objectKeys(output, ['temporary', 'filename', 'mimeType'], 'runner artifact');
+        if (!expected.includes(output.filename) || seen.has(output.filename) || output.temporary !== `${output.filename}.partial` || output.mimeType !== (record.settings.kind === 'video' ? 'video/mp4' : 'image/png')) throw new Error('Runner artifact must use the fixed filename and MIME type.');
+        seen.add(output.filename);
+        const artifact = { filename: output.filename, mimeType: output.mimeType, ...await hashFile(join(directory, output.temporary), record.settings.kind === 'video' ? limits.maxOutputBytes : limits.maxFrameBytes) };
+        outputBytes += artifact.bytes;
+        if (outputBytes > limits.maxOutputBytes) throw new RangeError('Job exceeds its combined output byte budget.');
+        artifacts.push(artifact);
+      }
+      await storeBytes();
+      if (controller.signal.aborted) throw controller.signal.reason;
+      for (const artifact of artifacts) {
+        if (controller.signal.aborted) throw controller.signal.reason;
+        const target = join(directory, artifact.filename);
+        try { await lstat(target); throw new Error('Final artifact already exists.'); }
+        catch (error) { if (error.code !== 'ENOENT') throw error; }
+        await rename(join(directory, `${artifact.filename}.partial`), target);
+        renamed.push(artifact.filename);
+      }
+      if (controller.signal.aborted) throw controller.signal.reason;
+      const completedRecord = { ...record, artifacts, metrics, state: 'completed' };
+      await persist(job, completedRecord);
+      if (controller.signal.aborted) throw controller.signal.reason;
+      Object.assign(record, completedRecord);
+    } catch (error) {
+      const failedRecord = { ...record, state: controller.signal.aborted && !job.failure ? 'cancelled' : 'failed', reason: String(job.failure ?? error?.message ?? error).slice(0, 2048), artifacts: [] };
+      try {
+        const directory = await directoryFor(record.jobId);
+        for (const filename of renamed) {
+          await regularFile(join(directory, filename));
+          await rename(join(directory, filename), join(directory, `${filename}.partial`));
+        }
+        await persist(job, failedRecord);
+      } catch (failure) {
+        failedRecord.reason = `${failedRecord.reason} Store cleanup or persistence failed: ${failure.message}`.slice(0, 2048);
+      }
+      Object.assign(record, failedRecord);
+    } finally {
+      clearTimeout(timer);
+      if (active === job) active = undefined;
+    }
+  }
+
+  await acquireLock();
+  try { await recover(); }
+  catch (error) { await unlock(); throw error; }
+
+  return Object.freeze({
+    limits: Object.freeze(limits),
+    async submit(input) {
+      if (closed) throw new Error('Render job controller is closed.');
+      if (active || admission) throw new Error('A render job is already active. No additional jobs are queued.');
+      objectKeys(input, ['sourceRevision', 'snapshot', 'settings'], 'submission');
+      const sourceRevision = boundedNumber(input.sourceRevision, 0, Number.MAX_SAFE_INTEGER, 'source revision', true);
+      objectKeys(input.snapshot, ['recipe', 'assetBytes', 'clips'], 'snapshot');
+      const clips = jsonCopy(input.snapshot.clips ?? []);
+      validateClips(clips);
+      const recipe = jsonCopy(input.snapshot.recipe);
+      if (!recipe || typeof recipe !== 'object' || Array.isArray(recipe)) throw new TypeError('Snapshot recipe must be a JSON object.');
+      const snapshotMetadata = jsonCopy({ recipe, clips });
+      const settings = settingsFrom(input.settings, clips);
+      if (input.snapshot.assetBytes !== undefined && (!Buffer.isBuffer(input.snapshot.assetBytes) || input.snapshot.assetBytes.length > MAXIMUM_ASSET_BYTES || !input.snapshot.assetBytes.length)) throw new RangeError('Asset snapshot must be a nonempty Buffer of at most 16 MiB.');
+      const snapshot = { recipe, clips, ...(input.snapshot.assetBytes ? { assetBytes: Buffer.from(input.snapshot.assetBytes) } : {}) };
+      if (recipe.format === '67js.asset' && (!snapshot.assetBytes || createHash('sha256').update(snapshot.assetBytes).digest('hex') !== recipe.assetId)) throw new Error('Asset snapshot bytes must match the recipe SHA256 assetId.');
+      const operation = (async () => {
+        if (jobs.size >= limits.maxRecords) throw new RangeError('Job record budget exhausted. Release a finished job.');
+        const snapshotText = JSON.stringify(snapshotMetadata);
+        const existingBytes = await storeBytes();
+        if (existingBytes + Buffer.byteLength(snapshotText) + (snapshot.assetBytes?.length ?? 0) + limits.maxOutputBytes + 131072 > limits.maxStoreBytes) throw new RangeError('Job store lacks space for the snapshot and output reservation.');
+        const jobId = randomUUID();
+        const directory = join(root, jobId);
+        const staging = join(root, `.pending-${storeId}-${jobId}`);
+        await mkdir(staging, { mode: 0o700 });
+        await writeFile(join(staging, 'owner.json'), JSON.stringify({ schemaVersion: 1, storeId, jobId }), { flag: 'wx', mode: 0o600 });
+        await writeFile(join(staging, 'snapshot.json'), snapshotText, { flag: 'wx', mode: 0o600 });
+        if (snapshot.assetBytes) await writeFile(join(staging, 'asset.glb'), snapshot.assetBytes, { flag: 'wx', mode: 0o600 });
+        const record = { schemaVersion: 1, jobId, sourceRevision, state: 'queued', settings, progress: { frames: 0, maximumPendingFrames: 0 }, artifacts: [] };
+        await writeFile(join(staging, 'status.json'), JSON.stringify(record), { flag: 'wx', mode: 0o600 });
+        await rename(staging, directory);
+        const job = { record, controller: new AbortController(), persistence: Promise.resolve() };
+        jobs.set(jobId, job);
+        active = job;
+        const result = structuredClone(record);
+        job.settled = Promise.resolve().then(() => finish(job, snapshot));
+        job.settled.catch(() => {});
+        return result;
+      })();
+      admission = operation;
+      try { return await operation; }
+      finally { admission = undefined; }
+    },
+    status(jobId) { return structuredClone(getJob(jobId).record); },
+    list() { return [...jobs.values()].map(job => structuredClone(job.record)); },
+    cancel(jobId) {
+      if (closed) throw new Error('Render job controller is closed.');
+      const job = getJob(jobId);
+      if (!TERMINAL.has(job.record.state)) {
+        job.record.state = 'cancelling';
+        job.controller.abort(new Error('Render job cancelled.'));
+        persist(job).catch(() => {});
+      }
+      return structuredClone(job.record);
+    },
+    result(jobId) {
+      const record = getJob(jobId).record;
+      if (record.state !== 'completed') throw new Error(`Render job is ${record.state}. No completed result is available.`);
+      return structuredClone({ jobId, sourceRevision: record.sourceRevision, artifacts: record.artifacts, metrics: record.metrics });
+    },
+    async release(jobId) {
+      if (closed) throw new Error('Render job controller is closed.');
+      const job = getJob(jobId);
+      if (active === job || !TERMINAL.has(job.record.state)) throw new Error('Cancel and settle the active job before release.');
+      await job.persistence;
+      const directory = await directoryFor(jobId);
+      for (const filename of await readdir(directory)) {
+        await regularFile(join(directory, filename));
+        await unlink(join(directory, filename));
+      }
+      await rmdir(directory);
+      jobs.delete(jobId);
+      return { jobId, released: true };
+    },
+    async close() {
+      closed = true;
+      await admission?.catch(() => {});
+      if (active) {
+        const job = active;
+        job.record.state = 'cancelling';
+        job.controller.abort(new Error('Render job controller closed.'));
+        await persist(job);
+        let timer;
+        try {
+          await Promise.race([job.settled, new Promise((resolveWait, reject) => { timer = setTimeout(() => reject(new Error('Render callback did not settle after cancellation. Store ownership remains locked.')), limits.cleanupMs); })]);
+        } finally { clearTimeout(timer); }
+      }
+      for (const job of jobs.values()) await job.persistence;
+      await unlock();
+    },
+  });
+}

@@ -97,7 +97,8 @@ test('SDK advertises the complete strict JSON contract and truthful annotations'
   assert.deepEqual(tools.map(tool => tool.name).sort(), [
     'scene_apply', 'scene_asset_catalog', 'scene_capabilities', 'scene_checkpoint', 'scene_create', 'scene_create_asset', 'scene_dispose',
     'scene_export_recipe', 'scene_inspect', 'scene_look', 'scene_release_checkpoint', 'scene_restore',
-  ]);
+    'scene_render_cancel', 'scene_render_release', 'scene_render_result', 'scene_render_status', 'scene_render_submit',
+  ].sort());
   for (const tool of tools) {
     assert.equal(tool.inputSchema.type, 'object');
     assert.equal(tool.inputSchema.additionalProperties, false);
@@ -130,6 +131,10 @@ test('SDK rejects unknown fields, missing revisions, invalid vectors and oversiz
   const boundary = await connect(context);
   const { client, sessionId } = boundary;
   await rejected(client, 'scene_capabilities', { javascript: 'process.exit()' });
+  await rejected(client, 'scene_render_submit', { sessionId, settings: { kind: 'video', width: 320, height: 320 } });
+  await rejected(client, 'scene_render_submit', { sessionId, expectedRevision: 0, settings: { kind: 'video', width: 320, height: 320, output: '../video.mp4' } });
+  await rejected(client, 'scene_render_submit', { sessionId, expectedRevision: 0, settings: { kind: 'video', width: 320, height: 320, fps: 31 } });
+  await rejected(client, 'scene_render_result', { jobId: '../video.mp4' });
   await rejected(client, 'scene_inspect', { sessionId: 'not-a-uuid' });
   await rejected(client, 'scene_look', { sessionId, width: 1025 });
   await rejected(client, 'scene_asset_catalog', { path: 'C:/private/file.glb' });

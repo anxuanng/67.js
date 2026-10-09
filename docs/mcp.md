@@ -4,7 +4,8 @@ The `67js-mcp` stdio server is included in npm release `0.5.0` and later.
 It uses the maintained MCP TypeScript SDK v2 server and a local browser runtime.
 The [official SDK documentation](https://ts.sdk.modelcontextprotocol.io/v2/) describes its transport and protocol APIs.
 
-The server exposes twelve tools for bounded JSON scene authoring and local GLB imports.
+Release `0.5.0` exposes twelve tools for bounded JSON scene authoring and local GLB imports.
+Release `0.6.0` adds five render job tools for PNG images, still sequences and MP4 video.
 It renders one active scene and returns PNG images through MCP image content.
 Tool results also contain JSON text and structured metadata.
 The image bytes appear only in the image content block.
@@ -25,7 +26,7 @@ The MCP connection uses stdin and stdout, without an HTTP MCP listener.
    ```
 
    Run the installed command with `npx 67js-mcp --backend gpu --memory 192`.
-   For a standalone launch, use `npx --package @codepawlhq/67js@0.5.0 67js-mcp --backend gpu --memory 192`.
+   For a standalone launch, use `npx --package @codepawlhq/67js@0.6.0 67js-mcp --backend gpu --memory 192`.
    `67js-mcp --help` lists options. `67js-mcp --version` reports the installed version.
 
 2. Configure your MCP client with absolute paths to Node and the installed CLI:
@@ -103,6 +104,11 @@ Inspect or export the recipe before retrying. Context loss still permits recipe 
 | `scene_release_checkpoint` | `sessionId`, `checkpointId` | Release confirmation |
 | `scene_export_recipe` | `sessionId` | Canonical recipe and revision |
 | `scene_dispose` | `sessionId` | Disposal confirmation |
+| `scene_render_submit` | `sessionId`, `expectedRevision`, `settings` | Snapshot job ID and queued record |
+| `scene_render_status` | `jobId` | State and durable frame progress |
+| `scene_render_cancel` | `jobId` | Cancellation acknowledgement |
+| `scene_render_result` | `jobId` | Completed output paths, hashes and metrics |
+| `scene_render_release` | `jobId` | Confirmation that owned job files were removed |
 
 The recipe uses `format: '67js.scene'` and `schemaVersion: 1`.
 Supported geometry types are `box`, `cylinder`, `sphere`, `torus`, `lathe`, `extrude`, and `tube`.
@@ -175,7 +181,10 @@ The [asset scene contract](agent-asset.md) defines root transforms, material ove
 Imported scenes retain their decoded topology. Mesh membership edits remain specific to procedural scenes.
 Their bounds describe authored base vertices in the sampled world transforms, without claiming deformed skin or morph bounds.
 
-The tools expose no arbitrary JavaScript execution, URLs, arbitrary file paths, animation track authoring or render jobs.
+The tools expose no arbitrary JavaScript execution, URLs, arbitrary caller-selected file paths or animation track authoring.
+Render jobs use a configured private store and fixed output filenames.
+
+See [render jobs](agent-render-jobs.md) for the snapshot workflow and storage limits.
 Embedded texture decoding uses private browser blob URLs. Remote asset requests remain blocked.
 The transport supplies a visual feedback loop, but visual quality still depends on the authored scene and image assessment.
 MCP support does not establish Blender feature parity.

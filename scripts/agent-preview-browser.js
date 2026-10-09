@@ -61,7 +61,8 @@ function renderInfo(renderer) {
   };
 }
 
-function draw(record) {
+function draw(record, time = 0) {
+  if (!record.renderer) throw new Error('The scene renderer is leased to a render job.');
   if (record.renderer.context.isContextLost()) {
     throw new Error('The render context was lost. Export the recipe and dispose this session.');
   }
@@ -84,7 +85,7 @@ function draw(record) {
     record.shadowKey = shadowKey;
   }
   record.renderer.world = environment.world;
-  record.renderer.render({ ...record.scene.camera, environment, effects, exposure: effects.exposure, time: 0 });
+  record.renderer.render({ ...record.scene.camera, environment, effects, exposure: effects.exposure, time });
   const error = record.renderer.context.getError();
   if (error !== 0) {
     throw new Error(`WebGL render failed with error ${error}.`);
@@ -120,6 +121,27 @@ function mutationStatus(record) {
   }
 }
 
+function resetCanvas() {
+  canvas.getContext('webgl2')?.getExtension('WEBGL_lose_context')?.loseContext();
+  const replacement = document.createElement('canvas');
+  canvas.replaceWith(replacement);
+  canvas = replacement;
+}
+
+function initializeRenderer(scene, { memoryBudgetMiB, backend }) {
+  return new Renderer67(canvas, scene.parts, {
+    ground: false,
+    hdr: true,
+    depth: true,
+    world: scene.environment.world,
+    environment: scene.environment,
+    shadowBounds: resolveAgentShadow(scene.shadow, scene.environment.lightDirection),
+    pixelRatio: 1,
+    samples: backend === 'cpu' ? 1 : 4,
+    memoryBudgetMiB,
+  });
+}
+
 function createPreview(scene, { sessionId, memoryBudgetMiB, backend }, asset) {
   if (active) {
     throw new Error('Dispose the current scene before creating another.');
@@ -127,18 +149,9 @@ function createPreview(scene, { sessionId, memoryBudgetMiB, backend }, asset) {
   validatePreviewCamera(scene.camera);
   let renderer;
   try {
-    renderer = new Renderer67(canvas, scene.parts, {
-      ground: false,
-      hdr: true,
-      depth: true,
-      world: scene.environment.world,
-      environment: scene.environment,
-      shadowBounds: resolveAgentShadow(scene.shadow, scene.environment.lightDirection),
-      pixelRatio: 1,
-      samples: backend === 'cpu' ? 1 : 4,
-      memoryBudgetMiB,
-    });
-    const record = { scene, renderer, asset, sessionId, checkpoints: new Map(), rendererTopology: scene.topologyRevision };
+    renderer = initializeRenderer(scene, { memoryBudgetMiB, backend });
+    const record = { scene, renderer, asset, sessionId, options: { memoryBudgetMiB, backend },
+      checkpoints: new Map(), rendererTopology: scene.topologyRevision };
     draw(record);
     const result = status(record);
     if (backend === 'gpu' && /swiftshader|llvmpipe|software/i.test(result.render.graphics)) {
@@ -149,15 +162,51 @@ function createPreview(scene, { sessionId, memoryBudgetMiB, backend }, asset) {
   } catch (error) {
     renderer?.dispose();
     // A throwing constructor may already own GPU objects without returning an instance.
-    canvas.getContext('webgl2')?.getExtension('WEBGL_lose_context')?.loseContext();
-    const replacement = document.createElement('canvas');
-    canvas.replaceWith(replacement);
-    canvas = replacement;
+    resetCanvas();
     throw error;
   }
 }
 
 window.__agentPreview = {
+  snapshot({ sessionId, expectedRevision }) {
+    const record = requireSession(sessionId);
+    if (record.scene.revision !== expectedRevision) throw new Error('Stale revision for render snapshot.');
+    return { sourceRevision: record.scene.revision, recipe: record.scene.exportRecipe(),
+      clips: record.asset?.animations.map(clip => ({ duration: clip.duration })) ?? [] };
+  },
+  suspend({ sessionId }) {
+    const record = requireSession(sessionId);
+    if (!record.renderer) throw new Error('Scene renderer is already suspended.');
+    record.renderer.dispose();
+    record.renderer = null;
+    resetCanvas();
+    return { sessionId, revision: record.scene.revision, suspended: true };
+  },
+  resume({ sessionId }) {
+    const record = requireSession(sessionId);
+    if (record.renderer) throw new Error('Scene renderer is already active.');
+    try {
+      record.renderer = initializeRenderer(record.scene, record.options);
+      record.rendererTopology = record.scene.topologyRevision;
+      record.shadowKey = null;
+      draw(record);
+      return status(record);
+    } catch (error) {
+      record.renderer?.dispose();
+      record.renderer = null;
+      resetCanvas();
+      throw error;
+    }
+  },
+  frame({ sessionId, animation, rendererTime = 0 }) {
+    const record = requireSession(sessionId);
+    if (!Number.isFinite(rendererTime) || rendererTime < 0 || rendererTime > 3600) throw new RangeError('Invalid render time.');
+    if (animation) {
+      record.scene.apply([{ type: 'set-animation', clip: animation.clip, time: animation.time }], { expectedRevision: record.scene.revision });
+    }
+    draw(record, rendererTime);
+    return renderInfo(record.renderer);
+  },
   create(input) {
     if (active) throw new Error('Dispose the current scene before creating another.');
     return createPreview(createAgentScene(input.recipe), input);
@@ -244,7 +293,7 @@ window.__agentPreview = {
   dispose({ sessionId }) {
     const record = requireSession(sessionId);
     try {
-      record.renderer.dispose();
+      record.renderer?.dispose();
     } finally {
       record.asset?.dispose();
     }

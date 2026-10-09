@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.6.0
+
+- Add five MCP tools for asynchronous snapshot rendering, progress, cancellation, results and output release.
+- Render one PNG, eight stills or a silent H.264 MP4 while preserving the source pose, revision and checkpoints.
+- Retain bounded job records and verify completed artifact hashes when reopening the private store.
+- Share the streamed FFmpeg encoder with the offline renderer and keep one pending frame.
+- Prevent repeated MCP builds from embedding the browser preview in the Node server bundle.
+
 ## 0.5.0
 
 - Add atomic agent commands for creating, removing and rebinding nodes and shared resources, with bounded checkpoint geometry ownership.

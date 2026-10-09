@@ -8,6 +8,7 @@ The installed package determines available APIs. Release metadata describes the 
 ## Read only what your task needs
 
 Version `0.5.0` adds `67js/addons/agent-scene` and the `67js-mcp` command.
+Version `0.6.0` adds asynchronous snapshot render jobs. Read `/agent-render-jobs.md` for submission, progress, cancellation and artifact results.
 Read `/agent-scene.md` for versioned JSON recipes, stable IDs, expected revisions, atomic edits and bounded checkpoints.
 Use `session.inspect()` for compact object facts and `session.exportRecipe()` for detached JSON.
 Keep renderer-facing geometry immutable. Call `renderer.updateParts(session.parts)` after a successful edit or restore.

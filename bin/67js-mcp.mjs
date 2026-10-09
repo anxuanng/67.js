@@ -9,9 +9,11 @@ if (argumentsValue.length === 1 && argumentsValue[0] === '--version') {
   console.log(`67js-mcp ${packageMetadata.version}
 Usage: 67js-mcp [--backend gpu|cpu] [--memory 32..256]
                  [--browser <Chrome/Chromium executable>] [--assets <absolute GLB directory>]
+                 [--jobs <absolute private output directory>] [--ffmpeg <absolute executable>]
 
 Connect an MCP client over stdin/stdout. Chrome starts on the first scene.
 Uses installed Chrome by default; supply --browser for another Chromium executable.
+Render jobs require --jobs; MP4 encoding uses FFmpeg on PATH unless --ffmpeg is supplied.
 Documentation: https://67js.codepawl.com/mcp.md`);
 } else {
   try {

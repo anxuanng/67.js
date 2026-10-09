@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { resolve, dirname, basename } from 'node:path';
 import { FILM_DURATION } from '../src/film.js';
 import { RENDER_PRESETS } from '../src/budget.js';
+import { createFrameEncoder } from './frame-encoder.mjs';
 
 function argumentsFrom(values) {
   const result = {};
@@ -109,7 +110,6 @@ export async function renderMedia(values = process.argv.slice(2)) {
   const server = spawn(process.execPath, ['node_modules/vite/bin/vite.js', '--config', 'scripts/render-vite.config.mjs', '--host', '127.0.0.1', '--port', '5181', '--strictPort'], { cwd: root, windowsHide: true, stdio: 'pipe' });
   let browser;
   let encoder;
-  let encoderError = '';
   let peakNodeBytes = 0;
   let peakBrowserHeap = 0;
   let peakEstimatedRenderBytes = 0;
@@ -211,49 +211,16 @@ export async function renderMedia(values = process.argv.slice(2)) {
       const audioPath = plan.audio ? resolve(plan.audio) : null;
       if (options.audio && !existsSync(audioPath)) throw new Error('The selected audio file was not found.');
       const audioArguments = audioPath && existsSync(audioPath) ? ['-ss', String(start), '-i', audioPath] : [];
-      const codecArguments = encoderBackend === 'gpu' ? ['-c:v', 'h264_nvenc', '-preset', 'p5', '-cq', '20'] : ['-c:v', 'libx264', '-preset', 'fast', '-crf', '18', '-threads', '2'];
-      const encodingArguments = ['-hide_banner', '-loglevel', 'error', '-y', '-f', 'image2pipe', '-framerate', String(fps), '-vcodec', captureFormat === 'jpeg' ? 'mjpeg' : 'png', '-i', 'pipe:0', ...audioArguments, ...codecArguments, '-pix_fmt', 'yuv420p', '-color_primaries', 'bt709', '-color_trc', 'bt709', '-colorspace', 'bt709', '-movflags', '+faststart', ...(audioArguments.length ? ['-c:a', 'aac', '-b:a', '192k', '-shortest'] : []), output];
-      encoder = spawn(ffmpeg, encodingArguments, { windowsHide: true, stdio: ['pipe', 'ignore', 'pipe'] });
-      const retainEncoderError = value => {
-        encoderError = (encoderError + String(value)).slice(-8192);
-      };
-      encoder.stderr.on('data', retainEncoderError);
-      encoder.on('error', error => retainEncoderError(error.message));
-      encoder.stdin.on('error', error => retainEncoderError(error.message));
-      const finished = new Promise(resolveFinished => {
-        encoder.once('error', () => resolveFinished(-1));
-        encoder.once('close', resolveFinished);
-      });
+      encoder = createFrameEncoder({ executable: ffmpeg, output, fps, format: captureFormat,
+        backend: encoderBackend, audioArguments, maximumFrameBytes: 64 * 1024 * 1024,
+        maximumOutputBytes: Number.MAX_SAFE_INTEGER, timeoutMs: 30000 });
       const frameCount = Math.ceil(duration * fps);
       const captureSequenceStarted = performance.now();
       for (let frame = 0; frame < frameCount; frame++) {
         const image = await capture(start + frame / fps);
         maximumPendingFrames = Math.max(maximumPendingFrames, 1);
-        if (encoder.exitCode !== null) throw new Error(`Video encoder stopped: ${encoderError}`);
-        if (encoder.stdin.destroyed) throw new Error(`Video encoder stopped: ${encoderError}`);
-        if (!encoder.stdin.write(image)) {
-          const waitStarted = performance.now();
-          await new Promise((resolveDrain, rejectDrain) => {
-            const cleanup = () => {
-              encoder.stdin.off('drain', drained);
-              encoder.stdin.off('error', failed);
-              encoder.off('close', closed);
-            };
-            const drained = () => {
-              cleanup();
-              resolveDrain();
-            };
-            const failed = error => {
-              cleanup();
-              rejectDrain(error);
-            };
-            const closed = () => failed(new Error(`Video encoder stopped before draining: ${encoderError}`));
-            encoder.stdin.once('drain', drained);
-            encoder.stdin.once('error', failed);
-            encoder.once('close', closed);
-          });
-          stageTimings.encoderBackpressureSeconds += (performance.now() - waitStarted) / 1000;
-        }
+        await encoder.writeFrame(image);
+        stageTimings.encoderBackpressureSeconds = encoder.metrics.backpressureSeconds;
         if (frame % 48 === 0) {
           const { usedSize } = await session.send('Runtime.getHeapUsage');
           peakBrowserHeap = Math.max(peakBrowserHeap, usedSize);
@@ -265,11 +232,8 @@ export async function renderMedia(values = process.argv.slice(2)) {
           console.log(message);
         }
       }
-      encoder.stdin.end();
-      const finishStarted = performance.now();
-      const exitCode = await finished;
-      stageTimings.encoderFinishSeconds = (performance.now() - finishStarted) / 1000;
-      if (exitCode !== 0) throw new Error(`Video encoding failed: ${encoderError}`);
+      const encoding = await encoder.finish();
+      stageTimings.encoderFinishSeconds = encoding.finishSeconds;
     } else if (kind === 'stills') {
       const stillTimes = scene === 'film' && start === 0 && options.duration === undefined
         ? [23, 49, 59, 101, 114, 149, 158, 182]
@@ -295,9 +259,12 @@ export async function renderMedia(values = process.argv.slice(2)) {
     await writeFile(`${output}.json`, JSON.stringify(report, null, 2));
     console.log(JSON.stringify(report, null, 2));
   } finally {
-    if (encoder && encoder.exitCode === null) encoder.kill();
-    await browser?.close();
-    server.kill();
+    try {
+      await encoder?.close();
+    } finally {
+      try { await browser?.close(); }
+      finally { server.kill(); }
+    }
   }
 }
 

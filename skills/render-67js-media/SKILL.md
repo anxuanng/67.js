@@ -9,6 +9,8 @@ license: MIT
 Locate the 67.js checkout and read its `scripts/render-media.mjs` and `src/budget.js`.
 Read [rendering.md](references/rendering.md) for commands, backends and measurement limits.
 Use the repository pipeline rather than constructing a parallel exporter.
+For MCP snapshot jobs, read the checkout's `docs/agent-render-jobs.md` and verify source versus published support.
+Configure a private job store. Poll status after cancellation before resuming preview edits.
 
 ## Choose and render
 

@@ -108,13 +108,13 @@ for (const era of ['modern', 'legacy']) {
     const connectMs = performance.now() - start;
     processId = transport.pid;
     assert.equal(client.getServerVersion().version, metadata.version);
-    assert.equal((await client.listTools()).tools.length, 12);
+    assert.equal((await client.listTools()).tools.length, 17);
     const capabilities = (await call('scene_capabilities')).structuredContent;
     assert.equal(capabilities.phase, 'idle');
     assert.equal(capabilities.preview.maximumActiveScenes, 1);
     assert.equal(capabilities.availableIn, metadata.version);
     if (protocolOnly) {
-      results.push({ era, tools: 12, connectMs, browserStarted: false });
+      results.push({ era, tools: 17, connectMs, browserStarted: false });
     } else {
       const created = (await call('scene_create', { recipe: createAgentPreviewFixture() })).structuredContent;
       const before = await image(created.sessionId);
@@ -145,7 +145,7 @@ for (const era of ['modern', 'legacy']) {
       assert.equal(exported.recipe.animation.time, 1.1);
       await mkdir('artifacts', { recursive: true });
       await writeFile(`artifacts/mcp-package-${era}.png`, bent);
-      results.push({ era, tools: 12, connectMs, importedTexture: true, importedSkin: true, undoPngExact: true, reverseSeekPngExact: true });
+      results.push({ era, tools: 17, connectMs, importedTexture: true, importedSkin: true, undoPngExact: true, reverseSeekPngExact: true });
       // Keep the final rig active to prove EOF closes its renderer and owned browser.
     }
   } finally {

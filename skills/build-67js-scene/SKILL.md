@@ -20,7 +20,7 @@ Use `simplify-code` and `engineering-workflows` for implementation.
 - Local lights use the renderer environment and the checkout's `docs/lighting.md`.
 - Depth-clipped fog uses `{ hdr: true, depth: true }` and the checkout's `docs/volumetric.md`.
 - A skeletal asset uses `src/skinning.js`, `src/gltf.js` and the checkout's `docs/skinning.md`.
-- Relative facial or shape deformation uses `src/morph.js` and the checkout's `docs/morph-targets.md`; check source versus published support first.
+- Relative facial or shape deformation uses `src/morph.js` and the checkout's `docs/morph-targets.md`. Check source versus published support first.
 - Recorded contacts or articulated physics use optional `src/physics.js` and the checkout's `docs/physics.md`.
 - A flat scene or axis view uses `src/canvas2d.js`, `src/camera.js` and `src/view2d.js`.
 - A GLB asset viewer uses the optional `src/gltf.js` addon and `src/asset-viewer.js`.
@@ -29,8 +29,9 @@ Use `simplify-code` and `engineering-workflows` for implementation.
 - Static contact, ray hits or closed-solid containment use optional `src/mesh-query.js` and the checkout's `docs/mesh-query.md`.
 - Static vertex wrapping uses optional `src/shrinkwrap.js` and the checkout's `docs/shrinkwrap.md`.
 - A rigid accessory on a morphing or skinned surface uses optional `src/surface-attachment.js` and `docs/surface-attachment.md`.
-- Agent scene recipes use optional `src/agent-scene.js` and `docs/agent-scene.md`; verify source versus published availability before importing.
-- Agent tool calls use the source-only stdio server in `scripts/mcp-server.mjs`; read `docs/mcp.md` for launch, tool schemas and persistent PNG feedback.
+- Agent scene recipes use optional `src/agent-scene.js` and `docs/agent-scene.md`. Verify source versus published availability before importing.
+- Agent tool calls use the installed `67js-mcp` stdio server from release `0.5.0` onward. Read `docs/mcp.md` for launch and PNG feedback.
+- Agent render jobs use `docs/agent-render-jobs.md`. Check source versus published support, configure a private store and poll until terminal.
 - An image or video export uses `render-67js-media`.
 
 Read [scene-contract.md](references/scene-contract.md) before creating parts or changing materials.
