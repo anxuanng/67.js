@@ -103,8 +103,10 @@ renderer.render(camera);
 
 Translation, rotation, and scale tracks are supported.
 The importer rejects animation poses that become singular or change triangle winding.
+
 The current source supports four-influence [GPU skinning](skinning.md). The published `0.3.3` package still supports rigid animation only.
-Morph targets remain unsupported.
+The current source also supports relative POSITION/NORMAL morph targets and weight animations. See [morph import](gltf-morph.md).
+Morph primitives require authored base normals. TANGENT targets and per-target flat normal generation remain unsupported.
 
 The caller owns the Renderer67 instance.
 `asset.dispose()` releases importer textures, image bitmaps, parser resources, and temporary object URLs.

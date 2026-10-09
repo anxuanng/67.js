@@ -141,7 +141,11 @@ test('mirrored static transforms reverse triangle winding without altering world
 test('unsupported features fail explicitly before loading resources', async () => {
   const cases = [
     [document => { document.nodes[1].skin = 0; }, /skin index/],
-    [document => { document.meshes[0].primitives[0].targets = [{ POSITION: 0 }]; }, /Morph/],
+    [document => {
+      const primitive = document.meshes[0].primitives[0];
+      primitive.attributes.NORMAL = primitive.attributes.POSITION;
+      primitive.targets = [{ TANGENT: 0 }];
+    }, /Unsupported morph/],
     [document => { document.meshes[0].primitives[0].attributes.COLOR_0 = 1; }, /COLOR_0/],
     [document => { document.meshes[0].primitives[0].mode = 1; }, /TRIANGLES/],
     [document => { document.materials[0].alphaMode = 'BLEND'; }, /alpha mode/],

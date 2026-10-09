@@ -2,7 +2,7 @@
 
 The source renderer blends relative position and normal targets on the GPU before skinning.
 Color, benchmark and shadow passes share the same target texture and committed weights.
-This source feature is not yet in the published npm release. glTF morph import remains unsupported.
+This source feature is not yet in the published npm release. The source [glTF bridge](gltf-morph.md) imports relative targets and weight animations.
 The core module exports `createMorphPose` and `MAX_MORPH_TARGETS` without adding a dependency.
 
 Each morph target contains mesh-local changes from the base geometry.
@@ -87,7 +87,7 @@ These bounds deliberately ignore cancellation and maxima occurring at different 
 They can reject a finite final blend when large opposing deltas cancel.
 The renderer also checks conservative position bounds through its world and weighted skin matrix product.
 Shared pose updates validate consumers outside the submitted part list using their committed world matrices.
-The palette bound covers four normalized Float32 influences and may reject large cancelling transforms.
+The palette bound covers four normalized Float32 influences and can reject large cancelling transforms.
 These checks do not cover camera projections, displacement, lighting or every transformed normal calculation.
 
 `packMorphTargets(geometry, layout)` validates static channels and returns a new packed `Float32Array`.
@@ -118,6 +118,7 @@ The parent renderer owns that batching and texture lifecycle.
 
 Node tests compare signed relative position blends with literal expected values and the installed Three.js `Mesh.getVertexPosition` implementation.
 Other checks cover channel packing, independent poses, normal cancellation, identity changes, overflow and texture capacity.
+
 `scripts/smoke-morph.mjs` compares the actual built GPU module with a CPU-authored reference image.
 It checks independent signed poses, the 64th target, retained buffers, atomic rejection and texture disposal.
 `scripts/smoke-morph-composition.mjs` compares combined skinning, normal deltas, normal cancellation and shadow receivers with CPU-baked geometry.
@@ -130,7 +131,9 @@ Visual quality and frame performance require separate scene measurements.
 Repeated instances retain shared meshes while their signed weights remain independent.
 The export contains editable targets and a static pose, rather than baked vertex positions.
 It does not serialize animation clips. Skinning and material textures still fail explicitly at export.
-The importer must support morph targets before opening the snapshot in 67.js.
+
+The source importer opens these snapshots. Morph import requires authored base normals and rejects tangent targets.
+The exporter still omits vertex colors and UV attributes. This is not a complete asset roundtrip.
 
 The output follows [glTF morph target and node weight semantics](https://registry.khronos.org/glTF/specs/2.0/glTF-2.0.html#morph-targets).
 Export tests inspect the serialized accessors and load the GLB with the independent Three.js loader.

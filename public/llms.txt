@@ -71,8 +71,14 @@ Report estimates separately from observed process metrics. Reduce resolution, MS
 ## Limits and honest claims
 
 67.js currently uses WebGL2. It is not API-compatible with Three.js and is not a complete Blender editor.
-There is no WebGPU backend, general physics engine, mesh editor, skinning or morph-target support.
-GLB support excludes transparent and double-sided materials, compressed geometry and additional PBR maps. Unsupported features require visible errors.
+There is no WebGPU backend or complete mesh editor.
+
+The published `0.3.3` package supports rigid GLB animation. A checkout can contain newer features without a package version change.
+The current source adds GPU skinning, relative POSITION/NORMAL morphs, weight animation and an optional Rapier physics addon.
+Read `docs/skinning.md`, `docs/morph-targets.md`, `docs/gltf-morph.md` and `docs/physics.md` in the matching checkout before using these features.
+Source morphs require authored base normals. Tangent targets and per-target flat normal generation remain unsupported.
+
+GLB support excludes transparent and double-sided materials and compressed geometry. Unsupported features require visible errors.
 
 The optional GLB decoder uses Three.js GLTFLoader. The renderer remains 67.js.
 Adaptive quality, GPU timing and picking are roadmap work. Speed claims require comparable scenes, hardware, settings and measurements.

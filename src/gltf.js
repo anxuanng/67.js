@@ -1,12 +1,13 @@
-import { AnimationMixer, LoadingManager, LoopOnce } from 'three';
+import { AnimationMixer, LoadingManager, LoopOnce, Matrix4 } from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { textureDescriptorInfo } from './renderer.js';
 import { createSkinPose, updateSkinPose, validateSkinGeometry, validateSkinPose } from './skinning.js';
+import { MAX_MORPH_TARGETS, createMorphPose, validateMorphGeometry, validateMorphPose, validateMorphTransform } from './morph.js';
 
 export const GLTF_CAPABILITIES = Object.freeze({
   formats: ['glb', 'gltf'],
-  supported: ['triangle meshes', 'world transforms', 'rigid node animations', 'four-influence skeletal skinning', 'joint node animations', 'PNG/JPEG base color textures', 'normal/occlusion/emissive/metallic-roughness textures', 'TEXCOORD_0', 'linear RGB vertex colors', 'metallic roughness factors', 'emissive factors', 'KHR_mesh_quantization', 'KHR_materials_emissive_strength'],
-  unsupported: ['more than four skin influences', 'singular weighted skin transforms', 'reflected skin transforms', 'morph targets', 'vertex alpha below one', 'alpha blending or masking', 'double-sided materials', 'texture transforms', 'DRACO', 'KTX2', 'GPU instancing'],
+  supported: ['triangle meshes', 'world transforms', 'rigid node animations', 'four-influence skeletal skinning', 'joint node animations', 'relative POSITION/NORMAL morph targets', 'morph weight animations', 'PNG/JPEG base color textures', 'normal/occlusion/emissive/metallic-roughness textures', 'TEXCOORD_0', 'linear RGB vertex colors', 'metallic roughness factors', 'emissive factors', 'KHR_mesh_quantization', 'KHR_materials_emissive_strength'],
+  unsupported: ['more than four skin influences', 'singular weighted skin transforms', 'reflected skin transforms', 'TANGENT morph targets', 'morph targets without authored base normals', 'vertex alpha below one', 'alpha blending or masking', 'double-sided materials', 'texture transforms', 'DRACO', 'KTX2', 'GPU instancing'],
 });
 
 const DEFAULT_MAX_BYTES = 32 * 1024 * 1024;
@@ -68,6 +69,49 @@ function documentFrom(data, maxBytes) {
   return JSON.parse(new TextDecoder().decode(new Uint8Array(data, 20, jsonLength)));
 }
 
+function morphCount(mesh) {
+  return mesh?.primitives?.[0]?.targets?.length ?? 0;
+}
+
+function validateDefaultWeights(weights, count) {
+  if (weights === undefined) return;
+  if (!count || !Array.isArray(weights) || weights.length !== count || weights.some(value => typeof value !== 'number' || !Number.isFinite(Math.fround(value)))) {
+    throw new Error('Morph default weights require one finite Float32 value per target.');
+  }
+}
+
+function validateAnimationChannels(document) {
+  for (const animation of document.animations ?? []) {
+    const targets = new Set();
+    for (const channel of animation.channels ?? []) {
+      const path = channel.target?.path;
+      const nodeIndex = channel.target?.node;
+      const node = document.nodes?.[nodeIndex];
+      if (!['translation', 'rotation', 'scale', 'weights'].includes(path)) throw new Error('Only node translation, rotation, scale and weights animations are supported.');
+      if (nodeIndex === undefined) continue;
+      if (!Number.isInteger(nodeIndex) || !node) throw new Error('Animation channel requires a valid target node.');
+      const targetKey = `${nodeIndex}:${path}`;
+      if (targets.has(targetKey)) throw new Error('Animation channels must have distinct node and path targets.');
+      targets.add(targetKey);
+      const sampler = animation.samplers?.[channel.sampler];
+      if (!Number.isInteger(channel.sampler) || !sampler) throw new Error('Invalid animation sampler index.');
+      const interpolation = sampler.interpolation ?? 'LINEAR';
+      if (!['LINEAR', 'STEP', 'CUBICSPLINE'].includes(interpolation)) throw new Error('Unsupported animation interpolation.');
+      const input = document.accessors?.[sampler.input];
+      const output = document.accessors?.[sampler.output];
+      if (!Number.isInteger(sampler.input) || !input || input.type !== 'SCALAR' || input.componentType !== 5126 || input.normalized
+          || !Number.isSafeInteger(input.count) || input.count < (interpolation === 'CUBICSPLINE' ? 2 : 1)) throw new Error('Animation inputs require float SCALAR keyframe times.');
+      const count = path === 'weights' ? morphCount(document.meshes?.[node.mesh]) : 1;
+      if (!count) throw new Error('Weights animation requires a node with morph targets.');
+      const shape = path === 'weights' ? 'SCALAR' : path === 'rotation' ? 'VEC4' : 'VEC3';
+      const outputCount = input.count * count * (interpolation === 'CUBICSPLINE' ? 3 : 1);
+      const integerOutput = ['rotation', 'weights'].includes(path) && [5120, 5121, 5122, 5123].includes(output?.componentType) && output.normalized;
+      if (!Number.isInteger(sampler.output) || !output || output.type !== shape || output.count !== outputCount
+          || !(output.componentType === 5126 && !output.normalized || integerOutput)) throw new Error('Animation output shape, count or component type does not match its target.');
+    }
+  }
+}
+
 function validateDocument(document, limits) {
   if (document.asset?.version !== '2.0') throw new Error('Only glTF 2.0 assets are supported.');
   const pending = [document];
@@ -90,15 +134,34 @@ function validateDocument(document, limits) {
   if (declaredBytes > limits.maxBytes) throw new Error('glTF buffers exceed maxBytes.');
   let vertices = 0;
   let indices = 0;
+  let morphBytes = 0;
   for (const mesh of document.meshes ?? []) {
+    const targetCount = morphCount(mesh);
+    if (targetCount > MAX_MORPH_TARGETS) throw new Error('Morph target count exceeds 64.');
+    validateDefaultWeights(mesh.weights, targetCount);
     for (const primitive of mesh.primitives ?? []) {
       if ((primitive.mode ?? 4) !== 4) throw new Error('Only glTF TRIANGLES primitives are supported.');
-      if (primitive.targets?.length) throw new Error('Morph targets are unsupported.');
       const position = document.accessors?.[primitive.attributes?.POSITION];
       if (!position || position.type !== 'VEC3' || !Number.isSafeInteger(position.count) || position.count < 3) {
         throw new Error('Each mesh primitive requires a valid POSITION accessor.');
       }
-      vertices += position.count;
+      if (primitive.targets !== undefined && (!Array.isArray(primitive.targets) || !primitive.targets.length || primitive.targets.length !== targetCount)) throw new Error('Morph target counts must match across all mesh primitives.');
+      if ((primitive.targets?.length ?? 0) !== targetCount) throw new Error('Morph target counts must match across all mesh primitives.');
+      if (targetCount && primitive.attributes?.NORMAL === undefined) throw new Error('Morph targets require authored base NORMAL. Per-target flat normal generation is unsupported.');
+      for (const target of primitive.targets ?? []) {
+        if (!target || typeof target !== 'object' || Array.isArray(target) || !Object.keys(target).length) throw new Error('Morph targets require POSITION or NORMAL channels.');
+        for (const [semantic, accessorIndex] of Object.entries(target)) {
+          if (!['POSITION', 'NORMAL'].includes(semantic)) throw new Error(`Unsupported morph target semantic: ${semantic}.`);
+          const accessor = document.accessors?.[accessorIndex];
+          if (primitive.attributes?.[semantic] === undefined) throw new Error('Morph target channels require corresponding base attributes.');
+          if (!Number.isInteger(accessorIndex) || !accessor || accessor.type !== 'VEC3' || accessor.componentType !== 5126 || accessor.normalized || accessor.count !== position.count) throw new Error('Morph target channels require matching float VEC3 accessors.');
+          if (semantic === 'POSITION' && (!Array.isArray(accessor.min) || !Array.isArray(accessor.max) || accessor.min.length !== 3 || accessor.max.length !== 3
+              || accessor.min.some((value, axis) => typeof value !== 'number' || !Number.isFinite(Math.fround(value)) || typeof accessor.max[axis] !== 'number' || !Number.isFinite(Math.fround(accessor.max[axis])) || value > accessor.max[axis]))) throw new Error('Morph POSITION requires finite ordered min/max bounds.');
+        }
+      }
+      vertices += position.count * (1 + targetCount);
+      morphBytes += position.count * targetCount * 24;
+      if (primitive.attributes?.NORMAL === undefined) morphBytes += position.count * 24;
       if (Object.keys(primitive.attributes ?? {}).some(name => /^(JOINTS|WEIGHTS)_/.test(name) && !['JOINTS_0', 'WEIGHTS_0'].includes(name))) throw new Error('Only four JOINTS_0/WEIGHTS_0 skin influences are supported.');
       const joints = document.accessors?.[primitive.attributes?.JOINTS_0];
       const weights = document.accessors?.[primitive.attributes?.WEIGHTS_0];
@@ -147,7 +210,14 @@ function validateDocument(document, limits) {
     }
   }
   let poseJointCount = 0;
+  let declaredParts = 0;
   for (const node of document.nodes ?? []) {
+    const mesh = document.meshes?.[node.mesh];
+    if (node.mesh !== undefined && (!Number.isInteger(node.mesh) || !mesh)) throw new Error('Invalid mesh node index.');
+    declaredParts += mesh?.primitives?.length ?? 0;
+    if (declaredParts > limits.maxParts) throw new Error('glTF primitive instances exceed maxParts.');
+    validateDefaultWeights(node.weights, morphCount(mesh));
+    morphBytes += morphCount(mesh) * (mesh?.primitives?.length ?? 0) * 16;
     if (node.skin !== undefined) {
       if (!Number.isInteger(node.skin) || !document.skins?.[node.skin] || !document.meshes?.[node.mesh]) throw new Error('Invalid skinned mesh or skin index.');
       for (const primitive of document.meshes[node.mesh].primitives ?? []) {
@@ -159,11 +229,7 @@ function validateDocument(document, limits) {
     if (node.extensions && Object.keys(node.extensions).length) throw new Error('Node extensions are unsupported.');
   }
   validateHierarchy(document.nodes ?? []);
-  for (const animation of document.animations ?? []) {
-    for (const channel of animation.channels ?? []) {
-      if (!['translation', 'rotation', 'scale'].includes(channel.target?.path)) throw new Error('Only node translation, rotation and scale animations are supported.');
-    }
-  }
+  validateAnimationChannels(document);
   for (const material of document.materials ?? []) {
     const pbr = material.pbrMetallicRoughness ?? {};
     const factors = [pbr.baseColorFactor ?? [1, 1, 1, 1], material.emissiveFactor ?? [0, 0, 0]];
@@ -198,7 +264,7 @@ function validateDocument(document, limits) {
       if (material && MATERIAL_TEXTURES.some(([, field]) => materialTexture(material, field)) && primitive.attributes?.TEXCOORD_0 === undefined) throw new Error('Material textures require TEXCOORD_0.');
     }
   }
-  let decodedBytes = 0;
+  let decodedBytes = morphBytes;
   const components = { SCALAR: 1, VEC2: 2, VEC3: 3, VEC4: 4, MAT2: 4, MAT3: 9, MAT4: 16 };
   for (const accessor of document.accessors ?? []) {
     if (!Number.isSafeInteger(accessor.count) || accessor.count < 0 || accessor.count > limits.maxVertices * 12) {
@@ -389,7 +455,7 @@ function copyAttribute(attribute, size) {
   return result;
 }
 
-function convertGeometry(source, mirrored) {
+function convertGeometry(source, mirrored, primitive) {
   const position = source.getAttribute('position');
   if (!source.getAttribute('normal')) source.computeVertexNormals();
   if (source.getAttribute('normal').count !== position.count) throw new Error('NORMAL and POSITION counts must match.');
@@ -422,6 +488,15 @@ function convertGeometry(source, mirrored) {
   const skinWeights = source.getAttribute('skinWeight');
   if (skinIndices) geometry.skinIndices = new Uint16Array(copyAttribute(skinIndices, 4));
   if (skinWeights) geometry.skinWeights = copyAttribute(skinWeights, 4);
+  if (primitive.targets?.length) {
+    if (!source.morphTargetsRelative) throw new Error('Decoded morph targets must contain relative deltas.');
+    geometry.morphTargets = primitive.targets.map((target, index) => {
+      const channels = {};
+      if (target.POSITION !== undefined) channels.positions = copyAttribute(source.morphAttributes.position[index], 3);
+      if (target.NORMAL !== undefined) channels.normals = copyAttribute(source.morphAttributes.normal[index], 3);
+      return channels;
+    });
+  }
   return geometry;
 }
 
@@ -437,11 +512,12 @@ function makeSkinBinding(node) {
     return { name: bone.name, parent: node.skeleton.bones.indexOf(bone.parent) };
   });
   const skin = Object.assign(pose, { joints, inverseBindMatrices, jointWorldMatrices, bindMatrix: new Float32Array(node.bindMatrix.elements) });
-  return { node, skin, pendingPose, pendingWorld };
+  return { node, skin, pendingPose, pendingWorld, palette: skin.jointMatrices, jointWorld: skin.jointWorldMatrices };
 }
 
 function prepareSkinBinding(binding, geometry) {
   const { node, skin, pendingPose, pendingWorld } = binding;
+  if (skin.jointMatrices !== binding.palette || skin.jointWorldMatrices !== binding.jointWorld || binding.palette.length !== pendingPose.jointMatrices.length || binding.jointWorld.length !== pendingWorld.length) throw new Error('Imported skin palette identities must remain unchanged.');
   for (let joint = 0; joint < node.skeleton.bones.length; joint++) pendingWorld.set(node.skeleton.bones[joint].matrixWorld.elements, joint * 16);
   updateSkinPose(pendingPose, pendingWorld, skin.inverseBindMatrices, node.matrixWorld.elements, skin.bindMatrix);
   validateSkinPose(pendingPose, geometry, node.matrixWorld.elements);
@@ -452,10 +528,77 @@ function commitSkinBinding(binding) {
   binding.skin.jointWorldMatrices.set(binding.pendingWorld);
 }
 
-function skinPreflightPlugin(parser, document) {
+function makeMorphBinding(node, geometry, metadataCache) {
+  const pose = createMorphPose(geometry.morphTargets.length);
+  pose.weights.set(node.morphTargetInfluences);
+  const pendingPose = createMorphPose(pose.weights.length);
+  let metadata = metadataCache.get(geometry);
+  if (metadata) validateMorphPose(pose, metadata);
+  else {
+    metadata = validateMorphGeometry(geometry, pose);
+    metadataCache.set(geometry, metadata);
+  }
+  return { node, pose, weights: pose.weights, pendingPose, metadata };
+}
+
+function prepareMorphBinding(binding) {
+  if (binding.pose.weights !== binding.weights || binding.weights.length !== binding.metadata.targetCount) throw new Error('Imported morph weight identity must remain unchanged.');
+  const influences = binding.node.morphTargetInfluences;
+  if (influences.length !== binding.weights.length) throw new Error('Decoded morph weight count changed.');
+  binding.pendingPose.weights.set(influences);
+  validateMorphPose(binding.pendingPose, binding.metadata);
+}
+
+function validateNodeTransforms(nodes, pending, transform) {
+  for (const node of nodes) {
+    pending.set(node.matrixWorld.elements);
+    for (const value of pending) if (!Number.isFinite(value)) throw new Error('Animation creates a non-finite Float32 world matrix.');
+    const determinant = transform.fromArray(pending).determinant();
+    if (!Number.isFinite(determinant) || Math.abs(determinant) < 1e-12) throw new Error('Animation creates a singular Float32 node transform.');
+  }
+}
+
+function copyPrimitiveAssociations(original, decoded, associations) {
+  const association = associations.get(original);
+  if (original.isMesh && !association) throw new Error('Decoded mesh lost its original primitive association.');
+  if (association) associations.set(decoded, association);
+  if (original.children.length !== decoded.children.length) throw new Error('Decoded scene clone changed the node hierarchy.');
+  for (let index = 0; index < original.children.length; index++) {
+    copyPrimitiveAssociations(original.children[index], decoded.children[index], associations);
+  }
+}
+
+function skinPreflightPlugin(parser, document, primitiveAssociations) {
+  let originalRoots;
   return {
     name: '67SkinPreflight',
     async beforeRoot() {
+      for (const mesh of document.meshes ?? []) {
+        for (const primitive of mesh.primitives ?? []) {
+          for (const target of primitive.targets ?? []) {
+            for (const accessor of Object.values(target)) copyAttribute(await parser.getDependency('accessor', accessor), 3);
+          }
+        }
+      }
+      for (const animation of document.animations ?? []) {
+        for (const channel of animation.channels ?? []) {
+          if (channel.target.node === undefined) continue;
+          const sampler = animation.samplers[channel.sampler];
+          const input = copyAttribute(await parser.getDependency('accessor', sampler.input), 1);
+          for (let index = 0; index < input.length; index++) {
+            if (input[index] < 0 || index && input[index] <= input[index - 1]) throw new Error('Animation times must be nonnegative and strictly increasing.');
+          }
+          const size = channel.target.path === 'rotation' ? 4 : channel.target.path === 'weights' ? 1 : 3;
+          const output = copyAttribute(await parser.getDependency('accessor', sampler.output), size);
+          if (channel.target.path === 'rotation') {
+            const cubic = sampler.interpolation === 'CUBICSPLINE';
+            for (let offset = cubic ? 4 : 0; offset < output.length; offset += cubic ? 12 : 4) {
+              const length = Math.hypot(output[offset], output[offset + 1], output[offset + 2], output[offset + 3]);
+              if (Math.abs(length - 1) > 0.01) throw new Error('Animation rotation values require unit quaternions.');
+            }
+          }
+        }
+      }
       for (const node of document.nodes ?? []) {
         if (node.skin === undefined) continue;
         const pose = createSkinPose(document.skins[node.skin].joints.length);
@@ -465,6 +608,26 @@ function skinPreflightPlugin(parser, document) {
             parser.getDependency('accessor', primitive.attributes.WEIGHTS_0),
           ]);
           validateSkinGeometry({ positions: { length: weights.count * 3 }, skinIndices: copyAttribute(joints, 4), skinWeights: copyAttribute(weights, 4) }, pose);
+        }
+      }
+      // loadScene reduces parser.associations globally, so capture before any scene loads.
+      const rootIndices = new Set();
+      for (const scene of document.scenes ?? []) {
+        for (const root of scene.nodes ?? []) rootIndices.add(root);
+      }
+      const roots = await Promise.all(Array.from(rootIndices, async index => [index, await parser.getDependency('node', index)]));
+      originalRoots = new Map(roots);
+      for (const [node, association] of parser.associations) {
+        if (node.isMesh) primitiveAssociations.set(node, Object.freeze({ ...association }));
+      }
+    },
+    afterRoot(result) {
+      for (let index = 0; index < result.scenes.length; index++) {
+        const roots = document.scenes[index].nodes ?? [];
+        const scene = result.scenes[index];
+        if (roots.length !== scene.children.length) throw new Error('Decoded scene root count changed.');
+        for (let root = 0; root < roots.length; root++) {
+          copyPrimitiveAssociations(originalRoots.get(roots[root]), scene.children[root], primitiveAssociations);
         }
       }
     },
@@ -572,21 +735,30 @@ export async function parseGltf(data, options = {}) {
     throw new Error(`Unregistered glTF resource: ${url}.`);
   });
   let gltf;
+  const primitiveAssociations = new WeakMap();
   try {
     const loader = new GLTFLoader(manager);
-    loader.register(parser => skinPreflightPlugin(parser, document));
+    loader.register(parser => skinPreflightPlugin(parser, document, primitiveAssociations));
     gltf = await loader.parseAsync(data, options.baseUrl ?? '');
     gltf.scene.updateMatrixWorld(true);
     const parts = [];
     const bindings = [];
     const skinBindings = [];
+    const morphBindings = [];
     const geometries = new Map();
+    const morphMetadata = new Map();
     const materials = new Map();
     const maps = new Map();
+    const nodes = [];
+    const pendingTransform = new Matrix4();
+    const pendingNodeMatrix = new Float32Array(16);
     let actualVertices = 0;
     gltf.scene.traverse(node => {
+      nodes.push(node);
       if (!node.isMesh) return;
-      if (node.morphTargetInfluences?.length) throw new Error('Morph targets are unsupported.');
+      const association = primitiveAssociations.get(node);
+      const primitive = document.meshes?.[association?.meshes]?.primitives?.[association?.primitives];
+      if (!primitive) throw new Error('Decoded mesh requires a valid original primitive association.');
       if (Array.isArray(node.material)) throw new Error('Multiple materials on one decoded primitive are unsupported.');
       const materialIndex = gltf.parser.associations.get(node.material)?.materials;
       for (const [field, sourceField] of MATERIAL_TEXTURES) {
@@ -599,28 +771,39 @@ export async function parseGltf(data, options = {}) {
       const geometryMirrored = node.isSkinnedMesh ? false : mirrored;
       const geometryKey = `${node.geometry.uuid}:${geometryMirrored}`;
       if (!geometries.has(geometryKey)) {
-        actualVertices += node.geometry.getAttribute('position').count;
+        actualVertices += node.geometry.getAttribute('position').count * (1 + (primitive.targets?.length ?? 0));
         if (actualVertices > limits.maxVertices) throw new Error('Decoded geometry exceeds maxVertices.');
-        geometries.set(geometryKey, convertGeometry(node.geometry, geometryMirrored));
+        geometries.set(geometryKey, convertGeometry(node.geometry, geometryMirrored, primitive));
       }
       if (!materials.has(node.material)) materials.set(node.material, convertMaterial(node.material, limits, maps, document.materials?.[materialIndex]));
       const geometry = geometries.get(geometryKey);
       const material = materials.get(node.material);
       if (MATERIAL_TEXTURES.some(([field]) => material[field]) && !geometry.uvs) throw new Error('Material textures require TEXCOORD_0.');
       const part = { name: node.name || `glTF mesh ${parts.length + 1}`, geometry, matrix: new Float32Array(node.matrixWorld.elements), material };
+      const transformBinding = { node, part, mirrored, matrix: part.matrix, pendingMatrix: new Float32Array(16) };
+      let pendingSkin;
       if (node.isSkinnedMesh) {
         const binding = makeSkinBinding(node);
         prepareSkinBinding(binding, geometry);
         commitSkinBinding(binding);
         part.skin = binding.skin;
         skinBindings.push({ ...binding, geometry });
+        pendingSkin = binding.pendingPose;
       }
       validateSkinGeometry(geometry, part.skin);
+      transformBinding.skin = part.skin;
+      if (geometry.morphTargets) {
+        const binding = makeMorphBinding(node, geometry, morphMetadata);
+        part.morph = binding.pose;
+        validateMorphTransform(binding.pose, binding.metadata, part.matrix, part.skin);
+        morphBindings.push({ ...binding, part, pendingMatrix: transformBinding.pendingMatrix, pendingSkin });
+      }
       if (!Array.from(part.matrix).every(Number.isFinite)) throw new Error('Mesh world matrix must be finite.');
       parts.push(part);
-      bindings.push({ node, part, mirrored });
+      bindings.push(transformBinding);
       if (parts.length > limits.maxParts) throw new Error('Decoded parts exceed maxParts.');
     });
+    validateNodeTransforms(nodes, pendingNodeMatrix, pendingTransform);
     if (!parts.length) throw new Error('glTF scene contains no supported triangle meshes.');
     const mixer = new AnimationMixer(gltf.scene);
     let disposed = false;
@@ -645,15 +828,27 @@ export async function parseGltf(data, options = {}) {
       action.play();
       mixer.setTime(Math.max(0, Math.min(time, clip.duration)));
       gltf.scene.updateMatrixWorld(true);
-      for (const { node, mirrored } of bindings) {
+      validateNodeTransforms(nodes, pendingNodeMatrix, pendingTransform);
+      for (const { node, part, mirrored, matrix, pendingMatrix, skin } of bindings) {
+        if (part.matrix !== matrix || matrix.length !== 16) throw new Error('Imported part matrix identity must remain unchanged.');
+        if (part.skin !== skin) throw new Error('Imported skin pose identity must remain unchanged.');
+        pendingMatrix.set(node.matrixWorld.elements);
+        for (const value of pendingMatrix) if (!Number.isFinite(value)) throw new Error('Animation creates a non-finite Float32 world matrix.');
         const determinant = node.matrixWorld.determinant();
-        if (!Number.isFinite(determinant) || Math.abs(determinant) < 1e-12 || (determinant < 0) !== mirrored) {
+        const roundedDeterminant = pendingTransform.fromArray(pendingMatrix).determinant();
+        if (!Number.isFinite(determinant) || !Number.isFinite(roundedDeterminant) || Math.abs(roundedDeterminant) < 1e-12 || (determinant < 0) !== mirrored || (roundedDeterminant < 0) !== mirrored) {
           throw new Error('Animation creates a singular transform or changes triangle winding.');
         }
       }
       for (const binding of skinBindings) prepareSkinBinding(binding, binding.geometry);
-      for (const { node, part } of bindings) part.matrix.set(node.matrixWorld.elements);
+      for (const binding of morphBindings) {
+        if (binding.part.morph !== binding.pose) throw new Error('Imported morph pose identity must remain unchanged.');
+        prepareMorphBinding(binding);
+        validateMorphTransform(binding.pendingPose, binding.metadata, binding.pendingMatrix, binding.pendingSkin);
+      }
+      for (const { matrix, pendingMatrix } of bindings) matrix.set(pendingMatrix);
       for (const binding of skinBindings) commitSkinBinding(binding);
+      for (const binding of morphBindings) binding.weights.set(binding.pendingPose.weights);
       return parts;
     }
     return { parts, skins: skinBindings.map(binding => binding.skin), animations: gltf.animations, applyAnimation, dispose, capabilities: GLTF_CAPABILITIES };

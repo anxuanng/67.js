@@ -33,7 +33,8 @@
     "docs/lighting.md",
     "docs/volumetric.md",
     "docs/film-physics.md",
-    "docs/morph-targets.md"
+    "docs/morph-targets.md",
+    "docs/gltf-morph.md"
   ],
   "main": "./build/67.module.js",
   "module": "./build/67.module.js",

@@ -21,10 +21,10 @@ The Blender references describe authoring capabilities. Their interpolation and 
 | Modeling | Base primitives, lathe, hole extrusion with bevels, and curve tubes integrated in source | Mesh editing, subdivision, modifiers, package release | Edited models retain topology, normals, UVs, and export behavior |
 | Animation curves | Linear, step, smooth and Hermite tangent interpolation in source | Curve editor; package release verification | Known curve samples, quaternion normalization, and continuous velocity checks |
 | Animation composition | Weighted clips and absolute-time crossfades integrated in source | Additive motion, layer masks, events, package verification | Walking and gestures blend without pose discontinuities |
-| Character deformation | Rigid joints, GPU skinning and skeletal GLB animation integrated in source | Morph targets, IK, retargeting, facial assets, package release | Animated imported character, expressions, and joint contact tests |
+| Character deformation | Rigid joints, GPU skinning, relative position/normal morphs and skeletal GLB animation integrated in source | IK, retargeting, recognizable facial assets, package release | Animated imported character, expressions, and joint contact tests |
 | Camera authoring | Absolute-time paths, target tracking, roll, focal-length conversion and aspect-aware film subject framing integrated in source | Focus control, editing, automatic animated bounds, package release | Reviewed moving shot previews across aspect ratios |
 | Film authoring | Scene-specific shot list and player | Shared timeline, shot editing, transitions, audio cues | Edited timeline seeks and exports deterministically |
-| Asset import | Opaque glTF meshes, five material maps, rigid and skeletal animation integrated in source | Morphs, transparency, compression, streaming, package release | Blender fixtures preserve geometry, materials, and animation |
+| Asset import | Opaque glTF meshes, five material maps, rigid, skeletal and morph weight animation integrated in source | Tangent morphs, generated morph normals, transparency, compression, streaming, package release | Blender fixtures preserve geometry, materials, and animation |
 | Materials | Factors and five PBR texture channels integrated in source | Layered materials, advanced extensions, authored tangents, package verification | Reference material scenes and texture budget checks |
 | Lighting | Directional shadows, configurable key/fill/ambient strength and eight local point lights integrated in source | Local shadows, spot/area lights, HDR environments, baked lighting, reflection probes; package release | Reference lighting scenes, stable shadows, and measured render cost |
 | Image rendering | HDR, bloom, grading, MSAA, FXAA | Depth of field, motion blur, temporal sampling, render passes | Reviewed stills and moving previews with measured artifacts |
@@ -104,7 +104,8 @@ Run `node scripts/benchmark-shadows.mjs 1d4f4d0` to compare the previous shader 
 The native RTX 3060 check used the same portrait scene at 1280 × 720, HDR and four MSAA samples.
 After ten warmup draws, forty GPU timer queries reported medians of `0.811 ms` before and `0.838 ms` after.
 Estimated render allocation remained `88,630,276` bytes. Both draws reported WebGL error zero.
-The increase is about `0.027 ms` in this fixed scene; it is not a general performance result or an animation benchmark.
+
+The increase is about `0.027 ms` in this fixed scene. It is not a general performance result or an animation benchmark.
 SwiftShader also rendered the updated shader without a WebGL error.
 
 ## Trailer acceptance requirements
@@ -112,8 +113,12 @@ SwiftShader also rendered the updated shader without a WebGL error.
 The current trailer does not meet the requested visual quality.
 The current source replaces the scientist's unlit silhouette with lit facial features, shared head attachments and shaped headwear.
 The rendered close-up still looks like a stylized mannequin with insufficient facial likeness.
-The next source build narrows the temples and jaw, defines continuous nose and cheek surfaces, adds subtle vertex-color skin variation and replaces box-shaped lapels and collars with shared extruded contours. These changes remain stylized and do not establish recognizable facial likeness.
-The current source frames portrait shots by output aspect and retains the face and headwear in inspected 540 × 960 renders. Wide cameras retain their authored framing. The subject bounds are authored for these shots; automatic animated-subject framing remains unfinished.
+The source build narrows the temples and jaw, defines continuous nose and cheek surfaces, and adds subtle vertex-color skin variation.
+Shared extruded contours replace box-shaped lapels and collars.
+These changes remain stylized and do not establish recognizable facial likeness.
+
+The current source frames portrait shots by output aspect and retains the face and headwear in inspected 540 × 960 renders.
+Wide cameras retain their authored framing. The subject bounds are authored for these shots. Automatic animated-subject framing remains unfinished.
 This source change has not been deployed or published to npm.
 Rigid joint animation and GPU skinning provide motion tools, but do not solve character modeling or material quality by themselves.
 
@@ -122,11 +127,13 @@ Visible shafts, smoke, dust, explosion detail and lighting continuity still requ
 
 The current source provides an optional Rapier addon for rigid-body contacts and articulated spherical, revolute and fixed joints.
 A native render fixture records twelve bodies and ten joints, then reproduces the same pose and pixels after a backward seek.
-Its 241-frame timeline uses exactly `80,976` bytes; solver allocation is estimated separately and shared WASM capacity remains resident.
+Its 241-frame timeline uses exactly `80,976` bytes. Solver allocation is estimated separately and shared WASM capacity remains resident.
 The technical ragdoll fixture does not establish convincing humanoid motion.
+
 The opening apparatus shot now integrates an offline recording of five colliding pendulums through retained animation tracks.
 Fresh solver replay matches every captured pose. Removing contacts prevents the initially stationary end ball from moving.
 This provides physical action in a trailer shot, while actor contact and humanoid ragdolls remain unfinished.
+
 Revolute and prismatic limits, position and velocity motors, and scheduled motor changes are integrated in source. Bone binding and off-thread baking remain unfinished.
 The requested final state includes integrated physical interactions with deterministic playback or recorded simulation for arbitrary film seeks.
 Simple sine motion does not satisfy the physics requirement.

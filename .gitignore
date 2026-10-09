@@ -7,6 +7,10 @@ public/release.json
 public/changelog.md
 public/guide.md
 public/gltf.md
+public/gltf-morph.md
+public/morph-targets.md
+public/skinning.md
+public/physics.md
 artifacts/
 .env
 .env.*

@@ -35,6 +35,9 @@ await copyFile(resolve(root, 'build-browser/67.module.js'), resolve(releases, me
 await copyFile(resolve(root, 'CHANGELOG.md'), resolve(root, 'public/changelog.md'));
 await copyFile(resolve(root, 'docs/guide.md'), resolve(root, 'public/guide.md'));
 await copyFile(resolve(root, 'docs/gltf.md'), resolve(root, 'public/gltf.md'));
+for (const name of ['gltf-morph.md', 'morph-targets.md', 'skinning.md', 'physics.md']) {
+  await copyFile(resolve(root, 'docs', name), resolve(root, 'public', name));
+}
 
 let registryVersion = null;
 let registryPublished = false;
