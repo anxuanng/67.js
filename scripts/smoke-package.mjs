@@ -110,7 +110,7 @@ assert.equal(wrappedPatch.stats.missedVertices, 0);
 assert.deepEqual(wrappedPatch.geometry.indices, packedPatch.indices);
 assert.deepEqual(wrappedPatch.geometry.uvs, packedPatch.uvs);
 assert.ok(wrappedPatch.geometry.positions.every((value, index) => index % 3 !== 2 || Math.abs(value - 0.502) < 1e-6));
-if (${!published}) {
+if (${!published || metadata.version !== '0.4.0'}) {
   const { createSurfaceAttachment } = await import('67js/addons/surface-attachment');
   const attachmentMatrix = new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]);
   const attachmentMorph = createMorphPose(1);

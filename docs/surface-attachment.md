@@ -1,6 +1,6 @@
 # Retained triangle attachments
 
-This addon exists in the current source build, newer than npm `0.4.0`.
+This addon is available from version `0.4.1`.
 
 `createSurfaceAttachment` follows one triangle through rigid transforms, relative morphs, and skinning.
 It returns a retained rigid world matrix for an accessory placed at a barycentric point.

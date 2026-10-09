@@ -102,7 +102,7 @@ Vertex clearance does not certify whole-triangle clearance. Compatible static ou
 
 GLB support excludes transparent and double-sided materials and compressed geometry. Unsupported features require visible errors.
 
-The current source adds `addons/surface-attachment`, newer than npm `0.4.0`. Read `docs/surface-attachment.md` before binding.
+Version `0.4.1` adds `addons/surface-attachment`. Read `docs/surface-attachment.md` before binding.
 Bind a triangle and barycentric coordinates once. Assign the retained attachment.matrix to the accessory.
 Update the target morph/skin/world pose, call attachment.update(), then upload target and accessory through renderer.updateParts().
 Clearance uses world units and the geometric face normal. This rigid point attachment does not guarantee clearance over the entire accessory footprint.

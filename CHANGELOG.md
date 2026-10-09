@@ -1,6 +1,10 @@
 # Changelog
 
-## Unreleased
+## 0.4.1
+
+- Put installation on the homepage with npm, pnpm, Yarn and Bun controls.
+- Replace the Downloads navigation tab with a legacy redirect to homepage installation.
+- Expand the documentation with modeling, deformation, physics and surface workflows.
 
 - Add retained rigid surface attachments that follow relative morphs, four-influence skinning and world transforms.
 - Separate source package checks from published npm consumer checks with verified archive integrity.

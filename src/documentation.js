@@ -22,10 +22,11 @@ topicMenu.open = desktopTopics.matches;
 desktopTopics.addEventListener('change', () => { topicMenu.open = desktopTopics.matches; });
 const groups = [
   { title: 'Start here', icon: 'start', ids: ['overview', 'install', 'getting-started'] },
-  { title: 'Build a scene', icon: 'cube', ids: ['parts-and-geometry', 'materials-and-color', 'renderer-reference', 'cameras-and-framing', 'effects-and-lighting'] },
-  { title: 'Animate and interact', icon: 'motion', ids: ['deterministic-animation', 'assemblies-and-interaction'] },
+  { title: 'Build a scene', icon: 'cube', ids: ['parts-and-geometry', 'materials-and-color', 'renderer-reference', 'cameras-and-framing', 'effects-and-lighting', 'local-lights-and-volume-fog'] },
+  { title: 'Model and fit surfaces', icon: 'cube', ids: ['procedural-modeling', 'sculpt-brushes', 'contact-detection', 'shrinkwrap-and-surface-patches', 'retained-surface-attachments'] },
+  { title: 'Animate and interact', icon: 'motion', ids: ['deterministic-animation', 'animation-curves-and-mixing', 'skeletal-and-morph-animation', 'recorded-physics', 'assemblies-and-interaction'] },
   { title: 'Assets and media', icon: 'image', ids: ['import-and-export-models', 'images-and-films'] },
-  { title: 'Reference and workflows', icon: 'book', ids: ['performance-and-memory', 'lifecycle-and-troubleshooting', 'models-and-ai-agents', 'addons-and-limits'] },
+  { title: 'Reference and workflows', icon: 'book', ids: ['performance-and-memory', 'lifecycle-and-troubleshooting', 'models-and-ai-agents', 'addons-and-limits', 'release-and-source-availability'] },
 ];
 const iconPaths = {
   start: '<path d="m9 5 10 7-10 7V5Z"/>',
@@ -195,7 +196,7 @@ function openTopic(focus = false) {
   article.replaceChildren(section);
   if (currentTopic.id === 'install') {
     const managerLink = document.createElement('p');
-    managerLink.innerHTML = `<a class="doc-install-link" href="/downloads.html">Download 67.js ${icon('arrow')}</a>`;
+    managerLink.innerHTML = `<a class="doc-install-link" href="/#downloads">Install 67.js ${icon('arrow')}</a>`;
     section.append(managerLink);
   }
   const index = topics.indexOf(currentTopic);

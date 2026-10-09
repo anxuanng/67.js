@@ -19,6 +19,11 @@ try {
   page.on('pageerror', error => errors.push(error.message));
   for (const route of ['/', '/downloads.html', '/docs.html', '/getting-started.html', '/object.html', '/motion.html', '/nature.html', '/assets.html', '/view2d.html', '/film.html']) {
     await page.goto(origin + route);
+    if (route === '/downloads.html') await page.waitForURL(origin + '/#downloads');
+    if (route === '/getting-started.html') await page.waitForURL(origin + '/docs.html#install');
+    if (['/', '/downloads.html', '/docs.html', '/getting-started.html'].includes(route)) {
+      await page.locator('.navigation nav a .nav-label').waitFor();
+    }
     if (route.includes('object')) await page.waitForFunction(() => window.__studio?.renderer);
     if (route.includes('motion')) await page.waitForFunction(() => window.__motion?.renderer);
     if (route.includes('nature')) await page.waitForFunction(() => window.__nature?.renderer);
@@ -30,6 +35,10 @@ try {
       if (route === '/') {
         await page.locator('img').evaluateAll(images => images.forEach(image => { image.loading = 'eager'; }));
         await page.waitForFunction(() => [...document.images].every(image => image.complete));
+        if (width < 760) {
+          const commandHeight = await page.locator('.home-install .command-row').evaluate(element => element.getBoundingClientRect().height);
+          assert.ok(commandHeight < 180, `Homepage command consumes excessive mobile height: ${commandHeight}`);
+        }
       }
       const overflow = await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1);
       assert.equal(overflow,false,`${route} overflow at ${width}`);
@@ -49,14 +58,14 @@ try {
     await page.setViewportSize({ width:1440,height:1000 });
     if (['/', '/downloads.html', '/docs.html', '/getting-started.html'].includes(route)) {
       assert.equal(await page.locator('aside.navigation').count(), 0);
-      assert.deepEqual(await page.locator('.navigation nav .nav-label').allTextContents(), ['Downloads', 'Docs']);
-      assert.equal(await page.locator('.navigation nav a[aria-current="page"]').count(), route === '/' ? 0 : 1);
+      assert.deepEqual(await page.locator('.navigation nav .nav-label').allTextContents(), ['Docs']);
+      assert.equal(await page.locator('.navigation nav a[aria-current="page"]').count(), ['/', '/downloads.html'].includes(route) ? 0 : 1);
       assert.equal(await page.locator('a[href$="llms.txt"]').count(), 0, 'Machine guide appears in public UI');
       assert.equal(await page.locator('.navigation a[href*="getting-started.html"]').count(), 0, 'Getting started still has separate navigation');
     }
     if (route === '/') {
       assert.equal(await page.locator('video').count(), 0, 'Homepage still embeds video');
-      assert.equal(await page.locator('#downloads').count(), 0, 'Downloads still merged into Showcase');
+      assert.equal(await page.locator('#downloads').count(), 1, 'Homepage install controls are missing');
       const scenePaths = await page.locator('.gallery .example').evaluateAll(links => links.map(link => new URL(link.href).pathname));
       assert.equal(new Set(scenePaths).size, scenePaths.length, 'Showcase repeats the same scene');
       await page.locator('#home-preview').scrollIntoViewIfNeeded();
@@ -114,7 +123,8 @@ try {
       await page.screenshot({ path:'artifacts/home-live-preview.png' });
       report.interactions.push('Live WALL·E, keyboard orbit, transparent render and paused assembly with gradual drive restart');
     }
-    if (route === '/downloads.html') {
+    if (['/', '/downloads.html'].includes(route)) {
+      if (route === '/downloads.html') assert.match(page.url(), /\/#downloads$/);
       await page.waitForFunction(() => window.__home.state.status === 'ready');
       assert.equal(await page.locator('.package-managers .package-logo').count(), 4);
       assert.equal(await page.locator('[data-package-manager]').count(), 4);
@@ -127,7 +137,7 @@ try {
         await page.locator('[data-copy-install]').click();
         assert.equal(await page.evaluate(() => window.__copiedText), expectedCommand);
       }
-      report.interactions.push('Separate Downloads page with four branded package managers and command copying');
+      report.interactions.push('Homepage installation with four branded package managers, copying and legacy URL redirect');
     }
     if (route === '/getting-started.html') {
       assert.match(page.url(), /\/docs(?:\.html)?#install$/);

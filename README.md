@@ -182,7 +182,7 @@ Compatible results can become relative GPU morph targets, so animation reuses th
 
 The current source adds [surface attachments](docs/surface-attachment.md) for rigid accessories following a selected triangle through morphing and skinning.
 The retained frame uses world-space clearance and samples three bound vertices without rebuilding a BVH every frame.
-This addon is newer than npm `0.4.0`. It does not certify clearance over an accessory's entire footprint.
+This addon is available from version `0.4.1`. It does not certify clearance over an accessory's entire footprint.
 
 The trailer's rigid actor joints now use authored clips, with attached headwear and hands moving together.
 The [optional asset addon](docs/gltf.md) loads glTF/GLB meshes, base-color textures, opaque vertex colors and rigid node animation.

@@ -14,13 +14,24 @@
       <a class="brand" href="/" aria-label="67.js home">67<span>.js</span></a>
       <span class="version" data-release-version>Loading release</span>
       <nav aria-label="Library">
-        <a href="/downloads.html">Downloads</a>
         <a href="/docs.html">Docs</a>
       </nav>
     </header>
     <main id="content">
       <section class="hero" aria-label="67.js introduction and live preview">
-      <header class="introduction"><div><h1>Your 3D scene,<br />from browser to film</h1><p>67.js brings browser 3D, animation and image/video export into one workflow. Create interactive experiences and export the same scene as images or video</p><div class="hero-actions"><a href="/downloads.html" data-icon="download">Download 67.js</a></div></div></header>
+      <header class="introduction"><div><h1>Your 3D scene,<br />from browser to film</h1><p>Build interactive 3D, animate it and export the same scene as images or video.</p><section id="downloads" class="home-install" aria-label="Install 67.js">
+        <div class="package-install">
+          <div class="package-managers" role="group" aria-label="Package manager">
+            <button data-package-manager="npm" aria-pressed="true"><span class="package-logo package-logo-npm" aria-hidden="true"></span><span>npm</span></button>
+            <button data-package-manager="pnpm" aria-pressed="false"><span class="package-logo package-logo-pnpm" aria-hidden="true"></span><span>pnpm</span></button>
+            <button data-package-manager="yarn" aria-pressed="false"><span class="package-logo package-logo-yarn" aria-hidden="true"></span><span>Yarn</span></button>
+            <button data-package-manager="bun" aria-pressed="false"><span class="package-logo package-logo-bun" aria-hidden="true"></span><span>Bun</span></button>
+          </div>
+          <div class="command-row"><code data-install-command>Loading the release command…</code><button data-copy-install disabled>Copy command</button></div>
+          <div class="release-feedback" hidden><p data-release-status role="status">Loading release information</p><button data-release-retry hidden>Retry</button></div>
+          <div class="package-links"><a href="https://www.npmjs.com/package/@codepawlhq/67js" data-icon="package">View on npm</a><a href="https://github.com/anxuanng/67.js" data-icon="github">Source on GitHub</a><a href="/docs.html" data-icon="book">Docs</a></div>
+        </div>
+      </section></div></header>
 
       <section class="feature-showcase live-showcase" aria-label="Interactive 3D preview">
         <canvas id="home-preview" tabindex="0" aria-label="WALL·E 3D model. Drag or use arrow keys to rotate. Use plus and minus to zoom. Press Space to pause or resume animation."></canvas>

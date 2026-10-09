@@ -94,6 +94,91 @@ renderer.render({ eye: [3,2,4], target: [0,0,0] });
 
 Supply a real HTML canvas with nonzero CSS width and height. The example assumes `canvas` refers to that element. `box(fillet, samples)`, `cylinder(segments)`, `sphere(segments, rings)` and `torus(tubeRadius, segments, sides)` are core primitives. Inspect the supplied demos for dimension and transform conventions.
 
+## Procedural modeling
+
+Version `0.4.0` provides `lathe`, `extrude` and `tube` through `67js/addons/modeling`.
+They generate static geometry from radius/height profiles, polygon contours and XYZ paths.
+Extrusion supports holes and bevels. Open tube ends remain uncapped.
+
+1. Choose a profile, contour or path in local coordinates.
+2. Generate the geometry once with the matching addon function.
+3. Assign the result to a part before creating `Renderer67`.
+4. Share the geometry among repeated parts.
+
+The [modeling contract](/modeling.md) defines input bounds, winding, bevel limits and resource estimates.
+The [scene graph](/scene-graph.md) supports hierarchy and pivots without changing mesh topology.
+The [modeling demo](/modeling.html) combines these tools in a lantern scene.
+These generators do not perform solid Boolean operations or provide a mesh editor.
+
+## Sculpt brushes
+
+Version `0.4.0` provides `sculptGeometry` through `67js/addons/sculpt`.
+It applies `inflate`, directional `displace` and `smooth` strokes to a copy of static indexed geometry.
+Stroke centers, radii and strengths use geometry-local units.
+The result preserves topology, UVs and colors, and rebuilds normals.
+
+1. Define bounded strokes on the undeformed mesh.
+2. Call `sculptGeometry` before creating the renderer.
+3. Inspect the resulting surface for folds or intersections.
+4. Rebuild surface patches and query indices after changing geometry.
+
+The [sculpt contract](/sculpt.md) defines brush strength, seam handling and work limits.
+Smoothing can shrink volume. Sculpting rejects skin and morph channels and does not remesh or prevent intersections.
+Compatible deformations can become [relative morph targets](/morph-targets.md) for animation.
+
+## Contact detection
+
+Version `0.4.0` provides static BVH queries through `67js/addons/mesh-query`.
+`createMeshQueryIndex` copies positions and indices. `createMeshPairQuery` tests two indices under explicit affine matrices.
+The `surfaces` mode finds triangle contact. The `closed-solids` mode also tests containment between two validated solid indices.
+
+1. Build one index per static geometry with explicit count and memory budgets.
+2. For containment, create both indices with `solid: true`.
+3. Create a pair query with the required mode.
+4. Evaluate the query with both current world matrices.
+5. Dispose the indices when their geometry is no longer needed.
+
+An index also supports `raycast(matrix, ray)` for a triangle number, hit point and barycentric coordinates.
+The [mesh query contract](/mesh-query.md) describes results, solid validation, numerical limits and budget errors.
+Rebuild indices after geometry edits. Queries reject skin and morph channels.
+Contact results do not measure penetration depth, resolve collisions or diagnose z-fighting.
+
+## Shrinkwrap and surface patches
+
+Version `0.4.0` provides `shrinkwrapGeometry` through `67js/addons/shrinkwrap`.
+It returns new static geometry in target-local coordinates while preserving source topology, UVs and colors.
+Nearest mode chooses a surface point. Project mode casts along a target-local direction.
+
+1. Define `sourceToTarget` to map source-local positions into target-local coordinates.
+2. Choose `nearest` or `project` mode and a bounded `maxDistance`.
+3. Set `clearance` and an explicit `onMiss` policy.
+4. Use the returned geometry with the target part's retained matrix.
+5. Inspect `stats` and the resulting mesh before rendering.
+
+The [shrinkwrap contract](/shrinkwrap.md) defines local distances, work budgets and miss handling.
+Collapsed output triangles cause errors. Projection does not guarantee clearance across the complete accessory surface.
+
+`createSurfacePatch` from `67js/addons/surface` clips target triangles into an overlay with its own UVs and material.
+The [surface patch contract](/surface.md) defines projector orientation, depth and local clearance.
+Patches and shrinkwrap are static operations. They do not follow skin or morph deformation.
+
+## Retained surface attachments
+
+`createSurfaceAttachment` is introduced in `0.4.1`. Published npm `0.4.0` does not include this addon.
+It binds a rigid accessory to one triangle through world transforms, relative morphs and four-influence skinning.
+The accessory uses the attachment's retained world matrix. Its positive Z axis follows the posed triangle's geometric winding.
+
+1. Choose an original triangle number and barycentric coordinates for the contact point.
+2. Bind the target with `createSurfaceAttachment` from `67js/addons/surface-attachment` using `0.4.1` or a current source build.
+3. Assign `attachment.matrix` to the accessory part before creating the renderer.
+4. Update the target matrix, morph weights and skin palette for the frame.
+5. Call `attachment.update()` before `renderer.updateParts()`.
+
+The [attachment contract](/surface-attachment.md) defines retained identities, world-unit clearance and unsupported shader deformation.
+Updates sample the selected triangle without rebuilding a BVH.
+Static raycast hits can supply binding coordinates, but query indices cannot raycast a visibly skinned or morphed surface.
+An attachment positions one rigid frame. It does not conform the accessory footprint or prevent every intersection.
+
 ## Materials and color
 
 `color` and `emissiveColor` are linear RGB. `metallic` and `roughness` describe the PBR surface. `emission` sets emission intensity. `material.map` is a decoded texture descriptor with an image, UV channel 0, color space and supported sampler settings.
@@ -153,6 +238,24 @@ Bloom cannot recover missing geometry or lighting detail.
 
 Outdoor `environment` accepts `skyTop`, `skyBottom` (display RGB), `fogColor` (linear RGB), `fogDensity`, `lightDirection` and `daylight`. Set `world: true` and `ground: false`. Frames can override environment and supply `time`, `wind`, `waterRipple` and `rippleTime`.
 
+## Local lights and volume fog
+
+Version `0.4.0` supports local lighting through the renderer's `environment` option and per-frame environment overrides.
+`pointLights` accepts at most eight world-space lights with linear RGB colors.
+`keyIntensity`, `fillIntensity` and `ambientIntensity` control the existing studio lighting.
+
+1. Set the environment's lighting controls when creating the renderer.
+2. Supply the complete `frame.environment.pointLights` list to animate local lights.
+3. Inspect exposure and material response at a fixed sample time.
+
+The [lighting contract](/lighting.md) defines intensity, radius, range and validation limits.
+Point lights have no local shadows and can illuminate through walls.
+Radius regularizes attenuation and does not create an area emitter.
+
+The [volume fog contract](/volumetric.md) covers depth-clipped directional scattering in version `0.4.0`.
+Active fog requires `hdr: true`, `depth: true` and supported floating-point targets.
+Its depth texture contributes to the render memory estimate.
+
 ## Deterministic animation
 
 ```js
@@ -167,9 +270,66 @@ renderer.updateParts(parts);
 renderer.render({ eye: [3,2,4], target: [0,0,0], time: 1 });
 ```
 
-Tracks target unique part names. Supported transform tracks are translation, rotation (quaternion XYZW) and scale. Material tracks include metallic, roughness and emission. Interpolation is LINEAR, STEP or SMOOTH.
+Tracks target unique part names. Supported transform tracks are translation, rotation (quaternion XYZW) and scale. Material tracks include metallic, roughness and emission. Interpolation supports `LINEAR`, `STEP`, `SMOOTH` and `CUBICSPLINE`.
 
 `sampleAnimationClip(clip, time)` returns samples without binding parts. Preserve the original graph and apply absolute time so seeking backwards reproduces the scene. Use `requestAnimationFrame` for playback, pause when hidden, and use a fixed sample time for export.
+
+## Animation curves and mixing
+
+Version `0.4.0` supports `CUBICSPLINE` tracks with explicit `inTangent` and `outTangent` values on every keyframe.
+Tangents represent component changes per second. Quaternion tangents are component derivatives.
+The [curve contract](/animation-curves.md) defines interpolation, overshoot constraints and retained player buffers.
+
+`createAnimationMixer(parts)` combines clips through reusable actions and absolute-time control timelines.
+Actions support weights, playback speed, fades and crossfades.
+The [mixer contract](/animation-mixer.md) defines blending, ownership and control ordering.
+
+1. Create clips and bind their actions through `mixer.clipAction(clip)`.
+2. Author `play`, `fadeTo` or `crossFade` controls in nondecreasing time order.
+3. Call `mixer.apply(time)` for the desired absolute time.
+4. Upload the changed parts with `renderer.updateParts(parts)`.
+
+Playback can seek backward independently of control authoring order.
+The mixer owns its registered properties and captures their base values during binding.
+
+## Skeletal and morph animation
+
+Version `0.4.0` supports four-influence GPU skinning and relative position/normal morph targets.
+`createSkinPose` supplies a retained joint palette. `updateSkinPose` calculates mesh-local joint matrices from world joints and inverse binds.
+`createMorphPose` supplies retained weights for the geometry's relative targets.
+The renderer applies morph deltas before skinning.
+
+1. Define static skin influences or relative morph channels before renderer construction.
+2. Assign the matching retained `skin` and `morph` poses to each part.
+3. Update joint palette values and morph weights for the desired frame.
+4. Call `renderer.updateParts(parts)` to validate and upload the poses.
+
+The [skinning contract](/skinning.md) defines supported transforms, four influences and identity requirements.
+The [morph contract](/morph-targets.md) defines channel shapes, weight bounds and resource estimates.
+Changing topology, influences or pose identities requires a new renderer.
+
+The glTF addon imports supported skins and relative targets, including joint and weight animation.
+`asset.applyAnimation(time, clipIndex)` updates retained parts and poses for upload.
+The [glTF morph contract](/gltf-morph.md) and [asset contract](/gltf.md) define the supported asset subset.
+
+## Recorded physics
+
+Version `0.4.0` provides recorded rigid-body simulation through `67js/addons/physics`.
+The addon requires the separate optional peer dependency `@dimforge/rapier3d-compat@0.21.0`.
+It bakes body contacts, joints, limits and bounded motors into a timeline.
+Playback samples that recording without rerunning the solver.
+
+1. Define named bodies, colliders, joints and tick events.
+2. Call `planPhysicsScene` to validate the definition and allocation estimate.
+3. Await `createPhysicsScene` to bake the bounded recording.
+4. Bind visual parts through `physics.bindParts`.
+5. Apply bindings at absolute time before uploading changed parts.
+6. Call `physics.dispose()` when the recording is no longer needed.
+
+The [physics contract](/physics.md) defines supported colliders, joint controls, timing and disposal.
+Recorded poses can seek forward or backward. Interpolation between recorded frames can show small penetrations.
+The bake can block the main thread after WASM initialization.
+Cloth, soft bodies, mesh colliders and direct skeletal bindings are unsupported.
 
 ## Assemblies and interaction
 
@@ -190,7 +350,9 @@ renderer.render({ eye: [3,2,4], target: [0,0,0] });
 // Close in this order: renderer.dispose(); asset.dispose();
 ```
 
-Supported: standard opaque meshes, UV base-color PNG/JPEG textures, vertex colors, emissive color and rigid node animation. Unsupported: skinning, morph targets, transparent or double-sided materials, compressed geometry and additional PBR maps. The optional decoder uses Three.js GLTFLoader, not its renderer. Read the [asset contract](/gltf.md) before choosing a model.
+Version `0.4.0` imports supported opaque meshes, vertex colors, five PBR texture channels, skins, relative morph targets and animation.
+Transparent or double-sided materials and compressed geometry remain unsupported.
+The optional decoder uses Three.js GLTFLoader without its renderer. Read the [asset contract](/gltf.md) before choosing a model.
 
 Core `exportGlb(parts)` returns GLB geometry. This geometry exporter is not a full texture/animation round-trip. For exploded output, apply `assemblyOffset` to copied matrices. Use the browser demo's PNG controls for a still.
 
@@ -276,18 +438,13 @@ Core exports are available from `67js`:
 
 67.js targets WebGL2. Version `0.4.0` includes the APIs below. Check the installed package version and release metadata before using them.
 
-## Current source additions
+## Release and source availability
 
-The current checkout adds authoring and animation APIs through separate modules:
+Published npm `0.4.0` includes modeling, sculpting, static mesh queries, shrinkwrap, surface patches, animation mixing, skinning, morphs, physics and lighting.
+Retained [surface attachments](/surface-attachment.md) are introduced in `0.4.1` and are absent from published npm `0.4.0`.
+Source checkouts can contain unreleased changes beyond their package version.
 
-- [Scene hierarchy](scene-graph.md), [procedural modeling](modeling.md), [animation curves](animation-curves.md) and [clip mixing](animation-mixer.md).
-- [Skeletal animation](skinning.md), [relative morph targets](morph-targets.md) and [glTF morph animation](gltf-morph.md).
-- [Recorded Rapier physics](physics.md), including contacts, joints, limits and bounded motors.
-- [Static sculpt brushes](sculpt.md), [curved surface patches](surface.md) and [BVH mesh queries](mesh-query.md).
-- [Static shrinkwrap](shrinkwrap.md) through nearest-surface or directional projection, with bounded work and explicit miss handling.
-- [GLB snapshot export](export-glb.md), including vertex colors, UVs, HDR emission and current morph weights.
-
-These APIs do not provide a Blender-style editor, WebGPU backend or general asset compatibility. Mesh queries operate on static geometry. They do not automatically resolve collisions or diagnose z-fighting. The physics addon requires its separate Rapier dependency. See each module's contract for limits and disposal requirements.
-
-The current source also adds [surface attachments](surface-attachment.md), newer than npm `0.4.0`.
-These retained rigid frames follow selected triangles through morphing and skinning without rebuilding a mesh query index each frame.
+The [release metadata](/release.json) identifies the published package and browser module.
+The checkout's `CHANGELOG.md` separates released features from unreleased work.
+The [GLB snapshot contract](/export-glb.md) describes geometry, colors, UVs, HDR emission and current morph weights.
+Module contracts define their own resource limits and disposal requirements.

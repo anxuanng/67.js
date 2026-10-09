@@ -1,6 +1,6 @@
 {
   "name": "@codepawlhq/67js",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "private": false,
   "type": "module",
   "description": "A browser graphics engine for interactive worlds, animation and cinematic media, with memory-aware CPU/GPU export",

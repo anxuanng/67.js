@@ -122,15 +122,6 @@ document.querySelectorAll('[data-package-manager]').forEach(button => {
   packageControls.push({ name, control });
 });
 
-function redirectLegacyDownloads() {
-  if (['/', '/index.html'].includes(location.pathname) && location.hash === '#downloads') {
-    location.replace('/downloads.html');
-  }
-}
-
-redirectLegacyDownloads();
-window.addEventListener('hashchange', redirectLegacyDownloads);
-
 document.querySelectorAll('.example img').forEach(image => {
   image.addEventListener('error', () => {
     image.alt = `${image.alt}. Preview unavailable. Open the example to explore it`;

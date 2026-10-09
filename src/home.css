@@ -120,6 +120,17 @@ button:hover { background:var(--border); }
 .example img { aspect-ratio:16/9; border-radius:var(--panel-radius); border:1px solid var(--border); }
 .hero { display:grid; grid-template-columns:minmax(0,.9fr) minmax(0,1.1fr); align-items:center; gap:40px; margin:16px 0 48px; }
 .hero .introduction { margin:0; padding:20px 0; min-width:0; }
+.hero .introduction > div { width:100%; min-width:0; }
+.home-install { scroll-margin-top:24px; margin-top:28px; }
+.home-install .package-install { padding:20px; }
+.home-install .command-row { flex-wrap:wrap; gap:12px; padding:16px; }
+.home-install .command-row code { flex:1 1 240px; min-width:0; }
+.home-install .package-links { gap:4px 16px; margin-top:14px; }
+.home-install .package-links a { font-size:13px; }
+@media (max-width:760px) {
+  .home-install .command-row code { flex:0 1 auto; width:100%; }
+  .home-install .package-install { padding:16px; }
+}
 .hero .feature-showcase { margin:0; min-width:0; }
 .hero .live-showcase canvas { height:clamp(320px,30vw,430px); }
 @media (max-width:960px) {

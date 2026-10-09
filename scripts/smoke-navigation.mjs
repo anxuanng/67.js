@@ -14,11 +14,14 @@ try {
     await page.emulateMedia({ colorScheme });
     for (const route of ['/', '/downloads.html', '/docs.html', '/getting-started.html']) {
       await page.goto(origin + route);
+      if (route === '/downloads.html') await page.waitForURL(origin + '/#downloads');
+      if (route === '/getting-started.html') await page.waitForURL(origin + '/docs.html#install');
+      await page.locator('.navigation nav a .nav-label').waitFor();
       for (const width of [320, 390, 580, 1440]) {
         await page.setViewportSize({ width, height: 1000 });
         const linkPositions = await page.locator('.navigation nav a').evaluateAll(links => links.map(link => link.getBoundingClientRect().top));
         assert.ok(linkPositions.every(top => Math.abs(top - linkPositions[0]) < 1), 'Library navigation wraps to another row');
-        const contrast = await page.locator(route === '/' ? '.navigation nav a:first-child' : '.navigation nav a[aria-current]').evaluate(link => {
+        const contrast = await page.locator('.navigation nav a').evaluate(link => {
           const channels = color => color.match(/[\d.]+/g).map(Number);
           const backgrounds = [];
           for (let element = link; element; element = element.parentElement) {
