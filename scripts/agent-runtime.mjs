@@ -2,9 +2,9 @@ import { createServer } from 'node:http';
 import { randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { build } from 'vite';
-import { chromium } from 'playwright';
+import { isAbsolute } from 'node:path';
 import { createAgentScene, AGENT_SCENE_CAPABILITIES } from '../src/agent-scene.js';
+import { createAgentAssetCatalog } from './agent-asset-catalog.mjs';
 
 const EMPTY_RECIPE = { format: '67js.scene', schemaVersion: 1, geometries: [], materials: [], nodes: [] };
 const SCENE_LIMITS = createAgentScene(EMPTY_RECIPE).limits;
@@ -14,7 +14,7 @@ const EVALUATION_TIMEOUT_MS = 30000;
 const html = '<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;height:100%;background:#182126}canvas{display:block;width:100vw;height:100vh}</style></head><body><canvas></canvas><script type="module" src="/preview.js"></script></body></html>';
 
 /** Local, serialized browser preview. No browser is launched until scene creation. */
-export function createAgentRuntime({ backend = 'gpu', browser: browserPath, memory = 192 } = {}) {
+export function createAgentRuntime({ backend = 'gpu', browser: browserPath, memory = 192, assets: assetRoot } = {}) {
   if (!['gpu', 'cpu'].includes(backend)) {
     throw new RangeError('backend must be gpu or cpu.');
   }
@@ -24,6 +24,9 @@ export function createAgentRuntime({ backend = 'gpu', browser: browserPath, memo
   if (browserPath !== undefined && (typeof browserPath !== 'string' || !existsSync(browserPath))) {
     throw new Error('The configured browser executable does not exist.');
   }
+  if (assetRoot !== undefined && (typeof assetRoot !== 'string' || !isAbsolute(assetRoot))) {
+    throw new TypeError('Asset root must be an explicit absolute directory path.');
+  }
   let phase = 'idle';
   let browserInstance;
   let httpServer;
@@ -32,6 +35,12 @@ export function createAgentRuntime({ backend = 'gpu', browser: browserPath, memo
   let queuedCalls = 0;
   let queue = Promise.resolve();
   let closing;
+  let catalogPromise;
+  function catalog() {
+    if (!assetRoot) throw new Error('Configure --assets with an absolute directory before importing GLB assets.');
+    catalogPromise ??= createAgentAssetCatalog(assetRoot);
+    return catalogPromise;
+  }
 
   function enqueue(task) {
     if (closing || phase === 'closing' || phase === 'closed' || phase === 'failed') {
@@ -73,6 +82,10 @@ export function createAgentRuntime({ backend = 'gpu', browser: browserPath, memo
     }
     phase = 'starting';
     try {
+      const [{ build }, { chromium }] = await Promise.all([
+        import('vite'),
+        import('playwright'),
+      ]);
       const root = fileURLToPath(new URL('..', import.meta.url));
       const bundle = await build({
         root,
@@ -91,7 +104,7 @@ export function createAgentRuntime({ backend = 'gpu', browser: browserPath, memo
       const code = outputs[0].code;
       httpServer = createServer((request, response) => {
         response.setHeader('Cache-Control', 'no-store');
-        response.setHeader('Content-Security-Policy', "default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; img-src data:; connect-src 'none'");
+        response.setHeader('Content-Security-Policy', "default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; img-src data: blob:; connect-src blob:");
         if (request.method !== 'GET' || !['/', '/preview.js'].includes(request.url)) {
           response.writeHead(404);
           response.end();
@@ -176,7 +189,13 @@ export function createAgentRuntime({ backend = 'gpu', browser: browserPath, memo
         preview: { backend, memoryBudgetMiB: memory, maximumWidth: 1024, maximumHeight: 1024, maximumImageBytes: MAXIMUM_IMAGE_BYTES, maximumActiveScenes: 1, maximumQueuedCalls: MAXIMUM_QUEUED_CALLS, evaluationTimeoutMs: EVALUATION_TIMEOUT_MS },
         phase: closing && phase !== 'closed' ? 'closing' : phase,
         availableIn: 'source after npm 0.4.1',
-        unsupported: ['asset providers', 'arbitrary code execution', 'animation authoring', 'video jobs'],
+        assets: {
+          configured: Boolean(assetRoot), formats: ['self-contained GLB'],
+          maximumBytes: 16 * 1024 * 1024, maximumAssets: 64,
+          maximumVertices: 250000, maximumParts: 4096, maximumTexturePixels: 4194304, maximumJoints: 1024, maximumClips: 256,
+          commands: ['set-root', 'set-animation', 'set-material', 'set-camera', 'set-environment', 'set-effects', 'set-shadow'],
+        },
+        unsupported: ['remote asset providers', 'arbitrary code execution', 'animation authoring', 'video jobs'],
       };
     },
     create({ recipe }) {
@@ -187,6 +206,20 @@ export function createAgentRuntime({ backend = 'gpu', browser: browserPath, memo
         await boot();
         const sessionId = randomUUID();
         const result = await evaluate('create', { recipe, sessionId, memoryBudgetMiB: memory, backend });
+        activeSessionId = sessionId;
+        return result;
+      });
+    },
+    assetCatalog() {
+      return enqueue(async () => assetRoot ? { configured: true, ...(await catalog()).list() } : { configured: false, assets: [] });
+    },
+    createAsset({ recipe }) {
+      return enqueue(async () => {
+        if (activeSessionId) throw new Error('Dispose the current scene before creating another.');
+        const bytes = await (await catalog()).read(recipe.assetId);
+        await boot();
+        const sessionId = randomUUID();
+        const result = await evaluate('createAsset', { recipe, data: bytes.toString('base64'), sessionId, memoryBudgetMiB: memory, backend });
         activeSessionId = sessionId;
         return result;
       });

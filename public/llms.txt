@@ -16,6 +16,11 @@ This addon does not expose an MCP server or a render job queue.
 The source checkout provides a separate stdio MCP server in `scripts/mcp-server.mjs`, after npm `0.4.1`.
 Read `/mcp.md` before configuring it. Start with `scene_capabilities`, create a recipe and inspect its stable IDs.
 
+Read `/agent-asset.md` for source-only imported asset sessions and the `67js/addons/agent-asset` addon.
+Configure --assets with an absolute GLB directory, then call scene_asset_catalog and scene_create_asset with a content-bound asset ID.
+Imported scenes preserve supported maps, skins, morphs and clips. Their topology remains fixed.
+Use set-root for asset placement and set-animation for absolute clip/time sampling. Checkpoint before sampling or relighting.
+
 Read `/agent-look.md` for recipe environment, effects and shadow fields.
 Use `set-environment`, `set-effects` and `set-shadow` for atomic partial look patches.
 Nested volumeFog/bloom fields merge. pointLights replaces the list. Volume fog requires HDR/depth support.

@@ -23,10 +23,11 @@ This document separates shipping capabilities from work in progress. Performance
 ## Next
 
 The current source, after npm `0.4.1`, includes agent scenes with stable IDs, atomic resource/node edits and checkpoints.
-Its stdio MCP server supplies ten schema-backed tools and persistent CPU/GPU image previews.
+Its stdio MCP server supplies twelve schema-backed tools and persistent CPU/GPU image previews.
 Recipes retain lighting, volumetric fog, grading and directional shadow coverage with atomic edits and undo.
+Imported asset sessions retain supported textures, rigs, morphs and clips from a configured local GLB catalog.
 
-1. Extend agent sessions to ingest validated local assets with stable IDs, bounded allocation, replay and undo.
+1. Extend imported asset sessions with node-level editing, topology changes and deformed geometry diagnostics.
 2. Extend MCP visual feedback with bounded multi-angle and absolute animation-time previews.
 3. Persistent render jobs with progress, cancellation, explicit CPU/GPU budgets and deterministic image and video export.
 4. Geometry, rig and asset diagnostics that help agents correct intersections, invalid transforms and unsupported materials.

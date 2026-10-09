@@ -116,6 +116,21 @@ const recipe = z.strictObject({
   effects: effects.optional(),
   shadow: shadow.optional(),
 }).describe('Bounded scene recipe. Backend validates references, mesh resource pairs, hierarchy, geometry budgets and camera consistency.');
+const assetRecipe = z.strictObject({
+  format: z.literal('67js.asset'),
+  schemaVersion: z.literal(1),
+  assetId: z.string().regex(/^[a-f0-9]{64}$/).describe('SHA-256 asset ID from scene_asset_catalog.'),
+  camera: z.strictObject(cameraFields).optional(),
+  environment: environment.optional(),
+  effects: effects.optional(),
+  shadow: shadow.optional(),
+  root: z.strictObject({
+    translation: vector3.optional(), rotation: quaternion.optional(),
+    scale: z.tuple([positive, positive, positive]).optional(),
+  }).optional(),
+  animation: z.strictObject({ clip: z.number().int().min(0), time: nonnegative }).nullable().optional().describe('Absolute clip/time sample. null selects the original decoded pose.'),
+  materialOverrides: z.array(z.strictObject({ id: identifier, ...materialFields })).max(4096).optional(),
+});
 const operation = z.discriminatedUnion('type', [
   z.strictObject({ type: z.literal('set-node'), id: identifier, geometry: identifier.optional(), material: identifier.optional(), ...nodeFields }),
   z.strictObject({ type: z.literal('set-material'), id: identifier, ...materialFields }),
@@ -123,6 +138,8 @@ const operation = z.discriminatedUnion('type', [
   z.strictObject({ type: z.literal('set-environment'), environment }),
   z.strictObject({ type: z.literal('set-effects'), effects }),
   z.strictObject({ type: z.literal('set-shadow'), shadow }),
+  z.strictObject({ type: z.literal('set-root'), translation: vector3.optional(), rotation: quaternion.optional(), scale: z.tuple([positive, positive, positive]).optional() }),
+  z.strictObject({ type: z.literal('set-animation'), clip: z.number().int().min(0).nullable().optional(), time: nonnegative.optional() }),
   z.strictObject({ type: z.literal('add-node'), node: nodeRecord }),
   z.strictObject({ type: z.literal('remove-node'), id: identifier, recursive: z.boolean().optional().describe('Remove descendants too. Defaults to false; dangling children reject the batch.') }),
   z.strictObject({ type: z.literal('add-geometry'), geometry }),
@@ -142,7 +159,7 @@ function jsonResult(value) {
 
 export function createAgentMcpServer(runtime, { version = '0.4.1' } = {}) {
   const server = new McpServer({ name: '67js-scene', version }, {
-    instructions: 'Start with scene_capabilities, then scene_create and scene_inspect. Before editing, save a scene_checkpoint. Apply small batches with the current expectedRevision and check committed, revision and renderSucceeded. Add nodes and shared geometry/material resources through explicit commands; references must resolve in the final batch. Removing a parent requires recursive:true or removing/reparenting its children. A committed edit can have a separate renderError; do not retry it with an old revision. Use scene_look to judge the rendered image. Restore failed experiments or release unused checkpoints. Export the final recipe and dispose the scene when finished. No arbitrary JavaScript, URLs, files or jobs are exposed.',
+    instructions: 'Start with scene_capabilities. Create a procedural recipe with scene_create, or select a configured GLB digest from scene_asset_catalog and use scene_create_asset. Inspect stable IDs and save a checkpoint before editing. Apply small batches with the current expectedRevision and check committed, revision and renderSucceeded. Procedural scenes support topology edits; imported assets preserve decoded meshes and support root, material, look and absolute clip sampling. A committed edit can have a separate renderError; do not retry it with an old revision. Use scene_look to judge the actual image. Restore experiments or release unused checkpoints. Export the final recipe and dispose the scene when finished. No arbitrary JavaScript, remote URLs, file paths or jobs are exposed.',
   });
   let closePromise;
   server.server.onclose = () => {
@@ -164,8 +181,10 @@ export function createAgentMcpServer(runtime, { version = '0.4.1' } = {}) {
   }
   register('scene_capabilities', 'Read supported recipe features and runtime budgets before authoring. Does not launch a browser.', z.strictObject({}), readOnly, async () => jsonResult(await runtime.capabilities()));
   register('scene_create', 'Create the single active render scene from a JSON recipe. Dispose an existing scene first.', z.strictObject({ recipe }), { ...edit, destructiveHint: false }, async argumentsValue => jsonResult(await runtime.create(argumentsValue)));
+  register('scene_asset_catalog', 'List content-bound GLB IDs from the configured local asset directory. No arbitrary paths or downloads.', z.strictObject({}), readOnly, async () => jsonResult(await runtime.assetCatalog()));
+  register('scene_create_asset', 'Create the active scene from a catalog GLB and editable asset recipe. Preserves supported maps, skins, morphs and clips. Dispose the existing scene first.', z.strictObject({ recipe: assetRecipe }), { ...edit, destructiveHint: false }, async argumentsValue => jsonResult(await runtime.createAsset(argumentsValue)));
   register('scene_inspect', 'Read revision, counts and selected nodes. Bounds describe authored geometry rather than shader displacement.', z.strictObject({ ...sessionFields, ids: z.array(identifier).max(4096).optional().describe('Selected node IDs. Omit to inspect scene order.'), limit: z.number().int().min(1).max(4096).optional().describe('Maximum returned node records. Defaults to 64.'), includeBounds: z.boolean().optional().describe('Include world geometry bounds. Defaults to false.') }), readOnly, async argumentsValue => jsonResult(await runtime.inspect(argumentsValue)));
-  register('scene_apply', 'Atomically edit transforms, camera, materials or scene membership. Add immutable geometry and shared materials; remove unused resources explicitly. Successful batches increment revision once.', z.strictObject({ ...sessionFields, expectedRevision, operations: z.array(operation).min(1).max(256).describe('Set commands use flat fields; add commands contain node, geometry or material records. Final references and budgets validate before publication.') }), edit, async argumentsValue => jsonResult(await runtime.apply(argumentsValue)));
+  register('scene_apply', 'Atomically edit transforms, look, camera or materials. Procedural scenes support membership commands. Imported assets support set-root and absolute set-animation sampling. Successful batches increment revision once.', z.strictObject({ ...sessionFields, expectedRevision, operations: z.array(operation).min(1).max(256).describe('Node/material/camera/root/animation commands use flat fields. Look patches and add commands contain nested records. Backend validates each scene mode before publication.') }), edit, async argumentsValue => jsonResult(await runtime.apply(argumentsValue)));
   register('scene_look', 'Render the active scene as a bounded PNG image for visual assessment.', z.strictObject({ ...sessionFields, width: z.number().int().min(64).max(1024).default(768).describe('PNG width in pixels.'), height: z.number().int().min(64).max(1024).default(512).describe('PNG height in pixels.') }), readOnly, async argumentsValue => {
     const { data, mimeType, metadata } = await runtime.look(argumentsValue);
     return { content: [{ type: 'image', data, mimeType }, { type: 'text', text: JSON.stringify(metadata) }], structuredContent: metadata };
@@ -184,8 +203,8 @@ async function main() {
   for (let index = 0; index < argumentsValue.length; index += 2) {
     const name = argumentsValue[index];
     const value = argumentsValue[index + 1];
-    if (!['--backend', '--browser', '--memory'].includes(name) || value === undefined) {
-      throw new Error('Use --backend cpu|gpu, --browser <local executable path>, and --memory <32..256 MiB>.');
+    if (!['--backend', '--browser', '--memory', '--assets'].includes(name) || value === undefined) {
+      throw new Error('Use --backend cpu|gpu, --browser <local executable path>, --memory <32..256 MiB>, and --assets <absolute GLB directory>.');
     }
     options[name.slice(2)] = name === '--memory' ? Number(value) : value;
   }

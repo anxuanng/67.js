@@ -401,9 +401,10 @@ Disconnect observers, cancel animation frames, release pointer state and call `d
 ## Models and AI agents
 
 The current source includes [agent scene sessions](/agent-scene.md), newer than npm `0.4.1`.
-Its [MCP server](/mcp.md) provides ten tools for creating, inspecting, editing and previewing scenes through a persistent browser renderer.
+Its [MCP server](/mcp.md) provides twelve tools for creating, inspecting, editing and previewing scenes through a persistent browser renderer.
 Read the matching checkout's MCP guide for launch configuration, CPU/GPU selection and source-only availability.
 The [agent look contract](/agent-look.md) adds retained lighting, volumetric fog, grading and directional shadows to recipe edits and checkpoints.
+The [asset adapter](/agent-asset.md) imports local catalog GLBs with supported textures, rigs, morphs and deterministic clip sampling.
 
 The addon accepts JSON recipes with stable object IDs, shared geometry and material resources, hierarchy and a camera.
 Edits use an expected revision and commit as one batch. Checkpoints restore the supported scene state.

@@ -150,7 +150,12 @@ Call `scene_capabilities`, create one JSON scene, inspect IDs, checkpoint, apply
 Use the revision returned by each committed apply or restore. A response with `committed: true` and `renderSucceeded: false` still advances revision.
 Inspect or export the canonical recipe after a render failure; do not retry the edit with its old revision.
 The server retains one renderer, bounds image dimensions and payloads, and closes its browser on stdio EOF.
-Export the recipe before disposal. Asset ingestion, animation authoring and video jobs remain unsupported by these tools.
+Export the recipe before disposal. Animation authoring and video jobs remain unsupported by these tools.
+For imported models, read `docs/agent-asset.md`, configure `--assets` with an absolute local GLB directory, then select a digest from `scene_asset_catalog`.
+Use `scene_create_asset` with a `67js.asset` recipe; supported texture maps, skinning, morphs and existing clips remain attached to decoded meshes.
+Edit imported models through `set-root`, factor-only `set-material`, look commands and absolute `set-animation` sampling. Imported topology is immutable.
+Use `{ type: 'set-animation', time }` to sample the current clip; `{ type: 'set-animation', clip: null }` restores the decoded pose.
+Bounds describe authored base geometry, not the deformed skin/morph silhouette. Check the rendered PNG before accepting framing.
 Read `docs/agent-look.md` for authored lighting, fog, effects and shadow coverage, available after npm `0.4.1`.
 Use atomic `set-environment`, `set-effects` and `set-shadow` partial records instead of editing renderer internals through MCP.
 Nested volumeFog/bloom fields merge; pointLights replaces the full list. Point lights do not cast local shadows.

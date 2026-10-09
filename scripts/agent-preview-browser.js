@@ -3,6 +3,8 @@ import { Renderer67 } from '../src/renderer.js';
 import { applyProjection } from '../src/camera.js';
 import { mat4 } from 'gl-matrix';
 import { resolveAgentShadow } from '../src/agent-look.js';
+import { createAgentAssetScene } from '../src/agent-asset.js';
+import { parseGltf } from '../src/gltf.js';
 
 let active = null;
 let canvas = document.querySelector('canvas');
@@ -51,6 +53,9 @@ function renderInfo(renderer) {
     hdr: renderer.capabilities.hdr,
     depth: renderer.depth,
     geometryBuffers: renderer.geometryBuffers?.size ?? 0,
+    materialTextures: renderer.textures ? [...renderer.textures.keys()].filter(Boolean).length : 0,
+    skinTextures: renderer.skinTextures?.size ?? 0,
+    morphTextures: renderer.morphTextures?.size ?? 0,
     gpuBuffers: renderer.buffers?.length ?? 0,
     drawBatches: renderer.batches?.length ?? 0,
   };
@@ -115,41 +120,64 @@ function mutationStatus(record) {
   }
 }
 
-window.__agentPreview = {
-  create({ recipe, sessionId, memoryBudgetMiB, backend }) {
-    if (active) {
-      throw new Error('Dispose the current scene before creating another.');
+function createPreview(scene, { sessionId, memoryBudgetMiB, backend }, asset) {
+  if (active) {
+    throw new Error('Dispose the current scene before creating another.');
+  }
+  validatePreviewCamera(scene.camera);
+  let renderer;
+  try {
+    renderer = new Renderer67(canvas, scene.parts, {
+      ground: false,
+      hdr: true,
+      depth: true,
+      world: scene.environment.world,
+      environment: scene.environment,
+      shadowBounds: resolveAgentShadow(scene.shadow, scene.environment.lightDirection),
+      pixelRatio: 1,
+      samples: backend === 'cpu' ? 1 : 4,
+      memoryBudgetMiB,
+    });
+    const record = { scene, renderer, asset, sessionId, checkpoints: new Map(), rendererTopology: scene.topologyRevision };
+    draw(record);
+    const result = status(record);
+    if (backend === 'gpu' && /swiftshader|llvmpipe|software/i.test(result.render.graphics)) {
+      throw new Error('Hardware GPU rendering was requested, but the browser selected a software renderer.');
     }
-    const scene = createAgentScene(recipe);
-    validatePreviewCamera(scene.camera);
-    let renderer;
+    active = record;
+    return result;
+  } catch (error) {
+    renderer?.dispose();
+    // A throwing constructor may already own GPU objects without returning an instance.
+    canvas.getContext('webgl2')?.getExtension('WEBGL_lose_context')?.loseContext();
+    const replacement = document.createElement('canvas');
+    canvas.replaceWith(replacement);
+    canvas = replacement;
+    throw error;
+  }
+}
+
+window.__agentPreview = {
+  create(input) {
+    if (active) throw new Error('Dispose the current scene before creating another.');
+    return createPreview(createAgentScene(input.recipe), input);
+  },
+  async createAsset(input) {
+    if (active) throw new Error('Dispose the current scene before creating another.');
+    let bytes;
+    if (typeof Uint8Array.fromBase64 === 'function') {
+      bytes = Uint8Array.fromBase64(input.data);
+    } else {
+      const binary = atob(input.data);
+      bytes = new Uint8Array(binary.length);
+      for (let index = 0; index < binary.length; index++) bytes[index] = binary.charCodeAt(index);
+    }
+    let asset;
     try {
-      renderer = new Renderer67(canvas, scene.parts, {
-        ground: false,
-        hdr: true,
-        depth: true,
-        world: scene.environment.world,
-        environment: scene.environment,
-        shadowBounds: resolveAgentShadow(scene.shadow, scene.environment.lightDirection),
-        pixelRatio: 1,
-        samples: backend === 'cpu' ? 1 : 4,
-        memoryBudgetMiB,
-      });
-      const record = { scene, renderer, sessionId, checkpoints: new Map(), rendererTopology: scene.topologyRevision };
-      draw(record);
-      const result = status(record);
-      if (backend === 'gpu' && /swiftshader|llvmpipe|software/i.test(result.render.graphics)) {
-        throw new Error('Hardware GPU rendering was requested, but the browser selected a software renderer.');
-      }
-      active = record;
-      return result;
+      asset = await parseGltf(bytes.buffer, { maxBytes: 16 * 1024 * 1024, maxVertices: 250000, maxParts: 4096, maxTexturePixels: 4194304, maxJoints: 1024 });
+      return createPreview(createAgentAssetScene(asset, input.recipe), input, asset);
     } catch (error) {
-      renderer?.dispose();
-      // A throwing constructor may already own GPU objects without returning an instance.
-      canvas.getContext('webgl2')?.getExtension('WEBGL_lose_context')?.loseContext();
-      const replacement = document.createElement('canvas');
-      canvas.replaceWith(replacement);
-      canvas = replacement;
+      asset?.dispose();
       throw error;
     }
   },
@@ -215,7 +243,11 @@ window.__agentPreview = {
   },
   dispose({ sessionId }) {
     const record = requireSession(sessionId);
-    record.renderer.dispose();
+    try {
+      record.renderer.dispose();
+    } finally {
+      record.asset?.dispose();
+    }
     record.checkpoints.clear();
     active = null;
     return { sessionId, disposed: true };

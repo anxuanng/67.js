@@ -5,7 +5,7 @@ The published `0.4.1` package does not include this server.
 It uses the maintained MCP TypeScript SDK v2 server and a local browser runtime.
 The [official SDK documentation](https://ts.sdk.modelcontextprotocol.io/v2/) describes its transport and protocol APIs.
 
-The server exposes ten tools for bounded JSON scene authoring.
+The server exposes twelve tools for bounded JSON scene authoring and local GLB imports.
 It renders one active scene and returns PNG images through MCP image content.
 Tool results also contain JSON text and structured metadata.
 The image bytes appear only in the image content block.
@@ -13,7 +13,7 @@ The image bytes appear only in the image content block.
 ## Requirements and launch
 
 The server requires Node.js 20 or later, installed project dependencies, and a local Chrome or Chromium executable.
-The browser starts when `scene_create` runs.
+The browser and its build dependencies load when `scene_create` or `scene_create_asset` runs.
 The runtime serves its generated scene page on the loopback interface.
 The MCP connection uses stdin and stdout, without an HTTP MCP listener.
 
@@ -44,6 +44,12 @@ The MCP connection uses stdin and stdout, without an HTTP MCP listener.
 The browser path is optional when the runtime can locate a supported browser.
 `--backend` accepts `gpu` or `cpu` and defaults to `gpu`.
 `--memory` accepts an integer from 32 to 256 MiB and defaults to 192.
+
+`--assets` selects an absolute directory containing self-contained GLB files.
+The asset catalog reads regular files directly inside that directory, with limits of 64 files and 16 MiB per file.
+Asset IDs bind file contents through SHA-256. Changed files require a runtime restart before they receive refreshed IDs.
+Catalog imports retain supported textures, skins, morphs and animation clips.
+
 These launch options remain outside tool arguments.
 The process runs below normal priority to reduce interference with other work.
 
@@ -81,6 +87,8 @@ Inspect or export the recipe before retrying. Context loss still permits recipe 
 | --- | --- | --- |
 | `scene_capabilities` | None | Features, limits, and backend information |
 | `scene_create` | `recipe` | Session ID, revision, inspection, and render status |
+| `scene_asset_catalog` | None | Configured catalog and content-bound GLB IDs |
+| `scene_create_asset` | `recipe` using `67js.asset` | Imported scene ID, revision, inspection and render status |
 | `scene_inspect` | `sessionId`, optional `ids`, `limit`, `includeBounds` | Compact node records and revision |
 | `scene_apply` | `sessionId`, `expectedRevision`, `operations` | Updated revision, inspection, and render status |
 | `scene_look` | `sessionId`, optional `width`, `height` | PNG image and metadata |
@@ -157,7 +165,12 @@ Staging must fit alongside the current render allocations, so a replacement can 
 The committed revision and separate render failure remain visible in that case.
 Request a smaller `scene_look` to release large frame targets before retrying reconciliation.
 
-The tools expose no arbitrary JavaScript execution, URLs, file access, asset ingestion, animation authoring, or render jobs.
+The [asset scene contract](agent-asset.md) defines root transforms, material overrides and absolute clip/time samples.
+Imported scenes retain their decoded topology. Mesh membership edits remain specific to procedural scenes.
+Their bounds describe authored base vertices in the sampled world transforms, without claiming deformed skin or morph bounds.
+
+The tools expose no arbitrary JavaScript execution, URLs, arbitrary file paths, animation track authoring or render jobs.
+Embedded texture decoding uses private browser blob URLs. Remote asset requests remain blocked.
 The transport supplies a visual feedback loop, but visual quality still depends on the authored scene and image assessment.
 MCP support does not establish Blender feature parity.
 
@@ -179,3 +192,6 @@ The scripts save images and metadata under `artifacts/`. They use one isolated b
 Run `node scripts/smoke-agent-topology.mjs` to inspect native GPU allocations during a shared-geometry addition and restoration.
 Its staging-budget failure must allocate no buffers and retain the previous rendered frame.
 Use `node scripts/smoke-agent-topology.mjs cpu` for software rendering. Both modes also verify recovery through a smaller CPU preview under a 32 MiB budget.
+
+Run `node scripts/smoke-agent-assets.mjs` for actual imported WALL-E and textured rig previews through CPU stdio tools.
+The script checks content IDs, root edits, retained texture decoding, reverse animation sampling and exact checkpoint restoration.

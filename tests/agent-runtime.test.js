@@ -23,6 +23,7 @@ test('invalid preview configuration rejects before any browser or renderer alloc
     assert.throws(() => createAgentRuntime({ memory }), /memory/);
   }
   assert.throws(() => createAgentRuntime({ browser: 'does-not-exist-browser.exe' }), /browser/);
+  assert.throws(() => createAgentRuntime({ assets: 'relative-path' }), /absolute/);
 });
 
 test('requests cannot address an absent session or enter a closing runtime', async () => {

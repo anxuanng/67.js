@@ -44,7 +44,8 @@
     "docs/surface-attachment.md",
     "docs/agent-scene.md",
     "docs/mcp.md",
-    "docs/agent-look.md"
+    "docs/agent-look.md",
+    "docs/agent-asset.md"
   ],
   "main": "./build/67.module.js",
   "module": "./build/67.module.js",
@@ -64,6 +65,7 @@
     "./addons/surface-attachment": "./build/surface-attachment.js",
     "./addons/physics": "./build/physics.js",
     "./addons/agent-scene": "./build/agent-scene.js",
+    "./addons/agent-asset": "./build/agent-asset.js",
     "./package.json": "./package.json"
   },
   "scripts": {
@@ -86,6 +88,7 @@
     "smoke:mcp": "node scripts/smoke-mcp.mjs",
     "smoke:agent-topology": "node scripts/smoke-agent-topology.mjs",
     "smoke:agent-look": "node scripts/smoke-agent-look.mjs",
+    "smoke:agent-assets": "node scripts/smoke-agent-assets.mjs",
     "smoke:enhancements": "node scripts/smoke-enhancements.mjs",
     "smoke:site": "node scripts/smoke-site.mjs",
     "publish:ci": "node scripts/publish-ci.mjs"

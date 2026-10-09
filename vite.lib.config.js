@@ -26,6 +26,7 @@ export default defineConfig({
         'surface-attachment': 'src/surface-attachment.js',
         physics: 'src/physics.js',
         'agent-scene': 'src/agent-scene.js',
+        'agent-asset': 'src/agent-asset.js',
       },
       formats: ['es'],
       fileName: (_, entry) => entry === 'core' ? '67.module.js' : `${entry}.js`,

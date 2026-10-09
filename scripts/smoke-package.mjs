@@ -168,6 +168,17 @@ if (${!published}) {
   agentScene.restore(lookCheckpoint, { expectedRevision: agentScene.revision });
   assert.deepEqual(agentScene.exportRecipe(), originalLook);
   agentScene.releaseCheckpoint(lookCheckpoint);
+  const { createAgentAssetScene } = await import('67js/addons/agent-asset');
+  const parsedAgentAsset = await parseGltf(exportGlb(agentScene.parts));
+  const importedSession = createAgentAssetScene(parsedAgentAsset, { format: '67js.asset', schemaVersion: 1, assetId: '0'.repeat(64) });
+  const importedPart = importedSession.parts[0];
+  const importedCheckpoint = importedSession.checkpoint();
+  importedSession.apply([{ type: 'set-root', translation: [1, 0, 0] }], { expectedRevision: 0 });
+  assert.equal(importedSession.parts[0], importedPart);
+  importedSession.restore(importedCheckpoint, { expectedRevision: 1 });
+  assert.equal(importedSession.parts[0], importedPart);
+  assert.equal(importedSession.exportRecipe().format, '67js.asset');
+  parsedAgentAsset.dispose();
 }
 const parts = createModel();
 assert.equal(parts.length, 574);

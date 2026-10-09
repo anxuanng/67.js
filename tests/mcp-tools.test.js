@@ -95,7 +95,7 @@ test('SDK advertises the complete strict JSON contract and truthful annotations'
   const { client } = await connect(context);
   const { tools } = await client.listTools();
   assert.deepEqual(tools.map(tool => tool.name).sort(), [
-    'scene_apply', 'scene_capabilities', 'scene_checkpoint', 'scene_create', 'scene_dispose',
+    'scene_apply', 'scene_asset_catalog', 'scene_capabilities', 'scene_checkpoint', 'scene_create', 'scene_create_asset', 'scene_dispose',
     'scene_export_recipe', 'scene_inspect', 'scene_look', 'scene_release_checkpoint', 'scene_restore',
   ]);
   for (const tool of tools) {
@@ -132,6 +132,9 @@ test('SDK rejects unknown fields, missing revisions, invalid vectors and oversiz
   await rejected(client, 'scene_capabilities', { javascript: 'process.exit()' });
   await rejected(client, 'scene_inspect', { sessionId: 'not-a-uuid' });
   await rejected(client, 'scene_look', { sessionId, width: 1025 });
+  await rejected(client, 'scene_asset_catalog', { path: 'C:/private/file.glb' });
+  await rejected(client, 'scene_create_asset', { recipe: { format: '67js.asset', schemaVersion: 1, assetId: '../file.glb' } });
+  await rejected(client, 'scene_create_asset', { recipe: { format: '67js.asset', schemaVersion: 1, assetId: 'a'.repeat(64), root: { javascript: 'run' } } });
   await rejected(client, 'scene_look', { sessionId, file: 'out.png' });
   await rejected(client, 'scene_restore', { sessionId, checkpointId: randomUUID() });
   await rejected(client, 'scene_apply', { sessionId, operations: [{ type: 'set-camera' }] });
