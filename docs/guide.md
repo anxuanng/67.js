@@ -14,6 +14,62 @@ The alias lets your application import `67js`. Without the alias, import `@codep
 
 Its browser module is a bundled ES module served with CORS headers. A local checkout can be newer than the published package. Check `VERSION` and `release.json` before using a feature.
 
+## Getting started
+
+1. Create `index.html` with the canvas below.
+2. Save the JavaScript example as `main.js` in the same directory.
+3. Run a development server that resolves npm imports, such as Vite.
+
+```html
+<canvas id="scene" style="width:100%;height:70vh;display:block"></canvas>
+<script type="module" src="./main.js"></script>
+```
+
+```js
+import { Renderer67, box } from '67js';
+
+const canvas = document.querySelector('#scene');
+const parts = [{
+  name: 'My first cube',
+  geometry: box(0.08, 4),
+  matrix: new Float32Array([
+    1, 0, 0, 0,
+    0, 1, 0, 0,
+    0, 0, 1, 0,
+    0, 0, 0, 1,
+  ]),
+  material: {
+    color: [0.2, 0.55, 0.38],
+    metallic: 0,
+    roughness: 0.55,
+    emission: 0,
+    tag: 'surface',
+  },
+}];
+const renderer = new Renderer67(canvas, parts, {
+  ground: false,
+  pixelRatio: 1.25,
+  samples: 4,
+  memoryBudgetMiB: 256,
+});
+const draw = () => renderer.render({ eye: [3, 2, 4], target: [0, 0, 0] });
+const observer = new ResizeObserver(() => {
+  renderer.resize();
+  draw();
+});
+observer.observe(canvas);
+draw();
+window.addEventListener('pagehide', () => {
+  observer.disconnect();
+  renderer.dispose();
+}, { once: true });
+```
+
+The page displays a rounded green cube in a WebGL2 browser. The observer redraws when its canvas changes size.
+
+For a browser import without npm, use the exact `module` URL from [release metadata](/release.json) instead of `67js`.
+The bundled ES module includes its dependencies. Serve the HTML over HTTP. The homepage Downloads section provides the module file.
+
 ## Parts and geometry
 
 A scene is an array of parts. Each part has a unique `name`, a shared `geometry`, a column-major 16-value `Float32Array` `matrix`, and a `material`.
@@ -182,7 +238,7 @@ Disconnect observers, cancel animation frames, release pointer state and call `d
 
 ## Models and AI agents
 
-Give the agent this guide and [/llms.txt](/llms.txt). Start with a scene brief: focal subject, visual references, camera, output size, required interaction, GPU/CPU backend and memory budget. Read the matching scene recipe and run the smallest trial first.
+Give the agent this guide and the matching repository skill. Start with a scene brief: focal subject, visual references, camera, output size, required interaction, GPU/CPU backend and memory budget. Read the matching scene recipe and run the smallest trial first.
 
 Suggested prompt: “Use 67.js to build an interactive mechanical study. Reuse meshes, use a 256MiB render budget, provide orbit and keyboard controls, pause hidden playback, and capture a real wide and mobile preview. List unsupported features. Do not claim speed superiority without a comparable benchmark.”
 

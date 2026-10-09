@@ -40,6 +40,14 @@ const sections = guide.split(/^## /m).slice(1).map((text, index) => {
           const rows = paragraph.split('\n').filter(row => !/^\|[\s:|-]+\|$/.test(row));
           table.innerHTML = rows.map((row, rowIndex) => `<tr>${row.split('|').slice(1,-1).map(cell => `<${rowIndex ? 'td' : 'th'}>${inline(cell.trim())}</${rowIndex ? 'td' : 'th'}>`).join('')}</tr>`).join('');
           const scroll = document.createElement('div'); scroll.className = 'table-scroll'; scroll.append(table); section.append(scroll);
+        } else if (/^\d+\.\s/.test(paragraph)) {
+          const list = document.createElement('ol');
+          for (const line of paragraph.split('\n')) {
+            const item = document.createElement('li');
+            item.innerHTML = inline(line.replace(/^\d+\.\s/, ''));
+            list.append(item);
+          }
+          section.append(list);
         } else {
           const p = document.createElement('p'); p.innerHTML = inline(paragraph); section.append(p);
         }
@@ -50,6 +58,10 @@ const sections = guide.split(/^## /m).slice(1).map((text, index) => {
   toc.append(link); article.append(section);
   return { section, link, text: text.toLowerCase(), index };
 });
+
+if (location.hash) {
+  document.getElementById(location.hash.slice(1))?.scrollIntoView();
+}
 document.querySelector('#doc-search').addEventListener('input', event => {
   const words = event.target.value.toLowerCase().trim().split(/\s+/).filter(Boolean);
   let count = 0;

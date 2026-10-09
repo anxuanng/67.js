@@ -35,5 +35,12 @@ for (const element of document.querySelectorAll('nav a, [data-icon], #save-image
   const path = document.createElementNS(svg.namespaceURI,'path');
   path.setAttribute('d',paths[name]);
   svg.append(path);
-  element.prepend(svg);
+  if (element.matches('nav a')) {
+    const label = document.createElement('span');
+    label.className = 'nav-label';
+    label.append(...element.childNodes);
+    element.append(svg, label);
+  } else {
+    element.prepend(svg);
+  }
 }

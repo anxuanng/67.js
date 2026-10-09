@@ -41,8 +41,27 @@ try {
       report.layouts.push({ route,width,overflow });
     }
     await page.setViewportSize({ width:1440,height:1000 });
+    if (['/', '/docs.html', '/getting-started.html'].includes(route)) {
+      assert.equal(await page.locator('a[href$="llms.txt"]').count(), 0, 'Machine guide appears in public UI');
+      assert.equal(await page.locator('.navigation a[href*="getting-started.html"]').count(), 0, 'Getting started still has separate navigation');
+    }
+    if (route === '/') {
+      assert.equal(await page.locator('.download .icon').count(), 2);
+      assert.ok(!(await page.locator('.download-links').textContent()).includes('↓'));
+    }
+    if (route === '/getting-started.html') {
+      assert.match(page.url(), /\/docs\.html#install$/);
+    }
     if (route === '/docs.html') {
       assert.ok(await page.locator('#doc-article section').count() >= 10);
+      const installGeometry = await page.locator('#install pre').evaluate(block => {
+        const code = block.querySelector('code').getBoundingClientRect();
+        const button = block.querySelector('button').getBoundingClientRect();
+        return { height: block.getBoundingClientRect().height, topDifference: Math.abs(code.top - button.top) };
+      });
+      assert.ok(installGeometry.height < 80, 'Install block has excess blank space');
+      assert.ok(installGeometry.topDifference < 8, 'Copy button is not beside code');
+      assert.equal(await page.locator('#getting-started ol li').count(), 3);
       await page.locator('#doc-search').fill('memory');
       assert.ok(await page.locator('#doc-article section:visible').count() > 0);
       await page.locator('#doc-search').fill('no-such-topic-1234');
