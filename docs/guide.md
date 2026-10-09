@@ -401,10 +401,14 @@ Disconnect observers, cancel animation frames, release pointer state and call `d
 ## Models and AI agents
 
 The current source includes [agent scene sessions](/agent-scene.md), newer than npm `0.4.1`.
+Its [MCP server](/mcp.md) provides ten tools for creating, inspecting, editing and previewing scenes through a persistent browser renderer.
+Read the matching checkout's MCP guide for launch configuration, CPU/GPU selection and source-only availability.
+
 The addon accepts JSON recipes with stable object IDs, shared geometry and material resources, hierarchy and a camera.
 Edits use an expected revision and commit as one batch. Checkpoints restore the supported scene state.
 The session keeps existing renderer-facing parts and matrices for transform, material and camera edits.
-This CPU authoring API does not yet provide an MCP server or background render jobs.
+
+The CPU addon owns recipe state. The separate Node MCP server connects it to browser rendering. Background render jobs remain unsupported.
 
 Give the agent this guide and the matching repository skill. Start with a scene brief: focal subject, visual references, camera, output size, required interaction, GPU/CPU backend and memory budget. Read the matching scene recipe and run the smallest trial first.
 

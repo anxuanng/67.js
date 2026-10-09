@@ -23,9 +23,10 @@ This document separates shipping capabilities from work in progress. Performance
 ## Next
 
 The current source, after npm `0.4.1`, includes fixed-topology agent scenes with stable IDs, atomic revisioned edits and checkpoints.
+Its stdio MCP server supplies ten schema-backed tools and persistent CPU/GPU image previews.
 
 1. Extend agent sessions with dynamic node and resource creation while preserving bounded allocation, replay and undo.
-2. An MCP adapter with capability discovery, compact scene inspection and visual feedback from multiple angles and animation frames.
+2. Extend MCP visual feedback with bounded multi-angle and absolute animation-time previews, plus persistent authored lighting and effect controls.
 3. Persistent render jobs with progress, cancellation, explicit CPU/GPU budgets and deterministic image and video export.
 4. Geometry, rig and asset diagnostics that help agents correct intersections, invalid transforms and unsupported materials.
 5. Agent workflows for imported assets, sculpting, surface fitting, lighting and animation, verified against rendered reference scenes.

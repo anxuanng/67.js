@@ -30,6 +30,7 @@ Use `simplify-code` and `engineering-workflows` for implementation.
 - Static vertex wrapping uses optional `src/shrinkwrap.js` and the checkout's `docs/shrinkwrap.md`.
 - A rigid accessory on a morphing or skinned surface uses optional `src/surface-attachment.js` and `docs/surface-attachment.md`.
 - Agent scene recipes use optional `src/agent-scene.js` and `docs/agent-scene.md`; verify source versus published availability before importing.
+- Agent tool calls use the source-only stdio server in `scripts/mcp-server.mjs`; read `docs/mcp.md` for launch, tool schemas and persistent PNG feedback.
 - An image or video export uses `render-67js-media`.
 
 Read [scene-contract.md](references/scene-contract.md) before creating parts or changing materials.

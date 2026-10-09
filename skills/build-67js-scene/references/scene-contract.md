@@ -142,6 +142,13 @@ Keep JSON commands and snapshots exposed to agents; retained matrices and immuta
 Do not inspect all vertex bounds in a frame loop. Memory estimates cover unique geometry arrays, not total RAM or VRAM.
 The scene addon does not implement MCP transport, dynamic node creation, asset search, or render jobs.
 
+For a configured MCP client, use the separate source-only server documented in `docs/mcp.md`.
+Call `scene_capabilities`, create one JSON scene, inspect IDs, checkpoint, apply a small batch, and assess `scene_look` PNG content.
+Use the revision returned by each committed apply or restore. A response with `committed: true` and `renderSucceeded: false` still advances revision.
+Inspect or export the canonical recipe after a render failure; do not retry the edit with its old revision.
+The server retains one renderer, bounds image dimensions and payloads, and closes its browser on stdio EOF.
+Export the recipe before disposal. Dynamic nodes, asset ingestion, animation authoring and video jobs remain unsupported by these tools.
+
 `cameraView('front' | 'right' | 'top')` returns an orthographic camera with the correct up vector.
 `fitOrthographicHeight(bounds, view, aspect)` frames both model width and height.
 The `unlit` tag and a front orthographic camera produce flat XY geometry.

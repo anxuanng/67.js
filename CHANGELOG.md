@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Add source-checkout MCP tools with strict scene schemas, persistent CPU/GPU previews and bounded PNG responses.
+- Keep renderer sessions alive across edits and close owned browser resources when the MCP connection ends.
 - Add optional agent scene sessions with stable IDs, shared geometry, revision checks, atomic edits and bounded checkpoints.
 - Prioritize agent authoring, visual feedback and MCP integration in the implementation roadmap.
 

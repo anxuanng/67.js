@@ -13,6 +13,14 @@ Use `session.inspect()` for compact object facts and `session.exportRecipe()` fo
 Keep renderer-facing geometry immutable. Call `renderer.updateParts(session.parts)` after a successful edit or restore.
 This addon does not expose an MCP server or a render job queue.
 
+The source checkout provides a separate stdio MCP server in `scripts/mcp-server.mjs`, after npm `0.4.1`.
+Read `/mcp.md` before configuring it. Start with `scene_capabilities`, create a recipe and inspect its stable IDs.
+
+Checkpoint, apply small revisioned batches, then use `scene_look` to assess the actual PNG.
+Restore failed experiments and release unused checkpoints. Export the recipe and dispose the scene when finished.
+The runtime keeps one browser scene alive, serializes calls, caps PNG responses and releases resources on stdin EOF.
+It exposes no arbitrary code, file access, asset providers, dynamic node creation or video jobs.
+
 - [Release metadata](https://67js.codepawl.com/release.json): package name, version, publication status, install command, module URL and commit.
 - [Complete plain-text guide](https://67js.codepawl.com/guide.md): renderer, parts, materials, cameras, animation, lifecycle, export and troubleshooting.
 - [GLB contract](https://67js.codepawl.com/gltf.md): supported assets and conversion limits. Read before selecting or importing a model.

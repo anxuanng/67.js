@@ -42,7 +42,8 @@
     "docs/primitives.md",
     "docs/shrinkwrap.md",
     "docs/surface-attachment.md",
-    "docs/agent-scene.md"
+    "docs/agent-scene.md",
+    "docs/mcp.md"
   ],
   "main": "./build/67.module.js",
   "module": "./build/67.module.js",
@@ -80,6 +81,8 @@
     "score": "node scripts/score.mjs",
     "export:model": "node scripts/export-model.mjs",
     "smoke:package": "node scripts/smoke-package.mjs",
+    "mcp": "node scripts/mcp-server.mjs",
+    "smoke:mcp": "node scripts/smoke-mcp.mjs",
     "smoke:enhancements": "node scripts/smoke-enhancements.mjs",
     "smoke:site": "node scripts/smoke-site.mjs",
     "publish:ci": "node scripts/publish-ci.mjs"
@@ -95,6 +98,8 @@
   "devDependencies": {
     "@codepawlhq/orglet-ui": "0.2.1",
     "@dimforge/rapier3d-compat": "0.21.0",
+    "@modelcontextprotocol/client": "2.3.1",
+    "@modelcontextprotocol/server": "2.3.1",
     "gl-matrix": "3.4.4",
     "highlight.js": "11.12.0",
     "playwright": "1.64.0",
@@ -103,6 +108,7 @@
     "three": "0.186.1",
     "three-mesh-bvh": "0.9.16",
     "vite": "8.3.4",
-    "wrangler": "4.149.0"
+    "wrangler": "4.149.0",
+    "zod": "4.6.5"
   }
 }
