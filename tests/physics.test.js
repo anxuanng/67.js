@@ -365,3 +365,273 @@ test('invalid samples and bindings cannot mutate matrices, and disposed scenes r
   assert.throws(() => scene.bodyIndex('box'), /disposed/);
   assert.throws(() => scene.bindParts([]), /disposed/);
 });
+
+function actuatorDefinition(type = 'prismatic') {
+  return {
+    gravity: [0, 0, 0],
+    bodies: [{ name: 'base', type: 'fixed' }, { name: 'driven' }],
+    colliders: [{ name: 'driven', body: 'driven', shape: 'ball', radius: 1, mass: 1 }],
+    joints: [{ name: 'actuator', type, bodyA: 'base', bodyB: 'driven', axis: type === 'prismatic' ? [1, 0, 0] : [0, 0, 1] }],
+  };
+}
+
+function positionMotor(target = 0.5) {
+  return { mode: 'position', target, stiffness: 40, damping: 8, maxForce: 10 };
+}
+
+function velocityMotor(target = 1, maxForce = 10) {
+  return { mode: 'velocity', target, damping: 20, maxForce };
+}
+
+function actuatorCoordinate(scene, time, type) {
+  const pose = bodyPose(scene, time, 'driven');
+  return type === 'prismatic' ? pose[0] : 2 * Math.atan2(pose[5], pose[6]);
+}
+
+for (const type of ['prismatic', 'revolute']) {
+  test(`${type} limits constrain a real motor in both directions`, async () => {
+    const definition = actuatorDefinition(type);
+    definition.joints[0].limits = [-0.25, 0.5];
+    definition.joints[0].motor = velocityMotor(2);
+    definition.events = [{ tick: 120, type: 'jointMotor', joint: 'actuator', motor: velocityMotor(-2) }];
+    const scene = await createPhysicsScene(definition, { frameCount: 241, solverIterations: 12 });
+    near(actuatorCoordinate(scene, scene.timestep * 120, type), 0.5, 0.02);
+    near(actuatorCoordinate(scene, scene.duration, type), -0.25, 0.02);
+    for (let frame = 0; frame < scene.frameCount; frame++) {
+      const coordinate = actuatorCoordinate(scene, frame * scene.timestep, type);
+      assert.ok(coordinate >= -0.28 && coordinate <= 0.53, `${type} limit escaped at frame ${frame}: ${coordinate}`);
+    }
+    scene.dispose();
+  });
+
+  test(`${type} position motors respond to tick target changes and wake sleeping bodies`, async () => {
+    const definition = actuatorDefinition(type);
+    definition.joints[0].limits = [-1, 1];
+    definition.joints[0].motor = positionMotor(0);
+    definition.events = [
+      { tick: 120, type: 'jointMotor', joint: 'actuator', motor: positionMotor(0.5) },
+      { tick: 240, type: 'jointMotor', joint: 'actuator', motor: positionMotor(-0.5) },
+    ];
+    const scene = await createPhysicsScene(definition, { frameCount: 361 });
+    near(actuatorCoordinate(scene, scene.timestep * 120, type), 0);
+    assert.ok(actuatorCoordinate(scene, scene.timestep * 150, type) > 0.05);
+    near(actuatorCoordinate(scene, scene.timestep * 240, type), 0.5, 0.02);
+    near(actuatorCoordinate(scene, scene.duration, type), -0.5, 0.02);
+    scene.dispose();
+  });
+}
+
+test('rotated prismatic endpoints use Float32 coordinate membership and still reject outside positions', async () => {
+  const definition = actuatorDefinition();
+  const direction = [Math.cos(0.2), Math.sin(0.2), 0];
+  for (const body of definition.bodies) body.rotation = [0, 0, Math.sin(0.1), Math.cos(0.1)];
+  definition.bodies[1].translation = direction;
+  definition.joints[0].limits = [0, 1];
+  definition.joints[0].motor = positionMotor(0.5);
+  const scene = await createPhysicsScene(definition, { frameCount: 241 });
+  const final = bodyPose(scene, scene.duration, 'driven');
+  near(final[0] * direction[0] + final[1] * direction[1], 0.5, 0.02);
+  for (let frame = 0; frame < scene.frameCount; frame++) {
+    const pose = bodyPose(scene, frame * scene.timestep, 'driven');
+    const coordinate = pose[0] * direction[0] + pose[1] * direction[1];
+    assert.ok(coordinate >= -0.02 && coordinate <= 1.02);
+  }
+  scene.dispose();
+  definition.bodies[1].translation = direction.map(value => value * 1.0001);
+  assert.throws(() => planPhysicsScene(definition), /initial joint coordinate/);
+});
+
+test('exact half-turn antipodes share limit membership and real solver trajectories', async () => {
+  for (const limits of [[0, Math.fround(Math.PI)], [-Math.fround(Math.PI), 0]]) {
+    const scenes = [];
+    for (const direction of [1, -1]) {
+      const definition = actuatorDefinition('revolute');
+      definition.bodies[1].rotation = [0, 0, direction, 0];
+      definition.joints[0].limits = limits;
+      definition.joints[0].motor = positionMotor(limits[0] === 0 ? 0.5 : -0.5);
+      scenes.push(await createPhysicsScene(definition, { frameCount: 241 }));
+    }
+    for (let frame = 0; frame < scenes[0].frameCount; frame++) {
+      const time = frame * scenes[0].timestep;
+      assert.deepEqual(scenes[0].sample(time), scenes[1].sample(time));
+    }
+    const final = bodyPose(scenes[0], scenes[0].duration, 'driven');
+    const target = limits[0] === 0 ? 0.5 : -0.5;
+    assert.ok(Math.abs(final[5] * Math.sin(target / 2) + final[6] * Math.cos(target / 2)) > 0.999);
+    scenes.forEach(scene => scene.dispose());
+  }
+  for (const angle of [Math.PI - 0.01, -Math.PI + 0.01]) {
+    const definition = actuatorDefinition('revolute');
+    definition.bodies[1].rotation = [0, 0, Math.sin(angle / 2), Math.cos(angle / 2)];
+    definition.joints[0].limits = angle > 0 ? [-Math.fround(Math.PI), 0] : [0, Math.fround(Math.PI)];
+    assert.throws(() => planPhysicsScene(definition), /initial joint coordinate/);
+  }
+});
+
+test('maxForce limits real motor response, and disabling leaves momentum instead of holding a pose', async () => {
+  const slowDefinition = actuatorDefinition();
+  slowDefinition.joints[0].motor = velocityMotor(1, 1);
+  const fastDefinition = actuatorDefinition();
+  fastDefinition.joints[0].motor = velocityMotor(1, 10);
+  fastDefinition.events = [{ tick: 60, type: 'jointMotor', joint: 'actuator', motor: null }];
+  const slow = await createPhysicsScene(slowDefinition, { frameCount: 121 });
+  const fast = await createPhysicsScene(fastDefinition, { frameCount: 121 });
+  assert.ok(actuatorCoordinate(fast, 0.5, 'prismatic') > 2 * actuatorCoordinate(slow, 0.5, 'prismatic'));
+  const afterDisable = actuatorCoordinate(fast, 1.5, 'prismatic') - actuatorCoordinate(fast, 1, 'prismatic');
+  assert.ok(afterDisable > 0.4 && afterDisable < 0.6);
+  slow.dispose();
+  fast.dispose();
+});
+
+test('motor snapshots repeat bit exactly, respect same-tick order and permit arbitrary seeks', async () => {
+  const definition = actuatorDefinition();
+  definition.events = [
+    { tick: 60, type: 'jointMotor', joint: 'actuator', motor: positionMotor(-0.5) },
+    { tick: 0, type: 'jointMotor', joint: 'actuator', motor: positionMotor(-0.5) },
+    { tick: 0, type: 'jointMotor', joint: 'actuator', motor: positionMotor(0.5) },
+  ];
+  const first = await createPhysicsScene(JSON.parse(JSON.stringify(definition)), { frameCount: 121 });
+  const second = await createPhysicsScene(definition, { frameCount: 121 });
+  assert.ok(actuatorCoordinate(first, 0.5, 'prismatic') > 0.1);
+  for (let frame = 0; frame < first.frameCount; frame++) {
+    assert.deepEqual(first.sample(frame * first.timestep), second.sample(frame * second.timestep));
+  }
+  const expected = first.sample(0.75);
+  first.sample(first.duration);
+  first.sample(0);
+  first.sample(1.5);
+  assert.deepEqual(first.sample(0.75), expected);
+  first.dispose();
+  second.dispose();
+});
+
+test('motor controls and limits are copied before asynchronous initialization, including nested event snapshots', async () => {
+  const definition = actuatorDefinition();
+  definition.joints[0].limits = [-1, 1];
+  definition.joints[0].motor = positionMotor(0.5);
+  definition.events = [{ tick: 0, type: 'jointMotor', joint: 'actuator', motor: positionMotor(-0.5) }];
+  const pending = createPhysicsScene(definition, { frameCount: 121 });
+  definition.joints[0].limits[0] = 100;
+  definition.joints[0].motor.target = 100;
+  definition.events[0].motor.target = 100;
+  definition.events[0].joint = 'missing';
+  const scene = await pending;
+  near(actuatorCoordinate(scene, scene.duration, 'prismatic'), -0.5, 0.02);
+  scene.dispose();
+});
+
+test('joint controls reject unknown fields, unsupported joints, out-of-limit targets and Float32 collapse', () => {
+  for (const type of ['spherical', 'fixed']) {
+    const definition = actuatorDefinition(type);
+    delete definition.joints[0].axis;
+    for (const field of ['motor', 'limits']) {
+      definition.joints[0][field] = field === 'motor' ? null : [-1, 1];
+      assert.throws(() => planPhysicsScene(definition), /revolute or prismatic/);
+      delete definition.joints[0][field];
+    }
+    definition.events = [{ tick: 0, type: 'jointMotor', joint: 'actuator', motor: null }];
+    assert.throws(() => planPhysicsScene(definition), /revolute or prismatic/);
+  }
+  for (const limits of [[1, -1], [0, 0], [1, 1 + 1e-8], [-1e40, 1], [-1e7, 1], [0, NaN]]) {
+    const definition = actuatorDefinition();
+    definition.joints[0].limits = limits;
+    assert.throws(() => planPhysicsScene(definition), RangeError);
+  }
+  const outside = actuatorDefinition();
+  outside.joints[0].limits = [-0.25, 0.25];
+  outside.joints[0].motor = positionMotor(0.5);
+  assert.throws(() => planPhysicsScene(outside), /within joint limits/);
+  delete outside.joints[0].motor;
+  outside.events = [{ tick: 0, type: 'jointMotor', joint: 'actuator', motor: positionMotor(0.5) }];
+  assert.throws(() => planPhysicsScene(outside), /within joint limits/);
+  for (const motor of [
+    { ...positionMotor(), typo: 1 }, { ...positionMotor(), model: 'AccelerationBased' },
+    { ...positionMotor(), mode: 'spherical' }, { ...velocityMotor(), stiffness: 1 },
+    { ...positionMotor(), target: 1e-50 }, { ...positionMotor(), damping: 1e-50 },
+    { ...velocityMotor(), damping: 0 }, { ...positionMotor(), stiffness: 0 },
+  ]) {
+    const definition = actuatorDefinition();
+    definition.joints[0].motor = motor;
+    assert.throws(() => planPhysicsScene(definition));
+  }
+  const invalidEvent = actuatorDefinition();
+  invalidEvent.events = [{ tick: 0, type: 'jointMotor', joint: 'actuator', motor: null, body: 'driven' }];
+  assert.throws(() => planPhysicsScene(invalidEvent), /unsupported/);
+  invalidEvent.events = [{ tick: 0, type: 'jointMotor', joint: 'missing', motor: null }];
+  assert.throws(() => planPhysicsScene(invalidEvent), /unknown joint/);
+  invalidEvent.events = [{ tick: 0, type: 'jointMotor', joint: 'actuator' }];
+  assert.throws(() => planPhysicsScene(invalidEvent), /motor must be an object/);
+});
+
+test('initial controlled joint coordinates, orientations and axes must match their authored limits', () => {
+  const outside = actuatorDefinition();
+  outside.bodies[1].translation = [2, 0, 0];
+  outside.joints[0].limits = [-1, 1];
+  assert.throws(() => planPhysicsScene(outside), /initial joint coordinate/);
+  outside.bodies[1].translation = [0, 1, 0];
+  assert.throws(() => planPhysicsScene(outside), /anchors must initially align/);
+  const axes = actuatorDefinition('revolute');
+  axes.joints[0].motor = positionMotor();
+  axes.bodies[1].rotation = [0, Math.SQRT1_2, 0, Math.SQRT1_2];
+  assert.throws(() => planPhysicsScene(axes), /axes must initially align/);
+  const anchorMismatch = actuatorDefinition('revolute');
+  anchorMismatch.joints[0].motor = positionMotor();
+  anchorMismatch.bodies[1].translation = [1, 0, 0];
+  assert.throws(() => planPhysicsScene(anchorMismatch), /anchors must initially coincide/);
+  const allFixed = actuatorDefinition();
+  allFixed.bodies[1].type = 'fixed';
+  allFixed.joints[0].motor = positionMotor();
+  assert.throws(() => planPhysicsScene(allFixed), /dynamic body/);
+});
+
+test('motor preflight rejects huge, weak, collapsed and motor-induced unsafe Float32 states', () => {
+  for (const field of ['target', 'stiffness', 'damping', 'maxForce']) {
+    for (const value of [-1, 1e20, 1e40, NaN, Infinity]) {
+      if (field === 'target' && value === -1) continue;
+      const definition = actuatorDefinition();
+      definition.joints[0].motor = { ...positionMotor(), [field]: value };
+      assert.throws(() => planPhysicsScene(definition), RangeError);
+    }
+  }
+  for (const motor of [
+    positionMotor(1e7), velocityMotor(1e5),
+    { ...positionMotor(), maxForce: 1e9 }, { ...positionMotor(), maxForce: 1e-20 },
+    { ...positionMotor(), stiffness: 1e-30 }, { ...positionMotor(), stiffness: 1e7 },
+    { ...positionMotor(), target: 1e-30 }, { ...velocityMotor(1e-16), damping: 1e-16 },
+  ]) {
+    const definition = actuatorDefinition();
+    definition.joints[0].motor = motor;
+    assert.throws(() => planPhysicsScene(definition), RangeError);
+  }
+  const tiny = actuatorDefinition();
+  tiny.colliders[0].mass = 1e-20;
+  tiny.joints[0].motor = positionMotor();
+  assert.throws(() => planPhysicsScene(tiny), /motor.*acceleration/);
+  const heavy = actuatorDefinition('revolute');
+  heavy.colliders[0].mass = 1e38;
+  heavy.joints[0].motor = positionMotor();
+  assert.throws(() => planPhysicsScene(heavy), /motor angular acceleration/);
+  const shortStep = actuatorDefinition();
+  shortStep.joints[0].motor = positionMotor();
+  assert.throws(() => planPhysicsScene(shortStep, { timestep: 1e-20 }), /motor.*step/);
+  const hugePosition = actuatorDefinition();
+  hugePosition.bodies[0].translation = [1e20, 0, 0];
+  hugePosition.bodies[1].translation = [1e20, 0, 0];
+  hugePosition.joints[0].motor = positionMotor();
+  assert.throws(() => planPhysicsScene(hugePosition), /motor-induced position/);
+  const chain = actuatorDefinition('revolute');
+  chain.joints[0].motor = positionMotor();
+  chain.bodies.push({ name: 'tiny' });
+  chain.colliders.push({ name: 'tiny', body: 'tiny', shape: 'ball', radius: 1, mass: 1e-20 });
+  chain.joints.push({ name: 'link', type: 'fixed', bodyA: 'driven', bodyB: 'tiny' });
+  assert.throws(() => planPhysicsScene(chain), /motor angular acceleration/);
+});
+
+test('explicit initial and tick motor disable can be no-ops without changing the recorded pose', async () => {
+  const definition = actuatorDefinition();
+  definition.joints[0].motor = null;
+  definition.events = [{ tick: 0, type: 'jointMotor', joint: 'actuator', motor: null }];
+  const scene = await createPhysicsScene(definition, { frameCount: 3 });
+  assert.deepEqual(scene.sample(scene.duration), scene.sample(0));
+  scene.dispose();
+});

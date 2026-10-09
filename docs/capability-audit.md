@@ -28,7 +28,7 @@ The Blender references describe authoring capabilities. Their interpolation and 
 | Materials | Factors and five PBR texture channels integrated in source | Layered materials, advanced extensions, authored tangents, package verification | Reference material scenes and texture budget checks |
 | Lighting | Directional shadows, configurable key/fill/ambient strength and eight local point lights integrated in source | Local shadows, spot/area lights, HDR environments, baked lighting, reflection probes; package release | Reference lighting scenes, stable shadows, and measured render cost |
 | Image rendering | HDR, bloom, grading, MSAA, FXAA | Depth of field, motion blur, temporal sampling, render passes | Reviewed stills and moving previews with measured artifacts |
-| Simulation | Recorded Rapier rigid-body contacts, impulses, kinematics and articulated joints integrated in source; demo-specific wind, water, sparks and ignition | Joint limits, motors, worker baking, bone binding, shared particles, cloth, hair and volumetric tools; package release | Repeatable simulations, contact tests, and bounded resource usage |
+| Simulation | Recorded Rapier rigid-body contacts, impulses, kinematics, articulated joints, hinge/slider limits and motors integrated in source; demo-specific wind, water, sparks and ignition | Worker baking, bone binding, shared particles, cloth, hair and fluid simulation; package release | Repeatable simulations, contact tests, and bounded resource usage |
 | Interaction | Demo-specific orbit, zoom, and sliders | Picking, transform gizmos, reusable controls | Pointer, keyboard, and mobile interaction checks |
 | Browser editor | Demonstration pages | Modeling, material, lighting, rig, curve, and timeline editing | Complete edit, save, reload, and export workflows |
 | Runtime diagnostics | Render budget estimates and export reports | CPU/GPU timers, draw diagnostics, adaptive quality, LOD, culling | Matching-scene benchmarks with quality and memory measurements |
@@ -122,8 +122,11 @@ Visible shafts, smoke, dust, explosion detail and lighting continuity still requ
 The current source provides an optional Rapier addon for rigid-body contacts and articulated spherical, revolute and fixed joints.
 A native render fixture records twelve bodies and ten joints, then reproduces the same pose and pixels after a backward seek.
 Its 241-frame timeline uses exactly `80,976` bytes; solver allocation is estimated separately and shared WASM capacity remains resident.
-This is a technical fixture, not integrated trailer action or evidence of convincing humanoid motion.
-Joint limits, motors, bone binding and off-thread baking remain unfinished.
+The technical ragdoll fixture does not establish convincing humanoid motion.
+The opening apparatus shot now integrates an offline recording of five colliding pendulums through retained animation tracks.
+Fresh solver replay matches every captured pose. Removing contacts prevents the initially stationary end ball from moving.
+This provides physical action in a trailer shot, while actor contact and humanoid ragdolls remain unfinished.
+Revolute and prismatic limits, position and velocity motors, and scheduled motor changes are integrated in source. Bone binding and off-thread baking remain unfinished.
 The requested final state includes integrated physical interactions with deterministic playback or recorded simulation for arbitrary film seeks.
 Simple sine motion does not satisfy the physics requirement.
 

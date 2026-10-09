@@ -70,6 +70,17 @@ assert.ok(finalPose[8] >= 0.23 && finalPose[8] < 0.3, 'Packed addon wrapper must
 physics.sample(0);
 assert.deepEqual(physics.sample(physics.duration), finalPose);
 physics.dispose();
+const motorScene = await createPhysicsScene({
+  gravity: [0, 0, 0],
+  bodies: [{ name: 'base', type: 'fixed' }, { name: 'slider' }],
+  colliders: [{ name: 'slider', body: 'slider', shape: 'ball', radius: 0.25, mass: 1 }],
+  joints: [{ name: 'drive', type: 'prismatic', bodyA: 'base', bodyB: 'slider', axis: [1, 0, 0], limits: [-1, 1], motor: { mode: 'position', target: 0.5, stiffness: 40, damping: 8, maxForce: 10 } }],
+}, { frameCount: 241 });
+const motorPose = motorScene.sample(motorScene.duration);
+assert.ok(Math.abs(motorPose[7] - 0.5) < 0.02, 'Packed motor API must reach its bounded slider target through the real solver.');
+motorScene.sample(0);
+assert.deepEqual(motorScene.sample(motorScene.duration), motorPose);
+motorScene.dispose();
 console.log('Clean consumer: core, geometry, addons, real physics contact and all574 explosion offsets passed.');`;
 await writeFile(resolve(consumer, 'check.mjs'), example);
 const result = spawnSync(process.execPath, ['check.mjs'], { cwd: consumer, windowsHide: true, encoding: 'utf8' });

@@ -3,6 +3,11 @@ import { createCameraPath } from './camera-path.js';
 import { createFilmActorRig } from './film-rig.js';
 import { fitPerspectiveDistance } from './camera.js';
 import { box, cylinder, sphere, torus } from './geometry.js';
+import { createAnimationClip, createAnimationPlayer } from './animation.js';
+import { CRADLE, cradlePivot } from './film-physics-definition.js';
+import cradleRecording from './film-physics-clip.json' with { type: 'json' };
+
+const CRADLE_CLIP = createAnimationClip(cradleRecording);
 
 export const FILM_DURATION = 187;
 const FULL_TURN = Math.PI * 2;
@@ -225,7 +230,53 @@ function createApparatus(meshes) {
     add('Instrument rack', 'box', [-2.4, -0.27 + index * 0.23, -0.6], [0.8, 0.2, 1.4], 'graphite');
     add('Analog dial bezel', 'ring', [-2.4, -0.27 + index * 0.23, 0.13], [0.075, 0.075, 0.4], 'steel');
   }
+  addCradle(builder);
   return builder.parts;
+}
+
+function addCradle({ add, beam }) {
+  add('Cradle polished base', 'box', [0, -0.32, CRADLE.depth], [3.2, 0.16, 0.64], 'graphite');
+  for (const horizontal of [-1.45, 1.45]) {
+    for (const depthOffset of [-0.12, 0.12]) {
+      beam('Cradle brass frame', [horizontal, -0.24, CRADLE.depth + depthOffset], [horizontal, CRADLE.pivotHeight, CRADLE.depth + depthOffset], 0.025, 'copper');
+    }
+  }
+  for (const depthOffset of [-0.12, 0.12]) {
+    beam('Cradle upper rail', [-1.45, CRADLE.pivotHeight, CRADLE.depth + depthOffset], [1.45, CRADLE.pivotHeight, CRADLE.depth + depthOffset], 0.025, 'copper');
+  }
+  const cordMaterial = { tag: 'cord', color: [0.13, 0.15, 0.16], metallic: 0.5, roughness: 0.45, emission: 0 };
+  for (let index = 0; index < CRADLE.count; index++) {
+    const pivot = cradlePivot(index);
+    const ball = add(`Cradle ball ${index}`, 'sphere', [pivot[0], pivot[1] - CRADLE.length, pivot[2]], [CRADLE.radius, CRADLE.radius, CRADLE.radius], 'steel');
+    for (const side of [-1, 1]) {
+      const cord = add(`Cradle suspension ${index} ${side}`, 'cylinder', pivot, [0.0035, CRADLE.length, 0.0035], cordMaterial);
+      cord.cradleCord = { ball, pivot: [pivot[0], pivot[1], pivot[2] + side * 0.12], depthOffset: side * 0.05 };
+    }
+  }
+}
+
+function createCradleAnimation(parts) {
+  const player = createAnimationPlayer(CRADLE_CLIP, parts.filter(part => part.name.startsWith('Cradle ball ')));
+  const cords = parts.filter(part => part.cradleCord);
+  const direction = vec3.create();
+  const center = vec3.create();
+  const rotation = quat.create();
+  const scale = vec3.fromValues(0.0035, 1, 0.0035);
+  const vertical = vec3.fromValues(0, 1, 0);
+  return time => {
+    player.apply(time);
+    for (const cord of cords) {
+      const { ball, pivot, depthOffset } = cord.cradleCord;
+      direction[0] = ball.matrix[12] - pivot[0];
+      direction[1] = ball.matrix[13] - pivot[1];
+      direction[2] = ball.matrix[14] + depthOffset - pivot[2];
+      for (let axis = 0; axis < 3; axis++) center[axis] = pivot[axis] + direction[axis] / 2;
+      scale[1] = vec3.length(direction);
+      vec3.normalize(direction, direction);
+      quat.rotationTo(rotation, vertical, direction);
+      mat4.fromRotationTranslationScale(cord.matrix, rotation, center, scale);
+    }
+  };
 }
 
 function createAtom(meshes) {
@@ -674,6 +725,7 @@ function createSparks(meshes) {
 
 function animateSet(parts, sceneName) {
   const animateActors = createFilmActorRig(parts);
+  const animatePhysics = sceneName === 'apparatus' ? createCradleAnimation(parts) : null;
   const moving = parts.filter(part =>
     sceneName === 'sparks' || sceneName === 'atom' ||
     (sceneName === 'waves' && part.name !== 'Black reflecting pool') ||
@@ -688,6 +740,7 @@ function animateSet(parts, sceneName) {
   }
   return function animate(time) {
     animateActors(time);
+    animatePhysics?.(time);
     moving.forEach((part, index) => {
       const base = bases[index];
       part.matrix.set(base);
@@ -783,7 +836,7 @@ export function createFilmScenes() {
   addGadget(towerBuilder, [0, 11.3, 0]);
   towerParts.push(...towerBuilder.parts);
   return {
-    apparatus: set(createApparatus(meshes), studio),
+    apparatus: set(createApparatus(meshes), { ...studio, pointLights: [{ position: [0, 1.8, 2.5], color: [0.6, 0.75, 1], intensity: 1.8, radius: 0.15, range: 4 }] }, undefined, 'apparatus'),
     office: set(createOffice(meshes), { ...interior, pointLights: [...interior.pointLights, { position: [-1.45, 1.36, 0.25], color: [1, 0.82, 0.57], intensity: 1.8, range: 3, radius: 0.08 }] }, { extent: 7, target: [0, 1.6, -1], eye: [-4, 7, -10], near: 0.1, far: 30 }, 'office'),
     laboratory: set(createOffice(meshes, true), interior, { extent: 7, target: [0, 1.6, -1], eye: [-4, 7, -10], near: 0.1, far: 30 }, 'laboratory'),
     settlement: set(createSettlement(meshes), desert, desertShadows, 'settlement'),
@@ -831,7 +884,7 @@ function shot(start, end, scene, eye, nextEye, target, nextTarget = target, fov 
 }
 
 export const FILM_SHOTS = [
-  shot(0, 7, 'apparatus', [-1, 1.3, 2.5], [-0.75, 1.1, 2.35], [-0.45, 0.6, 1.0], [-0.3, 0.55, 1.05], [34, 36], 0.2),
+  shot(0, 7, 'apparatus', [0.45, 0.85, 4.6], [-0.1, 0.8, 4.2], [0, 0.55, 1.72], [0, 0.52, 1.72], [38, 38], 0.2),
   shot(7, 13, 'control', [1.8, 2.2, 2.2], [1.4, 1.9, 1.8], [0.3, 1.25, 0], [0.1, 1.25, 0], [35, 32]),
   shot(13, 20, 'apparatus', [-3.5, 1.8, 3.4], [-2.8, 1.3, 2.7], [-0.5, 0.5, 0], [0, 0.5, 0], [43, 40]),
   shot(20, 29, 'office', [2.4, 1.75, 0.6], [1.85, 1.72, 0.25], [-0.22, 1.52, -1.7], [-0.18, 1.56, -1.7], [30, 29]),

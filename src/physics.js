@@ -1,9 +1,14 @@
-import { mat4, quat } from 'gl-matrix';
+import { mat4, quat, vec3 } from 'gl-matrix';
 
 let rapierPromise;
 const ZERO = [0, 0, 0];
 const IDENTITY = [0, 0, 0, 1];
 const MIN_NORMAL_FLOAT32 = 2 ** -126;
+const MAX_JOINT_DISTANCE = 1e6;
+const MAX_MOTOR_SPEED = 1e4;
+const MAX_MOTOR_GAIN = 1e6;
+const MAX_MOTOR_FORCE = 1e8;
+const MAX_JOINT_ANGLE = Math.fround(Math.PI);
 const LIMITS = {
   maxBodies: [256, 4096],
   maxColliders: [1024, 8192],
@@ -65,7 +70,9 @@ function rotation(value, label) {
   if (!length || Math.abs(length - 1) > 1e-4) {
     throw new RangeError(`${label} must be a unit quaternion`);
   }
-  return result.map(number => Math.fround(number / length));
+  // A half-turn has two equivalent signs; keep its solver representation stable.
+  const sign = result[3] === 0 && result.find(number => number !== 0) < 0 ? -1 : 1;
+  return result.map(number => number === 0 ? 0 : Math.fround(sign * number / length));
 }
 
 function integer(value, label, min, max) {
@@ -87,6 +94,69 @@ function namedList(list, label, limit) {
     names.add(entry.name);
   }
   return list;
+}
+
+function jointLimits(value, type) {
+  const bounds = vector(value, 2, 'joint limits');
+  const maximum = type === 'revolute' ? MAX_JOINT_ANGLE : MAX_JOINT_DISTANCE;
+  for (const bound of bounds) scalar(bound, 'joint limit', -maximum, maximum);
+  if (bounds[0] >= bounds[1]) throw new RangeError('joint limits must remain strictly increasing in Float32');
+  return bounds;
+}
+
+function jointMotor(value, joint) {
+  if (value === null) return null;
+  fields(value, ['mode', 'target', 'stiffness', 'damping', 'maxForce'], 'motor');
+  if (!['position', 'velocity'].includes(value.mode)) throw new TypeError('motor mode must be position or velocity');
+  if (value.mode === 'velocity' && value.stiffness !== undefined) throw new TypeError('velocity motors do not accept stiffness');
+  const maximum = value.mode === 'velocity' ? MAX_MOTOR_SPEED : joint.type === 'revolute' ? MAX_JOINT_ANGLE : MAX_JOINT_DISTANCE;
+  const target = scalar(value.target, 'motor target', -maximum, maximum);
+  if (value.target !== 0 && target === 0) throw new RangeError('motor target must not collapse to zero in Float32');
+  if (value.mode === 'position' && joint.limits && (target < joint.limits[0] || target > joint.limits[1])) {
+    throw new RangeError('motor position target must stay within joint limits');
+  }
+  const stiffness = value.mode === 'position' ? positive(value.stiffness, 'motor stiffness') : 0;
+  if (stiffness > MAX_MOTOR_GAIN) throw new RangeError('motor stiffness exceeds the supported gain bound');
+  const damping = scalar(value.damping, 'motor damping', 0, MAX_MOTOR_GAIN);
+  if (value.damping !== 0 && damping === 0) throw new RangeError('motor damping must not collapse to zero in Float32');
+  if (value.mode === 'velocity' && damping === 0) throw new RangeError('velocity motor damping must remain positive in Float32');
+  const maxForce = normalPositive(value.maxForce, 'motor maxForce');
+  if (maxForce > MAX_MOTOR_FORCE) throw new RangeError('motor maxForce exceeds the supported force bound');
+  return { mode: value.mode, target, stiffness, damping, maxForce };
+}
+
+function initialJointCoordinate(joint, bodies) {
+  const first = bodies[joint.bodyA];
+  const second = bodies[joint.bodyB];
+  const axisA = vec3.transformQuat(new Float64Array(3), joint.axis, first.rotation);
+  const axisB = vec3.transformQuat(new Float64Array(3), joint.axis, second.rotation);
+  if (vec3.distance(axisA, axisB) > 1e-4) throw new RangeError('controlled joint axes must initially align in world space');
+  const anchorA = vec3.transformQuat(new Float64Array(3), joint.anchorA, first.rotation);
+  const anchorB = vec3.transformQuat(new Float64Array(3), joint.anchorB, second.rotation);
+  vec3.add(anchorA, anchorA, first.translation);
+  vec3.add(anchorB, anchorB, second.translation);
+  const difference = vec3.subtract(new Float64Array(3), anchorB, anchorA);
+  const relativeRotation = quat.multiply(new Float64Array(4), quat.conjugate(new Float64Array(4), first.rotation), second.rotation);
+  let coordinate;
+  if (joint.type === 'prismatic') {
+    coordinate = vec3.dot(difference, axisA);
+    vec3.scaleAndAdd(difference, difference, axisA, -coordinate);
+    if (vec3.length(difference) > 1e-4 || Math.abs(relativeRotation[3]) < 1 - 1e-4) {
+      throw new RangeError('prismatic joint anchors must initially align along its axis with matching body orientations');
+    }
+  } else {
+    if (vec3.length(difference) > 1e-4) throw new RangeError('controlled revolute joint anchors must initially coincide');
+    coordinate = 2 * Math.atan2(relativeRotation[0] * joint.axis[0] + relativeRotation[1] * joint.axis[1] + relativeRotation[2] * joint.axis[2], relativeRotation[3]);
+    if (coordinate > Math.PI) coordinate -= 2 * Math.PI;
+    if (coordinate < -Math.PI) coordinate += 2 * Math.PI;
+    if (Math.abs(coordinate) === Math.PI) {
+      coordinate = joint.limits && joint.limits[1] < Math.PI ? -Math.PI : Math.PI;
+    }
+  }
+  coordinate = scalar(coordinate, 'initial joint coordinate', joint.type === 'revolute' ? -MAX_JOINT_ANGLE : -MAX_JOINT_DISTANCE, joint.type === 'revolute' ? MAX_JOINT_ANGLE : MAX_JOINT_DISTANCE);
+  if (joint.limits && (coordinate < joint.limits[0] || coordinate > joint.limits[1])) {
+    throw new RangeError('initial joint coordinate must stay within joint limits');
+  }
 }
 
 function prepare(definition, options) {
@@ -238,8 +308,8 @@ function prepare(definition, options) {
     }
   }
   const joints = rawJoints.map(joint => {
-    fields(joint, ['name', 'type', 'bodyA', 'bodyB', 'anchorA', 'anchorB', 'axis', 'frameA', 'frameB', 'contactsEnabled'], `joint ${joint.name}`);
-    if (!['spherical', 'revolute', 'fixed'].includes(joint.type)) {
+    fields(joint, ['name', 'type', 'bodyA', 'bodyB', 'anchorA', 'anchorB', 'axis', 'frameA', 'frameB', 'contactsEnabled', 'limits', 'motor'], `joint ${joint.name}`);
+    if (!['spherical', 'revolute', 'prismatic', 'fixed'].includes(joint.type)) {
       throw new TypeError('unsupported joint type');
     }
     const bodyA = bodyIndex(joint.bodyA);
@@ -250,13 +320,15 @@ function prepare(definition, options) {
     if (joint.contactsEnabled !== undefined && typeof joint.contactsEnabled !== 'boolean') {
       throw new TypeError('contactsEnabled must be boolean');
     }
-    if (joint.type !== 'revolute' && joint.axis !== undefined) {
-      throw new TypeError('axis requires a revolute joint');
+    const unitJoint = joint.type === 'revolute' || joint.type === 'prismatic';
+    if (!unitJoint && joint.axis !== undefined) {
+      throw new TypeError('axis requires a revolute or prismatic joint');
     }
+    if (!unitJoint && (joint.limits !== undefined || joint.motor !== undefined)) throw new TypeError('limits and motors require a revolute or prismatic joint');
     if (joint.type !== 'fixed' && (joint.frameA !== undefined || joint.frameB !== undefined)) {
       throw new TypeError('joint frames require a fixed joint');
     }
-    const axis = joint.type === 'revolute' ? vector(joint.axis, 3, 'axis') : undefined;
+    const axis = unitJoint ? vector(joint.axis, 3, 'axis') : undefined;
     if (axis && Math.abs(Math.hypot(...axis) - 1) > 1e-4) {
       throw new RangeError('axis must be a unit vector');
     }
@@ -266,7 +338,7 @@ function prepare(definition, options) {
         axis[component] = Math.fround(axis[component] / axisLength);
       }
     }
-    return {
+    const result = {
       type: joint.type,
       bodyA,
       bodyB,
@@ -277,12 +349,25 @@ function prepare(definition, options) {
       frameB: rotation(joint.frameB, 'frameB'),
       contactsEnabled: joint.contactsEnabled ?? false,
     };
+    if (joint.limits !== undefined) result.limits = jointLimits(joint.limits, joint.type);
+    if (joint.motor !== undefined) result.motor = jointMotor(joint.motor, result);
+    if (joint.type === 'prismatic' || joint.limits !== undefined || joint.motor !== undefined) initialJointCoordinate(result, bodies);
+    return result;
   });
+  const jointIndices = new Map(rawJoints.map((joint, index) => [joint.name, index]));
   const events = rawEvents.map((event, order) => {
-    fields(event, ['tick', 'body', 'type', 'impulse', 'torqueImpulse', 'point', 'translation', 'rotation'], `event ${order}`);
     const tick = integer(event.tick, 'event tick', 0, frameCount - 2);
-    const body = bodyIndex(event.body);
     const type = event.type ?? 'impulse';
+    if (type === 'jointMotor') {
+      fields(event, ['tick', 'type', 'joint', 'motor'], `event ${order}`);
+      if (!jointIndices.has(event.joint)) throw new TypeError(`unknown joint ${event.joint}`);
+      const joint = jointIndices.get(event.joint);
+      if (!['revolute', 'prismatic'].includes(joints[joint].type)) throw new TypeError('motor events require a revolute or prismatic joint');
+      initialJointCoordinate(joints[joint], bodies);
+      return { tick, type, order, joint, motor: jointMotor(event.motor, joints[joint]) };
+    }
+    fields(event, ['tick', 'body', 'type', 'impulse', 'torqueImpulse', 'point', 'translation', 'rotation'], `event ${order}`);
+    const body = bodyIndex(event.body);
     if (type === 'impulse') {
       if (bodies[body].type !== 'dynamic') {
         throw new TypeError('impulses require a dynamic body');
@@ -316,7 +401,7 @@ function prepare(definition, options) {
     };
   }).sort((firstEvent, secondEvent) => firstEvent.tick - secondEvent.tick || firstEvent.order - secondEvent.order);
   const gravity = vector(definition.gravity, 3, 'gravity', [0, -9.81, 0]);
-  validateMotionBounds(bodies, events, gravity, timestep, frameCount, massTotals, minimumInertiaTotals, maximumColliderOffsets);
+  validateMotionBounds(bodies, events, gravity, timestep, frameCount, massTotals, minimumInertiaTotals, maximumColliderOffsets, joints, inertiaTotals);
   const memoryPlan = Object.freeze({
     timelineBytes,
     solverReserveBytes,
@@ -341,7 +426,66 @@ function prepare(definition, options) {
   };
 }
 
-function validateMotionBounds(bodies, events, gravity, timestep, frameCount, massTotals, minimumInertiaTotals, maximumColliderOffsets) {
+function validateMotorBounds(bodies, joints, events, timestep, duration, massTotals, minimumInertiaTotals, maximumInertiaTotals, maximumColliderOffsets, linearSpeedBounds, angularSpeedBounds) {
+  const components = bodies.map((_, index) => index);
+  function component(index) {
+    while (components[index] !== index) index = components[index];
+    return index;
+  }
+  for (const joint of joints) components[component(joint.bodyB)] = component(joint.bodyA);
+  const peakForces = joints.map(() => 0);
+  function motorBound(jointIndex, motor) {
+    if (!motor) return;
+    const joint = joints[jointIndex];
+    if (bodies[joint.bodyA].type !== 'dynamic' && bodies[joint.bodyB].type !== 'dynamic') throw new TypeError('active motors need at least one directly attached dynamic body');
+    normalPositive(motor.maxForce ** 2, 'motor force squared norm');
+    normalPositive((motor.maxForce * timestep) ** 2, 'motor step impulse squared norm');
+    if (motor.stiffness) normalPositive((motor.stiffness * timestep ** 2) ** 2, 'motor timestep stiffness squared');
+    if (motor.damping) normalPositive((motor.damping * timestep) ** 2, 'motor timestep damping squared');
+    if (motor.target !== 0) {
+      normalPositive(motor.target ** 2, 'motor target squared norm');
+      const gain = motor.mode === 'position' ? motor.stiffness : motor.damping;
+      const commandedForce = Math.min(Math.abs(gain * motor.target), motor.maxForce);
+      normalPositive((commandedForce * timestep) ** 2, 'motor commanded impulse squared norm');
+    }
+    peakForces[jointIndex] = Math.max(peakForces[jointIndex], motor.maxForce);
+  }
+  for (let index = 0; index < joints.length; index++) motorBound(index, joints[index].motor);
+  for (const event of events) {
+    if (event.type === 'jointMotor') motorBound(event.joint, event.motor);
+  }
+  const forceTotals = bodies.map(() => 0);
+  const torqueTotals = bodies.map(() => 0);
+  const leverArms = bodies.map(() => 0);
+  for (let index = 0; index < bodies.length; index++) leverArms[component(index)] += maximumColliderOffsets[index];
+  for (let index = 0; index < joints.length; index++) {
+    const joint = joints[index];
+    const root = component(joint.bodyA);
+    leverArms[root] += Math.hypot(...joint.anchorA) + Math.hypot(...joint.anchorB);
+    if (joint.type === 'prismatic') forceTotals[root] += peakForces[index];
+    else torqueTotals[root] += peakForces[index];
+  }
+  for (let index = 0; index < bodies.length; index++) {
+    if (bodies[index].type !== 'dynamic') continue;
+    const root = component(index);
+    const force = forceTotals[root];
+    const torque = torqueTotals[root] + force * leverArms[root];
+    if (!force && !torque) continue;
+    scalar(force ** 2, 'combined motor force squared norm', 0);
+    scalar(torque ** 2, 'combined motor torque squared norm', 0);
+    if (force) normalPositive((force / massTotals[index]) ** 2, 'motor linear acceleration squared norm');
+    if (torque) normalPositive((torque / maximumInertiaTotals[index]) ** 2, 'motor angular acceleration squared norm');
+    const angularAcceleration = torque / minimumInertiaTotals[index];
+    const linearAcceleration = force / massTotals[index] + angularAcceleration * leverArms[root];
+    angularSpeedBounds[index] += angularAcceleration * duration;
+    linearSpeedBounds[index] += linearAcceleration * duration;
+    scalar(angularSpeedBounds[index] ** 2, 'motor-induced angular velocity squared norm', 0);
+    scalar(linearSpeedBounds[index] ** 2, 'motor-induced linear velocity squared norm', 0);
+    scalar((Math.hypot(...bodies[index].translation) + linearSpeedBounds[index] * duration) ** 2, 'motor-induced position squared norm', 0);
+  }
+}
+
+function validateMotionBounds(bodies, events, gravity, timestep, frameCount, massTotals, minimumInertiaTotals, maximumColliderOffsets, joints, maximumInertiaTotals) {
   const duration = (frameCount - 1) * timestep;
   const gravityMagnitude = vectorLength(gravity, 'gravity');
   const linearSpeedBounds = bodies.map(body => {
@@ -368,6 +512,8 @@ function validateMotionBounds(bodies, events, gravity, timestep, frameCount, mas
       scalar(angularSpeedBounds[event.body] ** 2, 'accumulated angular velocity squared norm', 0);
     }
   }
+
+  validateMotorBounds(bodies, joints, events, timestep, duration, massTotals, minimumInertiaTotals, maximumInertiaTotals, maximumColliderOffsets, linearSpeedBounds, angularSpeedBounds);
 
   const kinematicTranslations = bodies.map(body => body.translation.slice());
   const kinematicTickBaseTranslations = bodies.map(body => body.translation.slice());
@@ -410,6 +556,16 @@ export function planPhysicsScene(definition, options = {}) {
 
 const xyz = array => ({ x: array[0], y: array[1], z: array[2] });
 const xyzw = array => ({ ...xyz(array), w: array[3] });
+
+function applyJointMotor(rapier, joint, motor) {
+  joint.configureMotorModel(rapier.MotorModel.ForceBased);
+  joint.setMotorMaxForce(motor?.maxForce ?? 0);
+  if (!motor) joint.configureMotor(0, 0, 0, 0);
+  else if (motor.mode === 'position') joint.configureMotorPosition(motor.target, motor.stiffness, motor.damping);
+  else joint.configureMotorVelocity(motor.target, motor.damping);
+  joint.body1().wakeUp();
+  joint.body2().wakeUp();
+}
 
 /** Bake a named rigid-body graph with Rapier, then release its solver world. */
 export async function createPhysicsScene(definition, options = {}) {
@@ -464,7 +620,7 @@ export async function createPhysicsScene(definition, options = {}) {
       }
       world.createCollider(descriptor, bodies[collider.body]);
     }
-    for (const joint of preparedScene.joints) {
+    const joints = preparedScene.joints.map(joint => {
       const anchorA = xyz(joint.anchorA);
       const anchorB = xyz(joint.anchorB);
       let descriptor;
@@ -472,11 +628,17 @@ export async function createPhysicsScene(definition, options = {}) {
         descriptor = rapier.JointData.spherical(anchorA, anchorB);
       } else if (joint.type === 'revolute') {
         descriptor = rapier.JointData.revolute(anchorA, anchorB, xyz(joint.axis));
+      } else if (joint.type === 'prismatic') {
+        descriptor = rapier.JointData.prismatic(anchorA, anchorB, xyz(joint.axis));
       } else {
         descriptor = rapier.JointData.fixed(anchorA, xyzw(joint.frameA), anchorB, xyzw(joint.frameB));
       }
-      world.createImpulseJoint(descriptor, bodies[joint.bodyA], bodies[joint.bodyB], true).setContactsEnabled(joint.contactsEnabled);
-    }
+      const created = world.createImpulseJoint(descriptor, bodies[joint.bodyA], bodies[joint.bodyB], true);
+      created.setContactsEnabled(joint.contactsEnabled);
+      if (joint.limits) created.setLimits(...joint.limits);
+      if (joint.motor !== undefined) applyJointMotor(rapier, created, joint.motor);
+      return created;
+    });
     timeline = new Float32Array(preparedScene.memoryPlan.timelineBytes / 4);
     let eventIndex = 0;
     for (let frame = 0; frame < preparedScene.frameCount; frame++) {
@@ -484,6 +646,10 @@ export async function createPhysicsScene(definition, options = {}) {
         while (eventIndex < preparedScene.events.length && preparedScene.events[eventIndex].tick === frame - 1) {
           const event = preparedScene.events[eventIndex];
           eventIndex++;
+          if (event.type === 'jointMotor') {
+            applyJointMotor(rapier, joints[event.joint], event.motor);
+            continue;
+          }
           const body = bodies[event.body];
           if (event.type === 'kinematicPose') {
             if (event.translation) {
@@ -508,6 +674,10 @@ export async function createPhysicsScene(definition, options = {}) {
         world.step();
       }
       for (let bodyIndex = 0; bodyIndex < bodies.length; bodyIndex++) {
+        const linearVelocity = bodies[bodyIndex].linvel();
+        const angularVelocity = bodies[bodyIndex].angvel();
+        scalar(linearVelocity.x ** 2 + linearVelocity.y ** 2 + linearVelocity.z ** 2, 'solver linear velocity squared norm', 0);
+        scalar(angularVelocity.x ** 2 + angularVelocity.y ** 2 + angularVelocity.z ** 2, 'solver angular velocity squared norm', 0);
         const position = bodies[bodyIndex].translation();
         const bodyRotation = bodies[bodyIndex].rotation();
         const offset = (frame * bodies.length + bodyIndex) * 7;

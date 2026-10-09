@@ -89,7 +89,8 @@ Connected bodies do not collide unless `contactsEnabled` is `true`.
 | Joint type | Additional fields |
 | --- | --- |
 | `spherical` | None. The joint permits relative rotation. |
-| `revolute` | Required unit `axis` expressed in both bodies' local frames. |
+| `revolute` | Required unit `axis` expressed in both bodies' local frames. Optional `limits` and `motor`. |
+| `prismatic` | Required unit `axis` expressed in both bodies' local frames. Optional `limits` and `motor`. |
 | `fixed` | Optional unit `frameA` and `frameB` quaternions. Both default to identity. |
 
 An articulated ragdoll is a graph of dynamic bodies, colliders, and joints.
@@ -104,6 +105,56 @@ definition.joints = [{
   axis: [0, 0, 1], contactsEnabled: false,
 }];
 ```
+
+## Joint limits and motors
+
+Revolute joints permit one relative rotation, and prismatic joints permit one relative translation along their axis.
+Their optional `limits: [minimum, maximum]` restrict that coordinate.
+Revolute coordinates use radians. Prismatic coordinates use scene distance units.
+Both endpoints must remain strictly increasing after Float32 rounding.
+
+Position motor targets must stay inside the rounded limits. Velocity targets can push against a limit, which the solver enforces.
+
+The prismatic coordinate is the signed distance between the world anchors, projected onto the first body's world axis.
+Its initial anchors must align along that axis, and its body orientations must match.
+Controlled revolute joints require initially coincident anchors and matching world axes.
+Their initial relative twist angle must fit the limits.
+Initial coordinate membership uses the Float32-rounded coordinate, matching the solver's numeric precision.
+Uncontrolled revolute joints retain their existing initialization behavior.
+
+At an exact half-turn, `+Math.PI` and `-Math.PI` describe the same orientation.
+Limit validation uses whichever endpoint the range permits, while nearby excluded angles still fail.
+Exact half-turn quaternion antipodes use a canonical sign before baking so their solver trajectories agree.
+
+```js
+definition.joints = [{
+  name: 'slider', type: 'prismatic',
+  bodyA: 'base', bodyB: 'carriage', axis: [1, 0, 0],
+  limits: [-1, 1],
+  motor: { mode: 'position', target: 0.5, stiffness: 40, damping: 8, maxForce: 10 },
+}];
+```
+
+Motors use complete serializable snapshots with the fields below.
+The addon fixes their Rapier model to `ForceBased` and requires a positive force cap.
+An active motor needs at least one directly attached dynamic body.
+
+| Mode | Required fields | Behavior |
+| --- | --- | --- |
+| `position` | `target`, positive `stiffness`, nonnegative `damping`, positive `maxForce` | Drives toward the relative coordinate with zero target velocity. |
+| `velocity` | `target`, positive `damping`, positive `maxForce` | Drives toward the relative speed without a position target. `stiffness` is unsupported. |
+
+For revolute motors, `target` uses radians or radians per second, and `maxForce` caps torque.
+For prismatic motors, `target` uses distance or distance per second, and `maxForce` caps force.
+Motor response depends on mass, inertia, contacts and the force cap. Targets are not prescribed poses.
+
+`motor: null` disables actuation by zeroing the gains and force cap.
+It retains momentum and joint constraints instead of holding the current pose.
+Disabling an already disabled motor is a valid no-op.
+
+Spherical and fixed joints reject these single-coordinate limits and motor fields, including `motor: null`.
+Rapier `0.21.0` exposes per-axis spherical motor methods, but this addon does not yet define their multi-axis data contract.
+Its spherical binding does not expose the single-coordinate limit methods used here.
 
 ## Tick events
 
@@ -137,6 +188,22 @@ definition.events = [
   { tick: 0, type: 'kinematicPose', body: 'platform', translation: [0, 1, 0] },
 ];
 ```
+
+A `jointMotor` event replaces the complete motor snapshot of a named revolute or prismatic joint.
+Its fields are `tick`, `type`, `joint` and `motor`. Body impulse and pose fields are unsupported.
+The replacement persists until another motor event, and both attached bodies wake when the event runs.
+Same-tick snapshots preserve declaration order, so the final snapshot controls that tick's integration.
+
+```js
+definition.events = [
+  { tick: 60, type: 'jointMotor', joint: 'slider', motor: { mode: 'position', target: -0.5, stiffness: 40, damping: 8, maxForce: 10 } },
+  { tick: 120, type: 'jointMotor', joint: 'slider', motor: null },
+];
+```
+
+Motor events obey the same tick range and before-integration timing as impulses.
+Initial motors, limits and nested event snapshots are copied before awaiting WASM initialization.
+Recorded sampling never changes motor state or reruns the solver.
 
 ## Sampling and bindings
 
@@ -212,16 +279,36 @@ Angular bounds include torque impulses and off-center impulses divided by the mi
 Lever-arm estimates include initial positions, collider offsets, and conservative travel over the whole recording.
 These estimates ignore damping and contact resistance, so they can reject otherwise usable configurations.
 
+Joint controls also have explicit public bounds after Float32 rounding.
+Revolute limits and position targets stay within `[-Math.fround(Math.PI), Math.fround(Math.PI)]`.
+Prismatic limits and position targets stay within `[-1e6, 1e6]`.
+Motor speed targets stay within `[-1e4, 1e4]`, gains cannot exceed `1e6`, and force caps cannot exceed `1e8`.
+Nonzero targets and damping must not round to zero.
+
+Preflight checks motor force and step-impulse squared norms, gain products with the timestep, and nonzero target-driven impulse estimates.
+Positive squared estimates must remain normal Float32 values, so extremely weak controls can fail validation.
+It aggregates peak force caps across connected joint components for the complete recording duration.
+Every dynamic body in such a component receives conservative linear and angular acceleration bounds from those forces and torques.
+Anchor lengths and collider offsets bound motor torque and the corresponding linear motion.
+The resulting acceleration, speed and position estimates must remain within their validated Float32 ranges.
+
+These bounds deliberately ignore motor disable intervals, joint limits, damping and contact resistance.
+They can reject long recordings or unusual mass and inertia ratios that can otherwise simulate successfully.
+They preserve the existing mass and inertia checks and include motor-induced motion instead of checking authored targets alone.
+
 Kinematic translation changes divided by the timestep must have finite Float32 squared norms.
 Kinematic rotation targets require a finite squared bound of `(Math.PI / timestep) ** 2`.
 Same-tick translation targets use the previous integrated translation for these checks.
 These checks cover declared motion, without guaranteeing bounds on every force from contact or constraint solving.
-Finite extreme velocities can also be changed by Rapier's internal motion limits.
-The preflight checks prevent known overflow cases; they do not promise preservation of arbitrarily large authored speeds.
+
+Rapier's internal motion limits can also change finite extreme velocities.
+The preflight checks prevent known overflow cases.
+They do not promise preservation of arbitrarily large authored speeds.
 
 Large translations can lose small movements through Float32 rounding.
 For example, `16777217` becomes `16777216`.
 Nonfinite solver outputs fail the bake and release the world.
+The bake also validates actual linear and angular velocity squared norms at every recorded frame.
 
 Every completed or failed bake frees the Rapier world and its contained solver resources.
 `physics.dispose()` releases the recorded timeline reference and is safe to call repeatedly.
@@ -238,8 +325,13 @@ One exposed a mutable solver world with delta-time callbacks.
 The selected shape accepts a serializable body graph and explicit tick events, then records a bounded timeline.
 This shape makes film seeks independent of playback order and keeps solver state out of render callbacks.
 
-The addon supports rigid-body contacts, compound colliders, impulses, kinematics, and articulated graphs.
-It does not implement cloth, soft bodies, mesh colliders, motors, joint limits, sensors, collision masks, or live solver editing.
+Two motor control shapes were considered.
+A live `scene.joint(name).setMotor(...)` API exposes mutable solver state and callbacks during playback.
+The selected shape adds complete joint motor snapshots to the existing serializable definitions and tick events.
+This preserves pre-async validation, deterministic bake order and arbitrary recorded seeks after the solver world is freed.
+
+The addon supports rigid-body contacts, compound colliders, impulses, kinematics, articulated graphs, and single-coordinate joint limits and motors.
+It does not implement cloth, soft bodies, mesh colliders, spherical multi-axis controls, sensors, collision masks, or live solver editing.
 It does not bind physics directly to skeletal bones or generate a humanoid skeleton.
 Those features need additional public contracts.
 Creating a scene bakes synchronously after asynchronous WASM initialization and can block the main thread.
@@ -251,4 +343,4 @@ Input calculations such as `Math.sin` can differ across platforms and invalidate
 This addon does not promise identical trajectories across different Rapier versions.
 The implementation uses `@dimforge/rapier3d-compat` version `0.21.0`, licensed under Apache 2.0.
 
-Sources: [Rapier JavaScript setup](https://rapier.rs/docs/user_guides/javascript/getting_started_js/) and [Rapier determinism](https://rapier.rs/docs/user_guides/javascript/determinism/).
+Sources: [Rapier JavaScript setup](https://rapier.rs/docs/user_guides/javascript/getting_started_js/), [Rapier joints](https://rapier.rs/docs/user_guides/javascript/joints/) and [Rapier determinism](https://rapier.rs/docs/user_guides/javascript/determinism/).
