@@ -17,10 +17,10 @@ The studio renders on demand. Continuous animation pauses in hidden tabs.
 ## Install
 
 ```sh
-npm install 67js@npm:@codepawl_vn/67js
+npm install 67js@npm:@codepawlhq/67js
 ```
 
-The registry package is `@codepawl_vn/67js`. Its local alias is `67js`, so imports stay short. The project brand is 67.js. The library is ESM and bundles its runtime dependencies. Core exports include `Renderer67`, `box`, `cylinder`, `sphere`, `torus`, `assemblyOffset`, `exportGlb`, render budget helpers and `VERSION`. Scene constructors are separate addons. Browser module downloads and the guide are available at https://67js.codepawl.com.
+The registry package is `@codepawlhq/67js`. Its local alias is `67js`, so imports stay short. The project brand is 67.js. The library is ESM and bundles its runtime dependencies. Core exports include `Renderer67`, `box`, `cylinder`, `sphere`, `torus`, `assemblyOffset`, `exportGlb`, render budget helpers and `VERSION`. Scene constructors are separate addons. Browser module downloads and the guide are available at https://67js.codepawl.com.
 
 ## Run
 

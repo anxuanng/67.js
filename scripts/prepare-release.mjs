@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 const root = fileURLToPath(new URL('..', import.meta.url));
 const metadata = JSON.parse(await readFile(resolve(root, 'package.json'), 'utf8'));
 if (!/^\d+\.\d+\.\d+(?:-[a-z0-9.-]+)?$/.test(metadata.version)) throw new Error('Release version must be valid semver.');
-if (metadata.name !== '@codepawl_vn/67js') throw new Error('Unexpected package name.');
+if (metadata.name !== '@codepawlhq/67js') throw new Error('Unexpected package name.');
 
 function run(executable, argumentsList, capture = false) {
   const result = spawnSync(executable, argumentsList, { cwd: root, windowsHide: true, encoding: 'utf8', stdio: capture ? 'pipe' : 'inherit' });

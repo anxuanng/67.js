@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.3
+
+- Publish the package under the CodePawl organization as `@codepawlhq/67js`.
+
 ## 0.2.2
 
 - Publish under `@codepawl_vn/67js` because npm rejects the unscoped name.
