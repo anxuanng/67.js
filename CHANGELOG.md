@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.9.0
+
+- Add `scene_review` to compare up to four labeled camera, motion or imported clip samples in one PNG
+- Preserve source recipes, revisions, preview poses, viewport dimensions and checkpoints through isolated reviews
+- Bound review dimensions, image bytes, pending frames, sampled memory and private-render deadlines
+- Restore the source preview after failed shots and release private renderers during connection closure
+- Document the agent review workflow and verify independent shots through actual CPU-rendered pixel comparisons
+
 ## 0.8.1
 
 - Refine the film scientist with integrated facial surfaces, inset eyes, swept hair and a shorter neck

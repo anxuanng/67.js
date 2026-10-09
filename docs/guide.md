@@ -401,11 +401,14 @@ Disconnect observers, cancel animation frames, release pointer state and call `d
 ## Models and AI agents
 
 Version `0.5.0` includes [agent scene sessions](/agent-scene.md) and the `67js-mcp` command.
-Its [MCP server](/mcp.md) provides seventeen tools for authoring, previewing and exporting scenes through a persistent browser runtime.
+Its [MCP server](/mcp.md) provides eighteen tools for authoring, previewing and exporting scenes through a persistent browser runtime.
 Release `0.7.0` adds [agent motion](/agent-motion.md) for deterministic joint, material and camera keyframes.
 Read the MCP guide for npm installation, client configuration and CPU/GPU selection.
 The [agent look contract](/agent-look.md) adds retained lighting, volumetric fog, grading and directional shadows to recipe edits and checkpoints.
 Release `0.8.0` adds [imported character motion](/agent-character-motion.md) with editable joints and retained skin, morph and texture resources.
+
+Release `0.9.0` adds [visual review](/agent-review.md) for several labeled views or motion samples in one PNG grid.
+Review uses an isolated snapshot and preserves the source preview pose, revision and checkpoint handles.
 
 The [asset adapter](/agent-asset.md) imports local catalog GLBs with supported textures, rigs, morphs and deterministic clip sampling.
 

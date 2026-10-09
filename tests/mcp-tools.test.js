@@ -51,6 +51,12 @@ async function connect(context) {
       return { data: png, mimeType: 'image/png', metadata: { sessionId, revision: scene.revision,
         motionTime: scene.motionTime, width, height, backend: 'fake' } };
     },
+    async review({ expectedRevision, width, height, shots }) {
+      calls++;
+      assert.equal(expectedRevision, scene.revision);
+      return { data: png, mimeType: 'image/png', metadata: { sessionId,
+        sourceRevision: scene.revision, width, height, shots, backend: 'fake' } };
+    },
     async checkpoint() {
       const checkpointId = randomUUID();
       checkpoints.set(checkpointId, scene.checkpoint());
@@ -100,7 +106,7 @@ test('SDK advertises the complete strict JSON contract and truthful annotations'
   const { tools } = await client.listTools();
   assert.deepEqual(tools.map(tool => tool.name).sort(), [
     'scene_apply', 'scene_asset_catalog', 'scene_capabilities', 'scene_checkpoint', 'scene_create', 'scene_create_asset', 'scene_dispose',
-    'scene_export_recipe', 'scene_inspect', 'scene_look', 'scene_release_checkpoint', 'scene_restore',
+    'scene_export_recipe', 'scene_inspect', 'scene_look', 'scene_review', 'scene_release_checkpoint', 'scene_restore',
     'scene_render_cancel', 'scene_render_release', 'scene_render_result', 'scene_render_status', 'scene_render_submit',
   ].sort());
   for (const tool of tools) {
@@ -130,6 +136,33 @@ test('SDK advertises the complete strict JSON contract and truthful annotations'
   assert.equal(look.annotations.readOnlyHint, true);
   assert.equal(look.inputSchema.properties.width.maximum, 1024);
   assert.ok(look.inputSchema.properties.motionTime);
+});
+
+test('review SDK exposes one image and rejects unknown or unbounded shot fields before dispatch', async context => {
+  const { client, sessionId, calls } = await connect(context);
+  await client.callTool({ name: 'scene_create', arguments: { recipe: recipe() } });
+  const { tools } = await client.listTools();
+  const tool = tools.find(tool => tool.name === 'scene_review');
+  assert.equal(tools.length, 18);
+  assert.equal(tool.annotations.readOnlyHint, true);
+  assert.equal(tool.inputSchema.properties.shots.maxItems, 4);
+  assert.equal(tool.inputSchema.properties.shots.items.additionalProperties, false);
+  assert.equal(tool.inputSchema.properties.shots.items.properties.camera.additionalProperties, false);
+  const input = { sessionId, expectedRevision: 0, shots: [{ label: 'Front', camera: { eye: [4, 2, 1] } }, {}] };
+  const result = await client.callTool({ name: 'scene_review', arguments: input });
+  assert.equal(result.content.filter(block => block.type === 'image').length, 1);
+  assert.equal(result.structuredContent.sourceRevision, 0);
+  assert.equal(result.structuredContent.width, 384);
+  assert.ok(!JSON.stringify(result.structuredContent).includes(png));
+  const before = calls();
+  for (const invalid of [
+    { ...input, width: 481 }, { ...input, shots: [] }, { ...input, shots: Array(5).fill({}) },
+    { ...input, code: 'console.log(1)' }, { ...input, shots: [{ camera: { projection: 'orthographic' } }] },
+    { ...input, shots: [{ animation: { clip: 0, time: 0, url: 'https://example.com' } }] },
+    { ...input, shots: [{ label: 'x'.repeat(49) }] }, { ...input, shots: [{ motionTime: -1 }] },
+    { ...input, shots: [{ rendererTime: 3601 }] }, { ...input, expectedRevision: -1 },
+  ]) await rejected(client, 'scene_review', invalid);
+  assert.equal(calls(), before);
 });
 
 test('SDK rejects unknown fields, missing revisions, invalid vectors and oversized inputs before runtime dispatch', async context => {

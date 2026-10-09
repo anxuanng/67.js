@@ -11,6 +11,10 @@ Version `0.5.0` adds `67js/addons/agent-scene` and the `67js-mcp` command.
 Version `0.6.0` adds asynchronous snapshot render jobs. Read `/agent-render-jobs.md` for submission, progress, cancellation and artifact results.
 
 Version `0.8.0` adds imported source-node overrides and motion. Read `/agent-character-motion.md` for joint IDs, layering and pose ownership.
+
+Version `0.9.0` adds `scene_review`. Read `/agent-review.md` for a labeled PNG grid of up to four views or poses.
+Review uses an isolated snapshot with separate camera and clock settings. It preserves the source revision and preview pose.
+
 Version `0.7.0` adds recipe motion and atomic set-motion authoring. Read `/agent-motion.md` before generating tracks.
 Use scene_look motionTime for absolute procedural preview seeks. Omit it to preserve the last pose, or use null for the authored base.
 

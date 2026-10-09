@@ -165,6 +165,9 @@ The server retains one renderer, bounds image dimensions and payloads, and close
 Export the recipe before disposal. Release `0.6.0` includes bounded snapshot PNG, still and MP4 jobs documented in `docs/agent-render-jobs.md`.
 Release `0.7.0` supports procedural `motionTime` preview seeks and `settings.motion.start` in jobs. Imported tracks retain their separate clip workflow.
 
+Release `0.9.0` adds `scene_review` for up to four labeled cameras or pose samples without editing the source.
+Read `docs/agent-review.md`. Each shot starts from the authored base pose and reports its camera, clocks and actual render resources.
+
 For imported models, read `docs/agent-asset.md`, configure `--assets` with an absolute local GLB directory, then select a digest from `scene_asset_catalog`.
 Use `scene_create_asset` with a `67js.asset` recipe. Supported texture maps, skinning, morphs and existing clips remain attached to decoded meshes.
 Edit imported models through `set-root`, factor-only `set-material`, look commands and absolute `set-animation` sampling. Imported topology is immutable.

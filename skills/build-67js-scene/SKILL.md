@@ -34,6 +34,7 @@ Use `simplify-code` and `engineering-workflows` for implementation.
 - Agent render jobs use `docs/agent-render-jobs.md`. Check source versus published support, configure a private store and poll until terminal.
 - Agent procedural animation uses `docs/agent-motion.md` from release `0.7.0`. Author recipe tracks, then seek through `sampleMotion` or MCP `motionTime`.
 - Agent imported character motion uses `docs/agent-character-motion.md` from release `0.8.0`. Inspect source joints before authoring local tracks.
+- Agent comparisons use `scene_review` from release `0.9.0`. Read `docs/agent-review.md` for isolated views and independent pose samples.
 - An image or video export uses `render-67js-media`.
 
 Read [scene-contract.md](references/scene-contract.md) before creating parts or changing materials.

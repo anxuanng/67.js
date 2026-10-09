@@ -1,6 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createAgentRuntime } from '../scripts/agent-runtime.mjs';
+import { readFile } from 'node:fs/promises';
+import { createServer } from 'node:http';
+import { randomUUID } from 'node:crypto';
+import { createContext, Script } from 'node:vm';
+import { createAgentScene, AGENT_SCENE_CAPABILITIES } from '../src/agent-scene.js';
+import { normalizeReview, REVIEW_LIMITS } from '../scripts/agent-review.mjs';
 
 test('runtime reports real scene capabilities without launching a browser and closes idempotently', async () => {
   const runtime = createAgentRuntime({ backend: 'cpu', memory: 64 });
@@ -10,11 +16,231 @@ test('runtime reports real scene capabilities without launching a browser and cl
   assert.equal(capabilities.preview.maximumActiveScenes, 1);
   assert.equal(capabilities.preview.memoryBudgetMiB, 64);
   assert.equal(capabilities.preview.backend, 'cpu');
+  assert.equal(capabilities.review.maximumShots, 4);
+  assert.equal(capabilities.review.maximumGridHeight, 1008);
+  assert.equal(capabilities.review.maximumPendingFrames, 1);
   assert.equal(capabilities.sceneLimits.maxGeometryBytes, 32 * 1024 * 1024);
   await runtime.close();
   await runtime.close();
   assert.equal((await runtime.capabilities()).phase, 'closed');
   await assert.rejects(runtime.create({ recipe: {} }), /closed/);
+});
+
+async function reviewRuntimeHarness({ failShot, blockShot = false, oversize = false, deadlineMs,
+  failDispose = false, heapSize = 1024, stallPrivatePage = false, resumeDelayMs = 0 } = {}) {
+  const events = [];
+  let privatePage;
+  let sourceRevision = 0;
+  let resolveShotStarted;
+  const shotStarted = new Promise(resolve => { resolveShotStarted = resolve; });
+  let resolveAcquisitionStarted;
+  const acquisitionStarted = new Promise(resolve => { resolveAcquisitionStarted = resolve; });
+  let resolvePrivatePage;
+  const acquiredPage = new Promise(resolve => { resolvePrivatePage = () => resolve(privatePage = new FakePage(true)); });
+  const recipe = { format: '67js.scene', schemaVersion: 1, geometries: [], materials: [], nodes: [] };
+  class FakePage {
+    constructor(privateTarget) { this.privateTarget = privateTarget; this.closed = false; }
+    route() {}
+    setDefaultTimeout() {}
+    goto() {}
+    waitForFunction() {}
+    isClosed() { return this.closed; }
+    context() { return { newCDPSession: async () => ({
+      send: async () => ({ usedSize: heapSize }), detach: async () => { events.push('detach'); },
+    }) }; }
+    async evaluate(callback, { method, input }) {
+      events.push(`${this.privateTarget ? 'private' : 'source'}:${method}`);
+      if (method === 'create') return { sessionId: input.sessionId, revision: 0 };
+      if (method === 'snapshot') {
+        if (input.expectedRevision !== sourceRevision) throw new Error('Stale revision for render snapshot.');
+        return { sourceRevision, recipe };
+      }
+      if (method === 'reviewShot') {
+        resolveShotStarted();
+        if (blockShot) return new Promise((resolve, reject) => { this.rejectShot = reject; });
+        if (input.index === failShot) throw new Error('Injected partial shot failure');
+        return { label: input.shot.label, motionTime: input.shot.motionTime,
+          rendererTime: input.shot.rendererTime, graphics: 'SwiftShader', width: 384, height: 384 };
+      }
+      if (method === 'reviewResult') return { mimeType: 'image/png',
+        data: Buffer.alloc(oversize ? 1024 * 1024 + 1 : 16).toString('base64') };
+      if (method === 'dispose' && failDispose) throw new Error('Injected disposal failure');
+      if (method === 'resume' && resumeDelayMs) await new Promise(resolve => setTimeout(resolve, resumeDelayMs));
+      if (method === 'apply') { sourceRevision++; return { revision: sourceRevision }; }
+      return {};
+    }
+    async close() {
+      if (this.closed) return;
+      this.closed = true;
+      events.push(`${this.privateTarget ? 'private' : 'source'}:close`);
+      this.rejectShot?.(new Error('Review page closed'));
+    }
+  }
+  const sourcePage = new FakePage(false);
+  let pageCount = 0;
+  const browser = { isConnected: () => true,
+    newPage: async () => {
+      if (++pageCount === 1) return sourcePage;
+      resolveAcquisitionStarted();
+      return stallPrivatePage ? acquiredPage : (privatePage = new FakePage(true));
+    },
+    close: async () => { await privatePage?.close(); await sourcePage.close(); events.push('browser:close'); },
+  };
+  let source = (await readFile(new URL('../scripts/agent-runtime.mjs', import.meta.url), 'utf8'))
+    .replace(/^import .+;\r?$/gm, '')
+    .replace('export function createAgentRuntime', 'function createAgentRuntime')
+    .replaceAll('import.meta.url', JSON.stringify(import.meta.url))
+    .replace("import('playwright-core')", 'Promise.resolve({ chromium: globalThis.chromium })');
+  if (deadlineMs) source = source.replace('const EVALUATION_TIMEOUT_MS = 30000;', `const EVALUATION_TIMEOUT_MS = ${deadlineMs};`);
+  const context = createContext({ createServer, randomUUID, existsSync: () => true,
+    readFile: async () => '', packageMetadata: { version: 'test' },
+    createAgentScene: input => createAgentScene(JSON.parse(JSON.stringify(input))),
+    AGENT_SCENE_CAPABILITIES, normalizeReview, REVIEW_LIMITS,
+    chromium: { launch: async () => browser }, URL, Buffer, process, performance, setTimeout, clearTimeout,
+  });
+  new Script(`${source}\nglobalThis.runtime = createAgentRuntime({ backend: 'cpu' });`).runInContext(context);
+  const runtime = context.runtime;
+  const created = await runtime.create({ recipe });
+  return { runtime, sessionId: created.sessionId, events, shotStarted, acquisitionStarted, resolvePrivatePage };
+}
+
+function boundedResult(promise) {
+  let timer;
+  return Promise.race([promise.then(() => 'settled', () => 'settled'),
+    new Promise(resolve => { timer = setTimeout(() => resolve('stalled'), 150); }),
+  ]).finally(() => clearTimeout(timer));
+}
+
+test('review deadline rejects stalled page acquisition and disposes a late page', async () => {
+  const { runtime, sessionId, events, acquisitionStarted, resolvePrivatePage } = await reviewRuntimeHarness({
+    stallPrivatePage: true, deadlineMs: 40,
+  });
+  const pending = runtime.review({ sessionId, expectedRevision: 0, shots: [{}] });
+  try {
+    await acquisitionStarted;
+    assert.equal(await boundedResult(pending), 'settled', 'deadline must reject without waiting for newPage');
+    await assert.rejects(pending, /deadline/);
+    assert.equal((await runtime.capabilities()).phase, 'ready');
+    resolvePrivatePage();
+    await new Promise(resolve => setImmediate(resolve));
+    assert.ok(events.includes('private:close'));
+    assert.ok(!events.includes('private:create'));
+    assert.equal((await runtime.apply({ sessionId })).revision, 1);
+  } finally {
+    resolvePrivatePage();
+    await pending.catch(() => {});
+    await runtime.close();
+  }
+});
+
+test('close interrupts stalled page acquisition and late resolution cannot resurrect the runtime', async () => {
+  const { runtime, sessionId, events, acquisitionStarted, resolvePrivatePage } = await reviewRuntimeHarness({ stallPrivatePage: true });
+  const pending = runtime.review({ sessionId, expectedRevision: 0, shots: [{}] });
+  pending.catch(() => {});
+  await acquisitionStarted;
+  const closing = runtime.close();
+  try {
+    assert.equal(await boundedResult(closing), 'settled', 'close must not wait for newPage');
+    await closing;
+    await assert.rejects(pending, /closing|closed/);
+    assert.ok(events.includes('browser:close'));
+    resolvePrivatePage();
+    await new Promise(resolve => setImmediate(resolve));
+    assert.ok(events.includes('private:close'));
+    assert.ok(!events.includes('private:create'));
+    assert.ok(!events.includes('source:resume'));
+    assert.equal((await runtime.capabilities()).phase, 'closed');
+  } finally {
+    resolvePrivatePage();
+    await pending.catch(() => {});
+    await closing;
+  }
+});
+
+test('review queue releases private renderer before source resume, including partial and size failures', async () => {
+  for (const options of [{}, { failShot: 1 }, { oversize: true }, { heapSize: 256 * 1024 ** 2 + 1 }]) {
+    const { runtime, sessionId, events } = await reviewRuntimeHarness(options);
+    try {
+      const pending = runtime.review({ sessionId, expectedRevision: 0, shots: [{ motionTime: 1 }, {}] });
+      if (options.failShot !== undefined || options.oversize || options.heapSize) await assert.rejects(pending, /partial shot|1 MiB|heap guard/);
+      else {
+        const result = await pending;
+        assert.equal(result.metadata.sourceRevision, 0);
+        assert.equal(result.metadata.shots[1].motionTime, null);
+        assert.equal(result.metadata.maximumPendingFrames, 1);
+      }
+      assert.ok(events.indexOf('private:dispose') < events.indexOf('private:close'));
+      assert.ok(events.indexOf('private:close') < events.indexOf('source:resume'));
+      assert.equal(events.filter(event => event === 'source:resume').length, 1);
+      assert.equal((await runtime.apply({ sessionId })).revision, 1);
+    } finally { await runtime.close(); }
+  }
+});
+
+test('queued review detaches its request before a caller can mutate shot clocks', async () => {
+  const { runtime, sessionId } = await reviewRuntimeHarness();
+  try {
+    const input = { sessionId, expectedRevision: 0, shots: [{ motionTime: 1 }] };
+    const pending = runtime.review(input);
+    input.shots[0].motionTime = 99;
+    input.shots.push({ motionTime: 88 });
+    const result = await pending;
+    assert.equal(result.metadata.shots.length, 1);
+    assert.equal(result.metadata.shots[0].motionTime, 1);
+  } finally { await runtime.close(); }
+});
+
+test('successful review elapsed time includes source renderer recovery', async () => {
+  const { runtime, sessionId } = await reviewRuntimeHarness({ resumeDelayMs: 30 });
+  try {
+    const result = await runtime.review({ sessionId, expectedRevision: 0, shots: [{}] });
+    assert.ok(result.metadata.elapsedSeconds >= 0.02, 'elapsed must include the delayed source resume');
+    assert.equal((await runtime.capabilities()).phase, 'ready');
+  } finally { await runtime.close(); }
+});
+
+test('total review deadline closes private page and restores the usable source', async () => {
+  const { runtime, sessionId, events } = await reviewRuntimeHarness({ blockShot: true, deadlineMs: 40 });
+  try {
+    await assert.rejects(runtime.review({ sessionId, expectedRevision: 0, shots: [{}] }), /total 30 second deadline/);
+    assert.ok(events.includes('private:close'));
+    assert.ok(events.includes('source:resume'));
+    assert.equal((await runtime.capabilities()).phase, 'ready');
+    assert.equal((await runtime.apply({ sessionId })).revision, 1);
+  } finally { await runtime.close(); }
+});
+
+test('private disposal failure still closes its page before restoring source', async () => {
+  const { runtime, sessionId, events } = await reviewRuntimeHarness({ failDispose: true });
+  try {
+    await assert.rejects(runtime.review({ sessionId, expectedRevision: 0, shots: [{}] }), /disposal failure/);
+    assert.ok(events.indexOf('private:close') < events.indexOf('source:resume'));
+    assert.equal((await runtime.capabilities()).phase, 'ready');
+  } finally { await runtime.close(); }
+});
+
+test('review stale revisions and strict runtime fields reject before leasing source', async () => {
+  const { runtime, sessionId, events } = await reviewRuntimeHarness();
+  try {
+    await assert.rejects(runtime.review({ sessionId, expectedRevision: 1, shots: [{}] }), /Stale/);
+    await assert.rejects(runtime.review({ sessionId, expectedRevision: 0, shots: [{ url: 'https://example.com' }] }), /unknown/i);
+    assert.ok(!events.includes('source:suspend'));
+    assert.equal((await runtime.apply({ sessionId })).revision, 1);
+  } finally { await runtime.close(); }
+});
+
+test('runtime close promptly aborts a pending private review and skips source resume', async () => {
+  const { runtime, sessionId, events, shotStarted } = await reviewRuntimeHarness({ blockShot: true });
+  const pending = runtime.review({ sessionId, expectedRevision: 0, shots: [{}] });
+  const rejected = assert.rejects(pending, /closed/);
+  await shotStarted;
+  assert.equal((await runtime.capabilities()).phase, 'reviewing');
+  await runtime.close();
+  await rejected;
+  assert.ok(events.includes('private:close'));
+  assert.ok(events.includes('browser:close'));
+  assert.ok(!events.includes('source:resume'));
+  assert.equal((await runtime.capabilities()).phase, 'closed');
 });
 
 test('invalid preview configuration rejects before any browser or renderer allocation', () => {

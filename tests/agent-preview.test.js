@@ -6,6 +6,9 @@ import { mat4 } from 'gl-matrix';
 import { createAgentScene } from '../src/agent-scene.js';
 import { applyProjection } from '../src/camera.js';
 import { resolveAgentShadow } from '../src/agent-look.js';
+import { createAgentAssetScene } from '../src/agent-asset.js';
+import { parseGltf } from '../src/gltf.js';
+import { skinnedStripAsset } from './fixtures/skinned-strip.js';
 
 const source = (await readFile(new URL('../scripts/agent-preview-browser.js', import.meta.url), 'utf8')).replace(/^import .+;\r?$/gm, '');
 
@@ -15,7 +18,14 @@ function previewHarness() {
   let replacementError = false;
   let replacementCount = 0;
   let currentRenderer;
-  const canvas = { width: 768, height: 512 };
+  let currentScene;
+  const renders = [];
+  const tiles = [];
+  const makeCanvas = () => ({ width: 768, height: 512,
+    replaceWith() {}, toDataURL: () => 'data:image/png;base64,cG5n',
+    getContext: kind => kind === '2d' ? { fillRect() {}, fillText() {},
+      drawImage: () => tiles.push(renders.at(-1)) } : { getExtension: () => null } });
+  const canvas = makeCanvas();
   class FaultInjectedRenderer {
     memoryPlan = { estimatedBytes: 1024 };
     capabilities = { hdr: true, samples: 4 };
@@ -32,14 +42,29 @@ function previewHarness() {
       if (replacementError) throw new Error('Injected replacement allocation failure');
       replacementCount++;
     }
-    render() {}
+    render(camera) {
+      renders.push({ camera: JSON.parse(JSON.stringify(camera)),
+        parts: currentScene.parts.map(part => ({ matrix: Array.from(part.matrix),
+          joints: Array.from(part.skin?.jointMatrices ?? []) })) });
+    }
     dispose() {}
   }
   const context = createContext({
     window: {},
-    document: { querySelector: () => canvas },
+    document: { querySelector: () => canvas, createElement: makeCanvas },
     // The real browser bundles these functions in one realm. Bridge only the VM realm here.
-    createAgentScene: input => createAgentScene(JSON.parse(JSON.stringify(input))),
+    createAgentScene: input => {
+      const scene = createAgentScene(JSON.parse(JSON.stringify(input)));
+      if (scene.parts.length) currentScene = scene;
+      return scene;
+    },
+    createAgentAssetScene: (asset, input) => {
+      currentScene = createAgentAssetScene(asset, JSON.parse(JSON.stringify(input)));
+      const scene = currentScene;
+      return new Proxy({}, { get: (target, field) => field === 'sampleFrame'
+        ? frame => scene.sampleFrame(JSON.parse(JSON.stringify(frame))) : scene[field] });
+    },
+    parseGltf, Uint8Array, atob,
     applyProjection, mat4, resolveAgentShadow,
     Renderer67: FaultInjectedRenderer,
   });
@@ -52,6 +77,7 @@ function previewHarness() {
     rejectReplacement: value => { replacementError = value; },
     replacementCount: () => replacementCount,
     disableHdr: () => { currentRenderer.capabilities.hdr = false; },
+    scene: () => currentScene, renders, tiles,
   };
 }
 
@@ -73,6 +99,92 @@ test('HDR fallback rejects enabling or restoring volume fog before canonical pub
     { type: 'set-environment', environment: { volumeFog: { density: 0.2 } } },
   ] }), /HDR support/);
   assert.throws(() => harness.preview.restore({ sessionId, checkpointId: 'fog', expectedRevision: 2 }), /HDR support/);
+  assert.deepEqual(harness.preview.exportRecipe({ sessionId }), before);
+});
+
+test('private review samples reset independently and camera overrides do not publish edits', () => {
+  const harness = previewHarness();
+  const input = recipe();
+  input.motion = { duration: 2, tracks: [{ kind: 'node', id: 'cube', property: 'translation',
+    keyframes: [{ time: 0, value: [0, 0, 0] }, { time: 2, value: [4, 0, 0] }] }] };
+  const { preview } = harness;
+  const sessionId = 'review';
+  preview.create({ recipe: input, sessionId, backend: 'cpu', memoryBudgetMiB: 64 });
+  const before = preview.exportRecipe({ sessionId });
+  preview.reviewBegin({ sessionId, width: 768, height: 408 });
+  const first = preview.reviewShot({ sessionId, index: 0, width: 384, height: 384, columns: 2,
+    shot: { label: 'Moving', motionTime: 1, rendererTime: 2, camera: { eye: [4, 3, 5] } } });
+  const second = preview.reviewShot({ sessionId, index: 1, width: 384, height: 384, columns: 2,
+    shot: { label: 'Base', motionTime: null, rendererTime: 0 } });
+  assert.equal(harness.tiles[0].parts[0].matrix[12], 2);
+  assert.equal(harness.tiles[1].parts[0].matrix[12], 0);
+  assert.deepEqual(Array.from(first.camera.eye), [4, 3, 5]);
+  assert.deepEqual(second.camera, before.recipe.camera);
+  assert.equal(second.motionTime, null);
+  assert.deepEqual(preview.exportRecipe({ sessionId }), before);
+  assert.equal(preview.reviewResult({ sessionId }).data, 'cG5n');
+});
+
+test('source suspend and resume preserve transient motion pose and checkpoints', () => {
+  const harness = previewHarness();
+  const input = recipe();
+  input.motion = { duration: 2, tracks: [{ kind: 'node', id: 'cube', property: 'translation',
+    keyframes: [{ time: 0, value: [0, 0, 0] }, { time: 2, value: [4, 0, 0] }] }] };
+  const { preview } = harness;
+  const sessionId = 'source';
+  preview.create({ recipe: input, sessionId, backend: 'cpu', memoryBudgetMiB: 64 });
+  preview.checkpoint({ sessionId, checkpointId: 'saved' });
+  preview.frame({ sessionId, motionTime: 1.5 });
+  const before = preview.exportRecipe({ sessionId });
+  preview.suspend({ sessionId });
+  preview.resume({ sessionId });
+  assert.equal(harness.scene().motionTime, 1.5);
+  assert.equal(harness.renders.at(-1).parts[0].matrix[12], 3);
+  assert.deepEqual(preview.exportRecipe({ sessionId }), before);
+  assert.equal(preview.restore({ sessionId, checkpointId: 'saved', expectedRevision: 0 }).revision, 1);
+});
+
+test('asset review samples imported clips and motion atomically and resets to authored clip pose', async () => {
+  const harness = previewHarness();
+  const sessionId = 'asset-review';
+  const input = { format: '67js.asset', schemaVersion: 1, assetId: 'ab'.repeat(32),
+    animation: { clip: 0, time: 0.25 }, motion: { duration: 2, tracks: [
+      { kind: 'node', id: 'node-0', property: 'translation', keyframes: [
+        { time: 0, value: [0, 0, 0] }, { time: 2, value: [2, 0, 0] } ] },
+    ] } };
+  await harness.preview.createAsset({ sessionId, recipe: input,
+    data: Buffer.from(skinnedStripAsset()).toString('base64'), backend: 'cpu', memoryBudgetMiB: 64 });
+  const before = harness.preview.exportRecipe({ sessionId });
+  harness.preview.reviewBegin({ sessionId, width: 768, height: 408 });
+  const shot = (index, animation, motionTime) => harness.preview.reviewShot({ sessionId, index,
+    width: 384, height: 384, columns: 2, shot: { label: 'Asset', rendererTime: 0, motionTime,
+      ...(animation === undefined ? {} : { animation }) } });
+  shot(0, { clip: 0, time: 1.5 }, 1);
+  const posed = harness.renders.at(-1).parts;
+  const reset = shot(1, undefined, null);
+  assert.notDeepEqual(harness.renders.at(-1).parts, posed);
+  harness.scene().sampleFrame({ animation: input.animation, motionTime: null });
+  assert.deepEqual(harness.renders.at(-1).parts, harness.scene().parts.map(part => ({
+    matrix: Array.from(part.matrix), joints: Array.from(part.skin?.jointMatrices ?? []) })));
+  assert.deepEqual(JSON.parse(JSON.stringify(reset.animation)), input.animation);
+  assert.deepEqual(harness.preview.exportRecipe({ sessionId }), before);
+  const poseBeforeFailure = harness.renders.at(-1).parts;
+  assert.throws(() => shot(1, { clip: 999, time: 0 }, 1), /clip/i);
+  assert.deepEqual(harness.scene().parts.map(part => ({ matrix: Array.from(part.matrix),
+    joints: Array.from(part.skin?.jointMatrices ?? []) })), poseBeforeFailure);
+});
+
+test('review private cameras reject Float32 overflow and preserve canonical revision after a partial grid', () => {
+  const harness = previewHarness();
+  const sessionId = 'invalid-review-camera';
+  harness.preview.create({ recipe: recipe(), sessionId, backend: 'cpu', memoryBudgetMiB: 64 });
+  const before = harness.preview.exportRecipe({ sessionId });
+  harness.preview.reviewBegin({ sessionId, width: 768, height: 408 });
+  const shot = camera => harness.preview.reviewShot({ sessionId, index: 0,
+    width: 384, height: 384, columns: 2, shot: { label: 'Camera', motionTime: null, rendererTime: 0, camera } });
+  shot({ eye: [4, 3, 5] });
+  assert.throws(() => shot({ fov: 1e-36 }), /aspect ratios/);
+  assert.equal(harness.tiles.length, 1);
   assert.deepEqual(harness.preview.exportRecipe({ sessionId }), before);
 });
 

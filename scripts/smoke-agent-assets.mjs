@@ -35,7 +35,7 @@ async function look(sessionId, label) {
 }
 try {
   await client.connect(transport, { timeout: 180000 });
-  assert.equal((await client.listTools()).tools.length, 17);
+  assert.equal((await client.listTools()).tools.length, 18);
   const catalog = (await call('scene_asset_catalog')).structuredContent;
   assert.equal(catalog.configured, true);
   assert.equal(catalog.assets.length, 2);
@@ -81,7 +81,7 @@ try {
   await call('scene_restore', { sessionId: rigId, checkpointId: initialCheckpoint.checkpointId, expectedRevision: 3 });
   assert.deepEqual(await look(rigId, 'rig-restored'), initial);
   await call('scene_dispose', { sessionId: rigId });
-  const report = { tools: 17, backend: 'cpu', robotParts: created.inspection.counts.parts,
+  const report = { tools: 18, backend: 'cpu', robotParts: created.inspection.counts.parts,
     robotRestoreExact: true, texturedRigLoaded: true, backwardSeekExact: true, originalPoseRestoreExact: true };
   await writeFile('artifacts/agent-assets-cpu.json', JSON.stringify(report, null, 2));
   console.log(JSON.stringify(report));

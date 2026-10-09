@@ -1,5 +1,33 @@
 # Release verification
 
+## 0.9.0
+
+Source checks used Windows Node.js, installed Chrome with CPU SwiftShader and actual MCP calls.
+Registry publication and live deployment require separate verification against the pushed commit.
+
+| Check | Measured result |
+| --- | --- |
+| Node tests | 434 tests passed. |
+| Native review | Front, side and back camera shots produced one labeled PNG grid. |
+| Independent poses | An omitted second motion sample matched the authored base pixels exactly. |
+| Imported clips | Explicit and omitted clip samples matched their independently rendered reference pixels. |
+| Source preservation | Preview PNG bytes, canonical recipe, revision and checkpoint restoration survived reviews and invalid shots. |
+| Active closure | Closing a confirmed active review released the runtime in 0.12 seconds. |
+
+The review response limits shots to four, dimensions to 480 pixels per axis and PNG bytes to 1 MiB.
+It keeps one pending frame and reports requested tile sizes separately from actual render dimensions.
+The private review has a 30-second deadline after source snapshot and asset verification. Cleanup and preview recovery follow it.
+
+The public contract review found a stalled page acquisition that could delay closure.
+A rejecting cancellation race and late-page disposal removed that path. Regression tests failed before the correction and passed afterward.
+The source follow-up found no remaining findings within its scope.
+
+Only one model family reviewed the contract because the other reviewer remained unavailable. This gives weaker coverage than a completed cross review.
+
+A clean source package passed modern and legacy MCP calls without development dependencies or source files.
+These checks cover CPU rendering. They do not establish hardware GPU performance or better artistic quality.
+
+
 ## 0.8.1
 
 Source checks used Windows Node.js, installed Chrome with CPU SwiftShader and FFmpeg H.264 encoding.

@@ -206,7 +206,7 @@ function jsonResult(value) {
 
 export function createAgentMcpServer(runtime, { version = packageMetadata.version } = {}) {
   const server = new McpServer({ name: '67js-scene', version }, {
-    instructions: 'Start with scene_capabilities. Create a procedural recipe with scene_create, or select a configured GLB digest from scene_asset_catalog and use scene_create_asset. Inspect stable IDs and save a checkpoint before editing. Apply small batches with the current expectedRevision and check committed, revision and renderSucceeded. A committed edit can have a separate renderError; do not retry it with an old revision. Use scene_look to judge the actual image. When jobs are configured, scene_render_submit captures an immutable snapshot. Poll scene_render_status, cancel when needed, and retrieve verified local artifact metadata with scene_render_result after completion. Preview rendering and edits pause during a job; source revision and checkpoints survive. Release outputs with scene_render_release. Export the final recipe and dispose the scene when finished. No arbitrary JavaScript, remote URLs or caller-selected output paths are exposed.',
+    instructions: 'Start with scene_capabilities. Create a procedural recipe with scene_create, or select a configured GLB digest from scene_asset_catalog and use scene_create_asset. Inspect stable IDs and save a checkpoint before editing. Apply small batches with the current expectedRevision and check committed, revision and renderSucceeded. A committed edit can have a separate renderError; do not retry it with an old revision. Use scene_look to judge the actual image, or scene_review with the current expectedRevision to compare independent camera and motion samples in one grid while preserving the source pose. When jobs are configured, scene_render_submit captures an immutable snapshot. Poll scene_render_status, cancel when needed, and retrieve verified local artifact metadata with scene_render_result after completion. Preview rendering and edits pause during a job; source revision and checkpoints survive. Release outputs with scene_render_release. Export the final recipe and dispose the scene when finished. No arbitrary JavaScript, remote URLs or caller-selected output paths are exposed.',
   });
   let closePromise;
   server.server.onclose = () => {
@@ -234,6 +234,21 @@ export function createAgentMcpServer(runtime, { version = packageMetadata.versio
   register('scene_apply', 'Atomically edit transforms, look, camera or materials. Procedural scenes support membership and set-motion authoring. Imported assets support set-root, set-asset-node, set-motion and absolute set-animation sampling. Successful batches increment revision once.', z.strictObject({ ...sessionFields, expectedRevision, operations: z.array(operation).min(1).max(256).describe('Node/material/camera/root/animation commands use flat fields. Motion, look patches and add commands contain nested records. Backend validates each scene mode before publication.') }), edit, async argumentsValue => jsonResult(await runtime.apply(argumentsValue)));
   register('scene_look', 'Render the active scene as a bounded PNG. Optional authored motionTime seeks without changing revision; null restores the authored base pose. Omit to retain the last preview pose.', z.strictObject({ ...sessionFields, motionTime: z.number().min(0).max(3600).nullable().optional(), width: z.number().int().min(64).max(1024).default(768).describe('PNG width in pixels.'), height: z.number().int().min(64).max(1024).default(512).describe('PNG height in pixels.') }), readOnly, async argumentsValue => {
     const { data, mimeType, metadata } = await runtime.look(argumentsValue);
+    return { content: [{ type: 'image', data, mimeType }, { type: 'text', text: JSON.stringify(metadata) }], structuredContent: metadata };
+  });
+  register('scene_review', 'Compare one to four independent camera or motion samples in one labeled PNG grid. Preserves source revision, transient pose, viewport and checkpoints. Omitted motionTime restores authored base pose; omitted animation uses the authored asset clip pose; rendererTime defaults to zero. No render job store is required.', z.strictObject({
+    ...sessionFields, expectedRevision,
+    width: z.number().int().min(64).max(480).default(384),
+    height: z.number().int().min(64).max(480).default(384),
+    shots: z.array(z.strictObject({
+      label: z.string().max(48).optional(),
+      camera: z.strictObject(cameraFields).optional(),
+      animation: z.strictObject({ clip: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER), time: z.number().min(0).max(3600) }).optional(),
+      motionTime: z.number().min(0).max(3600).nullable().optional(),
+      rendererTime: z.number().min(0).max(3600).optional(),
+    })).min(1).max(4),
+  }), readOnly, async argumentsValue => {
+    const { data, mimeType, metadata } = await runtime.review(argumentsValue);
     return { content: [{ type: 'image', data, mimeType }, { type: 'text', text: JSON.stringify(metadata) }], structuredContent: metadata };
   });
   register('scene_checkpoint', 'Save a private recipe snapshot. Up to eight checkpoints can be retained per session.', z.strictObject(sessionFields), { ...edit, destructiveHint: false }, async argumentsValue => jsonResult(await runtime.checkpoint(argumentsValue)));

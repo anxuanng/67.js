@@ -57,7 +57,7 @@ async function close() {
 }
 try {
   await connect();
-  assert.equal((await client.listTools()).tools.length, 17);
+  assert.equal((await client.listTools()).tools.length, 18);
   const catalog = (await call('scene_asset_catalog')).structuredContent;
   const created = (await call('scene_create_asset', { recipe: {
     format: '67js.asset', schemaVersion: 1, assetId: catalog.assets[0].assetId,
@@ -127,7 +127,7 @@ try {
     animatedFramesDiffer: true, activeCancel: true, eofCleanup: true, restartResults: true,
     sourcePngExact: true, sourceCheckpointRetained: true, immutableAsset: true,
     imageAndEightStills: true, release: true }, null, 2));
-  console.log(JSON.stringify({ tools: 17, videoFrames: 8, activeCancel: true, eofCleanup: true,
+  console.log(JSON.stringify({ tools: 18, videoFrames: 8, activeCancel: true, eofCleanup: true,
     restartResults: true, sourcePngExact: true, maximumPendingFrames: result.metrics.maximumPendingFrames }));
 } finally {
   if (client) await client.close();

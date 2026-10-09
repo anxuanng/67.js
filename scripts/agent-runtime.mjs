@@ -8,6 +8,7 @@ import { createAgentScene, AGENT_SCENE_CAPABILITIES } from '../src/agent-scene.j
 import { createAgentAssetCatalog } from './agent-asset-catalog.mjs';
 import { createAgentRenderJobs } from './agent-render-jobs.mjs';
 import { createFrameEncoder } from './frame-encoder.mjs';
+import { normalizeReview, REVIEW_LIMITS } from './agent-review.mjs';
 
 const EMPTY_RECIPE = { format: '67js.scene', schemaVersion: 1, geometries: [], materials: [], nodes: [] };
 const SCENE_LIMITS = createAgentScene(EMPTY_RECIPE).limits;
@@ -42,6 +43,8 @@ export function createAgentRuntime({ backend = 'gpu', browser: browserPath, memo
   let browserInstance;
   let httpServer;
   let page;
+  let reviewPage;
+  let cancelReview;
   let activeSessionId = null;
   let queuedCalls = 0;
   let queue = Promise.resolve();
@@ -167,24 +170,30 @@ export function createAgentRuntime({ backend = 'gpu', browser: browserPath, memo
     return evaluate(method, input);
   }
 
-  async function evaluate(method, input) {
+  async function evaluate(method, input, target = page) {
     let timer;
     let timedOut = false;
     try {
       return await Promise.race([
-        page.evaluate(({ method, input }) => window.__agentPreview[method](input), { method, input }),
+        target.evaluate(({ method, input }) => window.__agentPreview[method](input), { method, input }),
         new Promise((resolve, reject) => {
           timer = setTimeout(() => {
             timedOut = true;
-            phase = 'failed';
-            reject(new Error('The preview operation exceeded 30 seconds. This runtime must be closed.'));
+            if (target === page) phase = 'failed';
+            reject(new Error(target === page
+              ? 'The preview operation exceeded 30 seconds. This runtime must be closed.'
+              : 'The private render operation exceeded 30 seconds.'));
           }, EVALUATION_TIMEOUT_MS);
         }),
       ]);
     } catch (error) {
       if (timedOut) {
-        activeSessionId = null;
-        await shutdownResources();
+        if (target === page) {
+          activeSessionId = null;
+          await shutdownResources();
+        } else {
+          await target.close();
+        }
       }
       throw error;
     } finally {
@@ -305,6 +314,9 @@ export function createAgentRuntime({ backend = 'gpu', browser: browserPath, memo
         scene: AGENT_SCENE_CAPABILITIES,
         sceneLimits: SCENE_LIMITS,
         preview: { backend, memoryBudgetMiB: memory, maximumWidth: 1024, maximumHeight: 1024, maximumImageBytes: MAXIMUM_IMAGE_BYTES, maximumActiveScenes: 1, maximumQueuedCalls: MAXIMUM_QUEUED_CALLS, evaluationTimeoutMs: EVALUATION_TIMEOUT_MS },
+        review: { ...REVIEW_LIMITS, backend, memoryBudgetMiB: memory, evaluationTimeoutMs: EVALUATION_TIMEOUT_MS,
+          totalTimeoutMs: EVALUATION_TIMEOUT_MS,
+          sourcePreserved: true, defaultMotionTime: null, defaultRendererTime: 0 },
         phase: closing && phase !== 'closed' ? 'closing' : phase,
         availableIn: packageMetadata.version,
         assets: {
@@ -383,6 +395,128 @@ export function createAgentRuntime({ backend = 'gpu', browser: browserPath, memo
         return invoke('checkpoint', { ...input, checkpointId: randomUUID() });
       });
     },
+    review(input) {
+      let settings;
+      try { settings = normalizeReview(input); }
+      catch (error) { return Promise.reject(error); }
+      return enqueue(async () => {
+        await requirePreviewRenderer();
+        requireSession(settings.sessionId);
+        const snapshot = await invoke('snapshot', settings);
+        const assetBytes = snapshot.recipe.format === '67js.asset' ? await (await catalog()).read(snapshot.recipe.assetId) : undefined;
+        const privateSessionId = randomUUID();
+        const started = performance.now();
+        let suspended = false;
+        let privateCreated = false;
+        let session;
+        let output;
+        let deadlineExpired = false;
+        let cancellationReason;
+        const cancellation = new Promise((resolve, reject) => {
+          cancelReview = error => {
+            cancellationReason ??= error;
+            reject(cancellationReason);
+            reviewPage?.close().catch(() => {});
+          };
+        });
+        // Cancellation can arrive during source suspension, before acquisition attaches its race.
+        cancellation.catch(() => {});
+        const deadline = setTimeout(() => {
+          deadlineExpired = true;
+          cancelReview(new Error('The review exceeded its total 30 second deadline.'));
+        }, EVALUATION_TIMEOUT_MS);
+        function requireReviewOpen() {
+          if (deadlineExpired) throw new Error('The review exceeded its total 30 second deadline.');
+          if (closing) throw new Error('The agent runtime is closing.');
+        }
+        async function reviewEvaluate(method, value) {
+          requireReviewOpen();
+          const result = await evaluate(method, value, reviewPage);
+          requireReviewOpen();
+          return result;
+        }
+        try {
+          await invoke('suspend', { sessionId: settings.sessionId });
+          suspended = true;
+          phase = 'reviewing';
+          requireReviewOpen();
+          const acquisition = browserInstance.newPage({ viewport: { width: settings.width, height: settings.height }, deviceScaleFactor: 1 })
+            .then(async acquired => {
+              if (cancellationReason) {
+                await acquired.close();
+                throw cancellationReason;
+              }
+              return acquired;
+            });
+          reviewPage = await Promise.race([acquisition, cancellation]);
+          requireReviewOpen();
+          const origin = `http://127.0.0.1:${httpServer.address().port}`;
+          await reviewPage.route('**/*', route => new URL(route.request().url()).origin === origin ? route.continue() : route.abort());
+          reviewPage.setDefaultTimeout(15000);
+          await reviewPage.goto(origin);
+          await reviewPage.waitForFunction(() => Boolean(window.__agentPreview));
+          await reviewEvaluate(assetBytes ? 'createAsset' : 'create', { sessionId: privateSessionId,
+            recipe: snapshot.recipe, memoryBudgetMiB: memory, backend,
+            ...(assetBytes ? { data: assetBytes.toString('base64') } : {}) });
+          privateCreated = true;
+          await reviewEvaluate('reviewBegin', { sessionId: privateSessionId,
+            width: settings.gridWidth, height: settings.gridHeight });
+          session = await reviewPage.context().newCDPSession(reviewPage);
+          const shots = [];
+          let peakBrowserHeap = 0;
+          let peakNodeBytes = 0;
+          for (const [index, shot] of settings.shots.entries()) {
+            const rendered = await reviewEvaluate('reviewShot', { sessionId: privateSessionId, shot, index,
+              width: settings.width, height: settings.height, columns: settings.columns });
+            if (backend === 'cpu' && !/swiftshader/i.test(rendered.graphics)) throw new Error('CPU review did not select SwiftShader.');
+            peakNodeBytes = Math.max(peakNodeBytes, process.memoryUsage().rss);
+            peakBrowserHeap = Math.max(peakBrowserHeap, (await session.send('Runtime.getHeapUsage')).usedSize);
+            if (peakNodeBytes > 512 * 1024 ** 2 || peakBrowserHeap > 256 * 1024 ** 2) {
+              throw new Error('Review exceeded its Node RSS or sampled browser heap guard.');
+            }
+            shots.push(rendered);
+          }
+          const result = await reviewEvaluate('reviewResult', { sessionId: privateSessionId });
+          if (Buffer.byteLength(result.data, 'base64') > MAXIMUM_IMAGE_BYTES) throw new Error('The review PNG exceeds the 1 MiB image response budget. Request smaller shots.');
+          output = { ...result, metadata: { sessionId: settings.sessionId, sourceRevision: snapshot.sourceRevision,
+            backend, width: settings.gridWidth, height: settings.gridHeight, shots,
+            peakNodeBytes, peakBrowserHeap, maximumPendingFrames: 1 } };
+        } catch (error) {
+          if (deadlineExpired) throw new Error('The review exceeded its total 30 second deadline.');
+          throw error;
+        } finally {
+          clearTimeout(deadline);
+          cancelReview = undefined;
+          try {
+            if (reviewPage && !reviewPage.isClosed()) {
+              try {
+                if (privateCreated && !closing) await evaluate('dispose', { sessionId: privateSessionId }, reviewPage);
+              } finally {
+                try { await reviewPage.close(); }
+                catch (error) {
+                  phase = 'failed';
+                  await shutdownResources();
+                  throw error;
+                }
+              }
+            }
+          } finally {
+            reviewPage = undefined;
+            await session?.detach().catch(() => {});
+            if (suspended && !closing && phase !== 'failed') {
+              try { await invoke('resume', { sessionId: settings.sessionId }); }
+              catch (error) {
+                phase = 'failed';
+                throw new Error(`Preview recovery failed after review: ${error.message}`);
+              }
+              phase = 'ready';
+            }
+          }
+        }
+        output.metadata.elapsedSeconds = (performance.now() - started) / 1000;
+        return output;
+      });
+    },
     restore(input) {
       return enqueue(async () => {
         await requirePreviewRenderer();
@@ -444,8 +578,10 @@ export function createAgentRuntime({ backend = 'gpu', browser: browserPath, memo
     close() {
       if (!closing) {
         phase = 'closing';
+        cancelReview?.(new Error('The agent runtime is closing.'));
         closing = (async () => {
           try {
+            await reviewPage?.close().catch(() => {});
             if (jobsPromise) await (await jobsPromise).close();
           } finally {
             await queue;

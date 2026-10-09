@@ -8,6 +8,7 @@ Release `0.5.0` exposes twelve tools for bounded JSON scene authoring and local 
 Release `0.6.0` adds five render job tools for PNG images, still sequences and MP4 video.
 Release `0.7.0` adds [procedural motion](agent-motion.md), transient preview seeks and motion sampling in snapshot jobs.
 Release `0.8.0` adds [imported character motion](agent-character-motion.md) with source joints and independent clip timing.
+Release `0.9.0` adds [visual review](agent-review.md) for several labeled views or poses from one isolated snapshot.
 
 It renders one active scene and returns PNG images through MCP image content.
 Tool results also contain JSON text and structured metadata.
@@ -29,7 +30,7 @@ The MCP connection uses stdin and stdout, without an HTTP MCP listener.
    ```
 
    Run the installed command with `npx 67js-mcp --backend gpu --memory 192`.
-   For a standalone launch, use `npx --package @codepawlhq/67js@0.8.1 67js-mcp --backend gpu --memory 192`.
+   For a standalone launch, use `npx --package @codepawlhq/67js@0.9.0 67js-mcp --backend gpu --memory 192`.
    `67js-mcp --help` lists options. `67js-mcp --version` reports the installed version.
 
 2. Configure your MCP client with absolute paths to Node and the installed CLI:
@@ -102,6 +103,7 @@ Inspect or export the recipe before retrying. Context loss still permits recipe 
 | `scene_inspect` | `sessionId`, optional `ids`, `limit`, `includeBounds` | Compact node records and revision |
 | `scene_apply` | `sessionId`, `expectedRevision`, `operations` | Updated revision, inspection, and render status |
 | `scene_look` | `sessionId`, optional `width`, `height`, `motionTime` | PNG image and metadata |
+| `scene_review` | `sessionId`, `expectedRevision`, `shots`, optional `width`, `height` | Labeled PNG grid and metadata from an isolated snapshot |
 | `scene_checkpoint` | `sessionId` | Checkpoint ID, session ID, and revision |
 | `scene_restore` | `sessionId`, `checkpointId`, `expectedRevision` | Updated revision, inspection, and render status |
 | `scene_release_checkpoint` | `sessionId`, `checkpointId` | Release confirmation |
@@ -122,6 +124,9 @@ Set operations use `set-node`, `set-material`, or `set-camera`, with fields dire
 `scene_look` can seek procedural `motionTime` without changing revisions. Omission preserves the last preview pose.
 An explicit `null` restores the authored base pose. Release `0.8.0` also supports imported source-node motion.
 Imported clip sampling remains available through `set-animation`.
+
+`scene_review` compares up to four cameras or motion samples without changing the source recipe, revision or preview pose.
+Each shot starts from the authored base pose. The [review guide](agent-review.md) describes separate clocks, dimensions and resource limits.
 
 `set-node` can rebind a mesh to another geometry/material pair.
 

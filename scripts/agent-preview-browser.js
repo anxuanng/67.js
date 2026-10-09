@@ -61,7 +61,7 @@ function renderInfo(renderer) {
   };
 }
 
-function draw(record, time = 0) {
+function draw(record, time = 0, camera = record.scene.camera) {
   if (!record.renderer) throw new Error('The scene renderer is leased to a render job.');
   if (record.renderer.context.isContextLost()) {
     throw new Error('The render context was lost. Export the recipe and dispose this session.');
@@ -85,7 +85,7 @@ function draw(record, time = 0) {
     record.shadowKey = shadowKey;
   }
   record.renderer.world = environment.world;
-  record.renderer.render({ ...record.scene.camera, environment, effects, exposure: effects.exposure, time });
+  record.renderer.render({ ...camera, environment, effects, exposure: effects.exposure, time });
   const error = record.renderer.context.getError();
   if (error !== 0) {
     throw new Error(`WebGL render failed with error ${error}.`);
@@ -168,6 +168,48 @@ function createPreview(scene, { sessionId, memoryBudgetMiB, backend }, asset) {
 }
 
 window.__agentPreview = {
+  reviewBegin({ sessionId, width, height }) {
+    const record = requireSession(sessionId);
+    record.reviewGrid = document.createElement('canvas');
+    record.reviewGrid.width = width;
+    record.reviewGrid.height = height;
+    const context = record.reviewGrid.getContext('2d');
+    context.fillStyle = '#202428';
+    context.fillRect(0, 0, width, height);
+    return { width, height };
+  },
+  reviewShot({ sessionId, shot, index, width, height, columns }) {
+    const record = requireSession(sessionId);
+    const recipe = record.scene.exportRecipe();
+    const animation = shot.animation ?? recipe.animation ?? null;
+    if (record.asset) {
+      record.scene.sampleFrame({ animation, motionTime: shot.motionTime });
+    } else {
+      if (shot.animation !== undefined) throw new RangeError('Imported animation requires an asset scene.');
+      record.scene.sampleMotion(shot.motionTime);
+    }
+    const camera = createAgentScene({ format: '67js.scene', schemaVersion: 1,
+      geometries: [], materials: [], nodes: [], camera: { ...record.scene.camera, ...shot.camera } }).camera;
+    validatePreviewCamera(camera);
+    draw(record, shot.rendererTime, camera);
+    const render = renderInfo(record.renderer);
+    if (render.width < 64 || render.height < 64) throw new Error('Render budget reduced review below its minimum output size.');
+    const context = record.reviewGrid.getContext('2d');
+    const x = index % columns * width;
+    const y = Math.floor(index / columns) * (height + 24);
+    context.drawImage(canvas, x, y + 24, width, height);
+    context.fillStyle = '#e4e7e9';
+    context.font = '12px sans-serif';
+    context.textBaseline = 'middle';
+    context.fillText(shot.label.replace(/[\r\n\t]/g, ' '), x + 8, y + 12, width - 16);
+    return { label: shot.label, camera, animation: record.asset ? animation : null,
+      motionTime: record.scene.motionTime ?? null, rendererTime: shot.rendererTime,
+      requestedWidth: width, requestedHeight: height, ...render };
+  },
+  reviewResult({ sessionId }) {
+    const record = requireSession(sessionId);
+    return { data: record.reviewGrid.toDataURL('image/png').split(',')[1], mimeType: 'image/png' };
+  },
   snapshot({ sessionId, expectedRevision }) {
     const record = requireSession(sessionId);
     if (record.scene.revision !== expectedRevision) throw new Error('Stale revision for render snapshot.');

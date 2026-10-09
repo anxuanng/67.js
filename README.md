@@ -143,9 +143,11 @@ After installing the package, run `npx 67js-mcp --backend gpu --memory 192` with
 The server and preview are built into the package. The browser driver loads only when a scene is created.
 
 Version `0.8.0` adds [imported character motion](docs/agent-character-motion.md) with stable joint IDs and atomic pose transactions.
+Version `0.9.0` adds [visual review](docs/agent-review.md) with up to four labeled views or poses in one PNG grid.
+Review snapshots preserve the source revision, preview pose and checkpoint handles.
 
 The [asset adapter](docs/agent-asset.md) imports catalog GLBs with supported textures, rigs, morphs and clips.
-Animation track authoring, imported mesh topology edits and persistent video jobs remain implementation work.
+Imported morph track authoring and mesh topology edits remain implementation work.
 
 ## Checks and performance
 
