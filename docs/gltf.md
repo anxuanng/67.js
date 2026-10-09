@@ -5,8 +5,8 @@ It uses the optional Three.js `GLTFLoader` for decoding, without creating a Thre
 The core renderer does not import this addon.
 
 ```js
-import { loadGltf } from './src/gltf.js';
-import { Renderer67 } from './src/renderer.js';
+import { loadGltf } from '67js/addons/gltf';
+import { Renderer67 } from '67js';
 
 const asset = await loadGltf('/models/object.glb');
 const renderer = new Renderer67(canvas, asset.parts, {
@@ -59,6 +59,7 @@ Geometry contains `positions` and `normals` as `Float32Array` values, plus `indi
 The importer computes missing normals and normalizes supplied normals.
 It rejects non-finite attributes, invalid indices, singular transforms, and unusable normals.
 `geometry.uvs` preserves `TEXCOORD_0` as two floats per vertex.
+`geometry.colors` preserves opaque `COLOR_0` values as three linear RGB floats per vertex.
 
 Materials preserve linear `color`, `metallic`, `roughness`, and `emissiveColor` factors.
 `emission` contains the emissive intensity.
@@ -117,7 +118,7 @@ Disposal is idempotent, and subsequent animation calls fail explicitly.
 The bridge supports triangle meshes, PNG/JPEG base color textures, rigid animations, and metallic-roughness material factors.
 It also supports `KHR_mesh_quantization` and `KHR_materials_emissive_strength`.
 
-The importer rejects alpha blending, alpha masking, double-sided materials, vertex colors, and additional material texture channels.
+The importer rejects alpha blending, alpha masking, double-sided materials, vertex transparency, and additional material texture channels.
 It rejects texture transforms, DRACO, KTX2, GPU instancing, and unsupported extensions, including optional extensions.
 Line and point primitives are unsupported.
 The bridge does not import cameras, lights, scene environments, or skin data into Renderer67.

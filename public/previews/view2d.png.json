@@ -1,0 +1,40 @@
+{
+  "scene": "view2d",
+  "kind": "image",
+  "backend": "gpu",
+  "preset": "preview",
+  "aspect": "landscape",
+  "start": 0,
+  "encoder": null,
+  "assembly": null,
+  "width": 960,
+  "height": 540,
+  "actualRenderSize": {
+    "width": 960,
+    "height": 540,
+    "reduced": false
+  },
+  "fps": 24,
+  "duration": null,
+  "memoryBudgetMiB": 256,
+  "peakEstimatedRenderBytes": 36517120,
+  "peakNodeBytes": 124506112,
+  "peakBrowserHeap": 0,
+  "maximumPendingFrames": 0,
+  "firstFrameBytes": 36317,
+  "elapsedSeconds": 1.9533025,
+  "graphics": {
+    "gpu": "ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 (0x00002487) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+    "samples": 2,
+    "capabilities": {
+      "hdr": false,
+      "hdrRequested": false,
+      "hdrFallbackReason": null,
+      "samples": 2,
+      "maximumTextureSize": 16384
+    },
+    "glError": 0
+  },
+  "output": "view2d.png",
+  "errors": []
+}

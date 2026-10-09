@@ -23,7 +23,7 @@ Each part has these fields.
 
 The transform is a column-major matrix. Colors are linear RGB.
 Normals are unit vectors. Triangle winding faces outward.
-Each geometry identity becomes one instanced batch.
+Each geometry and texture descriptor identity pair becomes one instanced batch.
 
 Explodable parts also provide `assembly: { layer: 'exterior' | 'interior', section: 'front-panel', offset: [0, 0, 1.7], detailOffset: [0.1, 0.05, 0.3] }`.
 Both offsets are world-space translations. The shader applies `offset * amount + detailOffset * smoothstep(0.3, 1, amount)`.
@@ -43,6 +43,7 @@ The material tags select renderer behavior.
 | `foliage`, `grass` | Wind movement and backlighting. |
 | `terrain` | Subtle natural surface variation. |
 | `fire`, `smoke` | Film ignition expansion and procedural shading. |
+| `unlit` | Flat linear color for vector scenes. |
 | Other tags | Standard metallic/roughness shading. |
 
 Material tags and colors use flat varyings.
@@ -72,3 +73,20 @@ The planner can reduce resolution to stay within its target budget.
 Films sample their timeline through `sampleFilm(time)`.
 Camera FOV uses degrees. Film time must be finite and independent of the wall clock.
 `renderAt(time)` must produce the same frame when called in a different order.
+
+Animation changes existing part matrices and materials. `renderer.updateParts(changedParts)` uploads them through retained instance buffers.
+New part, geometry or texture descriptor identities require a new renderer.
+The optional `{ shadows: false }` update option suits flat scenes without moving shadow casters.
+
+`cameraView('front' | 'right' | 'top')` returns an orthographic camera with the correct up vector.
+`fitOrthographicHeight(bounds, view, aspect)` frames both model width and height.
+The `unlit` tag and a front orthographic camera produce flat XY geometry.
+
+An HDR renderer sets `{ hdr: true }` at construction. `capabilities.hdr` reports the negotiated result.
+`frame.effects` accepts `bloom`, `saturation`, `contrast`, `temperature`, `vignette` and `grain`.
+The renderer reuses bloom targets and includes them in `memoryPlan`.
+
+Imported GLB parts can include `geometry.uvs`, opaque linear `geometry.colors` and `material.map`.
+The optional decoder preserves `material.emissiveColor` independently of its base color.
+`asset.applyAnimation(time, clipIndex)` mutates existing matrices before `renderer.updateParts()`.
+After closing an imported scene, dispose the renderer before the asset to release GPU textures before decoded images.

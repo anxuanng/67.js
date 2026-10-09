@@ -166,8 +166,10 @@ function validateHierarchy(nodes) {
     }
   }
   const states = new Uint8Array(nodes.length);
-  for (let root = 0; root < nodes.length; root++) {
-    const pending = [{ index: root, exit: false, depth: 0 }];
+  const roots = Array.from(nodes.keys()).filter(index => !parents.has(index));
+  const remaining = Array.from(nodes.keys()).filter(index => parents.has(index));
+  for (const root of [...roots, ...remaining]) {
+    const pending = [{ index: root, exit: false, depth: 1 }];
     while (pending.length) {
       const current = pending.pop();
       if (current.exit) {
@@ -447,6 +449,8 @@ export async function parseGltf(data, options = {}) {
   const manager = new LoadingManager();
   manager.setURLModifier(url => {
     if (resources.has(url)) return resources.get(url);
+    const normalized = new URL(url, options.baseUrl || undefined).href;
+    if (resources.has(normalized)) return resources.get(normalized);
     if (url.startsWith('blob:')) return url;
     throw new Error(`Unregistered glTF resource: ${url}.`);
   });

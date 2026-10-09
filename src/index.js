@@ -7,3 +7,6 @@ export { exportGlb } from './export.js';
 export { RENDER_PRESETS, planRenderSize, estimateFrameBytes } from './budget.js';
 
 export { assemblyOffset } from './assembly.js';
+export { cameraView, fitOrthographicHeight } from './camera.js';
+export { EFFECT_PRESETS, resolveEffects } from './effects.js';
+export { createAnimationClip, sampleAnimationClip, createAnimationPlayer } from './animation.js';

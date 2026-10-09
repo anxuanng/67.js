@@ -1,6 +1,35 @@
 # Release verification
 
-The 0.2.0 release uses the package name `67js`. The display name remains 67.js.
+## 0.3.0
+
+The package is `@codepawlhq/67js`, installed locally through the `67js` alias. The display name remains 67.js.
+
+| Check | Measured result |
+| --- | --- |
+| Node tests | 64 tests passed, including ordered and reverse-index hierarchy limits, relative resource paths and negotiated sample reporting. |
+| Consumer | A clean project installed the archive and imported the core plus all six addons. |
+| HDR and effects | Hardware WebGL negotiated RGBA16F targets. Bloom and color grading changed pixel checksums without graphics errors. |
+| Determinism | Out-of-order motion seeks reproduced exact pixel checksums. |
+| Resource reuse | Eighty motion updates created zero additional buffers, textures, framebuffers or renderbuffers. |
+| Standard assets | An imported GLB displayed two distinct base-color textures and reproduced absolute node animation seeks. |
+| Views | Flat XY geometry and front, top, right and perspective model views rendered without graphics errors. |
+| CPU | SwiftShader rendered the HDR motion scene and encoded a square 2D clip through libx264. |
+| Video | Landscape and portrait motion exports each contain 144 H.264 frames over 12 seconds. Imported GLB animation contains 24 frames over two seconds. |
+| Capture queue | Every tested video kept one pending frame and remained within its configured allocation estimate. |
+| Regression | WALL·E assembly, layers, exports, benchmark pixel agreement, keyboard controls and context restoration passed. |
+| Layout | New studios rendered at 1440, 390 and 320 pixels without horizontal overflow. |
+
+The tested hardware was an RTX 3060 through ANGLE D3D11. Software rendering used Chrome ANGLE SwiftShader.
+The allocation figures estimate renderer targets, geometry, textures and capture staging. They do not measure total driver VRAM or browser RSS.
+
+The Codex review found three actionable issues: mismatched capture samples, unnormalized glTF resource URLs and hierarchy limits that depended on node ordering.
+Constructor options now select capture samples, and sample reporting follows the negotiated allocation count.
+Resource lookup normalizes URLs, and hierarchy validation visits roots before descendant nodes. Regression tests cover all three paths.
+Claude reached its weekly limit on both review attempts. This release therefore has one-family source review, with weaker coverage than a completed cross review.
+
+## Historical 0.2.0 checks
+
+The early archive used the unscoped `67js` name before npm rejected that name. The scoped organization package supersedes it.
 
 | Check | Measured result |
 | --- | --- |

@@ -72,7 +72,8 @@ export async function runBenchmark(parts, onProgress = () => {}) {
       const floor = {
         geometry: { positions: new Float32Array([-100, 0.019, -100, -100, 0.019, 100, 100, 0.019, 100, 100, 0.019, -100]), indices: new Uint32Array([0, 1, 2, 0, 2, 3]) },
         matrix: new THREE.Matrix4().elements,
-        material: { color: [0.04, 0.05, 0.06] },
+        name: 'Benchmark floor',
+        material: { color: [0.04, 0.05, 0.06], metallic: 0, roughness: 1, emission: 0, tag: 'floor' },
       };
       for (const group of groupParts([...parts, floor], batching)) {
         const source = group[0].geometry;

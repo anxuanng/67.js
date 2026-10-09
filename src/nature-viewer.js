@@ -3,6 +3,7 @@ import { vec4 } from 'gl-matrix';
 import { Renderer67 } from './renderer.js';
 import { createNatureWorld } from './nature.js';
 
+const renderParameters = new URLSearchParams(location.search);
 const canvas = document.querySelector('#viewport');
 const motionButton = document.querySelector('#motion');
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
@@ -97,7 +98,7 @@ function updateStatistics() {
 function initializeRenderer() {
   renderer = new Renderer67(canvas, world.parts, {
     world: true, ground: false, environment: world.environment,
-    pixelRatio: 1.25, memoryBudgetMiB: 256, samples: 4,
+    pixelRatio: renderParameters.get('export') === '1' ? 1 : 1.25, memoryBudgetMiB: Number(renderParameters.get('memory') ?? 256), samples: Number(renderParameters.get('samples') ?? 4),
   });
   updateStatistics();
   renderFrame();

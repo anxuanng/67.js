@@ -1,9 +1,9 @@
 {
   "name": "@codepawlhq/67js",
-  "version": "0.2.4",
+  "version": "0.3.0",
   "private": false,
   "type": "module",
-  "description": "A browser graphics engine for interactive 3D scenes and cinematic media, with bounded CPU/GPU export",
+  "description": "A browser graphics engine for interactive worlds, animation and cinematic media, with memory-aware CPU/GPU export",
   "license": "MIT",
   "homepage": "https://67js.codepawl.com",
   "repository": {
@@ -14,7 +14,13 @@
     "build",
     "README.md",
     "LICENSE",
-    "CHANGELOG.md"
+    "CHANGELOG.md",
+    "ROADMAP.md",
+    "THIRD-PARTY-NOTICES.md",
+    "skills",
+    "docs/gltf.md",
+    "docs/verification.md",
+    "docs/release-verification.md"
   ],
   "main": "./build/67.module.js",
   "module": "./build/67.module.js",
@@ -23,6 +29,9 @@
     "./addons/model": "./build/model.js",
     "./addons/nature": "./build/nature.js",
     "./addons/film": "./build/film.js",
+    "./addons/motion": "./build/motion.js",
+    "./addons/canvas2d": "./build/canvas2d.js",
+    "./addons/gltf": "./build/gltf.js",
     "./package.json": "./package.json"
   },
   "scripts": {
@@ -40,6 +49,7 @@
     "score": "node scripts/score.mjs",
     "export:model": "node scripts/export-model.mjs",
     "smoke:package": "node scripts/smoke-package.mjs",
+    "smoke:enhancements": "node scripts/smoke-enhancements.mjs",
     "publish:ci": "node scripts/publish-ci.mjs"
   },
   "devDependencies": {

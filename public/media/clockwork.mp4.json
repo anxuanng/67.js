@@ -1,0 +1,40 @@
+{
+  "scene": "motion",
+  "kind": "video",
+  "backend": "gpu",
+  "preset": "preview",
+  "aspect": "landscape",
+  "start": 0,
+  "encoder": "gpu",
+  "assembly": null,
+  "width": 960,
+  "height": 540,
+  "actualRenderSize": {
+    "width": 960,
+    "height": 540,
+    "reduced": false
+  },
+  "fps": 12,
+  "duration": 12,
+  "memoryBudgetMiB": 256,
+  "peakEstimatedRenderBytes": 43856404,
+  "peakNodeBytes": 211288064,
+  "peakBrowserHeap": 7372700,
+  "maximumPendingFrames": 1,
+  "firstFrameBytes": 483420,
+  "elapsedSeconds": 25.766068999999998,
+  "graphics": {
+    "gpu": "ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 (0x00002487) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+    "samples": 2,
+    "capabilities": {
+      "hdr": true,
+      "hdrRequested": true,
+      "hdrFallbackReason": null,
+      "samples": 2,
+      "maximumTextureSize": 16384
+    },
+    "glError": 0
+  },
+  "output": "clockwork.mp4",
+  "errors": []
+}

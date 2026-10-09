@@ -186,6 +186,45 @@ test('texture pixel budgets reject compressed images before browser decoding', a
   await assert.rejects(parseGltf(oversized), /maxTexturePixels before decoding/);
 });
 
+test('hierarchy depth guards reject long chains regardless of node ordering', async () => {
+  for (const reverse of [false, true]) {
+    const asset = triangleAsset(document => {
+      document.nodes = Array.from({ length: 300 }, (_, index) => {
+        const child = reverse ? index - 1 : index + 1;
+        return child >= 0 && child < 300 ? { children: [child] } : { mesh: 0 };
+      });
+      document.scenes = [{ nodes: [reverse ? 299 : 0] }];
+    });
+    await assert.rejects(parseGltf(asset), /256 levels/);
+  }
+});
+
+test('relative external buffer paths normalize both fetch and decoder lookups', async context => {
+  const previousProgressEvent = globalThis.ProgressEvent;
+  globalThis.ProgressEvent = class ProgressEvent {
+    constructor(type, details) { this.type = type; Object.assign(this, details); }
+  };
+  context.after(() => {
+    if (previousProgressEvent) globalThis.ProgressEvent = previousProgressEvent;
+    else delete globalThis.ProgressEvent;
+  });
+  const source = triangleAsset();
+  const header = new DataView(source);
+  const jsonLength = header.getUint32(12, true);
+  const document = JSON.parse(new TextDecoder().decode(new Uint8Array(source, 20, jsonLength)));
+  document.buffers[0].uri = '../mesh.bin';
+  const binary = new Uint8Array(source, 28 + jsonLength);
+  const fetched = [];
+  context.mock.method(globalThis, 'fetch', async url => {
+    fetched.push(String(url));
+    return new Response(binary);
+  });
+  const asset = await parseGltf(JSON.stringify(document), { baseUrl: 'https://example.test/models/' });
+  assert.equal(asset.parts.length, 2);
+  assert.equal(fetched[0], 'https://example.test/mesh.bin');
+  asset.dispose();
+});
+
 test('URL loading streams within maxBytes and cancels oversized responses', async context => {
   const data = triangleAsset();
   const url = `data:model/gltf-binary;base64,${Buffer.from(data).toString('base64')}`;

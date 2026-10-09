@@ -51,3 +51,11 @@ test('invalid export options fail before starting resources', () => {
     ['--unknown', 'value'], ['--aspect'], ['--kind', 'video', '--width', '101', '--height', '100'],
   ]) assert.throws(() => parseRenderOptions(args));
 });
+
+test('asset captures select a supplied file and avoid an automatic soundtrack', () => {
+  const plan = parseRenderOptions(['--scene', 'assets', '--asset', 'model.glb']);
+  assert.equal(plan.options.asset, 'model.glb');
+  assert.equal(plan.audio, null);
+  assert.equal(plan.time, 0);
+  assert.throws(() => parseRenderOptions(['--scene', 'motion', '--asset', 'model.glb']));
+});

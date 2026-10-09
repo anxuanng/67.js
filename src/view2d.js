@@ -96,7 +96,7 @@ function initialize() {
   setPlaying(false);
   renderer?.dispose();
   const parts = state.scene === 'poster' ? poster.parts : model;
-  renderer = new Renderer67(canvas, parts, { ground: false, samples: 4, pixelRatio: exporting ? 1 : 1.25, memoryBudgetMiB: 192 });
+  renderer = new Renderer67(canvas, parts, { ground: false, samples: Number(parameters.get('samples') ?? 4), pixelRatio: exporting ? 1 : 1.25, memoryBudgetMiB: Number(parameters.get('memory') ?? 192) });
   document.querySelector('#scene').value = state.scene;
   document.querySelector('#view-controls').hidden = state.scene === 'poster';
   document.querySelectorAll('[data-view]').forEach(control => control.setAttribute('aria-pressed', String(control.dataset.view === state.view)));

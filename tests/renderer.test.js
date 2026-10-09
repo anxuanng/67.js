@@ -17,6 +17,16 @@ function retainedRenderer(parts) {
   return { renderer, batch, writes };
 }
 
+test('sample reporting uses the negotiated allocation count and cannot diverge through assignment', () => {
+  const renderer = Object.create(Renderer67.prototype);
+  renderer.multisampleSamples = 4;
+  assert.equal(renderer.samples, 4);
+  assert.throws(() => { renderer.samples = 1; }, TypeError);
+  assert.equal(renderer.samples, 4);
+  renderer.multisampleSamples = 0;
+  assert.equal(renderer.samples, 1);
+});
+
 test('batching shares geometry only when texture descriptor identities also match', () => {
   const geometry = {};
   const map = {};

@@ -1,11 +1,13 @@
 # 67.js
 
-67.js is a JavaScript graphics engine for the browser, built around meshes, materials and cameras familiar to Three.js users.
-It combines a focused WebGL2 renderer with interactive scene studios and a workflow for exporting images and cinematic video.
-Its optimization work targets shared geometry, predictable frame allocation and explicit CPU/GPU render budgets.
+67.js is a JavaScript graphics engine for interactive worlds, animated models and cinematic media in the browser.
+Meshes, materials and cameras give Three.js users a familiar foundation. Scene studios, assembly inspection and image/video export extend that foundation into a production workflow.
 
-The current release includes an explodable WALL·E study, an interactive nature world and a deterministic 3D short film.
-The viewers use the 67.js renderer. The optional benchmark loads Three.js for comparison.
+The renderer is designed around shared geometry, predictable frame allocation and explicit CPU/GPU render budgets.
+The aim is to spend less time managing draw calls, capture scripts and memory limits, and more time building the scene.
+
+The current release includes an explodable WALL·E study, an interactive nature world, a 3D short film and a keyframe motion studio.
+It also includes flat 2D views and an asset viewer. Every viewer uses the 67.js renderer.
 
 ## What it includes
 
@@ -14,15 +16,18 @@ The viewers use the 67.js renderer. The optional benchmark loads Three.js for co
 - Interactive studios with orbit controls, material settings, assembly views and GLB export.
 - CPU and GPU image/video export with memory planning and encoder backpressure.
 - A versioned npm package, standalone browser module and release metadata shared by the website and guide.
+- Deterministic keyframe animation with retained instance buffers and absolute timeline seeking.
+- Optional HDR, bloom and color grading, with reused targets included in the render budget.
+- Orthographic cameras and flat XY scenes with pan, zoom and PNG capture.
+- An optional glTF/GLB decoder for textured meshes, vertex colors and rigid node animation.
 
 ## Direction
 
 67.js aims to make rendering, interaction and media production available through one browser graphics workflow.
-The next implementation adds HDR targets, bloom, color grading, reusable keyframe animation and orthographic 2D views.
-It also adds glTF asset input and landscape, portrait and square export presets for films and shorts.
-These features are tracked as implementation work. They are not part of the current published API until their release passes verification.
+The next implementation targets adaptive quality, GPU timing, picking and reusable interaction controls. See the [implementation roadmap](ROADMAP.md).
+Performance improvements are evaluated on matching scenes and hardware. Visual quality follows the needs of each authored scene.
 
-![WALL·E rendered by 67.js](docs/wall-e.png)
+![WALL·E rendered by 67.js](https://67js.codepawl.com/previews/wall-e.png)
 
 The WALL·E study contains 574 parts, 860,380 triangles and seven shared geometries.
 The studio submits eight geometry draws, including the floor.
@@ -56,6 +61,9 @@ The library is ESM and bundles its runtime dependencies. Core exports include `R
 | `/object.html` | WALL·E studio with orbit, zoom, explosion, layers, finishes and GLB export. |
 | `/nature.html` | Silverwater valley with viewpoints, daylight, wind, detail settings and water ripples. |
 | `/film.html` | CRITICAL, a 32-second procedural film with playback and timeline controls. |
+| `/motion.html` | Clockwork orbit, a 12-second keyframe animation with HDR and landscape, portrait and square framing. |
+| `/view2d.html` | Flat vector scenes and front, right, top or perspective model inspection. |
+| `/assets.html` | GLB loading, texture inspection, rigid animation, orbit controls and PNG capture. |
 
 CRITICAL combines mechanical details, atomic orbits, waves, a desert test tower and a volumetric ignition sequence.
 It uses an original synthesized score. The playable MP4 is in `public/media/critical.mp4`.
@@ -72,6 +80,9 @@ npm run render -- --kind image --scene object --backend gpu --preset high --outp
 npm run render -- --kind image --scene nature --backend gpu --preset high --output artifacts/nature.png
 npm run render -- --kind image --scene object --backend cpu --preset cpu --output artifacts/wall-e-cpu.png
 npm run render -- --kind video --scene film --backend gpu --preset balanced --encoder gpu --output public/media/critical.mp4
+npm run render -- --kind video --scene motion --aspect portrait --backend gpu --encoder gpu --output artifacts/short.mp4
+npm run render -- --kind image --scene view2d --aspect square --backend cpu --preset cpu --output artifacts/poster.png
+npm run render -- --kind video --scene assets --asset model.glb --duration 2 --output artifacts/model.mp4
 ```
 
 | Preset | Dimensions | MSAA samples | FPS | Target budget |
@@ -87,7 +98,7 @@ The exporter streams one frame at a time and waits for encoder backpressure.
 It keeps one live scene renderer and disables development reloads during capture.
 
 The planner reduces render dimensions before targets exceed their estimated budget.
-The estimate includes geometry, shadows, targets and frame staging. It excludes some browser and driver allocations.
+The estimate includes geometry, texture mipmaps, shadows, HDR/bloom targets and frame staging. It excludes some browser and driver allocations.
 The report records actual dimensions, estimated render memory, Node RSS and sampled browser JavaScript heap.
 Node and JavaScript heap guards stop capture above 512 MiB and 256 MiB respectively.
 These guards cannot guarantee that every driver or system allocation succeeds.
@@ -102,8 +113,9 @@ The repository includes two reusable Codex skills.
 ## Checks and performance
 
 1. Run `npm test` to validate geometry, scene budgets, the timeline and independent GLB loading.
-2. Run `npm run build` to create the homepage, guide and three production viewers in `dist/`.
+2. Run `npm run build` to create the homepage, guide and six production viewers in `dist/`.
 3. Run `npm run smoke` to exercise the studio in headless Chrome.
+4. Run `npm run smoke:enhancements` against the running development server to check motion, orthographic views and textured asset animation.
 
 The smoke saves rendered screenshots, a GLB and benchmark results under the ignored `artifacts/` directory.
 The benchmark compares identical geometry, camera, resolution and flat shaders with both instanced and individual draws.
@@ -116,7 +128,7 @@ Detailed measured results and limits are in [verification.md](docs/verification.
 ## API
 
 `createModel()` returns shared geometries, column-major matrices, linear RGB materials and optional assembly offsets.
-`Renderer67` groups geometry identities into instanced batches.
+`Renderer67` groups geometry and texture descriptor identities into instanced batches.
 
 ```js
 import { Renderer67 } from '67js';
@@ -131,8 +143,12 @@ renderer.render({ eye: [4, 3, 7], target: [0, 1.5, 0], assemblyAmount: 0.5 });
 // Call dispose() before replacing the renderer.
 ```
 
-This prototype supports procedural scenes and authored animation. It lacks texture loading, ray tracing and a general scene graph.
-Blender-level realism remains a visual target.
+The core exports animation helpers, camera views and effect presets. `renderer.updateParts(parts)` uploads changes without replacing geometry buffers.
+The [optional asset addon](docs/gltf.md) loads glTF/GLB meshes, base-color textures, opaque vertex colors and rigid node animation.
+It uses Three.js as a decoder. The core renderer and standalone module remain separate from this dependency.
+
+Skinning, morph targets, transparent materials, compressed assets and ray tracing remain outside this release.
+Blender-level realism remains a visual target. 67.js does not provide Three.js API compatibility.
 
 ## Credits
 
@@ -141,6 +157,7 @@ CRITICAL draws inspiration from the visual themes of the [official Oppenheimer t
 It includes no film footage, dialogue or soundtrack samples.
 
 - [Three.js](https://threejs.org/) and its [source](https://github.com/mrdoob/three.js/) provide the benchmark reference.
+- The optional asset addon bundles the Three.js glTF decoder under its MIT license.
 - [Blender](https://projects.blender.org/blender/blender) provides the visual quality target.
 - [gl-matrix](https://github.com/toji/gl-matrix) supplies matrix operations.
 
@@ -154,5 +171,5 @@ The homepage and guide read this endpoint for their commands and downloads.
 2. Run `npm test` and `npm run build`.
 3. Run `npm run smoke:package`. It verifies a clean consumer installation.
 4. Commit and push the release.
-5. Run `npm publish --access public`. It publishes the library.
-6. Run `npm run deploy`. It verifies the pushed commit, rebuilds and checks the live release.
+5. The `publish.yml` GitHub Actions workflow verifies the package and publishes new versions through the npm trusted publisher. Wait for a successful run and registry availability.
+6. Run `npm run deploy`. It verifies the pushed commit, rebuilds and checks the live release. If npm has published the version, the site serves its canonical package archive and integrity.

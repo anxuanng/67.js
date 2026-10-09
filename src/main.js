@@ -5,6 +5,7 @@ import { downloadGlb } from './export.js';
 import { assemblyOffset } from './assembly.js';
 
 const canvas = document.querySelector('#viewport');
+const renderParameters = new URLSearchParams(location.search);
 const parts = createModel();
 const finishes = {
   yellow: { name: 'Factory yellow', color: [0.62, 0.34, 0.035], surface: [0.48, 0.43] },
@@ -63,7 +64,7 @@ function invalidate() {
 
 function initialize() {
   const visibleParts = state.layer === 'all' ? parts : parts.filter((part) => part.assembly?.layer === state.layer);
-  renderer = new Renderer67(canvas, visibleParts, { shadowBounds: { extent: 6, eye: [-3, 7, 4], target: [0, 1.5, 0] } });
+  renderer = new Renderer67(canvas, visibleParts, { samples: Number(renderParameters.get('samples') ?? 4), memoryBudgetMiB: Number(renderParameters.get('memory') ?? 256), pixelRatio: renderParameters.get('export') === '1' ? 1 : 1.5, shadowBounds: { extent: 6, eye: [-3, 7, 4], target: [0, 1.5, 0] } });
   document.querySelector('#parts').textContent = `${visibleParts.length} parts · ${Math.round(renderer.triangles / 1000)}k triangles`;
   document.querySelector('#calls').textContent = `${renderer.batches.length} geometry draws`;
   invalidate();

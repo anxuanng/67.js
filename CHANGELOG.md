@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.3.0
+
+- Introduce deterministic keyframe animation and persistent instance updates.
+- Add opt-in HDR, bloom and color grading with render budget accounting.
+- Add orthographic cameras and a flat 2D scene viewer.
+- Import bounded glTF/GLB assets with textures, vertex colors and rigid node animation through an optional addon.
+- Export landscape, portrait and square media, including imported asset animation.
+- Add motion and asset studios, implementation roadmap and graphics engine documentation.
+- Keep the website package archive identical to the published npm archive.
+
 ## 0.2.4
 
 - Publish changed versions through GitHub Actions and npm trusted publishing.

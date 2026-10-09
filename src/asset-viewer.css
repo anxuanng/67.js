@@ -1,0 +1,12 @@
+.asset-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 20px; }
+.asset-controls label { display: flex; align-items: center; gap: 10px; font-size: 12px; color: #bec9cc; }
+.asset-controls input { width: 110px; }
+.asset-controls select { max-width: 220px; }
+.asset-controls button { margin-left: auto; }
+.export-view .asset-controls { display: none; }
+@media (max-width: 750px) {
+  .asset-controls { gap: 10px 16px; }
+  .asset-controls input { width: 72px; }
+  .toolbar nav { flex-wrap: wrap; }
+  .asset-controls select { max-width: 150px; }
+}

@@ -1,0 +1,40 @@
+{
+  "scene": "assets",
+  "kind": "image",
+  "backend": "gpu",
+  "preset": "preview",
+  "aspect": "landscape",
+  "start": 0,
+  "encoder": null,
+  "assembly": null,
+  "width": 960,
+  "height": 540,
+  "actualRenderSize": {
+    "width": 960,
+    "height": 540,
+    "reduced": false
+  },
+  "fps": 24,
+  "duration": null,
+  "memoryBudgetMiB": 256,
+  "peakEstimatedRenderBytes": 43838004,
+  "peakNodeBytes": 126935040,
+  "peakBrowserHeap": 0,
+  "maximumPendingFrames": 0,
+  "firstFrameBytes": 37198,
+  "elapsedSeconds": 2.0140044,
+  "graphics": {
+    "gpu": "ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 (0x00002487) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+    "samples": 2,
+    "capabilities": {
+      "hdr": true,
+      "hdrRequested": true,
+      "hdrFallbackReason": null,
+      "samples": 2,
+      "maximumTextureSize": 16384
+    },
+    "glError": 0
+  },
+  "output": "assets.png",
+  "errors": []
+}

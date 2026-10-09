@@ -97,6 +97,45 @@ renderer.dispose(); // Release GPU resources when the scene closes.</code></pre>
         <p>The core exports <code>box</code>, <code>cylinder</code>, <code>sphere</code> and <code>torus</code>. Scene modules use separate addon imports.</p>
         <div class="release-links"><a data-release-api aria-disabled="true">API for this release ↗</a><span data-release-commit>Release commit</span></div>
       </section>
+      <section aria-labelledby="effects-title">
+        <h2 id="effects-title">Animate and grade a scene</h2>
+        <p>Mutate existing part transforms or materials, then upload their changes with <code>updateParts</code>. The renderer reuses instance buffers.</p>
+        <pre><code>import { Renderer67, EFFECT_PRESETS, cameraView } from '67js';
+
+const renderer = new Renderer67(canvas, parts, {
+  hdr: true,
+  samples: 4,
+  memoryBudgetMiB: 256,
+});
+renderer.updateParts(parts); // Upload changed matrices and materials.
+renderer.render({
+  ...cameraView('front', { target: [0, 0, 0], height: 4 }),
+  time: 1,
+  effects: EFFECT_PRESETS.cinematic,
+});</code></pre>
+        <p>HDR uses floating-point targets when the browser supports them. <code>renderer.capabilities</code> reports HDR availability and its fallback reason.</p>
+        <p>Effects include bloom, saturation, contrast, temperature, vignette and grain. The neutral defaults preserve the existing renderer appearance.</p>
+        <p><code>createAnimationClip</code>, <code>sampleAnimationClip</code> and <code>createAnimationPlayer</code> provide deterministic transform and material tracks.</p>
+      </section>
+      <section aria-labelledby="assets-title">
+        <h2 id="assets-title">Load an asset</h2>
+        <pre><code>import { Renderer67 } from '67js';
+import { loadGltf } from '67js/addons/gltf';
+
+const asset = await loadGltf('/model.glb');
+const renderer = new Renderer67(canvas, asset.parts, {
+  ground: false,
+  hdr: true,
+  memoryBudgetMiB: 256,
+});
+if (asset.animations.length) {
+  renderer.updateParts(asset.applyAnimation(1));
+}
+renderer.render({ eye: [3, 2, 4], target: [0, 0, 0] });
+// On teardown: renderer.dispose(), then asset.dispose().</code></pre>
+        <p>The optional addon loads standard meshes, base-color textures, vertex colors and rigid node animation. Unsupported asset features produce explicit errors.</p>
+        <p>Skinning, morph targets, transparent materials and compressed geometry remain outside this release. Try a model in the <a class="start-link" href="./assets.html">asset viewer ↗</a>.</p>
+      </section>
     </main>
     <script type="module" src="/src/home.js"></script>
   </body>

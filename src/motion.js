@@ -98,7 +98,7 @@ export function createMotionScene() {
     player.apply(current);
     const shot = Math.min(2, Math.floor(current / 4));
     const cameraValues = Object.fromEntries(sampleAnimationClip(cameras[shot], current - shot * 4).map(value => [value.target, value.value]));
-    const framing = aspect === 'portrait' ? 2.35 : aspect === 'square' ? 1.18 : 1;
+    const framing = aspect === 'portrait' ? 2.35 : aspect === 'square' ? 1.4 : 1.2;
     return {
       time: current,
       shot,

@@ -1,0 +1,40 @@
+{
+  "scene": "motion",
+  "kind": "video",
+  "backend": "gpu",
+  "preset": "preview",
+  "aspect": "portrait",
+  "start": 0,
+  "encoder": "gpu",
+  "assembly": null,
+  "width": 540,
+  "height": 960,
+  "actualRenderSize": {
+    "width": 540,
+    "height": 960,
+    "reduced": false
+  },
+  "fps": 12,
+  "duration": 12,
+  "memoryBudgetMiB": 256,
+  "peakEstimatedRenderBytes": 43856404,
+  "peakNodeBytes": 211009536,
+  "peakBrowserHeap": 7310336,
+  "maximumPendingFrames": 1,
+  "firstFrameBytes": 481082,
+  "elapsedSeconds": 25.7497098,
+  "graphics": {
+    "gpu": "ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 (0x00002487) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+    "samples": 2,
+    "capabilities": {
+      "hdr": true,
+      "hdrRequested": true,
+      "hdrFallbackReason": null,
+      "samples": 2,
+      "maximumTextureSize": 16384
+    },
+    "glError": 0
+  },
+  "output": "clockwork-portrait.mp4",
+  "errors": []
+}

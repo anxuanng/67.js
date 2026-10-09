@@ -95,7 +95,8 @@ try {
   const download = await downloadPromise;
   await download.saveAs(fileURLToPath(new URL('wall-e.glb', artifactDirectory)));
   await page.getByRole('button', { name: 'Measure performance' }).click();
-  await page.waitForFunction(() => window.__benchmarkReport, null, { timeout: 90000 });
+  await page.waitForFunction(() => window.__benchmarkReport || document.querySelector('#benchmark-summary').textContent.startsWith('⚠'), null, { timeout: 90000 });
+  assert.ok(await page.evaluate(() => Boolean(window.__benchmarkReport)), await page.locator('#benchmark-summary').textContent());
   const report = await page.evaluate(() => window.__benchmarkReport);
   assert.equal(report.results.length, 4);
   assert.deepEqual(report.results.map((result) => result.calls), [8, 575, 8, 575]);

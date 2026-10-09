@@ -1,7 +1,7 @@
 import { chromium } from 'playwright';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, writeFile, stat } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { resolve, dirname, basename } from 'node:path';
@@ -9,7 +9,7 @@ import { RENDER_PRESETS } from '../src/budget.js';
 
 function argumentsFrom(values) {
   const result = {};
-  const allowed = new Set(['kind', 'backend', 'scene', 'preset', 'width', 'height', 'fps', 'duration', 'time', 'memory', 'assembly', 'output', 'audio', 'encoder', 'start', 'aspect']);
+  const allowed = new Set(['kind', 'backend', 'scene', 'preset', 'width', 'height', 'fps', 'duration', 'time', 'memory', 'assembly', 'output', 'audio', 'encoder', 'start', 'aspect', 'asset']);
   for (let index = 0; index < values.length; index += 2) {
     if (!values[index].startsWith('--') || values[index + 1] === undefined) throw new Error('Every option needs a value.');
     const name = values[index].slice(2);
@@ -27,7 +27,8 @@ export function parseRenderOptions(values) {
   const presetName = options.preset ?? (backend === 'cpu' ? 'cpu' : 'balanced');
   const preset = RENDER_PRESETS[presetName];
   const aspect = options.aspect ?? 'landscape';
-  if (!preset || !['image', 'video', 'stills'].includes(kind) || !['gpu', 'cpu'].includes(backend) || !['film', 'nature', 'object', 'motion', 'view2d'].includes(scene) || !['landscape', 'portrait', 'square'].includes(aspect)) throw new Error('Unknown render kind, backend, scene, aspect or preset.');
+  if (!preset || !['image', 'video', 'stills'].includes(kind) || !['gpu', 'cpu'].includes(backend) || !['film', 'nature', 'object', 'motion', 'view2d', 'assets'].includes(scene) || !['landscape', 'portrait', 'square'].includes(aspect)) throw new Error('Unknown render kind, backend, scene, aspect or preset.');
+  if (options.asset && scene !== 'assets') throw new Error('The asset file option requires --scene assets.');
   const numberOption = (name, fallback, minimum, maximum) => {
     const value = Number(options[name] ?? fallback);
     if (!Number.isFinite(value) || value < minimum || value > maximum) throw new Error(`${name} must be between ${minimum} and ${maximum}.`);
@@ -45,7 +46,7 @@ export function parseRenderOptions(values) {
   if (kind === 'video' && (width % 2 || height % 2)) throw new Error('Video dimensions must be even for yuv420p output.');
   const fps = numberOption('fps', preset.fps, 1, 60);
   const duration = numberOption('duration', scene === 'motion' ? 12 : 32, 0.1, 120);
-  const time = numberOption('time', 3, 0, 3600);
+  const time = numberOption('time', scene === 'assets' ? 0 : 3, 0, 3600);
   const start = numberOption('start', 0, 0, 3600);
   const memory = numberOption('memory', preset.memoryBudgetMiB, 32, 1024);
   const assembly = numberOption('assembly', 0, 0, 1);
@@ -60,6 +61,10 @@ export async function renderMedia(values = process.argv.slice(2)) {
   const plan = parseRenderOptions(values);
   const { options, kind, backend, scene, presetName, preset, aspect, width, height, fps, time, start, memory, assembly, output, encoderBackend } = plan;
   let duration = plan.duration;
+  if (options.asset) {
+    const details = await stat(resolve(options.asset));
+    if (!details.isFile() || details.size > 32 * 1024 ** 2) throw new Error('Asset capture requires a GLB file of at most 32 MiB.');
+  }
   await mkdir(dirname(output), { recursive: true });
   const root = fileURLToPath(new URL('..', import.meta.url));
   const ffmpeg = process.platform === 'win32' ? resolve(process.env.USERPROFILE, '.local/bin/ffmpeg.exe') : 'ffmpeg';
@@ -94,6 +99,12 @@ export async function renderMedia(values = process.argv.slice(2)) {
     const query = new URLSearchParams({ export: '1', width: String(width), height: String(height), aspect, memory: String(memory), samples: String(backend === 'cpu' ? 1 : preset.samples) });
     await page.goto(`http://127.0.0.1:5181/${route}?${query}`);
     await page.waitForFunction((mode) => window.__scene?.renderer || (mode === 'film' ? window.__filmReady : mode === 'nature' ? window.__nature?.renderer : mode === 'object' ? window.__studio?.renderer : false), scene, { timeout: 60000 });
+    if (options.asset) {
+      await page.locator('#file').setInputFiles(resolve(options.asset));
+      await page.waitForFunction(() => document.querySelector('#notice').hidden || document.querySelector('#notice').textContent.startsWith('⚠'));
+      const failure = await page.locator('#notice').evaluate(element => element.hidden ? null : element.textContent);
+      if (failure) throw new Error(`Asset import failed: ${failure}`);
+    }
     const sceneDuration = await page.evaluate(() => window.__scene?.duration ?? (window.__film ? 32 : null));
     if (Number.isFinite(sceneDuration) && sceneDuration > 0) {
       if (start >= sceneDuration) throw new Error('Start time must precede the end of the scene.');
@@ -113,7 +124,6 @@ export async function renderMedia(values = process.argv.slice(2)) {
       const renderer = window.__scene?.renderer ?? (scene === 'object' ? window.__studio.renderer : window.__nature.renderer);
       renderer.memoryBudgetMiB = memory;
       renderer.pixelRatio = 1;
-      renderer.samples = samples;
       renderer.resize();
       if (window.__scene) return;
       if (scene === 'object') {
@@ -194,7 +204,7 @@ export async function renderMedia(values = process.argv.slice(2)) {
       const renderer = window.__scene?.renderer ?? window.__film?.renderer ?? window.__nature?.renderer ?? window.__studio?.renderer;
       const context = renderer.context;
       const extension = context.getExtension('WEBGL_debug_renderer_info');
-      return { gpu: extension ? context.getParameter(extension.UNMASKED_RENDERER_WEBGL) : 'unavailable', samples: renderer.samples, glError: context.getError() };
+      return { gpu: extension ? context.getParameter(extension.UNMASKED_RENDERER_WEBGL) : 'unavailable', samples: renderer.capabilities?.samples ?? renderer.samples, capabilities: renderer.capabilities, glError: context.getError() };
     });
     if (graphics.glError !== 0) throw new Error(`WebGL render error ${graphics.glError}.`);
     if (backend === 'cpu' && !graphics.gpu.toLowerCase().includes('swiftshader')) throw new Error('CPU backend did not select SwiftShader.');

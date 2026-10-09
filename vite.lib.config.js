@@ -4,7 +4,7 @@ import { defineConfig } from 'vite';
 export default defineConfig({
   build: {
     copyPublicDir: false,
-    rolldownOptions: { output: { banner: `/*! ${readFileSync('LICENSE', 'utf8')} */` } },
+    rolldownOptions: { output: { banner: `/*! ${readFileSync('LICENSE', 'utf8')}\nOptional glTF decoder: ${readFileSync('THIRD-PARTY-NOTICES.md', 'utf8')} */` } },
     outDir: 'build',
     lib: {
       entry: {
@@ -12,6 +12,9 @@ export default defineConfig({
         model: 'src/model.js',
         nature: 'src/nature.js',
         film: 'src/film.js',
+        motion: 'src/motion.js',
+        canvas2d: 'src/canvas2d.js',
+        gltf: 'src/gltf.js',
       },
       formats: ['es'],
       fileName: (_, entry) => entry === 'core' ? '67.module.js' : `${entry}.js`,
