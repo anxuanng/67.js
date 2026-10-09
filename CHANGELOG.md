@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.9.1
+
+- Synchronize the roadmap and standalone command with the visual review release
+
 ## 0.9.0
 
 - Add `scene_review` to compare up to four labeled camera, motion or imported clip samples in one PNG

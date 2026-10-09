@@ -1,6 +1,6 @@
 {
   "name": "@codepawlhq/67js",
-  "version": "0.9.0",
+  "version": "0.9.1",
   "private": false,
   "type": "module",
   "description": "JavaScript tools for agent-driven 3D authoring, browser previews and memory-aware CPU/GPU rendering",

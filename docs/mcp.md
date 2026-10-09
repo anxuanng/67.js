@@ -30,7 +30,7 @@ The MCP connection uses stdin and stdout, without an HTTP MCP listener.
    ```
 
    Run the installed command with `npx 67js-mcp --backend gpu --memory 192`.
-   For a standalone launch, use `npx --package @codepawlhq/67js@0.9.0 67js-mcp --backend gpu --memory 192`.
+   For a standalone launch, use `npx --package @codepawlhq/67js@0.9.1 67js-mcp --backend gpu --memory 192`.
    `67js-mcp --help` lists options. `67js-mcp --version` reports the installed version.
 
 2. Configure your MCP client with absolute paths to Node and the installed CLI:

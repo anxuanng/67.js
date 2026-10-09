@@ -1,5 +1,10 @@
 # Release verification
 
+## 0.9.1
+
+This patch updates the packaged roadmap and standalone MCP command. Runtime behavior matches the verified `0.9.0` source below.
+Registry checks must verify the new archive and its exact source commit separately.
+
 ## 0.9.0
 
 Source checks used Windows Node.js, installed Chrome with CPU SwiftShader and actual MCP calls.
