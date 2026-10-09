@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#191d22" />
+    <meta name="description" content="Install 67.js using npm, pnpm, Yarn or Bun. Find the current published release, source and documentation." />
+    <title>Downloads — 67.js</title>
+  <link rel="icon" href="/favicon.svg" />
+  </head>
+  <body>
+    <a class="skip-link" href="#content">Skip to content</a>
+    <header class="navigation">
+      <a class="brand" href="/" aria-label="67.js home">67<span>.js</span></a>
+      <span class="version" data-release-version>Loading release</span>
+      <nav aria-label="Library">
+        <a href="/downloads.html" aria-current="page">Downloads</a>
+        <a href="/">Showcase</a>
+        <a href="/docs.html">Docs</a>
+      </nav>
+    </header>
+    <main id="content" class="downloads-page">
+      <section id="downloads" class="downloads" aria-labelledby="downloads-title">
+        <div class="section-heading"><h1 id="downloads-title">Downloads</h1><span data-release-version>Loading release</span></div>
+        <p>Choose your package manager and install the current release</p>
+        <div class="package-install">
+          <div class="package-managers" role="group" aria-label="Package manager">
+            <button data-package-manager="npm" aria-pressed="true"><span class="package-logo package-logo-npm" aria-hidden="true"></span><span>npm</span></button>
+            <button data-package-manager="pnpm" aria-pressed="false"><span class="package-logo package-logo-pnpm" aria-hidden="true"></span><span>pnpm</span></button>
+            <button data-package-manager="yarn" aria-pressed="false"><span class="package-logo package-logo-yarn" aria-hidden="true"></span><span>Yarn</span></button>
+            <button data-package-manager="bun" aria-pressed="false"><span class="package-logo package-logo-bun" aria-hidden="true"></span><span>Bun</span></button>
+          </div>
+          <div class="command-row"><code data-install-command>Loading the release command…</code><button data-copy-install disabled>Copy command</button></div>
+          <div class="release-feedback"><p data-release-status role="status">Loading release information</p><button data-release-retry hidden>Retry</button></div>
+          <p class="package-note">The alias keeps imports short: <code>import { Renderer67 } from '67js'</code></p>
+          <div class="package-links"><a href="https://www.npmjs.com/package/@codepawlhq/67js" data-icon="package">View on npm</a><a href="https://github.com/anxuanng/67.js" data-icon="github">Source on GitHub</a><a href="/docs.html#getting-started" data-icon="book">Build your first scene</a></div>
+        </div>
+        <div class="release-links"><a href="./docs.html">Documentation</a><a href="./logo.svg" download>Logo SVG</a><a href="./changelog.md">Changelog</a><span data-release-commit>Release commit</span><a data-release-api aria-disabled="true">API reference ↗</a></div>
+      </section>
+    </main>
+    <script type="module" src="/src/home.js"></script>
+  </body>
+</html>

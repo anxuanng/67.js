@@ -51,3 +51,7 @@ SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
 CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
 OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+## Simple Icons (package-manager logos)
+
+The npm, pnpm, Yarn and Bun SVG marks are sourced from Simple Icons and distributed under CC0-1.0. See public/licenses/simple-icons.txt. Brand marks remain subject to their respective trademark rights.

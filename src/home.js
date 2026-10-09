@@ -111,51 +111,15 @@ document.querySelectorAll('[data-package-manager]').forEach(button => {
   });
 });
 
-const downloads = document.querySelector('#downloads');
-if (downloads) {
-  const libraryLinks = [...document.querySelectorAll('.navigation nav a')];
-  let navigationPending = false;
-  function updateNavigation() {
-    const bounds = downloads.getBoundingClientRect();
-    const activeHash = bounds.top <= innerHeight * 0.6 && bounds.bottom > 0 ? '#downloads' : '#examples';
-    for (const link of libraryLinks) {
-      if (new URL(link.href).hash === activeHash) {
-        link.setAttribute('aria-current', 'location');
-      } else {
-        link.removeAttribute('aria-current');
-      }
-    }
-    navigationPending = false;
+function redirectLegacyDownloads() {
+  if (['/', '/index.html'].includes(location.pathname) && location.hash === '#downloads') {
+    location.replace('/downloads.html');
   }
-  function scheduleNavigation() {
-    if (navigationPending) return;
-    navigationPending = true;
-    requestAnimationFrame(updateNavigation);
-  }
-  function openHomeSection() {
-    const target = document.getElementById(location.hash.slice(1));
-    target?.scrollIntoView();
-    scheduleNavigation();
-  }
-  for (const link of libraryLinks) {
-    const targetURL = new URL(link.href);
-    if (!['#downloads', '#examples'].includes(targetURL.hash)) continue;
-    link.addEventListener('click', event => {
-      if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-      event.preventDefault();
-      history.pushState(null, '', `/${targetURL.hash}`);
-      openHomeSection();
-      const section = document.getElementById(targetURL.hash.slice(1));
-      section.setAttribute('tabindex', '-1');
-      section.focus({ preventScroll: true });
-    });
-  }
-  window.addEventListener('scroll', scheduleNavigation, { passive: true });
-  window.addEventListener('resize', scheduleNavigation);
-  window.addEventListener('hashchange', openHomeSection);
-  window.addEventListener('popstate', openHomeSection);
-  requestAnimationFrame(openHomeSection);
 }
+
+redirectLegacyDownloads();
+window.addEventListener('hashchange', redirectLegacyDownloads);
+
 document.querySelectorAll('.example img').forEach(image => {
   image.addEventListener('error', () => {
     image.alt = `${image.alt}. Preview unavailable. Open the example to explore it`;

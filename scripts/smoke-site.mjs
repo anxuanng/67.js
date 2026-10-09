@@ -17,7 +17,7 @@ try {
     });
   });
   page.on('pageerror', error => errors.push(error.message));
-  for (const route of ['/', '/docs.html', '/getting-started.html', '/object.html', '/motion.html', '/nature.html', '/assets.html', '/view2d.html', '/film.html']) {
+  for (const route of ['/', '/downloads.html', '/docs.html', '/getting-started.html', '/object.html', '/motion.html', '/nature.html', '/assets.html', '/view2d.html', '/film.html']) {
     await page.goto(origin + route);
     if (route.includes('object')) await page.waitForFunction(() => window.__studio?.renderer);
     if (route.includes('motion')) await page.waitForFunction(() => window.__motion?.renderer);
@@ -47,28 +47,18 @@ try {
       report.layouts.push({ route,width,overflow });
     }
     await page.setViewportSize({ width:1440,height:1000 });
-    if (['/', '/docs.html', '/getting-started.html'].includes(route)) {
+    if (['/', '/downloads.html', '/docs.html', '/getting-started.html'].includes(route)) {
+      assert.equal(await page.locator('aside.navigation').count(), 0);
+      assert.deepEqual(await page.locator('.navigation nav .nav-label').allTextContents(), ['Downloads', 'Showcase', 'Docs']);
+      assert.equal(await page.locator('.navigation nav a[aria-current="page"]').count(), 1);
       assert.equal(await page.locator('a[href$="llms.txt"]').count(), 0, 'Machine guide appears in public UI');
       assert.equal(await page.locator('.navigation a[href*="getting-started.html"]').count(), 0, 'Getting started still has separate navigation');
     }
     if (route === '/') {
       assert.equal(await page.locator('video').count(), 0, 'Homepage still embeds video');
-      assert.ok(await page.evaluate(() => document.querySelector('#downloads').compareDocumentPosition(document.querySelector('.live-showcase')) & Node.DOCUMENT_POSITION_FOLLOWING));
-      assert.equal(await page.locator('[data-package-manager]').count(), 4);
-      assert.equal(await page.locator('[data-release-tarball], [data-release-module]').count(), 0);
+      assert.equal(await page.locator('#downloads').count(), 0, 'Downloads still merged into Showcase');
       const scenePaths = await page.locator('.gallery .example').evaluateAll(links => links.map(link => new URL(link.href).pathname));
       assert.equal(new Set(scenePaths).size, scenePaths.length, 'Showcase repeats the same scene');
-      await page.locator('.navigation a[href="/#downloads"]').click();
-      await page.waitForFunction(() => document.querySelector('.navigation a[aria-current]')?.getAttribute('href') === '/#downloads');
-      for (const [manager, prefix] of [['npm', 'npm install'], ['pnpm', 'pnpm add'], ['yarn', 'yarn add'], ['bun', 'bun add']]) {
-        await page.locator(`[data-package-manager="${manager}"]`).click();
-        const expectedCommand = await page.evaluate(prefix => window.__home.state.release.installCommand.replace(/^npm install/, prefix), prefix);
-        assert.equal(await page.locator('[data-install-command]').textContent(), expectedCommand);
-        assert.equal(await page.locator(`[data-package-manager="${manager}"]`).getAttribute('aria-pressed'), 'true');
-        await page.locator('[data-copy-install]').click();
-        assert.equal(await page.evaluate(() => window.__copiedText), expectedCommand);
-      }
-      report.interactions.push('Unified package managers, unique showcase scenes and synchronized Downloads navigation');
       await page.locator('#home-preview').scrollIntoViewIfNeeded();
       await page.waitForFunction(() => window.__homePreview?.renderer && window.__homePreview.state.visible);
       const initialDistance = await page.evaluate(() => window.__homePreview.state.distance);
@@ -88,6 +78,21 @@ try {
       await page.screenshot({ path:'artifacts/home-live-preview.png' });
       report.interactions.push('Live homepage 3D, keyboard rotation, zoom, reset and animation');
     }
+    if (route === '/downloads.html') {
+      await page.waitForFunction(() => window.__home.state.status === 'ready');
+      assert.equal(await page.locator('.package-logo').count(), 4);
+      assert.equal(await page.locator('[data-package-manager]').count(), 4);
+      assert.equal(await page.locator('[data-release-tarball], [data-release-module]').count(), 0);
+      for (const [manager, prefix] of [['npm', 'npm install'], ['pnpm', 'pnpm add'], ['yarn', 'yarn add'], ['bun', 'bun add']]) {
+        await page.locator(`[data-package-manager="${manager}"]`).click();
+        const expectedCommand = await page.evaluate(prefix => window.__home.state.release.installCommand.replace(/^npm install/, prefix), prefix);
+        assert.equal(await page.locator('[data-install-command]').textContent(), expectedCommand);
+        assert.equal(await page.locator(`[data-package-manager="${manager}"]`).getAttribute('aria-pressed'), 'true');
+        await page.locator('[data-copy-install]').click();
+        assert.equal(await page.evaluate(() => window.__copiedText), expectedCommand);
+      }
+      report.interactions.push('Separate Downloads page with four branded package managers and command copying');
+    }
     if (route === '/getting-started.html') {
       assert.match(page.url(), /\/docs(?:\.html)?#install$/);
     }
@@ -106,6 +111,9 @@ try {
       assert.match(page.url(),/models-and-ai-agents/);
       await page.locator('#doc-toc a[href="#getting-started"]').click();
       assert.equal(await page.locator('#getting-started ol li').count(), 3);
+      const headerBounds = await page.locator('.navigation').boundingBox();
+      const copyBounds = await page.locator('#copy-doc-page').boundingBox();
+      assert.ok(copyBounds.y >= headerBounds.y + headerBounds.height, 'Sticky header covers Copy page');
       assert.ok(await page.locator('.hljs-keyword').count() > 0);
       assert.ok(await page.locator('.code-block').count() >= 2);
       assert.equal(await page.locator('#copy-doc-page').count(), 1);

@@ -10,7 +10,7 @@ a[aria-disabled='true'] { opacity: .5; pointer-events: none; }
 :focus-visible { outline: 2px solid #a9d7c7; outline-offset: 4px; }
 .skip-link { position: fixed; left: 16px; top: 12px; padding: 12px; z-index: 10; background: #edf0f2; color: #191d22; transform: translateY(-160%); }
 .skip-link:focus { transform: none; }
-.navigation { position: fixed; inset: 0 auto 0 0; width: 218px; padding: 36px 26px; background: #191d22; display: flex; flex-direction: column; align-items: flex-start; }
+.navigation { position:sticky; top:0; z-index:5; width:100%; padding:18px max(24px, calc((100vw - 1352px) / 2)); display:flex; flex-direction:row; align-items:center; gap:20px; }
 .brand { font-size: 37px; font-weight: 650; letter-spacing: -2px; line-height: 1; }
 .brand span { font-weight: 400; color: #b7c1c8; }
 .library-description { margin: 13px 0 17px; font-size: 13px; color: #b8c1c7; }
@@ -20,7 +20,7 @@ nav a { font-size: 14px; padding: 11px 12px; margin-left: -12px; border-radius: 
 nav a:hover, nav a[aria-current] { background: #edf0f20a; }
 nav a[aria-current] { color: #b8e6d2; }
 .navigation-note { margin: auto 0 0; font-size: 12px; line-height: 1.8; color: #a3aeb7; }
-main { max-width: 1500px; margin-left: 218px; padding: 42px 44px 60px; }
+main { max-width: 1500px; margin: 0 auto; padding: 42px 44px 60px; }
 h1, h2, h3, p { margin-top: 0; }
 h1 { font-size: clamp(28px, 3vw, 38px); line-height: 1.2; font-weight: 550; letter-spacing: -1.2px; margin-bottom: 14px; }
 h2 { font-size: 21px; font-weight: 550; letter-spacing: -.5px; margin-bottom: 24px; }
@@ -67,7 +67,7 @@ code, pre { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
 .docs .install { margin-top: 24px; margin-bottom: 30px; }
 @media (max-width: 1100px) { main { padding: 34px 30px 50px; } .introduction { align-items: flex-start; flex-direction: column; gap: 18px; } }
 @media (max-width: 760px) {
-  .navigation { position: static; width: auto; padding: 23px 22px 18px; display: grid; grid-template-columns: 1fr auto; gap: 12px; }
+  .navigation { padding:16px 22px; display:grid; grid-template-columns:1fr auto; gap:12px; }
   .brand { font-size: 30px; }
   .library-description, .navigation-note { display: none; }
   .version { align-self: center; }
@@ -92,8 +92,8 @@ code, pre { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
 
 /* Rounded surfaces and a static pixel dither keep the shared CodePawl theme. */
 :root { color:var(--text); background:var(--window); }
-.navigation { background-color:var(--bg); background-image:var(--dither); border-right:1px solid var(--border); }
-.navigation nav { gap:6px; }
+.navigation { background-color:var(--bg); background-image:var(--dither); border:0; }
+.navigation nav { flex-direction:row; width:auto; margin:0 0 0 auto; gap:6px; }
 .navigation nav a { display:flex; align-items:center; min-height:44px; padding:12px 14px; margin-left:0; border-radius:var(--radius); }
 .navigation nav a:hover, .navigation nav a[aria-current] { background-color:var(--surface); background-image:var(--dither); }
 main { max-width:1440px; }
@@ -133,7 +133,27 @@ button:hover { background:var(--border); }
 .preview-tools button { min-height:40px; background:#2f2f2f; color:#ececec; }
 .preview-tools button[aria-pressed=true] { background:#ececec; color:#171717; }
 #home-preview-status { position:absolute; top:20px; left:20px; right:20px; margin:0; font-size:13px; color:#ececec; pointer-events:none; }
-main > .downloads { margin:28px 0 36px; }
+.downloads-page { max-width:1000px; }
+.downloads-page > .downloads { margin:20px 0; }
+.downloads-page .section-heading h1 { margin-bottom:16px; }
+.downloads-page .package-install { margin:26px 0; }
+.package-managers button { display:inline-flex; align-items:center; justify-content:center; gap:10px; min-height:44px; }
+.package-logo { display:inline-block; flex:none; width:20px; height:20px; background:currentColor; mask:center / contain no-repeat; }
+.package-logo-npm { mask-image:url('/logos/npm.svg'); }
+.package-logo-pnpm { mask-image:url('/logos/pnpm.svg'); }
+.package-logo-yarn { mask-image:url('/logos/yarn.svg'); }
+.package-logo-bun { mask-image:url('/logos/bun.svg'); }
+body:has(.navigation) { --navigation-height:80px; }
+@media (max-width:760px) {
+  body:has(.navigation) { --navigation-height:120px; }
+  .navigation nav { grid-column:1 / -1; justify-content:center; width:100%; margin:0; gap:4px; }
+  .navigation nav a { padding:10px 12px; }
+}
+@media (max-width:440px) {
+  .navigation nav { flex-wrap:nowrap; }
+  .navigation nav a { padding:10px 8px; gap:6px; font-size:12px; white-space:nowrap; }
+  .package-managers { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); }
+}
 .showcase-caption { display:flex; justify-content:space-between; flex-wrap:wrap; gap:16px; padding:22px 24px; color:#ececec; }
 .showcase-caption p { margin:6px 0 0; color:#b4b4b4; }
 .showcase-caption a { align-self:center; border-radius:var(--radius); padding:12px 18px; background:#ececec; color:#171717; font-size:14px; }
@@ -154,7 +174,7 @@ main > .downloads { margin:28px 0 36px; }
 #doc-article a { text-decoration:underline; }
 .table-scroll { overflow-x:auto; }
 table { border-collapse:collapse; width:100%; font-size:13px; line-height:1.6; margin:20px 0; }
-td, th { text-align:left; padding:12px; border-bottom:1px solid var(--border); vertical-align:top; }
+td, th { text-align:left; padding:12px; border-bottom:0; vertical-align:top; }
 .docs pre { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:start; gap:14px; padding:18px; overflow:visible; }
 .docs pre code { display:block; min-width:0; overflow-x:auto; padding:6px 0; }
 .docs ol { color:var(--muted); }

@@ -12,10 +12,12 @@ try {
   const page = await browser.newPage({ reducedMotion: 'reduce' });
   for (const colorScheme of ['light', 'dark']) {
     await page.emulateMedia({ colorScheme });
-    for (const route of ['/', '/docs.html', '/getting-started.html']) {
+    for (const route of ['/', '/downloads.html', '/docs.html', '/getting-started.html']) {
       await page.goto(origin + route);
       for (const width of [320, 390, 580, 1440]) {
         await page.setViewportSize({ width, height: 1000 });
+        const linkPositions = await page.locator('.navigation nav a').evaluateAll(links => links.map(link => link.getBoundingClientRect().top));
+        assert.ok(linkPositions.every(top => Math.abs(top - linkPositions[0]) < 1), 'Library navigation wraps to another row');
         const contrast = await page.locator('.navigation nav a[aria-current]').evaluate(link => {
           const channels = color => color.match(/[\d.]+/g).map(Number);
           const backgrounds = [];

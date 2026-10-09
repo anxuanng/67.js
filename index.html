@@ -10,36 +10,18 @@
   </head>
   <body>
     <a class="skip-link" href="#content">Skip to content</a>
-    <aside class="navigation">
+    <header class="navigation">
       <a class="brand" href="/" aria-label="67.js home">67<span>.js</span></a>
-      <p class="library-description">Graphics toolkit by CodePawl</p>
       <span class="version" data-release-version>Loading release</span>
       <nav aria-label="Library">
-        <a href="/#examples" aria-current="page">Showcase</a>
-        <a href="./docs.html">Documentation</a>
-        <a href="/#downloads">Downloads</a>
+        <a href="/downloads.html">Downloads</a>
+        <a href="/" aria-current="page">Showcase</a>
+        <a href="/docs.html">Docs</a>
       </nav>
-      <p class="navigation-note"><a href="https://codepawl.com">A CodePawl project ↗</a></p>
-    </aside>
+    </header>
     <main id="content">
       <header class="introduction"><div><h1>Your 3D scene,<br />from browser to film</h1><p>67.js brings browser 3D, animation and image/video export into one workflow. Create interactive experiences and export the same scene as images or video</p><div class="hero-actions"><a href="./object.html" data-icon="cube">Try the object studio</a><a href="./docs.html#install" data-icon="code">Build your first scene</a></div></div></header>
-      <section id="downloads" class="downloads" aria-labelledby="downloads-title">
-        <div class="section-heading"><h2 id="downloads-title">Downloads</h2><span data-release-version>Loading release</span></div>
-        <p>Choose your package manager and install the current release</p>
-        <div class="package-install">
-          <div class="package-managers" role="group" aria-label="Package manager">
-            <button data-package-manager="npm" aria-pressed="true">npm</button>
-            <button data-package-manager="pnpm" aria-pressed="false">pnpm</button>
-            <button data-package-manager="yarn" aria-pressed="false">Yarn</button>
-            <button data-package-manager="bun" aria-pressed="false">Bun</button>
-          </div>
-          <div class="command-row"><code data-install-command>Loading the release command…</code><button data-copy-install disabled>Copy command</button></div>
-          <div class="release-feedback"><p data-release-status role="status">Loading release information</p><button data-release-retry hidden>Retry</button></div>
-          <p class="package-note">The alias keeps imports short: <code>import { Renderer67 } from '67js'</code></p>
-          <div class="package-links"><a href="https://www.npmjs.com/package/@codepawlhq/67js" data-icon="package">View on npm</a><a href="https://github.com/anxuanng/67.js" data-icon="github">Source on GitHub</a><a href="/docs.html#getting-started" data-icon="book">Build your first scene</a></div>
-        </div>
-        <div class="release-links"><a href="./docs.html">Documentation</a><a href="./logo.svg" download>Logo SVG</a><a href="./changelog.md">Changelog</a><span data-release-commit>Release commit</span><a data-release-api aria-disabled="true">API reference ↗</a></div>
-      </section>
+
       <section class="feature-showcase live-showcase" aria-label="Interactive 3D preview">
         <canvas id="home-preview" tabindex="0" aria-label="Clockwork 3D model. Drag or use arrow keys to rotate. Use plus and minus to zoom."></canvas>
         <p id="home-preview-status" role="status">Loading 3D preview…</p>

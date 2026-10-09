@@ -195,7 +195,7 @@ function openTopic(focus = false) {
   article.replaceChildren(section);
   if (currentTopic.id === 'install') {
     const managerLink = document.createElement('p');
-    managerLink.innerHTML = `<a href="/#downloads">Choose a package manager and get the current release ${icon('arrow')}</a>`;
+    managerLink.innerHTML = `<a href="/downloads.html">Choose a package manager and get the current release ${icon('arrow')}</a>`;
     section.append(managerLink);
   }
   const index = topics.indexOf(currentTopic);
