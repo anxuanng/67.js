@@ -1,6 +1,6 @@
 # 67.js implementation roadmap
 
-67.js develops a browser graphics engine with a shared workflow for interactive scenes, animation and exported media.
+67.js develops 3D authoring and rendering tools for agents, with browser previews, deterministic animation and exported media.
 This document separates shipping capabilities from work in progress. Performance claims require measurements on matching scenes and hardware.
 
 ## Available
@@ -22,11 +22,14 @@ This document separates shipping capabilities from work in progress. Performance
 
 ## Next
 
-1. Adaptive quality with a target frame time, explicit minimum resolution and stable changes to avoid visible oscillation.
-2. GPU timing and scene diagnostics that distinguish CPU submission, GPU work and estimated memory.
-3. Picking and reusable interaction controls for object selection, annotations and assembly inspection.
-4. Asset budgets and loading diagnostics for AI-generated models, including texture sizes, unsupported materials and geometry complexity.
-5. Declarative scene recipes for product viewers, interactive worlds and short films, with reusable camera and lighting presets.
+The current source, after npm `0.4.1`, includes fixed-topology agent scenes with stable IDs, atomic revisioned edits and checkpoints.
+
+1. Extend agent sessions with dynamic node and resource creation while preserving bounded allocation, replay and undo.
+2. An MCP adapter with capability discovery, compact scene inspection and visual feedback from multiple angles and animation frames.
+3. Persistent render jobs with progress, cancellation, explicit CPU/GPU budgets and deterministic image and video export.
+4. Geometry, rig and asset diagnostics that help agents correct intersections, invalid transforms and unsupported materials.
+5. Agent workflows for imported assets, sculpting, surface fitting, lighting and animation, verified against rendered reference scenes.
+6. GPU timing and adaptive quality based on measured frame time, with stable resolution changes and explicit minimum quality.
 
 ## Longer term
 

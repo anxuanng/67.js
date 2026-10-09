@@ -25,6 +25,7 @@ export default defineConfig({
         shrinkwrap: 'src/shrinkwrap.js',
         'surface-attachment': 'src/surface-attachment.js',
         physics: 'src/physics.js',
+        'agent-scene': 'src/agent-scene.js',
       },
       formats: ['es'],
       fileName: (_, entry) => entry === 'core' ? '67.module.js' : `${entry}.js`,

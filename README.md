@@ -1,10 +1,11 @@
 # 67.js
 
-**Your 3D scene, from browser to film.**
+**3D scenes agents can inspect, edit and render.**
 
 Explore the [showcase](https://67js.codepawl.com), read the [documentation](https://67js.codepawl.com/docs.html), or give an agent the [plain-text guide](https://67js.codepawl.com/llms.txt).
 
-67.js is a JavaScript graphics engine for interactive worlds, animated models and cinematic media in the browser.
+67.js develops JavaScript tools for agent-driven 3D authoring, browser previews and image/video rendering.
+The published engine supplies interactive worlds, animated models and cinematic media. The current source adds bounded scene authoring sessions.
 Meshes, materials and cameras give Three.js users a familiar foundation. Scene studios, assembly inspection and image/video export extend that foundation into a production workflow.
 
 The renderer is designed around shared geometry, predictable frame allocation and explicit CPU/GPU render budgets.
@@ -120,6 +121,13 @@ The repository includes two reusable Codex skills.
 
 - [build-67js-scene](skills/build-67js-scene/SKILL.md) covers geometry, materials, cameras, interaction and anti-aliasing.
 - [render-67js-media](skills/render-67js-media/SKILL.md) covers CPU/GPU presets, streaming exports and memory measurements.
+
+## Agent authoring
+
+The current source includes [agent scene sessions](docs/agent-scene.md), newer than npm `0.4.1`.
+Agents can author JSON recipes, inspect object bounds, submit atomic edits and restore bounded checkpoints.
+The optional addon retains renderer-facing parts and geometry across supported edits.
+An MCP server and persistent render jobs remain implementation work.
 
 ## Checks and performance
 

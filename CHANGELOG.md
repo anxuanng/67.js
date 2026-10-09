@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Add optional agent scene sessions with stable IDs, shared geometry, revision checks, atomic edits and bounded checkpoints.
+- Prioritize agent authoring, visual feedback and MCP integration in the implementation roadmap.
+
 ## 0.4.1
 
 - Put installation on the homepage with npm, pnpm, Yarn and Bun controls.

@@ -130,7 +130,17 @@ Use `createSurfaceAttachment(target, { triangle, barycentric, clearance })` for 
 Read `docs/surface-attachment.md`. Share its retained `matrix` with the accessory, update the target pose, then update the attachment before renderer upload.
 The frame follows relative morphs before four-influence skinning. Clearance uses world units and the geometric triangle normal.
 Bind immutable geometry once. This sparse point attachment does not deform the accessory or certify clearance over its footprint.
-This addon follows the current source and is newer than npm `0.4.0`.
+The surface-attachment addon is included in npm `0.4.1`.
+
+Agent authoring uses `createAgentScene(recipe, limits)` from `67js/addons/agent-scene`.
+This addon is available in source after npm `0.4.1`; it is not included in that published package.
+Read `docs/agent-scene.md` for schema version one and its fixed resource topology.
+Start with capabilities and bounded inspection. Edit stable IDs through one `apply` batch with the current `expectedRevision`.
+Checkpoint before uncertain changes, inspect and render the result, then restore or release the checkpoint.
+Call `renderer.updateParts(session.parts)` after successful edits, then render the detached `session.camera` snapshot.
+Keep JSON commands and snapshots exposed to agents; retained matrices and immutable geometry belong to the renderer adapter.
+Do not inspect all vertex bounds in a frame loop. Memory estimates cover unique geometry arrays, not total RAM or VRAM.
+The scene addon does not implement MCP transport, dynamic node creation, asset search, or render jobs.
 
 `cameraView('front' | 'right' | 'top')` returns an orthographic camera with the correct up vector.
 `fitOrthographicHeight(bounds, view, aspect)` frames both model width and height.

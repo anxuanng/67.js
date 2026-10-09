@@ -129,6 +129,23 @@ if (${!published || metadata.version !== '0.4.0'}) {
   assert.ok(Math.abs(retainedMatrix[14] - 0.202) < 1e-6);
 }
 solidIndex.dispose();
+if (${!published}) {
+  const { createAgentScene } = await import('67js/addons/agent-scene');
+  const agentScene = createAgentScene({
+    format: '67js.scene', schemaVersion: 1,
+    geometries: [{ id: 'cube', type: 'box', bevel: 0 }],
+    materials: [{ id: 'paint', color: [0.2, 0.4, 0.5] }],
+    nodes: [{ id: 'object', geometry: 'cube', material: 'paint' }],
+  });
+  const agentPart = agentScene.parts[0];
+  const agentCheckpoint = agentScene.checkpoint();
+  agentScene.apply([{ type: 'set-node', id: 'object', translation: [2, 0, 0] }], { expectedRevision: agentScene.revision });
+  assert.equal(agentPart, agentScene.parts[0]);
+  assert.equal(agentPart.matrix[12], 2);
+  agentScene.restore(agentCheckpoint, { expectedRevision: agentScene.revision });
+  assert.equal(agentPart.matrix[12], 0);
+  agentScene.releaseCheckpoint(agentCheckpoint);
+}
 const parts = createModel();
 assert.equal(parts.length, 574);
 assert.ok(parts.every(part => assemblyOffset(part, 1).some(value => value !== 0)));

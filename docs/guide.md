@@ -400,6 +400,12 @@ Disconnect observers, cancel animation frames, release pointer state and call `d
 
 ## Models and AI agents
 
+The current source includes [agent scene sessions](/agent-scene.md), newer than npm `0.4.1`.
+The addon accepts JSON recipes with stable object IDs, shared geometry and material resources, hierarchy and a camera.
+Edits use an expected revision and commit as one batch. Checkpoints restore the supported scene state.
+The session keeps existing renderer-facing parts and matrices for transform, material and camera edits.
+This CPU authoring API does not yet provide an MCP server or background render jobs.
+
 Give the agent this guide and the matching repository skill. Start with a scene brief: focal subject, visual references, camera, output size, required interaction, GPU/CPU backend and memory budget. Read the matching scene recipe and run the smallest trial first.
 
 Suggested prompt: “Use 67.js to build an interactive mechanical study. Reuse meshes, use a 256MiB render budget, provide orbit and keyboard controls, pause hidden playback, and capture a real wide and mobile preview. List unsupported features. Do not claim speed superiority without a comparable benchmark.”

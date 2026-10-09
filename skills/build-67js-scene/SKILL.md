@@ -29,6 +29,7 @@ Use `simplify-code` and `engineering-workflows` for implementation.
 - Static contact, ray hits or closed-solid containment use optional `src/mesh-query.js` and the checkout's `docs/mesh-query.md`.
 - Static vertex wrapping uses optional `src/shrinkwrap.js` and the checkout's `docs/shrinkwrap.md`.
 - A rigid accessory on a morphing or skinned surface uses optional `src/surface-attachment.js` and `docs/surface-attachment.md`.
+- Agent scene recipes use optional `src/agent-scene.js` and `docs/agent-scene.md`; verify source versus published availability before importing.
 - An image or video export uses `render-67js-media`.
 
 Read [scene-contract.md](references/scene-contract.md) before creating parts or changing materials.

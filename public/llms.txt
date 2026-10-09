@@ -7,6 +7,12 @@ The installed package determines available APIs. Release metadata describes the 
 
 ## Read only what your task needs
 
+The current source adds `67js/addons/agent-scene`, newer than npm `0.4.1`.
+Read `/agent-scene.md` for versioned JSON recipes, stable IDs, expected revisions, atomic edits and bounded checkpoints.
+Use `session.inspect()` for compact object facts and `session.exportRecipe()` for detached JSON.
+Keep renderer-facing geometry immutable. Call `renderer.updateParts(session.parts)` after a successful edit or restore.
+This addon does not expose an MCP server or a render job queue.
+
 - [Release metadata](https://67js.codepawl.com/release.json): package name, version, publication status, install command, module URL and commit.
 - [Complete plain-text guide](https://67js.codepawl.com/guide.md): renderer, parts, materials, cameras, animation, lifecycle, export and troubleshooting.
 - [GLB contract](https://67js.codepawl.com/gltf.md): supported assets and conversion limits. Read before selecting or importing a model.
@@ -92,12 +98,14 @@ Surface clearance prevents overlapping layers in this workflow. It does not dete
 `addons/mesh-query` owns copied static geometry in disposable BVH indices. Read `docs/mesh-query.md` before querying.
 Use `solid: true` indices and `mode: 'closed-solids'` to distinguish boundary contact, containment and separation.
 Surface contact does not prove volume penetration or identify z-fighting. Never substitute surface-only results for containment.
+
 Pass current affine matrices explicitly, rebuild after geometry edits, and preserve budget/precision errors instead of treating them as misses.
 Read `docs/primitives.md` for subdivision bounds and exact seam closure. Skin, morph and shader-deformed surfaces require geometry matching the visible pose.
 
 `addons/shrinkwrap` returns {geometry,stats} in target-local coordinates. Read `docs/shrinkwrap.md` before choosing nearest/project modes.
 Supply sourceToTarget explicitly for different local frames. Share the target matrix with the output part and keep the total callback budget.
-Nearest projection can collapse vertices on coarse meshes; preserve the error and refine the target or choose a suitable projection direction.
+Nearest projection can collapse vertices on coarse meshes. Preserve the error and refine the target or choose a suitable projection direction.
+
 Vertex clearance does not certify whole-triangle clearance. Compatible static output can become a GPU morph target without repeating queries per frame.
 
 GLB support excludes transparent and double-sided materials and compressed geometry. Unsupported features require visible errors.
@@ -105,6 +113,7 @@ GLB support excludes transparent and double-sided materials and compressed geome
 Version `0.4.1` adds `addons/surface-attachment`. Read `docs/surface-attachment.md` before binding.
 Bind a triangle and barycentric coordinates once. Assign the retained attachment.matrix to the accessory.
 Update the target morph/skin/world pose, call attachment.update(), then upload target and accessory through renderer.updateParts().
+
 Clearance uses world units and the geometric face normal. This rigid point attachment does not guarantee clearance over the entire accessory footprint.
 
 The optional GLB decoder uses Three.js GLTFLoader. The renderer remains 67.js.
