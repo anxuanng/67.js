@@ -15,6 +15,7 @@ export default defineConfig({
         motion: 'src/motion.js',
         canvas2d: 'src/canvas2d.js',
         gltf: 'src/gltf.js',
+        modeling: 'src/modeling.js',
       },
       formats: ['es'],
       fileName: (_, entry) => entry === 'core' ? '67.module.js' : `${entry}.js`,

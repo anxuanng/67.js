@@ -17,14 +17,14 @@ The Blender references describe authoring capabilities. Their interpolation and 
 
 | Area | Current implementation | Missing work | Completion evidence |
 | --- | --- | --- | --- |
-| Scene graph | Flat part matrices and custom demo rigs | Shared hierarchy, local transforms, pivots, constraints | Nested transforms and arbitrary seeks reproduce identical poses |
-| Modeling | Box, sphere, cylinder, torus, and procedural sampled surfaces | Mesh editing, extrusion, lathe, curves, bevel, subdivision, modifiers | Edited models retain topology, normals, UVs, and export behavior |
+| Scene graph | Shared hierarchy, local transforms, pivots and atomic reparenting integrated in source | Constraints, dynamic node editing, package release | Nested transforms and arbitrary seeks reproduce identical poses |
+| Modeling | Base primitives, lathe, hole extrusion with bevels, and curve tubes integrated in source | Mesh editing, subdivision, modifiers, package release | Edited models retain topology, normals, UVs, and export behavior |
 | Animation curves | Linear, step, smooth and Hermite tangent interpolation in source | Curve editor; package release verification | Known curve samples, quaternion normalization, and continuous velocity checks |
 | Animation composition | Weighted clips and absolute-time crossfades integrated in source | Additive motion, layer masks, events, package verification | Walking and gestures blend without pose discontinuities |
 | Character deformation | Rigid parts | Skinning, morph targets, IK, retargeting | Animated imported character, expressions, and joint contact tests |
 | Camera authoring | Manually coded shot endpoints | Paths, tracking, focus targets, lens presets | Reviewed moving shot previews across aspect ratios |
 | Film authoring | Scene-specific shot list and player | Shared timeline, shot editing, transitions, audio cues | Edited timeline seeks and exports deterministically |
-| Asset import | Opaque glTF meshes, base-color texture, rigid animation | Deformation, material maps, transparency, compression, streaming | Blender fixtures preserve geometry, materials, and animation |
+| Asset import | Opaque glTF meshes, five material maps and rigid animation integrated in source | Deformation, transparency, compression, streaming, package release | Blender fixtures preserve geometry, materials, and animation |
 | Materials | Factors and five PBR texture channels integrated in source | Layered materials, advanced extensions, authored tangents, package verification | Reference material scenes and texture budget checks |
 | Lighting | Directional shadows and procedural studio illumination | Configurable lights, HDR environments, baked lighting, reflection probes | Reference lighting scenes, stable shadows, and measured render cost |
 | Image rendering | HDR, bloom, grading, MSAA, FXAA | Depth of field, motion blur, temporal sampling, render passes | Reviewed stills and moving previews with measured artifacts |

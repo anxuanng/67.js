@@ -21,7 +21,12 @@
     "docs/gltf.md",
     "docs/guide.md",
     "docs/verification.md",
-    "docs/release-verification.md"
+    "docs/release-verification.md",
+    "docs/animation-curves.md",
+    "docs/animation-mixer.md",
+    "docs/material-maps.md",
+    "docs/modeling.md",
+    "docs/scene-graph.md"
   ],
   "main": "./build/67.module.js",
   "module": "./build/67.module.js",
@@ -33,6 +38,7 @@
     "./addons/motion": "./build/motion.js",
     "./addons/canvas2d": "./build/canvas2d.js",
     "./addons/gltf": "./build/gltf.js",
+    "./addons/modeling": "./build/modeling.js",
     "./package.json": "./package.json"
   },
   "scripts": {

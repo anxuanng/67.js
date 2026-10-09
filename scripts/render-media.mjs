@@ -27,7 +27,7 @@ export function parseRenderOptions(values) {
   const presetName = options.preset ?? (backend === 'cpu' ? 'cpu' : 'balanced');
   const preset = RENDER_PRESETS[presetName];
   const aspect = options.aspect ?? 'landscape';
-  if (!preset || !['image', 'video', 'stills'].includes(kind) || !['gpu', 'cpu'].includes(backend) || !['film', 'nature', 'object', 'motion', 'view2d', 'assets'].includes(scene) || !['landscape', 'portrait', 'square'].includes(aspect)) throw new Error('Unknown render kind, backend, scene, aspect or preset.');
+  if (!preset || !['image', 'video', 'stills'].includes(kind) || !['gpu', 'cpu'].includes(backend) || !['film', 'nature', 'object', 'motion', 'view2d', 'assets', 'modeling'].includes(scene) || !['landscape', 'portrait', 'square'].includes(aspect)) throw new Error('Unknown render kind, backend, scene, aspect or preset.');
   if (options.asset && scene !== 'assets') throw new Error('The asset file option requires --scene assets.');
   const numberOption = (name, fallback, minimum, maximum) => {
     const value = Number(options[name] ?? fallback);
@@ -45,7 +45,7 @@ export function parseRenderOptions(values) {
   const height = Math.round(numberOption('height', defaultHeight, 64, 4096));
   if (kind === 'video' && (width % 2 || height % 2)) throw new Error('Video dimensions must be even for yuv420p output.');
   const fps = numberOption('fps', preset.fps, 1, 60);
-  const duration = numberOption('duration', scene === 'film' ? FILM_DURATION : scene === 'motion' ? 12 : 32, 0.1, 240);
+  const duration = numberOption('duration', scene === 'film' ? FILM_DURATION : ['motion', 'modeling'].includes(scene) ? 12 : 32, 0.1, 240);
   const time = numberOption('time', scene === 'assets' ? 0 : 3, 0, 3600);
   const start = numberOption('start', 0, 0, 3600);
   const memory = numberOption('memory', preset.memoryBudgetMiB, 32, 1024);

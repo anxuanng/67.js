@@ -1,0 +1,25 @@
+@import './home.css';
+.modeling-study { width:min(1352px,calc(100% - 48px)); margin:28px auto 60px; }
+.study-heading { display:flex; align-items:center; justify-content:space-between; gap:24px; margin-bottom:24px; }
+.study-heading h1 { font-size:32px; letter-spacing:-1px; margin:0 0 8px; }
+.study-heading p { margin:0; color:var(--muted); line-height:1.6; }
+.study-heading > a { color:var(--muted); white-space:nowrap; font-size:14px; }
+.modeling-stage { height:min(68vh,720px); min-height:400px; background:#1d2425; border-radius:24px; overflow:hidden; }
+#modeling-canvas { display:block; width:100%; height:100%; touch-action:none; }
+#modeling-canvas:focus-visible { outline-offset:-4px; }
+.study-actions { display:flex; align-items:center; justify-content:space-between; gap:24px; margin-top:20px; }
+.study-actions p { margin:0; font-size:13px; color:var(--muted); }
+.study-actions > div { display:flex; gap:8px; flex-wrap:wrap; }
+#modeling-notice { line-height:1.6; color:var(--text); }
+#modeling-notice:not([hidden]) { display:flex; align-items:center; gap:10px; }
+.modeling-export .navigation, .modeling-export .site-footer, .modeling-export .study-heading, .modeling-export .study-actions, .modeling-export .skip-link { display:none; }
+.modeling-export .modeling-study { margin:0; width:100%; }
+.modeling-export .modeling-stage { position:fixed; inset:0; width:100%; height:100%; min-height:0; border-radius:0; }
+@media (max-width:700px) {
+  .modeling-study { width:calc(100% - 32px); margin-top:22px; }
+  .study-heading { display:block; }
+  .study-heading > a { display:inline-block; margin-top:12px; }
+  .study-heading h1 { font-size:28px; }
+  .modeling-stage { height:58vh; min-height:350px; }
+  .study-actions { align-items:flex-start; flex-direction:column; gap:14px; }
+}

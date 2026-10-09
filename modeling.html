@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="An original mechanical lantern built with 67.js profile, extrusion and curve tools." />
+    <title>Aster lantern · 67.js</title>
+    <link rel="icon" href="/favicon.svg" />
+  </head>
+  <body>
+    <a class="skip-link" href="#content">Skip to content</a>
+    <header class="navigation">
+      <a class="brand" href="/" aria-label="67.js home">67<span>.js</span></a>
+      <nav aria-label="Library"><a href="/downloads.html">Downloads</a><a href="/docs.html">Docs</a></nav>
+    </header>
+    <main id="content" class="modeling-study">
+      <div class="study-heading"><div><h1>Aster lantern</h1><p>A turned porcelain base, a spiral brass cage, and a little clockwork.</p></div><a href="/docs.html#parts">Modeling tools</a></div>
+      <section class="modeling-stage" aria-label="Interactive lantern study">
+        <canvas id="modeling-canvas" tabindex="0" aria-label="3D mechanical lantern. Drag or use arrow keys to orbit. Scroll or use plus and minus to zoom. Press Space to pause animation."></canvas>
+      </section>
+      <div class="study-actions"><p id="modeling-stat" aria-live="off"></p><div><button id="modeling-play">Pause</button><button id="modeling-reset">Reset view</button><button id="modeling-save">Save PNG</button></div></div>
+      <p id="modeling-notice" role="status" hidden><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m9 9 6 6m0-6-6 6"/></svg><span></span></p>
+    </main>
+    <footer class="site-footer" aria-label="Site footer">
+      <div class="footer-introduction"><a class="brand" href="/" aria-label="67.js home">67<span>.js</span></a><p>Browser 3D, from scene to film.<br>Made by <a href="https://codepawl.com">CodePawl</a>.</p></div>
+      <div class="footer-links"><a href="https://github.com/anxuanng/67.js" data-icon="github">GitHub</a><a href="https://www.npmjs.com/package/@codepawlhq/67js">npm</a><a href="/changelog.md">Changelog</a><a href="/license.txt">MIT license</a></div>
+    </footer>
+    <script type="module" src="/src/modeling-player.js"></script>
+  </body>
+</html>

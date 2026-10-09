@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Add retained scene hierarchy, pivots and atomic reparenting with world pose preservation.
+- Add bounded lathe, extrusion with holes and bevels, and curve tube modeling through an optional addon.
+- Add a lantern modeling study with textured materials, orbit controls and PNG capture.
+- Add torus surface and cap UVs for textured materials.
 - Add Hermite animation curves with explicit tangents and retained playback buffers.
 - Add absolute-time clip mixing, weighted actions and crossfades with deterministic seeking.
 - Import and render normal, metallic/roughness, occlusion and emissive texture maps.

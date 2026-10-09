@@ -36,7 +36,16 @@ function surface(columns, rows, sample) {
       triangle(first + 1, below + 1, below);
     }
   }
-  return geometry(positions, normals, indices);
+  const result = geometry(positions, normals, indices);
+  result.uvs = new Float32Array((columns + 1) * (rows + 1) * 2);
+  for (let row = 0; row <= rows; row++) {
+    for (let column = 0; column <= columns; column++) {
+      const offset = (row * (columns + 1) + column) * 2;
+      result.uvs[offset] = column / columns;
+      result.uvs[offset + 1] = row / rows;
+    }
+  }
+  return result;
 }
 
 export function sphere(segments = 64, rings = 40) {
@@ -46,14 +55,6 @@ export function sphere(segments = 64, rings = 40) {
     const position = [Math.sin(elevation) * Math.cos(angle), Math.cos(elevation), Math.sin(elevation) * Math.sin(angle)];
     return { position, normal: position };
   });
-  result.uvs = new Float32Array((segments + 1) * (rings + 1) * 2);
-  for (let row = 0; row <= rings; row++) {
-    for (let column = 0; column <= segments; column++) {
-      const offset = (row * (segments + 1) + column) * 2;
-      result.uvs[offset] = column / segments;
-      result.uvs[offset + 1] = row / rings;
-    }
-  }
   return result;
 }
 
@@ -72,6 +73,7 @@ export function torus(tubeRadius = 0.08, segments = 96, sides = 24, arc = FULL_T
   const positions = [...body.positions];
   const normals = [...body.normals];
   const indices = [...body.indices];
+  const uvs = [...body.uvs];
   for (const end of [0, 1]) {
     const angle = start + arc * end;
     const direction = end === 0 ? -1 : 1;
@@ -79,18 +81,20 @@ export function torus(tubeRadius = 0.08, segments = 96, sides = 24, arc = FULL_T
     const center = positions.length / 3;
     positions.push(Math.cos(angle), Math.sin(angle), 0);
     normals.push(...normal);
+    uvs.push(0.5, 0.5);
     for (let index = 0; index <= sides; index++) {
       const tubeAngle = index / sides * FULL_TURN;
       const radial = 1 + tubeRadius * Math.cos(tubeAngle);
       positions.push(radial * Math.cos(angle), radial * Math.sin(angle), tubeRadius * Math.sin(tubeAngle));
       normals.push(...normal);
+      uvs.push(0.5 + Math.cos(tubeAngle) * 0.5, 0.5 + Math.sin(tubeAngle) * 0.5);
     }
     for (let index = 0; index < sides; index++) {
       const first = center + index + 1;
       indices.push(center, end === 0 ? first : first + 1, end === 0 ? first + 1 : first);
     }
   }
-  return geometry(positions, normals, indices);
+  return { ...geometry(positions, normals, indices), uvs: new Float32Array(uvs) };
 }
 
 export function cylinder(segments = 80, bevel = 0.025, bevelSegments = 6) {
