@@ -109,4 +109,3 @@ document.querySelectorAll('.example img').forEach(image => {
 window.__home = { state, loadRelease };
 loadRelease();
 window.addEventListener('pageshow', event => { if (event.persisted) loadRelease(); });
-
