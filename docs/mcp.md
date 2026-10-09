@@ -7,6 +7,8 @@ The [official SDK documentation](https://ts.sdk.modelcontextprotocol.io/v2/) des
 Release `0.5.0` exposes twelve tools for bounded JSON scene authoring and local GLB imports.
 Release `0.6.0` adds five render job tools for PNG images, still sequences and MP4 video.
 Release `0.7.0` adds [procedural motion](agent-motion.md), transient preview seeks and motion sampling in snapshot jobs.
+Release `0.8.0` adds [imported character motion](agent-character-motion.md) with source joints and independent clip timing.
+
 It renders one active scene and returns PNG images through MCP image content.
 Tool results also contain JSON text and structured metadata.
 The image bytes appear only in the image content block.
@@ -27,7 +29,7 @@ The MCP connection uses stdin and stdout, without an HTTP MCP listener.
    ```
 
    Run the installed command with `npx 67js-mcp --backend gpu --memory 192`.
-   For a standalone launch, use `npx --package @codepawlhq/67js@0.7.0 67js-mcp --backend gpu --memory 192`.
+   For a standalone launch, use `npx --package @codepawlhq/67js@0.8.1 67js-mcp --backend gpu --memory 192`.
    `67js-mcp --help` lists options. `67js-mcp --version` reports the installed version.
 
 2. Configure your MCP client with absolute paths to Node and the installed CLI:

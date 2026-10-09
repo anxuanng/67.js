@@ -1,5 +1,26 @@
 # Release verification
 
+## 0.8.1
+
+Source checks used Windows Node.js, installed Chrome with CPU SwiftShader and FFmpeg H.264 encoding.
+Registry publication and live deployment require separate verification against the pushed commit.
+
+| Check | Measured result |
+| --- | --- |
+| Node tests | 417 tests passed. |
+| Face coverage | More than 800 rays checked the complete eye aperture across combined expressions. |
+| Smooth normals | Open, partial and closed expressions retained a minimum normal agreement above 0.985 against the continuous surface. |
+| Native blink | Suppressing only the blink channel changed pixels. Backward seeking reproduced exact PNG bytes without WebGL errors. |
+| Retained geometry | Four expression channels and scene cues preserved shared geometry and actor matrices. |
+| Native video | Seventy-two decoded frames formed a three-second portrait H.264 MP4 at 24 FPS with BT.709 metadata. |
+| CPU export | The 540 by 960 export took 24.23 seconds with one pending frame and 48.4 MB of estimated render memory. |
+
+The scientist uses inset eyes, a sculpted face and held poses for each set.
+Native open and closed closeups were inspected after the final normal correction.
+
+This character remains stylized. These checks do not establish realistic likeness, cinematic quality or hardware GPU performance.
+Additive normals remain an approximation of the combined surface. The tested expressions cover this actor, rather than arbitrary morph targets.
+
 ## 0.8.0
 
 Source checks used Windows Node.js, installed Chrome with CPU SwiftShader and FFmpeg H.264 encoding.

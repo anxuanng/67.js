@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.8.1
+
+- Refine the film scientist with integrated facial surfaces, inset eyes, swept hair and a shorter neck
+- Add independent blink, brow, mouth and gaze channels with deterministic cues for each set
+- Replace repeating actor motion with held poses and preserve shared geometry through backward seeks
+- Verify eyelid coverage across the complete eye aperture and render isolated blink comparisons on CPU
+
 ## 0.8.0
 
 - Add stable imported source-node IDs, hierarchy inspection and local joint overrides.

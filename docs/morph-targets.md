@@ -122,8 +122,19 @@ Other checks cover channel packing, independent poses, normal cancellation, iden
 `scripts/smoke-morph.mjs` compares the actual built GPU module with a CPU-authored reference image.
 It checks independent signed poses, the 64th target, retained buffers, atomic rejection and texture disposal.
 `scripts/smoke-morph-composition.mjs` compares combined skinning, normal deltas, normal cancellation and shadow receivers with CPU-baked geometry.
-The film scientist uses shared eyelid geometry with one retained blink pose per actor.
+
+The film scientist uses shared head geometry with separate retained expression weights per actor.
+Its four channels control blink, brow tension, mouth tension and gaze.
+The sampled targets and normals stay fixed while deterministic scene cues update weights.
 Visual quality and frame performance require separate scene measurements.
+
+Numerical validation does not detect self-intersections or guarantee that an eyelid covers its entire eyeball.
+Close views must check corners, intermediate weights and combined expressions as well as the central surface.
+The film smoke compares blink pixels independently of head motion and the other expression channels.
+
+Additive target normals approximate normals on the combined surface.
+The film checks compare open and closed expressions against normals sampled from that surface.
+One triangle normal can differ from a smooth vertex normal even on the undeformed mesh.
 
 ## GLB snapshots
 

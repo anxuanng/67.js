@@ -5,7 +5,7 @@ import { fitPerspectiveDistance } from './camera.js';
 import { box, cylinder, sphere, torus } from './geometry.js';
 import { extrude } from './modeling.js';
 import { createAnimationClip, createAnimationPlayer } from './animation.js';
-import { sampleScientistHead } from './film-character.js';
+import { sampleScientistHead, sampleScientistHair, sampleScientistEye, scientistSkinColor, scientistEyeColor } from './film-character.js';
 import { createMorphPose } from './morph.js';
 import { CRADLE, cradlePivot } from './film-physics-definition.js';
 import cradleRecording from './film-physics-clip.json' with { type: 'json' };
@@ -109,42 +109,86 @@ function createFedoraCrown() {
 }
 
 function createScientistHeadMesh() {
-  const geometry = sampledSurface(128, 96, sampleScientistHead);
-  geometry.colors = new Float32Array(geometry.positions.length);
-  for (let index = 0; index < geometry.positions.length; index += 3) {
-    const horizontal = geometry.positions[index];
-    const height = geometry.positions[index + 1];
-    const front = Math.max(0, geometry.positions[index + 2]);
-    const cheek = Math.exp(-1 * ((Math.abs(horizontal) - 0.52) / 0.23) ** 2 - ((height + 0.12) / 0.2) ** 2) * front;
-    const underEye = Math.exp(-1 * ((Math.abs(horizontal) - 0.42) / 0.23) ** 2 - ((height - 0.04) / 0.085) ** 2) * front;
-    const stubble = Math.exp(-1 * ((height + 0.55) / 0.23) ** 2) * front;
-    geometry.colors[index] = 1 - underEye * 0.08 - stubble * 0.045;
-    geometry.colors[index + 1] = 1 - cheek * 0.085 - underEye * 0.12 - stubble * 0.065;
-    geometry.colors[index + 2] = 1 - cheek * 0.10 - underEye * 0.10 - stubble * 0.055;
-  }
-  return geometry;
-}
-
-function createEyelidMesh() {
-  const surface = lowerLatitude => sampledSurface(32, 16, (horizontal, vertical) => {
-    const longitude = (0.5 - horizontal) * 2.7;
-    const latitude = 1.48 + vertical * (lowerLatitude - 1.48);
-    const radius = 0.5;
-    return [
-      Math.sin(longitude) * Math.cos(latitude) * radius,
-      Math.sin(latitude) * radius,
-      Math.cos(longitude) * Math.cos(latitude) * radius,
-    ];
+  const surfaces = [
+    { columns: 192, rows: 160, sample: sampleScientistHead, color: scientistSkinColor },
+    ...[-1, 1].map(side => ({
+      columns: 64,
+      rows: 48,
+      sample: (horizontal, vertical, expression) => sampleScientistEye(horizontal, vertical, side, expression === 3),
+      color: point => scientistEyeColor(point, side),
+    })),
+  ];
+  const meshes = surfaces.map(surface => {
+    const mesh = sampledSurface(surface.columns, surface.rows, surface.sample);
+    mesh.colors = new Float32Array(mesh.positions.length);
+    for (let index = 0; index < mesh.positions.length; index += 3) {
+      mesh.colors.set(surface.color(mesh.positions.subarray(index, index + 3)), index);
+    }
+    let closedLid;
+    mesh.morphTargets = Array.from({ length: 4 }, (_, expression) => {
+      const posed = sampledSurface(surface.columns, surface.rows, (horizontal, vertical) => surface.sample(horizontal, vertical, expression));
+      if (expression === 0) closedLid = posed;
+      let normalReference = mesh.normals;
+      let posedNormals = posed.normals;
+      if (expression === 1 && surface.sample === sampleScientistHead) {
+        // Brow and blink positions add independently. Sample both endpoint
+        // surfaces so one static brow delta balances the open and closed lid.
+        const combined = sampledSurface(surface.columns, surface.rows, (horizontal, vertical) => {
+          const base = sampleScientistHead(horizontal, vertical);
+          const closed = sampleScientistHead(horizontal, vertical, 0);
+          const brow = sampleScientistHead(horizontal, vertical, 1);
+          return closed.map((value, axis) => value + brow[axis] - base[axis]);
+        });
+        normalReference = closedLid.normals;
+        posedNormals = combined.normals;
+      }
+      const positions = new Float32Array(mesh.positions.length);
+      const normals = new Float32Array(mesh.normals.length);
+      for (let component = 0; component < positions.length; component++) {
+        positions[component] = posed.positions[component] - mesh.positions[component];
+        let referenceScale = 1;
+        let posedScale = 1;
+        if (surface.sample === sampleScientistHead && expression <= 1) {
+          const depthComponent = component - component % 3 + 2;
+          if (Math.abs(normalReference[depthComponent]) > 0.000001 && Math.abs(posedNormals[depthComponent]) > 0.000001) {
+            // Lid depth changes preserve XY. Equal Z components encode normal
+            // gradients, which blend correctly before the shader normalizes.
+            referenceScale = mesh.normals[depthComponent] / normalReference[depthComponent];
+            posedScale = mesh.normals[depthComponent] / posedNormals[depthComponent];
+          }
+        }
+        normals[component] = posedNormals[component] * posedScale - normalReference[component] * referenceScale;
+        if (surface.sample === sampleScientistHead && expression === 1) {
+          const depthComponent = component - component % 3 + 2;
+          const openScale = Math.abs(posed.normals[depthComponent]) > 0.000001 ? mesh.normals[depthComponent] / posed.normals[depthComponent] : 1;
+          const openDelta = posed.normals[component] * openScale - mesh.normals[component];
+          normals[component] = (normals[component] + openDelta) / 2;
+        }
+      }
+      return { positions, normals };
+    });
+    return mesh;
   });
-  const geometry = surface(0.55);
-  const closed = surface(-0.75);
-  const positions = new Float32Array(geometry.positions.length);
-  const normals = new Float32Array(geometry.normals.length);
-  for (let component = 0; component < positions.length; component++) {
-    positions[component] = closed.positions[component] - geometry.positions[component];
-    normals[component] = closed.normals[component] - geometry.normals[component];
+  // One retained geometry keeps the iris bound to the head without extra draws.
+  const componentCount = meshes.reduce((total, mesh) => total + mesh.positions.length, 0);
+  const geometry = {
+    positions: new Float32Array(componentCount),
+    normals: new Float32Array(componentCount),
+    colors: new Float32Array(componentCount),
+    indices: new Uint32Array(meshes.reduce((total, mesh) => total + mesh.indices.length, 0)),
+    morphTargets: Array.from({ length: 4 }, () => ({ positions: new Float32Array(componentCount), normals: new Float32Array(componentCount) })),
+  };
+  let componentOffset = 0;
+  let indexOffset = 0;
+  for (const mesh of meshes) {
+    for (const channel of ['positions', 'normals', 'colors']) geometry[channel].set(mesh[channel], componentOffset);
+    for (let index = 0; index < mesh.indices.length; index++) geometry.indices[indexOffset + index] = mesh.indices[index] + componentOffset / 3;
+    for (let target = 0; target < 4; target++) {
+      for (const channel of ['positions', 'normals']) geometry.morphTargets[target][channel].set(mesh.morphTargets[target][channel], componentOffset);
+    }
+    componentOffset += mesh.positions.length;
+    indexOffset += mesh.indices.length;
   }
-  geometry.morphTargets = [{ positions, normals }];
   return geometry;
 }
 
@@ -389,7 +433,7 @@ function createIgnition(meshes) {
 function addScientist(builder, position = [0, 0, 0], hat = true, rotation = 0) {
   const { add } = builder;
   const actorName = `Scientist ${builder.parts.length}`;
-  const blinkPose = createMorphPose(1);
+  const expressionPose = createMorphPose(4);
   const joints = new Map();
   const transform = point => [position[0] + point[0] * Math.cos(rotation) + point[2] * Math.sin(rotation), position[1] + point[1], position[2] - point[0] * Math.sin(rotation) + point[2] * Math.cos(rotation)];
   const actorMaterials = {
@@ -399,10 +443,7 @@ function addScientist(builder, position = [0, 0, 0], hat = true, rotation = 0) {
     lapel: { ...materials.cloth, color: [0.055, 0.061, 0.055], roughness: 0.83 },
     paper: { ...materials.paper, color: [0.8, 0.74, 0.6], roughness: 0.84 },
     black: { ...materials.black, color: [0.012, 0.015, 0.017], roughness: 0.82 },
-    eye: { color: [0.57, 0.59, 0.52], metallic: 0, roughness: 0.26, emission: 0 },
-    iris: { color: [0.11, 0.23, 0.24], metallic: 0, roughness: 0.24, emission: 0 },
-    pupil: { color: [0.006, 0.008, 0.009], metallic: 0, roughness: 0.16, emission: 0 },
-    lip: { color: [0.28, 0.095, 0.069], metallic: 0, roughness: 0.68, emission: 0 },
+    face: { ...materials.skin, color: [1, 1, 1], roughness: 0.74 },
   };
   const shape = (name, mesh, point, scale, material, angles = [0, 0, 0]) => {
     const surface = actorMaterials[material] ?? materials[material];
@@ -419,7 +460,9 @@ function addScientist(builder, position = [0, 0, 0], hat = true, rotation = 0) {
         joints.set(jointName, {
           name: jointName,
           kind: head ? 'head' : 'arm',
-          pivot: transform(head ? [0, 1.56, -0.005] : [side * 0.205, 1.425, -0.018]),
+          side,
+          rotation,
+          pivot: transform(head ? [0, 1.575, -0.005] : [side * 0.205, 1.455, -0.018]),
           axis: head ? [0, 1, 0] : [Math.cos(rotation), 0, -Math.sin(rotation)],
         });
       }
@@ -434,40 +477,27 @@ function addScientist(builder, position = [0, 0, 0], hat = true, rotation = 0) {
     shape('Shirt cuff', 'cylinder', [side * 0.276, 0.94, 0.007], [0.052, 0.04, 0.052], 'paper');
     shape('Resting hand silhouette', 'sphere', [side * 0.28, 0.858, 0.016], [0.047, 0.079, 0.035], 'skin');
     const mirror = side < 0 ? Math.PI : 0;
-    shape('Notched wool lapel', 'lapel', [0, 1.32, 0.14], [1, 1, 1], 'lapel', [0, mirror, 0]);
-    shape('Shirt collar', 'shirtCollar', [0, 1.465, 0.145], [1, 1, 1], 'paper', [0, mirror, 0]);
+    shape('Notched wool lapel', 'lapel', [0, 1.36, 0.125], [0.9, 1.08, 1], 'lapel', [0, mirror, 0]);
+    shape('Shirt collar', 'shirtCollar', [0, 1.525, 0.092], [0.9, 0.9, 1], 'paper', [0, mirror, 0]);
     shape('Ear silhouette', 'sphere', [side * 0.104, 1.668, -0.004], [0.018, 0.036, 0.026], 'skin');
   }
-  shape('Sculpted tailored jacket', 'coat', [0, 1.16, 0], [0.25, 0.68, 0.145], 'cloth');
-  shape('Tailored shoulder line', 'sphere', [0, 1.439, -0.012], [0.218, 0.025, 0.094], 'cloth');
-  shape('Shirt front', 'box', [0, 1.39, 0.131], [0.09, 0.2, 0.012], 'paper');
-  shape('Tie knot', 'sphere', [0, 1.448, 0.154], [0.014, 0.016, 0.009], 'graphite');
-  shape('Narrow silk tie', 'box', [0, 1.355, 0.151], [0.019, 0.17, 0.006], 'graphite');
+  shape('Sculpted tailored jacket', 'coat', [0, 1.185, 0], [0.225, 0.73, 0.125], 'cloth');
+  shape('Tailored shoulder line', 'sphere', [0, 1.465, -0.012], [0.212, 0.042, 0.081], 'cloth');
+  shape('Shirt front', 'box', [0, 1.425, 0.114], [0.08, 0.22, 0.012], 'paper');
+  shape('Tie knot', 'sphere', [0, 1.50, 0.121], [0.013, 0.014, 0.008], 'graphite');
+  shape('Narrow silk tie', 'box', [0, 1.402, 0.128], [0.017, 0.17, 0.006], 'graphite');
   shape('Welt breast pocket', 'box', [-0.135, 1.3, 0.13], [0.075, 0.008, 0.007], 'lapel');
   for (const height of [1.18, 1.08]) {
     shape('Horn jacket button', 'sphere', [0.017, height, 0.136], [0.009, 0.009, 0.003], 'graphite');
   }
-  shape('Neck', 'cylinder', [0, 1.533, -0.005], [0.053, 0.11, 0.057], 'skin');
-  shape('Continuous sculpted head', 'head', [0, 1.686, -0.01], [0.11, 0.163, 0.106], 'skin');
-  for (const side of [-1, 1]) {
-    shape('Facial eye white', 'sphere', [side * 0.046, 1.711, 0.079], [0.021, 0.008, 0.013], 'eye');
-    shape('Facial blue iris', 'sphere', [side * 0.046, 1.711, 0.0905], [0.0065, 0.0063, 0.0018], 'iris');
-    shape('Facial pupil', 'sphere', [side * 0.046, 1.711, 0.092], [0.0027, 0.0034, 0.0009], 'pupil');
-    const eyelid = shape('Facial upper eyelid', 'eyelid', [side * 0.046, 1.711, 0.085], [0.047, 0.018, 0.017], 'skin');
-    eyelid.morph = blinkPose;
-    shape('Facial lower eyelid', 'sphere', [side * 0.046, 1.704, 0.085], [0.022, 0.0035, 0.005], 'skin');
-    shape('Facial eyebrow', 'sphere', [side * 0.046, 1.735, 0.09], [0.028, 0.004, 0.005], 'graphite', [0, 0, side * -0.11]);
-    shape('Facial nostril', 'sphere', [side * 0.008, 1.66, 0.1245], [0.0038, 0.0022, 0.0018], 'lip');
-    shape('Facial ear concha', 'sphere', [side * 0.117, 1.668, 0.002], [0.0025, 0.017, 0.012], 'lip');
-  }
-  shape('Facial upper lip', 'sphere', [0, 1.633, 0.096], [0.027, 0.0033, 0.005], 'lip');
-  shape('Facial lower lip', 'sphere', [0, 1.627, 0.095], [0.026, 0.0038, 0.005], 'lip');
-  shape('Facial mouth seam', 'sphere', [0, 1.631, 0.101], [0.024, 0.0011, 0.001], 'graphite');
-  shape('Swept hair', 'sphere', [0, 1.795, -0.038], [0.109, 0.055, 0.086], 'graphite', [-0.2, 0, 0]);
+  shape('Neck', 'sphere', [0, 1.551, -0.011], [0.057, 0.064, 0.057], 'skin');
+  const face = shape('Continuous sculpted head', 'head', [0, 1.686, -0.01], [0.112, 0.157, 0.106], 'face');
+  face.morph = expressionPose;
+  shape('Swept hair', 'hair', [0, 1.686, -0.01], [0.114, 0.158, 0.108], 'graphite');
   if (hat) {
-    shape('Fedora sweeping brim', 'hatBrim', [0, 1.809, 0], [0.195, 0.13, 0.164], 'cloth', [-0.06, 0, -0.035]);
-    shape('Fedora tapered felt crown', 'hatCrown', [0, 1.866, -0.022], [0.137, 0.11, 0.122], 'cloth');
-    shape('Fedora grosgrain band', 'cylinder', [0, 1.827, -0.022], [0.137, 0.034, 0.121], 'graphite');
+    shape('Fedora sweeping brim', 'hatBrim', [0, 1.799, 0], [0.169, 0.11, 0.145], 'cloth', [-0.06, 0, -0.035]);
+    shape('Fedora tapered felt crown', 'hatCrown', [0, 1.844, -0.017], [0.123, 0.10, 0.112], 'cloth');
+    shape('Fedora grosgrain band', 'cylinder', [0, 1.815, -0.017], [0.123, 0.026, 0.111], 'graphite');
   }
 }
 
@@ -746,8 +776,7 @@ function createSparks(meshes) {
 }
 
 function animateSet(parts, sceneName) {
-  const animateActors = createFilmActorRig(parts);
-  const blinkPoses = [...new Set(parts.filter(part => part.morph).map(part => part.morph))];
+  const animateActors = createFilmActorRig(parts, sceneName);
   const animatePhysics = sceneName === 'apparatus' ? createCradleAnimation(parts) : null;
   const moving = parts.filter(part =>
     sceneName === 'sparks' || sceneName === 'atom' ||
@@ -763,13 +792,6 @@ function animateSet(parts, sceneName) {
   }
   return function animate(time) {
     animateActors(time);
-    for (let index = 0; index < blinkPoses.length; index++) {
-      const phase = ((time + index * 0.73) % 3.7 + 3.7) % 3.7;
-      const closure = phase >= 1.8 && phase <= 2.04
-        ? Math.sin((phase - 1.8) / 0.24 * Math.PI) ** 2
-        : 0;
-      blinkPoses[index].weights[0] = closure;
-    }
     animatePhysics?.(time);
     moving.forEach((part, index) => {
       const base = bases[index];
@@ -813,7 +835,7 @@ function animateSet(parts, sceneName) {
 
 export function createFilmScenes() {
   const meshes = {
-    eyelid: createEyelidMesh(),
+    hair: sampledSurface(96, 48, sampleScientistHair),
     box: box(0.025, 2),
     head: createScientistHeadMesh(),
     hatCrown: createFedoraCrown(),
