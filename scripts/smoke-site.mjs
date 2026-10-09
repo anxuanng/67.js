@@ -3,6 +3,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { chromium } from 'playwright';
 
 const origin = process.argv[2] ?? 'http://127.0.0.1:5173';
+await import('./smoke-navigation.mjs');
 await mkdir('artifacts', { recursive: true });
 const browser = await chromium.launch({ executablePath:'C:/Program Files/Google/Chrome/Application/chrome.exe', headless:true, args:['--enable-webgl','--ignore-gpu-blocklist'] });
 const errors = [];

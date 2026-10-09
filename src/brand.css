@@ -11,7 +11,7 @@ button[aria-pressed=true] { background:#ffffff20; color:#fff; }
 body .primary { background:#ececec; color:#171717; }
 body .primary:hover { background:#fff; }
 body input[type=range] { accent-color:#d7d7d7; }
-.studio-nav a[aria-current], nav a[aria-current] { color:#ececec; }
+.studio-nav a[aria-current], nav a[aria-current] { color:var(--text); }
 .toolbar, .world-header { z-index:3; }
 body .controls, body .landscape-controls { background:#171717e8; border:1px solid #ffffff1c; border-radius:var(--panel-radius); backdrop-filter:blur(16px); }
 .demo-links { display:flex; gap:12px; font-size:12px; }
