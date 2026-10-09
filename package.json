@@ -26,7 +26,8 @@
     "docs/animation-mixer.md",
     "docs/material-maps.md",
     "docs/modeling.md",
-    "docs/scene-graph.md"
+    "docs/scene-graph.md",
+    "docs/camera-path.md"
   ],
   "main": "./build/67.module.js",
   "module": "./build/67.module.js",

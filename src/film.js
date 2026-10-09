@@ -1,4 +1,5 @@
 import { mat4, quat, vec3 } from 'gl-matrix';
+import { createCameraPath } from './camera-path.js';
 import { box, cylinder, sphere, torus } from './geometry.js';
 
 export const FILM_DURATION = 187;
@@ -706,7 +707,33 @@ export function createFilmScenes() {
 
 // Camera endpoints belong to shots; reused sets never carry playback state.
 function shot(start, end, scene, eye, nextEye, target, nextTarget = target, fov = [40, 38], monochrome = 0, exposure = 0.95) {
-  return { start, end, scene, eye: [eye, nextEye], target: [target, nextTarget], fov, monochrome, exposure };
+  const duration = end - start;
+  const channel = (first, last) => ({ interpolation: 'SMOOTH', keyframes: [
+    { time: 0, value: first },
+    { time: duration, value: last },
+  ] });
+  let eyeChannel = channel(eye, nextEye);
+  if (['atom', 'gadget'].includes(scene)) {
+    const horizontalTravel = nextEye[0] - eye[0];
+    const depthTravel = nextEye[2] - eye[2];
+    const midpoint = eye.map((value, axis) => (value + nextEye[axis]) / 2);
+    midpoint[0] -= depthTravel * 0.14;
+    midpoint[2] += horizontalTravel * 0.14;
+    const tangent = eye.map((value, axis) => (nextEye[axis] - value) * 1.5 / duration);
+    eyeChannel = { interpolation: 'CUBICSPLINE', keyframes: [
+      { time: 0, value: eye, inTangent: [0, 0, 0], outTangent: [0, 0, 0] },
+      { time: duration / 2, value: midpoint, inTangent: tangent, outTangent: tangent },
+      { time: duration, value: nextEye, inTangent: [0, 0, 0], outTangent: [0, 0, 0] },
+    ] };
+  }
+  const cameraPath = createCameraPath({
+    duration,
+    eye: eyeChannel,
+    target: channel(target, nextTarget),
+    fov: channel(fov[0], fov[1]),
+    far: 600,
+  });
+  return { start, end, scene, eye: [eye, nextEye], target: [target, nextTarget], fov, monochrome, exposure, cameraPath };
 }
 
 export const FILM_SHOTS = [
@@ -750,21 +777,12 @@ function smoothstep(value) {
   return bounded * bounded * (3 - 2 * bounded);
 }
 
-function interpolate(first, second, fraction) {
-  return first + (second - first) * fraction;
-}
-
 export function sampleFilm(time) {
   if (!Number.isFinite(time)) throw new TypeError('Film time must be finite.');
   const boundedTime = Math.max(0, Math.min(FILM_DURATION, time));
   const shotIndex = FILM_SHOTS.findIndex(candidate => boundedTime < candidate.end);
   const selected = FILM_SHOTS[shotIndex < 0 ? FILM_SHOTS.length - 1 : shotIndex];
-  const eased = smoothstep((boundedTime - selected.start) / (selected.end - selected.start));
-  const camera = {
-    eye: selected.eye[0].map((value, axis) => interpolate(value, selected.eye[1][axis], eased)),
-    target: selected.target[0].map((value, axis) => interpolate(value, selected.target[1][axis], eased)),
-    fov: interpolate(...selected.fov, eased),
-  };
+  const camera = selected.cameraPath.sample(boundedTime - selected.start);
   const ignitionTime = boundedTime - 181;
   const flash = ignitionTime >= 0 && ignitionTime < 0.7 ? Math.exp(-ignitionTime * 7) : 0;
   const visibility = smoothstep(boundedTime / 0.8) * (1 - smoothstep((boundedTime - 185.8) / 1.2));
