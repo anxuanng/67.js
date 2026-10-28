@@ -70,6 +70,8 @@ Read `docs/volumetric.md` for controls, resource cost and limitations before aut
 `frame.environment.volumeFog` replaces the entire constructor fog object, with defaults for omitted fields.
 Use absolute frame time for reproducible density drift. Local point lights do not scatter in fog yet.
 
+Material alpha fields: `alphaMode` `'opaque'` (default), `'mask'` (cutout, `alphaCutoff` default 0.5, shadows follow the cutout, smooth edges with MSAA) or `'blend'` (translucent, drawn after opaque, sorted back to front, no shadow unless `castShadow: true`). `opacity` (0 to 1, default 1) multiplies the base map alpha. `doubleSided` (default false) draws both faces with a flipped back-face normal. Use `mask` plus `doubleSided` for leaf cards. All four are batch state: changing them after upload requires a new renderer.
+
 `part.castShadow: false` omits a mesh from shadows while leaving it visible and opaque.
 Changing its casting regime requires a new renderer. Shadow-casting groups use separate batches.
 

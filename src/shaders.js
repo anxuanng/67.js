@@ -116,19 +116,34 @@ layout(location=0) in vec3 position;
 layout(location=2) in mat4 instanceMatrix;
 layout(location=11) in vec3 assemblyOffset;
 layout(location=12) in vec3 assemblyDetailOffset;
+layout(location=13) in vec2 uv;
 uniform mat4 lightProjection;
 uniform float assemblyAmount;
+out vec2 textureUV;
 ${skinningShader}
 ${morphingShader}
 void main() {
   vec4 world = instanceMatrix * skinTransform() * vec4(morphedPosition(position), 1.0);
   world.xyz += assemblyOffset * assemblyAmount + assemblyDetailOffset * smoothstep(0.3, 1.0, assemblyAmount);
+  textureUV = uv;
   gl_Position = lightProjection * world;
 }`;
 
+// Only masked batches sample the base map, so shadows follow the cutout.
 export const depthFragmentShader = `#version 300 es
 precision highp float;
-void main() {}
+in vec2 textureUV;
+uniform float alphaMasked;
+uniform float alphaCutoff;
+uniform float materialOpacity;
+uniform float hasBaseMap;
+uniform sampler2D baseMap;
+void main() {
+  if (alphaMasked < 0.5) return;
+  float alpha = materialOpacity;
+  if (hasBaseMap > 0.5) alpha *= texture(baseMap, textureUV).a;
+  if (alpha < alphaCutoff) discard;
+}
 `;
 
 export const benchmarkVertexShader = `#version 300 es
@@ -197,6 +212,11 @@ uniform float hasEmissiveMap;
 uniform vec2 normalScale;
 uniform float occlusionStrength;
 uniform float hdrEnabled;
+uniform float alphaMode;
+uniform float alphaCutoff;
+uniform float materialOpacity;
+uniform float alphaToCoverage;
+uniform float doubleSided;
 out vec4 outputColor;
 const float PI = 3.14159265359;
 
@@ -313,18 +333,40 @@ vec3 mappedNormal(vec3 normal) {
   return dot(mapped, mapped) > 1e-12 ? normalize(mapped) : normal;
 }
 
+// Opaque draws 1, mask resolves to a cutout (smooth coverage with MSAA) and blend keeps the fraction.
+float surfaceAlpha(float textureAlpha) {
+  if (alphaMode < 0.5) return 1.0;
+  float alpha = materialOpacity * textureAlpha;
+  if (alphaMode > 1.5) return alpha;
+  if (alphaToCoverage > 0.5) {
+    float softness = max(fwidth(alpha), 0.0001);
+    alpha = clamp((alpha - alphaCutoff) / softness + 0.5, 0.0, 1.0);
+    if (alpha <= 0.0) discard;
+    return alpha;
+  }
+  if (alpha < alphaCutoff) discard;
+  return 1.0;
+}
+
 void main() {
   vec3 normal = normalize(worldNormal);
+  if (doubleSided > 0.5 && !gl_FrontFacing) normal = -normal;
   if (hasNormalMap > 0.5) normal = mappedNormal(normal);
   vec3 viewDirection = normalize(eye - worldPosition);
   vec3 color = mix(baseColor, armorColor, step(0.5, surface.w) * (1.0 - step(1.5, surface.w)));
   color *= vertexTint;
-  if (hasBaseMap > 0.5) color *= texture(baseMap, textureUV).rgb;
+  float textureAlpha = 1.0;
+  if (hasBaseMap > 0.5) {
+    vec4 sampledBase = texture(baseMap, textureUV);
+    color *= sampledBase.rgb;
+    textureAlpha = sampledBase.a;
+  }
+  float alpha = surfaceAlpha(textureAlpha);
   vec3 emission = emissionColor * surface.z;
   if (hasEmissiveMap > 0.5) emission *= texture(emissiveMap, textureUV).rgb;
   if (surface.w == 10.0) {
     vec3 radiance = color * exposure + emission;
-    outputColor = vec4(hdrEnabled > 0.5 ? radiance : pow(max(radiance, vec3(0)), vec3(1.0 / 2.2)), 1.0);
+    outputColor = vec4(hdrEnabled > 0.5 ? radiance : pow(max(radiance, vec3(0)), vec3(1.0 / 2.2)), alpha);
     return;
   }
   float metallic = surface.x;
@@ -426,7 +468,7 @@ void main() {
   float fog = 1.0 - exp(-length(worldPosition - eye) * fogDensity);
   radiance = mix(radiance, fogColor, fog * worldMode);
   if (inspection > 0.5) radiance = normal * 0.5 + 0.5;
-  outputColor = vec4(hdrEnabled > 0.5 ? clamp(radiance * exposure, vec3(0), vec3(65504.0)) : pow(toneMap(radiance * exposure), vec3(1.0 / 2.2)), 1.0);
+  outputColor = vec4(hdrEnabled > 0.5 ? clamp(radiance * exposure, vec3(0), vec3(65504.0)) : pow(toneMap(radiance * exposure), vec3(1.0 / 2.2)), alpha);
   if (surface.w == 2.0 && inspection < 0.5) {
     float distanceFade = exp(-length(worldPosition.xz) * 0.08);
     float contact = 1.0 - 0.1 * exp(-dot(worldPosition.xz, worldPosition.xz) * 1.4);

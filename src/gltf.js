@@ -6,13 +6,14 @@ import { MAX_MORPH_TARGETS, createMorphPose, validateMorphGeometry, validateMorp
 
 export const GLTF_CAPABILITIES = Object.freeze({
   formats: ['glb', 'gltf'],
-  supported: ['triangle meshes', 'world transforms', 'rigid node animations', 'four-influence skeletal skinning', 'joint node animations', 'relative POSITION/NORMAL morph targets', 'morph weight animations', 'PNG/JPEG base color textures', 'normal/occlusion/emissive/metallic-roughness textures', 'TEXCOORD_0', 'linear RGB vertex colors', 'metallic roughness factors', 'emissive factors', 'KHR_mesh_quantization', 'KHR_materials_emissive_strength'],
-  unsupported: ['more than four skin influences', 'singular weighted skin transforms', 'reflected skin transforms', 'TANGENT morph targets', 'morph targets without authored base normals', 'vertex alpha below one', 'alpha blending or masking', 'double-sided materials', 'texture transforms', 'DRACO', 'KTX2', 'GPU instancing'],
+  supported: ['triangle meshes', 'world transforms', 'rigid node animations', 'four-influence skeletal skinning', 'joint node animations', 'relative POSITION/NORMAL morph targets', 'morph weight animations', 'PNG/JPEG base color textures', 'normal/occlusion/emissive/metallic-roughness textures', 'TEXCOORD_0', 'linear RGB vertex colors', 'metallic roughness factors', 'emissive factors', 'alpha mask and blend modes', 'double-sided materials', 'KHR_mesh_quantization', 'KHR_materials_emissive_strength'],
+  unsupported: ['more than four skin influences', 'singular weighted skin transforms', 'reflected skin transforms', 'TANGENT morph targets', 'morph targets without authored base normals', 'vertex alpha below one', 'texture transforms', 'DRACO', 'KTX2', 'GPU instancing'],
 });
 
 const DEFAULT_MAX_BYTES = 32 * 1024 * 1024;
 const DEFAULT_MAX_VERTICES = 2_000_000;
 const ALLOWED_EXTENSIONS = new Set(['KHR_mesh_quantization', 'KHR_materials_emissive_strength']);
+const GLTF_ALPHA_MODES = { OPAQUE: 'opaque', MASK: 'mask', BLEND: 'blend' };
 const WRAPPING = { 1000: 10497, 1001: 33071, 1002: 33648 };
 const FILTERING = { 1003: 9728, 1004: 9984, 1005: 9986, 1006: 9729, 1007: 9985, 1008: 9987 };
 const MATERIAL_TEXTURES = [
@@ -241,8 +242,10 @@ function validateDocument(document, limits) {
     for (const factor of [pbr.metallicFactor ?? 1, pbr.roughnessFactor ?? 1]) {
       if (!Number.isFinite(factor) || factor < 0 || factor > 1) throw new Error('Invalid glTF metallic or roughness factor.');
     }
-    if ((material.alphaMode ?? 'OPAQUE') !== 'OPAQUE') throw new Error(`Unsupported alpha mode: ${material.alphaMode}.`);
-    if (material.doubleSided) throw new Error('Double-sided materials are unsupported.');
+    if (!Object.hasOwn(GLTF_ALPHA_MODES, material.alphaMode ?? 'OPAQUE')) throw new Error(`Unsupported alpha mode: ${material.alphaMode}.`);
+    const alphaCutoff = material.alphaCutoff ?? 0.5;
+    if (!Number.isFinite(alphaCutoff) || alphaCutoff < 0 || alphaCutoff > 1) throw new Error('Invalid glTF alphaCutoff.');
+    if (material.doubleSided !== undefined && typeof material.doubleSided !== 'boolean') throw new Error('glTF doubleSided must be a boolean.');
     for (const [, field] of MATERIAL_TEXTURES) {
       const texture = materialTexture(material, field);
       if (!texture) continue;
@@ -667,6 +670,10 @@ function convertMaterial(source, limits, maps, definition = {}) {
     normalScale: [definition.normalTexture?.scale ?? 1, definition.normalTexture?.scale ?? 1],
     occlusionStrength: source.aoMapIntensity,
   };
+  material.alphaMode = GLTF_ALPHA_MODES[definition.alphaMode ?? 'OPAQUE'];
+  material.alphaCutoff = definition.alphaCutoff ?? 0.5;
+  material.opacity = definition.pbrMetallicRoughness?.baseColorFactor?.[3] ?? 1;
+  material.doubleSided = definition.doubleSided ?? false;
   if (!material.emissiveColor.some(value => value > 0)) material.emission = 0;
   if (!Number.isFinite(Math.fround(material.emission)) || material.emission < 0) throw new Error('Emissive intensity must be a finite nonnegative float.');
   for (const [field, , colorSpace] of MATERIAL_TEXTURES) {

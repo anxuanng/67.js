@@ -11,6 +11,7 @@ import { validateMorphGeometry, validateMorphPose, validateMorphTransform, packM
 
 const MATERIAL_TAGS = { armor: 1, floor: 2, water: 3, foliage: 4, terrain: 5, grass: 7, fire: 8, smoke: 9, unlit: 10 };
 const INSTANCE_STRIDE = 41;
+const ALPHA_MODES = { opaque: 0, mask: 1, blend: 2 };
 const ZERO_VECTOR = Object.freeze([0, 0, 0]);
 const MATERIAL_MAPS = ['map', 'normalMap', 'metallicRoughnessMap', 'occlusionMap', 'emissiveMap'];
 const MAP_UNIFORMS = ['baseMap', 'normalMap', 'metallicRoughnessMap', 'occlusionMap', 'emissiveMap'];
@@ -18,6 +19,8 @@ const MAP_FLAGS = ['hasBaseMap', 'hasNormalMap', 'hasMetallicRoughnessMap', 'has
 const DEFAULT_NORMAL_SCALE = [1, 1];
 const PROCEDURAL_MATERIAL_TAGS = new Set(['water', 'foliage', 'grass', 'terrain', 'floor', 'fire', 'smoke']);
 const SKIN_UNIFORMS = ['skinEnabled', 'skinInfluences', 'jointPalette'];
+const ALPHA_UNIFORMS = ['alphaMode', 'alphaCutoff', 'materialOpacity', 'alphaToCoverage', 'doubleSided'];
+const DEPTH_ALPHA_UNIFORMS = ['alphaMasked', 'alphaCutoff', 'materialOpacity', 'hasBaseMap', 'baseMap'];
 const MORPH_UNIFORMS = ['morphEnabled', 'morphVertexCount', 'morphTargetCount', 'morphWeights[0]', 'morphTargets'];
 
 function validateMaterialMaps(material) {
@@ -40,6 +43,30 @@ function materialMapState(material) {
   const normalScale = material.normalScale ?? DEFAULT_NORMAL_SCALE;
   const occlusionStrength = material.occlusionStrength ?? 1;
   return [...MATERIAL_MAPS.map(field => material[field] ?? null), normalScale[0], normalScale[1], occlusionStrength];
+}
+
+function validateAlphaMaterial(material) {
+  const alphaMode = material.alphaMode ?? 'opaque';
+  if (!Object.hasOwn(ALPHA_MODES, alphaMode)) throw new Error("alphaMode must be 'opaque', 'mask' or 'blend'.");
+  for (const field of ['alphaCutoff', 'opacity']) {
+    const value = material[field] ?? 1;
+    if (typeof value !== 'number' || !Number.isFinite(value) || value < 0 || value > 1) throw new Error(`${field} must be a number within zero and one.`);
+  }
+  if (material.doubleSided !== undefined && typeof material.doubleSided !== 'boolean') throw new TypeError('doubleSided must be a boolean');
+}
+
+/** Alpha settings that every instance of one draw call must share. Fields that a mode ignores are normalized away. */
+function materialAlphaState(material) {
+  validateAlphaMaterial(material);
+  const alphaMode = material.alphaMode ?? 'opaque';
+  const alphaCutoff = alphaMode === 'mask' ? material.alphaCutoff ?? 0.5 : 0;
+  const opacity = alphaMode === 'opaque' ? 1 : material.opacity ?? 1;
+  return [alphaMode, alphaCutoff, opacity, material.doubleSided === true];
+}
+
+// Translucent glass is not a shadow caster unless the part asks for it.
+function castsShadow(part) {
+  return part.castShadow ?? (part.material.alphaMode ?? 'opaque') !== 'blend';
 }
 
 function hasMaterialMap(material) {
@@ -138,7 +165,7 @@ export function groupParts(parts, batching = true) {
     const key = batching ? part.geometry : part;
     if (!groups.has(key)) groups.set(key, new Map());
     let maps = groups.get(key);
-    for (const value of [...materialMapState(part.material), part.skin ?? null, part.morph ?? null, part.castShadow !== false]) {
+    for (const value of [...materialMapState(part.material), part.skin ?? null, part.morph ?? null, castsShadow(part), ...materialAlphaState(part.material)]) {
       if (!maps.has(value)) maps.set(value, new Map());
       maps = maps.get(value);
     }
@@ -292,7 +319,7 @@ export class Renderer67 {
     this.inverseViewProjection = mat4.create();
     this.program = compileProgram(this.context, benchmark ? benchmarkVertexShader : vertexShader, benchmark ? benchmarkFragmentShader : fragmentShader);
     this.depthProgram = compileProgram(this.context, depthVertexShader, depthFragmentShader);
-    this.uniforms = Object.fromEntries(['viewProjection', 'lightProjection', 'eye', 'armorColor', 'armorSurface', 'exposure', 'inspection', 'shadowMap', ...MAP_UNIFORMS, ...MAP_FLAGS, ...SKIN_UNIFORMS, ...MORPH_UNIFORMS, 'normalScale', 'occlusionStrength', 'hdrEnabled', 'time', 'wind', 'worldMode', 'daylight', 'fogColor', 'lightDirection', 'fogDensity', 'waterRipple', 'rippleTime', 'explosionProgress', 'explosionCenter', 'assemblyAmount'].map((name) => [name, this.context.getUniformLocation(this.program, name)]));
+    this.uniforms = Object.fromEntries(['viewProjection', 'lightProjection', 'eye', 'armorColor', 'armorSurface', 'exposure', 'inspection', 'shadowMap', ...MAP_UNIFORMS, ...MAP_FLAGS, ...SKIN_UNIFORMS, ...MORPH_UNIFORMS, 'normalScale', 'occlusionStrength', 'hdrEnabled', 'time', 'wind', 'worldMode', 'daylight', 'fogColor', 'lightDirection', 'fogDensity', 'waterRipple', 'rippleTime', 'explosionProgress', 'explosionCenter', 'assemblyAmount', ...ALPHA_UNIFORMS].map((name) => [name, this.context.getUniformLocation(this.program, name)]));
     for (const name of ['pointLightCount', 'pointLightPositions[0]', 'pointLightColors[0]', 'pointLightRadii[0]', 'keyColor', 'fillIntensity', 'ambientIntensity']) {
       this.uniforms[name] = this.context.getUniformLocation(this.program, name);
     }
@@ -306,6 +333,7 @@ export class Renderer67 {
       this.bloomUniforms = Object.fromEntries(['sourceTexture', 'texelDirection', 'threshold', 'extract'].map(name => [name, this.context.getUniformLocation(this.bloomProgram, name)]));
       this.skyUniforms = Object.fromEntries(['skyTop', 'skyBottom', 'sunDirection', 'inverseViewProjection', 'eye', 'time', 'daylight', 'hdrEnabled'].map((name) => [name, this.context.getUniformLocation(this.skyProgram, name)]));
     }
+    this.depthAlphaUniforms = Object.fromEntries(DEPTH_ALPHA_UNIFORMS.map(name => [name, this.context.getUniformLocation(this.depthProgram, name)]));
     this.depthUniform = this.context.getUniformLocation(this.depthProgram, 'lightProjection');
     this.depthAssemblyUniform = this.context.getUniformLocation(this.depthProgram, 'assemblyAmount');
     this.partCount = parts.length;
@@ -455,7 +483,8 @@ export class Renderer67 {
     const morph = parts[0].morph ?? null;
     const morphTexture = morph ? this.createMorphTexture(geometry, morph) : null;
     const morphWeights = morph ? new Float32Array(morph.weights) : null;
-    const batch = { parts: [...parts], vertexArray, instanceBuffer, instanceData, textures, mapState, texture: textures[0], map, skin, skinTexture, influenceTexture, morph, morphTexture, morphWeights, indexCount: geometry.indices.length, instanceCount: parts.length, floor: parts[0].material.tag === 'floor', castShadow: parts[0].castShadow !== false };
+    const [alphaMode, alphaCutoff, opacity, doubleSided] = materialAlphaState(parts[0].material);
+    const batch = { alphaMode, alphaCutoff, opacity, doubleSided, parts: [...parts], vertexArray, instanceBuffer, instanceData, textures, mapState, texture: textures[0], map, skin, skinTexture, influenceTexture, morph, morphTexture, morphWeights, indexCount: geometry.indices.length, instanceCount: parts.length, floor: parts[0].material.tag === 'floor', castShadow: castsShadow(parts[0]) };
     parts.forEach((part, index) => this.partLocations.set(part, { batch, index, geometry: part.geometry, map, mapState, skin, jointMatrices: skin?.jointMatrices, skinIndices: geometry.skinIndices, skinWeights: geometry.skinWeights, morph, morphWeights: morph?.weights, morphTargets: geometry.morphTargets, normalMatrix: mat3.create(), committedMatrix: batch.instanceData.subarray(index * INSTANCE_STRIDE, index * INSTANCE_STRIDE + 16) }));
     return batch;
   }
@@ -488,8 +517,10 @@ export class Renderer67 {
       const batch = location?.batch;
       const mapState = materialMapState(first.material);
       const sameParts = batch?.parts.length === group.length && batch.parts.every((part, index) => part === group[index]);
-      const sameState = location?.geometry === first.geometry && batch?.castShadow === (first.castShadow !== false) &&
+      const alphaState = materialAlphaState(first.material);
+      const sameState = location?.geometry === first.geometry && batch?.castShadow === castsShadow(first) &&
         batch.floor === (first.material.tag === 'floor') &&
+        [batch.alphaMode, batch.alphaCutoff, batch.opacity, batch.doubleSided].every((value, index) => value === alphaState[index]) &&
         batch.mapState.every((value, index) => value === mapState[index]);
       if (sameParts && sameState) {
         retained.add(batch);
@@ -618,7 +649,10 @@ export class Renderer67 {
       const location = this.partLocations.get(part);
       if (!location) throw new Error(`Unknown part identity: ${part.name}`);
       if (part.castShadow !== undefined && typeof part.castShadow !== 'boolean') throw new TypeError('castShadow must be a boolean');
-      if ((part.castShadow !== false) !== location.batch.castShadow) throw new Error(`Shadow casting changes require a new renderer: ${part.name}`);
+      if (castsShadow(part) !== location.batch.castShadow) throw new Error(`Shadow casting changes require a new renderer: ${part.name}`);
+      const alphaState = materialAlphaState(part.material);
+      const batchAlphaState = [location.batch.alphaMode, location.batch.alphaCutoff, location.batch.opacity, location.batch.doubleSided];
+      if (alphaState.some((value, index) => value !== batchAlphaState[index])) throw new Error(`Alpha mode, cutoff, opacity and double-sided changes require a new renderer: ${part.name}`);
       if (part.geometry !== location.geometry) throw new Error(`Geometry changes require a new renderer: ${part.name}`);
       if ((part.skin ?? null) !== location.skin || part.skin?.jointMatrices !== location.jointMatrices || part.geometry.skinIndices !== location.skinIndices || part.geometry.skinWeights !== location.skinWeights) throw new Error(`Skin identity changes require a new renderer: ${part.name}`);
       if (part.skin) {
@@ -716,10 +750,13 @@ export class Renderer67 {
     context.useProgram(this.depthProgram);
     context.uniformMatrix4fv(this.depthUniform, false, this.lightProjection);
     context.uniform1f(this.depthAssemblyUniform, this.assemblyAmount ?? 0);
+    // The base map sampler must not alias the shadow texture on unit 0 while that texture is the render target.
+    context.uniform1i(this.depthAlphaUniforms.baseMap, 1);
     context.enable(context.POLYGON_OFFSET_FILL);
     context.polygonOffset(1, 1);
-    for (const batch of this.batches) if (!batch.floor && batch.castShadow) this.drawBatch(batch);
+    for (const batch of this.batches) if (!batch.floor && batch.castShadow) this.drawAlphaBatch(batch, false);
     context.disable(context.POLYGON_OFFSET_FILL);
+    context.enable(context.CULL_FACE);
     context.bindFramebuffer(context.FRAMEBUFFER, null);
     this.shadowsDirty = false;
   }
@@ -906,6 +943,88 @@ export class Renderer67 {
     }
   }
 
+  /** Culling, cutout and opacity state for one batch, in the color pass (textured) or the shadow depth pass. */
+  applyAlphaState(batch, textured) {
+    const context = this.context;
+    if (batch.doubleSided) {
+      context.disable(context.CULL_FACE);
+    } else {
+      context.enable(context.CULL_FACE);
+    }
+    const masked = batch.alphaMode === 'mask';
+    if (!textured) {
+      const uniforms = this.depthAlphaUniforms;
+      context.uniform1f(uniforms.alphaMasked, masked ? 1 : 0);
+      context.uniform1f(uniforms.alphaCutoff, batch.alphaCutoff);
+      context.uniform1f(uniforms.materialOpacity, batch.opacity);
+      context.uniform1f(uniforms.hasBaseMap, batch.mapState[0] ? 1 : 0);
+      if (masked) {
+        context.activeTexture(context.TEXTURE0 + 1);
+        context.bindTexture(context.TEXTURE_2D, batch.textures[0]);
+      }
+      return;
+    }
+    const useCoverage = masked && this.samples > 1 && !this.benchmark;
+    if (useCoverage) {
+      context.enable(context.SAMPLE_ALPHA_TO_COVERAGE);
+    } else {
+      context.disable(context.SAMPLE_ALPHA_TO_COVERAGE);
+    }
+    const uniforms = this.uniforms;
+    context.uniform1f(uniforms.alphaMode, ALPHA_MODES[batch.alphaMode]);
+    context.uniform1f(uniforms.alphaCutoff, batch.alphaCutoff);
+    context.uniform1f(uniforms.materialOpacity, batch.opacity);
+    context.uniform1f(uniforms.alphaToCoverage, useCoverage ? 1 : 0);
+    context.uniform1f(uniforms.doubleSided, batch.doubleSided ? 1 : 0);
+  }
+
+  /** Reorders a blend batch's instances back to front for this eye; translation columns stand in for object centers. */
+  uploadSortedInstances(batch, eye) {
+    if (batch.instanceCount < 2) return;
+    const data = batch.instanceData;
+    const distances = Array.from({ length: batch.instanceCount }, (unused, index) => {
+      const offset = index * INSTANCE_STRIDE;
+      return { index, distance: Math.hypot(data[offset + 12] - eye[0], data[offset + 13] - eye[1], data[offset + 14] - eye[2]) };
+    });
+    distances.sort((first, second) => second.distance - first.distance);
+    batch.sortedData ??= new Float32Array(data.length);
+    distances.forEach(({ index }, rank) => {
+      batch.sortedData.set(data.subarray(index * INSTANCE_STRIDE, (index + 1) * INSTANCE_STRIDE), rank * INSTANCE_STRIDE);
+    });
+    this.context.bindBuffer(this.context.ARRAY_BUFFER, batch.instanceBuffer);
+    this.context.bufferSubData(this.context.ARRAY_BUFFER, 0, batch.sortedData);
+  }
+
+  /** Alpha-blended batches draw after opaque and masked geometry, farthest first, without writing depth. */
+  drawBlendBatches(eye) {
+    const context = this.context;
+    const blendBatches = this.batches.filter(batch => batch.alphaMode === 'blend');
+    if (blendBatches.length === 0) return;
+    const distance = (batch) => {
+      let total = 0;
+      for (let index = 0; index < batch.instanceCount; index++) {
+        const offset = index * INSTANCE_STRIDE;
+        total += Math.hypot(batch.instanceData[offset + 12] - eye[0], batch.instanceData[offset + 13] - eye[1], batch.instanceData[offset + 14] - eye[2]);
+      }
+      return total / batch.instanceCount;
+    };
+    const ordered = blendBatches.map(batch => ({ batch, distance: distance(batch) })).sort((first, second) => second.distance - first.distance);
+    context.enable(context.BLEND);
+    context.blendFuncSeparate(context.SRC_ALPHA, context.ONE_MINUS_SRC_ALPHA, context.ONE, context.ONE_MINUS_SRC_ALPHA);
+    context.depthMask(false);
+    for (const { batch } of ordered) {
+      this.uploadSortedInstances(batch, eye);
+      this.drawAlphaBatch(batch, true);
+    }
+    context.depthMask(true);
+    context.disable(context.BLEND);
+  }
+
+  drawAlphaBatch(batch, textured) {
+    this.applyAlphaState(batch, textured);
+    this.drawBatch(batch, textured);
+  }
+
   drawBatch(batch, textured = false) {
     if (this.hasMorphs) {
       const uniforms = textured ? this.uniforms : this.depthMorphUniforms;
@@ -1010,7 +1129,10 @@ export class Renderer67 {
     context.activeTexture(context.TEXTURE0);
     context.bindTexture(context.TEXTURE_2D, this.shadowTexture);
     context.uniform1i(this.uniforms.shadowMap, 0);
-    for (const batch of this.batches) this.drawBatch(batch, true);
+    for (const batch of this.batches) if (batch.alphaMode !== 'blend') this.drawAlphaBatch(batch, true);
+    this.drawBlendBatches(eye);
+    context.disable(context.SAMPLE_ALPHA_TO_COVERAGE);
+    context.enable(context.CULL_FACE);
     context.bindVertexArray(null);
     if (!this.benchmark) this.resolveFrame(frame, effects, environment, volume);
     this.cpuMilliseconds = performance.now() - start;
