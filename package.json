@@ -75,6 +75,7 @@
     "./addons/shrinkwrap": "./build/shrinkwrap.js",
     "./addons/surface-attachment": "./build/surface-attachment.js",
     "./addons/physics": "./build/physics.js",
+    "./addons/spume": "./build/spume.js",
     "./addons/agent-scene": "./build/agent-scene.js",
     "./addons/agent-asset": "./build/agent-asset.js",
     "./package.json": "./package.json"

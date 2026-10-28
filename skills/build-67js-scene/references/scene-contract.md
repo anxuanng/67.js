@@ -44,12 +44,18 @@ The material tags select renderer behavior.
 | --- | --- |
 | `armor` | Studio finish color and surface overrides. |
 | `floor` | Studio floor shading. |
-| `water` | Animated surface normals and interaction ripples. |
+| `water` | Flat ponds and streams only: replaces normals with a near-horizontal ripple field. |
+| `liquid` | Shaped water (jets, sheets, splashes): refracts the opaque scene, absorbs by thickness, Fresnel reflection. `color` is what one metre lets through. |
+| `foam` | Soft alpha-blended whitewater droplets drawn after liquids. Set `castShadow: false`. |
 | `foliage`, `grass` | Wind movement and backlighting. |
 | `terrain` | Subtle natural surface variation. |
 | `fire`, `smoke` | Film ignition expansion and procedural shading. |
 | `unlit` | Flat linear color for vector scenes. |
 | Other tags | Standard metallic/roughness shading. |
+
+`liquid` and `foam` draw in a pass after the opaque scene and are not available in benchmark mode.
+Tune them per frame with `frame.liquid` or per renderer with `environment.liquid`: `thickness` (metres), `ior`, `refraction`, `scattering`, `foamOpacity`, `foamSoftness`.
+A liquid only refracts opaque parts, not other liquids.
 
 Material tags and colors use flat varyings.
 Interpolated numeric tags can change by tiny amounts and select the wrong shading branch.
