@@ -32,7 +32,19 @@ const materialFields = {
   roughness: unit.optional(),
   emission: nonnegative.optional().describe('Emission multiplier. Backend checks Float32 radiance products.'),
   emissiveColor: z.tuple([nonnegative, nonnegative, nonnegative]).optional().describe('Independent linear RGB emission color.'),
+  opacity: unit.optional().describe('Surface opacity. Any value below one draws the material blended (glass, windows, visors).'),
+  alphaMode: z.enum(['opaque', 'blend']).optional().describe('blend draws after opaque geometry, sorted back to front.'),
+  doubleSided: z.boolean().optional().describe('Draw and light both faces (thin sheets, leaves, cloth).'),
 };
+const materialTag = z.enum(['surface', 'unlit', 'liquid', 'foam']).optional().describe('liquid refracts what lies behind it and absorbs by thickness: color is the light one metre lets through. foam is soft blended whitewater.');
+const liquidOptics = z.strictObject({
+  thickness: z.number().min(0).max(100).optional().describe('Metres of liquid where it faces the camera.'),
+  ior: z.number().min(1).max(3).optional(),
+  refraction: z.number().min(0).max(4).optional(),
+  scattering: z.number().min(0).max(10).optional(),
+  foamOpacity: unit.optional(),
+  foamSoftness: unit.optional(),
+});
 const cameraFields = {
   eye: vector3.optional().describe('Camera position in world coordinates.'),
   target: vector3.optional().describe('World point toward which the camera looks.'),
@@ -76,6 +88,7 @@ const environment = z.strictObject({
   fogColor: color.optional(),
   fogDensity: bounded(0, 10).optional(),
   volumeFog: volumeFog.optional().describe('Bounded depth-clipped directional scattering; requires HDR support.'),
+  liquid: liquidOptics.optional().describe('Optics for materials tagged liquid or foam.'),
 });
 const effects = z.strictObject({
   exposure: bounded(0.01, 16).optional(),
@@ -140,7 +153,7 @@ const recipe = z.strictObject({
   format: z.literal('67js.scene'),
   schemaVersion: z.literal(1),
   geometries: z.array(geometry).max(256),
-  materials: z.array(z.strictObject({ id: identifier, tag: z.enum(['surface', 'unlit']).optional(), ...materialFields })).max(256),
+  materials: z.array(z.strictObject({ id: identifier, tag: materialTag, ...materialFields })).max(256),
   nodes: z.array(nodeRecord).max(4096),
   camera: z.strictObject(cameraFields).optional(),
   environment: environment.optional(),
@@ -180,7 +193,7 @@ const operation = z.discriminatedUnion('type', [
   z.strictObject({ type: z.literal('remove-node'), id: identifier, recursive: z.boolean().optional().describe('Remove descendants too. Defaults to false; dangling children reject the batch.') }),
   z.strictObject({ type: z.literal('add-geometry'), geometry }),
   z.strictObject({ type: z.literal('remove-geometry'), id: identifier }),
-  z.strictObject({ type: z.literal('add-material'), material: z.strictObject({ id: identifier, tag: z.enum(['surface', 'unlit']).optional(), ...materialFields }) }),
+  z.strictObject({ type: z.literal('add-material'), material: z.strictObject({ id: identifier, tag: materialTag, ...materialFields }) }),
   z.strictObject({ type: z.literal('remove-material'), id: identifier }),
 ]);
 const sessionFields = { sessionId: z.uuid().describe('Session UUID returned by scene_create.') };

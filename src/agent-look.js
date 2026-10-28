@@ -2,11 +2,13 @@ import { mat4 } from 'gl-matrix';
 import { createLightingState, updateLightingState, MAX_POINT_LIGHTS } from './lighting.js';
 import { resolveEffects } from './effects.js';
 import { resolveVolumeFog } from './volumetric.js';
+import { resolveLiquidOptics } from './renderer.js';
 
 const ENVIRONMENT_FIELDS = [
   'world', 'lightDirection', 'keyColor', 'keyIntensity', 'fillIntensity', 'ambientIntensity',
-  'daylight', 'pointLights', 'skyTop', 'skyBottom', 'fogColor', 'fogDensity', 'volumeFog',
+  'daylight', 'pointLights', 'skyTop', 'skyBottom', 'fogColor', 'fogDensity', 'volumeFog', 'liquid',
 ];
+const LIQUID_FIELDS = ['thickness', 'ior', 'refraction', 'scattering', 'foamOpacity', 'foamSoftness'];
 const EFFECT_FIELDS = ['exposure', 'saturation', 'contrast', 'temperature', 'vignette', 'grain', 'bloom'];
 const SHADOW_FIELDS = ['target', 'extent', 'distance', 'near', 'far'];
 const POINT_LIGHT_FIELDS = ['position', 'color', 'intensity', 'radius', 'range'];
@@ -160,6 +162,11 @@ function environmentFrom(input = {}) {
     fogDensity: numberInRange(fallback(input.fogDensity, 0.006), 0, 10, 'fogDensity'),
     volumeFog: volumeFogFrom(input.volumeFog),
   };
+  // Optional so recipes without liquids keep their exported shape.
+  if (input.liquid !== undefined) {
+    knownKeys(input.liquid, LIQUID_FIELDS, 'liquid');
+    environment.liquid = copiedJson(resolveLiquidOptics(copiedJson(input.liquid)));
+  }
   updateLightingState(createLightingState(), environment, { world });
   return environment;
 }

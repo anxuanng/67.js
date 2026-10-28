@@ -82,6 +82,32 @@ test('shader arithmetic rejects cancelling product overflow and nonfinite emissi
   assert.throws(() => createAgentScene(input), /half-float HDR/);
 });
 
+test('recipes author liquid, foam and blended glass with batch-safe material handles', () => {
+  assert.deepEqual(AGENT_SCENE_CAPABILITIES.materialTags, ['surface', 'unlit', 'liquid', 'foam']);
+  const input = recipe();
+  input.materials.push({ id: 'water', tag: 'liquid', color: [0.56, 0.84, 0.88], roughness: 0.05 });
+  input.materials.push({ id: 'glass', color: [0.9, 0.95, 1], opacity: 0.3, doubleSided: true });
+  input.environment = { liquid: { thickness: 0.8 } };
+  const session = createAgentScene(input);
+  const exported = session.exportRecipe();
+  const glass = exported.materials.find(material => material.id === 'glass');
+  assert.equal(glass.alphaMode, 'blend', 'opacity below one opts into blending');
+  assert.equal(glass.doubleSided, true);
+  assert.equal(exported.materials.find(material => material.id === 'finish').alphaMode, 'opaque');
+  assert.equal(session.environment.liquid.thickness, 0.8);
+  assert.equal(session.environment.liquid.ior, 1.33);
+  const finishMaterial = session.parts.find(part => part.name === 'child').material;
+  session.apply([{ type: 'set-material', id: 'finish', color: [1, 0, 0] }], { expectedRevision: 0 });
+  assert.equal(session.parts.find(part => part.name === 'child').material, finishMaterial, 'a color edit keeps the batch');
+  session.apply([{ type: 'set-material', id: 'finish', opacity: 0.5 }], { expectedRevision: 1 });
+  const blended = session.parts.find(part => part.name === 'child').material;
+  assert.notEqual(blended, finishMaterial, 'blending changes the batch, so the part is replaced');
+  assert.equal(blended.alphaMode, 'blend');
+  assert.throws(() => session.apply([{ type: 'set-material', id: 'finish', alphaMode: 'mask' }], { expectedRevision: 2 }), /alphaMode/);
+  assert.throws(() => session.apply([{ type: 'set-environment', environment: { liquid: { ior: 9 } } }], { expectedRevision: 2 }), /liquid\.ior/);
+  assert.throws(() => session.apply([{ type: 'set-environment', environment: { liquid: { depth: 1 } } }], { expectedRevision: 2 }), /Unknown liquid/);
+});
+
 test('trailing sparse array holes reject recipes and command batches without commit', () => {
   const input = recipe();
   input.nodes.length++;
