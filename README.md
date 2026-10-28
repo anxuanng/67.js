@@ -212,6 +212,8 @@ The source [Spume addon](docs/spume.md) plays back liquid baked by the [Spume](h
 The solver runs offline; the browser only reads the compact cache.
 The source [retarget addon](docs/retarget.md) transfers humanoid clips between rigs (Mixamo, VRM, Unreal, Rigify names) and offsets crowds deterministically. Mixamo files need the owner's Adobe login to download.
 
+The source [vehicle addon](docs/vehicle.md) drives wheeled vehicles along a path deterministically: wheel spin, steering, body roll and pitch, and ground following, for parts, scene-graph nodes or imported GLBs.
+
 The current source adds [surface attachments](docs/surface-attachment.md) for rigid accessories following a selected triangle through morphing and skinning.
 The retained frame uses world-space clearance and samples three bound vertices without rebuilding a BVH every frame.
 This addon is available from version `0.4.1`. It does not certify clearance over an accessory's entire footprint.

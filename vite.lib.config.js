@@ -27,6 +27,7 @@ export default defineConfig({
         physics: 'src/physics.js',
         spume: 'src/spume.js',
         retarget: 'src/retarget.js',
+        vehicle: 'src/vehicle.js',
         'agent-scene': 'src/agent-scene.js',
         'agent-asset': 'src/agent-asset.js',
         hdri: 'src/hdri.js',

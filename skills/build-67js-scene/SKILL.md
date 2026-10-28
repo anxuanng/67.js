@@ -25,6 +25,7 @@ Use `simplify-code` and `engineering-workflows` for implementation.
 - Recorded contacts or articulated physics use optional `src/physics.js` and the checkout's `docs/physics.md`.
 - Humanoid clips moved between rigs, or crowds of skinned characters, use optional `src/retarget.js` and the checkout's `docs/retarget.md`. Mixamo downloads need the owner's Adobe login.
 - Baked liquid (jets, geysers, torrents, whitewater) uses optional `src/spume.js` and the checkout's `docs/spume.md`. Bake with the Spume solver first; never fake it with displaced primitives.
+- Wheeled vehicles driving a path (wheel spin, steering, body roll and pitch, ground following) use optional `src/vehicle.js` and the checkout's `docs/vehicle.md`.
 - A flat scene or axis view uses `src/canvas2d.js`, `src/camera.js` and `src/view2d.js`.
 - A GLB asset viewer uses the optional `src/gltf.js` addon and `src/asset-viewer.js`.
 - Static brush sculpting uses optional `src/sculpt.js` and the checkout's `docs/sculpt.md`.
