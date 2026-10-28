@@ -199,6 +199,8 @@ The optional GLB addon creates these descriptors. HDR requires `EXT_color_buffer
 
 Tags select specialized behavior: `armor` allows studio finish overrides. `floor` is a studio floor. `water` adds animated normals and ripples. `foliage` and `grass` add wind.
 
+`material.alphaMode` is `'opaque'` (default), `'mask'` (cutout at `alphaCutoff`, default 0.5, shadows follow it) or `'blend'` (drawn last, back to front, no depth write). `material.opacity` (default 1) multiplies the base map alpha. `material.doubleSided` (default false) disables back-face culling and lights both faces. These are batch state and cannot change after upload. See `docs/material-maps.md`.
+
 `terrain` adds surface variation. `fire` and `smoke` support film effects. `unlit` is a flat color. Other tags use ordinary PBR shading.
 
 `water` flattens normals into a rippled pond and only suits horizontal surfaces. Shaped water uses `liquid`: it is drawn after the opaque scene, refracts what lies behind it, darkens with thickness and reflects the environment by the Fresnel term. Its `color` is the light one metre of liquid lets through, so `[0.56, 0.84, 0.88]` is clear blue-green water. `foam` draws soft alpha-blended droplets for whitewater. Tune both with `frame.liquid` or `environment.liquid`: `{ thickness: 0.5, ior: 1.33, refraction: 1, scattering: 1, foamOpacity: 0.55, foamSoftness: 1 }`. A liquid refracts opaque parts only.

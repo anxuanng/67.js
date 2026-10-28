@@ -14,6 +14,23 @@ function validateFloatChannel(values, length, label, bounded = false) {
   }
 }
 
+const GLTF_ALPHA_MODES = { mask: 'MASK', blend: 'BLEND' };
+
+function writeAlphaFields(gltfMaterial, material) {
+  const alphaMode = material.alphaMode ?? 'opaque';
+  if (alphaMode !== 'opaque') {
+    if (!Object.hasOwn(GLTF_ALPHA_MODES, alphaMode)) throw new Error("alphaMode must be 'opaque', 'mask' or 'blend'.");
+    gltfMaterial.alphaMode = GLTF_ALPHA_MODES[alphaMode];
+    validateFactor(material.opacity ?? 1, 'opacity');
+    gltfMaterial.pbrMetallicRoughness.baseColorFactor[3] = material.opacity ?? 1;
+  }
+  if (alphaMode === 'mask') {
+    validateFactor(material.alphaCutoff ?? 0.5, 'alphaCutoff');
+    gltfMaterial.alphaCutoff = material.alphaCutoff ?? 0.5;
+  }
+  if (material.doubleSided === true) gltfMaterial.doubleSided = true;
+}
+
 function validateFactor(value, label, maximum = 1) {
   if (!Number.isFinite(value) || !Number.isFinite(Math.fround(value)) || value < 0 || value > maximum) {
     throw new RangeError(`${label} requires a finite nonnegative Float32 value${maximum === 1 ? ' within [0,1]' : ''}.`);
@@ -170,6 +187,7 @@ export function exportGlb(parts) {
         pbrMetallicRoughness: { baseColorFactor: [...part.material.color, 1], metallicFactor: part.material.metallic, roughnessFactor: part.material.roughness },
         emissiveFactor: (part.material.emission ?? 0) === 0 ? [0, 0, 0] : Array.from(part.material.emissiveColor ?? part.material.color),
       };
+      writeAlphaFields(material, part.material);
       const strength = part.material.emission ?? 0;
       if (strength !== 0 && strength !== 1) {
         material.extensions = { [EMISSIVE_STRENGTH]: { emissiveStrength: strength } };
