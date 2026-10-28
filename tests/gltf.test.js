@@ -152,7 +152,7 @@ test('unsupported features fail explicitly before loading resources', async () =
     [document => { document.materials[0].doubleSided = true; }, /Double-sided/],
     [document => { document.materials[0].normalTexture = { index: 0 }; }, /normalTexture texture index/],
     [document => { document.extensionsRequired = ['KHR_draco_mesh_compression']; }, /KHR_draco/],
-    [document => { document.materials[0].extensions = { KHR_materials_clearcoat: {} }; }, /KHR_materials_clearcoat/],
+    [document => { document.materials[0].extensions = { KHR_materials_unknown_vendor: {} }; }, /KHR_materials_unknown_vendor/],
     [document => { document.buffers[0].uri = 'external.bin'; }, /baseUrl/],
     [document => { document.nodes[2].children = [0]; }, /Cyclic/],
     [document => { document.materials[0].pbrMetallicRoughness.metallicFactor = 2; }, /metallic/],

@@ -6,13 +6,19 @@ import { MAX_MORPH_TARGETS, createMorphPose, validateMorphGeometry, validateMorp
 
 export const GLTF_CAPABILITIES = Object.freeze({
   formats: ['glb', 'gltf'],
-  supported: ['triangle meshes', 'world transforms', 'rigid node animations', 'four-influence skeletal skinning', 'joint node animations', 'relative POSITION/NORMAL morph targets', 'morph weight animations', 'PNG/JPEG base color textures', 'normal/occlusion/emissive/metallic-roughness textures', 'TEXCOORD_0', 'linear RGB vertex colors', 'metallic roughness factors', 'emissive factors', 'KHR_mesh_quantization', 'KHR_materials_emissive_strength'],
-  unsupported: ['more than four skin influences', 'singular weighted skin transforms', 'reflected skin transforms', 'TANGENT morph targets', 'morph targets without authored base normals', 'vertex alpha below one', 'alpha blending or masking', 'double-sided materials', 'texture transforms', 'DRACO', 'KTX2', 'GPU instancing'],
+  supported: ['triangle meshes', 'world transforms', 'rigid node animations', 'four-influence skeletal skinning', 'joint node animations', 'relative POSITION/NORMAL morph targets', 'morph weight animations', 'PNG/JPEG base color textures', 'normal/occlusion/emissive/metallic-roughness textures', 'TEXCOORD_0', 'linear RGB vertex colors', 'metallic roughness factors', 'emissive factors', 'KHR_mesh_quantization', 'KHR_materials_emissive_strength', 'KHR_texture_transform baked into UVs', 'EXT_mesh_gpu_instancing expanded into parts', 'KHR_draco_mesh_compression with options.decoders.draco', 'EXT_meshopt_compression with options.decoders.meshopt', 'KHR_texture_basisu with options.decoders.ktx2'],
+  ignoredExtensions: ['KHR_materials_clearcoat', 'KHR_materials_transmission', 'KHR_materials_ior', 'KHR_materials_specular', 'KHR_materials_sheen', 'KHR_materials_volume'],
+  unsupported: ['more than four skin influences', 'singular weighted skin transforms', 'reflected skin transforms', 'TANGENT morph targets', 'morph targets without authored base normals', 'vertex alpha below one', 'alpha blending or masking', 'double-sided materials', 'different texture transforms on one material', 'skinned or morphed GPU instancing', 'rendering of ignored material extensions'],
 });
 
 const DEFAULT_MAX_BYTES = 32 * 1024 * 1024;
 const DEFAULT_MAX_VERTICES = 2_000_000;
-const ALLOWED_EXTENSIONS = new Set(['KHR_mesh_quantization', 'KHR_materials_emissive_strength']);
+const DEFAULT_MAX_INSTANCES = 4096;
+const ALLOWED_EXTENSIONS = new Set(['KHR_mesh_quantization', 'KHR_materials_emissive_strength', 'KHR_texture_transform', 'EXT_mesh_gpu_instancing']);
+const DECODER_BY_EXTENSION = { KHR_draco_mesh_compression: 'draco', EXT_meshopt_compression: 'meshopt', KHR_texture_basisu: 'ktx2' };
+// Accepted when optional, because 67.js does not render them. Rejected when listed in extensionsRequired.
+const IGNORED_EXTENSIONS = new Set(GLTF_CAPABILITIES.ignoredExtensions);
+const IDENTITY_UV_TRANSFORM = Object.freeze({ offset: [0, 0], rotation: 0, scale: [1, 1] });
 const WRAPPING = { 1000: 10497, 1001: 33071, 1002: 33648 };
 const FILTERING = { 1003: 9728, 1004: 9984, 1005: 9986, 1006: 9729, 1007: 9985, 1008: 9987 };
 const MATERIAL_TEXTURES = [
@@ -35,6 +41,7 @@ function limitsFor(options) {
     maxResources: options.maxResources ?? 64,
     maxTexturePixels: options.maxTexturePixels ?? 16_777_216,
     maxJoints: options.maxJoints ?? 4096,
+    maxInstances: options.maxInstances ?? DEFAULT_MAX_INSTANCES,
   };
   for (const [name, value] of Object.entries(limits)) {
     if (!Number.isSafeInteger(value) || value <= 0) throw new TypeError(`${name} must be a positive safe integer.`);
@@ -112,20 +119,117 @@ function validateAnimationChannels(document) {
   }
 }
 
-function validateDocument(document, limits) {
-  if (document.asset?.version !== '2.0') throw new Error('Only glTF 2.0 assets are supported.');
+function allowedExtensionsFor(decoders) {
+  const allowed = new Set(ALLOWED_EXTENSIONS);
+  for (const [extension, decoderName] of Object.entries(DECODER_BY_EXTENSION)) {
+    if (decoders[decoderName]) allowed.add(extension);
+  }
+  return allowed;
+}
+
+function unsupportedExtensionError(extension) {
+  const decoderName = DECODER_BY_EXTENSION[extension];
+  const hint = decoderName ? ` Pass options.decoders.${decoderName} to enable it.` : '';
+  return new Error(`Unsupported glTF extension: ${extension}.${hint}`);
+}
+
+/** Rejects unknown extensions and returns the sorted names of accepted but unrendered ones. */
+function scanExtensions(document, allowedExtensions) {
+  const ignored = new Set();
+  function checkOptional(extension) {
+    if (allowedExtensions.has(extension)) return;
+    if (!IGNORED_EXTENSIONS.has(extension)) throw unsupportedExtensionError(extension);
+    ignored.add(extension);
+  }
   const pending = [document];
   while (pending.length) {
     const value = pending.pop();
     if (!value || typeof value !== 'object') continue;
-    for (const extension of Object.keys(value.extensions ?? {})) {
-      if (!ALLOWED_EXTENSIONS.has(extension)) throw new Error(`Unsupported glTF extension: ${extension}.`);
-    }
+    for (const extension of Object.keys(value.extensions ?? {})) checkOptional(extension);
     pending.push(...Object.values(value).filter(child => child && typeof child === 'object'));
   }
-  for (const extension of [...(document.extensionsUsed ?? []), ...(document.extensionsRequired ?? [])]) {
-    if (!ALLOWED_EXTENSIONS.has(extension)) throw new Error(`Unsupported glTF extension: ${extension}.`);
+  for (const extension of document.extensionsUsed ?? []) checkOptional(extension);
+  for (const extension of document.extensionsRequired ?? []) {
+    if (!allowedExtensions.has(extension)) throw unsupportedExtensionError(extension);
   }
+  return [...ignored].sort();
+}
+
+function textureUvTransform(texture) {
+  const extension = texture.extensions?.KHR_texture_transform;
+  if (!extension) return IDENTITY_UV_TRANSFORM;
+  const offset = extension.offset ?? [0, 0];
+  const scale = extension.scale ?? [1, 1];
+  const rotation = extension.rotation ?? 0;
+  const vectorsAreFinite = [offset, scale].every(vector => Array.isArray(vector) && vector.length === 2 && vector.every(Number.isFinite));
+  if (!vectorsAreFinite || !Number.isFinite(rotation)) throw new Error('KHR_texture_transform requires finite offset, rotation and scale.');
+  if ((extension.texCoord ?? 0) !== 0) throw new Error('KHR_texture_transform texCoord overrides are unsupported.');
+  return { offset, rotation, scale };
+}
+
+function uvTransformKey(transform) {
+  return transform === IDENTITY_UV_TRANSFORM ? '' : JSON.stringify([transform.offset, transform.rotation, transform.scale]);
+}
+
+/** All maps of a material read one UV set, so one shared transform can be baked into it. */
+function materialUvTransform(material) {
+  let found = null;
+  for (const [, field] of MATERIAL_TEXTURES) {
+    const texture = materialTexture(material, field);
+    if (!texture) continue;
+    const transform = textureUvTransform(texture);
+    if (found && uvTransformKey(found) !== uvTransformKey(transform)) {
+      throw new Error('Maps of one material must share the same KHR_texture_transform. Different transforms per map are unsupported.');
+    }
+    found = transform;
+  }
+  return found ?? IDENTITY_UV_TRANSFORM;
+}
+
+function bakeUvTransform(uvs, transform) {
+  const cosine = Math.cos(transform.rotation);
+  const sine = Math.sin(transform.rotation);
+  const [offsetU, offsetV] = transform.offset;
+  const [scaleU, scaleV] = transform.scale;
+  for (let index = 0; index < uvs.length; index += 2) {
+    const u = uvs[index];
+    const v = uvs[index + 1];
+    uvs[index] = cosine * scaleU * u + sine * scaleV * v + offsetU;
+    uvs[index + 1] = -sine * scaleU * u + cosine * scaleV * v + offsetV;
+  }
+}
+
+function validateMaterialExtensions(material) {
+  materialUvTransform(material);
+  const transmission = material.extensions?.KHR_materials_transmission?.transmissionFactor ?? 0;
+  if (!Number.isFinite(transmission) || transmission < 0 || transmission > 1) throw new Error('KHR_materials_transmission transmissionFactor must be within zero and one.');
+}
+
+/** Validates EXT_mesh_gpu_instancing on a node and returns how many instances it expands to. */
+function nodeInstanceCount(document, node, limits) {
+  const extensions = Object.keys(node.extensions ?? {});
+  if (!extensions.length) return 1;
+  if (extensions.length > 1 || extensions[0] !== 'EXT_mesh_gpu_instancing') throw new Error('Node extensions other than EXT_mesh_gpu_instancing are unsupported.');
+  const attributes = node.extensions.EXT_mesh_gpu_instancing.attributes;
+  if (node.mesh === undefined || node.skin !== undefined) throw new Error('EXT_mesh_gpu_instancing requires a static mesh node without a skin.');
+  if (morphCount(document.meshes?.[node.mesh])) throw new Error('EXT_mesh_gpu_instancing with morph targets is unsupported.');
+  const shapes = { TRANSLATION: 'VEC3', ROTATION: 'VEC4', SCALE: 'VEC3' };
+  let count;
+  for (const [name, accessorIndex] of Object.entries(attributes ?? {})) {
+    if (!(name in shapes)) continue;
+    const accessor = document.accessors?.[accessorIndex];
+    if (!accessor || accessor.type !== shapes[name] || !Number.isSafeInteger(accessor.count)) throw new Error(`Instancing ${name} requires a ${shapes[name]} accessor.`);
+    if (count !== undefined && accessor.count !== count) throw new Error('Instancing attributes must share one count.');
+    count = accessor.count;
+  }
+  if (count === undefined || count < 1) throw new Error('EXT_mesh_gpu_instancing needs TRANSLATION, ROTATION or SCALE instances.');
+  if (count > limits.maxInstances) throw new Error(`EXT_mesh_gpu_instancing node has ${count} instances, above maxInstances (${limits.maxInstances}).`);
+  return count;
+}
+
+function validateDocument(document, limits, allowedExtensions) {
+  if (document.asset?.version !== '2.0') throw new Error('Only glTF 2.0 assets are supported.');
+  const ignoredExtensions = scanExtensions(document, allowedExtensions);
   let declaredBytes = 0;
   for (const buffer of document.buffers ?? []) {
     if (!Number.isSafeInteger(buffer.byteLength) || buffer.byteLength < 0) throw new Error('Invalid glTF buffer length.');
@@ -214,7 +318,7 @@ function validateDocument(document, limits) {
   for (const node of document.nodes ?? []) {
     const mesh = document.meshes?.[node.mesh];
     if (node.mesh !== undefined && (!Number.isInteger(node.mesh) || !mesh)) throw new Error('Invalid mesh node index.');
-    declaredParts += mesh?.primitives?.length ?? 0;
+    declaredParts += (mesh?.primitives?.length ?? 0) * nodeInstanceCount(document, node, limits);
     if (declaredParts > limits.maxParts) throw new Error('glTF primitive instances exceed maxParts.');
     validateDefaultWeights(node.weights, morphCount(mesh));
     morphBytes += morphCount(mesh) * (mesh?.primitives?.length ?? 0) * 16;
@@ -226,7 +330,6 @@ function validateDocument(document, limits) {
         if (poseJointCount > limits.maxJoints) throw new Error('Instanced skin poses exceed maxJoints.');
       }
     }
-    if (node.extensions && Object.keys(node.extensions).length) throw new Error('Node extensions are unsupported.');
   }
   validateHierarchy(document.nodes ?? []);
   validateAnimationChannels(document);
@@ -246,14 +349,16 @@ function validateDocument(document, limits) {
     for (const [, field] of MATERIAL_TEXTURES) {
       const texture = materialTexture(material, field);
       if (!texture) continue;
-      if ((texture.texCoord ?? 0) !== 0 || texture.extensions && Object.keys(texture.extensions).length) throw new Error(`${field} requires TEXCOORD_0 without texture transforms.`);
+      if ((texture.texCoord ?? 0) !== 0 || Object.keys(texture.extensions ?? {}).some(name => name !== 'KHR_texture_transform')) throw new Error(`${field} requires TEXCOORD_0 and no texture extensions besides KHR_texture_transform.`);
       if (!Number.isInteger(texture.index) || !document.textures?.[texture.index]) throw new Error(`Invalid ${field} texture index.`);
       if (field === 'normalTexture' && (!Number.isFinite(texture.scale ?? 1) || !Number.isFinite(Math.fround(texture.scale ?? 1)))) throw new Error('Normal texture scale must be a finite float.');
       if (field === 'occlusionTexture' && (!Number.isFinite(texture.strength ?? 1) || (texture.strength ?? 1) < 0 || (texture.strength ?? 1) > 1)) throw new Error('Occlusion texture strength must be within zero and one.');
     }
+    validateMaterialExtensions(material);
   }
   for (const texture of document.textures ?? []) {
-    if (!Number.isInteger(texture.source) || !document.images?.[texture.source]) throw new Error('Invalid texture image index.');
+    const source = textureSourceIndex(texture);
+    if (!Number.isInteger(source) || !document.images?.[source]) throw new Error('Invalid texture image index.');
     if (texture.sampler !== undefined && (!Number.isInteger(texture.sampler) || !document.samplers?.[texture.sampler])) throw new Error('Invalid texture sampler index.');
     const sampler = document.samplers?.[texture.sampler] ?? {};
     textureDescriptorInfo({ image: { width: 1, height: 1 }, ...sampler });
@@ -274,7 +379,11 @@ function validateDocument(document, limits) {
     decodedBytes += accessor.count * components[accessor.type] * 4;
   }
   if (decodedBytes > limits.maxBytes * 4) throw new Error('Decoded glTF accessors exceed four times maxBytes.');
-  return vertices;
+  return { vertices, ignoredExtensions };
+}
+
+function textureSourceIndex(texture) {
+  return texture.extensions?.KHR_texture_basisu?.source ?? texture.source;
 }
 
 function validateHierarchy(nodes) {
@@ -338,7 +447,12 @@ function validateImage(bytes, maxPixels) {
       offset += length;
     }
   }
-  if (!width || !height) throw new Error('Only valid PNG and JPEG texture images are supported.');
+  const ktx2Identifier = [0xab, 0x4b, 0x54, 0x58, 0x20, 0x32, 0x30, 0xbb, 0x0d, 0x0a, 0x1a, 0x0a];
+  if (!width && bytes.length >= 28 && ktx2Identifier.every((value, index) => bytes[index] === value)) {
+    width = header.getUint32(20, true);
+    height = header.getUint32(24, true);
+  }
+  if (!width || !height) throw new Error('Only valid PNG, JPEG and KTX2 texture images are supported.');
   if (width * height > maxPixels) throw new Error('Texture image exceeds maxTexturePixels before decoding.');
   return width * height;
 }
@@ -568,6 +682,32 @@ function copyPrimitiveAssociations(original, decoded, associations) {
   }
 }
 
+/** Three.js builds instanced meshes after it records associations, so restore the mesh and primitive indices here. */
+function completeInstancedAssociations(object, associations, document, inheritedNodeIndex) {
+  const association = associations.get(object);
+  const ownsNode = Number.isInteger(association?.nodes);
+  const nodeIndex = ownsNode ? association.nodes : inheritedNodeIndex;
+  if (object.isInstancedMesh && association?.primitives === undefined) {
+    const siblingPrimitives = ownsNode || !object.parent ? [object] : object.parent.children.filter(child => child.isInstancedMesh && !Number.isInteger(associations.get(child)?.nodes));
+    associations.set(object, { ...association, meshes: document.nodes?.[nodeIndex]?.mesh, primitives: siblingPrimitives.indexOf(object) });
+  }
+  for (const child of object.children) completeInstancedAssociations(child, associations, document, nodeIndex);
+}
+
+function instanceMatricesOf(node, maximumInstances) {
+  if (!node.isInstancedMesh) return [null];
+  if (node.count > maximumInstances) throw new Error(`Decoded instance count ${node.count} exceeds maxInstances (${maximumInstances}).`);
+  return Array.from({ length: node.count }, (unused, index) => {
+    const matrix = new Matrix4();
+    node.getMatrixAt(index, matrix);
+    return matrix;
+  });
+}
+
+function worldMatrixOf(node, instanceMatrix, target) {
+  return instanceMatrix ? target.multiplyMatrices(node.matrixWorld, instanceMatrix) : target.copy(node.matrixWorld);
+}
+
 function skinPreflightPlugin(parser, document, primitiveAssociations) {
   let originalRoots;
   return {
@@ -617,6 +757,7 @@ function skinPreflightPlugin(parser, document, primitiveAssociations) {
       }
       const roots = await Promise.all(Array.from(rootIndices, async index => [index, await parser.getDependency('node', index)]));
       originalRoots = new Map(roots);
+      for (const [, root] of roots) completeInstancedAssociations(root, parser.associations, document, undefined);
       for (const [node, association] of parser.associations) {
         if (node.isMesh || Number.isInteger(association?.nodes)) {
           primitiveAssociations.set(node, Object.freeze({ ...association }));
@@ -656,6 +797,17 @@ function convertVertexColors(attribute, vertexCount) {
   return colors;
 }
 
+/** KTX2 textures arrive as RGBA8 pixel data, which the renderer uploads as an ImageData. */
+function decodedTextureImage(texture, field) {
+  if (texture.isCompressedTexture) throw new Error(`${field} decoded to a GPU-compressed KTX2 format. Configure the KTX2 loader to transcode to RGBA8 (see docs/gltf.md).`);
+  const image = texture.image;
+  if (!image?.data) return image;
+  const { width, height, data } = image;
+  if (!(data instanceof Uint8Array) || data.length < width * height * 4) throw new Error(`${field} KTX2 image must decode to RGBA8 pixels.`);
+  const pixels = new Uint8ClampedArray(data.buffer, data.byteOffset, width * height * 4);
+  return typeof ImageData === 'function' ? new ImageData(pixels, width, height) : { width, height, data: pixels };
+}
+
 function convertMaterial(source, limits, maps, definition = {}) {
   const material = {
     tag: 'gltf',
@@ -667,6 +819,9 @@ function convertMaterial(source, limits, maps, definition = {}) {
     normalScale: [definition.normalTexture?.scale ?? 1, definition.normalTexture?.scale ?? 1],
     occlusionStrength: source.aoMapIntensity,
   };
+  // Hint only: transmission is not rendered yet.
+  const transmission = definition.extensions?.KHR_materials_transmission?.transmissionFactor ?? 0;
+  if (transmission > 0) material.transmission = transmission;
   if (!material.emissiveColor.some(value => value > 0)) material.emission = 0;
   if (!Number.isFinite(Math.fround(material.emission)) || material.emission < 0) throw new Error('Emissive intensity must be a finite nonnegative float.');
   for (const [field, , colorSpace] of MATERIAL_TEXTURES) {
@@ -675,7 +830,7 @@ function convertMaterial(source, limits, maps, definition = {}) {
     if (!maps.has(texture)) maps.set(texture, new Map());
     const descriptors = maps.get(texture);
     if (!descriptors.has(colorSpace)) {
-      const image = texture.image;
+      const image = decodedTextureImage(texture, field);
       if (!image || image.width * image.height > limits.maxTexturePixels) throw new Error(`${field} image is missing or exceeds maxTexturePixels.`);
       const descriptor = {
         image,
@@ -725,7 +880,9 @@ function releaseParsed(gltf) {
 export async function parseGltf(data, options = {}) {
   const limits = limitsFor(options);
   const document = documentFrom(data, limits.maxBytes);
-  validateDocument(document, limits);
+  const decoders = options.decoders ?? {};
+  const { ignoredExtensions } = validateDocument(document, limits, allowedExtensionsFor(decoders));
+  const warnings = ignoredExtensions.map(extension => `${extension} is accepted but not rendered.`);
   const dataBytes = typeof data === 'string' ? new TextEncoder().encode(data).byteLength : data.byteLength;
   const { resources, objectUrls } = await prepareResources(document, data, dataBytes, options, limits);
   const manager = new LoadingManager();
@@ -740,6 +897,9 @@ export async function parseGltf(data, options = {}) {
   const primitiveAssociations = new WeakMap();
   try {
     const loader = new GLTFLoader(manager);
+    if (decoders.draco) loader.setDRACOLoader(decoders.draco);
+    if (decoders.meshopt) loader.setMeshoptDecoder(decoders.meshopt);
+    if (decoders.ktx2) loader.setKTX2Loader(decoders.ktx2);
     loader.register(parser => skinPreflightPlugin(parser, document, primitiveAssociations));
     gltf = await loader.parseAsync(data, options.baseUrl ?? '');
     gltf.scene.updateMatrixWorld(true);
@@ -767,43 +927,49 @@ export async function parseGltf(data, options = {}) {
         const decodedField = field === 'metallicRoughnessMap' ? 'metalnessMap' : field === 'occlusionMap' ? 'aoMap' : field;
         if (materialTexture(document.materials?.[materialIndex] ?? {}, sourceField) && !node.material[decodedField]) throw new Error(`${sourceField} failed to decode. Use a valid PNG or JPEG image.`);
       }
-      const determinant = node.matrixWorld.determinant();
-      if (!Number.isFinite(determinant) || Math.abs(determinant) < 1e-12) throw new Error('Mesh world transform is singular or non-finite.');
-      const mirrored = determinant < 0;
-      const geometryMirrored = node.isSkinnedMesh ? false : mirrored;
-      const geometryKey = `${node.geometry.uuid}:${geometryMirrored}`;
-      if (!geometries.has(geometryKey)) {
-        actualVertices += node.geometry.getAttribute('position').count * (1 + (primitive.targets?.length ?? 0));
-        if (actualVertices > limits.maxVertices) throw new Error('Decoded geometry exceeds maxVertices.');
-        geometries.set(geometryKey, convertGeometry(node.geometry, geometryMirrored, primitive));
-      }
+      const uvTransform = materialUvTransform(document.materials?.[materialIndex] ?? {});
+      const uvKey = uvTransformKey(uvTransform);
       if (!materials.has(node.material)) materials.set(node.material, convertMaterial(node.material, limits, maps, document.materials?.[materialIndex]));
-      const geometry = geometries.get(geometryKey);
       const material = materials.get(node.material);
-      if (MATERIAL_TEXTURES.some(([field]) => material[field]) && !geometry.uvs) throw new Error('Material textures require TEXCOORD_0.');
-      const part = { name: node.name || `glTF mesh ${parts.length + 1}`, geometry, matrix: new Float32Array(node.matrixWorld.elements), material };
-      const transformBinding = { node, part, mirrored, matrix: part.matrix, pendingMatrix: new Float32Array(16) };
-      let pendingSkin;
-      if (node.isSkinnedMesh) {
-        const binding = makeSkinBinding(node);
-        prepareSkinBinding(binding, geometry);
-        commitSkinBinding(binding);
-        part.skin = binding.skin;
-        skinBindings.push({ ...binding, geometry });
-        pendingSkin = binding.pendingPose;
+      for (const instanceMatrix of instanceMatricesOf(node, limits.maxInstances)) {
+        const determinant = worldMatrixOf(node, instanceMatrix, pendingTransform).determinant();
+        if (!Number.isFinite(determinant) || Math.abs(determinant) < 1e-12) throw new Error('Mesh world transform is singular or non-finite.');
+        const mirrored = determinant < 0;
+        const geometryMirrored = node.isSkinnedMesh ? false : mirrored;
+        const geometryKey = `${node.geometry.uuid}:${geometryMirrored}:${uvKey}`;
+        if (!geometries.has(geometryKey)) {
+          actualVertices += node.geometry.getAttribute('position').count * (1 + (primitive.targets?.length ?? 0));
+          if (actualVertices > limits.maxVertices) throw new Error('Decoded geometry exceeds maxVertices.');
+          const converted = convertGeometry(node.geometry, geometryMirrored, primitive);
+          if (converted.uvs) bakeUvTransform(converted.uvs, uvTransform);
+          geometries.set(geometryKey, converted);
+        }
+        const geometry = geometries.get(geometryKey);
+        if (MATERIAL_TEXTURES.some(([field]) => material[field]) && !geometry.uvs) throw new Error('Material textures require TEXCOORD_0.');
+        const part = { name: node.name || `glTF mesh ${parts.length + 1}`, geometry, matrix: new Float32Array(worldMatrixOf(node, instanceMatrix, pendingTransform).elements), material };
+        const transformBinding = { node, instanceMatrix, part, mirrored, matrix: part.matrix, pendingMatrix: new Float32Array(16) };
+        let pendingSkin;
+        if (node.isSkinnedMesh) {
+          const binding = makeSkinBinding(node);
+          prepareSkinBinding(binding, geometry);
+          commitSkinBinding(binding);
+          part.skin = binding.skin;
+          skinBindings.push({ ...binding, geometry });
+          pendingSkin = binding.pendingPose;
+        }
+        validateSkinGeometry(geometry, part.skin);
+        transformBinding.skin = part.skin;
+        if (geometry.morphTargets) {
+          const binding = makeMorphBinding(node, geometry, morphMetadata);
+          part.morph = binding.pose;
+          validateMorphTransform(binding.pose, binding.metadata, part.matrix, part.skin);
+          morphBindings.push({ ...binding, part, pendingMatrix: transformBinding.pendingMatrix, pendingSkin });
+        }
+        if (!Array.from(part.matrix).every(Number.isFinite)) throw new Error('Mesh world matrix must be finite.');
+        parts.push(part);
+        bindings.push(transformBinding);
+        if (parts.length > limits.maxParts) throw new Error('Decoded parts exceed maxParts.');
       }
-      validateSkinGeometry(geometry, part.skin);
-      transformBinding.skin = part.skin;
-      if (geometry.morphTargets) {
-        const binding = makeMorphBinding(node, geometry, morphMetadata);
-        part.morph = binding.pose;
-        validateMorphTransform(binding.pose, binding.metadata, part.matrix, part.skin);
-        morphBindings.push({ ...binding, part, pendingMatrix: transformBinding.pendingMatrix, pendingSkin });
-      }
-      if (!Array.from(part.matrix).every(Number.isFinite)) throw new Error('Mesh world matrix must be finite.');
-      parts.push(part);
-      bindings.push(transformBinding);
-      if (parts.length > limits.maxParts) throw new Error('Decoded parts exceed maxParts.');
     });
     validateNodeTransforms(nodes, pendingNodeMatrix, pendingTransform);
     if (!parts.length) throw new Error('glTF scene contains no supported triangle meshes.');
@@ -904,20 +1070,21 @@ export async function parseGltf(data, options = {}) {
     function preparePose() {
       gltf.scene.updateMatrixWorld(true);
       validateNodeTransforms(nodes, pendingNodeMatrix, pendingTransform);
-      for (const { node, part, mirrored, matrix, pendingMatrix, skin } of bindings) {
+      const worldMatrix = new Matrix4();
+      for (const { node, instanceMatrix, part, mirrored, matrix, pendingMatrix, skin } of bindings) {
         if (part.matrix !== matrix || matrix.length !== 16) {
           throw new Error('Imported part matrix identity must remain unchanged.');
         }
         if (part.skin !== skin) {
           throw new Error('Imported skin pose identity must remain unchanged.');
         }
-        pendingMatrix.set(node.matrixWorld.elements);
+        pendingMatrix.set(worldMatrixOf(node, instanceMatrix, worldMatrix).elements);
         for (const value of pendingMatrix) {
           if (!Number.isFinite(value)) {
             throw new Error('Animation creates a non-finite Float32 world matrix.');
           }
         }
-        const determinant = node.matrixWorld.determinant();
+        const determinant = worldMatrix.determinant();
         const roundedDeterminant = pendingTransform.fromArray(pendingMatrix).determinant();
         if (!Number.isFinite(determinant) || !Number.isFinite(roundedDeterminant) || Math.abs(roundedDeterminant) < 1e-12 || (determinant < 0) !== mirrored || (roundedDeterminant < 0) !== mirrored) {
           throw new Error('Animation creates a singular transform or changes triangle winding.');
@@ -1125,7 +1292,7 @@ export async function parseGltf(data, options = {}) {
       }
       return stagePose({ animation: { clip: clipIndex, time: Math.max(0, Math.min(time, clip.duration)) } }).commit();
     }
-    return { parts, skins: skinBindings.map(binding => binding.skin), animations: gltf.animations,
+    return { parts, warnings, skins: skinBindings.map(binding => binding.skin), animations: gltf.animations,
       get nodes() { return structuredClone(nodeMetadata); }, stagePose, applyAnimation, dispose, capabilities: GLTF_CAPABILITIES };
   } catch (error) {
     if (gltf) releaseParsed(gltf);
