@@ -25,6 +25,7 @@ export default defineConfig({
         shrinkwrap: 'src/shrinkwrap.js',
         'surface-attachment': 'src/surface-attachment.js',
         physics: 'src/physics.js',
+        spume: 'src/spume.js',
         'agent-scene': 'src/agent-scene.js',
         'agent-asset': 'src/agent-asset.js',
         hdri: 'src/hdri.js',

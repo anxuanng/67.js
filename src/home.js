@@ -122,6 +122,21 @@ document.querySelectorAll('[data-package-manager]').forEach(button => {
   packageControls.push({ name, control });
 });
 
+function mountCodeCopyButton(button) {
+  const source = document.getElementById(button.dataset.copyCode);
+  const control = controls.mountButton(button, { icon:'copy', onClick:async () => {
+    try {
+      await navigator.clipboard.writeText(source.textContent);
+      control.update({ label:'Copied', icon:'check' });
+      setTimeout(() => { control.update({ label:'Copy', icon:'copy' }); }, 2000);
+    } catch {
+      getSelection().selectAllChildren(source);
+    }
+  } });
+}
+
+document.querySelectorAll('[data-copy-code]').forEach(mountCodeCopyButton);
+
 document.querySelectorAll('.example img').forEach(image => {
   image.addEventListener('error', () => {
     image.alt = `${image.alt}. Preview unavailable. Open the example to explore it`;
