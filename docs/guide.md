@@ -187,7 +187,7 @@ The [retarget contract](/retarget.md) covers rest-pose assumptions and measured 
 4. Each frame, call `renderer.replaceParts([...sceneParts, ...player.partsAt(seconds)])` and render.
 
 The [Spume contract](/spume.md) covers the cache format, whitewater options, placement and measured cost.
-The scene must stay rigid and untextured while frames are replaced.
+Textured, skinned and morphed parts may stay in the list unchanged while frames are replaced; adding or removing them needs a new renderer.
 
 ## Wheeled vehicles
 

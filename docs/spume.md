@@ -69,8 +69,8 @@ When a frame holds more points than `maxPoints`, the addon thins them evenly acr
 
 ## Rendering contract
 
-The player returns new geometry for each new frame. Pass it through `renderer.replaceParts`, which requires the whole scene to stay rigid and untextured.
-Skinned, morphed or textured parts cannot share a renderer with Spume playback yet.
+The player returns new geometry for each new frame. Pass it through `renderer.replaceParts` with the rest of the scene.
+Textured, skinned and morphed parts (trees, characters, imported assets) can share the renderer as long as they stay in the list unchanged: their batches are retained and only new geometry is uploaded and validated. Adding or removing such parts still needs a new renderer.
 Whitewater parts set `castShadow: false`; the liquid casts shadows.
 
 The `liquid` and `foam` tags draw after the opaque scene. Tune them with `frame.liquid` or `environment.liquid`:

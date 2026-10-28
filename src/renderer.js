@@ -27,6 +27,10 @@ function renderPass(material) {
   return TRANSLUCENT_TAGS.has(material.tag) ? material.tag : 'opaque';
 }
 
+function partNeedsFullUpload(part) {
+  return Boolean(part.skin || part.morph || part.geometry.morphTargets || part.geometry.skinIndices || hasMaterialMap(part.material));
+}
+
 function batchPass(batch) {
   return batch.pass ?? 'opaque';
 }
@@ -540,21 +544,12 @@ export class Renderer67 {
     if (!Array.isArray(parts) || new Set(parts).size !== parts.length) {
       throw new TypeError('Scene parts must be an array with distinct object identities.');
     }
-    for (const location of this.partLocations.values()) {
-      if (location.skin || location.morph || location.morphTargets || location.skinIndices || location.mapState.slice(0, 5).some(Boolean)) {
-        throw new Error('replaceParts currently requires an existing rigid, untextured scene.');
-      }
-    }
-    for (const part of parts) {
-      if (part.skin || part.morph || part.geometry.morphTargets || part.geometry.skinIndices || hasMaterialMap(part.material)) {
-        throw new Error('replaceParts currently requires rigid, untextured parts.');
-      }
-    }
     const renderParts = this.groundPart ? [...parts, this.groundPart] : parts;
     const groups = groupParts(renderParts, this.batching);
     const geometries = new Set(renderParts.map(part => part.geometry));
+    // Uploaded geometry was validated when it arrived; rechecking a large static scene every frame dominated streamed playback.
     for (const geometry of geometries) {
-      validateReplacementGeometry(geometry);
+      if (!this.geometryBuffers.has(geometry)) validateReplacementGeometry(geometry);
     }
     const retained = new Set();
     const replacements = groups.map(group => {
@@ -574,6 +569,18 @@ export class Renderer67 {
       }
       return { group, batch: null };
     });
+    // Textured, skinned and morphed batches stay valid only while retained unchanged; uploading or dropping them is not supported here.
+    for (const item of replacements) {
+      if (!item.batch && item.group.some(partNeedsFullUpload)) {
+        throw new Error('replaceParts can add or change only rigid, untextured parts. Keep textured, skinned and morphed parts unchanged so their batches are retained.');
+      }
+    }
+    for (const [part, location] of this.partLocations) {
+      if (retained.has(location.batch)) continue;
+      if (location.skin || location.morph || location.morphTargets || location.skinIndices || location.mapState.slice(0, 5).some(Boolean)) {
+        throw new Error(`replaceParts can remove or regroup only existing rigid, untextured parts; ${part.name} is textured, skinned or morphed and needs a new renderer.`);
+      }
+    }
     const newGeometryBytes = [...geometries].filter(geometry => !this.geometryBuffers.has(geometry)).reduce((total, geometry) => total + geometryBufferBytes(geometry), 0);
     const newInstanceBytes = replacements.filter(item => !item.batch).reduce((total, item) => total + item.group.length * INSTANCE_STRIDE * 4, 0);
     const frameBytes = estimateFrameBytes(this.canvas.width, this.canvas.height, this.samples, 2048, { hdr: this.hdr, bloom: !this.benchmark, depth: this.depth });
