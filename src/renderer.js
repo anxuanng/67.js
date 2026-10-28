@@ -6,6 +6,7 @@ import { applyProjection } from './camera.js';
 import { resolveEffects } from './effects.js';
 import { createLightingState, updateLightingState } from './lighting.js';
 import { resolveVolumeFog } from './volumetric.js';
+import { assertEnvironmentMap, createEnvironmentResources, environmentBackgroundFragment, estimateEnvironmentBytes } from './environment.js';
 import { validateSkinGeometry, validateSkinPose, skinTextureLayout, packSkinInfluences } from './skinning.js';
 import { validateMorphGeometry, validateMorphPose, validateMorphTransform, packMorphTargets } from './morph.js';
 
@@ -19,6 +20,9 @@ const DEFAULT_NORMAL_SCALE = [1, 1];
 const PROCEDURAL_MATERIAL_TAGS = new Set(['water', 'foliage', 'grass', 'terrain', 'floor', 'fire', 'smoke']);
 const SKIN_UNIFORMS = ['skinEnabled', 'skinInfluences', 'jointPalette'];
 const MORPH_UNIFORMS = ['morphEnabled', 'morphVertexCount', 'morphTargetCount', 'morphWeights[0]', 'morphTargets'];
+const ENVIRONMENT_UNIFORMS = ['environmentSpecular', 'environmentBrdf', 'environmentEnabled', 'environmentIntensity', 'environmentRotation', 'environmentLevelMax', 'environmentIrradiance[0]'];
+const ENVIRONMENT_SPECULAR_UNIT = 9;
+const ENVIRONMENT_BRDF_UNIT = 10;
 
 function validateMaterialMaps(material) {
   if (PROCEDURAL_MATERIAL_TAGS.has(material.tag)) {
@@ -274,6 +278,10 @@ export class Renderer67 {
       }
     }
     this.capabilities.maximumTextureSize = textureLimit;
+    this.environmentResources = null;
+    this.environmentBackgroundProgram = null;
+    this.environmentBytes = !benchmark && environment.map ? estimateEnvironmentBytes(environment.map, textureLimit) : 0;
+    this.textureBytes += this.environmentBytes;
     for (const group of groups) {
       const geometry = group[0].geometry;
       if (geometry.uvs && geometry.uvs.length !== geometry.positions.length / 3 * 2) throw new Error('Geometry UV count must match the vertex count.');
@@ -296,6 +304,7 @@ export class Renderer67 {
     for (const name of ['pointLightCount', 'pointLightPositions[0]', 'pointLightColors[0]', 'pointLightRadii[0]', 'keyColor', 'fillIntensity', 'ambientIntensity']) {
       this.uniforms[name] = this.context.getUniformLocation(this.program, name);
     }
+    for (const name of ENVIRONMENT_UNIFORMS) this.uniforms[name] = this.context.getUniformLocation(this.program, name);
     this.depthSkinUniforms = Object.fromEntries(SKIN_UNIFORMS.map(name => [name, this.context.getUniformLocation(this.depthProgram, name)]));
     this.depthMorphUniforms = Object.fromEntries(MORPH_UNIFORMS.map(name => [name, this.context.getUniformLocation(this.depthProgram, name)]));
     if (!benchmark) {
@@ -325,6 +334,7 @@ export class Renderer67 {
       this.context.activeTexture(this.context.TEXTURE0 + unit);
       this.context.bindTexture(this.context.TEXTURE_2D, this.whiteTexture);
     }
+    this.initializeEnvironment(environment.map);
     groups.forEach((group) => this.batches.push(this.uploadBatch(group)));
     this.createShadowMap();
     this.resize();
@@ -812,6 +822,84 @@ export class Renderer67 {
     context.bindFramebuffer(context.FRAMEBUFFER, null);
   }
 
+  initializeEnvironment(map) {
+    const context = this.context;
+    context.useProgram(this.program);
+    context.uniform1i(this.uniforms.environmentSpecular, ENVIRONMENT_SPECULAR_UNIT);
+    context.uniform1i(this.uniforms.environmentBrdf, ENVIRONMENT_BRDF_UNIT);
+    this.bindEnvironmentTextures(this.whiteTexture, this.whiteTexture);
+    if (!this.benchmark && map) this.prepareEnvironment(map);
+  }
+
+  bindEnvironmentTextures(specularTexture, brdfTexture) {
+    const context = this.context;
+    context.activeTexture(context.TEXTURE0 + ENVIRONMENT_SPECULAR_UNIT);
+    context.bindTexture(context.TEXTURE_2D, specularTexture);
+    context.activeTexture(context.TEXTURE0 + ENVIRONMENT_BRDF_UNIT);
+    context.bindTexture(context.TEXTURE_2D, brdfTexture);
+  }
+
+  // Prefilters a map the first time it is seen; maps spread from one created map share its data and reuse the GPU textures. Returns true when new textures were built.
+  prepareEnvironment(map) {
+    assertEnvironmentMap(map);
+    if (this.environmentResources?.data === map.data) return false;
+    estimateEnvironmentBytes(map, this.capabilities.maximumTextureSize);
+    const resources = createEnvironmentResources(this.context, map, { compileProgram, fullscreenVertex });
+    this.environmentResources?.dispose();
+    this.environmentResources = resources;
+    this.textureBytes += resources.bytes - this.environmentBytes;
+    this.environmentBytes = resources.bytes;
+    return true;
+  }
+
+  // Binds the prefiltered textures for this frame and returns the active map, or null for the built-in studio lighting.
+  activateEnvironment(map) {
+    if (this.benchmark || !map) {
+      this.bindEnvironmentTextures(this.whiteTexture, this.whiteTexture);
+      return null;
+    }
+    if (this.prepareEnvironment(map)) this.resize();
+    this.bindEnvironmentTextures(this.environmentResources.specularTexture, this.environmentResources.brdfTexture);
+    return map;
+  }
+
+  applyEnvironmentUniforms(map) {
+    const context = this.context;
+    context.uniform1f(this.uniforms.environmentEnabled, map ? 1 : 0);
+    if (!map) return;
+    context.uniform3fv(this.uniforms['environmentIrradiance[0]'], this.environmentResources.irradiance);
+    context.uniform1f(this.uniforms.environmentIntensity, map.intensity);
+    context.uniform2f(this.uniforms.environmentRotation, Math.cos(map.rotation), Math.sin(map.rotation));
+    context.uniform1f(this.uniforms.environmentLevelMax, this.environmentResources.levelCount - 1);
+  }
+
+  drawEnvironmentBackground(map, frame, exposure) {
+    if (!map?.showBackground || this.transparent) return false;
+    const context = this.context;
+    if (!this.environmentBackgroundProgram) {
+      this.environmentBackgroundProgram = compileProgram(context, fullscreenVertex, environmentBackgroundFragment);
+      const names = ['inverseViewProjection', 'eye', 'backgroundLevel', 'exposure', 'hdrEnabled', 'environmentSpecular', 'environmentRotation', 'environmentIntensity', 'environmentLevelMax'];
+      this.environmentBackgroundUniforms = Object.fromEntries(names.map(name => [name, context.getUniformLocation(this.environmentBackgroundProgram, name)]));
+    }
+    const uniforms = this.environmentBackgroundUniforms;
+    const levelMax = this.environmentResources.levelCount - 1;
+    context.disable(context.DEPTH_TEST);
+    context.disable(context.CULL_FACE);
+    context.bindVertexArray(null);
+    context.useProgram(this.environmentBackgroundProgram);
+    context.uniformMatrix4fv(uniforms.inverseViewProjection, false, this.inverseViewProjection);
+    context.uniform3fv(uniforms.eye, frame.eye);
+    context.uniform1f(uniforms.backgroundLevel, map.backgroundBlur * levelMax);
+    context.uniform1f(uniforms.exposure, exposure);
+    context.uniform1f(uniforms.hdrEnabled, this.hdr ? 1 : 0);
+    context.uniform1i(uniforms.environmentSpecular, ENVIRONMENT_SPECULAR_UNIT);
+    context.uniform2f(uniforms.environmentRotation, Math.cos(map.rotation), Math.sin(map.rotation));
+    context.uniform1f(uniforms.environmentIntensity, map.intensity);
+    context.uniform1f(uniforms.environmentLevelMax, levelMax);
+    context.drawArrays(context.TRIANGLES, 0, 3);
+    return true;
+  }
+
   drawSky(frame) {
     const context = this.context;
     const environment = { skyTop: [0.20, 0.38, 0.52], skyBottom: [0.62, 0.70, 0.67], lightDirection: [-3, 6, 4], daylight: 1, ...this.environment, ...frame.environment };
@@ -964,6 +1052,7 @@ export class Renderer67 {
       this.assemblyAmount = assemblyAmount;
       this.createShadowMap();
     }
+    const environmentMap = this.activateEnvironment(environment.map);
     applyProjection(this.projection, frame, this.canvas.width / this.canvas.height, { world: this.world });
     mat4.lookAt(this.view, eye, target, frame.up ?? [0, 1, 0]);
     mat4.multiply(this.viewProjection, this.projection, this.view);
@@ -976,7 +1065,8 @@ export class Renderer67 {
       context.clearColor(0.145, 0.162, 0.177, 1);
     }
     context.clear(context.COLOR_BUFFER_BIT | context.DEPTH_BUFFER_BIT);
-    if (this.world && !this.benchmark) this.drawSky(frame);
+    const environmentBackgroundDrawn = this.drawEnvironmentBackground(environmentMap, frame, exposure);
+    if (this.world && !this.benchmark && !environmentBackgroundDrawn) this.drawSky(frame);
     context.enable(context.DEPTH_TEST);
     context.enable(context.CULL_FACE);
     context.useProgram(this.program);
@@ -1010,6 +1100,7 @@ export class Renderer67 {
     context.activeTexture(context.TEXTURE0);
     context.bindTexture(context.TEXTURE_2D, this.shadowTexture);
     context.uniform1i(this.uniforms.shadowMap, 0);
+    this.applyEnvironmentUniforms(environmentMap);
     for (const batch of this.batches) this.drawBatch(batch, true);
     context.bindVertexArray(null);
     if (!this.benchmark) this.resolveFrame(frame, effects, environment, volume);
@@ -1028,6 +1119,8 @@ export class Renderer67 {
     if (this.postProgram) this.context.deleteProgram(this.postProgram);
     if (this.skyProgram) this.context.deleteProgram(this.skyProgram);
     if (this.bloomProgram) this.context.deleteProgram(this.bloomProgram);
+    if (this.environmentBackgroundProgram) this.context.deleteProgram(this.environmentBackgroundProgram);
+    this.environmentResources?.dispose();
     for (const texture of this.textures.values()) this.context.deleteTexture(texture);
     this.textures.clear();
     for (const cache of [this.skinTextures, this.influenceTextures, this.morphTextures]) {
