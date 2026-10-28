@@ -28,6 +28,7 @@ export default defineConfig({
         spume: 'src/spume.js',
         retarget: 'src/retarget.js',
         vehicle: 'src/vehicle.js',
+        vegetation: 'src/vegetation.js',
         'agent-scene': 'src/agent-scene.js',
         'agent-asset': 'src/agent-asset.js',
         hdri: 'src/hdri.js',

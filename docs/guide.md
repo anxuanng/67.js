@@ -201,6 +201,16 @@ Wheel spin, front-wheel steering, roll, pitch and ground following come from the
 Scene-graph nodes and imported GLBs use `applyVehiclePoseToSceneGraph` and `applyVehiclePoseToAsset`.
 The [vehicle contract](/vehicle.md) lists conventions, options and limits.
 
+## Trees and grass
+
+`67js/addons/vegetation` is in the current source and not yet published. It grows seeded trees with real branches and leaf cards, grass and flowers.
+
+1. Scatter with `scatterVegetation({ area, density, terrainHeight, slopeLimit, exclusion, mix, leaves })`.
+2. Pick detail per camera with `selectLevels(forest.instances, eye)`.
+3. Pass `view.parts` to `Renderer67` and rebuild when `view.changed` is true.
+
+Cards (`leaves: 'cards'`, the default) use alpha-masked, double-sided textures; `'mesh'` leaves cost more triangles but sway with the `foliage` wind. The [Vegetation contract](/vegetation.md) lists species, triangle budgets and limits.
+
 ## Retained surface attachments
 
 `createSurfaceAttachment` is introduced in `0.4.1`. Published npm `0.4.0` does not include this addon.

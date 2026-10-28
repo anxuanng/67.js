@@ -51,7 +51,8 @@
     "docs/agent-render-jobs.md",
     "docs/agent-motion.md",
     "docs/agent-character-motion.md",
-    "docs/agent-review.md"
+    "docs/agent-review.md",
+    "docs/vegetation.md"
   ],
   "main": "./build/67.module.js",
   "module": "./build/67.module.js",
@@ -79,6 +80,7 @@
     "./addons/spume": "./build/spume.js",
     "./addons/retarget": "./build/retarget.js",
     "./addons/vehicle": "./build/vehicle.js",
+    "./addons/vegetation": "./build/vegetation.js",
     "./addons/agent-scene": "./build/agent-scene.js",
     "./addons/agent-asset": "./build/agent-asset.js",
     "./addons/hdri": "./build/hdri.js",
