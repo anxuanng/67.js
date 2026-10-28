@@ -18,6 +18,7 @@ Use `simplify-code` and `engineering-workflows` for implementation.
 - A keyframe scene uses `src/animation.js`, `src/motion.js` and `src/motion-player.js`.
 - An authored camera uses `src/camera-path.js` and the checkout's `docs/camera-path.md`.
 - Local lights use the renderer environment and the checkout's `docs/lighting.md`.
+- Realistic reflections or HDRI lighting use `environment.map` from `createEnvironmentMap` or optional `src/hdri.js` (`loadHdri`) and the "Environment maps (IBL)" section of `docs/lighting.md`.
 - Depth-clipped fog uses `{ hdr: true, depth: true }` and the checkout's `docs/volumetric.md`.
 - A skeletal asset uses `src/skinning.js`, `src/gltf.js` and the checkout's `docs/skinning.md`.
 - Relative facial or shape deformation uses `src/morph.js` and the checkout's `docs/morph-targets.md`. Check source versus published support first.

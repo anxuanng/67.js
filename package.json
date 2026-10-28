@@ -78,6 +78,7 @@
     "./addons/spume": "./build/spume.js",
     "./addons/agent-scene": "./build/agent-scene.js",
     "./addons/agent-asset": "./build/agent-asset.js",
+    "./addons/hdri": "./build/hdri.js",
     "./package.json": "./package.json"
   },
   "scripts": {

@@ -162,6 +162,10 @@ Collapsed output triangles cause errors. Projection does not guarantee clearance
 The [surface patch contract](/surface.md) defines projector orientation, depth and local clearance.
 Patches and shrinkwrap are static operations. They do not follow skin or morph deformation.
 
+## HDR environment lighting
+
+Pass `environment: { map }` to light and reflect from an equirectangular HDR image. `loadHdri(url)` from `67js/addons/hdri` parses a Poly Haven `.hdr` file, and `createEnvironmentMap` accepts your own float data. Without a map, rendering is unchanged. The [lighting contract](/lighting.md#environment-maps-ibl) covers rotation, background display, memory and limits.
+
 ## Baked liquid
 
 `67js/addons/spume` is in the current source and not yet published. It plays back liquid baked offline by the Spume GPU solver.
