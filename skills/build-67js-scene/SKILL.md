@@ -13,7 +13,7 @@ Use `simplify-code` and `engineering-workflows` for implementation.
 ## Choose the surface
 
 - An object studio uses `src/model.js` and `src/main.js`.
-- An outdoor world uses `src/nature.js` and `src/nature-viewer.js`.
+- An outdoor world uses `src/nature.js` and `src/nature-viewer.js`. Real trees, bushes, grass and forest scattering use optional `src/vegetation.js` and `docs/vegetation.md` (`leaves: 'mesh'` needs no alpha support).
 - A deterministic film uses `src/film.js` and `src/film-player.js`.
 - A keyframe scene uses `src/animation.js`, `src/motion.js` and `src/motion-player.js`.
 - An authored camera uses `src/camera-path.js` and the checkout's `docs/camera-path.md`.

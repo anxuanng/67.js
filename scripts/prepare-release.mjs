@@ -39,7 +39,7 @@ await copyFile(resolve(root, 'docs/gltf.md'), resolve(root, 'public/gltf.md'));
 const sourceDocuments = [
   'scene-graph.md', 'modeling.md', 'animation-curves.md', 'animation-mixer.md',
   'gltf-morph.md', 'morph-targets.md', 'skinning.md', 'physics.md',
-  'export-glb.md', 'sculpt.md', 'surface.md', 'mesh-query.md', 'primitives.md', 'shrinkwrap.md', 'spume.md',
+  'export-glb.md', 'sculpt.md', 'surface.md', 'mesh-query.md', 'primitives.md', 'shrinkwrap.md', 'spume.md', 'vegetation.md',
   'camera-path.md', 'lighting.md', 'volumetric.md', 'film-physics.md',
   'surface-attachment.md', 'agent-scene.md', 'mcp.md', 'agent-look.md', 'agent-asset.md', 'agent-render-jobs.md', 'agent-motion.md', 'agent-character-motion.md', 'agent-review.md',
 ];

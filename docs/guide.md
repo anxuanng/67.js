@@ -174,6 +174,16 @@ Patches and shrinkwrap are static operations. They do not follow skin or morph d
 The [Spume contract](/spume.md) covers the cache format, whitewater options, placement and measured cost.
 The scene must stay rigid and untextured while frames are replaced.
 
+## Trees and grass
+
+`67js/addons/vegetation` is in the current source and not yet published. It grows seeded trees with real branches and leaf cards, grass and flowers.
+
+1. Scatter with `scatterVegetation({ area, density, terrainHeight, slopeLimit, exclusion, mix, leaves })`.
+2. Pick detail per camera with `selectLevels(forest.instances, eye)`.
+3. Pass `view.parts` to `Renderer67` and rebuild when `view.changed` is true.
+
+Use `leaves: 'mesh'` until the renderer honors alpha masks. The [Vegetation contract](/vegetation.md) lists species, triangle budgets and limits.
+
 ## Retained surface attachments
 
 `createSurfaceAttachment` is introduced in `0.4.1`. Published npm `0.4.0` does not include this addon.

@@ -209,6 +209,7 @@ The source [shrinkwrap addon](docs/shrinkwrap.md) wraps static vertices with nea
 Compatible results can become relative GPU morph targets, so animation reuses the computed shape instead of repeating the vertex queries every frame.
 
 The source [Spume addon](docs/spume.md) plays back liquid baked by the [Spume](https://github.com/codepawl/spume) GPU solver, with whitewater, through `renderer.replaceParts`.
+The source [Vegetation addon](docs/vegetation.md) grows seeded trees with real branches and leaf cards, grass, Poisson-disk scattering on terrain and distance level of detail.
 The solver runs offline; the browser only reads the compact cache.
 
 The current source adds [surface attachments](docs/surface-attachment.md) for rigid accessories following a selected triangle through morphing and skinning.
