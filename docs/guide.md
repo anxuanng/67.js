@@ -174,6 +174,18 @@ Patches and shrinkwrap are static operations. They do not follow skin or morph d
 The [Spume contract](/spume.md) covers the cache format, whitewater options, placement and measured cost.
 The scene must stay rigid and untextured while frames are replaced.
 
+## Wheeled vehicles
+
+`67js/addons/vehicle` is in the current source and not yet published. It drives a car or truck along a path with deterministic, physics-free animation.
+
+1. Describe the vehicle with `createVehicleRig({ parts })`; wheels are found by name and geometry. Check `rig.wheels` or `findWheelCandidates(names)`.
+2. Build a drive with `driveAlongPath(rig, points, { cruiseSpeed, groundHeight })`.
+3. Each frame, call `applyVehiclePoseToParts(rig, drive.sample(seconds))` and then `renderer.updateParts(parts)`.
+
+Wheel spin, front-wheel steering, roll, pitch and ground following come from the path.
+Scene-graph nodes and imported GLBs use `applyVehiclePoseToSceneGraph` and `applyVehiclePoseToAsset`.
+The [vehicle contract](/vehicle.md) lists conventions, options and limits.
+
 ## Retained surface attachments
 
 `createSurfaceAttachment` is introduced in `0.4.1`. Published npm `0.4.0` does not include this addon.

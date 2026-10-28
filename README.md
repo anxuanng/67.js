@@ -211,6 +211,8 @@ Compatible results can become relative GPU morph targets, so animation reuses th
 The source [Spume addon](docs/spume.md) plays back liquid baked by the [Spume](https://github.com/codepawl/spume) GPU solver, with whitewater, through `renderer.replaceParts`.
 The solver runs offline; the browser only reads the compact cache.
 
+The source [vehicle addon](docs/vehicle.md) drives wheeled vehicles along a path deterministically: wheel spin, steering, body roll and pitch, and ground following, for parts, scene-graph nodes or imported GLBs.
+
 The current source adds [surface attachments](docs/surface-attachment.md) for rigid accessories following a selected triangle through morphing and skinning.
 The retained frame uses world-space clearance and samples three bound vertices without rebuilding a BVH every frame.
 This addon is available from version `0.4.1`. It does not certify clearance over an accessory's entire footprint.
