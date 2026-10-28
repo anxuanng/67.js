@@ -208,6 +208,9 @@ The [primitive contract](docs/primitives.md) defines bounded subdivision counts 
 The source [shrinkwrap addon](docs/shrinkwrap.md) wraps static vertices with nearest-surface or directional projection queries, preserving topology and UVs.
 Compatible results can become relative GPU morph targets, so animation reuses the computed shape instead of repeating the vertex queries every frame.
 
+The source [Spume addon](docs/spume.md) plays back liquid baked by the [Spume](https://github.com/codepawl/spume) GPU solver, with whitewater, through `renderer.replaceParts`.
+The solver runs offline; the browser only reads the compact cache.
+
 The current source adds [surface attachments](docs/surface-attachment.md) for rigid accessories following a selected triangle through morphing and skinning.
 The retained frame uses world-space clearance and samples three bound vertices without rebuilding a BVH every frame.
 This addon is available from version `0.4.1`. It does not certify clearance over an accessory's entire footprint.
