@@ -210,6 +210,7 @@ Compatible results can become relative GPU morph targets, so animation reuses th
 
 The source [Spume addon](docs/spume.md) plays back liquid baked by the [Spume](https://github.com/codepawl/spume) GPU solver, with whitewater, through `renderer.replaceParts`.
 The solver runs offline; the browser only reads the compact cache.
+The source [retarget addon](docs/retarget.md) transfers humanoid clips between rigs (Mixamo, VRM, Unreal, Rigify names) and offsets crowds deterministically. Mixamo files need the owner's Adobe login to download.
 
 The current source adds [surface attachments](docs/surface-attachment.md) for rigid accessories following a selected triangle through morphing and skinning.
 The retained frame uses world-space clearance and samples three bound vertices without rebuilding a BVH every frame.

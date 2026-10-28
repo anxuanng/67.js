@@ -166,6 +166,17 @@ Patches and shrinkwrap are static operations. They do not follow skin or morph d
 
 Pass `environment: { map }` to light and reflect from an equirectangular HDR image. `loadHdri(url)` from `67js/addons/hdri` parses a Poly Haven `.hdr` file, and `createEnvironmentMap` accepts your own float data. Without a map, rendering is unchanged. The [lighting contract](/lighting.md#environment-maps-ibl) covers rotation, background display, memory and limits.
 
+## Humanoid retargeting and crowds
+
+`67js/addons/retarget` is in the current source and not yet published. It moves a humanoid clip onto another skeleton and offsets many copies in time.
+
+1. Build rigs with `createRigFromSkin(asset.skins[0])`. Name families (Mixamo, VRM, Unreal, Rigify, Quaternius) map through `mapHumanoidBones`; fix a miss with `targetOverrides`.
+2. Call `retargetClip(sourceRig, targetRig, clip, { rootMotion })`.
+3. Play it with `createSkinClipPlayer(skin, clip).apply(seconds)`, then `renderer.updateParts(parts)`.
+4. For a crowd, `createCrowd({ count, clip, seed })` gives placement, time offsets and playback rates. Each instance needs its own skin pose.
+
+The [retarget contract](/retarget.md) covers rest-pose assumptions and measured cost. Mixamo clips need the owner's Adobe login to download; the code only consumes files.
+
 ## Baked liquid
 
 `67js/addons/spume` is in the current source and not yet published. It plays back liquid baked offline by the Spume GPU solver.
