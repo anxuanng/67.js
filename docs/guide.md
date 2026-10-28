@@ -162,6 +162,17 @@ Collapsed output triangles cause errors. Projection does not guarantee clearance
 The [surface patch contract](/surface.md) defines projector orientation, depth and local clearance.
 Patches and shrinkwrap are static operations. They do not follow skin or morph deformation.
 
+## Humanoid retargeting and crowds
+
+`67js/addons/retarget` is in the current source and not yet published. It moves a humanoid clip onto another skeleton and offsets many copies in time.
+
+1. Build rigs with `createRigFromSkin(asset.skins[0])`. Name families (Mixamo, VRM, Unreal, Rigify, Quaternius) map through `mapHumanoidBones`; fix a miss with `targetOverrides`.
+2. Call `retargetClip(sourceRig, targetRig, clip, { rootMotion })`.
+3. Play it with `createSkinClipPlayer(skin, clip).apply(seconds)`, then `renderer.updateParts(parts)`.
+4. For a crowd, `createCrowd({ count, clip, seed })` gives placement, time offsets and playback rates. Each instance needs its own skin pose.
+
+The [retarget contract](/retarget.md) covers rest-pose assumptions and measured cost. Mixamo clips need the owner's Adobe login to download; the code only consumes files.
+
 ## Baked liquid
 
 `67js/addons/spume` is in the current source and not yet published. It plays back liquid baked offline by the Spume GPU solver.
