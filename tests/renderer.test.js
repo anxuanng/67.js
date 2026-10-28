@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mat4, mat3 } from 'gl-matrix';
-import { Renderer67, groupParts, textureDescriptorInfo } from '../src/renderer.js';
+import { Renderer67, groupParts, resolveLiquidOptics, textureDescriptorInfo } from '../src/renderer.js';
 import { createSkinPose } from '../src/skinning.js';
 
 function part(name, geometry = {}, map) {
@@ -42,6 +42,23 @@ test('batching shares geometry only when texture descriptor identities also matc
   assert.equal(groups.length, 3);
   assert.equal(groups[0].length, 2);
   assert.equal(groupParts(parts, false).length, 4);
+});
+
+test('liquid and foam parts form their own batches and validate their optics', () => {
+  const geometry = {};
+  const solid = part('solid', geometry);
+  const liquid = { ...part('liquid', geometry), material: { ...part('liquid', geometry).material, tag: 'liquid' } };
+  const foam = { ...part('foam', geometry), material: { ...part('foam', geometry).material, tag: 'foam' } };
+  const groups = groupParts([solid, liquid, foam]);
+  assert.equal(groups.length, 3, 'a shared geometry must not mix opaque and translucent instances');
+  assert.deepEqual(resolveLiquidOptics(), { thickness: 0.5, ior: 1.33, refraction: 1, scattering: 1, foamOpacity: 0.55, foamSoftness: 1 });
+  assert.equal(resolveLiquidOptics({ thickness: 2 }).thickness, 2);
+  assert.throws(() => resolveLiquidOptics({ ior: 0.5 }), /liquid.ior/);
+  assert.throws(() => resolveLiquidOptics({ foamOpacity: NaN }), /liquid.foamOpacity/);
+  const { renderer, writes } = retainedRenderer([solid]);
+  solid.material = { ...solid.material, tag: 'liquid' };
+  assert.throws(() => renderer.updateParts([solid]), /liquid or foam pass/);
+  assert.equal(writes.length, 0);
 });
 
 test('shadowless parts form separate render batches and cannot change casting after upload', () => {

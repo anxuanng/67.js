@@ -1,5 +1,5 @@
 import { mat4, mat3 } from 'gl-matrix';
-import { vertexShader, fragmentShader, depthVertexShader, depthFragmentShader, benchmarkVertexShader, benchmarkFragmentShader } from './shaders.js';
+import { vertexShader, fragmentShader, liquidFragmentShader, depthVertexShader, depthFragmentShader, benchmarkVertexShader, benchmarkFragmentShader } from './shaders.js';
 import { fullscreenVertex, postFragment, skyFragment, bloomFragment } from './post.js';
 import { planRenderSize, estimateTextureBytes, estimateFrameBytes } from './budget.js';
 import { applyProjection } from './camera.js';
@@ -9,14 +9,34 @@ import { resolveVolumeFog } from './volumetric.js';
 import { validateSkinGeometry, validateSkinPose, skinTextureLayout, packSkinInfluences } from './skinning.js';
 import { validateMorphGeometry, validateMorphPose, validateMorphTransform, packMorphTargets } from './morph.js';
 
-const MATERIAL_TAGS = { armor: 1, floor: 2, water: 3, foliage: 4, terrain: 5, grass: 7, fire: 8, smoke: 9, unlit: 10 };
+const MATERIAL_TAGS = { armor: 1, floor: 2, water: 3, foliage: 4, terrain: 5, grass: 7, fire: 8, smoke: 9, unlit: 10, liquid: 11, foam: 12 };
+// Liquid and foam see the resolved opaque scene, so they draw in their own pass after it.
+const TRANSLUCENT_TAGS = new Set(['liquid', 'foam']);
+const DEFAULT_LIQUID = Object.freeze({ thickness: 0.5, ior: 1.33, refraction: 1, scattering: 1, foamOpacity: 0.55, foamSoftness: 1 });
 const INSTANCE_STRIDE = 41;
 const ZERO_VECTOR = Object.freeze([0, 0, 0]);
 const MATERIAL_MAPS = ['map', 'normalMap', 'metallicRoughnessMap', 'occlusionMap', 'emissiveMap'];
 const MAP_UNIFORMS = ['baseMap', 'normalMap', 'metallicRoughnessMap', 'occlusionMap', 'emissiveMap'];
 const MAP_FLAGS = ['hasBaseMap', 'hasNormalMap', 'hasMetallicRoughnessMap', 'hasOcclusionMap', 'hasEmissiveMap'];
 const DEFAULT_NORMAL_SCALE = [1, 1];
-const PROCEDURAL_MATERIAL_TAGS = new Set(['water', 'foliage', 'grass', 'terrain', 'floor', 'fire', 'smoke']);
+const PROCEDURAL_MATERIAL_TAGS = new Set(['water', 'foliage', 'grass', 'terrain', 'floor', 'fire', 'smoke', 'liquid', 'foam']);
+
+function renderPass(material) {
+  return TRANSLUCENT_TAGS.has(material.tag) ? material.tag : 'opaque';
+}
+
+function batchPass(batch) {
+  return batch.pass ?? 'opaque';
+}
+
+export function resolveLiquidOptics(options = {}) {
+  const optics = { ...DEFAULT_LIQUID, ...options };
+  for (const [name, minimum, maximum] of [['thickness', 0, 100], ['ior', 1, 3], ['refraction', 0, 4], ['scattering', 0, 10], ['foamOpacity', 0, 1], ['foamSoftness', 0, 1]]) {
+    const value = optics[name];
+    if (typeof value !== 'number' || !Number.isFinite(value) || value < minimum || value > maximum) throw new RangeError(`liquid.${name} must be between ${minimum} and ${maximum}.`);
+  }
+  return optics;
+}
 const SKIN_UNIFORMS = ['skinEnabled', 'skinInfluences', 'jointPalette'];
 const MORPH_UNIFORMS = ['morphEnabled', 'morphVertexCount', 'morphTargetCount', 'morphWeights[0]', 'morphTargets'];
 
@@ -138,7 +158,7 @@ export function groupParts(parts, batching = true) {
     const key = batching ? part.geometry : part;
     if (!groups.has(key)) groups.set(key, new Map());
     let maps = groups.get(key);
-    for (const value of [...materialMapState(part.material), part.skin ?? null, part.morph ?? null, part.castShadow !== false]) {
+    for (const value of [...materialMapState(part.material), part.skin ?? null, part.morph ?? null, part.castShadow !== false, renderPass(part.material)]) {
       if (!maps.has(value)) maps.set(value, new Map());
       maps = maps.get(value);
     }
@@ -186,16 +206,28 @@ function validateReplacementGeometry(geometry) {
       !(geometry.indices instanceof Uint32Array) || geometry.indices.length < 3 || geometry.indices.length % 3 !== 0) {
     throw new TypeError('Replacement geometry needs matching Float32 positions/normals and Uint32 triangles.');
   }
+  // Plain loops: replaceParts runs this every frame for streamed meshes, where callback-based
+  // `every` cost about ten times more than the upload itself.
   for (const [field, count] of [['positions', 3], ['normals', 3], ['uvs', 2], ['colors', 3]]) {
     const values = geometry[field];
     if (!values && ['uvs', 'colors'].includes(field)) continue;
-    if (!(values instanceof Float32Array) || values.length !== vertexCount * count || !values.every(Number.isFinite)) {
+    if (!(values instanceof Float32Array) || values.length !== vertexCount * count || !allFinite(values)) {
       throw new TypeError(`Replacement ${field} must contain finite matching Float32 data.`);
     }
   }
-  if (!geometry.indices.every(index => index < vertexCount)) {
-    throw new RangeError('Replacement triangle indices must address existing vertices.');
+  const indices = geometry.indices;
+  for (let index = 0; index < indices.length; index++) {
+    if (indices[index] >= vertexCount) throw new RangeError('Replacement triangle indices must address existing vertices.');
   }
+}
+
+function allFinite(values) {
+  for (let index = 0; index < values.length; index++) {
+    const value = values[index];
+    // NaN fails both comparisons; infinities fail one.
+    if (!(value > -Infinity && value < Infinity)) return false;
+  }
+  return true;
 }
 
 export class Renderer67 {
@@ -305,6 +337,8 @@ export class Renderer67 {
       this.bloomProgram = compileProgram(this.context, fullscreenVertex, bloomFragment);
       this.bloomUniforms = Object.fromEntries(['sourceTexture', 'texelDirection', 'threshold', 'extract'].map(name => [name, this.context.getUniformLocation(this.bloomProgram, name)]));
       this.skyUniforms = Object.fromEntries(['skyTop', 'skyBottom', 'sunDirection', 'inverseViewProjection', 'eye', 'time', 'daylight', 'hdrEnabled'].map((name) => [name, this.context.getUniformLocation(this.skyProgram, name)]));
+      this.liquidProgram = compileProgram(this.context, vertexShader, liquidFragmentShader);
+      this.liquidUniforms = Object.fromEntries(['viewProjection', 'lightProjection', 'eye', 'sceneColor', 'resolution', 'exposure', 'hdrEnabled', 'worldMode', 'daylight', 'lightDirection', 'keyColor', 'ambientIntensity', 'fogColor', 'fogDensity', 'liquidOptics', 'foamShape', 'time', 'wind', 'explosionProgress', 'explosionCenter', 'assemblyAmount', ...SKIN_UNIFORMS, ...MORPH_UNIFORMS].map((name) => [name, this.context.getUniformLocation(this.liquidProgram, name)]));
     }
     this.depthUniform = this.context.getUniformLocation(this.depthProgram, 'lightProjection');
     this.depthAssemblyUniform = this.context.getUniformLocation(this.depthProgram, 'assemblyAmount');
@@ -312,12 +346,13 @@ export class Renderer67 {
     this.triangles = parts.reduce((total, part) => total + part.geometry.indices.length / 3, 0);
     this.whiteTexture = this.createTexture(null);
     // Disabled skin samplers still need distinct units from the depth sampler.
-    for (const [program, uniforms] of [[this.program, this.uniforms], [this.depthProgram, this.depthSkinUniforms]]) {
+    const liquidPrograms = this.liquidProgram ? [[this.liquidProgram, this.liquidUniforms]] : [];
+    for (const [program, uniforms] of [[this.program, this.uniforms], [this.depthProgram, this.depthSkinUniforms], ...liquidPrograms]) {
       this.context.useProgram(program);
       this.context.uniform1i(uniforms.skinInfluences, 6);
       this.context.uniform1i(uniforms.jointPalette, 7);
     }
-    for (const [program, uniforms] of [[this.program, this.uniforms], [this.depthProgram, this.depthMorphUniforms]]) {
+    for (const [program, uniforms] of [[this.program, this.uniforms], [this.depthProgram, this.depthMorphUniforms], ...liquidPrograms]) {
       this.context.useProgram(program);
       this.context.uniform1i(uniforms.morphTargets, 8);
     }
@@ -455,7 +490,7 @@ export class Renderer67 {
     const morph = parts[0].morph ?? null;
     const morphTexture = morph ? this.createMorphTexture(geometry, morph) : null;
     const morphWeights = morph ? new Float32Array(morph.weights) : null;
-    const batch = { parts: [...parts], vertexArray, instanceBuffer, instanceData, textures, mapState, texture: textures[0], map, skin, skinTexture, influenceTexture, morph, morphTexture, morphWeights, indexCount: geometry.indices.length, instanceCount: parts.length, floor: parts[0].material.tag === 'floor', castShadow: parts[0].castShadow !== false };
+    const batch = { parts: [...parts], vertexArray, instanceBuffer, instanceData, textures, mapState, texture: textures[0], map, skin, skinTexture, influenceTexture, morph, morphTexture, morphWeights, indexCount: geometry.indices.length, instanceCount: parts.length, floor: parts[0].material.tag === 'floor', castShadow: parts[0].castShadow !== false, pass: renderPass(parts[0].material) };
     parts.forEach((part, index) => this.partLocations.set(part, { batch, index, geometry: part.geometry, map, mapState, skin, jointMatrices: skin?.jointMatrices, skinIndices: geometry.skinIndices, skinWeights: geometry.skinWeights, morph, morphWeights: morph?.weights, morphTargets: geometry.morphTargets, normalMatrix: mat3.create(), committedMatrix: batch.instanceData.subarray(index * INSTANCE_STRIDE, index * INSTANCE_STRIDE + 16) }));
     return batch;
   }
@@ -489,7 +524,7 @@ export class Renderer67 {
       const mapState = materialMapState(first.material);
       const sameParts = batch?.parts.length === group.length && batch.parts.every((part, index) => part === group[index]);
       const sameState = location?.geometry === first.geometry && batch?.castShadow === (first.castShadow !== false) &&
-        batch.floor === (first.material.tag === 'floor') &&
+        batch.floor === (first.material.tag === 'floor') && batchPass(batch) === renderPass(first.material) &&
         batch.mapState.every((value, index) => value === mapState[index]);
       if (sameParts && sameState) {
         retained.add(batch);
@@ -620,6 +655,7 @@ export class Renderer67 {
       if (part.castShadow !== undefined && typeof part.castShadow !== 'boolean') throw new TypeError('castShadow must be a boolean');
       if ((part.castShadow !== false) !== location.batch.castShadow) throw new Error(`Shadow casting changes require a new renderer: ${part.name}`);
       if (part.geometry !== location.geometry) throw new Error(`Geometry changes require a new renderer: ${part.name}`);
+      if (renderPass(part.material) !== batchPass(location.batch)) throw new Error(`Moving a part into or out of the liquid or foam pass requires replaceParts: ${part.name}`);
       if ((part.skin ?? null) !== location.skin || part.skin?.jointMatrices !== location.jointMatrices || part.geometry.skinIndices !== location.skinIndices || part.geometry.skinWeights !== location.skinWeights) throw new Error(`Skin identity changes require a new renderer: ${part.name}`);
       if (part.skin) {
         if (PROCEDURAL_MATERIAL_TAGS.has(part.material.tag)) throw new Error('Skinned parts require a standard material tag.');
@@ -887,6 +923,67 @@ export class Renderer67 {
     context.drawArrays(context.TRIANGLES, 0, 3);
   }
 
+  drawTranslucent(frame, environment, assemblyAmount) {
+    const liquids = this.batches.filter(batch => batchPass(batch) === 'liquid');
+    const foams = this.batches.filter(batch => batchPass(batch) === 'foam');
+    if (liquids.length === 0 && foams.length === 0) return;
+    const optics = resolveLiquidOptics({ ...environment.liquid, ...frame.liquid });
+    const context = this.context;
+    const width = this.canvas.width;
+    const height = this.canvas.height;
+    // Liquids refract the opaque scene, so resolve it into frameTexture before drawing them on top.
+    context.bindFramebuffer(context.READ_FRAMEBUFFER, this.multisampleFramebuffer);
+    context.bindFramebuffer(context.DRAW_FRAMEBUFFER, this.resolveFramebuffer);
+    context.blitFramebuffer(0, 0, width, height, 0, 0, width, height, context.COLOR_BUFFER_BIT, context.NEAREST);
+    context.bindFramebuffer(context.FRAMEBUFFER, this.multisampleFramebuffer);
+    context.viewport(0, 0, width, height);
+    context.enable(context.DEPTH_TEST);
+    context.enable(context.CULL_FACE);
+    context.useProgram(this.liquidProgram);
+    const uniforms = this.liquidUniforms;
+    context.uniformMatrix4fv(uniforms.viewProjection, false, this.viewProjection);
+    context.uniformMatrix4fv(uniforms.lightProjection, false, this.lightProjection);
+    context.uniform3fv(uniforms.eye, frame.eye);
+    context.uniform2f(uniforms.resolution, width, height);
+    context.uniform1f(uniforms.exposure, frame.exposure ?? 1);
+    context.uniform1f(uniforms.hdrEnabled, this.hdr ? 1 : 0);
+    context.uniform1f(uniforms.worldMode, this.world ? 1 : 0);
+    context.uniform1f(uniforms.daylight, environment.daylight);
+    context.uniform3fv(uniforms.lightDirection, environment.lightDirection);
+    context.uniform3fv(uniforms.keyColor, this.lighting.keyColor);
+    context.uniform1f(uniforms.ambientIntensity, this.lighting.ambientIntensity);
+    context.uniform3fv(uniforms.fogColor, environment.fogColor);
+    context.uniform1f(uniforms.fogDensity, environment.fogDensity);
+    context.uniform4f(uniforms.liquidOptics, optics.thickness, optics.ior, optics.refraction, optics.scattering);
+    context.uniform2f(uniforms.foamShape, optics.foamOpacity, optics.foamSoftness);
+    context.uniform1f(uniforms.time, frame.time ?? 0);
+    context.uniform1f(uniforms.wind, frame.wind ?? 0.3);
+    context.uniform1f(uniforms.explosionProgress, frame.explosionProgress ?? 1);
+    context.uniform3fv(uniforms.explosionCenter, environment.explosionCenter);
+    context.uniform1f(uniforms.assemblyAmount, assemblyAmount);
+    if (uniforms.skinEnabled) context.uniform1f(uniforms.skinEnabled, 0);
+    if (uniforms.morphEnabled) context.uniform1f(uniforms.morphEnabled, 0);
+    context.activeTexture(context.TEXTURE0);
+    context.bindTexture(context.TEXTURE_2D, this.frameTexture);
+    context.uniform1i(uniforms.sceneColor, 0);
+    for (const batch of liquids) {
+      context.bindVertexArray(batch.vertexArray);
+      context.drawElementsInstanced(context.TRIANGLES, batch.indexCount, context.UNSIGNED_INT, 0, batch.instanceCount);
+    }
+    if (foams.length > 0) {
+      context.enable(context.BLEND);
+      context.blendFuncSeparate(context.SRC_ALPHA, context.ONE_MINUS_SRC_ALPHA, context.ONE, context.ONE_MINUS_SRC_ALPHA);
+      context.depthMask(false);
+      for (const batch of foams) {
+        context.bindVertexArray(batch.vertexArray);
+        context.drawElementsInstanced(context.TRIANGLES, batch.indexCount, context.UNSIGNED_INT, 0, batch.instanceCount);
+      }
+      context.depthMask(true);
+      context.disable(context.BLEND);
+    }
+    context.bindVertexArray(null);
+  }
+
   drawBloom(bloom) {
     const context = this.context;
     context.disable(context.DEPTH_TEST);
@@ -1010,8 +1107,11 @@ export class Renderer67 {
     context.activeTexture(context.TEXTURE0);
     context.bindTexture(context.TEXTURE_2D, this.shadowTexture);
     context.uniform1i(this.uniforms.shadowMap, 0);
-    for (const batch of this.batches) this.drawBatch(batch, true);
+    for (const batch of this.batches) {
+      if (this.benchmark || batchPass(batch) === 'opaque') this.drawBatch(batch, true);
+    }
     context.bindVertexArray(null);
+    if (!this.benchmark) this.drawTranslucent(frame, environment, assemblyAmount);
     if (!this.benchmark) this.resolveFrame(frame, effects, environment, volume);
     this.cpuMilliseconds = performance.now() - start;
   }
