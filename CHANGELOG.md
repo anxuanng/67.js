@@ -3,6 +3,8 @@
 ## Unreleased
 
 - Add `67js/addons/mesh`, a polygon mesh core for agent modeling: compact `MeshData` with attributes on point, edge, face and corner domains, a half-edge `EditMesh` with typed-array disk and radial cycles, `validateTopology`, conversion from renderer geometry with welding, quads and axis face tags, hard-edge corner normals, n-gon triangulation, render extraction and `lintMesh`
+- Add semantic face selection and mesh edits (extrude region and individual, inset region and individual, delete, flip normals, translate with proportional falloff, merge by distance, tag) that tag the faces they create
+- Add the recipe geometry type `mesh` (a base shape plus a replayable edit log) and the `mesh_edit` MCP tool, which appends or replaces edits atomically and reports each edit's result
 - Add the `mesh_inspect` MCP tool: polygon counts, face sizes, parts, face tags, bounds and lint problems with suggested fixes for every recipe geometry
 
 ## 0.10.0

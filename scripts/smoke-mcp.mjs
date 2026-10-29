@@ -53,7 +53,7 @@ try {
   await client.connect(transport);
   processId = transport.pid;
   const listing = await client.listTools();
-  assert.equal(listing.tools.length, 19);
+  assert.equal(listing.tools.length, 20);
   const capabilities = (await call('scene_capabilities')).structuredContent;
   assert.equal(capabilities.phase, 'idle');
   const fixture = createAgentPreviewFixture();

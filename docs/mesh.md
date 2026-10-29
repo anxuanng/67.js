@@ -102,7 +102,68 @@ rebuilding the topology.
 
 `ok` is false when any error is present. Self-intersections and wall thickness are not checked yet.
 
+## Selection and edits
+
+`selectFaces(mesh, rule)` turns a JSON rule into a face mask. `applyMeshEdits(mesh, edits)` runs an edit log and
+returns `{ mesh, results }`. Both are what recipe `mesh` geometries and the `mesh_edit` tool use.
+
+Selection rules:
+
+| Rule | Selects |
+| --- | --- |
+| `{ "all": true }` | every face |
+| `{ "tag": "top" }` | faces carrying a tag |
+| `{ "normal": [0, 1, 0], "maxAngle": 10 }` | faces facing within `maxAngle` degrees (default 10) of a direction |
+| `{ "inside": { "min": [x, y, z], "max": [x, y, z] } }` | faces whose centroid lies in a box |
+| `{ "faces": [0, 4] }` | explicit face indices |
+| `{ "and": [...] }`, `{ "or": [...] }`, `{ "not": rule }` | combinations |
+| `{ "grow": rule, "steps": 1 }` | the selection plus faces sharing an edge, repeated |
+| `{ "boundary": rule }` | selected faces that touch an unselected face or an open edge |
+
+Edits (names follow Blender's `bmesh.ops` where they match):
+
+| Op | Fields | Creates tags |
+| --- | --- | --- |
+| `extrude_face_region` | `select`, `offset`, optional `direction`, `name` | `<name>.cap`, `<name>.side` |
+| `extrude_individual` | same | same, per face |
+| `inset_region` | `select`, `thickness`, optional `depth`, `name` | `<name>.cap`, `<name>.rim` |
+| `inset_individual` | same | same, per face |
+| `delete` | `select` (required) | |
+| `flip_normals` | `select` | |
+| `translate` | `select`, `offset` [x, y, z], optional `falloff` `{ radius, curve, connected }` | |
+| `merge_by_distance` | `distance` (default 1e-4) | |
+| `tag` | `select`, `name` (required) | `<name>` |
+
+- `select` defaults to every face, except for `delete` and `tag`.
+- `name` defaults to `<op>-<index>`, for example `extrude-1`.
+- Extrusions move each group of edge-connected faces along that group's own average normal. Faces in one group
+  that face opposite ways (the four sides of a box) cancel out; use the `_individual` op or pass `direction`.
+- Caps keep their earlier tags; side and rim faces start without tags.
+- Falloff curves follow Blender's proportional editing: `smooth`, `sphere`, `root`, `sharp`, `linear`,
+  `constant`, `inverseSquare`. With `connected`, distance is measured along edges.
+- An edit that selects no faces, names an unknown tag, or grows the mesh past its limits throws an error naming
+  the edit index and op. A log holds at most 64 edits.
+
+Each result records `selected`, the `tags` created with their face counts, op-specific counts (`deletedFaces`,
+`movedVertices`, `removedVertices`) and the mesh size `after` the edit.
+
+Bevel, loop cut, booleans, mirror, array and solidify are planned next.
+
 ## MCP
+
+A recipe geometry of type `mesh` starts from a primitive or profile and replays an edit log:
+
+```json
+{ "id": "crate", "type": "mesh", "base": { "type": "box", "bevel": 0 }, "smoothAngle": 30,
+  "edits": [
+    { "op": "inset_individual", "select": { "tag": "side" }, "thickness": 0.07, "name": "panel" },
+    { "op": "extrude_individual", "select": { "tag": "panel.cap" }, "offset": -0.04 }
+  ] }
+```
+
+Edges bending more than `smoothAngle` degrees (default 30) render hard. `mesh_edit` appends edits to such a
+geometry (or replaces its log with `replace: true`) as one atomic revision, so checkpoints and `expectedRevision`
+work as for `scene_apply`. It returns the render status and the mesh report below, including one result per edit.
 
 `mesh_inspect` runs the same conversion and lint on the geometries of a procedural recipe scene and returns one
 compact record per geometry:
@@ -117,8 +178,9 @@ compact record per geometry:
   "problems": [] }
 ```
 
-Reports are cached per generated geometry, so asking again without edits is free. Imported asset scenes are not
-supported yet.
+Reports are cached per generated geometry, so asking again without edits is free. For `mesh` geometries the report
+describes the edited polygon mesh and adds `edits`, the per-edit results. Imported asset scenes are not supported
+yet.
 
 ## Measured speed
 

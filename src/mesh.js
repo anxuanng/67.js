@@ -10,4 +10,10 @@ export { faceNormals, cornerNormals } from './mesh-normals.js';
 export { triangulateMesh, extractRender, gatherRenderPositions } from './mesh-render.js';
 export { meshFromGeometry, joinTriangles, tagFacesByAxis, weldVertices, rebuildFromCorners, withFaceAttributes } from './mesh-convert.js';
 export { lintMesh } from './mesh-lint.js';
+export { selectFaces, countSelected } from './mesh-select.js';
+export { applyMeshEdits, normalizeMeshEdits, MESH_EDIT_OPERATIONS, MAX_MESH_EDITS } from './mesh-recipe.js';
+export {
+  extrudeFaceRegion, extrudeIndividual, insetRegion, insetIndividual, deleteFaces, flipFaces, translateFaces,
+  mergeByDistance, tagFaces, connectedRegions, FALLOFF_CURVES,
+} from './mesh-ops.js';
 export { cornerFaces, cornerCycles, edgeCornerTable, faceParts } from './mesh-topology.js';

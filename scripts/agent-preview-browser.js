@@ -300,6 +300,16 @@ window.__agentPreview = {
     record.scene.apply(operations, { expectedRevision });
     return mutationStatus(record);
   },
+  editMesh({ sessionId, expectedRevision, geometry, edits, replace }) {
+    const record = requireSession(sessionId);
+    if (typeof record.scene.inspectMeshes !== 'function') {
+      throw new TypeError('mesh_edit supports procedural recipe scenes. Imported asset scenes have no editable mesh geometry yet.');
+    }
+    const operation = { type: 'edit-mesh', geometry, edits, ...(replace === undefined ? {} : { replace }) };
+    const status = this.apply({ sessionId, operations: [operation], expectedRevision });
+    const [mesh] = record.scene.inspectMeshes({ geometries: [geometry] }).meshes;
+    return { ...status, mesh };
+  },
   look({ sessionId, motionTime }) {
     const record = requireSession(sessionId);
     if (motionTime !== undefined) {

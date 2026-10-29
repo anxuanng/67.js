@@ -365,6 +365,12 @@ export function createAgentRuntime({ backend = 'gpu', browser: browserPath, memo
     inspectMeshes(input) {
       return enqueue(() => invoke('inspectMeshes', input));
     },
+    editMesh(input) {
+      return enqueue(async () => {
+        await requirePreviewRenderer();
+        return invoke('editMesh', input);
+      });
+    },
     apply(input) {
       return enqueue(async () => {
         await requirePreviewRenderer();
