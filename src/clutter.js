@@ -1,6 +1,7 @@
 // Ground clutter: pebbles, rocks, twigs and fallen leaves scattered over terrain in streamable tiles.
 // Stones are noise-displaced spheres cut by a few random planes, so rocks get flat chipped faces while pebbles stay
-// round. They sink into the ground, darken underneath and near the soil line, and rocks gather moss on top.
+// round. They sink into the ground and darken underneath and near the soil line. Rocks carry the renderer's moss layer
+// (its own rough, sheened material with cushion relief), so moss is shaded as moss rather than painted on.
 // Everything is vertex-coloured and untextured, so tiles stream with `renderer.replaceParts`.
 
 import {
@@ -121,8 +122,6 @@ function stoneColor(normal, localPoint, heightAboveGround, stone, vertexIndex, s
   const blotch = valueNoise(localPoint[0] * stone.grain + localPoint[1] * 0.7 * stone.grain, localPoint[2] * stone.grain, stone.colorSeed);
   const stain = lerp(0.6, 1.25, blotch);
   let color = stone.base.map(channel => channel * underside * speckle * stain);
-  const moss = stone.moss * smoothstep(0.35, 0.85, normal[1]) * smoothstep(0.3, 0.6, valueNoise(normal[0] * 3 + stone.phases[0], normal[2] * 3, stone.colorSeed));
-  color = lerpVectors(color, settings.mossColor, moss);
   // Soil clings to the stone where it meets the ground.
   const soil = 1 - smoothstep(0, stone.height * 0.35, heightAboveGround);
   return lerpVectors(color, settings.soilColor, soil * 0.7);
@@ -140,7 +139,6 @@ function addStone(builder, item, tileOrigin, settings, detail) {
     roughness: isRock ? 0.16 : 0.08,
     phases: [random() * FULL_TURN, random() * FULL_TURN, random() * FULL_TURN, random() * FULL_TURN],
     planes: [],
-    moss: isRock ? settings.moss : settings.moss * 0.2,
     colorSeed: hashTile(settings.seed + 17, Math.floor(item.x * 977), Math.floor(item.z * 977)),
     height: radius * lerp(0.45, 0.75, rolls[1]),
   };
@@ -316,7 +314,8 @@ function resolveSettings(options) {
 export function createClutter(options = {}) {
   const settings = resolveSettings(options);
   const materials = {
-    stone: { color: [1, 1, 1], roughness: 0.88, metallic: 0, emission: 0 },
+    rock: { color: [1, 1, 1], roughness: 0.88, metallic: 0, emission: 0, moss: settings.moss, mossColor: settings.mossColor },
+    pebble: { color: [1, 1, 1], roughness: 0.8, metallic: 0, emission: 0 },
     litter: { color: [1, 1, 1], roughness: 0.8, metallic: 0, emission: 0, doubleSided: true },
   };
 
@@ -324,17 +323,20 @@ export function createClutter(options = {}) {
     const level = settings.levels[levelIndex];
     tile.cache.items ??= planTileItems(tile, settings);
     const tileOrigin = [tile.tileX, tile.tileZ];
-    const stones = createMeshBuilder({ withColors: true });
+    const rocks = createMeshBuilder({ withColors: true });
+    const pebbles = createMeshBuilder({ withColors: true });
     const litter = createMeshBuilder({ withColors: true });
     for (const item of tile.cache.items) {
       if (item.keepKey >= level.keep) continue;
-      if (item.kind === 'pebbles' || item.kind === 'rocks') addStone(stones, item, tileOrigin, settings, level.detail);
+      if (item.kind === 'rocks') addStone(rocks, item, tileOrigin, settings, level.detail);
+      else if (item.kind === 'pebbles') addStone(pebbles, item, tileOrigin, settings, level.detail);
       else if (item.kind === 'twigs') addTwig(litter, item, tileOrigin, settings, level.detail);
       else addLeaf(litter, item, tileOrigin, settings, level.detail);
     }
     const parts = [];
     const matrix = tileMatrix(tile);
-    if (stones.vertexCount > 0) parts.push({ name: `Clutter stones ${tile.column},${tile.row}`, geometry: stones.build(), matrix, material: materials.stone, castShadow: settings.castShadow });
+    if (rocks.vertexCount > 0) parts.push({ name: `Clutter rocks ${tile.column},${tile.row}`, geometry: rocks.build(), matrix, material: materials.rock, castShadow: settings.castShadow });
+    if (pebbles.vertexCount > 0) parts.push({ name: `Clutter pebbles ${tile.column},${tile.row}`, geometry: pebbles.build(), matrix, material: materials.pebble, castShadow: settings.castShadow });
     if (litter.vertexCount > 0) parts.push({ name: `Clutter litter ${tile.column},${tile.row}`, geometry: litter.build(), matrix, material: materials.litter, castShadow: false });
     return parts;
   }

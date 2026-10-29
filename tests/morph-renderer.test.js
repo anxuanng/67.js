@@ -40,7 +40,7 @@ function retainedRenderer(parts) {
     group.forEach((part, index) => renderer.partLocations.set(part, {
       batch, index, geometry: part.geometry, morph: part.morph,
       morphWeights: part.morph.weights, morphTargets: part.geometry.morphTargets,
-      skin: null, map: null, mapState: [null, null, null, null, null, 1, 1, 1],
+      skin: null, map: null, mapState: [null, null, null, null, null, 1, 1, 1, 0, 0.05, 0.085, 0.02],
       normalMatrix: mat3.create(),
     }));
     return batch;

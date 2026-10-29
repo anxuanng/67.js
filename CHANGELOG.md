@@ -7,6 +7,8 @@
 - Break up grass fields with `patchiness` (short, thin and dense patches), seed `stalks` and folded blades, and let sunlight glow through backlit blades
 - Add `67js/addons/clutter`: pebbles, chipped rocks with moss, twigs and fallen leaves scattered over terrain in streamed tiles, with four presets
 - Share one tile and level-of-detail system between grass and clutter
+- Add a `moss` layer to standard materials: its own rough, sheened, light-wrapping material with a sharp shading mask and a blurred cushion mask; clutter rocks use it
+- Add splat `parallax` (default 0.03 m) for near-ground relief from the layer height maps
 - Add splat `variation` (brightness and hue drift at three scales that grows with distance) and `edgeNoise` (ragged layer borders), both on by default
 
 ## 0.10.0

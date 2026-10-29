@@ -24,10 +24,11 @@ if (clutter.update(eye)) renderer.replaceParts([...terrain.parts, ...grass.parts
 
 - A stone is a sphere displaced by smooth noise. Rocks are also cut by four random planes, which gives them flat, chipped faces. Pebbles stay round.
 - A stone sinks a third to a half of its height into the ground and tilts with the terrain.
-- Vertex colours give each stone its own tone and hue, from blue-grey to rust. Blotches follow the stone's own space. The underside is darker, soil clings near the ground line, and rocks gather moss on top.
+- Vertex colours give each stone its own tone and hue, from blue-grey to rust. Blotches follow the stone's own space. The underside is darker and soil clings near the ground line.
+- Rocks carry the renderer's [moss layer](/material-maps.md): rough, sheened cushions on their tops, shaded as moss rather than painted on. Pebbles stay bare.
 - Twigs are tapered tubes that lie on the ground and follow it. Leaves are small cupped strips in a palette of dry browns.
 - Items gather into patches of about 7 m (`clumping`), so the ground does not read as an even sprinkle.
-- Everything is vertex-coloured and untextured. Each tile has at most two parts, stones and litter, and both stream through `renderer.replaceParts`.
+- Everything is vertex-coloured and untextured. Each tile has at most three parts, rocks, pebbles and litter, and all stream through `renderer.replaceParts`.
 
 Clutter shows best on paths, clearings, riverbanks and forest floor. Under a dense meadow most of it hides in the grass. To fill a path, pass the inverse of the grass mask as the clutter `mask`.
 
@@ -41,7 +42,7 @@ Clutter shows best on paths, clearings, riverbanks and forest floor. Under a den
 | `mask` | none | Coverage at `(x, z)` from 0 to 1. |
 | `pebbles`, `rocks`, `twigs`, `leaves` | from preset | Items per square metre. |
 | `pebbleSize`, `rockSize` | `[0.012, 0.05]`, `[0.08, 0.38]` | Radius range in metres. Most stones fall near the small end. |
-| `moss` | from preset | Moss on rock tops, 0 to 1. |
+| `moss` | from preset | Moss cover on rocks, 0 to 1. It sets the rock material's `moss`. |
 | `clumping` | `0.6` | How strongly items gather into patches, 0 to 1. |
 | `stoneColor`, `mossColor`, `soilColor`, `twigColor` | earth tones | Linear RGB. |
 | `leafColors` | four dry browns | A list of linear RGB colours. Each leaf picks one. |

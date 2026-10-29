@@ -55,7 +55,7 @@ Descriptor identity determines GPU texture reuse. Repeated parts can share descr
 Different descriptors allocate separately even when they reference the same decoded image.
 Every channel and its mipmaps contributes to `textureBytes` and the render memory plan.
 
-A batch groups geometry identity, all five map identities, `normalScale` values, and `occlusionStrength`.
+A batch groups geometry identity, all five map identities, `normalScale` values, `occlusionStrength`, `moss` and `mossColor`.
 The renderer uses batch uniforms for scale and strength because its instance attributes already occupy 16 vertex locations.
 Changing any of these batch fields requires a new renderer. `updateParts()` rejects changes before uploading instance data.
 Color, metallic, roughness, emission, emissive color, and transforms retain their existing update behavior.
@@ -96,6 +96,16 @@ Final alpha is the base map alpha (when `material.map` is set) times `opacity`. 
 - The benchmark preset ignores alpha.
 
 glTF import maps `alphaMode` MASK and BLEND, `alphaCutoff`, `doubleSided` and `baseColorFactor[3]` (to `opacity`) onto these fields, and keeps the base color texture alpha. `exportGlb` writes them back.
+
+## Moss layer
+
+A standard-tag material can grow moss: `moss` (0 to 1, default 0) sets how much of the up-facing surface it covers, and `mossColor` (linear RGB, default `[0.05, 0.085, 0.02]`) its colour.
+
+```js
+const rock = { color: [0.3, 0.29, 0.27], roughness: 0.85, moss: 0.6 };
+```
+
+Moss is shaded as its own material, not as a tint. Where it grows, roughness becomes 1 and metal 0, a soft sheen shows at grazing angles, and sunlight wraps through it. Two masks decide it: a sharp one for where moss is shaded, and a blurred one that lifts it into small cushions, so its relief never turns into needles. Coverage follows world position, so moss slides across an object that moves. Use it on static parts. Moss works with or without maps, costs nothing on materials without it, and is part of the batch state: parts with different `moss` or `mossColor` draw separately, and changing either needs a new renderer. Procedural tags reject it.
 
 ## Splat layers
 

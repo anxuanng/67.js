@@ -30,7 +30,7 @@ test('the same options and seed build identical clutter', () => {
 test('stones face outward and stand on the ground they sink into', () => {
   const terrainHeight = (x, z) => 1 + x * 0.05 + Math.sin(z);
   const clutter = createClutter({ ...near, preset: 'scree', twigs: 0, leaves: 0, terrainHeight });
-  const stones = clutter.parts.filter(part => part.name.startsWith('Clutter stones'));
+  const stones = clutter.parts.filter(part => part.name.match(/^Clutter (rocks|pebbles)/));
   assert.ok(stones.length > 0);
   for (const part of stones) {
     assert.ok(triangleFacesAgreeWithNormals(part.geometry), 'winding and normals agree, so stones are not inside out');

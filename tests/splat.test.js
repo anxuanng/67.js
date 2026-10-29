@@ -63,8 +63,9 @@ test('packs per-layer rules for the shader', () => {
 });
 
 test('variation and edge noise default on, can be switched off and are bounded', () => {
-  assert.deepEqual([...packSplatParameters({ layers: [layer()] }).variation], [1, 1, 0, 0]);
-  assert.deepEqual([...packSplatParameters({ layers: [layer()], splat: { variation: 0, edgeNoise: 0.5 } }).variation], [0, 0.5, 0, 0]);
+  assert.deepEqual([...packSplatParameters({ layers: [layer()] }).variation], [1, 1, Math.fround(0.03), 0]);
+  assert.deepEqual([...packSplatParameters({ layers: [layer()], splat: { variation: 0, edgeNoise: 0.5, parallax: 0 } }).variation], [0, 0.5, 0, 0]);
+  assert.throws(() => validateSplatMaterial({ layers: [layer()], splat: { parallax: 0.4 } }), /parallax/);
   assert.throws(() => validateSplatMaterial({ layers: [layer()], splat: { variation: 3 } }), /at most 2/);
   assert.throws(() => validateSplatMaterial({ layers: [layer()], splat: { edgeNoise: -1 } }), /negative/);
 });
@@ -74,6 +75,7 @@ test('the splat shader drifts colour at several scales and jitters rule edges', 
   assert.match(splatGlsl, /vec3 splatVariationTint\(float footprint\)/);
   assert.match(splatGlsl, /ruleSlope = slope \+ edgeJitter/);
   assert.match(splatGlsl, /splatRange\(ruleHeight,/);
+  assert.match(splatGlsl, /topOffsets\[index\] = splatParallaxOffset\(top, float\(index\), viewSlope, parallaxDepth\)/, 'near pixels slide along the height map');
 });
 
 test('resizes layers to a common size and counts the texture bytes', () => {

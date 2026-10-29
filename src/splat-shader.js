@@ -99,6 +99,17 @@ vec3 splatNormalTwoScale(SplatPlane plane, float layer, float blend) {
   return mixed;
 }
 
+// Parallax with offset limiting: the top-down uv slides toward where the view ray meets the layer's height map, refined
+// in three steps. It only runs on pixels near the camera, where the relief is visible.
+vec2 splatParallaxOffset(SplatPlane top, float layer, vec2 viewSlope, float depthInUv) {
+  vec2 offset = vec2(0.0);
+  for (int refinement = 0; refinement < 3; refinement++) {
+    float height = textureGrad(splatPacked, vec3(top.uv + offset, layer), top.dx, top.dy).y;
+    offset = -viewSlope * depthInUv * (1.0 - height);
+  }
+  return offset;
+}
+
 SplatPlane splatPlane(vec2 worldCoordinates, vec2 worldDx, vec2 worldDy, float scale, vec3 tangent, vec3 bitangent, vec3 face) {
   return SplatPlane(worldCoordinates / scale, worldDx / scale, worldDy / scale, tangent, bitangent, face);
 }
@@ -190,6 +201,10 @@ void applySplat(inout vec3 color, inout vec3 normal, inout float roughness, inou
   vec2 sideShare = pow(abs(geometric.xz), vec2(4.0));
   sideShare /= max(sideShare.x + sideShare.y, 0.0001);
 
+  vec3 toEye = normalize(eye - worldPosition);
+  vec2 viewSlope = toEye.xz / max(toEye.y, 0.35);
+  float parallaxFade = 1.0 - smoothstep(0.004, 0.03, length(fwidth(worldPosition.xz)));
+  vec2 topOffsets[4] = vec2[4](vec2(0.0), vec2(0.0), vec2(0.0), vec2(0.0));
   vec2 packedSamples[4] = vec2[4](vec2(0.5), vec2(0.5), vec2(0.5), vec2(0.5));
   vec3 projections[4] = vec3[4](vec3(0.0, 1.0, 0.0), vec3(0.0, 1.0, 0.0), vec3(0.0, 1.0, 0.0), vec3(0.0, 1.0, 0.0));
   float scores[4] = float[4](-1.0, -1.0, -1.0, -1.0);
@@ -203,6 +218,9 @@ void applySplat(inout vec3 color, inout vec3 normal, inout float roughness, inou
     SplatPlane top = splatPlane(topCoordinates, topDx, topDy, scale, topTangent, topBitangent, up);
     SplatPlane sideX = splatPlane(sideXCoordinates, sideXDx, sideXDy, scale, sideXTangent, sideUp, vec3(xSign, 0.0, 0.0));
     SplatPlane sideZ = splatPlane(sideZCoordinates, sideZDx, sideZDy, scale, sideZTangent, sideUp, vec3(0.0, 0.0, zSign));
+    float parallaxDepth = splatVariation.z * parallaxFade * projection.y / scale;
+    if (parallaxDepth > 0.0001) topOffsets[index] = splatParallaxOffset(top, float(index), viewSlope, parallaxDepth);
+    top.uv += topOffsets[index];
     projections[index] = projection;
     packedSamples[index] = splatPackedSample(index, top, sideX, sideZ, projection, blend);
     scores[index] = weights[index] + packedSamples[index].y * splatBlend.y;
@@ -230,6 +248,7 @@ void applySplat(inout vec3 color, inout vec3 normal, inout float roughness, inou
     SplatPlane top = splatPlane(topCoordinates, topDx, topDy, scale, topTangent, topBitangent, up);
     SplatPlane sideX = splatPlane(sideXCoordinates, sideXDx, sideXDy, scale, sideXTangent, sideUp, vec3(xSign, 0.0, 0.0));
     SplatPlane sideZ = splatPlane(sideZCoordinates, sideZDx, sideZDy, scale, sideZTangent, sideUp, vec3(0.0, 0.0, zSign));
+    top.uv += topOffsets[index];
     vec3 layerColor;
     vec3 layerTilt;
     splatColorSample(index, top, sideX, sideZ, projections[index], blend, layerColor, layerTilt);
