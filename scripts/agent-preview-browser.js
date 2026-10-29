@@ -1,4 +1,4 @@
-import { createAgentScene } from '../src/agent-scene.js';
+import { createAgentScene, needsMeshBooleans, loadMeshBooleans, meshBooleansLoaded, setManifoldModuleLoader } from '../src/agent-scene.js';
 import { Renderer67 } from '../src/renderer.js';
 import { applyProjection } from '../src/camera.js';
 import { mat4 } from 'gl-matrix';
@@ -167,6 +167,15 @@ function createPreview(scene, { sessionId, memoryBudgetMiB, backend }, asset) {
   }
 }
 
+// Manifold is an optional peer dependency; the runtime serves it from the host's node_modules on this origin.
+setManifoldModuleLoader(() => import(/* @vite-ignore */ new URL('/vendor/manifold.js', location.href).href));
+
+// The boolean engine is WebAssembly and loads asynchronously, once. Calls that do not need it stay synchronous.
+function afterMeshBooleans(value, run) {
+  if (meshBooleansLoaded() || !needsMeshBooleans(value)) return run();
+  return loadMeshBooleans().then(run);
+}
+
 window.__agentPreview = {
   reviewBegin({ sessionId, width, height }) {
     const record = requireSession(sessionId);
@@ -254,7 +263,7 @@ window.__agentPreview = {
   },
   create(input) {
     if (active) throw new Error('Dispose the current scene before creating another.');
-    return createPreview(createAgentScene(input.recipe), input);
+    return afterMeshBooleans(input.recipe, () => createPreview(createAgentScene(input.recipe), input));
   },
   async createAsset(input) {
     if (active) throw new Error('Dispose the current scene before creating another.');
@@ -278,7 +287,17 @@ window.__agentPreview = {
   inspect({ sessionId, ...options }) {
     return { sessionId, ...requireSession(sessionId).scene.inspect(options) };
   },
-  apply({ sessionId, operations, expectedRevision }) {
+  inspectMeshes({ sessionId, ...options }) {
+    const scene = requireSession(sessionId).scene;
+    if (typeof scene.inspectMeshes !== 'function') {
+      throw new TypeError('mesh_inspect supports procedural recipe scenes. Imported asset scenes are not inspected as polygon meshes yet.');
+    }
+    return { sessionId, ...scene.inspectMeshes(options) };
+  },
+  apply(input) {
+    return afterMeshBooleans(input.operations, () => this.applyLoaded(input));
+  },
+  applyLoaded({ sessionId, operations, expectedRevision }) {
     const record = requireSession(sessionId);
     validatePreviewCamera(candidateCamera(record, operations));
     let fogDensity = record.scene.environment.volumeFog.density;
@@ -292,6 +311,28 @@ window.__agentPreview = {
     }
     record.scene.apply(operations, { expectedRevision });
     return mutationStatus(record);
+  },
+  editMesh({ sessionId, expectedRevision, geometry, edits, replace }) {
+    const record = requireSession(sessionId);
+    if (typeof record.scene.inspectMeshes !== 'function') {
+      throw new TypeError('mesh_edit supports procedural recipe scenes. Imported asset scenes have no editable mesh geometry yet.');
+    }
+    const operation = { type: 'edit-mesh', geometry, edits, ...(replace === undefined ? {} : { replace }) };
+    return afterMeshBooleans(edits, () => {
+      const status = this.applyLoaded({ sessionId, operations: [operation], expectedRevision });
+      const [mesh] = record.scene.inspectMeshes({ geometries: [geometry] }).meshes;
+      return { ...status, mesh };
+    });
+  },
+  setMeshStack({ sessionId, expectedRevision, geometry, stack, apply }) {
+    const record = requireSession(sessionId);
+    if (typeof record.scene.inspectMeshes !== 'function') {
+      throw new TypeError('mesh_stack supports procedural recipe scenes.');
+    }
+    const operation = { type: 'set-mesh-stack', geometry, ...(stack === undefined ? {} : { stack }), ...(apply === undefined ? {} : { apply }) };
+    const status = this.applyLoaded({ sessionId, operations: [operation], expectedRevision });
+    const [mesh] = record.scene.inspectMeshes({ geometries: [geometry] }).meshes;
+    return { ...status, mesh };
   },
   look({ sessionId, motionTime }) {
     const record = requireSession(sessionId);

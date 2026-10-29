@@ -5,7 +5,7 @@ export default defineConfig({
   build: {
     copyPublicDir: false,
     rolldownOptions: {
-      external: ['@dimforge/rapier3d-compat'],
+      external: ['@dimforge/rapier3d-compat', 'manifold-3d'],
       output: { banner: `/*! ${readFileSync('LICENSE', 'utf8')}\nThird-party notices: ${readFileSync('THIRD-PARTY-NOTICES.md', 'utf8')} */` },
     },
     outDir: 'build',
@@ -22,6 +22,7 @@ export default defineConfig({
         sculpt: 'src/sculpt.js',
         surface: 'src/surface.js',
         'mesh-query': 'src/mesh-query.js',
+        mesh: 'src/mesh.js',
         shrinkwrap: 'src/shrinkwrap.js',
         'surface-attachment': 'src/surface-attachment.js',
         physics: 'src/physics.js',

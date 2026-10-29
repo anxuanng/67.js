@@ -40,6 +40,7 @@
     "docs/sculpt.md",
     "docs/surface.md",
     "docs/mesh-query.md",
+    "docs/mesh.md",
     "docs/primitives.md",
     "docs/shrinkwrap.md",
     "docs/vehicle.md",
@@ -77,6 +78,7 @@
     "./addons/sculpt": "./build/sculpt.js",
     "./addons/surface": "./build/surface.js",
     "./addons/mesh-query": "./build/mesh-query.js",
+    "./addons/mesh": "./build/mesh.js",
     "./addons/shrinkwrap": "./build/shrinkwrap.js",
     "./addons/surface-attachment": "./build/surface-attachment.js",
     "./addons/physics": "./build/physics.js",
@@ -123,13 +125,17 @@
     "smoke:agent-review": "node scripts/smoke-agent-review.mjs"
   },
   "peerDependencies": {
-    "@dimforge/rapier3d-compat": "0.21.0"
+    "@dimforge/rapier3d-compat": "0.21.0",
+    "manifold-3d": "3.5.4"
   },
   "dependencies": {
     "playwright-core": "1.64.0"
   },
   "peerDependenciesMeta": {
     "@dimforge/rapier3d-compat": {
+      "optional": true
+    },
+    "manifold-3d": {
       "optional": true
     }
   },
@@ -140,6 +146,7 @@
     "@modelcontextprotocol/server": "2.3.1",
     "gl-matrix": "3.4.4",
     "highlight.js": "11.12.0",
+    "manifold-3d": "3.5.4",
     "playwright": "1.64.0",
     "react": "19.3.0",
     "react-dom": "19.3.0",

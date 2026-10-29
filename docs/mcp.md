@@ -102,6 +102,9 @@ Inspect or export the recipe before retrying. Context loss still permits recipe 
 | `scene_create_asset` | `recipe` using `67js.asset` | Imported scene ID, revision, inspection and render status |
 | `scene_inspect` | `sessionId`, optional `ids`, `limit`, `includeBounds` | Compact node records and revision |
 | `scene_apply` | `sessionId`, `expectedRevision`, `operations` | Updated revision, inspection, and render status |
+| `mesh_inspect` | `sessionId`, optional `geometries` (up to 16 IDs) | Per geometry: polygon counts, face sizes, parts, face tags, bounds and lint problems with fixes |
+| `mesh_edit` | `sessionId`, `expectedRevision`, `geometry`, `edits`, optional `replace` | Updated revision, render status and the mesh report with per-edit results |
+| `mesh_stack` | `sessionId`, `expectedRevision`, `geometry`, optional `stack`, `apply` | Updated revision, render status and the mesh report with per-node results |
 | `scene_look` | `sessionId`, optional `width`, `height`, `motionTime` | PNG image and metadata |
 | `scene_review` | `sessionId`, `expectedRevision`, `shots`, optional `width`, `height` | Labeled PNG grid and metadata from an isolated snapshot |
 | `scene_checkpoint` | `sessionId` | Checkpoint ID, session ID, and revision |
@@ -116,7 +119,8 @@ Inspect or export the recipe before retrying. Context loss still permits recipe 
 | `scene_render_release` | `jobId` | Confirmation that owned job files were removed |
 
 The recipe uses `format: '67js.scene'` and `schemaVersion: 1`.
-Supported geometry types are `box`, `cylinder`, `sphere`, `torus`, `lathe`, `extrude`, and `tube`.
+Supported geometry types are `box`, `cylinder`, `sphere`, `torus`, `lathe`, `extrude`, `tube`, and `mesh`.
+A `mesh` geometry starts from one of the others as `base` and replays an edit log; see [mesh.md](mesh.md).
 Geometry fields remain flat inside each geometry record.
 Set operations use `set-node`, `set-material`, or `set-camera`, with fields directly on each command.
 

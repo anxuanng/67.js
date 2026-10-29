@@ -5,13 +5,18 @@ import { createSceneGraph } from './scene-graph.js';
 import { applyProjection } from './camera.js';
 import { normalizeAgentLook } from './agent-look.js';
 import { normalizeAgentMotion, compileAgentMotion } from './agent-motion.js';
+import { meshReport, generateMeshGeometry, MESH_SMOOTH_ANGLE_DEFAULT } from './agent-mesh.js';
+import { normalizeMeshEdits, normalizeMeshStack, MESH_EDIT_OPERATIONS, MAX_MESH_EDITS, STACK_OPERATIONS, MAX_STACK_NODES } from './mesh-recipe.js';
 export { normalizeAgentLook, resolveAgentShadow } from './agent-look.js';
+export { needsMeshBooleans } from './agent-mesh.js';
+export { loadMeshBooleans, meshBooleansLoaded, setManifoldModuleLoader } from './mesh-boolean.js';
 
 const DEFAULT_LIMITS = Object.freeze({
   maxNodes: 4096, maxDepth: 256, maxGeometries: 256, maxMaterials: 256,
   maxVertices: 250_000, maxGeometryBytes: 32 * 1024 * 1024,
   maxOperations: 256, maxCheckpoints: 8, maxRecipeBytes: 1024 * 1024,
 });
+const MAX_MESH_REPORTS = 16;
 const CAMERA_DEFAULTS = Object.freeze({ eye: [4, 3, 5], target: [0, 0, 0], up: [0, 1, 0], fov: 45, near: 0.1, far: 1000 });
 const NODE_FIELDS = ['translation', 'rotation', 'scale', 'parent', 'label', 'geometry', 'material'];
 const MATERIAL_FIELDS = ['color', 'metallic', 'roughness', 'emission', 'emissiveColor', 'opacity', 'alphaMode', 'doubleSided'];
@@ -35,11 +40,13 @@ const REMOVAL_FIELDS = Object.freeze({
 
 export const AGENT_SCENE_CAPABILITIES = Object.freeze({
   format: '67js.scene', schemaVersion: 1,
-  geometryTypes: Object.freeze(['box', 'cylinder', 'sphere', 'torus', 'lathe', 'extrude', 'tube']),
+  geometryTypes: Object.freeze(['box', 'cylinder', 'sphere', 'torus', 'lathe', 'extrude', 'tube', 'mesh']),
+  meshEdits: Object.freeze({ operations: Object.freeze(Object.keys(MESH_EDIT_OPERATIONS)), maxEdits: MAX_MESH_EDITS }),
+  meshStack: Object.freeze({ operations: STACK_OPERATIONS, maxNodes: MAX_STACK_NODES }),
   operations: Object.freeze([
     'set-node', 'set-material', 'set-camera', 'add-node', 'remove-node',
     'add-geometry', 'remove-geometry', 'add-material', 'remove-material',
-    'set-environment', 'set-effects', 'set-shadow', 'set-motion',
+    'set-environment', 'set-effects', 'set-shadow', 'set-motion', 'edit-mesh', 'set-mesh-stack',
   ]),
   materialTags: Object.freeze(['surface', 'unlit', 'liquid', 'foam']),
   alphaModes: Object.freeze(RECIPE_ALPHA_MODES),
@@ -319,6 +326,7 @@ const GEOMETRY_FIELDS = {
   lathe: ['profile', 'segments', 'startAngle', 'sweep'],
   extrude: ['contour', 'holes', 'depth', 'steps', 'bevel', 'bevelThickness', 'bevelSegments'],
   tube: ['path', 'radius', 'segments', 'radialSegments', 'closed'],
+  mesh: ['base', 'edits', 'stack', 'smoothAngle'],
 };
 
 function geometryEstimate(value) {
@@ -339,7 +347,7 @@ function geometryEstimate(value) {
     return input.length;
   }
   for (const field of GEOMETRY_FIELDS[value.type]) {
-    if (value[field] !== undefined && !['profile', 'contour', 'holes', 'path', 'closed'].includes(field)) {
+    if (value[field] !== undefined && !['profile', 'contour', 'holes', 'path', 'closed', 'base', 'edits', 'stack'].includes(field)) {
       finite(value[field], field);
     }
   }
@@ -372,7 +380,31 @@ function geometryEstimate(value) {
       const beveled = (value.bevel ?? 0) > 0 || (value.bevelThickness ?? value.bevel ?? 0) > 0;
       return 6 * (count + holes.length * 2 - 2) + 6 * count * (detail('steps', 1, 1, 256) + (beveled ? detail('bevelSegments', 3, 1, 32) * 2 : 0));
     }
+    case 'mesh': {
+      const base = value.base;
+      if (!base || typeof base !== 'object' || Array.isArray(base) || base.type === 'mesh' || Object.hasOwn(base, 'id')) {
+        throw new TypeError('mesh base must be a primitive or profile geometry record without an id (box, cylinder, sphere, torus, lathe, extrude or tube).');
+      }
+      let estimate = geometryEstimate({ id: 'base', ...base });
+      for (const edit of normalizeMeshEdits(value.edits ?? [])) {
+        if (edit.op === 'boolean') estimate += cutterEstimate(edit.cutter);
+      }
+      // Stack nodes multiply the mesh: arrays by their count, mirror and solidify at most by two.
+      for (const node of normalizeMeshStack(value.stack ?? [])) estimate *= node.op === 'array' ? node.count : 2;
+      if (value.smoothAngle !== undefined && (value.smoothAngle < 0 || value.smoothAngle > 180)) {
+        throw new RangeError('smoothAngle is degrees from 0 to 180.');
+      }
+      // Edits can grow the mesh; the real size is checked against maxVertices after generation.
+      return estimate * 2;
+    }
   }
+}
+
+function cutterEstimate(cutter) {
+  if (cutter.type === 'mesh' || Object.hasOwn(cutter, 'id')) {
+    throw new TypeError('A boolean cutter must be a primitive or profile record without an id (box, cylinder, sphere, torus, lathe, extrude or tube).');
+  }
+  return geometryEstimate({ id: 'cutter', ...cutter });
 }
 
 function generateGeometry(value, maxVertices) {
@@ -391,6 +423,15 @@ function generateGeometry(value, maxVertices) {
       return extrude(value.contour, { ...value, maxVertices });
     case 'tube':
       return tube(value.path, { ...value, maxVertices });
+    case 'mesh':
+      return generateMeshGeometry(() => generateGeometry(value.base, maxVertices), value.edits ?? [], {
+        maxVertices, smoothAngle: value.smoothAngle ?? MESH_SMOOTH_ANGLE_DEFAULT,
+        stack: value.stack ?? [], cacheKey: JSON.stringify(value.base),
+        resolveCutter: cutter => {
+          cutterEstimate(cutter);
+          return generateGeometry(cutter, maxVertices);
+        },
+      });
   }
 }
 
@@ -687,7 +728,11 @@ export function createAgentScene(input, inputLimits = {}) {
         const geometry = Object.freeze(generateGeometry(plan.definition, Math.min(limits.maxVertices, 1_000_000)));
         const geometryBytes = Object.values(geometry).reduce((total, array) => total + array.byteLength, 0);
         const vertices = geometry.positions.length / 3;
-        if (vertices > plan.estimatedVertices || geometryBytes > plan.estimatedVertices * 56) {
+        if (plan.definition.type === 'mesh') {
+          if (residentStats.vertices + pendingVertices - plan.estimatedVertices + vertices > limits.maxVertices) {
+            throw new RangeError(`Mesh ${plan.definition.id} has ${vertices} render vertices after its edits, which exceeds maxVertices across the scene. Reduce detail or edits.`);
+          }
+        } else if (vertices > plan.estimatedVertices || geometryBytes > plan.estimatedVertices * 56) {
           throw new RangeError('Generated geometry exceeds its conservative preflight bound.');
         }
         record = Object.freeze({
@@ -851,6 +896,48 @@ export function createAgentScene(input, inputLimits = {}) {
           candidate[collection].push(record);
           continue;
         }
+        if (operation.type === 'edit-mesh') {
+          knownKeys(operation, ['type', 'geometry', 'edits', 'replace'], 'operation');
+          identifier(operation.geometry);
+          const target = candidate.geometries.find(geometry => geometry.id === operation.geometry);
+          if (!target) {
+            throw new RangeError(`Geometry ID was not found: ${operation.geometry}.`);
+          }
+          if (target.type !== 'mesh') {
+            throw new TypeError(`Geometry ${operation.geometry} is a ${target.type}. Add a mesh geometry with base: { type: '${target.type}', ... } to edit it.`);
+          }
+          if (operation.replace !== undefined && typeof operation.replace !== 'boolean') {
+            throw new TypeError('replace must be boolean.');
+          }
+          if (!Array.isArray(operation.edits)) {
+            throw new TypeError('edit-mesh needs an edits array.');
+          }
+          target.edits = operation.replace ? operation.edits : [...(target.edits ?? []), ...operation.edits];
+          normalizeMeshEdits(target.edits);
+          continue;
+        }
+        if (operation.type === 'set-mesh-stack') {
+          knownKeys(operation, ['type', 'geometry', 'stack', 'apply'], 'operation');
+          identifier(operation.geometry);
+          const target = candidate.geometries.find(geometry => geometry.id === operation.geometry);
+          if (!target) {
+            throw new RangeError(`Geometry ID was not found: ${operation.geometry}.`);
+          }
+          if (target.type !== 'mesh') {
+            throw new TypeError(`Geometry ${operation.geometry} is a ${target.type}. Only mesh geometries have a modifier stack.`);
+          }
+          const stack = operation.stack ?? target.stack ?? [];
+          normalizeMeshStack(stack);
+          const applied = operation.apply ?? 0;
+          if (!Number.isInteger(applied) || applied < 0 || applied > stack.length) {
+            throw new RangeError(`apply must be an integer from 0 to the stack length ${stack.length}.`);
+          }
+          // Applying moves the first nodes into the edit log, as Blender's Apply modifier does.
+          target.edits = [...(target.edits ?? []), ...stack.slice(0, applied)];
+          target.stack = stack.slice(applied);
+          normalizeMeshEdits(target.edits);
+          continue;
+        }
         if (operation.type === 'remove-node') {
           for (const id of removeNode(candidate, operation)) {
             removedNodes.add(id);
@@ -949,6 +1036,24 @@ export function createAgentScene(input, inputLimits = {}) {
         },
         nodes, truncated: selected.length > nodes.length,
       };
+    },
+    /** Polygon counts, parts, face tags and lint problems for recipe geometries (all, or the given IDs). */
+    inspectMeshes(options = {}) {
+      knownKeys(options, ['geometries'], 'mesh inspection');
+      const requested = options.geometries ?? [...state.geometries.keys()];
+      if (!Array.isArray(requested) || (options.geometries !== undefined && requested.length > MAX_MESH_REPORTS)) {
+        throw new RangeError(`Inspect at most ${MAX_MESH_REPORTS} geometry IDs per call.`);
+      }
+      const selected = requested.slice(0, MAX_MESH_REPORTS);
+      const meshes = selected.map(id => {
+        identifier(id);
+        const geometry = state.geometries.get(id);
+        if (!geometry) {
+          throw new RangeError(`Geometry ID was not found: ${id}. Known IDs: ${[...state.geometries.keys()].join(', ')}.`);
+        }
+        return { geometry: id, ...meshReport(geometry) };
+      });
+      return { revision, meshes, truncated: requested.length > selected.length };
     },
     checkpoint() {
       if (checkpoints.size >= limits.maxCheckpoints) {

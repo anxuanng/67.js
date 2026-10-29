@@ -110,14 +110,47 @@ const shadow = z.strictObject({
   near: bounded(0.001, 1e6).optional(),
   far: bounded(0.001, 1e6).optional(),
 }).describe('Directional shadow coverage. Backend checks Float32 view/projection consistency.');
+function primitiveGeometries(identified) {
+  const id = identified ? { id: identifier } : {};
+  return [
+    z.strictObject({ ...id, type: z.literal('box'), bevel: finite.optional(), subdivisions: detail(1, 128) }),
+    z.strictObject({ ...id, type: z.literal('cylinder'), segments, bevel: finite.optional(), bevelSegments: detail(1, 128) }),
+    z.strictObject({ ...id, type: z.literal('sphere'), segments, rings: detail(2, 2048) }),
+    z.strictObject({ ...id, type: z.literal('torus'), tubeRadius: finite.optional(), segments, sides: detail(3, 128), arc: finite.optional(), start: finite.optional() }),
+    z.strictObject({ ...id, type: z.literal('lathe'), profile: z.array(point2).min(2).max(4096), segments, startAngle: finite.optional(), sweep: finite.optional() }),
+    z.strictObject({ ...id, type: z.literal('extrude'), contour: ring, holes: z.array(ring).max(128).optional(), depth: finite.optional(), steps: detail(1, 256), bevel: finite.optional(), bevelThickness: finite.optional(), bevelSegments: detail(1, 32) }),
+    z.strictObject({ ...id, type: z.literal('tube'), path: z.array(vector3).min(2).max(4096), radius: finite.optional(), segments, radialSegments: detail(3, 128), closed: z.boolean().optional() }),
+  ];
+}
+const selectRule = z.record(z.string(), z.unknown()).describe('Face selection rule: {"all":true}, {"tag":"top"}, {"normal":[0,1,0],"maxAngle":10} (degrees), {"inside":{"min":[x,y,z],"max":[x,y,z]}} (face centroids), {"faces":[indices]}, {"and":[rules]}, {"or":[rules]}, {"not":rule}, {"grow":rule,"steps":1}, {"boundary":rule}. Tags come from the base (top, bottom, side, left, right, front, back) and from earlier edits (<name>.cap, <name>.side, <name>.rim, or a tag op).');
+const editName = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]{0,47}$/).optional().describe('Prefix for the tags this edit creates. Defaults to <op>-<index>.');
+const meshEdit = z.discriminatedUnion('op', [
+  z.strictObject({ op: z.literal('extrude_face_region'), select: selectRule.optional(), name: editName, offset: finite.describe('Distance along each connected region\'s average normal (negative pushes in).'), direction: vector3.optional().describe('Move along this direction instead of the normal.') }),
+  z.strictObject({ op: z.literal('extrude_individual'), select: selectRule.optional(), name: editName, offset: finite.describe('Distance along each face\'s own normal.'), direction: vector3.optional() }),
+  z.strictObject({ op: z.literal('inset_region'), select: selectRule.optional(), name: editName, thickness: finite.describe('Rim width, positive.'), depth: finite.optional().describe('Move the inner faces along the normal afterwards.') }),
+  z.strictObject({ op: z.literal('inset_individual'), select: selectRule.optional(), name: editName, thickness: finite, depth: finite.optional() }),
+  z.strictObject({ op: z.literal('delete'), select: selectRule }),
+  z.strictObject({ op: z.literal('flip_normals'), select: selectRule.optional() }),
+  z.strictObject({ op: z.literal('translate'), select: selectRule.optional(), offset: vector3, falloff: z.strictObject({ radius: finite, curve: z.enum(['smooth', 'sphere', 'root', 'sharp', 'linear', 'constant', 'inverseSquare']).optional(), connected: z.boolean().optional().describe('Measure distance along edges instead of straight lines.') }).optional() }),
+  z.strictObject({ op: z.literal('merge_by_distance'), distance: finite.optional() }),
+  z.strictObject({ op: z.literal('tag'), select: selectRule, name: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]{0,47}$/).describe('Tag to add to the selected faces.') }),
+  z.strictObject({
+    op: z.literal('boolean'), name: editName,
+    operation: z.enum(['union', 'difference', 'intersect']),
+    cutter: z.discriminatedUnion('type', primitiveGeometries(false)).describe('Closed cutting shape in the mesh\'s local space, before translation, rotation and scale. Faces it contributes get the tag <name>.cut.'),
+    translation: vector3.optional(), rotation: quaternion.optional().describe('XYZW quaternion.'), scale: vector3.optional().describe('Positive per-axis scale.'),
+  }).describe('Manifold boolean. Both the mesh and the cutter must be closed; mesh_inspect lists open edges.'),
+]);
+const stackNodes = [
+  z.strictObject({ op: z.literal('mirror'), name: editName, axis: z.enum(['x', 'y', 'z']).optional().describe('Mirror across the plane through the local origin perpendicular to this axis. Defaults to x.'), merge: bounded(0, 1000).optional().describe('Vertices this close to the plane are shared by both halves. Defaults to 0.001. Faces lying in the plane are removed, so a closed half becomes a closed whole.') }),
+  z.strictObject({ op: z.literal('array'), name: editName, count: z.number().int().min(1).max(256).optional(), offset: vector3.optional().describe('Constant step between copies.'), relativeOffset: vector3.optional().describe('Step in bounding-box sizes. Defaults to [1, 0, 0] unless offset is given.'), merge: bounded(0, 1000).optional().describe('Weld touching copies and remove the faces between them.') }),
+  z.strictObject({ op: z.literal('solidify'), name: editName, thickness: finite.describe('Wall thickness, positive.'), offset: bounded(-1, 1).optional().describe('-1 grows inward (default), 1 outward, 0 centred.'), evenThickness: z.boolean().optional() }),
+];
+const meshStack = z.array(z.discriminatedUnion('op', stackNodes)).max(16);
+const meshEdits = z.array(z.discriminatedUnion('op', [...meshEdit.options, ...stackNodes])).max(64);
 const geometry = z.discriminatedUnion('type', [
-  z.strictObject({ id: identifier, type: z.literal('box'), bevel: finite.optional(), subdivisions: detail(1, 128) }),
-  z.strictObject({ id: identifier, type: z.literal('cylinder'), segments, bevel: finite.optional(), bevelSegments: detail(1, 128) }),
-  z.strictObject({ id: identifier, type: z.literal('sphere'), segments, rings: detail(2, 2048) }),
-  z.strictObject({ id: identifier, type: z.literal('torus'), tubeRadius: finite.optional(), segments, sides: detail(3, 128), arc: finite.optional(), start: finite.optional() }),
-  z.strictObject({ id: identifier, type: z.literal('lathe'), profile: z.array(point2).min(2).max(4096), segments, startAngle: finite.optional(), sweep: finite.optional() }),
-  z.strictObject({ id: identifier, type: z.literal('extrude'), contour: ring, holes: z.array(ring).max(128).optional(), depth: finite.optional(), steps: detail(1, 256), bevel: finite.optional(), bevelThickness: finite.optional(), bevelSegments: detail(1, 32) }),
-  z.strictObject({ id: identifier, type: z.literal('tube'), path: z.array(vector3).min(2).max(4096), radius: finite.optional(), segments, radialSegments: detail(3, 128), closed: z.boolean().optional() }),
+  ...primitiveGeometries(true),
+  z.strictObject({ id: identifier, type: z.literal('mesh'), base: z.discriminatedUnion('type', primitiveGeometries(false)).describe('Starting shape, converted to welded quads with axis face tags.'), edits: meshEdits.optional().describe('Replayable edit log, applied in order.'), stack: meshStack.optional().describe('Non-destructive modifier stack (mirror, array, solidify) evaluated after the edits.'), smoothAngle: bounded(0, 180).optional().describe('Edges bending more than this many degrees render hard. Defaults to 30.') }),
 ]);
 function motionTrack(kind, property, value, tangent) {
   return z.strictObject({
@@ -244,6 +277,9 @@ export function createAgentMcpServer(runtime, { version = packageMetadata.versio
   register('scene_asset_catalog', 'List content-bound GLB IDs from the configured local asset directory. No arbitrary paths or downloads.', z.strictObject({}), readOnly, async () => jsonResult(await runtime.assetCatalog()));
   register('scene_create_asset', 'Create the active scene from a catalog GLB and editable asset recipe. Preserves supported maps, skins, morphs and clips. Dispose the existing scene first.', z.strictObject({ recipe: assetRecipe }), { ...edit, destructiveHint: false }, async argumentsValue => jsonResult(await runtime.createAsset(argumentsValue)));
   register('scene_inspect', 'Read revision, counts and selected nodes. Bounds describe authored geometry rather than shader displacement.', z.strictObject({ ...sessionFields, ids: z.array(identifier).max(4096).optional().describe('Selected node IDs. Omit to inspect scene order.'), kind: z.enum(['meshes', 'hierarchy']).optional().describe('Imported assets only: hierarchy exposes stable source-node IDs and joints.'), offset: z.number().int().min(0).max(4096).optional().describe('Imported assets only: pagination offset.'), limit: z.number().int().min(1).max(4096).optional().describe('Maximum returned node records. Defaults to 64.'), includeBounds: z.boolean().optional().describe('Include world geometry bounds. Defaults to false.') }), readOnly, async argumentsValue => jsonResult(await runtime.inspect(argumentsValue)));
+  register('mesh_inspect', 'Check recipe geometries as polygon meshes: vertex, edge and face counts, triangles/quads/n-gons, connected and closed parts, face tags (top, bottom, side, left, right, front, back), bounds, and lint problems (non-manifold, inconsistent winding, inverted, degenerate, open, loose) with a suggested fix each. Procedural scenes only. Read-only and cached per geometry.', z.strictObject({ ...sessionFields, geometries: z.array(identifier).min(1).max(16).optional().describe('Geometry IDs to check. Omit to check the first 16 geometries.') }), readOnly, async argumentsValue => jsonResult(await runtime.inspectMeshes(argumentsValue)));
+  register('mesh_edit', 'Append edits to a recipe mesh geometry (or replace its edit log), atomically like scene_apply: extrude, inset, delete, flip, translate with proportional falloff, merge by distance, tag, and booleans (union, difference, intersect) with a primitive cutter. Edits that select no faces or break limits fail without changing the scene. Returns the new revision, render status and the mesh report with per-edit results (faces selected, tags created, size after).', z.strictObject({ ...sessionFields, expectedRevision, geometry: identifier.describe('ID of a geometry with type mesh.'), edits: meshEdits.min(1), replace: z.boolean().optional().describe('Replace the whole edit log instead of appending.') }), edit, async argumentsValue => jsonResult(await runtime.editMesh(argumentsValue)));
+  register('mesh_stack', 'Set the non-destructive modifier stack of a recipe mesh geometry (mirror, array, solidify), evaluated after its edits with each prefix cached, so changing a late node is cheap. apply: n moves the first n nodes into the edit log, as Blender\'s Apply modifier. Atomic like scene_apply. Returns the revision, render status and mesh report with per-node results.', z.strictObject({ ...sessionFields, expectedRevision, geometry: identifier.describe('ID of a geometry with type mesh.'), stack: meshStack.optional().describe('The whole new stack. Omit to keep the current stack (for example with apply).'), apply: z.number().int().min(0).max(16).optional() }), edit, async argumentsValue => jsonResult(await runtime.setMeshStack(argumentsValue)));
   register('scene_apply', 'Atomically edit transforms, look, camera or materials. Procedural scenes support membership and set-motion authoring. Imported assets support set-root, set-asset-node, set-motion and absolute set-animation sampling. Successful batches increment revision once.', z.strictObject({ ...sessionFields, expectedRevision, operations: z.array(operation).min(1).max(256).describe('Node/material/camera/root/animation commands use flat fields. Motion, look patches and add commands contain nested records. Backend validates each scene mode before publication.') }), edit, async argumentsValue => jsonResult(await runtime.apply(argumentsValue)));
   register('scene_look', 'Render the active scene as a bounded PNG. Optional authored motionTime seeks without changing revision; null restores the authored base pose. Omit to retain the last preview pose.', z.strictObject({ ...sessionFields, motionTime: z.number().min(0).max(3600).nullable().optional(), width: z.number().int().min(64).max(1024).default(768).describe('PNG width in pixels.'), height: z.number().int().min(64).max(1024).default(512).describe('PNG height in pixels.') }), readOnly, async argumentsValue => {
     const { data, mimeType, metadata } = await runtime.look(argumentsValue);
