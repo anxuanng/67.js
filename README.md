@@ -1,50 +1,50 @@
-# 67.js
+<p align="center">
+  <a href="https://67js.codepawl.com">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://67js.codepawl.com/brand/wordmark-dark.svg?v=0.10.0" />
+      <img src="https://67js.codepawl.com/brand/wordmark-light.svg?v=0.10.0" alt="67.js" width="260" />
+    </picture>
+  </a>
+</p>
 
-**3D scenes agents can inspect, edit and render.**
+<p align="center"><strong>A WebGL2 engine for 3D scenes that people and agents can build, inspect and render.</strong></p>
 
-Explore the [showcase](https://67js.codepawl.com), read the [documentation](https://67js.codepawl.com/docs.html), or give an agent the [plain-text guide](https://67js.codepawl.com/llms.txt).
+<p align="center">
+  <a href="https://www.npmjs.com/package/@codepawlhq/67js"><img src="https://img.shields.io/npm/v/@codepawlhq/67js?color=3b6e22&label=npm" alt="npm version" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-3b6e22" alt="MIT license" /></a>
+  <img src="https://img.shields.io/badge/node-%E2%89%A520.19-3b6e22" alt="Node.js 20.19 or later" />
+</p>
 
-67.js develops JavaScript tools for agent-driven 3D authoring, browser previews and image/video rendering.
-The published engine supplies interactive worlds, animated models and cinematic media. The current source adds bounded scene authoring sessions.
-Meshes, materials and cameras give Three.js users a familiar foundation. Scene studios, assembly inspection and image/video export extend that foundation into a production workflow.
+<p align="center">
+  <a href="https://67js.codepawl.com">Showcase</a> ·
+  <a href="https://67js.codepawl.com/docs.html">Documentation</a> ·
+  <a href="https://67js.codepawl.com/llms.txt">Guide for agents</a> ·
+  <a href="CHANGELOG.md">Changelog</a>
+</p>
 
-The renderer is designed around shared geometry, predictable frame allocation and explicit CPU/GPU render budgets.
-The aim is to spend less time managing draw calls, capture scripts and memory limits, and more time building the scene.
+<p align="center">
+  <img src="https://67js.codepawl.com/previews/forest.webp?v=0.10.0" alt="Birch, beech and fir trees with scanned leaves over a grassy slope, rendered by 67.js" width="100%" />
+</p>
 
-The current release includes an explodable WALL·E study, an interactive nature world, a 3D short film and a keyframe motion studio.
-It also includes flat 2D views and an asset viewer. Every viewer uses the 67.js renderer.
+67.js is a custom WebGL2 renderer with addons for terrain, vegetation, liquid, vehicles, characters and media export.
+Every scene is plain data: geometry, a matrix and a material for each part.
+The renderer batches parts that share geometry into instanced draws, and it plans GPU memory before it allocates.
+An MCP server lets an agent author a scene as a JSON recipe, look at PNG previews and render images or video.
 
-## What it includes
-
-- Instanced geometry, PBR lighting, shadows, MSAA, FXAA and specular filtering.
-- On-demand rendering for object inspection and deterministic time sampling for the short film.
-- Interactive studios with orbit controls, material settings, assembly views and GLB export.
-- CPU and GPU image/video export with memory planning and encoder backpressure.
-- A versioned npm package, standalone browser module and release metadata shared by the website and guide.
-- Deterministic keyframe animation with retained instance buffers and absolute timeline seeking.
-- Optional HDR, bloom and color grading, with reused targets included in the render budget.
-- Orthographic cameras and flat XY scenes with pan, zoom and PNG capture.
-- An optional glTF/GLB decoder for textured meshes, vertex colors and rigid node animation.
-
-## Direction
-
-67.js aims to make rendering, interaction and media production available through one browser graphics workflow.
-The next implementation targets adaptive quality, GPU timing, picking and reusable interaction controls. See the [implementation roadmap](ROADMAP.md).
-Performance improvements are evaluated on matching scenes and hardware. Visual quality follows the needs of each authored scene.
-
-![WALL·E rendered by 67.js](https://67js.codepawl.com/previews/wall-e.png)
-
-The WALL·E study contains 574 parts, 860,380 triangles and seven shared geometries.
-The studio submits eight geometry draws, including the floor.
-Its slider separates all 574 components, including individual fasteners, tread shoes, gears and electronics, to expose batteries, circuit boards, motors, gears and optical mechanisms.
-The layer controls show the shell, the interior or both. GLB export preserves the selected layers, finish and explosion amount.
-
-The homepage character rolls forward, looks around and moves its arms and claws.
-Its assembly slider approaches each selected position smoothly, pauses driving and resumes gradually after complete reassembly.
-
-The renderer uses sampled fillets, GGX lighting, shadows, explicit MSAA, FXAA, specular filtering and ACES tone mapping.
-It reuses geometry buffers during explosion and refreshes shadows without allocating another shadow texture.
-The studio renders on demand. Continuous animation pauses in hidden tabs.
+<table>
+  <tr>
+    <td width="50%"><a href="docs/terrain.md"><img src="https://67js.codepawl.com/previews/terrain.webp" alt="Rolling hills of scanned grass and mud rising to rocky ridges" /></a><br /><b>Terrain</b>: chunked heightfield, four scanned ground layers</td>
+    <td width="50%"><a href="docs/spume.md"><img src="https://67js.codepawl.com/previews/spume.webp" alt="A jet of baked liquid hitting a concrete slab" /></a><br /><b>Spume liquid</b>: baked water that refracts and sprays</td>
+  </tr>
+  <tr>
+    <td><a href="docs/vehicle.md"><img src="https://67js.codepawl.com/previews/vehicle.webp" alt="A jeep leaning into a bend on a marked path" /></a><br /><b>Vehicles</b>: steering, body roll and wheels on a path</td>
+    <td><a href="docs/lighting.md"><img src="https://67js.codepawl.com/previews/lighting.webp" alt="Metal spheres of rising roughness lit by an HDR environment" /></a><br /><b>HDRI lighting</b>: reflections that blur with roughness</td>
+  </tr>
+  <tr>
+    <td><a href="https://67js.codepawl.com/object.html"><img src="https://67js.codepawl.com/previews/wall-e-exploded.webp" alt="An exploded robot study with 574 separate parts" /></a><br /><b>Assembly studio</b>: 574 parts that explode apart</td>
+    <td><a href="https://67js.codepawl.com/nature.html"><img src="https://67js.codepawl.com/previews/nature.webp" alt="A valley with a river, a wooden bridge and stylized trees" /></a><br /><b>Nature world</b>: viewpoints, daylight, wind and water</td>
+  </tr>
+</table>
 
 ## Install
 
@@ -52,202 +52,143 @@ The studio renders on demand. Continuous animation pauses in hidden tabs.
 npm install 67js@npm:@codepawlhq/67js
 ```
 
-The registry package is `@codepawlhq/67js`. Its local alias is `67js`, so imports stay short. The project brand is 67.js.
+The registry name is `@codepawlhq/67js`. The command installs it under the alias `67js`, so imports stay short.
+The package is ESM and bundles its runtime dependencies. It needs Node.js 20.19 or later for the tools, and a WebGL2 browser for rendering.
 
-The library is ESM and bundles its runtime dependencies. Core exports include `Renderer67`, `box`, `cylinder`, `sphere`, `torus`, `assemblyOffset`, `exportGlb`, render budget helpers and `VERSION`. Scene constructors are separate addons. Browser module downloads and the guide are available at https://67js.codepawl.com.
+## Quick start
 
-## Run
+```js
+import { Renderer67, box, sphere } from '67js';
 
-1. Install Node.js 22.12 or newer.
-2. Run `npm ci`.
-3. Run `npm run dev`.
-4. Open the URL printed by Vite.
+// Column-major 4x4 matrix: scale, then move.
+const placed = ([x, y, z], [width, height, depth] = [1, 1, 1]) =>
+  new Float32Array([width, 0, 0, 0, 0, height, 0, 0, 0, 0, depth, 0, x, y, z, 1]);
 
-| Page | Experience |
-| --- | --- |
-| `/` | Installation, downloads, release metadata and examples. |
-| `/object.html` | WALL·E studio with orbit, zoom, explosion, layers, finishes and GLB export. |
-| `/nature.html` | Silverwater valley with viewpoints, daylight, wind, detail settings and water ripples. |
-| `/film.html` | Oppenheimer, a 187-second procedural trailer study with playback and timeline controls. |
-| `/motion.html` | Clockwork orbit, a 12-second keyframe animation with HDR and landscape, portrait and square framing. |
-| `/view2d.html` | Flat vector scenes and front, right, top or perspective model inspection. |
-| `/assets.html` | GLB loading, texture inspection, rigid animation, orbit controls and PNG capture. |
+const parts = [
+  {
+    name: 'Floor',
+    geometry: box(),
+    matrix: placed([0, 0, 0], [8, 0.1, 8]),
+    material: { color: [0.4, 0.42, 0.45], metallic: 0, roughness: 0.9, emission: 0 },
+  },
+  {
+    name: 'Ball',
+    geometry: sphere(48, 24),
+    matrix: placed([0, 1, 0]),
+    material: { color: [0.8, 0.3, 0.2], metallic: 0, roughness: 0.35, emission: 0 },
+  },
+];
 
-The Oppenheimer study contains 33 shots across 13 procedural sets: a laboratory, research town, scientist portraits, atomic imagery, a wired Gadget and the night test.
-It uses an original synthesized score. The playable MP4 is in `public/media/critical.mp4`.
-The nature world uses seeded terrain and instanced vegetation. Its balanced preset contains 2,673 parts and 585,470 triangles.
+const canvas = document.querySelector('canvas');
+const renderer = new Renderer67(canvas, parts, { samples: 4, memoryBudgetMiB: 256 });
+renderer.render({ eye: [4, 3, 6], target: [0, 1, 0] });
+```
+
+Call `renderer.resize()` after the canvas changes size, and `renderer.dispose()` before you replace the renderer.
+Use `renderer.updateParts(parts)` to move or recolour parts without a new upload.
+The [guide](docs/guide.md) covers cameras, lights, effects and every material field.
+
+A forest on scanned terrain takes a few more lines:
+
+```js
+import { createTerrain } from '67js/addons/terrain';
+import { loadLeafTextures } from '67js/addons/texture-set';
+import { scatterVegetation, selectLevels } from '67js/addons/vegetation';
+
+const eye = [0, 4, 22];
+const terrain = createTerrain({ size: 400, chunks: 8, seed: 11 });
+const forest = scatterVegetation({
+  area: { minX: -60, maxX: 60, minZ: -80, maxZ: 20 },
+  terrainHeight: terrain.heightAt,
+  leafTextures: await loadLeafTextures('https://67js.codepawl.com/textures/leaves'),
+  seed: 23,
+});
+const trees = selectLevels(forest.instances, eye, { cullDistance: 160 }).parts;
+```
+
+The scanned textures are not in the npm package. The site serves them with open CORS, or you can copy `public/textures` from this repository to your own host.
+
+## What is in the box
+
+The core export is the renderer with geometry primitives, cameras, lights, effects and GLB export.
+Each addon is a separate import, so a page loads only what it uses.
+
+| Area | Import | What it does |
+| --- | --- | --- |
+| Rendering | `67js` | Instanced PBR renderer, shadows, MSAA, HDR, bloom, alpha masks and blending, render budgets. See [lighting](docs/lighting.md) and [material maps](docs/material-maps.md). |
+| Environment | `67js/addons/hdri` | Image-based lighting from Radiance `.hdr` files, with blurred reflections. |
+| Terrain | `67js/addons/terrain`, `67js/addons/texture-set` | [Chunked terrain](docs/terrain.md) with level of detail and a four-layer splat material from scanned textures. |
+| Vegetation | `67js/addons/vegetation` | [Seeded trees, bushes and grass](docs/vegetation.md) with scanned leaves and bark, wind and level of detail. |
+| Liquid | `67js/addons/spume` | [Baked liquid playback](docs/spume.md) with refraction and spray from the Spume solver. |
+| Vehicles | `67js/addons/vehicle` | [Wheeled vehicles on a path](docs/vehicle.md): wheel spin, steering, roll, pitch and ground following. |
+| Characters | `67js/addons/gltf`, `67js/addons/retarget` | [glTF import](docs/gltf.md) with skins, morphs and compressed meshes, and [clip retargeting](docs/retarget.md) between rigs. |
+| Physics | `67js/addons/physics` | [Rapier contacts and joints](docs/physics.md) recorded into a timeline for repeatable seeks. |
+| Modeling | `67js/addons/modeling`, `sculpt`, `surface`, `shrinkwrap`, `mesh-query` | [Modeling](docs/modeling.md), [sculpt brushes](docs/sculpt.md), [surface patches](docs/surface.md), [shrinkwrap](docs/shrinkwrap.md) and [mesh queries](docs/mesh-query.md). |
+| Agents | `67js/addons/agent-scene`, `67js/addons/agent-asset` | [Scene sessions](docs/agent-scene.md) with revisions, checkpoints and atomic edits. |
+
+The full list of guides is on the [documentation page](https://67js.codepawl.com/docs.html).
+
+## For agents
+
+The package includes an MCP server that connects an agent to a persistent browser renderer.
+
+```sh
+npx 67js-mcp --backend gpu --memory 192
+```
+
+The server needs Node.js 20.19 or later and a local Chrome installation.
+Agents author [JSON recipes](docs/agent-scene.md), set [lights and fog](docs/agent-look.md), import [GLB assets](docs/agent-asset.md) and author [motion](docs/agent-motion.md).
+They get PNG previews back, compare up to four views in one [review grid](docs/agent-review.md) and run [render jobs](docs/agent-render-jobs.md) for stills and MP4 video.
+The server accepts no arbitrary code and no remote asset URLs. The [MCP reference](docs/mcp.md) lists its tools.
+
+Two skills teach an agent the engine: [build-67js-scene](skills/build-67js-scene/SKILL.md) for scenes and materials, and [render-67js-media](skills/render-67js-media/SKILL.md) for image and video export.
+Give an agent [llms.txt](https://67js.codepawl.com/llms.txt) for the plain-text guide.
 
 ## Render images and video
 
-1. Run `npm run score` to generate the original soundtrack.
-2. Choose a command below for the required scene and backend.
-3. Inspect the output and its JSON report.
+The render command exports a scene to PNG or MP4 through headless Chrome, on the GPU or on the CPU.
 
-```powershell
-npm run render -- --kind image --scene object --backend gpu --preset high --output artifacts/wall-e.png
+```sh
 npm run render -- --kind image --scene nature --backend gpu --preset high --output artifacts/nature.png
-npm run render -- --kind image --scene object --backend cpu --preset cpu --output artifacts/wall-e-cpu.png
-npm run render -- --kind video --scene film --backend gpu --preset balanced --encoder gpu --output public/media/critical.mp4
 npm run render -- --kind video --scene motion --aspect portrait --backend gpu --encoder gpu --output artifacts/short.mp4
-npm run render -- --kind image --scene view2d --aspect square --backend cpu --preset cpu --output artifacts/poster.png
-npm run render -- --kind video --scene assets --asset model.glb --duration 2 --output artifacts/model.mp4
 ```
 
-Video exports default to JPEG capture at quality 95 and automatically use NVENC when its preflight succeeds, with a CPU encoder fallback. `--backend cpu` defaults to CPU encoding as well. Use `--capture png` for lossless frame capture or `--jpeg-quality 100` for a higher JPEG quality. H.264 delivery remains compressed in either mode.
+Video export streams one frame at a time and waits for encoder backpressure, so a film never sits in memory.
+NVENC is used when its preflight succeeds, with libx264 as the fallback.
+Each export writes a JSON report with render, capture and encoder time and peak memory.
+The [render skill](skills/render-67js-media/SKILL.md) lists every preset and flag.
 
-Progress reports frames per second, speed relative to playback and estimated remaining time. The JSON sidecar separates rendering, capture, encoder backpressure and encoder finalization, alongside peak memory. Capture keeps one pending frame. The encoder applies backpressure rather than buffering a film in memory.
+## Run the showcase locally
 
-| Preset | Dimensions | MSAA samples | FPS | Target budget |
-| --- | --- | ---: | ---: | ---: |
-| `preview` | 960 × 540 | 2 | 24 | 256 MiB |
-| `balanced` | 1280 × 720 | 4 | 24 | 384 MiB |
-| `high` | 1920 × 1080 | 4 | 24 | 512 MiB |
-| `cpu` | 640 × 360 | 1 | 12 | 192 MiB |
+1. Install Node.js 22.12 or later.
+2. Run `npm ci`.
+3. Run `npm run dev`. Vite prints the local URL.
 
-GPU rendering uses hardware WebGL. CPU rendering explicitly requests and verifies ANGLE SwiftShader.
-The encoder independently supports two-thread libx264 or NVIDIA NVENC.
-The exporter streams one frame at a time and waits for encoder backpressure.
-It keeps one live scene renderer and disables development reloads during capture.
+| Page | What you see |
+| --- | --- |
+| `/` | Home page with examples, install commands and release data. |
+| `/object.html` | Assembly studio with orbit, explosion, layers, finishes and GLB export. |
+| `/nature.html` | A valley with viewpoints, daylight, wind and water ripples. |
+| `/film.html` | A 187-second procedural trailer with playback controls. |
+| `/motion.html` | A 12-second keyframe animation with HDR. |
+| `/view2d.html` | Flat vector scenes and orthographic model views. |
+| `/assets.html` | A GLB viewer with textures, clips and PNG capture. |
 
-The planner reduces render dimensions before targets exceed their estimated budget.
-The estimate includes geometry, texture mipmaps, shadows, HDR/bloom targets and frame staging. It excludes some browser and driver allocations.
-The report records actual dimensions, estimated render memory, Node RSS and sampled browser JavaScript heap.
-Node and JavaScript heap guards stop capture above 512 MiB and 256 MiB respectively.
-These guards cannot guarantee that every driver or system allocation succeeds.
+## Performance claims
 
-## Skills
+Measured results and their limits are in [verification.md](docs/verification.md).
+They compare matching scenes on the same hardware. They do not show a general speed advantage over Three.js or visual parity with Blender.
 
-The repository includes two reusable Codex skills.
+## Contributing
 
-- [build-67js-scene](skills/build-67js-scene/SKILL.md) covers geometry, materials, cameras, interaction and anti-aliasing.
-- [render-67js-media](skills/render-67js-media/SKILL.md) covers CPU/GPU presets, streaming exports and memory measurements.
-
-## Agent authoring
-
-Version `0.5.0` includes [agent scene sessions](docs/agent-scene.md) and the `67js-mcp` command.
-Agents can author JSON recipes, inspect object bounds, submit atomic edits and restore bounded checkpoints.
-Agents can add or remove nodes and shared resources in the same revisioned command stream.
-The optional addon retains unchanged parts and geometry across supported edits.
-
-The packaged [MCP server](docs/mcp.md) connects these sessions to a persistent browser renderer.
-Agents receive PNG previews and structured scene metadata through the stdio tools.
-
-Version `0.6.0` adds [snapshot render jobs](docs/agent-render-jobs.md) for PNG images, eight-frame still sequences and silent MP4 video.
-Version `0.7.0` adds [agent motion](docs/agent-motion.md) for local joints, materials and authored camera moves.
-Recipes, checkpoints and job snapshots retain the keyframes. Preview seeks preserve revisions and reuse geometry.
-Agents can poll progress, cancel jobs, retrieve verified artifacts and release retained outputs.
-The source pose, revision and checkpoints remain intact while a job temporarily leases the preview renderer.
-
-Agents can author [lights, volumetric fog, grading and shadow coverage](docs/agent-look.md), then restore the complete look from a checkpoint.
-After installing the package, run `npx 67js-mcp --backend gpu --memory 192` with Node.js 20.19 or later and a local Chrome installation.
-The server and preview are built into the package. The browser driver loads only when a scene is created.
-
-Version `0.8.0` adds [imported character motion](docs/agent-character-motion.md) with stable joint IDs and atomic pose transactions.
-Version `0.9.0` adds [visual review](docs/agent-review.md) with up to four labeled views or poses in one PNG grid.
-Review snapshots preserve the source revision, preview pose and checkpoint handles.
-
-The [asset adapter](docs/agent-asset.md) imports catalog GLBs with supported textures, rigs, morphs and clips.
-Imported morph track authoring and mesh topology edits remain implementation work.
-
-## Checks and performance
-
-1. Run `npm test` to validate geometry, scene budgets, the timeline and independent GLB loading.
-2. Run `npm run build` to create the homepage, guide and six production viewers in `dist/`.
-3. Run `npm run smoke` to exercise the studio in headless Chrome.
-4. Run `npm run smoke:enhancements` against the running development server to check motion, orthographic views and textured asset animation.
-
-The smoke saves rendered screenshots, a GLB and benchmark results under the ignored `artifacts/` directory.
-The benchmark compares identical geometry, camera, resolution and flat shaders with both instanced and individual draws.
-It measures CPU submission over 120 samples after warmup, with GPU synchronization outside the timed region.
-
-The results establish no general speed advantage or visual parity with Three.js or Blender.
-Vite serves COOP and COEP headers for fine browser timers. Other hosts need equivalent headers for comparable timing.
-Detailed measured results and limits are in [verification.md](docs/verification.md).
-
-## API
-
-`createModel()` returns shared geometries, column-major matrices, linear RGB materials and optional assembly offsets.
-`Renderer67` groups geometry and texture descriptor identities into instanced batches.
-
-```js
-import { Renderer67 } from '67js';
-import { createModel } from '67js/addons/model';
-
-const renderer = new Renderer67(canvas, createModel(), {
-  samples: 4,
-  memoryBudgetMiB: 256,
-});
-renderer.render({ eye: [4, 3, 7], target: [0, 1.5, 0], assemblyAmount: 0.5 });
-// Call resize() after CSS dimensions change.
-// Call dispose() before replacing the renderer.
-```
-
-The core exports animation helpers, camera views and effect presets. `renderer.updateParts(parts)` uploads changes without replacing geometry buffers.
-The current source adds [camera paths](docs/camera-path.md) with cubic moves, target tracking, roll and focal-length conversion.
-
-It also adds [local lighting](docs/lighting.md) with eight point lights and separate key, fill and ambient controls. These controls are available from version `0.4.0`.
-The source also adds [depth-clipped volume fog](docs/volumetric.md) with directional scattering, shadow occlusion and deterministic density drift. It requires an opaque HDR renderer with resolved depth enabled.
-These camera helpers are available from version `0.4.0`.
-The current source also adds [GPU skinning](docs/skinning.md) and skeletal GLB import, with four influences per vertex.
-
-The optional [physics addon](docs/physics.md) records Rapier contacts, articulated joints, hinge and slider limits, and bounded motors into a timeline for repeatable film seeks.
-It requires the separate `@dimforge/rapier3d-compat@0.21.0` dependency. The core does not import or bundle that solver.
-The physics addon is available from version `0.4.0`.
-The source trailer includes an [offline physics recording](docs/film-physics.md) of colliding pendulums, played through retained animation tracks without loading a solver in the browser.
-
-The source renderer also supports [relative GPU morph targets](docs/morph-targets.md) for position and normal changes before skinning, including deterministic eyelid animation in the film. This feature is available from version `0.4.0`.
-The source [glTF morph bridge](docs/gltf-morph.md) preserves relative targets, independent instance weights and linear, step or cubic weight animations.
-The source [GLB exporter](docs/export-glb.md) preserves opaque vertex colors, UVs and independent HDR emission alongside static morph snapshots.
-
-[Sculpt brushes](docs/sculpt.md) apply bounded inflation, directional displacement and neighborhood smoothing through serializable strokes.
-The [surface patch addon](docs/surface.md) clips a badge onto a curved mesh with geometric clearance and follows its retained rigid transform.
-
-[Mesh queries](docs/mesh-query.md) use owned BVH indices to detect boundary contact, ray hits and containment between validated closed solids.
-Surface contact does not measure penetration depth or diagnose z-fighting. Queries accept static geometry and explicit affine transforms.
-The [primitive contract](docs/primitives.md) defines bounded subdivision counts and exact seam closure for mesh validation.
-The source [shrinkwrap addon](docs/shrinkwrap.md) wraps static vertices with nearest-surface or directional projection queries, preserving topology and UVs.
-Compatible results can become relative GPU morph targets, so animation reuses the computed shape instead of repeating the vertex queries every frame.
-
-The source [Spume addon](docs/spume.md) plays back liquid baked by the [Spume](https://github.com/codepawl/spume) GPU solver, with whitewater, through `renderer.replaceParts`.
-The source [Terrain addon](docs/terrain.md) builds seeded chunked terrain with distance level of detail and a four-layer splat ground material from real CC0 scans (`loadTextureSet` loads them), and its `heightAt` feeds vegetation and vehicles.
-The source [Vegetation addon](docs/vegetation.md) grows seeded trees with real branches and leaf cards, grass, Poisson-disk scattering on terrain and distance level of detail.
-The solver runs offline; the browser only reads the compact cache.
-The source [retarget addon](docs/retarget.md) transfers humanoid clips between rigs (Mixamo, VRM, Unreal, Rigify names) and offsets crowds deterministically. Mixamo files need the owner's Adobe login to download.
-
-The source [vehicle addon](docs/vehicle.md) drives wheeled vehicles along a path deterministically: wheel spin, steering, body roll and pitch, and ground following, for parts, scene-graph nodes or imported GLBs.
-
-The current source adds [surface attachments](docs/surface-attachment.md) for rigid accessories following a selected triangle through morphing and skinning.
-The retained frame uses world-space clearance and samples three bound vertices without rebuilding a BVH every frame.
-This addon is available from version `0.4.1`. It does not certify clearance over an accessory's entire footprint.
-
-The trailer's rigid actor joints now use authored clips, with attached headwear and hands moving together.
-The [optional asset addon](docs/gltf.md) loads glTF/GLB meshes, base-color textures, opaque vertex colors and rigid node animation.
-
-It uses Three.js as a decoder. The core renderer and standalone module remain separate from this dependency.
-
-Transparent materials, compressed assets and ray tracing remain unsupported.
-Blender-level realism remains a visual target. 67.js does not provide Three.js API compatibility.
+Read [CONTRIBUTING.md](CONTRIBUTING.md) before you open a pull request. It covers setup, checks, code style and the release flow.
 
 ## Credits
 
-WALL·E is a Disney/Pixar character. This repository authors its study as procedural geometry without external model assets.
-The Oppenheimer study follows the shot progression of [Universal Pictures’ New Trailer](https://www.youtube.com/watch?v=uYPbbksJxIg) using stylized procedural sets and an original synthesized score.
-It includes no film footage, dialogue or soundtrack samples.
+- [gl-matrix](https://github.com/toji/gl-matrix) supplies the matrix math.
+- The glTF addon bundles the [Three.js](https://threejs.org/) glTF decoder under its MIT license. The core renderer does not depend on Three.js.
+- Textures, leaf atlases and the HDRI on the site are CC0 scans from [Poly Haven](https://polyhaven.com) and [ambientCG](https://ambientcg.com). See [the texture credits](public/textures/CREDITS.md).
+- WALL·E is a Disney/Pixar character. The study is procedural geometry with no external model assets.
+- The trailer study follows the shot order of [a Universal Pictures trailer](https://www.youtube.com/watch?v=uYPbbksJxIg) with procedural sets and an original score. It contains no film footage or soundtrack samples.
 
-- [Three.js](https://threejs.org/) and its [source](https://github.com/mrdoob/three.js/) provide the benchmark reference.
-- The optional asset addon bundles the Three.js glTF decoder under its MIT license.
-- [Blender](https://projects.blender.org/blender/blender) provides the visual quality target.
-- [gl-matrix](https://github.com/toji/gl-matrix) supplies matrix operations.
-
-## Release synchronization
-
-`package.json` is the version source. Release preparation builds the npm archive and a standalone browser module.
-It generates `/release.json` with the version, Git commit, package integrity and verified npm publication status.
-The homepage and guide read this endpoint for their commands and downloads.
-
-1. Update the package version and changelog.
-2. Run `npm test` and `npm run build`.
-3. Run `npm run smoke:package`. It verifies a clean consumer installation.
-4. Commit and push the release.
-5. The `publish.yml` GitHub Actions workflow verifies the package and publishes new versions through the npm trusted publisher. Wait for a successful run and registry availability.
-6. Run `npm run deploy`. It verifies the pushed commit, rebuilds and checks the live release. If npm has published the version, the site serves its canonical package archive and integrity.
+[MIT](LICENSE) © CodePawl
