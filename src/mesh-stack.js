@@ -11,7 +11,7 @@ import { mergeByDistance } from './mesh-ops.js';
  * face, corner attributes from source corners, and edge attributes from the source edge each new corner's edge
  * came from. Faces built without a source get zeroed attributes.
  */
-class MeshBuilder {
+export class MeshBuilder {
   constructor(source) {
     this.source = source;
     this.positions = [];

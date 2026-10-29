@@ -149,7 +149,7 @@ test('translate with connected falloff moves nearby vertices less', () => {
 });
 
 test('edit validation names the op, field and allowed values', () => {
-  assert.throws(() => normalizeMeshEdits([{ op: 'bevel' }]), /op must be one of extrude_face_region/);
+  assert.throws(() => normalizeMeshEdits([{ op: 'knife' }]), /op must be one of extrude_face_region/);
   assert.throws(() => normalizeMeshEdits([{ op: 'extrude_individual', offset: 1, depth: 2 }]), /does not take depth/);
   assert.throws(() => normalizeMeshEdits([{ op: 'inset_region', thickness: 0 }]), /thickness must be a number above 0/);
   assert.throws(() => normalizeMeshEdits([{ op: 'delete' }]), /delete needs select/);

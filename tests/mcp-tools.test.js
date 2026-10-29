@@ -269,7 +269,7 @@ test('mesh_edit builds a mesh from a base and an edit log through the SDK', asyn
   const replaced = await client.callTool({ name: 'mesh_edit', arguments: { sessionId, expectedRevision: 1, geometry: 'cube', replace: true,
     edits: [{ op: 'extrude_individual', select: { tag: 'side' }, offset: 0.1 }] } });
   assert.equal(replaced.structuredContent.mesh.edits.length, 1);
-  await rejected(client, 'mesh_edit', { sessionId, expectedRevision: 2, geometry: 'cube', edits: [{ op: 'bevel', select: { all: true } }] });
+  await rejected(client, 'mesh_edit', { sessionId, expectedRevision: 2, geometry: 'cube', edits: [{ op: 'knife', select: { all: true } }] });
   await rejected(client, 'mesh_edit', { sessionId, expectedRevision: 2, geometry: 'cube', edits: [] });
   await rejected(client, 'mesh_edit', { sessionId, expectedRevision: 2, geometry: 'cube', edits: [{ op: 'translate', offset: [0, 1, 0], code: 'run()' }] });
 });

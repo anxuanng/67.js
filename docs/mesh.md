@@ -174,7 +174,7 @@ a 32,768-face sphere minus a box about 0.6 s including conversion and lint.
 
 ### Mirror, array and solidify
 
-These three work as edits and as stack nodes:
+These three (and `bevel`, below) work as edits and as stack nodes:
 
 | Op | Fields | Creates tags |
 | --- | --- | --- |
@@ -194,7 +194,7 @@ These three work as edits and as stack nodes:
 
 ### Modifier stack
 
-A recipe mesh may carry `stack`, a list of `mirror`, `array` and `solidify` nodes (up to 16) evaluated after the
+A recipe mesh may carry `stack`, a list of `mirror`, `array`, `solidify` and `bevel` nodes (up to 16) evaluated after the
 edits without changing them, as Blender's modifier stack. Every prefix (the edit result, then each node) is cached
 by its recipe text in a least-recently-used cache bounded at 64 entries and 64 MiB, so changing a late node reuses
 the earlier work. Results list one entry per node with `cached: true` when reused. `meshCacheStats()` reports hits
@@ -203,7 +203,28 @@ and misses. `evaluateMeshStack(mesh, stack, { cache, cacheKey })` runs a stack o
 The `mesh_stack` tool sets the whole stack in one revision. `apply: n` moves the first `n` nodes into the edit log,
 as Blender's Apply modifier, which leaves the result unchanged.
 
-Bevel and loop cut are planned next.
+### Bevel
+
+`bevel` rounds or chamfers edges, as an edit or as a stack node:
+
+| Field | Meaning |
+| --- | --- |
+| `edges` | `{ "between": [faceRule, faceRule] }` (the rim between two regions, for example top and side), `{ "angle": 30 }` (edges bending at least this many degrees; the default), `{ "boundaryOf": faceRule }`, or `{ "all": true }` |
+| `width` | Distance from the edge into each neighbouring face |
+| `segments` | 1 to 16; 1 is a flat chamfer, 3 or more reads as round |
+| `profile` | 0 flat, 0.5 round (default), 1 boxy |
+| `clampOverlap` | Default true: shrink `width` so neighbouring bevels cannot cross; the result reports `clamped` and the `width` used |
+
+Only edges with two consistently wound faces bevel. A face corner next to one beveled edge slides along its other
+edge, shared with the face across that edge, so no T-junctions appear. Each beveled edge becomes a strip of
+`segments` quads following a quadratic profile around the original edge (tag `<name>.strip`). Where beveled edges meet
+at a vertex, the gap is filled (tag `<name>.corner`): a corner where three rounded edges meet gets a quadratic
+triangular patch that matches the three profiles exactly; other corners get a flat polygon (chamfers) or a fan to a
+raised centre. The quadratic profile is close to, not exactly, a circular arc, so rounded corners shade slightly
+differently from Blender's. Edges between strip segments render smooth when the bend per segment is under the mesh's
+`smoothAngle`; with 2 segments on a right angle (45 degrees each), raise `smoothAngle` or use 3 or more segments.
+
+Loop cut is planned next.
 
 ## MCP
 
