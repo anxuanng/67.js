@@ -209,7 +209,7 @@ The [vehicle contract](/vehicle.md) lists conventions, options and limits.
 2. Pick detail per camera with `selectLevels(forest.instances, eye)`.
 3. Pass `view.parts` to `Renderer67` and rebuild when `view.changed` is true.
 
-Cards (`leaves: 'cards'`, the default) use alpha-masked, double-sided textures; `'mesh'` leaves cost more triangles but sway with the `foliage` wind. The [Vegetation contract](/vegetation.md) lists species, triangle budgets and limits.
+Cards (`leaves: 'cards'`, the default) are single-sided, alpha-masked, double-sided `foliage` textures that sway with the wind; `'mesh'` leaves cost about twice the triangles. Pass `barkTextures` for scanned bark. The [Vegetation contract](/vegetation.md) lists species, triangle budgets and limits.
 
 ## Retained surface attachments
 
@@ -234,7 +234,7 @@ An attachment positions one rigid frame. It does not conform the accessory footp
 
 The optional GLB addon creates these descriptors. HDR requires `EXT_color_buffer_float`. Inspect `renderer.capabilities.hdr` and `hdrFallbackReason`. The renderer falls back when floating-point targets are unavailable.
 
-Tags select specialized behavior: `armor` allows studio finish overrides. `floor` is a studio floor. `water` adds animated normals and ripples. `foliage` and `grass` add wind.
+Tags select specialized behavior: `armor` allows studio finish overrides. `floor` is a studio floor. `water` adds animated normals and ripples. `foliage` and `grass` add wind and accept a base-colour `map` with alpha mask and `doubleSided` for leaf cards.
 
 `material.alphaMode` is `'opaque'` (default), `'mask'` (cutout at `alphaCutoff`, default 0.5, shadows follow it) or `'blend'` (drawn last, back to front, no depth write). `material.opacity` (default 1) multiplies the base map alpha. `material.doubleSided` (default false) disables back-face culling and lights both faces. These are batch state and cannot change after upload. See `docs/material-maps.md`.
 

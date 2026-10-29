@@ -139,21 +139,48 @@ export function createMeshBuilder({ withColors = false } = {}) {
   };
 }
 
-/** Sweeps a tapered round tube along a polyline with parallel-transported rings. */
-export function addTube(builder, points, radii, sides, tileSize, color = [1, 1, 1]) {
-  const repeatAround = Math.max(1, Math.round(FULL_TURN * radii[0] / tileSize));
+// Below this many texture repeats around a ring the bark texture is not wrapped to a whole number:
+// rounding would stretch a thin twig by more than a third, so it keeps true world scale instead.
+const MINIMUM_WHOLE_REPEATS = 1.5;
+const MINIMUM_UNDERSIDE_REACH = 0.25;
+
+function wholeOrExactRepeats(exactRepeats) {
+  return exactRepeats >= MINIMUM_WHOLE_REPEATS ? Math.round(exactRepeats) : exactRepeats;
+}
+
+/** Angle around the ring whose radial direction points most nearly straight down, or `fallback` on near-vertical rings. */
+function undersideAngle(frame, fallback) {
+  const downOnFirst = -frame.first[1];
+  const downOnSecond = -frame.second[1];
+  if (Math.hypot(downOnFirst, downOnSecond) < MINIMUM_UNDERSIDE_REACH) return fallback;
+  return Math.atan2(downOnSecond, downOnFirst);
+}
+
+/**
+ * Sweeps a tapered round tube along a polyline with parallel-transported rings.
+ * By default `u` repeats a whole number of times around the base ring. With `worldScaleUv` every ring
+ * gets `u` and `v` from its own circumference so texels keep one world size from trunk to twig, rings
+ * wide enough to wrap whole tiles do so (no seam), and thinner rings put their seam on the underside.
+ */
+export function addTube(builder, points, radii, sides, tileSize, color = [1, 1, 1], { worldScaleUv = false } = {}) {
+  const baseRepeats = Math.max(1, Math.round(FULL_TURN * radii[0] / tileSize));
   const firstVertex = builder.vertexCount;
   const lastIndex = points.length - 1;
   let frame = null;
-  let distance = 0;
+  let along = 0;
+  let seamAngle = 0;
   points.forEach((point, index) => {
     const tangent = normalized(subtractVectors(points[Math.min(index + 1, lastIndex)], points[Math.max(index - 1, 0)]));
     frame = frame ? transportFrame(frame, tangent) : createFrame(tangent);
-    if (index > 0) distance += vectorLength(subtractVectors(point, points[index - 1]));
+    const exactRepeats = FULL_TURN * radii[index] / tileSize;
+    const repeatsAround = worldScaleUv ? wholeOrExactRepeats(exactRepeats) : baseRepeats;
+    const alongScale = worldScaleUv && exactRepeats > 1e-6 ? repeatsAround / exactRepeats : 1;
+    if (index > 0) along += vectorLength(subtractVectors(point, points[index - 1])) / tileSize * alongScale;
+    if (worldScaleUv) seamAngle = undersideAngle(frame, seamAngle);
     for (let side = 0; side <= sides; side++) {
-      const angle = side / sides * FULL_TURN;
+      const angle = seamAngle + side / sides * FULL_TURN;
       const radial = addVectors(scaleVector(frame.first, Math.cos(angle)), scaleVector(frame.second, Math.sin(angle)));
-      builder.addVertex(addScaled(point, radial, radii[index]), radial, side / sides * repeatAround, distance / tileSize, color);
+      builder.addVertex(addScaled(point, radial, radii[index]), radial, side / sides * repeatsAround, along, color);
     }
   });
   const ringSize = sides + 1;
