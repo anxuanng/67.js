@@ -1,4 +1,4 @@
-import test from 'node:test';
+import nodeTest from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, writeFile, readFile, readdir, rm, link, unlink } from 'node:fs/promises';
 import { watch, writeFileSync } from 'node:fs';
@@ -23,11 +23,13 @@ async function temporary(context) {
   return directory;
 }
 
+// A hung job fails through the test timeout instead of a wall-clock bound inside the poll loop.
+// The bound is for liveness, not speed: CPU-heavy test files run in parallel and slow every job down.
+const TEST_TIMEOUT_MILLISECONDS = 60000;
+const test = (name, body) => nodeTest(name, { timeout: TEST_TIMEOUT_MILLISECONDS }, body);
+
 async function terminal(controller, jobId) {
-  const started = Date.now();
   while (!['completed', 'cancelled', 'failed', 'interrupted'].includes(controller.status(jobId).state)) {
-    // A liveness bound, not a speed check: CPU-heavy test files run in parallel and can delay a fast job past two seconds.
-    if (Date.now() - started > 10000) throw new Error('Job did not reach its terminal state.');
     await new Promise(resolve => setTimeout(resolve, 2));
   }
   return controller.status(jobId);
