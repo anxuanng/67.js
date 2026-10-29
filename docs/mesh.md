@@ -133,6 +133,7 @@ Edits (names follow Blender's `bmesh.ops` where they match):
 | `translate` | `select`, `offset` [x, y, z], optional `falloff` `{ radius, curve, connected }` | |
 | `merge_by_distance` | `distance` (default 1e-4) | |
 | `tag` | `select`, `name` (required) | `<name>` |
+| `boolean` | `operation` (`union`, `difference`, `intersect`), `cutter`, optional `translation`, `rotation` (XYZW), `scale`, `name` | `<name>.cut` |
 
 - `select` defaults to every face, except for `delete` and `tag`.
 - `name` defaults to `<op>-<index>`, for example `extrude-1`.
@@ -147,7 +148,28 @@ Edits (names follow Blender's `bmesh.ops` where they match):
 Each result records `selected`, the `tags` created with their face counts, op-specific counts (`deletedFaces`,
 `movedVertices`, `removedVertices`) and the mesh size `after` the edit.
 
-Bevel, loop cut, booleans, mirror, array and solidify are planned next.
+### Booleans
+
+Booleans run on [Manifold](https://github.com/elalish/manifold) (Apache-2.0), the library behind Blender 4.5's
+Manifold solver, compiled to WebAssembly. In a recipe, `cutter` is a primitive or profile record like `base`
+(`{ "type": "cylinder", "segments": 32 }`), placed by `scale`, then `rotation`, then `translation` in the mesh's local
+space. Faces from the mesh keep their tags; faces the cutter contributes (the walls of a hole, the surface of a
+union) get `<name>.cut`. Flat faces come back as polygons; faces with holes come back as triangles, joined into quads
+where flat pairs allow.
+
+Both inputs must be closed and consistently wound. A boolean on an open mesh fails with the lint counts and a fix.
+A difference that leaves a hollow inside the mesh is valid; `lintMesh` reports it under `parts.cavities` instead of as
+an inverted part.
+
+Outside recipes, call `await loadMeshBooleans()` once, then `meshBoolean(mesh, cutter, operation, { cutTag })` or
+`applyMeshEdits(mesh, edits, { resolveCutter })`. The library loads `manifold-3d` as an optional peer dependency,
+like Rapier for physics: install `manifold-3d@3.5.4` to use booleans. The MCP preview bundle embeds it; its page
+allows WebAssembly compilation (`'wasm-unsafe-eval'`) and `data:` reads for the embedded binary, and nothing else.
+
+Measured on this machine (Node 24, one thread): engine load 26–45 ms; cube minus a 32-sided cylinder 25–30 ms;
+a 32,768-face sphere minus a box about 0.6 s including conversion and lint.
+
+Bevel, loop cut, mirror, array and solidify are planned next.
 
 ## MCP
 

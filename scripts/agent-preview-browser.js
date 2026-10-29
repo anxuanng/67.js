@@ -1,4 +1,4 @@
-import { createAgentScene } from '../src/agent-scene.js';
+import { createAgentScene, needsMeshBooleans, loadMeshBooleans, meshBooleansLoaded } from '../src/agent-scene.js';
 import { Renderer67 } from '../src/renderer.js';
 import { applyProjection } from '../src/camera.js';
 import { mat4 } from 'gl-matrix';
@@ -167,6 +167,12 @@ function createPreview(scene, { sessionId, memoryBudgetMiB, backend }, asset) {
   }
 }
 
+// The boolean engine is WebAssembly and loads asynchronously, once. Calls that do not need it stay synchronous.
+function afterMeshBooleans(value, run) {
+  if (meshBooleansLoaded() || !needsMeshBooleans(value)) return run();
+  return loadMeshBooleans().then(run);
+}
+
 window.__agentPreview = {
   reviewBegin({ sessionId, width, height }) {
     const record = requireSession(sessionId);
@@ -254,7 +260,7 @@ window.__agentPreview = {
   },
   create(input) {
     if (active) throw new Error('Dispose the current scene before creating another.');
-    return createPreview(createAgentScene(input.recipe), input);
+    return afterMeshBooleans(input.recipe, () => createPreview(createAgentScene(input.recipe), input));
   },
   async createAsset(input) {
     if (active) throw new Error('Dispose the current scene before creating another.');
@@ -285,7 +291,10 @@ window.__agentPreview = {
     }
     return { sessionId, ...scene.inspectMeshes(options) };
   },
-  apply({ sessionId, operations, expectedRevision }) {
+  apply(input) {
+    return afterMeshBooleans(input.operations, () => this.applyLoaded(input));
+  },
+  applyLoaded({ sessionId, operations, expectedRevision }) {
     const record = requireSession(sessionId);
     validatePreviewCamera(candidateCamera(record, operations));
     let fogDensity = record.scene.environment.volumeFog.density;
@@ -306,9 +315,11 @@ window.__agentPreview = {
       throw new TypeError('mesh_edit supports procedural recipe scenes. Imported asset scenes have no editable mesh geometry yet.');
     }
     const operation = { type: 'edit-mesh', geometry, edits, ...(replace === undefined ? {} : { replace }) };
-    const status = this.apply({ sessionId, operations: [operation], expectedRevision });
-    const [mesh] = record.scene.inspectMeshes({ geometries: [geometry] }).meshes;
-    return { ...status, mesh };
+    return afterMeshBooleans(edits, () => {
+      const status = this.applyLoaded({ sessionId, operations: [operation], expectedRevision });
+      const [mesh] = record.scene.inspectMeshes({ geometries: [geometry] }).meshes;
+      return { ...status, mesh };
+    });
   },
   look({ sessionId, motionTime }) {
     const record = requireSession(sessionId);

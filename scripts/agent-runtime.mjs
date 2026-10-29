@@ -118,7 +118,7 @@ export function createAgentRuntime({ backend = 'gpu', browser: browserPath, memo
       ]);
       httpServer = createServer((request, response) => {
         response.setHeader('Cache-Control', 'no-store');
-        response.setHeader('Content-Security-Policy', "default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; img-src data: blob:; connect-src blob:");
+        response.setHeader('Content-Security-Policy', "default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; style-src 'unsafe-inline'; img-src data: blob:; connect-src blob: data:");
         if (request.method !== 'GET' || !['/', '/preview.js'].includes(request.url)) {
           response.writeHead(404);
           response.end();

@@ -11,7 +11,8 @@ export { triangulateMesh, extractRender, gatherRenderPositions } from './mesh-re
 export { meshFromGeometry, joinTriangles, tagFacesByAxis, weldVertices, rebuildFromCorners, withFaceAttributes } from './mesh-convert.js';
 export { lintMesh } from './mesh-lint.js';
 export { selectFaces, countSelected } from './mesh-select.js';
-export { applyMeshEdits, normalizeMeshEdits, MESH_EDIT_OPERATIONS, MAX_MESH_EDITS } from './mesh-recipe.js';
+export { applyMeshEdits, normalizeMeshEdits, transformMesh, MESH_EDIT_OPERATIONS, MAX_MESH_EDITS } from './mesh-recipe.js';
+export { loadMeshBooleans, meshBooleansLoaded, meshBoolean, BOOLEAN_OPERATIONS } from './mesh-boolean.js';
 export {
   extrudeFaceRegion, extrudeIndividual, insetRegion, insetIndividual, deleteFaces, flipFaces, translateFaces,
   mergeByDistance, tagFaces, connectedRegions, FALLOFF_CURVES,

@@ -4,6 +4,8 @@ import {
   extrudeFaceRegion, extrudeIndividual, insetRegion, insetIndividual, deleteFaces, flipFaces, translateFaces, mergeByDistance, tagFaces,
   FALLOFF_CURVES,
 } from './mesh-ops.js';
+import { meshBoolean, BOOLEAN_OPERATIONS } from './mesh-boolean.js';
+import { createMeshData } from './mesh-data.js';
 
 // Replayable edit log for agent recipes. Each edit is plain JSON; names follow Blender's bmesh.ops where they match.
 
@@ -21,6 +23,7 @@ export const MESH_EDIT_OPERATIONS = Object.freeze({
   translate: { fields: ['select', 'offset', 'falloff'], tags: [] },
   merge_by_distance: { fields: ['distance'], tags: [] },
   tag: { fields: ['select', 'name'], tags: [] },
+  boolean: { fields: ['name', 'operation', 'cutter', 'translation', 'rotation', 'scale'], tags: ['cut'] },
 });
 
 function editError(index, message) {
@@ -88,6 +91,27 @@ export function normalizeMeshEdits(edits) {
           };
         }
         break;
+      case 'boolean': {
+        if (!BOOLEAN_OPERATIONS.includes(edit.operation)) throw editError(index, `operation must be one of ${BOOLEAN_OPERATIONS.join(', ')}`);
+        normalized.operation = edit.operation;
+        if (!edit.cutter || typeof edit.cutter !== 'object' || Array.isArray(edit.cutter) || typeof edit.cutter.type !== 'string') {
+          throw editError(index, 'cutter must be a primitive record such as { "type": "cylinder", "segments": 32 }');
+        }
+        normalized.cutter = edit.cutter;
+        normalized.translation = edit.translation === undefined ? [0, 0, 0] : vector(edit.translation, index, 'translation');
+        normalized.scale = edit.scale === undefined ? [1, 1, 1] : vector(edit.scale, index, 'scale');
+        if (normalized.scale.some(value => value <= 0)) throw editError(index, 'scale components must be positive');
+        if (edit.rotation === undefined) {
+          normalized.rotation = [0, 0, 0, 1];
+        } else {
+          if (!Array.isArray(edit.rotation) || edit.rotation.length !== 4) throw editError(index, 'rotation is an XYZW quaternion');
+          const rotation = edit.rotation.map(component => finiteNumber(component, index, 'rotation'));
+          const length = Math.hypot(...rotation);
+          if (length === 0) throw editError(index, 'rotation quaternion must be nonzero');
+          normalized.rotation = rotation.map(component => component / length);
+        }
+        break;
+      }
       case 'merge_by_distance':
         normalized.distance = finiteNumber(edit.distance ?? 1e-4, index, 'distance', { minimum: 0, maximum: 1e3 });
         break;
@@ -102,12 +126,34 @@ function checkBudget(mesh, limits, index, op) {
   }
 }
 
+/** Copy of a mesh with positions scaled, rotated by a unit XYZW quaternion, then translated. */
+export function transformMesh(mesh, { translation, rotation, scale }) {
+  const [x, y, z, w] = rotation;
+  const positions = new Float32Array(mesh.positions.length);
+  for (let offset = 0; offset < positions.length; offset += 3) {
+    const pointX = mesh.positions[offset] * scale[0];
+    const pointY = mesh.positions[offset + 1] * scale[1];
+    const pointZ = mesh.positions[offset + 2] * scale[2];
+    // v' = v + 2w(q x v) + 2q x (q x v)
+    const crossX = y * pointZ - z * pointY;
+    const crossY = z * pointX - x * pointZ;
+    const crossZ = x * pointY - y * pointX;
+    positions[offset] = pointX + 2 * (w * crossX + y * crossZ - z * crossY) + translation[0];
+    positions[offset + 1] = pointY + 2 * (w * crossY + z * crossX - x * crossZ) + translation[1];
+    positions[offset + 2] = pointZ + 2 * (w * crossZ + x * crossY - y * crossX) + translation[2];
+  }
+  return createMeshData({
+    positions, faceOffsets: mesh.faceOffsets, cornerVertices: mesh.cornerVertices,
+    edgeVertices: mesh.edgeVertices, cornerEdges: mesh.cornerEdges, attributes: mesh.attributes,
+  });
+}
+
 /**
  * Run an edit log on MeshData. Returns the final mesh and one compact result per edit: how many faces it selected,
  * the tags it created (and their face counts) and the mesh size after it.
  * An edit that selects no faces throws, because silently doing nothing hides a wrong selection from the agent.
  */
-export function applyMeshEdits(mesh, edits, { maxVertices = 250_000, maxFaces = 250_000 } = {}) {
+export function applyMeshEdits(mesh, edits, { maxVertices = 250_000, maxFaces = 250_000, resolveCutter } = {}) {
   const normalized = normalizeMeshEdits(edits);
   const limits = { maxVertices, maxFaces };
   const results = [];
@@ -115,7 +161,25 @@ export function applyMeshEdits(mesh, edits, { maxVertices = 250_000, maxFaces = 
   normalized.forEach((edit, index) => {
     const result = { op: edit.op };
     if (edit.name) result.name = edit.name;
-    if (edit.op === 'merge_by_distance') {
+    if (edit.op === 'boolean') {
+      if (!resolveCutter) throw new TypeError(`Mesh edit ${index} (boolean) needs a cutter resolver; recipe meshes provide one.`);
+      let cutter;
+      try {
+        cutter = transformMesh(resolveCutter(edit.cutter), edit);
+      } catch (error) {
+        throw new error.constructor(`Mesh edit ${index} (boolean cutter): ${error.message}`);
+      }
+      const cutTag = `${edit.name}.cut`;
+      let outcome;
+      try {
+        outcome = meshBoolean(current, cutter, edit.operation, { cutTag });
+      } catch (error) {
+        throw new error.constructor(`Mesh edit ${index} (boolean ${edit.operation}): ${error.message}`);
+      }
+      current = outcome.mesh;
+      result.operation = edit.operation;
+      result.tags = { [cutTag]: outcome.cutterFaces };
+    } else if (edit.op === 'merge_by_distance') {
       const merged = mergeByDistance(current, edit.distance);
       current = merged.mesh;
       result.removedVertices = merged.removedVertices;

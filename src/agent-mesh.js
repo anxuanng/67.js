@@ -8,6 +8,12 @@ import { extractRender } from './mesh-render.js';
 
 export const MESH_SMOOTH_ANGLE_DEFAULT = 30;
 const reports = new WeakMap();
+
+/** Whether a recipe, operation list or edit list contains a boolean edit, which needs loadMeshBooleans() first. */
+export function needsMeshBooleans(value) {
+  return JSON.stringify(value ?? null).includes('"op":"boolean"');
+}
+
 // Render geometry generated from a mesh recipe keeps its polygon mesh and edit results here.
 const polygonMeshes = new WeakMap();
 
@@ -15,9 +21,12 @@ const polygonMeshes = new WeakMap();
  * Build render geometry for a recipe `mesh` geometry: convert the base, run the edit log, and extract triangles with
  * edges sharper than smoothAngle (degrees) kept hard, as Blender's auto smooth does.
  */
-export function generateMeshGeometry(baseGeometry, edits, { maxVertices, smoothAngle = MESH_SMOOTH_ANGLE_DEFAULT }) {
+export function generateMeshGeometry(baseGeometry, edits, { maxVertices, smoothAngle = MESH_SMOOTH_ANGLE_DEFAULT, resolveCutter }) {
   const base = meshFromGeometry(baseGeometry);
-  const { mesh, results } = applyMeshEdits(base, edits, { maxVertices, maxFaces: maxVertices });
+  const { mesh, results } = applyMeshEdits(base, edits, {
+    maxVertices, maxFaces: maxVertices,
+    resolveCutter: resolveCutter && (cutter => meshFromGeometry(resolveCutter(cutter))),
+  });
   const { geometry } = extractRender(mesh, { sharpAngle: smoothAngle * Math.PI / 180 });
   if (geometry.positions.length / 3 > maxVertices) {
     throw new RangeError(`The edited mesh needs ${geometry.positions.length / 3} render vertices, over maxVertices ${maxVertices}.`);

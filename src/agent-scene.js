@@ -8,6 +8,8 @@ import { normalizeAgentMotion, compileAgentMotion } from './agent-motion.js';
 import { meshReport, generateMeshGeometry, MESH_SMOOTH_ANGLE_DEFAULT } from './agent-mesh.js';
 import { normalizeMeshEdits, MESH_EDIT_OPERATIONS, MAX_MESH_EDITS } from './mesh-recipe.js';
 export { normalizeAgentLook, resolveAgentShadow } from './agent-look.js';
+export { needsMeshBooleans } from './agent-mesh.js';
+export { loadMeshBooleans, meshBooleansLoaded } from './mesh-boolean.js';
 
 const DEFAULT_LIMITS = Object.freeze({
   maxNodes: 4096, maxDepth: 256, maxGeometries: 256, maxMaterials: 256,
@@ -382,15 +384,24 @@ function geometryEstimate(value) {
       if (!base || typeof base !== 'object' || Array.isArray(base) || base.type === 'mesh' || Object.hasOwn(base, 'id')) {
         throw new TypeError('mesh base must be a primitive or profile geometry record without an id (box, cylinder, sphere, torus, lathe, extrude or tube).');
       }
-      const baseEstimate = geometryEstimate({ id: 'base', ...base });
-      normalizeMeshEdits(value.edits ?? []);
+      let estimate = geometryEstimate({ id: 'base', ...base });
+      for (const edit of normalizeMeshEdits(value.edits ?? [])) {
+        if (edit.op === 'boolean') estimate += cutterEstimate(edit.cutter);
+      }
       if (value.smoothAngle !== undefined && (value.smoothAngle < 0 || value.smoothAngle > 180)) {
         throw new RangeError('smoothAngle is degrees from 0 to 180.');
       }
       // Edits can grow the mesh; the real size is checked against maxVertices after generation.
-      return baseEstimate * 2;
+      return estimate * 2;
     }
   }
+}
+
+function cutterEstimate(cutter) {
+  if (cutter.type === 'mesh' || Object.hasOwn(cutter, 'id')) {
+    throw new TypeError('A boolean cutter must be a primitive or profile record without an id (box, cylinder, sphere, torus, lathe, extrude or tube).');
+  }
+  return geometryEstimate({ id: 'cutter', ...cutter });
 }
 
 function generateGeometry(value, maxVertices) {
@@ -412,6 +423,10 @@ function generateGeometry(value, maxVertices) {
     case 'mesh':
       return generateMeshGeometry(generateGeometry(value.base, maxVertices), value.edits ?? [], {
         maxVertices, smoothAngle: value.smoothAngle ?? MESH_SMOOTH_ANGLE_DEFAULT,
+        resolveCutter: cutter => {
+          cutterEstimate(cutter);
+          return generateGeometry(cutter, maxVertices);
+        },
       });
   }
 }

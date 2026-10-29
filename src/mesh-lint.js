@@ -48,6 +48,54 @@ function partVolumes(mesh, facePart, partCount) {
   return volumes;
 }
 
+// A slightly skewed ray direction avoids running exactly along axis-aligned edges and faces.
+const RAY_DIRECTION = [0.8017837, 0.5345225, 0.2672612];
+
+/** Whether the ray from origin along RAY_DIRECTION crosses triangle (a, b, c), by Moller-Trumbore. */
+function rayHitsTriangle(origin, positions, a, b, c) {
+  const edgeFirst = [positions[b] - positions[a], positions[b + 1] - positions[a + 1], positions[b + 2] - positions[a + 2]];
+  const edgeSecond = [positions[c] - positions[a], positions[c + 1] - positions[a + 1], positions[c + 2] - positions[a + 2]];
+  const [directionX, directionY, directionZ] = RAY_DIRECTION;
+  const perpendicular = [
+    directionY * edgeSecond[2] - directionZ * edgeSecond[1],
+    directionZ * edgeSecond[0] - directionX * edgeSecond[2],
+    directionX * edgeSecond[1] - directionY * edgeSecond[0],
+  ];
+  const determinant = edgeFirst[0] * perpendicular[0] + edgeFirst[1] * perpendicular[1] + edgeFirst[2] * perpendicular[2];
+  if (Math.abs(determinant) < 1e-12) return false;
+  const inverse = 1 / determinant;
+  const toOrigin = [origin[0] - positions[a], origin[1] - positions[a + 1], origin[2] - positions[a + 2]];
+  const u = (toOrigin[0] * perpendicular[0] + toOrigin[1] * perpendicular[1] + toOrigin[2] * perpendicular[2]) * inverse;
+  if (u < 0 || u > 1) return false;
+  const cross = [
+    toOrigin[1] * edgeFirst[2] - toOrigin[2] * edgeFirst[1],
+    toOrigin[2] * edgeFirst[0] - toOrigin[0] * edgeFirst[2],
+    toOrigin[0] * edgeFirst[1] - toOrigin[1] * edgeFirst[0],
+  ];
+  const v = (directionX * cross[0] + directionY * cross[1] + directionZ * cross[2]) * inverse;
+  if (v < 0 || u + v > 1) return false;
+  const distance = (edgeSecond[0] * cross[0] + edgeSecond[1] * cross[1] + edgeSecond[2] * cross[2]) * inverse;
+  return distance > 0;
+}
+
+/** Whether a vertex of `part` lies inside the faces of the other parts (odd number of ray crossings). */
+function insideOtherPart(mesh, facePart, part) {
+  let face = 0;
+  while (facePart[face] !== part) face++;
+  const vertex = mesh.cornerVertices[mesh.faceOffsets[face]] * 3;
+  const origin = [mesh.positions[vertex], mesh.positions[vertex + 1], mesh.positions[vertex + 2]];
+  let crossings = 0;
+  for (let other = 0; other < mesh.faceCount; other++) {
+    if (facePart[other] === part) continue;
+    const start = mesh.faceOffsets[other];
+    const anchor = mesh.cornerVertices[start] * 3;
+    for (let corner = start + 1; corner + 1 < mesh.faceOffsets[other + 1]; corner++) {
+      if (rayHitsTriangle(origin, mesh.positions, anchor, mesh.cornerVertices[corner] * 3, mesh.cornerVertices[corner + 1] * 3)) crossings++;
+    }
+  }
+  return crossings % 2 === 1;
+}
+
 /**
  * Check a mesh for problems that break later operations or rendering.
  * Returns { ok, counts, parts, tags, bounds, problems }, where each problem has kind, severity, count, a sample of
@@ -89,16 +137,20 @@ export function lintMesh(mesh) {
   }
   const volumes = partVolumes(mesh, facePart, partCount);
   let closedParts = 0;
+  let cavities = 0;
   for (let part = 0; part < partCount; part++) {
     if (partOpen[part] || partWindingBroken[part]) continue;
     closedParts++;
-    if (volumes[part] < 0) addProblem(problems, 'inverted-part', part);
+    if (volumes[part] >= 0) continue;
+    // A negative shell inside another part is a cavity (a hollow), which is valid; elsewhere it is inside out.
+    if (insideOtherPart(mesh, facePart, part)) cavities++;
+    else addProblem(problems, 'inverted-part', part);
   }
   const problemList = [...problems.values()];
   return {
     ok: !problemList.some(problem => problem.severity === 'error'),
     counts: { vertices: mesh.vertexCount, edges: mesh.edgeCount, faces: mesh.faceCount, corners: mesh.cornerCount },
-    parts: { count: partCount, closed: closedParts },
+    parts: { count: partCount, closed: closedParts, cavities },
     tags: tagCounts(mesh),
     bounds,
     problems: problemList,
