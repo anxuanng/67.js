@@ -43,6 +43,8 @@
     "docs/primitives.md",
     "docs/shrinkwrap.md",
     "docs/vehicle.md",
+    "docs/spume.md",
+    "docs/retarget.md",
     "docs/surface-attachment.md",
     "docs/agent-scene.md",
     "docs/mcp.md",
