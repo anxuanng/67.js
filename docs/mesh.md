@@ -102,6 +102,24 @@ rebuilding the topology.
 
 `ok` is false when any error is present. Self-intersections and wall thickness are not checked yet.
 
+## MCP
+
+`mesh_inspect` runs the same conversion and lint on the geometries of a procedural recipe scene and returns one
+compact record per geometry:
+
+```json
+{ "geometry": "cube", "ok": true,
+  "counts": { "vertices": 8, "edges": 12, "faces": 6, "corners": 24, "triangles": 12, "renderVertices": 24 },
+  "faces": { "triangles": 0, "quads": 6, "ngons": 0 },
+  "parts": { "count": 1, "closed": 1 },
+  "tags": { "right": 1, "left": 1, "top": 1, "bottom": 1, "front": 1, "back": 1, "side": 4 },
+  "bounds": { "min": [-0.5, -0.5, -0.5], "max": [0.5, 0.5, 0.5] },
+  "problems": [] }
+```
+
+Reports are cached per generated geometry, so asking again without edits is free. Imported asset scenes are not
+supported yet.
+
 ## Measured speed
 
 `node scripts/benchmark-mesh-core.mjs 1000` on a 1000 x 1000 quad grid (one million faces), Node 24, Ryzen 5 5600X,

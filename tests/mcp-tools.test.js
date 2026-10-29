@@ -38,6 +38,11 @@ async function connect(context) {
       assert.equal(requested, sessionId);
       return { sessionId, ...scene.inspect(options) };
     },
+    async inspectMeshes({ sessionId: requested, ...options }) {
+      calls++;
+      assert.equal(requested, sessionId);
+      return { sessionId, ...scene.inspectMeshes(options) };
+    },
     async apply({ expectedRevision, operations }) {
       calls++;
       scene.apply(operations, { expectedRevision });
@@ -105,7 +110,7 @@ test('SDK advertises the complete strict JSON contract and truthful annotations'
   const { client } = await connect(context);
   const { tools } = await client.listTools();
   assert.deepEqual(tools.map(tool => tool.name).sort(), [
-    'scene_apply', 'scene_asset_catalog', 'scene_capabilities', 'scene_checkpoint', 'scene_create', 'scene_create_asset', 'scene_dispose',
+    'mesh_inspect', 'scene_apply', 'scene_asset_catalog', 'scene_capabilities', 'scene_checkpoint', 'scene_create', 'scene_create_asset', 'scene_dispose',
     'scene_export_recipe', 'scene_inspect', 'scene_look', 'scene_review', 'scene_release_checkpoint', 'scene_restore',
     'scene_render_cancel', 'scene_render_release', 'scene_render_result', 'scene_render_status', 'scene_render_submit',
   ].sort());
@@ -143,7 +148,7 @@ test('review SDK exposes one image and rejects unknown or unbounded shot fields 
   await client.callTool({ name: 'scene_create', arguments: { recipe: recipe() } });
   const { tools } = await client.listTools();
   const tool = tools.find(tool => tool.name === 'scene_review');
-  assert.equal(tools.length, 18);
+  assert.equal(tools.length, 19);
   assert.equal(tool.annotations.readOnlyHint, true);
   assert.equal(tool.inputSchema.properties.shots.maxItems, 4);
   assert.equal(tool.inputSchema.properties.shots.items.additionalProperties, false);
@@ -191,6 +196,36 @@ test('SDK rejects unknown fields, missing revisions, invalid vectors and oversiz
   await rejected(client, 'scene_create', { recipe: { ...recipe(), geometries: [{ id: 'sphere', type: 'sphere', segments: 2049 }] } });
   await rejected(client, 'scene_create', { recipe: { ...recipe(), nodes: Array.from({ length: 4097 }, () => ({ id: 'node' })) } });
   assert.equal(boundary.calls(), 0);
+});
+
+test('mesh_inspect reports polygon counts, tags and lint for recipe geometries', async context => {
+  const { client, sessionId } = await connect(context);
+  await client.callTool({ name: 'scene_create', arguments: { recipe: {
+    ...recipe(),
+    geometries: [
+      { id: 'cube', type: 'box', bevel: 0 },
+      { id: 'cable', type: 'tube', path: [[0, 0, 0], [1, 1, 0], [2, 0, 0]], radius: 0.05 },
+    ],
+  } } });
+  const result = await client.callTool({ name: 'mesh_inspect', arguments: { sessionId } });
+  assert.equal(result.isError, undefined);
+  const [cube, cable] = result.structuredContent.meshes;
+  assert.equal(cube.geometry, 'cube');
+  assert.equal(cube.ok, true);
+  assert.deepEqual(cube.faces, { triangles: 0, quads: 6, ngons: 0 });
+  assert.equal(cube.tags.top, 1);
+  assert.deepEqual(cube.problems, []);
+  assert.equal(cable.parts.closed, 0, 'an uncapped tube is open');
+  assert.equal(cable.problems[0].kind, 'boundary-edge');
+  assert.ok(JSON.stringify(result.structuredContent).length < 4096, 'default report stays compact');
+  const one = await client.callTool({ name: 'mesh_inspect', arguments: { sessionId, geometries: ['cube'] } });
+  assert.equal(one.structuredContent.meshes.length, 1);
+  const missing = await client.callTool({ name: 'mesh_inspect', arguments: { sessionId, geometries: ['nope'] } });
+  assert.equal(missing.isError, true);
+  assert.match(missing.content[0].text, /Known IDs: cube, cable/);
+  await rejected(client, 'mesh_inspect', { sessionId, geometries: [] });
+  await rejected(client, 'mesh_inspect', { sessionId, geometries: Array.from({ length: 17 }, (_, index) => `g${index}`) });
+  await rejected(client, 'mesh_inspect', { sessionId, path: '../file' });
 });
 
 test('real SDK round trip authors motion, seeks without revisions and rejects unknown track fields', async context => {

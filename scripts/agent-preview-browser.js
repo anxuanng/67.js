@@ -278,6 +278,13 @@ window.__agentPreview = {
   inspect({ sessionId, ...options }) {
     return { sessionId, ...requireSession(sessionId).scene.inspect(options) };
   },
+  inspectMeshes({ sessionId, ...options }) {
+    const scene = requireSession(sessionId).scene;
+    if (typeof scene.inspectMeshes !== 'function') {
+      throw new TypeError('mesh_inspect supports procedural recipe scenes. Imported asset scenes are not inspected as polygon meshes yet.');
+    }
+    return { sessionId, ...scene.inspectMeshes(options) };
+  },
   apply({ sessionId, operations, expectedRevision }) {
     const record = requireSession(sessionId);
     validatePreviewCamera(candidateCamera(record, operations));

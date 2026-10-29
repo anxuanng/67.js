@@ -5,6 +5,7 @@ import { createSceneGraph } from './scene-graph.js';
 import { applyProjection } from './camera.js';
 import { normalizeAgentLook } from './agent-look.js';
 import { normalizeAgentMotion, compileAgentMotion } from './agent-motion.js';
+import { meshReport } from './agent-mesh.js';
 export { normalizeAgentLook, resolveAgentShadow } from './agent-look.js';
 
 const DEFAULT_LIMITS = Object.freeze({
@@ -12,6 +13,7 @@ const DEFAULT_LIMITS = Object.freeze({
   maxVertices: 250_000, maxGeometryBytes: 32 * 1024 * 1024,
   maxOperations: 256, maxCheckpoints: 8, maxRecipeBytes: 1024 * 1024,
 });
+const MAX_MESH_REPORTS = 16;
 const CAMERA_DEFAULTS = Object.freeze({ eye: [4, 3, 5], target: [0, 0, 0], up: [0, 1, 0], fov: 45, near: 0.1, far: 1000 });
 const NODE_FIELDS = ['translation', 'rotation', 'scale', 'parent', 'label', 'geometry', 'material'];
 const MATERIAL_FIELDS = ['color', 'metallic', 'roughness', 'emission', 'emissiveColor', 'opacity', 'alphaMode', 'doubleSided'];
@@ -949,6 +951,24 @@ export function createAgentScene(input, inputLimits = {}) {
         },
         nodes, truncated: selected.length > nodes.length,
       };
+    },
+    /** Polygon counts, parts, face tags and lint problems for recipe geometries (all, or the given IDs). */
+    inspectMeshes(options = {}) {
+      knownKeys(options, ['geometries'], 'mesh inspection');
+      const requested = options.geometries ?? [...state.geometries.keys()];
+      if (!Array.isArray(requested) || (options.geometries !== undefined && requested.length > MAX_MESH_REPORTS)) {
+        throw new RangeError(`Inspect at most ${MAX_MESH_REPORTS} geometry IDs per call.`);
+      }
+      const selected = requested.slice(0, MAX_MESH_REPORTS);
+      const meshes = selected.map(id => {
+        identifier(id);
+        const geometry = state.geometries.get(id);
+        if (!geometry) {
+          throw new RangeError(`Geometry ID was not found: ${id}. Known IDs: ${[...state.geometries.keys()].join(', ')}.`);
+        }
+        return { geometry: id, ...meshReport(geometry) };
+      });
+      return { revision, meshes, truncated: requested.length > selected.length };
     },
     checkpoint() {
       if (checkpoints.size >= limits.maxCheckpoints) {

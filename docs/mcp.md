@@ -102,6 +102,7 @@ Inspect or export the recipe before retrying. Context loss still permits recipe 
 | `scene_create_asset` | `recipe` using `67js.asset` | Imported scene ID, revision, inspection and render status |
 | `scene_inspect` | `sessionId`, optional `ids`, `limit`, `includeBounds` | Compact node records and revision |
 | `scene_apply` | `sessionId`, `expectedRevision`, `operations` | Updated revision, inspection, and render status |
+| `mesh_inspect` | `sessionId`, optional `geometries` (up to 16 IDs) | Per geometry: polygon counts, face sizes, parts, face tags, bounds and lint problems with fixes |
 | `scene_look` | `sessionId`, optional `width`, `height`, `motionTime` | PNG image and metadata |
 | `scene_review` | `sessionId`, `expectedRevision`, `shots`, optional `width`, `height` | Labeled PNG grid and metadata from an isolated snapshot |
 | `scene_checkpoint` | `sessionId` | Checkpoint ID, session ID, and revision |
