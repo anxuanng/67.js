@@ -211,6 +211,16 @@ The [vehicle contract](/vehicle.md) lists conventions, options and limits.
 
 Cards (`leaves: 'cards'`, the default) are single-sided, alpha-masked, double-sided `foliage` textures that sway with the wind; `'mesh'` leaves cost about twice the triangles. Pass `barkTextures` for scanned bark and `leafTextures: await loadLeafTextures('/textures/leaves')` for scanned leaf cards. The [Vegetation contract](/vegetation.md) lists species, triangle budgets and limits.
 
+## Grass fields
+
+`67js/addons/grass` is in the current source and not yet published. It covers terrain with clumped, curved blades in tiles with distance level of detail.
+
+1. Create the field with `createGrass({ preset, area, terrainHeight, mask, eye })`. Presets are `meadow`, `lawn`, `savanna` and `wild`.
+2. Add `grass.parts` to the renderer and pass `wind` in each frame.
+3. When `grass.update(eye)` returns true, call `renderer.replaceParts` with the new part list.
+
+Tint the ground under the grass with `grass.groundColor`. The [Grass contract](/grass.md) lists options, levels, measured budgets and limits.
+
 ## Terrain and ground textures
 
 `67js/addons/terrain` and `67js/addons/texture-set` are available from version `0.10.0`. They build a chunked, seeded heightfield with distance level of detail and a four-layer ground material (slope, height and mask rules, height-based edge blending, triplanar cliffs, anti-tiling) from CC0 scans.

@@ -118,6 +118,7 @@ Each addon is a separate import, so a page loads only what it uses.
 | Rendering | `67js` | Instanced PBR renderer, shadows, MSAA, HDR, bloom, alpha masks and blending, render budgets. See [lighting](docs/lighting.md) and [material maps](docs/material-maps.md). |
 | Environment | `67js/addons/hdri` | Image-based lighting from Radiance `.hdr` files, with blurred reflections. |
 | Terrain | `67js/addons/terrain`, `67js/addons/texture-set` | [Chunked terrain](docs/terrain.md) with level of detail and a four-layer splat material from scanned textures. |
+| Grass | `67js/addons/grass` | [Grass fields](docs/grass.md) of clumped, curved blades with rolling wind gusts, paths and level of detail. |
 | Vegetation | `67js/addons/vegetation` | [Seeded trees, bushes and grass](docs/vegetation.md) with scanned leaves and bark, wind and level of detail. |
 | Liquid | `67js/addons/spume` | [Baked liquid playback](docs/spume.md) with refraction and spray from the Spume solver. |
 | Vehicles | `67js/addons/vehicle` | [Wheeled vehicles on a path](docs/vehicle.md): wheel spin, steering, roll, pitch and ground following. |

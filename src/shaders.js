@@ -62,7 +62,23 @@ mat4 skinTransform() {
 // more than the crown centre) but is capped, because bark never moves and leaves must stay near their twigs.
 // uv.y is 1 at a leaf's base and 0 at its tip, which drives the faster flutter.
 const windShader = `
+// Grass bends by how far up the blade a vertex is (uv.y is 1 at the root), so it ignores terrain height.
+// Gusts roll across the field as a travelling wave along the wind direction, like the rolling bands in a meadow.
+vec3 grassWind(vec3 worldPoint, vec2 leafUv, float seconds, float strength) {
+  float tip = clamp(1.0 - leafUv.y, 0.0, 1.0);
+  float bendWeight = tip * tip;
+  vec2 windDirection = vec2(0.94, 0.34);
+  float along = dot(worldPoint.xz, windDirection);
+  float gust = 0.5 + 0.5 * sin(along * 0.32 - seconds * 1.7 + 2.0 * sin(worldPoint.x * 0.05 - worldPoint.z * 0.04 + seconds * 0.23));
+  float push = (0.3 + 0.7 * gust * gust) * strength;
+  float flutter = sin(seconds * 4.7 + worldPoint.x * 2.3 + worldPoint.z * 1.9) * strength;
+  vec2 offset = windDirection * (push * 0.42 + flutter * 0.05) + vec2(-windDirection.y, windDirection.x) * flutter * 0.04;
+  return vec3(offset.x, -push * 0.14, offset.y) * bendWeight;
+}
+
 vec3 windOffset(vec3 localPosition, vec3 worldPoint, vec2 leafUv, float surfaceTag, float seconds, float strength) {
+  // Grass without UVs (uv is (-1, -1)) has no blade coordinate, so it keeps the height-based sway below.
+  if (surfaceTag == 7.0 && leafUv.x > -0.5) return grassWind(worldPoint, leafUv, seconds, strength);
   if (surfaceTag != 4.0 && surfaceTag != 7.0) return vec3(0.0);
   float heightReach = min(max(localPosition.y + 0.5, 0.0), 2.5);
   float branchReach = 1.0 + 0.3 * min(length(localPosition.xz), 3.0);

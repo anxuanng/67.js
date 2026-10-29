@@ -611,7 +611,8 @@ export class Renderer67 {
     } else {
       if (hasMaterialMap(parts[0].material)) throw new Error('Textured geometry requires UV channel 0.');
       context.disableVertexAttribArray(13);
-      context.vertexAttrib2f(13, 0, 0);
+      // (-1, -1) marks "no UVs": grass wind then bends by local height instead of by blade position.
+      context.vertexAttrib2f(13, -1, -1);
     }
     if (geometry.colors) {
       if (geometry.colors.length !== geometry.positions.length) throw new Error('Geometry colors must contain RGB for every vertex.');
