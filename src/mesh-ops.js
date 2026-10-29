@@ -196,7 +196,7 @@ function offsetVector(edit, faces, { offset, direction }) {
     return unit.map(value => value * offset);
   }
   const normal = regionNormal(edit, faces);
-  if (normal.every(value => value === 0)) throw new RangeError('The selected faces face opposite ways, so their average normal cancels out. Use extrude_individual or inset_individual, select fewer faces, or pass direction.');
+  if (normal.every(value => value === 0)) throw new RangeError('The selected faces face opposite ways, so their average normal cancels out. For a ring or a curved band use alongNormals: true; otherwise use extrude_individual or inset_individual, select fewer faces, or pass direction.');
   return normal.map(value => value * offset);
 }
 
@@ -233,6 +233,13 @@ export function extrudeFaceRegion(edit, mask, options) {
   const capFaces = [];
   const sideFaces = [];
   for (const region of connectedRegions(edit, maskedFaces(edit, mask))) {
+    if (options.alongNormals) {
+      const result = splitRegion(edit, region);
+      moveAlongVertexNormals(edit, result.capFaces, options.offset);
+      capFaces.push(...result.capFaces);
+      sideFaces.push(...result.sideFaces);
+      continue;
+    }
     const vector = offsetVector(edit, region, options);
     const result = splitRegion(edit, region);
     moveVertices(edit, faceVertexSet(edit, result.capFaces), vector);
@@ -240,6 +247,34 @@ export function extrudeFaceRegion(edit, mask, options) {
     sideFaces.push(...result.sideFaces);
   }
   return { capFaces, sideFaces };
+}
+
+/**
+ * Move the vertices of the given faces along their own normals (the mean of the faces' normals at each vertex),
+ * scaled so flat walls move by the full offset, as Blender's Extrude Faces Along Normals. A ring of faces around a
+ * cylinder grows outward evenly instead of cancelling out.
+ */
+function moveAlongVertexNormals(edit, faces, offset) {
+  const sums = new Map();
+  const faceNormalOf = new Map(faces.map(face => [face, normalize(faceNormalVector(edit, face))]));
+  for (const face of faces) {
+    for (const vertex of edit.faceVertices(face)) {
+      const normal = faceNormalOf.get(face);
+      const entry = sums.get(vertex) ?? { sum: [0, 0, 0], normals: [] };
+      entry.sum = [entry.sum[0] + normal[0], entry.sum[1] + normal[1], entry.sum[2] + normal[2]];
+      entry.normals.push(normal);
+      sums.set(vertex, entry);
+    }
+  }
+  const position = edit.vertices.arrays.position;
+  for (const [vertex, { sum, normals }] of sums) {
+    const direction = normalize(sum);
+    const cosine = Math.max(0.25, Math.min(...normals.map(normal => normal[0] * direction[0] + normal[1] * direction[1] + normal[2] * direction[2])));
+    const distance = offset / cosine;
+    position[vertex * 3] += direction[0] * distance;
+    position[vertex * 3 + 1] += direction[1] * distance;
+    position[vertex * 3 + 2] += direction[2] * distance;
+  }
 }
 
 /** Extrude every selected face on its own, each along its own normal (or `direction`). */

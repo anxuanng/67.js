@@ -8,6 +8,7 @@ import { meshBoolean, BOOLEAN_OPERATIONS } from './mesh-boolean.js';
 import { createMeshData } from './mesh-data.js';
 import { mirrorMesh, arrayMesh, solidifyMesh } from './mesh-stack.js';
 import { bevelEdges } from './mesh-bevel.js';
+import { loopCut } from './mesh-loopcut.js';
 
 // Replayable edit log for agent recipes. Each edit is plain JSON; names follow Blender's bmesh.ops where they match.
 
@@ -16,7 +17,7 @@ const NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,47}$/;
 const MAX_OFFSET = 1e6;
 
 export const MESH_EDIT_OPERATIONS = Object.freeze({
-  extrude_face_region: { fields: ['select', 'name', 'offset', 'direction'], tags: ['cap', 'side'] },
+  extrude_face_region: { fields: ['select', 'name', 'offset', 'direction', 'alongNormals'], tags: ['cap', 'side'] },
   extrude_individual: { fields: ['select', 'name', 'offset', 'direction'], tags: ['cap', 'side'] },
   inset_region: { fields: ['select', 'name', 'thickness', 'depth'], tags: ['cap', 'rim'] },
   inset_individual: { fields: ['select', 'name', 'thickness', 'depth'], tags: ['cap', 'rim'] },
@@ -30,6 +31,7 @@ export const MESH_EDIT_OPERATIONS = Object.freeze({
   array: { fields: ['name', 'count', 'offset', 'relativeOffset', 'merge'], tags: ['last'] },
   solidify: { fields: ['name', 'thickness', 'offset', 'evenThickness'], tags: ['inner', 'rim'] },
   bevel: { fields: ['name', 'edges', 'width', 'segments', 'profile', 'clampOverlap'], tags: ['strip', 'corner'] },
+  loop_cut: { fields: ['name', 'edges', 'cuts', 'factor'], tags: ['band-<k>'] },
 });
 
 function editError(index, message) {
@@ -74,6 +76,11 @@ export function normalizeMeshEdits(edits) {
       case 'extrude_individual':
         normalized.offset = finiteNumber(edit.offset, index, 'offset');
         if (edit.direction !== undefined) normalized.direction = vector(edit.direction, index, 'direction');
+        if (edit.alongNormals !== undefined) {
+          if (typeof edit.alongNormals !== 'boolean') throw editError(index, 'alongNormals must be boolean');
+          if (edit.alongNormals && edit.direction !== undefined) throw editError(index, 'alongNormals and direction cannot be combined');
+          normalized.alongNormals = edit.alongNormals;
+        }
         break;
       case 'inset_region':
       case 'inset_individual':
@@ -148,6 +155,17 @@ export function normalizeMeshEdits(edits) {
         if (edit.clampOverlap !== undefined && typeof edit.clampOverlap !== 'boolean') throw editError(index, 'clampOverlap must be boolean');
         normalized.clampOverlap = edit.clampOverlap ?? true;
         break;
+      case 'loop_cut':
+        if (!edit.edges || typeof edit.edges !== 'object' || Array.isArray(edit.edges)) {
+          throw editError(index, 'edges must be a rule that picks the ring, for example { "along": [0, 1, 0] } for the vertical edges');
+        }
+        normalized.edges = edit.edges;
+        if (!Number.isInteger(edit.cuts ?? 1) || (edit.cuts ?? 1) < 1 || (edit.cuts ?? 1) > 16) throw editError(index, 'cuts must be an integer from 1 to 16');
+        normalized.cuts = edit.cuts ?? 1;
+        if (edit.factor !== undefined && normalized.cuts !== 1) throw editError(index, 'factor applies only to a single cut');
+        normalized.factor = edit.factor === undefined ? 0.5 : finiteNumber(edit.factor, index, 'factor', { minimum: 0, maximum: 1 });
+        if (normalized.factor === 0 || normalized.factor === 1) throw editError(index, 'factor must be strictly between 0 and 1');
+        break;
       case 'merge_by_distance':
         normalized.distance = finiteNumber(edit.distance ?? 1e-4, index, 'distance', { minimum: 0, maximum: 1e3 });
         break;
@@ -212,6 +230,19 @@ function runEdit(current, edit, index, { resolveCutter }) {
     result.removedVertices = merged.removedVertices;
     result.removedFaces = merged.removedFaces;
     return { mesh: merged.mesh, result };
+  }
+  if (edit.op === 'loop_cut') {
+    let outcome;
+    try {
+      outcome = loopCut(current, edit.edges, edit);
+    } catch (error) {
+      throw new error.constructor(`Mesh edit ${index} (loop_cut): ${error.message}`);
+    }
+    result.rings = outcome.rings;
+    result.closedRings = outcome.closedRings;
+    result.splitEdges = outcome.splitEdges;
+    result.tags = tagSummary(outcome.mesh, edit.name);
+    return { mesh: outcome.mesh, result };
   }
   if (edit.op === 'bevel') {
     let outcome;
