@@ -8,6 +8,7 @@ export { createAnimationMixer } from './animation-mixer.js';
 export { createSceneGraph } from './scene-graph.js';
 export { createSkinPose, updateSkinPose } from './skinning.js';
 export { createMorphPose, MAX_MORPH_TARGETS } from './morph.js';
+export { createEnvironmentMap } from './environment.js';
 export { RENDER_PRESETS, planRenderSize, estimateFrameBytes } from './budget.js';
 
 export { assemblyOffset } from './assembly.js';

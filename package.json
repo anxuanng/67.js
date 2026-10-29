@@ -42,6 +42,9 @@
     "docs/mesh-query.md",
     "docs/primitives.md",
     "docs/shrinkwrap.md",
+    "docs/vehicle.md",
+    "docs/spume.md",
+    "docs/retarget.md",
     "docs/surface-attachment.md",
     "docs/agent-scene.md",
     "docs/mcp.md",
@@ -50,7 +53,9 @@
     "docs/agent-render-jobs.md",
     "docs/agent-motion.md",
     "docs/agent-character-motion.md",
-    "docs/agent-review.md"
+    "docs/agent-review.md",
+    "docs/vegetation.md",
+    "docs/terrain.md"
   ],
   "main": "./build/67.module.js",
   "module": "./build/67.module.js",
@@ -75,8 +80,15 @@
     "./addons/shrinkwrap": "./build/shrinkwrap.js",
     "./addons/surface-attachment": "./build/surface-attachment.js",
     "./addons/physics": "./build/physics.js",
+    "./addons/spume": "./build/spume.js",
+    "./addons/retarget": "./build/retarget.js",
+    "./addons/vehicle": "./build/vehicle.js",
+    "./addons/vegetation": "./build/vegetation.js",
+    "./addons/terrain": "./build/terrain.js",
+    "./addons/texture-set": "./build/texture-set.js",
     "./addons/agent-scene": "./build/agent-scene.js",
     "./addons/agent-asset": "./build/agent-asset.js",
+    "./addons/hdri": "./build/hdri.js",
     "./package.json": "./package.json"
   },
   "scripts": {

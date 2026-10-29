@@ -40,6 +40,7 @@ The optional `signal` aborts those fetches.
 | `maxResources` | 64 | Unique resource URIs. |
 | `maxTexturePixels` | 16,777,216 | Combined texture image pixels, checked before decoding. |
 | `maxJoints` | 4,096 | Combined declared joints and joint palettes for instantiated meshes. |
+| `maxInstances` | 4,096 | Instances of one `EXT_mesh_gpu_instancing` node. |
 
 Every numeric limit must be a positive safe integer.
 The importer rejects cyclic hierarchies, multiple parents, and hierarchies deeper than 256 levels.
@@ -50,7 +51,7 @@ The renderer retains its separate memory budget.
 
 ## Output
 
-The result contains `parts`, `animations`, `applyAnimation`, `dispose`, and `capabilities`.
+The result contains `parts`, `warnings`, `animations`, `applyAnimation`, `dispose`, and `capabilities`.
 Each part contains `name`, `geometry`, `matrix`, and `material`.
 The column-major matrix contains the complete world transform, including parent transforms.
 Repeated primitives share geometry objects.
@@ -123,10 +124,53 @@ Disposal is idempotent, and subsequent animation calls fail explicitly.
 The bridge supports triangle meshes, PNG/JPEG base color textures, rigid animations, and metallic-roughness material factors.
 It also supports `KHR_mesh_quantization` and `KHR_materials_emissive_strength`.
 
-The importer rejects alpha blending, alpha masking, double-sided materials and vertex transparency.
+Alpha masking, alpha blending and double-sided materials import onto `alphaMode`, `alphaCutoff`, `opacity` and `doubleSided` (see the material maps guide). Vertex transparency is still rejected.
 It supports base-color, normal, metallic-roughness, occlusion and emissive texture channels.
-It rejects texture transforms, DRACO, KTX2, GPU instancing, and unsupported extensions, including optional extensions.
+It rejects unknown extensions, including optional ones.
 Line and point primitives are unsupported.
+
+## Extensions
+
+| Extension | Behavior |
+| --- | --- |
+| `KHR_mesh_quantization`, `KHR_materials_emissive_strength` | Supported. |
+| `KHR_texture_transform` | Offset, rotation and scale are baked into `geometry.uvs`. All maps of one material must share one transform, otherwise the import fails. `texCoord` overrides are rejected. |
+| `EXT_mesh_gpu_instancing` | The node expands into one part per instance and primitive. Parts of one primitive share one geometry object, so the renderer batches them. Skinned or morphed instancing is rejected. |
+| `KHR_draco_mesh_compression` | Needs `options.decoders.draco`. |
+| `EXT_meshopt_compression` | Needs `options.decoders.meshopt`. |
+| `KHR_texture_basisu` | Needs `options.decoders.ktx2`. |
+| `KHR_materials_clearcoat`, `_transmission`, `_ior`, `_specular`, `_sheen`, `_volume` | Accepted but not rendered. Each one used adds a line to `asset.warnings`. Listing one in `extensionsRequired` fails the import. |
+
+`KHR_materials_transmission` with a factor above zero sets `material.transmission` to that factor.
+It is a hint only: the renderer does not draw transmission yet.
+
+Without the matching decoder, a file that uses a compression extension fails with `Unsupported glTF extension` and the option name.
+
+### Decoders
+
+The decoders are the Three.js loaders. 67.js does not bundle or fetch their wasm files, so you choose where they are served.
+
+```js
+import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
+import { KTX2Loader } from 'three/addons/loaders/KTX2Loader.js';
+import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
+
+const draco = new DRACOLoader().setDecoderPath('/vendor/draco/');   // copy three/examples/jsm/libs/draco/
+const ktx2 = new KTX2Loader().setTranscoderPath('/vendor/basis/');  // copy three/examples/jsm/libs/basis/
+// Transcode to RGBA8 only: the renderer uploads plain pixels, not GPU-compressed formats.
+ktx2.workerConfig = { astcSupported: false, astcHDRSupported: false, etc1Supported: false, etc2Supported: false, dxtSupported: false, bptcSupported: false, pvrtcSupported: false };
+
+const asset = await loadGltf('/models/car.glb', { decoders: { draco, ktx2, meshopt: MeshoptDecoder } });
+```
+
+Any subset works. Draco and KTX2 decode in browser workers. Dispose the loaders yourself when done (`draco.dispose()`, `ktx2.dispose()`).
+A KTX2 texture that decodes to a GPU-compressed format fails with a message that points back to this setting.
+KTX2 dimensions count toward `maxTexturePixels` before decoding.
+
+### Instancing limits
+
+`maxInstances` (default 4,096) caps the instances of one node, and `maxParts` still caps the total number of parts.
+Both are checked from the accessor counts before any data is decoded.
 The bridge does not import cameras, lights or scene environments into Renderer67.
 The caller supplies its own camera and lighting.
 
@@ -135,6 +179,10 @@ The caller supplies its own camera and lighting.
 `node --test tests/gltf.test.js` covers generated GLB triangles and the existing `exportGlb` roundtrip.
 The tests cover parent transforms, missing normals, UVs, shared geometry, PBR factors, mirrored winding, and animation seeks.
 The tests also cover input limits, unsupported features, compressed image dimensions, and oversized fetch cancellation.
+
+`node --test tests/gltf-extensions.test.js` covers texture transform baking, instancing, ignored material extensions and the decoder options.
+The meshopt test decodes a real encoded buffer with the Three.js decoder.
+The Draco and KTX2 tests use stand-in loaders, because no encoder is installed: they prove the wiring, not the wasm decoders.
 
 `tests/fixtures/textured-triangle.gltf` contains an original triangle and a generated two-pixel-square PNG.
 Chrome loading preserved its UVs, linear material factors, sampler values, and decoded image dimensions.

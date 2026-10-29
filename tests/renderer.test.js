@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mat4, mat3 } from 'gl-matrix';
-import { Renderer67, groupParts, textureDescriptorInfo } from '../src/renderer.js';
+import { Renderer67, groupParts, resolveLiquidOptics, textureDescriptorInfo } from '../src/renderer.js';
 import { createSkinPose } from '../src/skinning.js';
 
 function part(name, geometry = {}, map) {
@@ -11,7 +11,7 @@ function part(name, geometry = {}, map) {
 function retainedRenderer(parts) {
   const writes = [];
   const renderer = Object.create(Renderer67.prototype);
-  const batch = { instanceBuffer: {}, instanceData: new Float32Array(parts.length * 41).fill(7), castShadow: true };
+  const batch = { instanceBuffer: {}, instanceData: new Float32Array(parts.length * 41).fill(7), castShadow: true, alphaMode: 'opaque', alphaCutoff: 0, opacity: 1, doubleSided: false };
   renderer.context = { ARRAY_BUFFER: 34962, bindBuffer() {}, bufferSubData(target, offset, data) { writes.push({ target, offset, data: Array.from(data) }); } };
   renderer.partLocations = new Map(parts.map((item, index) => [item, {
     batch, index, geometry: item.geometry, map: item.material.map ?? null, normalMatrix: mat3.create(), skin: item.skin ?? null,
@@ -44,6 +44,23 @@ test('batching shares geometry only when texture descriptor identities also matc
   assert.equal(groupParts(parts, false).length, 4);
 });
 
+test('liquid and foam parts form their own batches and validate their optics', () => {
+  const geometry = {};
+  const solid = part('solid', geometry);
+  const liquid = { ...part('liquid', geometry), material: { ...part('liquid', geometry).material, tag: 'liquid' } };
+  const foam = { ...part('foam', geometry), material: { ...part('foam', geometry).material, tag: 'foam' } };
+  const groups = groupParts([solid, liquid, foam]);
+  assert.equal(groups.length, 3, 'a shared geometry must not mix opaque and translucent instances');
+  assert.deepEqual(resolveLiquidOptics(), { thickness: 0.5, ior: 1.33, refraction: 1, scattering: 1, foamOpacity: 0.55, foamSoftness: 1 });
+  assert.equal(resolveLiquidOptics({ thickness: 2 }).thickness, 2);
+  assert.throws(() => resolveLiquidOptics({ ior: 0.5 }), /liquid.ior/);
+  assert.throws(() => resolveLiquidOptics({ foamOpacity: NaN }), /liquid.foamOpacity/);
+  const { renderer, writes } = retainedRenderer([solid]);
+  solid.material = { ...solid.material, tag: 'liquid' };
+  assert.throws(() => renderer.updateParts([solid]), /liquid or foam pass/);
+  assert.equal(writes.length, 0);
+});
+
 test('shadowless parts form separate render batches and cannot change casting after upload', () => {
   const geometry = {};
   const caster = part('caster', geometry);
@@ -57,6 +74,71 @@ test('shadowless parts form separate render batches and cannot change casting af
   assert.throws(() => renderer.updateParts([caster]), /Shadow casting/);
   assert.equal(writes.length, 0);
   assert.throws(() => groupParts([{ ...window, castShadow: 0 }]), /boolean/);
+});
+
+function alphaPart(name, geometry, materialFields) {
+  const base = part(name, geometry);
+  return { ...base, material: { ...base.material, ...materialFields } };
+}
+
+test('alpha mode, cutoff, opacity and double-sided state partition batches', () => {
+  const geometry = {};
+  const parts = [
+    alphaPart('opaque', geometry, {}),
+    alphaPart('leaf', geometry, { alphaMode: 'mask', doubleSided: true }),
+    alphaPart('second leaf', geometry, { alphaMode: 'mask', doubleSided: true }),
+    alphaPart('sharper leaf', geometry, { alphaMode: 'mask', alphaCutoff: 0.8, doubleSided: true }),
+    alphaPart('one sided leaf', geometry, { alphaMode: 'mask' }),
+    alphaPart('glass', geometry, { alphaMode: 'blend', opacity: 0.3 }),
+    alphaPart('faint glass', geometry, { alphaMode: 'blend', opacity: 0.1 }),
+    alphaPart('opaque with ignored opacity', geometry, { opacity: 0.2 }),
+  ];
+  const groups = groupParts(parts);
+  assert.equal(groups.length, 6);
+  assert.deepEqual(groups[0].map(item => item.name), ['opaque', 'opaque with ignored opacity']);
+  assert.deepEqual(groups[1].map(item => item.name), ['leaf', 'second leaf']);
+});
+
+test('alpha material fields are validated with clear errors', () => {
+  const geometry = {};
+  const invalid = [
+    [{ alphaMode: 'cutout' }, /alphaMode/],
+    [{ alphaMode: 'mask', alphaCutoff: 1.5 }, /alphaCutoff/],
+    [{ alphaMode: 'blend', opacity: -0.1 }, /opacity/],
+    [{ opacity: NaN }, /opacity/],
+    [{ doubleSided: 1 }, /doubleSided/],
+  ];
+  for (const [fields, expected] of invalid) assert.throws(() => groupParts([alphaPart('bad', geometry, fields)]), expected);
+});
+
+test('blend batches skip shadows by default and alpha state cannot change after upload', () => {
+  const geometry = {};
+  const glass = alphaPart('glass', geometry, { alphaMode: 'blend', opacity: 0.5 });
+  assert.equal(groupParts([glass, { ...glass, castShadow: true }]).length, 2);
+  const { renderer, batch, writes } = retainedRenderer([glass]);
+  batch.alphaMode = 'blend';
+  batch.opacity = 0.5;
+  batch.castShadow = false;
+  renderer.updateParts([glass]);
+  assert.equal(writes.length, 1);
+  for (const change of [{ alphaMode: 'mask' }, { opacity: 0.6 }, { doubleSided: true }]) {
+    glass.material = { ...glass.material, ...change };
+    assert.throws(() => renderer.updateParts([glass]), /require a new renderer/);
+    glass.material = alphaPart('glass', geometry, { alphaMode: 'blend', opacity: 0.5 }).material;
+  }
+  assert.equal(writes.length, 1);
+});
+
+test('blend instances upload back to front by distance to the eye', () => {
+  const uploads = [];
+  const renderer = Object.create(Renderer67.prototype);
+  renderer.context = { ARRAY_BUFFER: 34962, bindBuffer() {}, bufferSubData(target, offset, data) { uploads.push(Array.from(data)); } };
+  const instanceData = new Float32Array(3 * 41);
+  [1, 9, 4].forEach((distance, index) => { instanceData[index * 41 + 14] = -distance; instanceData[index * 41] = index; });
+  const batch = { instanceBuffer: {}, instanceData, instanceCount: 3 };
+  renderer.uploadSortedInstances(batch, [0, 0, 0]);
+  const order = [0, 1, 2].map(rank => uploads[0][rank * 41]);
+  assert.deepEqual(order, [1, 2, 0]);
 });
 
 test('instance animation reuses retained buffers, updates inverse-transpose normals and RGB emission', () => {

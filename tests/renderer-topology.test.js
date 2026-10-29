@@ -143,6 +143,28 @@ test('driver errors and throwing uploads clean staged resources without retiring
   assert.equal(state.renderer.batches[0], batch);
 });
 
+test('retained textured batches survive while streamed rigid parts change around them', () => {
+  const state = allocationRenderer();
+  const textured = part('textured', box());
+  textured.material.map = { image: { width: 1, height: 1 }, colorSpace: 'srgb' };
+  textured.geometry.uvs = new Float32Array(textured.geometry.positions.length / 3 * 2);
+  state.renderer.batches.push(state.renderer.uploadBatch([textured]));
+  const texturedBatch = state.renderer.batches[0];
+  const firstFrame = part('liquid frame 0', sphere(12, 8));
+  state.renderer.replaceParts([textured, firstFrame]);
+  assert.equal(state.renderer.batches[0], texturedBatch);
+  const secondFrame = part('liquid frame 1', sphere(10, 6));
+  state.renderer.replaceParts([textured, secondFrame]);
+  assert.equal(state.renderer.batches[0], texturedBatch, 'the textured batch is retained, not reuploaded');
+  assert.equal(state.renderer.partCount, 2);
+  assert.throws(() => state.renderer.replaceParts([secondFrame]), /existing rigid, untextured/);
+  const changedTexture = part('new textured', box());
+  changedTexture.material.map = textured.material.map;
+  changedTexture.geometry.uvs = new Float32Array(changedTexture.geometry.positions.length / 3 * 2);
+  assert.throws(() => state.renderer.replaceParts([textured, secondFrame, changedTexture]), /only rigid, untextured/);
+  assert.equal(state.renderer.batches[0], texturedBatch);
+});
+
 test('committed uploaded resource ownership rejects replacement even when callers mutate live handles', () => {
   const state = allocationRenderer();
   const first = part('first', box());

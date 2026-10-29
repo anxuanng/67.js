@@ -1,4 +1,6 @@
 import { MAX_MORPH_TARGETS } from './morph.js';
+import { environmentLookupGlsl, environmentShadingGlsl } from './environment.js';
+import { splatGlsl } from './splat-shader.js';
 
 const morphingShader = `
 uniform float morphEnabled;
@@ -54,6 +56,23 @@ mat4 skinTransform() {
 }
 `;
 
+// Wind for the foliage (4) and grass (7) tags, shared by the colour and shadow vertex shaders so both
+// move identically. It depends only on local position, the card's uv, world position and time.
+// The slow sway grows with height and with distance from the model's vertical axis (branch tips swing
+// more than the crown centre) but is capped, because bark never moves and leaves must stay near their twigs.
+// uv.y is 1 at a leaf's base and 0 at its tip, which drives the faster flutter.
+const windShader = `
+vec3 windOffset(vec3 localPosition, vec3 worldPoint, vec2 leafUv, float surfaceTag, float seconds, float strength) {
+  if (surfaceTag != 4.0 && surfaceTag != 7.0) return vec3(0.0);
+  float heightReach = min(max(localPosition.y + 0.5, 0.0), 2.5);
+  float branchReach = 1.0 + 0.3 * min(length(localPosition.xz), 3.0);
+  float sway = sin(seconds * 1.2 + worldPoint.z * 0.31 + worldPoint.x * 0.17) * strength * 0.10 * heightReach * branchReach;
+  float tip = clamp(1.0 - leafUv.y, 0.0, 1.0);
+  float flutter = sin(seconds * 3.1 + worldPoint.x * 1.7 + worldPoint.z * 1.3 + localPosition.y * 2.0) * strength * 0.08 * tip;
+  return vec3(sway + flutter, 0.0, flutter * 0.6);
+}
+`;
+
 export const vertexShader = `#version 300 es
 precision highp float;
 layout(location=0) in vec3 position;
@@ -84,13 +103,12 @@ out vec3 vertexTint;
 flat out vec3 emissionColor;
 ${skinningShader}
 ${morphingShader}
+${windShader}
 void main() {
   mat4 deformation = skinTransform();
   vec4 world = instanceMatrix * deformation * vec4(morphedPosition(position), 1.0);
   world.xyz += assemblyOffset * assemblyAmount + assemblyDetailOffset * smoothstep(0.3, 1.0, assemblyAmount);
-  if (instanceSurface.w == 4.0 || instanceSurface.w == 7.0) {
-    world.x += sin(time * 1.2 + world.z * 0.31 + world.x * 0.17) * wind * 0.10 * max(position.y + 0.5, 0.0);
-  }
+  world.xyz += windOffset(position, world.xyz, uv, instanceSurface.w, time, wind);
   if (instanceSurface.w == 3.0) {
     world.y += sin(world.x * 1.4 + time * 0.8) * 0.025 + sin(world.z * 1.8 - time) * 0.02;
   }
@@ -114,21 +132,42 @@ export const depthVertexShader = `#version 300 es
 precision highp float;
 layout(location=0) in vec3 position;
 layout(location=2) in mat4 instanceMatrix;
+layout(location=10) in vec4 instanceSurface;
 layout(location=11) in vec3 assemblyOffset;
 layout(location=12) in vec3 assemblyDetailOffset;
+layout(location=13) in vec2 uv;
 uniform mat4 lightProjection;
 uniform float assemblyAmount;
+uniform float time;
+uniform float wind;
+out vec2 textureUV;
 ${skinningShader}
 ${morphingShader}
+${windShader}
 void main() {
   vec4 world = instanceMatrix * skinTransform() * vec4(morphedPosition(position), 1.0);
   world.xyz += assemblyOffset * assemblyAmount + assemblyDetailOffset * smoothstep(0.3, 1.0, assemblyAmount);
+  // Same displacement as the colour pass, so shadows follow the swaying leaves.
+  world.xyz += windOffset(position, world.xyz, uv, instanceSurface.w, time, wind);
+  textureUV = uv;
   gl_Position = lightProjection * world;
 }`;
 
+// Only masked batches sample the base map, so shadows follow the cutout.
 export const depthFragmentShader = `#version 300 es
 precision highp float;
-void main() {}
+in vec2 textureUV;
+uniform float alphaMasked;
+uniform float alphaCutoff;
+uniform float materialOpacity;
+uniform float hasBaseMap;
+uniform sampler2D baseMap;
+void main() {
+  if (alphaMasked < 0.5) return;
+  float alpha = materialOpacity;
+  if (hasBaseMap > 0.5) alpha *= texture(baseMap, textureUV).a;
+  if (alpha < alphaCutoff) discard;
+}
 `;
 
 export const benchmarkVertexShader = `#version 300 es
@@ -151,6 +190,124 @@ in vec3 color;
 out vec4 outputColor;
 void main() { outputColor = vec4(color, 1.0); }
 `;
+
+// Liquid and foam are drawn after the opaque scene, which is resolved into sceneColor first.
+// Liquid: refraction through the scene, Beer-Lambert absorption over a convex-body thickness
+// estimate, in-scattering, Fresnel environment reflection and a GGX key highlight.
+// Foam: soft blended droplets whose alpha falls off toward their silhouettes.
+export const liquidFragmentShader = `#version 300 es
+precision highp float;
+in vec3 worldPosition;
+in vec3 worldNormal;
+flat in vec3 baseColor;
+flat in vec4 surface;
+in vec4 shadowPosition;
+in vec2 textureUV;
+in vec3 vertexTint;
+flat in vec3 emissionColor;
+uniform vec3 eye;
+uniform mat4 viewProjection;
+uniform sampler2D sceneColor;
+uniform vec2 resolution;
+uniform float exposure;
+uniform float hdrEnabled;
+uniform float worldMode;
+uniform float daylight;
+uniform vec3 lightDirection;
+uniform vec3 keyColor;
+uniform float ambientIntensity;
+uniform vec3 fogColor;
+uniform float fogDensity;
+// x: thickness in metres, y: index of refraction, z: refraction strength, w: scattering
+uniform vec4 liquidOptics;
+// x: foam opacity, y: foam edge softness
+uniform vec2 foamShape;
+out vec4 outputColor;
+const float PI = 3.14159265359;
+
+vec3 toneMap(vec3 color) {
+  return clamp((color * (2.51 * color + 0.03)) / (color * (2.43 * color + 0.59) + 0.14), 0.0, 1.0);
+}
+
+${environmentLookupGlsl}
+uniform float environmentEnabled;
+
+vec3 environmentColor(vec3 direction, float roughness) {
+  if (environmentEnabled > 0.5) return environmentRadiance(direction, roughness * environmentLevelMax);
+  if (worldMode > 0.5) {
+    vec3 zenith = vec3(0.20, 0.38, 0.52) * max(daylight, 0.08);
+    return mix(fogColor * 0.75, zenith, smoothstep(-0.15, 0.7, direction.y));
+  }
+  vec3 color = mix(vec3(0.025, 0.035, 0.045), vec3(0.22, 0.25, 0.27), smoothstep(-0.3, 0.8, direction.y));
+  float blur = roughness * 0.35;
+  float key = smoothstep(0.80 - blur, 0.87, dot(direction, normalize(vec3(-3.0, 5.0, 4.0))));
+  float rim = smoothstep(0.90 - blur, 0.97, dot(direction, normalize(vec3(4.0, 2.0, -3.0))));
+  float strip = exp(-pow((direction.x + 0.6) / (0.035 + blur), 2.0)) * smoothstep(-0.1, 0.6, direction.y);
+  return color + key * vec3(2.8, 2.2, 1.6) + rim * vec3(0.5, 1.6, 1.5) + strip * vec3(0.7);
+}
+
+float specularLobe(vec3 normal, vec3 viewDirection, vec3 light, float roughness) {
+  float normalLight = max(dot(normal, light), 0.0);
+  if (normalLight == 0.0) return 0.0;
+  vec3 halfway = normalize(viewDirection + light);
+  float normalView = max(dot(normal, viewDirection), 0.001);
+  float normalHalf = max(dot(normal, halfway), 0.0);
+  float alpha = roughness * roughness;
+  float denominator = normalHalf * normalHalf * (alpha * alpha - 1.0) + 1.0;
+  float distribution = alpha * alpha / max(PI * denominator * denominator, 0.00001);
+  float masking = pow(roughness + 1.0, 2.0) / 8.0;
+  float geometry = normalView / (normalView * (1.0 - masking) + masking) * normalLight / (normalLight * (1.0 - masking) + masking);
+  return distribution * geometry / max(4.0 * normalView * normalLight, 0.001) * normalLight;
+}
+
+vec3 ambientLight(vec3 normal) {
+  vec3 studioAmbient = vec3(0.16, 0.20, 0.22) * (0.45 + 0.55 * max(normal.y, 0.0));
+  vec3 worldAmbient = vec3(0.19, 0.25, 0.30) * max(daylight, 0.08) * (0.45 + 0.55 * max(normal.y, 0.0));
+  return mix(studioAmbient, worldAmbient, worldMode) * ambientIntensity;
+}
+
+vec3 displayed(vec3 radiance) {
+  return hdrEnabled > 0.5 ? clamp(radiance * exposure, vec3(0), vec3(65504.0)) : pow(toneMap(radiance * exposure), vec3(1.0 / 2.2));
+}
+
+void main() {
+  vec3 normal = normalize(worldNormal);
+  if (!gl_FrontFacing) normal = -normal;
+  vec3 viewDirection = normalize(eye - worldPosition);
+  float facing = max(dot(normal, viewDirection), 0.0);
+  vec3 light = normalize(lightDirection);
+  vec3 color = baseColor * vertexTint;
+  float fog = (1.0 - exp(-length(worldPosition - eye) * fogDensity)) * worldMode;
+
+  if (surface.w == 12.0) {
+    float alpha = foamShape.x * smoothstep(0.0, max(foamShape.y, 0.001), facing);
+    if (alpha < 0.004) discard;
+    float wrapped = max(dot(normal, light) * 0.5 + 0.5, 0.0);
+    vec3 radiance = color * (ambientLight(normal) * 1.6 + keyColor * wrapped * 0.32);
+    radiance = mix(radiance, fogColor, fog);
+    outputColor = vec4(displayed(radiance), alpha);
+    return;
+  }
+
+  float roughness = clamp(surface.y, 0.02, 1.0);
+  vec2 screen = gl_FragCoord.xy / resolution;
+  // A convex body is thickest where it faces the camera and thins to nothing at its silhouette.
+  float thickness = liquidOptics.x * mix(0.15, 1.0, facing);
+  vec3 bent = refract(-viewDirection, normal, 1.0 / liquidOptics.y);
+  vec4 projected = viewProjection * vec4(worldPosition + bent * thickness, 1.0);
+  vec2 refracted = projected.w > 0.0 ? projected.xy / projected.w * 0.5 + 0.5 : screen;
+  refracted = clamp(mix(screen, refracted, liquidOptics.z), vec2(0.001), vec2(0.999));
+  vec3 behind = texture(sceneColor, refracted).rgb;
+  // The material colour is what one metre of this liquid lets through.
+  vec3 transmittance = pow(clamp(color, vec3(0.001), vec3(1.0)), vec3(thickness));
+  float reflectance = 0.02 + 0.98 * pow(1.0 - facing, 5.0);
+  vec3 inScatter = color * (ambientLight(normal) + keyColor * max(dot(normal, light), 0.0) * 0.2) * liquidOptics.w * (1.0 - transmittance);
+  vec3 reflection = environmentColor(reflect(-viewDirection, normal), roughness) * ambientIntensity;
+  vec3 highlight = keyColor * specularLobe(normal, viewDirection, light, roughness);
+  vec3 surfaceLight = inScatter * (1.0 - reflectance) + reflection * reflectance + highlight;
+  surfaceLight = mix(surfaceLight, fogColor, fog);
+  outputColor = vec4(behind * transmittance * (1.0 - reflectance) * (1.0 - fog) + displayed(surfaceLight), 1.0);
+}`;
 
 export const fragmentShader = `#version 300 es
 precision highp float;
@@ -197,6 +354,11 @@ uniform float hasEmissiveMap;
 uniform vec2 normalScale;
 uniform float occlusionStrength;
 uniform float hdrEnabled;
+uniform float alphaMode;
+uniform float alphaCutoff;
+uniform float materialOpacity;
+uniform float alphaToCoverage;
+uniform float doubleSided;
 out vec4 outputColor;
 const float PI = 3.14159265359;
 
@@ -263,6 +425,8 @@ vec3 studio(vec3 direction, float roughness) {
   float strip = exp(-pow((direction.x + 0.6) / (0.035 + blur), 2.0)) * smoothstep(-0.1, 0.6, direction.y);
   return color + key * vec3(2.8, 2.2, 1.6) + rim * vec3(0.5, 1.6, 1.5) + strip * vec3(0.7);
 }
+${environmentLookupGlsl}
+${environmentShadingGlsl}
 
 vec3 illuminate(vec3 normal, vec3 viewDirection, vec3 lightDirection, vec3 radiance, vec3 color, float metallic, float roughness) {
   float normalLight = max(dot(normal, lightDirection), 0.0);
@@ -313,18 +477,45 @@ vec3 mappedNormal(vec3 normal) {
   return dot(mapped, mapped) > 1e-12 ? normalize(mapped) : normal;
 }
 
+${splatGlsl}
+
+// Opaque draws 1, mask resolves to a cutout (smooth coverage with MSAA) and blend keeps the fraction.
+float surfaceAlpha(float textureAlpha) {
+  if (alphaMode < 0.5) return 1.0;
+  float alpha = materialOpacity * textureAlpha;
+  if (alphaMode > 1.5) return alpha;
+  if (alphaToCoverage > 0.5) {
+    float softness = max(fwidth(alpha), 0.0001);
+    alpha = clamp((alpha - alphaCutoff) / softness + 0.5, 0.0, 1.0);
+    if (alpha <= 0.0) discard;
+    return alpha;
+  }
+  if (alpha < alphaCutoff) discard;
+  return 1.0;
+}
+
 void main() {
   vec3 normal = normalize(worldNormal);
+  // Foliage and grass cards are single-sided geometry whose shading normal already leans toward the
+  // canopy, so the back face keeps it instead of flipping to point into the crown.
+  bool canopyShaded = surface.w == 4.0 || surface.w == 7.0;
+  if (doubleSided > 0.5 && !gl_FrontFacing && !canopyShaded) normal = -normal;
   if (hasNormalMap > 0.5) normal = mappedNormal(normal);
   vec3 viewDirection = normalize(eye - worldPosition);
   vec3 color = mix(baseColor, armorColor, step(0.5, surface.w) * (1.0 - step(1.5, surface.w)));
-  color *= vertexTint;
-  if (hasBaseMap > 0.5) color *= texture(baseMap, textureUV).rgb;
+  if (splatEnabled < 0.5) color *= vertexTint;
+  float textureAlpha = 1.0;
+  if (hasBaseMap > 0.5) {
+    vec4 sampledBase = texture(baseMap, textureUV);
+    color *= sampledBase.rgb;
+    textureAlpha = sampledBase.a;
+  }
+  float alpha = surfaceAlpha(textureAlpha);
   vec3 emission = emissionColor * surface.z;
   if (hasEmissiveMap > 0.5) emission *= texture(emissiveMap, textureUV).rgb;
   if (surface.w == 10.0) {
     vec3 radiance = color * exposure + emission;
-    outputColor = vec4(hdrEnabled > 0.5 ? radiance : pow(max(radiance, vec3(0)), vec3(1.0 / 2.2)), 1.0);
+    outputColor = vec4(hdrEnabled > 0.5 ? radiance : pow(max(radiance, vec3(0)), vec3(1.0 / 2.2)), alpha);
     return;
   }
   float metallic = surface.x;
@@ -338,6 +529,8 @@ void main() {
     metallic *= sampled.b;
     roughness *= sampled.g;
   }
+  float splatCavity = 1.0;
+  if (splatEnabled > 0.5) applySplat(color, normal, roughness, splatCavity);
   roughness = clamp(roughness, 0.075, 1.0);
   vec3 normalChange = max(abs(dFdx(normal)), abs(dFdy(normal)));
   roughness = clamp(sqrt(roughness * roughness + dot(normalChange, normalChange) * 0.3), 0.075, 1.0);
@@ -396,8 +589,16 @@ void main() {
   vec3 reflectance = fresnel(max(dot(normal, viewDirection), 0.0), mix(vec3(0.04), color, metallic));
   float occlusion = 1.0;
   if (hasOcclusionMap > 0.5) occlusion = mix(1.0, texture(occlusionMap, textureUV).r, occlusionStrength);
-  radiance += studio(reflect(-viewDirection, normal), roughness) * reflectance * (1.0 - roughness * 0.55) * mix(1.0, 0.5 * daylight, worldMode) * occlusion * ambientIntensity;
-  radiance += color * (1.0 - metallic) * mix(vec3(0.16, 0.20, 0.22), vec3(0.19, 0.25, 0.30) * max(daylight, 0.08), worldMode) * (0.45 + 0.55 * max(normal.y, 0.0)) * occlusion * ambientIntensity;
+  occlusion *= splatCavity;
+  if (environmentEnabled > 0.5) {
+    radiance += environmentLighting(normal, viewDirection, color, metallic, roughness, occlusion, ambientIntensity);
+  } else {
+    // Outdoors the surroundings are sky and haze; reflecting the studio softboxes there lit grazing leaves white and cyan.
+    vec3 reflected = reflect(-viewDirection, normal);
+    vec3 surroundings = worldMode > 0.5 ? mix(fogColor * 0.8, vec3(0.20, 0.38, 0.52) * 1.6, smoothstep(-0.15, 0.7, reflected.y)) : studio(reflected, roughness);
+    radiance += surroundings * reflectance * (1.0 - roughness * 0.55) * mix(1.0, 0.5 * daylight, worldMode) * occlusion * ambientIntensity;
+    radiance += color * (1.0 - metallic) * mix(vec3(0.16, 0.20, 0.22), vec3(0.19, 0.25, 0.30) * max(daylight, 0.08), worldMode) * (0.45 + 0.55 * max(normal.y, 0.0)) * occlusion * ambientIntensity;
+  }
   vec3 keyResponse = keyColor / mix(vec3(5.2, 4.7, 4.1), vec3(3.7, 3.4, 2.9), worldMode);
   keyResponse *= mix(daylight, 1.0, worldMode);
   if (surface.w == 4.0 || surface.w == 7.0) radiance += color * max(dot(-normal, normalize(lightDirection)), 0.0) * 0.3 * keyResponse;
@@ -426,7 +627,7 @@ void main() {
   float fog = 1.0 - exp(-length(worldPosition - eye) * fogDensity);
   radiance = mix(radiance, fogColor, fog * worldMode);
   if (inspection > 0.5) radiance = normal * 0.5 + 0.5;
-  outputColor = vec4(hdrEnabled > 0.5 ? clamp(radiance * exposure, vec3(0), vec3(65504.0)) : pow(toneMap(radiance * exposure), vec3(1.0 / 2.2)), 1.0);
+  outputColor = vec4(hdrEnabled > 0.5 ? clamp(radiance * exposure, vec3(0), vec3(65504.0)) : pow(toneMap(radiance * exposure), vec3(1.0 / 2.2)), alpha);
   if (surface.w == 2.0 && inspection < 0.5) {
     float distanceFade = exp(-length(worldPosition.xz) * 0.08);
     float contact = 1.0 - 0.1 * exp(-dot(worldPosition.xz, worldPosition.xz) * 1.4);

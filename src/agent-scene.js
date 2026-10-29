@@ -14,7 +14,9 @@ const DEFAULT_LIMITS = Object.freeze({
 });
 const CAMERA_DEFAULTS = Object.freeze({ eye: [4, 3, 5], target: [0, 0, 0], up: [0, 1, 0], fov: 45, near: 0.1, far: 1000 });
 const NODE_FIELDS = ['translation', 'rotation', 'scale', 'parent', 'label', 'geometry', 'material'];
-const MATERIAL_FIELDS = ['color', 'metallic', 'roughness', 'emission', 'emissiveColor'];
+const MATERIAL_FIELDS = ['color', 'metallic', 'roughness', 'emission', 'emissiveColor', 'opacity', 'alphaMode', 'doubleSided'];
+// Procedural recipes have no textures, so cutout masking has nothing to cut.
+const RECIPE_ALPHA_MODES = ['opaque', 'blend'];
 const CAMERA_FIELDS = Object.keys(CAMERA_DEFAULTS);
 const LOOK_OPERATION_FIELDS = Object.freeze({
   'set-environment': 'environment',
@@ -39,7 +41,8 @@ export const AGENT_SCENE_CAPABILITIES = Object.freeze({
     'add-geometry', 'remove-geometry', 'add-material', 'remove-material',
     'set-environment', 'set-effects', 'set-shadow', 'set-motion',
   ]),
-  materialTags: Object.freeze(['surface', 'unlit']),
+  materialTags: Object.freeze(['surface', 'unlit', 'liquid', 'foam']),
+  alphaModes: Object.freeze(RECIPE_ALPHA_MODES),
   fixedResources: false, dynamicTopology: true, checkpoints: true, positiveScaleOnly: true,
   authoredLook: true, maxPointLights: 8,
   proceduralMotion: true,
@@ -195,7 +198,22 @@ function materialFrom(value) {
   const result = { id: value.id, tag: defaultValue(value.tag, 'surface'), color: vector(defaultValue(value.color, [0.5, 0.5, 0.5]), 3, 'color'),
     metallic: defaultValue(value.metallic, 0), roughness: defaultValue(value.roughness, 0.5), emission: defaultValue(value.emission, 0) };
   if (!AGENT_SCENE_CAPABILITIES.materialTags.includes(result.tag)) {
-    throw new RangeError('Material tag must be surface or unlit.');
+    throw new RangeError(`Material tag must be one of ${AGENT_SCENE_CAPABILITIES.materialTags.join(', ')}.`);
+  }
+  result.opacity = defaultValue(value.opacity, 1);
+  finite(result.opacity, 'opacity');
+  if (result.opacity < 0 || result.opacity > 1) {
+    throw new RangeError('opacity must be within zero and one.');
+  }
+  const requestedAlphaMode = defaultValue(value.alphaMode, 'opaque');
+  if (!RECIPE_ALPHA_MODES.includes(requestedAlphaMode)) {
+    throw new RangeError(`alphaMode must be one of ${RECIPE_ALPHA_MODES.join(', ')}.`);
+  }
+  // The renderer ignores opacity on opaque surfaces, so any opacity below one means blending.
+  result.alphaMode = result.opacity < 1 ? 'blend' : requestedAlphaMode;
+  result.doubleSided = defaultValue(value.doubleSided, false);
+  if (typeof result.doubleSided !== 'boolean') {
+    throw new TypeError('doubleSided must be boolean.');
   }
   for (const field of ['metallic', 'roughness']) {
     finite(result[field], field);
@@ -473,6 +491,10 @@ function geometryStats(records) {
   return { vertices, geometryBytes, estimatedGeometryBytes };
 }
 
+function batchSignature(material) {
+  return `${material.tag}|${material.alphaMode}|${material.opacity}|${material.doubleSided}`;
+}
+
 function materialHandle(snapshot) {
   const holder = { snapshot };
   const output = {};
@@ -684,7 +706,8 @@ export function createAgentScene(input, inputLimits = {}) {
       const snapshot = immutableMaterial(material);
       const preferredHandle = preferred?.materialHandles.get(material.id);
       const activeHandle = removedMaterials.has(material.id) ? null : state?.materialHandles.get(material.id);
-      const existing = [preferredHandle, activeHandle].find(handle => handle?.holder.snapshot.tag === material.tag);
+      // The renderer keeps tag, blending, opacity and sidedness per batch, so a handle is reused only when all match.
+      const existing = [preferredHandle, activeHandle].find(handle => handle && batchSignature(handle.holder.snapshot) === batchSignature(material));
       const handle = existing ?? materialHandle(snapshot);
       materialHandles.set(material.id, handle);
     }

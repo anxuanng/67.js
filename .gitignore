@@ -17,6 +17,11 @@ public/surface.md
 public/mesh-query.md
 public/primitives.md
 public/shrinkwrap.md
+public/spume.md
+public/retarget.md
+public/vehicle.md
+public/vegetation.md
+public/terrain.md
 public/scene-graph.md
 public/modeling.md
 public/animation-curves.md
@@ -44,3 +49,4 @@ public/agent-motion.md
 
 public/agent-character-motion.md
 public/agent-review.md
+.claude/worktrees/

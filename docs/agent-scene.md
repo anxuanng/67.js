@@ -77,16 +77,21 @@ Modeling point inputs have a maximum of 4096 points.
 An extrusion has at most 128 holes and 4096 total contour points.
 Shared resource IDs generate geometry once, regardless of the number of mesh nodes.
 
-Materials contain `id`, `tag`, `color`, `metallic`, `roughness`, `emission`, and optional `emissiveColor`.
-The defaults are `surface`, `[0.5, 0.5, 0.5]`, `0`, `0.5`, and `0`.
-The tag can be `surface` or `unlit` and remains fixed during editing.
+Materials contain `id`, `tag`, `color`, `metallic`, `roughness`, `emission`, optional `emissiveColor`, `opacity`, `alphaMode` and `doubleSided`.
+The defaults are `surface`, `[0.5, 0.5, 0.5]`, `0`, `0.5`, `0`, opacity `1`, `opaque` and `false`.
+The tag can be `surface`, `unlit`, `liquid` or `foam` and remains fixed during editing.
+`liquid` refracts and tints what lies behind it: its color is the light one metre lets through, so `[0.56, 0.84, 0.88]` is clear water. `foam` draws soft blended droplets.
+Any `opacity` below one draws the material blended after opaque geometry, which suits glass, windows and visors. `alphaMode` accepts `opaque` or `blend`; cutout masking needs a texture and is not available in procedural recipes.
+`doubleSided` draws and lights both faces of thin sheets.
+Changing the tag, opacity, blending or sidedness replaces the affected parts in the renderer; color, metallic, roughness and emission edits keep them.
+Set liquid optics with `environment.liquid`: `thickness`, `ior`, `refraction`, `scattering`, `foamOpacity` and `foamSoftness`.
 Colors use linear RGB.
 
 Base color, metallic, and roughness range from zero to one.
 Emission and independent emissive color must be nonnegative finite Float32 numbers.
 Their component products must also remain finite at Float32 precision.
 Unlit emissive radiance is capped at 65500 per component to fit the half-float HDR target.
-Textures and procedural material tags are outside this version.
+Textures and the other procedural material tags are outside this version.
 
 Nodes contain `id`, optional `label`, `parent`, `translation`, `rotation`, and `scale`.
 Mesh nodes also require both `geometry` and `material` resource IDs.

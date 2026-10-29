@@ -32,6 +32,10 @@ function retainedRenderer(parts) {
       instanceBuffer: {},
       instanceData: new Float32Array(group.length * 41),
       castShadow: true,
+      alphaMode: 'opaque',
+      alphaCutoff: 0,
+      opacity: 1,
+      doubleSided: false,
     };
     group.forEach((part, index) => renderer.partLocations.set(part, {
       batch, index, geometry: part.geometry, morph: part.morph,

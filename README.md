@@ -208,6 +208,14 @@ The [primitive contract](docs/primitives.md) defines bounded subdivision counts 
 The source [shrinkwrap addon](docs/shrinkwrap.md) wraps static vertices with nearest-surface or directional projection queries, preserving topology and UVs.
 Compatible results can become relative GPU morph targets, so animation reuses the computed shape instead of repeating the vertex queries every frame.
 
+The source [Spume addon](docs/spume.md) plays back liquid baked by the [Spume](https://github.com/codepawl/spume) GPU solver, with whitewater, through `renderer.replaceParts`.
+The source [Terrain addon](docs/terrain.md) builds seeded chunked terrain with distance level of detail and a four-layer splat ground material from real CC0 scans (`loadTextureSet` loads them), and its `heightAt` feeds vegetation and vehicles.
+The source [Vegetation addon](docs/vegetation.md) grows seeded trees with real branches and leaf cards, grass, Poisson-disk scattering on terrain and distance level of detail.
+The solver runs offline; the browser only reads the compact cache.
+The source [retarget addon](docs/retarget.md) transfers humanoid clips between rigs (Mixamo, VRM, Unreal, Rigify names) and offsets crowds deterministically. Mixamo files need the owner's Adobe login to download.
+
+The source [vehicle addon](docs/vehicle.md) drives wheeled vehicles along a path deterministically: wheel spin, steering, body roll and pitch, and ground following, for parts, scene-graph nodes or imported GLBs.
+
 The current source adds [surface attachments](docs/surface-attachment.md) for rigid accessories following a selected triangle through morphing and skinning.
 The retained frame uses world-space clearance and samples three bound vertices without rebuilding a BVH every frame.
 This addon is available from version `0.4.1`. It does not certify clearance over an accessory's entire footprint.

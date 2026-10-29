@@ -21,6 +21,17 @@ test('exported GLB loads with an independent glTF loader and preserves every par
   assert.ok(binary.byteLength < 1024 * 1024);
 });
 
+test('GLB export writes alpha mode, cutoff, opacity and double-sided so the loader reads them back', async () => {
+  const part = createModel()[0];
+  const material = { ...part.material, alphaMode: 'mask', alphaCutoff: 0.3, opacity: 0.6, doubleSided: true };
+  const gltf = await new GLTFLoader().parseAsync(exportGlb([{ ...part, material }]), '');
+  let loaded;
+  gltf.scene.traverse((node) => { if (node.isMesh) loaded = node.material; });
+  assert.equal(loaded.alphaTest, 0.3);
+  assert.equal(loaded.side, 2);
+  assert.ok(Math.abs(loaded.opacity - 0.6) < 1e-6);
+});
+
 test('GLB export refuses to silently discard any material texture channel', () => {
   const part = createModel()[0];
   for (const channel of ['map', 'normalMap', 'metallicRoughnessMap', 'occlusionMap', 'emissiveMap']) {

@@ -138,6 +138,30 @@ test('mirrored static transforms reverse triangle winding without altering world
   asset.dispose();
 });
 
+test('alpha mode, cutoff, base color alpha and double-sided map onto the material contract', async () => {
+  const blended = await parseGltf(triangleAsset(document => {
+    document.materials[0].alphaMode = 'BLEND';
+    document.materials[0].doubleSided = true;
+    document.materials[0].pbrMetallicRoughness.baseColorFactor = [1, 1, 1, 0.25];
+  }));
+  assert.equal(blended.parts[0].material.alphaMode, 'blend');
+  assert.equal(blended.parts[0].material.opacity, 0.25);
+  assert.equal(blended.parts[0].material.doubleSided, true);
+  blended.dispose();
+  const masked = await parseGltf(triangleAsset(document => {
+    document.materials[0].alphaMode = 'MASK';
+    document.materials[0].alphaCutoff = 0.3;
+  }));
+  assert.equal(masked.parts[0].material.alphaMode, 'mask');
+  assert.equal(masked.parts[0].material.alphaCutoff, 0.3);
+  assert.equal(masked.parts[0].material.doubleSided, false);
+  masked.dispose();
+  const plain = await parseGltf(triangleAsset());
+  assert.equal(plain.parts[0].material.alphaMode, 'opaque');
+  assert.equal(plain.parts[0].material.opacity, 1);
+  plain.dispose();
+});
+
 test('unsupported features fail explicitly before loading resources', async () => {
   const cases = [
     [document => { document.nodes[1].skin = 0; }, /skin index/],
@@ -148,11 +172,12 @@ test('unsupported features fail explicitly before loading resources', async () =
     }, /Unsupported morph/],
     [document => { document.meshes[0].primitives[0].attributes.COLOR_0 = 1; }, /COLOR_0/],
     [document => { document.meshes[0].primitives[0].mode = 1; }, /TRIANGLES/],
-    [document => { document.materials[0].alphaMode = 'BLEND'; }, /alpha mode/],
-    [document => { document.materials[0].doubleSided = true; }, /Double-sided/],
+    [document => { document.materials[0].alphaMode = 'DITHER'; }, /alpha mode/],
+    [document => { document.materials[0].alphaCutoff = 2; }, /alphaCutoff/],
+    [document => { document.materials[0].doubleSided = 'yes'; }, /doubleSided/],
     [document => { document.materials[0].normalTexture = { index: 0 }; }, /normalTexture texture index/],
     [document => { document.extensionsRequired = ['KHR_draco_mesh_compression']; }, /KHR_draco/],
-    [document => { document.materials[0].extensions = { KHR_materials_clearcoat: {} }; }, /KHR_materials_clearcoat/],
+    [document => { document.materials[0].extensions = { KHR_materials_unknown_vendor: {} }; }, /KHR_materials_unknown_vendor/],
     [document => { document.buffers[0].uri = 'external.bin'; }, /baseUrl/],
     [document => { document.nodes[2].children = [0]; }, /Cyclic/],
     [document => { document.materials[0].pbrMetallicRoughness.metallicFactor = 2; }, /metallic/],

@@ -26,7 +26,8 @@ async function temporary(context) {
 async function terminal(controller, jobId) {
   const started = Date.now();
   while (!['completed', 'cancelled', 'failed', 'interrupted'].includes(controller.status(jobId).state)) {
-    if (Date.now() - started > 2000) throw new Error('Job did not reach its terminal state.');
+    // A liveness bound, not a speed check: CPU-heavy test files run in parallel and can delay a fast job past two seconds.
+    if (Date.now() - started > 10000) throw new Error('Job did not reach its terminal state.');
     await new Promise(resolve => setTimeout(resolve, 2));
   }
   return controller.status(jobId);

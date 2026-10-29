@@ -78,9 +78,32 @@ Invalid sampler values, texture indices, scales, or missing UVs fail before reso
 
 Renderer disposal deletes every cached GPU texture. Asset disposal closes each shared decoded image once.
 
+## Alpha and double-sided materials
+
+| Field | Default | Meaning |
+| --- | --- | --- |
+| `alphaMode` | `'opaque'` | `'opaque'`, `'mask'` (cutout) or `'blend'` (translucent). |
+| `alphaCutoff` | `0.5` | Mask only. Fragments with alpha below it are discarded. |
+| `opacity` | `1` | Multiplies the base map alpha. Ignored by `opaque`. |
+| `doubleSided` | `false` | Draws both faces and flips the normal on back faces so each side lights correctly. |
+
+Final alpha is the base map alpha (when `material.map` is set) times `opacity`. Vertex colors stay RGB.
+
+- `mask` discards below `alphaCutoff` in the color pass and in the shadow pass, so shadows follow the cutout shape. With MSAA the edge uses alpha-to-coverage, sharpened by `fwidth`, so leaf edges stay smooth.
+- `blend` draws after all opaque and masked batches, with depth writes off. Batches sort back to front by their mean distance to the eye, and instances inside one batch sort by translation distance each frame. Intersecting translucent surfaces and large meshes can still show ordering artifacts. Blend parts skip shadows unless `castShadow: true` is set, and then they cast a fully opaque shadow.
+- `alphaMode`, `alphaCutoff`, `opacity` and `doubleSided` are batch state like `castShadow`. Parts that differ never share a draw call, and `updateParts` rejects changes after upload. Rebuild the renderer to change them.
+- Invalid values (unknown mode, cutoff or opacity outside zero to one, a non-boolean `doubleSided`) throw.
+- The benchmark preset ignores alpha.
+
+glTF import maps `alphaMode` MASK and BLEND, `alphaCutoff`, `doubleSided` and `baseColorFactor[3]` (to `opacity`) onto these fields, and keeps the base color texture alpha. `exportGlb` writes them back.
+
+## Splat layers
+
+A standard-tag material can carry `layers` (up to four `{ color, normal, roughness, height, scale, tint, triplanar }` entries built from `loadTextureSet`) and a `splat` rule object instead of these single maps. The layers are blended by slope, height and a weight mask, sampled in world space and packed into texture arrays on units 11 to 14. They replace `map`, `normalMap`, `metallicRoughnessMap` and `occlusionMap`, which must be absent, and parts batch only when `layers` and `splat` are the same objects. See [Terrain](/terrain.md).
+
 ## Limits
 
-Texture transforms, UV channels beyond zero, transparency, alpha masking, and double-sided glTF materials remain unsupported.
+Texture transforms, UV channels beyond zero, and vertex alpha below one remain unsupported.
 Skinning, morph targets, compressed texture formats, and unsupported glTF extensions fail explicitly.
 The new PBR maps require a standard material tag, including `gltf` or `armor`.
 Procedural tags such as water, terrain, foliage, floor, fire, and smoke reject the new channels.
