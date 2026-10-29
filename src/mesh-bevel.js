@@ -17,6 +17,7 @@ import { MeshBuilder } from './mesh-stack.js';
  *   { "between": [faceRule, faceRule] }  edges shared by a face matching the first rule and one matching the second
  *   { "angle": 30 }                      edges whose two faces bend by at least this many degrees
  *   { "boundaryOf": faceRule }           edges between a matching face and a non-matching one
+ *   { "along": [x, y, z], "maxAngle": 10 } edges parallel to a direction (either way) within maxAngle degrees
  *   { "all": true }                      every edge with two faces
  * Returns a Uint8Array over MeshData edges.
  */
@@ -25,7 +26,7 @@ export function selectEdges(mesh, rule, table) {
   const keys = Object.keys(rule);
   const mask = new Uint8Array(mesh.edgeCount);
   const facesOf = edge => table.faces[edge];
-  if (keys.length !== 1) throw new TypeError('Edge rule takes exactly one of between, angle, boundaryOf, all.');
+  if (keys.length !== 1 && rule.along === undefined) throw new TypeError('Edge rule takes exactly one of between, angle, boundaryOf, along, all.');
   if (rule.all === true) {
     for (let edge = 0; edge < mesh.edgeCount; edge++) mask[edge] = facesOf(edge).length === 2 ? 1 : 0;
     return mask;
@@ -40,6 +41,27 @@ export function selectEdges(mesh, rule, table) {
       const [first, second] = faces;
       const cosine = normals[first * 3] * normals[second * 3] + normals[first * 3 + 1] * normals[second * 3 + 1] + normals[first * 3 + 2] * normals[second * 3 + 2];
       if (cosine <= limit) mask[edge] = 1;
+    }
+    return mask;
+  }
+  if (rule.along !== undefined) {
+    const extra = keys.filter(key => key !== 'along' && key !== 'maxAngle');
+    if (extra.length) throw new TypeError(`Edge rule along does not take ${extra.join(', ')}.`);
+    if (!Array.isArray(rule.along) || rule.along.length !== 3 || !rule.along.every(Number.isFinite)) throw new TypeError('along needs a direction [x, y, z].');
+    const direction = normalize(rule.along);
+    if (length(direction) === 0) throw new RangeError('along cannot be zero.');
+    const maxAngle = rule.maxAngle ?? 10;
+    if (!Number.isFinite(maxAngle) || maxAngle < 0 || maxAngle > 90) throw new RangeError('maxAngle is degrees from 0 to 90.');
+    const limit = Math.cos(maxAngle * Math.PI / 180) - 1e-9;
+    for (let edge = 0; edge < mesh.edgeCount; edge++) {
+      const first = mesh.edgeVertices[edge * 2] * 3;
+      const second = mesh.edgeVertices[edge * 2 + 1] * 3;
+      const vector = normalize([
+        mesh.positions[second] - mesh.positions[first],
+        mesh.positions[second + 1] - mesh.positions[first + 1],
+        mesh.positions[second + 2] - mesh.positions[first + 2],
+      ]);
+      if (Math.abs(dot(vector, direction)) >= limit) mask[edge] = 1;
     }
     return mask;
   }
@@ -63,7 +85,7 @@ export function selectEdges(mesh, rule, table) {
     }
     return mask;
   }
-  throw new TypeError('Edge rule takes exactly one of between, angle, boundaryOf, all.');
+  throw new TypeError('Edge rule takes exactly one of between, angle, boundaryOf, along, all.');
 }
 
 /** Faces of every MeshData edge. */

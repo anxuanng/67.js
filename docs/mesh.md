@@ -124,7 +124,7 @@ Edits (names follow Blender's `bmesh.ops` where they match):
 
 | Op | Fields | Creates tags |
 | --- | --- | --- |
-| `extrude_face_region` | `select`, `offset`, optional `direction`, `name` | `<name>.cap`, `<name>.side` |
+| `extrude_face_region` | `select`, `offset`, optional `direction` or `alongNormals`, `name` | `<name>.cap`, `<name>.side` |
 | `extrude_individual` | same | same, per face |
 | `inset_region` | `select`, `thickness`, optional `depth`, `name` | `<name>.cap`, `<name>.rim` |
 | `inset_individual` | same | same, per face |
@@ -137,6 +137,8 @@ Edits (names follow Blender's `bmesh.ops` where they match):
 
 - `select` defaults to every face, except for `delete` and `tag`.
 - `name` defaults to `<op>-<index>`, for example `extrude-1`.
+- With `alongNormals: true`, each vertex of the region moves along its own normal instead, so a ring of faces around
+  a cylinder grows outward as one joined hoop (Blender's Extrude Faces Along Normals).
 - Extrusions move each group of edge-connected faces along that group's own average normal. Faces in one group
   that face opposite ways (the four sides of a box) cancel out; use the `_individual` op or pass `direction`.
 - Caps keep their earlier tags; side and rim faces start without tags.
@@ -224,7 +226,28 @@ raised centre. The quadratic profile is close to, not exactly, a circular arc, s
 differently from Blender's. Edges between strip segments render smooth when the bend per segment is under the mesh's
 `smoothAngle`; with 2 segments on a right angle (45 degrees each), raise `smoothAngle` or use 3 or more segments.
 
-Loop cut is planned next.
+### Loop cut
+
+`loop_cut` adds loops across rings of quads, as Blender's Loop Cut:
+
+| Field | Meaning |
+| --- | --- |
+| `edges` | Edge rule picking the ring to cut across: `{ "along": [x, y, z], "maxAngle": 10 }` picks edges parallel to a direction (`along: [0, 1, 0]` cuts around a box horizontally), or `between`, `angle`, `boundaryOf`, `all` as for bevel |
+| `cuts` | 1 to 16 loops per ring, evenly spaced |
+| `factor` | With one cut, its position from each ring's low side, strictly between 0 and 1 (default 0.5) |
+
+From each selected edge the ring is walked across quads to the opposite edge, until it closes or meets a face that is
+not a quad. Every ring edge is split at the same fractions from the ring's low side (the end of the first seed edge
+with the lower coordinate along it), and every quad in the ring is split into bands tagged `<name>.band-0` (low side)
+to `<name>.band-<cuts>`; bands keep the quad's other tags. Faces beside an open ring get the new points on their
+shared edges, so no T-junctions appear. Corner UVs and colours are interpolated at the new points. Rings that cross
+each other in one edit are refused; cut them in separate edits. The result reports `rings`, `closedRings` and
+`splitEdges`.
+
+A typical sequence: `loop_cut` with `cuts: 2`, then `extrude_individual` or `extrude_face_region` with
+`alongNormals` on `<name>.band-1` to raise a belt around the middle.
+
+Knife and bisect are planned next.
 
 ## MCP
 

@@ -32,7 +32,8 @@ export class MeshBuilder {
 
   /**
    * vertices: new vertex indices in winding order. sourceCorners / sourceEdges: per corner, the source corner whose
-   * attributes it copies and the source edge its outgoing edge copies (-1 for none).
+   * attributes it copies (or { from, to, t } to interpolate between two) and the source edge its outgoing edge copies
+   * (-1 for none).
    */
   addFace(vertices, { sourceFace = -1, sourceCorners = null, sourceEdges = null, keepTags = true, tags = [], tagSwap = null } = {}) {
     for (let corner = 0; corner < vertices.length; corner++) {
@@ -78,8 +79,20 @@ export class MeshBuilder {
     }
     for (const [name, attribute] of Object.entries(source.attributes.corner)) {
       const data = new attribute.data.constructor(cornerVertices.length * attribute.size);
+      const blends = attribute.data instanceof Float32Array;
       this.cornerSources.forEach((sourceCorner, corner) => {
-        if (sourceCorner !== -1) data.set(attribute.data.subarray(sourceCorner * attribute.size, (sourceCorner + 1) * attribute.size), corner * attribute.size);
+        if (sourceCorner === -1) return;
+        if (typeof sourceCorner === 'number') {
+          data.set(attribute.data.subarray(sourceCorner * attribute.size, (sourceCorner + 1) * attribute.size), corner * attribute.size);
+          return;
+        }
+        // Interpolated corner: linear for float attributes (UVs, colours), nearest for integer ones.
+        const { from, to, t } = sourceCorner;
+        for (let component = 0; component < attribute.size; component++) {
+          const start = attribute.data[from * attribute.size + component];
+          const end = attribute.data[to * attribute.size + component];
+          data[corner * attribute.size + component] = blends ? start + (end - start) * t : (t < 0.5 ? start : end);
+        }
       });
       attributes.corner[name] = { data, size: attribute.size };
     }

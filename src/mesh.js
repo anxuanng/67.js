@@ -15,6 +15,7 @@ export { applyMeshEdits, normalizeMeshEdits, transformMesh, MESH_EDIT_OPERATIONS
 export { evaluateMeshStack, normalizeMeshStack, STACK_OPERATIONS, MAX_STACK_NODES } from './mesh-recipe.js';
 export { mirrorMesh, arrayMesh, solidifyMesh, removeCoincidentFaces } from './mesh-stack.js';
 export { bevelEdges, selectEdges } from './mesh-bevel.js';
+export { loopCut } from './mesh-loopcut.js';
 export { loadMeshBooleans, meshBooleansLoaded, meshBoolean, BOOLEAN_OPERATIONS } from './mesh-boolean.js';
 export {
   extrudeFaceRegion, extrudeIndividual, insetRegion, insetIndividual, deleteFaces, flipFaces, translateFaces,
