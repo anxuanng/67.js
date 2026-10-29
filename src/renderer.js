@@ -8,6 +8,7 @@ import { createLightingState, updateLightingState } from './lighting.js';
 import { resolveVolumeFog } from './volumetric.js';
 import { assertEnvironmentMap, createEnvironmentResources, environmentBackgroundFragment, estimateEnvironmentBytes } from './environment.js';
 import { validateSkinGeometry, validateSkinPose, skinTextureLayout, packSkinInfluences } from './skinning.js';
+import { validateSplatMaterial, splatBatchState, splatTextureBytes, resolveSplatSize, packSplatParameters, buildSplatPixels } from './splat.js';
 import { validateMorphGeometry, validateMorphPose, validateMorphTransform, packMorphTargets } from './morph.js';
 
 const MATERIAL_TAGS = { armor: 1, floor: 2, water: 3, foliage: 4, terrain: 5, grass: 7, fire: 8, smoke: 9, unlit: 10, liquid: 11, foam: 12 };
@@ -51,6 +52,11 @@ const ENVIRONMENT_LOOKUP_UNIFORMS = ['environmentSpecular', 'environmentEnabled'
 const ENVIRONMENT_UNIFORMS = [...ENVIRONMENT_LOOKUP_UNIFORMS, 'environmentBrdf', 'environmentIrradiance[0]'];
 const ENVIRONMENT_SPECULAR_UNIT = 9;
 const ENVIRONMENT_BRDF_UNIT = 10;
+const SPLAT_COLOR_UNIT = 11;
+const SPLAT_NORMAL_UNIT = 12;
+const SPLAT_PACKED_UNIT = 13;
+const SPLAT_MASK_UNIT = 14;
+const SPLAT_UNIFORMS = ['splatEnabled', 'splatColor', 'splatNormal', 'splatPacked', 'splatMask', 'splatLayer[0]', 'splatTint[0]', 'splatSlope[0]', 'splatHeightRange[0]', 'splatMaskChannel[0]', 'splatMaskInvert[0]', 'splatBlend', 'splatOptions', 'splatMaskBounds'];
 
 function validateMaterialMaps(material) {
   if (PROCEDURAL_MATERIAL_TAGS.has(material.tag)) {
@@ -71,7 +77,9 @@ function materialMapState(material) {
   validateMaterialMaps(material);
   const normalScale = material.normalScale ?? DEFAULT_NORMAL_SCALE;
   const occlusionStrength = material.occlusionStrength ?? 1;
-  return [...MATERIAL_MAPS.map(field => material[field] ?? null), normalScale[0], normalScale[1], occlusionStrength];
+  validateSplatMaterial(material);
+  if (material.layers && PROCEDURAL_MATERIAL_TAGS.has(material.tag)) throw new Error('Splat layers require a standard PBR material tag.');
+  return [...MATERIAL_MAPS.map(field => material[field] ?? null), normalScale[0], normalScale[1], occlusionStrength, ...splatBatchState(material)];
 }
 
 function validateAlphaMaterial(material) {
@@ -303,6 +311,7 @@ export class Renderer67 {
     this.influenceTextures = new Map();
     this.morphTextures = new Map();
     this.textures = new Map();
+    this.splatResources = new Map();
     this.textureBytes = 4;
     this.shadowsDirty = true;
     const groups = groupParts(this.groundPart ? [...parts, this.groundPart] : parts, batching);
@@ -341,6 +350,15 @@ export class Renderer67 {
         maps.add(map);
       }
     }
+    this.splatBytes = 0;
+    const splatLayerSets = new Set();
+    for (const group of groups) {
+      const material = group[0].material;
+      if (!material.layers || splatLayerSets.has(material.layers)) continue;
+      splatLayerSets.add(material.layers);
+      this.splatBytes += splatTextureBytes(resolveSplatSize(material, textureLimit), material.layers.length) + (material.splat?.maskMap ? textureDescriptorInfo(material.splat.maskMap, textureLimit).bytes : 0);
+    }
+    this.textureBytes += this.splatBytes;
     this.capabilities.maximumTextureSize = textureLimit;
     this.environmentResources = null;
     this.environmentBackgroundProgram = null;
@@ -364,7 +382,7 @@ export class Renderer67 {
     this.inverseViewProjection = mat4.create();
     this.program = compileProgram(this.context, benchmark ? benchmarkVertexShader : vertexShader, benchmark ? benchmarkFragmentShader : fragmentShader);
     this.depthProgram = compileProgram(this.context, depthVertexShader, depthFragmentShader);
-    this.uniforms = Object.fromEntries(['viewProjection', 'lightProjection', 'eye', 'armorColor', 'armorSurface', 'exposure', 'inspection', 'shadowMap', ...MAP_UNIFORMS, ...MAP_FLAGS, ...SKIN_UNIFORMS, ...MORPH_UNIFORMS, 'normalScale', 'occlusionStrength', 'hdrEnabled', 'time', 'wind', 'worldMode', 'daylight', 'fogColor', 'lightDirection', 'fogDensity', 'waterRipple', 'rippleTime', 'explosionProgress', 'explosionCenter', 'assemblyAmount', ...ALPHA_UNIFORMS].map((name) => [name, this.context.getUniformLocation(this.program, name)]));
+    this.uniforms = Object.fromEntries(['viewProjection', 'lightProjection', 'eye', 'armorColor', 'armorSurface', 'exposure', 'inspection', 'shadowMap', ...MAP_UNIFORMS, ...MAP_FLAGS, ...SKIN_UNIFORMS, ...MORPH_UNIFORMS, 'normalScale', 'occlusionStrength', ...SPLAT_UNIFORMS, 'hdrEnabled', 'time', 'wind', 'worldMode', 'daylight', 'fogColor', 'lightDirection', 'fogDensity', 'waterRipple', 'rippleTime', 'explosionProgress', 'explosionCenter', 'assemblyAmount', ...ALPHA_UNIFORMS].map((name) => [name, this.context.getUniformLocation(this.program, name)]));
     for (const name of ['pointLightCount', 'pointLightPositions[0]', 'pointLightColors[0]', 'pointLightRadii[0]', 'keyColor', 'fillIntensity', 'ambientIntensity']) {
       this.uniforms[name] = this.context.getUniformLocation(this.program, name);
     }
@@ -402,6 +420,7 @@ export class Renderer67 {
       this.context.activeTexture(this.context.TEXTURE0 + unit);
       this.context.bindTexture(this.context.TEXTURE_2D, this.whiteTexture);
     }
+    this.initializeSplatPlaceholders();
     this.initializeEnvironment(environment.map);
     groups.forEach((group) => this.batches.push(this.uploadBatch(group)));
     this.createShadowMap();
@@ -454,6 +473,95 @@ export class Renderer67 {
     }
     this.textures.set(map, texture);
     return texture;
+  }
+
+  initializeSplatPlaceholders() {
+    const context = this.context;
+    this.splatPlaceholder = context.createTexture();
+    context.bindTexture(context.TEXTURE_2D_ARRAY, this.splatPlaceholder);
+    context.texImage3D(context.TEXTURE_2D_ARRAY, 0, context.RGBA8, 1, 1, 1, 0, context.RGBA, context.UNSIGNED_BYTE, new Uint8Array([128, 128, 128, 255]));
+    context.texParameteri(context.TEXTURE_2D_ARRAY, context.TEXTURE_MIN_FILTER, context.LINEAR);
+    context.texParameteri(context.TEXTURE_2D_ARRAY, context.TEXTURE_MAG_FILTER, context.LINEAR);
+    context.useProgram(this.program);
+    const units = [['splatColor', SPLAT_COLOR_UNIT], ['splatNormal', SPLAT_NORMAL_UNIT], ['splatPacked', SPLAT_PACKED_UNIT]];
+    for (const [name, unit] of units) {
+      context.uniform1i(this.uniforms[name], unit);
+      context.activeTexture(context.TEXTURE0 + unit);
+      context.bindTexture(context.TEXTURE_2D_ARRAY, this.splatPlaceholder);
+    }
+    context.uniform1i(this.uniforms.splatMask, SPLAT_MASK_UNIT);
+    context.activeTexture(context.TEXTURE0 + SPLAT_MASK_UNIT);
+    context.bindTexture(context.TEXTURE_2D, this.whiteTexture);
+    context.uniform1f(this.uniforms.splatEnabled, 0);
+  }
+
+  createTextureArray(internalFormat, size, layerCount, pixels) {
+    const context = this.context;
+    const texture = context.createTexture();
+    context.bindTexture(context.TEXTURE_2D_ARRAY, texture);
+    const levels = Math.floor(Math.log2(size)) + 1;
+    context.texStorage3D(context.TEXTURE_2D_ARRAY, levels, internalFormat, size, size, layerCount);
+    context.pixelStorei(context.UNPACK_FLIP_Y_WEBGL, false);
+    context.pixelStorei(context.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
+    context.pixelStorei(context.UNPACK_COLORSPACE_CONVERSION_WEBGL, context.NONE);
+    context.texSubImage3D(context.TEXTURE_2D_ARRAY, 0, 0, 0, 0, size, size, layerCount, context.RGBA, context.UNSIGNED_BYTE, pixels);
+    context.generateMipmap(context.TEXTURE_2D_ARRAY);
+    context.texParameteri(context.TEXTURE_2D_ARRAY, context.TEXTURE_WRAP_S, context.REPEAT);
+    context.texParameteri(context.TEXTURE_2D_ARRAY, context.TEXTURE_WRAP_T, context.REPEAT);
+    context.texParameteri(context.TEXTURE_2D_ARRAY, context.TEXTURE_MIN_FILTER, context.LINEAR_MIPMAP_LINEAR);
+    context.texParameteri(context.TEXTURE_2D_ARRAY, context.TEXTURE_MAG_FILTER, context.LINEAR);
+    const anisotropy = context.getExtension('EXT_texture_filter_anisotropic');
+    if (anisotropy) context.texParameterf(context.TEXTURE_2D_ARRAY, anisotropy.TEXTURE_MAX_ANISOTROPY_EXT, Math.min(8, context.getParameter(anisotropy.MAX_TEXTURE_MAX_ANISOTROPY_EXT)));
+    return texture;
+  }
+
+  createSplatResources(material) {
+    if (this.splatResources.has(material.layers)) return this.splatResources.get(material.layers);
+    const context = this.context;
+    const size = resolveSplatSize(material, context.getParameter(context.MAX_TEXTURE_SIZE));
+    const layerCount = material.layers.length;
+    const pixels = buildSplatPixels(material.layers, size);
+    const resources = {
+      size,
+      layerCount,
+      color: this.createTextureArray(context.SRGB8_ALPHA8, size, layerCount, pixels.color),
+      normal: this.createTextureArray(context.RGBA8, size, layerCount, pixels.normal),
+      packed: this.createTextureArray(context.RGBA8, size, layerCount, pixels.packed),
+      mask: material.splat?.maskMap ? this.createTexture(material.splat.maskMap) : this.whiteTexture,
+      parameters: packSplatParameters(material),
+    };
+    this.splatResources.set(material.layers, resources);
+    return resources;
+  }
+
+  bindSplat(splat) {
+    const context = this.context;
+    const uniforms = this.uniforms;
+    context.uniform1f(uniforms.splatEnabled, splat ? 1 : 0);
+    if (!splat) return;
+    const bindings = [[SPLAT_COLOR_UNIT, context.TEXTURE_2D_ARRAY, splat.color], [SPLAT_NORMAL_UNIT, context.TEXTURE_2D_ARRAY, splat.normal], [SPLAT_PACKED_UNIT, context.TEXTURE_2D_ARRAY, splat.packed], [SPLAT_MASK_UNIT, context.TEXTURE_2D, splat.mask]];
+    for (const [unit, target, texture] of bindings) {
+      context.activeTexture(context.TEXTURE0 + unit);
+      context.bindTexture(target, texture);
+    }
+    const parameters = splat.parameters;
+    context.uniform4fv(uniforms['splatLayer[0]'], parameters.layer);
+    context.uniform4fv(uniforms['splatTint[0]'], parameters.tint);
+    context.uniform4fv(uniforms['splatSlope[0]'], parameters.slope);
+    context.uniform4fv(uniforms['splatHeightRange[0]'], parameters.height);
+    context.uniform1fv(uniforms['splatMaskChannel[0]'], parameters.mask);
+    context.uniform1fv(uniforms['splatMaskInvert[0]'], parameters.maskInvert);
+    context.uniform4fv(uniforms.splatBlend, parameters.blend);
+    context.uniform4fv(uniforms.splatOptions, parameters.options);
+    context.uniform4fv(uniforms.splatMaskBounds, parameters.maskBounds);
+  }
+
+  disposeSplatResources() {
+    for (const resources of this.splatResources?.values() ?? []) {
+      for (const texture of [resources.color, resources.normal, resources.packed]) this.context.deleteTexture(texture);
+    }
+    this.splatResources?.clear();
+    if (this.splatPlaceholder) this.context.deleteTexture(this.splatPlaceholder);
   }
 
   uploadBatch(parts) {
@@ -527,6 +635,7 @@ export class Renderer67 {
     const map = parts[0].material.map ?? null;
     const mapState = materialMapState(parts[0].material);
     const textures = mapState.slice(0, 5).map(descriptor => this.createTexture(descriptor));
+    const splat = parts[0].material.layers ? this.createSplatResources(parts[0].material) : null;
     const skin = parts[0].skin ?? null;
     const skinTexture = skin ? this.createSkinTexture(this.skinTextures, skin, skin.jointMatrices, 4) : null;
     const influenceTexture = skin ? this.createSkinTexture(this.influenceTextures, geometry, null, 2) : null;
@@ -534,7 +643,7 @@ export class Renderer67 {
     const morphTexture = morph ? this.createMorphTexture(geometry, morph) : null;
     const morphWeights = morph ? new Float32Array(morph.weights) : null;
     const [alphaMode, alphaCutoff, opacity, doubleSided] = materialAlphaState(parts[0].material);
-    const batch = { alphaMode, alphaCutoff, opacity, doubleSided, parts: [...parts], vertexArray, instanceBuffer, instanceData, textures, mapState, texture: textures[0], map, skin, skinTexture, influenceTexture, morph, morphTexture, morphWeights, indexCount: geometry.indices.length, instanceCount: parts.length, floor: parts[0].material.tag === 'floor', castShadow: castsShadow(parts[0]), pass: renderPass(parts[0].material) };
+    const batch = { alphaMode, alphaCutoff, opacity, doubleSided, parts: [...parts], vertexArray, instanceBuffer, instanceData, textures, mapState, splat, texture: textures[0], map, skin, skinTexture, influenceTexture, morph, morphTexture, morphWeights, indexCount: geometry.indices.length, instanceCount: parts.length, floor: parts[0].material.tag === 'floor', castShadow: castsShadow(parts[0]), pass: renderPass(parts[0].material) };
     parts.forEach((part, index) => this.partLocations.set(part, { batch, index, geometry: part.geometry, map, mapState, skin, jointMatrices: skin?.jointMatrices, skinIndices: geometry.skinIndices, skinWeights: geometry.skinWeights, morph, morphWeights: morph?.weights, morphTargets: geometry.morphTargets, normalMatrix: mat3.create(), committedMatrix: batch.instanceData.subarray(index * INSTANCE_STRIDE, index * INSTANCE_STRIDE + 16) }));
     return batch;
   }
@@ -1268,6 +1377,7 @@ export class Renderer67 {
       }
       this.context.uniform2f(this.uniforms.normalScale, batch.mapState[5], batch.mapState[6]);
       this.context.uniform1f(this.uniforms.occlusionStrength, batch.mapState[7]);
+      this.bindSplat(batch.splat);
     }
     this.context.bindVertexArray(batch.vertexArray);
     this.context.drawElementsInstanced(this.context.TRIANGLES, batch.indexCount, this.context.UNSIGNED_INT, 0, batch.instanceCount);
@@ -1373,6 +1483,7 @@ export class Renderer67 {
     if (this.environmentBackgroundProgram) this.context.deleteProgram(this.environmentBackgroundProgram);
     this.environmentResources?.dispose();
     for (const texture of this.textures.values()) this.context.deleteTexture(texture);
+    this.disposeSplatResources();
     this.textures.clear();
     for (const cache of [this.skinTextures, this.influenceTextures, this.morphTextures]) {
       for (const record of cache?.values() ?? []) this.context.deleteTexture(record.texture);

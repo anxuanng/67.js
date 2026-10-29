@@ -42,7 +42,7 @@ const sourceDocuments = [
   'export-glb.md', 'sculpt.md', 'surface.md', 'mesh-query.md', 'primitives.md', 'shrinkwrap.md', 'spume.md',
   'retarget.md',
   'vehicle.md',
-  'vegetation.md',
+  'vegetation.md', 'terrain.md',
   'camera-path.md', 'lighting.md', 'volumetric.md', 'film-physics.md',
   'surface-attachment.md', 'agent-scene.md', 'mcp.md', 'agent-look.md', 'agent-asset.md', 'agent-render-jobs.md', 'agent-motion.md', 'agent-character-motion.md', 'agent-review.md',
 ];

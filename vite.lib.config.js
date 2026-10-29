@@ -29,6 +29,8 @@ export default defineConfig({
         retarget: 'src/retarget.js',
         vehicle: 'src/vehicle.js',
         vegetation: 'src/vegetation.js',
+        terrain: 'src/terrain.js',
+        'texture-set': 'src/texture-set.js',
         'agent-scene': 'src/agent-scene.js',
         'agent-asset': 'src/agent-asset.js',
         hdri: 'src/hdri.js',

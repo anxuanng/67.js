@@ -49,6 +49,7 @@ The material tags select renderer behavior.
 | `foam` | Soft alpha-blended whitewater droplets drawn after liquids. Set `castShadow: false`. |
 | `foliage`, `grass` | Wind movement and backlighting. |
 | `terrain` | Subtle natural surface variation. |
+| Standard tag with `layers` and `splat` | Four-layer scanned ground blended by slope, height and mask; see `docs/terrain.md`. Rejects the procedural tags and single PBR maps. |
 | `fire`, `smoke` | Film ignition expansion and procedural shading. |
 | `unlit` | Flat linear color for vector scenes. |
 | Other tags | Standard metallic/roughness shading. |
