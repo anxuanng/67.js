@@ -1,6 +1,6 @@
 # Humanoid retargeting and crowds
 
-`67js/addons/retarget` is in the current source and not yet published. It moves a humanoid clip from one skeleton onto another and
+`67js/addons/retarget` is available from version `0.10.0`. It moves a humanoid clip from one skeleton onto another and
 places many skinned copies with their own timing. It only consumes files: Mixamo clips need the owner's Adobe login to download,
 and this package never fetches them.
 

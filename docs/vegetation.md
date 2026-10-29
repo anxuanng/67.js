@@ -1,7 +1,7 @@
 # Vegetation
 
 `67js/addons/vegetation` grows seeded trees, bushes and grass, scatters them on terrain and switches detail by distance.
-It is in the current source and not yet published. Everything returns plain renderer parts: geometry, a matrix and a material.
+It is available from version `0.10.0`. Everything returns plain renderer parts: geometry, a matrix and a material.
 
 ```js
 import { Renderer67 } from '67js';
@@ -61,14 +61,29 @@ Every descriptor needs repeat wrapping. `roughness` goes to `metallicRoughnessMa
 Scanned bark gets world-scale UVs: `v` runs along the branch and `u` around it at `barkTileSize` meters per tile (default 0.8), computed per ring so a trunk and a twig have the same texel density and square texels.
 Rings wide enough for 1.5 tiles or more wrap a whole number of tiles, so they have no seam. Thinner rings keep the exact scale and put their seam on the underside, away from the usual view. Without `barkTextures` the procedural bark keeps its whole-number repeats and 0.6 m tile.
 
+## Scanned leaves
+
+`createTree({ species, leafTextures })` and `scatterVegetation({ leafTextures })` swap the procedural leaf cards for scanned ones. `loadLeafTextures('/textures/leaves')` from `67js/addons/texture-set` returns `{ broadleaf, birch, bush, conifer }`, each `{ color, normal, crown }`, ready to pass straight in:
+
+```js
+import { loadLeafTextures } from '67js/addons/texture-set';
+
+const leafTextures = await loadLeafTextures('/textures/leaves');
+const forest = scatterVegetation({ area, leafTextures, barkTextures, seed: 11 });
+```
+
+`color` is RGBA with the leaf mask in alpha and the twig at the bottom edge; `normal` is an OpenGL tangent-space map that the `foliage` tag applies on top of its canopy normal at `normalScale` 0.7; `crown` is the dense clump used for level 2. Species without an entry (palm, grass) keep procedural cards, and `leaves: 'mesh'` ignores the option. Geometry is identical either way, so switching textures never changes triangle counts.
+
+The cards in `public/textures/leaves` are composited by `scripts/build-leaf-cards.py` from three CC0 ambientCG leaf atlases (beech LeafSet024 for broadleaf and birch, LeafSet022 for bush, cedar sprays LeafSet019 for conifer): it cuts every leaf from its atlas, lays leaves alternately along a curved twig (or sprays into a narrow branch tip), rotates the normal vectors with each leaf, and bleeds colour into the transparent pixels so mipmaps have no dark fringe. Each card is 512 px, about 40 to 90 KB in WebP.
+
 ## Leaves: cards or mesh
 
-`leaves: 'cards'` (default) uses a procedural RGBA leaf texture (`material.map`) on crossed, slightly curved cards with the `foliage` tag (`grass` for grass cards), `alphaMode: 'mask'`, `alphaCutoff: 0.5` and `doubleSided: true`.
+`leaves: 'cards'` (default) uses an RGBA leaf texture (procedural, or scanned with `leafTextures`) (`material.map`) on crossed, slightly curved cards with the `foliage` tag (`grass` for grass cards), `alphaMode: 'mask'`, `alphaCutoff: 0.5` and `doubleSided: true`.
 Cards rely on the renderer's alpha masking with alpha-to-coverage under MSAA; with `samples: 1` their edges fall back to a hard cutout.
 Cards hold one face each and `doubleSided` draws the back. For the `foliage` and `grass` tags the fragment shader does not flip the normal on a back face, so the canopy-leaning shading normal lights both sides alike and the existing back-lighting term adds translucency.
 `leaves: 'mesh'` builds real leaf silhouettes (ovate, fir spray, palm leaflet) as folded, drooping meshes with the `foliage` tag. It needs no alpha support and costs about twice the triangles.
 
-Wind: the vertex shader sways only the `foliage` and `grass` tags, and those tags accept a base-colour `map` with alpha mask and `doubleSided` (other maps stay unsupported). Cards, mesh leaves and grass blades sway; bark (a standard material) stays still.
+Wind: the vertex shader sways only the `foliage` and `grass` tags, and those tags accept a base-colour `map` with alpha mask, a `normalMap` and `doubleSided` (other maps stay unsupported). Cards, mesh leaves and grass blades sway; bark (a standard material) stays still.
 The displacement is a pure function of `frame.time`, `frame.wind` (default 0.3), the vertex's local position and its uv: a slow sway that grows with height and with distance from the tree's axis (branch tips swing more than the crown centre, both capped at 2.5 m and 3 m so leaves stay near their twigs) plus a faster flutter that grows toward each leaf's tip (`uv.y` 0).
 The shadow vertex shader applies the same function, and the renderer redraws the shadow map whenever `frame.time` or `frame.wind` changes while a `foliage` or `grass` batch casts shadows, so shadows follow the leaves. This costs one extra shadow pass per frame for scenes with swaying foliage.
 
@@ -106,6 +121,6 @@ Meshes and textures are built in plain JavaScript, so tests run in Node.
 
 ## Limits
 
-- Cards need the renderer's alpha mask to look right. The leaf textures are 128 px procedural sprigs; a card seen from under 1 m shows flat, pale shading on needle cards (seen on conifer needles in the close-up render).
+- Cards need the renderer's alpha mask to look right. Without `leafTextures` the leaf textures are 128 px procedural sprigs that look flat from under a few metres; the scanned cards hold up to about 1 m. Palm fronds have no scanned card yet. The conifer card is a cedar spray, so it reads as a flat branch tip rather than separate needles.
 - Level changes pop; there is no cross-fade. Level 2 crowns are blobs or crossed cards, not baked imposters.
 - Species are fixed presets; there is no seasonal color, wind-bent skeleton or collision with other trees.
