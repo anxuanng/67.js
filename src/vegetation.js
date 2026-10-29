@@ -19,6 +19,7 @@ import { barkTextureDescriptor, leafTextureDescriptor } from './vegetation-textu
 export { SPECIES };
 
 const BARK_TILE_SIZE = 0.6;
+const SCANNED_BARK_TILE_SIZE = 0.8;
 const LEAF_MODES = ['cards', 'mesh'];
 const GRASS_LEVEL_DISTANCES = [24];
 const LEAF_COLOR_BASE = [0.85, 0.95, 0.8];
@@ -148,7 +149,7 @@ function describeCrown(leafSites) {
   return { center, radius };
 }
 
-function buildBark(skeleton, preset, setting) {
+function buildBark(skeleton, preset, setting, bark) {
   const lastLevel = preset.levels.length - 1;
   const maximumLevel = setting.maximumBranchLevel < 0 ? lastLevel + setting.maximumBranchLevel : setting.maximumBranchLevel;
   const builder = createMeshBuilder();
@@ -162,9 +163,28 @@ function buildBark(skeleton, preset, setting) {
       points = [addScaled(points[0], direction, -0.3), ...points];
       radii = [radii[0] * preset.rootFlare, ...radii];
     }
-    addTube(builder, points, radii, sides, BARK_TILE_SIZE);
+    addTube(builder, points, radii, sides, bark.tileSize, [1, 1, 1], { worldScaleUv: bark.scanned });
   }
   return builder.build();
+}
+
+function isTextureDescriptor(value) {
+  return Boolean(value) && typeof value === 'object' && Boolean(value.image);
+}
+
+/**
+ * Picks the scanned bark set for a species. `barkTextures` is either one set
+ * (`{ color, normal, roughness }`) or an object keyed by species name; returns null for procedural bark.
+ */
+export function resolveBarkTextures(barkTextures, species) {
+  if (!barkTextures) return null;
+  const set = isTextureDescriptor(barkTextures.color) ? barkTextures : barkTextures[species];
+  if (!set) return null;
+  if (!isTextureDescriptor(set.color)) throw new TypeError(`Bark textures for ${species} need a color texture descriptor.`);
+  for (const channel of ['normal', 'roughness']) {
+    if (set[channel] !== undefined && !isTextureDescriptor(set[channel])) throw new TypeError(`Bark ${channel} must be a texture descriptor.`);
+  }
+  return set;
 }
 
 function crownShading(skeleton, position) {
@@ -211,6 +231,7 @@ function addCards(builder, skeleton, spec, site, scale, random) {
       length: spec.cardSize[1] * site.scale * scale,
       width: spec.cardSize[0] * site.scale * scale,
       rows: [[0, 1], [0.5, 1], [1, 1]],
+      backFaces: false,
       droop: 0.12,
       canopyNormal,
       canopyBlend: 0.55,
@@ -270,6 +291,7 @@ function addCrownClumps(builder, skeleton, spec, mode, random) {
         length: radius * 2,
         width: radius * 2,
         rows: [[0, 1], [1, 1]],
+        backFaces: false,
         canopyNormal: shading.canopyNormal,
         canopyBlend: 0.7,
         colorBase: LEAF_COLOR_BASE,
@@ -296,14 +318,24 @@ function buildFoliage(skeleton, preset, mode, levelIndex, random) {
   return builder.build();
 }
 
-function createMaterials(preset, mode) {
-  const bark = { color: preset.bark.tint, roughness: 0.95, metallic: 0, emission: 0, map: barkTextureDescriptor(preset.bark.texture) };
+function createBarkMaterial(preset, scannedTextures) {
+  if (!scannedTextures) {
+    return { color: preset.bark.tint, roughness: 0.95, metallic: 0, emission: 0, map: barkTextureDescriptor(preset.bark.texture) };
+  }
+  const material = { color: [1, 1, 1], roughness: 1, metallic: 0, emission: 0, map: scannedTextures.color };
+  if (scannedTextures.normal) material.normalMap = scannedTextures.normal;
+  if (scannedTextures.roughness) material.metallicRoughnessMap = scannedTextures.roughness;
+  return material;
+}
+
+function createMaterials(preset, mode, scannedBark) {
+  const bark = createBarkMaterial(preset, scannedBark);
   if (mode === 'mesh') {
     const foliage = { tag: 'foliage', color: preset.leaf.foliageColor, roughness: 0.8, metallic: 0, emission: 0 };
     return { bark, foliage, crown: foliage };
   }
   const cardMaterial = (texture) => ({
-    color: preset.leaf.tint, roughness: 0.85, metallic: 0, emission: 0,
+    tag: 'foliage', color: preset.leaf.tint, roughness: 0.85, metallic: 0, emission: 0,
     map: leafTextureDescriptor(texture, preset.leaf.color), alphaMode: 'mask', alphaCutoff: 0.5, doubleSided: true,
   });
   return { bark, foliage: cardMaterial(preset.leaf.texture), crown: cardMaterial('clump') };
@@ -328,7 +360,7 @@ function describeLevel(parts) {
 
 /**
  * Grows one tree. `speciesOrOptions` is a preset name ('broadleaf', 'birch', 'conifer', 'palm',
- * 'bush') or `{ species, height, leaves }`. Returns three levels of detail; each level lists the
+ * 'bush') or `{ species, height, leaves, barkTextures, barkTileSize }`. Returns three levels of detail; each level lists the
  * parts (`bark`, `foliage`) with their geometry and material, in local meters with the trunk at the origin.
  */
 export function createTree(speciesOrOptions = 'broadleaf', seed = 1) {
@@ -341,12 +373,14 @@ export function createTree(speciesOrOptions = 'broadleaf', seed = 1) {
   const random = createRandom(seed * 7919 + 17);
   const height = options.height ?? randomInRange(random, preset.height);
   const skeleton = growSkeleton(preset, height, random);
-  const materials = createMaterials(preset, leaves);
+  const scannedBark = resolveBarkTextures(options.barkTextures, options.species);
+  const bark = { scanned: Boolean(scannedBark), tileSize: options.barkTileSize ?? (scannedBark ? SCANNED_BARK_TILE_SIZE : BARK_TILE_SIZE) };
+  const materials = createMaterials(preset, leaves, scannedBark);
   const levels = LEVEL_SETTINGS.map((setting, levelIndex) => {
     const levelRandom = createRandom(seed * 104729 + levelIndex);
     const foliageMaterial = setting.leafKeep === 0 ? materials.crown : materials.foliage;
     return describeLevel([
-      { role: 'bark', geometry: buildBark(skeleton, preset, setting), material: materials.bark, tintable: false },
+      { role: 'bark', geometry: buildBark(skeleton, preset, setting, bark), material: materials.bark, tintable: false },
       { role: 'foliage', geometry: buildFoliage(skeleton, preset, leaves, levelIndex, levelRandom), material: foliageMaterial, tintable: true },
     ]);
   });
@@ -359,7 +393,7 @@ export function createTree(speciesOrOptions = 'broadleaf', seed = 1) {
 
 function grassMaterial(style, color) {
   if (style === 'cards') {
-    return { color: [1, 1, 1], roughness: 0.9, metallic: 0, emission: 0, map: leafTextureDescriptor('grass', [80, 128, 40]), alphaMode: 'mask', alphaCutoff: 0.5, doubleSided: true };
+    return { tag: 'grass', color: [1, 1, 1], roughness: 0.9, metallic: 0, emission: 0, map: leafTextureDescriptor('grass', [80, 128, 40]), alphaMode: 'mask', alphaCutoff: 0.5, doubleSided: true };
   }
   return { tag: 'grass', color, roughness: 0.9, metallic: 0, emission: 0 };
 }
@@ -398,6 +432,7 @@ function buildGrassCards(random, height, radius) {
       length: height * (0.9 + random() * 0.2),
       width: radius * 2.4,
       rows: [[0, 1], [0.5, 1], [1, 1]],
+      backFaces: false,
       droop: 0.1,
       canopyNormal: WORLD_UP,
       canopyBlend: 0.6,
@@ -459,10 +494,10 @@ export function createFlowerPatch({ flowers = 5, height = 0.4, color = [1, 0.85,
 
 const FLOWER_COLORS = [[0.95, 0.8, 0.25], [0.8, 0.35, 0.55], [0.9, 0.9, 0.85], [0.45, 0.4, 0.85]];
 
-function createVariant(species, variantSeed, variantIndex, leaves) {
+function createVariant(species, variantSeed, variantIndex, leaves, barkTextures) {
   if (species === 'grass') return createGrassClump({ seed: variantSeed, height: 0.38 + 0.12 * (variantIndex % 3) });
   if (species === 'flowers') return createFlowerPatch({ seed: variantSeed, color: FLOWER_COLORS[variantIndex % FLOWER_COLORS.length] });
-  return createTree({ species, leaves }, variantSeed);
+  return createTree({ species, leaves, barkTextures }, variantSeed);
 }
 
 function poissonDiskPoints(area, radius, random, accept) {
@@ -552,13 +587,13 @@ function instanceParts(instance, levelIndex, label) {
 /**
  * Scatters vegetation with Poisson-disk spacing. `area` is `{ minX, maxX, minZ, maxZ }`, `density` is
  * instances per square meter, `slopeLimit` is degrees, `exclusion(x, z)` returns true to keep a spot clear
- * and `mix` weighs species ('broadleaf', 'birch', 'conifer', 'palm', 'bush', 'grass', 'flowers').
+ * `barkTextures` (one set or one per species) swaps procedural bark for scanned textures, and `mix` weighs species ('broadleaf', 'birch', 'conifer', 'palm', 'bush', 'grass', 'flowers').
  * A few variants per species are shared by every instance, so the renderer batches them as instances.
  * Returns `{ instances, parts, variants, counts }`; `parts` shows every instance at full detail.
  */
 export function scatterVegetation({
   area, density = 0.012, terrainHeight = () => 0, slopeLimit = 32, exclusion = () => false, seed = 1,
-  mix = DEFAULT_MIX, variants = 3, leaves = 'cards', scale = [0.8, 1.25], spacing,
+  mix = DEFAULT_MIX, variants = 3, leaves = 'cards', scale = [0.8, 1.25], spacing, barkTextures,
 } = {}) {
   if (!area || ![area.minX, area.maxX, area.minZ, area.maxZ].every(Number.isFinite) || area.maxX <= area.minX || area.maxZ <= area.minZ) {
     throw new TypeError('Scatter area needs finite minX < maxX and minZ < maxZ.');
@@ -573,7 +608,7 @@ export function scatterVegetation({
   const instances = points.map(([x, z], index) => {
     const species = chooseSpecies(speciesNames, mix, x, z, seed, random);
     if (!variantsBySpecies[species]) {
-      variantsBySpecies[species] = Array.from({ length: variants }, (_, variantIndex) => createVariant(species, seed * 131 + variantIndex * 977 + species.length, variantIndex, leaves));
+      variantsBySpecies[species] = Array.from({ length: variants }, (_, variantIndex) => createVariant(species, seed * 131 + variantIndex * 977 + species.length, variantIndex, leaves, barkTextures));
     }
     const variant = variantsBySpecies[species][Math.floor(random() * variants)];
     const size = randomInRange(random, scale);

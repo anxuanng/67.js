@@ -55,6 +55,23 @@ mat4 skinTransform() {
 }
 `;
 
+// Wind for the foliage (4) and grass (7) tags, shared by the colour and shadow vertex shaders so both
+// move identically. It depends only on local position, the card's uv, world position and time.
+// The slow sway grows with height and with distance from the model's vertical axis (branch tips swing
+// more than the crown centre) but is capped, because bark never moves and leaves must stay near their twigs.
+// uv.y is 1 at a leaf's base and 0 at its tip, which drives the faster flutter.
+const windShader = `
+vec3 windOffset(vec3 localPosition, vec3 worldPoint, vec2 leafUv, float surfaceTag, float seconds, float strength) {
+  if (surfaceTag != 4.0 && surfaceTag != 7.0) return vec3(0.0);
+  float heightReach = min(max(localPosition.y + 0.5, 0.0), 2.5);
+  float branchReach = 1.0 + 0.3 * min(length(localPosition.xz), 3.0);
+  float sway = sin(seconds * 1.2 + worldPoint.z * 0.31 + worldPoint.x * 0.17) * strength * 0.10 * heightReach * branchReach;
+  float tip = clamp(1.0 - leafUv.y, 0.0, 1.0);
+  float flutter = sin(seconds * 3.1 + worldPoint.x * 1.7 + worldPoint.z * 1.3 + localPosition.y * 2.0) * strength * 0.08 * tip;
+  return vec3(sway + flutter, 0.0, flutter * 0.6);
+}
+`;
+
 export const vertexShader = `#version 300 es
 precision highp float;
 layout(location=0) in vec3 position;
@@ -85,13 +102,12 @@ out vec3 vertexTint;
 flat out vec3 emissionColor;
 ${skinningShader}
 ${morphingShader}
+${windShader}
 void main() {
   mat4 deformation = skinTransform();
   vec4 world = instanceMatrix * deformation * vec4(morphedPosition(position), 1.0);
   world.xyz += assemblyOffset * assemblyAmount + assemblyDetailOffset * smoothstep(0.3, 1.0, assemblyAmount);
-  if (instanceSurface.w == 4.0 || instanceSurface.w == 7.0) {
-    world.x += sin(time * 1.2 + world.z * 0.31 + world.x * 0.17) * wind * 0.10 * max(position.y + 0.5, 0.0);
-  }
+  world.xyz += windOffset(position, world.xyz, uv, instanceSurface.w, time, wind);
   if (instanceSurface.w == 3.0) {
     world.y += sin(world.x * 1.4 + time * 0.8) * 0.025 + sin(world.z * 1.8 - time) * 0.02;
   }
@@ -115,17 +131,23 @@ export const depthVertexShader = `#version 300 es
 precision highp float;
 layout(location=0) in vec3 position;
 layout(location=2) in mat4 instanceMatrix;
+layout(location=10) in vec4 instanceSurface;
 layout(location=11) in vec3 assemblyOffset;
 layout(location=12) in vec3 assemblyDetailOffset;
 layout(location=13) in vec2 uv;
 uniform mat4 lightProjection;
 uniform float assemblyAmount;
+uniform float time;
+uniform float wind;
 out vec2 textureUV;
 ${skinningShader}
 ${morphingShader}
+${windShader}
 void main() {
   vec4 world = instanceMatrix * skinTransform() * vec4(morphedPosition(position), 1.0);
   world.xyz += assemblyOffset * assemblyAmount + assemblyDetailOffset * smoothstep(0.3, 1.0, assemblyAmount);
+  // Same displacement as the colour pass, so shadows follow the swaying leaves.
+  world.xyz += windOffset(position, world.xyz, uv, instanceSurface.w, time, wind);
   textureUV = uv;
   gl_Position = lightProjection * world;
 }`;
@@ -471,7 +493,10 @@ float surfaceAlpha(float textureAlpha) {
 
 void main() {
   vec3 normal = normalize(worldNormal);
-  if (doubleSided > 0.5 && !gl_FrontFacing) normal = -normal;
+  // Foliage and grass cards are single-sided geometry whose shading normal already leans toward the
+  // canopy, so the back face keeps it instead of flipping to point into the crown.
+  bool canopyShaded = surface.w == 4.0 || surface.w == 7.0;
+  if (doubleSided > 0.5 && !gl_FrontFacing && !canopyShaded) normal = -normal;
   if (hasNormalMap > 0.5) normal = mappedNormal(normal);
   vec3 viewDirection = normalize(eye - worldPosition);
   vec3 color = mix(baseColor, armorColor, step(0.5, surface.w) * (1.0 - step(1.5, surface.w)));

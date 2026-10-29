@@ -23,6 +23,9 @@ const MAP_FLAGS = ['hasBaseMap', 'hasNormalMap', 'hasMetallicRoughnessMap', 'has
 const DEFAULT_NORMAL_SCALE = [1, 1];
 const PROCEDURAL_MATERIAL_TAGS = new Set(['water', 'foliage', 'grass', 'terrain', 'floor', 'fire', 'smoke', 'liquid', 'foam']);
 
+// Tags whose vertices sway in the wind; the shadow pass must be redrawn when time moves.
+const SWAYING_TAGS = new Set(['foliage', 'grass']);
+
 function renderPass(material) {
   return TRANSLUCENT_TAGS.has(material.tag) ? material.tag : 'opaque';
 }
@@ -305,6 +308,7 @@ export class Renderer67 {
     this.textures = new Map();
     this.textureBytes = 4;
     this.shadowsDirty = true;
+    this.windState = { time: 0, strength: 0.3 };
     const groups = groupParts(this.groundPart ? [...parts, this.groundPart] : parts, batching);
     const textureLimit = this.context.getParameter(this.context.MAX_TEXTURE_SIZE);
     this.hasSkins = groups.some(group => group[0].skin);
@@ -384,6 +388,7 @@ export class Renderer67 {
     this.depthAlphaUniforms = Object.fromEntries(DEPTH_ALPHA_UNIFORMS.map(name => [name, this.context.getUniformLocation(this.depthProgram, name)]));
     this.depthUniform = this.context.getUniformLocation(this.depthProgram, 'lightProjection');
     this.depthAssemblyUniform = this.context.getUniformLocation(this.depthProgram, 'assemblyAmount');
+    this.depthWindUniforms = { time: this.context.getUniformLocation(this.depthProgram, 'time'), wind: this.context.getUniformLocation(this.depthProgram, 'wind') };
     this.partCount = parts.length;
     this.triangles = parts.reduce((total, part) => total + part.geometry.indices.length / 3, 0);
     this.whiteTexture = this.createTexture(null);
@@ -804,6 +809,8 @@ export class Renderer67 {
     context.useProgram(this.depthProgram);
     context.uniformMatrix4fv(this.depthUniform, false, this.lightProjection);
     context.uniform1f(this.depthAssemblyUniform, this.assemblyAmount ?? 0);
+    context.uniform1f(this.depthWindUniforms.time, this.windState.time);
+    context.uniform1f(this.depthWindUniforms.wind, this.windState.strength);
     // The base map sampler must not alias the shadow texture on unit 0 while that texture is the render target.
     context.uniform1i(this.depthAlphaUniforms.baseMap, 1);
     context.enable(context.POLYGON_OFFSET_FILL);
@@ -813,6 +820,15 @@ export class Renderer67 {
     context.enable(context.CULL_FACE);
     context.bindFramebuffer(context.FRAMEBUFFER, null);
     this.shadowsDirty = false;
+  }
+
+  /** Stores the wind time and strength the shadow pass must use; true when swaying batches need a new shadow map. */
+  updateWindState(frame) {
+    const next = { time: frame.time ?? 0, strength: frame.wind ?? 0.3 };
+    const previous = this.windState;
+    this.windState = next;
+    if (previous.time === next.time && previous.strength === next.strength) return false;
+    return this.batches.some(batch => batch.castShadow && SWAYING_TAGS.has(batch.parts[0].material.tag));
   }
 
   resize() {
@@ -1289,7 +1305,9 @@ export class Renderer67 {
     const start = performance.now();
     const context = this.context;
     const assemblyAmount = Math.max(0, Math.min(1, frame.assemblyAmount ?? 0));
-    if (this.assemblyAmount !== assemblyAmount || this.shadowsDirty) {
+    // Swaying foliage moves every frame, so its shadow map is redrawn whenever time or wind changes.
+    const windChanged = this.updateWindState(frame);
+    if (this.assemblyAmount !== assemblyAmount || this.shadowsDirty || windChanged) {
       this.assemblyAmount = assemblyAmount;
       this.createShadowMap();
     }
