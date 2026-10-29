@@ -53,7 +53,7 @@ try {
   await client.connect(transport);
   processId = transport.pid;
   const listing = await client.listTools();
-  assert.equal(listing.tools.length, 18);
+  assert.equal(listing.tools.length, 21);
   const capabilities = (await call('scene_capabilities')).structuredContent;
   assert.equal(capabilities.phase, 'idle');
   const fixture = createAgentPreviewFixture();
@@ -70,6 +70,9 @@ try {
   assert.equal(created.inspection.counts.geometries, 7);
   assert.equal(created.revision, 1);
   assert.match(created.render.graphics, backend === 'gpu' ? /NVIDIA/i : /SwiftShader/i);
+  const meshes = (await call('mesh_inspect', { sessionId })).structuredContent;
+  assert.equal(meshes.meshes.length, 7);
+  assert.ok(meshes.meshes.every(mesh => mesh.counts.faces > 0 && Array.isArray(mesh.problems)));
   const before = await look(sessionId, 'before');
   const checkpoint = (await call('scene_checkpoint', { sessionId })).structuredContent;
   const edited = (await call('scene_apply', {

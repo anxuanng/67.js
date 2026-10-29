@@ -89,6 +89,15 @@ The external `playwright-core` browser driver includes its own license and notic
 
 The npm, pnpm, Yarn and Bun SVG marks are sourced from Simple Icons and distributed under CC0-1.0. See public/licenses/simple-icons.txt. Brand marks remain subject to their respective trademark rights.
 
+## Manifold 3.5.4 (optional mesh boolean peer dependency)
+
+The mesh addon loads `manifold-3d` as a separate dependency for booleans.
+Manifold is distributed under the Apache License, Version 2.0.
+Its dependency package includes the complete license text.
+Manifold's JavaScript and WASM code are not bundled into the 67.js library archive.
+The MCP runtime serves them to its preview page from the installed peer dependency.
+Source and license: https://github.com/elalish/manifold.
+
 ## Rapier 3D 0.21.0 (optional physics peer dependency)
 
 The physics addon loads `@dimforge/rapier3d-compat` as a separate dependency.

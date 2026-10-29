@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { Script, createContext } from 'node:vm';
 import { mat4 } from 'gl-matrix';
-import { createAgentScene } from '../src/agent-scene.js';
+import { createAgentScene, needsMeshBooleans, loadMeshBooleans, meshBooleansLoaded } from '../src/agent-scene.js';
 import { applyProjection } from '../src/camera.js';
 import { resolveAgentShadow } from '../src/agent-look.js';
 import { createAgentAssetScene } from '../src/agent-asset.js';
@@ -64,6 +64,9 @@ function previewHarness() {
       return new Proxy({}, { get: (target, field) => field === 'sampleFrame'
         ? frame => scene.sampleFrame(JSON.parse(JSON.stringify(frame))) : scene[field] });
     },
+    needsMeshBooleans, loadMeshBooleans, meshBooleansLoaded,
+    // The harness loads Manifold from node_modules directly, so the preview's served-file loader is ignored.
+    setManifoldModuleLoader: () => {},
     parseGltf, Uint8Array, atob,
     applyProjection, mat4, resolveAgentShadow,
     Renderer67: FaultInjectedRenderer,

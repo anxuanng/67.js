@@ -38,6 +38,23 @@ async function connect(context) {
       assert.equal(requested, sessionId);
       return { sessionId, ...scene.inspect(options) };
     },
+    async inspectMeshes({ sessionId: requested, ...options }) {
+      calls++;
+      assert.equal(requested, sessionId);
+      return { sessionId, ...scene.inspectMeshes(options) };
+    },
+    async editMesh({ sessionId: requested, expectedRevision, geometry, edits, replace }) {
+      calls++;
+      assert.equal(requested, sessionId);
+      scene.apply([{ type: 'edit-mesh', geometry, edits, ...(replace === undefined ? {} : { replace }) }], { expectedRevision });
+      return { ...status(), mesh: scene.inspectMeshes({ geometries: [geometry] }).meshes[0] };
+    },
+    async setMeshStack({ sessionId: requested, expectedRevision, geometry, stack, apply }) {
+      calls++;
+      assert.equal(requested, sessionId);
+      scene.apply([{ type: 'set-mesh-stack', geometry, ...(stack === undefined ? {} : { stack }), ...(apply === undefined ? {} : { apply }) }], { expectedRevision });
+      return { ...status(), mesh: scene.inspectMeshes({ geometries: [geometry] }).meshes[0] };
+    },
     async apply({ expectedRevision, operations }) {
       calls++;
       scene.apply(operations, { expectedRevision });
@@ -105,7 +122,7 @@ test('SDK advertises the complete strict JSON contract and truthful annotations'
   const { client } = await connect(context);
   const { tools } = await client.listTools();
   assert.deepEqual(tools.map(tool => tool.name).sort(), [
-    'scene_apply', 'scene_asset_catalog', 'scene_capabilities', 'scene_checkpoint', 'scene_create', 'scene_create_asset', 'scene_dispose',
+    'mesh_edit', 'mesh_inspect', 'mesh_stack', 'scene_apply', 'scene_asset_catalog', 'scene_capabilities', 'scene_checkpoint', 'scene_create', 'scene_create_asset', 'scene_dispose',
     'scene_export_recipe', 'scene_inspect', 'scene_look', 'scene_review', 'scene_release_checkpoint', 'scene_restore',
     'scene_render_cancel', 'scene_render_release', 'scene_render_result', 'scene_render_status', 'scene_render_submit',
   ].sort());
@@ -126,7 +143,7 @@ test('SDK advertises the complete strict JSON contract and truthful annotations'
   assert.equal(recipeSchema.properties.materials.maxItems, 256);
   assert.equal(recipeSchema.properties.geometries.maxItems, 256);
   const variants = recipeSchema.properties.geometries.items.oneOf ?? recipeSchema.properties.geometries.items.anyOf;
-  assert.deepEqual(variants.map(variant => variant.properties.type.const), ['box', 'cylinder', 'sphere', 'torus', 'lathe', 'extrude', 'tube']);
+  assert.deepEqual(variants.map(variant => variant.properties.type.const), ['box', 'cylinder', 'sphere', 'torus', 'lathe', 'extrude', 'tube', 'mesh']);
   assert.ok(variants.every(variant => variant.additionalProperties === false));
   assert.equal(recipeSchema.properties.environment.additionalProperties, false);
   assert.equal(recipeSchema.properties.environment.properties.pointLights.maxItems, 8);
@@ -143,7 +160,7 @@ test('review SDK exposes one image and rejects unknown or unbounded shot fields 
   await client.callTool({ name: 'scene_create', arguments: { recipe: recipe() } });
   const { tools } = await client.listTools();
   const tool = tools.find(tool => tool.name === 'scene_review');
-  assert.equal(tools.length, 18);
+  assert.equal(tools.length, 21);
   assert.equal(tool.annotations.readOnlyHint, true);
   assert.equal(tool.inputSchema.properties.shots.maxItems, 4);
   assert.equal(tool.inputSchema.properties.shots.items.additionalProperties, false);
@@ -191,6 +208,89 @@ test('SDK rejects unknown fields, missing revisions, invalid vectors and oversiz
   await rejected(client, 'scene_create', { recipe: { ...recipe(), geometries: [{ id: 'sphere', type: 'sphere', segments: 2049 }] } });
   await rejected(client, 'scene_create', { recipe: { ...recipe(), nodes: Array.from({ length: 4097 }, () => ({ id: 'node' })) } });
   assert.equal(boundary.calls(), 0);
+});
+
+test('mesh_inspect reports polygon counts, tags and lint for recipe geometries', async context => {
+  const { client, sessionId } = await connect(context);
+  await client.callTool({ name: 'scene_create', arguments: { recipe: {
+    ...recipe(),
+    geometries: [
+      { id: 'cube', type: 'box', bevel: 0 },
+      { id: 'cable', type: 'tube', path: [[0, 0, 0], [1, 1, 0], [2, 0, 0]], radius: 0.05 },
+    ],
+  } } });
+  const result = await client.callTool({ name: 'mesh_inspect', arguments: { sessionId } });
+  assert.equal(result.isError, undefined);
+  const [cube, cable] = result.structuredContent.meshes;
+  assert.equal(cube.geometry, 'cube');
+  assert.equal(cube.ok, true);
+  assert.deepEqual(cube.faces, { triangles: 0, quads: 6, ngons: 0 });
+  assert.equal(cube.tags.top, 1);
+  assert.deepEqual(cube.problems, []);
+  assert.equal(cable.parts.closed, 0, 'an uncapped tube is open');
+  assert.equal(cable.problems[0].kind, 'boundary-edge');
+  assert.ok(JSON.stringify(result.structuredContent).length < 4096, 'default report stays compact');
+  const one = await client.callTool({ name: 'mesh_inspect', arguments: { sessionId, geometries: ['cube'] } });
+  assert.equal(one.structuredContent.meshes.length, 1);
+  const missing = await client.callTool({ name: 'mesh_inspect', arguments: { sessionId, geometries: ['nope'] } });
+  assert.equal(missing.isError, true);
+  assert.match(missing.content[0].text, /Known IDs: cube, cable/);
+  await rejected(client, 'mesh_inspect', { sessionId, geometries: [] });
+  await rejected(client, 'mesh_inspect', { sessionId, geometries: Array.from({ length: 17 }, (_, index) => `g${index}`) });
+  await rejected(client, 'mesh_inspect', { sessionId, path: '../file' });
+});
+
+test('mesh_edit builds a mesh from a base and an edit log through the SDK', async context => {
+  const { client, sessionId } = await connect(context);
+  await client.callTool({ name: 'scene_create', arguments: { recipe: {
+    ...recipe(),
+    geometries: [{ id: 'cube', type: 'mesh', base: { type: 'box', bevel: 0 }, edits: [
+      { op: 'inset_region', select: { tag: 'top' }, thickness: 0.1, name: 'lid' },
+    ] }],
+  } } });
+  const edited = await client.callTool({ name: 'mesh_edit', arguments: { sessionId, expectedRevision: 0, geometry: 'cube',
+    edits: [{ op: 'extrude_face_region', select: { tag: 'lid.cap' }, offset: 0.25, name: 'knob' }] } });
+  assert.equal(edited.isError, undefined, edited.content?.[0]?.text);
+  const { revision, mesh } = edited.structuredContent;
+  assert.equal(revision, 1);
+  assert.equal(mesh.ok, true);
+  assert.equal(mesh.parts.closed, 1);
+  assert.deepEqual(mesh.edits.map(result => result.tags), [{ 'lid.cap': 1, 'lid.rim': 4 }, { 'knob.cap': 1, 'knob.side': 4 }]);
+  assert.equal(mesh.bounds.max[1], 0.75);
+  const empty = await client.callTool({ name: 'mesh_edit', arguments: { sessionId, expectedRevision: 1, geometry: 'cube',
+    edits: [{ op: 'delete', select: { normal: [0, 1, 0], maxAngle: 0, faces: [] } }] } });
+  assert.equal(empty.isError, true);
+  const none = await client.callTool({ name: 'mesh_edit', arguments: { sessionId, expectedRevision: 1, geometry: 'cube',
+    edits: [{ op: 'delete', select: { tag: 'lid.rim' } }, { op: 'delete', select: { tag: 'lid.rim' } }] } });
+  assert.equal(none.isError, true);
+  assert.match(none.content[0].text, /Unknown tag lid\.rim|selects no faces/);
+  const exported = await client.callTool({ name: 'scene_export_recipe', arguments: { sessionId } });
+  assert.equal(exported.structuredContent.recipe.geometries[0].edits.length, 2, 'failed edits leave the log unchanged');
+  const replaced = await client.callTool({ name: 'mesh_edit', arguments: { sessionId, expectedRevision: 1, geometry: 'cube', replace: true,
+    edits: [{ op: 'extrude_individual', select: { tag: 'side' }, offset: 0.1 }] } });
+  assert.equal(replaced.structuredContent.mesh.edits.length, 1);
+  await rejected(client, 'mesh_edit', { sessionId, expectedRevision: 2, geometry: 'cube', edits: [{ op: 'knife', select: { all: true } }] });
+  await rejected(client, 'mesh_edit', { sessionId, expectedRevision: 2, geometry: 'cube', edits: [] });
+  await rejected(client, 'mesh_edit', { sessionId, expectedRevision: 2, geometry: 'cube', edits: [{ op: 'translate', offset: [0, 1, 0], code: 'run()' }] });
+});
+
+test('mesh_stack sets, changes and applies a modifier stack through the SDK', async context => {
+  const { client, sessionId } = await connect(context);
+  await client.callTool({ name: 'scene_create', arguments: { recipe: {
+    ...recipe(),
+    geometries: [{ id: 'cube', type: 'mesh', base: { type: 'box', bevel: 0 }, edits: [{ op: 'translate', offset: [0.5, 0, 0] }] }],
+  } } });
+  const set = await client.callTool({ name: 'mesh_stack', arguments: { sessionId, expectedRevision: 0, geometry: 'cube',
+    stack: [{ op: 'mirror', axis: 'x' }, { op: 'array', count: 3, relativeOffset: [0, 0, 1.5] }] } });
+  assert.equal(set.isError, undefined, set.content?.[0]?.text);
+  assert.equal(set.structuredContent.mesh.parts.count, 3);
+  assert.deepEqual(set.structuredContent.mesh.stack.map(node => node.op), ['mirror', 'array']);
+  const applied = await client.callTool({ name: 'mesh_stack', arguments: { sessionId, expectedRevision: 1, geometry: 'cube', apply: 1 } });
+  assert.equal(applied.isError, undefined, applied.content?.[0]?.text);
+  const exported = await client.callTool({ name: 'scene_export_recipe', arguments: { sessionId } });
+  assert.deepEqual(exported.structuredContent.recipe.geometries[0].edits.map(edit => edit.op), ['translate', 'mirror']);
+  await rejected(client, 'mesh_stack', { sessionId, expectedRevision: 2, geometry: 'cube', stack: [{ op: 'extrude_individual', offset: 1 }] });
+  await rejected(client, 'mesh_stack', { sessionId, expectedRevision: 2, geometry: 'cube', stack: [{ op: 'array', count: 1000 }] });
 });
 
 test('real SDK round trip authors motion, seeks without revisions and rejects unknown track fields', async context => {

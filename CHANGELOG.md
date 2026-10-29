@@ -10,6 +10,17 @@
 - Add a `moss` layer to standard materials: its own rough, sheened, light-wrapping material with a sharp shading mask and a blurred cushion mask; clutter rocks use it
 - Add splat `parallax` (default 0.03 m) for near-ground relief from the layer height maps
 - Add splat `variation` (brightness and hue drift at three scales that grows with distance) and `edgeNoise` (ragged layer borders), both on by default
+- Teach the `build-67js-scene` skill mesh modeling: a workflow, face and edge rules, tested recipes (crate, pillar, drum, bracket, bench row, planter, soap) and an error table; a test builds every recipe in the reference and requires a clean lint
+- Shrink the MCP server bundle from 1,072 KB to 590 KB by keeping the scene engine out of it: capabilities and default limits now come from plain-data modules (`agent-scene-capabilities.js`, `mesh-operations.js`), and the MCP build fails if engine code returns; the npm archive drops from 1,003 KB to 887 KB
+- Add `67js/addons/mesh`, a polygon mesh core for agent modeling: compact `MeshData` with attributes on point, edge, face and corner domains, a half-edge `EditMesh` with typed-array disk and radial cycles, `validateTopology`, conversion from renderer geometry with welding, quads and axis face tags, hard-edge corner normals, n-gon triangulation, render extraction and `lintMesh`
+- Add semantic face selection and mesh edits (extrude region and individual, inset region and individual, delete, flip normals, translate with proportional falloff, merge by distance, tag) that tag the faces they create
+- Add the recipe geometry type `mesh` (a base shape plus a replayable edit log) and the `mesh_edit` MCP tool, which appends or replaces edits atomically and reports each edit's result
+- Add `loop_cut`: edge rings across quads picked by an edge rule (including `along` a direction), evenly spaced cuts or one cut at a factor, band tags, T-junction-free neighbours and interpolated UVs; and `alongNormals` for `extrude_face_region`, which extrudes rings and curved bands as one joined region
+- Add edge `bevel` as a mesh edit and stack node: rim, angle, region-border or all-edge selection, width, segments, profile and overlap clamping, with sliding corners and smooth triangular patches where three rounded edges meet
+- Add mesh booleans (union, difference, intersect) through Manifold WebAssembly as the `boolean` edit with an inline primitive cutter, tag transfer and polygon rebuilding; `manifold-3d` is an optional peer dependency, which the MCP runtime serves to its preview page when installed
+- Add mirror, array and solidify as mesh edits and as a non-destructive modifier stack evaluated after the edits, with every prefix cached, and the `mesh_stack` MCP tool to set the stack or apply its first nodes into the edit log
+- Report hollow cavities as valid in `lintMesh` instead of as inverted parts
+- Add the `mesh_inspect` MCP tool: polygon counts, face sizes, parts, face tags, bounds and lint problems with suggested fixes for every recipe geometry
 
 ## 0.10.0
 
