@@ -4,6 +4,8 @@
 
 - Add `67js/addons/grass`: terrain-following grass fields of clumped, curved blades with rounded normals, root-to-tip colour, dry patches, masks for paths, four presets and tile level of detail
 - Bend `grass` tag vertices by blade height and roll wind gusts across the field as a travelling wave
+- Break up grass fields with `patchiness` (short, thin and dense patches), seed `stalks` and folded blades, and let sunlight glow through backlit blades
+- Add splat `variation` (brightness and hue drift at three scales that grows with distance) and `edgeNoise` (ragged layer borders), both on by default
 
 ## 0.10.0
 

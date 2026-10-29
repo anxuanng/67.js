@@ -15,6 +15,7 @@ uniform float splatMaskInvert[4];
 uniform vec4 splatBlend;
 uniform vec4 splatOptions;
 uniform vec4 splatMaskBounds;
+uniform vec4 splatVariation;
 
 const mat2 SPLAT_ROTATION = mat2(0.8253, 0.5646, -0.5646, 0.8253);
 const float SPLAT_SECOND_SCALE = 0.58;
@@ -32,6 +33,28 @@ struct SplatPlane {
 float splatRange(float value, float minimum, float maximum, float softness) {
   float width = max(softness, 0.0001);
   return smoothstep(minimum - width, minimum + width, value) * (1.0 - smoothstep(maximum - width, maximum + width, value));
+}
+
+// Three octaves of value noise in [0, 1]; one octave alone shows its grid as soft blobs.
+float splatOctaves(vec2 position) {
+  return terrainNoise(position).x * 0.5 + terrainNoise(position * 2.03 + 7.1).x * 0.3 + terrainNoise(position * 4.11 + 13.7).x * 0.2;
+}
+
+// Brightness and hue drift at field (about 120 m), patch (20 m) and clump (3 m) scale. Texture detail averages
+// out at a distance, so the clump octave grows with the pixel footprint and far ground does not read as one flat colour.
+vec3 splatVariationTint(float footprint) {
+  float amount = splatVariation.x;
+  if (amount < 0.001) return vec3(1.0);
+  float fieldScale = splatOctaves(worldPosition.xz * 0.008 + 3.7) - 0.5;
+  float patchScale = splatOctaves(worldPosition.xz * 0.05 + 21.0) - 0.5;
+  float clumpScale = splatOctaves(worldPosition.xz * 0.35 + 41.0) - 0.5;
+  float distant = smoothstep(0.02, 0.2, footprint);
+  float brightness = 1.0 + (fieldScale * 0.8 + patchScale * 0.9 + clumpScale * mix(0.35, 0.7, distant)) * amount;
+  float dryness = smoothstep(0.4, 0.68, splatOctaves(worldPosition.xz * 0.02 + 11.0));
+  float lush = smoothstep(0.48, 0.75, splatOctaves(worldPosition.xz * 0.04 + 57.0));
+  vec3 hue = mix(vec3(1.0), vec3(1.3, 1.05, 0.55), dryness * 0.8);
+  hue = mix(hue, vec3(0.72, 0.92, 0.8), lush * 0.7);
+  return mix(vec3(1.0), hue, min(amount, 1.0)) * max(brightness, 0.35);
 }
 
 float splatMaskValue(int layerIndex) {
@@ -140,9 +163,11 @@ void applySplat(inout vec3 color, inout vec3 normal, inout float roughness, inou
 
   float lowFrequency = terrainNoise(worldPosition.xz * 0.045).x;
   float blend = splatOptions.x > 0.0 ? mix(0.5, lowFrequency, 0.7) : 0.0;
-  float macro = 0.78 + terrainNoise(worldPosition.xz * 0.011 + 3.7).x * 0.44;
-  float dryness = smoothstep(0.45, 0.78, terrainNoise(worldPosition.xz * 0.021 + 11.0).x);
-  vec3 dryTint = mix(vec3(1.0), vec3(1.2, 1.0, 0.72), dryness * 0.45);
+  vec3 variationTint = splatVariationTint(length(fwidth(worldPosition.xz)));
+  // Real layer borders wander: jitter the slope and height the rules see, so a mud flat or rock band has a ragged edge.
+  float edgeJitter = (splatOctaves(worldPosition.xz * 0.3 + 71.0) - 0.5) * 2.0 * splatVariation.y;
+  float ruleSlope = slope + edgeJitter * 9.0;
+  float ruleHeight = worldPosition.y + edgeJitter * 1.6;
 
   float weights[4] = float[4](0.0, 0.0, 0.0, 0.0);
   float covered = 0.0;
@@ -150,8 +175,8 @@ void applySplat(inout vec3 color, inout vec3 normal, inout float roughness, inou
     if (index >= layerCount) break;
     if (splatLayer[index].w < 0.5) continue;
     float weight = 1.0;
-    if (splatSlope[index].w > 0.5) weight *= splatRange(slope, splatSlope[index].x, splatSlope[index].y, splatSlope[index].z);
-    if (splatHeightRange[index].w > 0.5) weight *= splatRange(worldPosition.y, splatHeightRange[index].x, splatHeightRange[index].y, splatHeightRange[index].z);
+    if (splatSlope[index].w > 0.5) weight *= splatRange(ruleSlope, splatSlope[index].x, splatSlope[index].y, splatSlope[index].z);
+    if (splatHeightRange[index].w > 0.5) weight *= splatRange(ruleHeight, splatHeightRange[index].x, splatHeightRange[index].y, splatHeightRange[index].z);
     weight *= splatMaskValue(index);
     weights[index] = weight;
     covered = max(covered, weight);
@@ -214,7 +239,7 @@ void applySplat(inout vec3 color, inout vec3 normal, inout float roughness, inou
     blendedHeight += packedSamples[index].y * weight;
   }
 
-  color *= blendedColor * macro * dryTint;
+  color *= blendedColor * variationTint;
   normal = normalize(geometric + blendedTilt);
   roughness = blendedRoughness;
   cavity = mix(1.0, mix(0.55, 1.0, smoothstep(0.1, 0.85, blendedHeight)), splatOptions.w);

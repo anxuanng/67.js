@@ -620,6 +620,13 @@ void main() {
   vec3 keyResponse = keyColor / mix(vec3(5.2, 4.7, 4.1), vec3(3.7, 3.4, 2.9), worldMode);
   keyResponse *= mix(daylight, 1.0, worldMode);
   if (surface.w == 4.0 || surface.w == 7.0) radiance += color * max(dot(-normal, normalize(lightDirection)), 0.0) * 0.3 * keyResponse;
+  if (surface.w == 7.0) {
+    // Sun through thin blades: they glow yellow-green when the camera looks toward the light, most at the thin tips
+    // (uv.y runs 1 at the root to 0 at the tip; grass without UVs gets a middle value).
+    float towardSun = pow(max(dot(-viewDirection, normalize(lightDirection)), 0.0), 3.0);
+    float thinness = textureUV.x > -0.5 ? 1.0 - textureUV.y * 0.8 : 0.6;
+    radiance += color * vec3(1.1, 1.25, 0.55) * towardSun * thinness * 1.4 * keyResponse * visibility;
+  }
   radiance += emission;
   if (surface.w == 3.0) {
     float reflectivity = 0.20 + 0.65 * pow(1.0 - max(dot(normal, viewDirection), 0.0), 3.0);

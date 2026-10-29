@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { GRASS_LEVELS, GRASS_PRESETS, createGrass } from '../src/grass.js';
-import { vertexShader } from '../src/shaders.js';
+import { fragmentShader, vertexShader } from '../src/shaders.js';
 
 const smallArea = { minX: -6, maxX: 6, minZ: -6, maxZ: 6 };
 // A light density keeps the suite fast; blade shape and level rules do not depend on it.
@@ -102,7 +102,25 @@ test('every preset builds, and bad options fail with clear errors', () => {
   assert.throws(() => createGrass({ ...quick, height: [0.5, 0.2] }), /height/);
   assert.throws(() => createGrass({ ...quick, tip: [1, 1] }), /tip colour/);
   assert.throws(() => createGrass({ ...quick, mask: 1 }), /mask/);
+  assert.throws(() => createGrass({ ...quick, patchiness: 2 }), /patchiness/);
+  assert.throws(() => createGrass({ ...quick, stalks: -0.1 }), /stalks/);
   assert.throws(() => createGrass({ ...quick }).update([0, 1]), /eye/);
+});
+
+test('patchiness thins and shortens parts of the field, and zero keeps it uniform', () => {
+  const uniform = createGrass({ ...quick, area: { minX: -20, maxX: 20, minZ: -20, maxZ: 20 }, density: 10, patchiness: 0, eye: [0, 1.5, 0] }).stats();
+  const patchy = createGrass({ ...quick, area: { minX: -20, maxX: 20, minZ: -20, maxZ: 20 }, density: 10, patchiness: 1, eye: [0, 1.5, 0] }).stats();
+  assert.ok(patchy.triangles < uniform.triangles * 0.9, 'thin patches drop blades');
+  assert.ok(patchy.triangles > uniform.triangles * 0.3, 'dense patches keep most of them');
+});
+
+test('seed stalks rise above the blades but stay under 1.5 times the tallest blade', () => {
+  const tallest = (grass) => Math.max(...grass.parts.flatMap(part => [...part.geometry.positions].filter((_, index) => index % 3 === 1)));
+  const options = { ...quick, preset: 'savanna', patchiness: 1, eye: [0, 1.5, 0] };
+  const blades = tallest(createGrass({ ...options, stalks: 0 }));
+  const stalks = tallest(createGrass({ ...options, stalks: 1 }));
+  assert.ok(stalks > blades, 'stalks stand taller than the blades around them');
+  assert.ok(stalks <= GRASS_PRESETS.savanna.height[1] * 1.5 + 1e-4);
 });
 
 test('groundColor sits between the root and tip colours', () => {
@@ -115,4 +133,5 @@ test('grass wind bends by blade height (uv) and rolls across the field as gusts'
   assert.match(vertexShader, /vec3 grassWind\(/);
   assert.match(vertexShader, /if \(surfaceTag == 7\.0 && leafUv\.x > -0\.5\) return grassWind\(/, 'grass without UVs keeps the height-based sway');
   assert.match(vertexShader, /float gust = /);
+  assert.match(fragmentShader, /float towardSun = pow\(max\(dot\(-viewDirection, normalize\(lightDirection\)\)/, 'blades glow when backlit');
 });

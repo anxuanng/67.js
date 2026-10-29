@@ -14,15 +14,37 @@ export const GRASS_LEVELS = Object.freeze([
 ]);
 
 export const GRASS_PRESETS = Object.freeze({
-  meadow: Object.freeze({ height: [0.25, 0.6], width: 0.022, density: 260, clumpSize: 0.55, clumpStrength: 0.55, dryness: 0.25, bend: [0.18, 0.6], base: [0.012, 0.03, 0.006], tip: [0.15, 0.27, 0.045], dry: [0.36, 0.29, 0.1] }),
-  lawn: Object.freeze({ height: [0.07, 0.14], width: 0.012, density: 900, clumpSize: 0.3, clumpStrength: 0.25, dryness: 0.05, bend: [0.05, 0.25], base: [0.01, 0.035, 0.006], tip: [0.11, 0.26, 0.04], dry: [0.3, 0.3, 0.09] }),
-  savanna: Object.freeze({ height: [0.45, 0.95], width: 0.018, density: 170, clumpSize: 0.8, clumpStrength: 0.7, dryness: 0.75, bend: [0.25, 0.8], base: [0.04, 0.035, 0.01], tip: [0.36, 0.3, 0.1], dry: [0.5, 0.39, 0.15] }),
-  wild: Object.freeze({ height: [0.3, 0.9], width: 0.026, density: 200, clumpSize: 0.7, clumpStrength: 0.65, dryness: 0.35, bend: [0.25, 0.75], base: [0.012, 0.028, 0.008], tip: [0.14, 0.24, 0.05], dry: [0.4, 0.32, 0.12] }),
+  meadow: Object.freeze({ height: [0.25, 0.6], width: 0.022, density: 260, clumpSize: 0.55, clumpStrength: 0.55, dryness: 0.25, patchiness: 0.55, stalks: 0.012, bend: [0.18, 0.6], base: [0.012, 0.03, 0.006], tip: [0.15, 0.27, 0.045], dry: [0.36, 0.29, 0.1] }),
+  lawn: Object.freeze({ height: [0.07, 0.14], width: 0.012, density: 900, clumpSize: 0.3, clumpStrength: 0.25, dryness: 0.05, patchiness: 0.2, stalks: 0, bend: [0.05, 0.25], base: [0.01, 0.035, 0.006], tip: [0.11, 0.26, 0.04], dry: [0.3, 0.3, 0.09] }),
+  savanna: Object.freeze({ height: [0.45, 0.95], width: 0.018, density: 170, clumpSize: 0.8, clumpStrength: 0.7, dryness: 0.75, patchiness: 0.65, stalks: 0.035, bend: [0.25, 0.8], base: [0.04, 0.035, 0.01], tip: [0.36, 0.3, 0.1], dry: [0.5, 0.39, 0.15] }),
+  wild: Object.freeze({ height: [0.3, 0.9], width: 0.026, density: 200, clumpSize: 0.7, clumpStrength: 0.65, dryness: 0.35, patchiness: 0.75, stalks: 0.025, bend: [0.25, 0.75], base: [0.012, 0.028, 0.008], tip: [0.14, 0.24, 0.05], dry: [0.4, 0.32, 0.12] }),
 });
 
 const MAXIMUM_BLADES_PER_TILE = 40000;
 const ROUNDING_TILT = 0.55;
 const CANOPY_BLEND = 0.3;
+// Share of blades that fold over at the middle, as trampled or overgrown grass does.
+const FOLDED_SHARE = 0.06;
+// A seed stalk is this much thinner than a blade below its head; the head swells to HEAD_WIDTH past HEAD_START.
+const STALK_WIDTH = 0.22;
+const HEAD_START = 0.7;
+const HEAD_WIDTH = 0.75;
+
+/**
+ * Field-scale entropy at (x, z): `height` and `density` multipliers and a `lush` shade, from two octaves of value noise
+ * (about 8 m and 25 m). With `patchiness` 0 the field is uniform; at 1 some patches are short and thin, others tall and dense.
+ */
+function fieldPatch(x, z, settings) {
+  const amount = settings.patchiness;
+  const broad = valueNoise(x * 0.04, z * 0.04, settings.seed + 57);
+  const local = valueNoise(x * 0.13, z * 0.13, settings.seed + 83);
+  const growth = broad * 0.6 + local * 0.4;
+  return {
+    height: lerp(1, lerp(0.45, 1.35, growth), amount),
+    density: lerp(1, smoothstep(0.28, 0.62, growth), amount * 0.85),
+    lush: lerp(1, lerp(0.68, 1.2, valueNoise(x * 0.07, z * 0.07, settings.seed + 97)), amount),
+  };
+}
 
 function tileSeed(seed, column, row) {
   let mixed = Math.imul(column + 7919, 374761393) ^ Math.imul(row - 104729, 668265263) ^ Math.imul(seed, 2246822519);
@@ -75,10 +97,12 @@ function planTileBlades(column, row, settings, keepLimit) {
     let z = origin[1] + (row + random()) * tileSize;
     const keepKey = random();
     const maskRoll = random();
-    const shapeRolls = [random(), random(), random(), random(), random(), random(), random()];
-    const coverage = keepKey < keepLimit && mask ? clamp(mask(x, z), 0, 1) : 1;
+    const shapeRolls = [random(), random(), random(), random(), random(), random(), random(), random()];
     // Every roll is drawn before skipping, so a blade keeps its shape whatever share of the tile is built.
-    if (keepKey >= keepLimit || maskRoll >= coverage) continue;
+    if (keepKey >= keepLimit) continue;
+    const coverage = mask ? clamp(mask(x, z), 0, 1) : 1;
+    const patch = fieldPatch(x, z, settings);
+    if (maskRoll >= coverage * patch.density) continue;
     const clump = nearestClump(x, z, settings.clumpSize, seed);
     const pull = settings.clumpStrength * 0.35;
     x = lerp(x, clump.centerX, pull);
@@ -90,14 +114,21 @@ function planTileBlades(column, row, settings, keepLimit) {
     const leanX = lerp(Math.cos(randomLean), awayX / awayLength, settings.clumpStrength);
     const leanZ = lerp(Math.sin(randomLean), awayZ / awayLength, settings.clumpStrength);
     const leanLength = Math.hypot(leanX, leanZ) || 1;
-    const height = lerp(settings.height[0], settings.height[1], shapeRolls[1]) * clump.heightScale * coverage ** 0.35;
+    // One roll picks the blade kind: a seed stalk at the low end, a folded blade at the high end, a plain blade between.
+    const stalk = shapeRolls[7] < settings.stalks;
+    const folded = !stalk && shapeRolls[7] > 1 - FOLDED_SHARE;
+    const bladeHeight = lerp(settings.height[0], settings.height[1], shapeRolls[1]) * clump.heightScale * patch.height;
+    // Stalks rise above the sward around them but stay under 1.5 times the tallest blade.
+    const stalkHeight = Math.min(bladeHeight * lerp(1.3, 1.6, shapeRolls[3]), settings.height[1] * 1.5);
+    const height = (stalk ? stalkHeight : bladeHeight) * coverage ** 0.35;
     const dryPatch = smoothstep(0.45, 0.8, valueNoise(x * 0.09, z * 0.09, seed + 31)) * settings.dryness;
+    const bend = lerp(settings.bend[0], settings.bend[1], shapeRolls[3]) * clump.bendScale;
     blades.push({
-      x, z, y: terrainHeight(x, z), keepKey, height,
+      x, z, y: terrainHeight(x, z), keepKey, height, stalk,
       yaw: lerp(shapeRolls[2] * FULL_TURN, clump.facing, settings.clumpStrength * 0.6),
       leanX: leanX / leanLength, leanZ: leanZ / leanLength,
-      bend: lerp(settings.bend[0], settings.bend[1], shapeRolls[3]) * clump.bendScale,
-      shade: clump.shade * lerp(0.85, 1.12, shapeRolls[4]),
+      bend: stalk ? bend * 0.35 : (folded ? Math.min(1.6, bend * 2.4 + 0.5) : bend),
+      shade: clump.shade * patch.lush * lerp(0.85, 1.12, shapeRolls[4]),
       hue: shapeRolls[6] * 2 - 1,
       dryness: clamp(dryPatch + (shapeRolls[5] < settings.dryness * 0.25 ? 0.6 : 0), 0, 1),
     });
@@ -118,6 +149,13 @@ function bladeCurve(blade, progress) {
 }
 
 function bladeColor(blade, progress, settings) {
+  if (blade.stalk) {
+    // Green stem ripening to a straw seed head.
+    const stem = lerpVectors(settings.base, lerpVectors(settings.tip, settings.dry, 0.35), progress ** 0.6);
+    const head = settings.dry.map(channel => channel * 0.5);
+    const colour = lerpVectors(stem, head, smoothstep(HEAD_START - 0.08, HEAD_START + 0.05, progress));
+    return colour.map(channel => channel * blade.shade * lerp(0.4, 1, smoothstep(0, 0.3, progress)));
+  }
   const green = lerpVectors(settings.base, settings.tip, progress ** 0.75);
   const dryTip = lerpVectors(settings.base.map(channel => channel * 1.6), settings.dry, progress ** 0.6);
   const mixed = lerpVectors(green, dryTip, blade.dryness);
@@ -125,6 +163,12 @@ function bladeColor(blade, progress, settings) {
   // Hue drift per blade: some lean yellow, some blue-green, as in a real sward.
   const hue = [1 + blade.hue * 0.14, 1, 1 - blade.hue * 0.2];
   return mixed.map((channel, index) => channel * occlusion * blade.shade * hue[index]);
+}
+
+/** Width of a seed stalk along its length: a thin stem, then a spindle-shaped head that closes at the tip. */
+function stalkProfile(progress) {
+  if (progress <= HEAD_START) return STALK_WIDTH;
+  return STALK_WIDTH + HEAD_WIDTH * Math.sin(Math.PI * (progress - HEAD_START) / (1 - HEAD_START));
 }
 
 function addBlade(builder, blade, tileX, tileZ, level, settings) {
@@ -137,7 +181,7 @@ function addBlade(builder, blade, tileX, tileZ, level, settings) {
     const { point, tangent } = bladeCurve(blade, progress);
     const center = [base[0] + point[0], base[1] + point[1], base[2] + point[2]];
     const faceNormal = normalized(crossProduct(right, tangent));
-    const halfWidth = width * 0.5 * (1 - progress ** 1.7);
+    const halfWidth = width * 0.5 * (blade.stalk ? stalkProfile(progress) : 1 - progress ** 1.7);
     const color = bladeColor(blade, progress, settings);
     const vertexFor = (side) => {
       // Rounded normals: each edge tilts outward, so a flat blade shades like a curved leaf.
@@ -177,6 +221,9 @@ function resolveSettings(options) {
   if (!(settings.tileSize > 0)) throw new RangeError('Grass tileSize must be positive.');
   if (!Array.isArray(settings.height) || !(settings.height[0] > 0) || !(settings.height[1] >= settings.height[0])) throw new RangeError('Grass height must be [minimum, maximum] in metres.');
   if (!(settings.width > 0)) throw new RangeError('Grass width must be positive.');
+  for (const name of ['patchiness', 'stalks', 'dryness']) {
+    if (!(settings[name] >= 0 && settings[name] <= 1)) throw new RangeError(`Grass ${name} must be between 0 and 1.`);
+  }
   if (settings.mask !== undefined && typeof settings.mask !== 'function') throw new TypeError('Grass mask must be a function (x, z) => 0..1.');
   if (typeof settings.terrainHeight !== 'function') throw new TypeError('Grass terrainHeight must be a function (x, z) => y.');
   for (const name of ['base', 'tip', 'dry']) {
@@ -192,7 +239,8 @@ function resolveSettings(options) {
  * Builds a grass field over `area` ({ minX, maxX, minZ, maxZ }) in tiles of `tileSize` metres.
  * Options: `preset` ('meadow', 'lawn', 'savanna', 'wild'), `terrainHeight(x, z)`, `mask(x, z)` (0..1 coverage),
  * `density` (blades per square metre near the camera), `height` [min, max], `width`, `clumpSize`, `clumpStrength`,
- * `bend` [min, max], `dryness`, linear `base`, `tip` and `dry` colours, `castShadow`, `levels`, `cullDistance`, `seed`, `eye`.
+ * `bend` [min, max], `dryness`, `patchiness` (0..1 field-scale height and density patches), `stalks` (share of seed
+ * stalks), linear `base`, `tip` and `dry` colours, `castShadow`, `levels`, `cullDistance`, `seed`, `eye`.
  * Returns `{ parts, update(eye), material, stats(), groundColor }`; tint the ground under the grass with `groundColor`. `update` returns true when tiles changed level; then call
  * `renderer.replaceParts([...otherParts, ...grass.parts])`. Grass parts are rigid and untextured, so they stream.
  */

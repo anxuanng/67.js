@@ -59,7 +59,7 @@ const SPLAT_COLOR_UNIT = 11;
 const SPLAT_NORMAL_UNIT = 12;
 const SPLAT_PACKED_UNIT = 13;
 const SPLAT_MASK_UNIT = 14;
-const SPLAT_UNIFORMS = ['splatEnabled', 'splatColor', 'splatNormal', 'splatPacked', 'splatMask', 'splatLayer[0]', 'splatTint[0]', 'splatSlope[0]', 'splatHeightRange[0]', 'splatMaskChannel[0]', 'splatMaskInvert[0]', 'splatBlend', 'splatOptions', 'splatMaskBounds'];
+const SPLAT_UNIFORMS = ['splatEnabled', 'splatColor', 'splatNormal', 'splatPacked', 'splatMask', 'splatLayer[0]', 'splatTint[0]', 'splatSlope[0]', 'splatHeightRange[0]', 'splatMaskChannel[0]', 'splatMaskInvert[0]', 'splatBlend', 'splatOptions', 'splatMaskBounds', 'splatVariation'];
 
 function validateMaterialMaps(material) {
   if (PROCEDURAL_MATERIAL_TAGS.has(material.tag)) {
@@ -561,6 +561,7 @@ export class Renderer67 {
     context.uniform4fv(uniforms.splatBlend, parameters.blend);
     context.uniform4fv(uniforms.splatOptions, parameters.options);
     context.uniform4fv(uniforms.splatMaskBounds, parameters.maskBounds);
+    context.uniform4fv(uniforms.splatVariation, parameters.variation);
   }
 
   disposeSplatResources() {

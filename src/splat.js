@@ -13,6 +13,8 @@ const DEFAULT_SPLAT = Object.freeze({
   triplanarEnd: 52,
   antiTiling: 1,
   cavity: 0.55,
+  variation: 1,
+  edgeNoise: 1,
 });
 const DEFAULT_RULE_SOFTNESS = Object.freeze({ slope: 4, height: 1.5 });
 
@@ -86,10 +88,11 @@ export function validateSplatMaterial(material) {
   if (splat.rules !== undefined && (!Array.isArray(splat.rules) || splat.rules.length > layers.length)) throw new RangeError('splat.rules needs one entry per layer at most.');
   splat.rules?.forEach((rule, index) => validateRule(rule, index, splat));
   validateMaskMap(splat);
-  for (const field of ['heightBlend', 'heightInfluence', 'antiTiling', 'cavity']) {
+  for (const field of ['heightBlend', 'heightInfluence', 'antiTiling', 'cavity', 'variation', 'edgeNoise']) {
     if (splat[field] !== undefined && requireFiniteNumber(splat[field], `splat.${field}`) < 0) throw new RangeError(`splat.${field} must not be negative.`);
   }
   if (splat.antiTiling > 1 || splat.cavity > 1) throw new RangeError('splat.antiTiling and splat.cavity must be at most 1.');
+  if (splat.variation > 2 || splat.edgeNoise > 2) throw new RangeError('splat.variation and splat.edgeNoise must be at most 2.');
   for (const field of ['triplanarStart', 'triplanarEnd']) {
     if (splat[field] !== undefined) requireRange([splat[field], splat[field]], `splat.${field}`, 0, 90);
   }
@@ -147,6 +150,7 @@ export function packSplatParameters(material) {
     blend: new Float32Array([splat.heightBlend, splat.heightInfluence, splat.triplanarStart, splat.triplanarEnd]),
     options: new Float32Array([splat.antiTiling, splat.maskMap ? 1 : 0, layerCount, splat.cavity]),
     maskBounds: new Float32Array(splat.maskBounds ?? [0, 0, 1, 1]),
+    variation: new Float32Array([splat.variation, splat.edgeNoise, 0, 0]),
   };
   material.layers.forEach((layer, index) => writeRule(material.splat?.rules?.[index], index, parameters, layer));
   return parameters;
