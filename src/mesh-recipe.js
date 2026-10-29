@@ -7,6 +7,7 @@ import {
 import { meshBoolean, BOOLEAN_OPERATIONS } from './mesh-boolean.js';
 import { createMeshData } from './mesh-data.js';
 import { mirrorMesh, arrayMesh, solidifyMesh } from './mesh-stack.js';
+import { bevelEdges } from './mesh-bevel.js';
 
 // Replayable edit log for agent recipes. Each edit is plain JSON; names follow Blender's bmesh.ops where they match.
 
@@ -28,6 +29,7 @@ export const MESH_EDIT_OPERATIONS = Object.freeze({
   mirror: { fields: ['name', 'axis', 'merge'], tags: ['mirrored'] },
   array: { fields: ['name', 'count', 'offset', 'relativeOffset', 'merge'], tags: ['last'] },
   solidify: { fields: ['name', 'thickness', 'offset', 'evenThickness'], tags: ['inner', 'rim'] },
+  bevel: { fields: ['name', 'edges', 'width', 'segments', 'profile', 'clampOverlap'], tags: ['strip', 'corner'] },
 });
 
 function editError(index, message) {
@@ -134,6 +136,18 @@ export function normalizeMeshEdits(edits) {
         if (edit.evenThickness !== undefined && typeof edit.evenThickness !== 'boolean') throw editError(index, 'evenThickness must be boolean');
         normalized.evenThickness = edit.evenThickness ?? true;
         break;
+      case 'bevel':
+        if (edit.edges !== undefined && (!edit.edges || typeof edit.edges !== 'object' || Array.isArray(edit.edges))) {
+          throw editError(index, 'edges must be a rule: { "between": [faceRule, faceRule] }, { "angle": degrees }, { "boundaryOf": faceRule } or { "all": true }');
+        }
+        normalized.edges = edit.edges ?? { angle: 30 };
+        normalized.width = finiteNumber(edit.width, index, 'width', { minimum: 0, exclusiveMinimum: true });
+        if (!Number.isInteger(edit.segments ?? 1) || (edit.segments ?? 1) < 1 || (edit.segments ?? 1) > 16) throw editError(index, 'segments must be an integer from 1 to 16');
+        normalized.segments = edit.segments ?? 1;
+        normalized.profile = edit.profile === undefined ? 0.5 : finiteNumber(edit.profile, index, 'profile', { minimum: 0, maximum: 1 });
+        if (edit.clampOverlap !== undefined && typeof edit.clampOverlap !== 'boolean') throw editError(index, 'clampOverlap must be boolean');
+        normalized.clampOverlap = edit.clampOverlap ?? true;
+        break;
       case 'merge_by_distance':
         normalized.distance = finiteNumber(edit.distance ?? 1e-4, index, 'distance', { minimum: 0, maximum: 1e3 });
         break;
@@ -198,6 +212,19 @@ function runEdit(current, edit, index, { resolveCutter }) {
     result.removedVertices = merged.removedVertices;
     result.removedFaces = merged.removedFaces;
     return { mesh: merged.mesh, result };
+  }
+  if (edit.op === 'bevel') {
+    let outcome;
+    try {
+      outcome = bevelEdges(current, edit.edges, edit);
+    } catch (error) {
+      throw new error.constructor(`Mesh edit ${index} (bevel): ${error.message}`);
+    }
+    result.edges = outcome.bevelEdges;
+    result.width = outcome.width;
+    if (outcome.clamped) result.clamped = true;
+    result.tags = tagSummary(outcome.mesh, edit.name);
+    return { mesh: outcome.mesh, result };
   }
   if (Object.hasOwn(GENERATORS, edit.op)) {
     const generated = GENERATORS[edit.op](current, edit);
@@ -289,7 +316,7 @@ export function applyMeshEdits(mesh, edits, { maxVertices = 250_000, maxFaces = 
   return { mesh: current, results };
 }
 
-export const STACK_OPERATIONS = Object.freeze(['mirror', 'array', 'solidify']);
+export const STACK_OPERATIONS = Object.freeze(['mirror', 'array', 'solidify', 'bevel']);
 export const MAX_STACK_NODES = 16;
 
 /** Validate a modifier stack: edits restricted to mirror, array and solidify, at most 16. */
