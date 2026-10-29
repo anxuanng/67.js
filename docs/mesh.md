@@ -169,7 +169,38 @@ allows WebAssembly compilation (`'wasm-unsafe-eval'`) and `data:` reads for the 
 Measured on this machine (Node 24, one thread): engine load 26–45 ms; cube minus a 32-sided cylinder 25–30 ms;
 a 32,768-face sphere minus a box about 0.6 s including conversion and lint.
 
-Bevel, loop cut, mirror, array and solidify are planned next.
+### Mirror, array and solidify
+
+These three work as edits and as stack nodes:
+
+| Op | Fields | Creates tags |
+| --- | --- | --- |
+| `mirror` | `axis` (`x` default, `y`, `z`), `merge` (default 0.001), `name` | `<name>.mirrored` |
+| `array` | `count` (1 to 256, default 2), `offset` [x, y, z], `relativeOffset` [x, y, z] in bounding-box sizes (default [1, 0, 0] unless `offset` is given), `merge`, `name` | `<name>.last` |
+| `solidify` | `thickness`, `offset` (-1 inward by default, 1 outward, 0 centred), `evenThickness` (default true), `name` | `<name>.inner`, `<name>.rim` |
+
+- `mirror` reflects across the plane through the local origin. Vertices within `merge` of the plane are shared by
+  both halves and faces lying in the plane are removed, so mirroring a closed half that touches the plane gives one
+  closed solid. Mirrored faces swap their axis tags (`left` and `right` for x, `top` and `bottom` for y, `front` and
+  `back` for z), so tags keep matching where the faces are.
+- `array` with `merge` welds touching copies and removes the faces between them, giving one solid.
+- `solidify` adds an inner shell and rim quads along open edges. An open surface becomes a closed wall; a closed
+  surface becomes a hollow shell (reported as a cavity).
+
+`removeCoincidentFaces(mesh)` is exported for the same cleanup after other operations.
+
+### Modifier stack
+
+A recipe mesh may carry `stack`, a list of `mirror`, `array` and `solidify` nodes (up to 16) evaluated after the
+edits without changing them, as Blender's modifier stack. Every prefix (the edit result, then each node) is cached
+by its recipe text in a least-recently-used cache bounded at 64 entries and 64 MiB, so changing a late node reuses
+the earlier work. Results list one entry per node with `cached: true` when reused. `meshCacheStats()` reports hits
+and misses. `evaluateMeshStack(mesh, stack, { cache, cacheKey })` runs a stack outside recipes.
+
+The `mesh_stack` tool sets the whole stack in one revision. `apply: n` moves the first `n` nodes into the edit log,
+as Blender's Apply modifier, which leaves the result unchanged.
+
+Bevel and loop cut are planned next.
 
 ## MCP
 

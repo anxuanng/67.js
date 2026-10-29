@@ -27,7 +27,7 @@ Version `0.8.0` adds source-node authoring on imported GLBs with retained rigs, 
 
 Version `0.9.0` adds isolated multi-angle and pose review with unchanged source revision and preview state.
 
-The stdio MCP server supplies twenty schema-backed tools and persistent CPU/GPU image previews.
+The stdio MCP server supplies twenty-one schema-backed tools and persistent CPU/GPU image previews.
 Recipes retain lighting, volumetric fog, grading and directional shadow coverage with atomic edits and undo.
 Imported asset sessions retain supported textures, rigs, morphs and clips from a configured local GLB catalog.
 

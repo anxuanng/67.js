@@ -48,7 +48,7 @@ function pixels(bytes, crop) {
 }
 try {
   await client.connect(transport);
-  assert.equal((await client.listTools()).tools.length, 20);
+  assert.equal((await client.listTools()).tools.length, 21);
   const created = (await call('scene_create_asset', { recipe: fixture.recipe })).structuredContent;
   const sessionId = created.sessionId;
   const checkpoint = (await call('scene_checkpoint', { sessionId })).structuredContent;

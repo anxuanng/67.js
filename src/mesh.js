@@ -12,6 +12,8 @@ export { meshFromGeometry, joinTriangles, tagFacesByAxis, weldVertices, rebuildF
 export { lintMesh } from './mesh-lint.js';
 export { selectFaces, countSelected } from './mesh-select.js';
 export { applyMeshEdits, normalizeMeshEdits, transformMesh, MESH_EDIT_OPERATIONS, MAX_MESH_EDITS } from './mesh-recipe.js';
+export { evaluateMeshStack, normalizeMeshStack, STACK_OPERATIONS, MAX_STACK_NODES } from './mesh-recipe.js';
+export { mirrorMesh, arrayMesh, solidifyMesh, removeCoincidentFaces } from './mesh-stack.js';
 export { loadMeshBooleans, meshBooleansLoaded, meshBoolean, BOOLEAN_OPERATIONS } from './mesh-boolean.js';
 export {
   extrudeFaceRegion, extrudeIndividual, insetRegion, insetIndividual, deleteFaces, flipFaces, translateFaces,

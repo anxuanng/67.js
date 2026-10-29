@@ -49,6 +49,12 @@ async function connect(context) {
       scene.apply([{ type: 'edit-mesh', geometry, edits, ...(replace === undefined ? {} : { replace }) }], { expectedRevision });
       return { ...status(), mesh: scene.inspectMeshes({ geometries: [geometry] }).meshes[0] };
     },
+    async setMeshStack({ sessionId: requested, expectedRevision, geometry, stack, apply }) {
+      calls++;
+      assert.equal(requested, sessionId);
+      scene.apply([{ type: 'set-mesh-stack', geometry, ...(stack === undefined ? {} : { stack }), ...(apply === undefined ? {} : { apply }) }], { expectedRevision });
+      return { ...status(), mesh: scene.inspectMeshes({ geometries: [geometry] }).meshes[0] };
+    },
     async apply({ expectedRevision, operations }) {
       calls++;
       scene.apply(operations, { expectedRevision });
@@ -116,7 +122,7 @@ test('SDK advertises the complete strict JSON contract and truthful annotations'
   const { client } = await connect(context);
   const { tools } = await client.listTools();
   assert.deepEqual(tools.map(tool => tool.name).sort(), [
-    'mesh_edit', 'mesh_inspect', 'scene_apply', 'scene_asset_catalog', 'scene_capabilities', 'scene_checkpoint', 'scene_create', 'scene_create_asset', 'scene_dispose',
+    'mesh_edit', 'mesh_inspect', 'mesh_stack', 'scene_apply', 'scene_asset_catalog', 'scene_capabilities', 'scene_checkpoint', 'scene_create', 'scene_create_asset', 'scene_dispose',
     'scene_export_recipe', 'scene_inspect', 'scene_look', 'scene_review', 'scene_release_checkpoint', 'scene_restore',
     'scene_render_cancel', 'scene_render_release', 'scene_render_result', 'scene_render_status', 'scene_render_submit',
   ].sort());
@@ -154,7 +160,7 @@ test('review SDK exposes one image and rejects unknown or unbounded shot fields 
   await client.callTool({ name: 'scene_create', arguments: { recipe: recipe() } });
   const { tools } = await client.listTools();
   const tool = tools.find(tool => tool.name === 'scene_review');
-  assert.equal(tools.length, 20);
+  assert.equal(tools.length, 21);
   assert.equal(tool.annotations.readOnlyHint, true);
   assert.equal(tool.inputSchema.properties.shots.maxItems, 4);
   assert.equal(tool.inputSchema.properties.shots.items.additionalProperties, false);
@@ -266,6 +272,25 @@ test('mesh_edit builds a mesh from a base and an edit log through the SDK', asyn
   await rejected(client, 'mesh_edit', { sessionId, expectedRevision: 2, geometry: 'cube', edits: [{ op: 'bevel', select: { all: true } }] });
   await rejected(client, 'mesh_edit', { sessionId, expectedRevision: 2, geometry: 'cube', edits: [] });
   await rejected(client, 'mesh_edit', { sessionId, expectedRevision: 2, geometry: 'cube', edits: [{ op: 'translate', offset: [0, 1, 0], code: 'run()' }] });
+});
+
+test('mesh_stack sets, changes and applies a modifier stack through the SDK', async context => {
+  const { client, sessionId } = await connect(context);
+  await client.callTool({ name: 'scene_create', arguments: { recipe: {
+    ...recipe(),
+    geometries: [{ id: 'cube', type: 'mesh', base: { type: 'box', bevel: 0 }, edits: [{ op: 'translate', offset: [0.5, 0, 0] }] }],
+  } } });
+  const set = await client.callTool({ name: 'mesh_stack', arguments: { sessionId, expectedRevision: 0, geometry: 'cube',
+    stack: [{ op: 'mirror', axis: 'x' }, { op: 'array', count: 3, relativeOffset: [0, 0, 1.5] }] } });
+  assert.equal(set.isError, undefined, set.content?.[0]?.text);
+  assert.equal(set.structuredContent.mesh.parts.count, 3);
+  assert.deepEqual(set.structuredContent.mesh.stack.map(node => node.op), ['mirror', 'array']);
+  const applied = await client.callTool({ name: 'mesh_stack', arguments: { sessionId, expectedRevision: 1, geometry: 'cube', apply: 1 } });
+  assert.equal(applied.isError, undefined, applied.content?.[0]?.text);
+  const exported = await client.callTool({ name: 'scene_export_recipe', arguments: { sessionId } });
+  assert.deepEqual(exported.structuredContent.recipe.geometries[0].edits.map(edit => edit.op), ['translate', 'mirror']);
+  await rejected(client, 'mesh_stack', { sessionId, expectedRevision: 2, geometry: 'cube', stack: [{ op: 'extrude_individual', offset: 1 }] });
+  await rejected(client, 'mesh_stack', { sessionId, expectedRevision: 2, geometry: 'cube', stack: [{ op: 'array', count: 1000 }] });
 });
 
 test('real SDK round trip authors motion, seeks without revisions and rejects unknown track fields', async context => {

@@ -6,6 +6,7 @@
 - Add semantic face selection and mesh edits (extrude region and individual, inset region and individual, delete, flip normals, translate with proportional falloff, merge by distance, tag) that tag the faces they create
 - Add the recipe geometry type `mesh` (a base shape plus a replayable edit log) and the `mesh_edit` MCP tool, which appends or replaces edits atomically and reports each edit's result
 - Add mesh booleans (union, difference, intersect) through Manifold WebAssembly as the `boolean` edit with an inline primitive cutter, tag transfer and polygon rebuilding; `manifold-3d` is an optional peer dependency, embedded in the MCP preview
+- Add mirror, array and solidify as mesh edits and as a non-destructive modifier stack evaluated after the edits, with every prefix cached, and the `mesh_stack` MCP tool to set the stack or apply its first nodes into the edit log
 - Report hollow cavities as valid in `lintMesh` instead of as inverted parts
 - Add the `mesh_inspect` MCP tool: polygon counts, face sizes, parts, face tags, bounds and lint problems with suggested fixes for every recipe geometry
 

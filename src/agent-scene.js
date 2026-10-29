@@ -6,7 +6,7 @@ import { applyProjection } from './camera.js';
 import { normalizeAgentLook } from './agent-look.js';
 import { normalizeAgentMotion, compileAgentMotion } from './agent-motion.js';
 import { meshReport, generateMeshGeometry, MESH_SMOOTH_ANGLE_DEFAULT } from './agent-mesh.js';
-import { normalizeMeshEdits, MESH_EDIT_OPERATIONS, MAX_MESH_EDITS } from './mesh-recipe.js';
+import { normalizeMeshEdits, normalizeMeshStack, MESH_EDIT_OPERATIONS, MAX_MESH_EDITS, STACK_OPERATIONS, MAX_STACK_NODES } from './mesh-recipe.js';
 export { normalizeAgentLook, resolveAgentShadow } from './agent-look.js';
 export { needsMeshBooleans } from './agent-mesh.js';
 export { loadMeshBooleans, meshBooleansLoaded } from './mesh-boolean.js';
@@ -42,10 +42,11 @@ export const AGENT_SCENE_CAPABILITIES = Object.freeze({
   format: '67js.scene', schemaVersion: 1,
   geometryTypes: Object.freeze(['box', 'cylinder', 'sphere', 'torus', 'lathe', 'extrude', 'tube', 'mesh']),
   meshEdits: Object.freeze({ operations: Object.freeze(Object.keys(MESH_EDIT_OPERATIONS)), maxEdits: MAX_MESH_EDITS }),
+  meshStack: Object.freeze({ operations: STACK_OPERATIONS, maxNodes: MAX_STACK_NODES }),
   operations: Object.freeze([
     'set-node', 'set-material', 'set-camera', 'add-node', 'remove-node',
     'add-geometry', 'remove-geometry', 'add-material', 'remove-material',
-    'set-environment', 'set-effects', 'set-shadow', 'set-motion', 'edit-mesh',
+    'set-environment', 'set-effects', 'set-shadow', 'set-motion', 'edit-mesh', 'set-mesh-stack',
   ]),
   materialTags: Object.freeze(['surface', 'unlit', 'liquid', 'foam']),
   alphaModes: Object.freeze(RECIPE_ALPHA_MODES),
@@ -325,7 +326,7 @@ const GEOMETRY_FIELDS = {
   lathe: ['profile', 'segments', 'startAngle', 'sweep'],
   extrude: ['contour', 'holes', 'depth', 'steps', 'bevel', 'bevelThickness', 'bevelSegments'],
   tube: ['path', 'radius', 'segments', 'radialSegments', 'closed'],
-  mesh: ['base', 'edits', 'smoothAngle'],
+  mesh: ['base', 'edits', 'stack', 'smoothAngle'],
 };
 
 function geometryEstimate(value) {
@@ -346,7 +347,7 @@ function geometryEstimate(value) {
     return input.length;
   }
   for (const field of GEOMETRY_FIELDS[value.type]) {
-    if (value[field] !== undefined && !['profile', 'contour', 'holes', 'path', 'closed', 'base', 'edits'].includes(field)) {
+    if (value[field] !== undefined && !['profile', 'contour', 'holes', 'path', 'closed', 'base', 'edits', 'stack'].includes(field)) {
       finite(value[field], field);
     }
   }
@@ -388,6 +389,8 @@ function geometryEstimate(value) {
       for (const edit of normalizeMeshEdits(value.edits ?? [])) {
         if (edit.op === 'boolean') estimate += cutterEstimate(edit.cutter);
       }
+      // Stack nodes multiply the mesh: arrays by their count, mirror and solidify at most by two.
+      for (const node of normalizeMeshStack(value.stack ?? [])) estimate *= node.op === 'array' ? node.count : 2;
       if (value.smoothAngle !== undefined && (value.smoothAngle < 0 || value.smoothAngle > 180)) {
         throw new RangeError('smoothAngle is degrees from 0 to 180.');
       }
@@ -421,8 +424,9 @@ function generateGeometry(value, maxVertices) {
     case 'tube':
       return tube(value.path, { ...value, maxVertices });
     case 'mesh':
-      return generateMeshGeometry(generateGeometry(value.base, maxVertices), value.edits ?? [], {
+      return generateMeshGeometry(() => generateGeometry(value.base, maxVertices), value.edits ?? [], {
         maxVertices, smoothAngle: value.smoothAngle ?? MESH_SMOOTH_ANGLE_DEFAULT,
+        stack: value.stack ?? [], cacheKey: JSON.stringify(value.base),
         resolveCutter: cutter => {
           cutterEstimate(cutter);
           return generateGeometry(cutter, maxVertices);
@@ -909,6 +913,28 @@ export function createAgentScene(input, inputLimits = {}) {
             throw new TypeError('edit-mesh needs an edits array.');
           }
           target.edits = operation.replace ? operation.edits : [...(target.edits ?? []), ...operation.edits];
+          normalizeMeshEdits(target.edits);
+          continue;
+        }
+        if (operation.type === 'set-mesh-stack') {
+          knownKeys(operation, ['type', 'geometry', 'stack', 'apply'], 'operation');
+          identifier(operation.geometry);
+          const target = candidate.geometries.find(geometry => geometry.id === operation.geometry);
+          if (!target) {
+            throw new RangeError(`Geometry ID was not found: ${operation.geometry}.`);
+          }
+          if (target.type !== 'mesh') {
+            throw new TypeError(`Geometry ${operation.geometry} is a ${target.type}. Only mesh geometries have a modifier stack.`);
+          }
+          const stack = operation.stack ?? target.stack ?? [];
+          normalizeMeshStack(stack);
+          const applied = operation.apply ?? 0;
+          if (!Number.isInteger(applied) || applied < 0 || applied > stack.length) {
+            throw new RangeError(`apply must be an integer from 0 to the stack length ${stack.length}.`);
+          }
+          // Applying moves the first nodes into the edit log, as Blender's Apply modifier does.
+          target.edits = [...(target.edits ?? []), ...stack.slice(0, applied)];
+          target.stack = stack.slice(applied);
           normalizeMeshEdits(target.edits);
           continue;
         }

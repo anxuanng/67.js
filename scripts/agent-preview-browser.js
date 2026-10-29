@@ -321,6 +321,16 @@ window.__agentPreview = {
       return { ...status, mesh };
     });
   },
+  setMeshStack({ sessionId, expectedRevision, geometry, stack, apply }) {
+    const record = requireSession(sessionId);
+    if (typeof record.scene.inspectMeshes !== 'function') {
+      throw new TypeError('mesh_stack supports procedural recipe scenes.');
+    }
+    const operation = { type: 'set-mesh-stack', geometry, ...(stack === undefined ? {} : { stack }), ...(apply === undefined ? {} : { apply }) };
+    const status = this.applyLoaded({ sessionId, operations: [operation], expectedRevision });
+    const [mesh] = record.scene.inspectMeshes({ geometries: [geometry] }).meshes;
+    return { ...status, mesh };
+  },
   look({ sessionId, motionTime }) {
     const record = requireSession(sessionId);
     if (motionTime !== undefined) {

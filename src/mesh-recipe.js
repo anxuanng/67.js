@@ -6,6 +6,7 @@ import {
 } from './mesh-ops.js';
 import { meshBoolean, BOOLEAN_OPERATIONS } from './mesh-boolean.js';
 import { createMeshData } from './mesh-data.js';
+import { mirrorMesh, arrayMesh, solidifyMesh } from './mesh-stack.js';
 
 // Replayable edit log for agent recipes. Each edit is plain JSON; names follow Blender's bmesh.ops where they match.
 
@@ -24,6 +25,9 @@ export const MESH_EDIT_OPERATIONS = Object.freeze({
   merge_by_distance: { fields: ['distance'], tags: [] },
   tag: { fields: ['select', 'name'], tags: [] },
   boolean: { fields: ['name', 'operation', 'cutter', 'translation', 'rotation', 'scale'], tags: ['cut'] },
+  mirror: { fields: ['name', 'axis', 'merge'], tags: ['mirrored'] },
+  array: { fields: ['name', 'count', 'offset', 'relativeOffset', 'merge'], tags: ['last'] },
+  solidify: { fields: ['name', 'thickness', 'offset', 'evenThickness'], tags: ['inner', 'rim'] },
 });
 
 function editError(index, message) {
@@ -112,6 +116,24 @@ export function normalizeMeshEdits(edits) {
         }
         break;
       }
+      case 'mirror':
+        if (!['x', 'y', 'z'].includes(edit.axis ?? 'x')) throw editError(index, 'axis must be x, y or z');
+        normalized.axis = edit.axis ?? 'x';
+        normalized.merge = edit.merge === undefined ? 0.001 : finiteNumber(edit.merge, index, 'merge', { minimum: 0, maximum: 1e3 });
+        break;
+      case 'array':
+        if (!Number.isInteger(edit.count ?? 2) || (edit.count ?? 2) < 1 || (edit.count ?? 2) > 256) throw editError(index, 'count must be an integer from 1 to 256');
+        normalized.count = edit.count ?? 2;
+        normalized.offset = edit.offset === undefined ? [0, 0, 0] : vector(edit.offset, index, 'offset');
+        normalized.relativeOffset = edit.relativeOffset === undefined ? (edit.offset === undefined ? [1, 0, 0] : [0, 0, 0]) : vector(edit.relativeOffset, index, 'relativeOffset');
+        normalized.merge = edit.merge === undefined ? 0 : finiteNumber(edit.merge, index, 'merge', { minimum: 0, maximum: 1e3 });
+        break;
+      case 'solidify':
+        normalized.thickness = finiteNumber(edit.thickness, index, 'thickness', { minimum: 0, exclusiveMinimum: true });
+        normalized.offset = edit.offset === undefined ? -1 : finiteNumber(edit.offset, index, 'offset', { minimum: -1, maximum: 1 });
+        if (edit.evenThickness !== undefined && typeof edit.evenThickness !== 'boolean') throw editError(index, 'evenThickness must be boolean');
+        normalized.evenThickness = edit.evenThickness ?? true;
+        break;
       case 'merge_by_distance':
         normalized.distance = finiteNumber(edit.distance ?? 1e-4, index, 'distance', { minimum: 0, maximum: 1e3 });
         break;
@@ -148,6 +170,105 @@ export function transformMesh(mesh, { translation, rotation, scale }) {
   });
 }
 
+/** Run one normalized edit on MeshData and describe what it did. */
+function runEdit(current, edit, index, { resolveCutter }) {
+  const result = { op: edit.op };
+  if (edit.name) result.name = edit.name;
+  if (edit.op === 'boolean') {
+    if (!resolveCutter) throw new TypeError(`Mesh edit ${index} (boolean) needs a cutter resolver; recipe meshes provide one.`);
+    let cutter;
+    try {
+      cutter = transformMesh(resolveCutter(edit.cutter), edit);
+    } catch (error) {
+      throw new error.constructor(`Mesh edit ${index} (boolean cutter): ${error.message}`);
+    }
+    const cutTag = `${edit.name}.cut`;
+    let outcome;
+    try {
+      outcome = meshBoolean(current, cutter, edit.operation, { cutTag });
+    } catch (error) {
+      throw new error.constructor(`Mesh edit ${index} (boolean ${edit.operation}): ${error.message}`);
+    }
+    result.operation = edit.operation;
+    result.tags = { [cutTag]: outcome.cutterFaces };
+    return { mesh: outcome.mesh, result };
+  }
+  if (edit.op === 'merge_by_distance') {
+    const merged = mergeByDistance(current, edit.distance);
+    result.removedVertices = merged.removedVertices;
+    result.removedFaces = merged.removedFaces;
+    return { mesh: merged.mesh, result };
+  }
+  if (Object.hasOwn(GENERATORS, edit.op)) {
+    const generated = GENERATORS[edit.op](current, edit);
+    result.tags = tagSummary(generated, edit.name);
+    return { mesh: generated, result };
+  }
+  let mask;
+  try {
+    mask = selectFaces(current, edit.select);
+  } catch (error) {
+    throw new error.constructor(`Mesh edit ${index} (${edit.op}): ${error.message}`);
+  }
+  const selected = countSelected(mask);
+  if (selected === 0) throw new RangeError(`Mesh edit ${index} (${edit.op}) selects no faces. Check the rule with mesh_inspect tags and counts.`);
+  result.selected = selected;
+  const editable = editMesh(current);
+  let created = null;
+  switch (edit.op) {
+    case 'extrude_face_region':
+      created = extrudeFaceRegion(editable, mask, edit);
+      break;
+    case 'extrude_individual':
+      created = extrudeIndividual(editable, mask, edit);
+      break;
+    case 'inset_region':
+    case 'inset_individual': {
+      const inset = edit.op === 'inset_region' ? insetRegion(editable, mask, edit) : insetIndividual(editable, mask, edit);
+      created = { capFaces: inset.capFaces, sideFaces: inset.sideFaces, sideTag: 'rim' };
+      break;
+    }
+    case 'delete':
+      result.deletedFaces = deleteFaces(editable, mask).deletedFaces;
+      break;
+    case 'flip_normals':
+      flipFaces(editable, mask);
+      break;
+    case 'translate':
+      result.movedVertices = translateFaces(editable, mask, edit).movedVertices;
+      break;
+    case 'tag':
+      tagFaces(editable, Array.from(mask.keys()).filter(face => mask[face]), edit.name);
+      result.tags = { [edit.name]: selected };
+      break;
+  }
+  if (created) {
+    const sideTag = `${edit.name}.${created.sideTag ?? 'side'}`;
+    tagFaces(editable, created.capFaces, `${edit.name}.cap`);
+    tagFaces(editable, created.sideFaces, sideTag);
+    result.tags = { [`${edit.name}.cap`]: created.capFaces.length, [sideTag]: created.sideFaces.length };
+  }
+  return { mesh: meshData(editable), result };
+}
+
+const GENERATORS = Object.freeze({
+  mirror: (mesh, edit) => mirrorMesh(mesh, edit),
+  array: (mesh, edit) => arrayMesh(mesh, edit),
+  solidify: (mesh, edit) => solidifyMesh(mesh, edit),
+});
+
+/** Face counts of the tags an edit named `name` created (tags starting with "<name>."). */
+function tagSummary(mesh, name) {
+  const summary = {};
+  for (const [attributeName, attribute] of Object.entries(mesh.attributes.face)) {
+    if (!attributeName.startsWith(`tag:${name}.`)) continue;
+    let count = 0;
+    for (let face = 0; face < mesh.faceCount; face++) count += attribute.data[face] ? 1 : 0;
+    summary[attributeName.slice(4)] = count;
+  }
+  return summary;
+}
+
 /**
  * Run an edit log on MeshData. Returns the final mesh and one compact result per edit: how many faces it selected,
  * the tags it created (and their face counts) and the mesh size after it.
@@ -159,80 +280,55 @@ export function applyMeshEdits(mesh, edits, { maxVertices = 250_000, maxFaces = 
   const results = [];
   let current = mesh;
   normalized.forEach((edit, index) => {
-    const result = { op: edit.op };
-    if (edit.name) result.name = edit.name;
-    if (edit.op === 'boolean') {
-      if (!resolveCutter) throw new TypeError(`Mesh edit ${index} (boolean) needs a cutter resolver; recipe meshes provide one.`);
-      let cutter;
-      try {
-        cutter = transformMesh(resolveCutter(edit.cutter), edit);
-      } catch (error) {
-        throw new error.constructor(`Mesh edit ${index} (boolean cutter): ${error.message}`);
-      }
-      const cutTag = `${edit.name}.cut`;
-      let outcome;
-      try {
-        outcome = meshBoolean(current, cutter, edit.operation, { cutTag });
-      } catch (error) {
-        throw new error.constructor(`Mesh edit ${index} (boolean ${edit.operation}): ${error.message}`);
-      }
-      current = outcome.mesh;
-      result.operation = edit.operation;
-      result.tags = { [cutTag]: outcome.cutterFaces };
-    } else if (edit.op === 'merge_by_distance') {
-      const merged = mergeByDistance(current, edit.distance);
-      current = merged.mesh;
-      result.removedVertices = merged.removedVertices;
-      result.removedFaces = merged.removedFaces;
-    } else {
-      let mask;
-      try {
-        mask = selectFaces(current, edit.select);
-      } catch (error) {
-        throw new error.constructor(`Mesh edit ${index} (${edit.op}): ${error.message}`);
-      }
-      const selected = countSelected(mask);
-      if (selected === 0) throw new RangeError(`Mesh edit ${index} (${edit.op}) selects no faces. Check the rule with mesh_inspect tags and counts.`);
-      result.selected = selected;
-      const editable = editMesh(current);
-      let created = null;
-      switch (edit.op) {
-        case 'extrude_face_region':
-          created = extrudeFaceRegion(editable, mask, edit);
-          break;
-        case 'extrude_individual':
-          created = extrudeIndividual(editable, mask, edit);
-          break;
-        case 'inset_region':
-        case 'inset_individual': {
-          const inset = edit.op === 'inset_region' ? insetRegion(editable, mask, edit) : insetIndividual(editable, mask, edit);
-          created = { capFaces: inset.capFaces, sideFaces: inset.sideFaces, sideTag: 'rim' };
-          break;
-        }
-        case 'delete':
-          result.deletedFaces = deleteFaces(editable, mask).deletedFaces;
-          break;
-        case 'flip_normals':
-          flipFaces(editable, mask);
-          break;
-        case 'translate':
-          result.movedVertices = translateFaces(editable, mask, edit).movedVertices;
-          break;
-        case 'tag':
-          tagFaces(editable, Array.from(mask.keys()).filter(face => mask[face]), edit.name);
-          result.tags = { [edit.name]: selected };
-          break;
-      }
-      if (created) {
-        const sideTag = `${edit.name}.${created.sideTag ?? 'side'}`;
-        tagFaces(editable, created.capFaces, `${edit.name}.cap`);
-        tagFaces(editable, created.sideFaces, sideTag);
-        result.tags = { [`${edit.name}.cap`]: created.capFaces.length, [sideTag]: created.sideFaces.length };
-      }
-      current = meshData(editable);
-    }
+    const outcome = runEdit(current, edit, index, { resolveCutter });
+    current = outcome.mesh;
     checkBudget(current, limits, index, edit.op);
-    result.after = { vertices: current.vertexCount, faces: current.faceCount };
+    outcome.result.after = { vertices: current.vertexCount, faces: current.faceCount };
+    results.push(outcome.result);
+  });
+  return { mesh: current, results };
+}
+
+export const STACK_OPERATIONS = Object.freeze(['mirror', 'array', 'solidify']);
+export const MAX_STACK_NODES = 16;
+
+/** Validate a modifier stack: edits restricted to mirror, array and solidify, at most 16. */
+export function normalizeMeshStack(stack) {
+  if (!Array.isArray(stack)) throw new TypeError('stack must be an array.');
+  if (stack.length > MAX_STACK_NODES) throw new RangeError(`A stack holds at most ${MAX_STACK_NODES} nodes.`);
+  for (const [index, node] of stack.entries()) {
+    if (!STACK_OPERATIONS.includes(node?.op)) throw new TypeError(`Stack node ${index} op must be one of ${STACK_OPERATIONS.join(', ')}.`);
+  }
+  // Stack nodes default their names from their own position, separately from the edit log.
+  return normalizeMeshEdits(stack.map((node, index) => ({ ...node, name: node.name ?? `${node.op}-s${index + 1}` })));
+}
+
+/**
+ * Evaluate a modifier stack after the edits, non-destructively, as Blender's modifier stack does. With a cache
+ * ({ get(key), set(key, value) }) and a key for the input, every prefix of the stack is cached, so changing a late
+ * node reuses the earlier ones. Returns the mesh and one result per node, marked `cached` when reused.
+ */
+export function evaluateMeshStack(mesh, stack, { maxVertices = 250_000, maxFaces = 250_000, cache, cacheKey } = {}) {
+  const normalized = normalizeMeshStack(stack);
+  const limits = { maxVertices, maxFaces };
+  const results = [];
+  let current = mesh;
+  let key = cacheKey;
+  normalized.forEach((node, index) => {
+    key = key === undefined ? undefined : `${key}|${JSON.stringify(node)}`;
+    const hit = key === undefined ? undefined : cache?.get(key);
+    let result;
+    if (hit) {
+      current = hit.mesh;
+      result = { ...hit.result, cached: true };
+    } else {
+      const outcome = runEdit(current, node, index, {});
+      current = outcome.mesh;
+      checkBudget(current, limits, index, node.op);
+      outcome.result.after = { vertices: current.vertexCount, faces: current.faceCount };
+      result = outcome.result;
+      if (key !== undefined) cache?.set(key, { mesh: current, result });
+    }
     results.push(result);
   });
   return { mesh: current, results };
