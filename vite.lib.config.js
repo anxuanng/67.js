@@ -22,6 +22,7 @@ export default defineConfig({
         sculpt: 'src/sculpt.js',
         surface: 'src/surface.js',
         'mesh-query': 'src/mesh-query.js',
+        mesh: 'src/mesh.js',
         shrinkwrap: 'src/shrinkwrap.js',
         'surface-attachment': 'src/surface-attachment.js',
         physics: 'src/physics.js',

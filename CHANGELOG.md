@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Add `67js/addons/mesh`, a polygon mesh core for agent modeling: compact `MeshData` with attributes on point, edge, face and corner domains, a half-edge `EditMesh` with typed-array disk and radial cycles, `validateTopology`, conversion from renderer geometry with welding, quads and axis face tags, hard-edge corner normals, n-gon triangulation, render extraction and `lintMesh`
+
 ## 0.10.0
 
 - Add `67js/addons/terrain` for seeded, chunked heightfields with distance level of detail and `heightAt` for placement
