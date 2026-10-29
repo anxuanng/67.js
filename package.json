@@ -56,7 +56,8 @@
     "docs/agent-review.md",
     "docs/vegetation.md",
     "docs/terrain.md",
-    "docs/grass.md"
+    "docs/grass.md",
+    "docs/clutter.md"
   ],
   "main": "./build/67.module.js",
   "module": "./build/67.module.js",
@@ -87,6 +88,7 @@
     "./addons/vegetation": "./build/vegetation.js",
     "./addons/terrain": "./build/terrain.js",
     "./addons/grass": "./build/grass.js",
+    "./addons/clutter": "./build/clutter.js",
     "./addons/texture-set": "./build/texture-set.js",
     "./addons/agent-scene": "./build/agent-scene.js",
     "./addons/agent-asset": "./build/agent-asset.js",

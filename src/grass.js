@@ -6,6 +6,7 @@
 import {
   FULL_TURN, WORLD_UP, clamp, createMeshBuilder, createRandom, crossProduct, lerp, lerpVectors, normalized, valueNoise,
 } from './vegetation-geometry.js';
+import { createTileField, hashTile, tileMatrix } from './tile-field.js';
 
 export const GRASS_LEVELS = Object.freeze([
   Object.freeze({ distance: 10, keep: 1, segments: 4, widthScale: 1 }),
@@ -46,15 +47,9 @@ function fieldPatch(x, z, settings) {
   };
 }
 
-function tileSeed(seed, column, row) {
-  let mixed = Math.imul(column + 7919, 374761393) ^ Math.imul(row - 104729, 668265263) ^ Math.imul(seed, 2246822519);
-  mixed = Math.imul(mixed ^ mixed >>> 13, 1274126177);
-  return (mixed ^ mixed >>> 16) >>> 0;
-}
-
 // Independent value in [0, 1) per clump cell; `salt` picks which property it is.
 function cellHash(column, row, seed, salt) {
-  return tileSeed(seed + salt * 1013, column, row) / 4294967296;
+  return hashTile(seed + salt * 1013, column, row) / 4294967296;
 }
 
 /** Nearest jittered clump centre around (x, z): cellular noise, as the clumping in the Ghost of Tsushima talk. */
@@ -89,7 +84,7 @@ function smoothstep(edgeLow, edgeHigh, value) {
 /** Every blade of one tile at full density, in a stable order; each level keeps the blades whose `keepKey` is below its share. */
 function planTileBlades(column, row, settings, keepLimit) {
   const { tileSize, origin, seed, terrainHeight, mask, density } = settings;
-  const random = createRandom(tileSeed(seed, column, row));
+  const random = createRandom(hashTile(seed, column, row));
   const count = Math.min(MAXIMUM_BLADES_PER_TILE, Math.round(density * tileSize * tileSize));
   const blades = [];
   for (let index = 0; index < count; index++) {
@@ -247,83 +242,24 @@ function resolveSettings(options) {
 export function createGrass(options = {}) {
   const settings = resolveSettings({ tileSize: 4, seed: 1, terrainHeight: () => 0, castShadow: false, ...options });
   const material = { tag: 'grass', color: [1, 1, 1], roughness: 0.8, metallic: 0, emission: 0, doubleSided: true };
-  const columns = Math.ceil((settings.area.maxX - settings.area.minX) / settings.tileSize);
-  const rows = Math.ceil((settings.area.maxZ - settings.area.minZ) / settings.tileSize);
-  const tiles = [];
-  for (let row = 0; row < rows; row++) {
-    for (let column = 0; column < columns; column++) {
-      const tileX = settings.origin[0] + column * settings.tileSize;
-      const tileZ = settings.origin[1] + row * settings.tileSize;
-      const centerX = tileX + settings.tileSize / 2;
-      const centerZ = tileZ + settings.tileSize / 2;
-      tiles.push({ column, row, tileX, tileZ, centerX, centerZ, centerY: settings.terrainHeight(centerX, centerZ), level: -1, blades: null, part: null });
-    }
-  }
 
-  function buildTileGeometry(tile, levelIndex) {
+  function buildParts(tile, levelIndex) {
     const level = settings.levels[levelIndex];
-    if (!tile.blades || tile.plannedKeep < level.keep) {
-      tile.blades = planTileBlades(tile.column, tile.row, settings, level.keep);
-      tile.plannedKeep = level.keep;
+    if (!tile.cache.blades || tile.cache.plannedKeep < level.keep) {
+      tile.cache.blades = planTileBlades(tile.column, tile.row, settings, level.keep);
+      tile.cache.plannedKeep = level.keep;
     }
     const builder = createMeshBuilder({ withColors: true });
-    for (const blade of tile.blades) {
+    for (const blade of tile.cache.blades) {
       if (blade.keepKey < level.keep) addBlade(builder, blade, tile.tileX, tile.tileZ, level, settings);
     }
-    return builder.vertexCount > 0 ? builder.build() : null;
+    if (builder.vertexCount === 0) return [];
+    return [{ name: `Grass tile ${tile.column},${tile.row}`, geometry: builder.build(), matrix: tileMatrix(tile), material, castShadow: settings.castShadow }];
   }
 
-  function levelFor(tile, eye) {
-    const distance = Math.max(0, Math.hypot(eye[0] - tile.centerX, eye[1] - tile.centerY, eye[2] - tile.centerZ) - settings.tileSize * 0.5);
-    if (distance > settings.cullDistance) return -1;
-    let target = settings.levels.findIndex(level => distance <= level.distance);
-    if (target === -1) target = settings.levels.length - 1;
-    // Hysteresis: a tile only moves to a coarser level once it is clearly past the boundary, so tiles on an edge do not flicker.
-    if (tile.level >= 0 && target > tile.level && distance <= settings.levels[tile.level].distance * 1.1) return tile.level;
-    return target;
-  }
-
-  let visibleParts = [];
-  function update(eye) {
-    if (!eye || eye.length < 3 || ![eye[0], eye[1], eye[2]].every(Number.isFinite)) throw new TypeError('update needs an eye position [x, y, z].');
-    let changed = false;
-    for (const tile of tiles) {
-      const target = levelFor(tile, eye);
-      if (target === tile.level) continue;
-      changed = true;
-      tile.level = target;
-      if (target === -1) {
-        tile.part = null;
-        continue;
-      }
-      const geometry = buildTileGeometry(tile, target);
-      tile.part = geometry ? {
-        name: `Grass tile ${tile.column},${tile.row}`,
-        geometry,
-        matrix: new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, tile.tileX, 0, tile.tileZ, 1]),
-        material,
-        castShadow: settings.castShadow,
-      } : null;
-    }
-    if (changed) visibleParts = tiles.filter(tile => tile.part).map(tile => tile.part);
-    return changed;
-  }
-
-  function stats() {
-    const levelCounts = settings.levels.map(() => 0);
-    let triangles = 0;
-    let vertices = 0;
-    for (const tile of tiles) {
-      if (!tile.part) continue;
-      levelCounts[tile.level] += 1;
-      triangles += tile.part.geometry.indices.length / 3;
-      vertices += tile.part.geometry.positions.length / 3;
-    }
-    return { tiles: tiles.length, visibleTiles: visibleParts.length, levelCounts, triangles, vertices, geometryBytes: vertices * 11 * 4 + triangles * 12 };
-  }
-
-  update(settings.eye ?? [(settings.area.minX + settings.area.maxX) / 2, 2, (settings.area.minZ + settings.area.maxZ) / 2]);
+  const field = createTileField({ ...settings, buildParts });
+  field.update(settings.eye ?? [(settings.area.minX + settings.area.maxX) / 2, 2, (settings.area.minZ + settings.area.maxZ) / 2]);
   // Colour for the ground under the blades: gaps then read as shaded grass instead of bare soil.
   const groundColor = lerpVectors(settings.base, settings.tip, 0.3);
-  return { get parts() { return visibleParts; }, update, material, stats, settings, groundColor };
+  return { get parts() { return field.parts; }, update: field.update, material, stats: field.stats, settings, groundColor };
 }
