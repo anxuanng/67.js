@@ -163,8 +163,11 @@ an inverted part.
 
 Outside recipes, call `await loadMeshBooleans()` once, then `meshBoolean(mesh, cutter, operation, { cutTag })` or
 `applyMeshEdits(mesh, edits, { resolveCutter })`. The library loads `manifold-3d` as an optional peer dependency,
-like Rapier for physics: install `manifold-3d@3.5.4` to use booleans. The MCP preview bundle embeds it; its page
-allows WebAssembly compilation (`'wasm-unsafe-eval'`) and `data:` reads for the embedded binary, and nothing else.
+like Rapier for physics: install `manifold-3d@3.5.4` next to `@codepawlhq/67js` to use booleans, in the library and
+in the MCP server alike. The MCP runtime serves Manifold's module and binary to its preview page from that
+installation, on the page's own origin; the page policy adds only WebAssembly compilation (`'wasm-unsafe-eval'`).
+Without the peer, a boolean edit fails with the install command and everything else keeps working. Keeping
+Manifold out of the package holds the npm archive under its 1 MiB budget.
 
 Measured on this machine (Node 24, one thread): engine load 26–45 ms; cube minus a 32-sided cylinder 25–30 ms;
 a 32,768-face sphere minus a box about 0.6 s including conversion and lint.

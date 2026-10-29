@@ -95,7 +95,7 @@ The mesh addon loads `manifold-3d` as a separate dependency for booleans.
 Manifold is distributed under the Apache License, Version 2.0.
 Its dependency package includes the complete license text.
 Manifold's JavaScript and WASM code are not bundled into the 67.js library archive.
-The MCP browser preview bundle embeds them; its LICENSES.md carries the license.
+The MCP runtime serves them to its preview page from the installed peer dependency.
 Source and license: https://github.com/elalish/manifold.
 
 ## Rapier 3D 0.21.0 (optional physics peer dependency)

@@ -65,6 +65,8 @@ function previewHarness() {
         ? frame => scene.sampleFrame(JSON.parse(JSON.stringify(frame))) : scene[field] });
     },
     needsMeshBooleans, loadMeshBooleans, meshBooleansLoaded,
+    // The harness loads Manifold from node_modules directly, so the preview's served-file loader is ignored.
+    setManifoldModuleLoader: () => {},
     parseGltf, Uint8Array, atob,
     applyProjection, mat4, resolveAgentShadow,
     Renderer67: FaultInjectedRenderer,

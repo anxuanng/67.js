@@ -9,7 +9,7 @@ import { meshReport, generateMeshGeometry, MESH_SMOOTH_ANGLE_DEFAULT } from './a
 import { normalizeMeshEdits, normalizeMeshStack, MESH_EDIT_OPERATIONS, MAX_MESH_EDITS, STACK_OPERATIONS, MAX_STACK_NODES } from './mesh-recipe.js';
 export { normalizeAgentLook, resolveAgentShadow } from './agent-look.js';
 export { needsMeshBooleans } from './agent-mesh.js';
-export { loadMeshBooleans, meshBooleansLoaded } from './mesh-boolean.js';
+export { loadMeshBooleans, meshBooleansLoaded, setManifoldModuleLoader } from './mesh-boolean.js';
 
 const DEFAULT_LIMITS = Object.freeze({
   maxNodes: 4096, maxDepth: 256, maxGeometries: 256, maxMaterials: 256,

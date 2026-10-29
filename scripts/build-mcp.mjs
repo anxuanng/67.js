@@ -107,7 +107,8 @@ function singleModule(result, filename, browser) {
   }
   for (const specifier of chunk.dynamicImports) {
     // Rolldown retains a self import to initialize inlined lazy modules without an extra chunk.
-    if (specifier !== filename && (browser || (!isBuiltin(specifier) && specifier !== 'playwright-core'))) {
+    // manifold-3d is an optional peer dependency loaded on demand; the preview replaces this import at runtime.
+    if (specifier !== filename && specifier !== 'manifold-3d' && (browser || (!isBuiltin(specifier) && specifier !== 'playwright-core'))) {
       throw new Error(`${filename} has an unexpected dynamic import: ${specifier}.`);
     }
   }
@@ -141,7 +142,7 @@ export async function buildMcp({ outDir = join(root, 'build', 'mcp') } = {}) {
       ...configuration.build,
       target: 'es2022',
       lib: { entry: join(root, 'scripts', 'agent-preview-browser.js'), formats: ['es'], fileName: () => 'preview.js' },
-      rolldownOptions: { platform: 'browser', output: { codeSplitting: false, comments: { legal: true }, banner: legalBanner } },
+      rolldownOptions: { platform: 'browser', external: ['manifold-3d'], output: { codeSplitting: false, comments: { legal: true }, banner: legalBanner } },
     },
   }), 'preview.js', true);
   const server = singleModule(await build({
@@ -153,7 +154,7 @@ export async function buildMcp({ outDir = join(root, 'build', 'mcp') } = {}) {
       lib: { entry: join(root, 'scripts', 'mcp-server.mjs'), formats: ['es'], fileName: () => 'server.mjs' },
       rolldownOptions: {
         platform: 'node',
-        external: specifier => isBuiltin(specifier) || specifier === 'playwright-core',
+        external: specifier => isBuiltin(specifier) || specifier === 'playwright-core' || specifier === 'manifold-3d',
         output: { codeSplitting: false, comments: { legal: true }, banner: legalBanner },
       },
     },

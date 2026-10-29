@@ -10,13 +10,20 @@ import { joinTriangles } from './mesh-convert.js';
 
 let manifoldPromise = null;
 let manifoldModule = null;
+let loadManifoldModule = () => import('manifold-3d');
+
+/** Replace how the Manifold module is imported, for hosts that serve it from elsewhere. Call before loading. */
+export function setManifoldModuleLoader(loader) {
+  if (typeof loader !== 'function') throw new TypeError('The Manifold loader must be a function returning a module promise.');
+  loadManifoldModule = loader;
+}
 
 /**
  * Load the boolean engine. In Node the binary is found next to the package; in a browser bundle pass the binary
  * bytes as `wasmBinary` (an ArrayBuffer or Uint8Array). Safe to call repeatedly.
  */
 export function loadMeshBooleans({ wasmBinary } = {}) {
-  manifoldPromise ??= import('manifold-3d').catch(error => {
+  manifoldPromise ??= loadManifoldModule().catch(error => {
     throw new Error(`Mesh booleans need the optional peer dependency manifold-3d 3.5.4: npm install manifold-3d@3.5.4 (${error.message}).`);
   }).then(async ({ default: createModule }) => {
     const module = await createModule(wasmBinary ? { wasmBinary } : undefined);
