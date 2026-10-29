@@ -64,7 +64,9 @@ const SPLAT_UNIFORMS = ['splatEnabled', 'splatColor', 'splatNormal', 'splatPacke
 function validateMaterialMaps(material) {
   if (PROCEDURAL_MATERIAL_TAGS.has(material.tag)) {
     for (let index = 1; index < MATERIAL_MAPS.length; index++) {
-      if (material[MATERIAL_MAPS[index]]) throw new Error('Material maps require a standard PBR material tag. Procedural tags are unsupported.');
+      // Scanned leaf cards carry a normal map; the swaying tags apply it on top of their canopy normal.
+      const leafNormalMap = MATERIAL_MAPS[index] === 'normalMap' && SWAYING_TAGS.has(material.tag);
+      if (material[MATERIAL_MAPS[index]] && !leafNormalMap) throw new Error('Material maps require a standard PBR material tag. Procedural tags accept only a base map, and foliage and grass also a normal map.');
     }
   }
   if (material.tag === 'unlit' && (material.normalMap || material.metallicRoughnessMap || material.occlusionMap)) {

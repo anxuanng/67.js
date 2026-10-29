@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createTree, resolveBarkTextures, scatterVegetation } from '../src/vegetation.js';
+import { createTree, resolveBarkTextures, resolveLeafTextures, scatterVegetation } from '../src/vegetation.js';
+import { groupParts } from '../src/renderer.js';
+import { box } from '../src/geometry.js';
 import { addLeafSurface, addTube, createLeafFrame, createMeshBuilder } from '../src/vegetation-geometry.js';
 import { depthVertexShader, vertexShader } from '../src/shaders.js';
 
@@ -133,4 +135,49 @@ test('colour and shadow vertex shaders apply the same wind displacement', () => 
     assert.match(source, /uniform float time;/);
     assert.match(source, /uniform float wind;/);
   }
+});
+
+function syntheticLeafSet() {
+  return { color: syntheticDescriptor(), normal: syntheticDescriptor(), crown: syntheticDescriptor() };
+}
+
+test('scanned leaf cards reach the foliage and crown materials with the normal map', () => {
+  const set = syntheticLeafSet();
+  const tree = createTree({ species: 'broadleaf', leafTextures: { broadleaf: set } }, 4);
+  assert.equal(tree.materials.foliage.map, set.color);
+  assert.equal(tree.materials.foliage.normalMap, set.normal);
+  assert.equal(tree.materials.crown.map, set.crown);
+  assert.equal(tree.materials.crown.normalMap, undefined);
+  for (const material of [tree.materials.foliage, tree.materials.crown]) {
+    assert.equal(material.tag, 'foliage');
+    assert.equal(material.alphaMode, 'mask');
+    assert.equal(material.doubleSided, true);
+  }
+  const procedural = createTree({ species: 'broadleaf' }, 4);
+  assert.deepEqual(tree.levels[0].parts[1].geometry.positions, procedural.levels[0].parts[1].geometry.positions, 'textures do not change the geometry');
+});
+
+test('leafTextures resolves per species, ignores mesh leaves and rejects malformed sets', () => {
+  const set = syntheticLeafSet();
+  assert.equal(resolveLeafTextures(set, 'palm'), set);
+  assert.equal(resolveLeafTextures({ conifer: set }, 'palm'), null);
+  assert.throws(() => resolveLeafTextures({ conifer: { normal: syntheticDescriptor() } }, 'conifer'), TypeError);
+  assert.throws(() => resolveLeafTextures({ color: syntheticDescriptor(), crown: 'x' }, 'conifer'), TypeError);
+  const meshTree = createTree({ species: 'conifer', leaves: 'mesh', leafTextures: set }, 2);
+  assert.equal(meshTree.materials.foliage.map, undefined);
+  const crownless = createTree({ species: 'birch', leafTextures: { color: set.color } }, 2);
+  assert.notEqual(crownless.materials.crown.map, undefined, 'without a crown texture the procedural clump stays');
+  const forest = scatterVegetation({ area: { minX: 0, maxX: 20, minZ: 0, maxZ: 20 }, density: 0.02, mix: { conifer: 1, palm: 1 }, leafTextures: { conifer: set }, variants: 1, seed: 5 });
+  assert.equal(forest.variants.conifer[0].materials.foliage.map, set.color);
+  assert.notEqual(forest.variants.palm[0].materials.foliage.map, set.color);
+});
+
+test('the renderer accepts a normal map on foliage and grass but not on other procedural tags', () => {
+  const geometry = box();
+  const part = (tag) => ({ name: tag, geometry, matrix: new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]), material: { tag, color: [1, 1, 1], roughness: 1, metallic: 0, emission: 0, normalMap: syntheticDescriptor() } });
+  assert.doesNotThrow(() => groupParts([part('foliage'), part('grass')]));
+  assert.throws(() => groupParts([part('water')]), /Procedural tags accept only a base map/);
+  const roughnessOnLeaves = part('foliage');
+  roughnessOnLeaves.material.metallicRoughnessMap = syntheticDescriptor();
+  assert.throws(() => groupParts([roughnessOnLeaves]), /standard PBR material tag/);
 });

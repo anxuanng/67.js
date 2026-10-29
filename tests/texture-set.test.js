@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { loadTextureSet } from '../src/texture-set.js';
+import { LEAF_TEXTURE_SPECIES, loadLeafTextures, loadTextureSet } from '../src/texture-set.js';
 
 function fakeFetch(available) {
   const requested = [];
@@ -44,4 +44,22 @@ test('a color space override applies to its channel', async () => {
   const { fetchBlob } = fakeFetch(['color']);
   const set = await loadTextureSet('/x', { channels: ['color'], colorSpaces: { color: 'linear' }, fetchBlob, decodeBlob });
   assert.equal(set.color.colorSpace, 'linear');
+});
+
+test('leaf textures load color, normal and crown per species, clamped at the card edges', async () => {
+  const requested = [];
+  const fetchBlob = async (url) => {
+    requested.push(url);
+    return { channel: url.split('/').pop().split('.')[0] };
+  };
+  const leaves = await loadLeafTextures('/textures/leaves/', { fetchBlob, decodeBlob });
+  assert.deepEqual(Object.keys(leaves), [...LEAF_TEXTURE_SPECIES]);
+  assert.equal(requested.length, LEAF_TEXTURE_SPECIES.length * 3);
+  assert.ok(requested.includes('/textures/leaves/conifer/crown.webp'));
+  assert.equal(leaves.birch.color.colorSpace, 'srgb');
+  assert.equal(leaves.birch.normal.colorSpace, 'linear');
+  assert.equal(leaves.birch.crown.colorSpace, 'srgb');
+  for (const texture of Object.values(leaves.bush)) assert.deepEqual([texture.wrapS, texture.wrapT], [33071, 33071]);
+  const missing = async (url) => { throw new Error(`Texture request failed with status 404: ${url}`); };
+  await assert.rejects(loadLeafTextures('/textures/leaves', { species: ['palm'], fetchBlob: missing, decodeBlob }), /404/);
 });

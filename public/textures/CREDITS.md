@@ -1,6 +1,6 @@
 # Texture and HDRI credits
 
-Every file under `public/textures/` and `public/hdri/` comes from [Poly Haven](https://polyhaven.com) and is released under
+Every file under `public/textures/` and `public/hdri/` comes from [Poly Haven](https://polyhaven.com) or [ambientCG](https://ambientcg.com) and is released under
 [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/): free for any use, no attribution required. The authors are
 credited here anyway.
 
@@ -18,3 +18,14 @@ Per folder: `color` (base color, sRGB), `normal` (OpenGL convention, linear), `r
 | `pine_bark` | [Pine Bark](https://polyhaven.com/a/pine_bark) | Dimitrios Savva |
 | `palm_tree_bark` | [Palm Tree Bark](https://polyhaven.com/a/palm_tree_bark) | Dimitrios Savva, Rico Cilliers |
 | `hdri/kloofendal_48d_partly_cloudy_puresky_1k.hdr` | [Kloofendal 48d Partly Cloudy (Pure Sky)](https://polyhaven.com/a/kloofendal_48d_partly_cloudy_puresky) | Greg Zaal, Jarod Guest |
+
+## Leaf cards (`leaves/`)
+
+`leaves/<species>/{color,normal,crown}.webp` are composited by `scripts/build-leaf-cards.py` from three ambientCG leaf
+atlases (1K PNG, downloaded 2026-10-29), all CC0 1.0 by Lennart Demes / ambientCG:
+
+| Species folders | Atlas |
+| --- | --- |
+| `broadleaf`, `birch` | [LeafSet024](https://ambientcg.com/view?id=LeafSet024) |
+| `bush` | [LeafSet022](https://ambientcg.com/view?id=LeafSet022) |
+| `conifer` | [LeafSet019](https://ambientcg.com/view?id=LeafSet019) |

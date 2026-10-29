@@ -47,7 +47,7 @@ The material tags select renderer behavior.
 | `water` | Flat ponds and streams only: replaces normals with a near-horizontal ripple field. |
 | `liquid` | Shaped water (jets, sheets, splashes): refracts the opaque scene, absorbs by thickness, Fresnel reflection. `color` is what one metre lets through. |
 | `foam` | Soft alpha-blended whitewater droplets drawn after liquids. Set `castShadow: false`. |
-| `foliage`, `grass` | Wind movement (also in the shadow pass) and backlighting. Accept a base-colour `map` with `alphaMode: 'mask'` and `doubleSided` for leaf cards. |
+| `foliage`, `grass` | Wind movement (also in the shadow pass) and backlighting. Accept a base-colour `map` with `alphaMode: 'mask'`, a `normalMap` and `doubleSided` for leaf cards; `loadLeafTextures` gives scanned cards for the `leafTextures` option of `createTree` and `scatterVegetation`. |
 | `terrain` | Subtle natural surface variation. |
 | Standard tag with `layers` and `splat` | Four-layer scanned ground blended by slope, height and mask; see `docs/terrain.md`. Rejects the procedural tags and single PBR maps. |
 | `fire`, `smoke` | Film ignition expansion and procedural shading. |
