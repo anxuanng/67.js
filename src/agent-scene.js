@@ -6,22 +6,18 @@ import { applyProjection } from './camera.js';
 import { normalizeAgentLook } from './agent-look.js';
 import { normalizeAgentMotion, compileAgentMotion } from './agent-motion.js';
 import { meshReport, generateMeshGeometry, MESH_SMOOTH_ANGLE_DEFAULT } from './agent-mesh.js';
-import { normalizeMeshEdits, normalizeMeshStack, MESH_EDIT_OPERATIONS, MAX_MESH_EDITS, STACK_OPERATIONS, MAX_STACK_NODES } from './mesh-recipe.js';
+import { normalizeMeshEdits, normalizeMeshStack } from './mesh-recipe.js';
+import { AGENT_SCENE_CAPABILITIES, AGENT_SCENE_DEFAULT_LIMITS, RECIPE_ALPHA_MODES } from './agent-scene-capabilities.js';
+export { AGENT_SCENE_CAPABILITIES, AGENT_SCENE_DEFAULT_LIMITS };
 export { normalizeAgentLook, resolveAgentShadow } from './agent-look.js';
 export { needsMeshBooleans } from './agent-mesh.js';
 export { loadMeshBooleans, meshBooleansLoaded, setManifoldModuleLoader } from './mesh-boolean.js';
 
-const DEFAULT_LIMITS = Object.freeze({
-  maxNodes: 4096, maxDepth: 256, maxGeometries: 256, maxMaterials: 256,
-  maxVertices: 250_000, maxGeometryBytes: 32 * 1024 * 1024,
-  maxOperations: 256, maxCheckpoints: 8, maxRecipeBytes: 1024 * 1024,
-});
+const DEFAULT_LIMITS = AGENT_SCENE_DEFAULT_LIMITS;
 const MAX_MESH_REPORTS = 16;
 const CAMERA_DEFAULTS = Object.freeze({ eye: [4, 3, 5], target: [0, 0, 0], up: [0, 1, 0], fov: 45, near: 0.1, far: 1000 });
 const NODE_FIELDS = ['translation', 'rotation', 'scale', 'parent', 'label', 'geometry', 'material'];
 const MATERIAL_FIELDS = ['color', 'metallic', 'roughness', 'emission', 'emissiveColor', 'opacity', 'alphaMode', 'doubleSided'];
-// Procedural recipes have no textures, so cutout masking has nothing to cut.
-const RECIPE_ALPHA_MODES = ['opaque', 'blend'];
 const CAMERA_FIELDS = Object.keys(CAMERA_DEFAULTS);
 const LOOK_OPERATION_FIELDS = Object.freeze({
   'set-environment': 'environment',
@@ -38,23 +34,6 @@ const REMOVAL_FIELDS = Object.freeze({
   'remove-material': 'materials',
 });
 
-export const AGENT_SCENE_CAPABILITIES = Object.freeze({
-  format: '67js.scene', schemaVersion: 1,
-  geometryTypes: Object.freeze(['box', 'cylinder', 'sphere', 'torus', 'lathe', 'extrude', 'tube', 'mesh']),
-  meshEdits: Object.freeze({ operations: Object.freeze(Object.keys(MESH_EDIT_OPERATIONS)), maxEdits: MAX_MESH_EDITS }),
-  meshStack: Object.freeze({ operations: STACK_OPERATIONS, maxNodes: MAX_STACK_NODES }),
-  operations: Object.freeze([
-    'set-node', 'set-material', 'set-camera', 'add-node', 'remove-node',
-    'add-geometry', 'remove-geometry', 'add-material', 'remove-material',
-    'set-environment', 'set-effects', 'set-shadow', 'set-motion', 'edit-mesh', 'set-mesh-stack',
-  ]),
-  materialTags: Object.freeze(['surface', 'unlit', 'liquid', 'foam']),
-  alphaModes: Object.freeze(RECIPE_ALPHA_MODES),
-  fixedResources: false, dynamicTopology: true, checkpoints: true, positiveScaleOnly: true,
-  authoredLook: true, maxPointLights: 8,
-  proceduralMotion: true,
-  motionLimits: Object.freeze({ maxTracks: 128, maxKeyframesPerTrack: 64, maxKeyframes: 2048, maxDuration: 30 }),
-});
 
 function knownKeys(value, allowed, label) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {

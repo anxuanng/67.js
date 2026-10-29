@@ -1,7 +1,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Matrix4, Quaternion, Vector3 } from 'three';
-import { createAgentScene, AGENT_SCENE_CAPABILITIES } from '../src/agent-scene.js';
+import { createAgentScene, AGENT_SCENE_CAPABILITIES, AGENT_SCENE_DEFAULT_LIMITS } from '../src/agent-scene.js';
+import * as lightweightCapabilities from '../src/agent-scene-capabilities.js';
+
+test('the plain-data capabilities module matches the scene engine', () => {
+  const scene = createAgentScene({ format: '67js.scene', schemaVersion: 1, geometries: [], materials: [], nodes: [] });
+  assert.deepEqual(scene.limits, lightweightCapabilities.AGENT_SCENE_DEFAULT_LIMITS);
+  assert.equal(AGENT_SCENE_DEFAULT_LIMITS, lightweightCapabilities.AGENT_SCENE_DEFAULT_LIMITS);
+  assert.equal(AGENT_SCENE_CAPABILITIES, lightweightCapabilities.AGENT_SCENE_CAPABILITIES);
+  assert.equal(scene.capabilities, lightweightCapabilities.AGENT_SCENE_CAPABILITIES);
+});
 
 function recipe() {
   return { format: '67js.scene', schemaVersion: 1,

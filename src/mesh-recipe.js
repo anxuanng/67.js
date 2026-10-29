@@ -9,30 +9,14 @@ import { createMeshData } from './mesh-data.js';
 import { mirrorMesh, arrayMesh, solidifyMesh } from './mesh-stack.js';
 import { bevelEdges } from './mesh-bevel.js';
 import { loopCut } from './mesh-loopcut.js';
+import { MESH_EDIT_OPERATIONS, MAX_MESH_EDITS, STACK_OPERATIONS, MAX_STACK_NODES } from './mesh-operations.js';
+export { MESH_EDIT_OPERATIONS, MAX_MESH_EDITS, STACK_OPERATIONS, MAX_STACK_NODES };
 
 // Replayable edit log for agent recipes. Each edit is plain JSON; names follow Blender's bmesh.ops where they match.
 
-export const MAX_MESH_EDITS = 64;
 const NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,47}$/;
 const MAX_OFFSET = 1e6;
 
-export const MESH_EDIT_OPERATIONS = Object.freeze({
-  extrude_face_region: { fields: ['select', 'name', 'offset', 'direction', 'alongNormals'], tags: ['cap', 'side'] },
-  extrude_individual: { fields: ['select', 'name', 'offset', 'direction'], tags: ['cap', 'side'] },
-  inset_region: { fields: ['select', 'name', 'thickness', 'depth'], tags: ['cap', 'rim'] },
-  inset_individual: { fields: ['select', 'name', 'thickness', 'depth'], tags: ['cap', 'rim'] },
-  delete: { fields: ['select'], tags: [] },
-  flip_normals: { fields: ['select'], tags: [] },
-  translate: { fields: ['select', 'offset', 'falloff'], tags: [] },
-  merge_by_distance: { fields: ['distance'], tags: [] },
-  tag: { fields: ['select', 'name'], tags: [] },
-  boolean: { fields: ['name', 'operation', 'cutter', 'translation', 'rotation', 'scale'], tags: ['cut'] },
-  mirror: { fields: ['name', 'axis', 'merge'], tags: ['mirrored'] },
-  array: { fields: ['name', 'count', 'offset', 'relativeOffset', 'merge'], tags: ['last'] },
-  solidify: { fields: ['name', 'thickness', 'offset', 'evenThickness'], tags: ['inner', 'rim'] },
-  bevel: { fields: ['name', 'edges', 'width', 'segments', 'profile', 'clampOverlap'], tags: ['strip', 'corner'] },
-  loop_cut: { fields: ['name', 'edges', 'cuts', 'factor'], tags: ['band-<k>'] },
-});
 
 function editError(index, message) {
   return new TypeError(`Mesh edit ${index} (${message})`);
@@ -347,8 +331,6 @@ export function applyMeshEdits(mesh, edits, { maxVertices = 250_000, maxFaces = 
   return { mesh: current, results };
 }
 
-export const STACK_OPERATIONS = Object.freeze(['mirror', 'array', 'solidify', 'bevel']);
-export const MAX_STACK_NODES = 16;
 
 /** Validate a modifier stack: edits restricted to mirror, array and solidify, at most 16. */
 export function normalizeMeshStack(stack) {

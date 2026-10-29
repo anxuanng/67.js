@@ -5,14 +5,13 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { isAbsolute, join } from 'node:path';
 import { createRequire } from 'node:module';
 import packageMetadata from '../package.json' with { type: 'json' };
-import { createAgentScene, AGENT_SCENE_CAPABILITIES } from '../src/agent-scene.js';
+import { AGENT_SCENE_CAPABILITIES, AGENT_SCENE_DEFAULT_LIMITS } from '../src/agent-scene-capabilities.js';
 import { createAgentAssetCatalog } from './agent-asset-catalog.mjs';
 import { createAgentRenderJobs } from './agent-render-jobs.mjs';
 import { createFrameEncoder } from './frame-encoder.mjs';
 import { normalizeReview, REVIEW_LIMITS } from './agent-review.mjs';
 
-const EMPTY_RECIPE = { format: '67js.scene', schemaVersion: 1, geometries: [], materials: [], nodes: [] };
-const SCENE_LIMITS = createAgentScene(EMPTY_RECIPE).limits;
+const SCENE_LIMITS = AGENT_SCENE_DEFAULT_LIMITS;
 const MAXIMUM_IMAGE_BYTES = 1024 * 1024;
 const MAXIMUM_QUEUED_CALLS = 16;
 const EVALUATION_TIMEOUT_MS = 30000;
