@@ -1,6 +1,6 @@
 # Vehicle kit
 
-`67js/addons/vehicle` is in the current source and not yet published.
+`67js/addons/vehicle` is available from version `0.10.0`.
 It animates a wheeled vehicle along a path without physics.
 Sampling the same time always returns the same pose, so frames can be rendered in any order.
 

@@ -1,6 +1,6 @@
 # Terrain and splat ground
 
-`67js/addons/terrain` and `67js/addons/texture-set` are in the current source and not yet published.
+`67js/addons/terrain` and `67js/addons/texture-set` are available from version `0.10.0`.
 Together they replace a flat, noise-tinted ground with a chunked heightfield and a four-layer ground material made from real scanned textures.
 
 ```js

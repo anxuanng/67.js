@@ -168,7 +168,7 @@ Pass `environment: { map }` to light and reflect from an equirectangular HDR ima
 
 ## Humanoid retargeting and crowds
 
-`67js/addons/retarget` is in the current source and not yet published. It moves a humanoid clip onto another skeleton and offsets many copies in time.
+`67js/addons/retarget` is available from version `0.10.0`. It moves a humanoid clip onto another skeleton and offsets many copies in time.
 
 1. Build rigs with `createRigFromSkin(asset.skins[0])`. Name families (Mixamo, VRM, Unreal, Rigify, Quaternius) map through `mapHumanoidBones`; fix a miss with `targetOverrides`.
 2. Call `retargetClip(sourceRig, targetRig, clip, { rootMotion })`.
@@ -179,7 +179,7 @@ The [retarget contract](/retarget.md) covers rest-pose assumptions and measured 
 
 ## Baked liquid
 
-`67js/addons/spume` is in the current source and not yet published. It plays back liquid baked offline by the Spume GPU solver.
+`67js/addons/spume` is available from version `0.10.0`. It plays back liquid baked offline by the Spume GPU solver.
 
 1. Bake a cache folder with Spume's `run.py` or its Blender add-on.
 2. Load it with `loadSpumeCache(folderUrl)`.
@@ -191,7 +191,7 @@ Textured, skinned and morphed parts may stay in the list unchanged while frames 
 
 ## Wheeled vehicles
 
-`67js/addons/vehicle` is in the current source and not yet published. It drives a car or truck along a path with deterministic, physics-free animation.
+`67js/addons/vehicle` is available from version `0.10.0`. It drives a car or truck along a path with deterministic, physics-free animation.
 
 1. Describe the vehicle with `createVehicleRig({ parts })`; wheels are found by name and geometry. Check `rig.wheels` or `findWheelCandidates(names)`.
 2. Build a drive with `driveAlongPath(rig, points, { cruiseSpeed, groundHeight })`.
@@ -203,17 +203,17 @@ The [vehicle contract](/vehicle.md) lists conventions, options and limits.
 
 ## Trees and grass
 
-`67js/addons/vegetation` is in the current source and not yet published. It grows seeded trees with real branches and leaf cards, grass and flowers.
+`67js/addons/vegetation` is available from version `0.10.0`. It grows seeded trees with real branches and leaf cards, grass and flowers.
 
 1. Scatter with `scatterVegetation({ area, density, terrainHeight, slopeLimit, exclusion, mix, leaves })`.
 2. Pick detail per camera with `selectLevels(forest.instances, eye)`.
 3. Pass `view.parts` to `Renderer67` and rebuild when `view.changed` is true.
 
-Cards (`leaves: 'cards'`, the default) are single-sided, alpha-masked, double-sided `foliage` textures that sway with the wind; `'mesh'` leaves cost about twice the triangles. Pass `barkTextures` for scanned bark. The [Vegetation contract](/vegetation.md) lists species, triangle budgets and limits.
+Cards (`leaves: 'cards'`, the default) are single-sided, alpha-masked, double-sided `foliage` textures that sway with the wind; `'mesh'` leaves cost about twice the triangles. Pass `barkTextures` for scanned bark and `leafTextures: await loadLeafTextures('/textures/leaves')` for scanned leaf cards. The [Vegetation contract](/vegetation.md) lists species, triangle budgets and limits.
 
 ## Terrain and ground textures
 
-`67js/addons/terrain` and `67js/addons/texture-set` are in the current source and not yet published. They build a chunked, seeded heightfield with distance level of detail and a four-layer ground material (slope, height and mask rules, height-based edge blending, triplanar cliffs, anti-tiling) from CC0 scans.
+`67js/addons/terrain` and `67js/addons/texture-set` are available from version `0.10.0`. They build a chunked, seeded heightfield with distance level of detail and a four-layer ground material (slope, height and mask rules, height-based edge blending, triplanar cliffs, anti-tiling) from CC0 scans.
 
 1. `const set = await loadTextureSet('/textures/leafy_grass')` per layer, then `material.layers = [{ ...set, scale: 3 }, ...]` and `material.splat = { rules }`.
 2. `const terrain = createTerrain({ size, chunks, resolution, levels, seed })`; give every `terrain.parts` entry the one shared material.
@@ -244,7 +244,7 @@ An attachment positions one rigid frame. It does not conform the accessory footp
 
 The optional GLB addon creates these descriptors. HDR requires `EXT_color_buffer_float`. Inspect `renderer.capabilities.hdr` and `hdrFallbackReason`. The renderer falls back when floating-point targets are unavailable.
 
-Tags select specialized behavior: `armor` allows studio finish overrides. `floor` is a studio floor. `water` adds animated normals and ripples. `foliage` and `grass` add wind and accept a base-colour `map` with alpha mask and `doubleSided` for leaf cards.
+Tags select specialized behavior: `armor` allows studio finish overrides. `floor` is a studio floor. `water` adds animated normals and ripples. `foliage` and `grass` add wind and accept a base-colour `map` with alpha mask, a `normalMap` and `doubleSided` for leaf cards.
 
 `material.alphaMode` is `'opaque'` (default), `'mask'` (cutout at `alphaCutoff`, default 0.5, shadows follow it) or `'blend'` (drawn last, back to front, no depth write). `material.opacity` (default 1) multiplies the base map alpha. `material.doubleSided` (default false) disables back-face culling and lights both faces. These are batch state and cannot change after upload. See `docs/material-maps.md`.
 

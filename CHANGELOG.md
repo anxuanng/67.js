@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.10.0
+
+- Add `67js/addons/terrain` for seeded, chunked heightfields with distance level of detail and `heightAt` for placement
+- Add `67js/addons/texture-set` with `loadTextureSet` and `loadLeafTextures`, and a four-layer splat material with slope, height and mask rules, height-blended edges, triplanar cliffs and anti-tiling
+- Add `67js/addons/vegetation` for seeded trees, bushes, grass and flowers with real branches, Poisson-disk scattering, wind and three levels of detail
+- Accept scanned bark (`barkTextures`) and scanned leaf cards with normal maps (`leafTextures`) on trees and scattered vegetation
+- Add `67js/addons/spume` to play back liquid baked by the Spume solver, with refracting `liquid` and soft `foam` materials
+- Add `67js/addons/vehicle` for path-driven wheel spin, steering, body roll, pitch and ground following
+- Add `67js/addons/retarget` to move humanoid clips between Mixamo, VRM, Unreal and Rigify rigs and offset crowds
+- Add `67js/addons/hdri` and environment maps for image-based lighting with roughness-blurred reflections
+- Add alpha mask, alpha blend, opacity and double-sided materials, with alpha-to-coverage under MSAA
+- Import Draco, meshopt and KTX2 compressed glTF assets, texture transforms and GPU instancing
+- Let agent recipes author liquid, foam, glass and double-sided materials and liquid optics
+- Let streamed parts such as liquid frames share a renderer with retained textured parts
+- Reduce sky reflection on leaf and grass cards so grazing cards no longer turn grey-blue
+- Serve the CC0 textures and HDRI from the site with open CORS, and credit Poly Haven and ambientCG
+- Rewrite the README and add CONTRIBUTING.md
+
 ## 0.9.1
 
 - Synchronize the roadmap and standalone command with the visual review release
