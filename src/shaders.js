@@ -1,5 +1,6 @@
 import { MAX_MORPH_TARGETS } from './morph.js';
 import { environmentLookupGlsl, environmentShadingGlsl } from './environment.js';
+import { splatGlsl } from './splat-shader.js';
 
 const morphingShader = `
 uniform float morphEnabled;
@@ -476,6 +477,8 @@ vec3 mappedNormal(vec3 normal) {
   return dot(mapped, mapped) > 1e-12 ? normalize(mapped) : normal;
 }
 
+${splatGlsl}
+
 // Opaque draws 1, mask resolves to a cutout (smooth coverage with MSAA) and blend keeps the fraction.
 float surfaceAlpha(float textureAlpha) {
   if (alphaMode < 0.5) return 1.0;
@@ -500,7 +503,7 @@ void main() {
   if (hasNormalMap > 0.5) normal = mappedNormal(normal);
   vec3 viewDirection = normalize(eye - worldPosition);
   vec3 color = mix(baseColor, armorColor, step(0.5, surface.w) * (1.0 - step(1.5, surface.w)));
-  color *= vertexTint;
+  if (splatEnabled < 0.5) color *= vertexTint;
   float textureAlpha = 1.0;
   if (hasBaseMap > 0.5) {
     vec4 sampledBase = texture(baseMap, textureUV);
@@ -526,6 +529,8 @@ void main() {
     metallic *= sampled.b;
     roughness *= sampled.g;
   }
+  float splatCavity = 1.0;
+  if (splatEnabled > 0.5) applySplat(color, normal, roughness, splatCavity);
   roughness = clamp(roughness, 0.075, 1.0);
   vec3 normalChange = max(abs(dFdx(normal)), abs(dFdy(normal)));
   roughness = clamp(sqrt(roughness * roughness + dot(normalChange, normalChange) * 0.3), 0.075, 1.0);
@@ -584,6 +589,7 @@ void main() {
   vec3 reflectance = fresnel(max(dot(normal, viewDirection), 0.0), mix(vec3(0.04), color, metallic));
   float occlusion = 1.0;
   if (hasOcclusionMap > 0.5) occlusion = mix(1.0, texture(occlusionMap, textureUV).r, occlusionStrength);
+  occlusion *= splatCavity;
   if (environmentEnabled > 0.5) {
     radiance += environmentLighting(normal, viewDirection, color, metallic, roughness, occlusion, ambientIntensity);
   } else {

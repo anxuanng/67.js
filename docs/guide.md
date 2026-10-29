@@ -211,6 +211,16 @@ The [vehicle contract](/vehicle.md) lists conventions, options and limits.
 
 Cards (`leaves: 'cards'`, the default) are single-sided, alpha-masked, double-sided `foliage` textures that sway with the wind; `'mesh'` leaves cost about twice the triangles. Pass `barkTextures` for scanned bark. The [Vegetation contract](/vegetation.md) lists species, triangle budgets and limits.
 
+## Terrain and ground textures
+
+`67js/addons/terrain` and `67js/addons/texture-set` are in the current source and not yet published. They build a chunked, seeded heightfield with distance level of detail and a four-layer ground material (slope, height and mask rules, height-based edge blending, triplanar cliffs, anti-tiling) from CC0 scans.
+
+1. `const set = await loadTextureSet('/textures/leafy_grass')` per layer, then `material.layers = [{ ...set, scale: 3 }, ...]` and `material.splat = { rules }`.
+2. `const terrain = createTerrain({ size, chunks, resolution, levels, seed })`; give every `terrain.parts` entry the one shared material.
+3. Pass `terrain.heightAt` to `scatterVegetation` and vehicles, and call `renderer.replaceParts` when `terrain.update(eye)` returns parts.
+
+The [Terrain contract](/terrain.md) lists every option, the texture-array memory and the limits.
+
 ## Retained surface attachments
 
 `createSurfaceAttachment` is introduced in `0.4.1`. Published npm `0.4.0` does not include this addon.
