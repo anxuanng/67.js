@@ -159,6 +159,13 @@ export async function buildMcp({ outDir = join(root, 'build', 'mcp') } = {}) {
       },
     },
   }), 'server.mjs', false);
+  // The scene engine runs in the preview page; bundling it into the server again would cost ~120 KB of the npm
+  // archive's 1 MiB budget for code the server never calls.
+  for (const marker of ['ExtrudeGeometry', 'extrudeFaceRegion', 'createAgentScene']) {
+    if (server.code.includes(marker)) {
+      throw new Error(`server.mjs includes scene engine code (${marker}). Import plain data from agent-scene-capabilities.js instead of agent-scene.js.`);
+    }
+  }
   if (!server.exports.includes('createAgentMcpServer') || !server.exports.includes('runMcpCli')) {
     throw new Error('Node bundle must export createAgentMcpServer and runMcpCli.');
   }
