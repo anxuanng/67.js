@@ -8,6 +8,38 @@ import { createAgentScene } from '../src/agent-scene.js';
 
 const cube = () => meshFromGeometry(box(0, 1));
 
+// Interior profile points at one end of the corner at x = y = 0.5, as fractions of the width from the corner.
+function profileFractions(profile) {
+  const width = 0.1;
+  const { mesh } = bevelEdges(cube(), { along: [0, 0, 1] }, { width, segments: 3, profile });
+  const fractions = [];
+  for (let vertex = 0; vertex < mesh.vertexCount; vertex++) {
+    const [x, y, z] = mesh.positions.subarray(vertex * 3, vertex * 3 + 3);
+    if (z < 0.49 || x < 0.39 || y < 0.39) continue;
+    const across = (0.5 - x) / width;
+    const along = (0.5 - y) / width;
+    const isSlidePoint = across > 0.999 || along > 0.999;
+    if (!isSlidePoint) fractions.push([across, along]);
+  }
+  assert.equal(fractions.length, 2);
+  return fractions;
+}
+
+test('the bevel profile has the meaning it has in Blender', () => {
+  for (const [across, along] of profileFractions(0.25)) assert.ok(Math.abs(across + along - 1) < 1e-5, 'flat at 0.25');
+  for (const [across, along] of profileFractions(0.5)) assert.ok(Math.abs((1 - across) ** 2 + (1 - along) ** 2 - 1) < 1e-5, 'a circle at 0.5');
+  for (const [across, along] of profileFractions(1)) assert.ok(across < 1e-5 && along < 1e-5, 'square at 1');
+  for (const [across, along] of profileFractions(0.1)) assert.ok(across + along > 1, 'concave below 0.25');
+});
+
+test('a beveled edge that ends at a three-faced vertex adds its points to the third face, with no fan', () => {
+  const { mesh, cornerFaces } = bevelEdges(cube(), { along: [0, 0, 1] }, { width: 0.1, segments: 2 });
+  assert.equal(cornerFaces, 0);
+  assert.deepEqual([mesh.vertexCount, mesh.edgeCount, mesh.faceCount], [24, 36, 14]);
+  validateTopology(editMesh(mesh));
+  assert.equal(lintMesh(mesh).ok, true);
+});
+
 function volume(mesh) {
   let total = 0;
   const p = mesh.positions;

@@ -1,0 +1,33 @@
+{
+  "bevel-cube-all-round": {
+    "vertexCount": "Where three rounded edges meet, 67.js fills the corner with a triangular patch and Blender uses a quad grid with one centre triangle per corner.",
+    "faceCount": "The triangular corner patch of 67.js has more faces than the quad grid of Blender.",
+    "faceSizes": "The corner patch of 67.js is all triangles. The strips are quads in both.",
+    "area": "The two corner fills are different surfaces. The area differs by 0.3%.",
+    "positions": "The strips match. The inner corner points differ, because the two corner fills are different surfaces."
+  },
+  "bevel-cube-one-edge-profile": {
+    "positions": "Both place points on the same superellipse. 67.js steps by equal angle, and Blender spaces them differently when the profile is not 0.5."
+  },
+  "bevel-cube-clamped": {
+    "volume": "67.js clamps at 49% of an edge, because at 50% faces collapse to zero area. Blender clamps at 50% and keeps coincident vertices.",
+    "area": "The 49% clamp of 67.js leaves a slightly larger solid than the 50% clamp of Blender.",
+    "positions": "The 49% clamp of 67.js moves each point 0.014 from where the 50% clamp of Blender puts it."
+  },
+  "mirror-touching-plane": {
+    "faceCount": "67.js removes the wall left on the mirror plane, so the result is one solid. Blender merges the vertices and keeps one inner face.",
+    "faceSizes": "67.js has one quad fewer, because it removes the inner wall on the mirror plane.",
+    "area": "Blender counts the inner wall on the mirror plane in the area, and 67.js has no such wall."
+  },
+  "array-relative-merged": {
+    "faceCount": "67.js removes the walls between merged copies, so the result is one solid. Blender merges the vertices and keeps the walls.",
+    "faceSizes": "67.js has three quads fewer, because it removes the walls between merged copies.",
+    "volume": "The walls that Blender keeps have no single winding, so its signed volume of 5.5 is not the volume of the solid. The 67.js value of 4 is the volume of the solid.",
+    "area": "Blender counts the walls between copies in the area, and 67.js has no such walls."
+  },
+  "boolean-through-hole": {
+    "edgeCount": "67.js has no face with a hole, so it splits a holed face into triangles and quads. Blender keeps one polygon with a seam.",
+    "faceCount": "A holed face becomes many faces in 67.js and one polygon in Blender. Volume, area and vertices match.",
+    "faceSizes": "A holed face becomes triangles and quads in 67.js and a 12-sided polygon in Blender."
+  }
+}

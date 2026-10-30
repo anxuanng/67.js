@@ -1,0 +1,65 @@
+{
+  "inputs": {
+    "cube": {
+      "vertices": [[-0.5,-0.5,-0.5],[0.5,-0.5,-0.5],[0.5,0.5,-0.5],[-0.5,0.5,-0.5],[-0.5,-0.5,0.5],[0.5,-0.5,0.5],[0.5,0.5,0.5],[-0.5,0.5,0.5]],
+      "faces": [[0,3,2,1],[4,5,6,7],[0,1,5,4],[1,2,6,5],[2,3,7,6],[3,0,4,7]]
+    },
+    "cube-open": {
+      "vertices": [[-0.5,-0.5,-0.5],[0.5,-0.5,-0.5],[0.5,0.5,-0.5],[-0.5,0.5,-0.5],[-0.5,-0.5,0.5],[0.5,-0.5,0.5],[0.5,0.5,0.5],[-0.5,0.5,0.5]],
+      "faces": [[0,3,2,1],[0,1,5,4],[1,2,6,5],[2,3,7,6],[3,0,4,7]]
+    },
+    "cube-touching-plane": {
+      "vertices": [[0,-0.5,-0.5],[1,-0.5,-0.5],[1,0.5,-0.5],[0,0.5,-0.5],[0,-0.5,0.5],[1,-0.5,0.5],[1,0.5,0.5],[0,0.5,0.5]],
+      "faces": [[0,3,2,1],[4,5,6,7],[0,1,5,4],[1,2,6,5],[2,3,7,6],[3,0,4,7]]
+    },
+    "cube-away-from-plane": {
+      "vertices": [[1,-0.5,-0.5],[2,-0.5,-0.5],[2,0.5,-0.5],[1,0.5,-0.5],[1,-0.5,0.5],[2,-0.5,0.5],[2,0.5,0.5],[1,0.5,0.5]],
+      "faces": [[0,3,2,1],[4,5,6,7],[0,1,5,4],[1,2,6,5],[2,3,7,6],[3,0,4,7]]
+    },
+    "grid": {
+      "vertices": [[0,0,0],[1,0,0],[2,0,0],[3,0,0],[0,1,0],[1,1,0],[2,1,0],[3,1,0],[0,2,0],[1,2,0],[2,2,0],[3,2,0],[0,3,0],[1,3,0],[2,3,0],[3,3,0]],
+      "faces": [[0,1,5,4],[1,2,6,5],[2,3,7,6],[4,5,9,8],[5,6,10,9],[6,7,11,10],[8,9,13,12],[9,10,14,13],[10,11,15,14]]
+    },
+    "cylinder": {
+      "vertices": [[1,0,-1],[0.70710678,0.70710678,-1],[0,1,-1],[-0.70710678,0.70710678,-1],[-1,0,-1],[-0.70710678,-0.70710678,-1],[0,-1,-1],[0.70710678,-0.70710678,-1],[1,0,1],[0.70710678,0.70710678,1],[0,1,1],[-0.70710678,0.70710678,1],[-1,0,1],[-0.70710678,-0.70710678,1],[0,-1,1],[0.70710678,-0.70710678,1]],
+      "faces": [[0,1,9,8],[1,2,10,9],[2,3,11,10],[3,4,12,11],[4,5,13,12],[5,6,14,13],[6,7,15,14],[7,0,8,15],[8,9,10,11,12,13,14,15],[7,6,5,4,3,2,1,0]]
+    }
+  },
+  "cases": [
+    { "id": "extrude-region-cube-top", "input": "cube", "edit": { "op": "extrude_face_region", "select": { "normal": [0,0,1] }, "offset": 0.5 } },
+    { "id": "extrude-region-grid-block", "input": "grid", "edit": { "op": "extrude_face_region", "select": { "faces": [0,1,3,4] }, "offset": 0.5 } },
+    { "id": "extrude-region-cylinder-sides", "input": "cylinder", "edit": { "op": "extrude_face_region", "select": { "faces": [0,7] }, "offset": 0.5 } },
+    { "id": "extrude-individual-grid", "input": "grid", "edit": { "op": "extrude_individual", "select": { "faces": [0,4,8] }, "offset": 0.5 } },
+    { "id": "extrude-individual-cube-adjacent", "input": "cube", "edit": { "op": "extrude_individual", "select": { "faces": [1,3] }, "offset": 0.25 } },
+    { "id": "inset-region-cube-top", "input": "cube", "edit": { "op": "inset_region", "select": { "faces": [1] }, "thickness": 0.1 } },
+    { "id": "inset-region-cube-top-depth", "input": "cube", "edit": { "op": "inset_region", "select": { "faces": [1] }, "thickness": 0.1, "depth": -0.2 } },
+    { "id": "inset-region-grid-block", "input": "grid", "edit": { "op": "inset_region", "select": { "faces": [0,1,3,4] }, "thickness": 0.2 } },
+    { "id": "inset-region-grid-corner", "input": "grid", "edit": { "op": "inset_region", "select": { "faces": [0,1,3] }, "thickness": 0.2 } },
+    { "id": "inset-individual-grid", "input": "grid", "edit": { "op": "inset_individual", "select": { "faces": [0,1] }, "thickness": 0.2, "depth": 0.1 } },
+    { "id": "bevel-cube-all-chamfer", "input": "cube", "edit": { "op": "bevel", "edges": { "all": true }, "width": 0.1, "segments": 1 } },
+    { "id": "bevel-cube-all-round", "input": "cube", "edit": { "op": "bevel", "edges": { "all": true }, "width": 0.1, "segments": 3 } },
+    { "id": "bevel-cube-vertical", "input": "cube", "edit": { "op": "bevel", "edges": { "along": [0,0,1] }, "width": 0.1, "segments": 2 } },
+    { "id": "bevel-cube-top-rim", "input": "cube", "edit": { "op": "bevel", "edges": { "boundaryOf": { "faces": [1] } }, "width": 0.1, "segments": 2 } },
+    { "id": "bevel-cylinder-rim", "input": "cylinder", "edit": { "op": "bevel", "edges": { "boundaryOf": { "faces": [8] } }, "width": 0.1, "segments": 2 } },
+    { "id": "bevel-cube-one-edge-profile", "input": "cube", "edit": { "op": "bevel", "edges": { "between": [{ "faces": [1] }, { "faces": [3] }] }, "width": 0.1, "segments": 3, "profile": 0.7 } },
+    { "id": "bevel-cube-clamped", "input": "cube", "edit": { "op": "bevel", "edges": { "all": true }, "width": 0.8, "segments": 1, "clampOverlap": true } },
+    { "id": "loop-cut-cube-one", "input": "cube", "edit": { "op": "loop_cut", "edges": { "along": [1,0,0] }, "cuts": 1 } },
+    { "id": "loop-cut-cube-three", "input": "cube", "edit": { "op": "loop_cut", "edges": { "along": [1,0,0] }, "cuts": 3 } },
+    { "id": "loop-cut-cube-factor", "input": "cube", "edit": { "op": "loop_cut", "edges": { "along": [1,0,0] }, "cuts": 1, "factor": 0.25 } },
+    { "id": "loop-cut-grid", "input": "grid", "edit": { "op": "loop_cut", "edges": { "along": [0,1,0] }, "cuts": 1 } },
+    { "id": "loop-cut-cylinder", "input": "cylinder", "edit": { "op": "loop_cut", "edges": { "along": [0,0,1] }, "cuts": 2 } },
+    { "id": "mirror-touching-plane", "input": "cube-touching-plane", "edit": { "op": "mirror", "axis": "x", "merge": 0.001 } },
+    { "id": "mirror-away-from-plane", "input": "cube-away-from-plane", "edit": { "op": "mirror", "axis": "x", "merge": 0.001 } },
+    { "id": "array-relative-merged", "input": "cube", "edit": { "op": "array", "count": 4, "relativeOffset": [1,0,0], "merge": 0.0001 } },
+    { "id": "array-relative-apart", "input": "cube", "edit": { "op": "array", "count": 3, "relativeOffset": [2,0,0] } },
+    { "id": "array-constant", "input": "cube", "edit": { "op": "array", "count": 3, "offset": [0,0,-2], "relativeOffset": [0,0,0] } },
+    { "id": "solidify-open-inward", "input": "cube-open", "edit": { "op": "solidify", "thickness": 0.05, "offset": -1 } },
+    { "id": "solidify-open-outward", "input": "cube-open", "edit": { "op": "solidify", "thickness": 0.05, "offset": 1 } },
+    { "id": "solidify-open-uneven", "input": "cube-open", "edit": { "op": "solidify", "thickness": 0.05, "offset": -1, "evenThickness": false } },
+    { "id": "solidify-closed-shell", "input": "cube", "edit": { "op": "solidify", "thickness": 0.05, "offset": -1 } },
+    { "id": "boolean-difference-cube", "input": "cube", "edit": { "op": "boolean", "operation": "difference", "cutter": { "type": "cube" }, "translation": [0.5,0.5,0.5] } },
+    { "id": "boolean-union-cube", "input": "cube", "edit": { "op": "boolean", "operation": "union", "cutter": { "type": "cube" }, "translation": [0.5,0.5,0.5] } },
+    { "id": "boolean-intersect-cube", "input": "cube", "edit": { "op": "boolean", "operation": "intersect", "cutter": { "type": "cube" }, "translation": [0.5,0.5,0.5] } },
+    { "id": "boolean-through-hole", "input": "cube", "edit": { "op": "boolean", "operation": "difference", "cutter": { "type": "cylinder" }, "scale": [0.25,0.25,1] } }
+  ]
+}

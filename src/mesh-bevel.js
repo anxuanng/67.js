@@ -111,9 +111,19 @@ const normalize = vector => {
   return size === 0 ? [0, 0, 0] : scale(vector, 1 / size);
 };
 
+// The superellipse x^r + y^r = 1 between the two slide points, with the same meaning of profile as Blender. Returns how
+// far a point sits toward each slide point from the corner, for t from 0 to 1 along the curve.
+const MINIMUM_PROFILE = 0.001;
+function profileWeights(profile, t) {
+  const exponent = -2 * Math.log(Math.sqrt(Math.max(profile, MINIMUM_PROFILE))) / Math.LN2;
+  const angle = t * Math.PI / 2;
+  return [1 - Math.sin(angle) ** exponent, 1 - Math.cos(angle) ** exponent];
+}
+
 /**
  * Bevel the selected edges. Options: width (distance from the edge into each face), segments (1 is a flat chamfer),
- * profile (0 flat, 0.5 round, 1 boxy), clampOverlap (shrink width so slides stay within half of their edge).
+ * profile (0.5 round, 0.25 flat, 1 square, below 0.25 concave), clampOverlap (shrink width so slides stay within half
+ * of their edge).
  * Returns { mesh, width, clamped, bevelEdges, stripFaces, cornerFaces, filledCorners }. Strip faces get `<name>.strip`,
  * corner fills `<name>.corner`; the faces around keep their tags.
  */
@@ -235,15 +245,13 @@ export function bevelEdges(mesh, edgeRule, { width, segments = 1, profile = 0.5,
     if (!points) {
       const low = Math.min(from, to);
       const high = Math.max(from, to);
-      const start = positionOfPoint(low);
-      const end = positionOfPoint(high);
-      const middle = scale(add(start, end), 0.5);
-      const control = add(middle, scale(subtract(positionOf(vertex), middle), 2 * profile));
+      const corner = positionOf(vertex);
+      const towardStart = subtract(positionOfPoint(low), corner);
+      const towardEnd = subtract(positionOfPoint(high), corner);
       points = [low];
       for (let step = 1; step < segments; step++) {
-        const t = step / segments;
-        const position = add(add(scale(start, (1 - t) ** 2), scale(control, 2 * t * (1 - t))), scale(end, t * t));
-        points.push(addPoint(position));
+        const [startWeight, endWeight] = profileWeights(profile, step / segments);
+        points.push(addPoint(add(add(corner, scale(towardStart, startWeight)), scale(towardEnd, endWeight))));
       }
       points.push(high);
       curves.set(key, points);
@@ -251,10 +259,29 @@ export function bevelEdges(mesh, edgeRule, { width, segments = 1, profile = 0.5,
     return from === points[0] ? points : [...points].reverse();
   };
 
+  // A quadratic Bezier control whose curve passes through the middle of the profile, for the patch inside a corner.
   const curveControl = (vertex, from, to) => {
-    const middle = scale(add(positionOfPoint(from), positionOfPoint(to)), 0.5);
-    return add(middle, scale(subtract(positionOf(vertex), middle), 2 * profile));
+    const corner = positionOf(vertex);
+    const towardBoth = add(subtract(positionOfPoint(from), corner), subtract(positionOfPoint(to), corner));
+    return add(corner, scale(towardBoth, 1.5 - 2 * Math.sqrt(profile)));
   };
+
+  // A vertex with one beveled edge and three faces needs no fill: the profile lies in the third face, so that face
+  // takes the curve's points, and the two slide points stay on its boundary.
+  const endsInThirdFace = new Set();
+  const cornersOfVertex = new Map();
+  for (const corner of corners) {
+    if (!cornersOfVertex.has(corner.vertex)) cornersOfVertex.set(corner.vertex, []);
+    cornersOfVertex.get(corner.vertex).push(corner);
+  }
+  for (const [vertex, around] of cornersOfVertex) {
+    const third = around.filter(corner => !corner.inBeveled && !corner.outBeveled);
+    if (around.length !== 3 || third.length !== 1) continue;
+    const [start, end] = sequenceOfLoop.get(third[0].loop);
+    if (end === undefined) continue;
+    sequenceOfLoop.set(third[0].loop, curve(vertex, start, end));
+    endsInThirdFace.add(vertex);
+  }
 
   /**
    * Fill a corner where three profile curves meet with a quadratic triangular Bezier patch. Each curve is a
@@ -366,6 +393,7 @@ export function bevelEdges(mesh, edgeRule, { width, segments = 1, profile = 0.5,
     for (const vertex of edit.edgeVertices(edge)) touched.add(vertex);
   }
   for (const vertex of touched) {
+    if (endsInThirdFace.has(vertex)) continue;
     const firstSlot = edit.vertices.arrays.edgeSlot[vertex];
     const anyEdge = firstSlot >> 1;
     const startLoop = edit.edgeLoops(anyEdge).map(loop => loops.vertex[loop] === vertex ? loop : loops.next[loop])[0];
@@ -423,7 +451,7 @@ export function bevelEdges(mesh, edgeRule, { width, segments = 1, profile = 0.5,
     let centroid = [0, 0, 0];
     for (const point of polygon) centroid = add(centroid, positionOfPoint(point));
     centroid = scale(centroid, 1 / polygon.length);
-    const centre = addPoint(add(centroid, scale(subtract(positionOf(vertex), centroid), profile)));
+    const centre = addPoint(add(centroid, scale(subtract(positionOf(vertex), centroid), 2 * Math.sqrt(profile) - 1)));
     for (let index = 0; index < polygon.length; index++) {
       builder.addFace([polygon[index], polygon[(index + 1) % polygon.length], centre], { keepTags: false, tags: [`${name}.corner`] });
       cornerFaces++;

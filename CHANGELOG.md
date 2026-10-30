@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Change the bevel `profile` to the meaning it has in Blender: 0.5 is a circular arc, 0.25 is flat, 1 is square, and below 0.25 is concave. Before this, 0 was flat and 0.5 was a parabola, so a recipe with a `profile` other than 0.5 changes shape
+- Stop adding a fan of triangles where one beveled edge ends at a vertex with three faces. The third face now takes the profile's points, as in Blender
+
 ## 0.14.0
 
 - Add `motion.ik` to imported assets: IK runs over the selected clip and overrides, moves every skin and rigid part, and takes `worldForward`, so agents can pose imported characters through MCP without writing quaternions
