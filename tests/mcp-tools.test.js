@@ -232,6 +232,8 @@ test('mesh_inspect reports polygon counts, tags and lint for recipe geometries',
   assert.ok(JSON.stringify(result.structuredContent).length < 4096, 'default report stays compact');
   const one = await client.callTool({ name: 'mesh_inspect', arguments: { sessionId, geometries: ['cube'] } });
   assert.equal(one.structuredContent.meshes.length, 1);
+  const singular = await client.callTool({ name: 'mesh_inspect', arguments: { sessionId, geometry: 'cube' } });
+  assert.deepEqual(singular.structuredContent.meshes.map(mesh => mesh.geometry), ['cube']);
   const missing = await client.callTool({ name: 'mesh_inspect', arguments: { sessionId, geometries: ['nope'] } });
   assert.equal(missing.isError, true);
   assert.match(missing.content[0].text, /Known IDs: cube, cable/);

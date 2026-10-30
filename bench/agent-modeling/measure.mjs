@@ -1,0 +1,250 @@
+// Measures the object a recipe builds, in world space, for the agent modeling suite: bounds, parts, closure, holes
+// (genus), volume, cross-section loops, lines through the object, gear teeth and UV stretch. Shape measures use every
+// node's render triangles in world space. Lint, parts and genus come from the engine's own mesh report, the one the
+// agent sees: welding render triangles again can invent non-manifold edges that the polygon mesh does not have.
+import { createAgentScene, loadMeshBooleans, needsMeshBooleans } from '../../src/agent-scene.js';
+
+const WELD_DISTANCE = 1e-5;
+
+function transformPoint(matrix, x, y, z) {
+  return [
+    matrix[0] * x + matrix[4] * y + matrix[8] * z + matrix[12],
+    matrix[1] * x + matrix[5] * y + matrix[9] * z + matrix[13],
+    matrix[2] * x + matrix[6] * y + matrix[10] * z + matrix[14],
+  ];
+}
+
+function worldGeometry(part) {
+  const source = part.geometry;
+  const positions = new Float32Array(source.positions.length);
+  for (let vertex = 0; vertex < source.positions.length / 3; vertex++) {
+    const point = transformPoint(part.matrix, source.positions[vertex * 3], source.positions[vertex * 3 + 1], source.positions[vertex * 3 + 2]);
+    positions.set(point, vertex * 3);
+  }
+  // A mirrored matrix flips winding; keep triangles facing out.
+  const matrix = part.matrix;
+  const determinant = matrix[0] * (matrix[5] * matrix[10] - matrix[6] * matrix[9])
+    - matrix[4] * (matrix[1] * matrix[10] - matrix[2] * matrix[9])
+    + matrix[8] * (matrix[1] * matrix[6] - matrix[2] * matrix[5]);
+  const indices = Uint32Array.from(source.indices);
+  if (determinant < 0) {
+    for (let triangle = 0; triangle < indices.length; triangle += 3) [indices[triangle + 1], indices[triangle + 2]] = [indices[triangle + 2], indices[triangle + 1]];
+  }
+  const geometry = { positions, indices };
+  if (source.uvs) geometry.uvs = source.uvs;
+  return geometry;
+}
+
+const triangleArea = (positions, first, second, third) => {
+  const ax = positions[second * 3] - positions[first * 3];
+  const ay = positions[second * 3 + 1] - positions[first * 3 + 1];
+  const az = positions[second * 3 + 2] - positions[first * 3 + 2];
+  const bx = positions[third * 3] - positions[first * 3];
+  const by = positions[third * 3 + 1] - positions[first * 3 + 1];
+  const bz = positions[third * 3 + 2] - positions[first * 3 + 2];
+  return Math.hypot(ay * bz - az * by, az * bx - ax * bz, ax * by - ay * bx) / 2;
+};
+
+function signedVolume({ positions, indices }) {
+  let volume = 0;
+  for (let triangle = 0; triangle < indices.length; triangle += 3) {
+    const [first, second, third] = [indices[triangle], indices[triangle + 1], indices[triangle + 2]];
+    const [ax, ay, az] = [positions[first * 3], positions[first * 3 + 1], positions[first * 3 + 2]];
+    const [bx, by, bz] = [positions[second * 3], positions[second * 3 + 1], positions[second * 3 + 2]];
+    const [cx, cy, cz] = [positions[third * 3], positions[third * 3 + 1], positions[third * 3 + 2]];
+    volume += (ax * (by * cz - bz * cy) - ay * (bx * cz - bz * cx) + az * (bx * cy - by * cx)) / 6;
+  }
+  return volume;
+}
+
+/** Area-weighted mean deviation of the UV-to-surface area ratio from its median; 0 means even texel density. */
+function uvStretch({ positions, indices, uvs }) {
+  const samples = [];
+  for (let triangle = 0; triangle < indices.length; triangle += 3) {
+    const [first, second, third] = [indices[triangle], indices[triangle + 1], indices[triangle + 2]];
+    const area = triangleArea(positions, first, second, third);
+    if (area < 1e-12) continue;
+    const uvArea = Math.abs((uvs[second * 2] - uvs[first * 2]) * (uvs[third * 2 + 1] - uvs[first * 2 + 1])
+      - (uvs[second * 2 + 1] - uvs[first * 2 + 1]) * (uvs[third * 2] - uvs[first * 2])) / 2;
+    samples.push({ ratio: uvArea / area, area });
+  }
+  if (!samples.length) return 0;
+  const sorted = samples.map(sample => sample.ratio).sort((left, right) => left - right);
+  const median = sorted[Math.floor(sorted.length / 2)];
+  if (median === 0) return Infinity;
+  let deviation = 0;
+  let totalArea = 0;
+  for (const sample of samples) {
+    deviation += Math.abs(sample.ratio / median - 1) * sample.area;
+    totalArea += sample.area;
+  }
+  return deviation / totalArea;
+}
+
+/** Closed loops where the plane `axis = at` cuts the triangles of all parts. */
+export function sectionLoops(geometries, axis, at) {
+  const axisIndex = { x: 0, y: 1, z: 2 }[axis];
+  const keyOf = point => point.map(value => Math.round(value / WELD_DISTANCE)).join(',');
+  const parent = new Map();
+  const find = key => {
+    while (parent.get(key) !== key) {
+      parent.set(key, parent.get(parent.get(key)));
+      key = parent.get(key);
+    }
+    return key;
+  };
+  const union = (first, second) => {
+    for (const key of [first, second]) if (!parent.has(key)) parent.set(key, key);
+    parent.set(find(first), find(second));
+  };
+  for (const { positions, indices } of geometries) {
+    for (let triangle = 0; triangle < indices.length; triangle += 3) {
+      const corners = [indices[triangle], indices[triangle + 1], indices[triangle + 2]].map(vertex => [positions[vertex * 3], positions[vertex * 3 + 1], positions[vertex * 3 + 2]]);
+      const crossings = [];
+      for (let side = 0; side < 3; side++) {
+        const start = corners[side];
+        const end = corners[(side + 1) % 3];
+        const startOffset = start[axisIndex] - at;
+        const endOffset = end[axisIndex] - at;
+        if ((startOffset < 0) === (endOffset < 0)) continue;
+        const fraction = startOffset / (startOffset - endOffset);
+        crossings.push(start.map((value, component) => value + (end[component] - value) * fraction));
+      }
+      if (crossings.length === 2) union(keyOf(crossings[0]), keyOf(crossings[1]));
+    }
+  }
+  const roots = new Set();
+  for (const key of parent.keys()) roots.add(find(key));
+  return roots.size;
+}
+
+/**
+ * Count separate outer tips around the thinnest axis (gear teeth, star points). Vertices near the outer radius are
+ * joined when a triangle edge runs between them along the rim, so a wide flat tooth tip still counts once.
+ */
+function countTips(geometries, bounds) {
+  const extents = [0, 1, 2].map(axis => bounds.max[axis] - bounds.min[axis]);
+  const thinAxis = extents.indexOf(Math.min(...extents));
+  const [firstAxis, secondAxis] = [0, 1, 2].filter(axis => axis !== thinAxis);
+  const center = [0, 1, 2].map(axis => (bounds.max[axis] + bounds.min[axis]) / 2);
+  const radiusAt = (first, second) => Math.hypot(first - center[firstAxis], second - center[secondAxis]);
+  let outerRadius = 0;
+  for (const { positions } of geometries) {
+    for (let vertex = 0; vertex < positions.length / 3; vertex++) {
+      outerRadius = Math.max(outerRadius, radiusAt(positions[vertex * 3 + firstAxis], positions[vertex * 3 + secondAxis]));
+    }
+  }
+  const tipRadius = outerRadius * 0.97;
+  const parent = new Map();
+  const find = key => {
+    while (parent.get(key) !== key) {
+      parent.set(key, parent.get(parent.get(key)));
+      key = parent.get(key);
+    }
+    return key;
+  };
+  const add = key => {
+    if (!parent.has(key)) parent.set(key, key);
+  };
+  for (const { positions, indices } of geometries) {
+    const planeKey = vertex => `${Math.round(positions[vertex * 3 + firstAxis] / WELD_DISTANCE)},${Math.round(positions[vertex * 3 + secondAxis] / WELD_DISTANCE)}`;
+    const radiusOf = vertex => radiusAt(positions[vertex * 3 + firstAxis], positions[vertex * 3 + secondAxis]);
+    for (let triangle = 0; triangle < indices.length; triangle += 3) {
+      for (let side = 0; side < 3; side++) {
+        const start = indices[triangle + side];
+        const end = indices[triangle + (side + 1) % 3];
+        const startIsTip = radiusOf(start) > tipRadius;
+        const endIsTip = radiusOf(end) > tipRadius;
+        if (startIsTip) add(planeKey(start));
+        if (endIsTip) add(planeKey(end));
+        if (!startIsTip || !endIsTip) continue;
+        const middleFirst = (positions[start * 3 + firstAxis] + positions[end * 3 + firstAxis]) / 2;
+        const middleSecond = (positions[start * 3 + secondAxis] + positions[end * 3 + secondAxis]) / 2;
+        if (radiusAt(middleFirst, middleSecond) > tipRadius) parent.set(find(planeKey(start)), find(planeKey(end)));
+      }
+    }
+  }
+  const roots = new Set();
+  for (const key of parent.keys()) roots.add(find(key));
+  return roots.size;
+}
+
+/** Number of triangles a line along `axis` crosses at the given coordinates of the other two axes, in axis order. */
+function lineHits(geometries, axis, point) {
+  const axisIndex = { x: 0, y: 1, z: 2 }[axis];
+  const [firstAxis, secondAxis] = [0, 1, 2].filter(candidate => candidate !== axisIndex);
+  let hits = 0;
+  for (const { positions, indices } of geometries) {
+    for (let triangle = 0; triangle < indices.length; triangle += 3) {
+      const corners = [indices[triangle], indices[triangle + 1], indices[triangle + 2]].map(vertex => [positions[vertex * 3 + firstAxis] - point[0], positions[vertex * 3 + secondAxis] - point[1]]);
+      const sides = corners.map((corner, index) => {
+        const next = corners[(index + 1) % 3];
+        return corner[0] * next[1] - corner[1] * next[0];
+      });
+      if (sides.every(side => side > 0) || sides.every(side => side < 0)) hits++;
+    }
+  }
+  return hits;
+}
+
+/** Load the recipe and measure what it builds. Throws if the recipe itself is invalid. */
+export async function measureRecipe(recipe) {
+  if (needsMeshBooleans(recipe)) await loadMeshBooleans();
+  const scene = createAgentScene(recipe);
+  const geometries = scene.parts.map(worldGeometry);
+  const reports = new Map();
+  const reportOf = id => {
+    if (!reports.has(id)) reports.set(id, scene.inspectMeshes({ geometries: [id] }).meshes[0]);
+    return reports.get(id);
+  };
+  const usedGeometries = scene.exportRecipe().nodes.filter(node => node.geometry).map(node => node.geometry);
+  const bounds = { min: [Infinity, Infinity, Infinity], max: [-Infinity, -Infinity, -Infinity] };
+  let parts = 0;
+  let closedParts = 0;
+  let eulerCharacteristic = 0;
+  let volume = 0;
+  let triangles = 0;
+  let lintProblems = 0;
+  const problemKinds = new Set();
+  let uvParts = 0;
+  let worstUvStretch = 0;
+  for (const geometry of geometries) {
+    for (let vertex = 0; vertex < geometry.positions.length / 3; vertex++) {
+      for (let axis = 0; axis < 3; axis++) {
+        bounds.min[axis] = Math.min(bounds.min[axis], geometry.positions[vertex * 3 + axis]);
+        bounds.max[axis] = Math.max(bounds.max[axis], geometry.positions[vertex * 3 + axis]);
+      }
+    }
+    volume += signedVolume(geometry);
+    triangles += geometry.indices.length / 3;
+    if (geometry.uvs) {
+      uvParts++;
+      worstUvStretch = Math.max(worstUvStretch, uvStretch(geometry));
+    }
+  }
+  for (const id of usedGeometries) {
+    const report = reportOf(id);
+    parts += report.parts.count;
+    closedParts += report.parts.closed;
+    eulerCharacteristic += report.counts.vertices - report.counts.edges + report.counts.faces;
+    for (const problem of report.problems) problemKinds.add(problem.kind);
+    lintProblems += report.problems.length;
+  }
+  const allClosed = closedParts === parts;
+  return {
+    nodes: geometries.length,
+    parts,
+    closedParts,
+    holes: allClosed ? (2 * parts - eulerCharacteristic) / 2 : null,
+    volume,
+    triangles,
+    bounds,
+    size: [0, 1, 2].map(axis => bounds.max[axis] - bounds.min[axis]),
+    lintProblems,
+    problemKinds: [...problemKinds],
+    uv: { parts: uvParts, of: geometries.length, stretch: worstUvStretch },
+    tips: countTips(geometries, bounds),
+    section: (axis, at) => sectionLoops(geometries, axis, at),
+    lineHits: (axis, point) => lineHits(geometries, axis, point),
+  };
+}

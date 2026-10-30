@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Close `extrude` solids whose holes have aligned edges: their caps left T-junctions, so the mesh was open and booleans refused it
+- Let `mesh_inspect` take `geometry` as well as `geometries`, matching `mesh_edit` and `mesh_stack`
+- Say in the MCP schema that `box` and `cylinder` are bevelled by default, and how to get exact sizes
+
 ## 0.11.0
 
 - Add `67js/addons/grass`: terrain-following grass fields of clumped, curved blades with rounded normals, root-to-tip colour, dry patches, masks for paths, four presets and tile level of detail

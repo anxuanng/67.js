@@ -1,0 +1,181 @@
+// Runs the agent modeling suite: one fresh, non-interactive Claude Code session per task, with only the 67.js MCP
+// server, then grades the recipe the agent exported.
+//
+// node bench/agent-modeling/run.mjs --claude <claude executable> [--model sonnet] [--tasks crate,bolt]
+//   [--budget 3] [--timeout 1200] [--label baseline]
+//
+// Raw transcripts and recipes go to artifacts/agent-modeling/<run>/ (ignored by Git); the summary goes to
+// bench/agent-modeling/results/<run>.json.
+import { spawn } from 'node:child_process';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
+import { parseArgs } from 'node:util';
+import { gradeRecipe, recipeFeatures } from './check.mjs';
+import { PROMPT_PREAMBLE, TASKS, taskById } from './tasks.mjs';
+
+const repository = resolve(import.meta.dirname, '../..');
+const MCP_SERVER_NAME = '67js';
+const EXPORT_TOOL = `mcp__${MCP_SERVER_NAME}__scene_export_recipe`;
+const BUILT_IN_TOOLS = ['Bash', 'PowerShell', 'Read', 'Edit', 'Write', 'Glob', 'Grep', 'WebFetch', 'WebSearch', 'Agent', 'Task', 'NotebookEdit'];
+
+const { values: options } = parseArgs({
+  options: {
+    claude: { type: 'string', default: process.env.CLAUDE_EXECUTABLE ?? 'claude' },
+    model: { type: 'string', default: 'sonnet' },
+    tasks: { type: 'string' },
+    budget: { type: 'string', default: '3' },
+    timeout: { type: 'string', default: '1200' },
+    label: { type: 'string', default: 'run' },
+  },
+});
+
+const runName = `${new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-')}-${options.model}-${options.label}`;
+const rawDirectory = join(repository, 'artifacts', 'agent-modeling', runName);
+const resultsDirectory = join(repository, 'bench', 'agent-modeling', 'results');
+
+function mcpConfig() {
+  return { mcpServers: { [MCP_SERVER_NAME]: {
+    command: process.execPath,
+    args: [join(repository, 'scripts', 'mcp-server.mjs'), '--backend', 'gpu', '--memory', '192'],
+  } } };
+}
+
+function runClaude(prompt, workingDirectory, configPath) {
+  const argumentsList = [
+    '-p', prompt,
+    '--model', options.model,
+    '--output-format', 'stream-json', '--verbose',
+    '--mcp-config', configPath, '--strict-mcp-config',
+    '--allowedTools', `mcp__${MCP_SERVER_NAME}`,
+    '--disallowedTools', ...BUILT_IN_TOOLS,
+    '--permission-mode', 'dontAsk',
+    '--setting-sources', 'project',
+    '--no-session-persistence',
+    '--max-budget-usd', options.budget,
+  ];
+  return new Promise(resolvePromise => {
+    const started = performance.now();
+    const child = spawn(options.claude, argumentsList, { cwd: workingDirectory, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
+    let output = '';
+    let errors = '';
+    child.stdout.on('data', chunk => {
+      output += chunk;
+    });
+    child.stderr.on('data', chunk => {
+      errors += chunk;
+    });
+    const timer = setTimeout(() => child.kill(), Number(options.timeout) * 1000);
+    child.on('close', code => {
+      clearTimeout(timer);
+      resolvePromise({ output, errors, code, wallMs: Math.round(performance.now() - started) });
+    });
+  });
+}
+
+function textOf(content) {
+  if (typeof content === 'string') return content;
+  return (content ?? []).filter(block => block.type === 'text').map(block => block.text).join('');
+}
+
+/** Tool calls, errors, the model, usage and the last exported recipe from a stream-json transcript. */
+function readTranscript(output) {
+  const summary = { model: null, toolCalls: 0, toolErrors: 0, toolsByName: {}, recipe: null, result: null };
+  const exportCalls = new Set();
+  for (const line of output.split('\n')) {
+    if (!line.trim().startsWith('{')) continue;
+    let event;
+    try {
+      event = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    if (event.type === 'system' && event.subtype === 'init') summary.model = event.model;
+    if (event.type === 'assistant') {
+      for (const block of event.message?.content ?? []) {
+        if (block.type !== 'tool_use') continue;
+        const name = block.name.replace(`mcp__${MCP_SERVER_NAME}__`, '');
+        // ToolSearch only loads the MCP tool schemas; it is harness overhead, not modeling work.
+        if (block.name !== 'ToolSearch') summary.toolCalls++;
+        summary.toolsByName[name] = (summary.toolsByName[name] ?? 0) + 1;
+        if (block.name === EXPORT_TOOL) exportCalls.add(block.id);
+      }
+    }
+    if (event.type === 'user') {
+      for (const block of event.message?.content ?? []) {
+        if (block.type !== 'tool_result') continue;
+        if (block.is_error) summary.toolErrors++;
+        if (!exportCalls.has(block.tool_use_id) || block.is_error) continue;
+        try {
+          const exported = JSON.parse(textOf(block.content));
+          summary.recipe = exported.format ? exported : exported.recipe ?? null;
+        } catch {
+          // Not JSON: the export failed; the task is graded as having no recipe.
+        }
+      }
+    }
+    if (event.type === 'result') summary.result = event;
+  }
+  return summary;
+}
+
+async function runTask(task) {
+  const workingDirectory = await mkdtemp(join(tmpdir(), '67js-agent-task-'));
+  try {
+    const configPath = join(workingDirectory, 'mcp.json');
+    await writeFile(configPath, JSON.stringify(mcpConfig()));
+    const prompt = `${PROMPT_PREAMBLE}\n\n${task.prompt.replace(/\n/g, ' ')}`;
+    const run = await runClaude(prompt, workingDirectory, configPath);
+    const transcript = readTranscript(run.output);
+    await writeFile(join(rawDirectory, `${task.id}.jsonl`), run.output);
+    if (run.errors) await writeFile(join(rawDirectory, `${task.id}.stderr.txt`), run.errors);
+    if (transcript.recipe) await writeFile(join(rawDirectory, `${task.id}.recipe.json`), JSON.stringify(transcript.recipe, null, 2));
+    const grade = transcript.recipe
+      ? await gradeRecipe(task, transcript.recipe)
+      : { pass: false, passed: 0, total: task.checks.length, results: [{ kind: 'export', pass: false, detail: 'no exported recipe' }] };
+    const usage = transcript.result?.usage ?? {};
+    return {
+      task: task.id,
+      pass: grade.pass,
+      passed: grade.passed,
+      total: grade.total,
+      failed: grade.results.filter(result => !result.pass).map(result => `${result.label ?? result.kind}: ${result.detail}`),
+      model: transcript.model,
+      toolCalls: transcript.toolCalls,
+      toolErrors: transcript.toolErrors,
+      toolsByName: transcript.toolsByName,
+      features: transcript.recipe ? recipeFeatures(transcript.recipe) : null,
+      turns: transcript.result?.num_turns ?? null,
+      costUsd: transcript.result?.total_cost_usd ?? null,
+      inputTokens: (usage.input_tokens ?? 0) + (usage.cache_read_input_tokens ?? 0) + (usage.cache_creation_input_tokens ?? 0),
+      outputTokens: usage.output_tokens ?? 0,
+      wallSeconds: Math.round(run.wallMs / 1000),
+      exitCode: run.code,
+      stopped: transcript.result?.subtype ?? 'no result',
+    };
+  } finally {
+    await rm(workingDirectory, { recursive: true, force: true });
+  }
+}
+
+const tasks = options.tasks ? options.tasks.split(',').map(taskById) : TASKS;
+await mkdir(rawDirectory, { recursive: true });
+await mkdir(resultsDirectory, { recursive: true });
+const records = [];
+for (const task of tasks) {
+  const record = await runTask(task);
+  records.push(record);
+  console.log(`${record.task.padEnd(9)} ${record.pass ? 'PASS' : 'FAIL'} ${record.passed}/${record.total}  calls ${record.toolCalls} (errors ${record.toolErrors})  $${record.costUsd ?? '?'}  ${record.wallSeconds}s${record.failed.length ? `  ${record.failed.join(' | ')}` : ''}`);
+}
+const summary = {
+  run: runName,
+  model: records.find(record => record.model)?.model ?? options.model,
+  date: new Date().toISOString(),
+  passed: records.filter(record => record.pass).length,
+  tasks: records.length,
+  toolCalls: records.reduce((sum, record) => sum + record.toolCalls, 0),
+  costUsd: Number(records.reduce((sum, record) => sum + (record.costUsd ?? 0), 0).toFixed(2)),
+  records,
+};
+await writeFile(join(resultsDirectory, `${runName}.json`), `${JSON.stringify(summary, null, 2)}\n`);
+console.log(`${summary.passed}/${summary.tasks} passed, ${summary.toolCalls} tool calls, $${summary.costUsd}. Summary: bench/agent-modeling/results/${runName}.json`);

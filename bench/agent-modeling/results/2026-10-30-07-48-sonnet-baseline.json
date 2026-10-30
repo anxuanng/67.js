@@ -1,0 +1,336 @@
+{
+  "run": "2026-10-30-07-48-sonnet-baseline",
+  "model": "claude-sonnet-5-5",
+  "date": "2026-10-30T07:56:00.910Z",
+  "passed": 10,
+  "tasks": 10,
+  "toolCalls": 67,
+  "costUsd": 4.76,
+  "records": [
+    {
+      "task": "crate",
+      "pass": true,
+      "passed": 8,
+      "total": 8,
+      "failed": [],
+      "model": "claude-sonnet-5-5",
+      "toolCalls": 5,
+      "toolErrors": 0,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_capabilities": 1,
+        "scene_create": 1,
+        "scene_look": 1,
+        "scene_inspect": 1,
+        "scene_export_recipe": 1
+      },
+      "turns": 7,
+      "costUsd": 0.4308914000000001,
+      "inputTokens": 467371,
+      "outputTokens": 2094,
+      "wallSeconds": 37,
+      "exitCode": 0,
+      "stopped": "success",
+      "features": {
+        "geometryTypes": [
+          "mesh",
+          "box"
+        ],
+        "meshOperations": [
+          "boolean"
+        ]
+      }
+    },
+    {
+      "task": "bolt",
+      "pass": true,
+      "passed": 7,
+      "total": 7,
+      "failed": [],
+      "model": "claude-sonnet-5-5",
+      "toolCalls": 3,
+      "toolErrors": 0,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_create": 1,
+        "scene_look": 1,
+        "scene_export_recipe": 1
+      },
+      "turns": 5,
+      "costUsd": 0.4098161,
+      "inputTokens": 456575,
+      "outputTokens": 1406,
+      "wallSeconds": 33,
+      "exitCode": 0,
+      "stopped": "success",
+      "features": {
+        "geometryTypes": [
+          "lathe"
+        ],
+        "meshOperations": []
+      }
+    },
+    {
+      "task": "window",
+      "pass": true,
+      "passed": 5,
+      "total": 5,
+      "failed": [],
+      "model": "claude-sonnet-5-5",
+      "toolCalls": 10,
+      "toolErrors": 1,
+      "toolsByName": {
+        "ToolSearch": 2,
+        "scene_create": 1,
+        "scene_inspect": 1,
+        "mesh_inspect": 4,
+        "scene_apply": 2,
+        "scene_look": 1,
+        "scene_export_recipe": 1
+      },
+      "turns": 13,
+      "costUsd": 0.5218303999999999,
+      "inputTokens": 1125060,
+      "outputTokens": 3631,
+      "wallSeconds": 51,
+      "exitCode": 0,
+      "stopped": "success",
+      "features": {
+        "geometryTypes": [
+          "box"
+        ],
+        "meshOperations": []
+      }
+    },
+    {
+      "task": "table",
+      "pass": true,
+      "passed": 6,
+      "total": 6,
+      "failed": [],
+      "model": "claude-sonnet-5-5",
+      "toolCalls": 4,
+      "toolErrors": 1,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_create": 1,
+        "scene_inspect": 1,
+        "scene_look": 1,
+        "scene_export_recipe": 1
+      },
+      "turns": 6,
+      "costUsd": 0.4144607,
+      "inputTokens": 458461,
+      "outputTokens": 1524,
+      "wallSeconds": 36,
+      "exitCode": 0,
+      "stopped": "success",
+      "features": {
+        "geometryTypes": [
+          "box"
+        ],
+        "meshOperations": []
+      }
+    },
+    {
+      "task": "mug",
+      "pass": true,
+      "passed": 7,
+      "total": 7,
+      "failed": [],
+      "model": "claude-sonnet-5-5",
+      "toolCalls": 5,
+      "toolErrors": 1,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_create": 2,
+        "scene_look": 1,
+        "scene_inspect": 1,
+        "scene_export_recipe": 1
+      },
+      "turns": 7,
+      "costUsd": 0.45834559999999996,
+      "inputTokens": 576539,
+      "outputTokens": 3543,
+      "wallSeconds": 45,
+      "exitCode": 0,
+      "stopped": "success",
+      "features": {
+        "geometryTypes": [
+          "mesh"
+        ],
+        "meshOperations": [
+          "boolean"
+        ]
+      }
+    },
+    {
+      "task": "gear",
+      "pass": true,
+      "passed": 5,
+      "total": 5,
+      "failed": [],
+      "model": "claude-sonnet-5-5",
+      "toolCalls": 7,
+      "toolErrors": 2,
+      "toolsByName": {
+        "ToolSearch": 2,
+        "Bash": 1,
+        "scene_create": 1,
+        "scene_look": 1,
+        "scene_inspect": 1,
+        "mesh_inspect": 2,
+        "scene_export_recipe": 1
+      },
+      "turns": 10,
+      "costUsd": 0.5339972,
+      "inputTokens": 922371,
+      "outputTokens": 6389,
+      "wallSeconds": 74,
+      "exitCode": 0,
+      "stopped": "success",
+      "features": {
+        "geometryTypes": [
+          "extrude"
+        ],
+        "meshOperations": []
+      }
+    },
+    {
+      "task": "fence",
+      "pass": true,
+      "passed": 6,
+      "total": 6,
+      "failed": [],
+      "model": "claude-sonnet-5-5",
+      "toolCalls": 7,
+      "toolErrors": 1,
+      "toolsByName": {
+        "ToolSearch": 2,
+        "scene_create": 2,
+        "scene_capabilities": 1,
+        "scene_look": 1,
+        "scene_dispose": 2,
+        "scene_export_recipe": 1
+      },
+      "turns": 10,
+      "costUsd": 0.4854696,
+      "inputTokens": 909941,
+      "outputTokens": 2602,
+      "wallSeconds": 47,
+      "exitCode": 0,
+      "stopped": "success",
+      "features": {
+        "geometryTypes": [
+          "box"
+        ],
+        "meshOperations": []
+      }
+    },
+    {
+      "task": "bracket",
+      "pass": true,
+      "passed": 6,
+      "total": 6,
+      "failed": [],
+      "model": "claude-sonnet-5-5",
+      "toolCalls": 5,
+      "toolErrors": 0,
+      "toolsByName": {
+        "ToolSearch": 2,
+        "scene_create": 1,
+        "scene_capabilities": 1,
+        "mesh_inspect": 1,
+        "mesh_edit": 1,
+        "scene_export_recipe": 1
+      },
+      "turns": 8,
+      "costUsd": 0.4531632,
+      "inputTokens": 684601,
+      "outputTokens": 2145,
+      "wallSeconds": 36,
+      "exitCode": 0,
+      "stopped": "success",
+      "note": "Rerun after the prompt stated the total height.",
+      "features": {
+        "geometryTypes": [
+          "mesh"
+        ],
+        "meshOperations": [
+          "boolean"
+        ]
+      }
+    },
+    {
+      "task": "soap",
+      "pass": true,
+      "passed": 7,
+      "total": 7,
+      "failed": [],
+      "model": "claude-sonnet-5-5",
+      "toolCalls": 11,
+      "toolErrors": 2,
+      "toolsByName": {
+        "ToolSearch": 2,
+        "scene_create": 3,
+        "mesh_inspect": 3,
+        "scene_dispose": 2,
+        "scene_look": 1,
+        "scene_inspect": 1,
+        "scene_export_recipe": 1
+      },
+      "turns": 14,
+      "costUsd": 0.5465183,
+      "inputTokens": 1351684,
+      "outputTokens": 3731,
+      "wallSeconds": 63,
+      "exitCode": 0,
+      "stopped": "success",
+      "features": {
+        "geometryTypes": [
+          "mesh"
+        ],
+        "meshOperations": [
+          "bevel"
+        ]
+      }
+    },
+    {
+      "task": "crate-uv",
+      "pass": true,
+      "passed": 9,
+      "total": 9,
+      "failed": [],
+      "model": "claude-sonnet-5-5",
+      "toolCalls": 10,
+      "toolErrors": 0,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_create": 1,
+        "scene_capabilities": 1,
+        "mesh_inspect": 3,
+        "scene_look": 2,
+        "mesh_edit": 1,
+        "scene_apply": 1,
+        "scene_export_recipe": 1
+      },
+      "turns": 12,
+      "costUsd": 0.5007357,
+      "inputTokens": 817239,
+      "outputTokens": 3473,
+      "wallSeconds": 43,
+      "exitCode": 0,
+      "stopped": "success",
+      "features": {
+        "geometryTypes": [
+          "mesh"
+        ],
+        "meshOperations": [
+          "inset_region",
+          "extrude_face_region",
+          "uv_unwrap"
+        ]
+      }
+    }
+  ]
+}
