@@ -219,7 +219,8 @@ const ikSolver = z.discriminatedUnion('type', [
     type: z.literal('aim'),
     joint: identifier.optional(),
     joints: z.array(identifier).min(1).max(16).optional().describe('A chain from its base to the aiming node, sharing the turn.'),
-    forward: vector3.optional().describe('Local axis of the aiming node to point at the target. Defaults to [0, 0, 1].'),
+    worldForward: vector3.optional().describe('The world direction the character faces in its rest pose, such as [0, 0, 1]. Use this on imported rigs, whose bone axes vary.'),
+    forward: vector3.optional().describe('Instead of worldForward: the aiming node\'s local axis to point at the target. Defaults to [0, 0, 1], the front of an unrotated recipe node.'),
     target: ikPoint,
     maxAngle: z.number().min(0.001).max(180).optional().describe('Limits the whole turn, in degrees.'),
     weight: ikWeight,
@@ -227,7 +228,7 @@ const ikSolver = z.discriminatedUnion('type', [
 ]);
 const motion = z.strictObject({
   duration: z.number().min(0.1).max(30),
-  ik: z.array(ikSolver).max(16).optional().describe('Inverse kinematics run after the tracks, in order, on procedural recipes. scene_inspect reports motionIk: whether each solver reaches its target across the clip.'),
+  ik: z.array(ikSolver).max(16).optional().describe('Inverse kinematics run after the tracks and any selected clip, in order, on recipes and imported assets. IDs are recipe node IDs or an asset\'s node-N IDs; find them with scene_inspect kind hierarchy. scene_inspect reports motionIk: whether each solver reaches its target across the clip.'),
   loop: z.boolean().optional(),
   tracks: z.array(z.union([
     motionTrack('node', 'translation', vector3, vector3),

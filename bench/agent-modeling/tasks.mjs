@@ -231,6 +231,20 @@ For this task the object does not need to rest on the ground.`,
       { kind: 'nodeDistance', from: 'elbow', to: 'tip', time: 1, distance: 0.4 },
     ],
   },
+  {
+    id: 'robot-reach',
+    assets: true,
+    prompt: `The asset catalog holds an imported robot character. Create a scene from it with its Idle clip selected at
+time 0. Add a 2 second motion in which the robot's right hand reaches for a moving point: the palm joint (labelled
+Palm2.R) is at world position [-1.3, 2.6, 0.8] at time 0 and [-1, 1.7, 1.1] at time 2, while the rest of the body stays on the clip.
+Find the joints you need by inspecting the scene. When it is finished, call scene_export_recipe once: the exported
+recipe is what gets graded.`,
+    ownPreamble: true,
+    checks: [
+      { kind: 'assetClip', name: 'Idle' },
+      { kind: 'assetReach', endLabel: 'Palm2.R', from: [-1.3, 2.6, 0.8], to: [-1, 1.7, 1.1] },
+    ],
+  },
 ];
 
 export function taskById(id) {

@@ -11,7 +11,7 @@
 // Raw transcripts and recipes go to artifacts/agent-modeling/<run>/ (ignored by Git); the summary goes to
 // bench/agent-modeling/results/<run>.json.
 import { spawn } from 'node:child_process';
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
@@ -47,10 +47,10 @@ async function skillPrompt() {
   return `${entryPoint}\n\n${meshReference}`;
 }
 
-function mcpConfig() {
+function mcpConfig(assetDirectory) {
   return { mcpServers: { [MCP_SERVER_NAME]: {
     command: process.execPath,
-    args: [join(repository, 'scripts', 'mcp-server.mjs'), '--backend', 'gpu', '--memory', '192'],
+    args: [join(repository, 'scripts', 'mcp-server.mjs'), '--backend', 'gpu', '--memory', '192', ...(assetDirectory ? ['--assets', assetDirectory] : [])],
   } } };
 }
 
@@ -146,8 +146,15 @@ async function runTask(task, systemPromptAddition) {
   const workingDirectory = await mkdtemp(join(tmpdir(), '67js-agent-task-'));
   try {
     const configPath = join(workingDirectory, 'mcp.json');
-    await writeFile(configPath, JSON.stringify(mcpConfig()));
-    const prompt = `${PROMPT_PREAMBLE}\n\n${task.prompt.replace(/\n/g, ' ')}`;
+    let assetDirectory = null;
+    if (task.assets) {
+      assetDirectory = join(workingDirectory, 'assets');
+      await mkdir(assetDirectory);
+      await copyFile(join(repository, 'tests', 'fixtures', 'RobotExpressive.glb'), join(assetDirectory, 'robot.glb'));
+    }
+    await writeFile(configPath, JSON.stringify(mcpConfig(assetDirectory)));
+    const taskPrompt = task.prompt.replace(/\n/g, ' ');
+    const prompt = task.ownPreamble ? taskPrompt : `${PROMPT_PREAMBLE}\n\n${taskPrompt}`;
     const run = await runClaude(prompt, workingDirectory, configPath, systemPromptAddition);
     const transcript = readTranscript(run.output);
     await writeFile(join(rawDirectory, `${task.id}.jsonl`), run.output);

@@ -171,7 +171,7 @@ function ikWeight(input, duration, label) {
   return weight;
 }
 
-function normalizeIkSolver(input, position, nodes, duration) {
+function normalizeIkSolver(input, position, nodes, visibleNodes, duration) {
   const label = `Motion ik ${position}`;
   if (input?.type === 'two-bone') {
     knownKeys(input, ['type', 'root', 'middle', 'end', 'target', 'pole', 'weight', 'keepEndRotation'], label);
@@ -180,11 +180,11 @@ function normalizeIkSolver(input, position, nodes, duration) {
       root: nodeIdFrom(input.root, nodes, `${label} root`),
       middle: nodeIdFrom(input.middle, nodes, `${label} middle`),
       end: nodeIdFrom(input.end, nodes, `${label} end`),
-      target: ikPoint(input.target, nodes, duration, `${label} target`),
+      target: ikPoint(input.target, visibleNodes, duration, `${label} target`),
       weight: ikWeight(input.weight, duration, `${label} weight`),
     };
     if (input.pole !== undefined) {
-      solver.pole = ikPoint(input.pole, nodes, duration, `${label} pole`);
+      solver.pole = ikPoint(input.pole, visibleNodes, duration, `${label} pole`);
     }
     if (input.keepEndRotation !== undefined) {
       if (typeof input.keepEndRotation !== 'boolean') {
@@ -195,7 +195,10 @@ function normalizeIkSolver(input, position, nodes, duration) {
     return solver;
   }
   if (input?.type === 'aim') {
-    knownKeys(input, ['type', 'joint', 'joints', 'forward', 'target', 'maxAngle', 'weight'], label);
+    knownKeys(input, ['type', 'joint', 'joints', 'forward', 'worldForward', 'target', 'maxAngle', 'weight'], label);
+    if (input.forward !== undefined && input.worldForward !== undefined) {
+      throw new TypeError(`${label} takes forward or worldForward, not both.`);
+    }
     if ((input.joint === undefined) === (input.joints === undefined)) {
       throw new TypeError(`${label} needs joint, or joints listed from the base of the chain to the aiming node.`);
     }
@@ -206,10 +209,14 @@ function normalizeIkSolver(input, position, nodes, duration) {
     const solver = {
       type: 'aim',
       joints: names.map(name => nodeIdFrom(name, nodes, `${label} joint`)),
-      forward: valueFrom(input.forward ?? [0, 0, 1], 3, `${label} forward`),
-      target: ikPoint(input.target, nodes, duration, `${label} target`),
+      target: ikPoint(input.target, visibleNodes, duration, `${label} target`),
       weight: ikWeight(input.weight, duration, `${label} weight`),
     };
+    if (input.worldForward !== undefined) {
+      solver.worldForward = valueFrom(input.worldForward, 3, `${label} worldForward`);
+    } else {
+      solver.forward = valueFrom(input.forward ?? [0, 0, 1], 3, `${label} forward`);
+    }
     if (input.maxAngle !== undefined) {
       solver.maxAngle = bounded(input.maxAngle, 0.001, 180, `${label} maxAngle`);
     }
@@ -239,7 +246,7 @@ function ancestorsOf(id, nodesById) {
 // The rig math assumes uniform scale. A non-uniform parent would shear what the solver thinks is a rigid chain. A node's
 // own scale only reaches its children, so the end of a chain or a lone aimed box can have any size.
 function checkIkScales(ik, tracks, recipe) {
-  const nodesById = new Map(recipe.nodes.map(node => [node.id, node]));
+  const nodesById = new Map(ikHierarchy(recipe).map(node => [node.id, node]));
   const scaledByTrack = new Set(tracks.filter(track => track.kind === 'node' && track.property === 'scale').map(track => track.id));
   const uniformRequired = new Set();
   for (const solver of ik) {
@@ -252,19 +259,22 @@ function checkIkScales(ik, tracks, recipe) {
       throw new RangeError(`Motion ik: node ${id} has IK nodes below it, so it cannot have a scale track.`);
     }
     const scale = nodesById.get(id).scale ?? [1, 1, 1];
-    if (Math.max(...scale) - Math.min(...scale) > 1e-6 * Math.max(...scale)) {
+    if (Math.max(...scale) - Math.min(...scale) > 1e-3 * Math.max(...scale)) {
       throw new RangeError(`Motion ik: node ${id} has non-uniform scale ${JSON.stringify(scale)}. It has IK nodes below it, so keep it at uniform scale and put the size on a child node with the geometry.`);
     }
   }
 }
 
+/** Every node IK can see. An imported asset's editable nodes can sit under fixed ones, which still carry them. */
+function ikHierarchy(recipe) {
+  return recipe.ikHierarchy ?? recipe.nodes;
+}
+
 function normalizeIk(input, recipe, tracks, duration) {
-  if (recipe.ikUnavailable) {
-    throw new RangeError(recipe.ikUnavailable);
-  }
   denseArray(input, MAX_IK_SOLVERS, 'Motion ik');
-  const nodes = new Set(recipe.nodes.map(node => node.id));
-  const ik = input.map((solver, position) => normalizeIkSolver(solver, position, nodes, duration));
+  const movableNodes = new Set(recipe.nodes.map(node => node.id));
+  const visibleNodes = new Set(ikHierarchy(recipe).map(node => node.id));
+  const ik = input.map((solver, position) => normalizeIkSolver(solver, position, movableNodes, visibleNodes, duration));
   checkIkScales(ik, tracks, recipe);
   return ik;
 }
@@ -358,7 +368,8 @@ export function normalizeAgentMotion(input, recipe) {
 
 /** A rig of just the nodes IK needs: chains, the nodes their targets follow, and all their ancestors. */
 function ikRig(ik, recipe) {
-  const nodesById = new Map(recipe.nodes.map(node => [node.id, node]));
+  const hierarchy = ikHierarchy(recipe);
+  const nodesById = new Map(hierarchy.map(node => [node.id, node]));
   const needed = new Set();
   for (const solver of ik) {
     for (const id of [...solverNodes(solver), ...pointNodes(solver)]) {
@@ -366,11 +377,12 @@ function ikRig(ik, recipe) {
       ancestorsOf(id, nodesById).forEach(ancestor => needed.add(ancestor));
     }
   }
-  const members = recipe.nodes.filter(node => needed.has(node.id));
+  const members = hierarchy.filter(node => needed.has(node.id));
   const indexById = new Map(members.map((node, index) => [node.id, index]));
   return {
     // Identifying joints by node ID alone keeps a node named like a humanoid bone from being mapped to another one.
     mapping: {},
+    ...(recipe.ikRootMatrix ? { rootMatrix: recipe.ikRootMatrix } : {}),
     joints: members.map(node => ({
       name: node.id,
       parent: node.parent === undefined || node.parent === null ? -1 : indexById.get(node.parent),
@@ -411,7 +423,7 @@ function createIkEvaluator(motion, recipe, stagedNodeTracks) {
       weight: weightOutput ? () => Math.min(1, Math.max(0, weightOutput[0])) : solver.weight,
     };
     if (solver.type === 'aim') {
-      return { ...common, type: 'aim', joints: solver.joints, forward: solver.forward, maxAngle: solver.maxAngle };
+      return { ...common, type: 'aim', joints: solver.joints, forward: solver.forward, worldForward: solver.worldForward, maxAngle: solver.maxAngle };
     }
     return {
       ...common, type: 'two-bone', root: solver.root, middle: solver.middle, end: solver.end,
@@ -427,7 +439,7 @@ function createIkEvaluator(motion, recipe, stagedNodeTracks) {
     return solver.keepEndRotation === false ? [solver.root, solver.middle] : [solver.root, solver.middle, solver.end];
   }));
   const staged = new Map([...solvedIds].map(id => [id, new Float64Array(4)]));
-  function setBase(localRotations, localTranslations) {
+  function setBaseFromTracks(localRotations, localTranslations) {
     for (const { index, tracks } of baseBindings) {
       if (tracks?.rotation) localRotations[index].set(tracks.rotation);
       if (tracks?.translation) localTranslations[index].set(tracks.translation);
@@ -435,9 +447,21 @@ function createIkEvaluator(motion, recipe, stagedNodeTracks) {
   }
   return {
     staged,
-    solve(time) {
+    /** Solve for a time. `nodePoses` is a staged { id, translation, rotation } list; without it the base is the tracks. */
+    solve(time, nodePoses) {
       channelSampler?.sample(time);
-      pose.apply(time, setBase);
+      if (nodePoses) {
+        const poseById = new Map(nodePoses.map(nodePose => [nodePose.id, nodePose]));
+        pose.apply(time, (localRotations, localTranslations) => {
+          rig.joints.forEach((joint, index) => {
+            const nodePose = poseById.get(joint.name);
+            localRotations[index].set(nodePose.rotation);
+            localTranslations[index].set(nodePose.translation);
+          });
+        });
+      } else {
+        pose.apply(time, setBaseFromTracks);
+      }
       for (const [id, rotation] of staged) {
         rotation.set(pose.localRotation(indexById.get(id)));
         if (!rotation.every(Number.isFinite)) throw new RangeError(`Motion ik produced an invalid rotation for node ${id}.`);
@@ -497,7 +521,9 @@ export function compileAgentMotion(input, recipe) {
     stagedNodeTracks.get(track.id)[track.property] = staged;
   }
   const ikEvaluator = motion.ik?.length ? createIkEvaluator(motion, recipe, stagedNodeTracks) : null;
-  if (ikEvaluator) {
+  // An imported asset's base pose comes from its decoder, so it asks for IK itself with solveStagedIk.
+  const ikUsesStagedPose = Boolean(ikEvaluator && recipe.ikHierarchy);
+  if (ikEvaluator && !ikUsesStagedPose) {
     for (const id of ikEvaluator.staged.keys()) {
       if (!output.nodes.has(id)) output.nodes.set(id, {});
       const nodePatch = output.nodes.get(id);
@@ -525,14 +551,23 @@ export function compileAgentMotion(input, recipe) {
   }
   const materialSamples = new Map([...output.materials.keys()].map(id => [id, { ...baselines.get(id) }]));
   return Object.freeze({
-    /** How IK fares across the whole clip: one { type, reached, worstError, atTime } per solver. Moves the sampler. */
-    sweepIk() {
+    ikUsesStagedPose,
+    /** Solve IK over a pose an asset staged for this time. Returns the node rotations to add. */
+    solveStagedIk(time, nodePoses) {
+      ikEvaluator.solve(time, nodePoses);
+      return [...ikEvaluator.staged].map(([id, rotation]) => ({ id, rotation: Array.from(rotation) }));
+    },
+    /**
+     * How IK fares across the whole clip: one { type, reached, worstError, atTime } per solver. Moves the sampler.
+     * `stagedPoseAt(time)` supplies the base pose when the asset owns it.
+     */
+    sweepIk(stagedPoseAt) {
       if (!ikEvaluator) return [];
       const worst = motion.ik.map(solver => ({ type: solver.type, reached: true, worstError: 0, atTime: 0 }));
       for (let sample = 0; sample < IK_SWEEP_SAMPLES; sample++) {
         const time = motion.duration * sample / (IK_SWEEP_SAMPLES - 1);
         sampler.sample(time);
-        ikEvaluator.solve(time).forEach((result, position) => {
+        ikEvaluator.solve(time, stagedPoseAt?.(time)).forEach((result, position) => {
           const record = worst[position];
           record.reached = record.reached && result.reached;
           if (result.error > record.worstError) {
@@ -566,7 +601,7 @@ export function compileAgentMotion(input, recipe) {
           throw new RangeError('Sampled camera lens is invalid at Float32 precision.');
         }
       }
-      ikEvaluator?.solve(time);
+      if (!ikUsesStagedPose) ikEvaluator?.solve(time);
       // Publish only after every track, material product, camera pose and IK solve passes.
       for (const { track, patch, staged } of bindings) {
         if (staged.length === 1) {
@@ -575,7 +610,7 @@ export function compileAgentMotion(input, recipe) {
           patch[track.property].set(staged);
         }
       }
-      if (ikEvaluator) {
+      if (ikEvaluator && !ikUsesStagedPose) {
         for (const [id, rotation] of ikEvaluator.staged) output.nodes.get(id).rotation.set(rotation);
       }
       if (cameraPath) {

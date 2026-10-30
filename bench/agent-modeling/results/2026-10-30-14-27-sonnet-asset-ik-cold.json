@@ -1,0 +1,45 @@
+{
+  "run": "2026-10-30-14-27-sonnet-asset-ik-cold",
+  "model": "claude-sonnet-5-5",
+  "date": "2026-10-30T14:28:43.859Z",
+  "skill": false,
+  "passed": 1,
+  "tasks": 1,
+  "toolCalls": 7,
+  "costUsd": 0.43,
+  "records": [
+    {
+      "task": "robot-reach",
+      "pass": true,
+      "passed": 2,
+      "total": 2,
+      "failed": [],
+      "model": "claude-sonnet-5-5",
+      "toolCalls": 7,
+      "toolErrors": 0,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_asset_catalog": 1,
+        "scene_create_asset": 1,
+        "scene_inspect": 3,
+        "scene_apply": 1,
+        "scene_export_recipe": 1
+      },
+      "features": {
+        "geometryTypes": [],
+        "meshOperations": [],
+        "motionIk": [
+          "two-bone"
+        ],
+        "motionTracks": 0
+      },
+      "turns": 9,
+      "costUsd": 0.42946370000000006,
+      "inputTokens": 707290,
+      "outputTokens": 1926,
+      "wallSeconds": 45,
+      "exitCode": 0,
+      "stopped": "success"
+    }
+  ]
+}

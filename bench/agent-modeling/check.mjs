@@ -1,7 +1,7 @@
 // Grades an exported recipe against a task's checks. CLI: node bench/agent-modeling/check.mjs <task-id> <recipe.json>
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
-import { measureRecipe } from './measure.mjs';
+import { measureAssetRecipe, measureRecipe } from './measure.mjs';
 import { taskById } from './tasks.mjs';
 
 const AXES = { x: 0, y: 1, z: 2 };
@@ -69,6 +69,16 @@ function checkOne(check, measures) {
       const distance = Math.hypot(...from.map((value, axis) => value - to[axis]));
       return { pass: Math.abs(distance - check.distance) <= 0.01, detail: `${round(distance)} m apart at t=${check.time}` };
     }
+    case 'assetClip': {
+      return { pass: measures.clipName === check.name, detail: `clip ${measures.clipName ?? 'none'}` };
+    }
+    case 'assetReach': {
+      const solver = measures.reachSolvers.find(candidate => candidate.endLabel === check.endLabel);
+      if (!solver) return { pass: false, detail: `no two-bone solver ending at ${check.endLabel}` };
+      const close = (first, second) => first && Math.hypot(first[0] - second[0], first[1] - second[1], first[2] - second[2]) <= 0.02;
+      const onPath = close(solver.firstTarget, check.from) && close(solver.lastTarget, check.to);
+      return { pass: onPath && solver.reached, detail: `targets ${JSON.stringify(solver.firstTarget)} to ${JSON.stringify(solver.lastTarget)}, reached ${solver.reached}, worst ${solver.worstError}` };
+    }
     case 'tips':
       return { pass: measures.tips === check.equals, detail: `${measures.tips} tips` };
     case 'triangles':
@@ -98,7 +108,7 @@ export function recipeFeatures(recipe) {
 export async function gradeRecipe(task, recipe) {
   let measures;
   try {
-    measures = await measureRecipe(recipe);
+    measures = recipe.format === '67js.asset' ? await measureAssetRecipe(recipe) : await measureRecipe(recipe);
   } catch (error) {
     const results = task.checks.map(check => ({ kind: check.kind, label: check.label, pass: false, detail: `recipe failed: ${error.message}` }));
     return { pass: false, passed: 0, total: results.length, results };

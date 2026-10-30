@@ -84,6 +84,7 @@ Pose evaluation starts from the decoded base on every seek.
 It applies the selected imported clip, static node overrides and authored motion in that order.
 The outer asset root transform applies last.
 Tracks replace specified components rather than adding rotations or translations.
+IK then solves on that pose.
 
 Imported morph animation remains attached to its clip.
 
@@ -133,5 +134,5 @@ Candidate buffers belong to the decoder. Their contents expire at the next stagi
 The asset must remain exclusively owned by its adapter while transactions are active.
 
 This feature does not create a rig for a flat mesh collection.
-Imported asset recipes do not have IK, retargeting, facial morph authoring or topology changes. Procedural recipes have [`motion.ik`](agent-motion.md#inverse-kinematics). In code, [skeleton pose layers](skeleton-pose.md) add IK to skinned rigs and [retargeting](retarget.md) moves clips between rigs.
+Imported asset recipes do not have retargeting, facial morph authoring or topology changes. For a hand reaching or a head looking at a point, use [`motion.ik`](agent-motion.md#inverse-kinematics) instead of writing rotations. In code, [skeleton pose layers](skeleton-pose.md) mix clips with masks and [retargeting](retarget.md) moves clips between rigs.
 The current WALL·E asset has separate mesh roots and no skeleton. It supports rigid part movement through source-node tracks.

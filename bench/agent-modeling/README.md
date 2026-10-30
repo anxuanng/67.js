@@ -35,6 +35,7 @@ own mesh report:
 | crate-uv | The crate with even UVs |
 | crate-wood | The crate with a wood material pattern, to see whether agents find `pattern` |
 | arm-reach | A jointed arm whose tip moves between two points, to see whether agents find `motion.ik` |
+| robot-reach | The CC0 robot from `tests/fixtures`: IK over its Idle clip, found through the asset catalog and hierarchy |
 | dice | Rounded edges plus 21 recessed pips, in one piece (harder) |
 | flange | A hollow pipe with flanges and 12 bolt holes, in one piece (harder) |
 | chair | Many exact parts, with open gaps between back slats (harder) |

@@ -104,6 +104,17 @@ function boltHoleEdits() {
 }
 
 export const REFERENCES = {
+  'robot-reach': {
+    format: '67js.asset', schemaVersion: 1, assetId: 'ab'.repeat(32),
+    animation: { clip: 2, time: 0 },
+    motion: {
+      duration: 2, tracks: [],
+      ik: [{
+        type: 'two-bone', root: 'node-37', middle: 'node-39', end: 'node-40', keepEndRotation: false,
+        target: { keyframes: [{ time: 0, value: [-1.3, 2.6, 0.8] }, { time: 2, value: [-1, 1.7, 1.1] }] },
+      }],
+    },
+  },
   'arm-reach': {
     ...scene(
       [{ id: 'ball', type: 'sphere', segments: 16, rings: 8 }],

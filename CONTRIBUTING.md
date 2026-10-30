@@ -31,6 +31,7 @@ Run these before you open a pull request:
 
 A renderer or shader change also needs a look at real pixels.
 Run `npm run smoke` or the `smoke:*` script for the area that you changed, and look at the screenshots that it saves under `artifacts/`.
+A change to skinning, glTF loading, poses or IK also needs `npm run smoke:character`, which takes a real character through the MCP server. Run `npm run prepare:release` first.
 Screenshots and other output go to `artifacts/`, which Git ignores.
 
 Do not weaken a test to make it pass. If a test is flaky, find the cause and fix the test or the code.
