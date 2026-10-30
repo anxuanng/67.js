@@ -170,7 +170,6 @@ for (const task of tasks) {
 const summary = {
   run: runName,
   model: records.find(record => record.model)?.model ?? options.model,
-  claudeCode: options.claude,
   date: new Date().toISOString(),
   passed: records.filter(record => record.pass).length,
   tasks: records.length,

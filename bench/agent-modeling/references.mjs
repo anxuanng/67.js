@@ -76,16 +76,16 @@ export const REFERENCES = {
       { id: 'head', geometry: 'head', translation: [0, 0.12, 0], rotation: axisRotation('x', -Math.PI / 2) },
     ],
   ),
-  // An extrude with these four holes leaves T-junctions in its caps (collinear hole edges), so this cuts the panes.
   window: scene(
     [{
-      id: 'frame', type: 'mesh', base: { type: 'box', bevel: 0 },
-      edits: [[-0.235, 0.315], [0.235, 0.315], [-0.235, 0.885], [0.235, 0.885]].map(([x, y], index) => ({
-        op: 'boolean', operation: 'difference', name: `pane-${index}`, cutter: { type: 'box', bevel: 0 },
-        translation: [x, (y - 0.6) / 1.2, 0], scale: [0.41, 0.51 / 1.2, 2],
-      })),
+      id: 'frame', type: 'extrude', depth: 0.08,
+      contour: rectangle(-0.5, 0, 0.5, 1.2),
+      holes: [
+        rectangle(-0.44, 0.06, -0.03, 0.57, true), rectangle(0.03, 0.06, 0.44, 0.57, true),
+        rectangle(-0.44, 0.63, -0.03, 1.14, true), rectangle(0.03, 0.63, 0.44, 1.14, true),
+      ],
     }],
-    [{ id: 'frame', geometry: 'frame', translation: [0, 0.6, 0], scale: [1, 1.2, 0.08] }],
+    [{ id: 'frame', geometry: 'frame', translation: [0, 0, -0.04] }],
   ),
   table: scene(
     [{ id: 'block', type: 'box', bevel: 0 }],

@@ -24,7 +24,7 @@ test('checks reject objects that miss the asked-for features', async () => {
   assert.deepEqual(failedKinds(noUv), ['uv']);
 
   const solidWindow = structuredClone(REFERENCES.window);
-  solidWindow.geometries[0].edits = solidWindow.geometries[0].edits.slice(0, 2);
+  solidWindow.geometries[0].holes = solidWindow.geometries[0].holes.slice(0, 2);
   assert.ok(failedKinds(await gradeRecipe(taskById('window'), solidWindow)).includes('four open panes'));
 
   const floatingTable = structuredClone(REFERENCES.table);

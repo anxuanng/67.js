@@ -138,6 +138,89 @@ function ringsIntersect(first, second) {
   return false;
 }
 
+/**
+ * Triangulating a cap drops points that are collinear with their neighbours, so a long cap edge can run past wall
+ * vertices and leave the solid open. Split those triangles at the skipped points, which keeps the surface unchanged.
+ */
+function closeTJunctions(geometry) {
+  const { positions, normals, uvs, indices } = geometry;
+  const vertexKey = vertex => `${positions[vertex * 3]},${positions[vertex * 3 + 1]},${positions[vertex * 3 + 2]}`;
+  const edgeKey = (first, second) => {
+    const firstKey = vertexKey(first);
+    const secondKey = vertexKey(second);
+    return firstKey < secondKey ? `${firstKey}|${secondKey}` : `${secondKey}|${firstKey}`;
+  };
+  const edgeUses = new Map();
+  for (let offset = 0; offset < indices.length; offset += 3) {
+    for (let side = 0; side < 3; side++) {
+      const key = edgeKey(indices[offset + side], indices[offset + (side + 1) % 3]);
+      edgeUses.set(key, (edgeUses.get(key) ?? 0) + 1);
+    }
+  }
+  const openEdges = new Set([...edgeUses].filter(([, uses]) => uses !== 2).map(([key]) => key));
+  if (openEdges.size === 0) return geometry;
+  const candidates = new Map();
+  for (let offset = 0; offset < indices.length; offset += 3) {
+    for (let side = 0; side < 3; side++) {
+      const first = indices[offset + side];
+      const second = indices[offset + (side + 1) % 3];
+      if (!openEdges.has(edgeKey(first, second))) continue;
+      candidates.set(vertexKey(first), first);
+      candidates.set(vertexKey(second), second);
+    }
+  }
+  const newPositions = Array.from(positions);
+  const newNormals = Array.from(normals);
+  const newUvs = Array.from(uvs);
+  const pointsInside = (first, second) => {
+    const start = [newPositions[first * 3], newPositions[first * 3 + 1], newPositions[first * 3 + 2]];
+    const direction = [0, 1, 2].map(axis => newPositions[second * 3 + axis] - start[axis]);
+    const lengthSquared = direction[0] ** 2 + direction[1] ** 2 + direction[2] ** 2;
+    const tolerance = 1e-6 * Math.max(Math.sqrt(lengthSquared), ...start.map(Math.abs));
+    const inside = [];
+    for (const candidate of candidates.values()) {
+      const offsetFromStart = [0, 1, 2].map(axis => positions[candidate * 3 + axis] - start[axis]);
+      const along = (offsetFromStart[0] * direction[0] + offsetFromStart[1] * direction[1] + offsetFromStart[2] * direction[2]) / lengthSquared;
+      if (along <= 1e-6 || along >= 1 - 1e-6) continue;
+      const distance = Math.hypot(...offsetFromStart.map((value, axis) => value - direction[axis] * along));
+      if (distance <= tolerance) inside.push({ candidate, along });
+    }
+    return inside.sort((left, right) => left.along - right.along);
+  };
+  const addVertexOnEdge = (first, second, { candidate, along }) => {
+    const vertex = newPositions.length / 3;
+    for (let axis = 0; axis < 3; axis++) {
+      newPositions.push(positions[candidate * 3 + axis]);
+      newNormals.push(newNormals[first * 3 + axis] + (newNormals[second * 3 + axis] - newNormals[first * 3 + axis]) * along);
+    }
+    for (let axis = 0; axis < 2; axis++) newUvs.push(newUvs[first * 2 + axis] + (newUvs[second * 2 + axis] - newUvs[first * 2 + axis]) * along);
+    return vertex;
+  };
+  const newIndices = [];
+  const pending = [];
+  for (let offset = indices.length - 3; offset >= 0; offset -= 3) pending.push([indices[offset], indices[offset + 1], indices[offset + 2]]);
+  while (pending.length) {
+    const triangle = pending.pop();
+    let split = false;
+    for (let side = 0; side < 3 && !split; side++) {
+      const first = triangle[side];
+      const second = triangle[(side + 1) % 3];
+      const opposite = triangle[(side + 2) % 3];
+      if (!openEdges.has(edgeKey(first, second))) continue;
+      const inside = pointsInside(first, second);
+      if (!inside.length) continue;
+      const chain = [first, ...inside.map(point => addVertexOnEdge(first, second, point)), second];
+      for (let link = chain.length - 2; link >= 0; link--) pending.push([chain[link], chain[link + 1], opposite]);
+      split = true;
+    }
+    if (!split) newIndices.push(...triangle);
+  }
+  return {
+    positions: Float32Array.from(newPositions), normals: Float32Array.from(newNormals),
+    uvs: Float32Array.from(newUvs), indices: Uint32Array.from(newIndices),
+  };
+}
+
 /** Extrude a simple XY contour and disjoint enclosed holes along positive Z. */
 export function extrude(contour, {
   holes = [], depth = 1, steps = 1, bevel = 0, bevelThickness = bevel,
@@ -166,9 +249,9 @@ export function extrude(contour, {
   }
   const shape = new Shape(outer.map(point => new Vector2(...point)));
   shape.holes = inner.map(ring => new Path(ring.map(point => new Vector2(...point))));
-  return meshFrom(new ExtrudeGeometry(shape, {
+  return closeTJunctions(meshFrom(new ExtrudeGeometry(shape, {
     depth, steps, bevelEnabled: beveled, bevelSize: bevel, bevelThickness, bevelSegments,
-  }), maxVertices);
+  }), maxVertices));
 }
 
 /** Sweep a circular tube along a centripetal Catmull-Rom curve. */

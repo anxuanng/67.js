@@ -68,11 +68,28 @@ Read this as a cost baseline, not a success rate:
 - **Agents rarely use the edit tools.** Only 2 of 10 runs called `mesh_edit`. Most recipes use placed primitives, and
   the mesh edits they do use are written directly into `scene_create`. No run used `loop_cut`, `mirror` or `array`.
 
-Friction seen in the transcripts:
+Friction seen in the transcripts, all fixed after this baseline:
 
-- `extrude` with holes whose edges line up leaves T-junctions in its caps, so the mesh is open. The window run hit it
+- `extrude` with holes whose edges line up left T-junctions in its caps, so the mesh was open. The window run hit it
   and fell back to separate bars.
-- `mesh_inspect` takes `geometries`, while `mesh_edit` takes `geometry`. Four runs sent `geometry` and got a
+- `mesh_inspect` took only `geometries`, while `mesh_edit` takes `geometry`. Four runs sent `geometry` and got a
   validation error.
 - The default box has a bevel, which surprised the fence, table and soap runs. They first got rounded shapes or wrong
-  sizes.
+  sizes. The default stays, and the tool schema now says so.
+
+## After the three fixes
+
+`results/2026-10-30-08-14-sonnet-after-fixes.json` reruns the five affected tasks, one run each, with the same model:
+
+| Task | Tool calls | Tool errors | Cost (USD) |
+| --- | --- | --- | --- |
+| window | 10 → 4 | 1 → 0 | 0.52 → 0.43 |
+| gear | 7 → 5 | 2 → 1 | 0.53 → 0.49 |
+| soap | 11 → 4 | 2 → 0 | 0.55 → 0.43 |
+| fence | 7 → 2 | 1 → 0 | 0.49 → 0.40 |
+| table | 4 → 2 | 1 → 0 | 0.41 → 0.40 |
+| Total | 39 → 17 | 7 → 1 | 2.40 → 2.15 |
+
+All five passed both times. The window run now builds the frame with one `extrude`, the route it gave up on before. The
+one remaining error is the gear run trying the disabled Bash tool. With one run per task this shows a direction, not an
+exact size.

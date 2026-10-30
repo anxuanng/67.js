@@ -118,3 +118,30 @@ test('torus maps cover both surface seams and partial arc caps', () => {
     if (arc === Math.PI) assert.deepEqual(Array.from(mesh.uvs.subarray(17 * 9 * 2, 17 * 9 * 2 + 2)), [0.5, 0.5]);
   }
 });
+
+test('extrude stays closed when hole edges line up with each other', () => {
+  const rectangle = (minimumX, minimumY, maximumX, maximumY) => [[minimumX, minimumY], [maximumX, minimumY], [maximumX, maximumY], [minimumX, maximumY]];
+  const contour = rectangle(-0.5, 0, 0.5, 1.2);
+  const panes = [rectangle(-0.44, 0.06, -0.03, 0.57), rectangle(0.03, 0.06, 0.44, 0.57), rectangle(-0.44, 0.63, -0.03, 1.14), rectangle(0.03, 0.63, 0.44, 1.14)];
+  for (const options of [{ depth: 0.08 }, { depth: 0.08, steps: 3 }, { depth: 0.08, bevel: 0.005, bevelSegments: 2 }]) {
+    const geometry = extrude(contour, { holes: panes, ...options });
+    const uses = new Map();
+    const keyOf = vertex => Array.from(geometry.positions.subarray(vertex * 3, vertex * 3 + 3)).join(',');
+    for (let offset = 0; offset < geometry.indices.length; offset += 3) {
+      for (let side = 0; side < 3; side++) {
+        const edge = [keyOf(geometry.indices[offset + side]), keyOf(geometry.indices[offset + (side + 1) % 3])].sort().join('|');
+        uses.set(edge, (uses.get(edge) ?? 0) + 1);
+      }
+    }
+    assert.deepEqual([...uses.values()].filter(count => count !== 2), [], JSON.stringify(options));
+    assert.equal(geometry.positions.length / 3, geometry.normals.length / 3);
+    assert.equal(geometry.positions.length / 3, geometry.uvs.length / 2);
+  }
+  const plain = extrude(contour, { holes: panes, depth: 0.08 });
+  let volume = 0;
+  for (let offset = 0; offset < plain.indices.length; offset += 3) {
+    const [first, second, third] = [0, 1, 2].map(side => Array.from(plain.positions.subarray(plain.indices[offset + side] * 3, plain.indices[offset + side] * 3 + 3)));
+    volume += (first[0] * (second[1] * third[2] - second[2] * third[1]) - first[1] * (second[0] * third[2] - second[2] * third[0]) + first[2] * (second[0] * third[1] - second[1] * third[0])) / 6;
+  }
+  assert.ok(Math.abs(volume - 0.029088) < 1e-5, `volume ${volume}`);
+});
