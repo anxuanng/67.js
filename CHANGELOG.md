@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.13.0
 
 - Add `motion.ik` to procedural recipes: two-bone and aim solvers on node hierarchies, with fixed, keyframed or node-following targets, so agents can animate jointed models without writing quaternions; `scene_inspect` reports whether each solver reaches its target across the clip
 - Add `67js/addons/skeleton-pose`: clip layers for skinned rigs with joint masks and additive blending, two-bone IK with poles and aim IK with angle limits and shared chains, all seekable, with joints named by rig name or humanoid bone
