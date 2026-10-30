@@ -37,6 +37,7 @@ Use `simplify-code` and `engineering-workflows` for implementation.
 - A rigid accessory on a morphing or skinned surface uses optional `src/surface-attachment.js` and `docs/surface-attachment.md`.
 - Agent scene recipes use optional `src/agent-scene.js` and `docs/agent-scene.md`. Verify source versus published availability before importing.
 - Polygon modeling by an agent (extrude, inset, loop cut, bevel, booleans, mirror, array, solidify) uses the recipe `mesh` geometry and the MCP tools `mesh_inspect`, `mesh_edit` and `mesh_stack`. Read [mesh-modeling.md](references/mesh-modeling.md) before the first edit; check that the checkout's `docs/mesh.md` exists, since it is unreleased after npm 0.10.0.
+- A surface look in a recipe (wood, planks, bricks, tiles, marble, stone, concrete, metal, rust, fabric) uses the material `pattern` field, which needs no UVs. See "Material patterns" in the checkout's `docs/agent-scene.md`.
 - Agent tool calls use the installed `67js-mcp` stdio server from release `0.5.0` onward. Read `docs/mcp.md` for launch and PNG feedback.
 - Agent render jobs use `docs/agent-render-jobs.md`. Check source versus published support, configure a private store and poll until terminal.
 - Agent procedural animation uses `docs/agent-motion.md` from release `0.7.0`. Author recipe tracks, then seek through `sampleMotion` or MCP `motionTime`.

@@ -61,6 +61,19 @@ function renderInfo(renderer) {
   };
 }
 
+function hasPatternTextures(parts) {
+  return parts.some(part => part.material.boxMapScale);
+}
+
+// replaceParts streams only untextured parts, so a topology change around pattern textures takes a new renderer.
+function rebuildRenderer(record) {
+  record.renderer.dispose();
+  record.renderer = null;
+  resetCanvas();
+  record.renderer = initializeRenderer(record.scene, record.options);
+  record.shadowKey = null;
+}
+
 function draw(record, time = 0, camera = record.scene.camera) {
   if (!record.renderer) throw new Error('The scene renderer is leased to a render job.');
   if (record.renderer.context.isContextLost()) {
@@ -69,7 +82,13 @@ function draw(record, time = 0, camera = record.scene.camera) {
   // Shrink the existing target first so a smaller look can recover a staging-budget failure.
   record.renderer.resize();
   if (record.rendererTopology !== record.scene.topologyRevision) {
-    record.renderer.replaceParts(record.scene.parts);
+    const textured = hasPatternTextures(record.scene.parts);
+    if (textured || record.rendererTextured) {
+      rebuildRenderer(record);
+    } else {
+      record.renderer.replaceParts(record.scene.parts);
+    }
+    record.rendererTextured = textured;
     record.rendererTopology = record.scene.topologyRevision;
     record.renderer.resize();
   } else {
@@ -151,7 +170,7 @@ function createPreview(scene, { sessionId, memoryBudgetMiB, backend }, asset) {
   try {
     renderer = initializeRenderer(scene, { memoryBudgetMiB, backend });
     const record = { scene, renderer, asset, sessionId, options: { memoryBudgetMiB, backend },
-      checkpoints: new Map(), rendererTopology: scene.topologyRevision };
+      checkpoints: new Map(), rendererTopology: scene.topologyRevision, rendererTextured: hasPatternTextures(scene.parts) };
     draw(record);
     const result = status(record);
     if (backend === 'gpu' && /swiftshader|llvmpipe|software/i.test(result.render.graphics)) {
@@ -239,6 +258,7 @@ window.__agentPreview = {
     try {
       record.renderer = initializeRenderer(record.scene, record.options);
       record.rendererTopology = record.scene.topologyRevision;
+      record.rendererTextured = hasPatternTextures(record.scene.parts);
       record.shadowKey = null;
       draw(record);
       return status(record);

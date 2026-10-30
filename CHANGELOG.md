@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Add the recipe material field `pattern`: eleven seeded, tileable procedural surfaces (wood, planks, bricks, tiles, marble, stone, concrete, metal, rust, fabric, noise) that need no UVs, keep their real size under node scale, and can change while a scene is open
+- Add periodic gradient, ridged and cellular noise for those patterns
 - Close `extrude` solids whose holes have aligned edges: their caps left T-junctions, so the mesh was open and booleans refused it
 - Let `mesh_inspect` take `geometry` as well as `geometries`, matching `mesh_edit` and `mesh_stack`
 - Say in the MCP schema that `box` and `cylinder` are bevelled by default, and how to get exact sizes

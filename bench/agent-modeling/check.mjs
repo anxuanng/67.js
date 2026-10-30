@@ -52,6 +52,10 @@ function checkOne(check, measures) {
       const problems = [...blockedOpen.map(point => `blocked at ${point}`), ...missing.map(point => `missing at ${point}`)];
       return { pass: problems.length === 0, detail: problems.join('; ') || `${check.open.length} open, ${check.solid.length} solid along ${check.axis}` };
     }
+    case 'pattern': {
+      const found = measures.patternTypes.filter(type => check.types.includes(type));
+      return { pass: found.length > 0, detail: measures.patternTypes.join(', ') || 'no material pattern' };
+    }
     case 'tips':
       return { pass: measures.tips === check.equals, detail: `${measures.tips} tips` };
     case 'triangles':

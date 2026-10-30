@@ -233,6 +233,7 @@ export async function measureRecipe(recipe) {
   const allClosed = closedParts === parts;
   return {
     nodes: geometries.length,
+    patternTypes: scene.exportRecipe().materials.filter(material => material.pattern).map(material => material.pattern.type),
     parts,
     closedParts,
     holes: allClosed ? (2 * parts - eulerCharacteristic) / 2 : null,

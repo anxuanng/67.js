@@ -151,6 +151,13 @@ stretching.`,
     checks: [...crateChecks, { kind: 'uv', maxStretch: 0.15 }],
   },
   {
+    id: 'crate-wood',
+    prompt: `A wooden crate that looks like real wood, not a flat colour. The body is a 0.6 m cube. Each of its four
+sides has a recessed panel: a frame about 0.04 m wide around a panel sunk about 0.02 m into the side. On top sits a
+raised lid, inset about 0.05 m from the top edges and 0.03 m tall.`,
+    checks: [...crateChecks, { kind: 'pattern', types: ['wood', 'planks'] }],
+  },
+  {
     id: 'dice',
     prompt: `A six-sided die as one solid piece: a 0.1 m cube with every edge and corner rounded to a radius of about
 0.01 m. The faces carry round recessed pips, each about 0.02 m across and at least 0.005 m deep, in the usual layouts

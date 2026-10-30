@@ -9,7 +9,10 @@ export const AGENT_SCENE_DEFAULT_LIMITS = Object.freeze({
   maxOperations: 256, maxCheckpoints: 8, maxRecipeBytes: 1024 * 1024,
 });
 
-// Procedural recipes have no textures, so cutout masking has nothing to cut.
+export const MATERIAL_PATTERN_TYPES = Object.freeze(['noise', 'wood', 'planks', 'bricks', 'tiles', 'marble', 'stone', 'concrete', 'metal', 'rust', 'fabric']);
+export const MAX_MATERIAL_PATTERNS = 16;
+
+// Recipe textures are opaque patterns, so cutout masking has nothing to cut.
 export const RECIPE_ALPHA_MODES = Object.freeze(['opaque', 'blend']);
 
 export const AGENT_SCENE_CAPABILITIES = Object.freeze({
@@ -24,6 +27,7 @@ export const AGENT_SCENE_CAPABILITIES = Object.freeze({
   ]),
   materialTags: Object.freeze(['surface', 'unlit', 'liquid', 'foam']),
   alphaModes: RECIPE_ALPHA_MODES,
+  materialPatterns: MATERIAL_PATTERN_TYPES, maxMaterialPatterns: MAX_MATERIAL_PATTERNS,
   fixedResources: false, dynamicTopology: true, checkpoints: true, positiveScaleOnly: true,
   authoredLook: true, maxPointLights: 8,
   proceduralMotion: true,
