@@ -238,7 +238,7 @@ The goal also needs this work, and no page in the Blender manual covers it.
 | --- | --- | --- | --- |
 | Parity evidence | partial | This ledger exists. The Blender comparisons do not. | #24, #25, #26 |
 | Bundle size | partial | `npm run size` checks a budget for each entry, and the package has a 1 MiB limit. three.js is still in the glTF and modeling paths. | #27, #33, #34, #35, #36 |
-| Runtime speed | partial | One benchmark scene. There is no culling, LOD selection or adaptive quality, and bakes run on the main thread. | #28, #37, #38 |
+| Runtime speed | partial | `bench/runtime` compares 7 scenes, and three.js wins most of them. There is no culling, LOD selection or adaptive quality, and bakes run on the main thread. | #28, #37, #38, #74 |
 | Agent measurement | partial | A task suite runs on one model and reads recipes only. | #29, #30, #31, #69 |
 | Pull request checks | partial | The `Test` workflow reports a status and does not block a merge. | #32 |
 | Relations between parts | missing | The agent version of snapping. | #44 |

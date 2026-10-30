@@ -1,0 +1,431 @@
+{
+ "resolution": [
+  960,
+  540
+ ],
+ "msaaSamples": 4,
+ "graphics": {
+  "gpu": "ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 (0x00002487) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+  "cpu": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)"
+ },
+ "results": {
+  "gpu": {
+   "instanced-objects": {
+    "67js": {
+     "firstFrameMilliseconds": 2608,
+     "updateMilliseconds": 0,
+     "renderCpuMilliseconds": 0.07,
+     "gpuMilliseconds": 0.66,
+     "fullFrameMilliseconds": 1.25,
+     "drawCalls": 3,
+     "triangles": 60002,
+     "gpuMegabytes": 46.51,
+     "heapMegabytes": 5,
+     "gpuBusyBefore": 95
+    },
+    "three": {
+     "firstFrameMilliseconds": 204,
+     "updateMilliseconds": 0,
+     "renderCpuMilliseconds": 3.91,
+     "gpuMilliseconds": 0.3,
+     "fullFrameMilliseconds": 4.34,
+     "drawCalls": 4154,
+     "triangles": 49848,
+     "gpuMegabytes": 0,
+     "heapMegabytes": 8.5,
+     "gpuBusyBefore": 41
+    },
+    "three-instanced": {
+     "firstFrameMilliseconds": 190,
+     "updateMilliseconds": 0,
+     "renderCpuMilliseconds": 0.05,
+     "gpuMilliseconds": 0.05,
+     "fullFrameMilliseconds": 0.36,
+     "drawCalls": 1,
+     "triangles": 60000,
+     "gpuMegabytes": 0.31,
+     "heapMegabytes": 2.4,
+     "gpuBusyBefore": 10
+    }
+   },
+   "many-materials": {
+    "67js": {
+     "firstFrameMilliseconds": 2564,
+     "updateMilliseconds": 0,
+     "renderCpuMilliseconds": 0.11,
+     "gpuMilliseconds": 4.24,
+     "fullFrameMilliseconds": 4.75,
+     "drawCalls": 4,
+     "triangles": 960014,
+     "gpuMegabytes": 45.91,
+     "heapMegabytes": 2.4,
+     "gpuBusyBefore": 19
+    },
+    "three": {
+     "firstFrameMilliseconds": 269,
+     "updateMilliseconds": 0,
+     "renderCpuMilliseconds": 2.34,
+     "gpuMilliseconds": 0.19,
+     "fullFrameMilliseconds": 2.97,
+     "drawCalls": 965,
+     "triangles": 925452,
+     "gpuMegabytes": 0.03,
+     "heapMegabytes": 12.9,
+     "gpuBusyBefore": 84
+    }
+   },
+   "many-lights": {
+    "67js": {
+     "firstFrameMilliseconds": 2655,
+     "updateMilliseconds": 0,
+     "renderCpuMilliseconds": 0.11,
+     "gpuMilliseconds": 3.78,
+     "fullFrameMilliseconds": 4.54,
+     "drawCalls": 4,
+     "triangles": 384014,
+     "gpuMegabytes": 45.82,
+     "heapMegabytes": 1.6,
+     "gpuBusyBefore": 13
+    },
+    "three": {
+     "firstFrameMilliseconds": 276,
+     "updateMilliseconds": 0,
+     "renderCpuMilliseconds": 0.82,
+     "gpuMilliseconds": 0.33,
+     "fullFrameMilliseconds": 2.46,
+     "drawCalls": 385,
+     "triangles": 368652,
+     "gpuMegabytes": 0.03,
+     "heapMegabytes": 2.3,
+     "gpuBusyBefore": 92
+    }
+   },
+   "transparency": {
+    "67js": {
+     "firstFrameMilliseconds": 2853,
+     "updateMilliseconds": 0,
+     "renderCpuMilliseconds": 0.16,
+     "gpuMilliseconds": 2.02,
+     "fullFrameMilliseconds": 2.7,
+     "drawCalls": 4,
+     "triangles": 288014,
+     "gpuMegabytes": 45.8,
+     "heapMegabytes": 1.4,
+     "gpuBusyBefore": 88
+    },
+    "three": {
+     "firstFrameMilliseconds": 231,
+     "updateMilliseconds": 0,
+     "renderCpuMilliseconds": 0.55,
+     "gpuMilliseconds": 0.16,
+     "fullFrameMilliseconds": 1.35,
+     "drawCalls": 301,
+     "triangles": 288012,
+     "gpuMegabytes": 0.03,
+     "heapMegabytes": 5,
+     "gpuBusyBefore": 83
+    }
+   },
+   "moving-shadows": {
+    "67js": {
+     "firstFrameMilliseconds": 2606,
+     "updateMilliseconds": 0.54,
+     "renderCpuMilliseconds": 0.21,
+     "gpuMilliseconds": 1.34,
+     "fullFrameMilliseconds": 2.34,
+     "drawCalls": 4,
+     "triangles": 12026,
+     "gpuMegabytes": 45.8,
+     "heapMegabytes": 1.4,
+     "gpuBusyBefore": 8
+    },
+    "three": {
+     "firstFrameMilliseconds": 245,
+     "updateMilliseconds": 0.05,
+     "renderCpuMilliseconds": 1.31,
+     "gpuMilliseconds": 0.16,
+     "fullFrameMilliseconds": 1.85,
+     "drawCalls": 1002,
+     "triangles": 12024,
+     "gpuMegabytes": 32,
+     "heapMegabytes": 2.2,
+     "gpuBusyBefore": 98
+    }
+   },
+   "large-mesh": {
+    "67js": {
+     "firstFrameMilliseconds": 3113,
+     "updateMilliseconds": 0,
+     "renderCpuMilliseconds": 0.11,
+     "gpuMilliseconds": 3.57,
+     "fullFrameMilliseconds": 4.24,
+     "drawCalls": 3,
+     "triangles": 1046530,
+     "gpuMegabytes": 73.75,
+     "heapMegabytes": 28.6,
+     "gpuBusyBefore": 10
+    },
+    "three": {
+     "firstFrameMilliseconds": 459,
+     "updateMilliseconds": 0,
+     "renderCpuMilliseconds": 0.05,
+     "gpuMilliseconds": 0.15,
+     "fullFrameMilliseconds": 0.59,
+     "drawCalls": 1,
+     "triangles": 1046528,
+     "gpuMegabytes": 24.01,
+     "heapMegabytes": 29,
+     "gpuBusyBefore": 85
+    }
+   },
+   "skinned-characters": {
+    "67js": {
+     "firstFrameMilliseconds": 3266,
+     "updateMilliseconds": 7.57,
+     "renderCpuMilliseconds": 1.27,
+     "gpuMilliseconds": 5.17,
+     "fullFrameMilliseconds": 9.02,
+     "drawCalls": 308,
+     "triangles": 51818,
+     "gpuMegabytes": 49.02,
+     "heapMegabytes": 17.8,
+     "gpuBusyBefore": 73
+    },
+    "three": {
+     "firstFrameMilliseconds": 551,
+     "updateMilliseconds": 0.05,
+     "renderCpuMilliseconds": 1.84,
+     "gpuMilliseconds": 0.37,
+     "fullFrameMilliseconds": 3.13,
+     "drawCalls": 306,
+     "triangles": 51816,
+     "gpuMegabytes": 32.34,
+     "heapMegabytes": 5.6,
+     "gpuBusyBefore": 79
+    }
+   }
+  },
+  "cpu": {
+   "instanced-objects": {
+    "67js": {
+     "firstFrameMilliseconds": 2109,
+     "updateMilliseconds": 0,
+     "renderCpuMilliseconds": 0.2,
+     "gpuMilliseconds": 629.74,
+     "fullFrameMilliseconds": 631.01,
+     "drawCalls": 3,
+     "triangles": 60002,
+     "gpuMegabytes": 46.51,
+     "heapMegabytes": 4.9,
+     "gpuBusyBefore": 78
+    },
+    "three": {
+     "firstFrameMilliseconds": 290,
+     "updateMilliseconds": 0,
+     "renderCpuMilliseconds": 7.87,
+     "gpuMilliseconds": 36.89,
+     "fullFrameMilliseconds": 47.58,
+     "drawCalls": 4154,
+     "triangles": 49848,
+     "gpuMegabytes": 0,
+     "heapMegabytes": 8.5,
+     "gpuBusyBefore": 35
+    },
+    "three-instanced": {
+     "firstFrameMilliseconds": 347,
+     "updateMilliseconds": 0,
+     "renderCpuMilliseconds": 0.18,
+     "gpuMilliseconds": 42.69,
+     "fullFrameMilliseconds": 43.66,
+     "drawCalls": 1,
+     "triangles": 60000,
+     "gpuMegabytes": 0.31,
+     "heapMegabytes": 2.4,
+     "gpuBusyBefore": 78
+    }
+   },
+   "many-materials": {
+    "67js": {
+     "firstFrameMilliseconds": 3681,
+     "updateMilliseconds": 0,
+     "renderCpuMilliseconds": 0.2,
+     "gpuMilliseconds": 2206.27,
+     "fullFrameMilliseconds": 2207.49,
+     "drawCalls": 4,
+     "triangles": 960014,
+     "gpuMegabytes": 45.91,
+     "heapMegabytes": 2.4,
+     "gpuBusyBefore": 90
+    },
+    "three": {
+     "firstFrameMilliseconds": 542,
+     "updateMilliseconds": 0,
+     "renderCpuMilliseconds": 4.51,
+     "gpuMilliseconds": 231.55,
+     "fullFrameMilliseconds": 236.68,
+     "drawCalls": 965,
+     "triangles": 925452,
+     "gpuMegabytes": 0.03,
+     "heapMegabytes": 12.9,
+     "gpuBusyBefore": 5
+    }
+   },
+   "many-lights": {
+    "67js": {
+     "firstFrameMilliseconds": 3080,
+     "updateMilliseconds": 0,
+     "renderCpuMilliseconds": 0.26,
+     "gpuMilliseconds": 1504.6,
+     "fullFrameMilliseconds": 1506.23,
+     "drawCalls": 4,
+     "triangles": 384014,
+     "gpuMegabytes": 45.82,
+     "heapMegabytes": 1.6,
+     "gpuBusyBefore": 5
+    },
+    "three": {
+     "firstFrameMilliseconds": 444,
+     "updateMilliseconds": 0,
+     "renderCpuMilliseconds": 1.12,
+     "gpuMilliseconds": 258.75,
+     "fullFrameMilliseconds": 261.08,
+     "drawCalls": 385,
+     "triangles": 368652,
+     "gpuMegabytes": 0.03,
+     "heapMegabytes": 2.3,
+     "gpuBusyBefore": 5
+    }
+   },
+   "transparency": {
+    "67js": {
+     "firstFrameMilliseconds": 3834,
+     "updateMilliseconds": 0,
+     "renderCpuMilliseconds": 0.39,
+     "gpuMilliseconds": 1697.26,
+     "fullFrameMilliseconds": 1698.63,
+     "drawCalls": 4,
+     "triangles": 288014,
+     "gpuMegabytes": 45.8,
+     "heapMegabytes": 1.3,
+     "gpuBusyBefore": 30
+    },
+    "three": {
+     "firstFrameMilliseconds": 461,
+     "updateMilliseconds": 0,
+     "renderCpuMilliseconds": 1.78,
+     "gpuMilliseconds": 128.53,
+     "fullFrameMilliseconds": 131.2,
+     "drawCalls": 301,
+     "triangles": 288012,
+     "gpuMegabytes": 0.03,
+     "heapMegabytes": 4.9,
+     "gpuBusyBefore": 5
+    }
+   },
+   "moving-shadows": {
+    "67js": {
+     "firstFrameMilliseconds": 1756,
+     "updateMilliseconds": 1.44,
+     "renderCpuMilliseconds": 0.45,
+     "gpuMilliseconds": 409.61,
+     "fullFrameMilliseconds": 411.28,
+     "drawCalls": 4,
+     "triangles": 12026,
+     "gpuMegabytes": 45.8,
+     "heapMegabytes": 1.4,
+     "gpuBusyBefore": 5
+    },
+    "three": {
+     "firstFrameMilliseconds": 336,
+     "updateMilliseconds": 0.15,
+     "renderCpuMilliseconds": 2.59,
+     "gpuMilliseconds": 39.22,
+     "fullFrameMilliseconds": 43.1,
+     "drawCalls": 1002,
+     "triangles": 12024,
+     "gpuMegabytes": 32,
+     "heapMegabytes": 2.1,
+     "gpuBusyBefore": 6
+    }
+   },
+   "large-mesh": {
+    "67js": {
+     "firstFrameMilliseconds": 4154,
+     "updateMilliseconds": 0,
+     "renderCpuMilliseconds": 0.21,
+     "gpuMilliseconds": 2214.27,
+     "fullFrameMilliseconds": 2215.82,
+     "drawCalls": 3,
+     "triangles": 1046530,
+     "gpuMegabytes": 73.75,
+     "heapMegabytes": 28.6,
+     "gpuBusyBefore": 31
+    },
+    "three": {
+     "firstFrameMilliseconds": 797,
+     "updateMilliseconds": 0,
+     "renderCpuMilliseconds": 0.18,
+     "gpuMilliseconds": 219.34,
+     "fullFrameMilliseconds": 220.5,
+     "drawCalls": 1,
+     "triangles": 1046528,
+     "gpuMegabytes": 24.01,
+     "heapMegabytes": 29,
+     "gpuBusyBefore": 12
+    }
+   },
+   "skinned-characters": {
+    "67js": {
+     "firstFrameMilliseconds": 2295,
+     "updateMilliseconds": 11.43,
+     "renderCpuMilliseconds": 1.43,
+     "gpuMilliseconds": 721.09,
+     "fullFrameMilliseconds": 730.07,
+     "drawCalls": 308,
+     "triangles": 51818,
+     "gpuMegabytes": 49.02,
+     "heapMegabytes": 17.7,
+     "gpuBusyBefore": 7
+    },
+    "three": {
+     "firstFrameMilliseconds": 640,
+     "updateMilliseconds": 0.09,
+     "renderCpuMilliseconds": 2.96,
+     "gpuMilliseconds": 63.23,
+     "fullFrameMilliseconds": 67.76,
+     "drawCalls": 306,
+     "triangles": 51816,
+     "gpuMegabytes": 32.34,
+     "heapMegabytes": 5.5,
+     "gpuBusyBefore": 6
+    }
+   }
+  }
+ },
+ "scenes": {
+  "instanced-objects": "5,000 boxes that share a geometry and a material",
+  "many-materials": "1,000 spheres with 1,000 different materials",
+  "many-lights": "400 spheres lit by 8 point lights",
+  "transparency": "300 overlapping translucent spheres that need sorting",
+  "moving-shadows": "500 moving boxes that cast a directional shadow",
+  "large-mesh": "One sphere with about 1 million triangles",
+  "skinned-characters": "8 animated copies of a CC0 robot, at one spot with different clip times"
+ },
+ "pictureDifference": {
+  "cpu-instanced-objects": 0.0456,
+  "cpu-large-mesh": 0.027,
+  "cpu-many-lights": 0.131,
+  "cpu-many-materials": 0.2411,
+  "cpu-moving-shadows": 0.091,
+  "cpu-skinned-characters": 0.1037,
+  "cpu-transparency": 0.1293,
+  "gpu-instanced-objects": 0.0465,
+  "gpu-large-mesh": 0.027,
+  "gpu-many-lights": 0.1315,
+  "gpu-many-materials": 0.2411,
+  "gpu-moving-shadows": 0.0903,
+  "gpu-skinned-characters": 0.1038,
+  "gpu-transparency": 0.1293
+ },
+ "threeVersion": "0.186.1"
+}
