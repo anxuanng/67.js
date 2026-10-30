@@ -57,7 +57,76 @@ function gearContour(teeth, tipRadius, rootRadius) {
   return points;
 }
 
+const PIP_LAYOUTS = {
+  1: [[0, 0]],
+  2: [[-1, -1], [1, 1]],
+  3: [[-1, -1], [0, 0], [1, 1]],
+  4: [[-1, -1], [-1, 1], [1, -1], [1, 1]],
+  5: [[-1, -1], [-1, 1], [0, 0], [1, -1], [1, 1]],
+  6: [[-1, -1], [-1, 0], [-1, 1], [1, -1], [1, 0], [1, 1]],
+};
+const DIE_FACES = [
+  { pips: 1, point: (first, second) => [first, 0.5, second] },
+  { pips: 6, point: (first, second) => [first, -0.5, second] },
+  { pips: 2, point: (first, second) => [0.5, first, second] },
+  { pips: 5, point: (first, second) => [-0.5, first, second] },
+  { pips: 3, point: (first, second) => [first, second, 0.5] },
+  { pips: 4, point: (first, second) => [first, second, -0.5] },
+];
+
+function dieEdits() {
+  const pipEdits = [];
+  for (const face of DIE_FACES) {
+    for (const [first, second] of PIP_LAYOUTS[face.pips]) {
+      pipEdits.push({
+        op: 'boolean', operation: 'difference', name: `pip-${pipEdits.length}`,
+        cutter: { type: 'sphere', segments: 16, rings: 8 },
+        translation: face.point(first * 0.25, second * 0.25), scale: [0.1, 0.1, 0.1],
+      });
+    }
+  }
+  return [{ op: 'bevel', edges: { all: true }, width: 0.1, segments: 3 }, ...pipEdits];
+}
+
+function boltHoleEdits() {
+  const edits = [];
+  for (const height of [0.01, 0.29]) {
+    for (let hole = 0; hole < 6; hole++) {
+      const angle = hole / 6 * Math.PI * 2;
+      edits.push({
+        op: 'boolean', operation: 'difference', name: `bolt-${edits.length}`,
+        cutter: { type: 'cylinder', segments: 24, bevel: 0 },
+        translation: [0.07 * Math.cos(angle), height, 0.07 * Math.sin(angle)], scale: [0.008, 0.04, 0.008],
+      });
+    }
+  }
+  return edits;
+}
+
 export const REFERENCES = {
+  dice: scene(
+    [{ id: 'die', type: 'mesh', base: { type: 'box', bevel: 0 }, edits: dieEdits() }],
+    [{ id: 'die', geometry: 'die', translation: [0, 0.05, 0], scale: [0.1, 0.1, 0.1] }],
+  ),
+  flange: scene(
+    [{
+      id: 'pipe', type: 'mesh',
+      base: { type: 'lathe', segments: 64, profile: [[0.04, 0.3], [0.04, 0], [0.09, 0], [0.09, 0.02], [0.05, 0.02], [0.05, 0.28], [0.09, 0.28], [0.09, 0.3], [0.04, 0.3]] },
+      edits: boltHoleEdits(),
+    }],
+    [{ id: 'pipe', geometry: 'pipe' }],
+  ),
+  chair: scene(
+    [{ id: 'block', type: 'box', bevel: 0 }],
+    [
+      { id: 'seat', geometry: 'block', translation: [0, 0.435, 0], scale: [0.45, 0.03, 0.45] },
+      { id: 'front-left', geometry: 'block', translation: [-0.205, 0.21, 0.205], scale: [0.04, 0.42, 0.04] },
+      { id: 'front-right', geometry: 'block', translation: [0.205, 0.21, 0.205], scale: [0.04, 0.42, 0.04] },
+      { id: 'post-left', geometry: 'block', translation: [-0.205, 0.45, -0.205], scale: [0.04, 0.9, 0.04] },
+      { id: 'post-right', geometry: 'block', translation: [0.205, 0.45, -0.205], scale: [0.04, 0.9, 0.04] },
+      ...[0.6, 0.7, 0.8].map((height, index) => ({ id: `slat-${index}`, geometry: 'block', translation: [0, height, -0.205], scale: [0.37, 0.06, 0.02] })),
+    ],
+  ),
   crate: scene(
     [{ id: 'crate', type: 'mesh', base: { type: 'box', bevel: 0 }, edits: crateEdits }],
     [{ id: 'crate', geometry: 'crate', translation: [0, 0.3, 0] }],
