@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.12.0
 
 - Add the recipe material field `pattern`: eleven seeded, tileable procedural surfaces (wood, planks, bricks, tiles, marble, stone, concrete, metal, rust, fabric, noise) that need no UVs, keep their real size under node scale, and can change while a scene is open
 - Add periodic gradient, ridged and cellular noise for those patterns
