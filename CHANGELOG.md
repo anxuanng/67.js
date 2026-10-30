@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.14.0
 
 - Add `motion.ik` to imported assets: IK runs over the selected clip and overrides, moves every skin and rigid part, and takes `worldForward`, so agents can pose imported characters through MCP without writing quaternions
 - Add `npm run smoke:character`, which takes a real CC0 character through the MCP server along the path an agent uses
