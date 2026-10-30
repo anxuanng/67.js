@@ -62,6 +62,13 @@ export const REFERENCES = {
     [{ id: 'crate', type: 'mesh', base: { type: 'box', bevel: 0 }, edits: crateEdits }],
     [{ id: 'crate', geometry: 'crate', translation: [0, 0.3, 0] }],
   ),
+  'crate-wood': {
+    ...scene(
+      [{ id: 'crate', type: 'mesh', base: { type: 'box', bevel: 0 }, edits: crateEdits }],
+      [{ id: 'crate', geometry: 'crate', translation: [0, 0.3, 0] }],
+    ),
+    materials: [{ id: 'paint', pattern: { type: 'planks', size: 0.6, count: 5 }, roughness: 1 }],
+  },
   'crate-uv': scene(
     [{ id: 'crate', type: 'mesh', base: { type: 'box', bevel: 0 }, edits: [...crateEdits, { op: 'uv_unwrap' }] }],
     [{ id: 'crate', geometry: 'crate', translation: [0, 0.3, 0] }],

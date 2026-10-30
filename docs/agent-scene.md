@@ -77,13 +77,13 @@ Modeling point inputs have a maximum of 4096 points.
 An extrusion has at most 128 holes and 4096 total contour points.
 Shared resource IDs generate geometry once, regardless of the number of mesh nodes.
 
-Materials contain `id`, `tag`, `color`, `metallic`, `roughness`, `emission`, optional `emissiveColor`, `opacity`, `alphaMode` and `doubleSided`.
+Materials contain `id`, `tag`, `color`, `metallic`, `roughness`, `emission`, optional `emissiveColor`, `opacity`, `alphaMode`, `doubleSided` and `pattern`.
 The defaults are `surface`, `[0.5, 0.5, 0.5]`, `0`, `0.5`, `0`, opacity `1`, `opaque` and `false`.
 The tag can be `surface`, `unlit`, `liquid` or `foam` and remains fixed during editing.
 `liquid` refracts and tints what lies behind it: its color is the light one metre lets through, so `[0.56, 0.84, 0.88]` is clear water. `foam` draws soft blended droplets.
 Any `opacity` below one draws the material blended after opaque geometry, which suits glass, windows and visors. `alphaMode` accepts `opaque` or `blend`; cutout masking needs a texture and is not available in procedural recipes.
 `doubleSided` draws and lights both faces of thin sheets.
-Changing the tag, opacity, blending or sidedness replaces the affected parts in the renderer; color, metallic, roughness and emission edits keep them.
+Changing the tag, opacity, blending, sidedness or pattern replaces the affected parts in the renderer; color, metallic, roughness and emission edits keep them.
 Set liquid optics with `environment.liquid`: `thickness`, `ior`, `refraction`, `scattering`, `foamOpacity` and `foamSoftness`.
 Colors use linear RGB.
 
@@ -91,7 +91,39 @@ Base color, metallic, and roughness range from zero to one.
 Emission and independent emissive color must be nonnegative finite Float32 numbers.
 Their component products must also remain finite at Float32 precision.
 Unlit emissive radiance is capped at 65500 per component to fit the half-float HDR target.
-Textures and the other procedural material tags are outside this version.
+Image textures and the other procedural material tags are outside this version.
+
+### Material patterns
+
+`pattern` gives a `surface` material a procedural texture, baked once and shared by every material with the same definition:
+
+```json
+{ "id": "oak", "pattern": { "type": "wood", "size": 0.6, "axis": "z" }, "roughness": 1 }
+```
+
+| Field | Meaning |
+| --- | --- |
+| `type` | `noise`, `wood`, `planks`, `bricks`, `tiles`, `marble`, `stone`, `concrete`, `metal`, `rust` or `fabric` |
+| `colors` | Two linear RGB colours to mix, darker first. `bricks` also takes a third, for the mortar. Each type has defaults |
+| `size` | Metres per repeat of the texture, from 0.01 to 100 |
+| `count` | Features per repeat, from 1 to 64: planks, bricks or tiles across, wood rings, or noise cells |
+| `bump` | Relief strength, from 0 (flat) to 4 |
+| `seed` | Nonnegative whole number. The same definition always bakes the same pixels |
+| `axis` | Object axis the grain runs along: `x`, `y` (default) or `z` |
+| `resolution` | Texture size: 256, 512 (default) or 1024 |
+
+A pattern needs no UVs. The texture is projected along the object's three axes and blended by the surface normal, so it
+works on every geometry type and after mesh edits. Coordinates are in metres on the object, after its node scale, so a
+stretched box keeps the texture's real size and the pattern moves with the node. Corners between faces show where one
+projection meets another; `uv_unwrap` results are not used by patterns.
+
+`color` defaults to white and tints the pattern. `roughness` and `metallic` scale what the pattern stores, so use
+`roughness: 1` for its own surface and `metallic: 1` for `metal` and `rust` (rust stores where it is no longer metal).
+
+A scene holds at most 16 different patterns, and materials that differ only in `color`, `roughness` or `metallic`
+share one. Each takes about 4 MiB of texture memory at 512. Measured in Node on a Ryzen 5 5600X, baking at 512 took
+about 0.2 to 0.55 s per pattern, which happens when the scene first renders it. Changing a pattern rebuilds the
+renderer.
 
 Nodes contain `id`, optional `label`, `parent`, `translation`, `rotation`, and `scale`.
 Mesh nodes also require both `geometry` and `material` resource IDs.
@@ -132,7 +164,7 @@ Final resource references and hierarchy must be valid before publication.
 | Operation | Fields |
 | --- | --- |
 | `set-node` | `id`, optional `translation`, `rotation`, `scale`, `parent`, `label`, `geometry`, `material` |
-| `set-material` | `id`, optional `color`, `metallic`, `roughness`, `emission`, `emissiveColor` |
+| `set-material` | `id`, optional `color`, `metallic`, `roughness`, `emission`, `emissiveColor`, `pattern` |
 | `set-camera` | Optional `eye`, `target`, `up`, `fov`, `near`, `far` directly on the command |
 | `add-geometry` | `geometry`, containing a complete geometry record |
 | `remove-geometry` | `id` |

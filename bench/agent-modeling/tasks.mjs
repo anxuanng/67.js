@@ -150,6 +150,13 @@ inset about 0.05 m from the top edges and 0.03 m tall. Give every part UV coordi
 stretching.`,
     checks: [...crateChecks, { kind: 'uv', maxStretch: 0.15 }],
   },
+  {
+    id: 'crate-wood',
+    prompt: `A wooden crate that looks like real wood, not a flat colour. The body is a 0.6 m cube. Each of its four
+sides has a recessed panel: a frame about 0.04 m wide around a panel sunk about 0.02 m into the side. On top sits a
+raised lid, inset about 0.05 m from the top edges and 0.03 m tall.`,
+    checks: [...crateChecks, { kind: 'pattern', types: ['wood', 'planks'] }],
+  },
 ];
 
 export function taskById(id) {

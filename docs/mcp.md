@@ -189,6 +189,7 @@ Checkpoints retain their resource handles for exact restoration. Active, checkpo
 Release unused checkpoints to free that ownership before adding detail.
 
 The preview reconciles rigid, untextured parts while retaining shader programs, render targets and shared geometry buffers.
+A scene with material patterns gets a new renderer on each topology change instead, because textured parts are not streamed.
 Unchanged draw batches remain allocated. Changed instance groups receive new instance buffers. Retired buffers are released.
 
 Staging must fit alongside the current render allocations, so a replacement can fail its GPU budget even when the final scene alone fits.

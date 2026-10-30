@@ -33,6 +33,7 @@ own mesh report:
 | bracket | Two plates and two holes |
 | soap | Rounding every edge (bevel) |
 | crate-uv | The crate with even UVs |
+| crate-wood | The crate with a wood material pattern, to see whether agents find `pattern` |
 
 `references.mjs` holds one hand-built solution per task. `tests/agent-modeling-suite.test.js` checks that every
 reference passes and that broken variants fail. That keeps a wrong checker from costing an agent run.

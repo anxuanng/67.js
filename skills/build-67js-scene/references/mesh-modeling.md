@@ -3,8 +3,8 @@
 <!-- skill-navigation:start -->
 This is the [mesh modeling guide](#mesh-modeling-for-agents). Read [Workflow](#workflow) and
 [Choosing faces and edges](#choosing-faces-and-edges) completely before the first edit. Read the
-[Recipes](#recipes) entry closest to the shape you are building, and [Errors and fixes](#errors-and-fixes) when a
-call fails. The full contract (every op, field and default) is the checkout's `docs/mesh.md`; `docs/mcp.md` lists
+[Recipes](#recipes) entry closest to the shape you are building, [Giving a part a surface](#giving-a-part-a-surface) for
+textures, and [Errors and fixes](#errors-and-fixes) when a call fails. The full contract (every op, field and default) is the checkout's `docs/mesh.md`; `docs/mcp.md` lists
 the tools.
 <!-- skill-navigation:end -->
 
@@ -180,6 +180,19 @@ A planter (open box with walls) and a rounded soap bar:
   { "op": "bevel", "edges": { "all": true }, "width": 0.12, "segments": 4 }
 ] }
 ```
+
+## Giving a part a surface
+
+A material `pattern` textures any part with no UVs, after any edits. `size` is metres per repeat, so it stays right on
+a scaled node. Use `roughness: 1` so the pattern's own surface shows, and `metallic: 1` for `metal` and `rust`:
+
+```text
+{ "id": "crate-wood", "pattern": { "type": "planks", "size": 0.8, "count": 5 }, "roughness": 1 }
+{ "id": "drum-metal", "pattern": { "type": "rust", "size": 0.6 }, "metallic": 1, "roughness": 1 }
+```
+
+Run a grain along a long part with `axis` (`"axis": "x"` for a plank lying along X), and tint with `color` instead of
+adding another pattern: a scene holds at most 16 different ones. `uv_unwrap` is for exporting, not for patterns.
 
 ## Errors and fixes
 

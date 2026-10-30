@@ -5,6 +5,7 @@ import { setPriority, constants } from 'node:os';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import packageMetadata from '../package.json' with { type: 'json' };
+import { MATERIAL_PATTERN_TYPES } from '../src/agent-scene-capabilities.js';
 
 const finite = z.number().min(-3.4028234663852886e38).max(3.4028234663852886e38);
 const positive = finite.positive();
@@ -26,7 +27,18 @@ const nodeFields = {
   scale: z.tuple([positive, positive, positive]).optional().describe('Positive local XYZ scale.'),
 };
 const nodeRecord = z.strictObject({ id: identifier, geometry: identifier.optional(), material: identifier.optional(), ...nodeFields });
+const materialPattern = z.strictObject({
+  type: z.enum(MATERIAL_PATTERN_TYPES).describe('Surface look. Directional types (wood, planks, metal) run along axis.'),
+  colors: z.array(color).min(2).max(3).optional().describe('Linear RGB colours to mix, darker first. Bricks take a third for the mortar. Each type has good defaults.'),
+  size: z.number().min(0.01).max(100).optional().describe('Metres per repeat of the texture, so it keeps its real size on any object and node scale.'),
+  count: z.number().int().min(1).max(64).optional().describe('Features per repeat: planks, bricks across, tiles across, wood rings or noise cells.'),
+  bump: z.number().min(0).max(4).optional().describe('Relief strength. 0 is flat.'),
+  seed: z.number().int().min(0).max(2147483647).optional(),
+  axis: z.enum(['x', 'y', 'z']).optional().describe('Object axis the grain runs along. Defaults to y.'),
+  resolution: z.union([z.literal(256), z.literal(512), z.literal(1024)]).optional().describe('Texture size. Defaults to 512; each pattern takes about 4 MiB at 512.'),
+}).describe('Procedural texture baked for this material. Needs no UVs: it is projected along the object axes. color then tints it (defaults to white), and roughness and metallic scale it.');
 const materialFields = {
+  pattern: materialPattern.optional(),
   color: color.optional().describe('Linear RGB base color, each component between zero and one.'),
   metallic: unit.optional(),
   roughness: unit.optional(),

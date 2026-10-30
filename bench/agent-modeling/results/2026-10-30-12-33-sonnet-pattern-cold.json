@@ -1,0 +1,43 @@
+{
+  "run": "2026-10-30-12-33-sonnet-pattern-cold",
+  "model": "claude-sonnet-5-5",
+  "date": "2026-10-30T12:34:25.374Z",
+  "passed": 1,
+  "tasks": 1,
+  "toolCalls": 3,
+  "costUsd": 0.44,
+  "records": [
+    {
+      "task": "crate-wood",
+      "pass": true,
+      "passed": 9,
+      "total": 9,
+      "failed": [],
+      "model": "claude-sonnet-5-5",
+      "toolCalls": 3,
+      "toolErrors": 0,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_create": 1,
+        "scene_look": 1,
+        "scene_export_recipe": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "mesh",
+          "box"
+        ],
+        "meshOperations": [
+          "boolean"
+        ]
+      },
+      "turns": 5,
+      "costUsd": 0.4370352,
+      "inputTokens": 474165,
+      "outputTokens": 2018,
+      "wallSeconds": 33,
+      "exitCode": 0,
+      "stopped": "success"
+    }
+  ]
+}

@@ -100,7 +100,7 @@ function materialMapState(material) {
   const occlusionStrength = material.occlusionStrength ?? 1;
   validateSplatMaterial(material);
   if (material.layers && PROCEDURAL_MATERIAL_TAGS.has(material.tag)) throw new Error('Splat layers require a standard PBR material tag.');
-  return [...MATERIAL_MAPS.map(field => material[field] ?? null), normalScale[0], normalScale[1], occlusionStrength, ...mossState(material), ...splatBatchState(material)];
+  return [...MATERIAL_MAPS.map(field => material[field] ?? null), normalScale[0], normalScale[1], occlusionStrength, ...mossState(material), material.boxMapScale ?? 0, material.boxMapAxis ?? 1, ...splatBatchState(material)];
 }
 
 function validateAlphaMaterial(material) {
@@ -389,7 +389,7 @@ export class Renderer67 {
     for (const group of groups) {
       const geometry = group[0].geometry;
       if (geometry.uvs && geometry.uvs.length !== geometry.positions.length / 3 * 2) throw new Error('Geometry UV count must match the vertex count.');
-      if (hasMaterialMap(group[0].material) && !geometry.uvs) throw new Error('Textured geometry requires UV channel 0.');
+      if (hasMaterialMap(group[0].material) && !geometry.uvs && !group[0].material.boxMapScale) throw new Error('Textured geometry requires UV channel 0.');
       for (const coordinate of geometry.uvs ?? []) {
         if (!Number.isFinite(coordinate)) throw new Error('Geometry UVs must be finite.');
       }
@@ -404,7 +404,7 @@ export class Renderer67 {
     this.inverseViewProjection = mat4.create();
     this.program = compileProgram(this.context, benchmark ? benchmarkVertexShader : vertexShader, benchmark ? benchmarkFragmentShader : fragmentShader);
     this.depthProgram = compileProgram(this.context, depthVertexShader, depthFragmentShader);
-    this.uniforms = Object.fromEntries(['viewProjection', 'lightProjection', 'eye', 'armorColor', 'armorSurface', 'exposure', 'inspection', 'shadowMap', ...MAP_UNIFORMS, ...MAP_FLAGS, ...SKIN_UNIFORMS, ...MORPH_UNIFORMS, 'normalScale', 'occlusionStrength', 'materialMoss', ...SPLAT_UNIFORMS, 'hdrEnabled', 'time', 'wind', 'worldMode', 'daylight', 'fogColor', 'lightDirection', 'fogDensity', 'waterRipple', 'rippleTime', 'explosionProgress', 'explosionCenter', 'assemblyAmount', ...ALPHA_UNIFORMS].map((name) => [name, this.context.getUniformLocation(this.program, name)]));
+    this.uniforms = Object.fromEntries(['boxMapScale', 'boxMapAxis', 'viewProjection', 'lightProjection', 'eye', 'armorColor', 'armorSurface', 'exposure', 'inspection', 'shadowMap', ...MAP_UNIFORMS, ...MAP_FLAGS, ...SKIN_UNIFORMS, ...MORPH_UNIFORMS, 'normalScale', 'occlusionStrength', 'materialMoss', ...SPLAT_UNIFORMS, 'hdrEnabled', 'time', 'wind', 'worldMode', 'daylight', 'fogColor', 'lightDirection', 'fogDensity', 'waterRipple', 'rippleTime', 'explosionProgress', 'explosionCenter', 'assemblyAmount', ...ALPHA_UNIFORMS].map((name) => [name, this.context.getUniformLocation(this.program, name)]));
     for (const name of ['pointLightCount', 'pointLightPositions[0]', 'pointLightColors[0]', 'pointLightRadii[0]', 'keyColor', 'fillIntensity', 'ambientIntensity']) {
       this.uniforms[name] = this.context.getUniformLocation(this.program, name);
     }
@@ -626,7 +626,7 @@ export class Renderer67 {
       context.enableVertexAttribArray(13);
       context.vertexAttribPointer(13, 2, context.FLOAT, false, 0, 0);
     } else {
-      if (hasMaterialMap(parts[0].material)) throw new Error('Textured geometry requires UV channel 0.');
+      if (hasMaterialMap(parts[0].material) && !parts[0].material.boxMapScale) throw new Error('Textured geometry requires UV channel 0.');
       context.disableVertexAttribArray(13);
       // (-1, -1) marks "no UVs": grass wind then bends by local height instead of by blade position.
       context.vertexAttrib2f(13, -1, -1);
@@ -1414,6 +1414,8 @@ export class Renderer67 {
       this.context.uniform2f(this.uniforms.normalScale, batch.mapState[5], batch.mapState[6]);
       this.context.uniform1f(this.uniforms.occlusionStrength, batch.mapState[7]);
       this.context.uniform4f(this.uniforms.materialMoss, batch.mapState[8], batch.mapState[9], batch.mapState[10], batch.mapState[11]);
+      this.context.uniform1f(this.uniforms.boxMapScale, batch.mapState[12]);
+      this.context.uniform1i(this.uniforms.boxMapAxis, batch.mapState[13]);
       this.bindSplat(batch.splat);
     }
     this.context.bindVertexArray(batch.vertexArray);

@@ -117,6 +117,9 @@ out vec4 shadowPosition;
 out vec2 textureUV;
 out vec3 vertexTint;
 flat out vec3 emissionColor;
+out vec3 boxPosition;
+out vec3 boxNormal;
+flat out mat3 boxNormalMatrix;
 ${skinningShader}
 ${morphingShader}
 ${windShader}
@@ -135,6 +138,10 @@ void main() {
   vec3 localNormal = morphedNormal(normal);
   vec3 deformedNormal = skinEnabled > 0.5 ? transpose(inverse(mat3(deformation))) * localNormal : localNormal;
   worldNormal = normalize(instanceNormal * deformedNormal);
+  // Metres along the object's own axes, so a pattern follows a moving node and is not stretched by its scale.
+  boxPosition = morphedPosition(position) * vec3(length(instanceMatrix[0].xyz), length(instanceMatrix[1].xyz), length(instanceMatrix[2].xyz));
+  boxNormal = deformedNormal;
+  boxNormalMatrix = instanceNormal;
   baseColor = instanceColor;
   textureUV = uv;
   vertexTint = vertexColor;
@@ -369,6 +376,11 @@ uniform float hasOcclusionMap;
 uniform float hasEmissiveMap;
 uniform vec2 normalScale;
 uniform float occlusionStrength;
+in vec3 boxPosition;
+in vec3 boxNormal;
+flat in mat3 boxNormalMatrix;
+uniform float boxMapScale;
+uniform int boxMapAxis;
 uniform vec4 materialMoss;
 uniform float hdrEnabled;
 uniform float alphaMode;
@@ -467,6 +479,41 @@ vec3 toneMap(vec3 color) {
   return clamp((color * (2.51 * color + 0.03)) / (color * (2.43 * color + 0.59) + 0.14), 0.0, 1.0);
 }
 
+// Box projection: three texture lookups along the object axes, blended by the normal, so a surface needs no UVs.
+// Swapping two axes makes the texture's V direction, and with it a grain, run along the chosen axis.
+vec3 boxAxisSwap(vec3 value) {
+  if (boxMapAxis == 0) return value.yxz;
+  if (boxMapAxis == 2) return value.xzy;
+  return value;
+}
+
+vec3 boxWeights(vec3 direction) {
+  vec3 weights = pow(abs(direction), vec3(8.0));
+  return weights / max(weights.x + weights.y + weights.z, 1e-5);
+}
+
+vec4 sampleBox(sampler2D source) {
+  vec3 coordinates = boxAxisSwap(boxPosition) * boxMapScale;
+  vec3 weights = boxWeights(boxAxisSwap(normalize(boxNormal)));
+  return texture(source, coordinates.zy) * weights.x + texture(source, coordinates.xz) * weights.y + texture(source, coordinates.xy) * weights.z;
+}
+
+// Whiteout blend of the three tangent-space normals, done in object space and then moved to world space.
+vec3 boxMappedNormal(vec3 normal) {
+  vec3 coordinates = boxAxisSwap(boxPosition) * boxMapScale;
+  vec3 objectNormal = boxAxisSwap(normalize(boxNormal));
+  vec3 weights = boxWeights(objectNormal);
+  vec3 sampleX = texture(normalMap, coordinates.zy).xyz * 2.0 - 1.0;
+  vec3 sampleY = texture(normalMap, coordinates.xz).xyz * 2.0 - 1.0;
+  vec3 sampleZ = texture(normalMap, coordinates.xy).xyz * 2.0 - 1.0;
+  vec3 blendX = vec3(sampleX.xy * normalScale + objectNormal.zy, abs(sampleX.z) * objectNormal.x);
+  vec3 blendY = vec3(sampleY.xy * normalScale + objectNormal.xz, abs(sampleY.z) * objectNormal.y);
+  vec3 blendZ = vec3(sampleZ.xy * normalScale + objectNormal.xy, abs(sampleZ.z) * objectNormal.z);
+  vec3 blended = blendX.zyx * weights.x + blendY.xzy * weights.y + blendZ * weights.z;
+  vec3 world = normalize(boxNormalMatrix * boxAxisSwap(blended));
+  return dot(world, normal) < 0.0 ? -world : world;
+}
+
 vec3 mappedNormal(vec3 normal) {
   vec3 positionX = dFdx(worldPosition);
   vec3 positionY = dFdy(worldPosition);
@@ -529,13 +576,13 @@ void main() {
   // canopy, so the back face keeps it instead of flipping to point into the crown.
   bool canopyShaded = surface.w == 4.0 || surface.w == 7.0;
   if (doubleSided > 0.5 && !gl_FrontFacing && !canopyShaded) normal = -normal;
-  if (hasNormalMap > 0.5) normal = mappedNormal(normal);
+  if (hasNormalMap > 0.5) normal = boxMapScale > 0.0 ? boxMappedNormal(normal) : mappedNormal(normal);
   vec3 viewDirection = normalize(eye - worldPosition);
   vec3 color = mix(baseColor, armorColor, step(0.5, surface.w) * (1.0 - step(1.5, surface.w)));
   if (splatEnabled < 0.5) color *= vertexTint;
   float textureAlpha = 1.0;
   if (hasBaseMap > 0.5) {
-    vec4 sampledBase = texture(baseMap, textureUV);
+    vec4 sampledBase = boxMapScale > 0.0 ? sampleBox(baseMap) : texture(baseMap, textureUV);
     color *= sampledBase.rgb;
     textureAlpha = sampledBase.a;
   }
@@ -554,7 +601,7 @@ void main() {
     roughness = armorSurface.y;
   }
   if (hasMetallicRoughnessMap > 0.5) {
-    vec4 sampled = texture(metallicRoughnessMap, textureUV);
+    vec4 sampled = boxMapScale > 0.0 ? sampleBox(metallicRoughnessMap) : texture(metallicRoughnessMap, textureUV);
     metallic *= sampled.b;
     roughness *= sampled.g;
   }

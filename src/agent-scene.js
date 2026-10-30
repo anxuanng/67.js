@@ -7,7 +7,8 @@ import { normalizeAgentLook } from './agent-look.js';
 import { normalizeAgentMotion, compileAgentMotion } from './agent-motion.js';
 import { meshReport, generateMeshGeometry, MESH_SMOOTH_ANGLE_DEFAULT } from './agent-mesh.js';
 import { normalizeMeshEdits, normalizeMeshStack } from './mesh-recipe.js';
-import { AGENT_SCENE_CAPABILITIES, AGENT_SCENE_DEFAULT_LIMITS, RECIPE_ALPHA_MODES } from './agent-scene-capabilities.js';
+import { AGENT_SCENE_CAPABILITIES, AGENT_SCENE_DEFAULT_LIMITS, MAX_MATERIAL_PATTERNS, RECIPE_ALPHA_MODES } from './agent-scene-capabilities.js';
+import { materialPatternTextures, normalizeMaterialPattern } from './material-patterns.js';
 export { AGENT_SCENE_CAPABILITIES, AGENT_SCENE_DEFAULT_LIMITS };
 export { normalizeAgentLook, resolveAgentShadow } from './agent-look.js';
 export { needsMeshBooleans } from './agent-mesh.js';
@@ -17,7 +18,8 @@ const DEFAULT_LIMITS = AGENT_SCENE_DEFAULT_LIMITS;
 const MAX_MESH_REPORTS = 16;
 const CAMERA_DEFAULTS = Object.freeze({ eye: [4, 3, 5], target: [0, 0, 0], up: [0, 1, 0], fov: 45, near: 0.1, far: 1000 });
 const NODE_FIELDS = ['translation', 'rotation', 'scale', 'parent', 'label', 'geometry', 'material'];
-const MATERIAL_FIELDS = ['color', 'metallic', 'roughness', 'emission', 'emissiveColor', 'opacity', 'alphaMode', 'doubleSided'];
+const MATERIAL_FIELDS = ['color', 'metallic', 'roughness', 'emission', 'emissiveColor', 'opacity', 'alphaMode', 'doubleSided', 'pattern'];
+const PATTERN_TEXTURE_FIELDS = ['map', 'normalMap', 'metallicRoughnessMap', 'boxMapScale', 'boxMapAxis'];
 const CAMERA_FIELDS = Object.keys(CAMERA_DEFAULTS);
 const LOOK_OPERATION_FIELDS = Object.freeze({
   'set-environment': 'environment',
@@ -181,10 +183,16 @@ function resources(values, maximum, label, validate) {
 
 function materialFrom(value) {
   knownKeys(value, ['id', 'tag', ...MATERIAL_FIELDS], 'material');
-  const result = { id: value.id, tag: defaultValue(value.tag, 'surface'), color: vector(defaultValue(value.color, [0.5, 0.5, 0.5]), 3, 'color'),
+  // A pattern brings its own colours, so the color field tints it and leaves it unchanged by default.
+  const defaultColor = value.pattern === undefined ? [0.5, 0.5, 0.5] : [1, 1, 1];
+  const result = { id: value.id, tag: defaultValue(value.tag, 'surface'), color: vector(defaultValue(value.color, defaultColor), 3, 'color'),
     metallic: defaultValue(value.metallic, 0), roughness: defaultValue(value.roughness, 0.5), emission: defaultValue(value.emission, 0) };
   if (!AGENT_SCENE_CAPABILITIES.materialTags.includes(result.tag)) {
     throw new RangeError(`Material tag must be one of ${AGENT_SCENE_CAPABILITIES.materialTags.join(', ')}.`);
+  }
+  if (value.pattern !== undefined) {
+    if (result.tag !== 'surface') throw new RangeError('Material pattern needs the surface tag.');
+    result.pattern = normalizeMaterialPattern(value.pattern);
   }
   result.opacity = defaultValue(value.opacity, 1);
   finite(result.opacity, 'opacity');
@@ -483,6 +491,10 @@ function normalizeRecipe(input, limits) {
     return definition;
   });
   recipe.materials = resources(recipe.materials, limits.maxMaterials, 'materials', materialFrom);
+  const distinctPatterns = new Set(recipe.materials.filter(material => material.pattern).map(material => JSON.stringify(material.pattern)));
+  if (distinctPatterns.size > MAX_MATERIAL_PATTERNS) {
+    throw new RangeError(`A scene holds at most ${MAX_MATERIAL_PATTERNS} different material patterns; it has ${distinctPatterns.size}. Reuse a pattern and tint it with color.`);
+  }
   recipe.nodes = resources(recipe.nodes, limits.maxNodes, 'nodes', nodeFrom);
   recipe.camera = cameraFrom(recipe.camera);
   const look = {};
@@ -512,7 +524,8 @@ function geometryStats(records) {
 }
 
 function batchSignature(material) {
-  return `${material.tag}|${material.alphaMode}|${material.opacity}|${material.doubleSided}`;
+  // Textures are fixed per renderer, so a changed pattern rebuilds it like a changed tag does.
+  return `${material.tag}|${material.alphaMode}|${material.opacity}|${material.doubleSided}|${JSON.stringify(material.pattern ?? null)}`;
 }
 
 function materialHandle(snapshot) {
@@ -523,6 +536,15 @@ function materialHandle(snapshot) {
       enumerable: true,
       get() {
         return holder.snapshot[field];
+      },
+    });
+  }
+  for (const field of PATTERN_TEXTURE_FIELDS) {
+    Object.defineProperty(output, field, {
+      enumerable: true,
+      // Baked on first read, so validating or inspecting a recipe never pays for it.
+      get() {
+        return holder.snapshot.pattern ? materialPatternTextures(holder.snapshot.pattern)[field] : undefined;
       },
     });
   }
