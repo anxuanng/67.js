@@ -1,0 +1,104 @@
+{
+  "run": "2026-10-30-11-43-sonnet-hard-no-skill",
+  "model": "claude-sonnet-5-5",
+  "date": "2026-10-30T11:46:13.728Z",
+  "skill": false,
+  "passed": 3,
+  "tasks": 3,
+  "toolCalls": 12,
+  "costUsd": 1.4,
+  "records": [
+    {
+      "task": "dice",
+      "pass": true,
+      "passed": 12,
+      "total": 12,
+      "failed": [],
+      "model": "claude-sonnet-5-5",
+      "toolCalls": 7,
+      "toolErrors": 1,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_create": 2,
+        "scene_look": 3,
+        "scene_dispose": 1,
+        "scene_export_recipe": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "mesh"
+        ],
+        "meshOperations": [
+          "bevel",
+          "boolean"
+        ]
+      },
+      "turns": 9,
+      "costUsd": 0.5592132,
+      "inputTokens": 825829,
+      "outputTokens": 8215,
+      "wallSeconds": 67,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "flange",
+      "pass": true,
+      "passed": 9,
+      "total": 9,
+      "failed": [],
+      "model": "claude-sonnet-5-5",
+      "toolCalls": 3,
+      "toolErrors": 0,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_create": 1,
+        "scene_look": 1,
+        "scene_export_recipe": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "mesh"
+        ],
+        "meshOperations": [
+          "boolean"
+        ]
+      },
+      "turns": 5,
+      "costUsd": 0.4342255,
+      "inputTokens": 465274,
+      "outputTokens": 2471,
+      "wallSeconds": 36,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "chair",
+      "pass": true,
+      "passed": 7,
+      "total": 7,
+      "failed": [],
+      "model": "claude-sonnet-5-5",
+      "toolCalls": 2,
+      "toolErrors": 0,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_create": 1,
+        "scene_export_recipe": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "box"
+        ],
+        "meshOperations": []
+      },
+      "turns": 4,
+      "costUsd": 0.4079489,
+      "inputTokens": 352518,
+      "outputTokens": 1731,
+      "wallSeconds": 32,
+      "exitCode": 0,
+      "stopped": "success"
+    }
+  ]
+}

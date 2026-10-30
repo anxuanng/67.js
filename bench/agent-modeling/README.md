@@ -33,6 +33,9 @@ own mesh report:
 | bracket | Two plates and two holes |
 | soap | Rounding every edge (bevel) |
 | crate-uv | The crate with even UVs |
+| dice | Rounded edges plus 21 recessed pips, in one piece (harder) |
+| flange | A hollow pipe with flanges and 12 bolt holes, in one piece (harder) |
+| chair | Many exact parts, with open gaps between back slats (harder) |
 
 `references.mjs` holds one hand-built solution per task. `tests/agent-modeling-suite.test.js` checks that every
 reference passes and that broken variants fail. That keeps a wrong checker from costing an agent run.
@@ -93,3 +96,30 @@ Friction seen in the transcripts, all fixed after this baseline:
 All five passed both times. The window run now builds the frame with one `extrude`, the route it gave up on before. The
 one remaining error is the gear run trying the disabled Bash tool. With one run per task this shows a direction, not an
 exact size.
+
+## With the skill, and harder tasks
+
+`results/2026-10-30-11-32-sonnet-with-skill.json` runs all 13 tasks with `--skill`. The no-skill side is
+`results/2026-10-30-11-43-sonnet-hard-no-skill.json` for the three harder tasks, the after-fixes run for its five tasks,
+and the baseline for the other five. Same model, one run per task.
+
+| Tasks | Passed | Tool calls | Tool errors | Cost (USD) |
+| --- | --- | --- | --- | --- |
+| First 10, no skill | 10/10 | 45 | 2 | 4.40 |
+| First 10, with skill | 10/10 | 39 | 4 | 4.44 |
+| dice, flange, chair, no skill | 3/3 | 12 | 1 | 1.40 |
+| dice, flange, chair, with skill | 3/3 | 8 | 0 | 1.43 |
+
+What this does and does not show:
+
+- **The harder tasks did not lift the ceiling.** Sonnet passes all 13 either way, including a die with 21 recesses and a
+  pipe with 12 bolt holes. A part with exact sizes is solved in a few calls, often one `scene_create`. Success on such
+  tasks cannot separate one tool set from another.
+- **The skill made no clear difference to cost.** The gap in calls is small enough to be noise at one run per task, and the
+  cost is flat. It can change the method: with it, the crate run used insets and extrusions instead of booleans.
+- **Most of the edit vocabulary went unused either way.** `mesh_edit` appeared in one of 13 runs with the skill, and
+  `mesh_stack`, `loop_cut`, `mirror`, `array` and `solidify` in none. Agents write the whole recipe at once. This is about
+  these tasks, which do not need those operations; it does not show the operations are useless.
+
+The suite now finds tool friction and tracks cost, but does not measure how good an object looks. Tasks with free form,
+such as organic shapes or a look to match, would need a score for appearance before they could test more.
