@@ -9,6 +9,7 @@ import { createMeshData } from './mesh-data.js';
 import { mirrorMesh, arrayMesh, solidifyMesh } from './mesh-stack.js';
 import { bevelEdges } from './mesh-bevel.js';
 import { loopCut } from './mesh-loopcut.js';
+import { unwrapUv } from './mesh-uv.js';
 import { MESH_EDIT_OPERATIONS, MAX_MESH_EDITS, STACK_OPERATIONS, MAX_STACK_NODES } from './mesh-operations.js';
 export { MESH_EDIT_OPERATIONS, MAX_MESH_EDITS, STACK_OPERATIONS, MAX_STACK_NODES };
 
@@ -150,6 +151,14 @@ export function normalizeMeshEdits(edits) {
         normalized.factor = edit.factor === undefined ? 0.5 : finiteNumber(edit.factor, index, 'factor', { minimum: 0, maximum: 1 });
         if (normalized.factor === 0 || normalized.factor === 1) throw editError(index, 'factor must be strictly between 0 and 1');
         break;
+      case 'uv_unwrap':
+        if (edit.seams !== undefined && (!edit.seams || typeof edit.seams !== 'object' || Array.isArray(edit.seams))) {
+          throw editError(index, 'seams must be an edge rule, for example { "angle": 60 } or { "boundaryOf": { "tag": "lid.cap" } }');
+        }
+        normalized.seams = edit.seams ?? { angle: 60 };
+        normalized.margin = edit.margin === undefined ? 0.01 : finiteNumber(edit.margin, index, 'margin', { minimum: 0, maximum: 0.2 });
+        normalized.maxDistortion = edit.maxDistortion === undefined ? 0.25 : finiteNumber(edit.maxDistortion, index, 'maxDistortion', { minimum: 0, maximum: 100 });
+        break;
       case 'merge_by_distance':
         normalized.distance = finiteNumber(edit.distance ?? 1e-4, index, 'distance', { minimum: 0, maximum: 1e3 });
         break;
@@ -239,6 +248,22 @@ function runEdit(current, edit, index, { resolveCutter }) {
     result.width = outcome.width;
     if (outcome.clamped) result.clamped = true;
     result.tags = tagSummary(outcome.mesh, edit.name);
+    return { mesh: outcome.mesh, result };
+  }
+  if (edit.op === 'uv_unwrap') {
+    let outcome;
+    try {
+      outcome = unwrapUv(current, edit);
+    } catch (error) {
+      throw new error.constructor(`Mesh edit ${index} (uv_unwrap): ${error.message}`);
+    }
+    result.islands = outcome.islands;
+    result.seamEdges = outcome.seamEdges;
+    result.cutEdges = outcome.cutEdges;
+    result.chartEdges = outcome.chartEdges;
+    result.flipped = outcome.flipped;
+    result.areaDistortion = Number(outcome.areaDistortion.toFixed(4));
+    result.utilization = Number(outcome.utilization.toFixed(4));
     return { mesh: outcome.mesh, result };
   }
   if (Object.hasOwn(GENERATORS, edit.op)) {
@@ -332,7 +357,7 @@ export function applyMeshEdits(mesh, edits, { maxVertices = 250_000, maxFaces = 
 }
 
 
-/** Validate a modifier stack: edits restricted to mirror, array and solidify, at most 16. */
+/** Validate a modifier stack: nodes restricted to STACK_OPERATIONS, at most 16. */
 export function normalizeMeshStack(stack) {
   if (!Array.isArray(stack)) throw new TypeError('stack must be an array.');
   if (stack.length > MAX_STACK_NODES) throw new RangeError(`A stack holds at most ${MAX_STACK_NODES} nodes.`);
@@ -340,7 +365,10 @@ export function normalizeMeshStack(stack) {
     if (!STACK_OPERATIONS.includes(node?.op)) throw new TypeError(`Stack node ${index} op must be one of ${STACK_OPERATIONS.join(', ')}.`);
   }
   // Stack nodes default their names from their own position, separately from the edit log.
-  return normalizeMeshEdits(stack.map((node, index) => ({ ...node, name: node.name ?? `${node.op}-s${index + 1}` })));
+  return normalizeMeshEdits(stack.map((node, index) => {
+    if (!MESH_EDIT_OPERATIONS[node.op].fields.includes('name')) return node;
+    return { ...node, name: node.name ?? `${node.op}-s${index + 1}` };
+  }));
 }
 
 /**
