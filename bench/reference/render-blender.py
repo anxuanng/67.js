@@ -1,0 +1,335 @@
+# Renders each described scene in Cycles and EEVEE, and saves linear pixels as .npy for the scorer.
+#   blender -b --factory-startup --python bench/reference/render-blender.py -- <work directory>
+# Light units were measured on a white plane: sun strength equals irradiance, and a point light has 4 pi watts for each
+# unit of 67.js intensity.
+import base64
+import json
+import math
+import os
+import sys
+import time
+
+import bpy
+import numpy as np
+from mathutils import Matrix, Vector
+
+WIDTH = 960
+HEIGHT = 540
+CYCLES_SAMPLES = 256
+EEVEE_SAMPLES = 64
+WATTS_PER_INTENSITY = 4 * math.pi
+SUN_ANGLE = math.radians(1)
+# 67.js is Y up, and Blender is Z up.
+Y_UP_TO_Z_UP = Matrix(((1, 0, 0, 0), (0, 0, -1, 0), (0, 1, 0, 0), (0, 0, 0, 1)))
+# The centre of an environment image looks toward -Z in 67.js, which is +Y here. In Blender it looks toward -X.
+ENVIRONMENT_ROTATION_Z = -math.pi / 2
+NUMPY_TYPES = {
+    "Float32Array": np.float32,
+    "Uint32Array": np.uint32,
+    "Uint16Array": np.uint16,
+    "Uint8Array": np.uint8,
+    "Uint8ClampedArray": np.uint8,
+}
+
+
+def decode(entry):
+    if entry is None:
+        return None
+    return np.frombuffer(base64.b64decode(entry["base64"]), dtype=NUMPY_TYPES[entry["type"]])
+
+
+def to_blender(position):
+    return (position[0], -position[2], position[1])
+
+
+def clear_scene():
+    bpy.ops.wm.read_factory_settings(use_empty=True)
+
+
+def build_mesh(name, geometry):
+    positions = decode(geometry["positions"]).reshape(-1, 3)
+    normals = decode(geometry["normals"]).reshape(-1, 3)
+    triangles = decode(geometry["indices"]).reshape(-1, 3)
+    mesh = bpy.data.meshes.new(name)
+    mesh.from_pydata(positions.tolist(), [], triangles.tolist())
+    mesh.normals_split_custom_set_from_vertices(normals.tolist())
+    uvs = decode(geometry.get("uvs"))
+    if uvs is not None:
+        uv_pairs = uvs.reshape(-1, 2)
+        layer = mesh.uv_layers.new(name="UVMap")
+        corner_uvs = uv_pairs[triangles.reshape(-1)].copy()
+        corner_uvs[:, 1] = 1 - corner_uvs[:, 1]
+        layer.data.foreach_set("uv", corner_uvs.reshape(-1))
+    colors = decode(geometry.get("colors"))
+    if colors is not None:
+        attribute = mesh.color_attributes.new("Col", "FLOAT_COLOR", "POINT")
+        rgb = colors.reshape(-1, 3)
+        rgba = np.concatenate([rgb, np.ones((len(rgb), 1), dtype=np.float32)], axis=1)
+        attribute.data.foreach_set("color", rgba.reshape(-1))
+    mesh.update()
+    return mesh
+
+
+def build_image(name, descriptor):
+    source = descriptor["image"]
+    data = decode(source["data"])
+    width = source["width"]
+    height = source["height"]
+    image = bpy.data.images.new(name, width, height, alpha=True)
+    pixels = data.reshape(height, width, 4)[::-1].astype(np.float32) / 255
+    image.pixels.foreach_set(pixels.reshape(-1))
+    image.pack()
+    return image
+
+
+def set_linear_color(socket, color):
+    socket.default_value = (color[0], color[1], color[2], 1)
+
+
+def add_texture(material, principled, description, has_vertex_colors):
+    nodes = material.node_tree.nodes
+    links = material.node_tree.links
+    texture = nodes.new("ShaderNodeTexImage")
+    texture.image = build_image(f"{material.name}-map", description["map"])
+    multiply = nodes.new("ShaderNodeMixRGB")
+    multiply.blend_type = "MULTIPLY"
+    multiply.inputs[0].default_value = 1
+    set_linear_color(multiply.inputs[2], description["color"])
+    links.new(texture.outputs["Color"], multiply.inputs[1])
+    if has_vertex_colors:
+        attribute = nodes.new("ShaderNodeVertexColor")
+        attribute.layer_name = "Col"
+        with_colors = nodes.new("ShaderNodeMixRGB")
+        with_colors.blend_type = "MULTIPLY"
+        with_colors.inputs[0].default_value = 1
+        links.new(multiply.outputs["Color"], with_colors.inputs[1])
+        links.new(attribute.outputs["Color"], with_colors.inputs[2])
+        links.new(with_colors.outputs["Color"], principled.inputs["Base Color"])
+    else:
+        links.new(multiply.outputs["Color"], principled.inputs["Base Color"])
+    if description.get("alphaMode") == "mask":
+        cutoff = nodes.new("ShaderNodeMath")
+        cutoff.operation = "GREATER_THAN"
+        cutoff.inputs[1].default_value = description.get("alphaCutoff", 0.5)
+        links.new(texture.outputs["Alpha"], cutoff.inputs[0])
+        links.new(cutoff.outputs[0], principled.inputs["Alpha"])
+
+
+def add_vertex_colors(material, principled, description):
+    nodes = material.node_tree.nodes
+    links = material.node_tree.links
+    attribute = nodes.new("ShaderNodeVertexColor")
+    attribute.layer_name = "Col"
+    multiply = nodes.new("ShaderNodeMixRGB")
+    multiply.blend_type = "MULTIPLY"
+    multiply.inputs[0].default_value = 1
+    set_linear_color(multiply.inputs[2], description["color"])
+    links.new(attribute.outputs["Color"], multiply.inputs[1])
+    links.new(multiply.outputs["Color"], principled.inputs["Base Color"])
+
+
+def build_material(name, description, has_vertex_colors):
+    material = bpy.data.materials.new(name)
+    material.use_nodes = True
+    principled = material.node_tree.nodes["Principled BSDF"]
+    set_linear_color(principled.inputs["Base Color"], description["color"])
+    principled.inputs["Metallic"].default_value = description.get("metallic", 0)
+    principled.inputs["Roughness"].default_value = description.get("roughness", 0.5)
+    if description.get("tag") == "liquid":
+        principled.inputs["Transmission Weight"].default_value = 1
+        principled.inputs["IOR"].default_value = description["liquid"]["ior"]
+    if "map" in description:
+        add_texture(material, principled, description, has_vertex_colors)
+    elif has_vertex_colors:
+        add_vertex_colors(material, principled, description)
+    return material
+
+
+def build_parts(scene, description):
+    meshes = {}
+    for index, part in enumerate(description["parts"]):
+        geometry_index = part["geometry"]
+        geometry = description["geometries"][geometry_index]
+        if geometry_index not in meshes:
+            meshes[geometry_index] = build_mesh(f"geometry-{geometry_index}", geometry)
+        mesh = meshes[geometry_index].copy()
+        mesh.materials.append(build_material(f"{part['name']}-{index}", part["material"], geometry.get("colors") is not None))
+        mesh_object = bpy.data.objects.new(part["name"], mesh)
+        column_major = part["matrix"]
+        local = Matrix([[column_major[column * 4 + row] for column in range(4)] for row in range(4)])
+        mesh_object.matrix_world = Y_UP_TO_Z_UP @ local
+        scene.collection.objects.link(mesh_object)
+
+
+def build_world(scene, world_description, root):
+    world = bpy.data.worlds.new("World")
+    world.use_nodes = True
+    scene.world = world
+    nodes = world.node_tree.nodes
+    links = world.node_tree.links
+    background = nodes["Background"]
+    if world_description["type"] == "constant":
+        value = world_description["value"]
+        background.inputs[0].default_value = (value, value, value, 1)
+        background.inputs[1].default_value = 1
+        return
+    coordinates = nodes.new("ShaderNodeTexCoord")
+    mapping = nodes.new("ShaderNodeMapping")
+    mapping.inputs["Rotation"].default_value = (0, 0, ENVIRONMENT_ROTATION_Z)
+    texture = nodes.new("ShaderNodeTexEnvironment")
+    texture.image = bpy.data.images.load(os.path.join(root, world_description["file"]))
+    links.new(coordinates.outputs["Generated"], mapping.inputs["Vector"])
+    links.new(mapping.outputs["Vector"], texture.inputs["Vector"])
+    links.new(texture.outputs["Color"], background.inputs[0])
+    background.inputs[1].default_value = world_description["intensity"]
+
+
+def build_lights(scene, environment):
+    key = environment["keyColor"]
+    if max(key) > 0:
+        strength = max(key)
+        light = bpy.data.lights.new("Sun", "SUN")
+        light.energy = strength
+        light.color = [channel / strength for channel in key]
+        light.angle = SUN_ANGLE
+        sun = bpy.data.objects.new("Sun", light)
+        toward_light = Vector(to_blender(environment["lightDirection"])).normalized()
+        sun.rotation_mode = "QUATERNION"
+        sun.rotation_quaternion = toward_light.to_track_quat("Z", "Y")
+        scene.collection.objects.link(sun)
+    for index, point in enumerate(environment["pointLights"]):
+        light = bpy.data.lights.new(f"Point-{index}", "POINT")
+        light.energy = point["intensity"] * WATTS_PER_INTENSITY
+        light.color = point["color"]
+        light.shadow_soft_size = point["radius"]
+        point_object = bpy.data.objects.new(f"Point-{index}", light)
+        point_object.location = to_blender(point["position"])
+        scene.collection.objects.link(point_object)
+
+
+def build_fog(scene, fog):
+    minimum = Vector(to_blender(fog["minimum"]))
+    maximum = Vector(to_blender(fog["maximum"]))
+    low = Vector(min(first, second) for first, second in zip(minimum, maximum))
+    high = Vector(max(first, second) for first, second in zip(minimum, maximum))
+    vertices = [(x, y, z) for x in (low.x, high.x) for y in (low.y, high.y) for z in (low.z, high.z)]
+    faces = [(0, 1, 3, 2), (4, 6, 7, 5), (0, 4, 5, 1), (2, 3, 7, 6), (0, 2, 6, 4), (1, 5, 7, 3)]
+    mesh = bpy.data.meshes.new("Fog")
+    mesh.from_pydata(vertices, [], faces)
+    material = bpy.data.materials.new("Fog")
+    material.use_nodes = True
+    nodes = material.node_tree.nodes
+    nodes.remove(nodes["Principled BSDF"])
+    scatter = nodes.new("ShaderNodeVolumeScatter")
+    scatter.inputs["Color"].default_value = (*fog["color"], 1)
+    scatter.inputs["Density"].default_value = fog["density"]
+    scatter.inputs["Anisotropy"].default_value = fog["anisotropy"]
+    material.node_tree.links.new(scatter.outputs[0], nodes["Material Output"].inputs["Volume"])
+    mesh.materials.append(material)
+    scene.collection.objects.link(bpy.data.objects.new("Fog", mesh))
+
+
+def build_camera(scene, camera):
+    data = bpy.data.cameras.new("Camera")
+    data.sensor_fit = "VERTICAL"
+    data.angle_y = math.radians(camera["fov"])
+    data.clip_start = camera["near"]
+    data.clip_end = camera["far"]
+    camera_object = bpy.data.objects.new("Camera", data)
+    eye = Vector(to_blender(camera["eye"]))
+    target = Vector(to_blender(camera["target"]))
+    camera_object.location = eye
+    camera_object.rotation_mode = "QUATERNION"
+    camera_object.rotation_quaternion = (target - eye).to_track_quat("-Z", "Y")
+    scene.collection.objects.link(camera_object)
+    scene.camera = camera_object
+
+
+def configure_output(scene):
+    scene.render.resolution_x = WIDTH
+    scene.render.resolution_y = HEIGHT
+    scene.render.resolution_percentage = 100
+    scene.render.image_settings.file_format = "OPEN_EXR"
+    scene.render.image_settings.color_depth = "32"
+    scene.view_settings.view_transform = "Raw"
+    scene.view_settings.look = "None"
+
+
+def configure_cycles(scene):
+    scene.render.engine = "CYCLES"
+    preferences = bpy.context.preferences.addons["cycles"].preferences
+    preferences.compute_device_type = "OPTIX"
+    preferences.get_devices()
+    for device in preferences.devices:
+        device.use = device.type == "OPTIX"
+    scene.cycles.device = "GPU"
+    scene.cycles.samples = CYCLES_SAMPLES
+    scene.cycles.use_denoising = True
+    scene.cycles.volume_step_rate = 1
+    # The default of 0 bounces drops multiple scattering, which makes dense fog much too dark.
+    scene.cycles.volume_bounces = 8
+
+
+def configure_eevee(scene):
+    scene.render.engine = "BLENDER_EEVEE"
+    scene.eevee.taa_render_samples = EEVEE_SAMPLES
+    scene.eevee.use_raytracing = True
+    scene.eevee.volumetric_tile_size = "2"
+    scene.eevee.volumetric_samples = 128
+
+
+def render_to_numpy(scene, work_directory, name):
+    path = os.path.join(work_directory, f"{name}.exr")
+    scene.render.filepath = path
+    started = time.perf_counter()
+    bpy.ops.render.render(write_still=True)
+    seconds = time.perf_counter() - started
+    image = bpy.data.images.load(path)
+    pixels = np.empty(WIDTH * HEIGHT * 4, dtype=np.float32)
+    image.pixels.foreach_get(pixels)
+    linear = pixels.reshape(HEIGHT, WIDTH, 4)[::-1, :, :3]
+    np.save(os.path.join(work_directory, f"{name}.npy"), linear)
+    bpy.data.images.remove(image)
+    os.remove(path)
+    return seconds
+
+
+def build_scene(description, root):
+    clear_scene()
+    scene = bpy.context.scene
+    build_parts(scene, description)
+    build_world(scene, description["world"], root)
+    build_lights(scene, description["environment"])
+    if "volumeFog" in description["environment"]:
+        build_fog(scene, description["environment"]["volumeFog"])
+    build_camera(scene, description["camera"])
+    configure_output(scene)
+    return scene
+
+
+def main():
+    arguments = sys.argv[sys.argv.index("--") + 1:]
+    work_directory = os.path.abspath(arguments[0])
+    only = set(arguments[1:])
+    root = os.getcwd()
+    timings = {}
+    scene_directory = os.path.join(work_directory, "scenes")
+    for file_name in sorted(os.listdir(scene_directory)):
+        scene_id = file_name.removesuffix(".json")
+        if only and scene_id not in only:
+            continue
+        with open(os.path.join(scene_directory, file_name), encoding="utf-8") as file:
+            description = json.load(file)
+        scene = build_scene(description, root)
+        configure_cycles(scene)
+        cycles_seconds = render_to_numpy(scene, work_directory, f"{scene_id}-cycles")
+        scene = build_scene(description, root)
+        configure_eevee(scene)
+        eevee_seconds = render_to_numpy(scene, work_directory, f"{scene_id}-eevee")
+        timings[scene_id] = {"cycles": round(cycles_seconds, 1), "eevee": round(eevee_seconds, 1)}
+        print(f"RENDERED {scene_id} {timings[scene_id]}")
+    with open(os.path.join(work_directory, "blender-timings.json"), "w", encoding="utf-8") as file:
+        json.dump({"blenderVersion": bpy.app.version_string, "seconds": timings}, file, indent=1)
+
+
+main()
