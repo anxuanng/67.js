@@ -2,12 +2,16 @@
 // server, then grades the recipe the agent exported.
 //
 // node bench/agent-modeling/run.mjs --claude <claude executable> [--model sonnet] [--tasks crate,bolt]
-//   [--budget 3] [--timeout 1200] [--label baseline]
+//   [--budget 3] [--timeout 1200] [--label baseline] [--skill] [--resume <run name>]
+//
+// --resume continues a run that stopped early and skips the tasks it already recorded.
+// --skill puts the build-67js-scene entry point and its mesh reference in the system prompt. That measures what the
+// skill's knowledge is worth, not whether an agent would load the skill on its own.
 //
 // Raw transcripts and recipes go to artifacts/agent-modeling/<run>/ (ignored by Git); the summary goes to
 // bench/agent-modeling/results/<run>.json.
 import { spawn } from 'node:child_process';
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
@@ -27,12 +31,21 @@ const { values: options } = parseArgs({
     budget: { type: 'string', default: '3' },
     timeout: { type: 'string', default: '1200' },
     label: { type: 'string', default: 'run' },
+    skill: { type: 'boolean', default: false },
+    resume: { type: 'string' },
   },
 });
 
-const runName = `${new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-')}-${options.model}-${options.label}`;
+const runName = options.resume ?? `${new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-')}-${options.model}-${options.label}`;
 const rawDirectory = join(repository, 'artifacts', 'agent-modeling', runName);
 const resultsDirectory = join(repository, 'bench', 'agent-modeling', 'results');
+
+async function skillPrompt() {
+  const skillDirectory = join(repository, 'skills', 'build-67js-scene');
+  const entryPoint = await readFile(join(skillDirectory, 'SKILL.md'), 'utf8');
+  const meshReference = await readFile(join(skillDirectory, 'references', 'mesh-modeling.md'), 'utf8');
+  return `${entryPoint}\n\n${meshReference}`;
+}
 
 function mcpConfig() {
   return { mcpServers: { [MCP_SERVER_NAME]: {
@@ -41,7 +54,7 @@ function mcpConfig() {
   } } };
 }
 
-function runClaude(prompt, workingDirectory, configPath) {
+function runClaude(prompt, workingDirectory, configPath, systemPromptAddition) {
   const argumentsList = [
     '-p', prompt,
     '--model', options.model,
@@ -53,6 +66,7 @@ function runClaude(prompt, workingDirectory, configPath) {
     '--setting-sources', 'project',
     '--no-session-persistence',
     '--max-budget-usd', options.budget,
+    ...(systemPromptAddition ? ['--append-system-prompt', systemPromptAddition] : []),
   ];
   return new Promise(resolvePromise => {
     const started = performance.now();
@@ -119,13 +133,22 @@ function readTranscript(output) {
   return summary;
 }
 
-async function runTask(task) {
+// Chrome can hold the folder for a moment after the session ends. A leftover temp folder must not end the run.
+async function removeWorkingDirectory(workingDirectory) {
+  try {
+    await rm(workingDirectory, { recursive: true, force: true, maxRetries: 10, retryDelay: 500 });
+  } catch (error) {
+    console.warn(`Left ${workingDirectory} behind: ${error.code}`);
+  }
+}
+
+async function runTask(task, systemPromptAddition) {
   const workingDirectory = await mkdtemp(join(tmpdir(), '67js-agent-task-'));
   try {
     const configPath = join(workingDirectory, 'mcp.json');
     await writeFile(configPath, JSON.stringify(mcpConfig()));
     const prompt = `${PROMPT_PREAMBLE}\n\n${task.prompt.replace(/\n/g, ' ')}`;
-    const run = await runClaude(prompt, workingDirectory, configPath);
+    const run = await runClaude(prompt, workingDirectory, configPath, systemPromptAddition);
     const transcript = readTranscript(run.output);
     await writeFile(join(rawDirectory, `${task.id}.jsonl`), run.output);
     if (run.errors) await writeFile(join(rawDirectory, `${task.id}.stderr.txt`), run.errors);
@@ -154,28 +177,38 @@ async function runTask(task) {
       stopped: transcript.result?.subtype ?? 'no result',
     };
   } finally {
-    await rm(workingDirectory, { recursive: true, force: true });
+    await removeWorkingDirectory(workingDirectory);
   }
 }
 
 const tasks = options.tasks ? options.tasks.split(',').map(taskById) : TASKS;
 await mkdir(rawDirectory, { recursive: true });
 await mkdir(resultsDirectory, { recursive: true });
-const records = [];
-for (const task of tasks) {
-  const record = await runTask(task);
+const systemPromptAddition = options.skill ? await skillPrompt() : null;
+const summaryPath = join(resultsDirectory, `${runName}.json`);
+const records = options.resume ? JSON.parse(await readFile(summaryPath, 'utf8')).records : [];
+const recordedTasks = new Set(records.map(record => record.task));
+
+function summarize() {
+  return {
+    run: runName,
+    model: records.find(record => record.model)?.model ?? options.model,
+    date: new Date().toISOString(),
+    skill: options.skill,
+    passed: records.filter(record => record.pass).length,
+    tasks: records.length,
+    toolCalls: records.reduce((sum, record) => sum + record.toolCalls, 0),
+    costUsd: Number(records.reduce((sum, record) => sum + (record.costUsd ?? 0), 0).toFixed(2)),
+    records,
+  };
+}
+
+for (const task of tasks.filter(candidate => !recordedTasks.has(candidate.id))) {
+  const record = await runTask(task, systemPromptAddition);
   records.push(record);
   console.log(`${record.task.padEnd(9)} ${record.pass ? 'PASS' : 'FAIL'} ${record.passed}/${record.total}  calls ${record.toolCalls} (errors ${record.toolErrors})  $${record.costUsd ?? '?'}  ${record.wallSeconds}s${record.failed.length ? `  ${record.failed.join(' | ')}` : ''}`);
+  // Saved after every task, so a run that gets killed keeps what it already paid for.
+  await writeFile(summaryPath, `${JSON.stringify(summarize(), null, 2)}\n`);
 }
-const summary = {
-  run: runName,
-  model: records.find(record => record.model)?.model ?? options.model,
-  date: new Date().toISOString(),
-  passed: records.filter(record => record.pass).length,
-  tasks: records.length,
-  toolCalls: records.reduce((sum, record) => sum + record.toolCalls, 0),
-  costUsd: Number(records.reduce((sum, record) => sum + (record.costUsd ?? 0), 0).toFixed(2)),
-  records,
-};
-await writeFile(join(resultsDirectory, `${runName}.json`), `${JSON.stringify(summary, null, 2)}\n`);
+const summary = summarize();
 console.log(`${summary.passed}/${summary.tasks} passed, ${summary.toolCalls} tool calls, $${summary.costUsd}. Summary: bench/agent-modeling/results/${runName}.json`);

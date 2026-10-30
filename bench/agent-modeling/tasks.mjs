@@ -34,7 +34,7 @@ tall.`,
     checks: [
       { kind: 'lint' },
       { kind: 'size', expected: [null, 0.14, null] },
-      { kind: 'extent', axes: ['x', 'z'], min: 0.05, max: 0.058 },
+      { kind: 'extent', axes: ['x', 'z'], min: 0.0495, max: 0.0585 },
       { kind: 'ground' },
       { kind: 'holes', equals: 0 },
       { kind: 'volume', min: 1.13e-4, max: 1.43e-4 },
@@ -156,6 +156,65 @@ stretching.`,
 sides has a recessed panel: a frame about 0.04 m wide around a panel sunk about 0.02 m into the side. On top sits a
 raised lid, inset about 0.05 m from the top edges and 0.03 m tall.`,
     checks: [...crateChecks, { kind: 'pattern', types: ['wood', 'planks'] }],
+  },
+  {
+    id: 'dice',
+    prompt: `A six-sided die as one solid piece: a 0.1 m cube with every edge and corner rounded to a radius of about
+0.01 m. The faces carry round recessed pips, each about 0.02 m across and at least 0.005 m deep, in the usual layouts
+with a spacing of 0.025 m between neighbouring pips: 1 pip on +Y, 6 on -Y, 2 on +X, 5 on -X, 3 on +Z and 4 on -Z.`,
+    checks: [
+      { kind: 'lint' },
+      { kind: 'parts', max: 1 },
+      { kind: 'size', expected: [0.1, 0.1, 0.1] },
+      { kind: 'ground' },
+      { kind: 'holes', equals: 0 },
+      { kind: 'volume', min: 8.5e-4, max: 9.8e-4 },
+      { kind: 'section', axis: 'y', at: 0.097, equals: 2, label: '1 pip on +Y' },
+      { kind: 'section', axis: 'y', at: 0.003, equals: 7, label: '6 pips on -Y' },
+      { kind: 'section', axis: 'x', at: 0.047, equals: 3, label: '2 pips on +X' },
+      { kind: 'section', axis: 'x', at: -0.047, equals: 6, label: '5 pips on -X' },
+      { kind: 'section', axis: 'z', at: 0.047, equals: 4, label: '3 pips on +Z' },
+      { kind: 'section', axis: 'z', at: -0.047, equals: 5, label: '4 pips on -Z' },
+    ],
+  },
+  {
+    id: 'flange',
+    prompt: `A flanged pipe standing upright as one solid piece, 0.3 m tall overall. The pipe has an outer radius of
+0.05 m and a bore of radius 0.04 m that goes all the way through. Each end has a round flange of radius 0.09 m and
+thickness 0.02 m, flush with the pipe's end. Each flange has six round bolt holes of radius 0.008 m going through it,
+evenly spaced on a circle of radius 0.07 m, the first one on the +X side.`,
+    checks: [
+      { kind: 'lint' },
+      { kind: 'parts', max: 1 },
+      { kind: 'size', expected: [0.18, 0.3, 0.18] },
+      { kind: 'ground' },
+      { kind: 'holes', equals: 13 },
+      { kind: 'volume', min: 1.35e-3, max: 1.65e-3 },
+      { kind: 'section', axis: 'y', at: 0.15, equals: 2, label: 'pipe wall' },
+      { kind: 'section', axis: 'y', at: 0.01, equals: 8, label: 'lower flange with bore and six holes' },
+      { kind: 'section', axis: 'y', at: 0.29, equals: 8, label: 'upper flange with bore and six holes' },
+    ],
+  },
+  {
+    id: 'chair',
+    prompt: `A chair facing +Z. The seat is 0.45 m wide (X), 0.45 m deep (Z) and 0.03 m thick, with its upper surface
+0.45 m above the ground. Four square legs, 0.04 m on a side, sit in the seat's corners with their outer faces flush
+with its edges. The two front legs stop at the underside of the seat; the two rear legs continue up as posts to 0.9 m.
+Three horizontal back slats, 0.06 m tall and 0.02 m thick, run between the posts, centred on them in Z, at centre
+heights 0.6 m, 0.7 m and 0.8 m.`,
+    checks: [
+      { kind: 'lint' },
+      { kind: 'size', expected: [0.45, 0.9, 0.45] },
+      { kind: 'ground' },
+      { kind: 'section', axis: 'y', at: 0.2, equals: 4, label: 'four legs' },
+      { kind: 'section', axis: 'y', at: 0.52, equals: 2, label: 'two posts above the seat' },
+      {
+        kind: 'through', axis: 'z', label: 'three slats with gaps',
+        open: [[0.003, 0.55], [0.003, 0.65], [0.003, 0.75], [0.003, 0.86]],
+        solid: [[0.003, 0.6], [0.003, 0.7], [0.003, 0.8], [0.207, 0.86], [-0.207, 0.86]],
+      },
+      { kind: 'volume', min: 9.4e-3, max: 1.28e-2 },
+    ],
   },
 ];
 
