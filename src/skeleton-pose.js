@@ -1,5 +1,5 @@
 import { mat4, quat, vec3 } from 'gl-matrix';
-import { compileAnimationSampler } from './animation.js';
+import { compileAnimationSampler, createAnimationClip } from './animation.js';
 import { updateSkinPose } from './skinning.js';
 import {
   bindSourceTracks, computeWorldPose, createPoseState, createRigFromSkin, mapHumanoidBones, prepareRigGeometry, validateRigJoints,
@@ -167,7 +167,13 @@ function createSolver(definition, position, prepared, resolveJoint) {
     joints.slice(1).forEach((joint, slot) => {
       if (!isDescendant(prepared, joint, joints[slot])) throw new RangeError(`${label}: list joints from the base of the chain to the aiming joint.`);
     });
-    const forward = vec3.normalize(new Float64Array(3), checkedVector(definition.forward ?? [0, 0, 1], `${label} forward`));
+    if (definition.forward !== undefined && definition.worldForward !== undefined) throw new TypeError(`${label} takes forward or worldForward, not both.`);
+    const forward = vec3.normalize(new Float64Array(3), checkedVector(definition.forward ?? definition.worldForward ?? [0, 0, 1], `${label} forward`));
+    if (definition.worldForward !== undefined) {
+      // Bone axes differ by rig, but which way a character faces at rest does not: bring that direction into the joint.
+      const restRotation = prepared.restWorld.rotations[joints[joints.length - 1]];
+      vec3.transformQuat(forward, forward, quat.invert(new Float64Array(4), restRotation));
+    }
     const maxAngle = definition.maxAngle ?? 180;
     if (!Number.isFinite(maxAngle) || maxAngle <= 0) throw new RangeError(`${label} maxAngle must be a positive number of degrees.`);
     return { type: 'aim', label, weight, joints, forward, maxRadians: maxAngle * TO_RADIANS, target: definition.target };
@@ -285,10 +291,111 @@ function solveAim(solver, time, context) {
   const finalForward = forwardNow();
   const direct = vec3.subtract(new Float64Array(3), target, state.positions[aiming]);
   const error = vec3.angle(finalForward, direct);
-  return { reached: error < 1e-3, error };
+  // A chain's own joints move as it turns, so about a degree is as close as one pass gets.
+  return { reached: error < 0.02, error };
 }
 
 const SOLVERS = { 'two-bone': solveTwoBone, aim: solveAim };
+
+const GLTF_TRACK_PROPERTIES = { position: 'translation', quaternion: 'rotation', scale: 'scale' };
+const GLTF_STEP_INTERPOLATION = 2300;
+const GLTF_LINEAR_INTERPOLATION = 2301;
+const RESAMPLE_RATE = 30;
+
+function trackKeyframes(track, size) {
+  const interpolation = track.getInterpolation?.();
+  if (interpolation === GLTF_LINEAR_INTERPOLATION || interpolation === GLTF_STEP_INTERPOLATION) {
+    return Array.from(track.times, (time, index) => ({ time, value: Array.from(track.values.subarray(index * size, (index + 1) * size)) }));
+  }
+  // Cubic glTF tracks store tangents in their values; sample them instead of carrying a second tangent convention.
+  const interpolant = track.createInterpolant(new Float64Array(size));
+  const start = track.times[0];
+  const end = track.times[track.times.length - 1];
+  const steps = Math.max(1, Math.ceil((end - start) * RESAMPLE_RATE));
+  return Array.from({ length: steps + 1 }, (_, step) => {
+    const time = start + (end - start) * step / steps;
+    return { time, value: Array.from(interpolant.evaluate(time)) };
+  });
+}
+
+/**
+ * Convert an animation from a loaded glTF asset (`asset.animations[n]`) into a clip layers and retargetClip can use.
+ * Node tracks keep their decoded node names. Morph weight tracks are skipped. Step keys stay step; cubic keys are
+ * resampled at 30 frames per second.
+ */
+export function clipFromGltfAnimation(animation, { loop = false } = {}) {
+  if (!Array.isArray(animation?.tracks) || !Number.isFinite(animation.duration)) throw new TypeError('clipFromGltfAnimation needs an animation from asset.animations.');
+  const tracks = [];
+  for (const track of animation.tracks) {
+    const separator = track.name.lastIndexOf('.');
+    const property = GLTF_TRACK_PROPERTIES[track.name.slice(separator + 1)];
+    if (!property || !track.times.length) continue;
+    const size = property === 'rotation' ? 4 : 3;
+    tracks.push({
+      target: track.name.slice(0, separator), property,
+      interpolation: track.getInterpolation?.() === GLTF_STEP_INTERPOLATION ? 'STEP' : 'LINEAR',
+      keyframes: trackKeyframes(track, size),
+    });
+  }
+  return createAnimationClip({ duration: Math.max(animation.duration, 1e-3), loop, tracks });
+}
+
+function rigFromAssetNodes(nodes) {
+  const indexById = new Map(nodes.map((node, index) => [node.id, index]));
+  const jointNames = nodes.filter(node => node.joint).map(node => node.name);
+  return {
+    mapping: mapHumanoidBones(jointNames).mapping,
+    joints: nodes.map(node => ({
+      name: node.name,
+      parent: node.parent === null ? -1 : indexById.get(node.parent),
+      translation: node.translation, rotation: node.rotation, scale: node.scale,
+    })),
+  };
+}
+
+function checkAssetIkScales(rig, solvedNames) {
+  const indexByName = new Map(rig.joints.map((joint, index) => [joint.name, index]));
+  for (const name of solvedNames) {
+    let current = rig.joints[indexByName.get(name)]?.parent ?? -1;
+    while (current >= 0) {
+      const joint = rig.joints[current];
+      const [first, second, third] = joint.scale;
+      if (Math.max(first, second, third) - Math.min(first, second, third) > 1e-3 * Math.max(first, second, third)) {
+        throw new RangeError(`IK: node ${joint.name} above ${name} has non-uniform scale ${JSON.stringify(joint.scale)}, which IK cannot solve through.`);
+      }
+      current = joint.parent;
+    }
+  }
+}
+
+/**
+ * Pose a loaded glTF asset from { layers, ik }. Unlike a skin palette this moves every skin and every rigid part attached
+ * to the hierarchy, and IK targets are in the asset's world space. Joints are named by decoded node name or humanoid bone.
+ * `apply(time)` commits the pose and returns `asset.parts`; pass them to `renderer.updateParts`.
+ */
+export function createAssetPose(asset, { layers = [], ik = [] } = {}) {
+  if (typeof asset?.stagePose !== 'function' || !Array.isArray(asset.nodes)) throw new TypeError('createAssetPose needs an asset from loadGltf or parseGltf.');
+  const { nodes } = asset;
+  const rig = rigFromAssetNodes(nodes);
+  const pose = createSkeletonPose({ rig, layers, ik });
+  checkAssetIkScales(rig, pose.solvedJointNames);
+  const written = pose.writtenJoints.filter(({ index }) => nodes[index].editable);
+  return {
+    apply(time) {
+      pose.apply(time);
+      const nodeOverrides = written.map(({ index, translation }) => {
+        const override = { id: nodes[index].id, rotation: Array.from(pose.localRotation(index)) };
+        if (translation) override.translation = Array.from(pose.localTranslation(index));
+        return override;
+      });
+      return asset.stagePose({ animation: null, nodeOverrides }).commit();
+    },
+    jointWorld: pose.jointWorld,
+    get ikResults() {
+      return pose.ikResults;
+    },
+  };
+}
 
 /**
  * Build a pose evaluator from { skin, rig, meshWorldMatrix, layers, ik }. Give `skin` to write its joint palette, or only
@@ -303,6 +410,9 @@ export function createSkeletonPose({ skin, rig = skin && createRigFromSkin(skin)
   const resolveJoint = jointResolver(rig, prepared);
   const compiledLayers = layers.map((layer, position) => createLayer(layer, position, prepared, resolveJoint));
   const solvers = ik.map((solver, position) => createSolver(solver, position, prepared, resolveJoint));
+  const solvedIndices = new Set(solvers.flatMap(solver => (solver.type === 'aim' ? solver.joints : [solver.root, solver.middle, solver.end])));
+  const translatedIndices = new Set(compiledLayers.flatMap(layer => layer.bindings.filter(binding => binding.property === 'translation').map(binding => binding.index)));
+  const writtenIndices = new Set([...solvedIndices, ...translatedIndices, ...compiledLayers.flatMap(layer => layer.bindings.filter(binding => binding.property === 'rotation').map(binding => binding.index))]);
   const jointCount = rig.joints.length;
   const localRotations = prepared.restRotations.map(rotation => Float64Array.from(rotation));
   const localTranslations = prepared.restTranslations.map(translation => Float64Array.from(translation));
@@ -354,6 +464,14 @@ export function createSkeletonPose({ skin, rig = skin && createRigFromSkin(skin)
     localRotation(index) {
       return localRotations[index];
     },
+    /** Local translation of a joint by rig index after the last apply. The array is reused by the next apply. */
+    localTranslation(index) {
+      return localTranslations[index];
+    },
+    /** Rig indices a layer or solver can change, and whether their translation can change too. */
+    writtenJoints: [...writtenIndices].map(index => ({ index, translation: translatedIndices.has(index) })),
+    /** Names of the joints IK solvers move. */
+    solvedJointNames: [...solvedIndices].map(index => rig.joints[index].name),
     /** One { reached, error } per IK solver from the last apply: metres for two-bone, radians for aim. */
     get ikResults() {
       return results;

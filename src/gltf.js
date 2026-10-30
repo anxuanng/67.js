@@ -1011,7 +1011,8 @@ export async function parseGltf(data, options = {}) {
         composed.determinant() > 0 && authoredMatrix.every((value, index) =>
           Math.abs(value - composed.elements[index]) <= 1e-6 * Math.max(1, Math.abs(value)));
       const meshIds = meshIdsByNode.get(node);
-      return { id, label: String(original.name ?? id).slice(0, 256), parent: sourceIds.get(parent) ?? null,
+      // `name` is the decoded node name, which clip tracks address; `label` is the name as authored in the file.
+      return { id, label: String(original.name ?? id).slice(0, 256), name: node.name, parent: sourceIds.get(parent) ?? null,
         translation: node.position.toArray(), rotation: node.quaternion.toArray(), scale: node.scale.toArray(),
         editable, joint: jointNodes.has(node), meshIds };
     });

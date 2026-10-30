@@ -10,7 +10,8 @@ import { mapHumanoidBones, createRigFromSkin, retargetClip, createSkinClipPlayer
 
 const source = createRigFromSkin(mixamoAsset.skins[0]);
 const target = createRigFromSkin(characterAsset.skins[0], { rootMatrix: armatureWorldMatrix });
-const clip = retargetClip(source, target, mixamoClip, { rootMotion: false });
+// asset.animations holds three.js clips; convert them first with clipFromGltfAnimation from 67js/addons/skeleton-pose.
+const clip = retargetClip(source, target, clipFromGltfAnimation(mixamoAsset.animations[0]), { rootMotion: false });
 
 const player = createSkinClipPlayer(characterAsset.skins[0], clip);
 player.apply(seconds);

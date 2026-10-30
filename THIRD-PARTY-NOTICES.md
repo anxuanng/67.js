@@ -85,6 +85,10 @@ their complete license and notice texts, including dependencies embedded in the 
 Pinned upstream license copies for embedded dependencies are retained in `licenses/mcp/` in the source repository.
 The external `playwright-core` browser driver includes its own license and notices in its dependency package.
 
+## RobotExpressive (test fixture, not in the npm package)
+
+`tests/fixtures/RobotExpressive.glb` is by Tomás Laulhé, with modifications by Don McCurdy, from the three.js examples, under CC0-1.0.
+
 ## Simple Icons (package-manager logos)
 
 The npm, pnpm, Yarn and Bun SVG marks are sourced from Simple Icons and distributed under CC0-1.0. See public/licenses/simple-icons.txt. Brand marks remain subject to their respective trademark rights.

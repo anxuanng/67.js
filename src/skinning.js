@@ -2,6 +2,7 @@ import { mat4 } from 'gl-matrix';
 
 const poseWorkspaces = new WeakMap();
 const IDENTITY_MATRIX = mat4.create();
+const MAX_SKIN_WEIGHT = 1.000001;
 
 function finiteFloat(value) {
   return Number.isFinite(value) && Number.isFinite(Math.fround(value));
@@ -98,7 +99,8 @@ export function validateSkinGeometry(geometry, pose) {
       const joint = geometry.skinIndices[offset];
       const weight = geometry.skinWeights[offset];
       if (!Number.isInteger(joint) || joint < 0 || joint >= jointCount) throw new Error('Skin joint index is out of range.');
-      if (!finiteFloat(weight) || weight < 0 || weight > 1) throw new Error('Skin weights must be finite values within zero and one.');
+      // Exporters write a full weight as the next Float32 above one, so one unit of rounding must pass.
+      if (!finiteFloat(weight) || weight < 0 || weight > MAX_SKIN_WEIGHT) throw new Error('Skin weights must be finite values within zero and one.');
       total += weight;
     }
     if (total <= 1e-8) throw new Error('Skin vertex weights must have a positive total.');
