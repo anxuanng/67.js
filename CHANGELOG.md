@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.11.0
 
 - Add `67js/addons/grass`: terrain-following grass fields of clumped, curved blades with rounded normals, root-to-tip colour, dry patches, masks for paths, four presets and tile level of detail
 - Bend `grass` tag vertices by blade height and roll wind gusts across the field as a travelling wave
