@@ -214,16 +214,17 @@ as Blender's Apply modifier, which leaves the result unchanged.
 | `edges` | `{ "between": [faceRule, faceRule] }` (the rim between two regions, for example top and side), `{ "angle": 30 }` (edges bending at least this many degrees; the default), `{ "boundaryOf": faceRule }`, or `{ "all": true }` |
 | `width` | Distance from the edge into each neighbouring face |
 | `segments` | 1 to 16; 1 is a flat chamfer, 3 or more reads as round |
-| `profile` | 0 flat, 0.5 round (default), 1 boxy |
+| `profile` | As in Blender: 0.5 is a circular arc (default), 0.25 is flat, 1 is square, and below 0.25 is concave |
 | `clampOverlap` | Default true: shrink `width` so neighbouring bevels cannot cross; the result reports `clamped` and the `width` used |
 
 Only edges with two consistently wound faces bevel. A face corner next to one beveled edge slides along its other
 edge, shared with the face across that edge, so no T-junctions appear. Each beveled edge becomes a strip of
-`segments` quads following a quadratic profile around the original edge (tag `<name>.strip`). Where beveled edges meet
-at a vertex, the gap is filled (tag `<name>.corner`): a corner where three rounded edges meet gets a quadratic
-triangular patch that matches the three profiles exactly; other corners get a flat polygon (chamfers) or a fan to a
-raised centre. The quadratic profile is close to, not exactly, a circular arc, so rounded corners shade slightly
-differently from Blender's. Edges between strip segments render smooth when the bend per segment is under the mesh's
+`segments` quads following a superellipse around the original edge (tag `<name>.strip`). At a vertex with one beveled
+edge and three faces, the third face takes the profile's points and no fill is needed. Where beveled edges meet at a
+vertex, the gap is filled (tag `<name>.corner`): a corner where three rounded edges meet gets a quadratic
+triangular patch that shares the three profiles on its border; other corners get a flat polygon (chamfers) or a fan to
+a raised centre. `tests/fixtures/blender/differences.json` lists where the result differs from Blender, including
+these corners. Edges between strip segments render smooth when the bend per segment is under the mesh's
 `smoothAngle`; with 2 segments on a right angle (45 degrees each), raise `smoothAngle` or use 3 or more segments.
 
 ### Loop cut

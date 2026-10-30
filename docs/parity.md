@@ -14,7 +14,9 @@ It is the record for the goal in issue #23. Use `npm run parity` to print the co
 
 Agents are the user of 67.js, so a row judges the purpose of a Blender feature and not its interface. A row covers the pages below it unless a finer row exists.
 
-`done` does not mean equal to Blender. A test shows that the feature works, and it does not show that the result matches. `npm run parity` counts a row as compared only when its evidence is in `tests/fixtures/blender/` or `bench/reference/`. That count is 0 until issues #25 and #26 land.
+`done` does not mean equal to Blender. A test shows that the feature works, and it does not show that the result matches. `npm run parity` counts a row as compared only when its evidence is in `tests/fixtures/blender/` or `bench/reference/`. Issue #26 adds the render comparison.
+
+`tests/blender-golden.test.js` compares mesh operations with results from Blender. A compared row can still differ, and `tests/fixtures/blender/differences.json` gives the reason for each difference.
 
 Rows differ in size: `Modeling > Modifiers > Generate > Weld Modifier` and `Rendering > Render Engines > Cycles` each count as one. Do not quote the percentage as a measure of how close 67.js is to Blender.
 
@@ -40,7 +42,7 @@ To move to a new Blender release, run `node scripts/parity-manual-snapshot.mjs`.
 | Modeling > Meshes > Primitives | partial | Box, cylinder, sphere and torus. There is no plane, grid, cone, ico sphere or monkey primitive. | | |
 | Modeling > Meshes > Tools | partial | The operations behind extrude and loop cut exist as edits. Spin is covered only by `lathe`. | | #41 |
 | Modeling > Meshes > Selecting | partial | Rules: all, tag, normal, inside, faces, and, or, not, grow, boundary. There is no loop, linked, similar or sharp edge selection. | | #41 |
-| Modeling > Meshes > Editing | partial | 16 edits, including extrude, inset, bevel, loop cut, boolean and merge. There is no bisect, knife, bridge, fill or dissolve. | | #41 |
+| Modeling > Meshes > Editing | partial | 16 edits, including extrude, inset, bevel, loop cut, boolean and merge. There is no bisect, knife, bridge, fill or dissolve. | [Blender results](../tests/fixtures/blender/golden.json) | #41 |
 | Modeling > Meshes > Properties | partial | `smoothAngle` and face tags. There is no sharp edge attribute or crease. | | #39 |
 | Modeling > Meshes > UVs | partial | `uv_unwrap` with LSCM, axis charts and shelf packing. Patterns can not use the result yet. | | #50 |
 | Modeling > Meshes > Mesh Analysis | partial | `lintMesh` reports topology problems. There is no check for thin walls or intersections. | | #66 |
@@ -62,23 +64,23 @@ To move to a new Blender release, run `node scripts/parity-manual-snapshot.mjs`.
 | Modeling > Modifiers > Edit > Vertex Weight Edit Modifier | missing | No vertex groups in recipes. | | #46 |
 | Modeling > Modifiers > Edit > Vertex Weight Mix Modifier | missing | No vertex groups in recipes. | | #46 |
 | Modeling > Modifiers > Edit > Vertex Weight Proximity Modifier | missing | No vertex groups in recipes. | | #46 |
-| Modeling > Modifiers > Generate > Array Modifier | done | Stack node with count, offset, relative offset and merge. | [mesh-stack](../tests/mesh-stack.test.js) | |
+| Modeling > Modifiers > Generate > Array Modifier | done | Stack node with count, offset, relative offset and merge. | [mesh-stack](../tests/mesh-stack.test.js), [Blender results](../tests/fixtures/blender/golden.json) | |
 | Modeling > Modifiers > Generate > Array (Legacy) Modifier | out of scope | The Array Modifier row replaces it. | | |
-| Modeling > Modifiers > Generate > Bevel Modifier | done | Stack node and edit, with segments, profile and overlap clamp, on edges only. | [mesh-bevel](../tests/mesh-bevel.test.js) | |
-| Modeling > Modifiers > Generate > Boolean Modifier | partial | Manifold boolean as an edit. It is not a stack node. | [mesh-boolean](../tests/mesh-boolean.test.js) | |
+| Modeling > Modifiers > Generate > Bevel Modifier | done | Stack node and edit, with segments, profile and overlap clamp, on edges only. | [mesh-bevel](../tests/mesh-bevel.test.js), [Blender results](../tests/fixtures/blender/golden.json) | |
+| Modeling > Modifiers > Generate > Boolean Modifier | partial | Manifold boolean as an edit. It is not a stack node. | [mesh-boolean](../tests/mesh-boolean.test.js), [Blender results](../tests/fixtures/blender/golden.json) | |
 | Modeling > Modifiers > Generate > Build Modifier | missing | No equivalent. | | |
 | Modeling > Modifiers > Generate > Curve to Tube Modifier | partial | `tube` is a geometry type. It is not a stack node. | [modeling](../tests/modeling.test.js) | #45 |
 | Modeling > Modifiers > Generate > Decimate Modifier | missing | No decimation. | | #40 |
 | Modeling > Modifiers > Generate > Edge Split Modifier | missing | No equivalent. `smoothAngle` splits normals by angle. | | #42 |
 | Modeling > Modifiers > Generate > Mask Modifier | missing | No equivalent. | | |
 | Modeling > Modifiers > Generate > Mesh to Volume Modifier | missing | No volume objects. | | |
-| Modeling > Modifiers > Generate > Mirror Modifier | done | Stack node with axis and merge. | [mesh-stack](../tests/mesh-stack.test.js) | |
+| Modeling > Modifiers > Generate > Mirror Modifier | done | Stack node with axis and merge. | [mesh-stack](../tests/mesh-stack.test.js), [Blender results](../tests/fixtures/blender/golden.json) | |
 | Modeling > Modifiers > Generate > Multiresolution Modifier | missing | No multiresolution. | | |
 | Modeling > Modifiers > Generate > Remesh Modifier | missing | No remesh. | | #40 |
 | Modeling > Modifiers > Generate > Scatter on Surface Modifier | partial | `addons/clutter` and `addons/grass` scatter in code. Recipes have no scatter node. | | #42 |
 | Modeling > Modifiers > Generate > Screw Modifier | partial | `lathe` covers a full turn. There is no stack node or screw offset. | | #42 |
 | Modeling > Modifiers > Generate > Skin Modifier | missing | No equivalent. | | #42 |
-| Modeling > Modifiers > Generate > Solidify Modifier | done | Stack node with thickness, offset and even thickness. | [mesh-stack](../tests/mesh-stack.test.js) | |
+| Modeling > Modifiers > Generate > Solidify Modifier | done | Stack node with thickness, offset and even thickness. | [mesh-stack](../tests/mesh-stack.test.js), [Blender results](../tests/fixtures/blender/golden.json) | |
 | Modeling > Modifiers > Generate > Subdivision Surface Modifier | missing | No subdivision. | | #39 |
 | Modeling > Modifiers > Generate > Triangulate Modifier | missing | Render data is triangulated. There is no node that changes the mesh. | | #42 |
 | Modeling > Modifiers > Generate > Volume to Mesh Modifier | missing | No volume objects. | | |
