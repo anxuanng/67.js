@@ -126,6 +126,7 @@ Each addon is a separate import, so a page loads only what it uses.
 | Characters | `67js/addons/gltf`, `67js/addons/retarget` | [glTF import](docs/gltf.md) with skins, morphs and compressed meshes, and [clip retargeting](docs/retarget.md) between rigs. |
 | Physics | `67js/addons/physics` | [Rapier contacts and joints](docs/physics.md) recorded into a timeline for repeatable seeks. |
 | Modeling | `67js/addons/modeling`, `sculpt`, `surface`, `shrinkwrap`, `mesh-query` | [Modeling](docs/modeling.md), [sculpt brushes](docs/sculpt.md), [surface patches](docs/surface.md), [shrinkwrap](docs/shrinkwrap.md) and [mesh queries](docs/mesh-query.md). |
+| Polygon mesh | `67js/addons/mesh` | [Mesh editing for agents](docs/mesh.md): tagged faces, extrude, inset, bevel, loop cut, booleans, a modifier stack and UV unwrap. |
 | Agents | `67js/addons/agent-scene`, `67js/addons/agent-asset` | [Scene sessions](docs/agent-scene.md) with revisions, checkpoints and atomic edits. |
 
 The full list of guides is on the [documentation page](https://67js.codepawl.com/docs.html).
