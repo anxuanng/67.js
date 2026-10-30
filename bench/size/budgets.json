@@ -1,0 +1,39 @@
+{
+ "goals": {
+  "lit-box": 50000,
+  "gltf-box": 80000,
+  "agent-scene": 100000
+ },
+ "budgets": {
+  "entry:core": 67100,
+  "entry:model": 14400,
+  "entry:nature": 13200,
+  "entry:film": 156800,
+  "entry:motion": 13600,
+  "entry:canvas2d": 9400,
+  "entry:gltf": 137400,
+  "entry:modeling": 75900,
+  "entry:sculpt": 2500,
+  "entry:surface": 74500,
+  "entry:mesh-query": 87300,
+  "entry:mesh": 33400,
+  "entry:shrinkwrap": 88600,
+  "entry:surface-attachment": 11800,
+  "entry:physics": 16500,
+  "entry:spume": 9000,
+  "entry:retarget": 15700,
+  "entry:skeleton-pose": 17200,
+  "entry:vehicle": 14700,
+  "entry:vegetation": 17900,
+  "entry:terrain": 3100,
+  "entry:grass": 4400,
+  "entry:clutter": 5300,
+  "entry:texture-set": 900,
+  "entry:agent-scene": 164700,
+  "entry:agent-asset": 172300,
+  "entry:hdri": 3300,
+  "scene:lit-box": 49800,
+  "scene:gltf-box": 162700,
+  "scene:agent-scene": 189400
+ }
+}
