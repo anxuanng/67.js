@@ -34,6 +34,8 @@ Run `npm run smoke` or the `smoke:*` script for the area that you changed, and l
 A change to skinning, glTF loading, poses or IK also needs `npm run smoke:character`, which takes a real character through the MCP server. Run `npm run prepare:release` first.
 Screenshots and other output go to `artifacts/`, which Git ignores.
 
+Every pull request runs `npm test`, `prepare:release`, `smoke:package` and the protocol part of `smoke:mcp-package` in the `Test` workflow. The checks that need a GPU or look at pixels, such as `smoke:mcp` and `smoke:character`, do not run there, so run them yourself.
+
 Do not weaken a test to make it pass. If a test is flaky, find the cause and fix the test or the code.
 
 ## Code style
