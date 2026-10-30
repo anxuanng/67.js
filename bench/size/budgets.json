@@ -28,7 +28,7 @@
   "entry:terrain": 3100,
   "entry:grass": 4400,
   "entry:clutter": 5300,
-  "entry:texture-set": 100,
+  "entry:texture-set": 900,
   "entry:agent-scene": 164700,
   "entry:agent-asset": 172300,
   "entry:hdri": 3300,
