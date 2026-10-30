@@ -1,0 +1,167 @@
+{
+ "threeVersion": "0.186.1",
+ "three": {
+  "lit-box": {
+   "min": 533773,
+   "gzip": 133652,
+   "brotli": 110257
+  },
+  "gltf-box": {
+   "min": 614592,
+   "gzip": 155814,
+   "brotli": 128198
+  }
+ },
+ "bundles": {
+  "entry:core": {
+   "min": 232517,
+   "gzip": 65730,
+   "brotli": 56178
+  },
+  "entry:model": {
+   "min": 40093,
+   "gzip": 14025,
+   "brotli": 11542
+  },
+  "entry:nature": {
+   "min": 35653,
+   "gzip": 12874,
+   "brotli": 10578
+  },
+  "entry:film": {
+   "min": 628052,
+   "gzip": 153667,
+   "brotli": 124418
+  },
+  "entry:motion": {
+   "min": 39159,
+   "gzip": 13304,
+   "brotli": 11153
+  },
+  "entry:canvas2d": {
+   "min": 27190,
+   "gzip": 9149,
+   "brotli": 7331
+  },
+  "entry:gltf": {
+   "min": 533687,
+   "gzip": 134659,
+   "brotli": 111762
+  },
+  "entry:modeling": {
+   "min": 309436,
+   "gzip": 74404,
+   "brotli": 61979
+  },
+  "entry:sculpt": {
+   "min": 5937,
+   "gzip": 2391,
+   "brotli": 2184
+  },
+  "entry:surface": {
+   "min": 314055,
+   "gzip": 72974,
+   "brotli": 60264
+  },
+  "entry:mesh-query": {
+   "min": 344039,
+   "gzip": 85555,
+   "brotli": 71174
+  },
+  "entry:mesh": {
+   "min": 95451,
+   "gzip": 32718,
+   "brotli": 28879
+  },
+  "entry:shrinkwrap": {
+   "min": 348855,
+   "gzip": 86779,
+   "brotli": 72407
+  },
+  "entry:surface-attachment": {
+   "min": 36920,
+   "gzip": 11484,
+   "brotli": 9398
+  },
+  "entry:physics": {
+   "min": 50023,
+   "gzip": 16121,
+   "brotli": 13649
+  },
+  "entry:spume": {
+   "min": 24434,
+   "gzip": 8793,
+   "brotli": 7088
+  },
+  "entry:retarget": {
+   "min": 46336,
+   "gzip": 15313,
+   "brotli": 12962
+  },
+  "entry:skeleton-pose": {
+   "min": 51635,
+   "gzip": 16806,
+   "brotli": 14274
+  },
+  "entry:vehicle": {
+   "min": 42067,
+   "gzip": 14395,
+   "brotli": 12172
+  },
+  "entry:vegetation": {
+   "min": 49217,
+   "gzip": 17468,
+   "brotli": 14786
+  },
+  "entry:terrain": {
+   "min": 6661,
+   "gzip": 3006,
+   "brotli": 2712
+  },
+  "entry:grass": {
+   "min": 9441,
+   "gzip": 4236,
+   "brotli": 3822
+  },
+  "entry:clutter": {
+   "min": 12056,
+   "gzip": 5185,
+   "brotli": 4675
+  },
+  "entry:texture-set": {
+   "min": 1837,
+   "gzip": 874,
+   "brotli": 762
+  },
+  "entry:agent-scene": {
+   "min": 586176,
+   "gzip": 161435,
+   "brotli": 135409
+  },
+  "entry:agent-asset": {
+   "min": 612778,
+   "gzip": 168878,
+   "brotli": 141774
+  },
+  "entry:hdri": {
+   "min": 8075,
+   "gzip": 3138,
+   "brotli": 2801
+  },
+  "scene:lit-box": {
+   "min": 178412,
+   "gzip": 48762,
+   "brotli": 41832
+  },
+  "scene:gltf-box": {
+   "min": 629811,
+   "gzip": 159422,
+   "brotli": 132670
+  },
+  "scene:agent-scene": {
+   "min": 678447,
+   "gzip": 185592,
+   "brotli": 155797
+  }
+ }
+}
