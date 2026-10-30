@@ -196,7 +196,7 @@ These three (and `bevel`, below) work as edits and as stack nodes:
 
 ### Modifier stack
 
-A recipe mesh may carry `stack`, a list of `mirror`, `array`, `solidify` and `bevel` nodes (up to 16) evaluated after the
+A recipe mesh may carry `stack`, a list of `mirror`, `array`, `solidify`, `bevel` and `uv_unwrap` nodes (up to 16) evaluated after the
 edits without changing them, as Blender's modifier stack. Every prefix (the edit result, then each node) is cached
 by its recipe text in a least-recently-used cache bounded at 64 entries and 64 MiB, so changing a late node reuses
 the earlier work. Results list one entry per node with `cached: true` when reused. `meshCacheStats()` reports hits
@@ -246,6 +246,31 @@ each other in one edit are refused; cut them in separate edits. The result repor
 
 A typical sequence: `loop_cut` with `cuts: 2`, then `extrude_individual` or `extrude_face_region` with
 `alongNormals` on `<name>.band-1` to raise a belt around the middle.
+
+### UV unwrap
+
+`uv_unwrap` writes the corner attribute `uv` (and the edge attribute `seam`), as an edit or as a stack node. It
+changes no geometry, so put it last: later edits do not keep UVs exact.
+
+| Field | Meaning |
+| --- | --- |
+| `seams` | Edge rule for seams, the same rules as bevel; default `{ "angle": 60 }` |
+| `margin` | Gap between islands and around the square, as a fraction of it, 0 to 0.2 (default 0.01) |
+| `maxDistortion` | Islands stretching more than this get split into charts (default 0.25) |
+
+Faces joined across edges that are not seams form islands. An island with several boundary loops is cut along the
+shortest edge path between them until it is a disk. Each island is then flattened with a least-squares conformal
+map (LSCM, the method behind Blender's Conformal unwrap), with two far-apart boundary points pinned. A closed island
+(a sphere, a rounded box with no sharp edges), or one that is still not a disk, folds over or stretches more than
+`maxDistortion` (the area-weighted mean of `|uv area / surface area - 1|`), is split into charts by the axis its faces
+face, cut again and flattened again. Islands are scaled to their surface area, so texel density is even, rotated to
+their smallest box, laid landscape and shelf-packed into the unit square, trying several row widths.
+
+The result reports `islands`, `seamEdges` (from the rule), `cutEdges` (added to make disks), `chartEdges` (added by
+the chart split), `flipped` triangles, `areaDistortion` after one global scale, and `utilization`, the share of the
+square the islands cover. Measured on this machine: a cube gives six equal squares with no distortion, a 24-sided
+cylinder three islands with no distortion, a 48 x 24 sphere six charts with 0.09, and a 96 x 48 sphere (4,608 faces)
+unwraps in about 0.3 s. There is no angle-based (ABF) or SLIM solver and no packing into an existing layout.
 
 Knife and bisect are planned next.
 

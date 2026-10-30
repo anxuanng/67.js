@@ -19,7 +19,8 @@ export const MESH_EDIT_OPERATIONS = Object.freeze({
   solidify: { fields: ['name', 'thickness', 'offset', 'evenThickness'], tags: ['inner', 'rim'] },
   bevel: { fields: ['name', 'edges', 'width', 'segments', 'profile', 'clampOverlap'], tags: ['strip', 'corner'] },
   loop_cut: { fields: ['name', 'edges', 'cuts', 'factor'], tags: ['band-<k>'] },
+  uv_unwrap: { fields: ['seams', 'margin', 'maxDistortion'], tags: [] },
 });
 
-export const STACK_OPERATIONS = Object.freeze(['mirror', 'array', 'solidify', 'bevel']);
+export const STACK_OPERATIONS = Object.freeze(['mirror', 'array', 'solidify', 'bevel', 'uv_unwrap']);
 export const MAX_STACK_NODES = 16;

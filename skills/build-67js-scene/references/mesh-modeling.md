@@ -153,6 +153,19 @@ A bench row: model half a bench, mirror it, array the result:
 ], "stack": [{ "op": "mirror" }, { "op": "array", "count": 3, "offset": [0, 0, -1.4], "relativeOffset": [0, 0, 0] }] }
 ```
 
+UVs for a textured part: finish the shape, then `uv_unwrap` as the last edit (or the last stack node, after mirror or
+array). Seams default to edges sharper than 60 degrees; closed smooth shapes are split into charts on their own.
+Check the result: `flipped` must be 0, and `areaDistortion` above about 0.15 means texture will visibly stretch, so
+add seams with `boundaryOf` around the part that stretches.
+
+```json
+{ "id": "barrel", "type": "mesh", "base": { "type": "cylinder", "segments": 32, "bevel": 0 }, "edits": [
+  { "op": "loop_cut", "edges": { "along": [0, 1, 0] }, "cuts": 2, "name": "hoop" },
+  { "op": "extrude_face_region", "select": { "or": [{ "tag": "hoop.band-0" }, { "tag": "hoop.band-2" }] }, "offset": 0.03, "alongNormals": true },
+  { "op": "uv_unwrap" }
+] }
+```
+
 A planter (open box with walls) and a rounded soap bar:
 
 ```json
