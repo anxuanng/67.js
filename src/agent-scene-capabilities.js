@@ -31,5 +31,6 @@ export const AGENT_SCENE_CAPABILITIES = Object.freeze({
   fixedResources: false, dynamicTopology: true, checkpoints: true, positiveScaleOnly: true,
   authoredLook: true, maxPointLights: 8,
   proceduralMotion: true,
+  motionIk: Object.freeze(['two-bone', 'aim']),
   motionLimits: Object.freeze({ maxTracks: 128, maxKeyframesPerTrack: 64, maxKeyframes: 2048, maxDuration: 30 }),
 });

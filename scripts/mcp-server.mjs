@@ -196,8 +196,38 @@ function motionTrack(kind, property, value, tangent) {
     })).min(1).max(64),
   });
 }
+const ikKeyframes = (value, description) => z.strictObject({
+  interpolation: z.enum(['LINEAR', 'STEP', 'SMOOTH']).optional(),
+  keyframes: z.array(z.strictObject({ time: z.number().min(0).max(30), value })).min(1).max(64),
+}).describe(description);
+const ikPoint = z.union([
+  vector3,
+  z.strictObject({ node: identifier }).describe('Follow this node\'s world position.'),
+  ikKeyframes(vector3, 'A moving world position.'),
+]);
+const ikWeight = z.union([unit, ikKeyframes(unit, 'Fade the solve in or out over time.')]).optional();
+const ikSolver = z.discriminatedUnion('type', [
+  z.strictObject({
+    type: z.literal('two-bone'),
+    root: identifier, middle: identifier, end: identifier,
+    target: ikPoint.describe('Where end should reach: [x, y, z] in world metres, {"node":id}, or keyframes.'),
+    pole: ikPoint.optional().describe('World point the middle joint bends toward. Give one, or a straight limb has no bend direction.'),
+    weight: ikWeight,
+    keepEndRotation: z.boolean().optional().describe('Default true: end keeps its world rotation, so a foot or gripper stays level.'),
+  }).describe('Limb of three nodes, each a descendant of the one before: shoulder, elbow, wrist. Computes their rotations, so you need no quaternions. Nodes with IK nodes below them must have uniform scale: put sizes on child mesh nodes.'),
+  z.strictObject({
+    type: z.literal('aim'),
+    joint: identifier.optional(),
+    joints: z.array(identifier).min(1).max(16).optional().describe('A chain from its base to the aiming node, sharing the turn.'),
+    forward: vector3.optional().describe('Local axis of the aiming node to point at the target. Defaults to [0, 0, 1].'),
+    target: ikPoint,
+    maxAngle: z.number().min(0.001).max(180).optional().describe('Limits the whole turn, in degrees.'),
+    weight: ikWeight,
+  }).describe('Point a node, such as a head, lamp or camera, at a target.'),
+]);
 const motion = z.strictObject({
   duration: z.number().min(0.1).max(30),
+  ik: z.array(ikSolver).max(16).optional().describe('Inverse kinematics run after the tracks, in order, on procedural recipes. scene_inspect reports motionIk: whether each solver reaches its target across the clip.'),
   loop: z.boolean().optional(),
   tracks: z.array(z.union([
     motionTrack('node', 'translation', vector3, vector3),
@@ -212,7 +242,7 @@ const motion = z.strictObject({
     motionTrack('camera', 'target', vector3, vector3),
     motionTrack('camera', 'fov', finite.gt(0).lt(180), finite),
     motionTrack('camera', 'roll', finite, finite),
-  ])).min(1).max(128),
+  ])).max(128),
 }).describe('One absolute-time procedural clip. Local node transforms propagate through parents. Cubic tangents are derivatives per second. Backend checks references, duplicate tracks, 2048 total keys and every sampled pose.');
 const recipe = z.strictObject({
   format: z.literal('67js.scene'),

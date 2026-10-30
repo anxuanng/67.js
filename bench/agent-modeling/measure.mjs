@@ -246,6 +246,11 @@ export async function measureRecipe(recipe) {
     uv: { parts: uvParts, of: geometries.length, stretch: worstUvStretch },
     tips: countTips(geometries, bounds),
     section: (axis, at) => sectionLoops(geometries, axis, at),
+    nodePosition(name, time) {
+      scene.sampleMotion(time);
+      const part = scene.parts.find(candidate => candidate.name === name);
+      return part ? [part.matrix[12], part.matrix[13], part.matrix[14]] : null;
+    },
     lineHits: (axis, point) => lineHits(geometries, axis, point),
   };
 }

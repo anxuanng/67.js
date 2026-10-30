@@ -424,6 +424,7 @@ export function createAgentAssetScene(asset, inputRecipe) {
     return {
       nodes: [...sourceNodes.values()].filter(node => node.editable),
       materials: [...baselines.values()], camera: candidate.camera,
+      ikUnavailable: 'Motion ik works on procedural recipes, not imported assets, whose pose depends on the selected clip. Author node rotation tracks here.',
     };
   }
 

@@ -78,6 +78,40 @@ Quaternion values normalize through the existing animation core.
 Quaternion tangents retain their authored values.
 Other interpolation modes reject tangents.
 
+## Inverse kinematics
+
+`motion.ik` computes node rotations from a goal, so a recipe can say where a hand should be without any quaternions. It
+works on procedural recipes, and runs after the tracks at every sample, in list order. `tracks` can be empty when a
+motion has `ik`.
+
+```json
+{ "duration": 2, "tracks": [], "ik": [
+  { "type": "two-bone", "root": "shoulder", "middle": "elbow", "end": "wrist", "target": { "node": "ball" }, "pole": [0, 3, -1] },
+  { "type": "aim", "joint": "lamp", "target": { "node": "ball" }, "maxAngle": 120 }
+] }
+```
+
+A `two-bone` solver takes `root`, `middle` and `end` node IDs, each a descendant of the one before. `pole` is the world
+point the middle node bends toward; give one, because a straight limb has no bend direction of its own. `keepEndRotation`
+defaults to `true`, so a gripper or foot keeps its world rotation.
+
+An `aim` solver takes `joint`, or `joints` from the base of a chain to the aiming node, which then share the turn.
+`forward` is the aiming node's local axis (default `[0, 0, 1]`), and `maxAngle` limits the whole turn in degrees.
+
+`target` and `pole` are each `[x, y, z]` in world metres, `{ "node": id }` to follow a node, or
+`{ "keyframes": [{ "time", "value" }], "interpolation" }`. `weight` is 0 to 1 (default 1), or keyframes to fade a solve in
+or out. Keyframes count toward the motion's limit of 2048. A motion holds at most 16 solvers.
+
+A node with IK nodes below it needs uniform scale and no scale track, because a non-uniform parent would shear the chain.
+Put sizes on a child node with the geometry, or on the last node of the chain, whose own scale does not matter.
+
+`scene_inspect` returns `motionIk`, one `{ type, reached, worstError, atTime }` per solver, from 33 samples across the
+clip. `worstError` is metres for two-bone and radians for aim, so a target out of reach shows up without looking at every
+frame. A limb that cannot reach stretches toward the target.
+
+Imported assets reject `ik`, because their pose depends on the selected clip. In code, [skeleton pose layers](skeleton-pose.md)
+solve IK on skinned rigs. There are no joint angle limits.
+
 ## Internal sampling helpers
 
 `normalizeAgentMotion(input, recipe)` returns canonical plain JSON, or `null` for absent motion.

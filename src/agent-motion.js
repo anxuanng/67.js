@@ -1,5 +1,6 @@
 import { createAnimationClip, compileAnimationSampler } from './animation.js';
 import { createCameraPath } from './camera-path.js';
+import { createSkeletonPose } from './skeleton-pose.js';
 
 const PROPERTIES = {
   node: { translation: 3, rotation: 4, scale: 3 },
@@ -7,6 +8,8 @@ const PROPERTIES = {
   camera: { eye: 3, target: 3, fov: 1, roll: 1 },
 };
 const INTERPOLATIONS = ['LINEAR', 'STEP', 'SMOOTH', 'CUBICSPLINE'];
+const MAX_IK_SOLVERS = 16;
+const IK_SWEEP_SAMPLES = 33;
 const CAMERA_DEFAULTS = { eye: [4, 3, 5], target: [0, 0, 0], up: [0, 1, 0], fov: 45, near: 0.1, far: 1000 };
 
 function knownKeys(value, fields, label) {
@@ -117,20 +120,179 @@ function normalizedKeyframe(keyframe, track, duration, interpolation) {
   return result;
 }
 
+function nodeIdFrom(value, nodes, label) {
+  if (typeof value !== 'string' || !nodes.has(value)) {
+    throw new RangeError(`${label} must be a node ID in this recipe; got ${JSON.stringify(value)}.`);
+  }
+  return value;
+}
+
+/** Keyframed IK channels share the motion's clip clock and keyframe budget. */
+function ikKeyframes(input, size, duration, label) {
+  knownKeys(input, ['keyframes', 'interpolation'], label);
+  const interpolation = input.interpolation ?? 'LINEAR';
+  if (!['LINEAR', 'STEP', 'SMOOTH'].includes(interpolation)) {
+    throw new RangeError(`${label} interpolation must be LINEAR, STEP or SMOOTH.`);
+  }
+  denseArray(input.keyframes, 64, `${label} keyframes`);
+  if (!input.keyframes.length) {
+    throw new RangeError(`${label} needs at least one keyframe.`);
+  }
+  const keyframes = input.keyframes.map(keyframe => {
+    knownKeys(keyframe, ['time', 'value'], `${label} keyframe`);
+    return { time: bounded(keyframe.time, 0, duration, 'Keyframe time'), value: valueFrom(keyframe.value, size, `${label} value`) };
+  });
+  return { interpolation, keyframes };
+}
+
+function ikPoint(input, nodes, duration, label) {
+  if (Array.isArray(input)) {
+    return valueFrom(input, 3, label);
+  }
+  if (input && Object.hasOwn(input, 'node')) {
+    knownKeys(input, ['node'], label);
+    return { node: nodeIdFrom(input.node, nodes, `${label} node`) };
+  }
+  if (input && Object.hasOwn(input, 'keyframes')) {
+    return ikKeyframes(input, 3, duration, label);
+  }
+  throw new TypeError(`${label} must be [x, y, z], { "node": id } or { "keyframes": [{ "time", "value" }] }.`);
+}
+
+function ikWeight(input, duration, label) {
+  if (input === undefined) {
+    return 1;
+  }
+  if (typeof input === 'number') {
+    return bounded(input, 0, 1, label);
+  }
+  const weight = ikKeyframes(input, 1, duration, label);
+  weight.keyframes.forEach(keyframe => bounded(keyframe.value, 0, 1, label));
+  return weight;
+}
+
+function normalizeIkSolver(input, position, nodes, duration) {
+  const label = `Motion ik ${position}`;
+  if (input?.type === 'two-bone') {
+    knownKeys(input, ['type', 'root', 'middle', 'end', 'target', 'pole', 'weight', 'keepEndRotation'], label);
+    const solver = {
+      type: 'two-bone',
+      root: nodeIdFrom(input.root, nodes, `${label} root`),
+      middle: nodeIdFrom(input.middle, nodes, `${label} middle`),
+      end: nodeIdFrom(input.end, nodes, `${label} end`),
+      target: ikPoint(input.target, nodes, duration, `${label} target`),
+      weight: ikWeight(input.weight, duration, `${label} weight`),
+    };
+    if (input.pole !== undefined) {
+      solver.pole = ikPoint(input.pole, nodes, duration, `${label} pole`);
+    }
+    if (input.keepEndRotation !== undefined) {
+      if (typeof input.keepEndRotation !== 'boolean') {
+        throw new TypeError(`${label} keepEndRotation must be boolean.`);
+      }
+      solver.keepEndRotation = input.keepEndRotation;
+    }
+    return solver;
+  }
+  if (input?.type === 'aim') {
+    knownKeys(input, ['type', 'joint', 'joints', 'forward', 'target', 'maxAngle', 'weight'], label);
+    if ((input.joint === undefined) === (input.joints === undefined)) {
+      throw new TypeError(`${label} needs joint, or joints listed from the base of the chain to the aiming node.`);
+    }
+    const names = input.joints === undefined ? [input.joint] : denseArray(input.joints, 16, `${label} joints`);
+    if (!names.length) {
+      throw new RangeError(`${label} joints cannot be empty.`);
+    }
+    const solver = {
+      type: 'aim',
+      joints: names.map(name => nodeIdFrom(name, nodes, `${label} joint`)),
+      forward: valueFrom(input.forward ?? [0, 0, 1], 3, `${label} forward`),
+      target: ikPoint(input.target, nodes, duration, `${label} target`),
+      weight: ikWeight(input.weight, duration, `${label} weight`),
+    };
+    if (input.maxAngle !== undefined) {
+      solver.maxAngle = bounded(input.maxAngle, 0.001, 180, `${label} maxAngle`);
+    }
+    return solver;
+  }
+  throw new RangeError(`${label} type must be two-bone or aim.`);
+}
+
+function solverNodes(solver) {
+  return solver.type === 'two-bone' ? [solver.root, solver.middle, solver.end] : solver.joints;
+}
+
+function pointNodes(solver) {
+  return [solver.target, solver.pole].filter(point => point?.node).map(point => point.node);
+}
+
+function ancestorsOf(id, nodesById) {
+  const found = [];
+  let current = nodesById.get(id)?.parent;
+  while (current !== undefined && current !== null) {
+    found.push(current);
+    current = nodesById.get(current)?.parent;
+  }
+  return found;
+}
+
+// The rig math assumes uniform scale. A non-uniform parent would shear what the solver thinks is a rigid chain. A node's
+// own scale only reaches its children, so the end of a chain or a lone aimed box can have any size.
+function checkIkScales(ik, tracks, recipe) {
+  const nodesById = new Map(recipe.nodes.map(node => [node.id, node]));
+  const scaledByTrack = new Set(tracks.filter(track => track.kind === 'node' && track.property === 'scale').map(track => track.id));
+  const uniformRequired = new Set();
+  for (const solver of ik) {
+    for (const id of [...solverNodes(solver), ...pointNodes(solver)]) {
+      ancestorsOf(id, nodesById).forEach(ancestor => uniformRequired.add(ancestor));
+    }
+  }
+  for (const id of uniformRequired) {
+    if (scaledByTrack.has(id)) {
+      throw new RangeError(`Motion ik: node ${id} has IK nodes below it, so it cannot have a scale track.`);
+    }
+    const scale = nodesById.get(id).scale ?? [1, 1, 1];
+    if (Math.max(...scale) - Math.min(...scale) > 1e-6 * Math.max(...scale)) {
+      throw new RangeError(`Motion ik: node ${id} has non-uniform scale ${JSON.stringify(scale)}. It has IK nodes below it, so keep it at uniform scale and put the size on a child node with the geometry.`);
+    }
+  }
+}
+
+function normalizeIk(input, recipe, tracks, duration) {
+  if (recipe.ikUnavailable) {
+    throw new RangeError(recipe.ikUnavailable);
+  }
+  denseArray(input, MAX_IK_SOLVERS, 'Motion ik');
+  const nodes = new Set(recipe.nodes.map(node => node.id));
+  const ik = input.map((solver, position) => normalizeIkSolver(solver, position, nodes, duration));
+  checkIkScales(ik, tracks, recipe);
+  return ik;
+}
+
+function ikKeyframeCount(ik) {
+  let count = 0;
+  for (const solver of ik) {
+    for (const channel of [solver.target, solver.pole, solver.weight]) {
+      count += channel?.keyframes?.length ?? 0;
+    }
+  }
+  return count;
+}
+
 /** Normalize bounded authored data without storing bindings or sampled poses. */
 export function normalizeAgentMotion(input, recipe) {
   if (input === null || input === undefined) {
     return null;
   }
-  knownKeys(input, ['duration', 'loop', 'tracks'], 'motion');
+  knownKeys(input, ['duration', 'loop', 'tracks', 'ik'], 'motion');
   const duration = bounded(input.duration, 0.1, 30, 'Motion duration');
   const loop = input.loop === undefined ? false : input.loop;
   if (typeof loop !== 'boolean') {
     throw new TypeError('Motion loop must be boolean.');
   }
   denseArray(input.tracks, 128, 'Motion tracks');
-  if (!input.tracks.length) {
-    throw new RangeError('Motion needs at least one track. Use null to clear it.');
+  if (!input.tracks.length && !input.ik?.length) {
+    throw new RangeError('Motion needs at least one track or IK solver. Use null to clear it.');
   }
   const nodes = new Set((recipe.nodes ?? []).map(node => node.id));
   const materials = new Set((recipe.materials ?? []).map(material => material.id));
@@ -184,7 +346,105 @@ export function normalizeAgentMotion(input, recipe) {
     }
     return result;
   });
-  return { duration, loop, tracks };
+  const result = { duration, loop, tracks };
+  if (input.ik !== undefined) {
+    result.ik = normalizeIk(input.ik, recipe, tracks, duration);
+    if (keyframeCount + ikKeyframeCount(result.ik) > 2048) {
+      throw new RangeError('Motion exceeds 2048 total keyframes.');
+    }
+  }
+  return result;
+}
+
+/** A rig of just the nodes IK needs: chains, the nodes their targets follow, and all their ancestors. */
+function ikRig(ik, recipe) {
+  const nodesById = new Map(recipe.nodes.map(node => [node.id, node]));
+  const needed = new Set();
+  for (const solver of ik) {
+    for (const id of [...solverNodes(solver), ...pointNodes(solver)]) {
+      needed.add(id);
+      ancestorsOf(id, nodesById).forEach(ancestor => needed.add(ancestor));
+    }
+  }
+  const members = recipe.nodes.filter(node => needed.has(node.id));
+  const indexById = new Map(members.map((node, index) => [node.id, index]));
+  return {
+    // Identifying joints by node ID alone keeps a node named like a humanoid bone from being mapped to another one.
+    mapping: {},
+    joints: members.map(node => ({
+      name: node.id,
+      parent: node.parent === undefined || node.parent === null ? -1 : indexById.get(node.parent),
+      translation: node.translation ?? [0, 0, 0],
+      rotation: node.rotation ?? [0, 0, 0, 1],
+      scale: node.scale ?? [1, 1, 1],
+    })),
+  };
+}
+
+function ikChannelClip(ik, duration, loop) {
+  const tracks = [];
+  ik.forEach((solver, position) => {
+    if (solver.target.keyframes) tracks.push({ target: `target ${position}`, property: 'translation', interpolation: solver.target.interpolation, keyframes: solver.target.keyframes });
+    if (solver.pole?.keyframes) tracks.push({ target: `pole ${position}`, property: 'translation', interpolation: solver.pole.interpolation, keyframes: solver.pole.keyframes });
+    if (solver.weight.keyframes) tracks.push({ target: `weight ${position}`, property: 'value', interpolation: solver.weight.interpolation, keyframes: solver.weight.keyframes });
+  });
+  return tracks.length ? createAnimationClip({ duration, loop, tracks }) : null;
+}
+
+/** Solve a motion's IK on top of its sampled node tracks. Returns staged rotations per node ID. */
+function createIkEvaluator(motion, recipe, stagedNodeTracks) {
+  const rig = ikRig(motion.ik, recipe);
+  const clip = ikChannelClip(motion.ik, motion.duration, motion.loop);
+  const channelSampler = clip ? compileAnimationSampler(clip) : null;
+  const channelOutput = name => channelSampler.tracks.find(track => track.target === name).output;
+  let pose = null;
+  const pointReader = (point, name) => {
+    if (Array.isArray(point)) return () => point;
+    if (point.node) return () => pose.jointWorld(point.node).position;
+    const output = channelOutput(name);
+    return () => output;
+  };
+  const definitions = motion.ik.map((solver, position) => {
+    const weightOutput = solver.weight.keyframes ? channelOutput(`weight ${position}`) : null;
+    const common = {
+      target: pointReader(solver.target, `target ${position}`),
+      weight: weightOutput ? () => Math.min(1, Math.max(0, weightOutput[0])) : solver.weight,
+    };
+    if (solver.type === 'aim') {
+      return { ...common, type: 'aim', joints: solver.joints, forward: solver.forward, maxAngle: solver.maxAngle };
+    }
+    return {
+      ...common, type: 'two-bone', root: solver.root, middle: solver.middle, end: solver.end,
+      ...(solver.pole ? { pole: pointReader(solver.pole, `pole ${position}`) } : {}),
+      keepEndRotation: solver.keepEndRotation,
+    };
+  });
+  pose = createSkeletonPose({ rig, ik: definitions });
+  const indexById = new Map(rig.joints.map((joint, index) => [joint.name, index]));
+  const baseBindings = rig.joints.map((joint, index) => ({ index, tracks: stagedNodeTracks.get(joint.name) }));
+  const solvedIds = new Set(motion.ik.flatMap(solver => {
+    if (solver.type === 'aim') return solver.joints;
+    return solver.keepEndRotation === false ? [solver.root, solver.middle] : [solver.root, solver.middle, solver.end];
+  }));
+  const staged = new Map([...solvedIds].map(id => [id, new Float64Array(4)]));
+  function setBase(localRotations, localTranslations) {
+    for (const { index, tracks } of baseBindings) {
+      if (tracks?.rotation) localRotations[index].set(tracks.rotation);
+      if (tracks?.translation) localTranslations[index].set(tracks.translation);
+    }
+  }
+  return {
+    staged,
+    solve(time) {
+      channelSampler?.sample(time);
+      pose.apply(time, setBase);
+      for (const [id, rotation] of staged) {
+        rotation.set(pose.localRotation(indexById.get(id)));
+        if (!rotation.every(Number.isFinite)) throw new RangeError(`Motion ik produced an invalid rotation for node ${id}.`);
+      }
+      return pose.ikResults;
+    },
+  };
 }
 
 function validateRadiance(material) {
@@ -230,6 +490,20 @@ export function compileAgentMotion(input, recipe) {
     patch[track.property] = size === 1 ? 0 : new Float64Array(size);
     return { track, patch, staged: sampler.tracks[index].output };
   });
+  const stagedNodeTracks = new Map();
+  for (const { track, staged } of bindings) {
+    if (track.kind !== 'node') continue;
+    if (!stagedNodeTracks.has(track.id)) stagedNodeTracks.set(track.id, {});
+    stagedNodeTracks.get(track.id)[track.property] = staged;
+  }
+  const ikEvaluator = motion.ik?.length ? createIkEvaluator(motion, recipe, stagedNodeTracks) : null;
+  if (ikEvaluator) {
+    for (const id of ikEvaluator.staged.keys()) {
+      if (!output.nodes.has(id)) output.nodes.set(id, {});
+      const nodePatch = output.nodes.get(id);
+      if (!nodePatch.rotation) nodePatch.rotation = new Float64Array(4);
+    }
+  }
   const baselines = new Map((recipe.materials ?? []).map(material => [material.id, structuredClone(material)]));
   const cameraTracks = motion.tracks.filter(track => track.kind === 'camera');
   const cameraInput = {
@@ -251,6 +525,24 @@ export function compileAgentMotion(input, recipe) {
   }
   const materialSamples = new Map([...output.materials.keys()].map(id => [id, { ...baselines.get(id) }]));
   return Object.freeze({
+    /** How IK fares across the whole clip: one { type, reached, worstError, atTime } per solver. Moves the sampler. */
+    sweepIk() {
+      if (!ikEvaluator) return [];
+      const worst = motion.ik.map(solver => ({ type: solver.type, reached: true, worstError: 0, atTime: 0 }));
+      for (let sample = 0; sample < IK_SWEEP_SAMPLES; sample++) {
+        const time = motion.duration * sample / (IK_SWEEP_SAMPLES - 1);
+        sampler.sample(time);
+        ikEvaluator.solve(time).forEach((result, position) => {
+          const record = worst[position];
+          record.reached = record.reached && result.reached;
+          if (result.error > record.worstError) {
+            record.worstError = Number(result.error.toFixed(6));
+            record.atTime = Number(time.toFixed(3));
+          }
+        });
+      }
+      return worst;
+    },
     sample(time) {
       bounded(time, 0, 3600, 'Motion sample time');
       sampler.sample(time);
@@ -274,13 +566,17 @@ export function compileAgentMotion(input, recipe) {
           throw new RangeError('Sampled camera lens is invalid at Float32 precision.');
         }
       }
-      // Publish only after every track, material product and camera pose passes.
+      ikEvaluator?.solve(time);
+      // Publish only after every track, material product, camera pose and IK solve passes.
       for (const { track, patch, staged } of bindings) {
         if (staged.length === 1) {
           patch[track.property] = staged[0];
         } else {
           patch[track.property].set(staged);
         }
+      }
+      if (ikEvaluator) {
+        for (const [id, rotation] of ikEvaluator.staged) output.nodes.get(id).rotation.set(rotation);
       }
       if (cameraPath) {
         for (const field of ['eye', 'target', 'up']) {

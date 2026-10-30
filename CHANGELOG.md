@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Add `motion.ik` to procedural recipes: two-bone and aim solvers on node hierarchies, with fixed, keyframed or node-following targets, so agents can animate jointed models without writing quaternions; `scene_inspect` reports whether each solver reaches its target across the clip
+- Add `67js/addons/skeleton-pose`: clip layers for skinned rigs with joint masks and additive blending, two-bone IK with poles and aim IK with angle limits and shared chains, all seekable, with joints named by rig name or humanoid bone
+
 ## 0.12.0
 
 - Add the recipe material field `pattern`: eleven seeded, tileable procedural surfaces (wood, planks, bricks, tiles, marble, stone, concrete, metal, rust, fabric, noise) that need no UVs, keep their real size under node scale, and can change while a scene is open
