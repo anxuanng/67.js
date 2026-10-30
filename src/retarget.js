@@ -197,7 +197,7 @@ function jointOrder(joints, label) {
   return order;
 }
 
-function validateRigJoints(joints, label) {
+export function validateRigJoints(joints, label) {
   if (!Array.isArray(joints) || !joints.length) throw new TypeError(`${label} rig needs a non-empty joints array.`);
   joints.forEach(joint => {
     const parentIsValid = Number.isInteger(joint.parent) && joint.parent >= -1 && joint.parent < joints.length;
@@ -206,7 +206,7 @@ function validateRigJoints(joints, label) {
   });
 }
 
-function createPoseState(jointCount) {
+export function createPoseState(jointCount) {
   const createVectors = (size) => Array.from({ length: jointCount }, () => new Float64Array(size));
   return {
     rotations: createVectors(4),
@@ -226,7 +226,7 @@ function placeJoint(prepared, state, index, localRotation, localTranslation) {
   state.scales[index] = parentScale * prepared.localScales[index];
 }
 
-function computeWorldPose(prepared, state, localRotations, localTranslations) {
+export function computeWorldPose(prepared, state, localRotations, localTranslations) {
   for (const index of prepared.order) placeJoint(prepared, state, index, localRotations[index], localTranslations[index]);
 }
 
@@ -250,7 +250,7 @@ function prepareRig(rig, label, overrides) {
   return { ...prepareRigGeometry(rig, label), indexByBone };
 }
 
-function prepareRigGeometry(rig, label) {
+export function prepareRigGeometry(rig, label) {
   const joints = rig.joints;
   const root = decomposeMatrix(rig.rootMatrix ? Float64Array.from(rig.rootMatrix) : mat4.create());
   const prepared = {
@@ -293,7 +293,7 @@ function frameTimes(duration, frameRate) {
   return times;
 }
 
-function bindSourceTracks(sampler, sourcePrepared) {
+export function bindSourceTracks(sampler, sourcePrepared) {
   const bindings = [];
   for (const track of sampler.tracks) {
     const index = sourcePrepared.indexByName.get(track.target);

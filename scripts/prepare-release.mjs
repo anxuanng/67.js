@@ -41,6 +41,7 @@ const sourceDocuments = [
   'gltf-morph.md', 'morph-targets.md', 'skinning.md', 'physics.md',
   'export-glb.md', 'sculpt.md', 'surface.md', 'mesh-query.md', 'mesh.md','primitives.md', 'shrinkwrap.md', 'spume.md',
   'retarget.md',
+  'skeleton-pose.md',
   'vehicle.md',
   'vegetation.md', 'terrain.md', 'grass.md', 'clutter.md',
   'camera-path.md', 'lighting.md', 'volumetric.md', 'film-physics.md',

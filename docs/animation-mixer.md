@@ -90,5 +90,5 @@ The mixer owns registered properties during playback, so external writes do not 
 Retained timelines support deterministic film sampling and interrupted fades without depending on previous evaluation calls.
 The mixer uses `compileAnimationSampler` from the curve module, so interpolation math has one implementation.
 
-Additive blending remains an open gap because it needs an explicit reference pose and quaternion delta convention.
+This mixer has no additive blending, because it needs an explicit reference pose and quaternion delta convention. [Skeleton pose layers](skeleton-pose.md) provide additive layers, joint masks and IK for skinned rigs.
 This module does not add skeletal skinning, morph targets, hierarchy propagation, root motion extraction, transition warping or animation events.

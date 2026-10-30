@@ -123,7 +123,7 @@ Each addon is a separate import, so a page loads only what it uses.
 | Vegetation | `67js/addons/vegetation` | [Seeded trees, bushes and grass](docs/vegetation.md) with scanned leaves and bark, wind and level of detail. |
 | Liquid | `67js/addons/spume` | [Baked liquid playback](docs/spume.md) with refraction and spray from the Spume solver. |
 | Vehicles | `67js/addons/vehicle` | [Wheeled vehicles on a path](docs/vehicle.md): wheel spin, steering, roll, pitch and ground following. |
-| Characters | `67js/addons/gltf`, `67js/addons/retarget` | [glTF import](docs/gltf.md) with skins, morphs and compressed meshes, and [clip retargeting](docs/retarget.md) between rigs. |
+| Characters | `67js/addons/gltf`, `67js/addons/retarget`, `67js/addons/skeleton-pose` | [glTF import](docs/gltf.md) with skins, morphs and compressed meshes, [clip retargeting](docs/retarget.md) between rigs, and [pose layers with IK](docs/skeleton-pose.md). |
 | Physics | `67js/addons/physics` | [Rapier contacts and joints](docs/physics.md) recorded into a timeline for repeatable seeks. |
 | Modeling | `67js/addons/modeling`, `sculpt`, `surface`, `shrinkwrap`, `mesh-query` | [Modeling](docs/modeling.md), [sculpt brushes](docs/sculpt.md), [surface patches](docs/surface.md), [shrinkwrap](docs/shrinkwrap.md) and [mesh queries](docs/mesh-query.md). |
 | Polygon mesh | `67js/addons/mesh` | [Mesh editing for agents](docs/mesh.md): tagged faces, extrude, inset, bevel, loop cut, booleans, a modifier stack and UV unwrap. |

@@ -28,6 +28,7 @@ export default defineConfig({
         physics: 'src/physics.js',
         spume: 'src/spume.js',
         retarget: 'src/retarget.js',
+        'skeleton-pose': 'src/skeleton-pose.js',
         vehicle: 'src/vehicle.js',
         vegetation: 'src/vegetation.js',
         terrain: 'src/terrain.js',
