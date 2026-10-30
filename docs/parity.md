@@ -14,7 +14,9 @@ It is the record for the goal in issue #23. Use `npm run parity` to print the co
 
 Agents are the user of 67.js, so a row judges the purpose of a Blender feature and not its interface. A row covers the pages below it unless a finer row exists.
 
-`done` does not mean equal to Blender. A test shows that the feature works, and it does not show that the result matches. `npm run parity` counts a row as compared only when its evidence is in `tests/fixtures/blender/` or `bench/reference/`. Issue #26 adds the render comparison.
+`done` does not mean equal to Blender. A test shows that the feature works, and it does not show that the result matches. `npm run parity` counts a row as compared only when its evidence is in `tests/fixtures/blender/` or `bench/reference/`.
+
+`bench/reference/` scores 67.js renders against Cycles and EEVEE on 8 scenes. Its README gives the scores and the largest gap in each scene.
 
 `tests/blender-golden.test.js` compares mesh operations with results from Blender. A compared row can still differ, and `tests/fixtures/blender/differences.json` gives the reason for each difference.
 
@@ -182,7 +184,7 @@ To move to a new Blender release, run `node scripts/parity-manual-snapshot.mjs`.
 | Physics > Collision | partial | Rapier collisions in code, with no sensors or masks. | [physics](../tests/physics.test.js) | #61 |
 | Physics > Baking Physics Simulations | partial | Physics records to a timeline in code, on the main thread. | [film-physics](../tests/film-physics.test.js) | #61 |
 | Physics > Simulation Nodes | missing | No node graph. | | #43 |
-| Rendering > Render Engines > EEVEE | partial | A WebGL2 rasterizer with PBR, one directional shadow, 8 point lights, fog and bloom. There are no light probes. | [renderer](../tests/renderer.test.js) | #52, #53, #55, #56 |
+| Rendering > Render Engines > EEVEE | partial | A WebGL2 rasterizer with PBR, one directional shadow, 8 point lights, fog and bloom. There are no light probes. | [renderer](../tests/renderer.test.js), [scores against EEVEE](../bench/reference/baseline.json) | #52, #53, #55, #56 |
 | Rendering > Render Engines > Cycles | missing | No path tracer and no render baking. | | #55, #57 |
 | Rendering > Render Engines > Workbench | out of scope | A viewport engine for working by hand. | | |
 | Rendering > Cameras | partial | Perspective, orthographic views, focal length and animated paths. There is no depth of field. | [camera-path](../tests/camera-path.test.js), [camera](../tests/camera.test.js) | #54 |
