@@ -117,7 +117,6 @@ root rather than of the lower leg, so two-bone IK refuses them with an error; it
 - No joint angle limits. A pole keeps a knee on the right side, but nothing stops a target from bending it too far.
 - No full-body solve: moving a hand does not move the hips. Solvers run one at a time, so order them from the base of the
   body outward.
-- Clip layers and masks are code only, and MCP has no IK for imported assets yet. Procedural recipes get IK through [`motion.ik`](agent-motion.md#inverse-kinematics);
-  imported assets through MCP still author joints by rotation tracks, as in [imported character motion](agent-character-motion.md).
+- Clip layers and masks are code only. Recipes and imported assets get IK through MCP with [`motion.ik`](agent-motion.md#inverse-kinematics).
 - The [animation mixer](animation-mixer.md) works on rigid part transforms and has no layers, masks or IK. Use this addon
   for skinned rigs.

@@ -412,6 +412,9 @@ export function createAgentAssetScene(asset, inputRecipe) {
       camera: view.camera, environment: view.environment, effects: view.effects, shadow: view.shadow,
       root: rootFrom(candidate.root), animation, materialOverrides: normalizedOverrides, nodeOverrides: normalizedNodes,
     });
+    if (candidate.motion?.ik?.length && Math.max(...result.root.scale) - Math.min(...result.root.scale) > 1e-3 * Math.max(...result.root.scale)) {
+      throw new RangeError('Motion ik needs a uniform asset root scale.');
+    }
     result.motion = normalizeAgentMotion(candidate.motion, motionRecipe(result));
     return copiedJson(result);
   }
@@ -421,11 +424,32 @@ export function createAgentAssetScene(asset, inputRecipe) {
     for (const override of candidate.materialOverrides) {
       baselines.set(override.id, { ...baselines.get(override.id), ...override });
     }
+    const root = candidate.root;
     return {
       nodes: [...sourceNodes.values()].filter(node => node.editable),
       materials: [...baselines.values()], camera: candidate.camera,
-      ikUnavailable: 'Motion ik works on procedural recipes, not imported assets, whose pose depends on the selected clip. Author node rotation tracks here.',
+      ikHierarchy: [...sourceNodes.values()],
+      ikRootMatrix: Array.from(mat4.fromRotationTranslationScale(mat4.create(), root.rotation, root.translation, [root.scale[0], root.scale[0], root.scale[0]])),
     };
+  }
+
+  /** Stage clip and overrides without publishing them, and read the local pose IK must start from. */
+  function stagedNodePoses(animation, overrides) {
+    const probe = asset.stagePose({ animation, nodeOverrides: overrides });
+    try {
+      return probe.nodePoses();
+    } finally {
+      probe.discard();
+    }
+  }
+
+  function trackOverrides(baseOverrides, sampled) {
+    const nodeOverrides = new Map(baseOverrides.map(override => [override.id, override]));
+    for (const [id, patch] of sampled?.nodes ?? []) {
+      const copiedPatch = Object.fromEntries(Object.entries(patch).map(([field, value]) => [field, Array.from(value)]));
+      nodeOverrides.set(id, { ...nodeOverrides.get(id), id, ...copiedPatch });
+    }
+    return nodeOverrides;
   }
 
   function publish(input, autoFrame = false, increment = true, transientTime = undefined, transientAnimation = undefined) {
@@ -453,10 +477,12 @@ export function createAgentAssetScene(asset, inputRecipe) {
         throw new RangeError('Decoded resources and retained adapter matrices must not change identity or detach.');
       }
     }
-    const nodeOverrides = new Map(candidate.nodeOverrides.map(override => [override.id, override]));
-    for (const [id, patch] of sampled?.nodes ?? []) {
-      const copiedPatch = Object.fromEntries(Object.entries(patch).map(([field, value]) => [field, Array.from(value)]));
-      nodeOverrides.set(id, { ...nodeOverrides.get(id), id, ...copiedPatch });
+    const nodeOverrides = trackOverrides(candidate.nodeOverrides, sampled);
+    if (targetTime !== null && stagedSampler?.ikUsesStagedPose) {
+      const nodePoses = stagedNodePoses(candidate.animation, [...nodeOverrides.values()]);
+      for (const { id, rotation } of stagedSampler.solveStagedIk(targetTime, nodePoses)) {
+        nodeOverrides.set(id, { ...nodeOverrides.get(id), id, rotation });
+      }
     }
     let transaction;
     try {
@@ -533,6 +559,15 @@ export function createAgentAssetScene(asset, inputRecipe) {
       transaction?.discard();
       throw error;
     }
+  }
+
+  /** scene_inspect's motionIk: how each solver fares across the clip, from a sampler that leaves the published pose alone. */
+  function motionIkReport() {
+    if (!recipe.motion?.ik?.length) return {};
+    const sweeper = compileAgentMotion(recipe.motion, motionRecipe(recipe));
+    return {
+      motionIk: sweeper.sweepIk(time => stagedNodePoses(recipe.animation, [...trackOverrides(recipe.nodeOverrides, sweeper.sample(time)).values()])),
+    };
   }
 
   function expected(options) {
@@ -704,7 +739,7 @@ export function createAgentAssetScene(asset, inputRecipe) {
           return sourceNodes.get(id);
         });
         const nodes = structuredClone(selected.slice(offset, offset + limit));
-        return { revision, topologyRevision: 0, assetId: canonicalAssetId, kind: 'hierarchy',
+        return { revision, topologyRevision: 0, assetId: canonicalAssetId, kind: 'hierarchy', ...motionIkReport(),
           counts: { nodes: sourceNodes.size, joints: [...sourceNodes.values()].filter(node => node.joint).length },
           nodes, offset, truncated: offset + nodes.length < selected.length,
           motion: recipe.motion ? { duration: recipe.motion.duration, loop: recipe.motion.loop, tracks: recipe.motion.tracks.length, time: motionTime } : null };

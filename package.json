@@ -127,6 +127,7 @@
     "smoke:enhancements": "node scripts/smoke-enhancements.mjs",
     "smoke:site": "node scripts/smoke-site.mjs",
     "publish:ci": "node scripts/publish-ci.mjs",
+    "smoke:character": "node scripts/smoke-character.mjs",
     "smoke:agent-character": "node scripts/smoke-agent-character.mjs",
     "smoke:agent-review": "node scripts/smoke-agent-review.mjs"
   },

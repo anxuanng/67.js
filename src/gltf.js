@@ -1239,6 +1239,11 @@ export async function parseGltf(data, options = {}) {
       }
       const transaction = Object.freeze({
         parts: candidateParts,
+        /** Local transform of every source node in this candidate pose, after the clip and overrides. */
+        nodePoses() {
+          requirePending();
+          return [...sourceNodes].map(([id, node]) => ({ id, translation: node.position.toArray(), rotation: node.quaternion.toArray() }));
+        },
         commit() {
           requirePending();
           try {

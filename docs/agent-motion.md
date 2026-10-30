@@ -81,7 +81,7 @@ Other interpolation modes reject tangents.
 ## Inverse kinematics
 
 `motion.ik` computes node rotations from a goal, so a recipe can say where a hand should be without any quaternions. It
-works on procedural recipes, and runs after the tracks at every sample, in list order. `tracks` can be empty when a
+works on procedural recipes and imported assets, and runs after the tracks and any selected clip at every sample, in list order. `tracks` can be empty when a
 motion has `ik`.
 
 ```json
@@ -96,7 +96,9 @@ point the middle node bends toward; give one, because a straight limb has no ben
 defaults to `true`, so a gripper or foot keeps its world rotation.
 
 An `aim` solver takes `joint`, or `joints` from the base of a chain to the aiming node, which then share the turn.
-`forward` is the aiming node's local axis (default `[0, 0, 1]`), and `maxAngle` limits the whole turn in degrees.
+`worldForward` is the world direction the character faces at rest, which is the one to use on imported rigs because their
+bone axes vary. Otherwise `forward` is the aiming node's local axis (default `[0, 0, 1]`). `maxAngle` limits the whole
+turn in degrees.
 
 `target` and `pole` are each `[x, y, z]` in world metres, `{ "node": id }` to follow a node, or
 `{ "keyframes": [{ "time", "value" }], "interpolation" }`. `weight` is 0 to 1 (default 1), or keyframes to fade a solve in
@@ -109,8 +111,11 @@ Put sizes on a child node with the geometry, or on the last node of the chain, w
 clip. `worstError` is metres for two-bone and radians for aim, so a target out of reach shows up without looking at every
 frame. A limb that cannot reach stretches toward the target.
 
-Imported assets reject `ik`, because their pose depends on the selected clip. In code, [skeleton pose layers](skeleton-pose.md)
-solve IK on skinned rigs. There are no joint angle limits.
+On an imported asset, joints are its `node-N` IDs from `scene_inspect` with `kind: "hierarchy"`, and they must be editable.
+Each sample stages the clip and overrides, reads the local pose, solves, and stages again, so the rest of the body stays on
+the selected clip and skins and rigid parts all follow. Targets are in world space, under the asset's `root`, which needs a
+uniform scale. Some rigs have no chain to the foot: if the foot is not a descendant of the lower leg, two-bone IK refuses it.
+There are no joint angle limits. [Skeleton pose layers](skeleton-pose.md) add clip layers and masks in code.
 
 ## Internal sampling helpers
 

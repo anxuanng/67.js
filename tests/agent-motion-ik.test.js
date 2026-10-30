@@ -174,6 +174,7 @@ test('mistakes say what to pass', () => {
     tracks: [{ kind: 'node', id: 'elbow', property: 'scale', keyframes: [{ time: 0, value: [1, 1, 1] }] }],
     ik: [armIk([0, 0, 0])],
   })), /cannot have a scale track/);
+  assert.throws(() => create([{ type: 'aim', joint: 'lamp', target: [0, 0, 0], forward: [0, 0, 1], worldForward: [0, 0, 1] }]), /forward or worldForward, not both/);
   assert.deepEqual([...AGENT_SCENE_CAPABILITIES.motionIk], ['two-bone', 'aim']);
 });
 

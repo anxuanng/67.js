@@ -2,7 +2,10 @@
 // (genus), volume, cross-section loops, lines through the object, gear teeth and UV stretch. Shape measures use every
 // node's render triangles in world space. Lint, parts and genus come from the engine's own mesh report, the one the
 // agent sees: welding render triangles again can invent non-manifold edges that the polygon mesh does not have.
+import { readFile } from 'node:fs/promises';
+import { createAgentAssetScene } from '../../src/agent-asset.js';
 import { createAgentScene, loadMeshBooleans, needsMeshBooleans } from '../../src/agent-scene.js';
+import { parseGltf } from '../../src/gltf.js';
 
 const WELD_DISTANCE = 1e-5;
 
@@ -185,6 +188,29 @@ function lineHits(geometries, axis, point) {
     }
   }
   return hits;
+}
+
+/** Reload an exported recipe for the fixture robot and read which clip and which IK solvers it ended with. */
+export async function measureAssetRecipe(recipe) {
+  const bytes = await readFile(new URL('../../tests/fixtures/RobotExpressive.glb', import.meta.url));
+  const asset = await parseGltf(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength), { maxVertices: 500000 });
+  const scene = createAgentAssetScene(asset, recipe);
+  const labels = new Map(asset.nodes.map(node => [node.id, node.label]));
+  const reports = scene.inspect({ kind: 'hierarchy', limit: 1 }).motionIk ?? [];
+  const solvers = recipe.motion?.ik ?? [];
+  const endpoints = target => {
+    if (Array.isArray(target)) return [target, target];
+    const keyframes = target?.keyframes;
+    return keyframes ? [keyframes[0].value, keyframes[keyframes.length - 1].value] : [null, null];
+  };
+  return {
+    clipName: recipe.animation ? asset.animations[recipe.animation.clip]?.name : null,
+    reachSolvers: solvers.filter(solver => solver.type === 'two-bone').map(solver => {
+      const [firstTarget, lastTarget] = endpoints(solver.target);
+      const report = reports[solvers.indexOf(solver)];
+      return { endLabel: labels.get(solver.end), firstTarget, lastTarget, reached: report?.reached ?? false, worstError: report?.worstError ?? null };
+    }),
+  };
 }
 
 /** Load the recipe and measure what it builds. Throws if the recipe itself is invalid. */
