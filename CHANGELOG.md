@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Add `createAssetPose`, which poses a loaded glTF asset's whole hierarchy so every skin and rigid part moves, and `clipFromGltfAnimation`, which converts its clips for layers and `retargetClip`
+- Add `worldForward` to aim IK, because bone axes differ between real rigs
+- Accept skin weights one unit of Float32 rounding above 1, which exporters write and which made such files fail to load
+
 ## 0.13.0
 
 - Add `motion.ik` to procedural recipes: two-bone and aim solvers on node hierarchies, with fixed, keyframed or node-following targets, so agents can animate jointed models without writing quaternions; `scene_inspect` reports whether each solver reaches its target across the clip

@@ -4,18 +4,21 @@
 wave while walking, add breathing on top of any clip, keep feet on uneven ground, reach for an object or look at a point.
 
 ```js
-import { createSkeletonPose } from '67js/addons/skeleton-pose';
+import { loadGltf } from '67js/addons/gltf';
+import { clipFromGltfAnimation, createAssetPose } from '67js/addons/skeleton-pose';
 
-const pose = createSkeletonPose({
-  skin: character.skins[0],
+const character = await loadGltf(url);
+const clip = name => clipFromGltfAnimation(character.animations.find(animation => animation.name === name), { loop: true });
+
+const pose = createAssetPose(character, {
   layers: [
-    { clip: walk },
-    { clip: wave, mask: { joints: ['rightUpperArm'] } },
-    { clip: breathe, additive: true },
+    { clip: clip('Walk') },
+    { clip: clip('Wave'), mask: { joints: ['rightShoulder'] } },
+    { clip: clip('Breathe'), additive: true },
   ],
   ik: [
-    { type: 'two-bone', root: 'leftUpperLeg', middle: 'leftLowerLeg', end: 'leftFoot', pole: [0, 1, 2], target: (time, foot) => [foot[0], terrain.heightAt(foot[0], foot[2]), foot[2]] },
-    { type: 'aim', joints: ['spine', 'head'], forward: [0, 0, 1], maxAngle: 60, target: [2, 1.6, 3] },
+    { type: 'two-bone', root: 'leftUpperLeg', middle: 'leftLowerLeg', end: 'leftFoot', target: (time, foot) => [foot[0], terrain.heightAt(foot[0], foot[2]) + ankleHeight, foot[2]] },
+    { type: 'aim', joints: ['spine', 'neck', 'head'], worldForward: [0, 0, 1], maxAngle: 60, target: [2, 1.6, 3] },
   ],
 });
 
@@ -29,12 +32,21 @@ depend only on their arguments.
 
 ## Setup
 
-`createSkeletonPose({ skin, rig, meshWorldMatrix, layers, ik })` takes a `skin` to write its joint palette, or only a
-`rig` to read joint positions. `rig` defaults to `createRigFromSkin(skin)` from `67js/addons/retarget`; pass one with
-`rootMatrix` when a scaled node sits above the root joints.
+Use `createAssetPose(asset, { layers, ik })` for a loaded glTF asset. It solves on the asset's whole node hierarchy and
+writes through its pose transaction, so every skin moves, and so does every rigid part attached to a bone. Many characters
+are built that way, or have several skins. Targets are in the asset's world space, including any scaled or rotated
+armature above the bones.
 
-Anywhere a joint is named you can use the rig's joint name or a humanoid bone name such as `leftUpperArm`
-(see [retargeting](retarget.md)), so a setup can move between rigs.
+`clipFromGltfAnimation(asset.animations[n], { loop })` converts a clip from the file. `asset.animations` holds three.js
+clips, which layers and `retargetClip` cannot read directly. Morph weight tracks are skipped.
+
+`createSkeletonPose({ skin, rig, meshWorldMatrix, layers, ik })` is the lower level: it writes one skin's palette, or with
+only a `rig` just computes joint positions. `rig` defaults to `createRigFromSkin(skin)` from `67js/addons/retarget`; pass
+one with `rootMatrix` when a scaled node sits above the root joints.
+
+Anywhere a joint is named you can use the joint name or a humanoid bone name such as `leftUpperArm`
+(see [retargeting](retarget.md)), so a setup can move between rigs. An asset's joint names are its decoded node names, in
+`asset.nodes[n].name`: the loader removes characters such as dots, so `Foot.L` in the file is `FootL` here.
 
 ## Layers
 
@@ -74,7 +86,8 @@ perfectly straight limb has no defined bend for the next frame.
 | Field | Meaning |
 | --- | --- |
 | `joint` or `joints` | One joint, or a chain listed from its base to the aiming joint. A chain shares the turn evenly |
-| `forward` | The aiming joint's local axis that should point at the target (default `[0, 0, 1]`). Check this per rig: it depends on the bone axes |
+| `worldForward` | The world direction the character faces in its rest pose, such as `[0, 0, 1]`. Use this on real rigs, where bone axes differ |
+| `forward` | Instead of `worldForward`: the aiming joint's local axis to point at the target (default `[0, 0, 1]`) |
 | `target` | World position, or `(time, jointPosition) => position` |
 | `maxAngle` | Degrees (default 180). Limits the whole turn; past it the joint stops at the limit |
 | `weight` | 0 to 1 (default 1), or a function of time |
@@ -87,13 +100,24 @@ The turn is the shortest rotation, so `aim` does not hold an up direction and ca
 chaining targets. `pose.ikResults` holds one `{ reached, error }` per solver: `error` is metres from the target for
 two-bone and radians off target for aim.
 
+## Rigs seen so far
+
+Checked on two real characters. RobotExpressive (rigid parts on bones, four skinned hands, an armature scaled by 100) ran
+walk, wave masked to one arm, an additive nod, arm reach and head aim; its clip playback matches the decoder's own within
+5e-4, and `tests/skeleton-pose-asset.test.js` runs on it. A Mixamo-style skinned soldier ran walk, feet held on a slope, and
+a three-joint aim, by eye only.
+
+Some rigs do not have a limb chain ending at the foot. RobotExpressive's feet are Blender IK controllers, children of the
+root rather than of the lower leg, so two-bone IK refuses them with an error; its arms work.
+
 ## Limits
 
+- A foot or hand held by IK keeps its rotation from the clip, so a foot on a slope does not tilt to match the ground.
 - Uniform scale only, as in the [retargeting](retarget.md) rig. Clip scale tracks are ignored.
 - No joint angle limits. A pole keeps a knee on the right side, but nothing stops a target from bending it too far.
 - No full-body solve: moving a hand does not move the hips. Solvers run one at a time, so order them from the base of the
   body outward.
-- Clip layers and masks are code only. Procedural recipes get IK through [`motion.ik`](agent-motion.md#inverse-kinematics);
+- Clip layers and masks are code only, and MCP has no IK for imported assets yet. Procedural recipes get IK through [`motion.ik`](agent-motion.md#inverse-kinematics);
   imported assets through MCP still author joints by rotation tracks, as in [imported character motion](agent-character-motion.md).
 - The [animation mixer](animation-mixer.md) works on rigid part transforms and has no layers, masks or IK. Use this addon
   for skinned rigs.
