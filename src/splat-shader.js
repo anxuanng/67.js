@@ -15,6 +15,7 @@ uniform float splatMaskInvert[4];
 uniform vec4 splatBlend;
 uniform vec4 splatOptions;
 uniform vec4 splatMaskBounds;
+uniform vec4 splatVariation;
 
 const mat2 SPLAT_ROTATION = mat2(0.8253, 0.5646, -0.5646, 0.8253);
 const float SPLAT_SECOND_SCALE = 0.58;
@@ -32,6 +33,28 @@ struct SplatPlane {
 float splatRange(float value, float minimum, float maximum, float softness) {
   float width = max(softness, 0.0001);
   return smoothstep(minimum - width, minimum + width, value) * (1.0 - smoothstep(maximum - width, maximum + width, value));
+}
+
+// Three octaves of value noise in [0, 1]; one octave alone shows its grid as soft blobs.
+float splatOctaves(vec2 position) {
+  return terrainNoise(position).x * 0.5 + terrainNoise(position * 2.03 + 7.1).x * 0.3 + terrainNoise(position * 4.11 + 13.7).x * 0.2;
+}
+
+// Brightness and hue drift at field (about 120 m), patch (20 m) and clump (3 m) scale. Texture detail averages
+// out at a distance, so the clump octave grows with the pixel footprint and far ground does not read as one flat colour.
+vec3 splatVariationTint(float footprint) {
+  float amount = splatVariation.x;
+  if (amount < 0.001) return vec3(1.0);
+  float fieldScale = splatOctaves(worldPosition.xz * 0.008 + 3.7) - 0.5;
+  float patchScale = splatOctaves(worldPosition.xz * 0.05 + 21.0) - 0.5;
+  float clumpScale = splatOctaves(worldPosition.xz * 0.35 + 41.0) - 0.5;
+  float distant = smoothstep(0.02, 0.2, footprint);
+  float brightness = 1.0 + (fieldScale * 0.8 + patchScale * 0.9 + clumpScale * mix(0.35, 0.7, distant)) * amount;
+  float dryness = smoothstep(0.4, 0.68, splatOctaves(worldPosition.xz * 0.02 + 11.0));
+  float lush = smoothstep(0.48, 0.75, splatOctaves(worldPosition.xz * 0.04 + 57.0));
+  vec3 hue = mix(vec3(1.0), vec3(1.3, 1.05, 0.55), dryness * 0.8);
+  hue = mix(hue, vec3(0.72, 0.92, 0.8), lush * 0.7);
+  return mix(vec3(1.0), hue, min(amount, 1.0)) * max(brightness, 0.35);
 }
 
 float splatMaskValue(int layerIndex) {
@@ -74,6 +97,17 @@ vec3 splatNormalTwoScale(SplatPlane plane, float layer, float blend) {
   vec3 mixed = mix(first, second, blend);
   mixed.xy /= splatContrastDivisor(blend);
   return mixed;
+}
+
+// Parallax with offset limiting: the top-down uv slides toward where the view ray meets the layer's height map, refined
+// in three steps. It only runs on pixels near the camera, where the relief is visible.
+vec2 splatParallaxOffset(SplatPlane top, float layer, vec2 viewSlope, float depthInUv) {
+  vec2 offset = vec2(0.0);
+  for (int refinement = 0; refinement < 3; refinement++) {
+    float height = textureGrad(splatPacked, vec3(top.uv + offset, layer), top.dx, top.dy).y;
+    offset = -viewSlope * depthInUv * (1.0 - height);
+  }
+  return offset;
 }
 
 SplatPlane splatPlane(vec2 worldCoordinates, vec2 worldDx, vec2 worldDy, float scale, vec3 tangent, vec3 bitangent, vec3 face) {
@@ -140,9 +174,11 @@ void applySplat(inout vec3 color, inout vec3 normal, inout float roughness, inou
 
   float lowFrequency = terrainNoise(worldPosition.xz * 0.045).x;
   float blend = splatOptions.x > 0.0 ? mix(0.5, lowFrequency, 0.7) : 0.0;
-  float macro = 0.78 + terrainNoise(worldPosition.xz * 0.011 + 3.7).x * 0.44;
-  float dryness = smoothstep(0.45, 0.78, terrainNoise(worldPosition.xz * 0.021 + 11.0).x);
-  vec3 dryTint = mix(vec3(1.0), vec3(1.2, 1.0, 0.72), dryness * 0.45);
+  vec3 variationTint = splatVariationTint(length(fwidth(worldPosition.xz)));
+  // Real layer borders wander: jitter the slope and height the rules see, so a mud flat or rock band has a ragged edge.
+  float edgeJitter = (splatOctaves(worldPosition.xz * 0.3 + 71.0) - 0.5) * 2.0 * splatVariation.y;
+  float ruleSlope = slope + edgeJitter * 9.0;
+  float ruleHeight = worldPosition.y + edgeJitter * 1.6;
 
   float weights[4] = float[4](0.0, 0.0, 0.0, 0.0);
   float covered = 0.0;
@@ -150,8 +186,8 @@ void applySplat(inout vec3 color, inout vec3 normal, inout float roughness, inou
     if (index >= layerCount) break;
     if (splatLayer[index].w < 0.5) continue;
     float weight = 1.0;
-    if (splatSlope[index].w > 0.5) weight *= splatRange(slope, splatSlope[index].x, splatSlope[index].y, splatSlope[index].z);
-    if (splatHeightRange[index].w > 0.5) weight *= splatRange(worldPosition.y, splatHeightRange[index].x, splatHeightRange[index].y, splatHeightRange[index].z);
+    if (splatSlope[index].w > 0.5) weight *= splatRange(ruleSlope, splatSlope[index].x, splatSlope[index].y, splatSlope[index].z);
+    if (splatHeightRange[index].w > 0.5) weight *= splatRange(ruleHeight, splatHeightRange[index].x, splatHeightRange[index].y, splatHeightRange[index].z);
     weight *= splatMaskValue(index);
     weights[index] = weight;
     covered = max(covered, weight);
@@ -165,6 +201,10 @@ void applySplat(inout vec3 color, inout vec3 normal, inout float roughness, inou
   vec2 sideShare = pow(abs(geometric.xz), vec2(4.0));
   sideShare /= max(sideShare.x + sideShare.y, 0.0001);
 
+  vec3 toEye = normalize(eye - worldPosition);
+  vec2 viewSlope = toEye.xz / max(toEye.y, 0.35);
+  float parallaxFade = 1.0 - smoothstep(0.004, 0.03, length(fwidth(worldPosition.xz)));
+  vec2 topOffsets[4] = vec2[4](vec2(0.0), vec2(0.0), vec2(0.0), vec2(0.0));
   vec2 packedSamples[4] = vec2[4](vec2(0.5), vec2(0.5), vec2(0.5), vec2(0.5));
   vec3 projections[4] = vec3[4](vec3(0.0, 1.0, 0.0), vec3(0.0, 1.0, 0.0), vec3(0.0, 1.0, 0.0), vec3(0.0, 1.0, 0.0));
   float scores[4] = float[4](-1.0, -1.0, -1.0, -1.0);
@@ -178,6 +218,9 @@ void applySplat(inout vec3 color, inout vec3 normal, inout float roughness, inou
     SplatPlane top = splatPlane(topCoordinates, topDx, topDy, scale, topTangent, topBitangent, up);
     SplatPlane sideX = splatPlane(sideXCoordinates, sideXDx, sideXDy, scale, sideXTangent, sideUp, vec3(xSign, 0.0, 0.0));
     SplatPlane sideZ = splatPlane(sideZCoordinates, sideZDx, sideZDy, scale, sideZTangent, sideUp, vec3(0.0, 0.0, zSign));
+    float parallaxDepth = splatVariation.z * parallaxFade * projection.y / scale;
+    if (parallaxDepth > 0.0001) topOffsets[index] = splatParallaxOffset(top, float(index), viewSlope, parallaxDepth);
+    top.uv += topOffsets[index];
     projections[index] = projection;
     packedSamples[index] = splatPackedSample(index, top, sideX, sideZ, projection, blend);
     scores[index] = weights[index] + packedSamples[index].y * splatBlend.y;
@@ -205,6 +248,7 @@ void applySplat(inout vec3 color, inout vec3 normal, inout float roughness, inou
     SplatPlane top = splatPlane(topCoordinates, topDx, topDy, scale, topTangent, topBitangent, up);
     SplatPlane sideX = splatPlane(sideXCoordinates, sideXDx, sideXDy, scale, sideXTangent, sideUp, vec3(xSign, 0.0, 0.0));
     SplatPlane sideZ = splatPlane(sideZCoordinates, sideZDx, sideZDy, scale, sideZTangent, sideUp, vec3(0.0, 0.0, zSign));
+    top.uv += topOffsets[index];
     vec3 layerColor;
     vec3 layerTilt;
     splatColorSample(index, top, sideX, sideZ, projections[index], blend, layerColor, layerTilt);
@@ -214,7 +258,7 @@ void applySplat(inout vec3 color, inout vec3 normal, inout float roughness, inou
     blendedHeight += packedSamples[index].y * weight;
   }
 
-  color *= blendedColor * macro * dryTint;
+  color *= blendedColor * variationTint;
   normal = normalize(geometric + blendedTilt);
   roughness = blendedRoughness;
   cavity = mix(1.0, mix(0.55, 1.0, smoothstep(0.1, 0.85, blendedHeight)), splatOptions.w);

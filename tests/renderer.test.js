@@ -16,7 +16,7 @@ function retainedRenderer(parts) {
   renderer.partLocations = new Map(parts.map((item, index) => [item, {
     batch, index, geometry: item.geometry, map: item.material.map ?? null, normalMatrix: mat3.create(), skin: item.skin ?? null,
     jointMatrices: item.skin?.jointMatrices, skinIndices: item.geometry.skinIndices, skinWeights: item.geometry.skinWeights,
-    mapState: ['map', 'normalMap', 'metallicRoughnessMap', 'occlusionMap', 'emissiveMap'].map(field => item.material[field] ?? null).concat(item.material.normalScale ?? [1, 1], item.material.occlusionStrength ?? 1),
+    mapState: ['map', 'normalMap', 'metallicRoughnessMap', 'occlusionMap', 'emissiveMap'].map(field => item.material[field] ?? null).concat(item.material.normalScale ?? [1, 1], item.material.occlusionStrength ?? 1, item.material.moss ?? 0, item.material.mossColor ?? [0.05, 0.085, 0.02]),
   }]));
   renderer.updateBatches = new Set();
   renderer.updateSkins = new Set();
@@ -233,17 +233,24 @@ test('all material map identities and fixed scale values partition instance batc
 });
 
 test('map and scale changes reject atomically before retained data uploads', () => {
-  for (const field of ['normalMap', 'metallicRoughnessMap', 'occlusionMap', 'emissiveMap', 'normalScale', 'occlusionStrength']) {
+  for (const field of ['normalMap', 'metallicRoughnessMap', 'occlusionMap', 'emissiveMap', 'normalScale', 'occlusionStrength', 'moss']) {
     const parts = [part('moving'), part('changed')];
     const { renderer, batch, writes } = retainedRenderer(parts);
     parts[0].matrix[12] = 4;
-    parts[1].material[field] = field === 'normalScale' ? [0.5, 1] : field === 'occlusionStrength' ? 0.2 : {};
+    const changedValues = { normalScale: [0.5, 1], occlusionStrength: 0.2, moss: 0.5 };
+    parts[1].material[field] = changedValues[field] ?? {};
     assert.throws(() => renderer.updateParts(parts), /map or scale changes/);
     assert.ok(batch.instanceData.every(value => value === 7));
     assert.equal(writes.length, 0);
   }
   assert.throws(() => groupParts([{ ...part('invalid'), material: { ...part('invalid').material, normalScale: [Infinity, 1] } }]), /normalScale/);
   assert.throws(() => groupParts([{ ...part('invalid'), material: { ...part('invalid').material, occlusionStrength: 2 } }]), /occlusionStrength/);
+  assert.throws(() => groupParts([{ ...part('invalid'), material: { ...part('invalid').material, moss: 1.5 } }]), /moss/);
+  assert.throws(() => groupParts([{ ...part('invalid'), material: { ...part('invalid').material, moss: 0.5, mossColor: [1, 1] } }]), /mossColor/);
+  assert.throws(() => groupParts([{ ...part('invalid'), material: { ...part('invalid').material, tag: 'water', moss: 0.5 } }]), /Moss needs a standard/);
+  const mossy = part('mossy');
+  mossy.material.moss = 0.6;
+  assert.equal(groupParts([part('bare'), mossy]).length, 2, 'moss splits batches');
   const procedural = part('procedural');
   procedural.material.tag = 'water';
   procedural.material.metallicRoughnessMap = {};
@@ -319,20 +326,22 @@ test('draw batches bind all channels with their flags and scalar uniforms', () =
   const renderer = Object.create(Renderer67.prototype);
   const bindings = [];
   const uniforms = [];
-  renderer.uniforms = Object.fromEntries(['baseMap', 'normalMap', 'metallicRoughnessMap', 'occlusionMap', 'emissiveMap', 'hasBaseMap', 'hasNormalMap', 'hasMetallicRoughnessMap', 'hasOcclusionMap', 'hasEmissiveMap', 'normalScale', 'occlusionStrength'].map(name => [name, name]));
+  renderer.uniforms = Object.fromEntries(['baseMap', 'normalMap', 'metallicRoughnessMap', 'occlusionMap', 'emissiveMap', 'hasBaseMap', 'hasNormalMap', 'hasMetallicRoughnessMap', 'hasOcclusionMap', 'hasEmissiveMap', 'normalScale', 'occlusionStrength', 'materialMoss'].map(name => [name, name]));
   renderer.context = {
     TEXTURE0: 33984,
     activeTexture(unit) { bindings.push(unit); }, bindTexture() {}, bindVertexArray() {}, drawElementsInstanced() {},
     uniform1i(name, value) { uniforms.push([name, value]); },
     uniform1f(name, value) { uniforms.push([name, value]); },
     uniform2f(name, first, second) { uniforms.push([name, first, second]); },
+    uniform4f(name, ...values) { uniforms.push([name, ...values]); },
   };
-  renderer.drawBatch({ textures: [{}, {}, {}, {}, {}], mapState: [{}, {}, {}, null, {}, 0.5, -1, 0.4] }, true);
+  renderer.drawBatch({ textures: [{}, {}, {}, {}, {}], mapState: [{}, {}, {}, null, {}, 0.5, -1, 0.4, 0.6, 0.1, 0.2, 0.05] }, true);
   assert.deepEqual(bindings, [33985, 33986, 33987, 33988, 33989]);
   assert.ok(uniforms.some(values => values[0] === 'hasOcclusionMap' && values[1] === 0));
   assert.ok(uniforms.some(values => values[0] === 'metallicRoughnessMap' && values[1] === 3));
   assert.ok(uniforms.some(values => values[0] === 'normalScale' && values[1] === 0.5 && values[2] === -1));
   assert.ok(uniforms.some(values => values[0] === 'occlusionStrength' && values[1] === 0.4));
+  assert.ok(uniforms.some(values => values[0] === 'materialMoss' && values[1] === 0.6 && values[4] === 0.05));
 });
 
 function skinGeometry(vertexCount = 3) {

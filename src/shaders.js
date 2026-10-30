@@ -62,7 +62,23 @@ mat4 skinTransform() {
 // more than the crown centre) but is capped, because bark never moves and leaves must stay near their twigs.
 // uv.y is 1 at a leaf's base and 0 at its tip, which drives the faster flutter.
 const windShader = `
+// Grass bends by how far up the blade a vertex is (uv.y is 1 at the root), so it ignores terrain height.
+// Gusts roll across the field as a travelling wave along the wind direction, like the rolling bands in a meadow.
+vec3 grassWind(vec3 worldPoint, vec2 leafUv, float seconds, float strength) {
+  float tip = clamp(1.0 - leafUv.y, 0.0, 1.0);
+  float bendWeight = tip * tip;
+  vec2 windDirection = vec2(0.94, 0.34);
+  float along = dot(worldPoint.xz, windDirection);
+  float gust = 0.5 + 0.5 * sin(along * 0.32 - seconds * 1.7 + 2.0 * sin(worldPoint.x * 0.05 - worldPoint.z * 0.04 + seconds * 0.23));
+  float push = (0.3 + 0.7 * gust * gust) * strength;
+  float flutter = sin(seconds * 4.7 + worldPoint.x * 2.3 + worldPoint.z * 1.9) * strength;
+  vec2 offset = windDirection * (push * 0.42 + flutter * 0.05) + vec2(-windDirection.y, windDirection.x) * flutter * 0.04;
+  return vec3(offset.x, -push * 0.14, offset.y) * bendWeight;
+}
+
 vec3 windOffset(vec3 localPosition, vec3 worldPoint, vec2 leafUv, float surfaceTag, float seconds, float strength) {
+  // Grass without UVs (uv is (-1, -1)) has no blade coordinate, so it keeps the height-based sway below.
+  if (surfaceTag == 7.0 && leafUv.x > -0.5) return grassWind(worldPoint, leafUv, seconds, strength);
   if (surfaceTag != 4.0 && surfaceTag != 7.0) return vec3(0.0);
   float heightReach = min(max(localPosition.y + 0.5, 0.0), 2.5);
   float branchReach = 1.0 + 0.3 * min(length(localPosition.xz), 3.0);
@@ -353,6 +369,7 @@ uniform float hasOcclusionMap;
 uniform float hasEmissiveMap;
 uniform vec2 normalScale;
 uniform float occlusionStrength;
+uniform vec4 materialMoss;
 uniform float hdrEnabled;
 uniform float alphaMode;
 uniform float alphaCutoff;
@@ -479,6 +496,18 @@ vec3 mappedNormal(vec3 normal) {
 
 ${splatGlsl}
 
+// Moss is its own material over the base, not a tint: fully rough, a soft sheen at grazing angles and light that wraps
+// through it. Two masks, as in offline moss shading: a sharp one decides where moss is shaded, and a blurred one lifts
+// it into cushions, so its relief never turns into needles. Coverage favours up-facing surfaces.
+void mossMasks(vec3 normal, float amount, out float sharpMask, out float softMask) {
+  float facing = smoothstep(0.1, 0.7, normal.y);
+  vec2 position = worldPosition.xz * 6.0 + worldPosition.y * vec2(2.3, -1.7);
+  float patches = terrainNoise(position).x * 0.6 + terrainNoise(position * 2.7 + 5.1).x * 0.4;
+  float threshold = 1.0 - amount;
+  sharpMask = facing * smoothstep(threshold - 0.035, threshold + 0.035, patches);
+  softMask = facing * smoothstep(threshold - 0.22, threshold + 0.18, patches);
+}
+
 // Opaque draws 1, mask resolves to a cutout (smooth coverage with MSAA) and blend keeps the fraction.
 float surfaceAlpha(float textureAlpha) {
   if (alphaMode < 0.5) return 1.0;
@@ -564,6 +593,21 @@ void main() {
     normal = normalize(normal + perturbation - normal * dot(perturbation, normal));
     roughness = clamp(roughness + (grains.x - 0.5) * 0.06 * grainWeight, 0.075, 1.0);
   }
+  float mossCover = 0.0;
+  vec3 mossTone = vec3(0.0);
+  if (materialMoss.x > 0.0) {
+    float mossSoft;
+    mossMasks(normal, materialMoss.x, mossCover, mossSoft);
+    float mossFootprint = length(fwidth(worldPosition));
+    vec3 cushion = terrainNoise(worldPosition.xz * 40.0 + worldPosition.y * 13.0);
+    float cushionDetail = 1.0 - smoothstep(0.004, 0.03, mossFootprint);
+    vec3 cushionTilt = vec3(-cushion.y, 0.0, -cushion.z) * 0.07 * mossSoft * cushionDetail;
+    normal = normalize(normal + cushionTilt - normal * dot(cushionTilt, normal));
+    mossTone = materialMoss.yzw * (0.7 + 0.6 * cushion.x);
+    color = mix(color, mossTone, mossCover);
+    roughness = mix(roughness, 1.0, mossCover);
+    metallic = mix(metallic, 0.0, mossCover);
+  }
   float visibility = shadowVisibility(normal);
   vec3 radiance = illuminate(normal, viewDirection, normalize(lightDirection), keyColor * visibility, color, metallic, roughness);
   radiance += illuminate(normal, viewDirection, normalize(vec3(4.0, 2.0, -3.0)), mix(vec3(0.8, 2.0, 1.8), vec3(0.12, 0.17, 0.20) * daylight, worldMode) * fillIntensity, color, metallic, roughness);
@@ -604,6 +648,18 @@ void main() {
   vec3 keyResponse = keyColor / mix(vec3(5.2, 4.7, 4.1), vec3(3.7, 3.4, 2.9), worldMode);
   keyResponse *= mix(daylight, 1.0, worldMode);
   if (surface.w == 4.0 || surface.w == 7.0) radiance += color * max(dot(-normal, normalize(lightDirection)), 0.0) * 0.3 * keyResponse;
+  if (mossCover > 0.001) {
+    float sheen = pow(1.0 - max(dot(normal, viewDirection), 0.0), 4.0);
+    float wrap = max(dot(normal, normalize(lightDirection)) + 0.5, 0.0) / 1.5;
+    radiance += mossTone * (sheen * 0.8 + wrap * 0.35) * keyResponse * visibility * mossCover;
+  }
+  if (surface.w == 7.0) {
+    // Sun through thin blades: they glow yellow-green when the camera looks toward the light, most at the thin tips
+    // (uv.y runs 1 at the root to 0 at the tip; grass without UVs gets a middle value).
+    float towardSun = pow(max(dot(-viewDirection, normalize(lightDirection)), 0.0), 3.0);
+    float thinness = textureUV.x > -0.5 ? 1.0 - textureUV.y * 0.8 : 0.6;
+    radiance += color * vec3(1.1, 1.25, 0.55) * towardSun * thinness * 1.4 * keyResponse * visibility;
+  }
   radiance += emission;
   if (surface.w == 3.0) {
     float reflectivity = 0.20 + 0.65 * pow(1.0 - max(dot(normal, viewDirection), 0.0), 3.0);

@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Add `67js/addons/grass`: terrain-following grass fields of clumped, curved blades with rounded normals, root-to-tip colour, dry patches, masks for paths, four presets and tile level of detail
+- Bend `grass` tag vertices by blade height and roll wind gusts across the field as a travelling wave
+- Break up grass fields with `patchiness` (short, thin and dense patches), seed `stalks` and folded blades, and let sunlight glow through backlit blades
+- Add `67js/addons/clutter`: pebbles, chipped rocks with moss, twigs and fallen leaves scattered over terrain in streamed tiles, with four presets
+- Share one tile and level-of-detail system between grass and clutter
+- Add a `moss` layer to standard materials: its own rough, sheened, light-wrapping material with a sharp shading mask and a blurred cushion mask; clutter rocks use it
+- Add splat `parallax` (default 0.03 m) for near-ground relief from the layer height maps
+- Add splat `variation` (brightness and hue drift at three scales that grows with distance) and `edgeNoise` (ragged layer borders), both on by default
 - Add `uv_unwrap` as a mesh edit and stack node: seams from an edge rule, automatic cuts until each island is a disk, least-squares conformal maps, axis charts for closed or stretched islands, area-even scaling and shelf packing into 0..1, with a report of islands, flipped triangles, area distortion and utilization
 - Teach the `build-67js-scene` skill mesh modeling: a workflow, face and edge rules, tested recipes (crate, pillar, drum, bracket, bench row, planter, soap) and an error table; a test builds every recipe in the reference and requires a clean lint
 - Shrink the MCP server bundle from 1,072 KB to 590 KB by keeping the scene engine out of it: capabilities and default limits now come from plain-data modules (`agent-scene-capabilities.js`, `mesh-operations.js`), and the MCP build fails if engine code returns; the npm archive drops from 1,003 KB to 887 KB

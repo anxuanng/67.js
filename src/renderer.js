@@ -59,7 +59,7 @@ const SPLAT_COLOR_UNIT = 11;
 const SPLAT_NORMAL_UNIT = 12;
 const SPLAT_PACKED_UNIT = 13;
 const SPLAT_MASK_UNIT = 14;
-const SPLAT_UNIFORMS = ['splatEnabled', 'splatColor', 'splatNormal', 'splatPacked', 'splatMask', 'splatLayer[0]', 'splatTint[0]', 'splatSlope[0]', 'splatHeightRange[0]', 'splatMaskChannel[0]', 'splatMaskInvert[0]', 'splatBlend', 'splatOptions', 'splatMaskBounds'];
+const SPLAT_UNIFORMS = ['splatEnabled', 'splatColor', 'splatNormal', 'splatPacked', 'splatMask', 'splatLayer[0]', 'splatTint[0]', 'splatSlope[0]', 'splatHeightRange[0]', 'splatMaskChannel[0]', 'splatMaskInvert[0]', 'splatBlend', 'splatOptions', 'splatMaskBounds', 'splatVariation'];
 
 function validateMaterialMaps(material) {
   if (PROCEDURAL_MATERIAL_TAGS.has(material.tag)) {
@@ -76,6 +76,22 @@ function validateMaterialMaps(material) {
   if (normalScale.length !== 2 || !Number.isFinite(normalScale[0]) || !Number.isFinite(normalScale[1]) || !Number.isFinite(Math.fround(normalScale[0])) || !Number.isFinite(Math.fround(normalScale[1]))) throw new Error('normalScale must contain two finite floats.');
   const occlusionStrength = material.occlusionStrength ?? 1;
   if (!Number.isFinite(occlusionStrength) || occlusionStrength < 0 || occlusionStrength > 1) throw new Error('occlusionStrength must be within zero and one.');
+  validateMoss(material);
+}
+
+const DEFAULT_MOSS_COLOR = Object.freeze([0.05, 0.085, 0.02]);
+
+function validateMoss(material) {
+  if (material.moss === undefined) return;
+  if (typeof material.moss !== 'number' || !(material.moss >= 0 && material.moss <= 1)) throw new Error('moss must be within zero and one.');
+  if (material.moss > 0 && PROCEDURAL_MATERIAL_TAGS.has(material.tag)) throw new Error('Moss needs a standard PBR material tag.');
+  const color = material.mossColor ?? DEFAULT_MOSS_COLOR;
+  if (!Array.isArray(color) || color.length !== 3 || !color.every(Number.isFinite)) throw new Error('mossColor must be three linear RGB numbers.');
+}
+
+/** Moss amount and linear colour, as the shader's materialMoss uniform. */
+function mossState(material) {
+  return [material.moss ?? 0, ...(material.mossColor ?? DEFAULT_MOSS_COLOR)];
 }
 
 function materialMapState(material) {
@@ -84,7 +100,7 @@ function materialMapState(material) {
   const occlusionStrength = material.occlusionStrength ?? 1;
   validateSplatMaterial(material);
   if (material.layers && PROCEDURAL_MATERIAL_TAGS.has(material.tag)) throw new Error('Splat layers require a standard PBR material tag.');
-  return [...MATERIAL_MAPS.map(field => material[field] ?? null), normalScale[0], normalScale[1], occlusionStrength, ...splatBatchState(material)];
+  return [...MATERIAL_MAPS.map(field => material[field] ?? null), normalScale[0], normalScale[1], occlusionStrength, ...mossState(material), ...splatBatchState(material)];
 }
 
 function validateAlphaMaterial(material) {
@@ -388,7 +404,7 @@ export class Renderer67 {
     this.inverseViewProjection = mat4.create();
     this.program = compileProgram(this.context, benchmark ? benchmarkVertexShader : vertexShader, benchmark ? benchmarkFragmentShader : fragmentShader);
     this.depthProgram = compileProgram(this.context, depthVertexShader, depthFragmentShader);
-    this.uniforms = Object.fromEntries(['viewProjection', 'lightProjection', 'eye', 'armorColor', 'armorSurface', 'exposure', 'inspection', 'shadowMap', ...MAP_UNIFORMS, ...MAP_FLAGS, ...SKIN_UNIFORMS, ...MORPH_UNIFORMS, 'normalScale', 'occlusionStrength', ...SPLAT_UNIFORMS, 'hdrEnabled', 'time', 'wind', 'worldMode', 'daylight', 'fogColor', 'lightDirection', 'fogDensity', 'waterRipple', 'rippleTime', 'explosionProgress', 'explosionCenter', 'assemblyAmount', ...ALPHA_UNIFORMS].map((name) => [name, this.context.getUniformLocation(this.program, name)]));
+    this.uniforms = Object.fromEntries(['viewProjection', 'lightProjection', 'eye', 'armorColor', 'armorSurface', 'exposure', 'inspection', 'shadowMap', ...MAP_UNIFORMS, ...MAP_FLAGS, ...SKIN_UNIFORMS, ...MORPH_UNIFORMS, 'normalScale', 'occlusionStrength', 'materialMoss', ...SPLAT_UNIFORMS, 'hdrEnabled', 'time', 'wind', 'worldMode', 'daylight', 'fogColor', 'lightDirection', 'fogDensity', 'waterRipple', 'rippleTime', 'explosionProgress', 'explosionCenter', 'assemblyAmount', ...ALPHA_UNIFORMS].map((name) => [name, this.context.getUniformLocation(this.program, name)]));
     for (const name of ['pointLightCount', 'pointLightPositions[0]', 'pointLightColors[0]', 'pointLightRadii[0]', 'keyColor', 'fillIntensity', 'ambientIntensity']) {
       this.uniforms[name] = this.context.getUniformLocation(this.program, name);
     }
@@ -561,6 +577,7 @@ export class Renderer67 {
     context.uniform4fv(uniforms.splatBlend, parameters.blend);
     context.uniform4fv(uniforms.splatOptions, parameters.options);
     context.uniform4fv(uniforms.splatMaskBounds, parameters.maskBounds);
+    context.uniform4fv(uniforms.splatVariation, parameters.variation);
   }
 
   disposeSplatResources() {
@@ -611,7 +628,8 @@ export class Renderer67 {
     } else {
       if (hasMaterialMap(parts[0].material)) throw new Error('Textured geometry requires UV channel 0.');
       context.disableVertexAttribArray(13);
-      context.vertexAttrib2f(13, 0, 0);
+      // (-1, -1) marks "no UVs": grass wind then bends by local height instead of by blade position.
+      context.vertexAttrib2f(13, -1, -1);
     }
     if (geometry.colors) {
       if (geometry.colors.length !== geometry.positions.length) throw new Error('Geometry colors must contain RGB for every vertex.');
@@ -843,7 +861,7 @@ export class Renderer67 {
       for (let index = 0; index < MATERIAL_MAPS.length; index++) {
         if ((part.material[MATERIAL_MAPS[index]] ?? null) !== mapState[index]) throw new Error(`Material map or scale changes require a new renderer: ${part.name}`);
       }
-      if (normalScale[0] !== mapState[5] || normalScale[1] !== mapState[6] || (part.material.occlusionStrength ?? 1) !== mapState[7]) throw new Error(`Material map or scale changes require a new renderer: ${part.name}`);
+      if (normalScale[0] !== mapState[5] || normalScale[1] !== mapState[6] || (part.material.occlusionStrength ?? 1) !== mapState[7] || mossState(part.material).some((value, index) => value !== mapState[8 + index])) throw new Error(`Material map or scale changes require a new renderer: ${part.name}`);
       validateTransform(part, location.normalMatrix);
     }
     // A palette upload also changes consumers absent from the submitted part list.
@@ -1395,6 +1413,7 @@ export class Renderer67 {
       }
       this.context.uniform2f(this.uniforms.normalScale, batch.mapState[5], batch.mapState[6]);
       this.context.uniform1f(this.uniforms.occlusionStrength, batch.mapState[7]);
+      this.context.uniform4f(this.uniforms.materialMoss, batch.mapState[8], batch.mapState[9], batch.mapState[10], batch.mapState[11]);
       this.bindSplat(batch.splat);
     }
     this.context.bindVertexArray(batch.vertexArray);

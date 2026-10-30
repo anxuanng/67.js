@@ -14,6 +14,7 @@ Use `simplify-code` and `engineering-workflows` for implementation.
 
 - An object studio uses `src/model.js` and `src/main.js`.
 - An outdoor world uses `src/nature.js` and `src/nature-viewer.js`. Real trees, bushes, grass and forest scattering use optional `src/vegetation.js` and `docs/vegetation.md` (`leaves: 'mesh'` needs no alpha support).
+- A grass field, meadow, lawn or savanna over terrain uses optional `src/grass.js` and the checkout's `docs/grass.md`: clumped curved blades, tile level of detail, `mask` for paths. Darken every ground layer under the grass toward `grass.groundColor` (a bright floor between blades looks fake); prefer it over scattered `grass` clumps for anything wider than a few metres. Pebbles, rocks, twigs and fallen leaves on paths, riverbanks or forest floor use optional `src/clutter.js` and the checkout's `docs/clutter.md` (`riverbed`, `forest`, `scree`, `meadow` presets).
 - A deterministic film uses `src/film.js` and `src/film-player.js`.
 - A keyframe scene uses `src/animation.js`, `src/motion.js` and `src/motion-player.js`.
 - An authored camera uses `src/camera-path.js` and the checkout's `docs/camera-path.md`.
@@ -24,7 +25,7 @@ Use `simplify-code` and `engineering-workflows` for implementation.
 - Relative facial or shape deformation uses `src/morph.js` and the checkout's `docs/morph-targets.md`. Check source versus published support first.
 - Recorded contacts or articulated physics use optional `src/physics.js` and the checkout's `docs/physics.md`.
 - Humanoid clips moved between rigs, or crowds of skinned characters, use optional `src/retarget.js` and the checkout's `docs/retarget.md`. Mixamo downloads need the owner's Adobe login.
-- Realistic ground (rolling hills to ridges, scanned grass/forest/mud/rock layers) uses optional `src/terrain.js`, `src/texture-set.js` and the checkout's `docs/terrain.md`. Feed `terrain.heightAt` to vegetation and vehicles; never fake ground with the `terrain` tag.
+- Realistic ground (rolling hills to ridges, scanned grass/forest/mud/rock layers) uses optional `src/terrain.js`, `src/texture-set.js` and the checkout's `docs/terrain.md`. Feed `terrain.heightAt` to vegetation and vehicles; never fake ground with the `terrain` tag. Splat `variation` and `edgeNoise` (on by default) keep wide ground from reading as one flat colour; leave them on unless a stylised look needs flat ground.
 - Baked liquid (jets, geysers, torrents, whitewater) uses optional `src/spume.js` and the checkout's `docs/spume.md`. Bake with the Spume solver first; never fake it with displaced primitives.
 - Wheeled vehicles driving a path (wheel spin, steering, body roll and pitch, ground following) use optional `src/vehicle.js` and the checkout's `docs/vehicle.md`.
 - A flat scene or axis view uses `src/canvas2d.js`, `src/camera.js` and `src/view2d.js`.

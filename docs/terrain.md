@@ -65,6 +65,10 @@ A material with `layers` (1 to 4) draws as splat ground. It needs a standard PBR
 
 Other `splat` options: `heightBlend` (0.22) and `heightInfluence` (1) control how strongly the height maps decide who wins at layer edges, so grass fills the gaps between rocks instead of fading linearly; `triplanarStart` and `triplanarEnd` (38 and 52 degrees) set where side projection fades in; `antiTiling` (0 to 1, default 1); `cavity` (0 to 1, default 0.55) darkens low parts of the height map; `textureSize` caps the common layer size.
 
+Two options keep large ground from looking flat. `variation` (0 to 2, default 1) drifts brightness and hue at three scales, about 120 m, 20 m and 3 m, with dry and lush patches. The 3 m octave grows with distance, where texture detail averages out. `edgeNoise` (0 to 2, default 1) jitters the slope and height that the rules see, by up to 9 degrees and 1.6 m, so a mud flat or a rock band gets a ragged border instead of a contour line. Set either to 0 to turn it off.
+
+`parallax` (0 to 0.15 m, default 0.03) gives near ground relief: the top-down texture slides along each layer's height map toward where the view ray meets it, refined in three steps. It runs only on pixels close to the camera and is capped, because deep parallax stretches the height map into spikes at grazing angles. At the default it measured within noise of off (about 10.5 ms a frame either way, 1280 × 720, RTX 3060). It reads best in motion and from above; at a grazing eye height it mostly flattens the texture. Set it to 0 to turn it off.
+
 Shading: world-space XZ UVs, a second rotated sample at 0.58 times the scale mixed by low-frequency noise (with contrast restored) so repetition is not visible from afar, normal tilts added in world space, roughness from the maps, and a slow macro brightness and dryness variation.
 Materials batch together only when they share the same `layers` array and `splat` object, so build them once and assign them to every chunk.
 
