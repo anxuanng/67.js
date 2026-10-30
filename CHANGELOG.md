@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.13.1
 
 - Add `createAssetPose`, which poses a loaded glTF asset's whole hierarchy so every skin and rigid part moves, and `clipFromGltfAnimation`, which converts its clips for layers and `retargetClip`
 - Add `worldForward` to aim IK, because bone axes differ between real rigs
