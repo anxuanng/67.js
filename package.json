@@ -132,7 +132,8 @@
     "smoke:agent-review": "node scripts/smoke-agent-review.mjs",
     "parity": "node scripts/parity-report.mjs",
     "reference": "node bench/reference/run.mjs",
-    "size": "node scripts/measure-size.mjs"
+    "size": "node scripts/measure-size.mjs",
+    "benchmark:runtime": "node bench/runtime/run.mjs"
   },
   "peerDependencies": {
     "@dimforge/rapier3d-compat": "0.21.0",
