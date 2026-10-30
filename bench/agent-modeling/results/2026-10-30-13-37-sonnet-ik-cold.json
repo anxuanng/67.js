@@ -1,0 +1,44 @@
+{
+  "run": "2026-10-30-13-37-sonnet-ik-cold",
+  "model": "claude-sonnet-5-5",
+  "date": "2026-10-30T13:38:36.155Z",
+  "skill": false,
+  "passed": 1,
+  "tasks": 1,
+  "toolCalls": 2,
+  "costUsd": 0.45,
+  "records": [
+    {
+      "task": "arm-reach",
+      "pass": true,
+      "passed": 5,
+      "total": 5,
+      "failed": [],
+      "model": "claude-sonnet-5-5",
+      "toolCalls": 2,
+      "toolErrors": 0,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_create": 1,
+        "scene_export_recipe": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "lathe"
+        ],
+        "meshOperations": [],
+        "motionIk": [
+          "two-bone"
+        ],
+        "motionTracks": 0
+      },
+      "turns": 4,
+      "costUsd": 0.45418630000000004,
+      "inputTokens": 382721,
+      "outputTokens": 2157,
+      "wallSeconds": 40,
+      "exitCode": 0,
+      "stopped": "success"
+    }
+  ]
+}

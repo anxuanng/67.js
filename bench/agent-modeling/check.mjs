@@ -56,6 +56,19 @@ function checkOne(check, measures) {
       const found = measures.patternTypes.filter(type => check.types.includes(type));
       return { pass: found.length > 0, detail: measures.patternTypes.join(', ') || 'no material pattern' };
     }
+    case 'nodeAt': {
+      const position = measures.nodePosition(check.node, check.time);
+      if (!position) return { pass: false, detail: `no drawn node ${check.node}` };
+      const distance = Math.hypot(...position.map((value, axis) => value - check.position[axis]));
+      return { pass: distance <= 0.01, detail: `${check.node} is ${round(distance)} m away at t=${check.time}` };
+    }
+    case 'nodeDistance': {
+      const from = measures.nodePosition(check.from, check.time);
+      const to = measures.nodePosition(check.to, check.time);
+      if (!from || !to) return { pass: false, detail: `no drawn node ${check.from} or ${check.to}` };
+      const distance = Math.hypot(...from.map((value, axis) => value - to[axis]));
+      return { pass: Math.abs(distance - check.distance) <= 0.01, detail: `${round(distance)} m apart at t=${check.time}` };
+    }
     case 'tips':
       return { pass: measures.tips === check.equals, detail: `${measures.tips} tips` };
     case 'triangles':
@@ -73,7 +86,12 @@ function checkOne(check, measures) {
 export function recipeFeatures(recipe) {
   const geometries = recipe.geometries ?? [];
   const operations = geometries.flatMap(geometry => [...(geometry.edits ?? []), ...(geometry.stack ?? [])].map(edit => edit.op));
-  return { geometryTypes: [...new Set(geometries.map(geometry => geometry.type))], meshOperations: [...new Set(operations)] };
+  return {
+    geometryTypes: [...new Set(geometries.map(geometry => geometry.type))],
+    meshOperations: [...new Set(operations)],
+    motionIk: (recipe.motion?.ik ?? []).map(solver => solver.type),
+    motionTracks: recipe.motion?.tracks?.length ?? 0,
+  };
 }
 
 /** Grade a recipe: { pass, passed, total, results: [{ kind, label, pass, detail }] }. An invalid recipe fails every check. */

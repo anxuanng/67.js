@@ -216,6 +216,21 @@ heights 0.6 m, 0.7 m and 0.8 m.`,
       { kind: 'volume', min: 9.4e-3, max: 1.28e-2 },
     ],
   },
+  {
+    id: 'arm-reach',
+    prompt: `A two-segment robot arm that reaches between two points. Use three nodes with these exact IDs, each with a
+small visible geometry: shoulder at [0, 1, 0], elbow 0.5 m from the shoulder, and tip 0.4 m from the elbow. Make elbow a child of
+shoulder and tip a child of elbow, so they stay connected. Add a 2 second motion in which the tip is exactly at
+[0.4, 1.5, 0.3] at time 0 and exactly at [0.2, 1.2, -0.5] at time 2, with the segments keeping their lengths throughout.
+For this task the object does not need to rest on the ground.`,
+    checks: [
+      { kind: 'nodeAt', node: 'tip', time: 0, position: [0.4, 1.5, 0.3] },
+      { kind: 'nodeAt', node: 'tip', time: 2, position: [0.2, 1.2, -0.5] },
+      { kind: 'nodeAt', node: 'shoulder', time: 1, position: [0, 1, 0] },
+      { kind: 'nodeDistance', from: 'shoulder', to: 'elbow', time: 1, distance: 0.5 },
+      { kind: 'nodeDistance', from: 'elbow', to: 'tip', time: 1, distance: 0.4 },
+    ],
+  },
 ];
 
 export function taskById(id) {

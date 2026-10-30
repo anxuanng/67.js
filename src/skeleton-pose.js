@@ -329,13 +329,17 @@ export function createSkeletonPose({ skin, rig = skin && createRigFromSkin(skin)
   }
 
   return {
-    /** Rebuild the pose for an absolute time in seconds. Returns the skin when there is one. */
-    apply(time) {
+    /**
+     * Rebuild the pose for an absolute time in seconds. Returns the skin when there is one. `setBase`, if given, receives
+     * the local rotation and translation arrays (by rig joint index) to replace the rest pose before layers and IK.
+     */
+    apply(time, setBase) {
       if (!Number.isFinite(time)) throw new RangeError('Pose time must be finite.');
       for (let index = 0; index < jointCount; index++) {
         localRotations[index].set(prepared.restRotations[index]);
         localTranslations[index].set(prepared.restTranslations[index]);
       }
+      setBase?.(localRotations, localTranslations);
       for (const layer of compiledLayers) applyLayer(layer, time, localRotations, localTranslations);
       context.update();
       solvers.forEach((solver, position) => {
@@ -346,6 +350,10 @@ export function createSkeletonPose({ skin, rig = skin && createRigFromSkin(skin)
     },
     /** World position and rotation of a joint after the last apply. */
     jointWorld,
+    /** Local rotation of a joint by rig index after the last apply. The array is reused by the next apply. */
+    localRotation(index) {
+      return localRotations[index];
+    },
     /** One { reached, error } per IK solver from the last apply: metres for two-bone, radians for aim. */
     get ikResults() {
       return results;

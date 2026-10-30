@@ -104,6 +104,23 @@ function boltHoleEdits() {
 }
 
 export const REFERENCES = {
+  'arm-reach': {
+    ...scene(
+      [{ id: 'ball', type: 'sphere', segments: 16, rings: 8 }],
+      [
+        { id: 'shoulder', geometry: 'ball', translation: [0, 1, 0], scale: [0.03, 0.03, 0.03] },
+        { id: 'elbow', geometry: 'ball', parent: 'shoulder', translation: [0.5 / 0.03, 0, 0] },
+        { id: 'tip', geometry: 'ball', parent: 'elbow', translation: [0.4 / 0.03, 0, 0] },
+      ],
+    ),
+    motion: {
+      duration: 2, tracks: [],
+      ik: [{
+        type: 'two-bone', root: 'shoulder', middle: 'elbow', end: 'tip', pole: [0, 3, 0],
+        target: { keyframes: [{ time: 0, value: [0.4, 1.5, 0.3] }, { time: 2, value: [0.2, 1.2, -0.5] }] },
+      }],
+    },
+  },
   dice: scene(
     [{ id: 'die', type: 'mesh', base: { type: 'box', bevel: 0 }, edits: dieEdits() }],
     [{ id: 'die', geometry: 'die', translation: [0, 0.05, 0], scale: [0.1, 0.1, 0.1] }],

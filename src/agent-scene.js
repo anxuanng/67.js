@@ -1018,6 +1018,7 @@ export function createAgentScene(input, inputLimits = {}) {
       const resident = geometryStats(ownedGeometryRecords());
       return {
         revision, topologyRevision,
+        ...(state.recipe.motion?.ik?.length ? { motionIk: compileAgentMotion(state.recipe.motion, state.recipe).sweepIk() } : {}),
         motion: state.recipe.motion ? { duration: state.recipe.motion.duration, loop: state.recipe.motion.loop, tracks: state.recipe.motion.tracks.length, time: state.motionTime } : null,
         boundsSpace: 'authored-base-world',
         counts: {
