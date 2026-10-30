@@ -1,0 +1,159 @@
+// The agent modeling tasks. Each prompt gives sizes in metres, so every check is objective. Checks run on the recipe
+// the agent exports (see measure.mjs and check.mjs); none of them looks at how the object was built.
+
+export const PROMPT_PREAMBLE = `You are modeling with the 67.js MCP tools. Build the object described below as a procedural recipe scene:
+start it with scene_create, refine it with mesh_edit, mesh_stack and scene_apply, and look at it with scene_look when
+that helps. Units are metres and Y is up. Rest the object on the ground (lowest point at Y = 0), centred on X = 0 and
+Z = 0. Build it as closed, watertight solids. When the object is finished, call scene_export_recipe once: the exported
+recipe is what gets graded.`;
+
+const crateChecks = [
+  { kind: 'lint' },
+  { kind: 'size', expected: [0.6, 0.63, 0.6] },
+  { kind: 'ground' },
+  { kind: 'holes', equals: 0 },
+  { kind: 'volume', min: 0.19, max: 0.212 },
+  { kind: 'section', axis: 'x', at: 0.29, equals: 2, label: 'recessed panel on +X' },
+  { kind: 'section', axis: 'z', at: -0.29, equals: 2, label: 'recessed panel on -Z' },
+  { kind: 'section', axis: 'y', at: 0.615, equals: 1, label: 'raised lid' },
+];
+
+export const TASKS = [
+  {
+    id: 'crate',
+    prompt: `A wooden crate. The body is a 0.6 m cube. Each of its four sides has a recessed panel: a frame about
+0.04 m wide around a panel sunk about 0.02 m into the side. On top sits a raised lid, inset about 0.05 m from the top
+edges and 0.03 m tall.`,
+    checks: crateChecks,
+  },
+  {
+    id: 'bolt',
+    prompt: `A hex bolt standing upright with the shaft pointing down. The shaft is a cylinder 0.03 m in diameter and
+0.12 m long, its tip on the ground. The head on top is a regular hexagonal prism 0.05 m across the flats and 0.02 m
+tall.`,
+    checks: [
+      { kind: 'lint' },
+      { kind: 'size', expected: [null, 0.14, null] },
+      { kind: 'extent', axes: ['x', 'z'], min: 0.05, max: 0.058 },
+      { kind: 'ground' },
+      { kind: 'holes', equals: 0 },
+      { kind: 'volume', min: 1.13e-4, max: 1.43e-4 },
+      { kind: 'section', axis: 'y', at: 0.06, equals: 1, label: 'one shaft' },
+    ],
+  },
+  {
+    id: 'window',
+    prompt: `A window frame standing upright in the XY plane: 1.0 m wide (X), 1.2 m tall (Y) and 0.08 m deep (Z). The
+outer frame and the cross bars are all 0.06 m wide, dividing it into four open panes of equal size, two by two. No
+glass: the panes are open.`,
+    checks: [
+      { kind: 'lint' },
+      { kind: 'size', expected: [1.0, 1.2, 0.08] },
+      { kind: 'ground' },
+      {
+        kind: 'through', axis: 'z', label: 'four open panes',
+        open: [[-0.235, 0.315], [0.235, 0.315], [-0.235, 0.885], [0.235, 0.885]],
+        solid: [[-0.47, 0.6], [0.47, 0.6], [0.013, 0.3], [0.013, 0.9], [-0.2, 0.6], [0.2, 0.6], [-0.2, 0.03], [0.2, 1.17]],
+      },
+      { kind: 'volume', min: 0.0256, max: 0.0326 },
+    ],
+  },
+  {
+    id: 'table',
+    prompt: `A table. The top is 1.2 m long (X), 0.75 m deep (Z) and 0.04 m thick, with its upper surface 0.75 m above
+the ground. Four square legs, 0.05 m on a side, run from the ground to the underside of the top; each leg's outer faces
+sit 0.05 m in from the edges of the top.`,
+    checks: [
+      { kind: 'lint' },
+      { kind: 'size', expected: [1.2, 0.75, 0.75] },
+      { kind: 'ground' },
+      { kind: 'section', axis: 'y', at: 0.02, equals: 4, label: 'four legs at the floor' },
+      { kind: 'section', axis: 'y', at: 0.7, equals: 4, label: 'four legs under the top' },
+      { kind: 'volume', min: 0.0388, max: 0.0474 },
+    ],
+  },
+  {
+    id: 'mug',
+    prompt: `A mug made as one solid piece. The cup is a cylinder 0.08 m in diameter and 0.1 m tall, open at the top,
+with 0.005 m thick walls and a 0.005 m thick bottom. A loop handle on the +X side joins the outer wall at two points,
+leaving a gap for fingers, and reaches about 0.03 m out from the wall.`,
+    checks: [
+      { kind: 'lint' },
+      { kind: 'parts', max: 1 },
+      { kind: 'size', expected: [null, 0.1, 0.08] },
+      { kind: 'extent', axes: ['x'], min: 0.1, max: 0.13 },
+      { kind: 'ground', centred: false },
+      { kind: 'holes', equals: 1 },
+      { kind: 'volume', min: 1.1e-4, max: 2.4e-4 },
+    ],
+  },
+  {
+    id: 'gear',
+    prompt: `A spur gear lying flat on the ground: 12 teeth, outer (tip) radius 0.1 m, root radius 0.085 m, 0.02 m
+thick, with a round centre bore of radius 0.02 m going all the way through.`,
+    checks: [
+      { kind: 'lint' },
+      { kind: 'size', expected: [0.2, 0.02, 0.2] },
+      { kind: 'ground' },
+      { kind: 'holes', equals: 1 },
+      { kind: 'tips', equals: 12 },
+    ],
+  },
+  {
+    id: 'fence',
+    prompt: `A fence section. Five square posts, 0.08 m on a side and 1.0 m tall, stand in a row along X with their
+centres 0.5 m apart. Two horizontal rails, 0.04 m tall and 0.06 m deep, run the full length from the outer face of the
+first post to the outer face of the last, centred at heights 0.3 m and 0.8 m and centred on the posts in Z.`,
+    checks: [
+      { kind: 'lint' },
+      { kind: 'size', expected: [2.08, 1.0, 0.08] },
+      { kind: 'ground' },
+      { kind: 'section', axis: 'y', at: 0.1, equals: 5, label: 'five posts' },
+      { kind: 'section', axis: 'x', at: 0.25, equals: 2, label: 'two rails between posts' },
+      { kind: 'volume', min: 0.037, max: 0.047 },
+    ],
+  },
+  {
+    id: 'bracket',
+    prompt: `An L bracket. The base plate is 0.2 m long (X), 0.02 m thick (Y) and 0.1 m deep (Z), lying on the ground.
+An upright plate 0.02 m thick (X) and 0.1 m deep stands on top of the base, flush with its -X end, and rises 0.15 m
+above it, so the bracket is 0.17 m tall overall. Two round
+holes, 0.02 m in diameter, go straight down through the base at X = 0 and X = 0.06 (centred in Z).`,
+    checks: [
+      { kind: 'lint' },
+      { kind: 'size', expected: [0.2, 0.17, 0.1] },
+      { kind: 'ground' },
+      { kind: 'holes', equals: 2 },
+      { kind: 'volume', min: 6.2e-4, max: 7.6e-4 },
+      { kind: 'section', axis: 'y', at: 0.01, equals: 3, label: 'base with two holes' },
+    ],
+  },
+  {
+    id: 'soap',
+    prompt: `A bar of soap: 0.09 m long (X), 0.03 m tall (Y) and 0.06 m deep (Z), with every edge and corner smoothly
+rounded to a radius of about 0.01 m.`,
+    checks: [
+      { kind: 'lint' },
+      { kind: 'parts', max: 1 },
+      { kind: 'size', expected: [0.09, 0.03, 0.06] },
+      { kind: 'ground' },
+      { kind: 'holes', equals: 0 },
+      { kind: 'volume', min: 1.3e-4, max: 1.56e-4 },
+      { kind: 'triangles', min: 200 },
+    ],
+  },
+  {
+    id: 'crate-uv',
+    prompt: `A wooden crate that will get a tiled wood texture. The body is a 0.6 m cube. Each of its four sides has a
+recessed panel: a frame about 0.04 m wide around a panel sunk about 0.02 m into the side. On top sits a raised lid,
+inset about 0.05 m from the top edges and 0.03 m tall. Give every part UV coordinates with even texel density and no
+stretching.`,
+    checks: [...crateChecks, { kind: 'uv', maxStretch: 0.15 }],
+  },
+];
+
+export function taskById(id) {
+  const task = TASKS.find(candidate => candidate.id === id);
+  if (!task) throw new RangeError(`Unknown task ${id}. Tasks: ${TASKS.map(candidate => candidate.id).join(', ')}.`);
+  return task;
+}
