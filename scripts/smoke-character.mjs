@@ -139,6 +139,41 @@ try {
   const armMotionApplied = (await call('scene_apply', { sessionId, expectedRevision: revision, operations: [{ type: 'set-motion', motion }] })).structuredContent;
   revision = armMotionApplied.revision;
 
+  // Clip layers: the legs walk while a layer masked to the right arm waves, found by clip label and joint label.
+  const clips = (await call('scene_inspect', { sessionId })).structuredContent.animations;
+  const clipOf = label => {
+    const found = clips.find(clip => clip.label === label);
+    assert.ok(found, `no clip labelled ${label}`);
+    return found.id;
+  };
+  const walkOnlyMotion = { duration: 2, loop: true, layers: [{ clip: clipOf('Walking') }] };
+  const walkAndWaveMotion = {
+    duration: 2, loop: true,
+    layers: [{ clip: clipOf('Walking') }, { clip: clipOf('Wave'), mask: { joints: [idOf('UpperArm.R')] }, morph: false }],
+  };
+  const walkOnlyApplied = (await call('scene_apply', { sessionId, expectedRevision: revision, operations: [{ type: 'set-motion', motion: walkOnlyMotion }] })).structuredContent;
+  assert.equal(walkOnlyApplied.renderSucceeded, true, walkOnlyApplied.renderError);
+  revision = walkOnlyApplied.revision;
+  const walkOnlyPicture = await look(sessionId, 'layers-walk', 0.5);
+  const layersApplied = (await call('scene_apply', { sessionId, expectedRevision: revision, operations: [{ type: 'set-motion', motion: walkAndWaveMotion }] })).structuredContent;
+  assert.equal(layersApplied.renderSucceeded, true, layersApplied.renderError);
+  revision = layersApplied.revision;
+  assert.equal((await call('scene_inspect', { sessionId })).structuredContent.motion.layers, 2);
+  const walkAndWaveStart = await look(sessionId, 'layers-walk-wave', 0.5);
+  assert.notEqual(walkAndWaveStart, walkOnlyPicture, 'the masked wave layer changes the arm');
+  const walkAndWaveLater = await look(sessionId, null, 1.3);
+  assert.notEqual(walkAndWaveLater, walkAndWaveStart, 'the character keeps moving');
+  assert.equal(await look(sessionId, null, 0.5), walkAndWaveStart, 'seeking back gives the same picture with layers');
+  const refused = await client.callTool({ name: 'scene_apply', arguments: { sessionId, expectedRevision: revision, operations: [{
+    type: 'set-motion', motion: { duration: 2, layers: [{ clip: clipOf('Wave'), mask: { joints: ['NoSuchBone'] } }] },
+  }] } });
+  assert.equal(refused.isError, true, 'a mask joint that is not in the asset is refused');
+  report.layers = { clips: ['Walking', 'Wave'], mask: 'UpperArm.R' };
+  const layersExport = (await call('scene_export_recipe', { sessionId })).structuredContent;
+  assert.equal((layersExport.recipe ?? layersExport).motion.layers.length, 2);
+  const armAgain = (await call('scene_apply', { sessionId, expectedRevision: revision, operations: [{ type: 'set-motion', motion }] })).structuredContent;
+  revision = armAgain.revision;
+
   const restored = (await call('scene_restore', { sessionId, checkpointId: checkpoint.checkpointId, expectedRevision: revision })).structuredContent;
   revision = restored.revision;
   assert.equal(await look(sessionId), base, 'restore gives back the exact picture from before the IK');

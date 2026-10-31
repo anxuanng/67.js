@@ -10,7 +10,7 @@
   "entry:nature": 13200,
   "entry:motion": 13600,
   "entry:canvas2d": 9400,
-  "entry:gltf": 47700,
+  "entry:gltf": 48000,
   "entry:modeling": 6600,
   "entry:sculpt": 2500,
   "entry:surface": 10100,
@@ -21,7 +21,7 @@
   "entry:physics": 18000,
   "entry:spume": 9000,
   "entry:retarget": 15700,
-  "entry:skeleton-pose": 18500,
+  "entry:skeleton-pose": 19200,
   "entry:vehicle": 14700,
   "entry:vegetation": 17900,
   "entry:terrain": 3100,
@@ -29,13 +29,13 @@
   "entry:clutter": 5300,
   "entry:texture-set": 900,
   "entry:agent-scene": 58500,
-  "entry:agent-scene+lazy": 168200,
-  "entry:agent-asset": 85500,
-  "entry:agent-asset+lazy": 175600,
+  "entry:agent-scene+lazy": 169100,
+  "entry:agent-asset": 88100,
+  "entry:agent-asset+lazy": 178200,
   "entry:hdri": 3300,
   "scene:lit-box": 57200,
-  "scene:gltf-box": 76500,
+  "scene:gltf-box": 76800,
   "scene:agent-scene": 86100,
-  "scene:agent-scene+lazy": 195700
+  "scene:agent-scene+lazy": 196700
  }
 }

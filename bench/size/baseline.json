@@ -39,9 +39,9 @@
    "brotli": 7331
   },
   "entry:gltf": {
-   "min": 152150,
-   "gzip": 46704,
-   "brotli": 39993
+   "min": 153176,
+   "gzip": 46991,
+   "brotli": 40335
   },
   "entry:modeling": {
    "min": 15517,
@@ -94,9 +94,9 @@
    "brotli": 12962
   },
   "entry:skeleton-pose": {
-   "min": 55080,
-   "gzip": 18056,
-   "brotli": 15427
+   "min": 57354,
+   "gzip": 18778,
+   "brotli": 16077
   },
   "entry:vehicle": {
    "min": 42067,
@@ -130,23 +130,23 @@
   },
   "entry:agent-scene": {
    "min": 190657,
-   "gzip": 57334,
-   "brotli": 49621
+   "gzip": 57336,
+   "brotli": 49589
   },
   "entry:agent-scene+lazy": {
-   "min": 497784,
-   "gzip": 164822,
-   "brotli": 143860
+   "min": 500517,
+   "gzip": 165719,
+   "brotli": 144583
   },
   "entry:agent-asset": {
-   "min": 273341,
-   "gzip": 83733,
-   "brotli": 72966
+   "min": 281287,
+   "gzip": 86290,
+   "brotli": 75357
   },
   "entry:agent-asset+lazy": {
-   "min": 524940,
-   "gzip": 172137,
-   "brotli": 149822
+   "min": 532886,
+   "gzip": 174694,
+   "brotli": 152213
   },
   "entry:hdri": {
    "min": 8075,
@@ -159,9 +159,9 @@
    "brotli": 47903
   },
   "scene:gltf-box": {
-   "min": 264230,
-   "gzip": 74991,
-   "brotli": 64299
+   "min": 265256,
+   "gzip": 75253,
+   "brotli": 64620
   },
   "scene:agent-scene": {
    "min": 294042,
@@ -169,9 +169,9 @@
    "brotli": 72463
   },
   "scene:agent-scene+lazy": {
-   "min": 601169,
-   "gzip": 191853,
-   "brotli": 166724
+   "min": 603902,
+   "gzip": 192748,
+   "brotli": 167481
   }
  }
 }

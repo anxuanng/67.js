@@ -115,7 +115,37 @@ On an imported asset, joints are its `node-N` IDs from `scene_inspect` with `kin
 Each sample stages the clip and overrides, reads the local pose, solves, and stages again, so the rest of the body stays on
 the selected clip and skins and rigid parts all follow. Targets are in world space, under the asset's `root`, which needs a
 uniform scale. Some rigs have no chain to the foot: if the foot is not a descendant of the lower leg, two-bone IK refuses it.
-[Skeleton pose layers](skeleton-pose.md) add clip layers and masks in code.
+
+### Clip layers on an asset
+
+`motion.layers` plays the file's own clips at motion time, so a character can walk and wave at once. Up to 8 layers, in order,
+each blending over the pose so far, before tracks and IK:
+
+| Field | Meaning |
+| --- | --- |
+| `clip` | The `id` of an entry in `scene_inspect` `animations` |
+| `mask` | `{ joints, descendants = true, exclude }`, up to 32 node IDs or names each. The layer moves only these joints and what hangs below them; mesh parts follow their bone, and morph weights follow the bone that owns the mesh |
+| `weight` | 0 to 1, default 1 |
+| `speed`, `offset` | Layer time is `time * speed + offset`. `speed` 0.05 to 8, `offset` within 30 seconds |
+| `loop` | Default `true`: the clip repeats. `false` holds its last key |
+| `additive`, `reference` | Add the clip's change from `reference` seconds instead of replacing the pose |
+| `bones` | Retarget by name: `{ "UpperArmR": "node-20" }` makes the clip's track for `UpperArmR` move that node of this asset. Up to 64 entries; the clip must have the track |
+| `morph` | `false` leaves morph weights alone. Default: the clip's morph tracks play |
+
+```json
+"motion": { "duration": 2, "loop": true, "layers": [
+  { "clip": 10 },
+  { "clip": 12, "mask": { "joints": ["node-37"] }, "morph": false }
+] }
+```
+
+`tracks` can be left out when there are layers. Layers need an imported asset: a procedural recipe refuses them. Everything is
+checked against the asset (clip indexes, node IDs and names, track names) and bounded before anything is built, and the
+pose is rebuilt from the rest pose for each time, so a seek equals playing. `bones` renames tracks inside one asset; moving a
+clip from another rig (rest-pose retargeting with `retargetClip`) is code only, because the MCP holds one asset at a time.
+Foot tilt on slopes is not done.
+
+[Skeleton pose layers](skeleton-pose.md) have the same layers in code.
 
 ### Joint limits and sanity warnings
 
@@ -177,7 +207,7 @@ gives 0 in a field but is a non-finite result in a driver, which is an error, so
 For any time, the pose is built in this order and keeps no state between samples, so seeking gives the same pose as playing
 to that time:
 
-1. Tracks, and for an asset the selected clip.
+1. For an asset, the selected clip, then `motion.layers`, then tracks.
 2. IK, in list order.
 3. Drivers. They read the pose from steps 1 and 2, so one driver never sees another's result.
 4. Constraints, in list order. Each reads the pose the ones before it left. Expressions in `influence` read the pose from

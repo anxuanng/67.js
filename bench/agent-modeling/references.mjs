@@ -222,6 +222,16 @@ export const REFERENCES = {
       }],
     },
   },
+  'robot-walk-wave': {
+    format: '67js.asset', schemaVersion: 1, assetId: 'ab'.repeat(32),
+    motion: {
+      duration: 2, loop: true,
+      layers: [
+        { clip: 10 },
+        { clip: 12, mask: { joints: ['node-37'] }, morph: false },
+      ],
+    },
+  },
   'tray-drop': {
     ...scene(
       [

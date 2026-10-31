@@ -411,6 +411,7 @@ const SOLVERS = { 'two-bone': solveTwoBone, aim: solveAim };
 const GLTF_TRACK_PROPERTIES = { position: 'translation', quaternion: 'rotation', scale: 'scale' };
 const GLTF_STEP_INTERPOLATION = 2300;
 const GLTF_LINEAR_INTERPOLATION = 2301;
+const GLTF_CUBIC_INTERPOLATION = 2302;
 const RESAMPLE_RATE = 30;
 
 function trackKeyframes(track, size) {
@@ -434,7 +435,7 @@ function trackKeyframes(track, size) {
  * Node tracks keep their decoded node names. Morph weight tracks are skipped. Step keys stay step; cubic keys are
  * resampled at 30 frames per second.
  */
-export function clipFromGltfAnimation(animation, { loop = false } = {}) {
+export function clipFromGltfAnimation(animation, { loop = false, rename = {} } = {}) {
   if (!Array.isArray(animation?.tracks) || !Number.isFinite(animation.duration)) throw new TypeError('clipFromGltfAnimation needs an animation from asset.animations.');
   const tracks = [];
   for (const track of animation.tracks) {
@@ -442,13 +443,93 @@ export function clipFromGltfAnimation(animation, { loop = false } = {}) {
     const property = GLTF_TRACK_PROPERTIES[track.name.slice(separator + 1)];
     if (!property || !track.times.length) continue;
     const size = property === 'rotation' ? 4 : 3;
+    const trackTarget = track.name.slice(0, separator);
     tracks.push({
-      target: track.name.slice(0, separator), property,
+      target: Object.hasOwn(rename, trackTarget) ? rename[trackTarget] : trackTarget, property,
       interpolation: track.getInterpolation?.() === GLTF_STEP_INTERPOLATION ? 'STEP' : 'LINEAR',
       keyframes: trackKeyframes(track, size),
     });
   }
   return createAnimationClip({ duration: Math.max(animation.duration, 1e-3), loop, tracks });
+}
+
+const MORPH_TRACK_SUFFIX = '.morphTargetInfluences';
+
+/**
+ * The morph weight tracks of a loaded glTF animation, which `clipFromGltfAnimation` leaves out. Each track names the mesh
+ * part it moves and is sampled with the decoder's own interpolant, so step, linear and cubic keys all play as authored.
+ * Pass the result as `morphs` on a layer of `createAssetPose`.
+ */
+export function morphClipFromGltfAnimation(animation, { loop = false } = {}) {
+  if (!Array.isArray(animation?.tracks) || !Number.isFinite(animation.duration)) throw new TypeError('morphClipFromGltfAnimation needs an animation from asset.animations.');
+  const tracks = animation.tracks
+    .filter(track => track.name.endsWith(MORPH_TRACK_SUFFIX) && track.times.length)
+    .map(track => {
+      const valuesPerKey = track.values.length / track.times.length;
+      const count = track.getInterpolation?.() === GLTF_CUBIC_INTERPOLATION ? valuesPerKey / 3 : valuesPerKey;
+      return { part: track.name.slice(0, -MORPH_TRACK_SUFFIX.length), count, interpolant: track.createInterpolant(new Float64Array(count)) };
+    });
+  return { duration: Math.max(animation.duration, 1e-3), loop, tracks };
+}
+
+function morphClipTime(morphs, layerTime) {
+  if (!morphs.loop) return Math.min(morphs.duration, Math.max(0, layerTime));
+  return ((layerTime % morphs.duration) + morphs.duration) % morphs.duration;
+}
+
+/** The deepest asset node that owns each mesh part, by index, so a layer mask can include or leave out a part by its bone. */
+function ownerNodeByPart(nodes) {
+  const owners = new Map();
+  nodes.forEach((node, index) => {
+    for (const meshId of node.meshIds ?? []) owners.set(Number(meshId.slice('mesh-'.length)), index);
+  });
+  return owners;
+}
+
+function createMorphLayers(asset, nodes, layers, rig) {
+  const prepared = prepareRigGeometry(rig, 'Pose');
+  const resolveJoint = jointResolver(rig, prepared);
+  const owners = ownerNodeByPart(nodes);
+  return layers.filter(layer => layer.morphs?.tracks.length).map(layer => {
+    const mask = maskWeights(prepared, resolveJoint, layer.mask);
+    const partIndices = new Map();
+    for (const track of layer.morphs.tracks) {
+      const matching = [...asset.parts.keys()].filter(index => {
+        const part = asset.parts[index];
+        return part.name === track.part && part.morph?.weights.length === track.count && mask[owners.get(index)] > 0;
+      });
+      partIndices.set(track, matching);
+    }
+    return {
+      morphs: layer.morphs, partIndices, mask, owners, additive: layer.additive === true,
+      speed: layer.speed ?? 1, offset: layer.offset ?? 0, weight: weightFunction(layer.weight ?? 1, 'Morph layer weight'),
+      reference: layer.reference ?? 0,
+    };
+  });
+}
+
+/** Blend each morph layer's weights over the ones before it. Returns [{ part, weights }] for the parts any layer drives. */
+function evaluateMorphLayers(morphLayers, time) {
+  const blended = new Map();
+  for (const layer of morphLayers) {
+    const layerWeight = checkedWeight(layer.weight, time, 'Morph layer weight');
+    if (layerWeight === 0) continue;
+    const layerTime = time * layer.speed + layer.offset;
+    for (const track of layer.morphs.tracks) {
+      const sampled = Array.from(track.interpolant.evaluate(morphClipTime(layer.morphs, layerTime)));
+      const reference = layer.additive ? Array.from(track.interpolant.evaluate(morphClipTime(layer.morphs, layer.reference))) : null;
+      for (const part of layer.partIndices.get(track)) {
+        const weights = blended.get(part) ?? new Array(track.count).fill(0);
+        const strength = layerWeight * layer.mask[layer.owners.get(part)];
+        weights.forEach((current, index) => {
+          const target = reference ? current + sampled[index] - reference[index] : sampled[index];
+          weights[index] = Math.min(1, Math.max(0, current + (target - current) * strength));
+        });
+        blended.set(part, weights);
+      }
+    }
+  }
+  return [...blended].map(([part, weights]) => ({ part, weights }));
 }
 
 function rigFromAssetNodes(nodes) {
@@ -479,27 +560,50 @@ function checkAssetIkScales(rig, solvedNames) {
   }
 }
 
+function createAssetPoseParts(asset, layers, ik) {
+  if (typeof asset?.stagePose !== 'function' || !Array.isArray(asset.nodes)) throw new TypeError('createAssetPose needs an asset from loadGltf or parseGltf.');
+  if (!Array.isArray(layers) || !Array.isArray(ik)) throw new TypeError('layers and ik must be arrays.');
+  const nodes = asset.nodes;
+  const rig = rigFromAssetNodes(nodes);
+  const nodeLayers = layers.filter(layer => layer?.clip || !layer?.morphs);
+  const pose = createSkeletonPose({ rig, layers: nodeLayers, ik });
+  checkAssetIkScales(rig, pose.solvedJointNames);
+  const written = pose.writtenJoints.filter(({ index }) => nodes[index].editable);
+  const morphLayers = createMorphLayers(asset, nodes, layers, rig);
+  /** Rebuild the pose for a time and return what the asset needs to stage it. */
+  function evaluate(time) {
+    pose.apply(time);
+    const nodeOverrides = written.map(({ index, translation }) => {
+      const override = { id: nodes[index].id, rotation: Array.from(pose.localRotation(index)) };
+      if (translation) override.translation = Array.from(pose.localTranslation(index));
+      return override;
+    });
+    return { nodeOverrides, morphWeights: evaluateMorphLayers(morphLayers, time) };
+  }
+  return { pose, evaluate };
+}
+
+/**
+ * Evaluate layers alone, without IK and without committing anything: for a host that stages the result itself, as the
+ * MCP asset recipe does before it solves IK. `evaluate(time)` gives `{ nodeOverrides, morphWeights }` for
+ * `asset.stagePose`. The same time always gives the same result.
+ */
+export function createAssetLayerEvaluator(asset, layers) {
+  return { evaluate: createAssetPoseParts(asset, layers, []).evaluate };
+}
+
 /**
  * Pose a loaded glTF asset from { layers, ik }. Unlike a skin palette this moves every skin and every rigid part attached
  * to the hierarchy, and IK targets are in the asset's world space. Joints are named by decoded node name or humanoid bone.
- * `apply(time)` commits the pose and returns `asset.parts`; pass them to `renderer.updateParts`.
+ * A layer may carry `morphs` from `morphClipFromGltfAnimation` to drive morph weights too; its mask picks parts by the
+ * bone that owns them. `apply(time)` commits the pose and returns `asset.parts`; pass them to `renderer.updateParts`.
  */
 export function createAssetPose(asset, { layers = [], ik = [] } = {}) {
-  if (typeof asset?.stagePose !== 'function' || !Array.isArray(asset.nodes)) throw new TypeError('createAssetPose needs an asset from loadGltf or parseGltf.');
-  const { nodes } = asset;
-  const rig = rigFromAssetNodes(nodes);
-  const pose = createSkeletonPose({ rig, layers, ik });
-  checkAssetIkScales(rig, pose.solvedJointNames);
-  const written = pose.writtenJoints.filter(({ index }) => nodes[index].editable);
+  const { pose, evaluate } = createAssetPoseParts(asset, layers, ik);
   return {
     apply(time) {
-      pose.apply(time);
-      const nodeOverrides = written.map(({ index, translation }) => {
-        const override = { id: nodes[index].id, rotation: Array.from(pose.localRotation(index)) };
-        if (translation) override.translation = Array.from(pose.localTranslation(index));
-        return override;
-      });
-      return asset.stagePose({ animation: null, nodeOverrides }).commit();
+      const { nodeOverrides, morphWeights } = evaluate(time);
+      return asset.stagePose({ animation: null, nodeOverrides, morphWeights }).commit();
     },
     jointWorld: pose.jointWorld,
     get ikResults() {
