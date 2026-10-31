@@ -117,7 +117,7 @@ To move to a new Blender release, run `node scripts/parity-manual-snapshot.mjs`.
 | Modeling > Modifiers > Physics > Particle Instance Modifier | missing | No particle system. | | #63 |
 | Modeling > Modifiers > Physics > Particle System Modifier | missing | No particle system. | | #63 |
 | Modeling > Modifiers > Physics > Soft Body Modifier | missing | No soft bodies. | | #62 |
-| Modeling > Modifiers > Geometry Nodes Modifier | partial | Bounded JSON field expressions drive `set_position`, `displace`, a `field` selection rule and `instances`. There is no node graph, no loops, no custom node groups, and no realize, curve or volume nodes. | [src/mesh-fields.js](../src/mesh-fields.js), [tests/mesh-fields.test.js](../tests/mesh-fields.test.js), [tests/blender-golden.test.js](../tests/blender-golden.test.js), [pillar-court task](../bench/agent-modeling/tasks.mjs) | #43 |
+| Modeling > Modifiers > Geometry Nodes Modifier | partial | Bounded JSON field expressions drive `set_position`, `displace`, a `field` selection rule and `instances`; they are one language, `src/expression.js`, with motion drivers. There is no node graph, no loops, no custom node groups, and no realize, curve or volume nodes. | [src/mesh-fields.js](../src/mesh-fields.js), [tests/mesh-fields.test.js](../tests/mesh-fields.test.js), [tests/blender-golden.test.js](../tests/blender-golden.test.js), [pillar-court task](../bench/agent-modeling/tasks.mjs) | #43 |
 | Modeling > Geometry Nodes | partial | Fields over attributes, noise and math (position, normal, index, tags), Set Position, Instance on Points (grid, scatter, surface) and Displace. Noise is not Blender's noise function, and there is no Blender comparison for instancing. Issue #43 chose bounded JSON expressions and not a visual editor. | [src/mesh-fields.js](../src/mesh-fields.js), [tests/mesh-fields.test.js](../tests/mesh-fields.test.js), [tests/blender-golden.test.js](../tests/blender-golden.test.js) | #43 |
 | Modeling > Transform | partial | Node transforms, and `translate` on a selection with falloff. There is no rotate or scale on a selection. | | |
 | Sculpting & Painting > Brushes | out of scope | Brush settings for a hand. Strokes have explicit parameters. | | |
@@ -135,11 +135,11 @@ To move to a new Blender release, run `node scripts/parity-manual-snapshot.mjs`.
 | Animation & Rigging > Armatures > Properties | partial | An armature has an id, a parent node, a transform, an optional bone-ID prefix and a `humanoid` or `quadruped` preset fitted to a mesh node or to bounds. No display settings or bone collections. | [rigging](../tests/rigging.test.js) | #46 |
 | Animation & Rigging > Armatures > Structure | partial | Imported rigs keep their hierarchy, and recipes author one. A rig exports to GLB with its bones and a baked walk clip; Blender 5.2 opens it as 1 armature, 21 bones, 14 vertex-grouped meshes and 1 action. | [gltf](../tests/gltf.test.js), [rigging](../tests/rigging.test.js) | #46 |
 | Animation & Rigging > Armatures > Skinning | partial | Four-influence GPU skinning, with automatic binding by distance to the bone segments. Not heat diffusion, so two limbs that pass close can share weights; `scene_inspect` reports unweighted vertices, bones with no vertices and joint axis problems. | [skinning](../tests/skinning.test.js), [rigging](../tests/rigging.test.js) | #46 |
-| Animation & Rigging > Armatures > Posing | partial | Layers, masks, additive poses and IK in code. MCP has IK and one clip. | [skeleton-pose](../tests/skeleton-pose.test.js), [agent-asset-ik](../tests/agent-asset-ik.test.js) | #58, #59 |
+| Animation & Rigging > Armatures > Posing | partial | Layers, masks, additive poses and IK in code. MCP asset recipes take `motion.layers` (clips, masks, weights, additive, rename retarget) beside IK; no foot tilt on slopes or full-body IK. | [skeleton-pose](../tests/skeleton-pose.test.js), [agent-asset-ik](../tests/agent-asset-ik.test.js) | #58, #59 |
 | Animation & Rigging > Lattice | missing | No lattice. | | #42 |
 | Animation & Rigging > Constraints > Interface | out of scope | Interface for a mouse. | | |
 | Animation & Rigging > Constraints > Motion Tracking | out of scope | Motion tracking is out of scope in issue #23. | | |
-| Animation & Rigging > Constraints > Transform > Copy Location Constraint | partial | `copy_location` in `motion.constraints`: axes, invert, offset, world or local space, influence. Matches Blender where tested. | [agent-motion-constraints](../tests/agent-motion-constraints.test.js) | #58 |
+| Animation & Rigging > Constraints > Transform > Copy Location Constraint | partial | `copy_location` in `motion.constraints`: axes, invert, offset, world or local space, influence. Matches Blender where tested. | [agent-motion-constraints](../tests/agent-motion-constraints.test.js), [src/expression.js](../src/expression.js) | #58, #98 |
 | Animation & Rigging > Constraints > Transform > Copy Rotation Constraint | partial | `copy_rotation`: Euler axes, invert, replace or add, world or local. World matrices match Blender 5.2 in 2 cases. | [blender-constraints](../tests/blender-constraints.test.js) | #58 |
 | Animation & Rigging > Constraints > Transform > Copy Scale Constraint | partial | `copy_scale`: axes and offset, world or local. | [agent-motion-constraints](../tests/agent-motion-constraints.test.js) | #58 |
 | Animation & Rigging > Constraints > Transform > Copy Transforms Constraint | missing | No constraint. | | #58 |
@@ -165,10 +165,10 @@ To move to a new Blender release, run `node scripts/parity-manual-snapshot.mjs`.
 | Animation & Rigging > Constraints > Relationship > Geometry Attribute Constraint | missing | No constraint. | | |
 | Animation & Rigging > Constraints > Relationship > Pivot Constraint | missing | No constraint. | | |
 | Animation & Rigging > Constraints > Relationship > Shrinkwrap Constraint | partial | `addons/surface-attachment` binds points to a surface in code. | [surface-attachment](../tests/surface-attachment.test.js) | |
-| Animation & Rigging > Actions | partial | Clips, weights and crossfades in code. An asset through MCP plays one clip at a time. | [animation-mixer](../tests/animation-mixer.test.js) | #59 |
+| Animation & Rigging > Actions | partial | Clips, weights and crossfades in code. An asset through MCP plays several clips as masked layers at motion time; there are no crossfades or state machines there. | [animation-mixer](../tests/animation-mixer.test.js), [agent-asset-layers](../tests/agent-asset-layers.test.js) | #59 |
 | Animation & Rigging > Drivers | partial | `motion.drivers`: a node component or material property from a bounded expression over time and other nodes. No custom properties, shape keys or variables. | [agent-motion-constraints](../tests/agent-motion-constraints.test.js) | #58 |
 | Animation & Rigging > Markers | missing | No markers or events. | | #60 |
-| Animation & Rigging > Shape Keys | partial | Morph targets import, render and animate. Recipes can not author them. | [morph](../tests/morph.test.js) | #59 |
+| Animation & Rigging > Shape Keys | partial | Morph targets import, render and animate, and clip layers drive imported morph weights (`createAssetPose`, MCP `motion.layers`). Recipes can not author them. | [morph](../tests/morph.test.js), [agent-asset-layers](../tests/agent-asset-layers.test.js) | #59 |
 | Animation & Rigging > Motion Paths | out of scope | Viewport display for hand work. `scene_inspect` reports motion as numbers. | | |
 | Animation & Rigging > In-Betweens | out of scope | Pose tools for a hand. Agents write keyframes and IK targets. | | |
 | Physics > Rigid Body > Rigid Body Properties | partial | Dynamic, fixed and kinematic bodies with mass, density, friction, restitution and velocity, in code and in recipes. Trimesh and convex colliders, no bone-bound bodies yet. | [physics-colliders](../tests/physics-colliders.test.js) | #61 |
@@ -197,13 +197,13 @@ To move to a new Blender release, run `node scripts/parity-manual-snapshot.mjs`.
 | Rendering > Materials > Settings | partial | Opaque and blend in recipes, and mask on imported assets, with double-sided support. | [gltf-extensions](../tests/gltf-extensions.test.js) | #51 |
 | Rendering > Materials > Line Art | missing | No line rendering. | | |
 | Rendering > Materials > Legacy Textures | out of scope | Blender keeps these for old files. | | |
-| Rendering > Shader Nodes > Input | missing | No node graph. | | #50 |
-| Rendering > Shader Nodes > Output | missing | No node graph. | | #50 |
+| Rendering > Shader Nodes > Input | partial | `uv` coordinates only. There is no object, geometry, camera or light-path input. | [material-graph](../tests/material-graph.test.js) | #50 |
+| Rendering > Shader Nodes > Output | partial | A graph makes base colour, roughness, metallic, emission and height. It is baked to textures on the CPU, so it can not react to light, view or position. | [material-graph](../tests/material-graph.test.js), [brick-graph scene](../bench/reference/scenes.js) | #50 |
 | Rendering > Shader Nodes > Shader | partial | A metallic-roughness surface with clear coat, transmission, sheen and specular layers, and unlit, liquid and foam tags. There is no anisotropy, iridescence or subsurface. | [material-layers](../tests/material-layers.test.js) | #51 |
-| Rendering > Shader Nodes > Displacement | partial | Normal maps. There is no bump from height or displacement. | | #50 |
-| Rendering > Shader Nodes > Texture | partial | Image maps and 11 pattern presets. There is no graph, so an agent can not combine them. | [material-patterns](../tests/material-patterns.test.js) | #50 |
-| Rendering > Shader Nodes > Color | missing | No node graph. | | #50 |
-| Rendering > Shader Nodes > Utilities | missing | No node graph. | | #50 |
+| Rendering > Shader Nodes > Displacement | partial | Bump: a graph's height becomes a normal map. There is no displacement of the surface. | [material-graph](../tests/material-graph.test.js) | #50 |
+| Rendering > Shader Nodes > Texture | partial | Image maps, 11 pattern presets, and graph nodes for noise, voronoi, wave, checker and gradient. Noise is not Blender's noise function, and there is no brick, musgrave, magic or environment node. Patterns follow UVs or box projection. | [material-patterns](../tests/material-patterns.test.js), [material-graph](../tests/material-graph.test.js), [brick-graph scene](../bench/reference/scenes.js) | #50 |
+| Rendering > Shader Nodes > Color | partial | Color ramp, mix and invert. There is no hue, curves, gamma or blend modes. | [material-graph](../tests/material-graph.test.js) | #50 |
+| Rendering > Shader Nodes > Utilities | partial | Maths on numbers and vectors: add, sub, mul, div, min, max, pow, abs, floor, fract, sqrt, clamp and smoothstep. There is no vector maths, mapping, map range or separate and combine nodes. | [material-graph](../tests/material-graph.test.js) | #50 |
 | Rendering > Shader Nodes > Group | missing | No node graph. | | #50 |
 | Rendering > Color Management | partial | ACES tone mapping and grading. There is no choice of color space or display. | [effects](../tests/effects.test.js) | |
 | Rendering > Freestyle | missing | No line rendering. | | |
@@ -246,4 +246,4 @@ The goal also needs this work, and no page in the Blender manual covers it.
 | Rendering backend | missing | WebGL2 only. WebGPU is not evaluated. | #56 |
 | Terrain and navigation | partial | Terrain with 4 splat layers and no holes. There is no navmesh. | #64 |
 | Tool cost and errors | partial | Lint and errors exist. No budget limits schema size, and not every error is checked. | #65, #66 |
-| Branches and labelled images | missing | 8 checkpoints and unlabelled images. | #67 |
+| Branches and labelled images | partial | `scene_apply` `branch` forks a variant over a deduplicated snapshot store (8 branches, scene and revision untouched), `scene_review` shots take a `branch`, `scene_restore` `branch` keeps one. `labels: true` on `scene_look` and `scene_review` prints part names, tags and lint problems and returns them with pixel positions. Procedural scenes only; no suite task yet measures calls. | #67 |

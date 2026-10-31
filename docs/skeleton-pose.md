@@ -38,7 +38,18 @@ are built that way, or have several skins. Targets are in the asset's world spac
 armature above the bones.
 
 `clipFromGltfAnimation(asset.animations[n], { loop })` converts a clip from the file. `asset.animations` holds three.js
-clips, which layers and `retargetClip` cannot read directly. Morph weight tracks are skipped.
+clips, which layers and `retargetClip` cannot read directly. `rename: { clipName: jointName }` sends a clip's track to another
+joint of the asset, a retarget by name. Morph weight tracks are not part of this clip.
+
+`morphClipFromGltfAnimation(asset.animations[n], { loop })` reads those morph weight tracks. Give the result as `morphs` on a
+layer of `createAssetPose` and the layer drives the face too, with the same `weight`, `speed`, `offset`, `additive` and `reference`.
+A layer's `mask` picks mesh parts by the bone that owns them: a mask on an arm leaves the face alone. A layer with `morphs` and
+no `clip` drives only morph weights. `asset.stagePose` takes the weights as `morphWeights: [{ part, weights }]`, by index into
+`asset.parts`, each between 0 and 1. The RobotExpressive clips carry morph tracks that are all zero, so a real face needs a clip
+that sets them.
+
+`createAssetLayerEvaluator(asset, layers).evaluate(time)` returns `{ nodeOverrides, morphWeights }` for a host that stages the
+pose itself (the MCP asset recipe does, before it solves IK). The same time always gives the same result.
 
 `createSkeletonPose({ skin, rig, meshWorldMatrix, layers, ik })` is the lower level: it writes one skin's palette, or with
 only a `rig` just computes joint positions. `rig` defaults to `createRigFromSkin(skin)` from `67js/addons/retarget`; pass

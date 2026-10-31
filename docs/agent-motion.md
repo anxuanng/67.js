@@ -115,7 +115,37 @@ On an imported asset, joints are its `node-N` IDs from `scene_inspect` with `kin
 Each sample stages the clip and overrides, reads the local pose, solves, and stages again, so the rest of the body stays on
 the selected clip and skins and rigid parts all follow. Targets are in world space, under the asset's `root`, which needs a
 uniform scale. Some rigs have no chain to the foot: if the foot is not a descendant of the lower leg, two-bone IK refuses it.
-[Skeleton pose layers](skeleton-pose.md) add clip layers and masks in code.
+
+### Clip layers on an asset
+
+`motion.layers` plays the file's own clips at motion time, so a character can walk and wave at once. Up to 8 layers, in order,
+each blending over the pose so far, before tracks and IK:
+
+| Field | Meaning |
+| --- | --- |
+| `clip` | The `id` of an entry in `scene_inspect` `animations` |
+| `mask` | `{ joints, descendants = true, exclude }`, up to 32 node IDs or names each. The layer moves only these joints and what hangs below them; mesh parts follow their bone, and morph weights follow the bone that owns the mesh |
+| `weight` | 0 to 1, default 1 |
+| `speed`, `offset` | Layer time is `time * speed + offset`. `speed` 0.05 to 8, `offset` within 30 seconds |
+| `loop` | Default `true`: the clip repeats. `false` holds its last key |
+| `additive`, `reference` | Add the clip's change from `reference` seconds instead of replacing the pose |
+| `bones` | Retarget by name: `{ "UpperArmR": "node-20" }` makes the clip's track for `UpperArmR` move that node of this asset. Up to 64 entries; the clip must have the track |
+| `morph` | `false` leaves morph weights alone. Default: the clip's morph tracks play |
+
+```json
+"motion": { "duration": 2, "loop": true, "layers": [
+  { "clip": 10 },
+  { "clip": 12, "mask": { "joints": ["node-37"] }, "morph": false }
+] }
+```
+
+`tracks` can be left out when there are layers. Layers need an imported asset: a procedural recipe refuses them. Everything is
+checked against the asset (clip indexes, node IDs and names, track names) and bounded before anything is built, and the
+pose is rebuilt from the rest pose for each time, so a seek equals playing. `bones` renames tracks inside one asset; moving a
+clip from another rig (rest-pose retargeting with `retargetClip`) is code only, because the MCP holds one asset at a time.
+Foot tilt on slopes is not done.
+
+[Skeleton pose layers](skeleton-pose.md) have the same layers in code.
 
 ### Joint limits and sanity warnings
 
@@ -165,19 +195,19 @@ Not covered yet: `use_*` switches on `child_of`, `limit_scale`, `copy_transforms
 XYZ in degrees) or `{ "kind": "material", "id", "property" }` for `emission`, `metallic` and `roughness`, or with a
 `component` for `color` and `emissiveColor` (`x`, `y`, `z` for red, green, blue). A driven property cannot also have a track.
 
-An expression is JSON data and is never run as code: a number, the string `"time"`, a read of another node
-`{ "node", "property", "component", "space" }`, or one operator object such as `{ "mul": ["time", 2] }`. Operators: `add`,
-`mul`, `min`, `max` (2 to 8 operands), `sub`, `div`, `pow`, `mod`, `atan2`, `gt`, `lt`, `neg`, `abs`, `sin`, `cos` (radians),
-`sqrt`, `floor`, `fract`, `saturate`, `clamp(x, low, high)`, `mix(a, b, t)`, `smoothstep(low, high, x)` and
-`if(condition, then, otherwise)`. An expression has at most 64 parts and 8 levels, and a result that is not finite is an
-error. The operator names follow the field expressions of the mesh addon where they overlap.
+An expression is JSON data and is never run as code. It is the motion context of the one expression language described in
+[field expressions](mesh.md#field-expressions): the same operators with the same results, the same syntax, and limits of 64
+parts and 8 levels. Where a field reads mesh attributes, a driver reads `"time"` (seconds) or a node
+`{ "node", "property", "component", "space" }`, for example `{ "mul": ["time", 2] }`; vectors, attributes and noise are field
+inputs and are rejected here with a message that says so. `sin` and `cos` take radians. One difference remains: `div` by zero
+gives 0 in a field but is a non-finite result in a driver, which is an error, so a mistaken driver is reported.
 
 ### Evaluation order
 
 For any time, the pose is built in this order and keeps no state between samples, so seeking gives the same pose as playing
 to that time:
 
-1. Tracks, and for an asset the selected clip.
+1. For an asset, the selected clip, then `motion.layers`, then tracks.
 2. IK, in list order.
 3. Drivers. They read the pose from steps 1 and 2, so one driver never sees another's result.
 4. Constraints, in list order. Each reads the pose the ones before it left. Expressions in `influence` read the pose from

@@ -1,0 +1,72 @@
+{
+  "run": "2026-10-31-11-40-sonnet-walk-wave-cold-fixed-grader",
+  "model": "claude-sonnet-5-5",
+  "date": "2026-10-31T11:41:23.921Z",
+  "skill": false,
+  "runsPerTask": 1,
+  "passed": 1,
+  "tasks": 1,
+  "toolCalls": 7,
+  "costUsd": 0.31,
+  "byModel": {
+    "claude-sonnet-5-5": {
+      "runs": 1,
+      "passed": 1,
+      "successRate": 1,
+      "toolCalls": 7,
+      "toolErrors": 2,
+      "inputTokens": 585852,
+      "outputTokens": 2294,
+      "costUsd": 0.31,
+      "tasks": {
+        "robot-walk-wave": {
+          "runs": 1,
+          "passed": 1,
+          "successRate": 1,
+          "toolCalls": 7,
+          "toolErrors": 2,
+          "inputTokens": 585852,
+          "outputTokens": 2294,
+          "costUsd": 0.31
+        }
+      }
+    }
+  },
+  "records": [
+    {
+      "task": "robot-walk-wave",
+      "attempt": 1,
+      "pass": true,
+      "passed": 1,
+      "total": 1,
+      "failed": [],
+      "model": "claude-sonnet-5-5",
+      "toolCalls": 7,
+      "toolErrors": 2,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_asset_catalog": 1,
+        "scene_create_asset": 1,
+        "scene_inspect": 1,
+        "scene_apply": 3,
+        "scene_export_recipe": 1
+      },
+      "features": {
+        "geometryTypes": [],
+        "meshOperations": [],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "skipped": "asset recipes have no static silhouette"
+      },
+      "turns": 9,
+      "costUsd": 0.3115931,
+      "inputTokens": 585852,
+      "outputTokens": 2294,
+      "wallSeconds": 37,
+      "exitCode": 0,
+      "stopped": "success"
+    }
+  ]
+}

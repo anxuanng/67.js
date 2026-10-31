@@ -979,7 +979,7 @@ export async function parseGltf(data, options = {}) {
     }
 
     function normalizePose(input) {
-      knownPoseFields(input, ['animation', 'nodeOverrides'], 'pose');
+      knownPoseFields(input, ['animation', 'nodeOverrides', 'morphWeights'], 'pose');
       const animation = input.animation ?? null;
       if (animation !== null) {
         knownPoseFields(animation, ['clip', 'time'], 'pose animation');
@@ -1032,7 +1032,29 @@ export async function parseGltf(data, options = {}) {
         }
         overrides.push(result);
       }
-      return { animation: animation === null ? null : { ...animation }, overrides };
+      return { animation: animation === null ? null : { ...animation }, overrides, morphWeights: normalizeMorphWeights(input.morphWeights) };
+    }
+
+    /** Morph weights by part index: `[{ part, weights }]`, each part morphed and each weight finite and within 0 to 1. */
+    function normalizeMorphWeights(input) {
+      if (input === undefined) return [];
+      if (!Array.isArray(input) || input.length > morphBindings.length || Reflect.ownKeys(input).length !== input.length + 1) {
+        throw new RangeError(`Pose morphWeights must be a dense array with at most ${morphBindings.length} entries.`);
+      }
+      const seenParts = new Set();
+      return input.map((entry, position) => {
+        const descriptor = Object.getOwnPropertyDescriptor(input, position);
+        if (!descriptor || !Object.hasOwn(descriptor, 'value')) throw new TypeError('Pose morphWeights cannot contain holes or accessors.');
+        knownPoseFields(descriptor.value, ['part', 'weights'], 'morph weights');
+        const binding = morphBindings.find(candidate => parts[descriptor.value.part] === candidate.part);
+        if (!Number.isInteger(descriptor.value.part) || !binding || seenParts.has(descriptor.value.part)) {
+          throw new RangeError('Pose morphWeights need distinct part indices of parts that have morph targets.');
+        }
+        seenParts.add(descriptor.value.part);
+        const weights = poseVector(descriptor.value.weights, binding.weights.length, 'morph weights');
+        if (weights.some(weight => weight < 0 || weight > 1)) throw new RangeError('Pose morph weights must be within 0 and 1.');
+        return { binding, weights };
+      });
     }
 
     function stagePose(input) {
@@ -1063,6 +1085,11 @@ export async function parseGltf(data, options = {}) {
             node.scale.fromArray(override.scale);
           }
           node.updateMatrix();
+        }
+        for (const { binding, weights } of candidate.morphWeights) {
+          weights.forEach((weight, index) => {
+            binding.node.morphTargetInfluences[index] = weight;
+          });
         }
         preparePose();
       } catch (error) {

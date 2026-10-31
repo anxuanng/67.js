@@ -1,3 +1,5 @@
+import { validateBranchName } from '../src/agent-branches.js';
+
 export const REVIEW_LIMITS = Object.freeze({ minimumShots: 1, maximumShots: 4,
   minimumDimension: 64, maximumDimension: 480, defaultWidth: 384, defaultHeight: 384,
   labelHeight: 24, maximumLabelLength: 48, maximumGridWidth: 960, maximumGridHeight: 1008,
@@ -17,9 +19,20 @@ function clock(value, name) {
   return value;
 }
 
+/** Shots of one scene render together: the source scene, or one branch each. */
+function groupShotsByBranch(shots) {
+  const groups = new Map();
+  for (const [index, shot] of shots.entries()) {
+    if (!groups.has(shot.branch)) groups.set(shot.branch, { branch: shot.branch, shotIndexes: [] });
+    groups.get(shot.branch).shotIndexes.push(index);
+  }
+  return [...groups.values()];
+}
+
 /** Validate before leasing the source renderer. Camera relationships use the sampled pose. */
 export function normalizeReview(input) {
-  fields(input, ['sessionId', 'expectedRevision', 'width', 'height', 'shots'], 'review');
+  fields(input, ['sessionId', 'expectedRevision', 'width', 'height', 'shots', 'labels'], 'review');
+  if (input.labels !== undefined && typeof input.labels !== 'boolean') throw new TypeError('Review labels must be boolean.');
   if (typeof input.sessionId !== 'string' || !Number.isSafeInteger(input.expectedRevision) || input.expectedRevision < 0) {
     throw new TypeError('Review requires a sessionId and a safe nonnegative expectedRevision.');
   }
@@ -32,7 +45,11 @@ export function normalizeReview(input) {
     throw new RangeError('Review requires one to four shots.');
   }
   const shots = input.shots.map((shot, index) => {
-    fields(shot, ['label', 'camera', 'animation', 'motionTime', 'rendererTime'], 'shot');
+    fields(shot, ['label', 'camera', 'animation', 'motionTime', 'rendererTime', 'branch'], 'shot');
+    if (shot.branch !== undefined) {
+      validateBranchName(shot.branch);
+      if (shot.animation !== undefined) throw new TypeError('A branch shot cannot sample an imported animation.');
+    }
     if (shot.label !== undefined && (typeof shot.label !== 'string' || shot.label.length > 48)) {
       throw new TypeError('Shot label must be a string of at most 48 characters.');
     }
@@ -53,12 +70,16 @@ export function normalizeReview(input) {
     }
     const motionTime = shot.motionTime ?? null;
     if (motionTime !== null) clock(motionTime, 'Motion time');
-    return { label: shot.label ?? `View ${index + 1}`,
+    return { label: shot.label ?? shot.branch ?? `View ${index + 1}`,
+      ...(shot.branch === undefined ? {} : { branch: shot.branch }),
       ...(shot.camera === undefined ? {} : { camera: structuredClone(shot.camera) }),
       ...(shot.animation === undefined ? {} : { animation: structuredClone(shot.animation) }),
       motionTime, rendererTime: clock(shot.rendererTime === undefined ? 0 : shot.rendererTime, 'Renderer time') };
   });
   const columns = shots.length > 1 ? 2 : 1;
-  return { sessionId: input.sessionId, expectedRevision: input.expectedRevision, width, height, shots,
+  const groups = groupShotsByBranch(shots);
+  return { sessionId: input.sessionId, expectedRevision: input.expectedRevision, width, height, shots, groups,
+    branchNames: [...new Set(shots.flatMap(shot => shot.branch === undefined ? [] : [shot.branch]))],
+    labels: input.labels === true,
     gridWidth: width * columns, gridHeight: (height + REVIEW_LIMITS.labelHeight) * Math.ceil(shots.length / columns), columns };
 }

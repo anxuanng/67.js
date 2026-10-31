@@ -310,6 +310,15 @@ raised lid, inset about 0.05 m from the top edges and 0.03 m tall.`,
     checks: [...crateChecks, { kind: 'pattern', types: ['wood', 'planks'] }],
   },
   {
+    id: 'crate-graph',
+    prompt: `A crate with a painted look of your own design: dark and light stripes with a worn, noisy edge, not a ready-made wood or
+planks preset. The body is a 0.6 m cube. Each of its four sides has a recessed panel: a frame about 0.04 m wide around a
+panel sunk about 0.02 m into the side. On top sits a raised lid, inset about 0.05 m from the top edges and 0.03 m tall.
+The stripes must follow the crate's own UV coordinates, so they stay put on the panels and the lid. Give every part UV
+coordinates with even texel density and no stretching.`,
+    checks: [...crateChecks, { kind: 'uvPattern', maxStretch: 0.15 }],
+  },
+  {
     id: 'dice',
     prompt: `A six-sided die as one solid piece: a 0.1 m cube with every edge and corner rounded to a radius of about
 0.01 m. The faces carry round recessed pips, each about 0.02 m across and at least 0.005 m deep, in the usual layouts
@@ -460,6 +469,18 @@ recipe is what gets graded.`,
     checks: [
       { kind: 'assetClip', name: 'Idle' },
       { kind: 'assetReach', endLabel: 'Palm2.R', from: [-1.3, 2.6, 0.8], to: [-1, 1.7, 1.1] },
+    ],
+  },
+  {
+    id: 'robot-walk-wave',
+    assets: true,
+    prompt: `The asset catalog holds an imported robot character. Create a scene from it, then give it a 2 second looping motion in
+which it walks and waves at the same time: its legs and body play the Walking clip, and only its right arm (the
+joint labelled UpperArm.R and everything below it) plays the Wave clip instead. Find the clips and joints by inspecting the
+scene. When it is finished, call scene_export_recipe once: the exported recipe is what gets graded.`,
+    ownPreamble: true,
+    checks: [
+      { kind: 'assetWalkAndWave', walk: 'Walking', wave: 'Wave', legs: ['LegL', 'LegR', 'LowerLegL_1', 'LowerLegR_1'], arm: 'ArmR', otherArm: 'ArmL' },
     ],
   },
   ...LONG_TASKS,

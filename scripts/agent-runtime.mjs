@@ -11,6 +11,7 @@ import { createAgentRenderJobs, EXPORT_DIRECTORY_NAME } from './agent-render-job
 import { createFrameEncoder } from './frame-encoder.mjs';
 import { isPreviewHost } from './preview-host.mjs';
 import { normalizeReview, REVIEW_LIMITS } from './agent-review.mjs';
+import { BRANCH_LIMITS, validateBranchName } from '../src/agent-branches.js';
 import { sessionProblem } from '../src/agent-errors.js';
 
 const SCENE_LIMITS = AGENT_SCENE_DEFAULT_LIMITS;
@@ -392,7 +393,7 @@ export function createAgentRuntime({ backend = 'gpu', browser: browserPath, memo
         preview: { backend, memoryBudgetMiB: memory, maximumWidth: 1024, maximumHeight: 1024, maximumImageBytes: MAXIMUM_IMAGE_BYTES, maximumActiveScenes: 1, maximumQueuedCalls: MAXIMUM_QUEUED_CALLS, evaluationTimeoutMs: EVALUATION_TIMEOUT_MS },
         review: { ...REVIEW_LIMITS, backend, memoryBudgetMiB: memory, evaluationTimeoutMs: EVALUATION_TIMEOUT_MS,
           totalTimeoutMs: EVALUATION_TIMEOUT_MS,
-          sourcePreserved: true, defaultMotionTime: null, defaultRendererTime: 0 },
+          sourcePreserved: true, defaultMotionTime: null, defaultRendererTime: 0, branches: BRANCH_LIMITS },
         phase: closing && phase !== 'closed' ? 'closing' : phase,
         availableIn: packageMetadata.version,
         assets: {
@@ -457,6 +458,10 @@ export function createAgentRuntime({ backend = 'gpu', browser: browserPath, memo
     apply(input) {
       return enqueue(async () => {
         await requirePreviewRenderer();
+        if (input.branch !== undefined) {
+          const { branch, ...rest } = input;
+          return invoke('branchApply', { ...rest, name: validateBranchName(branch) });
+        }
         return invoke('apply', input);
       });
     },
@@ -471,7 +476,8 @@ export function createAgentRuntime({ backend = 'gpu', browser: browserPath, memo
         }
         await page.setViewportSize({ width, height });
         const result = await invoke('look', { sessionId: input.sessionId,
-          ...(input.motionTime !== undefined ? { motionTime: input.motionTime } : {}) });
+          ...(input.motionTime !== undefined ? { motionTime: input.motionTime } : {}),
+          ...(input.labels ? { labels: true } : {}) });
         if (Buffer.byteLength(result.data, 'base64') > MAXIMUM_IMAGE_BYTES) {
           throw new Error('The PNG exceeds the 1 MiB image response budget. Request a smaller preview.');
         }
@@ -495,8 +501,12 @@ export function createAgentRuntime({ backend = 'gpu', browser: browserPath, memo
         await requirePreviewRenderer();
         requireSession(settings.sessionId);
         const snapshot = await invoke('snapshot', settings);
+        const branchRecipes = new Map();
+        for (const name of settings.branchNames) {
+          branchRecipes.set(name, await invoke('branchRecipe', { sessionId: settings.sessionId, name }));
+        }
         const assetBytes = snapshot.recipe.format === '67js.asset' ? await (await catalog()).read(snapshot.recipe.assetId) : undefined;
-        const privateSessionId = randomUUID();
+        let privateSessionId;
         const started = performance.now();
         let suspended = false;
         let privateCreated = false;
@@ -547,26 +557,31 @@ export function createAgentRuntime({ backend = 'gpu', browser: browserPath, memo
           reviewPage.setDefaultTimeout(15000);
           await reviewPage.goto(origin);
           await reviewPage.waitForFunction(() => Boolean(window.__agentPreview));
-          await reviewEvaluate(assetBytes ? 'createAsset' : 'create', { sessionId: privateSessionId,
-            recipe: snapshot.recipe, memoryBudgetMiB: memory, backend,
-            ...(assetBytes ? { data: assetBytes.toString('base64') } : {}) });
-          privateCreated = true;
-          await reviewEvaluate('reviewBegin', { sessionId: privateSessionId,
-            width: settings.gridWidth, height: settings.gridHeight });
+          await reviewEvaluate('reviewBegin', { width: settings.gridWidth, height: settings.gridHeight });
           session = await reviewPage.context().newCDPSession(reviewPage);
           const shots = [];
           let peakBrowserHeap = 0;
           let peakNodeBytes = 0;
-          for (const [index, shot] of settings.shots.entries()) {
-            const rendered = await reviewEvaluate('reviewShot', { sessionId: privateSessionId, shot, index,
-              width: settings.width, height: settings.height, columns: settings.columns });
-            if (backend === 'cpu' && !/swiftshader/i.test(rendered.graphics)) throw new Error('CPU review did not select SwiftShader.');
-            peakNodeBytes = Math.max(peakNodeBytes, process.memoryUsage().rss);
-            peakBrowserHeap = Math.max(peakBrowserHeap, (await session.send('Runtime.getHeapUsage')).usedSize);
-            if (peakNodeBytes > 512 * 1024 ** 2 || peakBrowserHeap > 256 * 1024 ** 2) {
-              throw new Error('Review exceeded its Node RSS or sampled browser heap guard.');
+          for (const group of settings.groups) {
+            const branchRecipe = group.branch === undefined ? undefined : branchRecipes.get(group.branch);
+            privateSessionId = randomUUID();
+            await reviewEvaluate(branchRecipe || !assetBytes ? 'create' : 'createAsset', { sessionId: privateSessionId,
+              recipe: branchRecipe ? branchRecipe.recipe : snapshot.recipe, memoryBudgetMiB: memory, backend,
+              ...(!branchRecipe && assetBytes ? { data: assetBytes.toString('base64') } : {}) });
+            privateCreated = true;
+            for (const index of group.shotIndexes) {
+              const rendered = await reviewEvaluate('reviewShot', { sessionId: privateSessionId, shot: settings.shots[index], index,
+                width: settings.width, height: settings.height, columns: settings.columns, labels: settings.labels });
+              if (backend === 'cpu' && !/swiftshader/i.test(rendered.graphics)) throw new Error('CPU review did not select SwiftShader.');
+              peakNodeBytes = Math.max(peakNodeBytes, process.memoryUsage().rss);
+              peakBrowserHeap = Math.max(peakBrowserHeap, (await session.send('Runtime.getHeapUsage')).usedSize);
+              if (peakNodeBytes > 512 * 1024 ** 2 || peakBrowserHeap > 256 * 1024 ** 2) {
+                throw new Error('Review exceeded its Node RSS or sampled browser heap guard.');
+              }
+              shots[index] = { ...rendered, ...(group.branch === undefined ? {} : { branch: group.branch, branchStale: branchRecipe.stale }) };
             }
-            shots.push(rendered);
+            await reviewEvaluate('dispose', { sessionId: privateSessionId });
+            privateCreated = false;
           }
           const result = await reviewEvaluate('reviewResult', { sessionId: privateSessionId });
           if (Buffer.byteLength(result.data, 'base64') > MAXIMUM_IMAGE_BYTES) throw new Error('The review PNG exceeds the 1 MiB image response budget. Request smaller shots.');
@@ -612,6 +627,10 @@ export function createAgentRuntime({ backend = 'gpu', browser: browserPath, memo
     restore(input) {
       return enqueue(async () => {
         await requirePreviewRenderer();
+        if (input.branch !== undefined) {
+          return invoke('keepBranch', { sessionId: input.sessionId, name: validateBranchName(input.branch), expectedRevision: input.expectedRevision });
+        }
+        if (input.checkpointId === undefined) throw new TypeError('Restore needs a checkpointId or a branch.');
         return invoke('restore', input);
       });
     },

@@ -111,6 +111,7 @@
     "smoke:character": "node scripts/smoke-character.mjs",
     "smoke:agent-character": "node scripts/smoke-agent-character.mjs",
     "smoke:agent-review": "node scripts/smoke-agent-review.mjs",
+    "smoke:agent-branches": "node scripts/smoke-agent-branches.mjs",
     "parity": "node scripts/parity-report.mjs",
     "reference": "node bench/reference/run.mjs",
     "size": "node scripts/measure-size.mjs",

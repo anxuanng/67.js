@@ -6,6 +6,8 @@ import { fitPerspectiveDistance } from './camera.js';
 import { validateSkinGeometry, validateSkinPose } from './skinning.js';
 import { validateMorphGeometry, validateMorphTransform } from './morph.js';
 import * as agentMotion from './agent-motion.js';
+import { clipLayerContextFromAsset } from './agent-clip-layers.js';
+import { clipFromGltfAnimation, createAssetLayerEvaluator, morphClipFromGltfAnimation } from './skeleton-pose.js';
 import { registerAgentSceneModule } from './agent-scene-modules.js';
 
 registerAgentSceneModule('motion', agentMotion);
@@ -296,6 +298,7 @@ export function createAgentAssetScene(asset, inputRecipe) {
   });
   const materialRecords = new Map([...materials.values()].map(record => [record.id, record]));
   const sourceNodes = new Map(asset.nodes.map(node => [node.id, structuredClone(node)]));
+  const clipLayerContext = clipLayerContextFromAsset(asset.animations, [...sourceNodes.values()]);
   const initialRecipe = copiedJson(inputRecipe);
   const assetId = initialRecipe?.assetId;
   if (typeof assetId !== 'string' || !/^[a-f0-9]{64}$/i.test(assetId)) {
@@ -308,6 +311,7 @@ export function createAgentAssetScene(asset, inputRecipe) {
   let matrices = [];
   let revision = 0;
   let sampler = null;
+  let layerEvaluator = null;
   let motionTime = null;
   let sampledCamera;
   const checkpoints = new Map();
@@ -433,7 +437,7 @@ export function createAgentAssetScene(asset, inputRecipe) {
     return {
       nodes: [...sourceNodes.values()].filter(node => node.editable),
       materials: [...baselines.values()], camera: candidate.camera,
-      ikHierarchy: [...sourceNodes.values()],
+      ikHierarchy: [...sourceNodes.values()], clipLayerContext,
       ikRootMatrix: Array.from(mat4.fromRotationTranslationScale(mat4.create(), root.rotation, root.translation, [root.scale[0], root.scale[0], root.scale[0]])),
     };
   }
@@ -446,6 +450,34 @@ export function createAgentAssetScene(asset, inputRecipe) {
     } finally {
       probe.discard();
     }
+  }
+
+  /** Layers of the motion as definitions for the pose code: decoded clips, renamed by `bones`, with their morph tracks. */
+  function layerDefinitions(layers) {
+    return layers.map(layer => {
+      const animation = asset.animations[layer.clip];
+      const loop = layer.loop !== false;
+      return {
+        clip: clipFromGltfAnimation(animation, { loop, rename: layer.bones }),
+        ...(layer.morph === false ? {} : { morphs: morphClipFromGltfAnimation(animation, { loop }) }),
+        weight: layer.weight, speed: layer.speed, offset: layer.offset, additive: layer.additive, reference: layer.reference, mask: layer.mask,
+      };
+    });
+  }
+
+  /** Evaluates the motion's clip layers at a time, or null when it has none. Stateless, so a seek equals playing. */
+  function compileLayers(motion) {
+    return motion?.layers?.length ? createAssetLayerEvaluator(asset, layerDefinitions(motion.layers)) : null;
+  }
+
+  /** Where tracks, layers and the recipe's own overrides meet: the recipe's overrides, then layers, then tracks on top. */
+  function poseOverrides(baseOverrides, layerEvaluator, sampled, time) {
+    const layered = layerEvaluator?.evaluate(time);
+    const withLayers = new Map(baseOverrides.map(override => [override.id, override]));
+    for (const override of layered?.nodeOverrides ?? []) {
+      withLayers.set(override.id, { ...withLayers.get(override.id), ...override });
+    }
+    return { nodeOverrides: trackOverrides([...withLayers.values()], sampled), morphWeights: layered?.morphWeights ?? [] };
   }
 
   function trackOverrides(baseOverrides, sampled) {
@@ -463,6 +495,7 @@ export function createAgentAssetScene(asset, inputRecipe) {
       candidate = { ...candidate, animation: transientAnimation };
     }
     let stagedSampler = transientTime === undefined ? agentMotion.compileAgentMotion(candidate.motion, motionRecipe(candidate)) : sampler;
+    const stagedLayers = transientTime === undefined ? compileLayers(candidate.motion) : layerEvaluator;
     const targetTime = transientTime === undefined ? (candidate.motion ? 0 : null) : transientTime;
     if (targetTime !== null && !stagedSampler) {
       throw new RangeError('The asset has no authored motion to sample.');
@@ -482,7 +515,7 @@ export function createAgentAssetScene(asset, inputRecipe) {
         throw new RangeError('Decoded resources and retained adapter matrices must not change identity or detach.');
       }
     }
-    const nodeOverrides = trackOverrides(candidate.nodeOverrides, sampled);
+    const { nodeOverrides, morphWeights } = poseOverrides(candidate.nodeOverrides, targetTime === null ? null : stagedLayers, sampled, targetTime);
     if (targetTime !== null && stagedSampler?.ikUsesStagedPose) {
       const nodePoses = stagedNodePoses(candidate.animation, [...nodeOverrides.values()]);
       for (const override of stagedSampler.solveStagedPose(targetTime, nodePoses)) {
@@ -491,7 +524,7 @@ export function createAgentAssetScene(asset, inputRecipe) {
     }
     let transaction;
     try {
-      transaction = asset.stagePose({ animation: candidate.animation, nodeOverrides: [...nodeOverrides.values()] });
+      transaction = asset.stagePose({ animation: candidate.animation, nodeOverrides: [...nodeOverrides.values()], morphWeights });
       const rootMatrix = mat4.fromRotationTranslationScale(mat4.create(), candidate.root.rotation, candidate.root.translation, candidate.root.scale);
       const normal = mat3.create();
       const stagedMatrices = records.map((record, index) => {
@@ -549,6 +582,7 @@ export function createAgentAssetScene(asset, inputRecipe) {
       if (transientTime === undefined) {
         recipe = candidate;
         sampler = stagedSampler;
+        layerEvaluator = stagedLayers;
       }
       materialSnapshots = stagedMaterials;
       sampledCamera = stagedCamera;
@@ -582,7 +616,7 @@ export function createAgentAssetScene(asset, inputRecipe) {
     if (!recipe.motion?.ik?.length) return {};
     const sweeper = agentMotion.compileAgentMotion(recipe.motion, motionRecipe(recipe));
     return {
-      motionIk: sweeper.sweepIk(time => stagedNodePoses(recipe.animation, [...trackOverrides(recipe.nodeOverrides, sweeper.sample(time)).values()])),
+      motionIk: sweeper.sweepIk(time => stagedNodePoses(recipe.animation, [...poseOverrides(recipe.nodeOverrides, layerEvaluator, sweeper.sample(time), time).nodeOverrides.values()])),
     };
   }
 
@@ -805,7 +839,7 @@ export function createAgentAssetScene(asset, inputRecipe) {
         revision, topologyRevision: 0, assetId: canonicalAssetId, ...diagnosticsReport(),
         counts: { nodes: parts.length, parts: parts.length, geometries: geometries.size, materials: materials.size, vertices },
         geometryBytes, animation: structuredClone(recipe.animation),
-        motion: recipe.motion ? { duration: recipe.motion.duration, loop: recipe.motion.loop, tracks: recipe.motion.tracks.length, time: motionTime } : null,
+        motion: recipe.motion ? { duration: recipe.motion.duration, loop: recipe.motion.loop, tracks: recipe.motion.tracks.length, layers: recipe.motion.layers?.length ?? 0, time: motionTime } : null,
         animations: asset.animations.map((clip, index) => ({ id: index, label: String(clip.name ?? `Clip ${index}`).slice(0, 256), duration: clip.duration })),
         nodes, offset, truncated: selected.length > offset + nodes.length,
       };

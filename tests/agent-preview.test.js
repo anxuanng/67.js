@@ -8,6 +8,7 @@ import { applyProjection } from '../src/camera.js';
 import { resolveAgentShadow, agentEnvironmentMap } from '../src/agent-look.js';
 import { createAgentAssetScene } from '../src/agent-asset.js';
 import { parseGltf } from '../src/gltf.js';
+import { BRANCH_LIMITS, createBranchStore, printableLabel } from '../src/agent-branches.js';
 import { skinnedStripAsset } from './fixtures/skinned-strip.js';
 
 const source = (await readFile(new URL('../scripts/agent-preview-browser.js', import.meta.url), 'utf8')).replace(/^import .+;\r?$/gm, '');
@@ -69,7 +70,7 @@ function previewHarness() {
     setManifoldModuleLoader: () => {},
     needsPhysics, loadPhysicsEngine, physicsEngineLoaded, setPhysicsModuleLoader: () => {},
     parseGltf, Uint8Array, atob,
-    applyProjection, mat4, resolveAgentShadow, agentEnvironmentMap,
+    applyProjection, mat4, resolveAgentShadow, agentEnvironmentMap, BRANCH_LIMITS, createBranchStore, printableLabel,
     Renderer67: FaultInjectedRenderer,
     // The optional addons only plug stages into a real renderer; the fault-injected one needs none.
     installCameraEffects: renderer => renderer, installRenderPasses: renderer => renderer,

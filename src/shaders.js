@@ -716,7 +716,7 @@ void main() {
   }
   float alpha = surfaceAlpha(textureAlpha);
   vec3 emission = emissionColor * surface.z;
-  if (USES_EMISSIVE_MAP) emission *= texture(emissiveMap, textureUV).rgb;
+  if (USES_EMISSIVE_MAP) emission *= (boxMapScale > 0.0 ? sampleBox(emissiveMap) : texture(emissiveMap, textureUV)).rgb;
   if (USES_RENDER_PASS) {
     outputColor = vec4(renderPassValue(color, normal, emission), 1.0);
     return;
