@@ -109,7 +109,7 @@ To move to a new Blender release, run `node scripts/parity-manual-snapshot.mjs`.
 | Modeling > Modifiers > Normals > Weighted Normal Modifier | missing | No equivalent. | | #42 |
 | Modeling > Modifiers > Normals > Smooth By Angle Modifier | partial | `smoothAngle` is a geometry setting. It is not a stack node. | | #42 |
 | Modeling > Modifiers > Physics > Cloth Modifier | missing | No cloth. | | #62 |
-| Modeling > Modifiers > Physics > Collision Modifier | partial | Rapier colliders work in code, with no trimesh. Recipes can not reach them. | [physics](../tests/physics.test.js) | #61 |
+| Modeling > Modifiers > Physics > Collision Modifier | partial | Rapier colliders fitted to recipe geometry as box, ball, capsule, convex hull or trimesh, so a body rests on an authored mesh. | [agent-physics](../tests/agent-physics.test.js) | #61 |
 | Modeling > Modifiers > Physics > Dynamic Paint Modifier | missing | No equivalent. | | |
 | Modeling > Modifiers > Physics > Explode Modifier | missing | No equivalent. | | |
 | Modeling > Modifiers > Physics > Fluid Modifier | partial | `addons/spume` plays back a liquid baked outside the browser. | [spume](../tests/spume.test.js) | #63 |
@@ -171,18 +171,18 @@ To move to a new Blender release, run `node scripts/parity-manual-snapshot.mjs`.
 | Animation & Rigging > Shape Keys | partial | Morph targets import, render and animate. Recipes can not author them. | [morph](../tests/morph.test.js) | #59 |
 | Animation & Rigging > Motion Paths | out of scope | Viewport display for hand work. `scene_inspect` reports motion as numbers. | | |
 | Animation & Rigging > In-Betweens | out of scope | Pose tools for a hand. Agents write keyframes and IK targets. | | |
-| Physics > Rigid Body > Rigid Body Properties | partial | Rapier bodies and colliders in code, with no trimesh. | [physics](../tests/physics.test.js) | #61 |
-| Physics > Rigid Body > Rigid Body World | partial | Recorded simulation with deterministic seeks, in code. Recipes can not reach it. | [physics](../tests/physics.test.js) | #61 |
+| Physics > Rigid Body > Rigid Body Properties | partial | Dynamic, fixed and kinematic bodies with mass, density, friction, restitution and velocity, in code and in recipes. Trimesh and convex colliders, no bone-bound bodies yet. | [physics-colliders](../tests/physics-colliders.test.js) | #61 |
+| Physics > Rigid Body > Rigid Body World | partial | Recorded simulation with deterministic seeks, in code and in a recipe `physics` section (MCP, a seek back repeats the PNG). | [agent-physics](../tests/agent-physics.test.js) | #61 |
 | Physics > Rigid Body > Rigid Body Constraints | partial | Fixed, spherical, revolute and prismatic joints, with limits and motors, in code. | [physics](../tests/physics.test.js) | #61 |
 | Physics > Cloth | missing | No cloth. | | #62 |
 | Physics > Soft Body | missing | No soft bodies. | | #62 |
 | Physics > Fluid | partial | `addons/spume` plays back a liquid baked outside the browser. There is no smoke or fire. | [spume](../tests/spume.test.js) | #63 |
 | Physics > Particle System | missing | No shared particle system. Sparks exist only in the demo film. | | #63 |
 | Physics > Dynamic Paint | missing | No equivalent. | | |
-| Physics > Forces > Gravity | partial | Physics definitions set gravity, in code. | [physics](../tests/physics.test.js) | #61 |
+| Physics > Forces > Gravity | partial | Physics definitions and recipe `physics.gravity` set gravity. | [physics](../tests/physics.test.js) | #61 |
 | Physics > Forces > Force Fields | missing | No force fields. | | #63 |
-| Physics > Collision | partial | Rapier collisions in code, with no sensors or masks. | [physics](../tests/physics.test.js) | #61 |
-| Physics > Baking Physics Simulations | partial | Physics records to a timeline in code, on the main thread. | [film-physics](../tests/film-physics.test.js) | #61 |
+| Physics > Collision | partial | Rapier collisions with sensors (enter and leave events) and 16 collision layers with masks, in code and recipes. `scene_inspect` reports contacts and resting state. | [physics-colliders](../tests/physics-colliders.test.js) | #61 |
+| Physics > Baking Physics Simulations | partial | Physics records to a timeline in code or when a recipe scene is created, on the main thread. | [film-physics](../tests/film-physics.test.js) | #61 |
 | Physics > Simulation Nodes | missing | No node graph. | | #43 |
 | Rendering > Render Engines > EEVEE | partial | A WebGL2 rasterizer with PBR, one directional shadow, 8 point lights, fog and bloom. There are no light probes. | [renderer](../tests/renderer.test.js), [scores against EEVEE](../bench/reference/baseline.json) | #52, #53, #55, #56 |
 | Rendering > Render Engines > Cycles | missing | No path tracer and no render baking. | | #55, #57 |

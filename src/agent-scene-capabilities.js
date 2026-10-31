@@ -23,7 +23,7 @@ export const AGENT_SCENE_CAPABILITIES = Object.freeze({
   operations: Object.freeze([
     'set-node', 'set-material', 'set-camera', 'add-node', 'remove-node',
     'add-geometry', 'remove-geometry', 'add-material', 'remove-material',
-    'set-environment', 'set-effects', 'set-shadow', 'set-motion', 'edit-mesh', 'set-mesh-stack',
+    'set-environment', 'set-effects', 'set-shadow', 'set-motion', 'set-physics', 'edit-mesh', 'set-mesh-stack',
   ]),
   materialTags: Object.freeze(['surface', 'unlit', 'liquid', 'foam']),
   alphaModes: RECIPE_ALPHA_MODES,
@@ -37,5 +37,13 @@ export const AGENT_SCENE_CAPABILITIES = Object.freeze({
   lightLinking: false,
   proceduralMotion: true,
   motionIk: Object.freeze(['two-bone', 'aim']),
+  // Recipe physics: Rapier (an optional peer) bakes bodies on nodes offline; playback is a seek into the bake.
+  physics: Object.freeze({
+    bodyTypes: Object.freeze(['dynamic', 'fixed', 'kinematic']),
+    shapes: Object.freeze(['box', 'ball', 'capsule', 'convex', 'trimesh']),
+    jointTypes: Object.freeze(['spherical', 'revolute', 'prismatic', 'fixed']),
+    sensors: true, collisionLayers: 16, boneBodies: false,
+    limits: Object.freeze({ maxBodies: 64, maxJoints: 64, maxDuration: 10, framesPerSecond: 60, maxTrimeshTriangles: 20000, maxHullPoints: 2048 }),
+  }),
   motionLimits: Object.freeze({ maxTracks: 128, maxKeyframesPerTrack: 64, maxKeyframes: 2048, maxDuration: 30 }),
 });

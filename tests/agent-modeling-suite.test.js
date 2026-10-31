@@ -41,3 +41,17 @@ test('an invalid recipe fails every check with the reason', async () => {
   assert.equal(grade.passed, 0);
   assert.match(grade.results[0].detail, /recipe failed/);
 });
+
+test('the tray-drop checks reject a box collider, a missing section and a body that falls through', async () => {
+  const boxCollider = structuredClone(REFERENCES['tray-drop']);
+  boxCollider.physics.bodies[0].shape = 'box';
+  assert.deepEqual(failedKinds(await gradeRecipe(taskById('tray-drop'), boxCollider)), ['tray is a fixed trimesh', 'balls rest on the pocket floor']);
+
+  const noPhysics = structuredClone(REFERENCES['tray-drop']);
+  delete noPhysics.physics;
+  assert.deepEqual(failedKinds(await gradeRecipe(taskById('tray-drop'), noPhysics)), ['tray is a fixed trimesh', 'balls rest on the pocket floor', 'seek back repeats the frame']);
+
+  const fallingThrough = structuredClone(REFERENCES['tray-drop']);
+  fallingThrough.physics.bodies[0].collidesWith = [1];
+  assert.deepEqual(failedKinds(await gradeRecipe(taskById('tray-drop'), fallingThrough)), ['balls rest on the pocket floor']);
+});
