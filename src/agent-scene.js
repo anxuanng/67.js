@@ -443,6 +443,12 @@ function cutterEstimate(cutter) {
   return geometryEstimate({ id: 'cutter', ...cutter });
 }
 
+/** Render geometry of a boolean cutter record, checked like the cutters of recipe meshes. Used by imported-part edits. */
+export function generateCutterGeometry(cutter, maxVertices) {
+  cutterEstimate(cutter);
+  return generateGeometry(cutter, maxVertices);
+}
+
 function generateGeometry(value, maxVertices) {
   switch (value.type) {
     case 'box':

@@ -37,7 +37,7 @@ The npm package includes the prebuilt `67js-mcp` command with lazy browser start
 
 ## Next
 
-1. Extend imported asset sessions with node-level editing, topology changes and deformed geometry diagnostics.
+1. Extend imported asset sessions with deformed geometry diagnostics and merging several parts into one editable mesh (part topology edits are in the next release).
 2. Extend visual review with posed geometry bounds, automatic framing and compact rendered diagnostics.
 3. Extend render jobs with hardware encoder selection, audio, longer sequences and measured adaptive output quality.
 4. Geometry, rig and asset diagnostics that help agents correct intersections, invalid transforms and unsupported materials.

@@ -1,0 +1,73 @@
+{
+  "run": "2026-10-31-12-46-sonnet-imported-topology",
+  "model": "claude-sonnet-5-5",
+  "date": "2026-10-31T12:47:26.909Z",
+  "skill": false,
+  "runsPerTask": 1,
+  "passed": 1,
+  "tasks": 1,
+  "toolCalls": 8,
+  "costUsd": 0.36,
+  "byModel": {
+    "claude-sonnet-5-5": {
+      "runs": 1,
+      "passed": 1,
+      "successRate": 1,
+      "toolCalls": 8,
+      "toolErrors": 1,
+      "inputTokens": 615234,
+      "outputTokens": 2130,
+      "costUsd": 0.36,
+      "tasks": {
+        "robot-leg-hole": {
+          "runs": 1,
+          "passed": 1,
+          "successRate": 1,
+          "toolCalls": 8,
+          "toolErrors": 1,
+          "inputTokens": 615234,
+          "outputTokens": 2130,
+          "costUsd": 0.36
+        }
+      }
+    }
+  },
+  "records": [
+    {
+      "task": "robot-leg-hole",
+      "attempt": 1,
+      "pass": true,
+      "passed": 1,
+      "total": 1,
+      "failed": [],
+      "model": "claude-sonnet-5-5",
+      "toolCalls": 8,
+      "toolErrors": 1,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_asset_catalog": 1,
+        "scene_create_asset": 1,
+        "mesh_inspect": 3,
+        "scene_inspect": 1,
+        "mesh_edit": 1,
+        "scene_export_recipe": 1
+      },
+      "features": {
+        "geometryTypes": [],
+        "meshOperations": [],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "error": "Cannot read properties of undefined (reading 'format')"
+      },
+      "turns": 10,
+      "costUsd": 0.3568561,
+      "inputTokens": 615234,
+      "outputTokens": 2130,
+      "wallSeconds": 37,
+      "exitCode": 0,
+      "stopped": "success"
+    }
+  ]
+}

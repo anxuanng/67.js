@@ -105,6 +105,11 @@ export function generateMeshGeometry(baseGeometry, edits, {
   return geometry;
 }
 
+/** Remember the polygon mesh and edit results behind geometry built outside generateMeshGeometry (imported parts). */
+export function registerEditedMesh(geometry, mesh, results) {
+  polygonMeshes.set(geometry, { mesh, results, stack: [] });
+}
+
 /**
  * Local-space positions of the faces that carry a mesh tag, shaped like geometry so bounds code can read them. Throws a
  * message naming the next step when the part is a plain shape, or the tag is unknown or on no faces.

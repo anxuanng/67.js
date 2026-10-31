@@ -68,3 +68,8 @@ export const FIELD_OPERATOR_NAMES = Object.freeze([
 ]);
 export const INSTANCE_SOURCES = Object.freeze(['grid', 'scatter', 'surface']);
 export const MAX_INSTANCE_CANDIDATES = 2048;
+
+// Imported GLB parts take the same edits. Skin weights, morph deltas and vertex colours of new geometry come from the
+// nearest point of the original surface; an edit that reaches farther than this fraction of the part's bounds
+// diagonal from that surface is rejected on a skinned or morphed part, because the transfer would be a guess.
+export const IMPORTED_MESH_EDIT_LIMITS = Object.freeze({ maxTransferFraction: 0.25, maxEditedParts: 64 });

@@ -8,9 +8,12 @@ import { validateMorphGeometry, validateMorphTransform } from './morph.js';
 import * as agentMotion from './agent-motion.js';
 import { clipLayerContextFromAsset } from './agent-clip-layers.js';
 import { clipFromGltfAnimation, createAssetLayerEvaluator, morphClipFromGltfAnimation } from './skeleton-pose.js';
-import { registerAgentSceneModule } from './agent-scene-modules.js';
+import { registerAgentSceneModule, agentSceneModule } from './agent-scene-modules.js';
+import { normalizeMeshEditEntries, meshEditEntriesAfter, realizeMeshEdits, meshEditSignature } from './agent-asset-mesh.js';
 
 registerAgentSceneModule('motion', agentMotion);
+
+const MAX_MESH_REPORTS = 16;
 
 const MAX_RECIPE_BYTES = 1024 * 1024;
 const MAX_CHECKPOINTS = 8;
@@ -26,10 +29,10 @@ const LOOK_OPERATIONS = Object.freeze({
 });
 
 export const AGENT_ASSET_CAPABILITIES = Object.freeze({
-  format: '67js.asset', schemaVersion: 1, fixedTopology: true,
+  format: '67js.asset', schemaVersion: 1, fixedTopology: false,
   operations: Object.freeze([
     'set-camera', 'set-environment', 'set-effects', 'set-shadow',
-    'set-root', 'set-animation', 'set-material', 'set-asset-node', 'set-motion',
+    'set-root', 'set-animation', 'set-material', 'set-asset-node', 'set-motion', 'edit-mesh',
   ]),
   boundsKind: 'authored-base-world',
 });
@@ -173,11 +176,11 @@ function localBounds(geometry) {
   return { min: minimum, max: maximum };
 }
 
-function framingBounds(records, matrices) {
+function framingBounds(geometryInfos, matrices) {
   const minimum = [Infinity, Infinity, Infinity];
   const maximum = [-Infinity, -Infinity, -Infinity];
-  for (let index = 0; index < records.length; index++) {
-    const bounds = records[index].geometry.bounds;
+  for (let index = 0; index < geometryInfos.length; index++) {
+    const bounds = geometryInfos[index].bounds;
     const matrix = matrices[index];
     for (let corner = 0; corner < 8; corner++) {
       const point = bounds.min.map((component, axis) => corner & (1 << axis) ? bounds.max[axis] : component);
@@ -218,11 +221,11 @@ function validatePositionBounds(maxima, world, skin) {
   }
 }
 
-function baseBounds(records, matrices) {
+function baseBounds(geometries, matrices) {
   const minimum = [Infinity, Infinity, Infinity];
   const maximum = [-Infinity, -Infinity, -Infinity];
-  for (let index = 0; index < records.length; index++) {
-    const positions = records[index].source.geometry.positions;
+  for (let index = 0; index < geometries.length; index++) {
+    const positions = geometries[index].positions;
     const matrix = matrices[index];
     for (let offset = 0; offset < positions.length; offset += 3) {
       for (let axis = 0; axis < 3; axis++) {
@@ -332,22 +335,48 @@ export function createAgentAssetScene(asset, inputRecipe) {
     }
     return [record.id, Object.freeze(output)];
   }));
-  const parts = Object.freeze(records.map(record => {
-    const part = {
-      name: record.id, geometry: record.source.geometry,
-      matrix: new Float32Array(record.source.matrix), material: materialOutputs.get(record.material.id),
-    };
-    if (record.source.skin) {
-      part.skin = record.source.skin;
-    }
-    if (record.source.morph) {
-      part.morph = record.source.morph;
-    }
-    if (record.source.castShadow !== undefined) {
-      part.castShadow = record.source.castShadow;
-    }
-    return Object.freeze(part);
-  }));
+  // Parts of edited meshes carry rebuilt geometry. The matrices stay the same arrays, so poses keep writing to them.
+  const partMatrices = records.map(record => new Float32Array(record.source.matrix));
+  let editedParts = new Map();
+  let editSignature = meshEditSignature(editedParts);
+  let topologyRevision = 0;
+
+  function geometryOf(record, edited = editedParts) {
+    return edited.get(record.id)?.geometry ?? record.source.geometry;
+  }
+
+  function geometryInfoOf(record, edited = editedParts) {
+    return edited.get(record.id)?.info ?? record.geometry;
+  }
+
+  function morphMetadataOf(record, edited = editedParts) {
+    return edited.get(record.id)?.morphMetadata ?? morphMetadata.get(record.source.geometry);
+  }
+
+  function describeGeometry(geometry) {
+    return { maxima: geometryMaxima(geometry), bounds: localBounds(geometry) };
+  }
+
+  function buildParts(edited) {
+    return Object.freeze(records.map((record, index) => {
+      const part = {
+        name: record.id, geometry: geometryOf(record, edited),
+        matrix: partMatrices[index], material: materialOutputs.get(record.material.id),
+      };
+      if (record.source.skin) {
+        part.skin = record.source.skin;
+      }
+      if (record.source.morph) {
+        part.morph = record.source.morph;
+      }
+      if (record.source.castShadow !== undefined) {
+        part.castShadow = record.source.castShadow;
+      }
+      return Object.freeze(part);
+    }));
+  }
+
+  let parts = buildParts(editedParts);
   const capabilities = Object.freeze({
     ...AGENT_ASSET_CAPABILITIES,
     animations: asset.animations.length,
@@ -359,7 +388,7 @@ export function createAgentAssetScene(asset, inputRecipe) {
 
   function normalize(input) {
     const candidate = copiedJson(input);
-    knownKeys(candidate, ['format', 'schemaVersion', 'assetId', 'camera', ...LOOK_FIELDS, 'root', 'animation', 'materialOverrides', 'nodeOverrides', 'motion'], 'asset recipe');
+    knownKeys(candidate, ['format', 'schemaVersion', 'assetId', 'camera', ...LOOK_FIELDS, 'root', 'animation', 'materialOverrides', 'nodeOverrides', 'motion', 'meshEdits'], 'asset recipe');
     if (candidate.format !== '67js.asset' || candidate.schemaVersion !== 1 ||
         typeof candidate.assetId !== 'string' || candidate.assetId.toLowerCase() !== canonicalAssetId) {
       throw new RangeError('Expected the bound 67js.asset schemaVersion 1 assetId.');
@@ -421,6 +450,10 @@ export function createAgentAssetScene(asset, inputRecipe) {
       camera: view.camera, environment: view.environment, effects: view.effects, shadow: view.shadow,
       root: rootFrom(candidate.root), animation, materialOverrides: normalizedOverrides, nodeOverrides: normalizedNodes,
     });
+    const meshEdits = normalizeMeshEditEntries(candidate.meshEdits, records);
+    if (meshEdits.length) {
+      result.meshEdits = meshEdits;
+    }
     if (candidate.motion?.ik?.length && Math.max(...result.root.scale) - Math.min(...result.root.scale) > 1e-3 * Math.max(...result.root.scale)) {
       throw new RangeError('Motion ik needs a uniform asset root scale.');
     }
@@ -504,10 +537,11 @@ export function createAgentAssetScene(asset, inputRecipe) {
     if (asset.parts.length !== records.length) {
       throw new RangeError('Decoded part membership must remain fixed.');
     }
+    const stagedEdits = realizeMeshEdits(candidate.meshEdits ?? [], records, editedParts, describeGeometry);
     for (let index = 0; index < records.length; index++) {
       const record = records[index];
       const source = record.source;
-      if (asset.parts[index] !== source || source.geometry !== parts[index].geometry ||
+      if (asset.parts[index] !== source || geometryOf(record) !== parts[index].geometry ||
           source.skin !== parts[index].skin || source.morph !== parts[index].morph ||
           source.matrix !== record.sourceMatrix || source.skin?.jointMatrices !== record.jointMatrices ||
           source.skin?.jointWorldMatrices !== record.jointWorldMatrices || source.morph?.weights !== record.morphWeights ||
@@ -536,17 +570,17 @@ export function createAgentAssetScene(asset, inputRecipe) {
           throw new RangeError('Asset root/world matrices must remain finite and nonsingular at Float32 precision.');
         }
         if (posed.skin) {
-          validateSkinPose(posed.skin, record.source.geometry, world);
+          validateSkinPose(posed.skin, geometryOf(record, stagedEdits), world);
         }
         if (posed.morph) {
-          validateMorphTransform(posed.morph, morphMetadata.get(record.source.geometry), world, posed.skin);
+          validateMorphTransform(posed.morph, morphMetadataOf(record, stagedEdits), world, posed.skin);
         } else {
-          validatePositionBounds(record.geometry.maxima, world, posed.skin);
+          validatePositionBounds(geometryInfoOf(record, stagedEdits).maxima, world, posed.skin);
         }
         return world;
       });
       if (autoFrame) {
-        candidate.camera = framedCamera(framingBounds(records, stagedMatrices));
+        candidate.camera = framedCamera(framingBounds(records.map(record => geometryInfoOf(record, stagedEdits)), stagedMatrices));
         candidate = normalize(candidate);
         stagedSampler = agentMotion.compileAgentMotion(candidate.motion, motionRecipe(candidate));
         sampled = targetTime === null ? null : stagedSampler.sample(targetTime);
@@ -578,6 +612,13 @@ export function createAgentAssetScene(asset, inputRecipe) {
       preparedTransaction.commit();
       for (let index = 0; index < parts.length; index++) {
         Float32Array.prototype.set.call(parts[index].matrix, stagedMatrices[index]);
+      }
+      const stagedSignature = meshEditSignature(stagedEdits);
+      if (stagedSignature !== editSignature) {
+        editedParts = stagedEdits;
+        editSignature = stagedSignature;
+        parts = buildParts(editedParts);
+        topologyRevision++;
       }
       if (transientTime === undefined) {
         recipe = candidate;
@@ -629,12 +670,15 @@ export function createAgentAssetScene(asset, inputRecipe) {
 
   publish(initialRecipe, cameraOmitted, false);
   return Object.freeze({
-    parts, capabilities,
+    capabilities,
+    get parts() {
+      return parts;
+    },
     get revision() {
       return revision;
     },
     get topologyRevision() {
-      return 0;
+      return topologyRevision;
     },
     get camera() {
       return structuredClone(sampledCamera);
@@ -756,8 +800,11 @@ export function createAgentAssetScene(asset, inputRecipe) {
               override[field] = operation[field];
             }
           }
+        } else if (operation.type === 'edit-mesh') {
+          knownKeys(operation, ['type', 'geometry', 'edits', 'replace'], 'operation');
+          candidate.meshEdits = meshEditEntriesAfter(candidate.meshEdits ?? [], operation, records);
         } else {
-          throw new TypeError('Unsupported asset operation. Geometry and topology editing are unavailable.');
+          throw new TypeError('Unsupported asset operation. Imported parts take edit-mesh (mesh_edit with a mesh ID such as mesh-0); other geometry changes are unavailable.');
         }
       }
       return publish(candidate);
@@ -789,7 +836,7 @@ export function createAgentAssetScene(asset, inputRecipe) {
           return sourceNodes.get(id);
         });
         const nodes = structuredClone(selected.slice(offset, offset + limit));
-        return { revision, topologyRevision: 0, assetId: canonicalAssetId, kind: 'hierarchy', ...motionIkReport(), ...diagnosticsReport(),
+        return { revision, topologyRevision, assetId: canonicalAssetId, kind: 'hierarchy', ...motionIkReport(), ...diagnosticsReport(),
           counts: { nodes: sourceNodes.size, joints: [...sourceNodes.values()].filter(node => node.joint).length },
           nodes, offset, truncated: offset + nodes.length < selected.length,
           motion: recipe.motion ? { duration: recipe.motion.duration, loop: recipe.motion.loop, tracks: recipe.motion.tracks.length, time: motionTime } : null };
@@ -805,26 +852,28 @@ export function createAgentAssetScene(asset, inputRecipe) {
         return record;
       });
       const visible = selected.slice(offset, offset + limit);
-      if (options.includeBounds && visible.reduce((total, record) => total + record.source.geometry.positions.length / 3, 0) > MAX_INSPECTION_VERTICES) {
+      if (options.includeBounds && visible.reduce((total, record) => total + geometryOf(record).positions.length / 3, 0) > MAX_INSPECTION_VERTICES) {
         throw new RangeError('Bounds inspection exceeds two million authored base vertices. Select fewer meshes.');
       }
       const nodes = visible.map(record => {
         const index = Number(record.id.slice(5));
         const node = {
           id: record.id, label: record.label, geometry: record.geometry.id, material: record.material.id,
-          vertices: record.source.geometry.positions.length / 3,
-          triangles: record.source.geometry.indices.length / 3,
-          skinned: Boolean(record.source.skin), morphTargets: record.source.geometry.morphTargets?.length ?? 0,
+          vertices: geometryOf(record).positions.length / 3,
+          triangles: geometryOf(record).indices.length / 3,
+          skinned: Boolean(record.source.skin), morphTargets: geometryOf(record).morphTargets?.length ?? 0,
+          ...(editedParts.has(record.id) ? { edited: true } : {}),
         };
         if (options.includeBounds) {
-          node.bounds = baseBounds([record], [matrices[index]]);
+          node.bounds = baseBounds([geometryOf(record)], [matrices[index]]);
           node.boundsKind = AGENT_ASSET_CAPABILITIES.boundsKind;
         }
         return node;
       });
       let geometryBytes = 0;
       let vertices = 0;
-      for (const geometry of geometries.keys()) {
+      const activeGeometries = new Set(records.map(record => geometryOf(record)));
+      for (const geometry of activeGeometries) {
         vertices += geometry.positions.length / 3;
         for (const value of Object.values(geometry)) {
           if (ArrayBuffer.isView(value)) {
@@ -836,13 +885,42 @@ export function createAgentAssetScene(asset, inputRecipe) {
         }
       }
       return {
-        revision, topologyRevision: 0, assetId: canonicalAssetId, ...diagnosticsReport(),
-        counts: { nodes: parts.length, parts: parts.length, geometries: geometries.size, materials: materials.size, vertices },
+        revision, topologyRevision, assetId: canonicalAssetId, ...diagnosticsReport(),
+        counts: { nodes: parts.length, parts: parts.length, geometries: activeGeometries.size, materials: materials.size, vertices },
         geometryBytes, animation: structuredClone(recipe.animation),
         motion: recipe.motion ? { duration: recipe.motion.duration, loop: recipe.motion.loop, tracks: recipe.motion.tracks.length, layers: recipe.motion.layers?.length ?? 0, time: motionTime } : null,
         animations: asset.animations.map((clip, index) => ({ id: index, label: String(clip.name ?? `Clip ${index}`).slice(0, 256), duration: clip.duration })),
         nodes, offset, truncated: selected.length > offset + nodes.length,
       };
+    },
+    /** Polygon reports of imported parts, with the edit results and what was transferred to the edited geometry. */
+    inspectMeshes(options = {}) {
+      knownKeys(options, ['geometries'], 'mesh inspection');
+      const requested = options.geometries ?? records.slice(0, MAX_MESH_REPORTS).map(record => record.id);
+      if (!Array.isArray(requested) || requested.length > MAX_MESH_REPORTS) {
+        throw new RangeError(`Inspect at most ${MAX_MESH_REPORTS} mesh IDs per call.`);
+      }
+      const meshes = requested.map(id => {
+        const index = records.findIndex(record => record.id === id);
+        if (index < 0) {
+          throw new RangeError(`Unknown mesh ID: ${id}. Imported mesh IDs look like mesh-0, mesh-1; scene_inspect lists them.`);
+        }
+        const record = records[index];
+        const edited = editedParts.get(id);
+        const matrix = matrices[index];
+        const scale = mat4.getScaling([0, 0, 0], matrix).map(value => Number(value.toPrecision(4)));
+        // Where each local axis points in the world, so an agent can place a cutter or select by direction.
+        const localAxesInWorld = [0, 4, 8].map(offset => {
+          const length = Math.hypot(matrix[offset], matrix[offset + 1], matrix[offset + 2]) || 1;
+          return [0, 1, 2].map(axis => Number((matrix[offset + axis] / length).toFixed(3)));
+        });
+        return {
+          geometry: id, ...agentSceneModule('mesh').importedMeshReport(geometryOf(record)),
+          ...(edited ? { transfer: edited.transfer } : {}),
+          localToWorldScale: scale, localAxesInWorld,
+        };
+      });
+      return { revision, meshes, truncated: false };
     },
     checkpoint() {
       if (checkpoints.size >= MAX_CHECKPOINTS) {

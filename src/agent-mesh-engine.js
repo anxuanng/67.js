@@ -4,3 +4,5 @@ export { normalizeMeshEdits, normalizeMeshStack } from './mesh-recipe.js';
 export { generateMeshLods, generateGeometryLods, generateAssetLods } from './mesh-lod.js';
 export { expandInstancedNodes } from './mesh-instances.js';
 export { loadMeshBooleans, meshBooleansLoaded, setManifoldModuleLoader } from './mesh-boolean.js';
+export { editImportedGeometry } from './mesh-import.js';
+export { meshReport as importedMeshReport, registerEditedMesh } from './agent-mesh.js';
