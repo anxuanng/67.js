@@ -262,7 +262,7 @@ child included) is rejected with the loop spelled out. Solving is deterministic:
 translations, whatever the order of the nodes. A relation that cannot be satisfied, such as an unknown tag, rejects the
 whole edit and names the relation. `relations: []` in `set-node` removes them and keeps the part where it is. The
 exported recipe holds both the relations and the solved translations. Motion and physics move nodes after the solve and
-know nothing of relations. The code loads on demand (`relations`, see On-demand code).
+know nothing of relations. The code loads on demand (`relations`, see On-demand code). The MCP schema only says `relations` is a list; the kinds and fields are in `scene_capabilities` under `relations`.
 
 ## Transactions and ownership
 

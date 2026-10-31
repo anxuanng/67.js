@@ -105,6 +105,13 @@ function checkOne(check, measures) {
       const overlaps = otherAxes.every(other => node.min[other] < against.max[other] && node.max[other] > against.min[other]);
       return { pass: Math.abs(gap) <= TOUCH_TOLERANCE && overlaps, detail: `${check.node} is ${round(gap)} m from ${check.against}${overlaps ? '' : ' and does not overlap it'}` };
     }
+    case 'centreAt': {
+      const bounds = measures.nodeBounds(check.node);
+      if (!bounds) return { pass: false, detail: `no drawn node ${check.node}` };
+      const centre = bounds.min.map((minimum, axis) => (minimum + bounds.max[axis]) / 2);
+      const distance = Math.hypot(...centre.map((value, axis) => value - check.position[axis]));
+      return { pass: distance <= 0.01, detail: `${check.node} centre is ${round(distance)} m from where it belongs` };
+    }
     case 'nodeAt': {
       const position = measures.nodePosition(check.node, check.time);
       if (!position) return { pass: false, detail: `no drawn node ${check.node}` };

@@ -7,6 +7,7 @@ const PEBBLE_SIZE = [0.08, 0.03, 0.05];
 
 import { walkerRecipe } from './walker.mjs';
 import { KETTLE_RESIZED, KETTLE_RESIZED_PLAIN } from './kettle.mjs';
+import { DESK_FINAL, DESK_FINAL_PLAIN } from './desk.mjs';
 
 const material = [{ id: 'paint', color: [0.6, 0.55, 0.5] }];
 
@@ -164,6 +165,8 @@ function robotArmSolver(root, middle, end, target) {
 export const REFERENCES = {
   'kettle-resize': KETTLE_RESIZED,
   'kettle-resize-plain': KETTLE_RESIZED_PLAIN,
+  'desk-resize': DESK_FINAL,
+  'desk-resize-plain': DESK_FINAL_PLAIN,
   'chamfer-plate': scene(
     [{
       id: 'plate', type: 'mesh', base: { type: 'box', bevel: 0 }, edits: [

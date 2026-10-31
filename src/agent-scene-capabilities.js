@@ -64,6 +64,18 @@ export const AGENT_SCENE_CAPABILITIES = Object.freeze({
   proceduralMotion: true,
   motionIk: Object.freeze(['two-bone', 'aim']),
   // Authored rigs: armatures expand into bone nodes, and a node `skin` binds a mesh with automatic weights (four influences).
+  // Node relations place a mesh node against other mesh nodes (world bounds), solved again after every edit.
+  relations: Object.freeze({
+    maxPerNode: 8, maxNodes: 256, sides: Object.freeze(['+x', '-x', '+y', '-y', '+z', '-z']),
+    kinds: Object.freeze({
+      attach: 'to, side, offset: touch the face of the target on side and centre on the other axes; offset is the distance, negative sinks in',
+      gap: 'to, side, offset: as attach on that axis only',
+      flush: 'to, side, offset: own face on side level with the same face of the target',
+      align: 'to, axis, at (min, center, max), offset: anchor on one axis',
+      centered: 'to, axes (default x, y, z): centre on those axes',
+    }),
+    notes: 'Optional region (a mesh tag) uses only those faces of the target. One relation per axis, no loops, mesh nodes only. A relation replaces translation on its axes. set-node with relations [] removes them.',
+  }),
   rigging: Object.freeze({ presets: Object.freeze(['humanoid', 'quadruped']), maxArmatures: 16, maxBones: 128, maxInfluences: 4, weights: 'bone-distance' }),
   motionConstraints: Object.freeze(['copy_location', 'copy_rotation', 'copy_scale', 'limit_location', 'limit_rotation', 'track_to', 'child_of', 'floor']),
   motionDrivers: Object.freeze({ maxDrivers: 32, maxConstraints: 32, maxExpressionParts: 64, maxExpressionDepth: 8 }),

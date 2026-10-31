@@ -1,16 +1,16 @@
 {
-  "measured": "2026-10-31, from scripts/measure-tool-cost.mjs; raised by 800 total and 150 for scene_apply for branch and labels fields (no new tool), then by 2600 total, 1300 for scene_create and 1350 for scene_apply for the node relations field (no new tool); was 373388 schema bytes before shared IDs and recipe references",
-  "schemaTotalBytes": 193300,
+  "measured": "2026-10-31, from scripts/measure-tool-cost.mjs; raised by 800 total and 150 for scene_apply for branch and labels fields (no new tool), then by 600 total, 300 for scene_create and 350 for scene_apply for the node relations field (no new tool; its fields are in scene_capabilities, whose result budget grew from 3410 to 4200); was 373388 schema bytes before shared IDs and recipe references",
+  "schemaTotalBytes": 191300,
   "schemaToolBytes": {
-    "scene_create": 62200,
-    "scene_apply": 48900,
+    "scene_create": 61200,
+    "scene_apply": 47900,
     "mesh_edit": 34000,
     "scene_create_asset": 19750,
     "mesh_stack": 11500
   },
   "schemaOtherToolBytes": 4000,
   "resultBytes": {
-    "scene_capabilities": 3410,
+    "scene_capabilities": 4200,
     "scene_create": 1400,
     "scene_inspect": 1400,
     "mesh_inspect": 1200,

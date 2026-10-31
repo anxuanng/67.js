@@ -3,6 +3,7 @@
 
 import { REFERENCES } from './references.mjs';
 import { KETTLE_START, KETTLE_START_PLAIN } from './kettle.mjs';
+import { DESK_START, DESK_START_PLAIN, DESK_CHECKS } from './desk.mjs';
 
 export const PROMPT_PREAMBLE = `You are modeling with the 67.js MCP tools. Build the object described below as a procedural recipe scene:
 start it with scene_create, refine it with mesh_edit, mesh_stack and scene_apply, and look at it with scene_look when
@@ -43,6 +44,21 @@ const KETTLE_CHECKS = [
 const KETTLE_TASKS = [
   { id: 'kettle-resize', startRecipe: KETTLE_START, prompt: KETTLE_PROMPT, checks: KETTLE_CHECKS },
   { id: 'kettle-resize-plain', startRecipe: KETTLE_START_PLAIN, prompt: KETTLE_PROMPT, checks: KETTLE_CHECKS },
+];
+
+// Twelve stacked parts and three resizes, one after the other, with a check between steps. The start recipe either
+// holds relations or absolute positions; the same checks grade both after the last step.
+const DESK_PROMPT = `The desk scene below has 12 parts stacked on each other: a top, four legs, two drawers hanging under the top
+with a handle on the front (+Z) of each, a lamp on a base and a book on the top. Do three steps in order, and after each step
+call scene_inspect with includeBounds to check the result before the next. Step 1: widen the top to 1.6 m along X.
+Step 2: deepen the top to 0.8 m along Z and deepen both drawers to 0.7 m along Z. Step 3: thicken the top to 0.08 m while its
+upper surface stays at 0.75 m, and shorten the legs so they still run from the ground to the underside of the top. Keep the
+size of every other part. After the last step every part must sit where it sat before, relative to what it sits against: legs
+0.05 m in from the edges of the top, drawers 0.1 m in from the ends of the top and centred in Z, a handle touching the front
+of its drawer and centred on it, the lamp base and the book on the top at the same offsets from its ends, the lamp on its base.`;
+const DESK_TASKS = [
+  { id: 'desk-resize', startRecipe: DESK_START, prompt: DESK_PROMPT, checks: DESK_CHECKS },
+  { id: 'desk-resize-plain', startRecipe: DESK_START_PLAIN, prompt: DESK_PROMPT, checks: DESK_CHECKS },
 ];
 
 const LONG_TASKS = [
@@ -492,6 +508,7 @@ recipe is what gets graded.`,
     ],
   },
   ...KETTLE_TASKS,
+  ...DESK_TASKS,
   ...LONG_TASKS,
 ];
 
