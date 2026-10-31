@@ -50,6 +50,38 @@ Open tube ends have no caps. Paths can intersect themselves.
 
 Segments range from 3 to 2048. Radial segments range from 3 to 128.
 
+## Curve
+
+`curve(points, { closed = false, radius = 0.05, taper, profile, resolution = 12, radialSegments = 8, maxVertices })`
+sweeps a cross-section along a chain of cubic Bezier spans, the way a Blender curve with a bevel does.
+
+- A point is `[x, y, z]`, which gets smooth automatic handles, or `{ position, handleIn, handleOut }` with handles as
+  absolute positions (Blender's convention). A lone handle is mirrored. Open curves need two points, closed ones three, at most 1024.
+- `resolution` is samples per span (1 to 64). The rings use the minimum-twist frames of `tube`.
+- `taper` is 2 to 64 radius factors, at least 0, spread evenly along the arc length: `[1, 0.2]` thins to a fifth.
+- `profile` is 3 to 256 `[x, y]` points of a closed cross-section in units of `radius`, either winding. Without it the
+  section is a circle of `radialSegments` sides (3 to 128). Corners sharper than 40 degrees stay flat shaded.
+- Open curves get flat caps with their own vertices, so the surface is closed and works with booleans.
+
+Volume, area and bounds match Blender 5.2 for an open and a closed Bezier curve with a round bevel to 2e-5
+(`tests/blender-curve-text.test.js`). A Blender bevel resolution of `n` is `radialSegments: 4 + 2n`.
+
+## Text
+
+`text(content, { size = 1, depth = 0.2, font = 'default', align = 'left', curveSegments = 4, maxVertices })`
+extrudes glyph outlines. The text lies in the XY plane with its first baseline on `y = 0`, reads along +X, faces +Z and is centred
+through its depth. `"\n"` starts a new line 1.2 em lower. `size` is the em height. At most 256 characters and 16 lines.
+
+- The bundled font is DejaVu Sans, printable ASCII only: 94 glyphs, 20 KB of data, about 7 KB gzipped. It loads on demand
+  with the text code and is never in the core, model or mesh entries. A character outside it throws.
+- `registerFont(name, table)` (or `await registerAgentSceneFont(name, table)` from the agent scene entry) adds a font table:
+  `{ unitsPerEm, ascender, descender, glyphs: { "A": [advance, contour...] } }` where a contour is `x, y, onCurve` repeated, in TrueType
+  quadratic points. `scripts/build-font.py` makes a table from a TrueType file with fontTools. A glyph is limited to 128 points, a font
+  to 2048 glyphs and 400000 points. The MCP never takes a font file or URL.
+- `curveSegments` straight pieces per outline curve (1 to 16). Rings inside an odd number of others become holes.
+- One glyph and a word match Blender 5.2 with the same font in volume, area and bounds to 2e-5. Blender's text size unit is not the em,
+  so the golden script calibrates it on the capital I. There is no kerning, bevel or text on a curve.
+
 ## Resource and precision limits
 
 Each generator accepts at most 4096 input points. Extrusion applies that limit across its contour and holes.

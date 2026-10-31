@@ -6,9 +6,11 @@
 const MODULE_LOADERS = {
   mesh: () => import('./agent-mesh-engine.js'),
   modeling: () => import('./modeling.js'),
+  text: () => import('./text-geometry.js'),
   motion: () => import('./agent-motion.js'),
   physics: () => import('./agent-physics.js'),
   patterns: () => import('./material-patterns.js'),
+  relations: () => import('./agent-relations.js'),
 };
 
 const loadedModules = {};
@@ -19,10 +21,12 @@ let physicsLoader = null;
 // Each test errs on the side of loading: a false positive costs a chunk, a false negative a clear error.
 const MODULE_MARKERS = {
   mesh: ['"type":"mesh"', '"instances"'],
-  modeling: ['"type":"lathe"', '"type":"extrude"', '"type":"tube"'],
+  modeling: ['"type":"lathe"', '"type":"extrude"', '"type":"tube"', '"type":"curve"'],
+  text: ['"type":"text"'],
   motion: ['"motion":{'],
   physics: ['"physics":{'],
   patterns: ['"pattern"'],
+  relations: ['"relations":'],
 };
 
 /** Whether a recipe, operation list or edit list contains a boolean edit, which needs loadMeshBooleans() first. */
@@ -88,6 +92,12 @@ export function allAgentSceneModulesLoaded() {
 
 export function agentSceneModuleLoaded(name) {
   return Boolean(loadedModules[name]);
+}
+
+/** Add a font table that recipes can name in a text geometry. Loads the text code first. */
+export async function registerAgentSceneFont(name, fontData) {
+  const module = await loadModule('text');
+  module.registerFont(name, fontData);
 }
 
 /** Replace how the Manifold module is imported. Applied when the mesh code loads, if it has not yet. */

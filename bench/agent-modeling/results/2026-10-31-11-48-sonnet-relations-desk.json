@@ -1,0 +1,299 @@
+{
+  "run": "2026-10-31-11-48-sonnet-relations-desk",
+  "model": "claude-sonnet-5-5",
+  "date": "2026-10-31T11:53:11.635Z",
+  "skill": false,
+  "runsPerTask": 3,
+  "passed": 6,
+  "tasks": 6,
+  "toolCalls": 48,
+  "costUsd": 2.61,
+  "byModel": {
+    "claude-sonnet-5-5": {
+      "runs": 6,
+      "passed": 6,
+      "successRate": 1,
+      "toolCalls": 48,
+      "toolErrors": 0,
+      "inputTokens": 3663877,
+      "outputTokens": 24708,
+      "costUsd": 2.61,
+      "tasks": {
+        "desk-resize": {
+          "runs": 3,
+          "passed": 3,
+          "successRate": 1,
+          "toolCalls": 24,
+          "toolErrors": 0,
+          "inputTokens": 1894000,
+          "outputTokens": 11498,
+          "costUsd": 1.35
+        },
+        "desk-resize-plain": {
+          "runs": 3,
+          "passed": 3,
+          "successRate": 1,
+          "toolCalls": 24,
+          "toolErrors": 0,
+          "inputTokens": 1769877,
+          "outputTokens": 13210,
+          "costUsd": 1.26
+        }
+      }
+    }
+  },
+  "records": [
+    {
+      "task": "desk-resize",
+      "attempt": 1,
+      "pass": true,
+      "passed": 21,
+      "total": 21,
+      "failed": [],
+      "model": "claude-sonnet-5-5",
+      "toolCalls": 8,
+      "toolErrors": 0,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_create": 1,
+        "scene_apply": 3,
+        "scene_inspect": 3,
+        "scene_export_recipe": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "box"
+        ],
+        "meshOperations": [],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "error": "page.evaluate: Error: This recipe needs the relations code, which loads on demand: await loadAgentSceneModules(recipe) before createAgentScene or apply."
+      },
+      "turns": 10,
+      "costUsd": 0.40273050000000005,
+      "inputTokens": 568446,
+      "outputTokens": 3937,
+      "wallSeconds": 39,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "desk-resize-plain",
+      "attempt": 1,
+      "pass": true,
+      "passed": 21,
+      "total": 21,
+      "failed": [],
+      "model": "claude-sonnet-5-5",
+      "toolCalls": 8,
+      "toolErrors": 0,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_create": 1,
+        "scene_apply": 3,
+        "scene_inspect": 3,
+        "scene_export_recipe": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "box"
+        ],
+        "meshOperations": [],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 1,
+            "side": 1,
+            "three-quarter": 1
+          },
+          "mean": 1
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-10-31-11-48-sonnet-relations-desk/look/1/desk-resize-plain-front.png",
+          "artifacts/agent-modeling/2026-10-31-11-48-sonnet-relations-desk/look/1/desk-resize-plain-side.png",
+          "artifacts/agent-modeling/2026-10-31-11-48-sonnet-relations-desk/look/1/desk-resize-plain-three-quarter.png"
+        ]
+      },
+      "turns": 10,
+      "costUsd": 0.3964034,
+      "inputTokens": 558407,
+      "outputTokens": 4414,
+      "wallSeconds": 40,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "desk-resize",
+      "attempt": 2,
+      "pass": true,
+      "passed": 21,
+      "total": 21,
+      "failed": [],
+      "model": "claude-sonnet-5-5",
+      "toolCalls": 8,
+      "toolErrors": 0,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_create": 1,
+        "scene_apply": 3,
+        "scene_inspect": 3,
+        "scene_export_recipe": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "box"
+        ],
+        "meshOperations": [],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "error": "page.evaluate: Error: This recipe needs the relations code, which loads on demand: await loadAgentSceneModules(recipe) before createAgentScene or apply."
+      },
+      "turns": 10,
+      "costUsd": 0.4730645,
+      "inputTokens": 663156,
+      "outputTokens": 3873,
+      "wallSeconds": 38,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "desk-resize-plain",
+      "attempt": 2,
+      "pass": true,
+      "passed": 21,
+      "total": 21,
+      "failed": [],
+      "model": "claude-sonnet-5-5",
+      "toolCalls": 8,
+      "toolErrors": 0,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_create": 1,
+        "scene_apply": 3,
+        "scene_inspect": 3,
+        "scene_export_recipe": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "box"
+        ],
+        "meshOperations": [],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 1,
+            "side": 1,
+            "three-quarter": 1
+          },
+          "mean": 1
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-10-31-11-48-sonnet-relations-desk/look/2/desk-resize-plain-front.png",
+          "artifacts/agent-modeling/2026-10-31-11-48-sonnet-relations-desk/look/2/desk-resize-plain-side.png",
+          "artifacts/agent-modeling/2026-10-31-11-48-sonnet-relations-desk/look/2/desk-resize-plain-three-quarter.png"
+        ]
+      },
+      "turns": 10,
+      "costUsd": 0.46708440000000007,
+      "inputTokens": 652593,
+      "outputTokens": 4528,
+      "wallSeconds": 44,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "desk-resize",
+      "attempt": 3,
+      "pass": true,
+      "passed": 21,
+      "total": 21,
+      "failed": [],
+      "model": "claude-sonnet-5-5",
+      "toolCalls": 8,
+      "toolErrors": 0,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_create": 1,
+        "scene_apply": 3,
+        "scene_inspect": 3,
+        "scene_export_recipe": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "box"
+        ],
+        "meshOperations": [],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "error": "page.evaluate: Error: This recipe needs the relations code, which loads on demand: await loadAgentSceneModules(recipe) before createAgentScene or apply."
+      },
+      "turns": 10,
+      "costUsd": 0.47067070000000005,
+      "inputTokens": 662398,
+      "outputTokens": 3688,
+      "wallSeconds": 39,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "desk-resize-plain",
+      "attempt": 3,
+      "pass": true,
+      "passed": 21,
+      "total": 21,
+      "failed": [],
+      "model": "claude-sonnet-5-5",
+      "toolCalls": 8,
+      "toolErrors": 0,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_create": 1,
+        "scene_apply": 3,
+        "scene_inspect": 3,
+        "scene_export_recipe": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "box"
+        ],
+        "meshOperations": [],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 1,
+            "side": 1,
+            "three-quarter": 1
+          },
+          "mean": 1
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-10-31-11-48-sonnet-relations-desk/look/3/desk-resize-plain-front.png",
+          "artifacts/agent-modeling/2026-10-31-11-48-sonnet-relations-desk/look/3/desk-resize-plain-side.png",
+          "artifacts/agent-modeling/2026-10-31-11-48-sonnet-relations-desk/look/3/desk-resize-plain-three-quarter.png"
+        ]
+      },
+      "turns": 10,
+      "costUsd": 0.3955793000000001,
+      "inputTokens": 558877,
+      "outputTokens": 4268,
+      "wallSeconds": 42,
+      "exitCode": 0,
+      "stopped": "success"
+    }
+  ]
+}

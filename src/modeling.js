@@ -1,4 +1,5 @@
 import { buildLathe, buildExtrusion, buildTube } from './modeling-shapes.js';
+import { buildBezierSweep, resolveHandles } from './modeling-bezier.js';
 
 const MAX_INPUT_POINTS = 4096;
 const DEFAULT_VERTEX_LIMIT = 250_000;
@@ -23,6 +24,34 @@ function pointsFrom(input, size, minimum, name) {
     if (points[index].every((value, axis) => value === points[index - 1][axis])) throw new RangeError(`${name} cannot contain consecutive duplicate points.`);
   }
   return points;
+}
+
+function vectorFrom(input, name) {
+  if (!Array.isArray(input) || input.length !== 3) throw new TypeError(`${name} needs three components.`);
+  return input.map(value => finite(value, name));
+}
+
+function knotFrom(input, index) {
+  if (Array.isArray(input)) return { position: vectorFrom(input, 'point') };
+  if (!input || typeof input !== 'object') throw new TypeError(`Curve point ${index} must be [x, y, z] or an object with position.`);
+  for (const key of Object.keys(input)) {
+    if (!['position', 'handleIn', 'handleOut'].includes(key)) throw new TypeError(`Unknown curve point field: ${key}.`);
+  }
+  return {
+    position: vectorFrom(input.position, 'position'),
+    ...(input.handleIn === undefined ? {} : { handleIn: vectorFrom(input.handleIn, 'handleIn') }),
+    ...(input.handleOut === undefined ? {} : { handleOut: vectorFrom(input.handleOut, 'handleOut') }),
+  };
+}
+
+function taperFrom(taper) {
+  if (taper === undefined) return null;
+  if (!Array.isArray(taper) || taper.length < 2 || taper.length > 64) throw new RangeError('taper needs 2 to 64 radius factors.');
+  return taper.map(factor => {
+    finite(factor, 'taper');
+    if (factor < 0) throw new RangeError('taper factors cannot be negative.');
+    return factor;
+  });
 }
 
 function checkBudget(vertices, maximum) {
@@ -239,6 +268,31 @@ export function extrude(contour, {
     }
   }
   return closeTJunctions(meshFrom(buildExtrusion(outer, inner, { depth, steps, bevel, bevelThickness, bevelSegments }), maxVertices));
+}
+
+/**
+ * Sweep a round or custom profile along a cubic Bezier curve. Points are [x, y, z] (smooth automatic handles) or
+ * { position, handleIn, handleOut } with absolute handle positions; `taper` lists radius factors spread along the length.
+ */
+export function curve(points, {
+  closed = false, radius = 0.05, taper, profile, resolution = 12, radialSegments = 8,
+  maxVertices = DEFAULT_VERTEX_LIMIT,
+} = {}) {
+  radius = finite(radius, 'radius');
+  if (radius <= 0 || typeof closed !== 'boolean') throw new RangeError('radius must be positive and closed must be boolean.');
+  integer(resolution, 1, 64, 'resolution');
+  integer(radialSegments, 3, 128, 'radialSegments');
+  if (!Array.isArray(points) || points.length < (closed ? 3 : 2) || points.length > 1024) {
+    throw new RangeError(`points needs ${closed ? 3 : 2} to 1024 entries.`);
+  }
+  const knots = points.map(knotFrom);
+  const profilePoints = profile === undefined ? null : pointsFrom(profile, 2, 3, 'profile');
+  if (profilePoints && profilePoints.length > 256) throw new RangeError('profile needs 3 to 256 points.');
+  const sides = profilePoints ? profilePoints.length : radialSegments;
+  const rings = (closed ? knots.length : knots.length - 1) * resolution + 1;
+  checkBudget(rings * sides * 2 + (closed ? 0 : 2 * (sides + 1)), maxVertices);
+  const handles = resolveHandles(knots, closed);
+  return meshFrom(buildBezierSweep({ handles, closed, radius, taper: taperFrom(taper), profile: profilePoints, resolution, radialSegments }), maxVertices);
 }
 
 /** Sweep a circular tube along a centripetal Catmull-Rom curve. */

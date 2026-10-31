@@ -2,6 +2,7 @@
 # Run it when a case changes or Blender moves to a new release:
 #   blender -b --factory-startup --python scripts/blender-golden.py
 import json
+import os
 from math import cos, radians, sqrt
 from pathlib import Path
 
@@ -589,6 +590,92 @@ def measure_surface(bm, reference):
     }
 
 
+def evaluated_measure(curve_object):
+    bpy.context.view_layer.update()
+    evaluated = curve_object.evaluated_get(bpy.context.evaluated_depsgraph_get())
+    bm = bmesh.new()
+    bm.from_mesh(evaluated.to_mesh())
+    evaluated.to_mesh_clear()
+    refresh(bm)
+    triangulated = bm.copy()
+    bmesh.ops.triangulate(triangulated, faces=list(triangulated.faces))
+    measured = measure(triangulated)
+    positions = [vertex.co for vertex in bm.verts]
+    result = {
+        "vertexCount": len(bm.verts),
+        "volume": measured["volume"],
+        "area": measured["area"],
+        "boundsMin": [round(min(position[axis] for position in positions), 5) for axis in range(3)],
+        "boundsMax": [round(max(position[axis] for position in positions), 5) for axis in range(3)],
+    }
+    triangulated.free()
+    bm.free()
+    return result
+
+
+# A Bezier curve with a round bevel: the 67.js radialSegments 4 + 2n sides is Blender's bevel resolution n, and the
+# caps are filled. Handles are absolute positions in both.
+def run_curve_case(case):
+    spec = case["curve"]
+    curve_data = bpy.data.curves.new(case["id"], "CURVE")
+    curve_data.dimensions = "3D"
+    curve_data.resolution_u = spec["resolution"]
+    curve_data.bevel_depth = spec["radius"]
+    curve_data.bevel_resolution = (spec["radialSegments"] - 4) // 2
+    curve_data.fill_mode = "FULL"
+    curve_data.use_fill_caps = True
+    spline = curve_data.splines.new("BEZIER")
+    spline.bezier_points.add(len(spec["points"]) - 1)
+    spline.use_cyclic_u = spec.get("closed", False)
+    spline.resolution_u = spec["resolution"]
+    for bezier_point, knot in zip(spline.bezier_points, spec["points"]):
+        bezier_point.co = knot["position"]
+        bezier_point.handle_left_type = "FREE"
+        bezier_point.handle_right_type = "FREE"
+        bezier_point.handle_left = knot["handleIn"]
+        bezier_point.handle_right = knot["handleOut"]
+    curve_object = bpy.data.objects.new(case["id"], curve_data)
+    bpy.context.scene.collection.objects.link(curve_object)
+    return evaluated_measure(curve_object)
+
+
+# Blender's own default font is not DejaVu Sans, so the text cases load the font 67.js bundles. Get DejaVuSans.ttf with
+# "npm pack dejavu-fonts-ttf" (ttf/DejaVuSans.ttf in the package) and point DEJAVU_SANS_TTF at it.
+def bundled_font():
+    path = os.environ.get("DEJAVU_SANS_TTF")
+    if not path:
+        raise SystemExit("Set DEJAVU_SANS_TTF to the path of DejaVuSans.ttf (version 2.37) to run the text cases.")
+    return bpy.data.fonts.load(path)
+
+
+# Blender's text object extrudes both ways from the baseline plane, so its extrude is half the 67.js depth.
+def text_measure(name, body, size, extrude, curve_segments):
+    font_data = bpy.data.curves.new(name, "FONT")
+    font_data.font = bundled_font()
+    font_data.body = body
+    font_data.size = size
+    font_data.extrude = extrude
+    font_data.resolution_u = curve_segments
+    text_object = bpy.data.objects.new(name, font_data)
+    bpy.context.scene.collection.objects.link(text_object)
+    return evaluated_measure(text_object)
+
+
+# Blender 5.2 draws text smaller than the font's em for the same size. The unit is calibrated on the capital I, whose
+# height in DejaVu Sans is 1493 of 2048 units, so every other measure is compared at the same scale.
+DEJAVU_CAP_HEIGHT_EMS = 1493 / 2048
+
+
+def blender_size_for(size):
+    calibration = text_measure("Calibration", "I", 1.0, 0.1, 4)
+    return size * DEJAVU_CAP_HEIGHT_EMS / calibration["boundsMax"][1]
+
+
+def run_text_case(case):
+    spec = case["text"]
+    return text_measure(case["id"], spec["text"], blender_size_for(spec["size"]), spec["depth"] / 2, spec["curveSegments"])
+
+
 def remove_all_objects():
     for mesh_object in list(bpy.data.objects):
         bpy.data.objects.remove(mesh_object)
@@ -613,7 +700,15 @@ def main():
         else:
             results[case["id"]] = measure(bm)
         bm.free()
-    output = {"blenderVersion": bpy.app.version_string, "results": results}
+    curves = {}
+    for case in fixture["curves"]:
+        remove_all_objects()
+        curves[case["id"]] = run_curve_case(case)
+    texts = {}
+    for case in fixture["texts"]:
+        remove_all_objects()
+        texts[case["id"]] = run_text_case(case)
+    output = {"blenderVersion": bpy.app.version_string, "results": results, "curves": curves, "texts": texts}
     (FIXTURE_DIRECTORY / "golden.json").write_text(json.dumps(output, indent=1) + "\n", encoding="utf-8")
     print(f"Wrote {len(results)} results from Blender {bpy.app.version_string}.")
 
