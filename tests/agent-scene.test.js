@@ -602,3 +602,26 @@ test('topology rejects stale revisions and detached active or checkpoint matrice
   assert.deepEqual(session.exportRecipe(), before);
   assert.equal(session.revision, 1);
 });
+
+test('a node with a geometry and no material gets an explicit default material, deterministically', () => {
+  const input = recipe();
+  delete input.nodes[0].material;
+  const first = createAgentScene(input).exportRecipe();
+  const second = createAgentScene(input).exportRecipe();
+  assert.deepEqual(first, second);
+  assert.equal(first.nodes.find(node => node.id === 'child').material, 'default');
+  assert.deepEqual(first.materials.map(material => material.id), ['finish', 'default']);
+  assert.deepEqual(createAgentScene(first).exportRecipe(), first);
+});
+
+test('an existing default material is reused and a node with only a material still names the fix', () => {
+  const input = recipe();
+  input.materials.push({ id: 'default', color: [0.9, 0.1, 0.1] });
+  delete input.nodes[0].material;
+  const exported = createAgentScene(input).exportRecipe();
+  assert.equal(exported.materials.filter(material => material.id === 'default').length, 1);
+  const orphan = recipe();
+  delete orphan.nodes[1].geometry;
+  orphan.nodes[1].material = 'finish';
+  assert.throws(() => createAgentScene(orphan), /Name a geometry to draw it, or drop material/);
+});

@@ -317,19 +317,23 @@ function meshProblemsByGeometry(scene, geometryIds) {
 }
 
 /** Name, material tag, face tags and lint problems of the visible parts, with the pixel they project to. */
-function collectLabels(scene, camera, width, height) {
+function collectLabels(record, camera, width, height) {
+  const { scene } = record;
+  // Mesh reports of an imported asset are keyed by part ID (mesh-0); a recipe's are keyed by geometry ID.
+  const meshKeyOf = node => record.asset ? node.id : node.geometry;
   const nodes = scene.inspect({ includeBounds: true }).nodes.filter(node => node.bounds);
-  const materialTags = new Map(scene.exportRecipe().materials.map(material => [material.id, material.tag]));
+  // An imported asset's recipe has no materials list: its parts carry no tags.
+  const materialTags = new Map((scene.exportRecipe().materials ?? []).map(material => [material.id, material.tag]));
   const view = mat4.lookAt(mat4.create(), camera.eye, camera.target, camera.up);
   const matrix = mat4.multiply(mat4.create(), applyProjection(mat4.create(), camera, width / height), view);
-  const geometryIds = [...new Set(nodes.map(node => node.geometry))];
+  const geometryIds = [...new Set(nodes.map(meshKeyOf))];
   const meshInfo = meshProblemsByGeometry(scene, geometryIds);
   const labels = [];
   for (const node of nodes) {
     const center = [0, 1, 2].map(axis => (node.bounds.min[axis] + node.bounds.max[axis]) / 2);
     const position = projectToScreen(matrix, center, width, height);
     if (!position || labels.length >= BRANCH_LIMITS.maximumLabels) continue;
-    const mesh = meshInfo.get(node.geometry);
+    const mesh = meshInfo.get(meshKeyOf(node));
     labels.push({ id: node.id, name: printableLabel(node.label), tag: materialTags.get(node.material) ?? null,
       faceTags: mesh?.faceTags ?? [], problems: mesh?.problems ?? [], x: position.x, y: position.y });
   }
@@ -386,7 +390,7 @@ window.__agentPreview = {
     context.font = '12px sans-serif';
     context.textBaseline = 'middle';
     context.fillText(shot.label.replace(/[\r\n\t]/g, ' '), x + 8, y + 12, width - 16);
-    const labels = withLabels ? collectLabels(record.scene, camera, width, height) : undefined;
+    const labels = withLabels ? collectLabels(record, camera, width, height) : undefined;
     if (labels) paintLabels(context, labels, x, y + 24);
     return { label: shot.label, camera, animation: record.asset ? animation : null,
       motionTime: record.scene.motionTime ?? null, rendererTime: shot.rendererTime,
@@ -527,7 +531,7 @@ window.__agentPreview = {
     draw(record);
     const render = renderInfo(record.renderer);
     record.lastRender = render;
-    const labels = withLabels ? collectLabels(record.scene, record.scene.camera, canvas.width, canvas.height) : undefined;
+    const labels = withLabels ? collectLabels(record, record.scene.camera, canvas.width, canvas.height) : undefined;
     return {
       data: labeledPng(labels),
       mimeType: 'image/png',

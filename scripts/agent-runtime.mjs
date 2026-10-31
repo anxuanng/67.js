@@ -715,6 +715,10 @@ export function createAgentRuntime({ backend = 'gpu', browser: browserPath, memo
     async releaseJob({ jobId }) {
       return (await jobs()).release(jobId);
     },
+    /** The ID of the one scene that exists, or null. Tools that take a sessionId default to it. */
+    activeSessionId() {
+      return activeSessionId;
+    },
     close() {
       if (!closing) {
         phase = 'closing';

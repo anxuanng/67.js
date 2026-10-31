@@ -1,9 +1,10 @@
 // Runs in the page: draws a recipe from each fixed camera, the way the MCP preview draws a scene.
-import { createAgentScene, loadMeshBooleans, needsMeshBooleans } from '/src/agent-scene.js';
+import { createAgentScene, loadAllAgentSceneModules, loadMeshBooleans, needsMeshBooleans } from '/src/agent-scene.js';
 import { resolveAgentShadow } from '/src/agent-look.js';
 import { Renderer67 } from '/src/renderer.js';
 
 async function renderLookViews(recipe, views) {
+  await loadAllAgentSceneModules();
   if (needsMeshBooleans(recipe)) await loadMeshBooleans();
   const scene = createAgentScene(recipe);
   if (recipe.motion) scene.sampleMotion(0);

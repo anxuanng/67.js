@@ -9,6 +9,7 @@ import { resolveAgentShadow, agentEnvironmentMap } from '../src/agent-look.js';
 import { createAgentAssetScene } from '../src/agent-asset.js';
 import { parseGltf } from '../src/gltf.js';
 import { BRANCH_LIMITS, createBranchStore, printableLabel } from '../src/agent-branches.js';
+import { sessionProblem } from '../src/agent-errors.js';
 import { skinnedStripAsset } from './fixtures/skinned-strip.js';
 
 const source = (await readFile(new URL('../scripts/agent-preview-browser.js', import.meta.url), 'utf8')).replace(/^import .+;\r?$/gm, '');
@@ -24,7 +25,7 @@ function previewHarness() {
   const tiles = [];
   const makeCanvas = () => ({ width: 768, height: 512,
     replaceWith() {}, toDataURL: () => 'data:image/png;base64,cG5n',
-    getContext: kind => kind === '2d' ? { fillRect() {}, fillText() {},
+    getContext: kind => kind === '2d' ? { fillRect() {}, fillText() {}, strokeText() {},
       drawImage: () => tiles.push(renders.at(-1)) } : { getExtension: () => null } });
   const canvas = makeCanvas();
   class FaultInjectedRenderer {
@@ -62,14 +63,15 @@ function previewHarness() {
     createAgentAssetScene: (asset, input) => {
       currentScene = createAgentAssetScene(asset, JSON.parse(JSON.stringify(input)));
       const scene = currentScene;
-      return new Proxy({}, { get: (target, field) => field === 'sampleFrame'
-        ? frame => scene.sampleFrame(JSON.parse(JSON.stringify(frame))) : scene[field] });
+      const bridgedMethods = new Set(['sampleFrame', 'inspect', 'inspectMeshes']);
+      return new Proxy({}, { get: (target, field) => bridgedMethods.has(field)
+        ? value => scene[field](JSON.parse(JSON.stringify(value ?? {}))) : scene[field] });
     },
     needsMeshBooleans, loadMeshBooleans, meshBooleansLoaded, loadAllAgentSceneModules, allAgentSceneModulesLoaded,
     // The harness loads Manifold from node_modules directly, so the preview's served-file loader is ignored.
     setManifoldModuleLoader: () => {},
     needsPhysics, loadPhysicsEngine, physicsEngineLoaded, setPhysicsModuleLoader: () => {},
-    parseGltf, Uint8Array, atob,
+    parseGltf, Uint8Array, atob, sessionProblem,
     applyProjection, mat4, resolveAgentShadow, agentEnvironmentMap, BRANCH_LIMITS, createBranchStore, printableLabel,
     Renderer67: FaultInjectedRenderer,
     // The optional addons only plug stages into a real renderer; the fault-injected one needs none.
@@ -265,4 +267,19 @@ test('driver errors disclose committed revision and context loss preserves recip
   assert.equal(preview.exportRecipe({ sessionId: 'scene' }).revision, 2);
   assert.equal(preview.inspect({ sessionId: 'scene' }).revision, 2);
   assert.equal(preview.dispose({ sessionId: 'scene' }).disposed, true);
+});
+
+test('scene_look with labels names the parts of an imported asset instead of throwing', async () => {
+  const harness = previewHarness();
+  const sessionId = 'asset-labels';
+  const input = { format: '67js.asset', schemaVersion: 1, assetId: 'ab'.repeat(32) };
+  await harness.preview.createAsset({ sessionId, recipe: input,
+    data: Buffer.from(skinnedStripAsset()).toString('base64'), backend: 'cpu', memoryBudgetMiB: 64 });
+  const { metadata } = harness.preview.look({ sessionId, labels: true });
+  assert.ok(Array.isArray(metadata.labels));
+  assert.ok(metadata.labels.length > 0);
+  for (const label of metadata.labels) {
+    assert.match(label.id, /^mesh-\d+$/);
+    assert.equal(label.tag, null);
+  }
 });

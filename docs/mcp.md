@@ -120,6 +120,12 @@ Inspect or export the recipe before retrying. Context loss still permits recipe 
 | `scene_render_result` | `jobId` | Completed output paths, hashes and metrics |
 | `scene_render_release` | `jobId` | Confirmation that owned job files were removed |
 
+`sessionId` is optional on every tool that lists it: one scene exists at a time, so a call that leaves it out means the active scene. An ID that names another scene (an invented one, or one from a disposed scene) is still rejected with the active ID in the message, because acting on a scene the caller did not name could edit the wrong one.
+
+### Tool errors
+
+Every error an agent can reach names what failed and what to do next. `tests/tool-errors.test.js` walks the triggers and fails on a message with no next action. A JavaScript engine fault (a `TypeError` such as reading a field of `undefined`, from a bug in the server) never reaches the agent: the agent gets one advice message (check the scene with `scene_inspect`, retry once, leave out the optional field, report the tool), and the detail goes to the server's stderr. `scene_apply` also names the fix when `set-node` or `set-material` fields are wrapped in a `node` or `material` key.
+
 ### Tool cost and diagnostics
 
 Every tool schema is read on every turn, so `node scripts/measure-tool-cost.mjs` reports the bytes and estimated tokens of each schema and of each typical result, and `tests/tool-cost.test.js` fails when one passes `bench/tool-cost-budgets.json`. The schemas total 173,216 bytes (about 49,500 tokens). To save space, a mesh geometry's `edits` and `stack` in a recipe, and `motion` in `scene_apply` and asset recipes, are advertised as plain objects: the full field list is in `mesh_edit`, `mesh_stack` and `scene_create`, and the backend still validates every field and names the valid choices when one is wrong. A small mesh change is far cheaper as `mesh_edit` (187 bytes in the measured case) than as a whole recipe rewrite (1,254 bytes with the dispose).
