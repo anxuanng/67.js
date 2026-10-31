@@ -3,7 +3,10 @@ import { createAgentScene } from './agent-scene.js';
 import { fitPerspectiveDistance } from './camera.js';
 import { validateSkinGeometry, validateSkinPose } from './skinning.js';
 import { validateMorphGeometry, validateMorphTransform } from './morph.js';
-import { normalizeAgentMotion, compileAgentMotion } from './agent-motion.js';
+import * as agentMotion from './agent-motion.js';
+import { registerAgentSceneModule } from './agent-scene-modules.js';
+
+registerAgentSceneModule('motion', agentMotion);
 
 const MAX_RECIPE_BYTES = 1024 * 1024;
 const MAX_CHECKPOINTS = 8;
@@ -415,7 +418,7 @@ export function createAgentAssetScene(asset, inputRecipe) {
     if (candidate.motion?.ik?.length && Math.max(...result.root.scale) - Math.min(...result.root.scale) > 1e-3 * Math.max(...result.root.scale)) {
       throw new RangeError('Motion ik needs a uniform asset root scale.');
     }
-    result.motion = normalizeAgentMotion(candidate.motion, motionRecipe(result));
+    result.motion = agentMotion.normalizeAgentMotion(candidate.motion, motionRecipe(result));
     return copiedJson(result);
   }
 
@@ -457,7 +460,7 @@ export function createAgentAssetScene(asset, inputRecipe) {
     if (transientAnimation !== undefined) {
       candidate = { ...candidate, animation: transientAnimation };
     }
-    let stagedSampler = transientTime === undefined ? compileAgentMotion(candidate.motion, motionRecipe(candidate)) : sampler;
+    let stagedSampler = transientTime === undefined ? agentMotion.compileAgentMotion(candidate.motion, motionRecipe(candidate)) : sampler;
     const targetTime = transientTime === undefined ? (candidate.motion ? 0 : null) : transientTime;
     if (targetTime !== null && !stagedSampler) {
       throw new RangeError('The asset has no authored motion to sample.');
@@ -510,7 +513,7 @@ export function createAgentAssetScene(asset, inputRecipe) {
       if (autoFrame) {
         candidate.camera = framedCamera(framingBounds(records, stagedMatrices));
         candidate = normalize(candidate);
-        stagedSampler = compileAgentMotion(candidate.motion, motionRecipe(candidate));
+        stagedSampler = agentMotion.compileAgentMotion(candidate.motion, motionRecipe(candidate));
         sampled = targetTime === null ? null : stagedSampler.sample(targetTime);
       }
       const stagedMaterials = new Map([...materialRecords].map(([id, record]) => [id, { ...record.baseline }]));
@@ -564,7 +567,7 @@ export function createAgentAssetScene(asset, inputRecipe) {
   /** scene_inspect's motionIk: how each solver fares across the clip, from a sampler that leaves the published pose alone. */
   function motionIkReport() {
     if (!recipe.motion?.ik?.length) return {};
-    const sweeper = compileAgentMotion(recipe.motion, motionRecipe(recipe));
+    const sweeper = agentMotion.compileAgentMotion(recipe.motion, motionRecipe(recipe));
     return {
       motionIk: sweeper.sweepIk(time => stagedNodePoses(recipe.animation, [...trackOverrides(recipe.nodeOverrides, sweeper.sample(time)).values()])),
     };

@@ -131,7 +131,7 @@ if (${!published || metadata.version !== '0.4.0'}) {
 }
 solidIndex.dispose();
 if (${!published}) {
-  const { createAgentScene, resolveAgentShadow } = await import('67js/addons/agent-scene');
+  const { createAgentScene, loadAgentSceneModules, resolveAgentShadow } = await import('67js/addons/agent-scene');
   const agentScene = createAgentScene({
     format: '67js.scene', schemaVersion: 1,
     geometries: [{ id: 'cube', type: 'box', bevel: 0 }],
@@ -169,6 +169,8 @@ if (${!published}) {
   agentScene.restore(lookCheckpoint, { expectedRevision: agentScene.revision });
   assert.deepEqual(agentScene.exportRecipe(), originalLook);
   agentScene.releaseCheckpoint(lookCheckpoint);
+  // The recipe started as primitives; the next edit adds motion, whose code loads on demand.
+  await loadAgentSceneModules({ motion: {} });
   const motionCheckpoint = agentScene.checkpoint();
   const authoredRecipe = agentScene.exportRecipe();
   agentScene.apply([{ type: 'set-motion', motion: { duration: 1, tracks: [{
