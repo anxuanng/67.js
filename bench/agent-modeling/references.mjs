@@ -164,6 +164,24 @@ export const REFERENCES = {
       }],
     },
   },
+  'leg-plant': {
+    ...scene(
+      [{ id: 'ball', type: 'sphere', segments: 16, rings: 8 }],
+      [
+        { id: 'hip', geometry: 'ball', translation: [0, 1, 0], scale: [0.03, 0.03, 0.03] },
+        { id: 'knee', geometry: 'ball', parent: 'hip', translation: [0, -0.5 / 0.03, 0] },
+        { id: 'foot', geometry: 'ball', parent: 'knee', translation: [0, -0.5 / 0.03, 0] },
+      ],
+    ),
+    motion: {
+      duration: 2, tracks: [],
+      ik: [{
+        type: 'two-bone', root: 'hip', middle: 'knee', end: 'foot', pole: [0, 0.5, 3], bendToward: [0, 0, 1],
+        limits: { middle: { x: [-150, 150] } },
+        target: { keyframes: [{ time: 0, value: [0.1, 0.5, 0.35] }, { time: 2, value: [0.1, 0.6, 0.2] }] },
+      }],
+    },
+  },
   dice: scene(
     [{ id: 'die', type: 'mesh', base: { type: 'box', bevel: 0 }, edits: dieEdits() }],
     [{ id: 'die', geometry: 'die', translation: [0, 0.05, 0], scale: [0.1, 0.1, 0.1] }],

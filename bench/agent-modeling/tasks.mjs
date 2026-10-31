@@ -246,6 +246,23 @@ For this task the object does not need to rest on the ground.`,
     ],
   },
   {
+    id: 'leg-plant',
+    prompt: `A walking character's leg that plants its foot on two points, the way a real knee bends. Use three nodes with
+these exact IDs, each with a small visible geometry: hip at [0, 1, 0], knee 0.5 m below the hip, and foot 0.5 m below the knee.
+Make knee a child of hip and foot a child of knee. The character faces +z, so the knee must bend forward, never backward.
+Add a 2 second motion in which the foot is exactly at [0.1, 0.5, 0.35] at time 0 and exactly at [0.1, 0.6, 0.2] at time 2,
+with both bones keeping their lengths and the knee in front of the hip-to-foot line at both times.
+For this task the object does not need to rest on the ground.`,
+    checks: [
+      { kind: 'nodeAt', node: 'foot', time: 0, position: [0.1, 0.5, 0.35] },
+      { kind: 'nodeAt', node: 'foot', time: 2, position: [0.1, 0.6, 0.2] },
+      { kind: 'nodeDistance', from: 'hip', to: 'knee', time: 1, distance: 0.5 },
+      { kind: 'nodeDistance', from: 'knee', to: 'foot', time: 1, distance: 0.5 },
+      { kind: 'bendsToward', from: 'hip', node: 'knee', to: 'foot', time: 0, direction: [0, 0, 1], minOffset: 0.02 },
+      { kind: 'bendsToward', from: 'hip', node: 'knee', to: 'foot', time: 2, direction: [0, 0, 1], minOffset: 0.02 },
+    ],
+  },
+  {
     id: 'tray-drop',
     prompt: `A pocketed block with three balls dropped into it, using recipe physics. The block is node "tray", a mesh of
 2 m by 0.4 m by 2 m (X, Y, Z) standing on the ground, with a square pocket 1.2 m wide cut 0.3 m deep into the middle of
