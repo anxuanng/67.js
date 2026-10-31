@@ -17,6 +17,10 @@ export { mirrorMesh, arrayMesh, solidifyMesh, removeCoincidentFaces } from './me
 export { bevelEdges, selectEdges } from './mesh-bevel.js';
 export { loopCut } from './mesh-loopcut.js';
 export { unwrapUv } from './mesh-uv.js';
+export { decimateMesh } from './mesh-decimate.js';
+export { remeshMesh, MAX_REMESH_RESOLUTION, MAX_REMESH_CELLS } from './mesh-remesh.js';
+export { generateMeshLods, generateGeometryLods, generateAssetLods, DEFAULT_LOD_RATIOS } from './mesh-lod.js';
+export { surfaceDeviation, signedVolume } from './mesh-surface-distance.js';
 export { loadMeshBooleans, meshBooleansLoaded, meshBoolean, BOOLEAN_OPERATIONS } from './mesh-boolean.js';
 export {
   extrudeFaceRegion, extrudeIndividual, insetRegion, insetIndividual, deleteFaces, flipFaces, translateFaces,

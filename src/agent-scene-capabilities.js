@@ -27,6 +27,11 @@ export const MATERIAL_MAPPINGS = Object.freeze(['box', 'uv']);
 // Recipe textures are opaque patterns, so cutout masking has nothing to cut.
 export const RECIPE_ALPHA_MODES = Object.freeze(['opaque', 'blend']);
 
+// Named lighting setups (see lighting-setups.js) and the occlusion strength that recipes get when they set none.
+export const LIGHTING_SETUP_NAMES = Object.freeze(['daylight', 'overcast', 'sunset', 'studio']);
+export const DEFAULT_LIGHTING_SETUP = 'daylight';
+export const DEFAULT_AMBIENT_OCCLUSION = 0;
+
 export const AGENT_SCENE_CAPABILITIES = Object.freeze({
   format: '67js.scene', schemaVersion: 1,
   geometryTypes: Object.freeze(['box', 'cylinder', 'sphere', 'torus', 'lathe', 'extrude', 'tube', 'mesh']),
@@ -40,7 +45,7 @@ export const AGENT_SCENE_CAPABILITIES = Object.freeze({
   operations: Object.freeze([
     'set-node', 'set-material', 'set-camera', 'add-node', 'remove-node',
     'add-geometry', 'remove-geometry', 'add-material', 'remove-material',
-    'set-environment', 'set-effects', 'set-shadow', 'set-motion', 'set-physics', 'edit-mesh', 'set-mesh-stack',
+    'set-environment', 'set-effects', 'set-shadow', 'set-motion', 'set-armatures', 'set-physics', 'edit-mesh', 'set-mesh-stack',
   ]),
   materialTags: Object.freeze(['surface', 'unlit', 'liquid', 'foam']),
   alphaModes: RECIPE_ALPHA_MODES,
@@ -49,6 +54,8 @@ export const AGENT_SCENE_CAPABILITIES = Object.freeze({
   materialGraph: Object.freeze({ outputs: MATERIAL_GRAPH_OUTPUTS, operators: MATERIAL_GRAPH_OPERATORS, ...MATERIAL_GRAPH_LIMITS }),
   fixedResources: false, dynamicTopology: true, checkpoints: true, positiveScaleOnly: true,
   authoredLook: true, maxPointLights: 8,
+  lightingSetups: LIGHTING_SETUP_NAMES, defaultLightingSetup: DEFAULT_LIGHTING_SETUP,
+  ambientOcclusion: Object.freeze({ default: DEFAULT_AMBIENT_OCCLUSION, defaultRadius: 0.5, off: 0 }),
   // Local lights: spot and rectangular area lights. Shadows share one 2048 x 3072 depth atlas of 24 tiles; a shadowed
   // point light uses 6 tiles and a shadowed spot light 1. Area lights cast no shadow. Light linking is not supported.
   maxSpotLights: 8, maxAreaLights: 4,
@@ -56,6 +63,8 @@ export const AGENT_SCENE_CAPABILITIES = Object.freeze({
   lightLinking: false,
   proceduralMotion: true,
   motionIk: Object.freeze(['two-bone', 'aim']),
+  // Authored rigs: armatures expand into bone nodes, and a node `skin` binds a mesh with automatic weights (four influences).
+  rigging: Object.freeze({ presets: Object.freeze(['humanoid', 'quadruped']), maxArmatures: 16, maxBones: 128, maxInfluences: 4, weights: 'bone-distance' }),
   motionConstraints: Object.freeze(['copy_location', 'copy_rotation', 'copy_scale', 'limit_location', 'limit_rotation', 'track_to', 'child_of', 'floor']),
   motionDrivers: Object.freeze({ maxDrivers: 32, maxConstraints: 32, maxExpressionParts: 64, maxExpressionDepth: 8 }),
   // Recipe physics: Rapier (an optional peer) bakes bodies on nodes offline; playback is a seek into the bake.

@@ -47,8 +47,8 @@ To move to a new Blender release, run `node scripts/parity-manual-snapshot.mjs`.
 | Modeling > Meshes > Editing | partial | 26 edits, including extrude, inset, bevel, loop cut, boolean, merge, bisect, bridge, fill, grid fill, dissolve, edge subdivision and a knife by projected polyline. All but the knife match Blender on fixtures; the knife is compared only with a straight plane cut. | [Blender results](../tests/fixtures/blender/golden.json) | #41 |
 | Modeling > Meshes > Properties | partial | `smoothAngle` and face tags. There is no sharp edge attribute or crease. | | #39 |
 | Modeling > Meshes > UVs | partial | `uv_unwrap` with LSCM, axis charts and shelf packing. Patterns can not use the result yet. | | #50 |
-| Modeling > Meshes > Mesh Analysis | partial | `lintMesh` reports topology problems. There is no check for thin walls or intersections. | | #66 |
-| Modeling > Meshes > Remeshing | missing | No remesh. | | #40 |
+| Modeling > Meshes > Mesh Analysis | partial | `lintMesh` reports topology problems. With `{ geometry: true }` (always on in `mesh_inspect`) it also warns of crossing parts, a solid cutting itself, thin walls, floating parts and near-symmetry, using the BVH within face budgets. Checks are heuristics on parts, not Blender's exact Select Non-Manifold or Intersect checks. | [tests/mesh-lint-geometry.test.js](../tests/mesh-lint-geometry.test.js), [src/mesh-lint-geometry.js](../src/mesh-lint-geometry.js) | #66 |
+| Modeling > Meshes > Remeshing | partial | `remesh` rebuilds a closed mesh as an even quad surface on a voxel grid (surface nets over a BVH signed distance). Quad remesh and Instant Meshes style retopology are not here. | [blender golden](../tests/blender-golden.test.js) | #40 |
 | Modeling > Curves | partial | `tube` follows a curve and `extrude` follows a contour. There is no curve object. | | #45 |
 | Modeling > Curves (New) | missing | No hair curves. | | #63 |
 | Modeling > Surfaces | out of scope | Issue #45 records NURBS surfaces as out of scope unless demand appears. | | |
@@ -72,13 +72,13 @@ To move to a new Blender release, run `node scripts/parity-manual-snapshot.mjs`.
 | Modeling > Modifiers > Generate > Boolean Modifier | partial | Manifold boolean as an edit. It is not a stack node. | [mesh-boolean](../tests/mesh-boolean.test.js), [Blender results](../tests/fixtures/blender/golden.json) | |
 | Modeling > Modifiers > Generate > Build Modifier | missing | No equivalent. | | |
 | Modeling > Modifiers > Generate > Curve to Tube Modifier | partial | `tube` is a geometry type. It is not a stack node. | [modeling](../tests/modeling.test.js) | #45 |
-| Modeling > Modifiers > Generate > Decimate Modifier | missing | No decimation. | | #40 |
+| Modeling > Modifiers > Generate > Decimate Modifier | partial | Collapse mode as `decimate` with a ratio, keeping open boundaries and tag borders; `generateMeshLods`, `generateGeometryLods` and `generateAssetLods` make levels with a measured error. Unsubdivide and planar modes, vertex-group weighting and symmetry are missing. Compared with Blender on 4 shared fixtures by volume, area and Hausdorff distance. | [blender golden](../tests/blender-golden.test.js), [decimate](../tests/mesh-decimate.test.js) | #40 |
 | Modeling > Modifiers > Generate > Edge Split Modifier | missing | No equivalent. `smoothAngle` splits normals by angle. | | #42 |
 | Modeling > Modifiers > Generate > Mask Modifier | missing | No equivalent. | | |
 | Modeling > Modifiers > Generate > Mesh to Volume Modifier | missing | No volume objects. | | |
 | Modeling > Modifiers > Generate > Mirror Modifier | done | Stack node with axis and merge. | [mesh-stack](../tests/mesh-stack.test.js), [Blender results](../tests/fixtures/blender/golden.json) | |
 | Modeling > Modifiers > Generate > Multiresolution Modifier | missing | No multiresolution. | | |
-| Modeling > Modifiers > Generate > Remesh Modifier | missing | No remesh. | | #40 |
+| Modeling > Modifiers > Generate > Remesh Modifier | partial | Voxel mode as `remesh` (voxel size or resolution), as an edit or a stack node, compared with Blender on 2 shared fixtures. Blocks, smooth and sharp modes are missing. | [blender golden](../tests/blender-golden.test.js), [decimate](../tests/mesh-decimate.test.js) | #40 |
 | Modeling > Modifiers > Generate > Scatter on Surface Modifier | partial | `instances` with a `surface` source scatters a node at seeded, area-weighted points with yaw, scale and normal alignment, and `where` filters them. No minimum distance or density map, and `addons/clutter` and `addons/grass` still scatter in code. | [src/mesh-instances.js](../src/mesh-instances.js), [tests/mesh-fields.test.js](../tests/mesh-fields.test.js) | #42 |
 | Modeling > Modifiers > Generate > Screw Modifier | partial | `lathe` covers a full turn. There is no stack node or screw offset. | | #42 |
 | Modeling > Modifiers > Generate > Skin Modifier | missing | No equivalent. | | #42 |
@@ -88,7 +88,7 @@ To move to a new Blender release, run `node scripts/parity-manual-snapshot.mjs`.
 | Modeling > Modifiers > Generate > Volume to Mesh Modifier | missing | No volume objects. | | |
 | Modeling > Modifiers > Generate > Weld Modifier | partial | `merge_by_distance` is an edit. It is not a stack node. | | #42 |
 | Modeling > Modifiers > Generate > Wireframe Modifier | missing | No equivalent. | | #42 |
-| Modeling > Modifiers > Deform > Armature Modifier | partial | GPU skinning for imported rigs. Recipes can not bind a mesh. | [skinning](../tests/skinning.test.js) | #46 |
+| Modeling > Modifiers > Deform > Armature Modifier | partial | A node `skin` binds a recipe mesh to an armature with automatic weights, and imported rigs keep GPU skinning. No envelope mode and no hand-edited weights. | [rigging](../tests/rigging.test.js), [skinning](../tests/skinning.test.js) | #46 |
 | Modeling > Modifiers > Deform > Cast Modifier | missing | No equivalent. | | #42 |
 | Modeling > Modifiers > Deform > Curve Modifier | missing | No equivalent. | | #42 |
 | Modeling > Modifiers > Deform > Displace Modifier | done | `displace` edit and stack node with a field as the texture, along the normal or an axis, with strength, midlevel and a face selection. Positions match Blender with a constant and with a Blend texture. | [src/mesh-field-edits.js](../src/mesh-field-edits.js), [tests/blender-golden.test.js](../tests/blender-golden.test.js), [src/mesh-fields.js](../src/mesh-fields.js), [tests/mesh-fields.test.js](../tests/mesh-fields.test.js) | #43 |
@@ -126,15 +126,15 @@ To move to a new Blender release, run `node scripts/parity-manual-snapshot.mjs`.
 | Sculpting & Painting > Sculpting | partial | Inflate, displace and smooth strokes in code. Recipes can not reach them, and there is no remesh during a stroke. | [sculpt](../tests/sculpt.test.js) | #47 |
 | Sculpting & Painting > Texture Paint | missing | No painting into textures. | | |
 | Sculpting & Painting > Vertex Paint | partial | Imported vertex colors render. Recipes can not author them. | | |
-| Sculpting & Painting > Weight Paint | missing | No vertex groups in recipes. Automatic weights replace painting by hand. | | #46 |
+| Sculpting & Painting > Weight Paint | partial | Automatic weights replace painting by hand. Skin weights are a mesh attribute, but there are no named vertex groups and no painting. | [rigging](../tests/rigging.test.js) | #46 |
 | Sculpting & Painting > Curves Sculpting | missing | No hair curves. | | #63 |
 | Grease Pencil | out of scope | Decided in issue #23. | | |
 | Animation & Rigging > Animation Editors | out of scope | Interface for a mouse. | | |
 | Animation & Rigging > Keyframes | partial | Linear, step, smooth and Hermite curves with deterministic seeks. There are no other easing types or keying sets. | [animation](../tests/animation.test.js) | |
-| Animation & Rigging > Armatures > Bones | missing | Recipes can not author bones. | | #46 |
-| Animation & Rigging > Armatures > Properties | missing | Recipes can not author armatures. | | #46 |
-| Animation & Rigging > Armatures > Structure | partial | Imported rigs keep their hierarchy. Recipes can not author one. | [gltf](../tests/gltf.test.js) | #46 |
-| Animation & Rigging > Armatures > Skinning | partial | Four-influence GPU skinning. There is no automatic binding. | [skinning](../tests/skinning.test.js) | #46 |
+| Animation & Rigging > Armatures > Bones | partial | Recipe `armatures` list bones with a name, parent, head and tail, and each bone is a recipe node that tracks and `motion.ik` address. No roll, bone shapes or custom properties. | [rigging](../tests/rigging.test.js) | #46 |
+| Animation & Rigging > Armatures > Properties | partial | An armature has an id, a parent node, a transform, an optional bone-ID prefix and a `humanoid` or `quadruped` preset fitted to a mesh node or to bounds. No display settings or bone collections. | [rigging](../tests/rigging.test.js) | #46 |
+| Animation & Rigging > Armatures > Structure | partial | Imported rigs keep their hierarchy, and recipes author one. A rig exports to GLB with its bones and a baked walk clip; Blender 5.2 opens it as 1 armature, 21 bones, 14 vertex-grouped meshes and 1 action. | [gltf](../tests/gltf.test.js), [rigging](../tests/rigging.test.js) | #46 |
+| Animation & Rigging > Armatures > Skinning | partial | Four-influence GPU skinning, with automatic binding by distance to the bone segments. Not heat diffusion, so two limbs that pass close can share weights; `scene_inspect` reports unweighted vertices, bones with no vertices and joint axis problems. | [skinning](../tests/skinning.test.js), [rigging](../tests/rigging.test.js) | #46 |
 | Animation & Rigging > Armatures > Posing | partial | Layers, masks, additive poses and IK in code. MCP has IK and one clip. | [skeleton-pose](../tests/skeleton-pose.test.js), [agent-asset-ik](../tests/agent-asset-ik.test.js) | #58, #59 |
 | Animation & Rigging > Lattice | missing | No lattice. | | #42 |
 | Animation & Rigging > Constraints > Interface | out of scope | Interface for a mouse. | | |
@@ -190,7 +190,7 @@ To move to a new Blender release, run `node scripts/parity-manual-snapshot.mjs`.
 | Rendering > Cameras | partial | Perspective, orthographic views, focal length and animated paths. There is no depth of field. | [camera-path](../tests/camera-path.test.js), [camera](../tests/camera.test.js) | #54 |
 | Rendering > Lights > Light Objects | partial | One directional light with a shadow, 8 point lights, 8 spot lights and 4 rectangular area lights. Point and spot lights can cast shadows from one 24-tile atlas (a point light takes 6 tiles, a spot light 1). Area lights use a representative point and cast no shadow. The directional shadow is a single map, not cascaded. | [lighting](../tests/lighting.test.js), `npm run reference` scene `spot-area` | #52 |
 | Rendering > Lights > Light Linking | missing | No light linking. | | #52 |
-| Rendering > Lights > World Environment | partial | Recipes have sky colors, daylight and fog. Code can load an HDRI, and recipes can not reach it. | [environment](../tests/environment.test.js) | #53 |
+| Rendering > Lights > World Environment | partial | Recipes pick a named setup (`daylight`, `overcast`, `sunset`, `studio`) that carries a procedural environment map, with opt-in screen-space ambient occlusion. Code can load any HDRI; recipes reach only the named maps, with no URLs or files. No reflections between objects yet. | [environment](../tests/environment.test.js), [default look](../tests/default-look.test.js) | #53 |
 | Rendering > Materials > Components | partial | Surfaces with PBR factors and five maps, a clear coat, transmission with thickness, attenuation and IOR, sheen, and specular weight and tint. There is no anisotropy, iridescence, subsurface scattering, volume material or displacement. | [texture-set](../tests/texture-set.test.js) | #50, #51 |
 | Rendering > Materials > Assignment | done | A node names one material. | [agent-scene](../tests/agent-scene.test.js) | |
 | Rendering > Materials > Preview | out of scope | Interface for a person. Agents use `scene_look`. | | |

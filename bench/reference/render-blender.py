@@ -51,6 +51,10 @@ def build_mesh(name, geometry):
     positions = decode(geometry["positions"]).reshape(-1, 3)
     normals = decode(geometry["normals"]).reshape(-1, 3)
     triangles = decode(geometry["indices"]).reshape(-1, 3)
+    # A triangle that repeats a vertex has no area and is invisible, but Blender builds an invalid face from it
+    # and crashes in mesh_set_custom_normals (the skinned character has three).
+    repeats_vertex = (triangles[:, 0] == triangles[:, 1]) | (triangles[:, 1] == triangles[:, 2]) | (triangles[:, 0] == triangles[:, 2])
+    triangles = triangles[~repeats_vertex]
     mesh = bpy.data.meshes.new(name)
     mesh.from_pydata(positions.tolist(), [], triangles.tolist())
     mesh.validate()

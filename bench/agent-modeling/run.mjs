@@ -2,9 +2,11 @@
 // server, then grades the recipe the agent exported.
 //
 // node bench/agent-modeling/run.mjs --claude <claude executable> [--model sonnet] [--tasks crate,bolt]
-//   [--budget 3] [--timeout 1200] [--label baseline] [--skill] [--resume <run name>]
+//   [--runs 3] [--budget 3] [--timeout 1200] [--label baseline] [--skill] [--resume <run name>]
 //
-// --resume continues a run that stopped early and skips the tasks it already recorded.
+// --runs repeats every task that many times, each in a fresh session; the summary reports success rate, tool calls,
+// tool errors, tokens and cost for the model and for each task.
+// --resume continues a run that stopped early and skips the task attempts it already recorded. Pass the same --runs.
 // --skill puts the build-67js-scene entry point and its mesh reference in the system prompt. That measures what the
 // skill's knowledge is worth, not whether an agent would load the skill on its own.
 //
@@ -15,9 +17,10 @@ import { copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promi
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
+import { removeLocalPaths, totalsByModel, totalsOf } from './aggregate.mjs';
 import { gradeRecipe, recipeFeatures } from './check.mjs';
 import { scoreLookSafely } from './look.mjs';
-import { PROMPT_PREAMBLE, TASKS, taskById } from './tasks.mjs';
+import { PROMPT_PREAMBLE, TASKS, taskById, taskPrompt } from './tasks.mjs';
 
 const repository = resolve(import.meta.dirname, '../..');
 const MCP_SERVER_NAME = '67js';
@@ -29,6 +32,7 @@ const { values: options } = parseArgs({
     claude: { type: 'string', default: process.env.CLAUDE_EXECUTABLE ?? 'claude' },
     model: { type: 'string', default: 'sonnet' },
     tasks: { type: 'string' },
+    runs: { type: 'string', default: '1' },
     budget: { type: 'string', default: '3' },
     timeout: { type: 'string', default: '1200' },
     label: { type: 'string', default: 'run' },
@@ -143,7 +147,8 @@ async function removeWorkingDirectory(workingDirectory) {
   }
 }
 
-async function runTask(task, systemPromptAddition) {
+async function runTask(task, attempt, systemPromptAddition) {
+  const fileStem = `${task.id}-${attempt}`;
   const workingDirectory = await mkdtemp(join(tmpdir(), '67js-agent-task-'));
   try {
     const configPath = join(workingDirectory, 'mcp.json');
@@ -154,29 +159,30 @@ async function runTask(task, systemPromptAddition) {
       await copyFile(join(repository, 'tests', 'fixtures', 'RobotExpressive.glb'), join(assetDirectory, 'robot.glb'));
     }
     await writeFile(configPath, JSON.stringify(mcpConfig(assetDirectory)));
-    const taskPrompt = task.prompt.replace(/\n/g, ' ');
-    const prompt = task.ownPreamble ? taskPrompt : `${PROMPT_PREAMBLE}\n\n${taskPrompt}`;
+    const text = taskPrompt(task);
+    const prompt = task.ownPreamble ? text : `${PROMPT_PREAMBLE}\n\n${text}`;
     const run = await runClaude(prompt, workingDirectory, configPath, systemPromptAddition);
     const transcript = readTranscript(run.output);
-    await writeFile(join(rawDirectory, `${task.id}.jsonl`), run.output);
-    if (run.errors) await writeFile(join(rawDirectory, `${task.id}.stderr.txt`), run.errors);
-    if (transcript.recipe) await writeFile(join(rawDirectory, `${task.id}.recipe.json`), JSON.stringify(transcript.recipe, null, 2));
+    await writeFile(join(rawDirectory, `${fileStem}.jsonl`), run.output);
+    if (run.errors) await writeFile(join(rawDirectory, `${fileStem}.stderr.txt`), run.errors);
+    if (transcript.recipe) await writeFile(join(rawDirectory, `${fileStem}.recipe.json`), JSON.stringify(transcript.recipe, null, 2));
     const grade = transcript.recipe
       ? await gradeRecipe(task, transcript.recipe)
       : { pass: false, passed: 0, total: task.checks.length, results: [{ kind: 'export', pass: false, detail: 'no exported recipe' }] };
     const usage = transcript.result?.usage ?? {};
     return {
       task: task.id,
+      attempt,
       pass: grade.pass,
       passed: grade.passed,
       total: grade.total,
-      failed: grade.results.filter(result => !result.pass).map(result => `${result.label ?? result.kind}: ${result.detail}`),
+      failed: grade.results.filter(result => !result.pass).map(result => removeLocalPaths(`${result.label ?? result.kind}: ${result.detail}`)),
       model: transcript.model,
       toolCalls: transcript.toolCalls,
       toolErrors: transcript.toolErrors,
       toolsByName: transcript.toolsByName,
       features: transcript.recipe ? recipeFeatures(transcript.recipe) : null,
-      look: transcript.recipe ? await scoreLookSafely(task.id, transcript.recipe, { imageDirectory: join(rawDirectory, 'look') }) : null,
+      look: transcript.recipe ? await scoreLookSafely(task.id, transcript.recipe, { imageDirectory: join(rawDirectory, 'look', String(attempt)) }) : null,
       turns: transcript.result?.num_turns ?? null,
       costUsd: transcript.result?.total_cost_usd ?? null,
       inputTokens: (usage.input_tokens ?? 0) + (usage.cache_read_input_tokens ?? 0) + (usage.cache_creation_input_tokens ?? 0),
@@ -196,7 +202,10 @@ await mkdir(resultsDirectory, { recursive: true });
 const systemPromptAddition = options.skill ? await skillPrompt() : null;
 const summaryPath = join(resultsDirectory, `${runName}.json`);
 const records = options.resume ? JSON.parse(await readFile(summaryPath, 'utf8')).records : [];
-const recordedTasks = new Set(records.map(record => record.task));
+const attempts = Number(options.runs);
+if (!Number.isInteger(attempts) || attempts < 1) throw new RangeError('--runs must be a whole number from 1');
+// Records from before --runs existed have no attempt number: they are the first attempt.
+const recordedAttempts = new Set(records.map(record => `${record.task}#${record.attempt ?? 1}`));
 
 function summarize() {
   return {
@@ -204,20 +213,29 @@ function summarize() {
     model: records.find(record => record.model)?.model ?? options.model,
     date: new Date().toISOString(),
     skill: options.skill,
+    runsPerTask: attempts,
     passed: records.filter(record => record.pass).length,
     tasks: records.length,
     toolCalls: records.reduce((sum, record) => sum + record.toolCalls, 0),
     costUsd: Number(records.reduce((sum, record) => sum + (record.costUsd ?? 0), 0).toFixed(2)),
+    byModel: totalsByModel(records),
     records,
   };
 }
 
-for (const task of tasks.filter(candidate => !recordedTasks.has(candidate.id))) {
-  const record = await runTask(task, systemPromptAddition);
+const pending = [];
+for (let attempt = 1; attempt <= attempts; attempt++) {
+  for (const task of tasks) {
+    if (!recordedAttempts.has(`${task.id}#${attempt}`)) pending.push({ task, attempt });
+  }
+}
+
+for (const { task, attempt } of pending) {
+  const record = await runTask(task, attempt, systemPromptAddition);
   records.push(record);
-  console.log(`${record.task.padEnd(9)} ${record.pass ? 'PASS' : 'FAIL'} ${record.passed}/${record.total}  calls ${record.toolCalls} (errors ${record.toolErrors})  $${record.costUsd ?? '?'}  ${record.wallSeconds}s${record.failed.length ? `  ${record.failed.join(' | ')}` : ''}`);
+  console.log(`${record.task.padEnd(16)} #${attempt} ${record.pass ? 'PASS' : 'FAIL'} ${record.passed}/${record.total}  calls ${record.toolCalls} (errors ${record.toolErrors})  $${record.costUsd ?? '?'}  ${record.wallSeconds}s${record.failed.length ? `  ${record.failed.join(' | ')}` : ''}`);
   // Saved after every task, so a run that gets killed keeps what it already paid for.
   await writeFile(summaryPath, `${JSON.stringify(summarize(), null, 2)}\n`);
 }
 const summary = summarize();
-console.log(`${summary.passed}/${summary.tasks} passed, ${summary.toolCalls} tool calls, $${summary.costUsd}. Summary: bench/agent-modeling/results/${runName}.json`);
+console.log(`${summary.passed}/${summary.tasks} passed (${Math.round(totalsOf(records).successRate * 100)}%), ${summary.toolCalls} tool calls, $${summary.costUsd}. Summary: bench/agent-modeling/results/${runName}.json`);

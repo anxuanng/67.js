@@ -7,7 +7,7 @@ export function knownKeys(value, fields, label) {
   for (const key of Reflect.ownKeys(value)) {
     const descriptor = Object.getOwnPropertyDescriptor(value, key);
     if (typeof key !== 'string' || !fields.includes(key) || !descriptor.enumerable || !Object.hasOwn(descriptor, 'value')) {
-      throw new TypeError(`Unknown or unsupported ${label} field: ${String(key)}.`);
+      throw new TypeError(`Unknown or unsupported ${label} field: ${String(key)}. Allowed fields: ${fields.join(", ")}.`);
     }
   }
 }

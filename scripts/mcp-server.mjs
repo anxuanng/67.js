@@ -5,22 +5,28 @@ import { setPriority, constants } from 'node:os';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import packageMetadata from '../package.json' with { type: 'json' };
-import { MATERIAL_PATTERN_TYPES, MATERIAL_MAPPINGS, MATERIAL_GRAPH_OUTPUTS, MATERIAL_GRAPH_OPERATORS, MATERIAL_GRAPH_LIMITS } from '../src/agent-scene-capabilities.js';
+import { MATERIAL_PATTERN_TYPES, MATERIAL_MAPPINGS, MATERIAL_GRAPH_OUTPUTS, MATERIAL_GRAPH_OPERATORS, MATERIAL_GRAPH_LIMITS, LIGHTING_SETUP_NAMES } from '../src/agent-scene-capabilities.js';
 import { MATERIAL_LAYER_SCALAR_RANGES, MATERIAL_LAYER_COLOR_RANGES } from '../src/material-layers.js';
 
 const finite = z.number().min(-3.4028234663852886e38).max(3.4028234663852886e38);
 const positive = finite.positive();
 const nonnegative = finite.nonnegative();
 const unit = z.number().min(0).max(1);
-const identifier = z.string().min(1).max(128).regex(/\S/).describe('Stable resource or node ID, with at least one non-space character.');
-const vector3 = z.tuple([finite, finite, finite]);
-const color = z.tuple([unit, unit, unit]);
-const quaternion = z.tuple([finite, finite, finite, finite]);
+const identifier = z.string().min(1).max(128).regex(/\S/).describe('Stable resource or node ID, with at least one non-space character.').meta({ id: 'Identifier' });
+const vector3 = z.tuple([finite, finite, finite]).meta({ id: 'Vector3' });
+const color = z.tuple([unit, unit, unit]).meta({ id: 'Color' });
+const quaternion = z.tuple([finite, finite, finite, finite]).meta({ id: 'Quaternion' });
 const point2 = z.tuple([finite, finite]);
 const detail = (minimum, maximum) => z.number().int().min(minimum).max(maximum).optional();
 const segments = detail(3, 2048);
 const ring = z.array(point2).min(3).max(4096);
+const skinSpec = z.strictObject({
+  armature: identifier.describe('ID of an entry in recipe armatures.'),
+  maxInfluences: z.number().int().min(1).max(4).optional().describe('Bones that move one vertex. Defaults to 4.'),
+  maxDistance: positive.optional().describe('Metres from the nearest bone beyond which a vertex counts as unweighted in scene_inspect rig. Defaults to a quarter of the rig size.'),
+}).describe('Bind this mesh node to an armature with automatic weights: each vertex follows its nearest bones, by distance to the bone segments. Needs the armature at rest where the mesh is.');
 const nodeFields = {
+  skin: skinSpec.optional(),
   label: z.string().max(256).optional().describe('Human-readable label. Identity remains the node ID.'),
   parent: identifier.nullable().optional().describe('Parent node ID, or null for a root. Local transforms stay unchanged.'),
   translation: vector3.optional().describe('Local XYZ translation.'),
@@ -39,7 +45,7 @@ const instanceSpec = z.strictObject({
   alignToNormal: z.boolean().optional().describe('Surface only: tilt up to the surface normal.'),
   scale: z.tuple([z.number().min(0.001).max(1000), z.number().min(0.001).max(1000)]).optional().describe('Random uniform scale range [min, max].'),
 }).describe('Exactly one of grid, scatter or surface. Expands at scene_create into a group node plus one child node per point (<id>.0, <id>.1, ...) that share geometry and material and draw as one instanced batch. At most 2048 candidate points.');
-const nodeRecord = z.strictObject({ id: identifier, geometry: identifier.optional(), material: identifier.optional(), instances: instanceSpec.optional().describe('Repeat geometry and material at points; needs both ids. Only in the recipe given to scene_create, not in add-node.'), ...nodeFields });
+const nodeRecord = z.strictObject({ armature: identifier.optional().describe('Set on nodes an armature generates, and ignored on input. Edit bones through armatures.'), id: identifier, geometry: identifier.optional(), material: identifier.optional(), instances: instanceSpec.optional().describe('Repeat geometry and material at points; needs both ids. Only in the recipe given to scene_create, not in add-node.'), ...nodeFields });
 const graphNode = z.union([finite, vector3, z.record(z.string(), z.unknown())]);
 const materialGraph = z.strictObject(Object.fromEntries(MATERIAL_GRAPH_OUTPUTS.map(output => [output, graphNode.optional()]))).describe(`Node graph, plain JSON and never code or shader text, baked on the CPU into textures. One or more outputs: color (linear RGB; a number is grey), roughness, metallic, emission (colour; needs no emission field, it defaults to 1), height (becomes a normal map: bump gives relief). A node is a number, [x,y,z] or an object with one operator: ${MATERIAL_GRAPH_OPERATORS.join(' ')}. Textures: {"noise":{"scale":8,"seed":1,"octaves":4}}, {"voronoi":{"scale":6,"output":"distance"|"edge"|"cell"}}, {"wave":{"frequency":4,"direction":"u"|"v"|"diagonal","shape":"sine"|"saw"|"triangle"}}, {"checker":{"count":8}}, {"gradient":{"type":"u"|"v"|"radial"}}; each takes "at" (a vector such as {"uv":"both"}) to warp it, scales are whole numbers 1 to 64 so it tiles. {"uv":"u"|"v"|"both"} are the coordinates. {"ramp":{"value":node,"stops":[[0,[r,g,b]],[1,[r,g,b]]]}} maps a number to colours (2 to ${MATERIAL_GRAPH_LIMITS.maxStops} stops). Maths: add sub mul div min max pow take [a,b]; abs floor fract sqrt invert take one node; clamp smoothstep mix take [a,b,c]; {"vec":[r,g,b]}. Numbers combine with vectors per component. At most ${MATERIAL_GRAPH_LIMITS.maxNodes} nodes, depth ${MATERIAL_GRAPH_LIMITS.maxDepth}, and a work limit that wants a smaller resolution for a big graph. Example: {"color":{"ramp":{"value":{"noise":{"scale":8}},"stops":[[0,[0.1,0.05,0.02]],[1,[0.6,0.4,0.2]]]}},"height":{"noise":{"scale":8}}}`);
 const materialPattern = z.strictObject({
@@ -128,6 +134,9 @@ const volumeFog = z.strictObject({
 });
 const environment = z.strictObject({
   world: z.boolean().optional().describe('Draw the sky and apply surface fog.'),
+  setup: z.enum(LIGHTING_SETUP_NAMES).optional().describe('Named lighting: an image-based environment plus key light. Default daylight. Setting it resets the key light, fill and ambient fields to that setup; fields in the same call still win.'),
+  environmentIntensity: bounded(0, 100).optional().describe('Scales the setup environment light and its reflections.'),
+  environmentRotation: bounded(-100, 100).optional().describe('Turns the setup environment around the vertical axis, in radians.'),
   lightDirection: boundedVector(-1e6, 1e6).optional().describe('Nonzero direction toward the key light; shadows follow it.'),
   keyColor: boundedVector(0, 1000).optional(),
   keyIntensity: bounded(0, 100).optional(),
@@ -176,6 +185,8 @@ const effects = z.strictObject({
   temperature: bounded(-1, 1).optional(),
   vignette: unit.optional(),
   grain: bounded(0, 0.1).optional(),
+  ambientOcclusion: unit.optional().describe('Screen-space contact darkening, 0 off to 1 full. Default 0.7 when unset; 0 skips the pass.'),
+  ambientOcclusionRadius: bounded(0.01, 100).optional().describe('World-space reach of the occlusion; default 0.5.'),
   bloom: z.strictObject({
     strength: bounded(0, 2).optional(),
     threshold: bounded(0, 10).optional(),
@@ -284,12 +295,25 @@ const stackNodes = [
     crease: z.record(z.string(), z.unknown()).optional().describe('Edge rule for creased edges, the same rules as bevel: {"angle":60} keeps the rims of a cylinder sharp. Boundary edges are always sharp.'),
     sharpness: bounded(0, 10).optional().describe('Crease strength, only with crease. A crease stays fully sharp for that many levels and a fraction blends smooth and sharp. Defaults to 10, sharp at every level.'),
   }).describe('Catmull-Clark subdivision with semi-sharp creases, like the Subdivision Surface modifier of Blender. Faces keep their tags and corner attributes such as uv blend linearly. Put it before uv_unwrap. Check the budget: 3 levels make 64 times the faces.'),
+  z.strictObject({
+    op: z.literal('decimate'),
+    ratio: z.number().gt(0).max(1).describe('Share of the triangles to keep, counted after triangulation. 0.25 keeps a quarter.'),
+  }).describe('Quadric edge collapse like the Decimate modifier of Blender. Open boundaries and the borders between tags stay in place, tags carry over, and uv and colour are dropped, so unwrap after it. The result reports triangles before and after, and stoppedEarly when constraints prevented the ratio.'),
+  z.strictObject({
+    op: z.literal('remesh'),
+    voxelSize: z.number().positive().optional().describe('Edge of one grid cell. Give this or resolution.'),
+    resolution: z.number().int().min(4).max(192).optional().describe('Cells along the longest side. Give this or voxelSize.'),
+  }).describe('Voxel remesh like the Remesh modifier of Blender: a closed quad surface of even cells. The mesh must be closed (fill_holes first); tags and attributes are dropped. Over 192 cells per side or 4 million cells is refused before it runs.'),
 ];
 const meshStack = z.array(z.discriminatedUnion('op', stackNodes)).max(16);
 const meshEdits = z.array(z.discriminatedUnion('op', [...meshEdit.options, ...stackNodes])).max(64);
+// The full edit and stack schemas live in mesh_edit and mesh_stack. Repeating them in every recipe cost about 45 KB
+// per tool; the backend still validates each item and names the valid ops when one is wrong.
+const recipeMeshEdits = z.array(z.record(z.string(), z.unknown())).max(64);
+const recipeMeshStack = z.array(z.record(z.string(), z.unknown())).max(16);
 const geometry = z.discriminatedUnion('type', [
   ...primitiveGeometries(true),
-  z.strictObject({ id: identifier, type: z.literal('mesh'), base: z.discriminatedUnion('type', primitiveGeometries(false)).describe('Starting shape, converted to welded quads with axis face tags.'), edits: meshEdits.optional().describe('Replayable edit log, applied in order.'), stack: meshStack.optional().describe('Non-destructive modifier stack (mirror, array, solidify, bevel, uv_unwrap, subdivide) evaluated after the edits.'), smoothAngle: bounded(0, 180).optional().describe('Edges bending more than this many degrees render hard. Defaults to 30.') }),
+  z.strictObject({ id: identifier, type: z.literal('mesh'), base: z.discriminatedUnion('type', primitiveGeometries(false)).describe('Starting shape, converted to welded quads with axis face tags.'), edits: recipeMeshEdits.optional().describe('Replayable edit log, applied in order. Each item has the shape of one mesh_edit edit; read that tool for every op and field.'), stack: recipeMeshStack.optional().describe('Non-destructive modifier stack evaluated after the edits. Each item has the shape of one mesh_stack node; read that tool for the ops.'), smoothAngle: bounded(0, 180).optional().describe('Edges bending more than this many degrees render hard. Defaults to 30.') }),
 ]);
 function motionTrack(kind, property, value, tangent) {
   return z.strictObject({
@@ -417,12 +441,36 @@ const physics = z.strictObject({
   bodies: z.array(physicsBody).min(1).max(64),
   joints: z.array(physicsJoint).max(64).optional().describe('Joint bodies are the node IDs of physics bodies.'),
 }).describe('Rigid-body physics recorded offline with Rapier at 60 steps a second, then played back by time like motion: scene_look and scene_review motionTime seek into the recording, so a seek back shows the identical frame. Bodies are recipe nodes; scene_inspect reports contacts, sensor events and resting state as numbers. Needs the optional peer dependency @dimforge/rapier3d-compat. A node cannot have a physics body and a motion translation or rotation track.');
+// The full motion schema (tracks, ik, constraints, drivers) is in scene_create's recipe. scene_apply and asset recipes
+// take the same object, validated by the backend, without repeating about 35 KB of schema in each tool.
+const recipeMotionReference = z.record(z.string(), z.unknown()).describe('The same object as recipe.motion in scene_create: duration, loop, tracks, ik, constraints, drivers. Read that tool for the fields.');
+const boneRecord = z.strictObject({
+  name: z.string().min(1).max(64).describe('Unique within the armature. Humanoid rigs use the canonical names (hips, spine, chest, neck, head, leftUpperArm, leftLowerArm, leftHand, leftUpperLeg, leftLowerLeg, leftFoot, leftToes, and right...) so retarget works.'),
+  parent: z.string().min(1).max(64).nullable().optional().describe('Parent bone name, or null for a root bone.'),
+  head: vector3.describe('Rest position of the joint in armature space.'),
+  tail: vector3.optional().describe('Where the bone ends. Defaults to the mean of its children, so give it on leaf bones.'),
+});
+const armature = z.strictObject({
+  id: identifier,
+  parent: identifier.nullable().optional().describe('Node the armature hangs from.'),
+  translation: vector3.optional(), rotation: quaternion.optional(),
+  prefix: z.string().max(64).optional().describe('Prepended to each bone node ID, for a second character or a clash with another node.'),
+  preset: z.enum(['humanoid', 'quadruped']).optional().describe('Places bones from fit. A humanoid faces +Z with Y up; its knees sit slightly forward of the leg line and its elbows slightly behind, so poleless two-bone IK bends the right way. A quadruped lies along Z.'),
+  fit: z.strictObject({
+    node: identifier.optional().describe('A mesh node whose bounds size the preset.'),
+    bounds: z.strictObject({ min: vector3, max: vector3 }).optional().describe('Or explicit bounds in armature space.'),
+    landmarks: z.record(z.string(), vector3).optional().describe('Move a bone head by bone name, or its tail as <name>Tail, for arms held out or an odd shape.'),
+  }).optional(),
+  bones: z.array(boneRecord).min(1).max(128).optional().describe('Explicit bones, instead of a preset.'),
+}).describe('A skeleton. Each bone becomes a recipe node named after it (parented like the bones, rotating about its head), so motion tracks, motion.ik and set-node address bones by name. Mesh nodes bind with skin. scene_inspect rig lists unweighted vertices, bones with no vertices and joint axis problems.');
+const armaturesReference = z.array(z.record(z.string(), z.unknown())).max(16).describe('The same array as recipe.armatures in scene_create: id, parent, preset, fit, bones. Read that tool for the fields.');
 const recipe = z.strictObject({
   format: z.literal('67js.scene'),
   schemaVersion: z.literal(1),
   geometries: z.array(geometry).max(256),
   materials: z.array(z.strictObject({ id: identifier, tag: materialTag, ...materialFields })).max(256),
   nodes: z.array(nodeRecord).max(4096),
+  armatures: z.array(armature).max(16).optional(),
   camera: z.strictObject(cameraFields).optional(),
   environment: environment.optional(),
   effects: effects.optional(),
@@ -445,13 +493,14 @@ const assetRecipe = z.strictObject({
   animation: z.strictObject({ clip: z.number().int().min(0), time: nonnegative }).nullable().optional().describe('Absolute clip/time sample. null selects the original decoded pose.'),
   materialOverrides: z.array(z.strictObject({ id: identifier, ...materialFields })).max(4096).optional(),
   nodeOverrides: z.array(z.strictObject({ id: identifier, translation: vector3.optional(), rotation: quaternion.optional(), scale: z.tuple([positive, positive, positive]).optional() })).max(4096).optional(),
-  motion: motion.nullable().optional(),
+  motion: recipeMotionReference.nullable().optional(),
 });
 const operation = z.discriminatedUnion('type', [
   z.strictObject({ type: z.literal('set-node'), id: identifier, geometry: identifier.optional(), material: identifier.optional(), ...nodeFields }),
   z.strictObject({ type: z.literal('set-material'), id: identifier, ...materialFields }),
   z.strictObject({ type: z.literal('set-camera'), ...cameraFields }),
-  z.strictObject({ type: z.literal('set-motion'), motion: motion.nullable() }),
+  z.strictObject({ type: z.literal('set-motion'), motion: recipeMotionReference.nullable() }),
+  z.strictObject({ type: z.literal('set-armatures'), armatures: armaturesReference.nullable() }),
   z.strictObject({ type: z.literal('set-physics'), physics: physics.nullable() }),
   z.strictObject({ type: z.literal('set-environment'), environment }),
   z.strictObject({ type: z.literal('set-effects'), effects }),
@@ -483,6 +532,13 @@ const renderSettings = z.strictObject({
 const readOnly = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false };
 const edit = { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false };
 
+// Errors from the preview page arrive as "page.evaluate: RangeError: <message>\n    at <bundle url>...": the stack
+// names bundle internals the agent cannot act on, so only the message is returned.
+export function readableErrorMessage(error) {
+  const message = error instanceof Error ? error.message : String(error);
+  return message.split(/\s+at (?:\S+ \()?https?:\/\//)[0].replace(/^page\.evaluate: (?:\w*Error: )?/, '').trim();
+}
+
 function jsonResult(value) {
   return { content: [{ type: 'text', text: JSON.stringify(value) }], structuredContent: value };
 }
@@ -504,8 +560,7 @@ export function createAgentMcpServer(runtime, { version = packageMetadata.versio
       try {
         return await run(argumentsValue);
       } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        return { isError: true, content: [{ type: 'text', text: `${name} failed: ${message}` }] };
+        return { isError: true, content: [{ type: 'text', text: `${name} failed: ${readableErrorMessage(error)}` }] };
       }
     });
   }
@@ -516,7 +571,7 @@ export function createAgentMcpServer(runtime, { version = packageMetadata.versio
   register('scene_inspect', 'Read revision, counts and selected nodes. For a recipe with physics, the result lists body final positions, resting times, contacts and sensor enter/leave events. Bounds describe authored geometry rather than shader displacement.', z.strictObject({ ...sessionFields, ids: z.array(identifier).max(4096).optional().describe('Selected node IDs. Omit to inspect scene order.'), kind: z.enum(['meshes', 'hierarchy']).optional().describe('Imported assets only: hierarchy exposes stable source-node IDs and joints.'), offset: z.number().int().min(0).max(4096).optional().describe('Imported assets only: pagination offset.'), limit: z.number().int().min(1).max(4096).optional().describe('Maximum returned node records. Defaults to 64.'), includeBounds: z.boolean().optional().describe('Include world geometry bounds. Defaults to false.') }), readOnly, async argumentsValue => jsonResult(await runtime.inspect(argumentsValue)));
   register('mesh_inspect', 'Check recipe geometries as polygon meshes: vertex, edge and face counts, triangles/quads/n-gons, connected and closed parts, face tags (top, bottom, side, left, right, front, back), bounds, and lint problems (non-manifold, inconsistent winding, inverted, degenerate, open, loose) with a suggested fix each. Procedural scenes only. Read-only and cached per geometry.', z.strictObject({ ...sessionFields, geometry: identifier.optional().describe('One geometry ID to check, as in mesh_edit.'), geometries: z.array(identifier).min(1).max(16).optional().describe('Geometry IDs to check. Omit both to check the first 16 geometries.') }), readOnly, async ({ geometry: geometryId, geometries, ...rest }) => jsonResult(await runtime.inspectMeshes({ ...rest, ...(geometries || geometryId ? { geometries: [...(geometries ?? []), ...(geometryId ? [geometryId] : [])] } : {}) })));
   register('mesh_edit', 'Append edits to a recipe mesh geometry (or replace its edit log), atomically like scene_apply: extrude, inset, delete, flip, translate with proportional falloff, merge by distance, tag, loop cut, bevel, mirror, array, solidify, UV unwrap, set_position and displace driven by field expressions (math, noise, attributes; also a {"field":expr} selection rule), and booleans (union, difference, intersect) with a primitive cutter. Edits that select no faces or break limits fail without changing the scene. Returns the new revision, render status and the mesh report with per-edit results (faces selected, tags created, size after).', z.strictObject({ ...sessionFields, expectedRevision, geometry: identifier.describe('ID of a geometry with type mesh.'), edits: meshEdits.min(1), replace: z.boolean().optional().describe('Replace the whole edit log instead of appending.') }), edit, async argumentsValue => jsonResult(await runtime.editMesh(argumentsValue)));
-  register('mesh_stack', 'Set the non-destructive modifier stack of a recipe mesh geometry (mirror, array, solidify, bevel, uv_unwrap, subdivide, set_position, displace), evaluated after its edits with each prefix cached, so changing a late node is cheap. apply: n moves the first n nodes into the edit log, as Blender\'s Apply modifier. Atomic like scene_apply. Returns the revision, render status and mesh report with per-node results.', z.strictObject({ ...sessionFields, expectedRevision, geometry: identifier.describe('ID of a geometry with type mesh.'), stack: meshStack.optional().describe('The whole new stack. Omit to keep the current stack (for example with apply).'), apply: z.number().int().min(0).max(16).optional() }), edit, async argumentsValue => jsonResult(await runtime.setMeshStack(argumentsValue)));
+  register('mesh_stack', 'Set the non-destructive modifier stack of a recipe mesh geometry (mirror, array, solidify, bevel, uv_unwrap, subdivide, set_position, displace, decimate, remesh), evaluated after its edits with each prefix cached, so changing a late node is cheap. apply: n moves the first n nodes into the edit log, as Blender\'s Apply modifier. Atomic like scene_apply. Returns the revision, render status and mesh report with per-node results.', z.strictObject({ ...sessionFields, expectedRevision, geometry: identifier.describe('ID of a geometry with type mesh.'), stack: meshStack.optional().describe('The whole new stack. Omit to keep the current stack (for example with apply).'), apply: z.number().int().min(0).max(16).optional() }), edit, async argumentsValue => jsonResult(await runtime.setMeshStack(argumentsValue)));
   register('scene_apply', 'Atomically edit transforms, look, camera or materials. Procedural scenes support membership and set-motion authoring. Imported assets support set-root, set-asset-node, set-motion and absolute set-animation sampling. Successful batches increment revision once.', z.strictObject({ ...sessionFields, expectedRevision, operations: z.array(operation).min(1).max(256).describe('Node/material/camera/root/animation commands use flat fields. Motion, look patches and add commands contain nested records. Backend validates each scene mode before publication.') }), edit, async argumentsValue => jsonResult(await runtime.apply(argumentsValue)));
   register('scene_look', 'Render the active scene as a bounded PNG. Optional authored motionTime seeks without changing revision; null restores the authored base pose. Omit to retain the last preview pose.', z.strictObject({ ...sessionFields, motionTime: z.number().min(0).max(3600).nullable().optional(), width: z.number().int().min(64).max(1024).default(768).describe('PNG width in pixels.'), height: z.number().int().min(64).max(1024).default(512).describe('PNG height in pixels.') }), readOnly, async argumentsValue => {
     const { data, mimeType, metadata } = await runtime.look(argumentsValue);

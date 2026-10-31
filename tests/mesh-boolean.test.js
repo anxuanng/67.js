@@ -1,3 +1,4 @@
+import { GEOMETRY_PROBLEMS } from '../src/mesh-lint.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { box, cylinder, sphere } from '../src/geometry.js';
@@ -103,7 +104,7 @@ test('chained booleans with coplanar contact stay closed', () => {
     validateTopology(editMesh(mesh));
     const report = lintMesh(mesh);
     assert.equal(report.ok, true, `${step.name ?? step.op}: ${JSON.stringify(report.problems)}`);
-    assert.deepEqual(report.problems, []);
+    assert.deepEqual(report.problems.filter(problem => !(problem.kind in GEOMETRY_PROBLEMS)), []);
   }
 });
 

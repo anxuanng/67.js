@@ -186,6 +186,36 @@ to that time:
 IK targets that follow a node see that node before drivers and constraints move it. Material drivers on an imported asset
 read node values from the tracks and rest pose, not the clip.
 
+## Authored rigs
+
+A recipe `armatures` list holds skeletons. Each bone has a `name`, a `parent` (a bone name or `null`), a rest `head` in the
+armature's own space and an optional `tail`; without one the tail is the mean of the children's heads. Instead of
+`bones`, give `preset: "humanoid"` or `"quadruped"` and `fit: { node }` (a mesh node whose bounds size the rig) or
+`fit: { bounds: { min, max } }`. `fit.landmarks` moves a bone head by name, or its tail as `<name>Tail`. Presets are
+resolved to explicit bones when the recipe is read, so a stored recipe does not change when the mesh does. A humanoid
+faces +Z with Y up and uses the `HUMANOID_BONES` names, so `retargetClip` maps it without overrides. Its knees sit a little
+forward of the leg line and its elbows a little behind, so a two-bone solve without a pole folds them the right way.
+A quadruped lies along Z and names its legs `leftFrontUpperLeg`, `rightHindFoot` and so on.
+
+Every bone becomes a recipe node (ID is `prefix` plus the name; the armature root is a node with the armature's ID), parented
+like the bones and carrying the `armature` field. Those nodes are regenerated from `armatures` each time the recipe is read, so edit
+bones with `set-armatures`, not `set-node`. Node rotation tracks and `motion.ik` address bones like any node; rotation is local
+to the bone head, and at rest it is the identity. Positive X rotation swings a hanging limb backward, so a thigh swings from
+negative to positive and a shin folds with positive values.
+
+A mesh node binds with `skin: { armature, maxInfluences, maxDistance }`. Weights are the distance from each vertex to each bone
+segment, `((nearest + softness) / (distance + softness))^4`, with the nearest four kept and normalised. Bone heat diffusion
+or a geodesic falloff would be smoother where two limbs pass close, but needs a sparse solve per bone; this method depends only on
+position, so vertices split at a hard edge get identical weights and seams never open. A vertex farther than `maxDistance`
+(default a quarter of the rig's size) from every bone still binds to its nearest bones and is reported as unweighted.
+`scene_inspect` returns `rig` per armature with `skinned` (vertices and `unweightedVertices` per node), `bonesWithNoVertices`
+and `jointAxisProblems` (`zero-length`, `straight-chain`, `knee-bends-backward`, `elbow-bends-forward`).
+
+`scene_export_glb` writes the bones at rest, the skins and a clip named `motion` baked at 30 frames a second from tracks and
+IK (bone nodes only). In code, `scene.rigExport()` returns the `nodes` and `clips` options for `exportGlb`. Skinned parts render and export their
+bone-driven shape; the node transform of a skinned mesh does not move it, move the armature instead. The `rigged-walker`
+task in `bench/agent-modeling` builds and walks a character this way.
+
 ## Internal sampling helpers
 
 `normalizeAgentMotion(input, recipe)` returns canonical plain JSON, or `null` for absent motion.

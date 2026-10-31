@@ -40,7 +40,7 @@ test('intersection over union is 1 for equal masks, 0 for disjoint masks and a f
 test('every scene reference scores 1 against itself', async () => {
   for (const task of TASKS) {
     const silhouette = await scoreSilhouette(task.id, REFERENCES[task.id]);
-    if (task.id === 'robot-reach') {
+    if (task.assets) {
       assert.equal(silhouette, null);
     } else {
       assert.equal(silhouette.mean, 1, task.id);

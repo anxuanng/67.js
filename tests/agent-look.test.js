@@ -9,10 +9,13 @@ test('default look is complete, detached JSON and idempotent', () => {
   const look = normalizeAgentLook();
   assert.deepEqual(look.environment, {
     world: false,
+    setup: 'daylight',
+    environmentIntensity: 1,
+    environmentRotation: 0,
     lightDirection: [-3, 6, 4],
-    keyColor: [5.2, 4.7, 4.1],
+    keyColor: [3, 2.8, 2.5],
     keyIntensity: 1,
-    fillIntensity: 1,
+    fillIntensity: 0,
     ambientIntensity: 1,
     daylight: 1,
     pointLights: [],
@@ -24,6 +27,7 @@ test('default look is complete, detached JSON and idempotent', () => {
   });
   assert.deepEqual(look.effects, {
     saturation: 1, contrast: 1, temperature: 0, vignette: 0, grain: 0,
+    ambientOcclusion: 0, ambientOcclusionRadius: 0.5,
     bloom: { strength: 0.12, threshold: 1, radius: 1 }, exposure: 1,
   });
   assert.deepEqual(look.shadow, { target: [0, 1, 0], extent: 3.5, distance: 8, near: 0.1, far: 15 });
