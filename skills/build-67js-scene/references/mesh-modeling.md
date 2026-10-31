@@ -197,6 +197,35 @@ bounds and rescale the node.
 ] }
 ```
 
+## Cutting and repairing
+
+Use these when a part has a hole, needs an opening or has too many faces. Each names what it makes with `<name>.<tag>`.
+
+```json
+{
+  "id": "halved-crate", "type": "mesh",
+  "base": { "type": "box", "bevel": 0 },
+  "edits": [
+    { "op": "bisect_plane", "name": "half", "point": [0, 0.1, 0], "normal": [0, 1, 0], "clearOuter": true, "fill": true }
+  ]
+}
+```
+
+Other edits take the same shape, for example:
+
+```text
+{ "op": "fill_holes", "name": "lid" }
+{ "op": "bridge_edge_loops", "name": "neck", "edges": { "open": true }, "segments": 3 }
+{ "op": "dissolve_limited", "angle": 5 }
+```
+
+- `bisect_plane` keeps the side the normal points to when `clearInner`, the other when `clearOuter`; `fill` tags the cap `<name>.cap`.
+- `fill_holes` caps every closed open boundary (`sides` limits their size); `grid_fill` fills an even loop with quads instead.
+- `bridge_edge_loops` needs exactly two boundary loops of equal length. `{ "open": true }` picks all holes; add `"inside": { "min", "max" }` to pick one.
+- `dissolve_edges`, `dissolve_faces`, `dissolve_verts` and `dissolve_limited` remove edges and vertices that only split a flat surface. `dissolve_limited` with a small angle undoes a loop cut.
+- `subdivide_edges` splits chosen edges; with all four edges of a quad chosen it makes a grid.
+- `knife_project` cuts along a polyline projected along `direction`, front and back. Start and end the line outside the mesh.
+
 ## Giving a part a surface
 
 A material `pattern` textures any part with no UVs, after any edits. `size` is metres per repeat, so it stays right on
@@ -220,6 +249,9 @@ adding another pattern: a scene holds at most 16 different ones. `uv_unwrap` is 
 | `must be closed for a boolean` | Fix the open or non-manifold edges it counts, or `merge_by_distance` first |
 | `need the optional peer dependency manifold-3d` | Booleans are unavailable here; model the cut another way or ask for the peer |
 | `rings cross` | Cut each direction in its own `loop_cut` edit |
+| `selects N boundary loops; bridge needs exactly 2` | Narrow `edges` with `{ "open": { "inside": { "min", "max" } } }` |
+| `needs the same number` (bridge) | Run `subdivide_edges` on the shorter loop first |
+| lint `boundary-edge` | `fill_holes`, or `solidify` if the part must be closed |
 | bevel `edges` lower than expected | An earlier inset or extrude left untagged rim faces at the edge; bevel earlier, or widen the rule |
 | bevel `clamped: true` | A neighbouring face is narrower than the width; bevel before the narrow inset, or use a smaller width |
 | `over the limit of N vertices` | Fewer segments, fewer array copies, fewer subdivide levels, or split the part |

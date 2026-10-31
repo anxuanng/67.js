@@ -113,6 +113,20 @@ export class MeshBuilder {
   }
 }
 
+/** A corner made from several source corners, each with a weight; integer attributes copy the heaviest one. */
+function blendWeighted(data, attribute, corner, weights, blends) {
+  const heaviest = weights.reduce((best, entry) => (entry[1] > best[1] ? entry : best));
+  for (let component = 0; component < attribute.size; component++) {
+    if (!blends) {
+      data[corner * attribute.size + component] = attribute.data[heaviest[0] * attribute.size + component];
+      continue;
+    }
+    let sum = 0;
+    for (const [source, weight] of weights) sum += attribute.data[source * attribute.size + component] * weight;
+    data[corner * attribute.size + component] = sum;
+  }
+}
+
 function faceCorners(mesh, face) {
   const corners = [];
   for (let corner = mesh.faceOffsets[face]; corner < mesh.faceOffsets[face + 1]; corner++) corners.push(corner);

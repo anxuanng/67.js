@@ -11,7 +11,7 @@ const PROBLEMS = Object.freeze({
   'inverted-part': { severity: 'error', fix: 'Run flip_normals on the part; its normals point inward.' },
   'degenerate-face': { severity: 'error', fix: 'Run merge_by_distance or dissolve the zero-area faces.' },
   'loose-vertex': { severity: 'warning', fix: 'Delete loose vertices; they do not render and confuse bounds.' },
-  'boundary-edge': { severity: 'warning', fix: 'Open surface. Fill the hole or add solidify if the part must be closed.' },
+  'boundary-edge': { severity: 'warning', fix: 'Open surface. Run fill_holes to cap each boundary loop, or add solidify if the part must be closed.' },
 });
 
 function addProblem(problems, kind, element) {

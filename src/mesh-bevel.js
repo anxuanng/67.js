@@ -19,6 +19,7 @@ import { MeshBuilder } from './mesh-stack.js';
  *   { "boundaryOf": faceRule }           edges between a matching face and a non-matching one
  *   { "along": [x, y, z], "maxAngle": 10 } edges parallel to a direction (either way) within maxAngle degrees
  *   { "all": true }                      every edge with two faces
+ *   { "open": true }                     every boundary edge (one face); { "open": { "inside": { min, max } } } limits it to a box
  * Returns a Uint8Array over MeshData edges.
  */
 export function selectEdges(mesh, rule, table) {
@@ -26,7 +27,8 @@ export function selectEdges(mesh, rule, table) {
   const keys = Object.keys(rule);
   const mask = new Uint8Array(mesh.edgeCount);
   const facesOf = edge => table.faces[edge];
-  if (keys.length !== 1 && rule.along === undefined) throw new TypeError('Edge rule takes exactly one of between, angle, boundaryOf, along, all.');
+  if (keys.length !== 1 && rule.along === undefined) throw new TypeError('Edge rule takes exactly one of between, angle, boundaryOf, along, open, all.');
+  if (rule.open !== undefined) return selectOpenEdges(mesh, rule, table);
   if (rule.all === true) {
     for (let edge = 0; edge < mesh.edgeCount; edge++) mask[edge] = facesOf(edge).length === 2 ? 1 : 0;
     return mask;
@@ -85,7 +87,26 @@ export function selectEdges(mesh, rule, table) {
     }
     return mask;
   }
-  throw new TypeError('Edge rule takes exactly one of between, angle, boundaryOf, along, all.');
+  throw new TypeError('Edge rule takes exactly one of between, angle, boundaryOf, along, open, all.');
+}
+
+// { "open": true } picks the boundary edges, those with one face; { "open": { "inside": { min, max } } } keeps the
+// ones whose midpoint lies in the box, which picks one hole among several.
+function selectOpenEdges(mesh, rule, table) {
+  const mask = new Uint8Array(mesh.edgeCount);
+  const box = rule.open === true ? null : rule.open?.inside;
+  if (!box && rule.open !== true) throw new TypeError('Edge rule open is true or { "inside": { "min": [x, y, z], "max": [x, y, z] } }.');
+  for (let edge = 0; edge < mesh.edgeCount; edge++) {
+    if (table.faces[edge].length !== 1) continue;
+    const first = mesh.edgeVertices[edge * 2] * 3;
+    const second = mesh.edgeVertices[edge * 2 + 1] * 3;
+    const inside = !box || [0, 1, 2].every(axis => {
+      const middle = (mesh.positions[first + axis] + mesh.positions[second + axis]) / 2;
+      return middle >= box.min[axis] - 1e-6 && middle <= box.max[axis] + 1e-6;
+    });
+    mask[edge] = inside ? 1 : 0;
+  }
+  return mask;
 }
 
 /** Faces of every MeshData edge. */
