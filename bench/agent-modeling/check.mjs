@@ -8,6 +8,7 @@ import { REQUIRED_HUMANOID_BONES } from '../../src/retarget.js';
 const AXES = { x: 0, y: 1, z: 2 };
 const SIZE_TOLERANCE = 0.03;
 const SIZE_FLOOR = 0.003;
+const TOUCH_TOLERANCE = 0.003;
 const GROUND_TOLERANCE = 0.005;
 
 const round = value => Number(value.toPrecision(4));
@@ -93,6 +94,23 @@ function checkOne(check, measures) {
       const followsUvs = measures.patternTypes.some((type, index) => type === 'graph' && measures.patternMappings[index] === 'uv');
       const everyPart = measures.uv.parts === measures.uv.of;
       return { pass: followsUvs && everyPart && measures.uv.stretch <= check.maxStretch, detail: followsUvs ? `graph on UVs, stretch ${round(measures.uv.stretch)}, ${measures.uv.parts}/${measures.uv.of} parts with UVs` : 'no graph material with mapping uv' };
+    }
+    case 'touches': {
+      const node = measures.nodeBounds(check.node);
+      const against = measures.nodeBounds(check.against);
+      if (!node || !against) return { pass: false, detail: `no drawn node ${check.node} or ${check.against}` };
+      const axis = AXES[check.side[1]];
+      const gap = check.side[0] === '+' ? node.min[axis] - against.max[axis] : against.min[axis] - node.max[axis];
+      const otherAxes = [0, 1, 2].filter(other => other !== axis);
+      const overlaps = otherAxes.every(other => node.min[other] < against.max[other] && node.max[other] > against.min[other]);
+      return { pass: Math.abs(gap) <= TOUCH_TOLERANCE && overlaps, detail: `${check.node} is ${round(gap)} m from ${check.against}${overlaps ? '' : ' and does not overlap it'}` };
+    }
+    case 'centreAt': {
+      const bounds = measures.nodeBounds(check.node);
+      if (!bounds) return { pass: false, detail: `no drawn node ${check.node}` };
+      const centre = bounds.min.map((minimum, axis) => (minimum + bounds.max[axis]) / 2);
+      const distance = Math.hypot(...centre.map((value, axis) => value - check.position[axis]));
+      return { pass: distance <= 0.01, detail: `${check.node} centre is ${round(distance)} m from where it belongs` };
     }
     case 'nodeAt': {
       const position = measures.nodePosition(check.node, check.time);

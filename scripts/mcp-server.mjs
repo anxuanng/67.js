@@ -26,7 +26,9 @@ const skinSpec = z.strictObject({
   maxInfluences: z.number().int().min(1).max(4).optional().describe('Bones that move one vertex. Defaults to 4.'),
   maxDistance: positive.optional().describe('Metres from the nearest bone beyond which a vertex counts as unweighted in scene_inspect rig. Defaults to a quarter of the rig size.'),
 }).describe('Bind this mesh node to an armature with automatic weights: each vertex follows its nearest bones, by distance to the bone segments. Needs the armature at rest where the mesh is.');
+const relationList = z.array(z.record(z.string(), z.unknown())).max(8).describe('Relations against other mesh nodes; fields in scene_capabilities relations. [] removes them.').meta({ id: 'Relations' });
 const nodeFields = {
+  relations: relationList.optional(),
   skin: skinSpec.optional(),
   label: z.string().max(256).optional().describe('Human-readable label. Identity remains the node ID.'),
   parent: identifier.nullable().optional().describe('Parent node ID, or null for a root. Local transforms stay unchanged.'),

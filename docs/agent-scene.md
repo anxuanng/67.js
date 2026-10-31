@@ -47,7 +47,7 @@ The normal frame loop can render retained parts without calling inspection or ex
 
 ### On-demand code
 
-Mesh editing, `lathe`, `extrude` and `tube` geometry, material `pattern` and `motion` load on demand, so a recipe of
+Mesh editing, `lathe`, `extrude` and `tube` geometry, material `pattern`, `motion` and node `relations` load on demand, so a recipe of
 primitives pays about half the bytes. `createAgentScene` and `apply` stay synchronous. When a recipe uses one of them,
 load its code first; a missing module throws an error that names this call.
 
@@ -231,6 +231,38 @@ the group to the node that carries it. `seed` (default 0) fixes the placement. `
 dropped. `yaw` turns each instance randomly about up, `alignToNormal` (surface only) tilts up to the surface normal, and `scale`
 is a random uniform `[min, max]`. At most 2048 candidate points per node, and the scene's node limit still applies.
 The group's own scale applies to the spacing and the points, because they are in its space.
+
+### Relations between parts
+
+A mesh node can list `relations` that place it against other mesh nodes, so a resized body keeps its handle where it
+belongs. They work on world bounds, are solved after the geometry exists, and are solved again on every `scene_apply`
+(a `set-node` that moves or resizes the target, an `edit-mesh` that changes its faces), so one edit to the body moves
+every part that sits against it.
+
+```text
+{ "id": "handle", "geometry": "grip", "material": "steel",
+  "relations": [ { "kind": "attach", "to": "body", "side": "+x" } ] }
+```
+
+| `kind` | Fields | Decides |
+| --- | --- | --- |
+| `attach` | `side`, `offset` | Touches the target's face on `side` (`+x`, `-x`, `+y`, `-y`, `+z`, `-z`) and centres on the other two axes. |
+| `gap` | `side`, `offset` | Only the touching axis: `offset` metres from the face, negative sinks into the target. |
+| `flush` | `side`, `offset` | Puts its own face on `side` level with the same face of the target. |
+| `align` | `axis`, `at`, `offset` | Puts its `min`, `center` or `max` on that axis at the target's. |
+| `centered` | `axes` (default all three) | Centres on those axes. |
+
+Every relation takes `to` (a mesh node ID) and an optional `region`, a mesh tag: only the faces of the target that carry
+that tag count as its bounds, so a part can sit on the tagged top of a tank and not on its tallest point. A relation
+decides only its own axes and replaces the node's `translation` on them; the other axes keep the authored value.
+
+Limits: at most 8 relations per node and 256 nodes with relations. Targets and nodes must be mesh nodes. Two relations
+on one node cannot decide the same axis. Relations form a graph over parts and parents; a loop (a part waiting on its own
+child included) is rejected with the loop spelled out. Solving is deterministic: the same recipe gives the same
+translations, whatever the order of the nodes. A relation that cannot be satisfied, such as an unknown tag, rejects the
+whole edit and names the relation. `relations: []` in `set-node` removes them and keeps the part where it is. The
+exported recipe holds both the relations and the solved translations. Motion and physics move nodes after the solve and
+know nothing of relations. The code loads on demand (`relations`, see On-demand code). The MCP schema only says `relations` is a list; the kinds and fields are in `scene_capabilities` under `relations`.
 
 ## Transactions and ownership
 

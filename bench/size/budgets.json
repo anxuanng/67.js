@@ -28,16 +28,16 @@
   "entry:grass": 4400,
   "entry:clutter": 5300,
   "entry:texture-set": 900,
-  "entry:agent-scene": 59200,
-  "entry:agent-scene+lazy": 169800,
-  "entry:agent-asset": 88700,
-  "entry:agent-asset+lazy": 178900,
+  "entry:agent-scene": 60500,
+  "entry:agent-scene+lazy": 174100,
+  "entry:agent-asset": 90000,
+  "entry:agent-asset+lazy": 183200,
   "entry:hdri": 3300,
   "entry:camera-effects": 8600,
   "entry:render-passes": 1700,
   "scene:lit-box": 58200,
   "scene:gltf-box": 77800,
-  "scene:agent-scene": 87200,
-  "scene:agent-scene+lazy": 197700
+  "scene:agent-scene": 88500,
+  "scene:agent-scene+lazy": 202000
  }
 }
