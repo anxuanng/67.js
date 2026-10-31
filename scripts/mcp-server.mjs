@@ -26,7 +26,19 @@ const skinSpec = z.strictObject({
   maxInfluences: z.number().int().min(1).max(4).optional().describe('Bones that move one vertex. Defaults to 4.'),
   maxDistance: positive.optional().describe('Metres from the nearest bone beyond which a vertex counts as unweighted in scene_inspect rig. Defaults to a quarter of the rig size.'),
 }).describe('Bind this mesh node to an armature with automatic weights: each vertex follows its nearest bones, by distance to the bone segments. Needs the armature at rest where the mesh is.');
+const relationSpec = z.strictObject({
+  kind: z.enum(['attach', 'flush', 'align', 'centered', 'gap']),
+  to: identifier.describe('Mesh node to place against.'),
+  region: z.string().min(1).max(128).optional().describe('A mesh tag: use only those faces of the target.'),
+  side: z.enum(['+x', '-x', '+y', '-y', '+z', '-z']).optional(),
+  axis: z.enum(['x', 'y', 'z']).optional(),
+  at: z.enum(['min', 'center', 'max']).optional(),
+  axes: z.array(z.enum(['x', 'y', 'z'])).max(3).optional(),
+  offset: z.number().optional().describe('Metres; for attach and gap the distance from the face, negative sinks in.'),
+}).meta({ id: 'Relation' });
+const relationList = z.array(relationSpec).max(8).describe('Place this mesh node from other nodes in world space, solved again after each edit. attach and gap take side (target face): attach touches it and centres on the other axes, gap touches on that axis only. flush takes side: same face level. align takes axis and at. centered takes axes. One relation per axis, no loops, overrides translation on its axes. [] removes them.').meta({ id: 'Relations' });
 const nodeFields = {
+  relations: relationList.optional(),
   skin: skinSpec.optional(),
   label: z.string().max(256).optional().describe('Human-readable label. Identity remains the node ID.'),
   parent: identifier.nullable().optional().describe('Parent node ID, or null for a root. Local transforms stay unchanged.'),

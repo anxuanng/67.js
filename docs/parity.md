@@ -241,7 +241,7 @@ The goal also needs this work, and no page in the Blender manual covers it.
 | Runtime speed | partial | `bench/runtime` compares 7 scenes, and three.js wins most of them. There is no culling, LOD selection or adaptive quality, and bakes run on the main thread. | #28, #37, #38, #74 |
 | Agent measurement | partial | A task suite runs on one model and reads recipes only. | #29, #30, #31, #69 |
 | Pull request checks | partial | The `Test` workflow reports a status and does not block a merge. | #32 |
-| Relations between parts | missing | The agent version of snapping. | #44 |
+| Relations between parts | partial | The agent version of snapping: node `relations` (`attach`, `gap`, `flush`, `align`, `centered`) over world bounds or a tagged region, solved again on every edit, cycles rejected. Tests in [part-relations](../tests/part-relations.test.js); suite tasks `kettle-resize` and `kettle-resize-plain`. No snapping to edges or vertices, no relation on the part's own tagged region. | #44 |
 | Imported mesh editing | missing | Imported assets accept poses and transforms. Their topology is fixed. | #48 |
 | Rendering backend | missing | WebGL2 only. WebGPU is not evaluated. | #56 |
 | Terrain and navigation | partial | Terrain with 4 splat layers and no holes. There is no navmesh. | #64 |

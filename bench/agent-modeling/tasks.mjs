@@ -2,6 +2,7 @@
 // the agent exports (see measure.mjs and check.mjs); none of them looks at how the object was built.
 
 import { REFERENCES } from './references.mjs';
+import { KETTLE_START, KETTLE_START_PLAIN } from './kettle.mjs';
 
 export const PROMPT_PREAMBLE = `You are modeling with the 67.js MCP tools. Build the object described below as a procedural recipe scene:
 start it with scene_create, refine it with mesh_edit, mesh_stack and scene_apply, and look at it with scene_look when
@@ -24,6 +25,25 @@ const crateChecks = [
 // prompt, which the agent has to change instead of rebuilding from nothing.
 const START_INSTRUCTION = 'Start by calling scene_create with exactly this recipe, then change that scene (do not start over):';
 const compactRecipe = recipe => JSON.stringify(recipe);
+
+// The same resize twice: the start recipe either states where the lid, handle and spout sit (relations) or holds
+// absolute positions. The difference in tool calls is what relations are worth to an agent.
+const KETTLE_PROMPT = `The kettle scene below has a body with a lid, a handle and a spout against it. Make the body 0.3 m wide (X)
+and 0.24 m tall (Y), still 0.12 m deep, resting on the ground and centred on X = 0. The lid must still sit on top of the body,
+the handle against its +X side and the spout against its -X side, each touching the body and centred on it as before. Keep
+the lid, handle and spout the size they are.`;
+const KETTLE_CHECKS = [
+  { kind: 'lint' },
+  { kind: 'size', expected: [0.37, 0.26, 0.12] },
+  { kind: 'ground' },
+  { kind: 'touches', node: 'lid', against: 'body', side: '+y' },
+  { kind: 'touches', node: 'handle', against: 'body', side: '+x' },
+  { kind: 'touches', node: 'spout', against: 'body', side: '-x' },
+];
+const KETTLE_TASKS = [
+  { id: 'kettle-resize', startRecipe: KETTLE_START, prompt: KETTLE_PROMPT, checks: KETTLE_CHECKS },
+  { id: 'kettle-resize-plain', startRecipe: KETTLE_START_PLAIN, prompt: KETTLE_PROMPT, checks: KETTLE_CHECKS },
+];
 
 const LONG_TASKS = [
   {
@@ -471,6 +491,7 @@ recipe is what gets graded.`,
       { kind: 'assetReach', endLabel: 'Palm2.R', from: [-1.3, 2.6, 0.8], to: [-1, 1.7, 1.1] },
     ],
   },
+  ...KETTLE_TASKS,
   ...LONG_TASKS,
 ];
 

@@ -34,6 +34,7 @@ own mesh report:
 | soap | Rounding every edge (bevel) |
 | pebble | A smooth solid from a box (subdivision) |
 | crate-uv | The crate with even UVs |
+| kettle-resize, kettle-resize-plain | Resize a kettle body so the lid, handle and spout stay against it. The first start recipe holds `relations`, the second absolute positions; the difference in tool calls is what relations are worth |
 | crate-wood | The crate with a wood material pattern, to see whether agents find `pattern` |
 | arm-reach | A jointed arm whose tip moves between two points, to see whether agents find `motion.ik` |
 | leg-plant | A leg that plants its foot on two points with the knee bending forward: `motion.ik` with `bendToward`, `pole` and `limits` |
