@@ -223,6 +223,8 @@ Tint the ground under the grass with `grass.groundColor`. The [Grass contract](/
 
 `67js/addons/clutter` is in the current source and not yet published. It scatters pebbles, rocks, twigs and fallen leaves over terrain in the same streamed tiles. Pick a `preset` (`meadow`, `forest`, `riverbed`, `scree`), pass `terrainHeight`, and add `clutter.parts` next to the grass. The [Clutter contract](/clutter.md) lists options and budgets.
 
+`67js/addons/light-bake` is in the current source and not yet published. `bakeLightmaps(parts, lights, options)` ray traces the light that bounces between surfaces into a lightmap texture for each part and returns new parts that draw it through the emissive map; direct light stays live. The [Light bake contract](/light-bake.md) lists the limits.
+
 ## Terrain and ground textures
 
 `67js/addons/terrain` and `67js/addons/texture-set` are available from version `0.10.0`. They build a chunked, seeded heightfield with distance level of detail and a four-layer ground material (slope, height and mask rules, height-based edge blending, triplanar cliffs, anti-tiling) from CC0 scans.

@@ -70,6 +70,7 @@
     "./addons/terrain": "./build/terrain.js",
     "./addons/grass": "./build/grass.js",
     "./addons/clutter": "./build/clutter.js",
+    "./addons/light-bake": "./build/light-bake.js",
     "./addons/texture-set": "./build/texture-set.js",
     "./addons/agent-scene": "./build/agent-scene.js",
     "./addons/agent-asset": "./build/agent-asset.js",
