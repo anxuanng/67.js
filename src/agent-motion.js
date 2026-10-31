@@ -2,6 +2,7 @@ import { createAnimationClip, compileAnimationSampler } from './animation.js';
 import { createCameraPath } from './camera-path.js';
 import { createSkeletonPose } from './skeleton-pose.js';
 import { createNodeConstraintEvaluator, normalizeConstraints, normalizeDrivers } from './node-constraints.js';
+import { normalizeClipLayers } from './agent-clip-layers.js';
 import { bounded, denseArray, finite, knownKeys, valueFrom } from './motion-validation.js';
 
 const PROPERTIES = {
@@ -269,21 +270,22 @@ export function normalizeAgentMotion(input, recipe) {
   if (input === null || input === undefined) {
     return null;
   }
-  knownKeys(input, ['duration', 'loop', 'tracks', 'ik', 'constraints', 'drivers'], 'motion');
+  knownKeys(input, ['duration', 'loop', 'tracks', 'ik', 'constraints', 'drivers', 'layers'], 'motion');
   const duration = bounded(input.duration, 0.1, 30, 'Motion duration');
   const loop = input.loop === undefined ? false : input.loop;
   if (typeof loop !== 'boolean') {
     throw new TypeError('Motion loop must be boolean.');
   }
-  denseArray(input.tracks, 128, 'Motion tracks');
-  if (!input.tracks.length && !input.ik?.length && !input.constraints?.length && !input.drivers?.length) {
+  const inputTracks = input.tracks ?? [];
+  denseArray(inputTracks, 128, 'Motion tracks');
+  if (!inputTracks.length && !input.layers?.length && !input.ik?.length && !input.constraints?.length && !input.drivers?.length) {
     throw new RangeError('Motion needs at least one track, IK solver, constraint or driver. Use null to clear it.');
   }
   const nodes = new Set((recipe.nodes ?? []).map(node => node.id));
   const materials = new Set((recipe.materials ?? []).map(material => material.id));
   const identities = new Set();
   let keyframeCount = 0;
-  const tracks = input.tracks.map((track, index) => {
+  const tracks = inputTracks.map((track, index) => {
     knownKeys(track, ['kind', 'id', 'property', 'interpolation', 'keyframes'], 'motion track');
     if (!Object.hasOwn(PROPERTIES, track.kind) || !Object.hasOwn(PROPERTIES[track.kind], track.property)) {
       throw new RangeError('Unsupported motion target or property.');
@@ -332,6 +334,9 @@ export function normalizeAgentMotion(input, recipe) {
     return result;
   });
   const result = { duration, loop, tracks };
+  if (input.layers !== undefined) {
+    result.layers = normalizeClipLayers(input.layers, recipe.clipLayerContext);
+  }
   if (input.ik !== undefined) {
     result.ik = normalizeIk(input.ik, recipe, tracks, duration);
     if (keyframeCount + ikKeyframeCount(result.ik) > 2048) {
