@@ -6,7 +6,7 @@ import { setPriority, constants } from 'node:os';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import packageMetadata from '../package.json' with { type: 'json' };
-import { MATERIAL_PATTERN_TYPES, MATERIAL_MAPPINGS, MATERIAL_GRAPH_OUTPUTS, MATERIAL_GRAPH_OPERATORS, MATERIAL_GRAPH_LIMITS, LIGHTING_SETUP_NAMES } from '../src/agent-scene-capabilities.js';
+import { MATERIAL_PATTERN_TYPES, MATERIAL_MAPPINGS, LIGHTING_SETUP_NAMES, RENDER_PASS_NAMES } from '../src/agent-scene-capabilities.js';
 import { MATERIAL_LAYER_SCALAR_RANGES, MATERIAL_LAYER_COLOR_RANGES } from '../src/material-layers.js';
 
 const finite = z.number().min(-3.4028234663852886e38).max(3.4028234663852886e38);
@@ -47,12 +47,11 @@ const instanceSpec = z.strictObject({
   scale: z.tuple([z.number().min(0.001).max(1000), z.number().min(0.001).max(1000)]).optional().describe('Random uniform scale range [min, max].'),
 }).describe('Exactly one of grid, scatter or surface. Expands at scene_create into a group node plus one child node per point (<id>.0, <id>.1, ...) that share geometry and material and draw as one instanced batch. At most 2048 candidate points.');
 const nodeRecord = z.strictObject({ armature: identifier.optional().describe('Set on nodes an armature generates, and ignored on input. Edit bones through armatures.'), id: identifier, geometry: identifier.optional(), material: identifier.optional(), instances: instanceSpec.optional().describe('Repeat geometry and material at points; needs both ids. Only in the recipe given to scene_create, not in add-node.'), ...nodeFields });
-const graphNode = z.union([finite, vector3, z.record(z.string(), z.unknown())]);
-const materialGraph = z.strictObject(Object.fromEntries(MATERIAL_GRAPH_OUTPUTS.map(output => [output, graphNode.optional()]))).describe(`Node graph, plain JSON and never code or shader text, baked on the CPU into textures. One or more outputs: color (linear RGB; a number is grey), roughness, metallic, emission (colour; needs no emission field, it defaults to 1), height (becomes a normal map: bump gives relief). A node is a number, [x,y,z] or an object with one operator: ${MATERIAL_GRAPH_OPERATORS.join(' ')}. Textures: {"noise":{"scale":8,"seed":1,"octaves":4}}, {"voronoi":{"scale":6,"output":"distance"|"edge"|"cell"}}, {"wave":{"frequency":4,"direction":"u"|"v"|"diagonal","shape":"sine"|"saw"|"triangle"}}, {"checker":{"count":8}}, {"gradient":{"type":"u"|"v"|"radial"}}; each takes "at" (a vector such as {"uv":"both"}) to warp it, scales are whole numbers 1 to 64 so it tiles. {"uv":"u"|"v"|"both"} are the coordinates. {"ramp":{"value":node,"stops":[[0,[r,g,b]],[1,[r,g,b]]]}} maps a number to colours (2 to ${MATERIAL_GRAPH_LIMITS.maxStops} stops). Maths: add sub mul div min max pow take [a,b]; abs floor fract sqrt invert take one node; clamp smoothstep mix take [a,b,c]; {"vec":[r,g,b]}. Numbers combine with vectors per component. At most ${MATERIAL_GRAPH_LIMITS.maxNodes} nodes, depth ${MATERIAL_GRAPH_LIMITS.maxDepth}, and a work limit that wants a smaller resolution for a big graph. Example: {"color":{"ramp":{"value":{"noise":{"scale":8}},"stops":[[0,[0.1,0.05,0.02]],[1,[0.6,0.4,0.2]]]}},"height":{"noise":{"scale":8}}}`);
+const materialGraph = z.record(z.string(), z.unknown()).describe('Node graph as plain JSON, never code. Outputs, nodes, inputs and limits are in scene_capabilities materialGraph.');
 const materialPattern = z.strictObject({
   type: z.enum([...MATERIAL_PATTERN_TYPES, 'graph']).describe('Surface look: a preset, or graph for your own node graph (give graph). Directional presets (wood, planks, metal) run along axis.'),
   graph: materialGraph.optional().describe('Only with type graph.'),
-  mapping: z.enum(MATERIAL_MAPPINGS).optional().describe('box (default) projects along the object axes and needs no UVs; uv follows the geometry UVs, so the mesh needs a uv_unwrap node or geometry.uvs. size and axis only apply to box.'),
+  mapping: z.enum(MATERIAL_MAPPINGS).optional().describe('box (default) or uv, which needs UVs; see scene_capabilities.'),
   colors: z.array(color).min(2).max(3).optional().describe('Linear RGB colours to mix, darker first. Bricks take a third for the mortar. Each type has good defaults.'),
   size: z.number().min(0.01).max(100).optional().describe('Metres per repeat of the texture, so it keeps its real size on any object and node scale.'),
   count: z.number().int().min(1).max(64).optional().describe('Features per repeat: planks, bricks across, tiles across, wood rings or noise cells.'),
@@ -193,6 +192,8 @@ const effects = z.strictObject({
     threshold: bounded(0, 10).optional(),
     radius: bounded(0.1, 4).optional(),
   }).optional(),
+  depthOfField: z.strictObject({ blur: unit.optional(), focusDistance: bounded(0.01, 100000).optional() }).optional().describe('Lens blur: blur 0 to 1, focusDistance metres.'),
+  motionBlur: z.strictObject({ shutter: bounded(0, 0.5).optional() }).optional().describe('Camera motion smear, shutter in seconds.'),
 });
 const shadow = z.strictObject({
   target: boundedVector(-1e6, 1e6).optional(),
@@ -531,6 +532,7 @@ const renderSettings = z.strictObject({
   animation: z.strictObject({ clip: z.number().int().min(0), start: z.number().min(0).max(3600).optional() }).optional(),
   motion: z.strictObject({ start: z.number().min(0).max(3600).optional() }).optional(),
   rendererTime: z.strictObject({ start: z.number().min(0).max(3600).optional(), rate: z.number().min(-16).max(16).optional() }).optional(),
+  passes: z.array(z.enum(RENDER_PASS_NAMES)).min(1).max(RENDER_PASS_NAMES.length).optional().describe('image and stills only: also write raw PNGs per frame for these passes; opaque geometry only.'),
 }).describe('Immutable snapshot render: one PNG, eight evenly spaced PNGs, or CPU H.264 MP4. Video dimensions must be even. Defaults: 24 fps, one second. Use motion.start for authored recipe tracks, animation for an imported clip, or both to layer them. Omitted motion holds time zero. Nonlooping samples must fit the authored duration.');
 const readOnly = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false };
 const edit = { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false };

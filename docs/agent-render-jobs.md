@@ -49,6 +49,28 @@ Creation and edits author tracks through scene recipes and `set-motion`, before 
 Static recipes remain static unless a shader uses renderer time.
 Imported clips retain separate absolute sampling through `settings.animation`.
 
+## Render passes
+
+`image` and `stills` jobs accept `settings.passes`, a list of `albedo`, `normal`, `emission`, `depth` and `objectId`.
+Each frame writes its lit image and then one PNG per pass: `render.png` and `render-<pass>.png` for an image, `frame-N.png` and `frame-N-<pass>.png` for stills.
+Passes are raw data at the lit image's size: no tone mapping, grading, bloom, depth of field or antialiasing, so values stay exact at silhouettes.
+Only opaque and cutout geometry appears. Liquid, foam and blended parts, the sky and the environment background do not.
+
+| Pass | Pixel value |
+| --- | --- |
+| `albedo` | Base colour after maps and vertex colour, as stored |
+| `normal` | World-space normal after normal maps, `normal * 0.5 + 0.5` |
+| `emission` | Emissive colour times strength, clamped to 1 |
+| `depth` | Metres from the camera over 100 m as a 16-bit value, high byte in red and low byte in green. Background is `255, 255, 0` |
+| `objectId` | 24-bit ID, low byte in red, then green, then blue. Zero is background |
+
+`scene_render_result` metrics carry `objectNames`, the part name for ID 1, 2 and so on (the first 1000, with `objectNamesTruncated`), and `depthRangeMetres`.
+IDs follow draw order, which groups parts by shared geometry, so read the names list and not node order.
+Videos hold the lit image only.
+
+A seek to any frame gives the same pixels: a job samples each frame from its time and keeps no state between frames.
+`npm run smoke:render-passes` proves it through MCP: it renders eight stills with every pass, then renders frame 3 again as an image in a different order of seeks and compares the bytes of the lit image and all five passes.
+
 ## Controller API
 
 This module provides persistent job records around a trusted render callback.

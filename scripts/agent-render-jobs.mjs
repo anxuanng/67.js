@@ -2,7 +2,9 @@ import { mkdir, open, readFile, writeFile, rename, unlink, rmdir, readdir, lstat
 import { randomUUID, createHash } from 'node:crypto';
 import { isAbsolute, join, resolve } from 'node:path';
 
-const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
+import { RENDER_PASS_NAMES } from '../src/agent-scene-capabilities.js';
+
+const UUID =/^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
 const STATES = ['queued', 'running', 'finalizing', 'completed', 'cancelling', 'cancelled', 'failed', 'interrupted'];
 const TERMINAL = new Set(['completed', 'cancelled', 'failed', 'interrupted']);
 const DEFAULT_LIMITS = Object.freeze({ maxRecords: 32, maxStoreBytes: 512 * 1024 ** 2, maxOutputBytes: 128 * 1024 ** 2, maxFrameBytes: 1024 ** 2, deadlineMs: 300000, cleanupMs: 5000 });
@@ -55,7 +57,7 @@ function jsonCopy(value, maximum = MAXIMUM_JSON_BYTES) {
 }
 
 function settingsFrom(input, clips, recipe) {
-  objectKeys(input, ['kind', 'width', 'height', 'fps', 'duration', 'animation', 'motion', 'rendererTime'], 'settings');
+  objectKeys(input, ['kind', 'width', 'height', 'fps', 'duration', 'animation', 'motion', 'rendererTime', 'passes'], 'settings');
   if (!['image', 'stills', 'video'].includes(input.kind)) throw new TypeError('kind must be image, stills or video.');
   const width = boundedNumber(input.width, 64, 1024, 'width', true);
   const height = boundedNumber(input.height, 64, 1024, 'height', true);
@@ -65,6 +67,7 @@ function settingsFrom(input, clips, recipe) {
   const frameCount = input.kind === 'image' ? 1 : input.kind === 'stills' ? 8 : Math.ceil(fps * duration);
   if (frameCount > 900) throw new RangeError('Job exceeds 900 frames.');
   const result = { kind: input.kind, width, height, fps, duration, frameCount };
+  if (input.passes !== undefined) result.passes = passesFrom(input.passes, input.kind);
   const lastSampleTime = input.kind === 'image' ? 0 : input.kind === 'stills' ? duration : (frameCount - 1) / fps;
   if (input.motion !== undefined) {
     objectKeys(input.motion, ['start'], 'motion');
@@ -99,12 +102,27 @@ function settingsFrom(input, clips, recipe) {
   return result;
 }
 
-function artifactNames(kind) {
-  return kind === 'video' ? ['render.mp4'] : kind === 'image' ? ['render.png'] : Array.from({ length: 8 }, (_, index) => `frame-${index}.png`);
+function passesFrom(passes, kind) {
+  if (kind === 'video') throw new RangeError('Render passes need kind image or stills; a video holds the lit image only.');
+  if (!Array.isArray(passes) || passes.length < 1 || passes.length > RENDER_PASS_NAMES.length) throw new TypeError(`passes must list 1 to ${RENDER_PASS_NAMES.length} pass names.`);
+  for (const name of passes) {
+    if (!RENDER_PASS_NAMES.includes(name)) throw new RangeError(`Unknown render pass: ${name}. Use ${RENDER_PASS_NAMES.join(', ')}.`);
+  }
+  if (new Set(passes).size !== passes.length) throw new RangeError('passes must not repeat a name.');
+  return [...passes];
+}
+
+/** Every artifact filename of a job, lit image first and then each requested pass, frame by frame. */
+export function artifactNames(kind, passes = []) {
+  if (kind === 'video') return ['render.mp4'];
+  const stems = kind === 'image' ? ['render'] : Array.from({ length: 8 }, (_, index) => `frame-${index}`);
+  return stems.flatMap(stem => [`${stem}.png`, ...passes.map(pass => `${stem}-${pass}.png`)]);
 }
 
 function allowedFile(name) {
-  return INTERNAL_FILES.has(name) || /^(?:render\.(?:png|mp4)|frame-[0-7]\.png)(?:\.partial)?$/.test(name);
+  const passNames = RENDER_PASS_NAMES.join('|');
+  const artifact = new RegExp(`^(?:render\\.(?:png|mp4)|(?:render|frame-[0-7])(?:-(?:${passNames}))?\\.png)(?:\\.partial)?$`);
+  return INTERNAL_FILES.has(name) || artifact.test(name);
 }
 
 async function regularFile(path) {
@@ -301,7 +319,7 @@ export async function createAgentRenderJobs({ root, run, limits: inputLimits = {
       boundedNumber(record.progress.maximumPendingFrames, 0, 1, 'persisted pending frames', true);
       if (record.metrics !== undefined) record.metrics = jsonCopy(record.metrics, 65536);
       if (record.reason !== undefined && (typeof record.reason !== 'string' || record.reason.length > 2048)) throw new Error('Invalid persisted job reason.');
-      const namesAllowed = artifactNames(settings.kind);
+      const namesAllowed = artifactNames(settings.kind, settings.passes);
       if (!Array.isArray(record.artifacts) || record.artifacts.length > namesAllowed.length) throw new Error('Invalid persisted artifacts.');
       const seen = new Set();
       for (const artifact of record.artifacts) {
@@ -365,7 +383,7 @@ export async function createAgentRenderJobs({ root, run, limits: inputLimits = {
       record.state = 'finalizing';
       await persist(job);
       objectKeys(completed, ['artifacts', 'metrics'], 'runner result');
-      const expected = artifactNames(record.settings.kind);
+      const expected = artifactNames(record.settings.kind, record.settings.passes);
       if (!Array.isArray(completed.artifacts) || completed.artifacts.length !== expected.length) throw new Error('Runner did not return the required fixed artifacts.');
       const directory = await directoryFor(record.jobId);
       const metrics = jsonCopy(completed.metrics ?? {}, 65536);

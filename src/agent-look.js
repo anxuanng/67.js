@@ -11,7 +11,7 @@ const ENVIRONMENT_FIELDS = [
   'daylight', 'pointLights', 'spotLights', 'areaLights', 'skyTop', 'skyBottom', 'fogColor', 'fogDensity', 'volumeFog', 'liquid',
 ];
 const LIQUID_FIELDS = ['thickness', 'ior', 'refraction', 'scattering', 'foamOpacity', 'foamSoftness'];
-const EFFECT_FIELDS = ['exposure', 'saturation', 'contrast', 'temperature', 'vignette', 'grain', 'ambientOcclusion', 'ambientOcclusionRadius', 'bloom'];
+const EFFECT_FIELDS = ['exposure', 'saturation', 'contrast', 'temperature', 'vignette', 'grain', 'ambientOcclusion', 'ambientOcclusionRadius', 'bloom', 'depthOfField', 'motionBlur'];
 const SHADOW_FIELDS = ['target', 'extent', 'distance', 'near', 'far'];
 const POINT_LIGHT_FIELDS = ['position', 'color', 'intensity', 'radius', 'range', 'castShadow'];
 const SPOT_LIGHT_FIELDS = ['position', 'direction', 'angle', 'penumbra', 'color', 'intensity', 'radius', 'range', 'castShadow'];
@@ -19,6 +19,8 @@ const AREA_LIGHT_FIELDS = ['position', 'direction', 'up', 'width', 'height', 'co
 const VOLUME_VECTOR_FIELDS = ['minimum', 'maximum', 'color', 'ambient', 'drift'];
 const VOLUME_NUMBER_FIELDS = ['density', 'steps', 'anisotropy', 'noiseAmount', 'noiseScale', 'maxDistance'];
 const BLOOM_FIELDS = ['strength', 'threshold', 'radius'];
+const DEPTH_OF_FIELD_FIELDS = ['blur', 'focusDistance'];
+const MOTION_BLUR_FIELDS = ['shutter'];
 
 function plainObject(value, label) {
   if (!value || typeof value !== 'object' || Array.isArray(value) ||
@@ -260,20 +262,24 @@ export function agentEnvironmentMap(environment) {
 
 function effectsFrom(input = {}) {
   knownKeys(input, EFFECT_FIELDS, 'effects');
+  const groupFields = { bloom: BLOOM_FIELDS, depthOfField: DEPTH_OF_FIELD_FIELDS, motionBlur: MOTION_BLUR_FIELDS };
   for (const field of EFFECT_FIELDS) {
-    if (field !== 'bloom' && Object.hasOwn(input, field)) {
+    if (!(field in groupFields) && Object.hasOwn(input, field)) {
       numberInRange(input[field], -Number.MAX_VALUE, Number.MAX_VALUE, `effects.${field}`);
     }
   }
-  const bloom = fallback(input.bloom, {});
-  knownKeys(bloom, BLOOM_FIELDS, 'bloom');
-  for (const field of BLOOM_FIELDS) {
-    if (Object.hasOwn(bloom, field)) {
-      numberInRange(bloom[field], -Number.MAX_VALUE, Number.MAX_VALUE, `bloom.${field}`);
+  const groups = {};
+  for (const [group, fields] of Object.entries(groupFields)) {
+    groups[group] = fallback(input[group], {});
+    knownKeys(groups[group], fields, group);
+    for (const field of fields) {
+      if (Object.hasOwn(groups[group], field)) {
+        numberInRange(groups[group][field], -Number.MAX_VALUE, Number.MAX_VALUE, `${group}.${field}`);
+      }
     }
   }
   const ambientOcclusion = fallback(input.ambientOcclusion, DEFAULT_AMBIENT_OCCLUSION);
-  const resolved = resolveEffects({ ...input, ambientOcclusion, bloom: { strength: 0.12, threshold: 1, radius: 1, ...bloom } });
+  const resolved = resolveEffects({ ...input, ambientOcclusion, ...groups, bloom: { strength: 0.12, threshold: 1, radius: 1, ...groups.bloom } });
   return { ...resolved, exposure: numberInRange(fallback(input.exposure, 1), 0.01, 16, 'exposure') };
 }
 
