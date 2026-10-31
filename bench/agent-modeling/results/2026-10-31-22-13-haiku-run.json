@@ -1,0 +1,115 @@
+{
+  "run": "2026-10-31-22-13-haiku-run",
+  "model": "claude-haiku-5-5",
+  "date": "2026-10-31T22:17:24.852Z",
+  "skill": false,
+  "runsPerTask": 2,
+  "passed": 1,
+  "tasks": 2,
+  "toolCalls": 37,
+  "costUsd": 0.32,
+  "byModel": {
+    "claude-haiku-5-5": {
+      "runs": 2,
+      "passed": 1,
+      "successRate": 0.5,
+      "toolCalls": 37,
+      "toolErrors": 7,
+      "inputTokens": 3514377,
+      "outputTokens": 23725,
+      "costUsd": 0.32,
+      "tasks": {
+        "robot-ragdoll": {
+          "runs": 2,
+          "passed": 1,
+          "successRate": 0.5,
+          "toolCalls": 37,
+          "toolErrors": 7,
+          "inputTokens": 3514377,
+          "outputTokens": 23725,
+          "costUsd": 0.32
+        }
+      }
+    }
+  },
+  "records": [
+    {
+      "task": "robot-ragdoll",
+      "attempt": 1,
+      "pass": false,
+      "passed": 0,
+      "total": 1,
+      "failed": [
+        "assetRagdoll: the recipe has no physics ragdoll"
+      ],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 21,
+      "toolErrors": 2,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_capabilities": 1,
+        "scene_asset_catalog": 1,
+        "scene_create_asset": 1,
+        "scene_inspect": 3,
+        "scene_apply": 5,
+        "scene_look": 8,
+        "scene_export_recipe": 1,
+        "scene_dispose": 1
+      },
+      "features": {
+        "geometryTypes": [],
+        "meshOperations": [],
+        "motionIk": [],
+        "motionTracks": 2
+      },
+      "look": {
+        "error": "Cannot read properties of undefined (reading 'format')"
+      },
+      "turns": 23,
+      "costUsd": 0.18923791,
+      "inputTokens": 1978568,
+      "outputTokens": 17595,
+      "wallSeconds": 170,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "robot-ragdoll",
+      "attempt": 2,
+      "pass": true,
+      "passed": 1,
+      "total": 1,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 16,
+      "toolErrors": 5,
+      "toolsByName": {
+        "ToolSearch": 2,
+        "scene_capabilities": 1,
+        "scene_asset_catalog": 1,
+        "scene_create_asset": 1,
+        "scene_inspect": 2,
+        "scene_look": 2,
+        "scene_apply": 7,
+        "scene_export_recipe": 1,
+        "scene_dispose": 1
+      },
+      "features": {
+        "geometryTypes": [],
+        "meshOperations": [],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "error": "Cannot read properties of undefined (reading 'format')"
+      },
+      "turns": 19,
+      "costUsd": 0.12881438999999997,
+      "inputTokens": 1535809,
+      "outputTokens": 6130,
+      "wallSeconds": 73,
+      "exitCode": 0,
+      "stopped": "success"
+    }
+  ]
+}

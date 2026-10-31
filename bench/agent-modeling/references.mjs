@@ -235,6 +235,11 @@ export const REFERENCES = {
       }],
     },
   },
+  'robot-ragdoll': {
+    format: '67js.asset', schemaVersion: 1, assetId: 'ab'.repeat(32),
+    root: { translation: [0, 2, 0] },
+    physics: { duration: 4, ragdoll: {} },
+  },
   'robot-walk-wave': {
     format: '67js.asset', schemaVersion: 1, assetId: 'ab'.repeat(32),
     motion: {
