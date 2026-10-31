@@ -10,7 +10,7 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createAgentScene, loadMeshBooleans, needsMeshBooleans } from '../../src/agent-scene.js';
+import { createAgentScene, loadAllAgentSceneModules, loadMeshBooleans, needsMeshBooleans } from '../../src/agent-scene.js';
 import { boundsOfGeometries, lookCameras } from './look-cameras.mjs';
 import { worldGeometry } from './measure.mjs';
 import { REFERENCES } from './references.mjs';
@@ -33,6 +33,7 @@ function withoutPhysics(recipe) {
 /** World-space triangles of every drawn node, with motion sampled at time zero. Asset recipes have none here. */
 export async function worldGeometriesOf(recipe) {
   if (recipe.format === '67js.asset') return null;
+  await loadAllAgentSceneModules();
   if (needsMeshBooleans(recipe)) await loadMeshBooleans();
   const scene = createAgentScene(withoutPhysics(recipe));
   if (recipe.motion) scene.sampleMotion(0);

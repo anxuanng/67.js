@@ -1,17 +1,18 @@
 ---
 name: render-67js-media
-description: Export 67.js scenes to PNG or MP4 on GPU or CPU. Use for render ảnh/video 3D, export presets, MSAA quality, performance measurements and bounded RAM/VRAM capture without buffering full frame sequences.
+description: Export 67js scenes to PNG or MP4 on GPU or CPU. Use for render ảnh/video 3D, export presets, MSAA quality, performance measurements and bounded RAM/VRAM capture without buffering full frame sequences.
 license: MIT
 ---
 
-# Xuất ảnh và video 67.js
+# Xuất ảnh và video 67js
 
-Locate the 67.js checkout and read its `scripts/render-media.mjs` and `src/budget.js`.
+Locate the 67js checkout and read its `scripts/render-media.mjs` and `src/budget.js`.
 Read [rendering.md](references/rendering.md) for commands, backends and measurement limits.
 Use the repository pipeline rather than constructing a parallel exporter.
 
 For MCP snapshot jobs, read the checkout's `docs/agent-render-jobs.md` and verify source versus published support.
 Configure a private job store. Poll status after cancellation before resuming preview edits.
+For a video with cuts, sound or an encoder choice, use the recipe `timeline`, `settings.timeline`, `settings.audio` (a file in the server's `--audio` folder) and `settings.encoder` described in the same document; the job reports measured sync.
 For procedural motion, read `docs/agent-motion.md` and select `settings.motion.start`. Preview seeks preserve revisions and authored recipes.
 
 For imported character motion from `0.8.0`, read `docs/agent-character-motion.md`. Use independent `settings.animation` and `settings.motion` clocks.

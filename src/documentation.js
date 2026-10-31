@@ -54,7 +54,7 @@ function inline(value) {
 // Keep exact source slices for Copy page, including the Markdown heading.
 const headings = [...guide.matchAll(/^## (.+)\r?$/gm)];
 const topics = [
-  { id: 'overview', title: 'About 67.js', raw: guide.slice(0, headings[0].index) },
+  { id: 'overview', title: 'About 67js', raw: guide.slice(0, headings[0].index) },
   ...headings.map((heading, index) => ({
     id: heading[1].trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/-$/, ''),
     title: heading[1].trim(),
@@ -196,7 +196,7 @@ function openTopic(focus = false) {
   article.replaceChildren(section);
   if (currentTopic.id === 'install') {
     const managerLink = document.createElement('p');
-    managerLink.innerHTML = `<a class="doc-install-link" href="/#downloads">Install 67.js ${icon('arrow')}</a>`;
+    managerLink.innerHTML = `<a class="doc-install-link" href="/#downloads">Install 67js ${icon('arrow')}</a>`;
     section.append(managerLink);
   }
   const index = topics.indexOf(currentTopic);
@@ -212,7 +212,7 @@ function openTopic(focus = false) {
   }
   article.append(pagination);
   document.querySelector('#doc-topic-name').textContent = currentTopic.title;
-  document.title = `${currentTopic.title} · 67.js documentation`;
+  document.title = `${currentTopic.title} · 67js documentation`;
   copyStatus.textContent = '';
   document.querySelector('.doc-copy-fallback')?.remove();
   copyPage.innerHTML = `${icon('copy')}Copy page`;

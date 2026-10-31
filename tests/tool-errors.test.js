@@ -29,7 +29,7 @@ const TRIGGERS = {
   'unknown geometry field': withRecipe(recipe => { recipe.geometries[0].width = 2; }),
   'node refers to a missing geometry': withRecipe(recipe => { recipe.nodes[0].geometry = 'nothing'; }),
   'node refers to a missing material': withRecipe(recipe => { recipe.nodes[0].material = 'nothing'; }),
-  'node with a geometry and no material': withRecipe(recipe => { delete recipe.nodes[0].material; }),
+  'node with a material and no geometry': withRecipe(recipe => { delete recipe.nodes[0].geometry; }),
   'node parent that does not exist': withRecipe(recipe => { recipe.nodes[1].parent = 'ghost'; }),
   'duplicate node id': withRecipe(recipe => { recipe.nodes.push({ id: 'body' }); }),
   'opacity above one': withRecipe(recipe => { recipe.materials[0].opacity = 2; }),
@@ -80,4 +80,34 @@ test('a session error names the active session or says how to create one', () =>
 test('page errors lose the evaluate prefix and the bundle stack', () => {
   const error = new Error('page.evaluate: RangeError: Unknown mesh ID: node1. Use mesh-0. at Object.inspect (http://127.0.0.1:5173/preview.js:1:2) at Array.map (<anonymous>)');
   assert.equal(readableErrorMessage(error), 'Unknown mesh ID: node1. Use mesh-0.');
+});
+
+// Messages a JavaScript engine writes for a bug in our code. The agent must get advice instead, never the raw text.
+const ENGINE_FAULTS = [
+  new TypeError("Cannot read properties of undefined (reading 'map')"),
+  new TypeError('page.evaluate: TypeError: scene.inspect is not a function at Object.look (http://127.0.0.1:5173/preview.js:1:2)'),
+  new TypeError('undefined is not iterable (cannot read property Symbol(Symbol.iterator))'),
+  new ReferenceError('sessionProblem is not defined'),
+  new TypeError("Cannot destructure property 'id' of 'undefined' as it is undefined."),
+];
+
+for (const fault of ENGINE_FAULTS) {
+  test(`engine fault "${fault.message.slice(0, 40)}" reaches an agent as advice with a next action`, () => {
+    const originalConsoleError = console.error;
+    console.error = () => {};
+    let message;
+    try {
+      message = readableErrorMessage(fault);
+    } finally {
+      console.error = originalConsoleError;
+    }
+    assert.doesNotMatch(message, /Cannot read|Cannot destructure|is not a function|is not iterable|is not defined|undefined/i);
+    assert.match(message, /Internal error/);
+    assert.match(message, NEXT_ACTION);
+  });
+}
+
+test('the validation errors we write ourselves are not mistaken for engine faults', () => {
+  const message = 'Only mesh nodes can have a skin.';
+  assert.equal(readableErrorMessage(new TypeError(message)), message);
 });

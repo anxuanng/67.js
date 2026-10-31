@@ -1,5 +1,5 @@
 {
- "archiveBytes": 758000,
+ "archiveBytes": 781200,
  "goals": {
   "lit-box": 50000,
   "gltf-box": 80000,
@@ -28,19 +28,19 @@
   "entry:terrain": 3100,
   "entry:grass": 4400,
   "entry:clutter": 5300,
-  "entry:path-tracer": 12700,
   "entry:light-bake": 25400,
+  "entry:path-tracer": 12900,
   "entry:texture-set": 900,
-  "entry:agent-scene": 63300,
-  "entry:agent-scene+lazy": 204400,
-  "entry:agent-asset": 94300,
-  "entry:agent-asset+lazy": 215000,
+  "entry:agent-scene": 63900,
+  "entry:agent-scene+lazy": 206400,
+  "entry:agent-asset": 95000,
+  "entry:agent-asset+lazy": 217200,
   "entry:hdri": 3300,
   "entry:camera-effects": 8600,
   "entry:render-passes": 1700,
   "scene:lit-box": 60200,
   "scene:gltf-box": 79700,
-  "scene:agent-scene": 93100,
-  "scene:agent-scene+lazy": 234200
+  "scene:agent-scene": 93600,
+  "scene:agent-scene+lazy": 236200
  }
 }

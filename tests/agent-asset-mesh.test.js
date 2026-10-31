@@ -242,3 +242,17 @@ test('imported parts report as polygon meshes with the shared lint', async () =>
   assert.throws(() => scene.inspectMeshes({ geometries: Array.from({ length: 17 }, (_, index) => `mesh-${index}`) }), /at most/);
   asset.dispose();
 });
+
+test('inspect accepts a source-node ID that holds one part and names the parts of one that holds several', async () => {
+  const scene = createScene(await loadRobot());
+  const nodes = scene.inspect({ kind: 'hierarchy', limit: 256 }).nodes;
+  const single = nodes.find(node => node.meshIds.length === 1);
+  const several = nodes.find(node => node.meshIds.length > 1);
+  const empty = nodes.find(node => node.meshIds.length === 0);
+  assert.ok(single && several && empty, 'the robot has leaf, group and mesh-less nodes');
+  const byNode = scene.inspect({ ids: [single.id] }).nodes;
+  assert.deepEqual(byNode.map(node => node.id), single.meshIds);
+  assert.throws(() => scene.inspect({ ids: [several.id] }), error => error.message.includes(several.meshIds[0]) && /holds \d+ parts/.test(error.message));
+  assert.throws(() => scene.inspect({ ids: [empty.id] }), /no mesh/);
+  assert.throws(() => scene.inspect({ ids: ['nothing-here'] }), /Unknown mesh ID/);
+});

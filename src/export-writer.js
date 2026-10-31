@@ -25,7 +25,7 @@ function componentBounds(data, componentCount) {
 /** Collects the JSON document and the binary chunk of one GLB. */
 export function createGlbWriter() {
   const document = {
-    asset: { version: '2.0', generator: '67.js' },
+    asset: { version: '2.0', generator: '67js' },
     scene: 0,
     scenes: [{ nodes: [] }],
     nodes: [],

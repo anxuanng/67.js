@@ -341,6 +341,27 @@ export function createAgentAssetScene(asset, inputRecipe) {
   let editSignature = meshEditSignature(editedParts);
   let topologyRevision = 0;
 
+  /** A part by its ID (mesh-3), or by the source node that holds exactly that one part; several or none is named in the error. */
+  function partRecordFor(id) {
+    const record = records.find(value => value.id === id);
+    if (record) {
+      return record;
+    }
+    const sourceNode = sourceNodes.get(id);
+    if (!sourceNode) {
+      throw new RangeError(`Unknown mesh ID: ${id}. Imported mesh IDs look like mesh-0, mesh-1; call scene_inspect without ids to list them, or with kind hierarchy for source nodes.`);
+    }
+    const partIds = sourceNode.meshIds ?? [];
+    if (partIds.length === 0) {
+      throw new RangeError(`Source node ${id} has no mesh of its own. Inspect a mesh ID such as mesh-0, or call scene_inspect with kind hierarchy to see which nodes hold parts.`);
+    }
+    if (partIds.length > 1) {
+      const listed = partIds.slice(0, 8).join(', ');
+      throw new RangeError(`Source node ${id} holds ${partIds.length} parts: ${listed}${partIds.length > 8 ? ', ...' : ''}. Pass the part IDs you want.`);
+    }
+    return records.find(value => value.id === partIds[0]);
+  }
+
   function geometryOf(record, edited = editedParts) {
     return edited.get(record.id)?.geometry ?? record.source.geometry;
   }
@@ -844,13 +865,7 @@ export function createAgentAssetScene(asset, inputRecipe) {
       if (options.ids !== undefined && (!Array.isArray(options.ids) || options.ids.length > records.length)) {
         throw new RangeError('Inspection IDs must be an array within the decoded part count.');
       }
-      const selected = options.ids === undefined ? records : options.ids.map(id => {
-        const record = records.find(value => value.id === id);
-        if (!record) {
-          throw new RangeError(`Unknown mesh ID: ${id}. Imported mesh IDs look like mesh-0, mesh-1; call scene_inspect without ids to list them, or with kind hierarchy for source nodes.`);
-        }
-        return record;
-      });
+      const selected = options.ids === undefined ? records : options.ids.map(id => partRecordFor(id));
       const visible = selected.slice(offset, offset + limit);
       if (options.includeBounds && visible.reduce((total, record) => total + geometryOf(record).positions.length / 3, 0) > MAX_INSPECTION_VERTICES) {
         throw new RangeError('Bounds inspection exceeds two million authored base vertices. Select fewer meshes.');

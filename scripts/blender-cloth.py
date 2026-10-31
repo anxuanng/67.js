@@ -3,8 +3,8 @@
 Run from the repo root:
   PATH="/c/Program Files/Blender Foundation/Blender 5.2:$PATH" blender -b --factory-startup --python scripts/blender-cloth.py
 
-Positions are written in 67.js axes (Y up): Blender (x, y, z) becomes (x, z, -y). Vertex order matches the grid
-geometry of 67.js: rows from the top down, columns left to right.
+Positions are written in 67js axes (Y up): Blender (x, y, z) becomes (x, z, -y). Vertex order matches the grid
+geometry of 67js: rows from the top down, columns left to right.
 """
 import json
 import math
@@ -30,7 +30,7 @@ def reset_scene():
 
 
 def grid_object(name, center, width, height, plane):
-    """A (SEGMENTS + 1)^2 vertex sheet. plane 'vertical' lies in XZ (67.js XY), 'horizontal' in XY (67.js XZ)."""
+    """A (SEGMENTS + 1)^2 vertex sheet. plane 'vertical' lies in XZ (67js XY), 'horizontal' in XY (67js XZ)."""
     mesh = bpy.data.meshes.new(name)
     builder = bmesh.new()
     vertices = []

@@ -35,9 +35,9 @@ Preview rendering and edits pause during a job. Inspection and recipe export rem
 The source revision, pose and checkpoints survive completion or cancellation.
 Cancellation becomes terminal after the owned encoder and job page stop and the preview recovers.
 
-Video uses CPU H.264 encoding, even dimensions and one streamed frame at a time.
+Video uses H.264 (CPU by default, see `settings.encoder`), even dimensions and one streamed frame at a time.
 The render backend can use GPU or CPU. Memory limits can reduce the actual output dimensions.
-Results report actual dimensions and measured timings. They do not embed video bytes or include audio.
+Results report actual dimensions and measured timings. They do not embed video bytes.
 
 Release `0.8.0` also samples imported character tracks and can layer them over an independently sampled imported clip.
 
@@ -48,6 +48,46 @@ Nonlooping samples must fit the motion duration. Looping samples wrap and remain
 Creation and edits author tracks through scene recipes and `set-motion`, before job submission.
 Static recipes remain static unless a shader uses renderer time.
 Imported clips retain separate absolute sampling through `settings.animation`.
+
+## Timeline, audio and encoder
+
+A recipe `timeline` plays shots one after another over the recipe's motion clock. It is small on purpose: the video sequence
+editor is a non-goal of the engine (issue #23), so there are no layers, overlaps, trimming or crossfades. Shots cut, or dip through black.
+
+```json
+{ "timeline": { "shots": [
+  { "name": "wide", "duration": 20, "camera": { "eye": [0, 3, 14], "target": [0, 0, 0] } },
+  { "name": "close", "duration": 20, "motionStart": 1, "camera": { "eye": [0, 0.6, 2.4], "fov": 50 } },
+  { "name": "dusk", "duration": 20, "dip": 1 }
+] } }
+```
+
+| Shot field | Meaning |
+| --- | --- |
+| `name` | 1 to 24 letters, digits, `-` or `_`, unique. Job metrics list shots by name with their start second. |
+| `duration` | 0.1 to 30 s. The timeline holds up to 64 shots and 60 s. |
+| `motionStart` | Second of the motion clock the shot starts at. Omitted, the shot reads the motion at its place on the timeline, so a non-looping motion must cover it. Only for recipes with motion, physics or cloth. |
+| `camera` | A partial camera (`eye`, `target`, `up`, `fov`, `near`, `far`) on top of the sampled camera. Omitted, the shot keeps the camera of the motion tracks. |
+| `dip` | 0.05 to 4 s. The previous shot fades to black over the first half and this one fades up over the second half. |
+
+`set-timeline` edits the section and `null` removes it. A job renders it with `settings.timeline: { start }` (default 0) for kind `image`, `stills` or `video`.
+`duration` defaults to the rest of the timeline. The timeline owns the motion clock, so `motion` and `animation` settings are rejected, and the renderer clock reads timeline time.
+Imported assets have no timeline.
+
+A frame depends only on its timeline time and keeps no state, so a seek to any time gives the same pixels as that frame inside a video or stills run.
+Videos are capped at 60 s and 900 frames, so a 60 s video needs 15 fps or less.
+
+**Audio.** Start the server with `--audio <absolute folder>` and pass `settings.audio: { file, offset }` on a video job.
+`file` is a plain name in that folder ending in `.wav`, `.mp3`, `.ogg` or `.flac` (no path, drive or protocol syntax); the file must be a regular file of up to 32 MiB without links.
+`offset` starts the sound that many seconds into the file. The sound is resampled to 48 kHz and encoded as AAC.
+A job whose file is shorter than the video after its offset fails before rendering. After encoding, the job decodes both streams of the MP4 and reports `metrics.sync`
+(`videoSeconds`, `audioSeconds`, `differenceSeconds`); a difference over 50 ms fails the job.
+ffmpeg only receives the resolved path with `-protocol_whitelist file`; no URL, argument or output path comes from the agent.
+
+**Encoder.** `settings.encoder` is `cpu` (libx264, default) or `nvenc` (h264_nvenc). A machine without NVENC fails the job with the ffmpeg error and never falls back.
+
+`npm run smoke:film-timeline` proves it through MCP on SwiftShader (`cpu` backend): 9 PNG seeks over 8 stills across three shots and a dip are identical to the byte,
+and a click placed on a cut in a WAV lands on the decoded cut frame within a frame. `FILM_SECONDS=60` renders the 60 s case.
 
 ## Render passes
 
@@ -229,7 +269,7 @@ This conservative repair step prevents two recovery processes from deleting a ne
 | Asset bytes | 16 MiB |
 | Dimensions | 64 to 1024 pixels each |
 | Video frame rate | 1 to 30 fps |
-| Duration | 0.1 to 30 seconds |
+| Duration | 0.1 to 60 seconds |
 | Maximum video frames | 900 |
 | Still frames | 8 |
 | Job elapsed deadline | Five minutes |

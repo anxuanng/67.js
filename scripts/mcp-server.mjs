@@ -7,7 +7,7 @@ import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import packageMetadata from '../package.json' with { type: 'json' };
 import { MODIFIER_OPERATIONS } from '../src/mesh-operations.js';
-import { MATERIAL_PATTERN_TYPES, MATERIAL_MAPPINGS, LIGHTING_SETUP_NAMES, RENDER_PASS_NAMES } from '../src/agent-scene-capabilities.js';
+import { MATERIAL_PATTERN_TYPES, MATERIAL_MAPPINGS, LIGHTING_SETUP_NAMES, RENDER_PASS_NAMES, VIDEO_ENCODERS } from '../src/agent-scene-capabilities.js';
 import { MATERIAL_LAYER_SCALAR_RANGES, MATERIAL_LAYER_COLOR_RANGES } from '../src/material-layers.js';
 
 const finite = z.number().min(-3.4028234663852886e38).max(3.4028234663852886e38);
@@ -37,7 +37,7 @@ const nodeFields = {
   rotation: quaternion.optional().describe('Nonzero local XYZW quaternion. The backend normalizes it.'),
   scale: z.tuple([positive, positive, positive]).optional().describe('Positive local XYZ scale.'),
 };
-const fieldExpression = z.union([finite, z.boolean(), vector3, z.record(z.string(), z.unknown())]).describe('Field expression, plain JSON and never code; driver expressions use the same language. A number, a boolean or [x,y,z] is a constant; an object holds one operator: math add mul sub div mod pow atan2 min max clamp saturate mix smoothstep neg abs sqrt sin cos floor ceil round fract sign; comparison lt lte gt gte eq; logic and or not if [cond,a,b]; vectors vec [x,y,z] dot cross distance length normalize x y z; sources {"attr":"position"|"normal"|"index"|"tag","component":"x"|"y"|"z","name":tag}, {"noise":{"scale":3,"seed":7,"octaves":1}} in 0..1, {"random":{"seed":1}} per element in 0..1. Example: {"mul":[{"attr":"position","component":"y"},0.5]}. At most 64 nodes, depth 12, 250000 elements.');
+const fieldExpression = z.union([finite, z.boolean(), vector3, z.record(z.string(), z.unknown())]).describe('Field expression, plain JSON and never code; driver expressions use the same language. A number, a boolean or [x,y,z] is a constant; an object holds one operator: math add mul sub div mod pow atan2 min max clamp saturate mix smoothstep neg abs sqrt sin cos floor ceil round fract sign; comparison lt lte gt gte eq; logic and or not if [cond,a,b]; vectors vec [x,y,z] dot cross distance length normalize x y z; sources {"attr":"position"|"normal"|"index"|"tag","component":"x"|"y"|"z","name":tag}, {"noise":{"scale":3,"seed":7,"octaves":1}} in 0..1, {"random":{"seed":1}} per element in 0..1. Limits in scene_capabilities fieldExpressions.');
 const instanceCount = z.number().int().min(1).max(2048);
 const instanceSpec = z.strictObject({
   grid: z.strictObject({ counts: z.tuple([instanceCount, instanceCount, instanceCount]), spacing: vector3 }).optional().describe('Grid of counts[0] x counts[1] x counts[2] points centred on the group.'),
@@ -498,11 +498,12 @@ const armature = z.strictObject({
   bones: z.array(boneRecord).min(1).max(128).optional().describe('Explicit bones, instead of a preset.'),
 }).describe('A skeleton. Each bone becomes a recipe node named after it (parented like the bones, rotating about its head), so motion tracks, motion.ik and set-node address bones by name. Mesh nodes bind with skin. scene_inspect rig lists unweighted vertices, bones with no vertices and joint axis problems.');
 const armaturesReference = z.array(z.record(z.string(), z.unknown())).max(16).describe('The same array as recipe.armatures in scene_create: id, parent, preset, fit, bones. Read that tool for the fields.');
+const timelineReference = z.record(z.string(), z.unknown()).describe('Shots in order, up to 60 s; fields in scene_capabilities filmTimeline.');
 const recipe = z.strictObject({
   format: z.literal('67js.scene'),
   schemaVersion: z.literal(1),
-  geometries: z.array(geometry).max(256),
-  materials: z.array(z.strictObject({ id: identifier, tag: materialTag, ...materialFields })).max(256),
+  geometries: z.array(geometry).max(256).optional(),
+  materials: z.array(z.strictObject({ id: identifier, tag: materialTag, ...materialFields })).max(256).optional().describe('Omit for none.'),
   nodes: z.array(nodeRecord).max(4096),
   armatures: z.array(armature).max(16).optional(),
   camera: z.strictObject(cameraFields).optional(),
@@ -512,8 +513,9 @@ const recipe = z.strictObject({
   motion: motion.nullable().optional(),
   physics: physics.nullable().optional(),
   cloth: cloth.nullable().optional(),
+  timeline: timelineReference.nullable().optional(),
   particles: z.record(z.string(), z.unknown()).nullable().optional().describe('Particle emitters and hair, seeked by motionTime. Fields: scene_capabilities particles.'),
-}).describe('Bounded scene recipe. Backend validates references, mesh resource pairs, hierarchy, geometry budgets and camera consistency.');
+}).describe('Bounded scene recipe; the backend validates it.');
 const assetRecipe = z.strictObject({
   format: z.literal('67js.asset'),
   schemaVersion: z.literal(1),
@@ -531,14 +533,22 @@ const assetRecipe = z.strictObject({
   nodeOverrides: z.array(z.strictObject({ id: identifier, translation: vector3.optional(), rotation: quaternion.optional(), scale: z.tuple([positive, positive, positive]).optional() })).max(4096).optional(),
   motion: recipeMotionReference.nullable().optional(),
 });
+// Agents copy the add-node shape into set-node and set-material and wrap the fields in a node or material key. Name the
+// fix in the message instead of the bare "unrecognized key".
+function flatFieldsHint(operationType, wrapperKey) {
+  return issue => issue.code === 'unrecognized_keys' && issue.keys.includes(wrapperKey)
+    ? `${operationType} takes its fields beside type, not inside ${wrapperKey}: {"type":"${operationType}","id":"<id>",...fields}. Move the fields of ${wrapperKey} up one level.`
+    : undefined;
+}
 const operation = z.discriminatedUnion('type', [
-  z.strictObject({ type: z.literal('set-node'), id: identifier, geometry: identifier.optional(), material: identifier.optional(), ...nodeFields }),
-  z.strictObject({ type: z.literal('set-material'), id: identifier, ...materialFields }),
+  z.strictObject({ type: z.literal('set-node'), id: identifier, geometry: identifier.optional(), material: identifier.optional(), ...nodeFields }, { error: flatFieldsHint('set-node', 'node') }),
+  z.strictObject({ type: z.literal('set-material'), id: identifier, ...materialFields }, { error: flatFieldsHint('set-material', 'material') }),
   z.strictObject({ type: z.literal('set-camera'), ...cameraFields }),
   z.strictObject({ type: z.literal('set-motion'), motion: recipeMotionReference.nullable() }),
   z.strictObject({ type: z.literal('set-armatures'), armatures: armaturesReference.nullable() }),
   z.strictObject({ type: z.literal('set-physics'), physics: z.record(z.string(), z.unknown()).nullable().describe('Same object as recipe.physics in scene_create.') }),
   z.strictObject({ type: z.literal('set-cloth'), cloth: z.record(z.string(), z.unknown()).nullable() }),
+  z.strictObject({ type: z.literal('set-timeline'), timeline: z.record(z.string(), z.unknown()).nullable() }),
   z.strictObject({ type: z.literal('set-particles'), particles: z.record(z.string(), z.unknown()).nullable() }),
   z.strictObject({ type: z.literal('set-environment'), environment }),
   z.strictObject({ type: z.literal('set-effects'), effects }),
@@ -555,7 +565,7 @@ const operation = z.discriminatedUnion('type', [
 ]);
 const branchName = z.string().regex(BRANCH_NAME_PATTERN).describe('Branch name, up to 24 characters.');
 const labelsFlag = z.boolean().optional().describe('Draw part names, tags and lint problems on the image; returned with pixel positions.');
-const sessionFields = { sessionId: z.uuid().describe('Session UUID returned by scene_create.') };
+const sessionFields = { sessionId: z.uuid('sessionId is not a valid UUID. Leave it out to use the active scene.').optional().describe('Leave out: the active scene is used.') };
 const checkpointFields = { ...sessionFields, checkpointId: z.uuid().describe('Checkpoint UUID returned by scene_checkpoint for this session.') };
 const expectedRevision = z.number().int().min(0).max(Number.MAX_SAFE_INTEGER).describe('Current revision returned by create, inspect, apply or restore. Stale edits fail atomically.');
 const jobFields = { jobId: z.uuid().describe('Render job UUID returned by scene_render_submit or capabilities jobs.records.') };
@@ -564,11 +574,14 @@ const renderSettings = z.strictObject({
   width: z.number().int().min(64).max(1024),
   height: z.number().int().min(64).max(1024),
   fps: z.number().int().min(1).max(30).optional(),
-  duration: z.number().min(0.1).max(30).optional(),
+  duration: z.number().min(0.1).max(60).optional(),
   animation: z.strictObject({ clip: z.number().int().min(0), start: z.number().min(0).max(3600).optional() }).optional(),
   motion: z.strictObject({ start: z.number().min(0).max(3600).optional() }).optional(),
   rendererTime: z.strictObject({ start: z.number().min(0).max(3600).optional(), rate: z.number().min(-16).max(16).optional() }).optional(),
-  renderer: z.strictObject({ type: z.literal('pathTracer'), samples: z.number().int().optional(), bounces: z.number().int().optional(), denoise: z.boolean().optional(), seed: z.number().int().optional(), maxSeconds: z.number().optional() }).optional().describe('image only: offline path tracer instead of the rasterizer; limits and what it skips are in scene_capabilities pathTracer.'),
+  renderer: z.strictObject({ type: z.literal('pathTracer'), samples: z.number().optional(), bounces: z.number().optional(), denoise: z.boolean().optional(), seed: z.number().optional(), maxSeconds: z.number().optional() }).optional().describe('image only: offline path tracer; limits and skips in scene_capabilities pathTracer.'),
+  timeline: z.strictObject({ start: z.number().min(0).max(60).optional() }).optional().describe('Play the recipe timeline from start (default 0); duration defaults to the rest of it. It owns the motion clock, so leave motion and animation out.'),
+  audio: z.strictObject({ file: z.string().max(68), offset: z.number().min(0).max(3600).optional() }).optional().describe('Video only: a file name in the --audio folder (.wav, .mp3, .ogg, .flac) mixed in from offset seconds.'),
+  encoder: z.enum(VIDEO_ENCODERS).optional().describe('Video only: cpu (default) or nvenc.'),
   passes: z.array(z.enum(RENDER_PASS_NAMES)).min(1).max(RENDER_PASS_NAMES.length).optional().describe('image and stills only: also write raw PNGs per frame for these passes; opaque geometry only.'),
 }).describe('Immutable snapshot render: one PNG, eight evenly spaced PNGs, or CPU H.264 MP4. Video dimensions must be even. Defaults: 24 fps, one second. Use motion.start for authored recipe tracks, animation for an imported clip, or both to layer them. Omitted motion holds time zero. Nonlooping samples must fit the authored duration.');
 const readOnly = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false };
@@ -578,8 +591,28 @@ const edit = { readOnlyHint: false, destructiveHint: true, idempotentHint: false
 // names bundle internals the agent cannot act on, so only the message is returned.
 export function readableErrorMessage(error) {
   const message = error instanceof Error ? error.message : String(error);
-  return message.split(/\s+at (?:\S+ \()?https?:\/\//)[0].replace(/^page\.evaluate: (?:\w*Error: )?/, '').trim();
+  const readable = message.split(/\s+at (?:\S+ \()?https?:\/\//)[0].replace(/^page\.evaluate: (?:\w*Error: )?/, '').trim();
+  if (!isEngineFault(readable)) {
+    return readable;
+  }
+  console.error(`67js internal error: ${readable}`);
+  return ENGINE_FAULT_ADVICE;
 }
+
+// The messages a JavaScript engine raises for a bug in our code (a missing field read, a wrong type called), as opposed
+// to the validation messages we write ourselves. They name no input the agent can change, so the agent gets advice and
+// the detail goes to the server log.
+const ENGINE_FAULT = /Cannot (?:read|set) propert(?:y|ies) of (?:undefined|null)|Cannot destructure|is not a function|is not iterable|is not defined|Cannot convert undefined or null/;
+const ENGINE_FAULT_ADVICE = 'Internal error in the 67js server, not caused by your input. Call scene_inspect to check the scene, retry once, and if it repeats, leave out the optional field you just added (for example labels) or report the tool name.';
+
+function isEngineFault(message) {
+  return ENGINE_FAULT.test(message);
+}
+
+// After a failed create no scene exists, so mesh_inspect and the other tools cannot look into the failure. Agents tried
+// anyway (5 of 32 errors in one recorded run) and met a second error.
+const CREATE_TOOLS = new Set(['scene_create', 'scene_create_asset']);
+const SCENE_NOT_CREATED_ADVICE = 'No scene was created, so the other tools have nothing to inspect: fix the recipe as the message says and call scene_create again.';
 
 function jsonResult(value) {
   return { content: [{ type: 'text', text: JSON.stringify(value) }], structuredContent: value };
@@ -597,12 +630,25 @@ export function createAgentMcpServer(runtime, { version = packageMetadata.versio
       error => console.error(`67js runtime cleanup failed: ${error.message}`),
     );
   };
+  // One scene exists at a time, so a call that leaves sessionId out means that scene. A stale or invented ID is still
+  // rejected by the runtime: acting on a scene the caller did not name could edit the wrong one.
+  function withActiveSession(argumentsValue, inputSchema) {
+    const takesSession = inputSchema.shape !== undefined && 'sessionId' in inputSchema.shape;
+    if (!takesSession || argumentsValue.sessionId !== undefined) {
+      return argumentsValue;
+    }
+    const activeSessionId = runtime.activeSessionId();
+    return activeSessionId ? { ...argumentsValue, sessionId: activeSessionId } : argumentsValue;
+  }
   function register(name, description, inputSchema, annotations, run) {
     server.registerTool(name, { description, inputSchema, annotations }, async argumentsValue => {
       try {
-        return await run(argumentsValue);
+        return await run(withActiveSession(argumentsValue, inputSchema));
       } catch (error) {
-        return { isError: true, content: [{ type: 'text', text: `${name} failed: ${readableErrorMessage(error)}` }] };
+        const message = readableErrorMessage(error);
+        // A refused create because a scene already exists leaves that scene in place: no advice then.
+        const sceneMissing = CREATE_TOOLS.has(name) && !message.startsWith('Dispose the current scene');
+        return { isError: true, content: [{ type: 'text', text: `${name} failed: ${message}${sceneMissing ? ` ${SCENE_NOT_CREATED_ADVICE}` : ''}` }] };
       }
     });
   }
@@ -656,8 +702,8 @@ export async function runMcpCli({ argumentsValue = process.argv.slice(2),
   for (let index = 0; index < argumentsValue.length; index += 2) {
     const name = argumentsValue[index];
     const value = argumentsValue[index + 1];
-    if (!['--backend', '--browser', '--memory', '--assets', '--jobs', '--ffmpeg'].includes(name) || value === undefined) {
-      throw new Error('Use --backend cpu|gpu, --browser <local executable path>, --memory <32..256 MiB>, --assets <absolute GLB directory>, --jobs <absolute private output directory>, and --ffmpeg <absolute executable>.');
+    if (!['--backend', '--browser', '--memory', '--assets', '--jobs', '--ffmpeg', '--audio'].includes(name) || value === undefined) {
+      throw new Error('Use --backend cpu|gpu, --browser <local executable path>, --memory <32..256 MiB>, --assets <absolute GLB directory>, --jobs <absolute private output directory>, --ffmpeg <absolute executable>, and --audio <absolute folder of .wav, .mp3, .ogg or .flac files for video jobs>.');
     }
     options[name.slice(2)] = name === '--memory' ? Number(value) : value;
   }

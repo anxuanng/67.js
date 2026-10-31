@@ -170,7 +170,7 @@ function identifier(value) {
 
 function resources(values, maximum, label, validate) {
   if (!Array.isArray(values) || values.length > maximum) {
-    throw new RangeError(`${label} exceeds its resource limit or is not an array.`);
+    throw new RangeError(`${label} exceeds its resource limit of ${maximum} or is not an array. Pass "${label}": [] for none, or remove some.`);
   }
   const seen = new Set();
   return values.map(value => {
@@ -273,7 +273,7 @@ function nodeFrom(value) {
   }
   result.rotation = result.rotation.map(component => component / length);
   if ((value.geometry !== undefined) !== (value.material !== undefined)) {
-    throw new TypeError(`Node ${value.id}: set both geometry and material, or neither for a group node.`);
+    throw new TypeError(`Node ${value.id}: set both geometry and material, or neither for a group node. Name a geometry to draw it, or drop material to make it a group.`);
   }
   if (value.geometry !== undefined) {
     identifier(value.geometry);
@@ -577,12 +577,35 @@ function addArmatures(recipe, limits) {
   recipe.nodes = [...derived, ...recipe.nodes];
 }
 
+const DEFAULT_MATERIAL_ID = 'default';
+
+/**
+ * A node that names a geometry and no material gets the material "default" (neutral grey, every field at its default),
+ * added to the recipe when it is missing, so the normalized and exported recipe stays explicit.
+ */
+function withDefaultMaterial(recipe) {
+  const materials = recipe.materials;
+  const nodes = Array.isArray(recipe.nodes) ? recipe.nodes : [];
+  const unpainted = nodes.filter(node => node?.geometry !== undefined && node.material === undefined);
+  if (unpainted.length === 0 || !Array.isArray(materials)) {
+    return materials;
+  }
+  for (const node of unpainted) {
+    node.material = DEFAULT_MATERIAL_ID;
+  }
+  const alreadyDefined = materials.some(material => material?.id === DEFAULT_MATERIAL_ID);
+  return alreadyDefined ? materials : [...materials, { id: DEFAULT_MATERIAL_ID }];
+}
+
 function normalizeRecipe(input, limits) {
   let recipe = copiedJson(input, limits.maxRecipeBytes);
-  knownKeys(recipe, ['format', 'schemaVersion', 'geometries', 'materials', 'nodes', 'armatures', 'camera', 'environment', 'effects', 'shadow', 'motion', 'physics', 'cloth', 'particles'], 'recipe');
+  knownKeys(recipe, ['format', 'schemaVersion', 'geometries', 'materials', 'nodes', 'armatures', 'camera', 'environment', 'effects', 'shadow', 'motion', 'physics', 'cloth', 'timeline', 'particles'], 'recipe');
   if (recipe.format !== '67js.scene' || recipe.schemaVersion !== 1) {
     throw new RangeError('Expected 67js.scene schemaVersion 1.');
   }
+  // A scene with no mesh, or whose nodes all take the default material, has nothing to list: absent means empty.
+  recipe.geometries ??= [];
+  recipe.materials ??= [];
   recipe.geometries = resources(recipe.geometries, limits.maxGeometries, 'geometries', value => {
     geometryEstimate(value);
     const definition = { id: value.id, type: value.type };
@@ -593,7 +616,7 @@ function normalizeRecipe(input, limits) {
     }
     return definition;
   });
-  recipe.materials = resources(recipe.materials, limits.maxMaterials, 'materials', materialFrom);
+  recipe.materials = resources(withDefaultMaterial(recipe), limits.maxMaterials, 'materials', materialFrom);
   const distinctPatterns = new Set(recipe.materials.filter(material => material.pattern).map(material => JSON.stringify(material.pattern)));
   if (distinctPatterns.size > MAX_MATERIAL_PATTERNS) {
     throw new RangeError(`A scene holds at most ${MAX_MATERIAL_PATTERNS} different material patterns; it has ${distinctPatterns.size}. Reuse a pattern and tint it with color.`);
@@ -629,11 +652,24 @@ function normalizeRecipe(input, limits) {
   if (Object.hasOwn(recipe, 'cloth')) {
     recipe.cloth = agentSceneModule('cloth').normalizeAgentCloth(recipe.cloth, recipe);
   }
+  if (Object.hasOwn(recipe, 'timeline')) {
+    if (recipe.timeline === null) {
+      delete recipe.timeline;
+    } else {
+      recipe.timeline = agentSceneModule('timeline').normalizeFilmTimeline(recipe.timeline, recipe, { checkCamera: shotCameraOverrides => cameraOverridesFrom(recipe.camera, shotCameraOverrides) });
+    }
+  }
   if (Object.hasOwn(recipe, 'particles')) {
     recipe.particles = agentSceneModule('particles').normalizeAgentParticles(recipe.particles, recipe);
   }
   recipe = copiedJson(recipe, limits.maxRecipeBytes);
   return recipe;
+}
+
+// A shot camera is a partial camera: it must be valid on top of the recipe camera, and only its own fields are kept.
+function cameraOverridesFrom(baseCamera, overrides) {
+  cameraFrom({ ...baseCamera, ...overrides });
+  return structuredClone(overrides);
 }
 
 function geometryStats(records) {
@@ -1119,6 +1155,14 @@ export function createAgentScene(input, inputLimits = {}) {
           candidate.physics = operation.physics;
           continue;
         }
+        if (operation.type === 'set-timeline') {
+          knownKeys(operation, ['type', 'timeline'], 'operation');
+          if (!Object.hasOwn(operation, 'timeline')) {
+            throw new TypeError('set-timeline requires timeline; use null to clear it.');
+          }
+          candidate.timeline = operation.timeline;
+          continue;
+        }
         if (operation.type === 'set-cloth') {
           knownKeys(operation, ['type', 'cloth'], 'operation');
           if (!Object.hasOwn(operation, 'cloth')) {
@@ -1244,7 +1288,7 @@ export function createAgentScene(input, inputLimits = {}) {
           fields = CAMERA_FIELDS;
           target = candidate.camera;
         } else {
-          throw new TypeError(`Unsupported operation type: ${operation.type}. Use one of set-node, set-material, set-camera, set-motion, set-physics, set-cloth, set-particles, set-environment, set-effects, set-shadow, add-node, add-geometry, add-material, remove-node, remove-geometry, remove-material, edit-mesh, set-mesh-stack.`);
+          throw new TypeError(`Unsupported operation type: ${operation.type}. Use one of set-node, set-material, set-camera, set-motion, set-physics, set-cloth, set-timeline, set-particles, set-environment, set-effects, set-shadow, add-node, add-geometry, add-material, remove-node, remove-geometry, remove-material, edit-mesh, set-mesh-stack.`);
         }
         knownKeys(operation, ['type', ...(operation.type === 'set-camera' ? [] : ['id']), ...fields], 'operation');
         if (!target) {

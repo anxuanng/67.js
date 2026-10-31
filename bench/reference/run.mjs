@@ -1,6 +1,6 @@
-// Renders the reference scenes in 67.js and Blender, then scores them: npm run reference
+// Renders the reference scenes in 67js and Blender, then scores them: npm run reference
 // --ambient-occlusion <strength> [--ambient-occlusion-radius <units>] turns occlusion on (off by default).
-// --bake [<id>,<id>] bakes bounced light into the named scenes (every scene when no ids follow) before 67.js draws them;
+// --bake [<id>,<id>] bakes bounced light into the named scenes (every scene when no ids follow) before 67js draws them;
 // Blender still gets the plain scene.
 // --path-tracer [--samples <n>] draws the scenes with the offline path tracer (src/path-tracer.js) instead, keeps the
 // Cycles renders of an earlier run, and scores them into path-tracer.json. Nothing in baseline.json or images/ changes.

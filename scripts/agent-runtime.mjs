@@ -6,11 +6,13 @@ import { dirname, isAbsolute, join } from 'node:path';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import packageMetadata from '../package.json' with { type: 'json' };
-import { AGENT_SCENE_CAPABILITIES, AGENT_SCENE_DEFAULT_LIMITS, RENDER_PASS_NAMES, RENDER_PASS_DEPTH_RANGE } from '../src/agent-scene-capabilities.js';
+import { AGENT_SCENE_CAPABILITIES, AGENT_SCENE_DEFAULT_LIMITS, RENDER_PASS_NAMES, RENDER_PASS_DEPTH_RANGE, VIDEO_ENCODERS, MAXIMUM_VIDEO_SECONDS } from '../src/agent-scene-capabilities.js';
 import { PATH_TRACER_CAPABILITIES } from '../src/path-tracer-capabilities.js';
 import { createAgentAssetCatalog } from './agent-asset-catalog.mjs';
 import { createAgentRenderJobs, EXPORT_DIRECTORY_NAME } from './agent-render-jobs.mjs';
 import { createFrameEncoder } from './frame-encoder.mjs';
+import { audioInputArguments, createAudioLibrary, measureStreamSeconds } from './job-audio.mjs';
+import { filmTimelineDuration, filmTimelineShotStarts, sampleFilmTimeline } from '../src/film-timeline.js';
 import { isPreviewHost } from './preview-host.mjs';
 import { normalizeReview, REVIEW_LIMITS } from './agent-review.mjs';
 import { BRANCH_LIMITS, validateBranchName } from '../src/agent-branches.js';
@@ -26,6 +28,8 @@ const MAXIMUM_QUEUED_CALLS = 16;
 const MAXIMUM_GLB_BYTES = 32 * 1024 * 1024;
 const MAXIMUM_KEPT_GLBS = 8;
 const EVALUATION_TIMEOUT_MS = 30000;
+// Decoded audio and video lengths of a finished file may differ by the encoder delay; more than this fails the job.
+const SYNC_TOLERANCE_SECONDS = 0.05;
 // The preview page imports engine chunks that sit beside the package entries, one folder above preview.js.
 const ENGINE_CHUNK_URL = /^\/[\w.-]+\.js$/;
 const html = '<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;height:100%;background:#182126}canvas{display:block;width:100vw;height:100vh}</style></head><body><canvas></canvas><script type="module" src="/preview.js"></script></body></html>';
@@ -39,7 +43,7 @@ const VENDOR_FILES = Object.freeze({
 });
 
 export function createAgentRuntime({ backend = 'gpu', browser: browserPath, memory = 192, assets: assetRoot,
-  jobs: jobRoot, ffmpeg = 'ffmpeg',
+  jobs: jobRoot, ffmpeg = 'ffmpeg', audio: audioRoot,
   previewUrl = new URL(/* @vite-ignore */ '../build/mcp/preview.js', import.meta.url) } = {}) {
   if (!['gpu', 'cpu'].includes(backend)) {
     throw new RangeError('backend must be gpu or cpu.');
@@ -56,6 +60,7 @@ export function createAgentRuntime({ backend = 'gpu', browser: browserPath, memo
   if (jobRoot !== undefined && (typeof jobRoot !== 'string' || !isAbsolute(jobRoot))) {
     throw new TypeError('Job root must be an explicit absolute directory path.');
   }
+  const audioLibrary = audioRoot === undefined ? undefined : createAudioLibrary(audioRoot);
   if (typeof ffmpeg !== 'string' || !ffmpeg || (ffmpeg !== 'ffmpeg' && (!isAbsolute(ffmpeg) || !existsSync(ffmpeg)))) {
     throw new TypeError('FFmpeg must be on PATH or configured with an existing absolute executable path.');
   }
@@ -316,17 +321,28 @@ export function createAgentRuntime({ backend = 'gpu', browser: browserPath, memo
       await jobPage.setViewportSize({ width, height });
       const session = await jobPage.context().newCDPSession(jobPage);
       const artifacts = [];
+      const timeline = settings.timeline ? snapshot.recipe.timeline : undefined;
+      const audio = settings.audio ? await prepareAudio(settings) : undefined;
       if (settings.kind === 'video') {
         encoder = createFrameEncoder({ executable: ffmpeg, output: join(directory, 'render.mp4.partial'),
-          fps: settings.fps, format: 'jpeg', signal });
+          fps: settings.fps, format: 'jpeg', signal, backend: settings.encoder === 'nvenc' ? 'gpu' : 'cpu',
+          audioArguments: settings.audio ? audioInputArguments(audio.path, settings.audio.offset) : [] });
+        metrics.videoEncoder = settings.encoder === 'nvenc' ? 'h264_nvenc' : 'libx264';
       }
+      if (timeline) metrics.shots = filmTimelineShotStarts(timeline);
       for (let frame = 0; frame < settings.frameCount; frame++) {
         signal.throwIfAborted();
         const elapsed = settings.kind === 'video' ? frame / settings.fps
           : settings.kind === 'stills' ? settings.duration * frame / (settings.frameCount - 1) : 0;
+        // A timeline job reads one clock for the shot, the motion and the renderer, so a seek matches the frame in a video.
+        const timelineTime = timeline ? Math.min(filmTimelineDuration(timeline), settings.timeline.start + elapsed) : undefined;
+        const shotSample = timeline ? sampleFilmTimeline(timeline, snapshot.recipe, timelineTime) : undefined;
         const frameInput = { sessionId: jobId,
-          rendererTime: (settings.rendererTime?.start ?? 0) + elapsed * (settings.rendererTime?.rate ?? 1),
+          rendererTime: (settings.rendererTime?.start ?? 0) + (timelineTime ?? elapsed) * (settings.rendererTime?.rate ?? 1),
           ...(settings.motion ? { motionTime: settings.motion.start + elapsed } : {}),
+          ...(shotSample?.motionTime == null ? {} : { motionTime: shotSample.motionTime }),
+          ...(shotSample?.camera ? { camera: shotSample.camera } : {}),
+          ...(shotSample && shotSample.brightness < 1 ? { brightness: shotSample.brightness } : {}),
           ...(settings.animation ? { animation: { clip: settings.animation.clip, time: settings.animation.start + elapsed } } : {}) };
         const renderStarted = performance.now();
         if (settings.renderer) {
@@ -391,6 +407,7 @@ export function createAgentRuntime({ backend = 'gpu', browser: browserPath, memo
       }
       if (encoder) {
         metrics.encoder = await encoder.finish();
+        if (audio) metrics.sync = await measureSync(join(directory, 'render.mp4.partial'));
         artifacts.push({ temporary: 'render.mp4.partial', filename: 'render.mp4', mimeType: 'video/mp4' });
       }
       metrics.elapsedSeconds = (performance.now() - started) / 1000;
@@ -420,6 +437,30 @@ export function createAgentRuntime({ backend = 'gpu', browser: browserPath, memo
     }
   }
 
+  // The audio must cover the video from its offset, or ffmpeg would cut the picture short at the end of the sound.
+  async function prepareAudio(settings) {
+    if (!audioLibrary) throw new Error('Configure --audio with an absolute folder before rendering audio.');
+    const path = await audioLibrary.resolve(settings.audio.file);
+    const fileSeconds = await measureStreamSeconds(ffmpeg, path, 'audio');
+    const videoSeconds = settings.frameCount / settings.fps;
+    const availableSeconds = fileSeconds - settings.audio.offset;
+    if (availableSeconds + SYNC_TOLERANCE_SECONDS < videoSeconds) {
+      throw new RangeError(`Audio has ${availableSeconds.toFixed(2)} s after its offset but the video lasts ${videoSeconds.toFixed(2)} s.`);
+    }
+    return { path, availableSeconds };
+  }
+
+  // Decodes both streams of the finished file; a gap beyond the encoder delay means picture and sound drifted apart.
+  async function measureSync(path) {
+    const videoSeconds = await measureStreamSeconds(ffmpeg, path, 'video', { format: 'mp4' });
+    const audioSeconds = await measureStreamSeconds(ffmpeg, path, 'audio', { format: 'mp4' });
+    const differenceSeconds = audioSeconds - videoSeconds;
+    if (Math.abs(differenceSeconds) > SYNC_TOLERANCE_SECONDS) {
+      throw new Error(`Audio and video lengths differ by ${(differenceSeconds * 1000).toFixed(0)} ms.`);
+    }
+    return { videoSeconds, audioSeconds, differenceSeconds, toleranceSeconds: SYNC_TOLERANCE_SECONDS };
+  }
+
   return Object.freeze({
     async capabilities() {
       return {
@@ -438,12 +479,12 @@ export function createAgentRuntime({ backend = 'gpu', browser: browserPath, memo
           commands: ['set-root', 'set-asset-node', 'set-motion', 'set-animation', 'set-material', 'set-camera', 'set-environment', 'set-effects', 'set-shadow'],
         },
         jobs: { configured: Boolean(jobRoot), kinds: ['image', 'stills', 'video'], passes: RENDER_PASS_NAMES, pathTracer: PATH_TRACER_CAPABILITIES, maximumActiveJobs: 1,
-          maximumDuration: 30, maximumFps: 30, maximumFrames: 900, maximumStills: 8,
-          encoder: 'CPU H.264', audio: false, previewSuspendedDuringJob: true,
+          maximumDuration: MAXIMUM_VIDEO_SECONDS, maximumFps: 30, maximumFrames: 900, maximumStills: 8,
+          encoder: 'H.264', encoders: VIDEO_ENCODERS, audio: Boolean(audioRoot), timeline: true, previewSuspendedDuringJob: true,
           glbExport: { maximumBytes: MAXIMUM_GLB_BYTES, maximumKept: MAXIMUM_KEPT_GLBS, maximumTextureSize: 4096 },
           records: jobRoot ? (await jobs()).list().map(record => ({ jobId: record.jobId, state: record.state,
             sourceRevision: record.sourceRevision, progress: record.progress })) : [] },
-        unsupported: ['remote asset providers', 'arbitrary code execution', 'imported morph track authoring', 'job audio'],
+        unsupported: ['remote asset providers', 'arbitrary code execution', 'imported morph track authoring'],
       };
     },
     create({ recipe }) {
@@ -700,6 +741,10 @@ export function createAgentRuntime({ backend = 'gpu', browser: browserPath, memo
       return enqueue(async () => {
         await requirePreviewRenderer();
         const controller = await jobs();
+        if (settings?.audio) {
+          if (!audioLibrary) throw new Error('Configure --audio with an absolute folder before submitting a job with audio.');
+          await audioLibrary.resolve(settings.audio.file);
+        }
         const snapshot = await invoke('snapshot', { sessionId, expectedRevision });
         const assetBytes = snapshot.recipe.format === '67js.asset' ? await (await catalog()).read(snapshot.recipe.assetId) : undefined;
         phase = 'rendering';
@@ -730,6 +775,10 @@ export function createAgentRuntime({ backend = 'gpu', browser: browserPath, memo
     },
     async releaseJob({ jobId }) {
       return (await jobs()).release(jobId);
+    },
+    /** The ID of the one scene that exists, or null. Tools that take a sessionId default to it. */
+    activeSessionId() {
+      return activeSessionId;
     },
     close() {
       if (!closing) {

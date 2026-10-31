@@ -1,4 +1,4 @@
-// Compares 67.js and three.js on matching scenes: npm run benchmark:runtime
+// Compares 67js and three.js on matching scenes: npm run benchmark:runtime
 // Use --gpu-only to skip SwiftShader. --scene <id>, --engine <name> and --frames <count> run a part, and do not rewrite
 // the report.
 import { spawnSync } from 'node:child_process';

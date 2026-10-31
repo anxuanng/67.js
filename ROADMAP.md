@@ -1,6 +1,6 @@
-# 67.js implementation roadmap
+# 67js implementation roadmap
 
-67.js develops 3D authoring and rendering tools for agents, with browser previews, deterministic animation and exported media.
+67js develops 3D authoring and rendering tools for agents, with browser previews, deterministic animation and exported media.
 This document separates shipping capabilities from work in progress. Performance claims require measurements on matching scenes and hardware.
 
 The end goal is to be as capable as Blender, as light as three.js and as AI friendly as possible. Issue 23 in the project repository defines each part and orders the work. `docs/parity.md` in that repository records the coverage of each Blender feature.
@@ -39,7 +39,7 @@ The npm package includes the prebuilt `67js-mcp` command with lazy browser start
 
 1. Extend imported asset sessions with deformed geometry diagnostics and merging several parts into one editable mesh (part topology edits are in the next release).
 2. Extend visual review with posed geometry bounds, automatic framing and compact rendered diagnostics.
-3. Extend render jobs with hardware encoder selection, audio, longer sequences and measured adaptive output quality.
+3. Extend render jobs with resumable long renders, several audio tracks, markers and events, and measured adaptive output quality. Timeline shots, one audio file with measured sync, an NVENC choice and 60 s videos are in place.
 4. Geometry, rig and asset diagnostics that help agents correct intersections, invalid transforms and unsupported materials.
 5. Agent workflows for imported assets, sculpting, surface fitting, lighting and animation, verified against rendered reference scenes.
 6. GPU timing and adaptive quality based on measured frame time, with stable resolution changes and explicit minimum quality.

@@ -2,7 +2,8 @@ import { mkdir, open, readFile, writeFile, rename, unlink, rmdir, readdir, lstat
 import { randomUUID, createHash } from 'node:crypto';
 import { isAbsolute, join, resolve } from 'node:path';
 
-import { RENDER_PASS_NAMES } from '../src/agent-scene-capabilities.js';
+import { RENDER_PASS_NAMES, VIDEO_ENCODERS, AUDIO_FILE_PATTERN, MAXIMUM_VIDEO_SECONDS } from '../src/agent-scene-capabilities.js';
+import { normalizeFilmTimeline, filmTimelineDuration } from '../src/film-timeline.js';
 import { PATH_TRACER_JOB_LIMITS } from '../src/path-tracer-capabilities.js';
 
 const UUID =/^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
@@ -58,19 +59,32 @@ function jsonCopy(value, maximum = MAXIMUM_JSON_BYTES) {
 }
 
 function settingsFrom(input, clips, recipe) {
-  objectKeys(input, ['kind', 'width', 'height', 'fps', 'duration', 'animation', 'motion', 'rendererTime', 'passes', 'renderer'], 'settings');
+  objectKeys(input, ['kind', 'width', 'height', 'fps', 'duration', 'animation', 'motion', 'rendererTime', 'passes', 'renderer', 'timeline', 'audio', 'encoder'], 'settings');
   if (!['image', 'stills', 'video'].includes(input.kind)) throw new TypeError('kind must be image, stills or video.');
   const width = boundedNumber(input.width, 64, 1024, 'width', true);
   const height = boundedNumber(input.height, 64, 1024, 'height', true);
   if (input.kind === 'video' && (width % 2 || height % 2)) throw new RangeError('Video dimensions must be even.');
   const fps = boundedNumber(input.fps ?? 24, 1, 30, 'fps', true);
-  const duration = boundedNumber(input.duration ?? 1, 0.1, 30, 'duration');
+  const timelineStart = timelineStartFrom(input, recipe);
+  const defaultDuration = timelineStart === undefined || input.kind === 'image' ? 1 : filmTimelineDuration(recipe.timeline) - timelineStart;
+  const duration = boundedNumber(input.duration ?? defaultDuration, 0.1, MAXIMUM_VIDEO_SECONDS, 'duration');
   const frameCount = input.kind === 'image' ? 1 : input.kind === 'stills' ? 8 : Math.ceil(fps * duration);
   if (frameCount > 900) throw new RangeError('Job exceeds 900 frames.');
   const result = { kind: input.kind, width, height, fps, duration, frameCount };
   if (input.passes !== undefined) result.passes = passesFrom(input.passes, input.kind);
   if (input.renderer !== undefined) result.renderer = rendererFrom(input.renderer, input.kind, input.passes);
   const lastSampleTime = input.kind === 'image' ? 0 : input.kind === 'stills' ? duration : (frameCount - 1) / fps;
+  if (timelineStart !== undefined) {
+    if (input.motion !== undefined || input.animation !== undefined) throw new TypeError('A timeline owns the motion clock; leave motion and animation out.');
+    if (timelineStart + lastSampleTime > filmTimelineDuration(recipe.timeline)) throw new RangeError('Timeline range exceeds the timeline duration.');
+    result.timeline = { start: timelineStart };
+  }
+  if (input.encoder !== undefined) {
+    if (input.kind !== 'video') throw new TypeError('encoder needs kind video.');
+    if (!VIDEO_ENCODERS.includes(input.encoder)) throw new TypeError(`encoder must be one of ${VIDEO_ENCODERS.join(', ')}.`);
+    result.encoder = input.encoder;
+  }
+  if (input.audio !== undefined) result.audio = audioFrom(input.audio, input.kind);
   if (input.motion !== undefined) {
     objectKeys(input.motion, ['start'], 'motion');
     if (!['67js.scene', '67js.asset'].includes(recipe?.format) || !recipe.motion) {
@@ -116,6 +130,23 @@ function rendererFrom(renderer, kind, passes) {
     result[name] = boundedNumber(renderer[name] ?? fallback, minimum, maximum, `renderer ${name}`, name !== 'maxSeconds');
   }
   return result;
+}
+
+function timelineStartFrom(input, recipe) {
+  if (input.timeline === undefined) return undefined;
+  objectKeys(input.timeline, ['start'], 'timeline');
+  if (recipe?.format !== '67js.scene' || !recipe.timeline) throw new RangeError('Timeline settings require a recipe with a timeline.');
+  normalizeFilmTimeline(recipe.timeline, recipe);
+  return boundedNumber(input.timeline.start ?? 0, 0, MAXIMUM_VIDEO_SECONDS, 'timeline start');
+}
+
+function audioFrom(audio, kind) {
+  if (kind !== 'video') throw new TypeError('audio needs kind video.');
+  objectKeys(audio, ['file', 'offset'], 'audio');
+  if (typeof audio.file !== 'string' || !AUDIO_FILE_PATTERN.test(audio.file)) {
+    throw new TypeError('audio.file must be a file name in the configured audio folder ending in .wav, .mp3, .ogg or .flac.');
+  }
+  return { file: audio.file, offset: boundedNumber(audio.offset ?? 0, 0, 3600, 'audio offset') };
 }
 
 function passesFrom(passes, kind) {

@@ -6,5 +6,5 @@ export function sessionProblem(requestedSessionId, activeSessionId) {
   if (!activeSessionId) {
     return 'No scene is active: it was never created, was disposed, or scene_create failed. Call scene_create or scene_create_asset first, then pass the sessionId it returns.';
   }
-  return `Unknown scene session ${requestedSessionId}. The active session is ${activeSessionId}; pass that sessionId, or call scene_dispose and then scene_create for a new scene.`;
+  return `Unknown scene session ${requestedSessionId}. The active session is ${activeSessionId}; leave sessionId out or pass that one, or call scene_dispose and then scene_create for a new scene.`;
 }

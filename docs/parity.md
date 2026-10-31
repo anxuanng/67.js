@@ -1,6 +1,6 @@
 # Blender parity ledger
 
-This ledger compares 67.js with each feature in the [Blender 5.2 manual](https://docs.blender.org/manual/en/latest/).
+This ledger compares 67js with each feature in the [Blender 5.2 manual](https://docs.blender.org/manual/en/latest/).
 It is the record for the goal in issue #23. Use `npm run parity` to print the coverage of each section.
 
 Modifier coverage (rows under `Modeling > Modifiers`, from `npm run parity`): 11 done, 16 partial, 33 missing and 1 out of scope, 8 of the done rows compared with Blender, 18% of the in-scope rows done.
@@ -9,20 +9,20 @@ Modifier coverage (rows under `Modeling > Modifiers`, from `npm run parity`): 11
 
 | Status | Meaning |
 | --- | --- |
-| `done` | 67.js covers the purpose of the feature, and the Evidence column links to a test. |
+| `done` | 67js covers the purpose of the feature, and the Evidence column links to a test. |
 | `partial` | Some of the feature works. The note says what exists and what does not. |
-| `missing` | The feature is in scope, and 67.js does not have it. |
+| `missing` | The feature is in scope, and 67js does not have it. |
 | `out of scope` | The goal does not include the feature. The note gives the reason. |
 
-Agents are the user of 67.js, so a row judges the purpose of a Blender feature and not its interface. A row covers the pages below it unless a finer row exists.
+Agents are the user of 67js, so a row judges the purpose of a Blender feature and not its interface. A row covers the pages below it unless a finer row exists.
 
 `done` does not mean equal to Blender. A test shows that the feature works, and it does not show that the result matches. `npm run parity` counts a row as compared only when its evidence is in `tests/fixtures/blender/` or `bench/reference/`.
 
-`bench/reference/` scores 67.js renders against Cycles and EEVEE on 8 scenes. Its README gives the scores and the largest gap in each scene.
+`bench/reference/` scores 67js renders against Cycles and EEVEE on 8 scenes. Its README gives the scores and the largest gap in each scene.
 
 `tests/blender-golden.test.js` compares mesh operations with results from Blender. A compared row can still differ, and `tests/fixtures/blender/differences.json` gives the reason for each difference.
 
-Rows differ in size: `Modeling > Modifiers > Generate > Weld Modifier` and `Rendering > Render Engines > Cycles` each count as one. Do not quote the percentage as a measure of how close 67.js is to Blender.
+Rows differ in size: `Modeling > Modifiers > Generate > Weld Modifier` and `Rendering > Render Engines > Cycles` each count as one. Do not quote the percentage as a measure of how close 67js is to Blender.
 
 To change a row, change its status and its evidence in the same pull request as the feature. `tests/parity-ledger.test.js` fails if a `done` row has no evidence, if a link is broken or if a manual page has no row.
 
@@ -169,7 +169,7 @@ To move to a new Blender release, run `node scripts/parity-manual-snapshot.mjs`.
 | Animation & Rigging > Constraints > Relationship > Shrinkwrap Constraint | partial | `addons/surface-attachment` binds points to a surface in code. | [surface-attachment](../tests/surface-attachment.test.js) | |
 | Animation & Rigging > Actions | partial | Clips, weights and crossfades in code. An asset through MCP plays several clips as masked layers at motion time; there are no crossfades or state machines there. | [animation-mixer](../tests/animation-mixer.test.js), [agent-asset-layers](../tests/agent-asset-layers.test.js) | #59 |
 | Animation & Rigging > Drivers | partial | `motion.drivers`: a node component or material property from a bounded expression over time and other nodes. No custom properties, shape keys or variables. | [agent-motion-constraints](../tests/agent-motion-constraints.test.js) | #58 |
-| Animation & Rigging > Markers | missing | No markers or events. | | #60 |
+| Animation & Rigging > Markers | partial | Recipe timeline shots are named, listed with their start second in job metrics, and cut with their own camera, motion start and an optional dip through black (no strips, layers or crossfades; the video sequence editor is a non-goal). No markers inside a shot and no events. | [film-timeline](../tests/film-timeline.test.js) | #60 |
 | Animation & Rigging > Shape Keys | partial | Morph targets import, render and animate, and clip layers drive imported morph weights (`createAssetPose`, MCP `motion.layers`). Recipes can not author them. | [morph](../tests/morph.test.js), [agent-asset-layers](../tests/agent-asset-layers.test.js) | #59 |
 | Animation & Rigging > Motion Paths | out of scope | Viewport display for hand work. `scene_inspect` reports motion as numbers. | | |
 | Animation & Rigging > In-Betweens | out of scope | Pose tools for a hand. Agents write keyframes and IK targets. | | |
@@ -210,8 +210,8 @@ To move to a new Blender release, run `node scripts/parity-manual-snapshot.mjs`.
 | Rendering > Color Management | partial | ACES tone mapping and grading. There is no choice of color space or display. | [effects](../tests/effects.test.js) | |
 | Rendering > Freestyle | missing | No line rendering. | | |
 | Rendering > View Layers & Passes | partial | Render jobs write albedo, normal, emission, depth and object ID passes as PNG files. There are no view layers, no cryptomatte and no lighting passes (diffuse, glossy, shadow). | [render-passes](../tests/render-passes.test.js) | #54 |
-| Rendering > Render Output > Output Properties | partial | PNG and MP4, frame rate, duration and size. There is no stereo or metadata. | [agent-render-jobs](../tests/agent-render-jobs.test.js) | #60 |
-| Rendering > Render Output > Audio Rendering | missing | Render jobs have no audio. | | #60 |
+| Rendering > Render Output > Output Properties | partial | PNG and MP4, frame rate, duration (to 60 s) and size, and a CPU or NVENC encoder. There is no stereo or metadata. | [agent-render-jobs](../tests/agent-render-jobs.test.js) | #60 |
+| Rendering > Render Output > Audio Rendering | partial | A video job mixes one local WAV, MP3, OGG or FLAC file with an offset and reports measured sync. No several tracks, mixing, gain or generated sound. | [film-timeline](../tests/film-timeline.test.js), `npm run smoke:film-timeline` | #60 |
 | Rendering > Render Output > Rendering Animations | done | Snapshot render jobs with progress, cancel and verified output. | [agent-render-jobs](../tests/agent-render-jobs.test.js) | |
 | Rendering > Render Output > Animation Player | out of scope | Interface for a person. | | |
 | Compositing | partial | A fixed chain of bloom, grading and FXAA. There is no graph. | [effects](../tests/effects.test.js) | #54 |
@@ -230,7 +230,7 @@ To move to a new Blender release, run `node scripts/parity-manual-snapshot.mjs`.
 | Add-ons > glTF 2.0 | partial | Import is broad. Export writes the five texture channels as PNG, skins with joints, morph targets and node clips, and bakes pattern materials with box projected UVs; Blender 5.2 and three.js open the RobotExpressive export with its 43 bones and 14 clips. Morph weight clips export, and the `scene_export_glb` MCP tool writes the current pose or an imported clip as a GLB file, checked in Blender 5.2 for a patterned recipe, the robot with IK and its Walking action. Not yet: recipe motion tracks as clips, a clip together with IK or node overrides. | [gltf](../tests/gltf.test.js), [export](../tests/export.test.js), [round trip](../tests/export-roundtrip.test.js), [MCP contract](../tests/mcp-tools.test.js) | #49 |
 | Add-ons > Manage UI Translations | out of scope | Blender interface work. | | |
 | Add-ons > VR Scene Inspection | out of scope | Interface for a person. | | |
-| Advanced | out of scope | Decided in issue #23: 67.js does not run agent code. MCP and the JavaScript API take the place of `bpy`. | | |
+| Advanced | out of scope | Decided in issue #23: 67js does not run agent code. MCP and the JavaScript API take the place of `bpy`. | | |
 
 ## Work outside the manual
 
@@ -240,12 +240,12 @@ The goal also needs this work, and no page in the Blender manual covers it.
 | --- | --- | --- | --- |
 | Parity evidence | partial | This ledger exists. The Blender comparisons do not. | #24, #25, #26 |
 | Bundle size | partial | `npm run size` checks a budget for each entry, and the package has a 1 MiB limit. three.js is gone from the library; only the benchmark page imports it. | #27, #33, #34, #35, #36 |
-| Runtime speed | partial | `bench/runtime` compares 8 scenes, and three.js wins most of the 7 older ones. Frustum culling per part and per instance group is on by default, `lods` from `generateGeometryLods` pick a level per instance by pixel error (`docs/culling-lod.md`), and `createGpuTimer` plus `createAdaptiveResolution` give live viewers GPU timing and a bounded resolution scale. On `large-outdoor` 67.js is 1.55 ms against 6.0 ms for three.js on an RTX 3060. Part of #37: recipes have no way to declare `lods` yet, shadow passes are not culled, and bakes run on the main thread. | #28, #37, #38, #74 |
+| Runtime speed | partial | `bench/runtime` compares 8 scenes, and three.js wins most of the 7 older ones. Frustum culling per part and per instance group is on by default, `lods` from `generateGeometryLods` pick a level per instance by pixel error (`docs/culling-lod.md`), and `createGpuTimer` plus `createAdaptiveResolution` give live viewers GPU timing and a bounded resolution scale. On `large-outdoor` 67js is 1.55 ms against 6.0 ms for three.js on an RTX 3060. Part of #37: recipes have no way to declare `lods` yet, shadow passes are not culled, and bakes run on the main thread. | #28, #37, #38, #74 |
 | Agent measurement | partial | A task suite runs on one model and reads recipes only. | #29, #30, #31, #69 |
 | Pull request checks | partial | The `Test` workflow reports a status and does not block a merge. | #32 |
 | Relations between parts | partial | The agent version of snapping: node `relations` (`attach`, `gap`, `flush`, `align`, `centered`) over world bounds or a tagged region, solved again on every edit, cycles rejected. Tests in [part-relations](../tests/part-relations.test.js); suite tasks `kettle-resize` and `desk-resize` with plain twins (no gain in calls measured on Sonnet). No snapping to edges or vertices, no relation on the part's own tagged region. | #44 |
 | Imported mesh editing | partial | `mesh_edit` takes an imported part ID. Skin weights, morph deltas and colours of new vertices come from the nearest original surface point, missing UVs from the nearest island; an edit that reaches too far on a skinned or morphed part is rejected. Not here: merging several parts into one mesh, tags from several material groups. Evidence: tests/agent-asset-mesh.test.js, scripts/smoke-imported-topology.mjs. | #48 |
-| Rendering backend | missing | WebGL2 only. WebGPU is not evaluated. | #56 |
+| Rendering backend | missing | WebGL2 only. WebGPU was measured with three.js as a proxy and was slower on the RTX 3060 and on SwiftShader; decision: wait. See [webgpu-decision](webgpu-decision.md). | #56 |
 | Terrain and navigation | partial | Terrain with 4 splat layers and no holes. There is no navmesh. | #64 |
 | Tool cost and errors | partial | Lint and errors exist. No budget limits schema size, and not every error is checked. | #65, #66 |
 | Branches and labelled images | partial | `scene_apply` `branch` forks a variant over a deduplicated snapshot store (8 branches, scene and revision untouched), `scene_review` shots take a `branch`, `scene_restore` `branch` keeps one. `labels: true` on `scene_look` and `scene_review` prints part names, tags and lint problems and returns them with pixel positions. Procedural scenes only; no suite task yet measures calls. | #67 |

@@ -2,7 +2,7 @@
   <a href="https://67js.codepawl.com">
     <picture>
       <source media="(prefers-color-scheme: dark)" srcset="https://67js.codepawl.com/brand/wordmark-dark.svg?v=0.10.0" />
-      <img src="https://67js.codepawl.com/brand/wordmark-light.svg?v=0.10.0" alt="67.js" width="260" />
+      <img src="https://67js.codepawl.com/brand/wordmark-light.svg?v=0.10.0" alt="67js" width="260" />
     </picture>
   </a>
 </p>
@@ -23,10 +23,10 @@
 </p>
 
 <p align="center">
-  <img src="https://67js.codepawl.com/previews/forest.webp?v=0.10.0" alt="Birch, beech and fir trees with scanned leaves over a grassy slope, rendered by 67.js" width="100%" />
+  <img src="https://67js.codepawl.com/previews/forest.webp?v=0.10.0" alt="Birch, beech and fir trees with scanned leaves over a grassy slope, rendered by 67js" width="100%" />
 </p>
 
-67.js is a custom WebGL2 renderer with addons for terrain, vegetation, liquid, vehicles, characters and media export.
+67js is a custom WebGL2 renderer with addons for terrain, vegetation, liquid, vehicles, characters and media export.
 Every scene is plain data: geometry, a matrix and a material for each part.
 The renderer batches parts that share geometry into instanced draws, and it plans GPU memory before it allocates.
 An MCP server lets an agent author a scene as a JSON recipe, look at PNG previews and render images or video.

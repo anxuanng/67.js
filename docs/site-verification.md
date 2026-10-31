@@ -2,7 +2,7 @@
 
 ## 0.3.1
 
-The site uses CodePawl's neutral light/dark surfaces, focus colors and rounded panels. The 67.js mark is a transparent outline block. Navigation icons are local SVGs.
+The site uses CodePawl's neutral light/dark surfaces, focus colors and rounded panels. The 67js mark is a transparent outline block. Navigation icons are local SVGs.
 
 The documentation interface reads `docs/guide.md`. Release preparation copies that source into the plain-text download. The site also serves `llms.txt` for models and agents. The package includes the guide and both scene/media skills.
 
