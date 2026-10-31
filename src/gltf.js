@@ -1,5 +1,7 @@
-import { AnimationMixer, LoadingManager, LoopOnce, Matrix4 } from 'three';
-import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { applyClip } from './gltf-animation.js';
+import { attributeFloats } from './gltf-accessors.js';
+import { decodeGltf, textureSourceIndex } from './gltf-decode.js';
+import { Matrix4 } from './gltf-nodes.js';
 import { textureDescriptorInfo } from './renderer.js';
 import { createSkinPose, updateSkinPose, validateSkinGeometry, validateSkinPose } from './skinning.js';
 import { MAX_MORPH_TARGETS, createMorphPose, validateMorphGeometry, validateMorphPose, validateMorphTransform } from './morph.js';
@@ -20,8 +22,6 @@ const DECODER_BY_EXTENSION = { KHR_draco_mesh_compression: 'draco', EXT_meshopt_
 // Accepted when optional, because 67.js does not render them. Rejected when listed in extensionsRequired.
 const IGNORED_EXTENSIONS = new Set(GLTF_CAPABILITIES.ignoredExtensions);
 const IDENTITY_UV_TRANSFORM = Object.freeze({ offset: [0, 0], rotation: 0, scale: [1, 1] });
-const WRAPPING = { 1000: 10497, 1001: 33071, 1002: 33648 };
-const FILTERING = { 1003: 9728, 1004: 9984, 1005: 9986, 1006: 9729, 1007: 9985, 1008: 9987 };
 const MATERIAL_TEXTURES = [
   ['map', 'baseColorTexture', 'srgb'],
   ['normalMap', 'normalTexture', 'linear'],
@@ -385,10 +385,6 @@ function validateDocument(document, limits, allowedExtensions) {
   return { vertices, ignoredExtensions };
 }
 
-function textureSourceIndex(texture) {
-  return texture.extensions?.KHR_texture_basisu?.source ?? texture.source;
-}
-
 function validateHierarchy(nodes) {
   const parents = new Set();
   for (const node of nodes) {
@@ -509,108 +505,100 @@ async function boundedFetch(url, maxBytes, signal) {
 }
 
 async function prepareResources(document, data, dataBytes, options, limits) {
-  const resources = new Map();
   const resourceBytes = new Map();
-  const objectUrls = [];
   const definitions = [...(document.buffers ?? []), ...(document.images ?? [])];
   const uris = new Set(definitions.map(resource => resource.uri).filter(uri => uri !== undefined));
   if (uris.size > limits.maxResources) throw new Error('glTF resources exceed maxResources.');
   let usedBytes = dataBytes;
-  try {
-    for (const uri of uris) {
-      if (typeof uri !== 'string') throw new Error('Invalid glTF resource URI.');
-      if (uri.startsWith('data:')) {
-        resourceBytes.set(uri, dataUriBytes(uri));
-        resources.set(uri, uri);
-        continue;
-      }
-      if (!options.baseUrl && !/^(https?:|blob:)/.test(uri)) throw new Error('External glTF resources require baseUrl. Use GLB for a self-contained local file.');
-      const resolved = new URL(uri, options.baseUrl || undefined).href;
-      if (!/^(https?:|blob:)/.test(resolved)) throw new Error('Only HTTP, HTTPS, blob and embedded data resources are supported.');
-      const resource = await boundedFetch(resolved, limits.maxBytes - usedBytes, options.signal);
-      usedBytes += resource.bytes.byteLength;
-      resourceBytes.set(uri, resource.bytes);
-      const objectUrl = URL.createObjectURL(new Blob([resource.bytes], { type: resource.mimeType }));
-      objectUrls.push(objectUrl);
-      resources.set(resolved, objectUrl);
+  for (const uri of uris) {
+    if (typeof uri !== 'string') throw new Error('Invalid glTF resource URI.');
+    if (uri.startsWith('data:')) {
+      resourceBytes.set(uri, dataUriBytes(uri));
+      continue;
     }
-    let texturePixels = 0;
-    for (const image of document.images ?? []) {
-      let bytes = resourceBytes.get(image.uri);
-      if (!bytes && image.bufferView !== undefined) {
-        const view = document.bufferViews?.[image.bufferView];
-        const buffer = view && document.buffers?.[view.buffer];
-        const source = buffer?.uri ? resourceBytes.get(buffer.uri) : view?.buffer === 0 ? binaryChunk(data) : null;
-        const offset = view?.byteOffset ?? 0;
-        if (!source || !Number.isSafeInteger(view.byteLength) || view.byteLength < 0 || offset < 0 || offset + view.byteLength > source.length) {
-          throw new Error('Invalid embedded glTF image buffer view.');
-        }
-        bytes = source.subarray(offset, offset + view.byteLength);
-      }
-      if (!bytes) throw new Error('glTF image has no supported source.');
-      texturePixels += validateImage(bytes, limits.maxTexturePixels);
-      if (texturePixels > limits.maxTexturePixels) throw new Error('Combined texture images exceed maxTexturePixels before decoding.');
-    }
-    return { resources, objectUrls };
-  } catch (error) {
-    objectUrls.forEach(url => URL.revokeObjectURL(url));
-    throw error;
+    if (!options.baseUrl && !/^(https?:|blob:)/.test(uri)) throw new Error('External glTF resources require baseUrl. Use GLB for a self-contained local file.');
+    const resolved = new URL(uri, options.baseUrl || undefined).href;
+    if (!/^(https?:|blob:)/.test(resolved)) throw new Error('Only HTTP, HTTPS, blob and embedded data resources are supported.');
+    const resource = await boundedFetch(resolved, limits.maxBytes - usedBytes, options.signal);
+    usedBytes += resource.bytes.byteLength;
+    resourceBytes.set(uri, resource.bytes);
   }
+  let texturePixels = 0;
+  for (const image of document.images ?? []) {
+    let bytes = resourceBytes.get(image.uri);
+    if (!bytes && image.bufferView !== undefined) {
+      const view = document.bufferViews?.[image.bufferView];
+      const buffer = view && document.buffers?.[view.buffer];
+      const source = buffer?.uri ? resourceBytes.get(buffer.uri) : view?.buffer === 0 ? binaryChunk(data) : null;
+      const offset = view?.byteOffset ?? 0;
+      if (!source || !Number.isSafeInteger(view.byteLength) || view.byteLength < 0 || offset < 0 || offset + view.byteLength > source.length) {
+        throw new Error('Invalid embedded glTF image buffer view.');
+      }
+      bytes = source.subarray(offset, offset + view.byteLength);
+    }
+    if (!bytes) throw new Error('glTF image has no supported source.');
+    texturePixels += validateImage(bytes, limits.maxTexturePixels);
+    if (texturePixels > limits.maxTexturePixels) throw new Error('Combined texture images exceed maxTexturePixels before decoding.');
+  }
+  return resourceBytes;
+  return resourceBytes;
 }
 
 function copyAttribute(attribute, size) {
   if (attribute.itemSize !== size) throw new Error(`Expected a ${size}-component mesh attribute.`);
-  const result = new Float32Array(attribute.count * size);
-  const getters = ['getX', 'getY', 'getZ', 'getW'];
-  for (let vertex = 0; vertex < attribute.count; vertex++) {
-    for (let component = 0; component < size; component++) {
-      const value = attribute[getters[component]](vertex);
-      if (!Number.isFinite(value)) throw new Error('Mesh attributes must contain finite values.');
-      result[vertex * size + component] = value;
+  const values = attributeFloats(attribute);
+  if (!values.every(Number.isFinite)) throw new Error('Mesh attributes must contain finite values.');
+  return values;
+}
+
+function computeVertexNormals(positions, indices) {
+  const normals = new Float32Array(positions.length);
+  for (let corner = 0; corner < indices.length; corner += 3) {
+    const [first, second, third] = [indices[corner] * 3, indices[corner + 1] * 3, indices[corner + 2] * 3];
+    const edgeAB = [positions[second] - positions[first], positions[second + 1] - positions[first + 1], positions[second + 2] - positions[first + 2]];
+    const edgeAC = [positions[third] - positions[first], positions[third + 1] - positions[first + 1], positions[third + 2] - positions[first + 2]];
+    const cross = [edgeAB[1] * edgeAC[2] - edgeAB[2] * edgeAC[1], edgeAB[2] * edgeAC[0] - edgeAB[0] * edgeAC[2], edgeAB[0] * edgeAC[1] - edgeAB[1] * edgeAC[0]];
+    for (const vertexOffset of [first, second, third]) {
+      for (let axis = 0; axis < 3; axis++) normals[vertexOffset + axis] += cross[axis];
     }
   }
-  return result;
+  return normals;
 }
 
 function convertGeometry(source, mirrored, primitive) {
-  const position = source.getAttribute('position');
-  if (!source.getAttribute('normal')) source.computeVertexNormals();
-  if (source.getAttribute('normal').count !== position.count) throw new Error('NORMAL and POSITION counts must match.');
-  const geometry = { positions: copyAttribute(position, 3), normals: copyAttribute(source.getAttribute('normal'), 3) };
-  for (let offset = 0; offset < geometry.normals.length; offset += 3) {
-    const length = Math.hypot(...geometry.normals.subarray(offset, offset + 3));
-    if (length < 1e-8) throw new Error('Degenerate geometry has no usable vertex normal.');
-    for (let axis = 0; axis < 3; axis++) geometry.normals[offset + axis] /= length;
-  }
-  const sourceIndex = source.getIndex();
-  geometry.indices = new Uint32Array(sourceIndex?.count ?? position.count);
-  for (let index = 0; index < geometry.indices.length; index++) {
-    const value = sourceIndex ? sourceIndex.getX(index) : index;
+  const { position, normal, uv, color, skinIndex, skinWeight } = source.attributes;
+  const positions = copyAttribute(position, 3);
+  const indices = new Uint32Array(source.index?.count ?? position.count);
+  for (let index = 0; index < indices.length; index++) {
+    const value = source.index ? source.index.array[index] : index;
     if (!Number.isInteger(value) || value < 0 || value >= position.count) throw new Error('Mesh index is out of range.');
-    geometry.indices[index] = value;
+    indices[index] = value;
+  }
+  if (normal && normal.count !== position.count) throw new Error('NORMAL and POSITION counts must match.');
+  const normals = normal ? copyAttribute(normal, 3) : computeVertexNormals(positions, indices);
+  const geometry = { positions, normals, indices };
+  for (let offset = 0; offset < normals.length; offset += 3) {
+    const length = Math.hypot(...normals.subarray(offset, offset + 3));
+    if (length < 1e-8) throw new Error('Degenerate geometry has no usable vertex normal.');
+    for (let axis = 0; axis < 3; axis++) normals[offset + axis] /= length;
   }
   if (mirrored) {
-    for (let index = 0; index < geometry.indices.length; index += 3) {
-      const second = geometry.indices[index + 1];
-      geometry.indices[index + 1] = geometry.indices[index + 2];
-      geometry.indices[index + 2] = second;
+    for (let index = 0; index < indices.length; index += 3) {
+      const second = indices[index + 1];
+      indices[index + 1] = indices[index + 2];
+      indices[index + 2] = second;
     }
   }
-  const uv = source.getAttribute('uv');
   if (uv && uv.count !== position.count) throw new Error('TEXCOORD_0 and POSITION counts must match.');
   if (uv) geometry.uvs = copyAttribute(uv, 2);
-  const color = source.getAttribute('color');
   if (color) geometry.colors = convertVertexColors(color, position.count);
-  const skinIndices = source.getAttribute('skinIndex');
-  const skinWeights = source.getAttribute('skinWeight');
-  if (skinIndices) geometry.skinIndices = new Uint16Array(copyAttribute(skinIndices, 4));
-  if (skinWeights) geometry.skinWeights = copyAttribute(skinWeights, 4);
+  if (skinIndex) geometry.skinIndices = new Uint16Array(copyAttribute(skinIndex, 4));
+  if (skinWeight) geometry.skinWeights = copyAttribute(skinWeight, 4);
   if (primitive.targets?.length) {
-    if (!source.morphTargetsRelative) throw new Error('Decoded morph targets must contain relative deltas.');
     geometry.morphTargets = primitive.targets.map((target, index) => {
       const channels = {};
-      if (target.POSITION !== undefined) channels.positions = copyAttribute(source.morphAttributes.position[index], 3);
-      if (target.NORMAL !== undefined) channels.normals = copyAttribute(source.morphAttributes.normal[index], 3);
+      if (target.POSITION !== undefined) channels.positions = copyAttribute(source.morphPositions[index], 3);
+      if (target.NORMAL !== undefined) channels.normals = copyAttribute(source.morphNormals[index], 3);
       return channels;
     });
   }
@@ -675,28 +663,6 @@ function validateNodeTransforms(nodes, pending, transform) {
   }
 }
 
-function copyPrimitiveAssociations(original, decoded, associations) {
-  const association = associations.get(original);
-  if (original.isMesh && !association) throw new Error('Decoded mesh lost its original primitive association.');
-  if (association) associations.set(decoded, association);
-  if (original.children.length !== decoded.children.length) throw new Error('Decoded scene clone changed the node hierarchy.');
-  for (let index = 0; index < original.children.length; index++) {
-    copyPrimitiveAssociations(original.children[index], decoded.children[index], associations);
-  }
-}
-
-/** Three.js builds instanced meshes after it records associations, so restore the mesh and primitive indices here. */
-function completeInstancedAssociations(object, associations, document, inheritedNodeIndex) {
-  const association = associations.get(object);
-  const ownsNode = Number.isInteger(association?.nodes);
-  const nodeIndex = ownsNode ? association.nodes : inheritedNodeIndex;
-  if (object.isInstancedMesh && association?.primitives === undefined) {
-    const siblingPrimitives = ownsNode || !object.parent ? [object] : object.parent.children.filter(child => child.isInstancedMesh && !Number.isInteger(associations.get(child)?.nodes));
-    associations.set(object, { ...association, meshes: document.nodes?.[nodeIndex]?.mesh, primitives: siblingPrimitives.indexOf(object) });
-  }
-  for (const child of object.children) completeInstancedAssociations(child, associations, document, nodeIndex);
-}
-
 function instanceMatricesOf(node, maximumInstances) {
   if (!node.isInstancedMesh) return [null];
   if (node.count > maximumInstances) throw new Error(`Decoded instance count ${node.count} exceeds maxInstances (${maximumInstances}).`);
@@ -709,75 +675,6 @@ function instanceMatricesOf(node, maximumInstances) {
 
 function worldMatrixOf(node, instanceMatrix, target) {
   return instanceMatrix ? target.multiplyMatrices(node.matrixWorld, instanceMatrix) : target.copy(node.matrixWorld);
-}
-
-function skinPreflightPlugin(parser, document, primitiveAssociations) {
-  let originalRoots;
-  return {
-    name: '67SkinPreflight',
-    async beforeRoot() {
-      for (const mesh of document.meshes ?? []) {
-        for (const primitive of mesh.primitives ?? []) {
-          for (const target of primitive.targets ?? []) {
-            for (const accessor of Object.values(target)) copyAttribute(await parser.getDependency('accessor', accessor), 3);
-          }
-        }
-      }
-      for (const animation of document.animations ?? []) {
-        for (const channel of animation.channels ?? []) {
-          if (channel.target.node === undefined) continue;
-          const sampler = animation.samplers[channel.sampler];
-          const input = copyAttribute(await parser.getDependency('accessor', sampler.input), 1);
-          for (let index = 0; index < input.length; index++) {
-            if (input[index] < 0 || index && input[index] <= input[index - 1]) throw new Error('Animation times must be nonnegative and strictly increasing.');
-          }
-          const size = channel.target.path === 'rotation' ? 4 : channel.target.path === 'weights' ? 1 : 3;
-          const output = copyAttribute(await parser.getDependency('accessor', sampler.output), size);
-          if (channel.target.path === 'rotation') {
-            const cubic = sampler.interpolation === 'CUBICSPLINE';
-            for (let offset = cubic ? 4 : 0; offset < output.length; offset += cubic ? 12 : 4) {
-              const length = Math.hypot(output[offset], output[offset + 1], output[offset + 2], output[offset + 3]);
-              if (Math.abs(length - 1) > 0.01) throw new Error('Animation rotation values require unit quaternions.');
-            }
-          }
-        }
-      }
-      for (const node of document.nodes ?? []) {
-        if (node.skin === undefined) continue;
-        const pose = createSkinPose(document.skins[node.skin].joints.length);
-        for (const primitive of document.meshes[node.mesh].primitives) {
-          const [joints, weights] = await Promise.all([
-            parser.getDependency('accessor', primitive.attributes.JOINTS_0),
-            parser.getDependency('accessor', primitive.attributes.WEIGHTS_0),
-          ]);
-          validateSkinGeometry({ positions: { length: weights.count * 3 }, skinIndices: copyAttribute(joints, 4), skinWeights: copyAttribute(weights, 4) }, pose);
-        }
-      }
-      // loadScene reduces parser.associations globally, so capture before any scene loads.
-      const rootIndices = new Set();
-      for (const scene of document.scenes ?? []) {
-        for (const root of scene.nodes ?? []) rootIndices.add(root);
-      }
-      const roots = await Promise.all(Array.from(rootIndices, async index => [index, await parser.getDependency('node', index)]));
-      originalRoots = new Map(roots);
-      for (const [, root] of roots) completeInstancedAssociations(root, parser.associations, document, undefined);
-      for (const [node, association] of parser.associations) {
-        if (node.isMesh || Number.isInteger(association?.nodes)) {
-          primitiveAssociations.set(node, Object.freeze({ ...association }));
-        }
-      }
-    },
-    afterRoot(result) {
-      for (let index = 0; index < result.scenes.length; index++) {
-        const roots = document.scenes[index].nodes ?? [];
-        const scene = result.scenes[index];
-        if (roots.length !== scene.children.length) throw new Error('Decoded scene root count changed.');
-        for (let root = 0; root < roots.length; root++) {
-          copyPrimitiveAssociations(originalRoots.get(roots[root]), scene.children[root], primitiveAssociations);
-        }
-      }
-    },
-  };
 }
 
 function convertVertexColors(attribute, vertexCount) {
@@ -814,11 +711,11 @@ function decodedTextureImage(texture, field) {
 function convertMaterial(source, limits, maps, definition = {}) {
   const material = {
     tag: 'gltf',
-    color: source.color.toArray(),
+    color: [...source.color],
     metallic: source.metalness,
     roughness: source.roughness,
     emission: source.emissiveIntensity ?? 1,
-    emissiveColor: source.emissive.toArray(),
+    emissiveColor: [...source.emissive],
     normalScale: [definition.normalTexture?.scale ?? 1, definition.normalTexture?.scale ?? 1],
     occlusionStrength: source.aoMapIntensity,
   };
@@ -842,10 +739,10 @@ function convertMaterial(source, limits, maps, definition = {}) {
       const descriptor = {
         image,
         uvChannel: 0,
-        wrapS: WRAPPING[texture.wrapS],
-        wrapT: WRAPPING[texture.wrapT],
-        minFilter: FILTERING[texture.minFilter],
-        magFilter: FILTERING[texture.magFilter],
+        wrapS: texture.wrapS,
+        wrapT: texture.wrapT,
+        minFilter: texture.minFilter,
+        magFilter: texture.magFilter,
         flipY: false,
         colorSpace,
       };
@@ -857,33 +754,7 @@ function convertMaterial(source, limits, maps, definition = {}) {
   return material;
 }
 
-function releaseParsed(gltf) {
-  const geometries = new Set();
-  const materials = new Set();
-  const textures = new Set();
-  const images = new Set();
-  const skeletons = new Set();
-  for (const scene of gltf.scenes) {
-    scene.traverse(node => {
-      if (node.geometry) geometries.add(node.geometry);
-      if (node.skeleton) skeletons.add(node.skeleton);
-      for (const material of Array.isArray(node.material) ? node.material : node.material ? [node.material] : []) {
-        materials.add(material);
-        for (const value of Object.values(material)) if (value?.isTexture) textures.add(value);
-      }
-    });
-  }
-  geometries.forEach(geometry => geometry.dispose());
-  materials.forEach(material => material.dispose());
-  textures.forEach(texture => {
-    if (texture.image) images.add(texture.image);
-    texture.dispose();
-  });
-  images.forEach(image => image.close?.());
-  skeletons.forEach(skeleton => skeleton.dispose());
-}
-
-/** Parse a bounded glTF 2.0 asset into Renderer67 parts. Three.js only decodes the asset. */
+/** Parse a bounded glTF 2.0 asset into Renderer67 parts. Draco, meshopt and KTX2 decoders come from options.decoders. */
 export async function parseGltf(data, options = {}) {
   const limits = limitsFor(options);
   const document = documentFrom(data, limits.maxBytes);
@@ -891,25 +762,10 @@ export async function parseGltf(data, options = {}) {
   const { ignoredExtensions } = validateDocument(document, limits, allowedExtensionsFor(decoders));
   const warnings = ignoredExtensions.map(extension => `${extension} is accepted but not rendered.`);
   const dataBytes = typeof data === 'string' ? new TextEncoder().encode(data).byteLength : data.byteLength;
-  const { resources, objectUrls } = await prepareResources(document, data, dataBytes, options, limits);
-  const manager = new LoadingManager();
-  manager.setURLModifier(url => {
-    if (resources.has(url)) return resources.get(url);
-    const normalized = new URL(url, options.baseUrl || undefined).href;
-    if (resources.has(normalized)) return resources.get(normalized);
-    if (url.startsWith('blob:')) return url;
-    throw new Error(`Unregistered glTF resource: ${url}.`);
-  });
+  const resourceBytes = await prepareResources(document, data, dataBytes, options, limits);
   let gltf;
-  const primitiveAssociations = new WeakMap();
   try {
-    const loader = new GLTFLoader(manager);
-    if (decoders.draco) loader.setDRACOLoader(decoders.draco);
-    if (decoders.meshopt) loader.setMeshoptDecoder(decoders.meshopt);
-    if (decoders.ktx2) loader.setKTX2Loader(decoders.ktx2);
-    loader.register(parser => skinPreflightPlugin(parser, document, primitiveAssociations));
-    gltf = await loader.parseAsync(data, options.baseUrl ?? '');
-    gltf.scene.updateMatrixWorld(true);
+    gltf = await decodeGltf({ document, glbBinary: binaryChunk(data), resourceBytes, decoders, limits });
     const parts = [];
     const bindings = [];
     const skinBindings = [];
@@ -925,15 +781,11 @@ export async function parseGltf(data, options = {}) {
     gltf.scene.traverse(node => {
       nodes.push(node);
       if (!node.isMesh) return;
-      const association = primitiveAssociations.get(node);
+      const association = node.association;
       const primitive = document.meshes?.[association?.meshes]?.primitives?.[association?.primitives];
       if (!primitive) throw new Error('Decoded mesh requires a valid original primitive association.');
       if (Array.isArray(node.material)) throw new Error('Multiple materials on one decoded primitive are unsupported.');
-      const materialIndex = gltf.parser.associations.get(node.material)?.materials;
-      for (const [field, sourceField] of MATERIAL_TEXTURES) {
-        const decodedField = field === 'metallicRoughnessMap' ? 'metalnessMap' : field === 'occlusionMap' ? 'aoMap' : field;
-        if (materialTexture(document.materials?.[materialIndex] ?? {}, sourceField) && !node.material[decodedField]) throw new Error(`${sourceField} failed to decode. Use a valid PNG or JPEG image.`);
-      }
+      const materialIndex = node.material.materialIndex;
       const uvTransform = materialUvTransform(document.materials?.[materialIndex] ?? {});
       const uvKey = uvTransformKey(uvTransform);
       if (!materials.has(node.material)) materials.set(node.material, convertMaterial(node.material, limits, maps, document.materials?.[materialIndex]));
@@ -945,7 +797,7 @@ export async function parseGltf(data, options = {}) {
         const geometryMirrored = node.isSkinnedMesh ? false : mirrored;
         const geometryKey = `${node.geometry.uuid}:${geometryMirrored}:${uvKey}`;
         if (!geometries.has(geometryKey)) {
-          actualVertices += node.geometry.getAttribute('position').count * (1 + (primitive.targets?.length ?? 0));
+          actualVertices += node.geometry.attributes.position.count * (1 + (primitive.targets?.length ?? 0));
           if (actualVertices > limits.maxVertices) throw new Error('Decoded geometry exceeds maxVertices.');
           const converted = convertGeometry(node.geometry, geometryMirrored, primitive);
           if (converted.uvs) bakeUvTransform(converted.uvs, uvTransform);
@@ -982,7 +834,7 @@ export async function parseGltf(data, options = {}) {
     if (!parts.length) throw new Error('glTF scene contains no supported triangle meshes.');
     const sourceNodes = new Map();
     for (const node of nodes) {
-      const index = primitiveAssociations.get(node)?.nodes;
+      const index = node.association.nodes;
       if (index === undefined) continue;
       const id = `node-${index}`;
       if (sourceNodes.has(id)) {
@@ -1028,7 +880,6 @@ export async function parseGltf(data, options = {}) {
     for (const binding of morphBindings) {
       candidateParts[bindings.findIndex(transform => transform.node === binding.node)].morph = binding.pendingPose;
     }
-    const mixer = new AnimationMixer(gltf.scene);
     let disposed = false;
     let pendingTransaction;
     let currentAnimation = null;
@@ -1060,19 +911,11 @@ export async function parseGltf(data, options = {}) {
     const basePose = capturePrivatePose();
 
     function playAnimation(animation) {
-      mixer.stopAllAction();
       restorePrivatePose(basePose);
-      mixer.setTime(0);
       if (animation === null) {
         return;
       }
-      const clip = gltf.animations[animation.clip];
-      const action = mixer.clipAction(clip);
-      action.reset();
-      action.setLoop(LoopOnce, 1);
-      action.clampWhenFinished = true;
-      action.play();
-      mixer.setTime(animation.time);
+      applyClip(gltf.animations[animation.clip], animation.time);
     }
 
     function preparePose() {
@@ -1286,10 +1129,7 @@ export async function parseGltf(data, options = {}) {
       }
       pendingTransaction?.discard();
       disposed = true;
-      mixer.stopAllAction();
-      mixer.uncacheRoot(gltf.scene);
-      releaseParsed(gltf);
-      objectUrls.forEach(url => URL.revokeObjectURL(url));
+      gltf.release();
     }
 
     function applyAnimation(time, clipIndex = 0) {
@@ -1308,8 +1148,7 @@ export async function parseGltf(data, options = {}) {
     return { parts, warnings, skins: skinBindings.map(binding => binding.skin), animations: gltf.animations,
       get nodes() { return structuredClone(nodeMetadata); }, stagePose, applyAnimation, dispose, capabilities: GLTF_CAPABILITIES };
   } catch (error) {
-    if (gltf) releaseParsed(gltf);
-    objectUrls.forEach(url => URL.revokeObjectURL(url));
+    gltf?.release();
     throw error;
   }
 }

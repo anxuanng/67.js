@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { Texture } from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { Matrix4, Vector3 } from 'three';
 import { skinnedStripAsset } from './fixtures/skinned-strip.js';
@@ -342,12 +341,6 @@ test('all glTF map channels preserve sampler, linear data, sRGB color, scales, s
     if (previousSelf) globalThis.self = previousSelf;
     else delete globalThis.self;
   });
-  const disposedTextures = new Set();
-  const originalDispose = Texture.prototype.dispose;
-  context.mock.method(Texture.prototype, 'dispose', function () {
-    disposedTextures.add(this);
-    return originalDispose.call(this);
-  });
   const asset = await parseGltf(triangleAsset(addMaterialMaps), { maxTexturePixels: 4 });
   const material = asset.parts[0].material;
   assert.equal(material, asset.parts[1].material);
@@ -372,7 +365,6 @@ test('all glTF map channels preserve sampler, linear data, sRGB color, scales, s
   asset.dispose();
   asset.dispose();
   assert.equal(closed, 1);
-  assert.equal(disposedTextures.size, 1);
   assert.ok(GLTF_CAPABILITIES.supported.includes('normal/occlusion/emissive/metallic-roughness textures'));
 });
 
