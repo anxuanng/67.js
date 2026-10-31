@@ -29,5 +29,17 @@
     "edgeCount": "67.js has no face with a hole, so it splits a holed face into triangles and quads. Blender keeps one polygon with a seam.",
     "faceCount": "A holed face becomes many faces in 67.js and one polygon in Blender. Volume, area and vertices match.",
     "faceSizes": "A holed face becomes triangles and quads in 67.js and a 12-sided polygon in Blender."
+  },
+  "subdivide-cube-level-1": {
+    "volume": "The refined quads are bent, and the measure splits each quad from its first corner, so the volume depends on which corner a quad starts at. Counts, area and every vertex match Blender; the volume differs from Blender by under 1%."
+  },
+  "subdivide-cylinder-level-1": {
+    "volume": "The refined quads are bent, and the measure splits each quad from its first corner, so the volume depends on which corner a quad starts at. Counts, area and every vertex match Blender; the volume differs from Blender by under 1%."
+  },
+  "subdivide-cylinder-level-2": {
+    "volume": "The refined quads are bent, and the measure splits each quad from its first corner, so the volume depends on which corner a quad starts at. Counts, area and every vertex match Blender; the volume differs from Blender by under 1%."
+  },
+  "subdivide-cube-crease-half": {
+    "volume": "The refined quads are bent, and the measure splits each quad from its first corner, so the volume depends on which corner a quad starts at. Counts, area and every vertex match Blender; the volume differs from Blender by under 1%."
   }
 }
