@@ -44,6 +44,14 @@
     "cpu": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)"
   },
   "scores": {
+    "car-paint": {
+      "gpu-vs-cycles": 0.1521,
+      "gpu-vs-eevee": 0.1323,
+      "cpu-vs-cycles": 0.152,
+      "cpu-vs-eevee": 0.1323,
+      "eevee-vs-cycles": 0.0819,
+      "gpu-vs-cpu": 0.0055
+    },
     "character": {
       "gpu-vs-cycles": 0.0995,
       "gpu-vs-eevee": 0.0833,
