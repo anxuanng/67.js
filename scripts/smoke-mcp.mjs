@@ -3,7 +3,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { constants, setPriority } from 'node:os';
 import { Client } from '@modelcontextprotocol/client';
-import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
+import { PatientStdioClientTransport } from './patient-stdio-transport.mjs';
 import { createAgentPreviewFixture } from './agent-preview-fixture.mjs';
 
 setPriority(0, constants.priority.PRIORITY_BELOW_NORMAL);
@@ -12,7 +12,7 @@ const era = process.argv[3] ?? 'modern';
 assert.ok(['gpu', 'cpu'].includes(backend));
 assert.ok(['modern', 'legacy'].includes(era));
 await mkdir('artifacts', { recursive: true });
-const transport = new StdioClientTransport({
+const transport = new PatientStdioClientTransport({
   command: process.execPath,
   args: [resolve('scripts/mcp-server.mjs'), '--backend', backend, '--memory', '192'],
   stderr: 'pipe',

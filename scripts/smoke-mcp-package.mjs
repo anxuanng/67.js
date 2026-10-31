@@ -7,7 +7,7 @@ import { constants, setPriority, tmpdir } from 'node:os';
 import { resolve, dirname, join } from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { Client } from '@modelcontextprotocol/client';
-import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
+import { PatientStdioClientTransport } from './patient-stdio-transport.mjs';
 import { createAgentPreviewFixture } from './agent-preview-fixture.mjs';
 import { createTexturedRigFixture } from './agent-asset-fixture.mjs';
 
@@ -82,7 +82,7 @@ await mkdir(assets);
 await writeFile(join(assets, 'textured-rig.glb'), await createTexturedRigFixture());
 const results = [];
 for (const era of ['modern', 'legacy']) {
-  const transport = new StdioClientTransport({ command: process.execPath,
+  const transport = new PatientStdioClientTransport({ command: process.execPath,
     args: [cli, '--backend', 'cpu', '--memory', '96', '--assets', assets], cwd: consumer, stderr: 'pipe' });
   let diagnostics = '';
   transport.stderr.on('data', chunk => { diagnostics += chunk.toString(); });
