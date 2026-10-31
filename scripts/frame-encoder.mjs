@@ -2,10 +2,13 @@ import { spawn } from 'node:child_process';
 import { stat } from 'node:fs/promises';
 import { performance } from 'node:perf_hooks';
 
+/** Drain and finalization wait this long: below-normal priority jobs on a busy machine need more than 5 s. */
+export const DEFAULT_ENCODER_TIMEOUT_MS = 30000;
+
 /** One streamed frame at a time. The caller owns output publication and cleanup. */
 export function createFrameEncoder({ executable = 'ffmpeg', output, fps, format = 'jpeg', backend = 'cpu',
   audioArguments = [], signal, maximumFrameBytes = 1024 * 1024,
-  maximumOutputBytes = 128 * 1024 * 1024, timeoutMs = 5000 } = {}) {
+  maximumOutputBytes = 128 * 1024 * 1024, timeoutMs = DEFAULT_ENCODER_TIMEOUT_MS } = {}) {
   if (typeof output !== 'string' || !output || !Number.isFinite(fps) || fps < 1 || fps > 60 ||
       !['jpeg', 'png'].includes(format) || !['cpu', 'gpu'].includes(backend)) {
     throw new TypeError('Encoder requires an output path, valid fps, format and backend.');

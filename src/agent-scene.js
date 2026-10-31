@@ -599,7 +599,7 @@ function withDefaultMaterial(recipe) {
 
 function normalizeRecipe(input, limits) {
   let recipe = copiedJson(input, limits.maxRecipeBytes);
-  knownKeys(recipe, ['format', 'schemaVersion', 'geometries', 'materials', 'nodes', 'armatures', 'camera', 'environment', 'effects', 'shadow', 'motion', 'physics', 'cloth', 'timeline', 'particles'], 'recipe');
+  knownKeys(recipe, ['format', 'schemaVersion', 'geometries', 'materials', 'nodes', 'armatures', 'camera', 'environment', 'effects', 'shadow', 'motion', 'physics', 'cloth', 'timeline', 'particles', 'bake'], 'recipe');
   if (recipe.format !== '67js.scene' || recipe.schemaVersion !== 1) {
     throw new RangeError('Expected 67js.scene schemaVersion 1.');
   }
@@ -661,6 +661,9 @@ function normalizeRecipe(input, limits) {
   }
   if (Object.hasOwn(recipe, 'particles')) {
     recipe.particles = agentSceneModule('particles').normalizeAgentParticles(recipe.particles, recipe);
+  }
+  if (Object.hasOwn(recipe, 'bake')) {
+    recipe.bake = recipe.bake === null ? null : agentSceneModule('bake').normalizeAgentBake(recipe.bake);
   }
   recipe = copiedJson(recipe, limits.maxRecipeBytes);
   return recipe;
@@ -872,6 +875,7 @@ export function createAgentScene(input, inputLimits = {}) {
   let physicsBake = null;
   let clothBake = null;
   let particleBake = null;
+  let lightBake = null;
   const skinCache = new Map();
   const checkpoints = new Map();
 
@@ -964,8 +968,8 @@ export function createAgentScene(input, inputLimits = {}) {
       const handle = existing ?? materialHandle(snapshot);
       materialHandles.set(material.id, handle);
     }
-    const activeParts = new Map(state?.restParts.map(part => [part.name, part]) ?? []);
-    const preferredParts = new Map(preferred?.restParts.map(part => [part.name, part]) ?? []);
+    const activeParts = new Map(state?.sourceRestParts.map(part => [part.name, part]) ?? []);
+    const preferredParts = new Map(preferred?.sourceRestParts.map(part => [part.name, part]) ?? []);
     const nextParts = recipe.nodes.filter(node => node.geometry !== undefined).map(node => {
       const binding = skinBindings.get(node.id);
       const geometry = binding?.geometry ?? geometries.get(node.geometry);
@@ -980,14 +984,19 @@ export function createAgentScene(input, inputLimits = {}) {
       });
     });
     retainedMatrices(nextParts);
-    const sameParts = state && state.restParts.length === nextParts.length &&
-      state.restParts.every((part, index) => part === nextParts[index]);
-    const restParts = sameParts ? state.restParts : Object.freeze(nextParts);
+    const sameParts = state && state.sourceRestParts.length === nextParts.length &&
+      state.sourceRestParts.every((part, index) => part === nextParts[index]);
+    const sourceRestParts = sameParts ? state.sourceRestParts : Object.freeze(nextParts);
+    const lightBakeResult = stageLightBake(recipe, sourceRestParts, graph);
+    const restParts = lightBakeResult ? lightBakeResult.parts : sourceRestParts;
     const stagedState = {
       recipe, geometryRecords, geometries, graph, materialHandles,
+      // Part identity decides what the next stage reuses, so it compares the parts as built, before any bake.
+      sourceRestParts,
       parts: restParts, restParts,
+      bakeReport: lightBakeResult ? { ...lightBakeResult.report, reused: lightBakeResult.reused } : null,
       // A renderer holding the deformed cloth parts of the old state needs the rest parts back as a topology change.
-      topologyChanged: Boolean(state && (!sameParts || state.parts !== state.restParts)),
+      topologyChanged: Boolean(state && (restParts !== state.restParts || state.parts !== state.restParts)),
       stats: geometryStats(geometryRecords.values()),
     };
     stagedState.localBounds = localBounds;
@@ -1001,6 +1010,24 @@ export function createAgentScene(input, inputLimits = {}) {
     stagedState.poseGraph = animated ? compile(recipe, geometries, localBounds, limits) : null;
     stagedState.initialPose = stagePose(stagedState, animated ? 0 : null);
     return stagedState;
+  }
+
+  // A light bake costs seconds of ray tracing: it runs when the parts, the lights, the materials or the bake fields
+  // change, and every other edit, seek or camera move reuses the last result.
+  function stageLightBake(recipe, sourceRestParts, graph) {
+    if (!recipe.bake) {
+      return null;
+    }
+    const worldMatrices = new Map(sourceRestParts.map(part => [part.name, new Float32Array(graph.getNode(part.name).worldMatrix)]));
+    const { pointLights, keyColor, keyIntensity, lightDirection } = recipe.environment;
+    const key = JSON.stringify([recipe.bake, pointLights, keyColor, keyIntensity, lightDirection, recipe.materials,
+      [...worldMatrices].map(([name, matrix]) => [name, Array.from(matrix)])]);
+    if (lightBake?.key === key && lightBake.sourceRestParts === sourceRestParts) {
+      return { ...lightBake, reused: true };
+    }
+    const baked = agentSceneModule('bake').bakeAgentParts(sourceRestParts, worldMatrices, recipe.environment, recipe.bake);
+    lightBake = { key, sourceRestParts, parts: baked.parts, report: baked.report };
+    return { ...lightBake, reused: false };
   }
 
   // A bake costs a solver run, so an unchanged section on unchanged geometry reuses the last one.
@@ -1171,6 +1198,14 @@ export function createAgentScene(input, inputLimits = {}) {
           candidate.cloth = operation.cloth;
           continue;
         }
+        if (operation.type === 'set-bake') {
+          knownKeys(operation, ['type', 'bake'], 'operation');
+          if (!Object.hasOwn(operation, 'bake')) {
+            throw new TypeError('set-bake requires bake; use null to clear it.');
+          }
+          candidate.bake = operation.bake;
+          continue;
+        }
         if (operation.type === 'set-particles') {
           knownKeys(operation, ['type', 'particles'], 'operation');
           if (!Object.hasOwn(operation, 'particles')) {
@@ -1288,7 +1323,7 @@ export function createAgentScene(input, inputLimits = {}) {
           fields = CAMERA_FIELDS;
           target = candidate.camera;
         } else {
-          throw new TypeError(`Unsupported operation type: ${operation.type}. Use one of set-node, set-material, set-camera, set-motion, set-physics, set-cloth, set-timeline, set-particles, set-environment, set-effects, set-shadow, add-node, add-geometry, add-material, remove-node, remove-geometry, remove-material, edit-mesh, set-mesh-stack.`);
+          throw new TypeError(`Unsupported operation type: ${operation.type}. Use one of set-node, set-material, set-camera, set-motion, set-physics, set-cloth, set-timeline, set-particles, set-bake, set-environment, set-effects, set-shadow, add-node, add-geometry, add-material, remove-node, remove-geometry, remove-material, edit-mesh, set-mesh-stack.`);
         }
         knownKeys(operation, ['type', ...(operation.type === 'set-camera' ? [] : ['id']), ...fields], 'operation');
         if (!target) {
@@ -1341,6 +1376,7 @@ export function createAgentScene(input, inputLimits = {}) {
         physics: state.physicsSampler ? state.physicsSampler.report() : null,
         ...(state.clothSampler ? { cloth: state.clothSampler.report() } : {}),
         ...(state.particleSampler ? { particles: state.particleSampler.report() } : {}),
+        ...(state.bakeReport ? { bake: state.bakeReport } : {}),
         ...(state.recipe.armatures ? { rig: rigReport(state.recipe, state.skinBindings) } : {}),
         boundsSpace: 'authored-base-world',
         ...(diagnostics.length ? { diagnostics } : {}),
@@ -1392,6 +1428,7 @@ export function createAgentScene(input, inputLimits = {}) {
         geometryRecords: new Map(state.geometryRecords),
         materialHandles: new Map(state.materialHandles),
         restParts: state.restParts,
+        sourceRestParts: state.sourceRestParts,
       });
       return handle;
     },

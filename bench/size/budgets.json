@@ -31,15 +31,15 @@
   "entry:light-bake": 25400,
   "entry:texture-set": 900,
   "entry:agent-scene": 63700,
-  "entry:agent-scene+lazy": 206300,
+  "entry:agent-scene+lazy": 211300,
   "entry:agent-asset": 94600,
-  "entry:agent-asset+lazy": 216800,
+  "entry:agent-asset+lazy": 221800,
   "entry:hdri": 3300,
   "entry:camera-effects": 8600,
   "entry:render-passes": 1700,
   "scene:lit-box": 60200,
   "scene:gltf-box": 79700,
   "scene:agent-scene": 93500,
-  "scene:agent-scene+lazy": 236000
+  "scene:agent-scene+lazy": 240600
  }
 }

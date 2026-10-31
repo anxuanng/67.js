@@ -75,7 +75,7 @@ assert.match(help.stdout, /--assets/);
 const invalid = spawnSync(process.execPath, [cli, '--memory', '0'], { cwd: consumer, encoding: 'utf8', windowsHide: true });
 assert.equal(invalid.status, 1);
 assert.equal(invalid.stdout, '');
-assert.match(invalid.stderr, /32 to 256/);
+assert.match(invalid.stderr, /32 to 384/);
 const shim = join(consumer, 'node_modules', '.bin', process.platform === 'win32' ? '67js-mcp.cmd' : '67js-mcp');
 const shimVersion = process.platform === 'win32'
   ? spawnSync('cmd.exe', ['/d', '/s', '/c', `""${shim}" --version"`], {
