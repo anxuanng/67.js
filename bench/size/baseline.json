@@ -44,9 +44,9 @@
    "brotli": 40652
   },
   "entry:modeling": {
-   "min": 15517,
-   "gzip": 6416,
-   "brotli": 5712
+   "min": 21149,
+   "gzip": 8439,
+   "brotli": 7477
   },
   "entry:sculpt": {
    "min": 5937,
@@ -64,9 +64,9 @@
    "brotli": 12998
   },
   "entry:mesh": {
-   "min": 211151,
-   "gzip": 71754,
-   "brotli": 60810
+   "min": 218273,
+   "gzip": 73689,
+   "brotli": 62497
   },
   "entry:shrinkwrap": {
    "min": 56188,
@@ -129,24 +129,24 @@
    "brotli": 762
   },
   "entry:agent-scene": {
-   "min": 195659,
-   "gzip": 59291,
-   "brotli": 51288
+   "min": 198395,
+   "gzip": 60310,
+   "brotli": 52173
   },
   "entry:agent-scene+lazy": {
-   "min": 513028,
-   "gzip": 170622,
-   "brotli": 148944
+   "min": 554003,
+   "gzip": 185152,
+   "brotli": 161241
   },
   "entry:agent-asset": {
-   "min": 286211,
-   "gzip": 88211,
-   "brotli": 76977
+   "min": 288753,
+   "gzip": 89153,
+   "brotli": 77831
   },
   "entry:agent-asset+lazy": {
-   "min": 545319,
-   "gzip": 179569,
-   "brotli": 156544
+   "min": 586100,
+   "gzip": 194020,
+   "brotli": 168904
   },
   "entry:hdri": {
    "min": 8075,
@@ -174,14 +174,14 @@
    "brotli": 67034
   },
   "scene:agent-scene": {
-   "min": 305458,
-   "gzip": 88650,
-   "brotli": 75931
+   "min": 308000,
+   "gzip": 89595,
+   "brotli": 76794
   },
   "scene:agent-scene+lazy": {
-   "min": 622827,
-   "gzip": 199984,
-   "brotli": 173556
+   "min": 663608,
+   "gzip": 214440,
+   "brotli": 185852
   }
  }
 }

@@ -3,6 +3,8 @@
 This ledger compares 67.js with each feature in the [Blender 5.2 manual](https://docs.blender.org/manual/en/latest/).
 It is the record for the goal in issue #23. Use `npm run parity` to print the coverage of each section.
 
+Modifier coverage (rows under `Modeling > Modifiers`, from `npm run parity`): 11 done, 16 partial, 33 missing and 1 out of scope, 8 of the done rows compared with Blender, 18% of the in-scope rows done.
+
 ## How to read it
 
 | Status | Meaning |
@@ -33,7 +35,7 @@ To move to a new Blender release, run `node scripts/parity-manual-snapshot.mjs`.
 | User Interface | out of scope | Interface for a person with a mouse. Agents use MCP tools. | | |
 | Editors | out of scope | Interface for a person with a mouse. Agents use MCP tools, and people review images. | | |
 | Scenes & Objects > Scenes | partial | One recipe holds one scene with its camera and environment. There are no scene units or linked scenes. | | |
-| Scenes & Objects > Objects > Object Types | partial | Mesh nodes and empty nodes exist. Lights are environment settings, and curves and text do not exist as objects. | | #45 |
+| Scenes & Objects > Objects > Object Types | partial | Mesh nodes and empty nodes exist, and `curve` and `text` geometry make curve-like and text objects as meshes. Lights are environment settings. Metaballs and NURBS surfaces are out of scope. | [curve-text](../tests/curve-text.test.js), [Blender comparison](../tests/blender-curve-text.test.js) | #45 |
 | Scenes & Objects > Objects > Object Origin | partial | Code has pivots in the scene graph. Recipes have no pivot field. | | |
 | Scenes & Objects > Objects > Selecting | out of scope | Selection by mouse. Tools address nodes by ID. | | |
 | Scenes & Objects > Objects > Editing | partial | Agents add, change and remove nodes in atomic batches. There is no duplicate, join or separate. | | |
@@ -49,11 +51,11 @@ To move to a new Blender release, run `node scripts/parity-manual-snapshot.mjs`.
 | Modeling > Meshes > UVs | partial | `uv_unwrap` with LSCM, axis charts and shelf packing. Patterns can not use the result yet. | | #50 |
 | Modeling > Meshes > Mesh Analysis | partial | `lintMesh` reports topology problems. With `{ geometry: true }` (always on in `mesh_inspect`) it also warns of crossing parts, a solid cutting itself, thin walls, floating parts and near-symmetry, using the BVH within face budgets. Checks are heuristics on parts, not Blender's exact Select Non-Manifold or Intersect checks. | [tests/mesh-lint-geometry.test.js](../tests/mesh-lint-geometry.test.js), [src/mesh-lint-geometry.js](../src/mesh-lint-geometry.js) | #66 |
 | Modeling > Meshes > Remeshing | partial | `remesh` rebuilds a closed mesh as an even quad surface on a voxel grid (surface nets over a BVH signed distance). Quad remesh and Instant Meshes style retopology are not here. | [blender golden](../tests/blender-golden.test.js) | #40 |
-| Modeling > Curves | partial | `tube` follows a curve and `extrude` follows a contour. There is no curve object. | | #45 |
+| Modeling > Curves | partial | The `curve` geometry sweeps a cubic Bezier chain with explicit or automatic handles, a round or custom profile, a taper along the length and flat caps. Volume, area and bounds match Blender for an open and a closed curve to 2e-5. There is no NURBS or poly spline, no handle types, no fill for flat curves, no offset or extrude, and no separate taper or bevel object. | [curve-text](../tests/curve-text.test.js), [Blender comparison](../tests/blender-curve-text.test.js) | #45 |
 | Modeling > Curves (New) | missing | No hair curves. | | #63 |
 | Modeling > Surfaces | out of scope | Issue #45 records NURBS surfaces as out of scope unless demand appears. | | |
 | Modeling > Metaball | out of scope | Issue #45 records metaballs as out of scope unless demand appears. | | |
-| Modeling > Text | missing | No text objects. | | #45 |
+| Modeling > Text | partial | The `text` geometry extrudes outlines of the bundled DejaVu Sans (printable ASCII, 20 KB loaded on demand) or of a font table registered in code, with size, depth, alignment, lines and curve resolution. One glyph and a word match Blender 5.2 with the same font to 2e-5 in volume and area. There is no kerning, no bevel, no character styles, no text on a curve, no non-ASCII glyphs in the bundled font, and no font through MCP. | [curve-text](../tests/curve-text.test.js), [Blender comparison](../tests/blender-curve-text.test.js) | #45 |
 | Modeling > Point Cloud | missing | No point clouds. | | #43 |
 | Modeling > Volumes | missing | Depth-clipped volume fog exists. There are no volume objects. | | #63 |
 | Modeling > Empties | done | A node with no geometry acts as an empty parent. | [agent-scene](../tests/agent-scene.test.js) | |
@@ -71,43 +73,43 @@ To move to a new Blender release, run `node scripts/parity-manual-snapshot.mjs`.
 | Modeling > Modifiers > Generate > Bevel Modifier | done | Stack node and edit, with segments, profile and overlap clamp, on edges only. | [mesh-bevel](../tests/mesh-bevel.test.js), [Blender results](../tests/fixtures/blender/golden.json) | |
 | Modeling > Modifiers > Generate > Boolean Modifier | partial | Manifold boolean as an edit. It is not a stack node. | [mesh-boolean](../tests/mesh-boolean.test.js), [Blender results](../tests/fixtures/blender/golden.json) | |
 | Modeling > Modifiers > Generate > Build Modifier | missing | No equivalent. | | |
-| Modeling > Modifiers > Generate > Curve to Tube Modifier | partial | `tube` is a geometry type. It is not a stack node. | [modeling](../tests/modeling.test.js) | #45 |
+| Modeling > Modifiers > Generate > Curve to Tube Modifier | partial | `tube` and `curve` are geometry types, and `curve` has a taper and custom profile. Neither is a stack node. | [curve-text](../tests/curve-text.test.js), [Blender comparison](../tests/blender-curve-text.test.js) | #45 |
 | Modeling > Modifiers > Generate > Decimate Modifier | partial | Collapse mode as `decimate` with a ratio, keeping open boundaries and tag borders; `generateMeshLods`, `generateGeometryLods` and `generateAssetLods` make levels with a measured error. Unsubdivide and planar modes, vertex-group weighting and symmetry are missing. Compared with Blender on 4 shared fixtures by volume, area and Hausdorff distance. | [blender golden](../tests/blender-golden.test.js), [decimate](../tests/mesh-decimate.test.js) | #40 |
-| Modeling > Modifiers > Generate > Edge Split Modifier | missing | No equivalent. `smoothAngle` splits normals by angle. | | #42 |
+| Modeling > Modifiers > Generate > Edge Split Modifier | done | `edge_split` edit and stack node: vertices split along edges bending more than `angle`. Edges marked sharp by hand do not exist in recipes. | [mesh-modifiers](../tests/mesh-modifiers.test.js), [Blender results](../tests/fixtures/blender/golden.json) |  |
 | Modeling > Modifiers > Generate > Mask Modifier | missing | No equivalent. | | |
 | Modeling > Modifiers > Generate > Mesh to Volume Modifier | missing | No volume objects. | | |
 | Modeling > Modifiers > Generate > Mirror Modifier | done | Stack node with axis and merge. | [mesh-stack](../tests/mesh-stack.test.js), [Blender results](../tests/fixtures/blender/golden.json) | |
 | Modeling > Modifiers > Generate > Multiresolution Modifier | missing | No multiresolution. | | |
 | Modeling > Modifiers > Generate > Remesh Modifier | partial | Voxel mode as `remesh` (voxel size or resolution), as an edit or a stack node, compared with Blender on 2 shared fixtures. Blocks, smooth and sharp modes are missing. | [blender golden](../tests/blender-golden.test.js), [decimate](../tests/mesh-decimate.test.js) | #40 |
 | Modeling > Modifiers > Generate > Scatter on Surface Modifier | partial | `instances` with a `surface` source scatters a node at seeded, area-weighted points with yaw, scale and normal alignment, and `where` filters them. No minimum distance or density map, and `addons/clutter` and `addons/grass` still scatter in code. | [src/mesh-instances.js](../src/mesh-instances.js), [tests/mesh-fields.test.js](../tests/mesh-fields.test.js) | #42 |
-| Modeling > Modifiers > Generate > Screw Modifier | partial | `lathe` covers a full turn. There is no stack node or screw offset. | | #42 |
-| Modeling > Modifiers > Generate > Skin Modifier | missing | No equivalent. | | #42 |
+| Modeling > Modifiers > Generate > Screw Modifier | partial | `lathe` covers a full turn. There is no stack node or screw offset. Not in the first slice of #42, which took the modifiers agents use most. | | #42 |
+| Modeling > Modifiers > Generate > Skin Modifier | missing | No equivalent. Not in the first slice of #42, which took the modifiers agents use most. | | #42 |
 | Modeling > Modifiers > Generate > Solidify Modifier | done | Stack node with thickness, offset and even thickness. | [mesh-stack](../tests/mesh-stack.test.js), [Blender results](../tests/fixtures/blender/golden.json) | |
 | Modeling > Modifiers > Generate > Subdivision Surface Modifier | done | `subdivide` edit and stack node: Catmull-Clark to 4 levels, semi-sharp creases, sharp boundaries, tags, UVs. Counts, area and positions match Blender; volume differs under 1% on four cases. | [src/mesh-subdivide.js](../src/mesh-subdivide.js), [tests/blender-golden.test.js](../tests/blender-golden.test.js), [tests/mesh-subdivide.test.js](../tests/mesh-subdivide.test.js), [pebble task](../bench/agent-modeling/tasks.mjs) | #39 |
-| Modeling > Modifiers > Generate > Triangulate Modifier | missing | Render data is triangulated. There is no node that changes the mesh. | | #42 |
+| Modeling > Modifiers > Generate > Triangulate Modifier | done | `triangulate` edit and stack node with `minVertices`. Quads split on the shorter diagonal, larger faces by ear clipping; Blender's method options are not exposed. | [mesh-modifiers](../tests/mesh-modifiers.test.js), [Blender results](../tests/fixtures/blender/golden.json) |  |
 | Modeling > Modifiers > Generate > Volume to Mesh Modifier | missing | No volume objects. | | |
-| Modeling > Modifiers > Generate > Weld Modifier | partial | `merge_by_distance` is an edit. It is not a stack node. | | #42 |
-| Modeling > Modifiers > Generate > Wireframe Modifier | missing | No equivalent. | | #42 |
+| Modeling > Modifiers > Generate > Weld Modifier | done | `weld` edit and stack node (distance, all vertices). Connected mode and vertex groups are not supported. | [mesh-modifiers](../tests/mesh-modifiers.test.js), [Blender results](../tests/fixtures/blender/golden.json) |  |
+| Modeling > Modifiers > Generate > Wireframe Modifier | missing | No equivalent. Not in the first slice of #42, which took the modifiers agents use most. | | #42 |
 | Modeling > Modifiers > Deform > Armature Modifier | partial | A node `skin` binds a recipe mesh to an armature with automatic weights, and imported rigs keep GPU skinning. No envelope mode and no hand-edited weights. | [rigging](../tests/rigging.test.js), [skinning](../tests/skinning.test.js) | #46 |
-| Modeling > Modifiers > Deform > Cast Modifier | missing | No equivalent. | | #42 |
-| Modeling > Modifiers > Deform > Curve Modifier | missing | No equivalent. | | #42 |
+| Modeling > Modifiers > Deform > Cast Modifier | partial | `cast` edit and stack node, sphere shape about the origin with `factor` and `size`. No cylinder or cuboid shape, no radius limit, no control object. | [mesh-modifiers](../tests/mesh-modifiers.test.js), [Blender results](../tests/fixtures/blender/golden.json) | #42 |
+| Modeling > Modifiers > Deform > Curve Modifier | missing | No equivalent. Not in the first slice of #42, which took the modifiers agents use most. | | #42 |
 | Modeling > Modifiers > Deform > Displace Modifier | done | `displace` edit and stack node with a field as the texture, along the normal or an axis, with strength, midlevel and a face selection. Positions match Blender with a constant and with a Blend texture. | [src/mesh-field-edits.js](../src/mesh-field-edits.js), [tests/blender-golden.test.js](../tests/blender-golden.test.js), [src/mesh-fields.js](../src/mesh-fields.js), [tests/mesh-fields.test.js](../tests/mesh-fields.test.js) | #43 |
-| Modeling > Modifiers > Deform > Hook Modifier | missing | No equivalent. | | #42 |
+| Modeling > Modifiers > Deform > Hook Modifier | missing | No equivalent. Not in the first slice of #42, which took the modifiers agents use most. | | #42 |
 | Modeling > Modifiers > Deform > Laplacian Deform Modifier | missing | No equivalent. | | |
-| Modeling > Modifiers > Deform > Lattice Modifier | missing | No lattice. | | #42 |
+| Modeling > Modifiers > Deform > Lattice Modifier | missing | No lattice. Not in the first slice of #42, which took the modifiers agents use most. | | #42 |
 | Modeling > Modifiers > Deform > Mesh Deform Modifier | missing | No equivalent. | | |
 | Modeling > Modifiers > Deform > Shrinkwrap Modifier | partial | `addons/shrinkwrap` works in code. Recipes can not reach it. | [shrinkwrap](../tests/shrinkwrap.test.js) | #42, #47 |
-| Modeling > Modifiers > Deform > Simple Deform Modifier | missing | No equivalent. | | #42 |
-| Modeling > Modifiers > Deform > Smooth Modifier | missing | No stack node. `addons/sculpt` smooths in code. | | #42 |
+| Modeling > Modifiers > Deform > Simple Deform Modifier | partial | `simple_deform` edit and stack node: twist, bend, taper and stretch about x, y or z over the whole mesh extent. No limits, lock axes, origin object or vertex groups. | [mesh-modifiers](../tests/mesh-modifiers.test.js), [Blender results](../tests/fixtures/blender/golden.json) | #42 |
+| Modeling > Modifiers > Deform > Smooth Modifier | done | `smooth` edit and stack node (factor and iterations over every vertex). Per-axis switches and vertex groups are not supported. | [mesh-modifiers](../tests/mesh-modifiers.test.js), [Blender results](../tests/fixtures/blender/golden.json) |  |
 | Modeling > Modifiers > Deform > Smooth Corrective Modifier | missing | No equivalent. | | |
 | Modeling > Modifiers > Deform > Smooth Laplacian Modifier | missing | No equivalent. | | |
 | Modeling > Modifiers > Deform > Surface Deform Modifier | missing | `addons/surface-attachment` binds points, not whole meshes. | | |
 | Modeling > Modifiers > Deform > Volume Displace Modifier | missing | No volume objects. | | |
 | Modeling > Modifiers > Deform > Warp Modifier | missing | No equivalent. | | |
-| Modeling > Modifiers > Deform > Wave Modifier | missing | No equivalent. | | #42 |
+| Modeling > Modifiers > Deform > Wave Modifier | missing | No equivalent. Not in the first slice of #42, which took the modifiers agents use most. | | #42 |
 | Modeling > Modifiers > Normals > Normal Edit Modifier | missing | No equivalent. | | |
-| Modeling > Modifiers > Normals > Weighted Normal Modifier | missing | No equivalent. | | #42 |
-| Modeling > Modifiers > Normals > Smooth By Angle Modifier | partial | `smoothAngle` is a geometry setting. It is not a stack node. | | #42 |
+| Modeling > Modifiers > Normals > Weighted Normal Modifier | missing | No equivalent. Not in the first slice of #42, which took the modifiers agents use most. | | #42 |
+| Modeling > Modifiers > Normals > Smooth By Angle Modifier | partial | `smoothAngle` is a geometry setting. It is not a stack node. Not in the first slice of #42, which took the modifiers agents use most. | | #42 |
 | Modeling > Modifiers > Physics > Cloth Modifier | missing | No cloth. | | #62 |
 | Modeling > Modifiers > Physics > Collision Modifier | partial | Rapier colliders fitted to recipe geometry as box, ball, capsule, convex hull or trimesh, so a body rests on an authored mesh. | [agent-physics](../tests/agent-physics.test.js) | #61 |
 | Modeling > Modifiers > Physics > Dynamic Paint Modifier | missing | No equivalent. | | |

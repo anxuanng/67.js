@@ -4,6 +4,7 @@ import { Client } from '@modelcontextprotocol/client';
 import { InMemoryTransport } from '@modelcontextprotocol/server';
 import { createAgentMcpServer } from './mcp-server.mjs';
 import { createAgentScene, AGENT_SCENE_CAPABILITIES } from '../src/agent-scene.js';
+import { loadAgentSceneModules } from '../src/agent-scene-modules.js';
 
 // JSON is dense in tokens: about 3.5 characters each for schemas and recipes (an estimate, not a tokenizer count).
 const CHARACTERS_PER_TOKEN = 3.5;
@@ -59,7 +60,8 @@ export async function listTools() {
   return tools;
 }
 
-function typicalResults(recipe) {
+async function typicalResults(recipe) {
+  await loadAgentSceneModules(recipe);
   const scene = createAgentScene(recipe);
   const status = { sessionId: SAMPLE_SESSION, revision: scene.revision, inspection: scene.inspect(), render: { backend: 'gpu' } };
   scene.apply([{ type: 'edit-mesh', geometry: 'seat', edits: [SMALL_EDIT] }], { expectedRevision: scene.revision });
@@ -95,7 +97,7 @@ export async function measureToolCost() {
     .map(entry => ({ name: entry.name, descriptionBytes: Buffer.byteLength(entry.description), ...sizeOf(entry) }))
     .sort((first, second) => second.bytes - first.bytes);
   const recipe = sampleRecipe();
-  const results = Object.entries(typicalResults(recipe)).map(([name, value]) => ({ name, ...sizeOf(value) }));
+  const results = Object.entries(await typicalResults(recipe)).map(([name, value]) => ({ name, ...sizeOf(value) }));
   return { schemas, schemaTotal: sizeOf(entries), results, comparison: smallChangeComparison(recipe) };
 }
 

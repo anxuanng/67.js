@@ -4,7 +4,7 @@ import { createSceneGraph } from './scene-graph.js';
 import { applyProjection } from './camera.js';
 import { normalizeAgentLook, environmentPatchWithSetup } from './agent-look.js';
 import { agentSceneModule } from './agent-scene-modules.js';
-import { MESH_SMOOTH_ANGLE_DEFAULT, AGENT_SCENE_CAPABILITIES, AGENT_SCENE_DEFAULT_LIMITS, MAX_MATERIAL_PATTERNS, RECIPE_ALPHA_MODES } from './agent-scene-capabilities.js';
+import { MESH_SMOOTH_ANGLE_DEFAULT, CURVE_TEXT_LIMITS, AGENT_SCENE_CAPABILITIES, AGENT_SCENE_DEFAULT_LIMITS, MAX_MATERIAL_PATTERNS, RECIPE_ALPHA_MODES } from './agent-scene-capabilities.js';
 import { MATERIAL_LAYER_FIELDS, validateMaterialLayers } from './material-layers.js';
 import { recipeDiagnostics } from './agent-diagnostics.js';
 import { armatureNodes, bakeRigExport, bindSkins, createSkinStages, normalizeArmatures, publishSkinPoses, restWorldMatrix, rigReport, stageSkinPoses, transformedBounds, withoutArmatureNodes } from './rig.js';
@@ -13,7 +13,7 @@ export { normalizeAgentLook, resolveAgentShadow } from './agent-look.js';
 export {
   needsMeshBooleans, loadMeshBooleans, meshBooleansLoaded, setManifoldModuleLoader,
   needsPhysics, loadPhysicsEngine, physicsEngineLoaded, setPhysicsModuleLoader,
-  loadAgentSceneModules, loadAllAgentSceneModules, allAgentSceneModulesLoaded, agentSceneModulesNeeded,
+  loadAgentSceneModules, loadAllAgentSceneModules, registerAgentSceneFont, allAgentSceneModulesLoaded, agentSceneModulesNeeded,
 } from './agent-scene-modules.js';
 
 const DEFAULT_LIMITS = AGENT_SCENE_DEFAULT_LIMITS;
@@ -340,6 +340,8 @@ const GEOMETRY_FIELDS = {
   lathe: ['profile', 'segments', 'startAngle', 'sweep'],
   extrude: ['contour', 'holes', 'depth', 'steps', 'bevel', 'bevelThickness', 'bevelSegments'],
   tube: ['path', 'radius', 'segments', 'radialSegments', 'closed'],
+  curve: ['points', 'closed', 'radius', 'taper', 'profile', 'resolution', 'radialSegments'],
+  text: ['text', 'size', 'depth', 'font', 'align', 'curveSegments'],
   mesh: ['base', 'edits', 'stack', 'smoothAngle'],
 };
 
@@ -361,7 +363,7 @@ function geometryEstimate(value) {
     return input.length;
   }
   for (const field of GEOMETRY_FIELDS[value.type]) {
-    if (value[field] !== undefined && !['profile', 'contour', 'holes', 'path', 'closed', 'base', 'edits', 'stack'].includes(field)) {
+    if (value[field] !== undefined && !['profile', 'contour', 'holes', 'path', 'closed', 'base', 'edits', 'stack', 'points', 'taper', 'text', 'font', 'align'].includes(field)) {
       finite(value[field], field);
     }
   }
@@ -382,6 +384,22 @@ function geometryEstimate(value) {
         throw new TypeError('closed must be boolean.');
       }
       return (detail('segments', 64, 3, 2048) + 1) * (detail('radialSegments', 12, 3, 128) + 1);
+    case 'curve': {
+      const knots = value.points;
+      if (!Array.isArray(knots) || knots.length < 2 || knots.length > CURVE_TEXT_LIMITS.maxCurvePoints) {
+        throw new RangeError('Geometry point count exceeds its limit.');
+      }
+      const sides = value.profile === undefined ? detail('radialSegments', 8, 3, 128) : points(value.profile, 2, 3);
+      const rings = (value.closed ? knots.length : knots.length - 1) * detail('resolution', 12, 1, 64) + 1;
+      return rings * sides * 2 + 2 * (sides + 1);
+    }
+    case 'text': {
+      if (typeof value.text !== 'string') throw new TypeError('text must be a string.');
+      const visible = [...value.text].filter(character => !/\s/.test(character)).length;
+      const isDefaultFont = value.font === undefined || value.font === 'default';
+      const perSegment = isDefaultFont ? CURVE_TEXT_LIMITS.verticesPerCharacterSegment : CURVE_TEXT_LIMITS.verticesPerCustomCharacterSegment;
+      return visible * perSegment * detail('curveSegments', 4, 1, 16);
+    }
     case 'extrude': {
       const holes = value.holes ?? [];
       if (!Array.isArray(holes) || holes.length > 128) {
@@ -441,6 +459,10 @@ function generateGeometry(value, maxVertices) {
       return agentSceneModule('modeling').extrude(value.contour, { ...value, maxVertices });
     case 'tube':
       return agentSceneModule('modeling').tube(value.path, { ...value, maxVertices });
+    case 'curve':
+      return agentSceneModule('modeling').curve(value.points, { ...value, maxVertices });
+    case 'text':
+      return agentSceneModule('text').text(value.text, { ...value, maxVertices });
     case 'mesh':
       return agentSceneModule('mesh').generateMeshGeometry(() => generateGeometry(value.base, maxVertices), value.edits ?? [], {
         maxVertices, smoothAngle: value.smoothAngle ?? MESH_SMOOTH_ANGLE_DEFAULT,

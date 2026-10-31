@@ -139,7 +139,8 @@ function initialNormal(tangent) {
   return crossProduct(tangent, normalize(crossProduct(tangent, reference)));
 }
 
-function frames(tangents, closed) {
+/** Minimum-twist frames for unit tangents, one per tangent; a closed curve repeats its first tangent at the end and spreads the leftover twist. */
+export function transportFrames(tangents, closed) {
   const segments = tangents.length - 1;
   const normals = [initialNormal(tangents[0])];
   for (let index = 1; index <= segments; index++) {
@@ -166,7 +167,7 @@ function frames(tangents, closed) {
 export function sampleTubePath(points, closed, steps) {
   const curve = createCurve(points, closed);
   const tangents = Array.from({ length: steps + 1 }, (_, index) => curve.tangentAt(index / steps));
-  const sampleFrames = frames(tangents, closed);
+  const sampleFrames = transportFrames(tangents, closed);
   return sampleFrames.map((_, index) => {
     const source = closed && index === steps ? 0 : index;
     return { point: curve.pointAtFraction(source / steps), ...sampleFrames[source] };
