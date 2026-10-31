@@ -1,4 +1,4 @@
-import { LatheGeometry, ExtrudeGeometry, TubeGeometry, CatmullRomCurve3, Shape, Path, Vector2, Vector3 } from 'three';
+import { buildLathe, buildExtrusion, buildTube } from './modeling-shapes.js';
 
 const MAX_INPUT_POINTS = 4096;
 const DEFAULT_VERTEX_LIMIT = 250_000;
@@ -31,46 +31,37 @@ function checkBudget(vertices, maximum) {
 }
 
 function meshFrom(source, maximum) {
-  try {
-    const position = source.getAttribute('position');
-    checkBudget(position.count, maximum);
-    const normal = source.getAttribute('normal');
-    const uv = source.getAttribute('uv');
-    const positions = new Float32Array(position.array);
-    const normals = new Float32Array(normal.array);
-    const uvs = new Float32Array(uv.array);
-    const indices = source.index ? new Uint32Array(source.index.array) : Uint32Array.from({ length: position.count }, (_, index) => index);
-    for (let offset = 0; offset < normals.length; offset += 3) {
-      const length = Math.hypot(normals[offset], normals[offset + 1], normals[offset + 2]);
-      if (!Number.isFinite(length) || length === 0) throw new RangeError('Modeling produced an invalid normal. Adjust the profile or contour.');
-      for (let axis = 0; axis < 3; axis++) normals[offset + axis] /= length;
-    }
-    for (const value of positions) if (!Number.isFinite(value)) throw new RangeError('Modeling geometry exceeds the finite Float32 range. Reduce coordinates.');
-    for (const value of uvs) if (!Number.isFinite(value)) throw new RangeError('Modeling produced invalid UVs. Adjust the profile or contour.');
-    let drawable = false;
-    for (let offset = 0; offset < indices.length; offset += 3) {
-      const first = indices[offset] * 3;
-      const second = indices[offset + 1] * 3;
-      const third = indices[offset + 2] * 3;
-      const ax = positions[second] - positions[first];
-      const ay = positions[second + 1] - positions[first + 1];
-      const az = positions[second + 2] - positions[first + 2];
-      const bx = positions[third] - positions[first];
-      const by = positions[third + 1] - positions[first + 1];
-      const bz = positions[third + 2] - positions[first + 2];
-      if (Math.hypot(ay * bz - az * by, az * bx - ax * bz, ax * by - ay * bx) > 0) {
-        drawable = true;
-        break;
-      }
-    }
-    if (!drawable) throw new RangeError('Modeling collapsed at Float32 precision. Center geometry locally and position it with a transform.');
-    return { positions, normals, uvs, indices };
-  } finally {
-    source.dispose();
+  checkBudget(source.positions.length / 3, maximum);
+  const { positions, normals, uvs } = source;
+  const indices = source.indices ?? Uint32Array.from({ length: positions.length / 3 }, (_, index) => index);
+  for (let offset = 0; offset < normals.length; offset += 3) {
+    const length = Math.hypot(normals[offset], normals[offset + 1], normals[offset + 2]);
+    if (!Number.isFinite(length) || length === 0) throw new RangeError('Modeling produced an invalid normal. Adjust the profile or contour.');
+    for (let axis = 0; axis < 3; axis++) normals[offset + axis] /= length;
   }
+  for (const value of positions) if (!Number.isFinite(value)) throw new RangeError('Modeling geometry exceeds the finite Float32 range. Reduce coordinates.');
+  for (const value of uvs) if (!Number.isFinite(value)) throw new RangeError('Modeling produced invalid UVs. Adjust the profile or contour.');
+  let drawable = false;
+  for (let offset = 0; offset < indices.length; offset += 3) {
+    const first = indices[offset] * 3;
+    const second = indices[offset + 1] * 3;
+    const third = indices[offset + 2] * 3;
+    const ax = positions[second] - positions[first];
+    const ay = positions[second + 1] - positions[first + 1];
+    const az = positions[second + 2] - positions[first + 2];
+    const bx = positions[third] - positions[first];
+    const by = positions[third + 1] - positions[first + 1];
+    const bz = positions[third + 2] - positions[first + 2];
+    if (Math.hypot(ay * bz - az * by, az * bx - ax * bz, ax * by - ay * bx) > 0) {
+      drawable = true;
+      break;
+    }
+  }
+  if (!drawable) throw new RangeError('Modeling collapsed at Float32 precision. Center geometry locally and position it with a transform.');
+  return { positions, normals, uvs, indices };
 }
 
-/** Revolve a radius/height profile around Y, using the installed Three.js geometry implementation. */
+/** Revolve a radius/height profile around Y. */
 export function lathe(profile, { segments = 64, startAngle = 0, sweep = Math.PI * 2, maxVertices = DEFAULT_VERTEX_LIMIT } = {}) {
   integer(segments, 3, 2048, 'segments');
   finite(startAngle, 'startAngle');
@@ -80,7 +71,7 @@ export function lathe(profile, { segments = 64, startAngle = 0, sweep = Math.PI 
   const points = pointsFrom(profile, 2, 2, 'profile');
   if (points.some(point => point[0] < 0) || !points.some(point => point[0] > 0)) throw new RangeError('Profile radii must be nonnegative, with at least one positive radius.');
   checkBudget((segments + 1) * points.length, maxVertices);
-  return meshFrom(new LatheGeometry(points.map(point => new Vector2(...point)), segments, startAngle, sweep), maxVertices);
+  return meshFrom(buildLathe(points, segments, startAngle, sweep), maxVertices);
 }
 
 function orientation(first, second, third) {
@@ -247,11 +238,7 @@ export function extrude(contour, {
       if (ringsIntersect(inner[index], inner[other]) || inside(inner[index][0], inner[other]) || inside(inner[other][0], inner[index])) throw new RangeError('Holes cannot overlap, touch or contain each other.');
     }
   }
-  const shape = new Shape(outer.map(point => new Vector2(...point)));
-  shape.holes = inner.map(ring => new Path(ring.map(point => new Vector2(...point))));
-  return closeTJunctions(meshFrom(new ExtrudeGeometry(shape, {
-    depth, steps, bevelEnabled: beveled, bevelSize: bevel, bevelThickness, bevelSegments,
-  }), maxVertices));
+  return closeTJunctions(meshFrom(buildExtrusion(outer, inner, { depth, steps, bevel, bevelThickness, bevelSegments }), maxVertices));
 }
 
 /** Sweep a circular tube along a centripetal Catmull-Rom curve. */
@@ -267,6 +254,5 @@ export function tube(path, {
   if (closed && points[0].every((value, axis) => value === points.at(-1)[axis])) points.pop();
   if (points.length < (closed ? 3 : 2)) throw new RangeError('The path has too few distinct points.');
   checkBudget((segments + 1) * (radialSegments + 1), maxVertices);
-  const curve = new CatmullRomCurve3(points.map(point => new Vector3(...point)), closed, 'centripetal');
-  return meshFrom(new TubeGeometry(curve, segments, radius, radialSegments, closed), maxVertices);
+  return meshFrom(buildTube(points, closed, radius, segments, radialSegments), maxVertices);
 }
