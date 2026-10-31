@@ -32,18 +32,20 @@ test('GLB export writes alpha mode, cutoff, opacity and double-sided so the load
   assert.ok(Math.abs(loaded.opacity - 0.6) < 1e-6);
 });
 
-test('GLB export refuses to silently discard any material texture channel', () => {
+test('GLB export names the fix when textures have no UVs or exceed the size limit', () => {
   const part = createModel()[0];
-  for (const channel of ['map', 'normalMap', 'metallicRoughnessMap', 'occlusionMap', 'emissiveMap']) {
-    assert.throws(() => exportGlb([{ ...part, material: { ...part.material, [channel]: {} } }]),
-      error => error instanceof RangeError && error.message.includes(channel));
-  }
+  const image = { width: 4, height: 4, data: new Uint8ClampedArray(64).fill(255) };
+  const textured = { ...part, material: { ...part.material, map: { image } } };
+  assert.throws(() => exportGlb([textured]), /uv_unwrap/);
+  const withUvs = { ...textured, geometry: { ...part.geometry, uvs: new Float32Array(part.geometry.positions.length / 3 * 2) } };
+  assert.throws(() => exportGlb([withUvs], { maxTextureSize: 2 }), /maxTextureSize 2/);
+  assert.ok(exportGlb([withUvs]).byteLength > 0);
 });
 
-test('GLB export rejects skinning instead of silently saving the undeformed bind mesh', () => {
+test('GLB export rejects a skin without joints and skin attributes without a skin', () => {
   const part = createModel()[0];
-  assert.throws(() => exportGlb([{ ...part, skin: { jointMatrices: new Float32Array(16) } }]), /preserve skinning/);
-  assert.throws(() => exportGlb([{ ...part, geometry: { ...part.geometry, skinIndices: new Uint16Array(4) } }]), /preserve skinning/);
+  assert.throws(() => exportGlb([{ ...part, geometry: { ...part.geometry, skinIndices: new Uint16Array(4) } }]), /[Ss]kin/);
+  assert.throws(() => exportGlb([{ ...part, skin: { jointMatrices: new Float32Array(16) } }]), /[Ss]kin/);
 });
 
 test('GLB export rejects malformed morph pairs rather than discarding expressions', () => {
