@@ -332,7 +332,9 @@ void main() {
   outputColor = vec4(behind * transmittance * (1.0 - reflectance) * (1.0 - fog) + displayed(surfaceLight), 1.0);
 }`;
 
-export const fragmentShader = `#version 300 es
+function buildFragmentShader(featureDefines) {
+  return `#version 300 es
+${featureDefines}
 precision highp float;
 in vec3 worldPosition;
 in vec3 worldNormal;
@@ -557,7 +559,7 @@ void mossMasks(vec3 normal, float amount, out float sharpMask, out float softMas
 
 // Opaque draws 1, mask resolves to a cutout (smooth coverage with MSAA) and blend keeps the fraction.
 float surfaceAlpha(float textureAlpha) {
-  if (alphaMode < 0.5) return 1.0;
+  if (!USES_ALPHA_MODE) return 1.0;
   float alpha = materialOpacity * textureAlpha;
   if (alphaMode > 1.5) return alpha;
   if (alphaToCoverage > 0.5) {
@@ -574,22 +576,22 @@ void main() {
   vec3 normal = normalize(worldNormal);
   // Foliage and grass cards are single-sided geometry whose shading normal already leans toward the
   // canopy, so the back face keeps it instead of flipping to point into the crown.
-  bool canopyShaded = surface.w == 4.0 || surface.w == 7.0;
+  bool canopyShaded = CANOPY_TAG;
   if (doubleSided > 0.5 && !gl_FrontFacing && !canopyShaded) normal = -normal;
-  if (hasNormalMap > 0.5) normal = boxMapScale > 0.0 ? boxMappedNormal(normal) : mappedNormal(normal);
+  if (USES_NORMAL_MAP) normal = boxMapScale > 0.0 ? boxMappedNormal(normal) : mappedNormal(normal);
   vec3 viewDirection = normalize(eye - worldPosition);
   vec3 color = mix(baseColor, armorColor, step(0.5, surface.w) * (1.0 - step(1.5, surface.w)));
-  if (splatEnabled < 0.5) color *= vertexTint;
+  if (!USES_SPLAT) color *= vertexTint;
   float textureAlpha = 1.0;
-  if (hasBaseMap > 0.5) {
+  if (USES_BASE_MAP) {
     vec4 sampledBase = boxMapScale > 0.0 ? sampleBox(baseMap) : texture(baseMap, textureUV);
     color *= sampledBase.rgb;
     textureAlpha = sampledBase.a;
   }
   float alpha = surfaceAlpha(textureAlpha);
   vec3 emission = emissionColor * surface.z;
-  if (hasEmissiveMap > 0.5) emission *= texture(emissiveMap, textureUV).rgb;
-  if (surface.w == 10.0) {
+  if (USES_EMISSIVE_MAP) emission *= texture(emissiveMap, textureUV).rgb;
+  if (TAG_UNLIT) {
     vec3 radiance = color * exposure + emission;
     outputColor = vec4(hdrEnabled > 0.5 ? radiance : pow(max(radiance, vec3(0)), vec3(1.0 / 2.2)), alpha);
     return;
@@ -600,17 +602,17 @@ void main() {
     metallic = armorSurface.x;
     roughness = armorSurface.y;
   }
-  if (hasMetallicRoughnessMap > 0.5) {
+  if (USES_METALLIC_ROUGHNESS_MAP) {
     vec4 sampled = boxMapScale > 0.0 ? sampleBox(metallicRoughnessMap) : texture(metallicRoughnessMap, textureUV);
     metallic *= sampled.b;
     roughness *= sampled.g;
   }
   float splatCavity = 1.0;
-  if (splatEnabled > 0.5) applySplat(color, normal, roughness, splatCavity);
+  if (USES_SPLAT) applySplat(color, normal, roughness, splatCavity);
   roughness = clamp(roughness, 0.075, 1.0);
   vec3 normalChange = max(abs(dFdx(normal)), abs(dFdy(normal)));
   roughness = clamp(sqrt(roughness * roughness + dot(normalChange, normalChange) * 0.3), 0.075, 1.0);
-  if (surface.w == 3.0) {
+  if (TAG_WATER) {
     normal = normalize(vec3(-cos(worldPosition.x * 1.4 + time * 0.8) * 0.035, 1.0, -cos(worldPosition.z * 1.8 - time) * 0.036));
     float radius = length(worldPosition.xz - waterRipple.xz);
     float age = time - rippleTime;
@@ -620,12 +622,12 @@ void main() {
     color = mix(color, vec3(0.10, 0.23, 0.25), pow(1.0 - max(dot(normal, viewDirection), 0.0), 4.0));
     roughness = 0.16;
   }
-  if (surface.w == 4.0 || surface.w == 7.0) {
+  if (CANOPY_TAG) {
     float leaves = sin(worldPosition.x * 13.0 + sin(worldPosition.y * 9.0)) * sin(worldPosition.z * 11.0 - worldPosition.y * 5.0);
     color *= 0.78 + leaves * 0.16;
     normal = normalize(normal + vec3(sin(worldPosition.z * 12.0), sin(worldPosition.x * 9.0), cos(worldPosition.y * 11.0)) * 0.06);
   }
-  if (surface.w == 5.0) {
+  if (TAG_TERRAIN) {
     vec2 terrainPosition = worldPosition.xz + worldPosition.y * vec2(0.31, 0.43);
     float footprint = max(fwidth(terrainPosition.x), fwidth(terrainPosition.y));
     vec3 broad = terrainNoise(terrainPosition * 0.32);
@@ -642,7 +644,7 @@ void main() {
   }
   float mossCover = 0.0;
   vec3 mossTone = vec3(0.0);
-  if (materialMoss.x > 0.0) {
+  if (USES_MOSS) {
     float mossSoft;
     mossMasks(normal, materialMoss.x, mossCover, mossSoft);
     float mossFootprint = length(fwidth(worldPosition));
@@ -679,7 +681,7 @@ void main() {
   }
   vec3 reflectance = fresnel(max(dot(normal, viewDirection), 0.0), mix(vec3(0.04), color, metallic));
   float occlusion = 1.0;
-  if (hasOcclusionMap > 0.5) occlusion = mix(1.0, texture(occlusionMap, textureUV).r, occlusionStrength);
+  if (USES_OCCLUSION_MAP) occlusion = mix(1.0, texture(occlusionMap, textureUV).r, occlusionStrength);
   occlusion *= splatCavity;
   // Leaf and grass cards keep a faint sheen; full sky reflection washed grazing cards grey-blue.
   float skyReflection = canopyShaded ? 0.3 : 1.0;
@@ -694,13 +696,13 @@ void main() {
   }
   vec3 keyResponse = keyColor / mix(vec3(5.2, 4.7, 4.1), vec3(3.7, 3.4, 2.9), worldMode);
   keyResponse *= mix(daylight, 1.0, worldMode);
-  if (surface.w == 4.0 || surface.w == 7.0) radiance += color * max(dot(-normal, normalize(lightDirection)), 0.0) * 0.3 * keyResponse;
+  if (CANOPY_TAG) radiance += color * max(dot(-normal, normalize(lightDirection)), 0.0) * 0.3 * keyResponse;
   if (mossCover > 0.001) {
     float sheen = pow(1.0 - max(dot(normal, viewDirection), 0.0), 4.0);
     float wrap = max(dot(normal, normalize(lightDirection)) + 0.5, 0.0) / 1.5;
     radiance += mossTone * (sheen * 0.8 + wrap * 0.35) * keyResponse * visibility * mossCover;
   }
-  if (surface.w == 7.0) {
+  if (TAG_GRASS) {
     // Sun through thin blades: they glow yellow-green when the camera looks toward the light, most at the thin tips
     // (uv.y runs 1 at the root to 0 at the tip; grass without UVs gets a middle value).
     float towardSun = pow(max(dot(-viewDirection, normalize(lightDirection)), 0.0), 3.0);
@@ -708,24 +710,24 @@ void main() {
     radiance += color * vec3(1.1, 1.25, 0.55) * towardSun * thinness * 1.4 * keyResponse * visibility;
   }
   radiance += emission;
-  if (surface.w == 3.0) {
+  if (TAG_WATER) {
     float reflectivity = 0.20 + 0.65 * pow(1.0 - max(dot(normal, viewDirection), 0.0), 3.0);
     vec3 reflection = mix(vec3(0.12, 0.24, 0.28), vec3(0.40, 0.63, 0.78), clamp(reflect(-viewDirection, normal).y, 0.0, 1.0));
     radiance = mix(radiance * 0.6, reflection * daylight * ambientIntensity, reflectivity);
     radiance += vec3(1.0, 0.85, 0.55) * pow(max(dot(reflect(-normalize(lightDirection), normal), viewDirection), 0.0), 220.0) * 2.0 * keyResponse;
   }
-  if (surface.w == 2.0) {
+  if (TAG_FLOOR) {
     float contact = 1.0 - 0.45 * exp(-dot(worldPosition.xz, worldPosition.xz) * 1.4);
     radiance = vec3(0.034, 0.041, 0.046) * (0.4 + visibility * 0.6) * contact;
     float fog = 1.0 - exp(-length(worldPosition.xz) * 0.05);
     radiance = mix(radiance, vec3(0.018, 0.022, 0.026), fog);
   }
-  if (surface.w == 8.0) {
+  if (TAG_FIRE) {
     float turbulence = sin(worldPosition.x * 3.0 + time * 4.0) * sin(worldPosition.y * 4.2 - time * 3.0) * sin(worldPosition.z * 3.7);
     float heat = pow(clamp(0.55 + turbulence * 0.5 - explosionProgress * 0.12, 0.0, 1.0), 3.0);
     radiance = mix(vec3(0.22, 0.003, 0.0002), vec3(8.0, 2.8, 0.15), heat) * max(0.2, surface.z * 0.10);
   }
-  if (surface.w == 9.0) {
+  if (TAG_SMOKE) {
     float turbulence = sin(worldPosition.x * 2.0 + time) * sin(worldPosition.y * 3.3 - time * 0.6);
     radiance = color * (0.22 + turbulence * 0.12) + vec3(0.35, 0.05, 0.005) * max(0.0, 1.0 - explosionProgress) * max(0.0, -normal.y);
   }
@@ -733,7 +735,7 @@ void main() {
   radiance = mix(radiance, fogColor, fog * worldMode);
   if (inspection > 0.5) radiance = normal * 0.5 + 0.5;
   outputColor = vec4(hdrEnabled > 0.5 ? clamp(radiance * exposure, vec3(0), vec3(65504.0)) : pow(toneMap(radiance * exposure), vec3(1.0 / 2.2)), alpha);
-  if (surface.w == 2.0 && inspection < 0.5) {
+  if (TAG_FLOOR && inspection < 0.5) {
     float distanceFade = exp(-length(worldPosition.xz) * 0.08);
     float contact = 1.0 - 0.1 * exp(-dot(worldPosition.xz, worldPosition.xz) * 1.4);
     vec3 floorColor = mix(vec3(0.145, 0.162, 0.177), vec3(0.17, 0.19, 0.205), distanceFade);
@@ -741,3 +743,36 @@ void main() {
     outputColor = vec4(hdrEnabled > 0.5 ? pow(result, vec3(2.2)) : result, 1.0);
   }
 }`;
+}
+
+// Every feature the main fragment shader can leave out, with the GLSL condition that turns it on. A feature that a scene
+// never uses becomes the constant `false`, so the driver drops its code instead of compiling and branching over it.
+const SHADER_FEATURE_CONDITIONS = {
+  normalMap: ['USES_NORMAL_MAP', 'hasNormalMap > 0.5'],
+  baseMap: ['USES_BASE_MAP', 'hasBaseMap > 0.5'],
+  metallicRoughnessMap: ['USES_METALLIC_ROUGHNESS_MAP', 'hasMetallicRoughnessMap > 0.5'],
+  occlusionMap: ['USES_OCCLUSION_MAP', 'hasOcclusionMap > 0.5'],
+  emissiveMap: ['USES_EMISSIVE_MAP', 'hasEmissiveMap > 0.5'],
+  splat: ['USES_SPLAT', 'splatEnabled > 0.5'],
+  moss: ['USES_MOSS', 'materialMoss.x > 0.0'],
+  alphaMode: ['USES_ALPHA_MODE', 'alphaMode > 0.5'],
+  floor: ['TAG_FLOOR', 'surface.w == 2.0'],
+  water: ['TAG_WATER', 'surface.w == 3.0'],
+  foliage: ['TAG_FOLIAGE', 'surface.w == 4.0'],
+  terrain: ['TAG_TERRAIN', 'surface.w == 5.0'],
+  grass: ['TAG_GRASS', 'surface.w == 7.0'],
+  fire: ['TAG_FIRE', 'surface.w == 8.0'],
+  smoke: ['TAG_SMOKE', 'surface.w == 9.0'],
+  unlit: ['TAG_UNLIT', 'surface.w == 10.0'],
+};
+
+export const SHADER_FEATURES = Object.freeze(Object.keys(SHADER_FEATURE_CONDITIONS));
+
+export function createFragmentShader(features = SHADER_FEATURES) {
+  const enabled = new Set(features);
+  const lines = Object.entries(SHADER_FEATURE_CONDITIONS).map(([feature, [macro, condition]]) => `#define ${macro} ${enabled.has(feature) ? `(${condition})` : 'false'}`);
+  lines.push('#define CANOPY_TAG (TAG_FOLIAGE || TAG_GRASS)');
+  return buildFragmentShader(lines.join('\n'));
+}
+
+export const fragmentShader = createFragmentShader();
