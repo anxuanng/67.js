@@ -170,7 +170,10 @@ An expression is JSON data and is never run as code: a number, the string `"time
 `mul`, `min`, `max` (2 to 8 operands), `sub`, `div`, `pow`, `mod`, `atan2`, `gt`, `lt`, `neg`, `abs`, `sin`, `cos` (radians),
 `sqrt`, `floor`, `fract`, `saturate`, `clamp(x, low, high)`, `mix(a, b, t)`, `smoothstep(low, high, x)` and
 `if(condition, then, otherwise)`. An expression has at most 64 parts and 8 levels, and a result that is not finite is an
-error. The operator names follow the field expressions of the mesh addon where they overlap.
+error. It is the motion dialect of the one expression language in `src/expression.js`: the operator names, operand counts, limits and
+hostile-input checks are shared with the field expressions of the mesh addon. Two edge cases differ on purpose. A motion expression
+keeps plain arithmetic, so `div` by zero, a negative `sqrt` and `pow` overflow give a non-finite result that is an error, where a
+field gives 0. And `if` takes `then` when the condition is above 0, where a field takes it when the condition is not 0.
 
 ### Evaluation order
 

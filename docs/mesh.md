@@ -210,7 +210,8 @@ as Blender's Apply modifier, which leaves the result unchanged.
 
 A field expression is plain JSON that computes one number, or one vector, for each point or face of a mesh. It is
 data and never code: `src/mesh-fields.js` reads it against a fixed table of operators, compiles it once into
-closures over typed arrays, and checks the limits before it evaluates anything. No string is executed, and no input
+closures over typed arrays, and checks the limits before it evaluates anything. It is the field dialect of the one
+expression language in `src/expression.js`, which motion drivers share (see [agent motion](agent-motion.md)). No string is executed, and no input
 string is used as a property name, so a recipe written by an agent that follows injected instructions cannot run code
 or reach `__proto__` or `constructor`. The same expression gives the same bytes on every run.
 

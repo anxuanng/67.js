@@ -1,8 +1,12 @@
 import { denseArray, knownKeys } from './motion-validation.js';
+import {
+  COMPONENTS, MAX_LITERAL, MAX_OPERANDS, buildLifted, compileNode, createMathOperators, scalarValue,
+} from './expression.js';
 
 // Bounded motion expressions: a small JSON language for drivers and constraint influence. An expression is data, never
 // code. It is read by walking plain objects against a fixed table of operators, compiled once into closures and checked
 // against its limits before anything runs. No string is executed, and operator names come from a Map.
+// This is the motion dialect of the one expression language in expression.js; mesh-fields.js is the field dialect.
 //
 //   { "mul": [{ "node": "wheel", "property": "rotation", "component": "x" }, 0.01] }
 //   { "clamp": [{ "mul": ["time", 0.5] }, 0, 1] }
@@ -15,98 +19,86 @@ import { denseArray, knownKeys } from './motion-validation.js';
 
 export const MAX_EXPRESSION_NODES = 64;
 export const MAX_EXPRESSION_DEPTH = 8;
-const MAX_LITERAL = 1e6;
-const MAX_OPERANDS = 8;
-const COMPONENTS = Object.freeze({ x: 0, y: 1, z: 2 });
 const READ_PROPERTIES = ['translation', 'rotation', 'scale'];
+const OPERAND_COUNT_TEXT = new Map([[1, 'one operand'], [2, 'two operands'], [3, 'three operands']]);
 
-const smoothstep = (low, high, value) => {
-  const fraction = Math.min(1, Math.max(0, (value - low) / (high - low)));
-  return fraction * fraction * (3 - 2 * fraction);
-};
+// Where the two dialects disagree, a motion expression keeps plain arithmetic: a division by zero or the square root
+// of a negative number gives a non-finite value, which `evaluate` rejects instead of hiding it as the field dialect does.
+const motionSemantics = Object.freeze({
+  divide: (left, right) => left / right,
+  modulo: (left, right) => left - right * Math.floor(left / right),
+  power: Math.pow,
+  squareRoot: Math.sqrt,
+  smoothstep: (low, high, value) => {
+    const fraction = Math.min(1, Math.max(0, (value - low) / (high - low)));
+    return fraction * fraction * (3 - 2 * fraction);
+  },
+});
 
-const UNARY = new Map([
-  ['neg', value => -value], ['abs', Math.abs], ['sin', Math.sin], ['cos', Math.cos], ['sqrt', Math.sqrt],
-  ['floor', Math.floor], ['fract', value => value - Math.floor(value)], ['saturate', value => Math.min(1, Math.max(0, value))],
-]);
-const VARIADIC = new Map([
-  ['add', (left, right) => left + right], ['mul', (left, right) => left * right], ['min', Math.min], ['max', Math.max],
-]);
-const BINARY = new Map([
-  ['sub', (left, right) => left - right], ['div', (left, right) => left / right], ['pow', Math.pow],
-  ['mod', (left, right) => left - right * Math.floor(left / right)], ['atan2', Math.atan2],
-  ['gt', (left, right) => (left > right ? 1 : 0)], ['lt', (left, right) => (left < right ? 1 : 0)],
-]);
-const TERNARY = new Map([
-  ['clamp', (value, low, high) => Math.min(high, Math.max(low, value))],
-  ['mix', (start, end, fraction) => start + (end - start) * fraction],
-  ['smoothstep', smoothstep],
-  ['if', (condition, thenValue, otherwiseValue) => (condition > 0 ? thenValue : otherwiseValue)],
-]);
+const OPERATORS = createMathOperators(motionSemantics);
+OPERATORS.set('saturate', { min: 1, max: 1, compute: value => Math.min(1, Math.max(0, value)) });
+OPERATORS.set('atan2', { min: 2, max: 2, compute: Math.atan2 });
+OPERATORS.set('if', { min: 3, max: 3, compute: (condition, thenValue, otherwiseValue) => (condition > 0 ? thenValue : otherwiseValue) });
 
-function compileRead(input, state, label) {
+function describeOperandCount(operator) {
+  if (operator.min === operator.max) return OPERAND_COUNT_TEXT.get(operator.min);
+  return `${operator.min} to ${operator.max} operands`;
+}
+
+function compileRead(input, state) {
+  const { label, nodeIds } = state;
   knownKeys(input, ['node', 'property', 'component', 'space'], `${label} node read`);
-  if (!state.nodeIds.has(input.node)) throw new RangeError(`${label}: node ${JSON.stringify(input.node)} is not in this scene.`);
+  if (!nodeIds.has(input.node)) throw new RangeError(`${label}: node ${JSON.stringify(input.node)} is not in this scene.`);
   if (!READ_PROPERTIES.includes(input.property)) throw new RangeError(`${label}: property must be translation, rotation or scale.`);
   if (!Object.hasOwn(COMPONENTS, input.component)) throw new RangeError(`${label}: component must be x, y or z.`);
   const space = input.space ?? 'local';
   if (space !== 'local' && space !== 'world') throw new RangeError(`${label}: space must be local or world.`);
   state.reads.add(input.node);
   const component = COMPONENTS[input.component];
-  return context => context.read(input.node, input.property, component, space);
+  return scalarValue(context => context.read(input.node, input.property, component, space));
 }
 
-function compileOperator(input, state, depth, label) {
+function compileOperator(input, state, depth) {
+  const { label } = state;
   const keys = Object.keys(input);
   if (keys.length !== 1) throw new TypeError(`${label}: an operator object has exactly one key, such as {"add": [1, 2]}.`);
   const [name] = keys;
-  const operands = denseArray(input[name], MAX_OPERANDS, `${label} ${name} operands`).map(operand => compile(operand, state, depth + 1, label));
-  const arity = (count, text) => {
-    if (operands.length !== count) throw new RangeError(`${label}: ${name} takes ${text}.`);
-  };
-  if (UNARY.has(name)) {
-    arity(1, 'one operand');
-    const compute = UNARY.get(name);
-    return context => compute(operands[0](context));
+  const operands = denseArray(input[name], MAX_OPERANDS, `${label} ${name} operands`).map(operand => compileNode(operand, state, depth + 1));
+  const operator = OPERATORS.get(name);
+  if (!operator) throw new RangeError(`${label}: unknown operator ${JSON.stringify(name.slice(0, 24))}.`);
+  if (operands.length < operator.min || operands.length > operator.max) {
+    throw new RangeError(`${label}: ${name} takes ${describeOperandCount(operator)}.`);
   }
-  if (VARIADIC.has(name)) {
-    if (operands.length < 2) throw new RangeError(`${label}: ${name} takes 2 to ${MAX_OPERANDS} operands.`);
-    const compute = VARIADIC.get(name);
-    return context => operands.slice(1).reduce((total, operand) => compute(total, operand(context)), operands[0](context));
-  }
-  if (BINARY.has(name)) {
-    arity(2, 'two operands');
-    const compute = BINARY.get(name);
-    return context => compute(operands[0](context), operands[1](context));
-  }
-  if (TERNARY.has(name)) {
-    arity(3, 'three operands');
-    const compute = TERNARY.get(name);
-    return context => compute(operands[0](context), operands[1](context), operands[2](context));
-  }
-  throw new RangeError(`${label}: unknown operator ${JSON.stringify(name.slice(0, 24))}.`);
+  return buildLifted(operator)(operands);
 }
 
-function compile(input, state, depth, label) {
-  state.count += 1;
-  if (state.count > MAX_EXPRESSION_NODES) throw new RangeError(`${label} has more than ${MAX_EXPRESSION_NODES} parts.`);
-  if (depth > MAX_EXPRESSION_DEPTH) throw new RangeError(`${label} nests deeper than ${MAX_EXPRESSION_DEPTH} levels.`);
-  if (typeof input === 'number') {
-    if (!Number.isFinite(input) || Math.abs(input) > MAX_LITERAL) throw new RangeError(`${label}: a number must be finite and within ${MAX_LITERAL}.`);
-    return () => input;
+function compileOther(input, state, depth) {
+  if (input === 'time') return scalarValue(context => context.time);
+  if (!input || Object.getPrototypeOf(input) !== Object.prototype) {
+    throw new TypeError(`${state.label}: use a number, "time", a node read or an operator object.`);
   }
-  if (input === 'time') return context => context.time;
-  if (!input || Object.getPrototypeOf(input) !== Object.prototype) throw new TypeError(`${label}: use a number, "time", a node read or an operator object.`);
-  return Object.hasOwn(input, 'node') ? compileRead(input, state, label) : compileOperator(input, state, depth, label);
+  return Object.hasOwn(input, 'node') ? compileRead(input, state) : compileOperator(input, state, depth);
 }
+
+const MOTION_DIALECT = Object.freeze({
+  maxNodes: MAX_EXPRESSION_NODES,
+  maxDepth: MAX_EXPRESSION_DEPTH,
+  messages: Object.freeze({
+    nodes: ` has more than ${MAX_EXPRESSION_NODES} parts.`,
+    depth: ` nests deeper than ${MAX_EXPRESSION_DEPTH} levels.`,
+    number: `: a number must be finite and within ${MAX_LITERAL}.`,
+  }),
+  reject: (message, state) => new RangeError(`${state.label}${message}`),
+  compileOther,
+});
 
 /**
  * Compile an expression. `evaluate({ time, read })` returns a finite number; `read(id, property, component, space)`
  * supplies node values. `reads` lists the node IDs the expression looks at.
  */
 export function compileMotionExpression(input, nodeIds, label) {
-  const state = { count: 0, reads: new Set(), nodeIds };
-  const evaluateTree = compile(input, state, 0, label);
+  const state = { dialect: MOTION_DIALECT, nodeCount: 0, label, nodeIds, reads: new Set() };
+  const { evaluate: evaluateTree } = compileNode(input, state, 0);
   return Object.freeze({
     reads: [...state.reads],
     evaluate(context) {

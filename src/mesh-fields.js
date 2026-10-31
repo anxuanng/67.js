@@ -1,6 +1,10 @@
 import { TAG_PREFIX, meshTags } from './mesh-data.js';
 import { MAX_FIELD_NODES, MAX_FIELD_DEPTH, MAX_FIELD_ELEMENTS, MAX_FIELD_WORK, FIELD_ATTRIBUTES } from './mesh-operations.js';
 import { faceCentroids, faceNormals, vertexNormals } from './mesh-normals.js';
+import {
+  COMPONENTS, MAX_LITERAL, MAX_OPERANDS, buildLifted, compileNode, constantScalar, createMathOperators, isBoundedNumber, partsOf,
+  scalarValue, vectorValue,
+} from './expression.js';
 
 // Bounded field expressions: a small JSON language that computes one value per mesh element (a number, or a vector
 // of three numbers) from attributes, noise and math. Agents may be following instructions injected into their input,
@@ -16,14 +20,12 @@ import { faceCentroids, faceNormals, vertexNormals } from './mesh-normals.js';
 // A number is a constant, true and false are 1 and 0, and an array of three numbers is a constant vector.
 // Scalar operators accept vectors and work on each component, with a scalar spread to all three.
 
-const MAX_LITERAL = 1e6;
 const MAX_NOISE_OCTAVES = 4;
 const MAX_NOISE_SCALE = 1000;
 const MAX_SEED = 0x7fffffff;
 const MAX_REPORTED_KEY_LENGTH = 24;
 const TAG_NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,47}$/;
 const KIND_NAMES = Object.freeze({ scalar: 'number', vector: 'vector' });
-const COMPONENTS = Object.freeze({ x: 0, y: 1, z: 2 });
 
 function fieldError(message) {
   return new TypeError(`Field expression: ${message}`);
@@ -86,15 +88,8 @@ function fractalNoise(x, y, z, seed, octaves) {
 }
 
 // ---------------------------------------------------------------------------------------------------------------
-// Compiled values: { kind: 'scalar', evaluate(index) } or { kind: 'vector', parts: [evaluateX, evaluateY, evaluateZ] }.
-
-const scalarValue = evaluate => ({ kind: 'scalar', evaluate });
-const vectorValue = (partX, partY, partZ) => ({ kind: 'vector', parts: [partX, partY, partZ] });
-const constantScalar = number => scalarValue(() => number);
-
-function partsOf(value) {
-  return value.kind === 'vector' ? value.parts : [value.evaluate, value.evaluate, value.evaluate];
-}
+// Field operators: the math operators come from expression.js, lifted to vectors. What is here is the part only
+// fields have: vectors, comparisons and logic that need numbers, and the safe edge cases that keep a value finite.
 
 function requireScalar(value, label) {
   if (value.kind !== 'scalar') throw fieldError(`${label} needs a number, not a vector.`);
@@ -106,48 +101,26 @@ function requireVector(value, label) {
   return value.parts;
 }
 
-function liftUnary(compute) {
-  return ([operand]) => {
-    if (operand.kind === 'scalar') return scalarValue(index => compute(operand.evaluate(index)));
-    const [partX, partY, partZ] = operand.parts;
-    return vectorValue(index => compute(partX(index)), index => compute(partY(index)), index => compute(partZ(index)));
-  };
-}
-
-function liftBinary(compute) {
+function compareScalars(compute) {
   return ([left, right]) => {
-    if (left.kind === 'scalar' && right.kind === 'scalar') {
-      return scalarValue(index => compute(left.evaluate(index), right.evaluate(index)));
-    }
-    const [leftX, leftY, leftZ] = partsOf(left);
-    const [rightX, rightY, rightZ] = partsOf(right);
-    return vectorValue(
-      index => compute(leftX(index), rightX(index)),
-      index => compute(leftY(index), rightY(index)),
-      index => compute(leftZ(index), rightZ(index)),
-    );
+    const leftEvaluate = requireScalar(left, 'a comparison');
+    const rightEvaluate = requireScalar(right, 'a comparison');
+    return scalarValue(index => (compute(leftEvaluate(index), rightEvaluate(index)) ? 1 : 0));
   };
 }
 
-function liftTernary(compute) {
-  return ([first, second, third]) => {
-    if (first.kind === 'scalar' && second.kind === 'scalar' && third.kind === 'scalar') {
-      return scalarValue(index => compute(first.evaluate(index), second.evaluate(index), third.evaluate(index)));
-    }
-    const [firstX, firstY, firstZ] = partsOf(first);
-    const [secondX, secondY, secondZ] = partsOf(second);
-    const [thirdX, thirdY, thirdZ] = partsOf(third);
-    return vectorValue(
-      index => compute(firstX(index), secondX(index), thirdX(index)),
-      index => compute(firstY(index), secondY(index), thirdY(index)),
-      index => compute(firstZ(index), secondZ(index), thirdZ(index)),
-    );
-  };
-}
-
-function foldBinary(compute) {
-  const combine = liftBinary(compute);
-  return args => args.slice(1).reduce((total, next) => combine([total, next]), args[0]);
+function branch([condition, whenTrue, whenFalse]) {
+  const test = requireScalar(condition, 'if');
+  const [trueX, trueY, trueZ] = partsOf(whenTrue);
+  const [falseX, falseY, falseZ] = partsOf(whenFalse);
+  if (whenTrue.kind === 'scalar' && whenFalse.kind === 'scalar') {
+    return scalarValue(index => (test(index) !== 0 ? trueX(index) : falseX(index)));
+  }
+  return vectorValue(
+    index => (test(index) !== 0 ? trueX(index) : falseX(index)),
+    index => (test(index) !== 0 ? trueY(index) : falseY(index)),
+    index => (test(index) !== 0 ? trueZ(index) : falseZ(index)),
+  );
 }
 
 function finiteOrZero(number) {
@@ -158,14 +131,6 @@ function smoothstep(edgeStart, edgeEnd, input) {
   if (edgeStart === edgeEnd) return input < edgeStart ? 0 : 1;
   const fraction = Math.min(1, Math.max(0, (input - edgeStart) / (edgeEnd - edgeStart)));
   return fraction * fraction * (3 - 2 * fraction);
-}
-
-function compareScalars(compute) {
-  return ([left, right]) => {
-    const leftEvaluate = requireScalar(left, 'a comparison');
-    const rightEvaluate = requireScalar(right, 'a comparison');
-    return scalarValue(index => (compute(leftEvaluate(index), rightEvaluate(index)) ? 1 : 0));
-  };
 }
 
 function combineLogic(isAnd) {
@@ -231,72 +196,53 @@ function selectComponent(componentIndex) {
   return ([operand]) => scalarValue(requireVector(operand, 'a component read')[componentIndex]);
 }
 
-function branch([condition, whenTrue, whenFalse]) {
-  const test = requireScalar(condition, 'if');
-  const [trueX, trueY, trueZ] = partsOf(whenTrue);
-  const [falseX, falseY, falseZ] = partsOf(whenFalse);
-  if (whenTrue.kind === 'scalar' && whenFalse.kind === 'scalar') {
-    return scalarValue(index => (test(index) !== 0 ? trueX(index) : falseX(index)));
-  }
-  return vectorValue(
-    index => (test(index) !== 0 ? trueX(index) : falseX(index)),
-    index => (test(index) !== 0 ? trueY(index) : falseY(index)),
-    index => (test(index) !== 0 ? trueZ(index) : falseZ(index)),
-  );
-}
+// Where the two dialects disagree, a field expression stays finite: a division by zero or the square root of a
+// negative number gives 0 rather than an error.
+const fieldSemantics = Object.freeze({
+  divide: (left, right) => (right === 0 ? 0 : left / right),
+  modulo: (left, right) => (right === 0 ? 0 : left - right * Math.floor(left / right)),
+  power: (base, exponent) => finiteOrZero(Math.pow(base, exponent)),
+  squareRoot: number => (number < 0 ? 0 : Math.sqrt(number)),
+  smoothstep,
+});
 
-// name -> { arguments: 'list' with min and max, or 'single', build(compiledArguments) }.
+const fieldOperator = (min, max, build) => ({ min, max, build });
+const unaryOperator = build => fieldOperator(1, 1, build);
+
 // Operators live in a Map so that input keys such as "__proto__" or "constructor" are plain unknown names.
-const LIST = 'list';
-const SINGLE = 'single';
-const OPERATORS = new Map([
-  ['add', { form: LIST, min: 2, max: 8, build: foldBinary((left, right) => left + right) }],
-  ['mul', { form: LIST, min: 2, max: 8, build: foldBinary((left, right) => left * right) }],
-  ['min', { form: LIST, min: 2, max: 8, build: foldBinary(Math.min) }],
-  ['max', { form: LIST, min: 2, max: 8, build: foldBinary(Math.max) }],
-  ['sub', { form: LIST, min: 2, max: 2, build: liftBinary((left, right) => left - right) }],
-  ['div', { form: LIST, min: 2, max: 2, build: liftBinary((left, right) => (right === 0 ? 0 : left / right)) }],
-  ['mod', { form: LIST, min: 2, max: 2, build: liftBinary((left, right) => (right === 0 ? 0 : left - right * Math.floor(left / right))) }],
-  ['pow', { form: LIST, min: 2, max: 2, build: liftBinary((base, exponent) => finiteOrZero(Math.pow(base, exponent))) }],
-  ['clamp', { form: LIST, min: 3, max: 3, build: liftTernary((input, low, high) => Math.min(high, Math.max(low, input))) }],
-  ['mix', { form: LIST, min: 3, max: 3, build: liftTernary((start, end, fraction) => start + (end - start) * fraction) }],
-  ['smoothstep', { form: LIST, min: 3, max: 3, build: liftTernary(smoothstep) }],
-  ['neg', { form: SINGLE, build: liftUnary(number => -number) }],
-  ['abs', { form: SINGLE, build: liftUnary(Math.abs) }],
-  ['sqrt', { form: SINGLE, build: liftUnary(number => (number < 0 ? 0 : Math.sqrt(number))) }],
-  ['sin', { form: SINGLE, build: liftUnary(Math.sin) }],
-  ['cos', { form: SINGLE, build: liftUnary(Math.cos) }],
-  ['floor', { form: SINGLE, build: liftUnary(Math.floor) }],
-  ['ceil', { form: SINGLE, build: liftUnary(Math.ceil) }],
-  ['round', { form: SINGLE, build: liftUnary(Math.round) }],
-  ['fract', { form: SINGLE, build: liftUnary(number => number - Math.floor(number)) }],
-  ['sign', { form: SINGLE, build: liftUnary(Math.sign) }],
-  ['lt', { form: LIST, min: 2, max: 2, build: compareScalars((left, right) => left < right) }],
-  ['lte', { form: LIST, min: 2, max: 2, build: compareScalars((left, right) => left <= right) }],
-  ['gt', { form: LIST, min: 2, max: 2, build: compareScalars((left, right) => left > right) }],
-  ['gte', { form: LIST, min: 2, max: 2, build: compareScalars((left, right) => left >= right) }],
-  ['eq', { form: LIST, min: 2, max: 2, build: compareScalars((left, right) => left === right) }],
-  ['and', { form: LIST, min: 2, max: 8, build: combineLogic(true) }],
-  ['or', { form: LIST, min: 2, max: 8, build: combineLogic(false) }],
-  ['not', { form: SINGLE, build: ([operand]) => {
-    const evaluate = requireScalar(operand, 'not');
-    return scalarValue(index => (evaluate(index) === 0 ? 1 : 0));
-  } }],
-  ['if', { form: LIST, min: 3, max: 3, build: branch }],
-  ['vec', { form: LIST, min: 3, max: 3, build: buildVector }],
-  ['dot', { form: LIST, min: 2, max: 2, build: dotValues }],
-  ['cross', { form: LIST, min: 2, max: 2, build: crossValues }],
-  ['distance', { form: LIST, min: 2, max: 2, build: distanceValues }],
-  ['length', { form: SINGLE, build: lengthValue }],
-  ['normalize', { form: SINGLE, build: normalizeValue }],
-  ['x', { form: SINGLE, build: selectComponent(0) }],
-  ['y', { form: SINGLE, build: selectComponent(1) }],
-  ['z', { form: SINGLE, build: selectComponent(2) }],
-]);
+const OPERATORS = new Map();
+for (const [name, { min, max, compute }] of createMathOperators(fieldSemantics)) {
+  const isComparison = name === 'lt' || name === 'gt';
+  const build = isComparison ? compareScalars(compute) : buildLifted({ max, compute });
+  OPERATORS.set(name, fieldOperator(min, max, build));
+}
+OPERATORS.set('if', fieldOperator(3, 3, branch));
+for (const [name, compute] of [['ceil', Math.ceil], ['round', Math.round], ['sign', Math.sign]]) {
+  OPERATORS.set(name, unaryOperator(buildLifted({ max: 1, compute })));
+}
+OPERATORS.set('lte', fieldOperator(2, 2, compareScalars((left, right) => left <= right)));
+OPERATORS.set('gte', fieldOperator(2, 2, compareScalars((left, right) => left >= right)));
+OPERATORS.set('eq', fieldOperator(2, 2, compareScalars((left, right) => left === right)));
+OPERATORS.set('and', fieldOperator(2, MAX_OPERANDS, combineLogic(true)));
+OPERATORS.set('or', fieldOperator(2, MAX_OPERANDS, combineLogic(false)));
+OPERATORS.set('not', unaryOperator(([operand]) => {
+  const evaluate = requireScalar(operand, 'not');
+  return scalarValue(index => (evaluate(index) === 0 ? 1 : 0));
+}));
+OPERATORS.set('vec', fieldOperator(3, 3, buildVector));
+OPERATORS.set('dot', fieldOperator(2, 2, dotValues));
+OPERATORS.set('cross', fieldOperator(2, 2, crossValues));
+OPERATORS.set('distance', fieldOperator(2, 2, distanceValues));
+OPERATORS.set('length', unaryOperator(lengthValue));
+OPERATORS.set('normalize', unaryOperator(normalizeValue));
+OPERATORS.set('x', unaryOperator(selectComponent(0)));
+OPERATORS.set('y', unaryOperator(selectComponent(1)));
+OPERATORS.set('z', unaryOperator(selectComponent(2)));
 
 export { MAX_FIELD_NODES, MAX_FIELD_DEPTH, MAX_FIELD_ELEMENTS, MAX_FIELD_WORK };
 const SOURCE_KEYS = Object.freeze(['attr', 'noise', 'random']);
 export const FIELD_OPERATORS = Object.freeze([...OPERATORS.keys(), ...SOURCE_KEYS]);
+
 
 // ---------------------------------------------------------------------------------------------------------------
 // Compiling an expression against an element context: { count, positions(), normals(), tag(name) }.
@@ -365,7 +311,7 @@ function compileRandom(node) {
 
 function compileOperator(operator, name, operand, state, depth) {
   let compiledArguments;
-  if (operator.form === SINGLE) {
+  if (operator.max === 1) {
     compiledArguments = [compileNode(operand, state, depth + 1)];
   } else {
     if (!Array.isArray(operand) || operand.length < operator.min || operand.length > operator.max) {
@@ -376,17 +322,10 @@ function compileOperator(operator, name, operand, state, depth) {
   return operator.build(compiledArguments);
 }
 
-function compileNode(node, state, depth) {
-  state.nodeCount++;
-  if (state.nodeCount > MAX_FIELD_NODES) throw fieldError(`more than ${MAX_FIELD_NODES} nodes.`);
-  if (depth > MAX_FIELD_DEPTH) throw fieldError(`nesting deeper than ${MAX_FIELD_DEPTH}.`);
-  if (typeof node === 'number') {
-    if (!Number.isFinite(node) || Math.abs(node) > MAX_LITERAL) throw fieldError(`numbers must be finite and within ${MAX_LITERAL}.`);
-    return constantScalar(node);
-  }
+function compileOther(node, state, depth) {
   if (typeof node === 'boolean') return constantScalar(node ? 1 : 0);
   if (Array.isArray(node)) {
-    if (node.length !== 3 || !node.every(component => typeof component === 'number' && Number.isFinite(component) && Math.abs(component) <= MAX_LITERAL)) {
+    if (node.length !== 3 || !node.every(isBoundedNumber)) {
       throw fieldError('a vector literal is three finite numbers; build one from expressions with "vec".');
     }
     const [literalX, literalY, literalZ] = node;
@@ -404,13 +343,25 @@ function compileNode(node, state, depth) {
   return compileOperator(operator, name, node[name], state, depth);
 }
 
+const FIELD_DIALECT = Object.freeze({
+  maxNodes: MAX_FIELD_NODES,
+  maxDepth: MAX_FIELD_DEPTH,
+  messages: Object.freeze({
+    nodes: `more than ${MAX_FIELD_NODES} nodes.`,
+    depth: `nesting deeper than ${MAX_FIELD_DEPTH}.`,
+    number: `numbers must be finite and within ${MAX_LITERAL}.`,
+  }),
+  reject: fieldError,
+  compileOther,
+});
+
 /**
  * Compile an expression against a context. The context is { count, positions(), normals(), tag(name) }, or null to
  * only validate. Limits on nodes, depth and elements are enforced here, before any element is evaluated.
  * Returns { kind, nodeCount, evaluate(index), parts }.
  */
 export function compileField(expression, context = null) {
-  const state = { nodeCount: 0, context: context ?? VALIDATION_CONTEXT };
+  const state = { dialect: FIELD_DIALECT, nodeCount: 0, context: context ?? VALIDATION_CONTEXT };
   const compiled = compileNode(expression, state, 0);
   if (context) {
     if (context.count > MAX_FIELD_ELEMENTS) throw new RangeError(`Field expression: ${context.count} elements is over the limit of ${MAX_FIELD_ELEMENTS}.`);
