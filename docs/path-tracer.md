@@ -15,9 +15,9 @@ From an agent, submit an `image` render job with `settings.renderer` (see [rende
 
 ## What it draws
 
-Unidirectional path tracing against the triangle BVH that the [light bake](light-bake.md) uses, with next-event estimation for every light and the environment map drawn by importance, then a wavelet denoiser.
+Unidirectional path tracing against the triangle BVH that the [light bake](light-bake.md) uses, with next-event estimation and the environment map drawn by importance, then a wavelet denoiser. The first hit of every path samples every light. Later hits draw one light at random and divide by its chance, so the average is the same and a scene with eleven lights costs one shadow ray per bounce instead of eleven.
 
-- Surfaces: diffuse, GGX specular with metals, clear coat, glass (`transmission`, `ior`, rough glass), emission, image maps (`map`, with `alphaMode: "mask"` cutouts) and vertex colour. Skinned parts are drawn at their current pose.
+- Surfaces: diffuse, GGX specular with metals, clear coat, glass (`transmission`, `ior`, rough glass), emission, image maps (`map`, with `alphaMode: "mask"` cutouts, `normalMap` with `normalScale`, and `metallicRoughnessMap`, whose green channel scales roughness and blue scales metallic as in the rasterizer) and vertex colour. Skinned parts are drawn at their current pose.
 - Lights: the sun (`keyColor`, `lightDirection`, as a 1 degree disk), point lights with a radius, spot lights with a soft cone, rectangular area lights, and the environment map with its rotation. All of them cast soft shadows, whatever their `castShadow` says, as in Cycles.
 - Light that bounces between surfaces, and the sky seen in mirrors and through glass.
 
@@ -26,7 +26,7 @@ Unidirectional path tracing against the triangle BVH that the [light bake](light
 `report.ignored` lists the ones this scene asks for.
 
 - Volume fog (`volumeFog`), and the procedural sky when there is no environment map (the sky is black).
-- Normal maps, metallic-roughness maps, occlusion maps and emissive maps. Material graphs and patterns are drawn through the colour map they bake.
+- Occlusion maps and emissive maps, and normal and metallic-roughness maps on box-projected materials (`boxMapScale`, which has no UVs to read them with). Normal maps and metallic-roughness maps on UV-mapped materials are drawn. Material graphs and patterns are drawn through the colour map they bake.
 - Translucent leaves (foliage looks darker than in the rasterizer), liquids, foam and blended transparency (traced as plain or opaque surfaces).
 - Lights seen in mirrors (area lights and spot lights are lit but not visible), caustics, subsurface scattering, motion blur, depth of field, bloom and colour grade.
 - Multiple-scattering GGX: rough metal is a little darker than in Blender.
@@ -51,6 +51,18 @@ The same scene and options give the same bytes. Random numbers come from a hash 
 ## Choosing CPU
 
 A WebGL2 fragment tracer was not built. The WebGPU decision (issue #56) set no WebGPU backend for now, and a fragment path would need the BVH and every material in textures. The CPU path reuses `src/triangle-bvh.js` and `src/ray-query.js` as they are, runs in the job page next to the scene, and needs no GPU: it measured 25 to 238 seconds for a 960 by 540 still at 32 samples on a Ryzen 5 5600X with four threads, while another session also loaded the machine (table in `bench/reference/README.md`).
+
+## Speed
+
+Where the time went on the 181,708 triangle demo room (issue #129; one thread, CPU time, 640 by 360 band, measured while another session loaded the machine):
+
+| Step | Paths per second per thread |
+| --- | --- |
+| Before: generic BVH visitor, every light traced at every bounce | 8,360 (7,955 and 8,576 in two runs) |
+| Typed-stack ray query, same pixels bit for bit | 9,756 (1.2 times) |
+| One light drawn at random past the first hit (11 light sources) | 23,300 (2.4 times more, 2.8 in all) |
+
+At 23,300 paths a second, a 1920 by 1080 still at 64 samples is 133 million paths: about 5,700 thread-seconds, or roughly 12 minutes on eight threads that have the machine to themselves (inferred, not measured end to end). That is above the 240 s limit of a render job, so such a still needs about 16 samples inside the limit, or a longer `maxSeconds` on a call that is not a job. The hair strands were not the cost by themselves: the time was per ray, and every ray was slow. Ideas not done: adaptive sampling that stops converged pixels, and a lighter BVH for hair tubes.
 
 ## Measured
 

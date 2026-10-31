@@ -5,7 +5,7 @@ import { box, sphere } from '../src/geometry.js';
 import { createEnvironmentMap } from '../src/environment.js';
 import { PATH_TRACER_JOB_LIMITS } from '../src/path-tracer-capabilities.js';
 import {
-  describeIgnoredFeatures, MAX_TRACE_PIXELS, normalizePathTracerOptions, PATH_TRACER_LIMITS, renderPathTracedImage, toneMapToRgba8,
+  createCamera, describeIgnoredFeatures, MAX_TRACE_PIXELS, normalizePathTracerOptions, PATH_TRACER_LIMITS, renderBand, renderPathTracedImage, toneMapToRgba8,
 } from '../src/path-tracer.js';
 import { attachTracer, buildTraceScene } from '../src/path-tracer-scene.js';
 
@@ -157,14 +157,96 @@ test('the display transform matches the rasterizer post pass at known values', (
 
 test('what the tracer does not draw is named in the report', () => {
   const notes = describeIgnoredFeatures(
-    [{ material: { normalMap: {}, tag: 'liquid' } }, { material: { alphaMode: 'blend' } }],
+    [{ material: { emissiveMap: {}, tag: 'liquid' } }, { material: { alphaMode: 'blend' } }],
     { volumeFog: { density: 1 } },
   );
   assert.ok(notes.some(note => note.includes('volumeFog')));
-  assert.ok(notes.some(note => note.includes('normalMap')));
+  assert.ok(notes.some(note => note.includes('emissiveMap')));
   assert.ok(notes.some(note => note.includes('liquid')));
   assert.ok(notes.some(note => note.includes('Blended')));
   assert.ok(notes.some(note => note.includes('environment map')));
+});
+
+// ---- Maps, light selection and band independence (issue #129) ----
+
+function floorQuad() {
+  const half = 20;
+  return {
+    positions: new Float32Array([-half, 0, half, half, 0, half, half, 0, -half, -half, 0, -half]),
+    normals: new Float32Array([0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0]),
+    uvs: new Float32Array([0, 1, 1, 1, 1, 0, 0, 0]),
+    indices: new Uint32Array([0, 1, 2, 0, 2, 3]),
+  };
+}
+
+function singleTexel(red, green, blue) {
+  return { image: { data: new Uint8Array([red, green, blue, 255]), width: 1, height: 1 }, colorSpace: 'linear' };
+}
+
+async function renderMappedFloor(materialExtra) {
+  const parts = [{ name: 'floor', geometry: floorQuad(), material: surface([0.5, 0.5, 0.5], { roughness: 1, ...materialExtra }) }];
+  const slantedSun = { keyColor: [3, 3, 3], lightDirection: [1, 1, 0] };
+  const { linear } = await renderPathTracedImage({ parts, environment: slantedSun, camera: LOOKING_DOWN },
+    { width: 16, height: 16, samples: 16, bounces: 1, denoise: false, threads: 1 });
+  return linear[(8 * 16 + 8) * 3];
+}
+
+test('a normal map tilts the surface toward or away from the light', async () => {
+  const flat = await renderMappedFloor({});
+  const flatMap = await renderMappedFloor({ normalMap: singleTexel(128, 128, 255) });
+  const towardSun = await renderMappedFloor({ normalMap: singleTexel(204, 128, 230) });
+  const awayFromSun = await renderMappedFloor({ normalMap: singleTexel(51, 128, 230) });
+  assert.ok(Math.abs(flatMap - flat) / flat < 0.02, `flat map ${flatMap} against none ${flat}`);
+  assert.ok(towardSun > flat * 1.2, `tilted toward the sun ${towardSun} against flat ${flat}`);
+  assert.ok(awayFromSun < flat * 0.5, `tilted away ${awayFromSun} against flat ${flat}`);
+});
+
+test('a metallic-roughness map scales the metallic and roughness of the material', async () => {
+  const plain = await renderMappedFloor({ metallic: 0 });
+  const metalMasked = await renderMappedFloor({ metallic: 1, metallicRoughnessMap: singleTexel(0, 255, 0) });
+  const unmasked = await renderMappedFloor({ metallic: 1 });
+  assert.equal(metalMasked, plain, 'blue channel 0 removes the metal');
+  assert.notEqual(unmasked, plain);
+  const smoothed = await renderMappedFloor({ metallicRoughnessMap: singleTexel(0, 0, 0) });
+  assert.notEqual(smoothed, plain, 'green channel 0 makes the surface smooth');
+});
+
+test('maps on box-projected materials are named as ignored, the others are drawn', () => {
+  const notes = describeIgnoredFeatures([{ material: { normalMap: {}, metallicRoughnessMap: {} } }], {});
+  assert.ok(!notes.some(note => note.includes('normalMap')));
+  const boxed = describeIgnoredFeatures([{ material: { normalMap: {}, boxMapScale: 2 } }], {});
+  assert.ok(boxed.some(note => note.includes('normalMap') && note.includes('box-projected')));
+});
+
+test('drawing one light at random past the first hit keeps the average', async () => {
+  const room = lights => ({
+    parts: [
+      ...FLOOR_ONLY,
+      { name: 'wall', geometry: box(0, 1), matrix: placed([0, 1, -2], [6, 2, 0.1]), material: surface([0.7, 0.7, 0.7], { roughness: 1 }) },
+    ],
+    environment: { pointLights: lights },
+    camera: { eye: [0, 1.5, 3], target: [0, 0.8, -2], up: [0, 1, 0], fov: 50 },
+  });
+  const light = intensity => ({ position: [0.5, 1.5, -0.5], color: [1, 1, 1], intensity, radius: 0 });
+  const options = { width: 16, height: 16, samples: 256, bounces: 4, denoise: false, threads: 1 };
+  const mean = image => image.linear.reduce((sum, value) => sum + value, 0) / image.linear.length;
+  const single = mean(await renderPathTracedImage(room([light(8)]), options));
+  const split = mean(await renderPathTracedImage(room([light(4), light(4)]), options));
+  assert.ok(Math.abs(single - split) / single < 0.03, `one light ${single}, the same light split in two ${split}`);
+});
+
+test('bands drawn in any order and split anywhere give the pixels of the whole image', () => {
+  const { parts, environment, camera } = checkerScene();
+  const options = normalizePathTracerOptions({ width: 24, height: 18, samples: 3, bounces: 3, threads: 1 });
+  const scene = buildTraceScene(parts, environment);
+  const view = createCamera(camera, options.width, options.height);
+  const whole = renderBand(scene, view, options, 0, options.height);
+  const rowFloats = options.width * 3;
+  for (const [start, end] of [[11, 18], [0, 5], [5, 11]]) {
+    const band = renderBand(scene, view, options, start, end);
+    assert.deepEqual(band.color, whole.color.slice(start * rowFloats, end * rowFloats), `rows ${start} to ${end}`);
+    assert.deepEqual(band.depth, whole.depth.slice(start * options.width, end * options.width));
+  }
 });
 
 test('a scene sent to a worker gets its ray query back from the arrays', () => {
