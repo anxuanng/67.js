@@ -70,6 +70,61 @@ The page displays a rounded green cube in a WebGL2 browser. The observer redraws
 For a browser import without npm, use the exact `module` URL from [release metadata](/release.json) instead of `67js`.
 The bundled ES module includes its dependencies. Serve the HTML over HTTP. Release metadata provides its URL for browser-only imports.
 
+## Render a PNG from a script without MCP
+
+A coding agent that has no MCP client can still produce an image from the installed package.
+The renderer needs a browser, so the script serves one page over HTTP and reads the canvas back through `playwright-core`, which the package already depends on.
+It needs an installed Google Chrome. Use `executablePath` instead of `channel` for another Chromium. Run it from the folder that holds `node_modules`:
+
+```js
+import { createServer } from 'node:http';
+import { readFile, writeFile } from 'node:fs/promises';
+import { chromium } from 'playwright-core';
+
+const page = `<!doctype html>
+<script type="importmap">{ "imports": { "67js": "/node_modules/67js/build/67.module.js" } }</script>
+<canvas width="512" height="512"></canvas>
+<script type="module">
+  import { Renderer67, box } from '67js';
+  const parts = [{
+    name: 'Box',
+    geometry: box(),
+    matrix: new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]),
+    material: { color: [0.8, 0.3, 0.2], metallic: 0, roughness: 0.35, emission: 0 },
+  }];
+  const canvas = document.querySelector('canvas');
+  new Renderer67(canvas, parts, { samples: 4, memoryBudgetMiB: 256 }).render({ eye: [3, 2.5, 4], target: [0, 0, 0] });
+  window.pngDataUrl = canvas.toDataURL('image/png');
+</script>`;
+
+const server = createServer(async (request, response) => {
+  if (request.url === '/') {
+    response.writeHead(200, { 'Content-Type': 'text/html' }).end(page);
+    return;
+  }
+  try {
+    const file = await readFile(`.${request.url}`);
+    response.writeHead(200, { 'Content-Type': 'text/javascript' }).end(file);
+  } catch {
+    response.writeHead(404).end();
+  }
+});
+await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+
+const browser = await chromium.launch({ channel: 'chrome' });
+const tab = await browser.newPage();
+await tab.goto(`http://127.0.0.1:${server.address().port}/`);
+await tab.waitForFunction(() => window.pngDataUrl);
+const dataUrl = await tab.evaluate(() => window.pngDataUrl);
+await writeFile('box.png', Buffer.from(dataUrl.split(',')[1], 'base64'));
+await browser.close();
+server.close();
+```
+
+The canvas is read in the same task as the render, so no `preserveDrawingBuffer` option is needed.
+The `matrix` is a column-major 4x4 transform, and `box()` is a unit cube centred on the origin.
+The MCP server (`67js-mcp`) is the route for scene recipes, review grids and video, and `npm run render` in a source checkout exports video.
+
 ## Parts and geometry
 
 A scene is an array of parts. Each part has a unique `name`, a shared `geometry`, a column-major 16-value `Float32Array` `matrix`, and a `material`.

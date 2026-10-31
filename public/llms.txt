@@ -61,7 +61,7 @@ Topology changes reconcile rigid, untextured GPU parts. Geometry stays immutable
 Tools accept bounded JSON and configured local assets. They expose no arbitrary code, remote asset providers or caller-selected file paths.
 
 - [Release metadata](https://67js.codepawl.com/release.json): package name, version, publication status, install command, module URL and commit.
-- [Complete plain-text guide](https://67js.codepawl.com/guide.md): renderer, parts, materials, cameras, animation, lifecycle, export and troubleshooting.
+- [Complete plain-text guide](https://67js.codepawl.com/guide.md): renderer, parts, materials, cameras, animation, lifecycle, export and troubleshooting. The section "Render a PNG from a script without MCP" is a tested script for an agent with no MCP client.
 - [GLB contract](https://67js.codepawl.com/gltf.md): supported assets and conversion limits. Read before selecting or importing a model.
 - [Documentation](https://67js.codepawl.com/docs.html): the human reading interface for the same guide.
 

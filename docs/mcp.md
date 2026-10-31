@@ -30,7 +30,7 @@ The MCP connection uses stdin and stdout, without an HTTP MCP listener.
    ```
 
    Run the installed command with `npx 67js-mcp --backend gpu --memory 192`.
-   For a standalone launch, use `npx --package @codepawlhq/67js@0.9.1 67js-mcp --backend gpu --memory 192`.
+   For a standalone launch, use `npx --package @codepawlhq/67js 67js-mcp --backend gpu --memory 192`. Add `@<version>` after the package name to pin one.
    `67js-mcp --help` lists options. `67js-mcp --version` reports the installed version.
 
 2. Configure your MCP client with absolute paths to Node and the installed CLI:
@@ -66,6 +66,26 @@ The process runs below normal priority to reduce interference with other work.
 
 Stdout contains only MCP protocol messages, while errors go to stderr.
 Closing stdin or sending `SIGINT` or `SIGTERM` closes the runtime and releases its browser resources.
+
+## Other clients and models
+
+Every recorded agent run used Claude Code. This table says what was tried elsewhere on 2026-10-31 and what was not.
+
+| Client or check | Result |
+|---|---|
+| Official MCP SDK client over stdio (`npm run smoke:mcp-package`) | Passes. |
+| MCP Inspector CLI (`npx @modelcontextprotocol/inspector --cli node node_modules/67js/bin/67js-mcp.mjs --method tools/list`) | Lists all 22 tools. A `tools/call` of `scene_create` with a box recipe returned a session and inspection. |
+| JSON Schema 2020-12 validator with strict mode (Ajv 8), run in `npm test` | Every tool input schema compiles. |
+| Tool names and descriptions | Names are 9 to 24 characters from `[a-z_]`, within the 64-character limit OpenAI, Gemini and Anthropic share. No description is over 1024 characters. |
+| Codex, Cursor, Gemini CLI, Claude Desktop, VS Code, any OpenAI or Gemini model | Not run. No account or client was available. Configure them with the same `command` and `args` as above, which is unverified. |
+| Install by `npm install 67js@npm:@codepawlhq/67js`, then `npx 67js-mcp`, or `npx --package @codepawlhq/67js 67js-mcp`, or the absolute path to `bin/67js-mcp.mjs` | All four start and report the version. |
+
+Known gaps, checked by `npm run check:tool-schemas`:
+
+- The schemas declare JSON Schema 2020-12, the MCP default. A client that compiles them with a draft-07 validator rejects them: Ajv in its default draft-07 mode throws on `$schema`, and then on `prefixItems`, which is how fixed-length vectors are written.
+- OpenAI `strict: true` function tools would reject them: most properties are optional, objects do not set `additionalProperties: false`, and `oneOf`, `prefixItems` and `propertyNames` are outside the documented subset. A client that sends MCP tools as non-strict functions is unaffected.
+- Gemini function declarations document a smaller keyword subset than we use (`const`, `oneOf`, `$ref`, `exclusiveMinimum`). Open-ended records (`select` rules, material graphs, relations) are schemas with no `type`. A client that converts schemas for Gemini needs to inline `$ref` and drop or rewrite those keywords.
+- Whether a weaker or non-Anthropic model finds the tools is unmeasured: the agent-modeling suite ran only on Claude Sonnet and Haiku.
 
 ## Workflow
 
