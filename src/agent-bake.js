@@ -1,4 +1,5 @@
 import { bakeLightmaps } from './light-bake.js';
+import { runKernel } from './kernel-offload.js';
 import { knownKeys, finiteNumber } from './agent-recipe-checks.js';
 import { BAKE_PRESETS, BAKE_RANGES, BAKE_MAXIMUM_SECONDS } from './agent-scene-capabilities.js';
 
@@ -43,6 +44,21 @@ function liveBakedMaterial(liveMaterial, bakedMaterial) {
 }
 
 /**
+ * The light bake as a worker kernel: only the parts the bake changed travel back, as [index, part] pairs, because a
+ * part that was left alone is the caller's own object and has nothing to send.
+ */
+export function bakeChangedParts(snapshots, lighting, options) {
+  const { parts, report } = bakeLightmaps(snapshots, lighting, options);
+  const changed = [];
+  parts.forEach((part, index) => {
+    if (part !== snapshots[index]) {
+      changed.push([index, part]);
+    }
+  });
+  return { changed, report };
+}
+
+/**
  * Bakes the parts at the world matrices given by name (a retained part's own matrix is only refreshed after a commit).
  * Returns the new parts, which share the originals' matrices so poses still move them, and a report: texels,
  * rayWork, seconds, skipped parts with reasons.
@@ -61,7 +77,11 @@ export function bakeAgentParts(parts, worldMatrices, environment, settings, gene
     material: { ...part.material },
     generatesGeometry: generatedGeometryNames.has(part.name),
   }));
-  const { parts: bakedSnapshots, report } = bakeLightmaps(snapshots, lighting, { ...settings, maxSeconds: BAKE_MAXIMUM_SECONDS });
+  const { changed, report } = runKernel('lightBake', [snapshots, lighting, { ...settings, maxSeconds: BAKE_MAXIMUM_SECONDS }], bakeChangedParts);
+  const bakedSnapshots = snapshots.slice();
+  for (const [index, part] of changed) {
+    bakedSnapshots[index] = part;
+  }
   const bakedParts = parts.map((part, index) => {
     if (bakedSnapshots[index] === snapshots[index]) {
       return part;

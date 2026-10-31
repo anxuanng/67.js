@@ -66,6 +66,8 @@ export function previewHarness() {
         ? value => scene[field](JSON.parse(JSON.stringify(value ?? {}))) : scene[field] });
     },
     needsMeshBooleans, loadMeshBooleans, meshBooleansLoaded, loadAllAgentSceneModules, allAgentSceneModulesLoaded,
+    // The VM has no Worker, as in Node: builds stay synchronous, the way the preview falls back without workers.
+    buildWithKernels: build => build(), kernelWorkersAvailable: () => false,
     // The harness loads Manifold from node_modules directly, so the preview's served-file loader is ignored.
     setManifoldModuleLoader: () => {},
     needsPhysics, loadPhysicsEngine, physicsEngineLoaded, setPhysicsModuleLoader: () => {},

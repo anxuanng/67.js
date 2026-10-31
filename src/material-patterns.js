@@ -1,5 +1,6 @@
 import { MATERIAL_PATTERN_TYPES, MATERIAL_MAPPINGS } from './agent-scene-capabilities.js';
 import { bakeMaterialGraph, normalizeMaterialGraph } from './material-graph.js';
+import { runKernel } from './kernel-offload.js';
 
 // Procedural surface patterns for recipe materials: seeded, tileable and baked on the CPU into the same texture
 // descriptors a loaded material uses. Texture coordinates run 0 to 1 and every noise is periodic over that square, so
@@ -278,7 +279,7 @@ export function materialPatternTextures(pattern) {
   if (baked) {
     bakedPatterns.delete(key);
   } else {
-    baked = bakeMaterialPattern(pattern);
+    baked = runKernel('pattern', [pattern], bakeMaterialPattern);
     if (bakedPatterns.size >= MAX_BAKED_PATTERNS) bakedPatterns.delete(bakedPatterns.keys().next().value);
   }
   bakedPatterns.set(key, baked);

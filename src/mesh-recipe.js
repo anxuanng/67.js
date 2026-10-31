@@ -11,6 +11,7 @@ import { bevelEdges } from './mesh-bevel.js';
 import { loopCut } from './mesh-loopcut.js';
 import { CUT_OPERATIONS, normalizeCutEdit, runCutEdit, checkCutBudget } from './mesh-cut-edits.js';
 import { unwrapUv } from './mesh-uv.js';
+import { runKernel, KernelDeferred } from './kernel-offload.js';
 import { validateField } from './mesh-fields.js';
 import { setPosition, displaceMesh, DISPLACE_DIRECTIONS } from './mesh-field-edits.js';
 import { subdivideMesh, subdivisionSize, MAX_SUBDIVISION_LEVELS, MAX_CREASE_SHARPNESS } from './mesh-subdivide.js';
@@ -406,8 +407,12 @@ function runEdit(current, edit, index, { resolveCutter, limits }) {
   if (edit.op === 'uv_unwrap') {
     let outcome;
     try {
-      outcome = unwrapUv(current, edit);
+      const unwrapped = runKernel('uvUnwrap', [current, edit], unwrapUv);
+      outcome = { ...unwrapped, mesh: createMeshData(unwrapped.mesh) };
     } catch (error) {
+      if (error instanceof KernelDeferred) {
+        throw error;
+      }
       throw new error.constructor(`Mesh edit ${index} (uv_unwrap): ${error.message}`);
     }
     result.islands = outcome.islands;

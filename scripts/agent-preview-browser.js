@@ -1,3 +1,4 @@
+import { buildWithKernels, kernelWorkersAvailable } from '../src/kernel-offload.js';
 import { createAgentScene, loadAllAgentSceneModules, allAgentSceneModulesLoaded, needsMeshBooleans, loadMeshBooleans, meshBooleansLoaded, setManifoldModuleLoader, needsPhysics, loadPhysicsEngine, physicsEngineLoaded, setPhysicsModuleLoader } from '../src/agent-scene.js';
 import { Renderer67 } from '../src/renderer.js';
 import { installCameraEffects } from '../src/camera-effects.js';
@@ -238,6 +239,19 @@ function afterMeshBooleans(value, run) {
   if (!physicsEngineLoaded() && needsPhysics(value)) loads.push(loadPhysicsEngine());
   if (!loads.length) return run();
   return Promise.all(loads).then(run);
+}
+
+// Heavy kernels (light bake, cloth, uv_unwrap, pattern textures) compute on a worker while the page stays responsive;
+// the scene is built from the same bytes as on one thread. Reading each part's maps here makes pattern bakes run in the
+// same pass, so the renderer later finds them baked.
+function buildSceneOffMainThread(recipe) {
+  return buildWithKernels(() => {
+    const scene = createAgentScene(recipe);
+    for (const part of scene.parts) {
+      void part.material.map;
+    }
+    return scene;
+  });
 }
 
 function seekForExport(record, motionTime) {
@@ -486,7 +500,12 @@ window.__agentPreview = {
   },
   create(input) {
     if (active) throw new Error('Dispose the current scene before creating another.');
-    return afterMeshBooleans(input.recipe, () => createPreview(createAgentScene(input.recipe), input));
+    return afterMeshBooleans(input.recipe, () => {
+      if (!kernelWorkersAvailable()) {
+        return createPreview(createAgentScene(input.recipe), input);
+      }
+      return buildSceneOffMainThread(input.recipe).then(scene => createPreview(scene, input));
+    });
   },
   async createAsset(input) {
     if (active) throw new Error('Dispose the current scene before creating another.');
