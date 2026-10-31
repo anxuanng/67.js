@@ -47,6 +47,7 @@ Use `simplify-code` and `engineering-workflows` for implementation.
 - Agent imported character motion uses `docs/agent-character-motion.md` from release `0.8.0`. Inspect source joints before authoring local tracks.
 - Agent comparisons use `scene_review` from release `0.9.0`. Read `docs/agent-review.md` for isolated views and independent pose samples.
 - An image or video export uses `render-67js-media`.
+- A GLB for Blender or another tool uses `scene_export_glb` (needs `--jobs`): it returns a file path under the jobs folder, takes no path of its own. Plain call for the current pose with textures, skins and IK; `motionTime` to pose authored motion first; `clip` on an unposed imported asset for its source animation. See `docs/export-glb.md`.
 
 Read [scene-contract.md](references/scene-contract.md) before creating parts or changing materials.
 

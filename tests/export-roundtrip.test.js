@@ -6,6 +6,7 @@ import { mat4 } from 'gl-matrix';
 import { exportGlb } from '../src/export.js';
 import { parseGltf } from '../src/gltf.js';
 import { box } from '../src/geometry.js';
+import { createMorphPose } from '../src/morph.js';
 import { clipFromGltfAnimation } from '../src/skeleton-pose.js';
 import { bakeMaterialPattern, normalizeMaterialPattern } from '../src/material-patterns.js';
 
@@ -185,6 +186,29 @@ test('skins built without a node list export derived joints and a clip can targe
   assert.deepEqual(copy.skins[0].joints.map(joint => [joint.name, joint.parent]), [['root', -1], ['tip', 0]]);
   assert.equal(copy.animations.length, 1);
   assert.equal(copy.animations[0].tracks[0].name, 'tip.quaternion');
+});
+
+test('morph weight clips round trip as one SCALAR sampler per track', async () => {
+  const geometry = box();
+  const positions = new Float32Array(geometry.positions.length).fill(0.1);
+  geometry.morphTargets = [{ positions }, { positions: positions.map(value => -value) }];
+  const morph = createMorphPose(2);
+  const part = { name: 'Face', geometry, matrix: mat4.create(), morph, material: { color: [1, 1, 1], metallic: 0, roughness: 1 } };
+  const keyframes = [{ time: 0, value: [0, 0] }, { time: 0.5, value: [1, 0.25] }, { time: 1, value: [0, 1] }];
+  const clip = { name: 'Blink', duration: 1, loop: false, tracks: [{ target: 'Face', property: 'weights', keyframes }] };
+  const binary = exportGlb([part], { clips: [clip] });
+  const view = new DataView(binary);
+  const document = JSON.parse(new TextDecoder().decode(new Uint8Array(binary, 20, view.getUint32(12, true))));
+  const sampler = document.animations[0].samplers[0];
+  assert.equal(document.animations[0].channels[0].target.path, 'weights');
+  assert.equal(document.accessors[sampler.input].count, 3);
+  assert.equal(document.accessors[sampler.output].type, 'SCALAR');
+  assert.equal(document.accessors[sampler.output].count, 6);
+  const copy = await parseGltf(binary);
+  assert.equal(copy.animations[0].tracks[0].name, 'Face.morphTargetInfluences');
+  assert.deepEqual(Array.from(copy.animations[0].tracks[0].values), [0, 0, 1, 0.25, 0, 1]);
+  const ragged = { ...clip, tracks: [{ target: 'Face', property: 'weights', keyframes: [{ time: 0, value: [0, 0] }, { time: 1, value: [1] }] }] };
+  assert.throws(() => exportGlb([part], { clips: [ragged] }), /same nonzero count/);
 });
 
 test('a clip that targets a missing node names the fix', () => {

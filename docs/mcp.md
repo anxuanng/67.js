@@ -111,6 +111,7 @@ Inspect or export the recipe before retrying. Context loss still permits recipe 
 | `scene_restore` | `sessionId`, `checkpointId`, `expectedRevision` | Updated revision, inspection, and render status |
 | `scene_release_checkpoint` | `sessionId`, `checkpointId` | Release confirmation |
 | `scene_export_recipe` | `sessionId` | Canonical recipe and revision |
+| `scene_export_glb` | `sessionId`, optional `clip`, `motionTime`, `maxTextureSize` | A GLB file under `<jobs>/exports/` with a server-chosen name: path, bytes, SHA-256. See [GLB export](export-glb.md) |
 | `scene_dispose` | `sessionId` | Disposal confirmation |
 | `scene_render_submit` | `sessionId`, `expectedRevision`, `settings` | Snapshot job ID and queued record |
 | `scene_render_status` | `jobId` | State and durable frame progress |
@@ -204,6 +205,7 @@ The tools expose no arbitrary JavaScript execution, remote URLs or arbitrary cal
 Release `0.8.0` supports [imported source-node tracks](agent-character-motion.md) through the bounded motion recipe.
 Facial morph track authoring and rig creation remain unsupported.
 Render jobs use a configured private store and fixed output filenames.
+`scene_export_glb` writes only to `exports/` inside that store, under a UUID name the server picks, with mode 0600; it keeps the newest eight files and caps each at 32 MiB.
 
 See [render jobs](agent-render-jobs.md) for the snapshot workflow and storage limits.
 Embedded texture decoding uses private browser blob URLs. Remote asset requests remain blocked.
