@@ -269,7 +269,9 @@ export function exportGlb(parts, options = {}) {
     const host = part.skin ? null : hostOfPart(partIndex, hierarchy, worldCache);
     // The mesh node of an imported asset is one of its nodes: keep the mesh on it instead of nesting a same-named node.
     const mergeIntoHost = host && hierarchy[host.index].name === part.name && hierarchy[host.index].meshIds.length === 1;
-    const node = mergeIntoHost ? document.nodes[host.index] : { name: part.name };
+    // Clips address nodes by name, and loaders rename duplicates, so a mesh node never shares a joint's name.
+    const meshNodeName = nodeIndexByName.has(part.name) ? `${part.name} mesh` : part.name;
+    const node = mergeIntoHost ? document.nodes[host.index] : { name: meshNodeName };
     node.mesh = meshes.get(meshKey);
     if (part.morph) node.weights = Array.from(part.morph.weights);
     if (part.skin) {

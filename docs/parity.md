@@ -225,7 +225,7 @@ To move to a new Blender release, run `node scripts/parity-manual-snapshot.mjs`.
 | Assets, Files, & Data System > Importing & Exporting Files | out of scope | Decided in issue #23: GLB is the exchange format. | | |
 | Add-ons > Node Wrangler | out of scope | Interface for a mouse. | | |
 | Add-ons > Rigify | missing | No rig presets. | | #46 |
-| Add-ons > glTF 2.0 | partial | Import is broad. Export can not write textures, skeletons or clips. | [gltf](../tests/gltf.test.js), [export](../tests/export.test.js) | #49 |
+| Add-ons > glTF 2.0 | partial | Import is broad. Export writes the five texture channels as PNG, skins with joints, morph targets and node clips, and bakes pattern materials with box projected UVs; Blender 5.2 and three.js open the RobotExpressive export with its 43 bones and 14 clips. Not yet: morph weight clips, an MCP export tool. | [gltf](../tests/gltf.test.js), [export](../tests/export.test.js), [round trip](../tests/export-roundtrip.test.js) | #49 |
 | Add-ons > Manage UI Translations | out of scope | Blender interface work. | | |
 | Add-ons > VR Scene Inspection | out of scope | Interface for a person. | | |
 | Advanced | out of scope | Decided in issue #23: 67.js does not run agent code. MCP and the JavaScript API take the place of `bpy`. | | |

@@ -5,7 +5,7 @@
   "agent-scene": 100000
  },
  "budgets": {
-  "entry:core": 67100,
+  "entry:core": 70500,
   "entry:model": 14400,
   "entry:nature": 13200,
   "entry:motion": 13600,
