@@ -12,6 +12,7 @@
   },
   "files": [
     "build",
+    "!build/film.js",
     "bin",
     "README.md",
     "LICENSE",
@@ -73,7 +74,6 @@
     ".": "./build/67.module.js",
     "./addons/model": "./build/model.js",
     "./addons/nature": "./build/nature.js",
-    "./addons/film": "./build/film.js",
     "./addons/motion": "./build/motion.js",
     "./addons/canvas2d": "./build/canvas2d.js",
     "./addons/gltf": "./build/gltf.js",

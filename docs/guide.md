@@ -530,7 +530,7 @@ Core exports are available from `67js`:
 
 `planRenderSize` accepts width, height, pixelRatio, samples, memoryBudgetMiB, geometryBytes, textureBytes, hdr, bloom, shadowResolution and maximumSize. It returns actual dimensions, estimatedBytes and reduced status. `estimateFrameBytes(width, height, samples, shadowResolution, { hdr, bloom })` estimates target storage. Neither function measures total VRAM.
 
-`67js/addons/model`: createModel. `67js/addons/nature`: createNatureWorld. `67js/addons/film`: deterministic film recipes. `67js/addons/motion`: createMotionScene.
+`67js/addons/model`: createModel. `67js/addons/nature`: createNatureWorld. `67js/addons/motion`: createMotionScene.
 
 `67js/addons/canvas2d`: 2D recipes. `67js/addons/gltf`: optional asset decoding. These are separate imports to keep the core smaller.
 

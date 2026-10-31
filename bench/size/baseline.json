@@ -14,9 +14,9 @@
  },
  "bundles": {
   "entry:core": {
-   "min": 232566,
-   "gzip": 65748,
-   "brotli": 56045
+   "min": 232549,
+   "gzip": 65747,
+   "brotli": 56178
   },
   "entry:model": {
    "min": 40093,
@@ -27,11 +27,6 @@
    "min": 35653,
    "gzip": 12874,
    "brotli": 10578
-  },
-  "entry:film": {
-   "min": 333097,
-   "gzip": 84516,
-   "brotli": 68340
   },
   "entry:motion": {
    "min": 39159,
