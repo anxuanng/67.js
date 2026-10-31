@@ -61,6 +61,34 @@ the session, goes to `results/<run>.json`. Grade one recipe by hand with
 Compare runs only when they use the same model and suite version. A single run per task is noisy, so read differences
 of one or two tasks as noise.
 
+## Look score
+
+The checks read the exported recipe, so a task can pass and still look wrong. The look score measures what a person
+sees. It is reported in each record under `look`, beside the checks, and is never merged with them into one number.
+
+- **Cameras.** Three fixed orthographic cameras (front, side, three-quarter), placed from the task's reference recipe in
+  `references.mjs` (`look-cameras.mjs`). The reference sets the framing, so a candidate that is too big, too small or
+  off centre shows it in every view. Motion is sampled at time zero.
+- **Silhouette score.** The candidate and the reference are rasterized from each camera (`silhouette.mjs`, plain
+  JavaScript, no GPU, 256 by 256 pixels). Each view scores intersection over union; a task scores the mean in
+  `look.silhouette`. 1 is the reference's own outline. `robot-reach` has no silhouette, because an imported asset needs
+  its skin pose; its record says `skipped`.
+- **Images.** The same cameras drawn by the engine in headless Chrome on SwiftShader, 512 by 512, saved to
+  `artifacts/agent-modeling/<run>/look/` and listed in `look.images`. `run.mjs` and `regrade.mjs` write them. Reference
+  images come from `node bench/agent-modeling/look.mjs --references`.
+- **Vision judge.** `rubric.md` scores shape, proportions, features and surface from 0 to 3. Nothing here calls a model.
+  `node bench/agent-modeling/judge.mjs prompt <run> <task>` prints the rubric, the task prompt and the candidate and
+  reference image paths for each camera; give those to a vision model with no other context. Store its answer with
+  `judge.mjs record <run> <task> --model <name> --scores 3,2,3,1 --note "..."`. It lands in `look.judges.<name>`, so
+  scores from different judges stay apart. Judge scores are not comparable across judge models.
+
+Score one recipe with `node bench/agent-modeling/look.mjs <task> <recipe.json> [--images <directory>]`.
+`tests/agent-look-score.test.js` checks that a widened or incomplete table scores below the correct one, on silhouette
+masks alone.
+
+The results before 2026-10-31 hold no recipes (`artifacts/` is ignored by Git and was not kept), so they have no look
+score and cannot be regraded. The next run records one.
+
 ## Baseline
 
 `results/2026-10-30-07-48-sonnet-baseline.json`: `claude-sonnet-5-5`, one run per task, without the `build-67js-scene` skill, 67.js 0.11.0.

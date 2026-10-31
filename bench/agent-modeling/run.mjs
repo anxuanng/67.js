@@ -16,6 +16,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import { gradeRecipe, recipeFeatures } from './check.mjs';
+import { scoreLookSafely } from './look.mjs';
 import { PROMPT_PREAMBLE, TASKS, taskById } from './tasks.mjs';
 
 const repository = resolve(import.meta.dirname, '../..');
@@ -175,6 +176,7 @@ async function runTask(task, systemPromptAddition) {
       toolErrors: transcript.toolErrors,
       toolsByName: transcript.toolsByName,
       features: transcript.recipe ? recipeFeatures(transcript.recipe) : null,
+      look: transcript.recipe ? await scoreLookSafely(task.id, transcript.recipe, { imageDirectory: join(rawDirectory, 'look') }) : null,
       turns: transcript.result?.num_turns ?? null,
       costUsd: transcript.result?.total_cost_usd ?? null,
       inputTokens: (usage.input_tokens ?? 0) + (usage.cache_read_input_tokens ?? 0) + (usage.cache_creation_input_tokens ?? 0),
