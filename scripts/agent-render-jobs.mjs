@@ -8,7 +8,10 @@ const TERMINAL = new Set(['completed', 'cancelled', 'failed', 'interrupted']);
 const DEFAULT_LIMITS = Object.freeze({ maxRecords: 32, maxStoreBytes: 512 * 1024 ** 2, maxOutputBytes: 128 * 1024 ** 2, maxFrameBytes: 1024 ** 2, deadlineMs: 300000, cleanupMs: 5000 });
 const MAXIMUM_JSON_BYTES = 1024 ** 2;
 const MAXIMUM_ASSET_BYTES = 16 * 1024 ** 2;
-const INTERNAL_FILES = new Set(['owner.json', 'snapshot.json', 'asset.glb', 'status.json', 'status.json.pending']);
+/** Sibling folder of the job directories where the runtime keeps GLB exports; the store never reads or counts it. */
+export const EXPORT_DIRECTORY_NAME = 'exports';
+const STORE_FILES = ['store.json', 'store.lock', EXPORT_DIRECTORY_NAME];
+const INTERNAL_FILES =new Set(['owner.json', 'snapshot.json', 'asset.glb', 'status.json', 'status.json.pending']);
 
 function objectKeys(value, allowed, label) {
   if (!value || Object.getPrototypeOf(value) !== Object.prototype) throw new TypeError(`${label} must be a plain object.`);
@@ -207,6 +210,7 @@ export async function createAgentRenderJobs({ root, run, limits: inputLimits = {
   async function storeBytes() {
     let bytes = 0;
     for (const name of await readdir(root)) {
+      if (name === EXPORT_DIRECTORY_NAME) continue;
       if (['store.json', 'store.lock'].includes(name)) {
         bytes += (await regularFile(join(root, name))).size;
       } else {
@@ -257,7 +261,7 @@ export async function createAgentRenderJobs({ root, run, limits: inputLimits = {
   async function recover() {
     const names = await readdir(root);
     if (!names.includes('store.json')) {
-      if (names.some(name => name !== 'store.lock')) throw new Error('Job root contains foreign entries without store ownership.');
+      if (names.some(name => name !== 'store.lock' && name !== EXPORT_DIRECTORY_NAME)) throw new Error('Job root contains foreign entries without store ownership.');
       storeId = randomUUID();
       await writeFile(join(root, 'store.json'), JSON.stringify({ schemaVersion: 1, storeId }), { flag: 'wx', mode: 0o600 });
     } else {
@@ -267,7 +271,7 @@ export async function createAgentRenderJobs({ root, run, limits: inputLimits = {
       storeId = metadata.storeId;
     }
     for (const name of await readdir(root)) {
-      if (['store.json', 'store.lock'].includes(name)) continue;
+      if (STORE_FILES.includes(name)) continue;
       if (isPending(name)) {
         const directory = await pendingDirectory(name);
         if (!(await readdir(directory)).length) await rmdir(directory);

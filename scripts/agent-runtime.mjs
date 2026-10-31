@@ -1,13 +1,13 @@
 import { createServer } from 'node:http';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
-import { readFile, writeFile } from 'node:fs/promises';
+import { lstat, mkdir, readFile, unlink, writeFile } from 'node:fs/promises';
 import { isAbsolute, join } from 'node:path';
 import { createRequire } from 'node:module';
 import packageMetadata from '../package.json' with { type: 'json' };
 import { AGENT_SCENE_CAPABILITIES, AGENT_SCENE_DEFAULT_LIMITS } from '../src/agent-scene-capabilities.js';
 import { createAgentAssetCatalog } from './agent-asset-catalog.mjs';
-import { createAgentRenderJobs } from './agent-render-jobs.mjs';
+import { createAgentRenderJobs, EXPORT_DIRECTORY_NAME } from './agent-render-jobs.mjs';
 import { createFrameEncoder } from './frame-encoder.mjs';
 import { isPreviewHost } from './preview-host.mjs';
 import { normalizeReview, REVIEW_LIMITS } from './agent-review.mjs';
@@ -15,6 +15,8 @@ import { normalizeReview, REVIEW_LIMITS } from './agent-review.mjs';
 const SCENE_LIMITS = AGENT_SCENE_DEFAULT_LIMITS;
 const MAXIMUM_IMAGE_BYTES = 1024 * 1024;
 const MAXIMUM_QUEUED_CALLS = 16;
+const MAXIMUM_GLB_BYTES = 32 * 1024 * 1024;
+const MAXIMUM_KEPT_GLBS = 8;
 const EVALUATION_TIMEOUT_MS = 30000;
 const html = '<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;height:100%;background:#182126}canvas{display:block;width:100vw;height:100vh}</style></head><body><canvas></canvas><script type="module" src="/preview.js"></script></body></html>';
 
@@ -57,11 +59,26 @@ export function createAgentRuntime({ backend = 'gpu', browser: browserPath, memo
   let closing;
   let catalogPromise;
   let jobsPromise;
+  const savedGlbPaths = [];
   function jobs() {
     if (!jobRoot) throw new Error('Configure --jobs with an absolute output directory before submitting render jobs.');
     if (!jobsPromise && closing) throw new Error('The agent runtime is closing or closed.');
     jobsPromise ??= createAgentRenderJobs({ root: jobRoot, run: runJob });
     return jobsPromise;
+  }
+  // The caller never names a path: files get a server-chosen name in the jobs folder, and only the newest few are kept.
+  async function saveGlbExport(bytes) {
+    const directory = join(jobRoot, EXPORT_DIRECTORY_NAME);
+    await mkdir(directory, { recursive: true, mode: 0o700 });
+    const details = await lstat(directory);
+    if (!details.isDirectory() || details.isSymbolicLink()) throw new Error('The export folder must be a real directory without links.');
+    while (savedGlbPaths.length >= MAXIMUM_KEPT_GLBS) await unlink(savedGlbPaths.shift());
+    const filename = `${randomUUID()}.glb`;
+    const path = join(directory, filename);
+    await writeFile(path, bytes, { flag: 'wx', mode: 0o600 });
+    savedGlbPaths.push(path);
+    return { path, filename, mimeType: 'model/gltf-binary', bytes: bytes.length,
+      sha256: createHash('sha256').update(bytes).digest('hex'), keptExports: savedGlbPaths.length };
   }
   async function requirePreviewRenderer() {
     if (phase !== 'rendering') return;
@@ -364,6 +381,7 @@ export function createAgentRuntime({ backend = 'gpu', browser: browserPath, memo
         jobs: { configured: Boolean(jobRoot), kinds: ['image', 'stills', 'video'], maximumActiveJobs: 1,
           maximumDuration: 30, maximumFps: 30, maximumFrames: 900, maximumStills: 8,
           encoder: 'CPU H.264', audio: false, previewSuspendedDuringJob: true,
+          glbExport: { maximumBytes: MAXIMUM_GLB_BYTES, maximumKept: MAXIMUM_KEPT_GLBS, maximumTextureSize: 4096 },
           records: jobRoot ? (await jobs()).list().map(record => ({ jobId: record.jobId, state: record.state,
             sourceRevision: record.sourceRevision, progress: record.progress })) : [] },
         unsupported: ['remote asset providers', 'arbitrary code execution', 'imported morph track authoring', 'job audio'],
@@ -589,6 +607,16 @@ export function createAgentRuntime({ backend = 'gpu', browser: browserPath, memo
         const result = await invoke('dispose', input);
         activeSessionId = null;
         return result;
+      });
+    },
+    exportGlb({ sessionId, clip, motionTime, maxTextureSize }) {
+      return enqueue(async () => {
+        await requirePreviewRenderer();
+        await jobs();
+        const exported = await invoke('exportGlb', { sessionId, clip, motionTime, maxTextureSize, maximumBytes: MAXIMUM_GLB_BYTES });
+        const { data, ...summary } = exported;
+        const file = await saveGlbExport(Buffer.from(data, 'base64'));
+        return { ...summary, ...file };
       });
     },
     submitJob({ sessionId, expectedRevision, settings }) {

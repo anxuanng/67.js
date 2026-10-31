@@ -89,6 +89,11 @@ async function connect(context) {
       return { released: true, sessionId, checkpointId };
     },
     async exportRecipe() { return { sessionId, revision: scene.revision, recipe: scene.exportRecipe() }; },
+    async exportGlb({ sessionId: requested, ...options }) {
+      calls++;
+      assert.equal(requested, sessionId);
+      return { sessionId, revision: scene.revision, bytes: 12, parts: 1, clips: 0, filename: `${randomUUID()}.glb`, options };
+    },
     async dispose() {
       scene = undefined;
       return { disposed: true, sessionId };
@@ -123,7 +128,7 @@ test('SDK advertises the complete strict JSON contract and truthful annotations'
   const { tools } = await client.listTools();
   assert.deepEqual(tools.map(tool => tool.name).sort(), [
     'mesh_edit', 'mesh_inspect', 'mesh_stack', 'scene_apply', 'scene_asset_catalog', 'scene_capabilities', 'scene_checkpoint', 'scene_create', 'scene_create_asset', 'scene_dispose',
-    'scene_export_recipe', 'scene_inspect', 'scene_look', 'scene_review', 'scene_release_checkpoint', 'scene_restore',
+    'scene_export_glb', 'scene_export_recipe', 'scene_inspect', 'scene_look', 'scene_review', 'scene_release_checkpoint', 'scene_restore',
     'scene_render_cancel', 'scene_render_release', 'scene_render_result', 'scene_render_status', 'scene_render_submit',
   ].sort());
   for (const tool of tools) {
@@ -155,12 +160,31 @@ test('SDK advertises the complete strict JSON contract and truthful annotations'
   assert.ok(look.inputSchema.properties.motionTime);
 });
 
+test('GLB export takes no path or code and rejects unknown or unbounded fields before dispatch', async context => {
+  const { client, sessionId, calls } = await connect(context);
+  await client.callTool({ name: 'scene_create', arguments: { recipe: recipe() } });
+  const { tools } = await client.listTools();
+  const tool = tools.find(tool => tool.name === 'scene_export_glb');
+  assert.deepEqual(Object.keys(tool.inputSchema.properties).sort(), ['clip', 'maxTextureSize', 'motionTime', 'sessionId']);
+  assert.equal(tool.inputSchema.properties.maxTextureSize.maximum, 4096);
+  const result = await client.callTool({ name: 'scene_export_glb', arguments: { sessionId, clip: 0, maxTextureSize: 512 } });
+  assert.deepEqual(result.structuredContent.options, { clip: 0, maxTextureSize: 512 });
+  assert.match(result.structuredContent.filename, /^[0-9a-f-]{36}\.glb$/);
+  const before = calls();
+  for (const invalid of [
+    { sessionId, path: 'C:/out.glb' }, { sessionId, filename: 'x.glb' }, { sessionId, code: 'console.log(1)' },
+    { sessionId, clip: -1 }, { sessionId, clip: 256 }, { sessionId, maxTextureSize: 4097 }, { sessionId, motionTime: -1 },
+    { sessionId: 'not-a-uuid' },
+  ]) await rejected(client, 'scene_export_glb', invalid);
+  assert.equal(calls(), before);
+});
+
 test('review SDK exposes one image and rejects unknown or unbounded shot fields before dispatch', async context => {
   const { client, sessionId, calls } = await connect(context);
   await client.callTool({ name: 'scene_create', arguments: { recipe: recipe() } });
   const { tools } = await client.listTools();
   const tool = tools.find(tool => tool.name === 'scene_review');
-  assert.equal(tools.length, 21);
+  assert.equal(tools.length, 22);
   assert.equal(tool.annotations.readOnlyHint, true);
   assert.equal(tool.inputSchema.properties.shots.maxItems, 4);
   assert.equal(tool.inputSchema.properties.shots.items.additionalProperties, false);

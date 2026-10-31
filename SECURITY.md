@@ -14,7 +14,7 @@ The MCP server takes input from AI agents, and that input can come from a prompt
 
 - It runs no code that a tool call supplies.
 - It reads assets only from the configured catalog, and it fetches no remote URLs for assets.
-- It writes render output only to the configured jobs folder.
+- It writes render output and GLB exports (`scene_export_glb`, under `exports/`, server-chosen names) only to the configured jobs folder.
 - It bounds every collection, count and size before it allocates memory.
 
 `docs/mcp.md` describes each limit and its boundary tests.

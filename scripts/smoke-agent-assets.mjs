@@ -35,7 +35,7 @@ async function look(sessionId, label) {
 }
 try {
   await client.connect(transport, { timeout: 180000 });
-  assert.equal((await client.listTools()).tools.length, 21);
+  assert.equal((await client.listTools()).tools.length, 22);
   const catalog = (await call('scene_asset_catalog')).structuredContent;
   assert.equal(catalog.configured, true);
   assert.equal(catalog.assets.length, 2);
