@@ -6,7 +6,7 @@ import { box } from '../src/geometry.js';
 import { exportGlb } from '../src/export.js';
 import { parseGltf } from '../src/gltf.js';
 import { createAgentScene } from '../src/agent-scene.js';
-import { dielectricReflectance, materialLayerState, validateMaterialLayers } from '../src/material-layers.js';
+import { dielectricReflectance, materialLayerState, validateMaterialLayers, MATERIAL_LAYER_STATE_LENGTH } from '../src/material-layers.js';
 
 function recipeWithMaterial(material) {
   return {
@@ -47,6 +47,11 @@ test('every layer value is checked at the boundary and the error names the fix',
     [{ attenuationColor: [1, 1] }, /attenuationColor must be three linear RGB numbers between 0 and 1\. Pass \[red, green, blue\]/],
     [{ sheenColor: [0, 2, 0] }, /sheenColor must be three linear RGB numbers/],
     [{ attenuationDistance: 0 }, /attenuationDistance must be a finite number above 0.*Leave it out for no absorption/],
+    [{ anisotropy: 1.2 }, /anisotropy must be between 0 and 1/],
+    [{ anisotropyRotation: 20 }, /anisotropyRotation must be between/],
+    [{ iridescence: -1 }, /iridescence must be between 0 and 1/],
+    [{ iridescenceIor: 0.5 }, /iridescenceIor must be between 1 and 3/],
+    [{ iridescenceThickness: 5000 }, /iridescenceThickness must be between 0 and 1200/],
     [{ tag: 'unlit', transmission: 0.5 }, /transmission needs a standard PBR material tag.*Use the surface tag/],
   ];
   for (const [material, message] of cases) assert.throws(() => validateMaterialLayers(material), message);
@@ -88,4 +93,40 @@ test('a plain export declares no layer extension and an invalid layer is rejecte
   const plain = exportGlb([{ name: 'cube', geometry: box(0), matrix: mat4.create(), material: { color: [0.2, 0.5, 0.7], roughness: 0.4, metallic: 0 } }]);
   assert.equal(Buffer.from(plain).includes('KHR_materials_clearcoat'), false);
   assert.throws(() => exportGlb([{ name: 'cube', geometry: box(0), matrix: mat4.create(), material: { color: [0.2, 0.5, 0.7], roughness: 0.4, metallic: 0, clearcoat: 3 } }]), /clearcoat must be between 0 and 1/);
+});
+
+test('anisotropy and iridescence reach the renderer state and default to off', () => {
+  const plain = materialLayerState({});
+  assert.equal(plain.length, MATERIAL_LAYER_STATE_LENGTH);
+  assert.deepEqual(plain.slice(16), [0, 0, 0, 1.3, 400], 'anisotropy, rotation, iridescence, film IOR and thickness');
+  const brushed = materialLayerState({ anisotropy: 0.7, anisotropyRotation: 1, iridescence: 0.9, iridescenceIor: 1.8, iridescenceThickness: 250 });
+  assert.deepEqual(brushed.slice(16), [0.7, 1, 0.9, 1.8, 250]);
+});
+
+test('recipes accept anisotropy and iridescence and export them', () => {
+  const scene = createAgentScene(recipeWithMaterial({ metallic: 1, anisotropy: 0.8, anisotropyRotation: 0.5, iridescence: 1, iridescenceIor: 1.7, iridescenceThickness: 380 }));
+  const material = scene.exportRecipe().materials[0];
+  assert.equal(material.anisotropy, 0.8);
+  assert.equal(material.iridescenceThickness, 380);
+  assert.throws(() => createAgentScene(recipeWithMaterial({ anisotropy: 2 })), /anisotropy must be between 0 and 1/);
+});
+
+test('anisotropy and iridescence survive a GLB export and import through their glTF extensions', async () => {
+  const material = { color: [0.8, 0.6, 0.3], roughness: 0.3, metallic: 1, emission: 0, anisotropy: 0.6, anisotropyRotation: 1.1, iridescence: 0.75, iridescenceIor: 1.7, iridescenceThickness: 320 };
+  const bytes = exportGlb([{ name: 'cube', geometry: box(0), matrix: mat4.create(), material }]);
+  const text = Buffer.from(bytes).toString('latin1');
+  assert.ok(text.includes('KHR_materials_anisotropy'), 'the anisotropy extension is declared');
+  assert.ok(text.includes('KHR_materials_iridescence'), 'the iridescence extension is declared');
+  const asset = await parseGltf(bytes);
+  const imported = asset.parts[0].material;
+  for (const field of ['anisotropy', 'anisotropyRotation', 'iridescence', 'iridescenceIor', 'iridescenceThickness']) {
+    assert.ok(Math.abs(imported[field] - material[field]) < 1e-6, field);
+  }
+  assert.deepEqual(asset.warnings, []);
+  const gltf = await new GLTFLoader().parseAsync(bytes, '');
+  const mesh = gltf.scene.getObjectByProperty('isMesh', true);
+  assert.ok(Math.abs(mesh.material.anisotropy - 0.6) < 1e-6, 'three.js reads the anisotropy strength');
+  assert.ok(Math.abs(mesh.material.iridescence - 0.75) < 1e-6, 'three.js reads the iridescence factor');
+  assert.ok(Math.abs(mesh.material.iridescenceIOR - 1.7) < 1e-6);
+  assert.ok(Math.abs(mesh.material.iridescenceThicknessRange[1] - 320) < 1e-6);
 });

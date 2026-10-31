@@ -25,7 +25,7 @@ const MAXIMUM_JOB_FRAME_BYTES = 12 * 1024 * 1024;
 // The object ID pass lists the part behind each ID in the job metrics; longer lists are cut and flagged.
 const MAXIMUM_OBJECT_NAMES = 1000;
 // A path trace shares the machine with the person using it, so it takes half of the eight-thread ceiling.
-const PATH_TRACER_THREADS = 4;
+const PATH_TRACER_THREADS = 8;
 const MAXIMUM_QUEUED_CALLS = 16;
 const MAXIMUM_GLB_BYTES = 32 * 1024 * 1024;
 const MAXIMUM_KEPT_GLBS = 8;
@@ -344,6 +344,7 @@ export function createAgentRuntime({ backend = 'gpu', browser: browserPath, memo
           ...(settings.motion ? { motionTime: settings.motion.start + elapsed } : {}),
           ...(shotSample?.motionTime == null ? {} : { motionTime: shotSample.motionTime }),
           ...(shotSample?.camera ? { camera: shotSample.camera } : {}),
+          ...(shotSample?.depthOfField ? { depthOfField: shotSample.depthOfField } : {}),
           ...(shotSample && shotSample.brightness < 1 ? { brightness: shotSample.brightness } : {}),
           ...(settings.animation ? { animation: { clip: settings.animation.clip, time: settings.animation.start + elapsed } } : {}) };
         const renderStarted = performance.now();

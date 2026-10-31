@@ -9,10 +9,18 @@ import { MAX_MORPH_TARGETS, createMorphPose, validateMorphGeometry, validateMorp
 
 export const GLTF_CAPABILITIES = Object.freeze({
   formats: ['glb', 'gltf'],
-  supported: ['triangle meshes', 'world transforms', 'rigid node animations', 'four-influence skeletal skinning', 'joint node animations', 'relative POSITION/NORMAL morph targets', 'morph weight animations', 'PNG/JPEG base color textures', 'normal/occlusion/emissive/metallic-roughness textures', 'TEXCOORD_0', 'linear RGB vertex colors', 'metallic roughness factors', 'emissive factors', 'alpha mask and blend modes', 'double-sided materials', 'KHR_mesh_quantization', 'KHR_materials_emissive_strength', 'KHR_materials_clearcoat, transmission, volume, ior, specular and sheen factors', 'KHR_texture_transform baked into UVs', 'EXT_mesh_gpu_instancing expanded into parts', 'KHR_draco_mesh_compression with options.decoders.draco', 'EXT_meshopt_compression with options.decoders.meshopt', 'KHR_texture_basisu with options.decoders.ktx2'],
-  ignoredExtensions: ['KHR_materials_anisotropy', 'KHR_materials_iridescence'],
-  unsupported: ['more than four skin influences', 'singular weighted skin transforms', 'reflected skin transforms', 'TANGENT morph targets', 'morph targets without authored base normals', 'vertex alpha below one', 'different texture transforms on one material', 'skinned or morphed GPU instancing', 'textures inside material layer extensions (factors only)', 'rendering of KHR_materials_anisotropy and KHR_materials_iridescence'],
+  supported: ['triangle meshes', 'world transforms', 'rigid node animations', 'four-influence skeletal skinning', 'joint node animations', 'relative POSITION/NORMAL morph targets', 'morph weight animations', 'PNG/JPEG base color textures', 'normal/occlusion/emissive/metallic-roughness textures', 'TEXCOORD_0', 'linear RGB vertex colors', 'metallic roughness factors', 'emissive factors', 'alpha mask and blend modes', 'double-sided materials', 'KHR_mesh_quantization', 'KHR_materials_emissive_strength', 'KHR_materials_clearcoat, transmission, volume, ior, specular, sheen, anisotropy and iridescence factors', 'KHR_texture_transform baked into UVs', 'EXT_mesh_gpu_instancing expanded into parts', 'KHR_draco_mesh_compression with options.decoders.draco', 'EXT_meshopt_compression with options.decoders.meshopt', 'KHR_texture_basisu with options.decoders.ktx2'],
+  ignoredExtensions: [],
+  unsupported: ['more than four skin influences', 'singular weighted skin transforms', 'reflected skin transforms', 'TANGENT morph targets', 'morph targets without authored base normals', 'vertex alpha below one', 'different texture transforms on one material', 'skinned or morphed GPU instancing', 'textures inside material layer extensions (factors only)'],
 });
+
+const LAYER_SHADER_EXTENSIONS = Object.freeze(['KHR_materials_anisotropy', 'KHR_materials_iridescence']);
+
+// The shader code for anisotropy and iridescence is not in the core bundle; a file that uses either brings it in.
+async function loadLayerShadersFor(document) {
+  const usesLayerShaders = (document.materials ?? []).some(material => LAYER_SHADER_EXTENSIONS.some(extension => material?.extensions?.[extension]));
+  if (usesLayerShaders) await import('./material-layer-shaders.js');
+}
 
 const DEFAULT_MAX_BYTES = 32 * 1024 * 1024;
 const DEFAULT_MAX_VERTICES = 2_000_000;
@@ -758,6 +766,7 @@ export async function parseGltf(data, options = {}) {
   const document = documentFrom(data, limits.maxBytes);
   const decoders = options.decoders ?? {};
   const { ignoredExtensions } = validateDocument(document, limits, allowedExtensionsFor(decoders));
+  await loadLayerShadersFor(document);
   const warnings = ignoredExtensions.map(extension => `${extension} is accepted but not rendered.`);
   const dataBytes = typeof data === 'string' ? new TextEncoder().encode(data).byteLength : data.byteLength;
   const resourceBytes = await prepareResources(document, data, dataBytes, options, limits);

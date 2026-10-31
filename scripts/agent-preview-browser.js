@@ -439,8 +439,8 @@ window.__agentPreview = {
     }
   },
   // `pass` draws one render pass instead of the lit image. Object ID frames also list the part behind each ID.
-  // `camera` overrides camera fields (a timeline shot) and `brightness` scales exposure for a dip through black.
-  frame({ sessionId, animation, motionTime, rendererTime = 0, pass, passDepthRange, camera: cameraOverrides, brightness = 1 }) {
+  // `camera` overrides camera fields and `depthOfField` the blur and focus distance (a timeline shot); `brightness` scales exposure for a dip through black.
+  frame({ sessionId, animation, motionTime, rendererTime = 0, pass, passDepthRange, camera: cameraOverrides, depthOfField: depthOfFieldOverrides, brightness = 1 }) {
     const record = requireSession(sessionId);
     if (!Number.isFinite(brightness) || brightness < 0 || brightness > 1) throw new RangeError('Invalid frame brightness.');
     if (!Number.isFinite(rendererTime) || rendererTime < 0 || rendererTime > 3600) throw new RangeError('Invalid render time.');
@@ -454,7 +454,11 @@ window.__agentPreview = {
     const sampledPreviousCamera = pass ? undefined : previousCameraFor(record, motionTime);
     const previousCamera = sampledPreviousCamera && cameraOverrides ? withCameraOverrides(sampledPreviousCamera, cameraOverrides) : sampledPreviousCamera;
     const exposure = record.scene.effects.exposure * brightness;
-    draw(record, rendererTime, shotCamera, { pass, passDepthRange, previousCamera, ...(brightness === 1 ? {} : { exposure }) });
+    const shotEffects = depthOfFieldOverrides
+      ? { ...record.scene.effects, depthOfField: { ...record.scene.effects.depthOfField, ...depthOfFieldOverrides } }
+      : undefined;
+    draw(record, rendererTime, shotCamera, { pass, passDepthRange, previousCamera,
+      ...(brightness === 1 ? {} : { exposure }), ...(shotEffects ? { effects: shotEffects } : {}) });
     const info = renderInfo(record.renderer);
     return pass === 'objectId' ? { ...info, objectNames: record.renderer.passSupport.objectNames() } : info;
   },

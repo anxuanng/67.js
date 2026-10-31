@@ -14,9 +14,9 @@
  },
  "bundles": {
   "entry:core": {
-   "min": 283595,
-   "gzip": 81018,
-   "brotli": 69071
+   "min": 287420,
+   "gzip": 82181,
+   "brotli": 70138
   },
   "entry:model": {
    "min": 40093,
@@ -39,9 +39,14 @@
    "brotli": 7331
   },
   "entry:gltf": {
-   "min": 154791,
-   "gzip": 47466,
-   "brotli": 40652
+   "min": 156342,
+   "gzip": 47981,
+   "brotli": 41563
+  },
+  "entry:gltf+lazy": {
+   "min": 162775,
+   "gzip": 49970,
+   "brotli": 43374
   },
   "entry:modeling": {
    "min": 21149,
@@ -124,14 +129,14 @@
    "brotli": 4675
   },
   "entry:light-bake": {
-   "min": 67640,
-   "gzip": 24815,
-   "brotli": 21956
+   "min": 69068,
+   "gzip": 25370,
+   "brotli": 22449
   },
   "entry:path-tracer": {
-   "min": 31466,
-   "gzip": 12605,
-   "brotli": 11075
+   "min": 33334,
+   "gzip": 13432,
+   "brotli": 11761
   },
   "entry:texture-set": {
    "min": 1837,
@@ -139,29 +144,29 @@
    "brotli": 762
   },
   "entry:agent-scene": {
-   "min": 206699,
-   "gzip": 63263,
-   "brotli": 54923
+   "min": 209457,
+   "gzip": 64112,
+   "brotli": 55993
   },
   "entry:agent-scene+lazy": {
-   "min": 614147,
-   "gzip": 210233,
-   "brotli": 185269
+   "min": 626190,
+   "gzip": 214248,
+   "brotli": 189205
   },
   "entry:agent-asset": {
-   "min": 300910,
-   "gzip": 93744,
-   "brotli": 81565
+   "min": 303562,
+   "gzip": 94893,
+   "brotli": 82975
   },
   "entry:agent-asset+lazy": {
-   "min": 650097,
-   "gzip": 220739,
-   "brotli": 193778
+   "min": 662034,
+   "gzip": 225055,
+   "brotli": 198170
   },
   "entry:hdri": {
    "min": 8075,
    "gzip": 3138,
-   "brotli": 2801
+   "brotli": 2802
   },
   "entry:camera-effects": {
    "min": 23985,
@@ -173,25 +178,35 @@
    "gzip": 1608,
    "brotli": 1425
   },
+  "entry:material-layer-shaders": {
+   "min": 71833,
+   "gzip": 18658,
+   "brotli": 16359
+  },
   "scene:lit-box": {
-   "min": 214877,
-   "gzip": 58928,
-   "brotli": 50227
+   "min": 217804,
+   "gzip": 59861,
+   "brotli": 51117
   },
   "scene:gltf-box": {
-   "min": 273787,
-   "gzip": 78107,
-   "brotli": 67034
+   "min": 277431,
+   "gzip": 79898,
+   "brotli": 69584
+  },
+  "scene:gltf-box+lazy": {
+   "min": 283864,
+   "gzip": 81888,
+   "brotli": 71399
   },
   "scene:agent-scene": {
-   "min": 315953,
-   "gzip": 92416,
-   "brotli": 79459
+   "min": 320697,
+   "gzip": 94869,
+   "brotli": 82532
   },
   "scene:agent-scene+lazy": {
-   "min": 723401,
-   "gzip": 239390,
-   "brotli": 209757
+   "min": 737430,
+   "gzip": 245010,
+   "brotli": 215663
   }
  }
 }

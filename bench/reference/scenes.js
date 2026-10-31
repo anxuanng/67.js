@@ -258,6 +258,23 @@ export const REFERENCE_SCENES = {
     };
   },
 
+  // Anisotropy and iridescence against Cycles: a brushed gold sphere, a dark dielectric with a thin film and a silver one.
+  async 'brushed-film'() {
+    const lighting = await skyLighting();
+    const parts = [
+      floor([0.2, 0.2, 0.22]),
+      part('brushed-gold', sphere(96, 64), [-1.6, 0.8, 0], [0.8, 0.8, 0.8], { color: [1, 0.77, 0.34], metallic: 1, roughness: 0.35, anisotropy: 0.8 }),
+      part('oil-film', sphere(96, 64), [0, 0.8, 0], [0.8, 0.8, 0.8], { color: [0.02, 0.02, 0.025], roughness: 0.15, iridescence: 1, iridescenceIor: 1.3, iridescenceThickness: 400 }),
+      part('film-on-silver', sphere(96, 64), [1.6, 0.8, 0], [0.8, 0.8, 0.8], { color: [0.9, 0.9, 0.92], metallic: 1, roughness: 0.2, iridescence: 1, iridescenceIor: 1.3, iridescenceThickness: 400 }),
+    ];
+    return {
+      parts, blenderWorld: lighting.blenderWorld,
+      environment: environment(lighting, { keyColor: SUN_COLOR }),
+      camera: { eye: [0, 2.2, 7], target: [0, 0.7, 0], up: [0, 1, 0], fov: 35, near: 0.1, far: 200 },
+      shadow: { eye: [-6, 12, 8], target: [0, 0, 0], up: [0, 1, 0], extent: 6, near: 0.1, far: 40 },
+    };
+  },
+
   async metal() {
     const lighting = await skyLighting();
     const parts = [

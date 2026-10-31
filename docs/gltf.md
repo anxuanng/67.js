@@ -140,7 +140,7 @@ Line and point primitives are unsupported.
 | `KHR_draco_mesh_compression` | Needs `options.decoders.draco`. |
 | `EXT_meshopt_compression` | Needs `options.decoders.meshopt`. |
 | `KHR_texture_basisu` | Needs `options.decoders.ktx2`. |
-| `KHR_materials_clearcoat`, `_transmission`, `_ior`, `_specular`, `_sheen`, `_volume` | Read as factors and rendered as material layers, see `docs/material-maps.md`. Their textures are ignored. `KHR_materials_anisotropy` and `KHR_materials_iridescence` are accepted but not rendered. Each one used adds a line to `asset.warnings`. Listing one in `extensionsRequired` fails the import. |
+| `KHR_materials_clearcoat`, `_transmission`, `_ior`, `_specular`, `_sheen`, `_volume`, `_anisotropy`, `_iridescence` | Read as factors and rendered as material layers, see `docs/material-maps.md`. Their textures are ignored, and an iridescent film takes the thickness maximum. Export writes them back. |
 
 `KHR_materials_transmission` with a factor above zero sets `material.transmission` to that factor.
 It is a hint only: the renderer does not draw transmission yet.

@@ -134,6 +134,32 @@ def add_vertex_colors(material, principled, description):
     links.new(multiply.outputs["Color"], principled.inputs["Base Color"])
 
 
+def add_anisotropy(principled, description):
+    """Maps the glTF anisotropy model (rougher along the tangent) onto Blender's aspect-ratio model."""
+    strength = description.get("anisotropy", 0)
+    if strength <= 0:
+        return
+    alpha = description.get("roughness", 0.5) ** 2
+    alpha_tangent = alpha + (1 - alpha) * strength ** 2
+    # Blender stretches alpha by 1 / aspect along the tangent and by aspect across it, aspect = sqrt(1 - 0.9 * Anisotropic).
+    principled.inputs["Anisotropic"].default_value = min((1 - alpha / alpha_tangent) / 0.9, 1)
+    principled.inputs["Roughness"].default_value = (alpha * alpha_tangent) ** 0.25
+    principled.inputs["Anisotropic Rotation"].default_value = description.get("anisotropyRotation", 0) / (2 * math.pi)
+    # 67js takes the grain along the U direction of the UV map; Blender's default tangent is a different field.
+    tree = principled.id_data
+    tangent = tree.nodes.new("ShaderNodeTangent")
+    tangent.direction_type = "UV_MAP"
+    tangent.uv_map = "UVMap"
+    tree.links.new(tangent.outputs["Tangent"], principled.inputs["Tangent"])
+
+
+def add_thin_film(principled, description):
+    if description.get("iridescence", 0) <= 0:
+        return
+    principled.inputs["Thin Film Thickness"].default_value = description.get("iridescenceThickness", 400)
+    principled.inputs["Thin Film IOR"].default_value = description.get("iridescenceIor", 1.3)
+
+
 def add_material_layers(material, principled, description):
     """Maps the 67js material layers onto the Principled BSDF inputs of the same meaning."""
     principled.inputs["Coat Weight"].default_value = description.get("clearcoat", 0)
@@ -148,6 +174,8 @@ def add_material_layers(material, principled, description):
     # Blender's specular level 0.5 is the 4 percent reflectance that 67js calls specular 1.
     principled.inputs["Specular IOR Level"].default_value = 0.5 * description.get("specular", 1)
     set_linear_color(principled.inputs["Specular Tint"], description.get("specularColor", [1, 1, 1]))
+    add_anisotropy(principled, description)
+    add_thin_film(principled, description)
     attenuation_distance = description.get("attenuationDistance")
     if attenuation_distance:
         absorption = material.node_tree.nodes.new("ShaderNodeVolumeAbsorption")

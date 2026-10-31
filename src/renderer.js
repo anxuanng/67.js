@@ -57,6 +57,8 @@ function shaderFeaturesOfParts(parts) {
     if (material.lightMap) features.add('lightMap');
     if (material.layers) features.add('splat');
     if (material.moss > 0) features.add('moss');
+    if (material.anisotropy > 0) features.add('anisotropy');
+    if (material.iridescence > 0) features.add('iridescence');
     if ((material.alphaMode ?? 'opaque') !== 'opaque') features.add('alphaMode');
     if (TAG_SHADER_FEATURES.has(material.tag)) features.add(material.tag);
   }
@@ -550,7 +552,7 @@ export class Renderer67 {
 
   finishMainProgram(pendingProgram) {
     this.program = finishProgram(this.context, pendingProgram);
-    this.uniforms = Object.fromEntries(['materialDielectric', 'materialCoat', 'materialSheen', 'boxMapScale', 'boxMapAxis', 'lightMap', 'lightMapScale', 'hasLightMap', 'viewProjection', 'lightProjection', 'eye', 'armorColor', 'armorSurface', 'exposure', 'inspection', 'shadowMap', ...MAP_UNIFORMS, ...MAP_FLAGS, ...SKIN_UNIFORMS, ...MORPH_UNIFORMS, 'normalScale', 'occlusionStrength', 'materialMoss', ...SPLAT_UNIFORMS, 'hdrEnabled', 'time', 'wind', 'worldMode', 'daylight', 'fogColor', 'lightDirection', 'fogDensity', 'waterRipple', 'rippleTime', 'explosionProgress', 'explosionCenter', 'assemblyAmount', 'renderPassMode', 'renderPassDepthRange', 'renderPassObjectBase', ...ALPHA_UNIFORMS].map((name) => [name, this.context.getUniformLocation(this.program, name)]));
+    this.uniforms = Object.fromEntries(['materialDielectric', 'materialCoat', 'materialSheen', 'materialAnisotropy', 'materialIridescence', 'boxMapScale', 'boxMapAxis', 'lightMap', 'lightMapScale', 'hasLightMap', 'viewProjection', 'lightProjection', 'eye', 'armorColor', 'armorSurface', 'exposure', 'inspection', 'shadowMap', ...MAP_UNIFORMS, ...MAP_FLAGS, ...SKIN_UNIFORMS, ...MORPH_UNIFORMS, 'normalScale', 'occlusionStrength', 'materialMoss', ...SPLAT_UNIFORMS, 'hdrEnabled', 'time', 'wind', 'worldMode', 'daylight', 'fogColor', 'lightDirection', 'fogDensity', 'waterRipple', 'rippleTime', 'explosionProgress', 'explosionCenter', 'assemblyAmount', 'renderPassMode', 'renderPassDepthRange', 'renderPassObjectBase', ...ALPHA_UNIFORMS].map((name) => [name, this.context.getUniformLocation(this.program, name)]));
     for (const name of LIGHT_UNIFORMS) {
       this.uniforms[name] = this.context.getUniformLocation(this.program, name);
     }
@@ -1794,6 +1796,8 @@ export class Renderer67 {
       this.context.uniform3f(this.uniforms.materialDielectric, layers[0], layers[1], layers[2]);
       this.context.uniform2f(this.uniforms.materialCoat, layers[3], layers[4]);
       this.context.uniform4f(this.uniforms.materialSheen, layers[5], layers[6], layers[7], layers[8]);
+      this.context.uniform2f(this.uniforms.materialAnisotropy, layers[16], layers[17]);
+      this.context.uniform3f(this.uniforms.materialIridescence, layers[18], layers[19], layers[20]);
       this.context.uniform1f(this.uniforms.boxMapScale, batch.mapState[12]);
       this.context.uniform1i(this.uniforms.boxMapAxis, batch.mapState[13]);
       this.bindSplat(batch.splat);

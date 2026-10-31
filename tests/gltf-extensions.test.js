@@ -163,9 +163,9 @@ const LAYER_MATERIAL_EXTENSIONS = {
   KHR_materials_sheen: { sheenColorFactor: [0.5, 0.4, 0.3], sheenRoughnessFactor: 0.3 },
   KHR_materials_volume: { thicknessFactor: 0.1, attenuationDistance: 2, attenuationColor: [0.8, 0.9, 1] },
 };
-const UNRENDERED_MATERIAL_EXTENSIONS = {
-  KHR_materials_anisotropy: { anisotropyStrength: 0.5 },
-  KHR_materials_iridescence: { iridescenceFactor: 1 },
+const SURFACE_EFFECT_MATERIAL_EXTENSIONS = {
+  KHR_materials_anisotropy: { anisotropyStrength: 0.6, anisotropyRotation: 1.2 },
+  KHR_materials_iridescence: { iridescenceFactor: 0.8, iridescenceIor: 1.6, iridescenceThicknessMinimum: 150, iridescenceThicknessMaximum: 500 },
 };
 
 test('KHR_materials layer extensions import as material layers', async () => {
@@ -193,19 +193,27 @@ test('KHR_materials layer extensions import as material layers', async () => {
   assert.equal('transmission' in plain.parts[0].material, false);
 });
 
-test('anisotropy and iridescence load with a warning because they are not rendered', async () => {
+test('anisotropy and iridescence import as material layers without a warning', async () => {
   const asset = await parseGltf(triangleDocument({
     edit: document => {
-      document.extensionsUsed = Object.keys(UNRENDERED_MATERIAL_EXTENSIONS);
-      document.materials[0].extensions = structuredClone(UNRENDERED_MATERIAL_EXTENSIONS);
+      document.extensionsUsed = Object.keys(SURFACE_EFFECT_MATERIAL_EXTENSIONS);
+      document.materials[0].extensions = structuredClone(SURFACE_EFFECT_MATERIAL_EXTENSIONS);
     },
   }));
-  assert.deepEqual(asset.warnings, Object.keys(UNRENDERED_MATERIAL_EXTENSIONS).sort().map(name => `${name} is accepted but not rendered.`));
+  const material = asset.parts[0].material;
+  assert.equal(material.anisotropy, 0.6);
+  assert.equal(material.anisotropyRotation, 1.2);
+  assert.equal(material.iridescence, 0.8);
+  assert.equal(material.iridescenceIor, 1.6);
+  assert.equal(material.iridescenceThickness, 500, 'without a thickness texture the film is as thick as the maximum');
+  assert.deepEqual(asset.warnings, []);
 });
 
 test('required material extensions, bad layer values and missing decoders are rejected', async () => {
-  const required = triangleDocument({ edit: document => { document.extensionsRequired = ['KHR_materials_iridescence']; } });
-  await assert.rejects(parseGltf(required), /Unsupported glTF extension: KHR_materials_iridescence/);
+  const required = triangleDocument({ edit: document => { document.extensionsRequired = ['KHR_materials_unlit']; } });
+  await assert.rejects(parseGltf(required), /Unsupported glTF extension: KHR_materials_unlit/);
+  const badIridescence = triangleDocument({ edit: document => { document.materials[0].extensions = { KHR_materials_iridescence: { iridescenceFactor: 2 } }; } });
+  await assert.rejects(parseGltf(badIridescence), /iridescence must be between 0 and 1/);
   const badTransmission = triangleDocument({ edit: document => { document.materials[0].extensions = { KHR_materials_transmission: { transmissionFactor: 2 } }; } });
   await assert.rejects(parseGltf(badTransmission), /transmission must be between 0 and 1.*Use a number inside that range/);
   const badIor = triangleDocument({ edit: document => { document.materials[0].extensions = { KHR_materials_ior: { ior: 0.5 } }; } });

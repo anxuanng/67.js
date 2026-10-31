@@ -189,6 +189,7 @@ function copyMaterialLayers(value, result) {
     result[field] = Array.isArray(value[field]) ? vector(value[field], 3, field) : value[field];
   }
   validateMaterialLayers(result);
+  if (result.anisotropy > 0 || result.iridescence > 0) agentSceneModule('layerShaders');
 }
 
 function materialFrom(value) {
