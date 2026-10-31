@@ -246,6 +246,22 @@ For this task the object does not need to rest on the ground.`,
     ],
   },
   {
+    id: 'tray-drop',
+    prompt: `A pocketed block with three balls dropped into it, using recipe physics. The block is node "tray", a mesh of
+2 m by 0.4 m by 2 m (X, Y, Z) standing on the ground, with a square pocket 1.2 m wide cut 0.3 m deep into the middle of
+its top face. Three balls of radius 0.1 m are nodes "ball-1", "ball-2" and "ball-3", starting above the pocket at
+[0, 1, 0], [0.25, 1.5, 0.1] and [-0.25, 2, -0.1]. Add a 3 second physics section: the tray is a fixed body with a
+trimesh collider, so it follows the pocket, and the balls are dynamic ball bodies. The balls must end resting on the
+pocket floor, not on the block's top. Check the result with scene_inspect.
+For this task the balls do not need to rest on the ground at time 0.`,
+    checks: [
+      { kind: 'lint' },
+      { kind: 'physicsBody', node: 'tray', type: 'fixed', shape: 'trimesh', label: 'tray is a fixed trimesh' },
+      { kind: 'physicsRest', nodes: ['ball-1', 'ball-2', 'ball-3'], height: [0.17, 0.23], within: 0.5, touching: 'tray', label: 'balls rest on the pocket floor' },
+      { kind: 'physicsSeek', label: 'seek back repeats the frame' },
+    ],
+  },
+  {
     id: 'pillar-court',
     prompt: `A pillar court: a grid of 5 pillars along X by 3 along Z. Each pillar is a square column 0.1 m wide and
 0.5 m tall. Pillars are 0.4 m apart along X and 0.5 m apart along Z, centre to centre, the whole grid centred on

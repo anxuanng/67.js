@@ -24,11 +24,17 @@ const SWIFTSHADER_ARGUMENTS = ['--enable-webgl', '--ignore-gpu-blocklist', '--us
 
 const roundScore = value => Number(value.toFixed(4));
 
+// The look is the authored base pose, which recipe physics does not change, and the render page has no solver.
+function withoutPhysics(recipe) {
+  const { physics, ...staticRecipe } = recipe;
+  return staticRecipe;
+}
+
 /** World-space triangles of every drawn node, with motion sampled at time zero. Asset recipes have none here. */
 export async function worldGeometriesOf(recipe) {
   if (recipe.format === '67js.asset') return null;
   if (needsMeshBooleans(recipe)) await loadMeshBooleans();
-  const scene = createAgentScene(recipe);
+  const scene = createAgentScene(withoutPhysics(recipe));
   if (recipe.motion) scene.sampleMotion(0);
   return scene.parts.map(worldGeometry);
 }
@@ -84,7 +90,7 @@ export async function renderLookImages(jobs) {
         written.push([]);
         continue;
       }
-      const images = await page.evaluate(([sceneRecipe, cameraViews]) => window.renderLookViews(sceneRecipe, cameraViews), [recipe, views]);
+      const images = await page.evaluate(([sceneRecipe, cameraViews]) => window.renderLookViews(sceneRecipe, cameraViews), [withoutPhysics(recipe), views]);
       await mkdir(directory, { recursive: true });
       const paths = [];
       for (const { name, image } of images) {

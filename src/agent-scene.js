@@ -5,6 +5,7 @@ import { createSceneGraph } from './scene-graph.js';
 import { applyProjection } from './camera.js';
 import { normalizeAgentLook } from './agent-look.js';
 import { normalizeAgentMotion, compileAgentMotion } from './agent-motion.js';
+import { normalizeAgentPhysics, bakeAgentPhysics } from './agent-physics.js';
 import { meshReport, generateMeshGeometry, MESH_SMOOTH_ANGLE_DEFAULT } from './agent-mesh.js';
 import { normalizeMeshEdits, normalizeMeshStack } from './mesh-recipe.js';
 import { expandInstancedNodes } from './mesh-instances.js';
@@ -14,6 +15,8 @@ import { materialPatternTextures, normalizeMaterialPattern } from './material-pa
 export { AGENT_SCENE_CAPABILITIES, AGENT_SCENE_DEFAULT_LIMITS };
 export { normalizeAgentLook, resolveAgentShadow } from './agent-look.js';
 export { needsMeshBooleans } from './agent-mesh.js';
+export { needsPhysics, loadPhysicsEngine, physicsEngineLoaded } from './agent-physics.js';
+export { setPhysicsModuleLoader } from './physics.js';
 export { loadMeshBooleans, meshBooleansLoaded, setManifoldModuleLoader } from './mesh-boolean.js';
 
 const DEFAULT_LIMITS = AGENT_SCENE_DEFAULT_LIMITS;
@@ -487,7 +490,7 @@ function boundsFor(geometry, matrix) {
 
 function normalizeRecipe(input, limits) {
   let recipe = copiedJson(input, limits.maxRecipeBytes);
-  knownKeys(recipe, ['format', 'schemaVersion', 'geometries', 'materials', 'nodes', 'camera', 'environment', 'effects', 'shadow', 'motion'], 'recipe');
+  knownKeys(recipe, ['format', 'schemaVersion', 'geometries', 'materials', 'nodes', 'camera', 'environment', 'effects', 'shadow', 'motion', 'physics'], 'recipe');
   if (recipe.format !== '67js.scene' || recipe.schemaVersion !== 1) {
     throw new RangeError('Expected 67js.scene schemaVersion 1.');
   }
@@ -525,6 +528,9 @@ function normalizeRecipe(input, limits) {
   Object.assign(recipe, normalizeAgentLook(look));
   if (Object.hasOwn(recipe, 'motion')) {
     recipe.motion = normalizeAgentMotion(recipe.motion, recipe);
+  }
+  if (Object.hasOwn(recipe, 'physics')) {
+    recipe.physics = normalizeAgentPhysics(recipe.physics, recipe);
   }
   recipe = copiedJson(recipe, limits.maxRecipeBytes);
   return recipe;
@@ -607,12 +613,15 @@ function cameraPoseFrom(pose) {
 // Candidate buffers are private. A failed seek cannot publish half a pose to render handles.
 function stagePose(stagedState, time) {
   const sampled = time === null ? null : stagedState.motionSampler?.sample(time);
+  // Physics holds its last pose after its duration, so a seek past the end is the resting state.
+  const simulated = time === null ? null : stagedState.physicsSampler?.sample(Math.min(time, stagedState.physicsSampler.duration));
   const graph = stagedState.poseGraph ?? stagedState.graph;
   if (stagedState.poseGraph) {
     for (const node of stagedState.recipe.nodes) {
       const patch = sampled?.nodes.get(node.id);
-      const translation = patch?.translation ?? node.translation;
-      const rotation = patch?.rotation ?? node.rotation;
+      const bodyPatch = simulated?.get(node.id);
+      const translation = bodyPatch?.translation ?? patch?.translation ?? node.translation;
+      const rotation = bodyPatch?.rotation ?? patch?.rotation ?? node.rotation;
       const scale = patch?.scale ?? node.scale;
       if (Array.from(scale).some(component => !Number.isFinite(Math.fround(component)) || Math.fround(component) <= 0)) {
         throw new RangeError('Motion scale must remain positive at Float32 precision.');
@@ -694,6 +703,7 @@ export function createAgentScene(input, inputLimits = {}) {
   let state = null;
   let revision = 0;
   let topologyRevision = 0;
+  let physicsBake = null;
   const checkpoints = new Map();
 
   function ownedGeometryRecords() {
@@ -801,9 +811,25 @@ export function createAgentScene(input, inputLimits = {}) {
     };
     stagedState.localBounds = localBounds;
     stagedState.motionSampler = compileAgentMotion(recipe.motion ?? null, recipe);
-    stagedState.poseGraph = stagedState.motionSampler ? compile(recipe, geometries, localBounds, limits) : null;
-    stagedState.initialPose = stagePose(stagedState, stagedState.motionSampler ? 0 : null);
+    stagedState.physicsSampler = stagePhysics(recipe, geometryRecords);
+    const animated = Boolean(stagedState.motionSampler || stagedState.physicsSampler);
+    stagedState.poseGraph = animated ? compile(recipe, geometries, localBounds, limits) : null;
+    stagedState.initialPose = stagePose(stagedState, animated ? 0 : null);
     return stagedState;
+  }
+
+  // A bake costs a solver run, so an unchanged section on unchanged geometry reuses the last one.
+  function stagePhysics(recipe, geometryRecords) {
+    if (!recipe.physics) {
+      return null;
+    }
+    const bodyNodes = recipe.nodes.filter(node => recipe.physics.bodies.some(body => body.node === node.id));
+    const key = JSON.stringify([recipe.physics, bodyNodes, bodyNodes.map(node => geometryRecords.get(node.geometry).signature)]);
+    if (physicsBake?.key !== key) {
+      const geometries = new Map([...geometryRecords].map(([id, record]) => [id, record.geometry]));
+      physicsBake = { key, sampler: bakeAgentPhysics(recipe.physics, recipe, geometries) };
+    }
+    return physicsBake.sampler;
   }
 
   function commit(stagedState, incrementRevision) {
@@ -848,8 +874,8 @@ export function createAgentScene(input, inputLimits = {}) {
       if (time !== null && (!Number.isFinite(time) || time < 0 || time > 3600)) {
         throw new RangeError('Motion time must be null or within zero and 3600 seconds.');
       }
-      if (time !== null && !state.motionSampler) {
-        throw new RangeError('This procedural recipe has no motion.');
+      if (time !== null && !state.motionSampler && !state.physicsSampler) {
+        throw new RangeError('This procedural recipe has no motion or physics.');
       }
       publishPose(state, stagePose(state, time));
       return state.motionTime;
@@ -882,6 +908,14 @@ export function createAgentScene(input, inputLimits = {}) {
             throw new TypeError('set-motion requires motion; use null to clear it.');
           }
           candidate.motion = operation.motion;
+          continue;
+        }
+        if (operation.type === 'set-physics') {
+          knownKeys(operation, ['type', 'physics'], 'operation');
+          if (!Object.hasOwn(operation, 'physics')) {
+            throw new TypeError('set-physics requires physics; use null to clear it.');
+          }
+          candidate.physics = operation.physics;
           continue;
         }
         const lookField = Object.hasOwn(LOOK_OPERATION_FIELDS, operation.type) ? LOOK_OPERATION_FIELDS[operation.type] : null;
@@ -1042,6 +1076,7 @@ export function createAgentScene(input, inputLimits = {}) {
         revision, topologyRevision,
         ...(state.recipe.motion?.ik?.length ? { motionIk: compileAgentMotion(state.recipe.motion, state.recipe).sweepIk() } : {}),
         motion: state.recipe.motion ? { duration: state.recipe.motion.duration, loop: state.recipe.motion.loop, tracks: state.recipe.motion.tracks.length, time: state.motionTime } : null,
+        physics: state.physicsSampler ? state.physicsSampler.report() : null,
         boundsSpace: 'authored-base-world',
         counts: {
           nodes: state.recipe.nodes.length, parts: state.parts.length,

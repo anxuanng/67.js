@@ -2,7 +2,7 @@ import { createServer } from 'node:http';
 import { createHash, randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { lstat, mkdir, readFile, unlink, writeFile } from 'node:fs/promises';
-import { isAbsolute, join } from 'node:path';
+import { dirname, isAbsolute, join } from 'node:path';
 import { createRequire } from 'node:module';
 import packageMetadata from '../package.json' with { type: 'json' };
 import { AGENT_SCENE_CAPABILITIES, AGENT_SCENE_DEFAULT_LIMITS } from '../src/agent-scene-capabilities.js';
@@ -21,9 +21,11 @@ const EVALUATION_TIMEOUT_MS = 30000;
 const html = '<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;height:100%;background:#182126}canvas{display:block;width:100vw;height:100vh}</style></head><body><canvas></canvas><script type="module" src="/preview.js"></script></body></html>';
 
 /** Local, serialized browser preview. No browser is launched until scene creation. */
-const MANIFOLD_FILES = Object.freeze({
-  '/vendor/manifold.js': { file: 'manifold.js', type: 'application/javascript; charset=utf-8' },
-  '/vendor/manifold.wasm': { file: 'manifold.wasm', type: 'application/wasm' },
+// Optional peer dependencies the page loads from the host's node_modules. Rapier ships its WASM inside rapier.mjs.
+const VENDOR_FILES = Object.freeze({
+  '/vendor/manifold.js': { resolve: require => require.resolve('manifold-3d/manifold.js'), type: 'application/javascript; charset=utf-8' },
+  '/vendor/manifold.wasm': { resolve: require => require.resolve('manifold-3d/manifold.wasm'), type: 'application/wasm' },
+  '/vendor/rapier.js': { resolve: require => join(dirname(require.resolve('@dimforge/rapier3d-compat')), 'rapier.mjs'), type: 'application/javascript; charset=utf-8' },
 });
 
 export function createAgentRuntime({ backend = 'gpu', browser: browserPath, memory = 192, assets: assetRoot,
@@ -129,12 +131,12 @@ export function createAgentRuntime({ backend = 'gpu', browser: browserPath, memo
     }
   }
 
-  // Mesh booleans load Manifold, an optional peer dependency, from the host's node_modules. Without it the page gets
-  // a 404 and the boolean edit reports the install command.
-  function serveManifoldFile({ file, type }, response) {
+  // Mesh booleans load Manifold and recipe physics loads Rapier, both optional peer dependencies, from the host's
+  // node_modules. Without one the page gets a 404 and the edit reports the install command.
+  function serveVendorFile({ resolve, type }, response) {
     let path;
     try {
-      path = createRequire(import.meta.url).resolve(`manifold-3d/${file}`);
+      path = resolve(createRequire(import.meta.url));
     } catch {
       response.writeHead(404);
       response.end();
@@ -167,9 +169,9 @@ export function createAgentRuntime({ backend = 'gpu', browser: browserPath, memo
         }
         response.setHeader('Cache-Control', 'no-store');
         response.setHeader('Content-Security-Policy', "default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; style-src 'unsafe-inline'; img-src data: blob:; connect-src 'self' blob:");
-        const vendor = request.method === 'GET' ? MANIFOLD_FILES[request.url] : undefined;
+        const vendor = request.method === 'GET' ? VENDOR_FILES[request.url] : undefined;
         if (vendor) {
-          serveManifoldFile(vendor, response);
+          serveVendorFile(vendor, response);
           return;
         }
         if (request.method !== 'GET' || !['/', '/preview.js'].includes(request.url)) {

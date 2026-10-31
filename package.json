@@ -123,6 +123,7 @@
     "smoke:agent-assets": "node scripts/smoke-agent-assets.mjs",
     "smoke:agent-render-jobs": "node scripts/smoke-agent-render-jobs.mjs",
     "smoke:agent-motion": "node scripts/smoke-agent-motion.mjs",
+    "smoke:agent-physics": "node scripts/smoke-agent-physics.mjs",
     "smoke:frame-encoder": "node scripts/smoke-frame-encoder.mjs",
     "smoke:enhancements": "node scripts/smoke-enhancements.mjs",
     "smoke:site": "node scripts/smoke-site.mjs",
