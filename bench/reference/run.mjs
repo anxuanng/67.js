@@ -1,5 +1,7 @@
 // Renders the reference scenes in 67.js and Blender, then scores them: npm run reference
 // --ambient-occlusion <strength> [--ambient-occlusion-radius <units>] turns occlusion on (off by default).
+// --bake [<id>,<id>] bakes bounced light into the named scenes (every scene when no ids follow) before 67.js draws them;
+// Blender still gets the plain scene.
 // Use --score-only to score existing renders, --skip-blender to keep them, and --scene <id> for one scene.
 import { spawnSync } from 'node:child_process';
 import { mkdir, writeFile } from 'node:fs/promises';
@@ -30,6 +32,9 @@ const occlusionFlag = argumentsGiven.indexOf('--ambient-occlusion');
 const ambientOcclusion = occlusionFlag >= 0 ? Number(argumentsGiven[occlusionFlag + 1]) : 0;
 const radiusFlag = argumentsGiven.indexOf('--ambient-occlusion-radius');
 const ambientOcclusionRadius = radiusFlag >= 0 ? Number(argumentsGiven[radiusFlag + 1]) : 0.5;
+const bakeFlag = argumentsGiven.indexOf('--bake');
+const bakeValue = bakeFlag >= 0 ? argumentsGiven[bakeFlag + 1] : undefined;
+const bakedSceneIds = bakeFlag >= 0 && bakeValue && !bakeValue.startsWith('--') ? bakeValue.split(',') : null;
 const onlyScene = sceneFlag >= 0 ? argumentsGiven[sceneFlag + 1] : null;
 
 async function renderBackend(backend, serverUrl, graphics) {
@@ -45,12 +50,14 @@ async function renderBackend(backend, serverUrl, graphics) {
       if (onlyScene && id !== onlyScene) continue;
       const started = performance.now();
       const describe = backend === 'gpu';
-      const result = await page.evaluate(([sceneId, shouldDescribe, ambientOcclusion, ambientOcclusionRadius]) => window.renderReferenceScene(sceneId, { describe: shouldDescribe, ambientOcclusion, ambientOcclusionRadius }), [id, describe, ambientOcclusion, ambientOcclusionRadius]);
+      const bake = bakeFlag >= 0 && (bakedSceneIds === null || bakedSceneIds.includes(id)) ? {} : null;
+      const result = await page.evaluate(([sceneId, shouldDescribe, ambientOcclusion, ambientOcclusionRadius, bakeOptions]) => window.renderReferenceScene(sceneId, { describe: shouldDescribe, ambientOcclusion, ambientOcclusionRadius, bake: bakeOptions }), [id, describe, ambientOcclusion, ambientOcclusionRadius, bake]);
       if (result.glError !== 0) throw new Error(`${id} on ${backend} gave WebGL error ${result.glError}.`);
       graphics[backend] = result.graphics;
       await writeFile(`${WORK_DIRECTORY}/${id}-${backend}.png`, Buffer.from(result.image, 'base64'));
       if (describe) await writeFile(`${WORK_DIRECTORY}/scenes/${id}.json`, JSON.stringify(result.description));
-      console.log(`${id} on ${backend}: ${Math.round(performance.now() - started)} ms`);
+      const bakeNote = result.bake ? `, bake ${result.bake.seconds.toFixed(1)} s, ${result.bake.report.texels} texels` : '';
+      console.log(`${id} on ${backend}: ${Math.round(performance.now() - started)} ms${bakeNote}`);
     }
     if (errors.length) throw new Error(errors.join('\n'));
   } finally {

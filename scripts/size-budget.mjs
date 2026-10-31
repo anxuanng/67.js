@@ -44,3 +44,24 @@ export function formatRows(rows) {
   ].join(''));
   return [header, ...lines].join('\n');
 }
+
+// esbuild marks every dynamically imported module as an entry point too, so the first output with an entryPoint can be
+// a lazy chunk. The bundle a page starts with is the one built from the stdin entry.
+const STDIN_ENTRY = '<stdin>';
+
+// Returns the output paths a page loads at start: the entry chunk and every chunk it reaches by static import.
+export function initialOutputPaths(metafile) {
+  const entryPath = Object.keys(metafile.outputs).find(path => metafile.outputs[path].entryPoint === STDIN_ENTRY);
+  if (!entryPath) throw new Error('The size measure found no stdin entry in the esbuild metafile.');
+  const reached = new Set();
+  const pending = [entryPath];
+  while (pending.length) {
+    const path = pending.pop();
+    if (reached.has(path)) continue;
+    reached.add(path);
+    for (const imported of metafile.outputs[path].imports) {
+      if (imported.kind === 'import-statement') pending.push(imported.path);
+    }
+  }
+  return reached;
+}

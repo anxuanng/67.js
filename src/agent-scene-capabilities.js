@@ -95,7 +95,7 @@ export const AGENT_SCENE_CAPABILITIES = Object.freeze({
   operations: Object.freeze([
     'set-node', 'set-material', 'set-camera', 'add-node', 'remove-node',
     'add-geometry', 'remove-geometry', 'add-material', 'remove-material',
-    'set-environment', 'set-effects', 'set-shadow', 'set-motion', 'set-armatures', 'set-physics', 'set-cloth', 'set-timeline', 'edit-mesh', 'set-mesh-stack',
+    'set-environment', 'set-effects', 'set-shadow', 'set-motion', 'set-armatures', 'set-physics', 'set-cloth', 'set-timeline', 'set-particles', 'edit-mesh', 'set-mesh-stack',
   ]),
   materialTags: Object.freeze(['surface', 'unlit', 'liquid', 'foam']),
   alphaModes: RECIPE_ALPHA_MODES,
@@ -163,6 +163,14 @@ export const AGENT_SCENE_CAPABILITIES = Object.freeze({
     defaults: Object.freeze({ stiffness: 0.9, bend: 0.1, density: 0.2, damping: 0.3, friction: 0.3, thickness: 0.01, colliderShape: 'box' }),
     notes: 'density kg/m2, damping 1/s, thickness m, wind m/s steady. Pin edges are of the local bounds. Colliders are fixed ball or box fits to geometry bounds. No self collision, no soft bodies. Sheets and colliders are root nodes with no motion track or physics body.',
     limits: Object.freeze({ maxSheets: 8, maxColliders: 16, maxDuration: 10, maxParticles: 5000, framesPerSecond: 60, substeps: 4, iterations: 8 }),
+  }),
+  // Recipe particles: closed-form from seeded launch values, so any time is computed directly and a seek never replays.
+  particles: Object.freeze({
+    emitter: 'System node keeps its geometry as the particle shape (keep it low-poly); node transform does not move particles. Fields (defaults): node, seed (1), count (100), rate (per second; omit for a burst at 0), lifetime, speed, size (each number or [min, max]; 1, 1, 0.05), direction ([0,1,0]), spread (cone degrees, 30), emitter { shape point|box|sphere|disc, position, halfExtents, radius }, scale constant|shrink|grow, drag (1/s, 0), floor (world y where particles land and rest).',
+    hair: 'type hair grows strands from a read-only root surface node into node (its own geometry is ignored). Fields (defaults): surface, seed, count, length (m, number or [min, max], 0.1), segments (1-8, 4), width (m, 0.004), droop (0.5), lean (0.2), sway (tip travel m, off), swayRate (Hz, 0.5). Triangular tapering tubes, no UVs.',
+    sectionFields: 'systems, gravity ([0,-9.81,0]), wind (m/s; moves emitter particles only with drag > 0, and sets the hair sway direction)',
+    notes: 'A particle is a pure function of seed, index and time; raising count keeps earlier ones. No collision but the floor, no bounce, rotation, colour or alpha; no hair collision, combing or clumping. Report: maxAlive and endsAt per system.',
+    limits: Object.freeze({ maxSystems: 4, maxParticlesPerSystem: 2000, maxParticles: 4000, maxVertices: 100000, maxLifetime: 60 }),
   }),
   motionLimits: Object.freeze({ maxTracks: 128, maxKeyframesPerTrack: 64, maxKeyframes: 2048, maxDuration: 30 }),
 });

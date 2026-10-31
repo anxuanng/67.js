@@ -5,7 +5,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { relative, resolve } from 'node:path';
 import { brotliCompressSync, gzipSync } from 'node:zlib';
 import { build } from 'esbuild';
-import { budgetsFrom, compareToBudgets, formatRows } from './size-budget.mjs';
+import { budgetsFrom, compareToBudgets, formatRows, initialOutputPaths } from './size-budget.mjs';
 
 const BUDGETS_PATH = 'bench/size/budgets.json';
 const BASELINE_PATH = 'bench/size/baseline.json';
@@ -59,17 +59,7 @@ function gzipSize(contents) {
 // statically; the rest loads when a feature asks for it. Both are reported so lazy code never hides.
 function chunkSizes(result) {
   const outputsByPath = new Map(result.outputFiles.map(file => [relative(process.cwd(), file.path).replaceAll('\\', '/'), file]));
-  const entryPath = Object.keys(result.metafile.outputs).find(path => result.metafile.outputs[path].entryPoint);
-  const initialPaths = new Set();
-  const pending = [entryPath];
-  while (pending.length) {
-    const path = pending.pop();
-    if (initialPaths.has(path)) continue;
-    initialPaths.add(path);
-    for (const imported of result.metafile.outputs[path].imports) {
-      if (imported.kind === 'import-statement') pending.push(imported.path);
-    }
-  }
+  const initialPaths = initialOutputPaths(result.metafile);
   const sizeOf = paths => {
     const parts = [...paths].map(path => outputsByPath.get(path).contents);
     const bytes = Buffer.concat(parts);

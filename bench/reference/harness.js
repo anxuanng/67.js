@@ -70,10 +70,20 @@ function describeScene(id, scene) {
   };
 }
 
-async function renderReferenceScene(id, { describe, ambientOcclusion = 0, ambientOcclusionRadius = 0.5 }) {
+// Blender always gets the original parts: the bake is 67.js's approximation of what Cycles computes.
+async function bakeScene(scene, bakeOptions) {
+  const { bakeLightmaps } = await import('/src/light-bake.js');
+  const { pointLights, keyColor, lightDirection } = scene.environment;
+  const started = performance.now();
+  const baked = bakeLightmaps(scene.parts, { pointLights, keyColor, lightDirection }, bakeOptions);
+  return { parts: baked.parts, report: baked.report, seconds: (performance.now() - started) / 1000 };
+}
+
+async function renderReferenceScene(id, { describe, ambientOcclusion = 0, ambientOcclusionRadius = 0.5, bake = null }) {
   const scene = await REFERENCE_SCENES[id]();
+  const baked = bake ? await bakeScene(scene, bake) : null;
   const canvas = document.querySelector('canvas');
-  const renderer = new Renderer67(canvas, scene.parts, {
+  const renderer = new Renderer67(canvas, baked ? baked.parts : scene.parts, {
     ground: false, hdr: true, depth: true, samples: 4, pixelRatio: 1, memoryBudgetMiB: 1024, world: true,
     environment: scene.environment, shadowBounds: scene.shadow,
   });
@@ -87,6 +97,7 @@ async function renderReferenceScene(id, { describe, ambientOcclusion = 0, ambien
     glError: renderer.context.getError(),
     graphics: renderer.context.getParameter(debug ? debug.UNMASKED_RENDERER_WEBGL : renderer.context.RENDERER),
     description: describe ? describeScene(id, scene) : null,
+    bake: baked ? { seconds: baked.seconds, report: baked.report } : null,
   };
   renderer.dispose();
   return result;

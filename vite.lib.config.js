@@ -34,6 +34,7 @@ export default defineConfig({
         terrain: 'src/terrain.js',
         grass: 'src/grass.js',
         clutter: 'src/clutter.js',
+        'light-bake': 'src/light-bake.js',
         'texture-set': 'src/texture-set.js',
         'agent-scene': 'src/agent-scene.js',
         'agent-asset': 'src/agent-asset.js',
