@@ -119,6 +119,7 @@ Selection rules:
 | `{ "and": [...] }`, `{ "or": [...] }`, `{ "not": rule }` | combinations |
 | `{ "grow": rule, "steps": 1 }` | the selection plus faces sharing an edge, repeated |
 | `{ "boundary": rule }` | selected faces that touch an unselected face or an open edge |
+| `{ "field": expression }` | faces where a [field expression](#field-expressions) is not 0 |
 
 Edits (names follow Blender's `bmesh.ops` where they match):
 
@@ -196,7 +197,7 @@ These three (and `bevel`, below) work as edits and as stack nodes:
 
 ### Modifier stack
 
-A recipe mesh may carry `stack`, a list of `mirror`, `array`, `solidify`, `bevel`, `subdivide` and `uv_unwrap` nodes (up to 16) evaluated after the
+A recipe mesh may carry `stack`, a list of `mirror`, `array`, `solidify`, `bevel`, `subdivide`, `uv_unwrap`, `set_position` and `displace` nodes (up to 16) evaluated after the
 edits without changing them, as Blender's modifier stack. Every prefix (the edit result, then each node) is cached
 by its recipe text in a least-recently-used cache bounded at 64 entries and 64 MiB, so changing a late node reuses
 the earlier work. Results list one entry per node with `cached: true` when reused. `meshCacheStats()` reports hits
@@ -204,6 +205,51 @@ and misses. `evaluateMeshStack(mesh, stack, { cache, cacheKey })` runs a stack o
 
 The `mesh_stack` tool sets the whole stack in one revision. `apply: n` moves the first `n` nodes into the edit log,
 as Blender's Apply modifier, which leaves the result unchanged.
+
+### Field expressions
+
+A field expression is plain JSON that computes one number, or one vector, for each point or face of a mesh. It is
+data and never code: `src/mesh-fields.js` reads it against a fixed table of operators, compiles it once into
+closures over typed arrays, and checks the limits before it evaluates anything. No string is executed, and no input
+string is used as a property name, so a recipe written by an agent that follows injected instructions cannot run code
+or reach `__proto__` or `constructor`. The same expression gives the same bytes on every run.
+
+```json
+{ "mul": [{ "attr": "position", "component": "y" }, 0.5] }
+{ "noise": { "scale": 3, "seed": 7, "octaves": 2 } }
+{ "gt": [{ "dot": [{ "attr": "normal" }, [0, 1, 0]] }, 0.9] }
+```
+
+A number is a constant, `true` and `false` are 1 and 0, and an array of three numbers is a constant vector.
+Operators that take numbers also take vectors and work on each component; a number spreads to all three.
+
+| Group | Operators |
+| --- | --- |
+| Math | `add` `mul` `min` `max` (2 to 8 operands), `sub` `div` `mod` `pow`, `clamp` `mix` `smoothstep` (3), `neg` `abs` `sqrt` `sin` `cos` `floor` `ceil` `round` `fract` `sign` (1). `div` and `mod` by 0 give 0. |
+| Comparison and logic | `lt` `lte` `gt` `gte` `eq` give 1 or 0; `and` `or` `not`; `if: [condition, a, b]` |
+| Vectors | `vec: [x, y, z]`, `dot` `cross` `distance`, `length` `normalize`, `x` `y` `z` read a component |
+| Attributes | `{ "attr": "position" \| "normal" }` with optional `component`, `{ "attr": "index" }`, `{ "attr": "tag", "name": "top" }` |
+| Random | `{ "noise": { "scale", "seed", "octaves", "at" } }` smooth value noise in 0 to 1 at a position (default the element's), `{ "random": { "seed" } }` a number in 0 to 1 per element |
+
+Limits, checked before evaluation: 64 nodes, depth 12, 250,000 elements, and 8,000,000 node-evaluations (nodes times
+elements). Numbers stay within 1e6, noise scale within 1000 and octaves within 4. An expression over faces reads a
+point attribute as the face centre or the face normal, and over points reads a tag as the mean of the faces around
+the point.
+
+Uses:
+
+- `{ "field": expression }` is a selection rule for any face edit: the faces where the expression is not 0.
+- `set_position` (`select`, `position`, `offset`) is Blender's Set Position. `position` and `offset` are vector
+  expressions evaluated on the input positions, so vertex order never matters. It moves the vertices of the selected faces.
+- `displace` (`select`, `field`, `strength`, `midlevel`, `direction`) is Blender's Displace modifier with a field as
+  the texture: each vertex moves by `(field - midlevel) * strength` along `normal` (default), `x`, `y` or `z`.
+- Both are also stack nodes, so a late change reuses the cached earlier nodes.
+- `instances` on a recipe node repeats its geometry at points; see [agent-scene.md](agent-scene.md#instances-on-points).
+
+Blender comparison: `tests/blender-golden.test.js` runs `set_position` against a Geometry Nodes Set Position node
+and `displace` against the Displace modifier, with a constant and with a Blend texture, and the vertex positions
+match within 1e-3. `noise` has no direct match, because Blender's noise texture is a different function; the fields
+in those cases use only arithmetic and position.
 
 ### Bevel
 

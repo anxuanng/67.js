@@ -129,6 +129,31 @@ def add_vertex_colors(material, principled, description):
     links.new(multiply.outputs["Color"], principled.inputs["Base Color"])
 
 
+def add_material_layers(material, principled, description):
+    """Maps the 67.js material layers onto the Principled BSDF inputs of the same meaning."""
+    principled.inputs["Coat Weight"].default_value = description.get("clearcoat", 0)
+    principled.inputs["Coat Roughness"].default_value = description.get("clearcoatRoughness", 0)
+    principled.inputs["Transmission Weight"].default_value = description.get("transmission", principled.inputs["Transmission Weight"].default_value)
+    principled.inputs["IOR"].default_value = description.get("ior", principled.inputs["IOR"].default_value)
+    sheen_color = description.get("sheenColor", [0, 0, 0])
+    if any(sheen_color):
+        principled.inputs["Sheen Weight"].default_value = 1
+        set_linear_color(principled.inputs["Sheen Tint"], sheen_color)
+        principled.inputs["Sheen Roughness"].default_value = description.get("sheenRoughness", 0)
+    # Blender's specular level 0.5 is the 4 percent reflectance that 67.js calls specular 1.
+    principled.inputs["Specular IOR Level"].default_value = 0.5 * description.get("specular", 1)
+    set_linear_color(principled.inputs["Specular Tint"], description.get("specularColor", [1, 1, 1]))
+    attenuation_distance = description.get("attenuationDistance")
+    if attenuation_distance:
+        absorption = material.node_tree.nodes.new("ShaderNodeVolumeAbsorption")
+        attenuation_color = description.get("attenuationColor", [1, 1, 1])
+        set_linear_color(absorption.inputs["Color"], attenuation_color)
+        # Beer-Lambert: the colour is what attenuationDistance metres let through.
+        mean_log = sum(math.log(max(channel, 0.001)) for channel in attenuation_color) / 3
+        absorption.inputs["Density"].default_value = -mean_log / attenuation_distance
+        material.node_tree.links.new(absorption.outputs["Volume"], material.node_tree.nodes["Material Output"].inputs["Volume"])
+
+
 def build_material(name, description, has_vertex_colors):
     material = bpy.data.materials.new(name)
     material.use_nodes = True
@@ -139,6 +164,7 @@ def build_material(name, description, has_vertex_colors):
     if description.get("tag") == "liquid":
         principled.inputs["Transmission Weight"].default_value = 1
         principled.inputs["IOR"].default_value = description["liquid"]["ior"]
+    add_material_layers(material, principled, description)
     if "map" in description:
         add_texture(material, principled, description, has_vertex_colors)
     elif has_vertex_colors:

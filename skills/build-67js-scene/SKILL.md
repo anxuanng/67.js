@@ -38,6 +38,7 @@ Use `simplify-code` and `engineering-workflows` for implementation.
 - Agent scene recipes use optional `src/agent-scene.js` and `docs/agent-scene.md`. Verify source versus published availability before importing.
 - Polygon modeling by an agent (extrude, inset, loop cut, bevel, booleans, mirror, array, solidify) uses the recipe `mesh` geometry and the MCP tools `mesh_inspect`, `mesh_edit` and `mesh_stack`. Read [mesh-modeling.md](references/mesh-modeling.md) before the first edit; check that the checkout's `docs/mesh.md` exists, since it is unreleased after npm 0.10.0.
 - A surface look in a recipe (wood, planks, bricks, tiles, marble, stone, concrete, metal, rust, fabric) uses the material `pattern` field, which needs no UVs. See "Material patterns" in the checkout's `docs/agent-scene.md`.
+- Glass, water, gems, car paint and cloth in a recipe use the material layer fields `transmission` (with `thickness` and `ior`), `clearcoat`, `sheenColor` and `specular`. A transmissive material needs a nonzero `thickness` to bend the view behind it, and does not show blended surfaces. Ranges and limits are in "Material layers" in the checkout's `docs/material-maps.md`.
 - Layered skeletal animation in code (a clip on some joints only, additive clips, foot planting, reaching, looking at a point) uses `createAssetPose` from `src/skeleton-pose.js` and the checkout's `docs/skeleton-pose.md`. Clip layers are not available through MCP.
 - Jointed motion (an arm reaching, a lamp or head tracking a point) on a recipe or an imported character uses `motion.ik`, which needs no quaternions: on a recipe parent the joint nodes and put sizes on child mesh nodes, on an asset find `node-N` IDs with `scene_inspect` kind hierarchy and aim with `worldForward`. Read `motionIk` from `scene_inspect`. See "Inverse kinematics" in the checkout's `docs/agent-motion.md`.
 - Agent tool calls use the installed `67js-mcp` stdio server from release `0.5.0` onward. Read `docs/mcp.md` for launch and PNG feedback.
@@ -47,6 +48,7 @@ Use `simplify-code` and `engineering-workflows` for implementation.
 - Agent imported character motion uses `docs/agent-character-motion.md` from release `0.8.0`. Inspect source joints before authoring local tracks.
 - Agent comparisons use `scene_review` from release `0.9.0`. Read `docs/agent-review.md` for isolated views and independent pose samples.
 - An image or video export uses `render-67js-media`.
+- A GLB for Blender or another tool uses `scene_export_glb` (needs `--jobs`): it returns a file path under the jobs folder, takes no path of its own. Plain call for the current pose with textures, skins and IK; `motionTime` to pose authored motion first; `clip` on an unposed imported asset for its source animation. See `docs/export-glb.md`.
 
 Read [scene-contract.md](references/scene-contract.md) before creating parts or changing materials.
 

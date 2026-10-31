@@ -1,4 +1,5 @@
 import { validateMorphGeometry, validateMorphPose } from './morph.js';
+import { gltfExtensionsFromLayers } from './gltf-layers.js';
 import { validateSkinGeometry } from './skinning.js';
 import { boxProjectedGeometry } from './export-box-uv.js';
 import { createTextureWriter } from './export-textures.js';
@@ -150,9 +151,14 @@ function writeMaterial(writer, textureWriter, material) {
     emissiveFactor: (material.emission ?? 0) === 0 ? [0, 0, 0] : Array.from(material.emissiveColor ?? material.color),
   };
   writeAlphaFields(gltfMaterial, material);
+  const layerExtensions = gltfExtensionsFromLayers(material);
+  if (Object.keys(layerExtensions).length > 0) {
+    gltfMaterial.extensions = layerExtensions;
+    for (const extensionName of Object.keys(layerExtensions)) writer.addExtension(extensionName);
+  }
   const strength = material.emission ?? 0;
   if (strength !== 0 && strength !== 1) {
-    gltfMaterial.extensions = { [EMISSIVE_STRENGTH]: { emissiveStrength: strength } };
+    gltfMaterial.extensions = { ...gltfMaterial.extensions, [EMISSIVE_STRENGTH]: { emissiveStrength: strength } };
     writer.addExtension(EMISSIVE_STRENGTH, { required: true });
   }
   const textureOf = channel => ({ index: textureWriter.textureIndex(material[channel], channel) });

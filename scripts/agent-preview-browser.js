@@ -5,6 +5,9 @@ import { mat4 } from 'gl-matrix';
 import { resolveAgentShadow } from '../src/agent-look.js';
 import { createAgentAssetScene } from '../src/agent-asset.js';
 import { parseGltf } from '../src/gltf.js';
+import { exportGlb } from '../src/export.js';
+import { weightTracksFromGltfAnimation } from '../src/export-skeleton.js';
+import { clipFromGltfAnimation } from '../src/skeleton-pose.js';
 
 let active = null;
 let canvas = document.querySelector('canvas');
@@ -198,6 +201,61 @@ function afterMeshBooleans(value, run) {
   if (!physicsEngineLoaded() && needsPhysics(value)) loads.push(loadPhysicsEngine());
   if (!loads.length) return run();
   return Promise.all(loads).then(run);
+}
+
+function seekForExport(record, motionTime) {
+  if (record.asset) record.scene.sampleFrame({ motionTime });
+  else record.scene.sampleMotion(motionTime);
+}
+
+// The scene's parts already carry the current pose, including IK and node overrides, so skinned parts export it as is.
+function posedExport(record) {
+  return { parts: record.scene.parts.map(withoutRoundoffShear), options: {} };
+}
+
+// Chains of bone transforms leave world matrices with Float32 roundoff that the exporter reads as shear. Real shear
+// (dot products above the tolerance) still reaches the exporter and fails there.
+const ROUNDOFF_SHEAR_LIMIT = 1e-3;
+
+function withoutRoundoffShear(part) {
+  if (part.skin) return part;
+  const columns = [0, 4, 8].map(offset => {
+    const column = [part.matrix[offset], part.matrix[offset + 1], part.matrix[offset + 2]];
+    const length = Math.hypot(...column);
+    return length === 0 ? column : column.map(value => value / length);
+  });
+  const dots = [[0, 1], [0, 2], [1, 2]].map(([first, second]) => Math.abs(columns[first].reduce((sum, value, axis) => sum + value * columns[second][axis], 0)));
+  if (Math.max(...dots) > ROUNDOFF_SHEAR_LIMIT) return part;
+  const scale = mat4.getScaling([0, 0, 0], part.matrix);
+  const rotation = mat4.getRotation([0, 0, 0, 1], part.matrix);
+  const translation = mat4.getTranslation([0, 0, 0], part.matrix);
+  return { ...part, matrix: mat4.fromRotationTranslationScale(mat4.create(), rotation, translation, scale) };
+}
+
+// A source clip animates the source skeleton, so the scene must not carry a pose of its own that the clip would fight.
+function clipExport(record, clipIndex) {
+  const { asset, scene } = record;
+  if (!asset) throw new Error('clip needs an imported asset scene. Recipe scenes export their current pose.');
+  const animation = asset.animations[clipIndex];
+  if (!animation) throw new RangeError(`clip ${clipIndex} does not exist. The asset has ${asset.animations.length} clips.`);
+  const recipe = scene.exportRecipe();
+  if (recipe.animation || recipe.nodeOverrides.length || recipe.motion) {
+    throw new Error('Exporting a clip needs the unposed asset: remove animation, node overrides and motion first, or export without clip for the current pose.');
+  }
+  const sourceClip = clipFromGltfAnimation(animation);
+  const name = String(animation.name || `clip ${clipIndex}`);
+  const clip = { ...sourceClip, name, tracks: [...sourceClip.tracks, ...weightTracksFromGltfAnimation(animation)] };
+  return { parts: [...asset.parts], options: { nodes: asset.nodes, clips: [clip] } };
+}
+
+function bytesToBase64(bytes) {
+  if (typeof bytes.toBase64 === 'function') return bytes.toBase64();
+  const chunkSize = 0x8000;
+  let binary = '';
+  for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + chunkSize));
+  }
+  return btoa(binary);
 }
 
 window.__agentPreview = {
@@ -407,6 +465,17 @@ window.__agentPreview = {
   exportRecipe({ sessionId }) {
     const record = requireSession(sessionId);
     return { sessionId, revision: record.scene.revision, recipe: record.scene.exportRecipe() };
+  },
+  exportGlb({ sessionId, clip, motionTime, maxTextureSize, maximumBytes }) {
+    const record = requireSession(sessionId);
+    if (motionTime !== undefined) seekForExport(record, motionTime);
+    const { parts, options } = clip === undefined ? posedExport(record) : clipExport(record, clip);
+    const binary = exportGlb(parts, { ...options, ...(maxTextureSize === undefined ? {} : { maxTextureSize }) });
+    if (binary.byteLength > maximumBytes) {
+      throw new RangeError(`The GLB is ${binary.byteLength} bytes, above the ${maximumBytes} byte limit. Lower maxTextureSize or simplify the scene.`);
+    }
+    return { sessionId, revision: record.scene.revision, bytes: binary.byteLength,
+      parts: parts.length, clips: options.clips?.length ?? 0, data: bytesToBase64(new Uint8Array(binary)) };
   },
   dispose({ sessionId }) {
     const record = requireSession(sessionId);

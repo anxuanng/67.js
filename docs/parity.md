@@ -79,7 +79,7 @@ To move to a new Blender release, run `node scripts/parity-manual-snapshot.mjs`.
 | Modeling > Modifiers > Generate > Mirror Modifier | done | Stack node with axis and merge. | [mesh-stack](../tests/mesh-stack.test.js), [Blender results](../tests/fixtures/blender/golden.json) | |
 | Modeling > Modifiers > Generate > Multiresolution Modifier | missing | No multiresolution. | | |
 | Modeling > Modifiers > Generate > Remesh Modifier | missing | No remesh. | | #40 |
-| Modeling > Modifiers > Generate > Scatter on Surface Modifier | partial | `addons/clutter` and `addons/grass` scatter in code. Recipes have no scatter node. | | #42 |
+| Modeling > Modifiers > Generate > Scatter on Surface Modifier | partial | `instances` with a `surface` source scatters a node at seeded, area-weighted points with yaw, scale and normal alignment, and `where` filters them. No minimum distance or density map, and `addons/clutter` and `addons/grass` still scatter in code. | [src/mesh-instances.js](../src/mesh-instances.js), [tests/mesh-fields.test.js](../tests/mesh-fields.test.js) | #42 |
 | Modeling > Modifiers > Generate > Screw Modifier | partial | `lathe` covers a full turn. There is no stack node or screw offset. | | #42 |
 | Modeling > Modifiers > Generate > Skin Modifier | missing | No equivalent. | | #42 |
 | Modeling > Modifiers > Generate > Solidify Modifier | done | Stack node with thickness, offset and even thickness. | [mesh-stack](../tests/mesh-stack.test.js), [Blender results](../tests/fixtures/blender/golden.json) | |
@@ -91,7 +91,7 @@ To move to a new Blender release, run `node scripts/parity-manual-snapshot.mjs`.
 | Modeling > Modifiers > Deform > Armature Modifier | partial | GPU skinning for imported rigs. Recipes can not bind a mesh. | [skinning](../tests/skinning.test.js) | #46 |
 | Modeling > Modifiers > Deform > Cast Modifier | missing | No equivalent. | | #42 |
 | Modeling > Modifiers > Deform > Curve Modifier | missing | No equivalent. | | #42 |
-| Modeling > Modifiers > Deform > Displace Modifier | missing | No stack node. `addons/sculpt` displaces in code. | | #42 |
+| Modeling > Modifiers > Deform > Displace Modifier | done | `displace` edit and stack node with a field as the texture, along the normal or an axis, with strength, midlevel and a face selection. Positions match Blender with a constant and with a Blend texture. | [src/mesh-field-edits.js](../src/mesh-field-edits.js), [tests/blender-golden.test.js](../tests/blender-golden.test.js), [src/mesh-fields.js](../src/mesh-fields.js), [tests/mesh-fields.test.js](../tests/mesh-fields.test.js) | #43 |
 | Modeling > Modifiers > Deform > Hook Modifier | missing | No equivalent. | | #42 |
 | Modeling > Modifiers > Deform > Laplacian Deform Modifier | missing | No equivalent. | | |
 | Modeling > Modifiers > Deform > Lattice Modifier | missing | No lattice. | | #42 |
@@ -117,8 +117,8 @@ To move to a new Blender release, run `node scripts/parity-manual-snapshot.mjs`.
 | Modeling > Modifiers > Physics > Particle Instance Modifier | missing | No particle system. | | #63 |
 | Modeling > Modifiers > Physics > Particle System Modifier | missing | No particle system. | | #63 |
 | Modeling > Modifiers > Physics > Soft Body Modifier | missing | No soft bodies. | | #62 |
-| Modeling > Modifiers > Geometry Nodes Modifier | missing | No node graph. | | #43 |
-| Modeling > Geometry Nodes | missing | No fields or node graph. Issue #43 adds bounded JSON expressions and not a visual editor. | | #43 |
+| Modeling > Modifiers > Geometry Nodes Modifier | partial | Bounded JSON field expressions drive `set_position`, `displace`, a `field` selection rule and `instances`. There is no node graph, no loops, no custom node groups, and no realize, curve or volume nodes. | [src/mesh-fields.js](../src/mesh-fields.js), [tests/mesh-fields.test.js](../tests/mesh-fields.test.js), [tests/blender-golden.test.js](../tests/blender-golden.test.js), [pillar-court task](../bench/agent-modeling/tasks.mjs) | #43 |
+| Modeling > Geometry Nodes | partial | Fields over attributes, noise and math (position, normal, index, tags), Set Position, Instance on Points (grid, scatter, surface) and Displace. Noise is not Blender's noise function, and there is no Blender comparison for instancing. Issue #43 chose bounded JSON expressions and not a visual editor. | [src/mesh-fields.js](../src/mesh-fields.js), [tests/mesh-fields.test.js](../tests/mesh-fields.test.js), [tests/blender-golden.test.js](../tests/blender-golden.test.js) | #43 |
 | Modeling > Transform | partial | Node transforms, and `translate` on a selection with falloff. There is no rotate or scale on a selection. | | |
 | Sculpting & Painting > Brushes | out of scope | Brush settings for a hand. Strokes have explicit parameters. | | |
 | Sculpting & Painting > Selection & Visibility | out of scope | Interface for a person in a paint mode. | | |
@@ -191,7 +191,7 @@ To move to a new Blender release, run `node scripts/parity-manual-snapshot.mjs`.
 | Rendering > Lights > Light Objects | partial | One directional light with a shadow, 8 point lights, 8 spot lights and 4 rectangular area lights. Point and spot lights can cast shadows from one 24-tile atlas (a point light takes 6 tiles, a spot light 1). Area lights use a representative point and cast no shadow. The directional shadow is a single map, not cascaded. | [lighting](../tests/lighting.test.js), `npm run reference` scene `spot-area` | #52 |
 | Rendering > Lights > Light Linking | missing | No light linking. | | #52 |
 | Rendering > Lights > World Environment | partial | Recipes have sky colors, daylight and fog. Code can load an HDRI, and recipes can not reach it. | [environment](../tests/environment.test.js) | #53 |
-| Rendering > Materials > Components | partial | Surfaces with PBR factors and five maps. There are no volume materials or displacement. | [texture-set](../tests/texture-set.test.js) | #50, #51 |
+| Rendering > Materials > Components | partial | Surfaces with PBR factors and five maps, a clear coat, transmission with thickness, attenuation and IOR, sheen, and specular weight and tint. There is no anisotropy, iridescence, subsurface scattering, volume material or displacement. | [texture-set](../tests/texture-set.test.js) | #50, #51 |
 | Rendering > Materials > Assignment | done | A node names one material. | [agent-scene](../tests/agent-scene.test.js) | |
 | Rendering > Materials > Preview | out of scope | Interface for a person. Agents use `scene_look`. | | |
 | Rendering > Materials > Settings | partial | Opaque and blend in recipes, and mask on imported assets, with double-sided support. | [gltf-extensions](../tests/gltf-extensions.test.js) | #51 |
@@ -199,7 +199,7 @@ To move to a new Blender release, run `node scripts/parity-manual-snapshot.mjs`.
 | Rendering > Materials > Legacy Textures | out of scope | Blender keeps these for old files. | | |
 | Rendering > Shader Nodes > Input | missing | No node graph. | | #50 |
 | Rendering > Shader Nodes > Output | missing | No node graph. | | #50 |
-| Rendering > Shader Nodes > Shader | partial | A fixed metallic-roughness surface, with unlit, liquid and foam tags. There is no clearcoat, transmission, sheen or subsurface. | [renderer](../tests/renderer.test.js) | #51 |
+| Rendering > Shader Nodes > Shader | partial | A metallic-roughness surface with clear coat, transmission, sheen and specular layers, and unlit, liquid and foam tags. There is no anisotropy, iridescence or subsurface. | [material-layers](../tests/material-layers.test.js) | #51 |
 | Rendering > Shader Nodes > Displacement | partial | Normal maps. There is no bump from height or displacement. | | #50 |
 | Rendering > Shader Nodes > Texture | partial | Image maps and 11 pattern presets. There is no graph, so an agent can not combine them. | [material-patterns](../tests/material-patterns.test.js) | #50 |
 | Rendering > Shader Nodes > Color | missing | No node graph. | | #50 |
@@ -225,7 +225,7 @@ To move to a new Blender release, run `node scripts/parity-manual-snapshot.mjs`.
 | Assets, Files, & Data System > Importing & Exporting Files | out of scope | Decided in issue #23: GLB is the exchange format. | | |
 | Add-ons > Node Wrangler | out of scope | Interface for a mouse. | | |
 | Add-ons > Rigify | missing | No rig presets. | | #46 |
-| Add-ons > glTF 2.0 | partial | Import is broad. Export writes the five texture channels as PNG, skins with joints, morph targets and node clips, and bakes pattern materials with box projected UVs; Blender 5.2 and three.js open the RobotExpressive export with its 43 bones and 14 clips. Not yet: morph weight clips, an MCP export tool. | [gltf](../tests/gltf.test.js), [export](../tests/export.test.js), [round trip](../tests/export-roundtrip.test.js) | #49 |
+| Add-ons > glTF 2.0 | partial | Import is broad. Export writes the five texture channels as PNG, skins with joints, morph targets and node clips, and bakes pattern materials with box projected UVs; Blender 5.2 and three.js open the RobotExpressive export with its 43 bones and 14 clips. Morph weight clips export, and the `scene_export_glb` MCP tool writes the current pose or an imported clip as a GLB file, checked in Blender 5.2 for a patterned recipe, the robot with IK and its Walking action. Not yet: recipe motion tracks as clips, a clip together with IK or node overrides. | [gltf](../tests/gltf.test.js), [export](../tests/export.test.js), [round trip](../tests/export-roundtrip.test.js), [MCP contract](../tests/mcp-tools.test.js) | #49 |
 | Add-ons > Manage UI Translations | out of scope | Blender interface work. | | |
 | Add-ons > VR Scene Inspection | out of scope | Interface for a person. | | |
 | Advanced | out of scope | Decided in issue #23: 67.js does not run agent code. MCP and the JavaScript API take the place of `bpy`. | | |
