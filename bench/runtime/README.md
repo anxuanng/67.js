@@ -2,6 +2,19 @@
 
 This suite compares what a frame costs in 67.js and in three.js on 7 matching scenes. **three.js wins most of them today.**
 
+## Culling and levels of detail (issue 37)
+
+Scene `large-outdoor` has 6,000 spheres of about 1,000 triangles over 600 by 600 units, seen from the edge, so about a quarter of them are in view and most are far. `67js` uses the default frustum culling and the levels from `generateGeometryLods` (ratios 0.25 and 0.06, 1 pixel of error). `67js-no-lod` has culling only, and `67js-no-culling` has neither, which is what the renderer did before. three.js draws 6,000 individual meshes, which it culls per mesh, without levels. Measured on 2026-10-31 at 960 by 540, `--frames 30`, other jobs were using the RTX 3060 between 1 and 87 percent (`gpuBusyBefore` in a full report), so the GPU numbers are noisy.
+
+| Engine | RTX 3060 frame (ms) | Triangles | SwiftShader frame (ms) |
+| --- | --- | --- | --- |
+| `67js-no-culling` | 8.41 | 5,760,014 | 4,428 |
+| `67js-no-lod` (culling) | 7.68 | 4,359,374 | 4,061 |
+| `67js` (culling and levels) | 1.55 | 270,474 | 517 |
+| three.js | 6.00 | 4,359,372 | 944 |
+
+Culling alone gives the same picture pixel for pixel as no culling, on both backends. Levels change 1.9 percent of the pixels by more than 8 levels (mean absolute difference 0.45 of 255). The other 7 scenes draw the same pictures as before pixel for pixel on the RTX 3060 (checked on 4 of them), and their frame times moved within the noise. The run draws the first frame again after the measured frames and fails when the `large-outdoor` picture differs.
+
 ## Run it
 
 Run `npm run benchmark:runtime`. It takes about 8 minutes, and it rewrites `report.json`. Stop other GPU work first, because `report.json` records how busy the GPU was before each run.

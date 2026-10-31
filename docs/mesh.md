@@ -372,7 +372,8 @@ cells). The mesh must be closed, and the result carries no tags or attributes.
 `generateAssetLods` for a static imported asset) returns level 0, the input, and one level for each ratio, from strictly
 decreasing ratios in (0, 1), up to 8. Each level has `triangles`, `error` (the farthest its vertices lie from the input surface, in
 the input's units) and `relativeError` (over the bounds diagonal); the asset form returns a whole asset per level.
-Skinned and morphed parts are refused. `surfaceDeviation(a, b)` gives the vertex Hausdorff distance both ways.
+Skinned and morphed parts are refused. `surfaceDeviation(a, b)` gives the vertex Hausdorff distance both ways. Hand the levels to a
+part as `lods` and `Renderer67` picks one per instance by its size on screen: see `docs/culling-lod.md`.
 
 Why our own collapse and not meshoptimizer 1.3.0 (npm, MIT, 2026-09-25): on the same sphere, torus and open bowl at
 ratios 0.5, 0.2 and 0.05 our Hausdorff error was 0.25 to 0.85 of its error (0.0088 against 0.0153 at 0.5 and 0.0647 against 0.0773

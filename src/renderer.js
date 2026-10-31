@@ -12,6 +12,7 @@ import { assertEnvironmentMap, createEnvironmentResources, environmentBackground
 import { validateSkinGeometry, validateSkinPose, skinTextureLayout, packSkinInfluences } from './skinning.js';
 import { validateSplatMaterial, splatBatchState, splatTextureBytes, resolveSplatSize, packSplatParameters, buildSplatPixels } from './splat.js';
 import { materialLayerState } from './material-layers.js';
+import { InstanceSelection, extractFrustumPlanes, geometryBoundingSphere, selectInstances } from './render-culling.js';
 import { validateMorphGeometry, validateMorphPose, validateMorphTransform, packMorphTargets } from './morph.js';
 
 const MATERIAL_TAGS = { armor: 1, floor: 2, water: 3, foliage: 4, terrain: 5, grass: 7, fire: 8, smoke: 9, unlit: 10, liquid: 11, foam: 12 };
@@ -31,6 +32,8 @@ const PROCEDURAL_MATERIAL_TAGS = new Set(['water', 'foliage', 'grass', 'terrain'
 
 // Tags whose vertices sway in the wind; the shadow pass must be redrawn when time moves.
 const SWAYING_TAGS = new Set(['foliage', 'grass']);
+// Tags whose vertex shader moves vertices away from the instance matrix, so a bounding sphere would not hold.
+const DEFORMING_TAGS = new Set(['foliage', 'grass', 'water', 'fire', 'smoke']);
 
 const MAP_SHADER_FEATURES = ['baseMap', 'normalMap', 'metallicRoughnessMap', 'occlusionMap', 'emissiveMap'];
 // Tags whose look the main fragment shader draws with code that other tags never reach.
@@ -203,6 +206,25 @@ function packInstance(data, index, part, normalMatrix) {
   data.set(part.material.emissiveColor ?? part.material.color, offset + 38);
 }
 
+function isCullable(parts) {
+  const first = parts[0];
+  if (first.skin || first.morph || DEFORMING_TAGS.has(first.material.tag)) return false;
+  if (renderPass(first.material) !== 'opaque' || materialAlphaState(first.material)[0] === 'blend') return false;
+  return parts.every(part => !part.assembly);
+}
+
+function validateLods(part, levels) {
+  if (!Array.isArray(levels) || levels.length < 2 || levels[0].geometry !== part.geometry) {
+    throw new TypeError(`lods must list level 0 (the own geometry of the part) and at least one coarser level: ${part.name}`);
+  }
+  levels.forEach((level, index) => {
+    if (!level.geometry?.positions || !level.geometry.indices) throw new TypeError(`Every lods entry needs a geometry: ${part.name}`);
+    if (!Number.isFinite(level.error) || level.error < 0 || (index > 0 && level.error < levels[index - 1].error)) {
+      throw new RangeError(`lods errors must be finite and not decrease from level to level: ${part.name}`);
+    }
+  });
+}
+
 // Starting a program without asking for its result lets the driver build several programs at once.
 function startProgram(context, vertexSource, fragmentSource) {
   const program = context.createProgram();
@@ -265,7 +287,7 @@ export function groupParts(parts, batching = true) {
     const key = batching ? part.geometry : part;
     if (!groups.has(key)) groups.set(key, new Map());
     let maps = groups.get(key);
-    for (const value of [...materialMapState(part.material), ...materialLayerState(part.material), part.skin ?? null, part.morph ?? null, castsShadow(part), renderPass(part.material), ...materialAlphaState(part.material)]) {
+    for (const value of [...materialMapState(part.material), ...materialLayerState(part.material), part.skin ?? null, part.morph ?? null, castsShadow(part), renderPass(part.material), part.lods ?? null, ...materialAlphaState(part.material)]) {
       if (!maps.has(value)) maps.set(value, new Map());
       maps = maps.get(value);
     }
@@ -338,8 +360,16 @@ function allFinite(values) {
 }
 
 export class Renderer67 {
-  constructor(canvas, parts, { batching = true, pixelRatio = 1.5, benchmark = false, world = false, ground = true, transparent = false, samples = 4, hdr = false, depth = false, memoryBudgetMiB = 256, environment = {}, shadowBounds = {} } = {}) {
+  constructor(canvas, parts, { batching = true, pixelRatio = 1.5, benchmark = false, world = false, ground = true, transparent = false, samples = 4, hdr = false, depth = false, memoryBudgetMiB = 256, environment = {}, shadowBounds = {}, culling = true, lodPixelError = 1, createGpuTimer = null } = {}) {
     this.canvas = canvas;
+    // `createGpuTimer` from adaptive-quality.js is passed in, which keeps the timer code out of scenes that do not time frames.
+    this.createGpuTimer = createGpuTimer;
+    this.gpuTimer = undefined;
+    /** Milliseconds the GPU took for a recent frame, when `createGpuTimer` is given. */
+    this.gpuMilliseconds = null;
+    this.culling = culling;
+    this.lodPixelError = lodPixelError;
+    this.frustumPlanes = new Float32Array(24);
     if (!Number.isInteger(samples) || samples < 1) throw new Error('MSAA sample count must be a positive integer.');
     if (new Set(parts).size !== parts.length) throw new Error('Scene parts must have distinct object identities for animation.');
     this.lighting = createLightingState();
@@ -697,10 +727,9 @@ export class Renderer67 {
     }
   }
 
-  uploadBatchData(parts, vertexArray) {
+  /** Binds the geometry's vertex buffers and attributes into the bound vertex array. */
+  bindGeometryAttributes(geometry, material) {
     const context = this.context;
-    const geometry = parts[0].geometry;
-    context.bindVertexArray(vertexArray);
     let geometryBuffers = this.geometryBuffers.get(geometry);
     if (!geometryBuffers) {
       geometryBuffers = new Map();
@@ -723,7 +752,7 @@ export class Renderer67 {
       context.enableVertexAttribArray(13);
       context.vertexAttribPointer(13, 2, context.FLOAT, false, 0, 0);
     } else {
-      if (hasMaterialMap(parts[0].material) && !parts[0].material.boxMapScale) throw new Error('Textured geometry requires UV channel 0.');
+      if (hasMaterialMap(material) && !material.boxMapScale) throw new Error('Textured geometry requires UV channel 0.');
       context.disableVertexAttribArray(13);
       // (-1, -1) marks "no UVs": grass wind then bends by local height instead of by blade position.
       context.vertexAttrib2f(13, -1, -1);
@@ -738,6 +767,95 @@ export class Renderer67 {
       context.vertexAttrib3f(14, 1, 1, 1);
     }
     context.bindBuffer(context.ELEMENT_ARRAY_BUFFER, geometryBuffers.get('indices'));
+  }
+
+  /** Points the instance attributes of the bound vertex array at the bound array buffer. */
+  pointInstanceAttributes() {
+    const stride = INSTANCE_STRIDE;
+    for (let column = 0; column < 4; column++) this.attribute(2 + column, 4, stride * 4, column * 16);
+    for (let column = 0; column < 3; column++) this.attribute(6 + column, 3, stride * 4, 64 + column * 12);
+    this.attribute(9, 3, stride * 4, 100);
+    this.attribute(10, 4, stride * 4, 112);
+    this.attribute(11, 3, stride * 4, 128);
+    this.attribute(12, 3, stride * 4, 140);
+    this.attribute(15, 3, stride * 4, 152);
+  }
+
+  createCullingState(parts) {
+    const first = parts[0];
+    const cullable = isCullable(parts);
+    if (first.lods) {
+      validateLods(first, first.lods);
+      if (!cullable) throw new RangeError(`lods need rigid, opaque parts without assembly motion: ${first.name}`);
+    }
+    const levels = first.lods ?? [{ geometry: first.geometry, error: 0 }];
+    const levelErrors = levels.map(level => level.error);
+    const sphere = geometryBoundingSphere(first.geometry);
+    const bounds = { center: sphere.center, radius: sphere.radius + Math.max(...levelErrors) };
+    return { cullable, bounds, levelErrors, levelGeometries: levels.map(level => level.geometry), levelDraws: [], selection: new InstanceSelection(parts.length, levels.length) };
+  }
+
+  /** The vertex array and instance buffer that draw one level of a batch from the instances selected for it. */
+  levelDraw(batch, level) {
+    if (batch.levelDraws[level]) return batch.levelDraws[level];
+    const context = this.context;
+    const geometry = batch.levelGeometries[level];
+    const vertexArray = context.createVertexArray();
+    context.bindVertexArray(vertexArray);
+    this.bindGeometryAttributes(geometry, batch.parts[0].material);
+    const instanceBuffer = context.createBuffer();
+    this.buffers.push(instanceBuffer);
+    context.bindBuffer(context.ARRAY_BUFFER, instanceBuffer);
+    context.bufferData(context.ARRAY_BUFFER, batch.instanceData.byteLength, context.DYNAMIC_DRAW);
+    this.pointInstanceAttributes();
+    context.bindVertexArray(null);
+    batch.levelDraws[level] = { vertexArray, instanceBuffer, indexCount: geometry.indices.length };
+    return batch.levelDraws[level];
+  }
+
+  releaseLevelDraws(batch, releasedBuffers) {
+    for (const draw of batch.levelDraws) {
+      if (!draw) continue;
+      this.context.deleteVertexArray(draw.vertexArray);
+      releasedBuffers?.add(draw.instanceBuffer);
+    }
+    batch.levelDraws = [];
+  }
+
+  /** The instances of a batch that the camera can see, split by level; null when the whole batch draws as it is. */
+  selectBatchInstances(batch) {
+    if (!this.culling || !batch.cullable) return null;
+    return selectInstances(batch.selection, {
+      instanceData: batch.instanceData, instanceCount: batch.instanceCount, stride: INSTANCE_STRIDE, bounds: batch.bounds,
+      levelErrors: batch.levelErrors, planes: this.frustumPlanes, viewProjection: this.viewProjection,
+      pixelsPerUnit: this.canvas.height / 2 * this.projection[5], pixelError: this.lodPixelError,
+    });
+  }
+
+  drawSelectedLevels(batch, selection) {
+    const context = this.context;
+    const stride = INSTANCE_STRIDE;
+    for (let level = 0; level < selection.counts.length; level++) {
+      const count = selection.counts[level];
+      if (count === 0) continue;
+      const draw = this.levelDraw(batch, level);
+      if (!(this.selectionScratch?.length >= count * stride)) this.selectionScratch = new Float32Array(count * stride);
+      for (let slot = 0; slot < count; slot++) {
+        const instance = selection.indices[level][slot];
+        this.selectionScratch.set(batch.instanceData.subarray(instance * stride, (instance + 1) * stride), slot * stride);
+      }
+      context.bindBuffer(context.ARRAY_BUFFER, draw.instanceBuffer);
+      context.bufferSubData(context.ARRAY_BUFFER, 0, this.selectionScratch, 0, count * stride);
+      context.bindVertexArray(draw.vertexArray);
+      context.drawElementsInstanced(context.TRIANGLES, draw.indexCount, context.UNSIGNED_INT, 0, count);
+    }
+  }
+
+  uploadBatchData(parts, vertexArray) {
+    const context = this.context;
+    const geometry = parts[0].geometry;
+    context.bindVertexArray(vertexArray);
+    this.bindGeometryAttributes(geometry, parts[0].material);
     const stride = INSTANCE_STRIDE;
     const instanceData = new Float32Array(parts.length * stride);
     const normalMatrix = mat3.create();
@@ -746,13 +864,7 @@ export class Renderer67 {
       packInstance(instanceData, index, part, normalMatrix);
     });
     const instanceBuffer = this.uploadBuffer(context.ARRAY_BUFFER, instanceData, context.DYNAMIC_DRAW);
-    for (let column = 0; column < 4; column++) this.attribute(2 + column, 4, stride * 4, column * 16);
-    for (let column = 0; column < 3; column++) this.attribute(6 + column, 3, stride * 4, 64 + column * 12);
-    this.attribute(9, 3, stride * 4, 100);
-    this.attribute(10, 4, stride * 4, 112);
-    this.attribute(11, 3, stride * 4, 128);
-    this.attribute(12, 3, stride * 4, 140);
-    this.attribute(15, 3, stride * 4, 152);
+    this.pointInstanceAttributes();
     context.bindVertexArray(null);
     const map = parts[0].material.map ?? null;
     const mapState = materialMapState(parts[0].material);
@@ -766,7 +878,9 @@ export class Renderer67 {
     const morphWeights = morph ? new Float32Array(morph.weights) : null;
     const [alphaMode, alphaCutoff, opacity, doubleSided] = materialAlphaState(parts[0].material);
     const layerState = materialLayerState(parts[0].material);
-    const batch = { alphaMode, alphaCutoff, opacity, doubleSided, layerState, parts: [...parts], vertexArray, instanceBuffer, instanceData, textures, mapState, splat, texture: textures[0], map, skin, skinTexture, influenceTexture, morph, morphTexture, morphWeights, indexCount: geometry.indices.length, instanceCount: parts.length, floor: parts[0].material.tag === 'floor', castShadow: castsShadow(parts[0]), pass: renderPass(parts[0].material) };
+    const culling = this.createCullingState(parts);
+    const batch = { ...culling, alphaMode, alphaCutoff, opacity, doubleSided, layerState, parts: [...parts], vertexArray, instanceBuffer, instanceData, textures, mapState, splat, texture: textures[0], map, skin, skinTexture, influenceTexture, morph, morphTexture, morphWeights, indexCount: geometry.indices.length, instanceCount: parts.length, floor: parts[0].material.tag === 'floor', castShadow: castsShadow(parts[0]), pass: renderPass(parts[0].material) };
+    if (parts[0].lods) culling.levelGeometries.forEach((geometryOfLevel, level) => this.levelDraw(batch, level));
     parts.forEach((part, index) => this.partLocations.set(part, { batch, index, geometry: part.geometry, map, mapState, layerState, skin, jointMatrices: skin?.jointMatrices, skinIndices: geometry.skinIndices, skinWeights: geometry.skinWeights, morph, morphWeights: morph?.weights, morphTargets: geometry.morphTargets, normalMatrix: mat3.create(), committedMatrix: batch.instanceData.subarray(index * INSTANCE_STRIDE, index * INSTANCE_STRIDE + 16) }));
     return batch;
   }
@@ -778,7 +892,7 @@ export class Renderer67 {
     }
     const renderParts = this.groundPart ? [...parts, this.groundPart] : parts;
     const groups = groupParts(renderParts, this.batching);
-    const geometries = new Set(renderParts.map(part => part.geometry));
+    const geometries = new Set(renderParts.flatMap(part => part.lods ? part.lods.map(level => level.geometry) : [part.geometry]));
     // Uploaded geometry was validated when it arrived; rechecking a large static scene every frame dominated streamed playback.
     for (const geometry of geometries) {
       if (!this.geometryBuffers.has(geometry)) validateReplacementGeometry(geometry);
@@ -845,7 +959,10 @@ export class Renderer67 {
       }
     } catch (error) {
       for (const batch of stagedBatches) {
-        if (!retained.has(batch)) this.context.deleteVertexArray(batch.vertexArray);
+        if (!retained.has(batch)) {
+          this.context.deleteVertexArray(batch.vertexArray);
+          this.releaseLevelDraws(batch);
+        }
       }
       for (const buffer of this.buffers.slice(previousBuffers.length)) {
         this.context.deleteBuffer(buffer);
@@ -862,6 +979,7 @@ export class Renderer67 {
       if (!retained.has(batch)) {
         this.context.deleteVertexArray(batch.vertexArray);
         releasedBuffers.add(batch.instanceBuffer);
+        this.releaseLevelDraws(batch, releasedBuffers);
       }
     }
     for (const [geometry, buffers] of this.geometryBuffers) {
@@ -1609,12 +1727,14 @@ export class Renderer67 {
     context.bindVertexArray(null);
   }
 
-  drawAlphaBatch(batch, textured) {
+  drawAlphaBatch(batch, textured, culled = false) {
+    const selection = culled ? this.selectBatchInstances(batch) : null;
+    if (selection?.visibleCount === 0) return;
     this.applyAlphaState(batch, textured);
-    this.drawBatch(batch, textured);
+    this.drawBatch(batch, textured, selection);
   }
 
-  drawBatch(batch, textured = false) {
+  drawBatch(batch, textured = false, selection = null) {
     if (this.hasMorphs) {
       const uniforms = textured ? this.uniforms : this.depthMorphUniforms;
       this.context.uniform1f(uniforms.morphEnabled, batch.morph ? 1 : 0);
@@ -1656,6 +1776,10 @@ export class Renderer67 {
       this.context.uniform1i(this.uniforms.boxMapAxis, batch.mapState[13]);
       this.bindSplat(batch.splat);
     }
+    if (selection && !selection.isEverything) {
+      this.drawSelectedLevels(batch, selection);
+      return;
+    }
     this.context.bindVertexArray(batch.vertexArray);
     this.context.drawElementsInstanced(this.context.TRIANGLES, batch.indexCount, this.context.UNSIGNED_INT, 0, batch.instanceCount);
   }
@@ -1675,6 +1799,7 @@ export class Renderer67 {
     updateLightingState(this.lighting, environment, { world: this.world });
     const start = performance.now();
     const context = this.context;
+    this.beginGpuTiming();
     const assemblyAmount = Math.max(0, Math.min(1, frame.assemblyAmount ?? 0));
     // Swaying foliage moves every frame, so its shadow map is redrawn whenever time or wind changes.
     const windChanged = this.updateWindState(frame);
@@ -1690,6 +1815,7 @@ export class Renderer67 {
     mat4.lookAt(this.view, eye, target, frame.up ?? [0, 1, 0]);
     mat4.multiply(this.viewProjection, this.projection, this.view);
     mat4.invert(this.inverseViewProjection, this.viewProjection);
+    extractFrustumPlanes(this.viewProjection, this.frustumPlanes);
     context.bindFramebuffer(context.FRAMEBUFFER, this.benchmark ? null : this.multisampleFramebuffer);
     context.viewport(0, 0, this.canvas.width, this.canvas.height);
     if (this.transparent) {
@@ -1739,7 +1865,7 @@ export class Renderer67 {
       if (this.benchmark) {
         this.drawBatch(batch, true);
       } else if (batchPass(batch) === 'opaque' && batch.alphaMode !== 'blend') {
-        this.drawAlphaBatch(batch, true);
+        this.drawAlphaBatch(batch, true, true);
       }
     }
     context.disable(context.SAMPLE_ALPHA_TO_COVERAGE);
@@ -1748,7 +1874,19 @@ export class Renderer67 {
     if (!this.benchmark) this.drawTranslucent(frame, environment, assemblyAmount, environmentMap);
     if (!this.benchmark) this.drawBlendBatches(frame);
     if (!this.benchmark) this.resolveFrame(frame, effects, environment, volume);
+    this.endGpuTiming();
     this.cpuMilliseconds = performance.now() - start;
+  }
+
+  beginGpuTiming() {
+    if (this.gpuTimer === undefined) this.gpuTimer = this.createGpuTimer?.(this.context) ?? null;
+    this.gpuTimer?.begin();
+  }
+
+  endGpuTiming() {
+    if (!this.gpuTimer) return;
+    this.gpuTimer.end();
+    this.gpuMilliseconds = this.gpuTimer.collect();
   }
 
   applyLocalLightUniforms() {
@@ -1779,7 +1917,10 @@ export class Renderer67 {
     this.releaseFrameTargets();
     if (this.localShadowTexture) this.context.deleteTexture(this.localShadowTexture);
     if (this.localShadowFramebuffer) this.context.deleteFramebuffer(this.localShadowFramebuffer);
-    this.batches.forEach((batch) => this.context.deleteVertexArray(batch.vertexArray));
+    this.batches.forEach((batch) => {
+      this.context.deleteVertexArray(batch.vertexArray);
+      this.releaseLevelDraws(batch);
+    });
     this.buffers.forEach((buffer) => this.context.deleteBuffer(buffer));
     this.geometryBuffers?.clear();
     this.context.deleteTexture(this.shadowTexture);

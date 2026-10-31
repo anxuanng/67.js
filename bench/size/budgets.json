@@ -5,7 +5,7 @@
   "agent-scene": 100000
  },
  "budgets": {
-  "entry:core": 79600,
+  "entry:core": 81500,
   "entry:model": 14400,
   "entry:nature": 13200,
   "entry:motion": 13600,
@@ -33,9 +33,9 @@
   "entry:agent-asset": 85500,
   "entry:agent-asset+lazy": 175600,
   "entry:hdri": 3300,
-  "scene:lit-box": 57200,
-  "scene:gltf-box": 76500,
-  "scene:agent-scene": 86100,
+  "scene:lit-box": 59100,
+  "scene:gltf-box": 78500,
+  "scene:agent-scene": 88100,
   "scene:agent-scene+lazy": 195700
  }
 }

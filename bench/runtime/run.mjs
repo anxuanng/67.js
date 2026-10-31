@@ -16,8 +16,11 @@ const BACKENDS = {
   gpu: { arguments: SHARED_ARGUMENTS, frames: 120 },
   cpu: { arguments: [...SHARED_ARGUMENTS, '--use-angle=swiftshader', '--enable-unsafe-swiftshader'], frames: 15 },
 };
-const ENGINES = ['67js', 'three', 'three-instanced'];
+const ENGINES = ['67js', 'three', 'three-instanced', '67js-no-lod', '67js-no-culling'];
 const INSTANCED_SCENES = new Set(['instanced-objects']);
+// Ablations of this renderer's own culling and level selection, which only a scene that has them can show.
+const ABLATION_SCENES = new Set(['large-outdoor']);
+const ABLATION_ENGINES = new Set(['67js-no-lod', '67js-no-culling']);
 
 const flags = process.argv.slice(2);
 const gpuOnly = flags.includes('--gpu-only');
@@ -32,6 +35,7 @@ const isPartialRun = Boolean(onlyScene || onlyEngine || framesOverride);
 function enginesFor(sceneId) {
   return ENGINES.filter(engine => {
     if (onlyEngine) return engine === onlyEngine;
+    if (ABLATION_ENGINES.has(engine)) return ABLATION_SCENES.has(sceneId);
     return engine !== 'three-instanced' || INSTANCED_SCENES.has(sceneId);
   });
 }
@@ -47,6 +51,8 @@ async function runOne(backend, serverUrl, sceneId, engine, frames) {
     await page.waitForFunction(() => window.runBenchmark);
     const result = await page.evaluate(([scene, name, count]) => window.runBenchmark(scene, name, count), [sceneId, engine, frames]);
     if (errors.length) throw new Error(errors.join('\n'));
+    // Blended scenes already differ between their first and later frames before culling existed, so only the scene that tests culling is held to this.
+    if (!result.repeatable && ABLATION_SCENES.has(sceneId) && engine.startsWith('67js')) throw new Error(`${sceneId} on ${engine} drew a different picture for the same time.`);
     if (result.glError !== 0) throw new Error(`${sceneId} on ${engine} gave WebGL error ${result.glError}.`);
     return result;
   } finally {
@@ -73,7 +79,7 @@ function rounded(value, digits = 2) {
   return value === null ? null : Number(value.toFixed(digits));
 }
 
-function summarize({ image: _image, glError: _glError, scene: _scene, engine: _engine, ...result }) {
+function summarize({ image: _image, repeatable: _repeatable, glError: _glError, scene: _scene, engine: _engine, ...result }) {
   return {
     firstFrameMilliseconds: rounded(result.firstFrameMilliseconds, 0),
     updateMilliseconds: rounded(result.updateMilliseconds),
