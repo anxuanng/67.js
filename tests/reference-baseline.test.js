@@ -4,7 +4,7 @@ import test from 'node:test';
 
 const REFERENCE_DIRECTORY = new URL('../bench/reference/', import.meta.url);
 const baseline = JSON.parse(readFileSync(new URL('baseline.json', REFERENCE_DIRECTORY), 'utf8'));
-const EXPECTED_SCENES = ['brick-graph', 'brushed-film', 'car-paint', 'character', 'fog', 'foliage', 'glass', 'lit-interior', 'material-spheres', 'metal', 'outdoor-hdri', 'spot-area'];
+const EXPECTED_SCENES = ['brick-graph', 'brick-room', 'brushed-film', 'car-paint', 'character', 'fog', 'foliage', 'glass', 'lit-interior', 'material-spheres', 'metal', 'outdoor-hdri', 'spot-area'];
 const EXPECTED_SCORES = ['cpu-vs-cycles', 'cpu-vs-eevee', 'eevee-vs-cycles', 'gpu-vs-cpu', 'gpu-vs-cycles', 'gpu-vs-eevee'];
 
 test('the render baseline scores every scene with every renderer pair', () => {

@@ -62,7 +62,7 @@ export function boxProjectedGeometry(geometry, scale, boxMapScale, boxMapAxis) {
   const projected = { ...geometry, indices: newIndices };
   projected.positions = remapped(positions, 3, sourceOf);
   projected.normals = remapped(geometry.normals, 3, sourceOf);
-  for (const [field, perVertex] of [['colors', 3], ['skinIndices', 4], ['skinWeights', 4]]) {
+  for (const [field, perVertex] of [['colors', 3], ['lightUvs', 2], ['skinIndices', 4], ['skinWeights', 4]]) {
     if (geometry[field]) projected[field] = remapped(geometry[field], perVertex, sourceOf);
   }
   if (geometry.morphTargets) {

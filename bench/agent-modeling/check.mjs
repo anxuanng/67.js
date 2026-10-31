@@ -44,6 +44,27 @@ function checkWalk(rig, check) {
   return { pass: problems.length === 0, detail: [...new Set(problems)].slice(0, 4).join('; ') || `${rig.samples.length} samples: feet alternate, knees forward, elbows back, parts keep their size` };
 }
 
+const WALK_SAMPLES = 41;
+
+// A walker leaves one point to reach another, stays on the ground surface and keeps clear of a round opening.
+function checkWalkPath(check, measures) {
+  const problems = [];
+  const planarDistance = (position, target) => Math.hypot(position[0] - target[0], position[2] - target[1]);
+  for (let sample = 0; sample < WALK_SAMPLES; sample++) {
+    const time = check.duration * sample / (WALK_SAMPLES - 1);
+    const position = measures.nodePosition(check.node, time);
+    if (!position) return { pass: false, detail: `no drawn node ${check.node}` };
+    if (sample === 0 && planarDistance(position, check.from) > 0.75) problems.push(`starts ${round(planarDistance(position, check.from))} m from the start point`);
+    if (sample === WALK_SAMPLES - 1 && planarDistance(position, check.to) > 0.75) problems.push(`ends ${round(planarDistance(position, check.to))} m from the end point`);
+    const fromOpening = planarDistance(position, check.avoid.center) - check.avoid.radius;
+    if (fromOpening < check.margin) problems.push(`${round(fromOpening)} m from the opening edge at t=${round(time)}`);
+    const groundHeight = measures.surfaceHeight(check.ground, position[0], position[2]);
+    if (groundHeight === null) problems.push(`no ground under it at t=${round(time)}`);
+    else if (Math.abs(position[1] - groundHeight) > check.heightTolerance) problems.push(`${round(position[1] - groundHeight)} m off the ground at t=${round(time)}`);
+  }
+  return { pass: problems.length === 0, detail: [...new Set(problems)].slice(0, 3).join('; ') || `${WALK_SAMPLES} samples around the opening, on the ground` };
+}
+
 function checkOne(check, measures) {
   switch (check.kind) {
     case 'lint':
@@ -125,6 +146,14 @@ function checkOne(check, measures) {
       const distance = Math.hypot(...from.map((value, axis) => value - to[axis]));
       return { pass: Math.abs(distance - check.distance) <= 0.01, detail: `${round(distance)} m apart at t=${check.time}` };
     }
+    case 'groundRelief': {
+      const bounds = measures.nodeBounds(check.node);
+      if (!bounds) return { pass: false, detail: `no drawn node ${check.node}` };
+      const relief = bounds.max[1] - bounds.min[1];
+      return { pass: relief >= check.min && relief <= check.max, detail: `${check.node} spans ${round(relief)} m in height` };
+    }
+    case 'walkPath':
+      return checkWalkPath(check, measures);
     case 'bendsToward': {
       const root = measures.nodePosition(check.from, check.time);
       const middle = measures.nodePosition(check.node, check.time);

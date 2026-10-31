@@ -344,6 +344,7 @@ const GEOMETRY_FIELDS = {
   curve: ['points', 'closed', 'radius', 'taper', 'profile', 'resolution', 'radialSegments'],
   text: ['text', 'size', 'depth', 'font', 'align', 'curveSegments'],
   mesh: ['base', 'edits', 'stack', 'smoothAngle'],
+  terrain: ['size', 'resolution', 'seed', 'amplitude', 'holes'],
 };
 
 function geometryEstimate(value) {
@@ -403,6 +404,8 @@ function geometryEstimate(value) {
       const perSegment = isDefaultFont ? CURVE_TEXT_LIMITS.verticesPerCharacterSegment : CURVE_TEXT_LIMITS.verticesPerCustomCharacterSegment;
       return visible * perSegment * detail('curveSegments', 4, 1, 16);
     }
+    case 'terrain':
+      return agentSceneModule('terrain').terrainVertexEstimate(value);
     case 'extrude': {
       const holes = value.holes ?? [];
       if (!Array.isArray(holes) || holes.length > 128) {
@@ -474,6 +477,8 @@ function generateGeometry(value, maxVertices) {
       return agentSceneModule('modeling').curve(value.points, { ...value, maxVertices });
     case 'text':
       return agentSceneModule('text').text(value.text, { ...value, maxVertices });
+    case 'terrain':
+      return agentSceneModule('terrain').generateTerrainGeometry(value, maxVertices);
     case 'mesh':
       return agentSceneModule('mesh').generateMeshGeometry(() => generateGeometry(value.base, maxVertices), value.edits ?? [], {
         maxVertices, smoothAngle: value.smoothAngle ?? MESH_SMOOTH_ANGLE_DEFAULT,
@@ -1021,12 +1026,13 @@ export function createAgentScene(input, inputLimits = {}) {
     }
     const worldMatrices = new Map(sourceRestParts.map(part => [part.name, new Float32Array(graph.getNode(part.name).worldMatrix)]));
     const { pointLights, keyColor, keyIntensity, lightDirection } = recipe.environment;
-    const key = JSON.stringify([recipe.bake, pointLights, keyColor, keyIntensity, lightDirection, recipe.materials,
+    const generatedGeometryNames = new Set((recipe.particles?.systems ?? []).map(system => system.node));
+    const key = JSON.stringify([recipe.bake, [...generatedGeometryNames], pointLights, keyColor, keyIntensity, lightDirection, recipe.materials,
       [...worldMatrices].map(([name, matrix]) => [name, Array.from(matrix)])]);
     if (lightBake?.key === key && lightBake.sourceRestParts === sourceRestParts) {
       return { ...lightBake, reused: true };
     }
-    const baked = agentSceneModule('bake').bakeAgentParts(sourceRestParts, worldMatrices, recipe.environment, recipe.bake);
+    const baked = agentSceneModule('bake').bakeAgentParts(sourceRestParts, worldMatrices, recipe.environment, recipe.bake, generatedGeometryNames);
     lightBake = { key, sourceRestParts, parts: baked.parts, report: baked.report };
     return { ...lightBake, reused: false };
   }

@@ -1,0 +1,139 @@
+{
+  "run": "2026-10-31-22-05-haiku-terrain-hole-walk",
+  "model": "claude-haiku-5-5",
+  "date": "2026-10-31T22:08:49.063Z",
+  "skill": false,
+  "runsPerTask": 2,
+  "passed": 2,
+  "tasks": 2,
+  "toolCalls": 15,
+  "costUsd": 0.29,
+  "byModel": {
+    "claude-haiku-5-5": {
+      "runs": 2,
+      "passed": 2,
+      "successRate": 1,
+      "toolCalls": 15,
+      "toolErrors": 0,
+      "inputTokens": 1664671,
+      "outputTokens": 13676,
+      "costUsd": 0.29,
+      "tasks": {
+        "terrain-hole-walk": {
+          "runs": 2,
+          "passed": 2,
+          "successRate": 1,
+          "toolCalls": 15,
+          "toolErrors": 0,
+          "inputTokens": 1664671,
+          "outputTokens": 13676,
+          "costUsd": 0.29
+        }
+      }
+    }
+  },
+  "records": [
+    {
+      "task": "terrain-hole-walk",
+      "attempt": 1,
+      "pass": true,
+      "passed": 3,
+      "total": 3,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 9,
+      "toolErrors": 0,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_capabilities": 1,
+        "scene_create": 2,
+        "scene_inspect": 2,
+        "scene_dispose": 2,
+        "scene_look": 1,
+        "scene_export_recipe": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "terrain",
+          "box"
+        ],
+        "meshOperations": [],
+        "motionIk": [],
+        "motionTracks": 1
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 0.5151,
+            "side": 0.6154,
+            "three-quarter": 0.9611
+          },
+          "mean": 0.6972
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-10-31-22-05-haiku-terrain-hole-walk/look/1/terrain-hole-walk-front.png",
+          "artifacts/agent-modeling/2026-10-31-22-05-haiku-terrain-hole-walk/look/1/terrain-hole-walk-side.png",
+          "artifacts/agent-modeling/2026-10-31-22-05-haiku-terrain-hole-walk/look/1/terrain-hole-walk-three-quarter.png"
+        ]
+      },
+      "turns": 11,
+      "costUsd": 0.14956208000000001,
+      "inputTokens": 840843,
+      "outputTokens": 7097,
+      "wallSeconds": 112,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "terrain-hole-walk",
+      "attempt": 2,
+      "pass": true,
+      "passed": 3,
+      "total": 3,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 6,
+      "toolErrors": 0,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_capabilities": 1,
+        "scene_create": 1,
+        "scene_inspect": 1,
+        "scene_look": 1,
+        "scene_export_recipe": 1,
+        "scene_dispose": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "terrain",
+          "box"
+        ],
+        "meshOperations": [],
+        "motionIk": [],
+        "motionTracks": 1
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 0.5091,
+            "side": 0.6258,
+            "three-quarter": 0.9611
+          },
+          "mean": 0.6987
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-10-31-22-05-haiku-terrain-hole-walk/look/2/terrain-hole-walk-front.png",
+          "artifacts/agent-modeling/2026-10-31-22-05-haiku-terrain-hole-walk/look/2/terrain-hole-walk-side.png",
+          "artifacts/agent-modeling/2026-10-31-22-05-haiku-terrain-hole-walk/look/2/terrain-hole-walk-three-quarter.png"
+        ]
+      },
+      "turns": 8,
+      "costUsd": 0.14473128,
+      "inputTokens": 823828,
+      "outputTokens": 6579,
+      "wallSeconds": 57,
+      "exitCode": 0,
+      "stopped": "success"
+    }
+  ]
+}

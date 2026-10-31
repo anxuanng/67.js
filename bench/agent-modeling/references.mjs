@@ -377,6 +377,25 @@ export const REFERENCES = {
     ],
   ),
   'rigged-walker': walkerRecipe(),
+  'terrain-hole-walk': {
+    format: '67js.scene', schemaVersion: 1,
+    geometries: [
+      { id: 'hills', type: 'terrain', size: 40, resolution: 64, seed: 3, amplitude: 1, holes: [{ center: [0, 0], radius: 3 }] },
+      { id: 'body', type: 'box', bevel: 0 },
+    ],
+    materials: [{ id: 'grass', color: [0.3, 0.55, 0.2] }, { id: 'coat', color: [0.8, 0.3, 0.2] }],
+    nodes: [
+      { id: 'ground', geometry: 'hills', material: 'grass' },
+      { id: 'walker', geometry: 'body', material: 'coat', translation: [-15, 0.5, -15], scale: [0.4, 1, 0.4] },
+    ],
+    motion: {
+      duration: 10,
+      tracks: [{
+        kind: 'node', id: 'walker', property: 'translation', interpolation: 'LINEAR',
+        keyframes: [[0, [-15, 0.5, -15]], [3, [-6, 0.5, -6]], [5, [6, 0.5, -6]], [10, [15, 0.5, 15]]].map(([time, value]) => ({ time, value })),
+      }],
+    },
+  },
   'pillar-court': scene(
     [{ id: 'pillar', type: 'box', bevel: 0 }],
     [{

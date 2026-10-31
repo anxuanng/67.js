@@ -47,7 +47,7 @@ The normal frame loop can render retained parts without calling inspection or ex
 
 ### On-demand code
 
-Mesh editing, `lathe`, `extrude`, `tube` and `curve` geometry, `text` geometry with its font, material `pattern`, `motion` and node `relations` load on demand, so a recipe of
+Mesh editing, `lathe`, `extrude`, `tube` and `curve` geometry, `text` geometry with its font, `terrain` geometry, material `pattern`, `motion` and node `relations` load on demand, so a recipe of
 primitives pays about half the bytes. `createAgentScene` and `apply` stay synchronous. When a recipe uses one of them,
 load its code first; a missing module throws an error that names this call.
 
@@ -90,6 +90,9 @@ The generators also enforce their existing numeric and modeling constraints.
 | `tube` | `path`, `radius`, `segments`, `radialSegments`, `closed` | Required XYZ path, `0.1`, `64`, `12`, `false` |
 | `curve` | `points`, `closed`, `radius`, `taper`, `profile`, `resolution`, `radialSegments` | Required points, `false`, `0.05`, none, round, `12`, `8` |
 | `text` | `text`, `size`, `depth`, `font`, `align`, `curveSegments` | Required string, `1`, `0.2`, `default`, `left`, `4` |
+| `terrain` | `size`, `resolution`, `seed`, `amplitude`, `holes` | `40` m, `64` cells, `1`, `1` m, none |
+
+`terrain` is one seeded ground mesh from `-size / 2` to `size / 2` on X and Z with hills about y = 0 and up to 16 round `holes` (`{ center: [x, z], radius }`) that leave no surface; it loads on demand. Details are in `scene_capabilities` under `terrain`.
 
 `curve` and `text` are described in full by `scene_capabilities` under `curveText.details`; see [modeling.md](modeling.md).
 

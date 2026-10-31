@@ -54,6 +54,7 @@ function shaderFeaturesOfParts(parts) {
     MATERIAL_MAPS.forEach((field, index) => {
       if (material[field]) features.add(MAP_SHADER_FEATURES[index]);
     });
+    if (material.lightMap) features.add('lightMap');
     if (material.layers) features.add('splat');
     if (material.moss > 0) features.add('moss');
     if (material.anisotropy > 0) features.add('anisotropy');
@@ -91,6 +92,8 @@ const DEPTH_ALPHA_UNIFORMS = ['alphaMasked', 'alphaCutoff', 'materialOpacity', '
 const MORPH_UNIFORMS = ['morphEnabled', 'morphVertexCount', 'morphTargetCount', 'morphWeights[0]', 'morphTargets'];
 const ENVIRONMENT_LOOKUP_UNIFORMS = ['environmentSpecular', 'environmentEnabled', 'environmentIntensity', 'environmentRotation', 'environmentLevelMax'];
 const ENVIRONMENT_UNIFORMS = [...ENVIRONMENT_LOOKUP_UNIFORMS, 'environmentBrdf', 'environmentIrradiance[0]'];
+// Shares a unit with the skin influence texture, which no light-mapped (rigid) batch binds.
+const LIGHT_MAP_UNIT = 6;
 const ENVIRONMENT_SPECULAR_UNIT = 9;
 const ENVIRONMENT_BRDF_UNIT = 10;
 const SPLAT_COLOR_UNIT = 11;
@@ -143,7 +146,16 @@ function materialMapState(material) {
   const occlusionStrength = material.occlusionStrength ?? 1;
   validateSplatMaterial(material);
   if (material.layers && PROCEDURAL_MATERIAL_TAGS.has(material.tag)) throw new Error('Splat layers require a standard PBR material tag.');
-  return [...MATERIAL_MAPS.map(field => material[field] ?? null), normalScale[0], normalScale[1], occlusionStrength, ...mossState(material), material.boxMapScale ?? 0, material.boxMapAxis ?? 1, ...splatBatchState(material)];
+  return [...MATERIAL_MAPS.map(field => material[field] ?? null), normalScale[0], normalScale[1], occlusionStrength, ...mossState(material), material.boxMapScale ?? 0, material.boxMapAxis ?? 1, ...lightMapState(material), ...splatBatchState(material)];
+}
+
+// A baked light map reads the second UV set, so it is only drawn for parts that cannot be skinned or morphed.
+function lightMapState(material) {
+  if (!material.lightMap) return [null, 0];
+  const scale = material.lightMapScale ?? 1;
+  if (!Number.isFinite(scale) || scale < 0) throw new RangeError('lightMapScale must be a nonnegative number.');
+  if ((material.lightMap.colorSpace ?? 'srgb') !== 'srgb') throw new Error('lightMap requires an srgb texture descriptor.');
+  return [material.lightMap, scale];
 }
 
 function validateAlphaMaterial(material) {
@@ -298,8 +310,26 @@ function sampleCount(context, format, requested) {
   return Math.max(0, ...colorCounts.filter(count => count <= requested && depthCounts.includes(count)));
 }
 
+// Light-mapped geometry uploads its two UV sets as one four-wide attribute (zeros where channel 0 is absent).
+function uvBufferBytes(geometry) {
+  if (!geometry.lightUvs) return geometry.uvs?.byteLength ?? 0;
+  return geometry.lightUvs.byteLength * 2;
+}
+
+function interleaveUvSets(geometry) {
+  const vertexCount = geometry.lightUvs.length / 2;
+  const combined = new Float32Array(vertexCount * 4);
+  for (let vertex = 0; vertex < vertexCount; vertex++) {
+    combined[vertex * 4] = geometry.uvs?.[vertex * 2] ?? 0;
+    combined[vertex * 4 + 1] = geometry.uvs?.[vertex * 2 + 1] ?? 0;
+    combined[vertex * 4 + 2] = geometry.lightUvs[vertex * 2];
+    combined[vertex * 4 + 3] = geometry.lightUvs[vertex * 2 + 1];
+  }
+  return combined;
+}
+
 function geometryBufferBytes(geometry) {
-  return ['positions', 'normals', 'uvs', 'colors', 'indices'].reduce((total, field) => total + (geometry[field]?.byteLength ?? 0), 0);
+  return ['positions', 'normals', 'colors', 'indices'].reduce((total, field) => total + (geometry[field]?.byteLength ?? 0), uvBufferBytes(geometry));
 }
 
 function validateReplacementGeometry(geometry) {
@@ -412,7 +442,7 @@ export class Renderer67 {
     }
     const maps = new Set();
     for (const group of groups) {
-      for (const field of MATERIAL_MAPS) {
+      for (const field of [...MATERIAL_MAPS, 'lightMap']) {
         const map = group[0].material[field];
         if (!map) continue;
         const info = textureDescriptorInfo(map, textureLimit);
@@ -445,7 +475,7 @@ export class Renderer67 {
       }
       if (geometry.colors && geometry.colors.length !== geometry.positions.length) throw new Error('Geometry colors must contain RGB for every vertex.');
     }
-    const expectedGeometryBytes = groups.reduce((total, group) => total + ['positions', 'normals', 'indices', 'uvs', 'colors'].reduce((bytes, field) => bytes + (group[0].geometry[field]?.byteLength ?? 0), 0) + group.length * INSTANCE_STRIDE * 4, 0);
+    const expectedGeometryBytes = groups.reduce((total, group) => total + geometryBufferBytes(group[0].geometry) + group.length * INSTANCE_STRIDE * 4, 0);
     planRenderSize({ width: Math.max(1, canvas.clientWidth), height: Math.max(1, canvas.clientHeight), pixelRatio, samples: this.samples, memoryBudgetMiB, geometryBytes: expectedGeometryBytes, textureBytes: this.textureBytes, hdr: this.hdr, bloom: !benchmark, depth: this.depth, maximumSize: textureLimit });
     this.view = mat4.create();
     this.projection = mat4.create();
@@ -522,7 +552,7 @@ export class Renderer67 {
 
   finishMainProgram(pendingProgram) {
     this.program = finishProgram(this.context, pendingProgram);
-    this.uniforms = Object.fromEntries(['materialDielectric', 'materialCoat', 'materialSheen', 'materialAnisotropy', 'materialIridescence', 'boxMapScale', 'boxMapAxis', 'viewProjection', 'lightProjection', 'eye', 'armorColor', 'armorSurface', 'exposure', 'inspection', 'shadowMap', ...MAP_UNIFORMS, ...MAP_FLAGS, ...SKIN_UNIFORMS, ...MORPH_UNIFORMS, 'normalScale', 'occlusionStrength', 'materialMoss', ...SPLAT_UNIFORMS, 'hdrEnabled', 'time', 'wind', 'worldMode', 'daylight', 'fogColor', 'lightDirection', 'fogDensity', 'waterRipple', 'rippleTime', 'explosionProgress', 'explosionCenter', 'assemblyAmount', 'renderPassMode', 'renderPassDepthRange', 'renderPassObjectBase', ...ALPHA_UNIFORMS].map((name) => [name, this.context.getUniformLocation(this.program, name)]));
+    this.uniforms = Object.fromEntries(['materialDielectric', 'materialCoat', 'materialSheen', 'materialAnisotropy', 'materialIridescence', 'boxMapScale', 'boxMapAxis', 'lightMap', 'lightMapScale', 'hasLightMap', 'viewProjection', 'lightProjection', 'eye', 'armorColor', 'armorSurface', 'exposure', 'inspection', 'shadowMap', ...MAP_UNIFORMS, ...MAP_FLAGS, ...SKIN_UNIFORMS, ...MORPH_UNIFORMS, 'normalScale', 'occlusionStrength', 'materialMoss', ...SPLAT_UNIFORMS, 'hdrEnabled', 'time', 'wind', 'worldMode', 'daylight', 'fogColor', 'lightDirection', 'fogDensity', 'waterRipple', 'rippleTime', 'explosionProgress', 'explosionCenter', 'assemblyAmount', 'renderPassMode', 'renderPassDepthRange', 'renderPassObjectBase', ...ALPHA_UNIFORMS].map((name) => [name, this.context.getUniformLocation(this.program, name)]));
     for (const name of LIGHT_UNIFORMS) {
       this.uniforms[name] = this.context.getUniformLocation(this.program, name);
     }
@@ -714,9 +744,11 @@ export class Renderer67 {
       for (const field of ['positions', 'normals', 'uvs', 'colors', 'indices']) {
         if (geometry[field]) {
           const target = field === 'indices' ? context.ELEMENT_ARRAY_BUFFER : context.ARRAY_BUFFER;
-          geometryBuffers.set(field, this.uploadBuffer(target, geometry[field]));
+          const values = field === 'uvs' && geometry.lightUvs ? interleaveUvSets(geometry) : geometry[field];
+          geometryBuffers.set(field, this.uploadBuffer(target, values));
         }
       }
+      if (geometry.lightUvs && !geometry.uvs) geometryBuffers.set('uvs', this.uploadBuffer(context.ARRAY_BUFFER, interleaveUvSets(geometry)));
       this.geometryBuffers.set(geometry, geometryBuffers);
     }
     for (const [location, field] of [[0, 'positions'], [1, 'normals']]) {
@@ -724,11 +756,12 @@ export class Renderer67 {
       context.enableVertexAttribArray(location);
       context.vertexAttribPointer(location, 3, context.FLOAT, false, 0, 0);
     }
-    if (geometry.uvs) {
-      if (geometry.uvs.length !== geometry.positions.length / 3 * 2) throw new Error('Geometry UV count must match the vertex count.');
+    if (geometry.lightUvs && geometry.lightUvs.length !== geometry.positions.length / 3 * 2) throw new Error('Geometry lightUvs count must match the vertex count.');
+    if (geometry.uvs || geometry.lightUvs) {
+      if (geometry.uvs && geometry.uvs.length !== geometry.positions.length / 3 * 2) throw new Error('Geometry UV count must match the vertex count.');
       context.bindBuffer(context.ARRAY_BUFFER, geometryBuffers.get('uvs'));
       context.enableVertexAttribArray(13);
-      context.vertexAttribPointer(13, 2, context.FLOAT, false, 0, 0);
+      context.vertexAttribPointer(13, geometry.lightUvs ? 4 : 2, context.FLOAT, false, 0, 0);
     } else {
       if (hasMaterialMap(material) && !material.boxMapScale) throw new Error('Textured geometry requires UV channel 0.');
       context.disableVertexAttribArray(13);
@@ -848,6 +881,8 @@ export class Renderer67 {
     const mapState = materialMapState(parts[0].material);
     const textures = mapState.slice(0, 5).map(descriptor => this.createTexture(descriptor));
     const splat = parts[0].material.layers ? this.createSplatResources(parts[0].material) : null;
+    const lightMapTexture = mapState[14] ? this.createTexture(mapState[14]) : null;
+    if (lightMapTexture && (parts[0].skin || parts[0].morph || !geometry.lightUvs)) throw new Error('A light map needs lightUvs on rigid geometry, with no skin or morph.');
     const skin = parts[0].skin ?? null;
     const skinTexture = skin ? this.createSkinTexture(this.skinTextures, skin, skin.jointMatrices, 4) : null;
     const influenceTexture = skin ? this.createSkinTexture(this.influenceTextures, geometry, null, 2) : null;
@@ -857,7 +892,7 @@ export class Renderer67 {
     const [alphaMode, alphaCutoff, opacity, doubleSided] = materialAlphaState(parts[0].material);
     const layerState = materialLayerState(parts[0].material);
     const culling = this.createCullingState(parts);
-    const batch = { ...culling, alphaMode, alphaCutoff, opacity, doubleSided, layerState, parts: [...parts], vertexArray, instanceBuffer, instanceData, textures, mapState, splat, texture: textures[0], map, skin, skinTexture, influenceTexture, morph, morphTexture, morphWeights, indexCount: geometry.indices.length, instanceCount: parts.length, floor: parts[0].material.tag === 'floor', castShadow: castsShadow(parts[0]), pass: renderPass(parts[0].material) };
+    const batch = { ...culling, alphaMode, alphaCutoff, opacity, doubleSided, layerState, parts: [...parts], vertexArray, instanceBuffer, instanceData, textures, mapState, splat, lightMapTexture, texture: textures[0], map, skin, skinTexture, influenceTexture, morph, morphTexture, morphWeights, indexCount: geometry.indices.length, instanceCount: parts.length, floor: parts[0].material.tag === 'floor', castShadow: castsShadow(parts[0]), pass: renderPass(parts[0].material) };
     if (parts[0].lods) culling.levelGeometries.forEach((geometryOfLevel, level) => this.levelDraw(batch, level));
     parts.forEach((part, index) => this.partLocations.set(part, { batch, index, geometry: part.geometry, map, mapState, layerState, skin, jointMatrices: skin?.jointMatrices, skinIndices: geometry.skinIndices, skinWeights: geometry.skinWeights, morph, morphWeights: morph?.weights, morphTargets: geometry.morphTargets, normalMatrix: mat3.create(), committedMatrix: batch.instanceData.subarray(index * INSTANCE_STRIDE, index * INSTANCE_STRIDE + 16) }));
     return batch;
@@ -1056,6 +1091,8 @@ export class Renderer67 {
       for (let index = 0; index < MATERIAL_MAPS.length; index++) {
         if ((part.material[MATERIAL_MAPS[index]] ?? null) !== mapState[index]) throw new Error(`Material map or scale changes require a new renderer: ${part.name}`);
       }
+      const [lightMapDescriptor, lightMapScale] = lightMapState(part.material);
+      if (lightMapDescriptor !== (mapState[14] ?? null) || lightMapScale !== (mapState[15] ?? 0)) throw new Error(`Light map changes require a new renderer: ${part.name}`);
       if (normalScale[0] !== mapState[5] || normalScale[1] !== mapState[6] || (part.material.occlusionStrength ?? 1) !== mapState[7] || mossState(part.material).some((value, index) => value !== mapState[8 + index]) || materialLayerState(part.material).some((value, index) => value !== location.layerState[index])) throw new Error(`Material map or scale changes require a new renderer: ${part.name}`);
       validateTransform(part, location.normalMatrix);
     }
@@ -1764,6 +1801,13 @@ export class Renderer67 {
       this.context.uniform1f(this.uniforms.boxMapScale, batch.mapState[12]);
       this.context.uniform1i(this.uniforms.boxMapAxis, batch.mapState[13]);
       this.bindSplat(batch.splat);
+      this.context.uniform1f(this.uniforms.hasLightMap, batch.lightMapTexture ? 1 : 0);
+      if (batch.lightMapTexture) {
+        this.context.activeTexture(this.context.TEXTURE0 + LIGHT_MAP_UNIT);
+        this.context.bindTexture(this.context.TEXTURE_2D, batch.lightMapTexture);
+        this.context.uniform1i(this.uniforms.lightMap, LIGHT_MAP_UNIT);
+        this.context.uniform1f(this.uniforms.lightMapScale, batch.mapState[15]);
+      }
     }
     if (selection && !selection.isEverything) {
       this.drawSelectedLevels(batch, selection);

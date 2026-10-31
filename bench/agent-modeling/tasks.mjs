@@ -4,6 +4,7 @@
 import { REFERENCES } from './references.mjs';
 import { KETTLE_START, KETTLE_START_PLAIN } from './kettle.mjs';
 import { DESK_START, DESK_START_PLAIN, DESK_CHECKS } from './desk.mjs';
+import { TERRAIN_TASKS } from './terrain.mjs';
 
 export const PROMPT_PREAMBLE = `You are modeling with the 67js MCP tools. Build the object described below as a procedural recipe scene:
 start it with scene_create, refine it with mesh_edit, mesh_stack and scene_apply, and look at it with scene_look when
@@ -546,6 +547,7 @@ scene. When it is finished, call scene_export_recipe once: the exported recipe i
     ],
   },
   ...LONG_TASKS,
+  ...TERRAIN_TASKS,
 ];
 
 /** The task text an agent receives, with the starting recipe appended when the task changes an existing scene. */
