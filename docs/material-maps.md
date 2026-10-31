@@ -111,6 +111,33 @@ Moss is shaded as its own material, not as a tint. Where it grows, roughness bec
 
 A standard-tag material can carry `layers` (up to four `{ color, normal, roughness, height, scale, tint, triplanar }` entries built from `loadTextureSet`) and a `splat` rule object instead of these single maps. The layers are blended by slope, height and a weight mask, sampled in world space and packed into texture arrays on units 11 to 14. They replace `map`, `normalMap`, `metallicRoughnessMap` and `occlusionMap`, which must be absent, and parts batch only when `layers` and `splat` are the same objects. See [Terrain](/terrain.md).
 
+## Material layers
+
+A material on a standard tag (`surface` in recipes, `gltf` and `armor` in code) can carry these layers. The names are the glTF `KHR_materials_*` names, and each is checked at the boundary with an error that names the fix.
+
+| Field | Range | Meaning |
+| --- | --- | --- |
+| `clearcoat`, `clearcoatRoughness` | 0 to 1 | A clear lacquer lobe over the base (car paint, varnish). Light it reflects never reaches the base. |
+| `transmission` | 0 to 1 | The share of light that passes through. The material draws after the opaque scene and refracts it. |
+| `thickness` | 0 to 1000 metres | How far light travels inside. 0 is a thin sheet that does not bend the view. |
+| `ior` | 1 to 2.5 | Index of refraction. It bends transmitted light and sets the reflectance at normal incidence, 4 percent at 1.5. |
+| `attenuationColor`, `attenuationDistance` | colour 0 to 1, distance above 0 | The colour light keeps after that many metres inside. Leave the distance out for no absorption. |
+| `sheenColor`, `sheenRoughness` | colour 0 to 1, 0 to 1 | A soft glow at grazing angles for cloth. Black is off. |
+| `specular`, `specularColor` | 0 to 4, colour 0 to 4 | Strength and tint of the non-metal reflection. |
+
+A material that uses none of them costs nothing extra: the shader branches on uniforms that are zero, and transmission only exists in the pass that was already there for `liquid`.
+
+Limits, stated plainly:
+
+- Transmission uses one refraction through the front surface with the thickness estimate the `liquid` material uses. It does not trace the back face, and roughness blurs the reflection only, not the view behind. The scene colour comes from opaque geometry, so blended surfaces do not show through glass.
+- A transmissive material does not take a clear coat, sheen or maps. Its base map and normal map are ignored.
+- The clear coat uses the surface normal and the key light. Point lights add no coat highlight.
+- Sheen is the Charlie distribution on the key light plus an ambient rim. It does not use a lookup table for energy loss.
+- Anisotropy and iridescence are not rendered. `KHR_materials_anisotropy` and `KHR_materials_iridescence` load with a warning.
+- Textures inside the layer extensions are ignored. Only the factors are read.
+
+glTF import and export carry these layers through `KHR_materials_clearcoat`, `transmission`, `volume`, `ior`, `specular` and `sheen`. `bench/reference` scores `glass` and `car-paint` against Blender's Principled BSDF with the same values.
+
 ## Limits
 
 Texture transforms, UV channels beyond zero, and vertex alpha below one remain unsupported.
@@ -121,5 +148,5 @@ Unlit materials accept base and emissive maps only.
 Texture alpha is ignored for opaque materials, as required by glTF's opaque mode.
 
 This feature does not complete the full material system.
-Extensions such as clearcoat, transmission, anisotropy, and sheen, material layers, node graphs, and authored tangent support remain missing.
+Anisotropy, iridescence, texture slots inside the layer extensions, node graphs, and authored tangent support remain missing.
 GLB export of these material maps is outside this feature.

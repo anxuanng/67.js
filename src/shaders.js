@@ -243,6 +243,9 @@ uniform vec3 fogColor;
 uniform float fogDensity;
 // x: thickness in metres, y: index of refraction, z: refraction strength, w: scattering
 uniform vec4 liquidOptics;
+// A transmissive PBR material: x: transmission, y: index of refraction, z: thickness in metres, w: attenuation distance
+uniform vec4 glassState;
+uniform vec3 glassTint;
 // x: foam opacity, y: foam edge softness
 uniform vec2 foamShape;
 out vec4 outputColor;
@@ -315,21 +318,29 @@ void main() {
   float roughness = clamp(surface.y, 0.02, 1.0);
   vec2 screen = gl_FragCoord.xy / resolution;
   // A convex body is thickest where it faces the camera and thins to nothing at its silhouette.
-  float thickness = liquidOptics.x * mix(0.15, 1.0, facing);
-  vec3 bent = refract(-viewDirection, normal, 1.0 / liquidOptics.y);
+  bool glass = glassState.x > 0.0;
+  float indexOfRefraction = glass ? glassState.y : liquidOptics.y;
+  float thickness = (glass ? glassState.z : liquidOptics.x) * mix(0.15, 1.0, facing);
+  vec3 bent = refract(-viewDirection, normal, 1.0 / indexOfRefraction);
   vec4 projected = viewProjection * vec4(worldPosition + bent * thickness, 1.0);
   vec2 refracted = projected.w > 0.0 ? projected.xy / projected.w * 0.5 + 0.5 : screen;
-  refracted = clamp(mix(screen, refracted, liquidOptics.z), vec2(0.001), vec2(0.999));
+  refracted = clamp(mix(screen, refracted, glass ? 1.0 : liquidOptics.z), vec2(0.001), vec2(0.999));
   vec3 behind = texture(sceneColor, refracted).rgb;
   // The material colour is what one metre of this liquid lets through.
-  vec3 transmittance = pow(clamp(color, vec3(0.001), vec3(1.0)), vec3(thickness));
-  float reflectance = 0.02 + 0.98 * pow(1.0 - facing, 5.0);
-  vec3 inScatter = color * (ambientLight(normal) + keyColor * max(dot(normal, light), 0.0) * 0.2) * liquidOptics.w * (1.0 - transmittance);
+  // For a PBR material the colour tints what passes through and the attenuation colour is what attenuationDistance metres let through.
+  vec3 absorption = pow(clamp(glass ? glassTint : color, vec3(0.001), vec3(1.0)), vec3(glass ? thickness / glassState.w : thickness));
+  vec3 transmittance = glass ? color * absorption : absorption;
+  float surfaceReflectance = pow((indexOfRefraction - 1.0) / (indexOfRefraction + 1.0), 2.0);
+  float reflectance = surfaceReflectance + (1.0 - surfaceReflectance) * pow(1.0 - facing, 5.0);
+  vec3 inScatter = color * (ambientLight(normal) + keyColor * max(dot(normal, light), 0.0) * 0.2) * (glass ? 0.0 : liquidOptics.w) * (1.0 - transmittance);
+  // The share of a PBR material that does not transmit is lit like a diffuse surface.
+  vec3 diffuseShare = glass ? color * (1.0 - glassState.x) * (ambientLight(normal) + keyColor * max(dot(normal, light), 0.0) / PI) : vec3(0.0);
   vec3 reflection = environmentColor(reflect(-viewDirection, normal), roughness) * ambientIntensity;
   vec3 highlight = keyColor * specularLobe(normal, viewDirection, light, roughness);
-  vec3 surfaceLight = inScatter * (1.0 - reflectance) + reflection * reflectance + highlight;
+  vec3 surfaceLight = (inScatter + diffuseShare) * (1.0 - reflectance) + reflection * reflectance + highlight;
   surfaceLight = mix(surfaceLight, fogColor, fog);
-  outputColor = vec4(behind * transmittance * (1.0 - reflectance) * (1.0 - fog) + displayed(surfaceLight), 1.0);
+  float transmitted = glass ? glassState.x : 1.0;
+  outputColor = vec4(behind * transmittance * transmitted * (1.0 - reflectance) * (1.0 - fog) + displayed(surfaceLight), 1.0);
 }`;
 
 export const fragmentShader = `#version 300 es
@@ -381,6 +392,10 @@ in vec3 boxNormal;
 flat in mat3 boxNormalMatrix;
 uniform float boxMapScale;
 uniform int boxMapAxis;
+// Dielectric reflectance at normal incidence, clear coat (strength, roughness) and sheen (colour, roughness)
+uniform vec3 materialDielectric;
+uniform vec2 materialCoat;
+uniform vec4 materialSheen;
 uniform vec4 materialMoss;
 uniform float hdrEnabled;
 uniform float alphaMode;
@@ -469,7 +484,7 @@ vec3 illuminate(vec3 normal, vec3 viewDirection, vec3 lightDirection, vec3 radia
   float masking = pow(roughness + 1.0, 2.0) / 8.0;
   float geometry = normalView / (normalView * (1.0 - masking) + masking);
   geometry *= normalLight / (normalLight * (1.0 - masking) + masking);
-  vec3 reflectance = fresnel(max(dot(halfway, viewDirection), 0.0), mix(vec3(0.04), color, metallic));
+  vec3 reflectance = fresnel(max(dot(halfway, viewDirection), 0.0), mix(materialDielectric, color, metallic));
   vec3 specular = distribution * geometry * reflectance / max(4.0 * normalView * normalLight, 0.001);
   vec3 diffuse = (1.0 - reflectance) * (1.0 - metallic) * color / PI;
   return (diffuse + specular) * radiance * normalLight;
@@ -568,6 +583,40 @@ float surfaceAlpha(float textureAlpha) {
   }
   if (alpha < alphaCutoff) discard;
   return 1.0;
+}
+
+vec3 surroundingsColor(vec3 direction, float roughness) {
+  if (environmentEnabled > 0.5) return environmentRadiance(direction, roughness * environmentLevelMax);
+  if (worldMode > 0.5) return mix(fogColor * 0.8, vec3(0.20, 0.38, 0.52) * 1.6, smoothstep(-0.15, 0.7, direction.y)) * 0.5 * daylight;
+  return studio(direction, roughness);
+}
+
+// Clear coat: a second dielectric specular lobe over the base. Light that reflects off it never reaches the base.
+// Passing 0.04 as the colour of a fully metallic surface gives the lobe's own reflectance and no diffuse part.
+vec3 clearCoatLayer(vec3 baseRadiance, vec3 normal, vec3 viewDirection, float visibility) {
+  float roughness = clamp(materialCoat.y, 0.075, 1.0);
+  float coatFresnel = fresnel(max(dot(normal, viewDirection), 0.001), vec3(0.04)).x * materialCoat.x;
+  vec3 mirror = surroundingsColor(reflect(-viewDirection, normal), roughness) * coatFresnel * ambientIntensity;
+  vec3 highlight = illuminate(normal, viewDirection, normalize(lightDirection), keyColor * visibility, vec3(0.04), 1.0, roughness);
+  return baseRadiance * (1.0 - coatFresnel) + mirror + highlight * materialCoat.x;
+}
+
+// Sheen: the Charlie distribution with the Neubelt visibility term (KHR_materials_sheen), plus a rim of ambient light.
+vec3 sheenLayer(vec3 baseRadiance, vec3 normal, vec3 viewDirection, float visibility) {
+  float roughness = clamp(materialSheen.w, 0.07, 1.0);
+  float inverseAlpha = 1.0 / (roughness * roughness);
+  vec3 lightVector = normalize(lightDirection);
+  vec3 halfway = normalize(viewDirection + lightVector);
+  float normalLight = max(dot(normal, lightVector), 0.0);
+  float normalView = max(dot(normal, viewDirection), 0.001);
+  float sine = sqrt(max(1.0 - pow(max(dot(normal, halfway), 0.0), 2.0), 0.0));
+  float distribution = (2.0 + inverseAlpha) * pow(sine, inverseAlpha) / (2.0 * PI);
+  float visibilityTerm = 1.0 / (4.0 * (normalLight + normalView - normalLight * normalView));
+  vec3 keyTerm = materialSheen.rgb * distribution * visibilityTerm * normalLight * keyColor * visibility;
+  vec3 ambientTerm = environmentEnabled > 0.5 ? environmentDiffuse(normal) : mix(vec3(0.16, 0.20, 0.22), vec3(0.19, 0.25, 0.30) * max(daylight, 0.08), worldMode);
+  vec3 rimTerm = materialSheen.rgb * ambientTerm * pow(1.0 - normalView, 3.0) * ambientIntensity;
+  float shadowedBase = 1.0 - 0.2 * max(materialSheen.r, max(materialSheen.g, materialSheen.b));
+  return baseRadiance * shadowedBase + keyTerm + rimTerm;
 }
 
 void main() {
@@ -677,7 +726,7 @@ void main() {
     vec3 lightRadiance = pointLightColors[index].rgb * pointLightColors[index].w * attenuation;
     radiance += illuminate(normal, viewDirection, offset * inversesqrt(distanceSquared), lightRadiance, color, metallic, roughness);
   }
-  vec3 reflectance = fresnel(max(dot(normal, viewDirection), 0.0), mix(vec3(0.04), color, metallic));
+  vec3 reflectance = fresnel(max(dot(normal, viewDirection), 0.0), mix(materialDielectric, color, metallic));
   float occlusion = 1.0;
   if (hasOcclusionMap > 0.5) occlusion = mix(1.0, texture(occlusionMap, textureUV).r, occlusionStrength);
   occlusion *= splatCavity;
@@ -707,6 +756,8 @@ void main() {
     float thinness = textureUV.x > -0.5 ? 1.0 - textureUV.y * 0.8 : 0.6;
     radiance += color * vec3(1.1, 1.25, 0.55) * towardSun * thinness * 1.4 * keyResponse * visibility;
   }
+  if (materialSheen.rgb != vec3(0.0)) radiance = sheenLayer(radiance, normal, viewDirection, visibility);
+  if (materialCoat.x > 0.0) radiance = clearCoatLayer(radiance, normal, viewDirection, visibility);
   radiance += emission;
   if (surface.w == 3.0) {
     float reflectivity = 0.20 + 0.65 * pow(1.0 - max(dot(normal, viewDirection), 0.0), 3.0);

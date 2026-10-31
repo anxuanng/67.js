@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { mat4, mat3 } from 'gl-matrix';
 import { Renderer67, groupParts, resolveLiquidOptics, textureDescriptorInfo } from '../src/renderer.js';
 import { createSkinPose } from '../src/skinning.js';
+import { materialLayerState } from '../src/material-layers.js';
 
 function part(name, geometry = {}, map) {
   return { name, geometry, matrix: mat4.create(), material: { color: [0.1, 0.2, 0.3], metallic: 0.5, roughness: 0.3, emission: 0, map } };
@@ -14,7 +15,7 @@ function retainedRenderer(parts) {
   const batch = { instanceBuffer: {}, instanceData: new Float32Array(parts.length * 41).fill(7), castShadow: true, alphaMode: 'opaque', alphaCutoff: 0, opacity: 1, doubleSided: false };
   renderer.context = { ARRAY_BUFFER: 34962, bindBuffer() {}, bufferSubData(target, offset, data) { writes.push({ target, offset, data: Array.from(data) }); } };
   renderer.partLocations = new Map(parts.map((item, index) => [item, {
-    batch, index, geometry: item.geometry, map: item.material.map ?? null, normalMatrix: mat3.create(), skin: item.skin ?? null,
+    batch, index, geometry: item.geometry, map: item.material.map ?? null, normalMatrix: mat3.create(), layerState: materialLayerState(item.material), skin: item.skin ?? null,
     jointMatrices: item.skin?.jointMatrices, skinIndices: item.geometry.skinIndices, skinWeights: item.geometry.skinWeights,
     mapState: ['map', 'normalMap', 'metallicRoughnessMap', 'occlusionMap', 'emissiveMap'].map(field => item.material[field] ?? null).concat(item.material.normalScale ?? [1, 1], item.material.occlusionStrength ?? 1, item.material.moss ?? 0, item.material.mossColor ?? [0.05, 0.085, 0.02]),
   }]));
@@ -326,22 +327,27 @@ test('draw batches bind all channels with their flags and scalar uniforms', () =
   const renderer = Object.create(Renderer67.prototype);
   const bindings = [];
   const uniforms = [];
-  renderer.uniforms = Object.fromEntries(['baseMap', 'normalMap', 'metallicRoughnessMap', 'occlusionMap', 'emissiveMap', 'hasBaseMap', 'hasNormalMap', 'hasMetallicRoughnessMap', 'hasOcclusionMap', 'hasEmissiveMap', 'normalScale', 'occlusionStrength', 'materialMoss'].map(name => [name, name]));
+  renderer.uniforms = Object.fromEntries(['materialDielectric', 'materialCoat', 'materialSheen', 'baseMap', 'normalMap', 'metallicRoughnessMap', 'occlusionMap', 'emissiveMap', 'hasBaseMap', 'hasNormalMap', 'hasMetallicRoughnessMap', 'hasOcclusionMap', 'hasEmissiveMap', 'normalScale', 'occlusionStrength', 'materialMoss'].map(name => [name, name]));
   renderer.context = {
     TEXTURE0: 33984,
     activeTexture(unit) { bindings.push(unit); }, bindTexture() {}, bindVertexArray() {}, drawElementsInstanced() {},
     uniform1i(name, value) { uniforms.push([name, value]); },
     uniform1f(name, value) { uniforms.push([name, value]); },
     uniform2f(name, first, second) { uniforms.push([name, first, second]); },
+    uniform3f(name, ...values) { uniforms.push([name, ...values]); },
     uniform4f(name, ...values) { uniforms.push([name, ...values]); },
   };
-  renderer.drawBatch({ textures: [{}, {}, {}, {}, {}], mapState: [{}, {}, {}, null, {}, 0.5, -1, 0.4, 0.6, 0.1, 0.2, 0.05] }, true);
+  const layerState = materialLayerState({ clearcoat: 0.7, clearcoatRoughness: 0.2, sheenColor: [0.1, 0.2, 0.3], sheenRoughness: 0.4 });
+  renderer.drawBatch({ textures: [{}, {}, {}, {}, {}], layerState, mapState: [{}, {}, {}, null, {}, 0.5, -1, 0.4, 0.6, 0.1, 0.2, 0.05] }, true);
   assert.deepEqual(bindings, [33985, 33986, 33987, 33988, 33989]);
   assert.ok(uniforms.some(values => values[0] === 'hasOcclusionMap' && values[1] === 0));
   assert.ok(uniforms.some(values => values[0] === 'metallicRoughnessMap' && values[1] === 3));
   assert.ok(uniforms.some(values => values[0] === 'normalScale' && values[1] === 0.5 && values[2] === -1));
   assert.ok(uniforms.some(values => values[0] === 'occlusionStrength' && values[1] === 0.4));
   assert.ok(uniforms.some(values => values[0] === 'materialMoss' && values[1] === 0.6 && values[4] === 0.05));
+  assert.ok(uniforms.some(values => values[0] === 'materialCoat' && values[1] === 0.7 && values[2] === 0.2));
+  assert.ok(uniforms.some(values => values[0] === 'materialSheen' && values[1] === 0.1 && values[4] === 0.4));
+  assert.ok(uniforms.some(values => values[0] === 'materialDielectric' && Math.abs(values[1] - 0.04) < 1e-9));
 });
 
 function skinGeometry(vertexCount = 3) {

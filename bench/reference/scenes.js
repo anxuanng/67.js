@@ -126,12 +126,28 @@ export const REFERENCE_SCENES = {
       parts.push(part(`stripe-${index}`, cube, [(index - 1.5) * 1, 1, -1.5], [0.5, 2, 0.2], { color, roughness: 0.6 }));
     });
     parts.push(part('glass-sphere', sphere(96, 64), [0, 0.9, 0.5], [0.9, 0.9, 0.9], {
-      tag: 'liquid', color: [1, 1, 1], roughness: 0.02, liquid: { ior: 1.5, thickness: 1.8, refraction: 1, scattering: 0 },
+      color: [1, 1, 1], roughness: 0.02, transmission: 1, ior: 1.5, thickness: 1.8,
     }));
     return {
       parts, blenderWorld: lighting.blenderWorld,
       environment: environment(lighting, { keyColor: SUN_COLOR }),
       camera: { eye: [0, 1.8, 6], target: [0, 0.9, 0], up: [0, 1, 0], fov: 35, near: 0.1, far: 200 },
+      shadow: { eye: [-6, 12, 8], target: [0, 0, 0], up: [0, 1, 0], extent: 6, near: 0.1, far: 40 },
+    };
+  },
+
+  async 'car-paint'() {
+    const lighting = await skyLighting();
+    const parts = [
+      floor([0.2, 0.2, 0.22]),
+      part('lacquer-red', sphere(96, 64), [-1.6, 0.8, 0], [0.8, 0.8, 0.8], { color: [0.55, 0.02, 0.02], roughness: 0.5, clearcoat: 1, clearcoatRoughness: 0.03 }),
+      part('flake-blue', sphere(96, 64), [0, 0.8, 0], [0.8, 0.8, 0.8], { color: [0.03, 0.12, 0.6], metallic: 0.8, roughness: 0.4, clearcoat: 1, clearcoatRoughness: 0.03 }),
+      part('uncoated-red', sphere(96, 64), [1.6, 0.8, 0], [0.8, 0.8, 0.8], { color: [0.55, 0.02, 0.02], roughness: 0.5 }),
+    ];
+    return {
+      parts, blenderWorld: lighting.blenderWorld,
+      environment: environment(lighting, { keyColor: SUN_COLOR }),
+      camera: { eye: [0, 2.2, 7], target: [0, 0.7, 0], up: [0, 1, 0], fov: 35, near: 0.1, far: 200 },
       shadow: { eye: [-6, 12, 8], target: [0, 0, 0], up: [0, 1, 0], extent: 6, near: 0.1, far: 40 },
     };
   },

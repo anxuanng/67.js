@@ -8,6 +8,7 @@ import { normalizeAgentMotion, compileAgentMotion } from './agent-motion.js';
 import { meshReport, generateMeshGeometry, MESH_SMOOTH_ANGLE_DEFAULT } from './agent-mesh.js';
 import { normalizeMeshEdits, normalizeMeshStack } from './mesh-recipe.js';
 import { AGENT_SCENE_CAPABILITIES, AGENT_SCENE_DEFAULT_LIMITS, MAX_MATERIAL_PATTERNS, RECIPE_ALPHA_MODES } from './agent-scene-capabilities.js';
+import { MATERIAL_LAYER_FIELDS, validateMaterialLayers } from './material-layers.js';
 import { materialPatternTextures, normalizeMaterialPattern } from './material-patterns.js';
 export { AGENT_SCENE_CAPABILITIES, AGENT_SCENE_DEFAULT_LIMITS };
 export { normalizeAgentLook, resolveAgentShadow } from './agent-look.js';
@@ -18,7 +19,7 @@ const DEFAULT_LIMITS = AGENT_SCENE_DEFAULT_LIMITS;
 const MAX_MESH_REPORTS = 16;
 const CAMERA_DEFAULTS = Object.freeze({ eye: [4, 3, 5], target: [0, 0, 0], up: [0, 1, 0], fov: 45, near: 0.1, far: 1000 });
 const NODE_FIELDS = ['translation', 'rotation', 'scale', 'parent', 'label', 'geometry', 'material'];
-const MATERIAL_FIELDS = ['color', 'metallic', 'roughness', 'emission', 'emissiveColor', 'opacity', 'alphaMode', 'doubleSided', 'pattern'];
+const MATERIAL_FIELDS = ['color', 'metallic', 'roughness', 'emission', 'emissiveColor', 'opacity', 'alphaMode', 'doubleSided', 'pattern', ...MATERIAL_LAYER_FIELDS];
 const PATTERN_TEXTURE_FIELDS = ['map', 'normalMap', 'metallicRoughnessMap', 'boxMapScale', 'boxMapAxis'];
 const CAMERA_FIELDS = Object.keys(CAMERA_DEFAULTS);
 const LOOK_OPERATION_FIELDS = Object.freeze({
@@ -181,6 +182,14 @@ function resources(values, maximum, label, validate) {
   });
 }
 
+function copyMaterialLayers(value, result) {
+  for (const field of MATERIAL_LAYER_FIELDS) {
+    if (value[field] === undefined) continue;
+    result[field] = Array.isArray(value[field]) ? vector(value[field], 3, field) : value[field];
+  }
+  validateMaterialLayers(result);
+}
+
 function materialFrom(value) {
   knownKeys(value, ['id', 'tag', ...MATERIAL_FIELDS], 'material');
   // A pattern brings its own colours, so the color field tints it and leaves it unchanged by default.
@@ -225,6 +234,7 @@ function materialFrom(value) {
       throw new RangeError('emissiveColor must be nonnegative.');
     }
   }
+  copyMaterialLayers(value, result);
   const emissiveColor = result.emissiveColor ?? result.color;
   for (const component of emissiveColor) {
     const radiance = Math.fround(component) * Math.fround(result.emission);
@@ -525,7 +535,8 @@ function geometryStats(records) {
 
 function batchSignature(material) {
   // Textures are fixed per renderer, so a changed pattern rebuilds it like a changed tag does.
-  return `${material.tag}|${material.alphaMode}|${material.opacity}|${material.doubleSided}|${JSON.stringify(material.pattern ?? null)}`;
+  // Transmission moves a material to the pass that sees the opaque scene, which is fixed per renderer.
+  return `${material.tag}|${material.alphaMode}|${material.opacity}|${material.transmission > 0}|${material.doubleSided}|${JSON.stringify(material.pattern ?? null)}`;
 }
 
 function materialHandle(snapshot) {

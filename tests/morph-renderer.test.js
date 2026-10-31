@@ -4,6 +4,7 @@ import { mat4, mat3 } from 'gl-matrix';
 import { box } from '../src/geometry.js';
 import { Renderer67, groupParts } from '../src/renderer.js';
 import { createMorphPose, validateMorphGeometry } from '../src/morph.js';
+import { materialLayerState } from '../src/material-layers.js';
 
 function makePart(name, geometry, morph) {
   return { name, geometry, morph, matrix: mat4.create(), material: { color: [0.4, 0.5, 0.6], metallic: 0, roughness: 0.7, emission: 0 } };
@@ -40,7 +41,7 @@ function retainedRenderer(parts) {
     group.forEach((part, index) => renderer.partLocations.set(part, {
       batch, index, geometry: part.geometry, morph: part.morph,
       morphWeights: part.morph.weights, morphTargets: part.geometry.morphTargets,
-      skin: null, map: null, mapState: [null, null, null, null, null, 1, 1, 1, 0, 0.05, 0.085, 0.02],
+      skin: null, map: null, layerState: materialLayerState({}), mapState: [null, null, null, null, null, 1, 1, 1, 0, 0.05, 0.085, 0.02],
       normalMatrix: mat3.create(),
     }));
     return batch;

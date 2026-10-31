@@ -289,7 +289,7 @@ vec3 environmentDiffuse(vec3 normal) {
 // specularWeight scales only the reflected sky; leaf cards use less, since their bent normals face the view at grazing angles.
 vec3 environmentLighting(vec3 normal, vec3 viewDirection, vec3 color, float metallic, float roughness, float occlusion, float ambient, float specularWeight) {
   float normalView = clamp(dot(normal, viewDirection), 0.001, 1.0);
-  vec3 baseReflectance = mix(vec3(0.04), color, metallic);
+  vec3 baseReflectance = mix(materialDielectric, color, metallic);
   vec2 lookup = texture(environmentBrdf, vec2(normalView, roughness)).rg;
   vec3 specularColor = (baseReflectance * lookup.x + lookup.y) * specularWeight;
   vec3 specular = environmentRadiance(reflect(-viewDirection, normal), roughness * environmentLevelMax) * specularColor;

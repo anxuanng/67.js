@@ -191,7 +191,7 @@ To move to a new Blender release, run `node scripts/parity-manual-snapshot.mjs`.
 | Rendering > Lights > Light Objects | partial | One directional light with a shadow, and 8 point lights without shadows. There are no spot or area lights. | [lighting](../tests/lighting.test.js) | #52 |
 | Rendering > Lights > Light Linking | missing | No light linking. | | #52 |
 | Rendering > Lights > World Environment | partial | Recipes have sky colors, daylight and fog. Code can load an HDRI, and recipes can not reach it. | [environment](../tests/environment.test.js) | #53 |
-| Rendering > Materials > Components | partial | Surfaces with PBR factors and five maps. There are no volume materials or displacement. | [texture-set](../tests/texture-set.test.js) | #50, #51 |
+| Rendering > Materials > Components | partial | Surfaces with PBR factors and five maps, a clear coat, transmission with thickness, attenuation and IOR, sheen, and specular weight and tint. There is no anisotropy, iridescence, subsurface scattering, volume material or displacement. | [texture-set](../tests/texture-set.test.js) | #50, #51 |
 | Rendering > Materials > Assignment | done | A node names one material. | [agent-scene](../tests/agent-scene.test.js) | |
 | Rendering > Materials > Preview | out of scope | Interface for a person. Agents use `scene_look`. | | |
 | Rendering > Materials > Settings | partial | Opaque and blend in recipes, and mask on imported assets, with double-sided support. | [gltf-extensions](../tests/gltf-extensions.test.js) | #51 |
@@ -199,7 +199,7 @@ To move to a new Blender release, run `node scripts/parity-manual-snapshot.mjs`.
 | Rendering > Materials > Legacy Textures | out of scope | Blender keeps these for old files. | | |
 | Rendering > Shader Nodes > Input | missing | No node graph. | | #50 |
 | Rendering > Shader Nodes > Output | missing | No node graph. | | #50 |
-| Rendering > Shader Nodes > Shader | partial | A fixed metallic-roughness surface, with unlit, liquid and foam tags. There is no clearcoat, transmission, sheen or subsurface. | [renderer](../tests/renderer.test.js) | #51 |
+| Rendering > Shader Nodes > Shader | partial | A metallic-roughness surface with clear coat, transmission, sheen and specular layers, and unlit, liquid and foam tags. There is no anisotropy, iridescence or subsurface. | [material-layers](../tests/material-layers.test.js) | #51 |
 | Rendering > Shader Nodes > Displacement | partial | Normal maps. There is no bump from height or displacement. | | #50 |
 | Rendering > Shader Nodes > Texture | partial | Image maps and 11 pattern presets. There is no graph, so an agent can not combine them. | [material-patterns](../tests/material-patterns.test.js) | #50 |
 | Rendering > Shader Nodes > Color | missing | No node graph. | | #50 |

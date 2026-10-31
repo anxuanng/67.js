@@ -1,4 +1,5 @@
 import { validateMorphGeometry, validateMorphPose } from './morph.js';
+import { gltfExtensionsFromLayers } from './gltf-layers.js';
 
 const EMISSIVE_STRENGTH = 'KHR_materials_emissive_strength';
 const COMPONENT_COUNTS = { SCALAR: 1, VEC2: 2, VEC3: 3 };
@@ -29,6 +30,11 @@ function writeAlphaFields(gltfMaterial, material) {
     gltfMaterial.alphaCutoff = material.alphaCutoff ?? 0.5;
   }
   if (material.doubleSided === true) gltfMaterial.doubleSided = true;
+}
+
+function declareExtensions(document, names, required) {
+  document.extensionsUsed = [...new Set([...(document.extensionsUsed ?? []), ...names])];
+  if (required) document.extensionsRequired = [...new Set([...(document.extensionsRequired ?? []), ...names])];
 }
 
 function validateFactor(value, label, maximum = 1) {
@@ -188,11 +194,15 @@ export function exportGlb(parts) {
         emissiveFactor: (part.material.emission ?? 0) === 0 ? [0, 0, 0] : Array.from(part.material.emissiveColor ?? part.material.color),
       };
       writeAlphaFields(material, part.material);
+      const layerExtensions = gltfExtensionsFromLayers(part.material);
+      if (Object.keys(layerExtensions).length > 0) {
+        material.extensions = layerExtensions;
+        declareExtensions(document, Object.keys(layerExtensions), false);
+      }
       const strength = part.material.emission ?? 0;
       if (strength !== 0 && strength !== 1) {
-        material.extensions = { [EMISSIVE_STRENGTH]: { emissiveStrength: strength } };
-        document.extensionsUsed = [EMISSIVE_STRENGTH];
-        document.extensionsRequired = [EMISSIVE_STRENGTH];
+        material.extensions = { ...material.extensions, [EMISSIVE_STRENGTH]: { emissiveStrength: strength } };
+        declareExtensions(document, [EMISSIVE_STRENGTH], true);
       }
       document.materials.push(material);
     }
