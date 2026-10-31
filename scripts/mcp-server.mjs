@@ -20,7 +20,13 @@ const point2 = z.tuple([finite, finite]);
 const detail = (minimum, maximum) => z.number().int().min(minimum).max(maximum).optional();
 const segments = detail(3, 2048);
 const ring = z.array(point2).min(3).max(4096);
+const skinSpec = z.strictObject({
+  armature: identifier.describe('ID of an entry in recipe armatures.'),
+  maxInfluences: z.number().int().min(1).max(4).optional().describe('Bones that move one vertex. Defaults to 4.'),
+  maxDistance: positive.optional().describe('Metres from the nearest bone beyond which a vertex counts as unweighted in scene_inspect rig. Defaults to a quarter of the rig size.'),
+}).describe('Bind this mesh node to an armature with automatic weights: each vertex follows its nearest bones, by distance to the bone segments. Needs the armature at rest where the mesh is.');
 const nodeFields = {
+  skin: skinSpec.optional(),
   label: z.string().max(256).optional().describe('Human-readable label. Identity remains the node ID.'),
   parent: identifier.nullable().optional().describe('Parent node ID, or null for a root. Local transforms stay unchanged.'),
   translation: vector3.optional().describe('Local XYZ translation.'),
@@ -39,7 +45,7 @@ const instanceSpec = z.strictObject({
   alignToNormal: z.boolean().optional().describe('Surface only: tilt up to the surface normal.'),
   scale: z.tuple([z.number().min(0.001).max(1000), z.number().min(0.001).max(1000)]).optional().describe('Random uniform scale range [min, max].'),
 }).describe('Exactly one of grid, scatter or surface. Expands at scene_create into a group node plus one child node per point (<id>.0, <id>.1, ...) that share geometry and material and draw as one instanced batch. At most 2048 candidate points.');
-const nodeRecord = z.strictObject({ id: identifier, geometry: identifier.optional(), material: identifier.optional(), instances: instanceSpec.optional().describe('Repeat geometry and material at points; needs both ids. Only in the recipe given to scene_create, not in add-node.'), ...nodeFields });
+const nodeRecord = z.strictObject({ armature: identifier.optional().describe('Set on nodes an armature generates, and ignored on input. Edit bones through armatures.'), id: identifier, geometry: identifier.optional(), material: identifier.optional(), instances: instanceSpec.optional().describe('Repeat geometry and material at points; needs both ids. Only in the recipe given to scene_create, not in add-node.'), ...nodeFields });
 const materialPattern = z.strictObject({
   type: z.enum(MATERIAL_PATTERN_TYPES).describe('Surface look. Directional types (wood, planks, metal) run along axis.'),
   colors: z.array(color).min(2).max(3).optional().describe('Linear RGB colours to mix, darker first. Bricks take a third for the mortar. Each type has good defaults.'),
@@ -377,12 +383,32 @@ const physics = z.strictObject({
   bodies: z.array(physicsBody).min(1).max(64),
   joints: z.array(physicsJoint).max(64).optional().describe('Joint bodies are the node IDs of physics bodies.'),
 }).describe('Rigid-body physics recorded offline with Rapier at 60 steps a second, then played back by time like motion: scene_look and scene_review motionTime seek into the recording, so a seek back shows the identical frame. Bodies are recipe nodes; scene_inspect reports contacts, sensor events and resting state as numbers. Needs the optional peer dependency @dimforge/rapier3d-compat. A node cannot have a physics body and a motion translation or rotation track.');
+const boneRecord = z.strictObject({
+  name: z.string().min(1).max(64).describe('Unique within the armature. Humanoid rigs use the canonical names (hips, spine, chest, neck, head, leftUpperArm, leftLowerArm, leftHand, leftUpperLeg, leftLowerLeg, leftFoot, leftToes, and right...) so retarget works.'),
+  parent: z.string().min(1).max(64).nullable().optional().describe('Parent bone name, or null for a root bone.'),
+  head: vector3.describe('Rest position of the joint in armature space.'),
+  tail: vector3.optional().describe('Where the bone ends. Defaults to the mean of its children, so give it on leaf bones.'),
+});
+const armature = z.strictObject({
+  id: identifier,
+  parent: identifier.nullable().optional().describe('Node the armature hangs from.'),
+  translation: vector3.optional(), rotation: quaternion.optional(),
+  prefix: z.string().max(64).optional().describe('Prepended to each bone node ID, for a second character or a clash with another node.'),
+  preset: z.enum(['humanoid', 'quadruped']).optional().describe('Places bones from fit. A humanoid faces +Z with Y up; its knees sit slightly forward of the leg line and its elbows slightly behind, so poleless two-bone IK bends the right way. A quadruped lies along Z.'),
+  fit: z.strictObject({
+    node: identifier.optional().describe('A mesh node whose bounds size the preset.'),
+    bounds: z.strictObject({ min: vector3, max: vector3 }).optional().describe('Or explicit bounds in armature space.'),
+    landmarks: z.record(z.string(), vector3).optional().describe('Move a bone head by bone name, or its tail as <name>Tail, for arms held out or an odd shape.'),
+  }).optional(),
+  bones: z.array(boneRecord).min(1).max(128).optional().describe('Explicit bones, instead of a preset.'),
+}).describe('A skeleton. Each bone becomes a recipe node named after it (parented like the bones, rotating about its head), so motion tracks, motion.ik and set-node address bones by name. Mesh nodes bind with skin. scene_inspect rig lists unweighted vertices, bones with no vertices and joint axis problems.');
 const recipe = z.strictObject({
   format: z.literal('67js.scene'),
   schemaVersion: z.literal(1),
   geometries: z.array(geometry).max(256),
   materials: z.array(z.strictObject({ id: identifier, tag: materialTag, ...materialFields })).max(256),
   nodes: z.array(nodeRecord).max(4096),
+  armatures: z.array(armature).max(16).optional(),
   camera: z.strictObject(cameraFields).optional(),
   environment: environment.optional(),
   effects: effects.optional(),
@@ -412,6 +438,7 @@ const operation = z.discriminatedUnion('type', [
   z.strictObject({ type: z.literal('set-material'), id: identifier, ...materialFields }),
   z.strictObject({ type: z.literal('set-camera'), ...cameraFields }),
   z.strictObject({ type: z.literal('set-motion'), motion: motion.nullable() }),
+  z.strictObject({ type: z.literal('set-armatures'), armatures: z.array(armature).max(16).nullable() }),
   z.strictObject({ type: z.literal('set-physics'), physics: physics.nullable() }),
   z.strictObject({ type: z.literal('set-environment'), environment }),
   z.strictObject({ type: z.literal('set-effects'), effects }),

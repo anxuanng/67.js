@@ -277,6 +277,23 @@ X = 0 and Z = 0, every pillar standing on the ground. Repeat one pillar over the
     ],
   },
   {
+    id: 'rigged-walker',
+    prompt: `A blocky humanoid character 1.8 m tall, facing +Z, built from rounded blocks: a torso 0.34 m wide, 0.5 m tall and
+0.2 m deep (centre at 1.15 m), a head, and for each side an upper arm, lower arm and hand (the arms hang at the sides)
+and an upper leg, lower leg and foot, the feet flat on the ground. Give it a humanoid armature fitted to its height, bind
+every block to it with automatic weights, and give it a looping 1 second walk: legs and arms swing in opposite phase,
+knees bend forward and elbows bend back, and nothing stretches or collapses. Name the bones in the canonical humanoid
+way (hips, spine, head, leftUpperArm, leftLowerLeg, rightFoot and so on).`,
+    checks: [
+      { kind: 'lint' },
+      { kind: 'size', expected: [null, 1.8, null] },
+      { kind: 'ground', centred: false },
+      { kind: 'rigBones' },
+      { kind: 'rigSkinned' },
+      { kind: 'rigWalk', footTravel: 0.3, label: 'walk cycle' },
+    ],
+  },
+  {
     id: 'robot-reach',
     assets: true,
     prompt: `The asset catalog holds an imported robot character. Create a scene from it with its Idle clip selected at

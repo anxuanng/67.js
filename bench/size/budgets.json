@@ -28,11 +28,11 @@
   "entry:grass": 4400,
   "entry:clutter": 5300,
   "entry:texture-set": 900,
-  "entry:agent-scene": 129200,
-  "entry:agent-asset": 136600,
+  "entry:agent-scene": 132000,
+  "entry:agent-asset": 139300,
   "entry:hdri": 3300,
   "scene:lit-box": 56000,
   "scene:gltf-box": 75300,
-  "scene:agent-scene": 155700
+  "scene:agent-scene": 158000
  }
 }

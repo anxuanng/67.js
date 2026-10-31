@@ -88,7 +88,7 @@ To move to a new Blender release, run `node scripts/parity-manual-snapshot.mjs`.
 | Modeling > Modifiers > Generate > Volume to Mesh Modifier | missing | No volume objects. | | |
 | Modeling > Modifiers > Generate > Weld Modifier | partial | `merge_by_distance` is an edit. It is not a stack node. | | #42 |
 | Modeling > Modifiers > Generate > Wireframe Modifier | missing | No equivalent. | | #42 |
-| Modeling > Modifiers > Deform > Armature Modifier | partial | GPU skinning for imported rigs. Recipes can not bind a mesh. | [skinning](../tests/skinning.test.js) | #46 |
+| Modeling > Modifiers > Deform > Armature Modifier | partial | A node `skin` binds a recipe mesh to an armature with automatic weights, and imported rigs keep GPU skinning. No envelope mode and no hand-edited weights. | [rigging](../tests/rigging.test.js), [skinning](../tests/skinning.test.js) | #46 |
 | Modeling > Modifiers > Deform > Cast Modifier | missing | No equivalent. | | #42 |
 | Modeling > Modifiers > Deform > Curve Modifier | missing | No equivalent. | | #42 |
 | Modeling > Modifiers > Deform > Displace Modifier | done | `displace` edit and stack node with a field as the texture, along the normal or an axis, with strength, midlevel and a face selection. Positions match Blender with a constant and with a Blend texture. | [src/mesh-field-edits.js](../src/mesh-field-edits.js), [tests/blender-golden.test.js](../tests/blender-golden.test.js), [src/mesh-fields.js](../src/mesh-fields.js), [tests/mesh-fields.test.js](../tests/mesh-fields.test.js) | #43 |
@@ -126,15 +126,15 @@ To move to a new Blender release, run `node scripts/parity-manual-snapshot.mjs`.
 | Sculpting & Painting > Sculpting | partial | Inflate, displace and smooth strokes in code. Recipes can not reach them, and there is no remesh during a stroke. | [sculpt](../tests/sculpt.test.js) | #47 |
 | Sculpting & Painting > Texture Paint | missing | No painting into textures. | | |
 | Sculpting & Painting > Vertex Paint | partial | Imported vertex colors render. Recipes can not author them. | | |
-| Sculpting & Painting > Weight Paint | missing | No vertex groups in recipes. Automatic weights replace painting by hand. | | #46 |
+| Sculpting & Painting > Weight Paint | partial | Automatic weights replace painting by hand. Skin weights are a mesh attribute, but there are no named vertex groups and no painting. | [rigging](../tests/rigging.test.js) | #46 |
 | Sculpting & Painting > Curves Sculpting | missing | No hair curves. | | #63 |
 | Grease Pencil | out of scope | Decided in issue #23. | | |
 | Animation & Rigging > Animation Editors | out of scope | Interface for a mouse. | | |
 | Animation & Rigging > Keyframes | partial | Linear, step, smooth and Hermite curves with deterministic seeks. There are no other easing types or keying sets. | [animation](../tests/animation.test.js) | |
-| Animation & Rigging > Armatures > Bones | missing | Recipes can not author bones. | | #46 |
-| Animation & Rigging > Armatures > Properties | missing | Recipes can not author armatures. | | #46 |
-| Animation & Rigging > Armatures > Structure | partial | Imported rigs keep their hierarchy. Recipes can not author one. | [gltf](../tests/gltf.test.js) | #46 |
-| Animation & Rigging > Armatures > Skinning | partial | Four-influence GPU skinning. There is no automatic binding. | [skinning](../tests/skinning.test.js) | #46 |
+| Animation & Rigging > Armatures > Bones | partial | Recipe `armatures` list bones with a name, parent, head and tail, and each bone is a recipe node that tracks and `motion.ik` address. No roll, bone shapes or custom properties. | [rigging](../tests/rigging.test.js) | #46 |
+| Animation & Rigging > Armatures > Properties | partial | An armature has an id, a parent node, a transform, an optional bone-ID prefix and a `humanoid` or `quadruped` preset fitted to a mesh node or to bounds. No display settings or bone collections. | [rigging](../tests/rigging.test.js) | #46 |
+| Animation & Rigging > Armatures > Structure | partial | Imported rigs keep their hierarchy, and recipes author one. A rig exports to GLB with its bones and a baked walk clip; Blender 5.2 opens it as 1 armature, 21 bones, 14 vertex-grouped meshes and 1 action. | [gltf](../tests/gltf.test.js), [rigging](../tests/rigging.test.js) | #46 |
+| Animation & Rigging > Armatures > Skinning | partial | Four-influence GPU skinning, with automatic binding by distance to the bone segments. Not heat diffusion, so two limbs that pass close can share weights; `scene_inspect` reports unweighted vertices, bones with no vertices and joint axis problems. | [skinning](../tests/skinning.test.js), [rigging](../tests/rigging.test.js) | #46 |
 | Animation & Rigging > Armatures > Posing | partial | Layers, masks, additive poses and IK in code. MCP has IK and one clip. | [skeleton-pose](../tests/skeleton-pose.test.js), [agent-asset-ik](../tests/agent-asset-ik.test.js) | #58, #59 |
 | Animation & Rigging > Lattice | missing | No lattice. | | #42 |
 | Animation & Rigging > Constraints > Interface | out of scope | Interface for a mouse. | | |
