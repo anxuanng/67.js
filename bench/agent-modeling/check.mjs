@@ -88,6 +88,27 @@ function checkOne(check, measures) {
       const onPath = close(solver.firstTarget, check.from) && close(solver.lastTarget, check.to);
       return { pass: onPath && solver.reached, detail: `targets ${JSON.stringify(solver.firstTarget)} to ${JSON.stringify(solver.lastTarget)}, reached ${solver.reached}, worst ${solver.worstError}` };
     }
+    case 'physicsBody': {
+      const body = measures.physics?.bodies.find(candidate => candidate.node === check.node);
+      return { pass: body?.type === check.type && body?.shape === check.shape, detail: body ? `${body.node} is ${body.type} ${body.shape}` : `no physics body on ${check.node}` };
+    }
+    case 'physicsRest': {
+      const problems = check.nodes.flatMap(node => {
+        const body = measures.physics?.bodies.find(candidate => candidate.node === node);
+        if (!body) return [`${node} has no physics body`];
+        const [x, y, z] = body.finalPosition;
+        const touching = measures.physics.contacts.some(contact => [contact.a, contact.b].includes(node) && [contact.a, contact.b].includes(check.touching) && contact.touchingAtEnd);
+        const found = [];
+        if (body.restsAtTime === null || body.restsAtTime === undefined) found.push(`${node} is still moving`);
+        if (y < check.height[0] || y > check.height[1]) found.push(`${node} ends at height ${round(y)}`);
+        if (Math.abs(x) > check.within || Math.abs(z) > check.within) found.push(`${node} ends outside the pocket at ${round(x)}, ${round(z)}`);
+        if (!touching) found.push(`${node} does not touch ${check.touching}`);
+        return found;
+      });
+      return { pass: problems.length === 0, detail: problems.join('; ') || `${check.nodes.length} balls at rest` };
+    }
+    case 'physicsSeek':
+      return { pass: measures.physicsSeekStable === true, detail: measures.physicsSeekStable ? 'identical matrices' : 'no physics, or a seek back differs' };
     case 'tips':
       return { pass: measures.tips === check.equals, detail: `${measures.tips} tips` };
     case 'triangles':

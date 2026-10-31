@@ -27,7 +27,19 @@ const nodeFields = {
   rotation: quaternion.optional().describe('Nonzero local XYZW quaternion. The backend normalizes it.'),
   scale: z.tuple([positive, positive, positive]).optional().describe('Positive local XYZ scale.'),
 };
-const nodeRecord = z.strictObject({ id: identifier, geometry: identifier.optional(), material: identifier.optional(), ...nodeFields });
+const fieldExpression = z.union([finite, z.boolean(), vector3, z.record(z.string(), z.unknown())]).describe('Field expression, plain JSON and never code. A number, a boolean or [x,y,z] is a constant; an object holds one operator: math add mul sub div mod pow min max clamp mix smoothstep neg abs sqrt sin cos floor ceil round fract sign; comparison lt lte gt gte eq; logic and or not if [cond,a,b]; vectors vec [x,y,z] dot cross distance length normalize x y z; sources {"attr":"position"|"normal"|"index"|"tag","component":"x"|"y"|"z","name":tag}, {"noise":{"scale":3,"seed":7,"octaves":1}} in 0..1, {"random":{"seed":1}} per element in 0..1. Example: {"mul":[{"attr":"position","component":"y"},0.5]}. At most 64 nodes, depth 12, 250000 elements.');
+const instanceCount = z.number().int().min(1).max(2048);
+const instanceSpec = z.strictObject({
+  grid: z.strictObject({ counts: z.tuple([instanceCount, instanceCount, instanceCount]), spacing: vector3 }).optional().describe('Grid of counts[0] x counts[1] x counts[2] points centred on the group.'),
+  scatter: z.strictObject({ count: instanceCount, min: vector3, max: vector3 }).optional().describe('Seeded random points in a box.'),
+  surface: z.strictObject({ geometry: identifier, count: instanceCount }).optional().describe("Seeded random points on the surface of a recipe geometry, in that geometry's own space; parent the instanced node to the node that carries it."),
+  seed: z.number().int().min(0).max(2147483647).optional(),
+  where: fieldExpression.optional().describe('Number expression over the points (position, normal, index); points where it is 0 are dropped.'),
+  yaw: z.boolean().optional().describe('Random turn about up.'),
+  alignToNormal: z.boolean().optional().describe('Surface only: tilt up to the surface normal.'),
+  scale: z.tuple([z.number().min(0.001).max(1000), z.number().min(0.001).max(1000)]).optional().describe('Random uniform scale range [min, max].'),
+}).describe('Exactly one of grid, scatter or surface. Expands at scene_create into a group node plus one child node per point (<id>.0, <id>.1, ...) that share geometry and material and draw as one instanced batch. At most 2048 candidate points.');
+const nodeRecord = z.strictObject({ id: identifier, geometry: identifier.optional(), material: identifier.optional(), instances: instanceSpec.optional().describe('Repeat geometry and material at points; needs both ids. Only in the recipe given to scene_create, not in add-node.'), ...nodeFields });
 const materialPattern = z.strictObject({
   type: z.enum(MATERIAL_PATTERN_TYPES).describe('Surface look. Directional types (wood, planks, metal) run along axis.'),
   colors: z.array(color).min(2).max(3).optional().describe('Linear RGB colours to mix, darker first. Bricks take a third for the mortar. Each type has good defaults.'),
@@ -185,7 +197,7 @@ function primitiveGeometries(identified) {
     z.strictObject({ ...id, type: z.literal('tube'), path: z.array(vector3).min(2).max(4096), radius: finite.optional(), segments, radialSegments: detail(3, 128), closed: z.boolean().optional() }),
   ];
 }
-const selectRule = z.record(z.string(), z.unknown()).describe('Face selection rule: {"all":true}, {"tag":"top"}, {"normal":[0,1,0],"maxAngle":10} (degrees), {"inside":{"min":[x,y,z],"max":[x,y,z]}} (face centroids), {"faces":[indices]}, {"and":[rules]}, {"or":[rules]}, {"not":rule}, {"grow":rule,"steps":1}, {"boundary":rule}. Tags come from the base (top, bottom, side, left, right, front, back) and from earlier edits (<name>.cap, <name>.side, <name>.rim, or a tag op).');
+const selectRule = z.record(z.string(), z.unknown()).describe('Face selection rule: {"all":true}, {"tag":"top"}, {"normal":[0,1,0],"maxAngle":10} (degrees), {"inside":{"min":[x,y,z],"max":[x,y,z]}} (face centroids), {"faces":[indices]}, {"and":[rules]}, {"or":[rules]}, {"not":rule}, {"grow":rule,"steps":1}, {"boundary":rule}, {"field":expression} (faces where a field expression is nonzero, evaluated at face centroids). Tags come from the base (top, bottom, side, left, right, front, back) and from earlier edits (<name>.cap, <name>.side, <name>.rim, or a tag op).');
 const editName = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]{0,47}$/).optional().describe('Prefix for the tags this edit creates. Defaults to <op>-<index>.');
 const edgeRule = z.record(z.string(), z.unknown()).describe('Edge rule: {"all":true}, {"angle":30}, {"along":[x,y,z]}, {"between":[faceRule,faceRule]}, {"boundaryOf":faceRule} or {"open":true} for boundary edges (also {"open":{"inside":{"min":[x,y,z],"max":[x,y,z]}}}).');
 const meshEdit = z.discriminatedUnion('op', [
@@ -234,6 +246,17 @@ const meshEdit = z.discriminatedUnion('op', [
   }).describe('Manifold boolean. Both the mesh and the cutter must be closed; mesh_inspect lists open edges.'),
 ]);
 const stackNodes = [
+  z.strictObject({
+    op: z.literal('set_position'), select: selectRule.optional(),
+    position: fieldExpression.optional().describe('Vector expression for the new position of each selected vertex. Defaults to the current position.'),
+    offset: fieldExpression.optional().describe('Vector expression added after position, for example {"vec":[0,{"noise":{"scale":3}},0]}. Give position, offset or both.'),
+  }).describe('Blender Set Position with field expressions, evaluated on the input positions, for the vertices of the selected faces.'),
+  z.strictObject({
+    op: z.literal('displace'), select: selectRule.optional(),
+    field: fieldExpression.describe('Number expression used as the texture.'),
+    strength: finite.optional().describe('Defaults to 1.'), midlevel: finite.optional().describe('Field value that does not move. Defaults to 0.5, the middle of noise.'),
+    direction: z.enum(['normal', 'x', 'y', 'z']).optional().describe('Defaults to normal.'),
+  }).describe('Blender Displace with a field as the texture: each vertex moves by (field - midlevel) * strength.'),
   z.strictObject({ op: z.literal('mirror'), name: editName, axis: z.enum(['x', 'y', 'z']).optional().describe('Mirror across the plane through the local origin perpendicular to this axis. Defaults to x.'), merge: bounded(0, 1000).optional().describe('Vertices this close to the plane are shared by both halves. Defaults to 0.001. Faces lying in the plane are removed, so a closed half becomes a closed whole.') }),
   z.strictObject({ op: z.literal('array'), name: editName, count: z.number().int().min(1).max(256).optional(), offset: vector3.optional().describe('Constant step between copies.'), relativeOffset: vector3.optional().describe('Step in bounding-box sizes. Defaults to [1, 0, 0] unless offset is given.'), merge: bounded(0, 1000).optional().describe('Weld touching copies and remove the faces between them.') }),
   z.strictObject({ op: z.literal('solidify'), name: editName, thickness: finite.describe('Wall thickness, positive.'), offset: bounded(-1, 1).optional().describe('-1 grows inward (default), 1 outward, 0 centred.'), evenThickness: z.boolean().optional() }),
@@ -361,6 +384,35 @@ const motion = z.strictObject({
     motionTrack('camera', 'roll', finite, finite),
   ])).max(128),
 }).describe('One absolute-time procedural clip. Local node transforms propagate through parents. Cubic tangents are derivatives per second. Backend checks references, duplicate tracks, 2048 total keys and every sampled pose.');
+const physicsBody = z.strictObject({
+  node: identifier.describe('A root recipe node with a geometry. The collider is fitted to that geometry at the node scale, and the body drives the node pose.'),
+  type: z.enum(['dynamic', 'fixed', 'kinematic']).optional().describe('Defaults to dynamic. Fixed bodies never move.'),
+  shape: z.enum(['box', 'ball', 'capsule', 'convex', 'trimesh']).optional().describe('Collider fitted to the geometry. Defaults: box for dynamic bodies and sensors, trimesh for fixed ones. Trimesh follows every triangle (at most 20000) and needs a fixed or kinematic body; convex wraps at most 2048 distinct vertices.'),
+  mass: positive.optional().describe('Kilograms. Give mass or density, not both.'),
+  density: positive.optional().describe('Defaults to 1.'),
+  friction: nonnegative.optional(),
+  restitution: unit.optional(),
+  sensor: z.boolean().optional().describe('A trigger volume: nothing bounces off it, and scene_inspect lists enter and leave times.'),
+  velocity: vector3.optional(),
+  angularVelocity: vector3.optional(),
+  layer: z.number().int().min(0).max(15).optional().describe('Collision layer, 0 to 15. Defaults to 0.'),
+  collidesWith: z.array(z.number().int().min(0).max(15)).max(16).optional().describe('Layers this body hits. Two bodies collide only when each lists the other\'s layer. Defaults to all.'),
+});
+const physicsJoint = z.strictObject({
+  type: z.enum(['spherical', 'revolute', 'prismatic', 'fixed']),
+  bodyA: identifier,
+  bodyB: identifier,
+  anchorA: vector3.optional(),
+  anchorB: vector3.optional(),
+  axis: vector3.optional().describe('Unit vector for revolute and prismatic joints.'),
+  limits: z.tuple([finite, finite]).optional().describe('Radians for revolute, metres for prismatic.'),
+});
+const physics = z.strictObject({
+  duration: z.number().min(0.1).max(10),
+  gravity: vector3.optional().describe('Defaults to [0, -9.81, 0].'),
+  bodies: z.array(physicsBody).min(1).max(64),
+  joints: z.array(physicsJoint).max(64).optional().describe('Joint bodies are the node IDs of physics bodies.'),
+}).describe('Rigid-body physics recorded offline with Rapier at 60 steps a second, then played back by time like motion: scene_look and scene_review motionTime seek into the recording, so a seek back shows the identical frame. Bodies are recipe nodes; scene_inspect reports contacts, sensor events and resting state as numbers. Needs the optional peer dependency @dimforge/rapier3d-compat. A node cannot have a physics body and a motion translation or rotation track.');
 const recipe = z.strictObject({
   format: z.literal('67js.scene'),
   schemaVersion: z.literal(1),
@@ -372,6 +424,7 @@ const recipe = z.strictObject({
   effects: effects.optional(),
   shadow: shadow.optional(),
   motion: motion.nullable().optional(),
+  physics: physics.nullable().optional(),
 }).describe('Bounded scene recipe. Backend validates references, mesh resource pairs, hierarchy, geometry budgets and camera consistency.');
 const assetRecipe = z.strictObject({
   format: z.literal('67js.asset'),
@@ -395,6 +448,7 @@ const operation = z.discriminatedUnion('type', [
   z.strictObject({ type: z.literal('set-material'), id: identifier, ...materialFields }),
   z.strictObject({ type: z.literal('set-camera'), ...cameraFields }),
   z.strictObject({ type: z.literal('set-motion'), motion: motion.nullable() }),
+  z.strictObject({ type: z.literal('set-physics'), physics: physics.nullable() }),
   z.strictObject({ type: z.literal('set-environment'), environment }),
   z.strictObject({ type: z.literal('set-effects'), effects }),
   z.strictObject({ type: z.literal('set-shadow'), shadow }),
@@ -455,10 +509,10 @@ export function createAgentMcpServer(runtime, { version = packageMetadata.versio
   register('scene_create', 'Create the single active render scene from a JSON recipe. Dispose an existing scene first.', z.strictObject({ recipe }), { ...edit, destructiveHint: false }, async argumentsValue => jsonResult(await runtime.create(argumentsValue)));
   register('scene_asset_catalog', 'List content-bound GLB IDs from the configured local asset directory. No arbitrary paths or downloads.', z.strictObject({}), readOnly, async () => jsonResult(await runtime.assetCatalog()));
   register('scene_create_asset', 'Create the active scene from a catalog GLB and editable asset recipe. Preserves supported maps, skins, morphs and clips. Dispose the existing scene first.', z.strictObject({ recipe: assetRecipe }), { ...edit, destructiveHint: false }, async argumentsValue => jsonResult(await runtime.createAsset(argumentsValue)));
-  register('scene_inspect', 'Read revision, counts and selected nodes. Bounds describe authored geometry rather than shader displacement.', z.strictObject({ ...sessionFields, ids: z.array(identifier).max(4096).optional().describe('Selected node IDs. Omit to inspect scene order.'), kind: z.enum(['meshes', 'hierarchy']).optional().describe('Imported assets only: hierarchy exposes stable source-node IDs and joints.'), offset: z.number().int().min(0).max(4096).optional().describe('Imported assets only: pagination offset.'), limit: z.number().int().min(1).max(4096).optional().describe('Maximum returned node records. Defaults to 64.'), includeBounds: z.boolean().optional().describe('Include world geometry bounds. Defaults to false.') }), readOnly, async argumentsValue => jsonResult(await runtime.inspect(argumentsValue)));
+  register('scene_inspect', 'Read revision, counts and selected nodes. For a recipe with physics, the result lists body final positions, resting times, contacts and sensor enter/leave events. Bounds describe authored geometry rather than shader displacement.', z.strictObject({ ...sessionFields, ids: z.array(identifier).max(4096).optional().describe('Selected node IDs. Omit to inspect scene order.'), kind: z.enum(['meshes', 'hierarchy']).optional().describe('Imported assets only: hierarchy exposes stable source-node IDs and joints.'), offset: z.number().int().min(0).max(4096).optional().describe('Imported assets only: pagination offset.'), limit: z.number().int().min(1).max(4096).optional().describe('Maximum returned node records. Defaults to 64.'), includeBounds: z.boolean().optional().describe('Include world geometry bounds. Defaults to false.') }), readOnly, async argumentsValue => jsonResult(await runtime.inspect(argumentsValue)));
   register('mesh_inspect', 'Check recipe geometries as polygon meshes: vertex, edge and face counts, triangles/quads/n-gons, connected and closed parts, face tags (top, bottom, side, left, right, front, back), bounds, and lint problems (non-manifold, inconsistent winding, inverted, degenerate, open, loose) with a suggested fix each. Procedural scenes only. Read-only and cached per geometry.', z.strictObject({ ...sessionFields, geometry: identifier.optional().describe('One geometry ID to check, as in mesh_edit.'), geometries: z.array(identifier).min(1).max(16).optional().describe('Geometry IDs to check. Omit both to check the first 16 geometries.') }), readOnly, async ({ geometry: geometryId, geometries, ...rest }) => jsonResult(await runtime.inspectMeshes({ ...rest, ...(geometries || geometryId ? { geometries: [...(geometries ?? []), ...(geometryId ? [geometryId] : [])] } : {}) })));
-  register('mesh_edit', 'Append edits to a recipe mesh geometry (or replace its edit log), atomically like scene_apply: extrude, inset, delete, flip, translate with proportional falloff, merge by distance, tag, loop cut, bevel, mirror, array, solidify, UV unwrap, and booleans (union, difference, intersect) with a primitive cutter. Edits that select no faces or break limits fail without changing the scene. Returns the new revision, render status and the mesh report with per-edit results (faces selected, tags created, size after).', z.strictObject({ ...sessionFields, expectedRevision, geometry: identifier.describe('ID of a geometry with type mesh.'), edits: meshEdits.min(1), replace: z.boolean().optional().describe('Replace the whole edit log instead of appending.') }), edit, async argumentsValue => jsonResult(await runtime.editMesh(argumentsValue)));
-  register('mesh_stack', 'Set the non-destructive modifier stack of a recipe mesh geometry (mirror, array, solidify, bevel, uv_unwrap, subdivide), evaluated after its edits with each prefix cached, so changing a late node is cheap. apply: n moves the first n nodes into the edit log, as Blender\'s Apply modifier. Atomic like scene_apply. Returns the revision, render status and mesh report with per-node results.', z.strictObject({ ...sessionFields, expectedRevision, geometry: identifier.describe('ID of a geometry with type mesh.'), stack: meshStack.optional().describe('The whole new stack. Omit to keep the current stack (for example with apply).'), apply: z.number().int().min(0).max(16).optional() }), edit, async argumentsValue => jsonResult(await runtime.setMeshStack(argumentsValue)));
+  register('mesh_edit', 'Append edits to a recipe mesh geometry (or replace its edit log), atomically like scene_apply: extrude, inset, delete, flip, translate with proportional falloff, merge by distance, tag, loop cut, bevel, mirror, array, solidify, UV unwrap, set_position and displace driven by field expressions (math, noise, attributes; also a {"field":expr} selection rule), and booleans (union, difference, intersect) with a primitive cutter. Edits that select no faces or break limits fail without changing the scene. Returns the new revision, render status and the mesh report with per-edit results (faces selected, tags created, size after).', z.strictObject({ ...sessionFields, expectedRevision, geometry: identifier.describe('ID of a geometry with type mesh.'), edits: meshEdits.min(1), replace: z.boolean().optional().describe('Replace the whole edit log instead of appending.') }), edit, async argumentsValue => jsonResult(await runtime.editMesh(argumentsValue)));
+  register('mesh_stack', 'Set the non-destructive modifier stack of a recipe mesh geometry (mirror, array, solidify, bevel, uv_unwrap, subdivide, set_position, displace), evaluated after its edits with each prefix cached, so changing a late node is cheap. apply: n moves the first n nodes into the edit log, as Blender\'s Apply modifier. Atomic like scene_apply. Returns the revision, render status and mesh report with per-node results.', z.strictObject({ ...sessionFields, expectedRevision, geometry: identifier.describe('ID of a geometry with type mesh.'), stack: meshStack.optional().describe('The whole new stack. Omit to keep the current stack (for example with apply).'), apply: z.number().int().min(0).max(16).optional() }), edit, async argumentsValue => jsonResult(await runtime.setMeshStack(argumentsValue)));
   register('scene_apply', 'Atomically edit transforms, look, camera or materials. Procedural scenes support membership and set-motion authoring. Imported assets support set-root, set-asset-node, set-motion and absolute set-animation sampling. Successful batches increment revision once.', z.strictObject({ ...sessionFields, expectedRevision, operations: z.array(operation).min(1).max(256).describe('Node/material/camera/root/animation commands use flat fields. Motion, look patches and add commands contain nested records. Backend validates each scene mode before publication.') }), edit, async argumentsValue => jsonResult(await runtime.apply(argumentsValue)));
   register('scene_look', 'Render the active scene as a bounded PNG. Optional authored motionTime seeks without changing revision; null restores the authored base pose. Omit to retain the last preview pose.', z.strictObject({ ...sessionFields, motionTime: z.number().min(0).max(3600).nullable().optional(), width: z.number().int().min(64).max(1024).default(768).describe('PNG width in pixels.'), height: z.number().int().min(64).max(1024).default(512).describe('PNG height in pixels.') }), readOnly, async argumentsValue => {
     const { data, mimeType, metadata } = await runtime.look(argumentsValue);
