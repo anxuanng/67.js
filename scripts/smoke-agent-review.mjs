@@ -5,7 +5,7 @@ import { join, resolve } from 'node:path';
 import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { Client } from '@modelcontextprotocol/client';
-import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
+import { PatientStdioClientTransport } from './patient-stdio-transport.mjs';
 import { createAgentCharacterFixture } from './agent-character-fixture.mjs';
 import { createTexturedRigFixture } from './agent-asset-fixture.mjs';
 
@@ -20,7 +20,7 @@ const clipFixture = await createTexturedRigFixture();
 await writeFile(join(assets, 'clip-rig.glb'), clipFixture);
 const clipAssetId = createHash('sha256').update(clipFixture).digest('hex');
 const cli = resolve(process.argv[2] ?? 'bin/67js-mcp.mjs');
-const transport = new StdioClientTransport({ command: process.execPath,
+const transport = new PatientStdioClientTransport({ command: process.execPath,
   args: [cli, '--backend', 'cpu', '--memory', '96', '--assets', assets], cwd: directory, stderr: 'pipe' });
 let diagnostics = '';
 transport.stderr.on('data', bytes => { diagnostics = (diagnostics + bytes).slice(-8192); });
