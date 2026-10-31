@@ -2,7 +2,7 @@
 // It fails when a bundle passes its budget in bench/size/budgets.json. --update-baseline rewrites the baseline after a
 // merge-ready change, and --set-budgets also resets each budget to 2% over its current size.
 import { readFile, writeFile } from 'node:fs/promises';
-import { resolve } from 'node:path';
+import { relative, resolve } from 'node:path';
 import { brotliCompressSync, gzipSync } from 'node:zlib';
 import { build } from 'esbuild';
 import { budgetsFrom, compareToBudgets, formatRows } from './size-budget.mjs';
@@ -51,16 +51,43 @@ const SCENES = {
   },
 };
 
+function gzipSize(contents) {
+  return gzipSync(contents, { level: 9 }).length;
+}
+
+// Dynamic imports become separate chunks. What a page pays at start is the entry chunk and every chunk it imports
+// statically; the rest loads when a feature asks for it. Both are reported so lazy code never hides.
+function chunkSizes(result) {
+  const outputsByPath = new Map(result.outputFiles.map(file => [relative(process.cwd(), file.path).replaceAll('\\', '/'), file]));
+  const entryPath = Object.keys(result.metafile.outputs).find(path => result.metafile.outputs[path].entryPoint);
+  const initialPaths = new Set();
+  const pending = [entryPath];
+  while (pending.length) {
+    const path = pending.pop();
+    if (initialPaths.has(path)) continue;
+    initialPaths.add(path);
+    for (const imported of result.metafile.outputs[path].imports) {
+      if (imported.kind === 'import-statement') pending.push(imported.path);
+    }
+  }
+  const sizeOf = paths => {
+    const parts = [...paths].map(path => outputsByPath.get(path).contents);
+    const bytes = Buffer.concat(parts);
+    return { min: bytes.length, gzip: parts.reduce((total, part) => total + gzipSize(part), 0), brotli: parts.reduce((total, part) => total + brotliCompressSync(part).length, 0) };
+  };
+  return { initial: sizeOf(initialPaths), all: sizeOf(outputsByPath.keys()) };
+}
+
 async function measureSource(contents) {
   const result = await build({
     stdin: { contents, resolveDir: process.cwd(), loader: 'js' },
-    bundle: true, minify: true, format: 'esm', write: false, treeShaking: true,
+    bundle: true, minify: true, format: 'esm', write: false, treeShaking: true, metafile: true,
+    splitting: true, outdir: 'size-output',
     external: EXTERNAL_PACKAGES, logLevel: 'silent', target: 'es2022',
     loader: { '.css': 'empty', '.json': 'json' },
     define: { 'process.env.NODE_ENV': '"production"' },
   });
-  const output = result.outputFiles[0].contents;
-  return { min: output.length, gzip: gzipSync(output, { level: 9 }).length, brotli: brotliCompressSync(output).length };
+  return chunkSizes(result);
 }
 
 async function packageEntries() {
@@ -69,20 +96,26 @@ async function packageEntries() {
   return { [CORE_ENTRY]: 'src/index.js', ...Object.fromEntries(addons.map(name => [name, `src/${name}.js`])) };
 }
 
+// A bundle with on-demand code gets a second row, so the total after every lazy chunk is visible and budgeted.
+function addMeasured(measured, name, sizes) {
+  measured[name] = sizes.initial;
+  if (sizes.all.gzip !== sizes.initial.gzip) measured[`${name}+lazy`] = sizes.all;
+}
+
 async function measureAll() {
   const measured = {};
   for (const [name, path] of Object.entries(await packageEntries())) {
     const absolute = resolve(path).replace(/\\/g, '/');
-    measured[`entry:${name}`] = await measureSource(`export * from '${absolute}';`);
+    addMeasured(measured, `entry:${name}`, await measureSource(`export * from '${absolute}';`));
   }
-  for (const [name, scene] of Object.entries(SCENES)) measured[`scene:${name}`] = await measureSource(scene.engine);
+  for (const [name, scene] of Object.entries(SCENES)) addMeasured(measured, `scene:${name}`, await measureSource(scene.engine));
   return measured;
 }
 
 async function measureThree() {
   const measured = {};
   for (const [name, scene] of Object.entries(SCENES)) {
-    if (scene.three) measured[name] = await measureSource(scene.three);
+    if (scene.three) measured[name] = (await measureSource(scene.three)).initial;
   }
   return measured;
 }

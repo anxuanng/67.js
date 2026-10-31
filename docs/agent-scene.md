@@ -45,6 +45,22 @@ The renderer owns GPU allocation and disposal.
 The authoring session does not allocate GPU resources.
 The normal frame loop can render retained parts without calling inspection or exporting the recipe.
 
+### On-demand code
+
+Mesh editing, `lathe`, `extrude` and `tube` geometry, material `pattern` and `motion` load on demand, so a recipe of
+primitives pays about half the bytes. `createAgentScene` and `apply` stay synchronous. When a recipe uses one of them,
+load its code first; a missing module throws an error that names this call.
+
+```js
+import { createAgentScene, loadAgentSceneModules } from '67js/addons/agent-scene';
+
+await loadAgentSceneModules(recipe);
+const scene = createAgentScene(recipe);
+```
+
+`loadAllAgentSceneModules()` loads everything, for a host that runs any recipe an agent writes (the MCP preview does).
+Call `loadAgentSceneModules(operations)` before `apply` when the operations add such features.
+
 ## Recipe contract
 
 The recipe must contain `format`, `schemaVersion`, `geometries`, `materials`, and `nodes`.

@@ -1,29 +1,25 @@
 import { mat4, mat3 } from 'gl-matrix';
 import { box, cylinder, sphere, torus } from './geometry.js';
-import { lathe, extrude, tube } from './modeling.js';
 import { createSceneGraph } from './scene-graph.js';
 import { applyProjection } from './camera.js';
 import { normalizeAgentLook } from './agent-look.js';
-import { normalizeAgentMotion, compileAgentMotion } from './agent-motion.js';
-import { normalizeAgentPhysics, bakeAgentPhysics } from './agent-physics.js';
-import { meshReport, generateMeshGeometry, MESH_SMOOTH_ANGLE_DEFAULT } from './agent-mesh.js';
-import { normalizeMeshEdits, normalizeMeshStack } from './mesh-recipe.js';
-import { expandInstancedNodes } from './mesh-instances.js';
-import { AGENT_SCENE_CAPABILITIES, AGENT_SCENE_DEFAULT_LIMITS, MAX_MATERIAL_PATTERNS, RECIPE_ALPHA_MODES } from './agent-scene-capabilities.js';
+import { agentSceneModule } from './agent-scene-modules.js';
+import { MESH_SMOOTH_ANGLE_DEFAULT, AGENT_SCENE_CAPABILITIES, AGENT_SCENE_DEFAULT_LIMITS, MAX_MATERIAL_PATTERNS, RECIPE_ALPHA_MODES } from './agent-scene-capabilities.js';
 import { MATERIAL_LAYER_FIELDS, validateMaterialLayers } from './material-layers.js';
-import { materialPatternTextures, normalizeMaterialPattern } from './material-patterns.js';
 import { recipeDiagnostics } from './agent-diagnostics.js';
+import { armatureNodes, bakeRigExport, bindSkins, createSkinStages, normalizeArmatures, publishSkinPoses, restWorldMatrix, rigReport, stageSkinPoses, transformedBounds, withoutArmatureNodes } from './rig.js';
 export { AGENT_SCENE_CAPABILITIES, AGENT_SCENE_DEFAULT_LIMITS };
 export { normalizeAgentLook, resolveAgentShadow } from './agent-look.js';
-export { needsMeshBooleans } from './agent-mesh.js';
-export { needsPhysics, loadPhysicsEngine, physicsEngineLoaded } from './agent-physics.js';
-export { setPhysicsModuleLoader } from './physics.js';
-export { loadMeshBooleans, meshBooleansLoaded, setManifoldModuleLoader } from './mesh-boolean.js';
+export {
+  needsMeshBooleans, loadMeshBooleans, meshBooleansLoaded, setManifoldModuleLoader,
+  needsPhysics, loadPhysicsEngine, physicsEngineLoaded, setPhysicsModuleLoader,
+  loadAgentSceneModules, loadAllAgentSceneModules, allAgentSceneModulesLoaded, agentSceneModulesNeeded,
+} from './agent-scene-modules.js';
 
 const DEFAULT_LIMITS = AGENT_SCENE_DEFAULT_LIMITS;
 const MAX_MESH_REPORTS = 16;
 const CAMERA_DEFAULTS = Object.freeze({ eye: [4, 3, 5], target: [0, 0, 0], up: [0, 1, 0], fov: 45, near: 0.1, far: 1000 });
-const NODE_FIELDS = ['translation', 'rotation', 'scale', 'parent', 'label', 'geometry', 'material'];
+const NODE_FIELDS = ['translation', 'rotation', 'scale', 'parent', 'label', 'geometry', 'material', 'skin'];
 const MATERIAL_FIELDS = ['color', 'metallic', 'roughness', 'emission', 'emissiveColor', 'opacity', 'alphaMode', 'doubleSided', 'pattern', ...MATERIAL_LAYER_FIELDS];
 const PATTERN_TEXTURE_FIELDS = ['map', 'normalMap', 'metallicRoughnessMap', 'boxMapScale', 'boxMapAxis'];
 const CAMERA_FIELDS = Object.keys(CAMERA_DEFAULTS);
@@ -206,7 +202,7 @@ function materialFrom(value) {
   }
   if (value.pattern !== undefined) {
     if (result.tag !== 'surface') throw new RangeError('Material pattern needs the surface tag.');
-    result.pattern = normalizeMaterialPattern(value.pattern);
+    result.pattern = agentSceneModule('patterns').normalizeMaterialPattern(value.pattern);
   }
   result.opacity = defaultValue(value.opacity, 1);
   finite(result.opacity, 'opacity');
@@ -279,6 +275,19 @@ function nodeFrom(value) {
   if (value.geometry !== undefined) {
     identifier(value.geometry);
     identifier(value.material);
+  }
+  if (value.skin !== undefined) {
+    if (value.geometry === undefined) {
+      throw new TypeError('Only mesh nodes can have a skin.');
+    }
+    knownKeys(value.skin, ['armature', 'maxInfluences', 'maxDistance'], 'skin');
+    identifier(value.skin.armature);
+    if (value.skin.maxInfluences !== undefined) {
+      integer(value.skin.maxInfluences, 1, 4, 'skin maxInfluences');
+    }
+    if (value.skin.maxDistance !== undefined && !(Number.isFinite(value.skin.maxDistance) && value.skin.maxDistance > 0)) {
+      throw new RangeError('skin maxDistance must be a positive number of metres.');
+    }
   }
   return result;
 }
@@ -388,11 +397,11 @@ function geometryEstimate(value) {
         throw new TypeError('mesh base must be a primitive or profile geometry record without an id (box, cylinder, sphere, torus, lathe, extrude or tube).');
       }
       let estimate = geometryEstimate({ id: 'base', ...base });
-      for (const edit of normalizeMeshEdits(value.edits ?? [])) {
+      for (const edit of agentSceneModule('mesh').normalizeMeshEdits(value.edits ?? [])) {
         if (edit.op === 'boolean') estimate += cutterEstimate(edit.cutter);
       }
       // Stack nodes multiply the mesh: arrays by their count, mirror and solidify at most by two.
-      for (const node of normalizeMeshStack(value.stack ?? [])) estimate *= node.op === 'array' ? node.count : 2;
+      for (const node of agentSceneModule('mesh').normalizeMeshStack(value.stack ?? [])) estimate *= node.op === 'array' ? node.count : 2;
       if (value.smoothAngle !== undefined && (value.smoothAngle < 0 || value.smoothAngle > 180)) {
         throw new RangeError('smoothAngle is degrees from 0 to 180.');
       }
@@ -400,6 +409,10 @@ function geometryEstimate(value) {
       return estimate * 2;
     }
   }
+}
+
+function hasInstancedNodes(nodes) {
+  return !Array.isArray(nodes) || nodes.some(node => node && typeof node === 'object' && Object.hasOwn(node, 'instances'));
 }
 
 function cutterEstimate(cutter) {
@@ -420,13 +433,13 @@ function generateGeometry(value, maxVertices) {
     case 'torus':
       return torus(value.tubeRadius, value.segments, value.sides, value.arc, value.start);
     case 'lathe':
-      return lathe(value.profile, { ...value, maxVertices });
+      return agentSceneModule('modeling').lathe(value.profile, { ...value, maxVertices });
     case 'extrude':
-      return extrude(value.contour, { ...value, maxVertices });
+      return agentSceneModule('modeling').extrude(value.contour, { ...value, maxVertices });
     case 'tube':
-      return tube(value.path, { ...value, maxVertices });
+      return agentSceneModule('modeling').tube(value.path, { ...value, maxVertices });
     case 'mesh':
-      return generateMeshGeometry(() => generateGeometry(value.base, maxVertices), value.edits ?? [], {
+      return agentSceneModule('mesh').generateMeshGeometry(() => generateGeometry(value.base, maxVertices), value.edits ?? [], {
         maxVertices, smoothAngle: value.smoothAngle ?? MESH_SMOOTH_ANGLE_DEFAULT,
         stack: value.stack ?? [], cacheKey: JSON.stringify(value.base),
         resolveCutter: cutter => {
@@ -489,9 +502,49 @@ function boundsFor(geometry, matrix) {
   return { min: minimum, max: maximum };
 }
 
+// An armature's nodes come first and are regenerated from it each time, so edits go through armatures, not through bone nodes.
+function addArmatures(recipe, limits) {
+  if (!Object.hasOwn(recipe, 'armatures')) {
+    for (const node of recipe.nodes) {
+      if (node.skin) {
+        throw new RangeError(`Node ${node.id} has a skin but the recipe has no armatures.`);
+      }
+    }
+    return;
+  }
+  const userNodes = new Map(recipe.nodes.map(node => [node.id, node]));
+  const resolveBounds = (armature, nodeId) => {
+    const node = userNodes.get(nodeId);
+    if (!node?.geometry) {
+      throw new RangeError(`Armature ${armature.id} fit node ${JSON.stringify(String(nodeId).slice(0, 48))} must be a mesh node.`);
+    }
+    const definition = recipe.geometries.find(geometry => geometry.id === node.geometry);
+    const bounds = boundsFor(generateGeometry(definition, Math.min(limits.maxVertices, 1_000_000)), mat4.create());
+    const toArmature = mat4.invert(mat4.create(), restWorldMatrix(armature.id, userNodes, [armature]));
+    const toWorld = restWorldMatrix(node.id, userNodes);
+    return transformedBounds(bounds, mat4.multiply(mat4.create(), toArmature, toWorld));
+  };
+  recipe.armatures = normalizeArmatures(recipe.armatures, { resolveBounds });
+  const derived = recipe.armatures.flatMap(armatureNodes);
+  for (const node of derived) {
+    if (userNodes.has(node.id)) {
+      throw new RangeError(`Armature node ${node.id} collides with a node of the same ID. Give the armature a prefix.`);
+    }
+  }
+  if (new Set(derived.map(node => node.id)).size !== derived.length) {
+    throw new RangeError('Two armatures generate the same node ID. Give one a prefix.');
+  }
+  for (const node of recipe.nodes) {
+    if (node.skin && !recipe.armatures.some(armature => armature.id === node.skin.armature)) {
+      throw new RangeError(`Node ${node.id} skin names armature ${node.skin.armature}, which is not in armatures.`);
+    }
+  }
+  recipe.nodes = [...derived, ...recipe.nodes];
+}
+
 function normalizeRecipe(input, limits) {
   let recipe = copiedJson(input, limits.maxRecipeBytes);
-  knownKeys(recipe, ['format', 'schemaVersion', 'geometries', 'materials', 'nodes', 'camera', 'environment', 'effects', 'shadow', 'motion', 'physics'], 'recipe');
+  knownKeys(recipe, ['format', 'schemaVersion', 'geometries', 'materials', 'nodes', 'armatures', 'camera', 'environment', 'effects', 'shadow', 'motion', 'physics'], 'recipe');
   if (recipe.format !== '67js.scene' || recipe.schemaVersion !== 1) {
     throw new RangeError('Expected 67js.scene schemaVersion 1.');
   }
@@ -510,7 +563,8 @@ function normalizeRecipe(input, limits) {
   if (distinctPatterns.size > MAX_MATERIAL_PATTERNS) {
     throw new RangeError(`A scene holds at most ${MAX_MATERIAL_PATTERNS} different material patterns; it has ${distinctPatterns.size}. Reuse a pattern and tint it with color.`);
   }
-  recipe.nodes = expandInstancedNodes(recipe.nodes, {
+  recipe.nodes = withoutArmatureNodes(recipe.nodes);
+  if (hasInstancedNodes(recipe.nodes)) recipe.nodes = agentSceneModule('mesh').expandInstancedNodes(recipe.nodes, {
     maxNodes: limits.maxNodes,
     resolveSurface: id => {
       const definition = recipe.geometries.find(geometry => geometry.id === id);
@@ -519,6 +573,7 @@ function normalizeRecipe(input, limits) {
     },
   });
   recipe.nodes = resources(recipe.nodes, limits.maxNodes, 'nodes', nodeFrom);
+  addArmatures(recipe, limits);
   recipe.camera = cameraFrom(recipe.camera);
   const look = {};
   for (const field of ['environment', 'effects', 'shadow']) {
@@ -528,10 +583,10 @@ function normalizeRecipe(input, limits) {
   }
   Object.assign(recipe, normalizeAgentLook(look));
   if (Object.hasOwn(recipe, 'motion')) {
-    recipe.motion = normalizeAgentMotion(recipe.motion, recipe);
+    recipe.motion = recipe.motion === null || recipe.motion === undefined ? null : agentSceneModule('motion').normalizeAgentMotion(recipe.motion, recipe);
   }
   if (Object.hasOwn(recipe, 'physics')) {
-    recipe.physics = normalizeAgentPhysics(recipe.physics, recipe);
+    recipe.physics = agentSceneModule('physics').normalizeAgentPhysics(recipe.physics, recipe);
   }
   recipe = copiedJson(recipe, limits.maxRecipeBytes);
   return recipe;
@@ -571,7 +626,7 @@ function materialHandle(snapshot) {
       enumerable: true,
       // Baked on first read, so validating or inspecting a recipe never pays for it.
       get() {
-        return holder.snapshot.pattern ? materialPatternTextures(holder.snapshot.pattern)[field] : undefined;
+        return holder.snapshot.pattern ? agentSceneModule('patterns').materialPatternTextures(holder.snapshot.pattern)[field] : undefined;
       },
     });
   }
@@ -632,6 +687,7 @@ function stagePose(stagedState, time) {
     graph.update();
     validateGraph(graph, stagedState.localBounds);
   }
+  stageSkinPoses(stagedState.skinStages, graph);
   const materialUpdates = [];
   for (const material of stagedState.recipe.materials) {
     const patch = sampled?.materials.get(material.id);
@@ -659,6 +715,7 @@ function publishPose(stagedState, pose) {
   for (const update of pose.materialUpdates) {
     update.holder.snapshot = update.snapshot;
   }
+  publishSkinPoses(stagedState.skinStages);
   stagedState.renderCamera = pose.camera;
   stagedState.motionTime = pose.time;
 }
@@ -705,6 +762,7 @@ export function createAgentScene(input, inputLimits = {}) {
   let revision = 0;
   let topologyRevision = 0;
   let physicsBake = null;
+  const skinCache = new Map();
   const checkpoints = new Map();
 
   function ownedGeometryRecords() {
@@ -778,6 +836,7 @@ export function createAgentScene(input, inputLimits = {}) {
     const geometries = new Map([...geometryRecords].map(([id, record]) => [id, record.geometry]));
     const localBounds = new Map([...geometryRecords.values()].map(record => [record.geometry, record.bounds]));
     const graph = compile(recipe, geometries, localBounds, limits);
+    const skinBindings = bindSkins({ recipe, graph, geometryRecords, cache: skinCache });
     const materialHandles = new Map();
     for (const material of recipe.materials) {
       const snapshot = immutableMaterial(material);
@@ -791,14 +850,16 @@ export function createAgentScene(input, inputLimits = {}) {
     const activeParts = new Map(state?.parts.map(part => [part.name, part]) ?? []);
     const preferredParts = new Map(preferred?.parts.map(part => [part.name, part]) ?? []);
     const nextParts = recipe.nodes.filter(node => node.geometry !== undefined).map(node => {
-      const geometry = geometries.get(node.geometry);
+      const binding = skinBindings.get(node.id);
+      const geometry = binding?.geometry ?? geometries.get(node.geometry);
       const material = materialHandles.get(node.material).output;
       const activePart = removedNodes.has(node.id) ? null : activeParts.get(node.id);
       const existing = [activePart, preferredParts.get(node.id)]
-        .find(part => part?.geometry === geometry && part.material === material);
+        .find(part => part?.geometry === geometry && part.material === material && part.skin === binding?.skin);
       return existing ?? Object.freeze({
         name: node.id, geometry, material,
         matrix: new Float32Array(graph.getNode(node.id).worldMatrix),
+        ...(binding ? { skin: binding.skin } : {}),
       });
     });
     retainedMatrices(nextParts);
@@ -811,7 +872,9 @@ export function createAgentScene(input, inputLimits = {}) {
       stats: geometryStats(geometryRecords.values()),
     };
     stagedState.localBounds = localBounds;
-    stagedState.motionSampler = compileAgentMotion(recipe.motion ?? null, recipe);
+    stagedState.skinBindings = skinBindings;
+    stagedState.skinStages = createSkinStages(skinBindings);
+    stagedState.motionSampler = recipe.motion ? agentSceneModule('motion').compileAgentMotion(recipe.motion, recipe) : null;
     stagedState.physicsSampler = stagePhysics(recipe, geometryRecords);
     const animated = Boolean(stagedState.motionSampler || stagedState.physicsSampler);
     stagedState.poseGraph = animated ? compile(recipe, geometries, localBounds, limits) : null;
@@ -828,7 +891,7 @@ export function createAgentScene(input, inputLimits = {}) {
     const key = JSON.stringify([recipe.physics, bodyNodes, bodyNodes.map(node => geometryRecords.get(node.geometry).signature)]);
     if (physicsBake?.key !== key) {
       const geometries = new Map([...geometryRecords].map(([id, record]) => [id, record.geometry]));
-      physicsBake = { key, sampler: bakeAgentPhysics(recipe.physics, recipe, geometries) };
+      physicsBake = { key, sampler: agentSceneModule('physics').bakeAgentPhysics(recipe.physics, recipe, geometries) };
     }
     return physicsBake.sampler;
   }
@@ -893,6 +956,15 @@ export function createAgentScene(input, inputLimits = {}) {
     exportRecipe() {
       return structuredClone(state.recipe);
     },
+    /** Bone nodes at rest and a clip baked from motion, as `exportGlb` options. Leaves the pose where it was. */
+    rigExport(options = {}) {
+      if (!state.recipe.armatures) {
+        return { nodes: [], clips: [] };
+      }
+      const exported = bakeRigExport(state.recipe, state.graph, state.motionSampler, options);
+      publishPose(state, stagePose(state, state.motionTime));
+      return exported;
+    },
     apply(inputOperations, options = {}) {
       expected(options);
       if (!Array.isArray(inputOperations) || inputOperations.length === 0 || inputOperations.length > limits.maxOperations) {
@@ -909,6 +981,18 @@ export function createAgentScene(input, inputLimits = {}) {
             throw new TypeError('set-motion requires motion; use null to clear it.');
           }
           candidate.motion = operation.motion;
+          continue;
+        }
+        if (operation.type === 'set-armatures') {
+          knownKeys(operation, ['type', 'armatures'], 'operation');
+          if (!Object.hasOwn(operation, 'armatures')) {
+            throw new TypeError('set-armatures requires armatures; use null to clear them.');
+          }
+          if (operation.armatures === null) {
+            delete candidate.armatures;
+          } else {
+            candidate.armatures = operation.armatures;
+          }
           continue;
         }
         if (operation.type === 'set-physics') {
@@ -971,7 +1055,7 @@ export function createAgentScene(input, inputLimits = {}) {
             throw new TypeError('edit-mesh needs an edits array.');
           }
           target.edits = operation.replace ? operation.edits : [...(target.edits ?? []), ...operation.edits];
-          normalizeMeshEdits(target.edits);
+          agentSceneModule('mesh').normalizeMeshEdits(target.edits);
           continue;
         }
         if (operation.type === 'set-mesh-stack') {
@@ -985,7 +1069,7 @@ export function createAgentScene(input, inputLimits = {}) {
             throw new TypeError(`Geometry ${operation.geometry} is a ${target.type}. Only mesh geometries have a modifier stack.`);
           }
           const stack = operation.stack ?? target.stack ?? [];
-          normalizeMeshStack(stack);
+          agentSceneModule('mesh').normalizeMeshStack(stack);
           const applied = operation.apply ?? 0;
           if (!Number.isInteger(applied) || applied < 0 || applied > stack.length) {
             throw new RangeError(`apply must be an integer from 0 to the stack length ${stack.length}.`);
@@ -993,7 +1077,7 @@ export function createAgentScene(input, inputLimits = {}) {
           // Applying moves the first nodes into the edit log, as Blender's Apply modifier does.
           target.edits = [...(target.edits ?? []), ...stack.slice(0, applied)];
           target.stack = stack.slice(applied);
-          normalizeMeshEdits(target.edits);
+          agentSceneModule('mesh').normalizeMeshEdits(target.edits);
           continue;
         }
         if (operation.type === 'remove-node') {
@@ -1076,9 +1160,10 @@ export function createAgentScene(input, inputLimits = {}) {
       const diagnostics = recipeDiagnostics(state.recipe);
       return {
         revision, topologyRevision,
-        ...(state.recipe.motion?.ik?.length ? { motionIk: compileAgentMotion(state.recipe.motion, state.recipe).sweepIk() } : {}),
+        ...(state.recipe.motion?.ik?.length ? { motionIk: agentSceneModule('motion').compileAgentMotion(state.recipe.motion, state.recipe).sweepIk() } : {}),
         motion: state.recipe.motion ? { duration: state.recipe.motion.duration, loop: state.recipe.motion.loop, tracks: state.recipe.motion.tracks.length, time: state.motionTime } : null,
         physics: state.physicsSampler ? state.physicsSampler.report() : null,
+        ...(state.recipe.armatures ? { rig: rigReport(state.recipe, state.skinBindings) } : {}),
         boundsSpace: 'authored-base-world',
         ...(diagnostics.length ? { diagnostics } : {}),
         counts: {
@@ -1115,7 +1200,7 @@ export function createAgentScene(input, inputLimits = {}) {
         if (!geometry) {
           throw new RangeError(`Geometry ID was not found: ${id}. Known IDs: ${[...state.geometries.keys()].join(', ')}.`);
         }
-        return { geometry: id, ...meshReport(geometry) };
+        return { geometry: id, ...agentSceneModule('mesh').meshReport(geometry) };
       });
       return { revision, meshes, truncated: requested.length > selected.length };
     },

@@ -5,7 +5,7 @@
   "agent-scene": 100000
  },
  "budgets": {
-  "entry:core": 78500,
+  "entry:core": 78400,
   "entry:model": 14400,
   "entry:nature": 13200,
   "entry:motion": 13600,
@@ -15,7 +15,7 @@
   "entry:sculpt": 2500,
   "entry:surface": 10100,
   "entry:mesh-query": 15900,
-  "entry:mesh": 65700,
+  "entry:mesh": 67000,
   "entry:shrinkwrap": 18300,
   "entry:surface-attachment": 11800,
   "entry:physics": 18000,
@@ -28,11 +28,14 @@
   "entry:grass": 4400,
   "entry:clutter": 5300,
   "entry:texture-set": 900,
-  "entry:agent-scene": 144500,
-  "entry:agent-asset": 152300,
+  "entry:agent-scene": 57500,
+  "entry:agent-scene+lazy": 158000,
+  "entry:agent-asset": 82800,
+  "entry:agent-asset+lazy": 165300,
   "entry:hdri": 3300,
   "scene:lit-box": 56000,
   "scene:gltf-box": 75300,
-  "scene:agent-scene": 170500
+  "scene:agent-scene": 83900,
+  "scene:agent-scene+lazy": 184300
  }
 }

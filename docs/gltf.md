@@ -107,8 +107,8 @@ renderer.render(camera);
 Translation, rotation, and scale tracks are supported.
 The importer rejects animation poses that become singular or change triangle winding.
 
-The current source supports four-influence [GPU skinning](skinning.md). GPU skinning is available from version `0.4.0`.
-The current source also supports relative POSITION/NORMAL morph targets and weight animations. See [morph import](gltf-morph.md).
+The current source supports four-influence [GPU skinning](https://67js.codepawl.com/skinning.md). GPU skinning is available from version `0.4.0`.
+The current source also supports relative POSITION/NORMAL morph targets and weight animations. See [morph import](https://67js.codepawl.com/gltf-morph.md).
 Morph primitives require authored base normals. TANGENT targets and per-target flat normal generation remain unsupported.
 
 The caller owns the Renderer67 instance.
