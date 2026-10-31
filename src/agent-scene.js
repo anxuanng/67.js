@@ -3,7 +3,7 @@ import { box, cylinder, sphere, torus } from './geometry.js';
 import { lathe, extrude, tube } from './modeling.js';
 import { createSceneGraph } from './scene-graph.js';
 import { applyProjection } from './camera.js';
-import { normalizeAgentLook } from './agent-look.js';
+import { normalizeAgentLook, environmentPatchWithSetup } from './agent-look.js';
 import { normalizeAgentMotion, compileAgentMotion } from './agent-motion.js';
 import { meshReport, generateMeshGeometry, MESH_SMOOTH_ANGLE_DEFAULT } from './agent-mesh.js';
 import { normalizeMeshEdits, normalizeMeshStack } from './mesh-recipe.js';
@@ -872,7 +872,7 @@ export function createAgentScene(input, inputLimits = {}) {
           const optionalFields = lookField === 'environment' ? ['spotLights', 'areaLights'] : [];
           knownKeys(patch, [...Object.keys(candidate[lookField]), ...optionalFields], lookField);
           const nestedField = lookField === 'environment' ? 'volumeFog' : lookField === 'effects' ? 'bloom' : null;
-          const merged = { ...candidate[lookField], ...patch };
+          const merged = { ...candidate[lookField], ...(lookField === 'environment' ? environmentPatchWithSetup(patch) : patch) };
           if (nestedField && Object.hasOwn(patch, nestedField)) {
             knownKeys(patch[nestedField], Object.keys(candidate[lookField][nestedField]), nestedField);
             merged[nestedField] = { ...candidate[lookField][nestedField], ...patch[nestedField] };

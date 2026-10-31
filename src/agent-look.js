@@ -3,13 +3,15 @@ import { createLightingState, updateLightingState, MAX_POINT_LIGHTS, MAX_SPOT_LI
 import { resolveEffects } from './effects.js';
 import { resolveVolumeFog } from './volumetric.js';
 import { resolveLiquidOptics } from './renderer.js';
+import { createLightingSetupMap, lightingSetupFields } from './lighting-setups.js';
+import { DEFAULT_LIGHTING_SETUP, LIGHTING_SETUP_NAMES, DEFAULT_AMBIENT_OCCLUSION } from './agent-scene-capabilities.js';
 
 const ENVIRONMENT_FIELDS = [
-  'world', 'lightDirection', 'keyColor', 'keyIntensity', 'fillIntensity', 'ambientIntensity',
+  'world', 'setup', 'environmentIntensity', 'environmentRotation', 'lightDirection', 'keyColor', 'keyIntensity', 'fillIntensity', 'ambientIntensity',
   'daylight', 'pointLights', 'spotLights', 'areaLights', 'skyTop', 'skyBottom', 'fogColor', 'fogDensity', 'volumeFog', 'liquid',
 ];
 const LIQUID_FIELDS = ['thickness', 'ior', 'refraction', 'scattering', 'foamOpacity', 'foamSoftness'];
-const EFFECT_FIELDS = ['exposure', 'saturation', 'contrast', 'temperature', 'vignette', 'grain', 'bloom'];
+const EFFECT_FIELDS = ['exposure', 'saturation', 'contrast', 'temperature', 'vignette', 'grain', 'ambientOcclusion', 'ambientOcclusionRadius', 'bloom'];
 const SHADOW_FIELDS = ['target', 'extent', 'distance', 'near', 'far'];
 const POINT_LIGHT_FIELDS = ['position', 'color', 'intensity', 'radius', 'range', 'castShadow'];
 const SPOT_LIGHT_FIELDS = ['position', 'direction', 'angle', 'penumbra', 'color', 'intensity', 'radius', 'range', 'castShadow'];
@@ -198,17 +200,25 @@ function environmentFrom(input = {}) {
   if (typeof world !== 'boolean') {
     throw new TypeError('environment.world must be boolean.');
   }
+  const setup = fallback(input.setup, DEFAULT_LIGHTING_SETUP);
+  if (!LIGHTING_SETUP_NAMES.includes(setup)) {
+    throw new RangeError(`environment.setup must be one of ${LIGHTING_SETUP_NAMES.join(', ')}.`);
+  }
+  const defaults = lightingSetupFields(setup);
   const environment = {
     world,
-    lightDirection: directionFrom(fallback(input.lightDirection, [-3, 6, 4])).direction,
-    keyColor: vectorInRange(fallback(input.keyColor, [5.2, 4.7, 4.1]), 0, 1000, 'keyColor'),
-    keyIntensity: numberInRange(fallback(input.keyIntensity, 1), 0, 100, 'keyIntensity'),
-    fillIntensity: numberInRange(fallback(input.fillIntensity, 1), 0, 100, 'fillIntensity'),
-    ambientIntensity: numberInRange(fallback(input.ambientIntensity, 1), 0, 100, 'ambientIntensity'),
+    setup,
+    environmentIntensity: numberInRange(fallback(input.environmentIntensity, 1), 0, 100, 'environmentIntensity'),
+    environmentRotation: numberInRange(fallback(input.environmentRotation, 0), -100, 100, 'environmentRotation'),
+    lightDirection: directionFrom(fallback(input.lightDirection, defaults.lightDirection)).direction,
+    keyColor: vectorInRange(fallback(input.keyColor, defaults.keyColor), 0, 1000, 'keyColor'),
+    keyIntensity: numberInRange(fallback(input.keyIntensity, defaults.keyIntensity), 0, 100, 'keyIntensity'),
+    fillIntensity: numberInRange(fallback(input.fillIntensity, defaults.fillIntensity), 0, 100, 'fillIntensity'),
+    ambientIntensity: numberInRange(fallback(input.ambientIntensity, defaults.ambientIntensity), 0, 100, 'ambientIntensity'),
     daylight: numberInRange(fallback(input.daylight, 1), 0, 100, 'daylight'),
     pointLights: lightListFrom(input.pointLights, MAX_POINT_LIGHTS, 'pointLights').map(pointLightFrom),
-    skyTop: vectorInRange(fallback(input.skyTop, [0.2, 0.38, 0.52]), 0, 1, 'skyTop'),
-    skyBottom: vectorInRange(fallback(input.skyBottom, [0.62, 0.7, 0.67]), 0, 1, 'skyBottom'),
+    skyTop: vectorInRange(fallback(input.skyTop, defaults.skyTop), 0, 1, 'skyTop'),
+    skyBottom: vectorInRange(fallback(input.skyBottom, defaults.skyBottom), 0, 1, 'skyBottom'),
     fogColor: vectorInRange(fallback(input.fogColor, [0.35, 0.43, 0.43]), 0, 1, 'fogColor'),
     fogDensity: numberInRange(fallback(input.fogDensity, 0.006), 0, 10, 'fogDensity'),
     volumeFog: volumeFogFrom(input.volumeFog),
@@ -228,6 +238,26 @@ function environmentFrom(input = {}) {
   return environment;
 }
 
+/**
+ * Setup-derived fields come with the setup name, so switching setups never keeps the old key light.
+ * Fields in the patch itself still win.
+ */
+export function environmentPatchWithSetup(patch) {
+  if (patch.setup === undefined) {
+    return patch;
+  }
+  return { ...lightingSetupFields(patch.setup), ...patch };
+}
+
+/** The procedural environment map that lights a normalized environment; the same object returns while inputs hold. */
+export function agentEnvironmentMap(environment) {
+  return createLightingSetupMap(environment.setup, {
+    intensity: environment.environmentIntensity,
+    rotation: environment.environmentRotation,
+    showBackground: environment.world,
+  });
+}
+
 function effectsFrom(input = {}) {
   knownKeys(input, EFFECT_FIELDS, 'effects');
   for (const field of EFFECT_FIELDS) {
@@ -242,7 +272,8 @@ function effectsFrom(input = {}) {
       numberInRange(bloom[field], -Number.MAX_VALUE, Number.MAX_VALUE, `bloom.${field}`);
     }
   }
-  const resolved = resolveEffects({ ...input, bloom: { strength: 0.12, threshold: 1, radius: 1, ...bloom } });
+  const ambientOcclusion = fallback(input.ambientOcclusion, DEFAULT_AMBIENT_OCCLUSION);
+  const resolved = resolveEffects({ ...input, ambientOcclusion, bloom: { strength: 0.12, threshold: 1, radius: 1, ...bloom } });
   return { ...resolved, exposure: numberInRange(fallback(input.exposure, 1), 0.01, 16, 'exposure') };
 }
 

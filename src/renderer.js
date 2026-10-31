@@ -1,6 +1,7 @@
 import { mat4, mat3 } from 'gl-matrix';
 import { vertexShader, createFragmentShader, liquidFragmentShader, depthVertexShader, depthFragmentShader, benchmarkVertexShader, benchmarkFragmentShader } from './shaders.js';
 import { fullscreenVertex, postFragment, skyFragment, bloomFragment } from './post.js';
+import { ambientOcclusionFragment } from './ambient-occlusion.js';
 import { planRenderSize, estimateTextureBytes, estimateFrameBytes } from './budget.js';
 import { applyProjection } from './camera.js';
 import { resolveEffects } from './effects.js';
@@ -459,7 +460,7 @@ export class Renderer67 {
     if (!benchmark) {
       this.postProgram = finishProgram(this.context, pending.post);
       this.skyProgram = finishProgram(this.context, pending.sky);
-      this.postUniforms = Object.fromEntries(['transparent', 'frameTexture', 'bloomTexture', 'bloomStrength', 'hdrEnabled', 'grade', 'vignette', 'grainAmount', 'resolution', 'monochrome', 'fade', 'cinematic', 'time', 'volumeExplosion', 'explosionProgress', 'inverseViewProjection', 'eye', 'sceneDepth', 'volumeShadowMap', 'volumeLightProjection', 'volumeLightDirection', 'volumeLightColor', 'volumeDensity', 'volumeMinimum', 'volumeMaximum', 'volumeColor', 'volumeAmbient', 'volumeDrift', 'volumeSteps', 'volumeAnisotropy', 'volumeNoiseAmount', 'volumeNoiseScale', 'volumeMaxDistance', 'orthographic'].map((name) => [name, this.context.getUniformLocation(this.postProgram, name)]));
+      this.postUniforms = Object.fromEntries(['transparent', 'frameTexture', 'bloomTexture', 'bloomStrength', 'hdrEnabled', 'grade', 'vignette', 'grainAmount', 'resolution', 'monochrome', 'fade', 'cinematic', 'time', 'volumeExplosion', 'explosionProgress', 'inverseViewProjection', 'eye', 'sceneDepth', 'volumeShadowMap', 'volumeLightProjection', 'volumeLightDirection', 'volumeLightColor', 'volumeDensity', 'volumeMinimum', 'volumeMaximum', 'volumeColor', 'volumeAmbient', 'volumeDrift', 'volumeSteps', 'volumeAnisotropy', 'volumeNoiseAmount', 'volumeNoiseScale', 'volumeMaxDistance', 'orthographic', 'occlusionTexture', 'occlusionStrength', 'occlusionTexel'].map((name) => [name, this.context.getUniformLocation(this.postProgram, name)]));
       this.bloomProgram = finishProgram(this.context, pending.bloom);
       this.bloomUniforms = Object.fromEntries(['sourceTexture', 'texelDirection', 'threshold', 'extract'].map(name => [name, this.context.getUniformLocation(this.bloomProgram, name)]));
       this.skyUniforms = Object.fromEntries(['skyTop', 'skyBottom', 'sunDirection', 'inverseViewProjection', 'eye', 'time', 'daylight', 'hdrEnabled'].map((name) => [name, this.context.getUniformLocation(this.skyProgram, name)]));
@@ -1134,12 +1135,66 @@ export class Renderer67 {
       context.deleteFramebuffer(target.framebuffer);
     }
     this.bloomTargets = [];
+    this.releaseOcclusionTarget();
     this.multisampleFramebuffer = null;
     this.resolveFramebuffer = null;
     this.multisampleColor = null;
     this.multisampleDepth = null;
     this.frameTexture = null;
     this.depthTexture = null;
+  }
+
+  releaseOcclusionTarget() {
+    if (!this.occlusionTarget) return;
+    this.context.deleteTexture(this.occlusionTarget.texture);
+    this.context.deleteFramebuffer(this.occlusionTarget.framebuffer);
+    this.occlusionTarget = null;
+  }
+
+  // Compiled and allocated on first use, so scenes without occlusion pay nothing.
+  ensureOcclusionTarget() {
+    const context = this.context;
+    if (!this.occlusionProgram) {
+      this.occlusionProgram = compileProgram(context, fullscreenVertex, ambientOcclusionFragment);
+      const names = ['sceneDepth', 'inverseViewProjection', 'eye', 'radius', 'projectionScale', 'aspect', 'orthographic'];
+      this.occlusionUniforms = Object.fromEntries(names.map(name => [name, context.getUniformLocation(this.occlusionProgram, name)]));
+    }
+    if (this.occlusionTarget) return;
+    const width = Math.max(1, Math.ceil(this.canvas.width / 2));
+    const height = Math.max(1, Math.ceil(this.canvas.height / 2));
+    const texture = context.createTexture();
+    context.bindTexture(context.TEXTURE_2D, texture);
+    context.texImage2D(context.TEXTURE_2D, 0, context.R8, width, height, 0, context.RED, context.UNSIGNED_BYTE, null);
+    context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MIN_FILTER, context.LINEAR);
+    context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MAG_FILTER, context.LINEAR);
+    context.texParameteri(context.TEXTURE_2D, context.TEXTURE_WRAP_S, context.CLAMP_TO_EDGE);
+    context.texParameteri(context.TEXTURE_2D, context.TEXTURE_WRAP_T, context.CLAMP_TO_EDGE);
+    const framebuffer = context.createFramebuffer();
+    context.bindFramebuffer(context.FRAMEBUFFER, framebuffer);
+    context.framebufferTexture2D(context.FRAMEBUFFER, context.COLOR_ATTACHMENT0, context.TEXTURE_2D, texture, 0);
+    this.occlusionTarget = { texture, framebuffer, width, height };
+  }
+
+  drawAmbientOcclusion(frame, effects) {
+    const context = this.context;
+    this.ensureOcclusionTarget();
+    const uniforms = this.occlusionUniforms;
+    context.bindFramebuffer(context.FRAMEBUFFER, this.occlusionTarget.framebuffer);
+    context.viewport(0, 0, this.occlusionTarget.width, this.occlusionTarget.height);
+    context.disable(context.DEPTH_TEST);
+    context.disable(context.CULL_FACE);
+    context.bindVertexArray(null);
+    context.useProgram(this.occlusionProgram);
+    context.activeTexture(context.TEXTURE1);
+    context.bindTexture(context.TEXTURE_2D, this.depthTexture);
+    context.uniform1i(uniforms.sceneDepth, 1);
+    context.uniformMatrix4fv(uniforms.inverseViewProjection, false, this.inverseViewProjection);
+    context.uniform3fv(uniforms.eye, frame.eye);
+    context.uniform1f(uniforms.radius, effects.ambientOcclusionRadius);
+    context.uniform1f(uniforms.projectionScale, 0.5 * this.projection[5]);
+    context.uniform1f(uniforms.aspect, this.canvas.width / this.canvas.height);
+    context.uniform1f(uniforms.orthographic, frame.projection === 'orthographic' ? 1 : 0);
+    context.drawArrays(context.TRIANGLES, 0, 3);
   }
 
   allocateFrameTargets(width, height) {
@@ -1317,6 +1372,8 @@ export class Renderer67 {
     context.bindFramebuffer(context.DRAW_FRAMEBUFFER, this.resolveFramebuffer);
     context.blitFramebuffer(0, 0, this.canvas.width, this.canvas.height, 0, 0, this.canvas.width, this.canvas.height, context.COLOR_BUFFER_BIT | (this.depth ? context.DEPTH_BUFFER_BIT : 0), context.NEAREST);
     if (effects.bloom.strength > 0) this.drawBloom(effects.bloom);
+    const occluded = effects.ambientOcclusion > 0 && Boolean(this.depthTexture);
+    if (occluded) this.drawAmbientOcclusion(frame, effects);
     context.bindFramebuffer(context.FRAMEBUFFER, null);
     context.viewport(0, 0, this.canvas.width, this.canvas.height);
     context.disable(context.DEPTH_TEST);
@@ -1351,6 +1408,11 @@ export class Renderer67 {
     context.bindTexture(context.TEXTURE_2D, effects.bloom.strength > 0 ? this.bloomTargets[1].texture : this.whiteTexture);
     context.uniform1i(this.postUniforms.bloomTexture, 2);
     context.uniform1f(this.postUniforms.bloomStrength, effects.bloom.strength);
+    context.activeTexture(context.TEXTURE4);
+    context.bindTexture(context.TEXTURE_2D, occluded ? this.occlusionTarget.texture : this.whiteTexture);
+    context.uniform1i(this.postUniforms.occlusionTexture, 4);
+    context.uniform1f(this.postUniforms.occlusionStrength, occluded ? effects.ambientOcclusion : 0);
+    context.uniform2f(this.postUniforms.occlusionTexel, 1 / Math.ceil(this.canvas.width / 2), 1 / Math.ceil(this.canvas.height / 2));
     context.uniform1f(this.postUniforms.transparent, this.transparent ? 1 : 0);
     context.uniform1f(this.postUniforms.hdrEnabled, this.hdr ? 1 : 0);
     context.uniform3f(this.postUniforms.grade, effects.saturation, effects.contrast, effects.temperature);
@@ -1714,6 +1776,7 @@ export class Renderer67 {
     if (this.postProgram) this.context.deleteProgram(this.postProgram);
     if (this.skyProgram) this.context.deleteProgram(this.skyProgram);
     if (this.bloomProgram) this.context.deleteProgram(this.bloomProgram);
+    if (this.occlusionProgram) this.context.deleteProgram(this.occlusionProgram);
     if (this.environmentBackgroundProgram) this.context.deleteProgram(this.environmentBackgroundProgram);
     this.environmentResources?.dispose();
     for (const texture of this.textures.values()) this.context.deleteTexture(texture);

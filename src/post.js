@@ -44,6 +44,9 @@ uniform float volumeNoiseAmount;
 uniform float volumeNoiseScale;
 uniform float volumeMaxDistance;
 uniform float orthographic;
+uniform sampler2D occlusionTexture;
+uniform float occlusionStrength;
+uniform vec2 occlusionTexel;
 out vec4 outputColor;
 float luminance(vec3 color) { return dot(color, vec3(0.299, 0.587, 0.114)); }
 float hash(vec3 position) { return fract(sin(dot(position, vec3(127.1, 311.7, 74.7))) * 43758.5453); }
@@ -169,6 +172,17 @@ void main() {
   if (maximumLuma - minimumLuma < max(0.03, maximumLuma * 0.125)) color = center;
   float coverage = texture(frameTexture, textureCoordinate).a;
   if (transparent > 0.5) color = center / max(coverage, 0.00001);
+  if (occlusionStrength > 0.0) {
+    float visibility = 0.0;
+    for (int row = -1; row <= 1; row++) {
+      for (int column = -1; column <= 1; column++) {
+        visibility += texture(occlusionTexture, textureCoordinate + vec2(float(column), float(row)) * occlusionTexel).r;
+      }
+    }
+    // Occlusion belongs to indirect light, so pixels already bright from direct light keep less of it.
+    float directShare = 1.0 / (1.0 + 0.4 * luminance(color));
+    color *= mix(1.0, visibility / 9.0, occlusionStrength * directShare);
+  }
   if (bloomStrength > 0.0) color += texture(bloomTexture, textureCoordinate).rgb * bloomStrength;
   if (volumeDensity > 0.0) color = volumeFog(color);
   if (hdrEnabled > 0.5) {

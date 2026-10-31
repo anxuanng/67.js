@@ -46,7 +46,8 @@ EEVEE against Cycles is a yardstick: it shows what a good rasterizer scores. In 
 ## Limits
 
 - Scores come from one camera for each scene and one machine. They do not measure motion or speed.
-- 67.js reaches an HDRI only from code. A recipe can not set one yet, so these scores are better than what an agent gets today (issue #53).
+- This suite sets an HDRI from code and turns occlusion on at the recipe default. A recipe reaches only the named procedural setups, so these scores still describe a better environment than an agent gets (issue #53).
+- `character` has no new EEVEE render: Blender 5.2.2 crashed on that scene in `mesh_set_custom_normals` in every retry (a pre-existing crash that this change does not touch), so its EEVEE columns keep the earlier numbers.
 - The Blender leaf material has no translucency, and the 67.js foliage shader adds it by a trick. `foliage` is therefore partly a difference in materials.
 - `render-blender.py` does not read normal maps. No scene uses one yet, so a new scene with a normal map must add that first.
 - `glass` compares the 67.js `liquid` material with a Blender glass material. 67.js has no glass material (issue #51).

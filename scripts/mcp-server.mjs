@@ -5,7 +5,7 @@ import { setPriority, constants } from 'node:os';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import packageMetadata from '../package.json' with { type: 'json' };
-import { MATERIAL_PATTERN_TYPES } from '../src/agent-scene-capabilities.js';
+import { MATERIAL_PATTERN_TYPES, LIGHTING_SETUP_NAMES } from '../src/agent-scene-capabilities.js';
 
 const finite = z.number().min(-3.4028234663852886e38).max(3.4028234663852886e38);
 const positive = finite.positive();
@@ -82,6 +82,9 @@ const volumeFog = z.strictObject({
 });
 const environment = z.strictObject({
   world: z.boolean().optional().describe('Draw the sky and apply surface fog.'),
+  setup: z.enum(LIGHTING_SETUP_NAMES).optional().describe('Named lighting: an image-based environment plus key light. Default daylight. Setting it resets the key light, fill and ambient fields to that setup; fields in the same call still win.'),
+  environmentIntensity: bounded(0, 100).optional().describe('Scales the setup environment light and its reflections.'),
+  environmentRotation: bounded(-100, 100).optional().describe('Turns the setup environment around the vertical axis, in radians.'),
   lightDirection: boundedVector(-1e6, 1e6).optional().describe('Nonzero direction toward the key light; shadows follow it.'),
   keyColor: boundedVector(0, 1000).optional(),
   keyIntensity: bounded(0, 100).optional(),
@@ -130,6 +133,8 @@ const effects = z.strictObject({
   temperature: bounded(-1, 1).optional(),
   vignette: unit.optional(),
   grain: bounded(0, 0.1).optional(),
+  ambientOcclusion: unit.optional().describe('Screen-space contact darkening, 0 off to 1 full. Default 0.7 when unset; 0 skips the pass.'),
+  ambientOcclusionRadius: bounded(0.01, 100).optional().describe('World-space reach of the occlusion; default 0.5.'),
   bloom: z.strictObject({
     strength: bounded(0, 2).optional(),
     threshold: bounded(0, 10).optional(),

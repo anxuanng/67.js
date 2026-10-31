@@ -1,5 +1,6 @@
 import { mat4, mat3 } from 'gl-matrix';
 import { createAgentScene } from './agent-scene.js';
+import { environmentPatchWithSetup } from './agent-look.js';
 import { fitPerspectiveDistance } from './camera.js';
 import { validateSkinGeometry, validateSkinPose } from './skinning.js';
 import { validateMorphGeometry, validateMorphTransform } from './morph.js';
@@ -635,7 +636,7 @@ export function createAgentAssetScene(asset, inputRecipe) {
           const patch = operation[lookField];
           knownKeys(patch, Object.keys(candidate[lookField]), lookField);
           const nested = lookField === 'environment' ? 'volumeFog' : lookField === 'effects' ? 'bloom' : null;
-          const merged = { ...candidate[lookField], ...patch };
+          const merged = { ...candidate[lookField], ...(lookField === 'environment' ? environmentPatchWithSetup(patch) : patch) };
           if (nested && Object.hasOwn(patch, nested)) {
             knownKeys(patch[nested], Object.keys(candidate[lookField][nested]), nested);
             merged[nested] = { ...candidate[lookField][nested], ...patch[nested] };

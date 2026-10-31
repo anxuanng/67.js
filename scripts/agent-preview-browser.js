@@ -2,7 +2,7 @@ import { createAgentScene, needsMeshBooleans, loadMeshBooleans, meshBooleansLoad
 import { Renderer67 } from '../src/renderer.js';
 import { applyProjection } from '../src/camera.js';
 import { mat4 } from 'gl-matrix';
-import { resolveAgentShadow } from '../src/agent-look.js';
+import { resolveAgentShadow, agentEnvironmentMap } from '../src/agent-look.js';
 import { createAgentAssetScene } from '../src/agent-asset.js';
 import { parseGltf } from '../src/gltf.js';
 
@@ -104,7 +104,7 @@ function draw(record, time = 0, camera = record.scene.camera) {
     record.shadowKey = shadowKey;
   }
   record.renderer.world = environment.world;
-  record.renderer.render({ ...camera, environment, effects, exposure: effects.exposure, time });
+  record.renderer.render({ ...camera, environment: { ...environment, map: agentEnvironmentMap(environment) }, effects, exposure: effects.exposure, time });
   const error = record.renderer.context.getError();
   if (error !== 0) {
     throw new Error(`WebGL render failed with error ${error}.`);
@@ -153,7 +153,7 @@ function initializeRenderer(scene, { memoryBudgetMiB, backend }) {
     hdr: true,
     depth: true,
     world: scene.environment.world,
-    environment: scene.environment,
+    environment: { ...scene.environment, map: agentEnvironmentMap(scene.environment) },
     shadowBounds: resolveAgentShadow(scene.shadow, scene.environment.lightDirection),
     pixelRatio: 1,
     samples: backend === 'cpu' ? 1 : 4,
