@@ -6,6 +6,7 @@ import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import packageMetadata from '../package.json' with { type: 'json' };
 import { MATERIAL_PATTERN_TYPES } from '../src/agent-scene-capabilities.js';
+import { MATERIAL_LAYER_SCALAR_RANGES, MATERIAL_LAYER_COLOR_RANGES } from '../src/material-layers.js';
 
 const finite = z.number().min(-3.4028234663852886e38).max(3.4028234663852886e38);
 const positive = finite.positive();
@@ -37,7 +38,36 @@ const materialPattern = z.strictObject({
   axis: z.enum(['x', 'y', 'z']).optional().describe('Object axis the grain runs along. Defaults to y.'),
   resolution: z.union([z.literal(256), z.literal(512), z.literal(1024)]).optional().describe('Texture size. Defaults to 512; each pattern takes about 4 MiB at 512.'),
 }).describe('Procedural texture baked for this material. Needs no UVs: it is projected along the object axes. color then tints it (defaults to white), and roughness and metallic scale it.');
+function layerNumber(field, description) {
+  const [minimum, maximum] = MATERIAL_LAYER_SCALAR_RANGES[field];
+  return z.number()
+    .min(minimum, `${field} must be at least ${minimum}. Raise it to ${minimum} or more.`)
+    .max(maximum, `${field} must be at most ${maximum}. Lower it to ${maximum} or less.`)
+    .describe(description).optional();
+}
+
+function layerColor(field, description) {
+  const [minimum, maximum] = MATERIAL_LAYER_COLOR_RANGES[field];
+  const component = z.number().min(minimum, `${field} components must be at least ${minimum}.`).max(maximum, `${field} components must be at most ${maximum}. Use linear values.`);
+  return z.tuple([component, component, component]).describe(description).optional();
+}
+
+const materialLayerFields = {
+  clearcoat: layerNumber('clearcoat', 'Clear lacquer layer strength, 0 to 1 (car paint, varnish). Needs the surface tag.'),
+  clearcoatRoughness: layerNumber('clearcoatRoughness', 'Roughness of the clear coat, 0 mirror to 1 rough.'),
+  transmission: layerNumber('transmission', 'Share of light that passes through, 0 to 1 (glass, water, gems). It refracts the opaque scene behind it; blended surfaces do not show through it.'),
+  thickness: layerNumber('thickness', 'Metres of material the light crosses. 0 is a thin sheet that does not bend the view; set it with transmission.'),
+  ior: layerNumber('ior', 'Index of refraction, 1 to 2.5 (air 1, water 1.33, glass 1.5, diamond 2.42). Also sets how reflective the surface is.'),
+  attenuationColor: layerColor('attenuationColor', 'Linear RGB colour that light keeps after attenuationDistance metres inside the material.'),
+  attenuationDistance: z.number().positive('attenuationDistance must be above 0. Leave it out for no absorption.').max(3.4e38).describe('Metres inside the material after which light is reduced to attenuationColor.').optional(),
+  sheenColor: layerColor('sheenColor', 'Linear RGB soft grazing-angle glow of cloth and velvet; [0, 0, 0] is off.'),
+  sheenRoughness: layerNumber('sheenRoughness', 'Width of the sheen glow, 0 tight to 1 broad.'),
+  specular: layerNumber('specular', 'Strength of the non-metal reflection, 0 to 4 (1 is normal).'),
+  specularColor: layerColor('specularColor', 'Linear RGB tint of the non-metal reflection.'),
+};
+
 const materialFields = {
+  ...materialLayerFields,
   pattern: materialPattern.optional(),
   color: color.optional().describe('Linear RGB base color, each component between zero and one.'),
   metallic: unit.optional(),

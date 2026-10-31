@@ -49,6 +49,7 @@ EEVEE against Cycles is a yardstick: it shows what a good rasterizer scores. In 
 - 67.js reaches an HDRI only from code. A recipe can not set one yet, so these scores are better than what an agent gets today (issue #53).
 - The Blender leaf material has no translucency, and the 67.js foliage shader adds it by a trick. `foliage` is therefore partly a difference in materials.
 - `render-blender.py` does not read normal maps. No scene uses one yet, so a new scene with a normal map must add that first.
-- `glass` compares the 67.js `liquid` material with a Blender glass material. 67.js has no glass material (issue #51).
+- `glass` and `car-paint` use the real 67.js `transmission` and `clearcoat` layers, and the Blender side sets the same values on the Principled BSDF. 67.js refracts through the front surface only, so the sphere does not show the inverted sky that Cycles traces through the back face.
+- `car-paint` scored 0.1521 against Cycles and `glass` 0.1326 (it was 0.1450 with the `liquid` material). The other scenes scored the same as in the table above, to four digits. The table above is the 2026-10-30 baseline and has not been rewritten.
 - `fog` has no noise on either side. EEVEE and 67.js approximate scattering, and Cycles follows 8 volume bounces.
 - Sample counts are fixed: 256 for Cycles with denoising, 64 for EEVEE and 4 MSAA samples for 67.js.
