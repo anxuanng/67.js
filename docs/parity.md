@@ -109,7 +109,7 @@ To move to a new Blender release, run `node scripts/parity-manual-snapshot.mjs`.
 | Modeling > Modifiers > Normals > Weighted Normal Modifier | missing | No equivalent. | | #42 |
 | Modeling > Modifiers > Normals > Smooth By Angle Modifier | partial | `smoothAngle` is a geometry setting. It is not a stack node. | | #42 |
 | Modeling > Modifiers > Physics > Cloth Modifier | missing | No cloth. | | #62 |
-| Modeling > Modifiers > Physics > Collision Modifier | partial | Rapier colliders work in code, with no trimesh. Recipes can not reach them. | [physics](../tests/physics.test.js) | #61 |
+| Modeling > Modifiers > Physics > Collision Modifier | partial | Rapier colliders fitted to recipe geometry as box, ball, capsule, convex hull or trimesh, so a body rests on an authored mesh. | [agent-physics](../tests/agent-physics.test.js) | #61 |
 | Modeling > Modifiers > Physics > Dynamic Paint Modifier | missing | No equivalent. | | |
 | Modeling > Modifiers > Physics > Explode Modifier | missing | No equivalent. | | |
 | Modeling > Modifiers > Physics > Fluid Modifier | partial | `addons/spume` plays back a liquid baked outside the browser. | [spume](../tests/spume.test.js) | #63 |
@@ -139,50 +139,50 @@ To move to a new Blender release, run `node scripts/parity-manual-snapshot.mjs`.
 | Animation & Rigging > Lattice | missing | No lattice. | | #42 |
 | Animation & Rigging > Constraints > Interface | out of scope | Interface for a mouse. | | |
 | Animation & Rigging > Constraints > Motion Tracking | out of scope | Motion tracking is out of scope in issue #23. | | |
-| Animation & Rigging > Constraints > Transform > Copy Location Constraint | missing | No constraint. | | #58 |
-| Animation & Rigging > Constraints > Transform > Copy Rotation Constraint | missing | No constraint. | | #58 |
-| Animation & Rigging > Constraints > Transform > Copy Scale Constraint | missing | No constraint. | | #58 |
+| Animation & Rigging > Constraints > Transform > Copy Location Constraint | partial | `copy_location` in `motion.constraints`: axes, invert, offset, world or local space, influence. Matches Blender where tested. | [agent-motion-constraints](../tests/agent-motion-constraints.test.js) | #58 |
+| Animation & Rigging > Constraints > Transform > Copy Rotation Constraint | partial | `copy_rotation`: Euler axes, invert, replace or add, world or local. World matrices match Blender 5.2 in 2 cases. | [blender-constraints](../tests/blender-constraints.test.js) | #58 |
+| Animation & Rigging > Constraints > Transform > Copy Scale Constraint | partial | `copy_scale`: axes and offset, world or local. | [agent-motion-constraints](../tests/agent-motion-constraints.test.js) | #58 |
 | Animation & Rigging > Constraints > Transform > Copy Transforms Constraint | missing | No constraint. | | #58 |
 | Animation & Rigging > Constraints > Transform > Limit Distance Constraint | missing | No constraint. | | #58 |
-| Animation & Rigging > Constraints > Transform > Limit Location Constraint | missing | No constraint. | | #58 |
-| Animation & Rigging > Constraints > Transform > Limit Rotation Constraint | missing | Joints have no limits, except `maxAngle` on aim IK. | | #58 |
+| Animation & Rigging > Constraints > Transform > Limit Location Constraint | partial | `limit_location`: per-axis clamp, world or local. | [agent-motion-constraints](../tests/agent-motion-constraints.test.js) | #58 |
+| Animation & Rigging > Constraints > Transform > Limit Rotation Constraint | partial | `limit_rotation` constraint and per-axis `limits` on two-bone IK joints, reported in `motionIk`. Matches Blender 5.2. | [blender-constraints](../tests/blender-constraints.test.js), [skeleton-pose-limits](../tests/skeleton-pose-limits.test.js) | #58 |
 | Animation & Rigging > Constraints > Transform > Limit Scale Constraint | missing | No constraint. | | #58 |
 | Animation & Rigging > Constraints > Transform > Maintain Volume Constraint | missing | No constraint. | | |
 | Animation & Rigging > Constraints > Transform > Transformation Constraint | missing | No constraint. | | |
 | Animation & Rigging > Constraints > Transform > Transform Cache Constraint | missing | No constraint. | | |
 | Animation & Rigging > Constraints > Tracking > Clamp To Constraint | missing | No constraint. | | |
 | Animation & Rigging > Constraints > Tracking > Damped Track Constraint | partial | Aim IK turns one joint toward a target. It is not a general constraint. | [agent-motion-ik](../tests/agent-motion-ik.test.js) | #58 |
-| Animation & Rigging > Constraints > Tracking > Inverse Kinematics Constraint | partial | Two-bone and aim IK, in code and in `motion.ik`. There are no longer chains or limits. | [agent-motion-ik](../tests/agent-motion-ik.test.js), [agent-asset-ik](../tests/agent-asset-ik.test.js) | #58 |
+| Animation & Rigging > Constraints > Tracking > Inverse Kinematics Constraint | partial | Two-bone and aim IK, in code and in `motion.ik`, with joint limits and sanity warnings on two-bone. There are no longer chains. | [agent-motion-ik](../tests/agent-motion-ik.test.js), [agent-asset-ik](../tests/agent-asset-ik.test.js) | #58 |
 | Animation & Rigging > Constraints > Tracking > Locked Track Constraint | missing | No constraint. | | |
 | Animation & Rigging > Constraints > Tracking > Spline IK Constraint | missing | No constraint. | | |
 | Animation & Rigging > Constraints > Tracking > Stretch To Constraint | missing | No constraint. | | |
-| Animation & Rigging > Constraints > Tracking > Track To Constraint | partial | Cameras track a target. Nodes have no track constraint. | [camera-path](../tests/camera-path.test.js) | #58 |
+| Animation & Rigging > Constraints > Tracking > Track To Constraint | partial | `track_to` on nodes: track and up axes, `worldUp`. Matches Blender 5.2 in 2 cases. Cameras still use camera paths. | [blender-constraints](../tests/blender-constraints.test.js), [camera-path](../tests/camera-path.test.js) | #58 |
 | Animation & Rigging > Constraints > Relationship > Action Constraint | missing | No constraint. | | |
 | Animation & Rigging > Constraints > Relationship > Armature Constraint | missing | No constraint. | | |
-| Animation & Rigging > Constraints > Relationship > Child Of Constraint | partial | Static parents. A parent can not change or blend over time. | [scene-graph](../tests/scene-graph.test.js) | #58 |
-| Animation & Rigging > Constraints > Relationship > Floor Constraint | missing | No constraint. | | #58 |
+| Animation & Rigging > Constraints > Relationship > Child Of Constraint | partial | `child_of` in `motion.constraints`: follows a moving target from its rest inverse (or none), with an influence that can be animated by an expression. Matches Blender 5.2 in 2 cases. No per-channel switches. | [blender-constraints](../tests/blender-constraints.test.js), [scene-graph](../tests/scene-graph.test.js) | #58 |
+| Animation & Rigging > Constraints > Relationship > Floor Constraint | partial | `floor`: keeps a node on one side of a plane through the target, axis and offset. Matches Blender 5.2 for the Z floor with an offset; no `use_rotation`. | [blender-constraints](../tests/blender-constraints.test.js) | #58 |
 | Animation & Rigging > Constraints > Relationship > Follow Path Constraint | partial | Camera paths only. | [camera-path](../tests/camera-path.test.js) | |
 | Animation & Rigging > Constraints > Relationship > Geometry Attribute Constraint | missing | No constraint. | | |
 | Animation & Rigging > Constraints > Relationship > Pivot Constraint | missing | No constraint. | | |
 | Animation & Rigging > Constraints > Relationship > Shrinkwrap Constraint | partial | `addons/surface-attachment` binds points to a surface in code. | [surface-attachment](../tests/surface-attachment.test.js) | |
 | Animation & Rigging > Actions | partial | Clips, weights and crossfades in code. An asset through MCP plays one clip at a time. | [animation-mixer](../tests/animation-mixer.test.js) | #59 |
-| Animation & Rigging > Drivers | missing | No drivers. | | #58 |
+| Animation & Rigging > Drivers | partial | `motion.drivers`: a node component or material property from a bounded expression over time and other nodes. No custom properties, shape keys or variables. | [agent-motion-constraints](../tests/agent-motion-constraints.test.js) | #58 |
 | Animation & Rigging > Markers | missing | No markers or events. | | #60 |
 | Animation & Rigging > Shape Keys | partial | Morph targets import, render and animate. Recipes can not author them. | [morph](../tests/morph.test.js) | #59 |
 | Animation & Rigging > Motion Paths | out of scope | Viewport display for hand work. `scene_inspect` reports motion as numbers. | | |
 | Animation & Rigging > In-Betweens | out of scope | Pose tools for a hand. Agents write keyframes and IK targets. | | |
-| Physics > Rigid Body > Rigid Body Properties | partial | Rapier bodies and colliders in code, with no trimesh. | [physics](../tests/physics.test.js) | #61 |
-| Physics > Rigid Body > Rigid Body World | partial | Recorded simulation with deterministic seeks, in code. Recipes can not reach it. | [physics](../tests/physics.test.js) | #61 |
+| Physics > Rigid Body > Rigid Body Properties | partial | Dynamic, fixed and kinematic bodies with mass, density, friction, restitution and velocity, in code and in recipes. Trimesh and convex colliders, no bone-bound bodies yet. | [physics-colliders](../tests/physics-colliders.test.js) | #61 |
+| Physics > Rigid Body > Rigid Body World | partial | Recorded simulation with deterministic seeks, in code and in a recipe `physics` section (MCP, a seek back repeats the PNG). | [agent-physics](../tests/agent-physics.test.js) | #61 |
 | Physics > Rigid Body > Rigid Body Constraints | partial | Fixed, spherical, revolute and prismatic joints, with limits and motors, in code. | [physics](../tests/physics.test.js) | #61 |
 | Physics > Cloth | missing | No cloth. | | #62 |
 | Physics > Soft Body | missing | No soft bodies. | | #62 |
 | Physics > Fluid | partial | `addons/spume` plays back a liquid baked outside the browser. There is no smoke or fire. | [spume](../tests/spume.test.js) | #63 |
 | Physics > Particle System | missing | No shared particle system. Sparks exist only in the demo film. | | #63 |
 | Physics > Dynamic Paint | missing | No equivalent. | | |
-| Physics > Forces > Gravity | partial | Physics definitions set gravity, in code. | [physics](../tests/physics.test.js) | #61 |
+| Physics > Forces > Gravity | partial | Physics definitions and recipe `physics.gravity` set gravity. | [physics](../tests/physics.test.js) | #61 |
 | Physics > Forces > Force Fields | missing | No force fields. | | #63 |
-| Physics > Collision | partial | Rapier collisions in code, with no sensors or masks. | [physics](../tests/physics.test.js) | #61 |
-| Physics > Baking Physics Simulations | partial | Physics records to a timeline in code, on the main thread. | [film-physics](../tests/film-physics.test.js) | #61 |
+| Physics > Collision | partial | Rapier collisions with sensors (enter and leave events) and 16 collision layers with masks, in code and recipes. `scene_inspect` reports contacts and resting state. | [physics-colliders](../tests/physics-colliders.test.js) | #61 |
+| Physics > Baking Physics Simulations | partial | Physics records to a timeline in code or when a recipe scene is created, on the main thread. | [film-physics](../tests/film-physics.test.js) | #61 |
 | Physics > Simulation Nodes | missing | No node graph. | | #43 |
 | Rendering > Render Engines > EEVEE | partial | A WebGL2 rasterizer with PBR, one directional shadow, 8 point lights, fog and bloom. There are no light probes. | [renderer](../tests/renderer.test.js), [scores against EEVEE](../bench/reference/baseline.json) | #52, #53, #55, #56 |
 | Rendering > Render Engines > Cycles | missing | No path tracer and no render baking. | | #55, #57 |

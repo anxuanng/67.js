@@ -4,7 +4,7 @@
 // agent sees: welding render triangles again can invent non-manifold edges that the polygon mesh does not have.
 import { readFile } from 'node:fs/promises';
 import { createAgentAssetScene } from '../../src/agent-asset.js';
-import { createAgentScene, loadMeshBooleans, needsMeshBooleans } from '../../src/agent-scene.js';
+import { createAgentScene, loadMeshBooleans, needsMeshBooleans, loadPhysicsEngine, needsPhysics } from '../../src/agent-scene.js';
 import { parseGltf } from '../../src/gltf.js';
 
 const WELD_DISTANCE = 1e-5;
@@ -213,10 +213,26 @@ export async function measureAssetRecipe(recipe) {
   };
 }
 
+// Seeking away and back must give the same matrices, whatever the solver did in between.
+function seekIsStable(scene, duration) {
+  const snapshot = () => scene.parts.map(part => Array.from(part.matrix));
+  scene.sampleMotion(duration / 2);
+  const first = snapshot();
+  scene.sampleMotion(duration);
+  scene.sampleMotion(0);
+  scene.sampleMotion(duration / 2);
+  const second = snapshot();
+  scene.sampleMotion(null);
+  return JSON.stringify(first) === JSON.stringify(second);
+}
+
 /** Load the recipe and measure what it builds. Throws if the recipe itself is invalid. */
 export async function measureRecipe(recipe) {
   if (needsMeshBooleans(recipe)) await loadMeshBooleans();
+  if (needsPhysics(recipe)) await loadPhysicsEngine();
   const scene = createAgentScene(recipe);
+  const physics = scene.inspect({}).physics;
+  const physicsSeekStable = physics ? seekIsStable(scene, recipe.physics.duration) : null;
   const geometries = scene.parts.map(worldGeometry);
   const reports = new Map();
   const reportOf = id => {
@@ -259,6 +275,8 @@ export async function measureRecipe(recipe) {
   const allClosed = closedParts === parts;
   return {
     nodes: geometries.length,
+    physics,
+    physicsSeekStable,
     patternTypes: scene.exportRecipe().materials.filter(material => material.pattern).map(material => material.pattern.type),
     parts,
     closedParts,

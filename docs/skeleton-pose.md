@@ -73,6 +73,8 @@ joint's own frame (`local = local * delta`), and weight scales the delta. An add
 | `pole` | World point the middle joint bends toward, or `(time, middlePosition) => point`. Without one, it keeps the current bend |
 | `weight` | 0 to 1 (default 1), or a function of time |
 | `keepEndRotation` | Default `true`: the end joint keeps its world rotation, so a foot stays flat while the leg moves |
+| `limits` | `{ root: { x: [min, max], y, z }, middle: {...} }` in degrees: the turn away from the joint's rest rotation, per axis of its own, as Euler XYZ. Applied after the solve; `ikResults[n].limited` lists each change as `{ joint, axis, requested, applied }` |
+| `bendToward` | World direction the middle joint should bend toward. `ikResults[n].warnings` gets `wrong-bend` when the solve bends the other way, and `hyperextended` when the limb is locked straight. Without it, a limb that rests bent is checked against its rest bend |
 
 The solve is analytic, keeps bone lengths, and turns the two upper joints by the shortest rotations, so twist already in
 the pose survives. A limb that is straight in the pose with its target straight ahead has no bend direction, so give

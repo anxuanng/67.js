@@ -7,24 +7,32 @@ const MODULE_LOADERS = {
   mesh: () => import('./agent-mesh-engine.js'),
   modeling: () => import('./modeling.js'),
   motion: () => import('./agent-motion.js'),
+  physics: () => import('./agent-physics.js'),
   patterns: () => import('./material-patterns.js'),
 };
 
 const loadedModules = {};
 const pendingLoads = {};
 let manifoldLoader = null;
+let physicsLoader = null;
 
 // Each test errs on the side of loading: a false positive costs a chunk, a false negative a clear error.
 const MODULE_MARKERS = {
   mesh: ['"type":"mesh"', '"instances"'],
   modeling: ['"type":"lathe"', '"type":"extrude"', '"type":"tube"'],
   motion: ['"motion":{'],
+  physics: ['"physics":{'],
   patterns: ['"pattern"'],
 };
 
 /** Whether a recipe, operation list or edit list contains a boolean edit, which needs loadMeshBooleans() first. */
 export function needsMeshBooleans(value) {
   return JSON.stringify(value ?? null).includes('"op":"boolean"');
+}
+
+/** True when a recipe or an operation list carries a physics section, so the host loads the solver first. */
+export function needsPhysics(value) {
+  return JSON.stringify(value ?? null).includes('"physics":{');
 }
 
 /** Names of the on-demand modules a recipe, or a list of edit operations, needs. */
@@ -44,6 +52,7 @@ function loadModule(name) {
   pendingLoads[name] ??= MODULE_LOADERS[name]().then(module => {
     loadedModules[name] = module;
     if (name === 'mesh' && manifoldLoader) module.setManifoldModuleLoader(manifoldLoader);
+    if (name === 'physics' && physicsLoader) module.setPhysicsModuleLoader(physicsLoader);
     return module;
   });
   return pendingLoads[name];
@@ -95,4 +104,20 @@ export async function loadMeshBooleans(options) {
 
 export function meshBooleansLoaded() {
   return loadedModules.mesh?.meshBooleansLoaded() ?? false;
+}
+
+/** Replace how the Rapier module is imported. Applied when the physics code loads, if it has not yet. */
+export function setPhysicsModuleLoader(loader) {
+  if (typeof loader !== 'function') throw new TypeError('The physics loader must be a function returning a module promise.');
+  physicsLoader = loader;
+  loadedModules.physics?.setPhysicsModuleLoader(loader);
+}
+
+export async function loadPhysicsEngine(options) {
+  const physics = await loadModule('physics');
+  return physics.loadPhysicsEngine(options);
+}
+
+export function physicsEngineLoaded() {
+  return loadedModules.physics?.physicsEngineLoaded() ?? false;
 }

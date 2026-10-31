@@ -483,8 +483,8 @@ export function createAgentAssetScene(asset, inputRecipe) {
     const nodeOverrides = trackOverrides(candidate.nodeOverrides, sampled);
     if (targetTime !== null && stagedSampler?.ikUsesStagedPose) {
       const nodePoses = stagedNodePoses(candidate.animation, [...nodeOverrides.values()]);
-      for (const { id, rotation } of stagedSampler.solveStagedIk(targetTime, nodePoses)) {
-        nodeOverrides.set(id, { ...nodeOverrides.get(id), id, rotation });
+      for (const override of stagedSampler.solveStagedPose(targetTime, nodePoses)) {
+        nodeOverrides.set(override.id, { ...nodeOverrides.get(override.id), ...override });
       }
     }
     let transaction;

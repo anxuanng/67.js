@@ -119,6 +119,32 @@ export const REFERENCES = {
       }],
     },
   },
+  'tray-drop': {
+    ...scene(
+      [
+        { id: 'tray', type: 'mesh', base: { type: 'box', bevel: 0 }, edits: [
+          { op: 'inset_region', select: { tag: 'top' }, thickness: 0.2, name: 'pocket' },
+          { op: 'extrude_face_region', select: { tag: 'pocket.cap' }, offset: -0.75 },
+        ] },
+        { id: 'ball', type: 'sphere', segments: 16, rings: 8 },
+      ],
+      [
+        { id: 'tray', geometry: 'tray', translation: [0, 0.2, 0], scale: [2, 0.4, 2] },
+        { id: 'ball-1', geometry: 'ball', translation: [0, 1, 0], scale: [0.1, 0.1, 0.1] },
+        { id: 'ball-2', geometry: 'ball', translation: [0.25, 1.5, 0.1], scale: [0.1, 0.1, 0.1] },
+        { id: 'ball-3', geometry: 'ball', translation: [-0.25, 2, -0.1], scale: [0.1, 0.1, 0.1] },
+      ],
+    ),
+    physics: {
+      duration: 3,
+      bodies: [
+        { node: 'tray', type: 'fixed', shape: 'trimesh' },
+        { node: 'ball-1', shape: 'ball' },
+        { node: 'ball-2', shape: 'ball' },
+        { node: 'ball-3', shape: 'ball' },
+      ],
+    },
+  },
   'arm-reach': {
     ...scene(
       [{ id: 'ball', type: 'sphere', segments: 16, rings: 8 }],
@@ -133,6 +159,24 @@ export const REFERENCES = {
       ik: [{
         type: 'two-bone', root: 'shoulder', middle: 'elbow', end: 'tip', pole: [0, 3, 0],
         target: { keyframes: [{ time: 0, value: [0.4, 1.5, 0.3] }, { time: 2, value: [0.2, 1.2, -0.5] }] },
+      }],
+    },
+  },
+  'leg-plant': {
+    ...scene(
+      [{ id: 'ball', type: 'sphere', segments: 16, rings: 8 }],
+      [
+        { id: 'hip', geometry: 'ball', translation: [0, 1, 0], scale: [0.03, 0.03, 0.03] },
+        { id: 'knee', geometry: 'ball', parent: 'hip', translation: [0, -0.5 / 0.03, 0] },
+        { id: 'foot', geometry: 'ball', parent: 'knee', translation: [0, -0.5 / 0.03, 0] },
+      ],
+    ),
+    motion: {
+      duration: 2, tracks: [],
+      ik: [{
+        type: 'two-bone', root: 'hip', middle: 'knee', end: 'foot', pole: [0, 0.5, 3], bendToward: [0, 0, 1],
+        limits: { middle: { x: [-150, 150] } },
+        target: { keyframes: [{ time: 0, value: [0.1, 0.5, 0.35] }, { time: 2, value: [0.1, 0.6, 0.2] }] },
       }],
     },
   },

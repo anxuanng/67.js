@@ -1,4 +1,4 @@
-import { createAgentScene, loadAllAgentSceneModules, allAgentSceneModulesLoaded, needsMeshBooleans, loadMeshBooleans, meshBooleansLoaded, setManifoldModuleLoader } from '../src/agent-scene.js';
+import { createAgentScene, loadAllAgentSceneModules, allAgentSceneModulesLoaded, needsMeshBooleans, loadMeshBooleans, meshBooleansLoaded, setManifoldModuleLoader, needsPhysics, loadPhysicsEngine, physicsEngineLoaded, setPhysicsModuleLoader } from '../src/agent-scene.js';
 import { Renderer67 } from '../src/renderer.js';
 import { applyProjection } from '../src/camera.js';
 import { mat4 } from 'gl-matrix';
@@ -191,13 +191,18 @@ function createPreview(scene, { sessionId, memoryBudgetMiB, backend }, asset) {
 
 // Manifold is an optional peer dependency; the runtime serves it from the host's node_modules on this origin.
 setManifoldModuleLoader(() => import(/* @vite-ignore */ new URL('/vendor/manifold.js', location.href).href));
+// Rapier is the same kind of optional peer: its WASM travels inside the module served from /vendor/rapier.js.
+setPhysicsModuleLoader(() => import(/* @vite-ignore */ new URL('/vendor/rapier.js', location.href).href));
 
 // The preview bundle is one file, so the on-demand scene modules load together on the first call and later calls stay
 // synchronous. The boolean engine is WebAssembly and loads asynchronously, once, only for calls that need it.
 function afterMeshBooleans(value, run) {
   if (!allAgentSceneModulesLoaded()) return loadAllAgentSceneModules().then(() => afterMeshBooleans(value, run));
-  if (meshBooleansLoaded() || !needsMeshBooleans(value)) return run();
-  return loadMeshBooleans().then(run);
+  const loads = [];
+  if (!meshBooleansLoaded() && needsMeshBooleans(value)) loads.push(loadMeshBooleans());
+  if (!physicsEngineLoaded() && needsPhysics(value)) loads.push(loadPhysicsEngine());
+  if (!loads.length) return run();
+  return Promise.all(loads).then(run);
 }
 
 function seekForExport(record, motionTime) {
