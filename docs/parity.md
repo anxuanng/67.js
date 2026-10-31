@@ -188,7 +188,7 @@ To move to a new Blender release, run `node scripts/parity-manual-snapshot.mjs`.
 | Rendering > Render Engines > Cycles | missing | No path tracer and no render baking. | | #55, #57 |
 | Rendering > Render Engines > Workbench | out of scope | A viewport engine for working by hand. | | |
 | Rendering > Cameras | partial | Perspective, orthographic views, focal length and animated paths. There is no depth of field. | [camera-path](../tests/camera-path.test.js), [camera](../tests/camera.test.js) | #54 |
-| Rendering > Lights > Light Objects | partial | One directional light with a shadow, and 8 point lights without shadows. There are no spot or area lights. | [lighting](../tests/lighting.test.js) | #52 |
+| Rendering > Lights > Light Objects | partial | One directional light with a shadow, 8 point lights, 8 spot lights and 4 rectangular area lights. Point and spot lights can cast shadows from one 24-tile atlas (a point light takes 6 tiles, a spot light 1). Area lights use a representative point and cast no shadow. The directional shadow is a single map, not cascaded. | [lighting](../tests/lighting.test.js), `npm run reference` scene `spot-area` | #52 |
 | Rendering > Lights > Light Linking | missing | No light linking. | | #52 |
 | Rendering > Lights > World Environment | partial | Recipes have sky colors, daylight and fog. Code can load an HDRI, and recipes can not reach it. | [environment](../tests/environment.test.js) | #53 |
 | Rendering > Materials > Components | partial | Surfaces with PBR factors and five maps. There are no volume materials or displacement. | [texture-set](../tests/texture-set.test.js) | #50, #51 |

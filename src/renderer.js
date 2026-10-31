@@ -5,6 +5,7 @@ import { planRenderSize, estimateTextureBytes, estimateFrameBytes } from './budg
 import { applyProjection } from './camera.js';
 import { resolveEffects } from './effects.js';
 import { createLightingState, updateLightingState } from './lighting.js';
+import { SHADOW_ATLAS_WIDTH, SHADOW_ATLAS_HEIGHT, tileViewport, writeShadowTile } from './local-shadows.js';
 import { resolveVolumeFog } from './volumetric.js';
 import { assertEnvironmentMap, createEnvironmentResources, environmentBackgroundFragment, environmentBrdfFragment, environmentPrefilterFragment, estimateEnvironmentBytes } from './environment.js';
 import { validateSkinGeometry, validateSkinPose, skinTextureLayout, packSkinInfluences } from './skinning.js';
@@ -30,6 +31,14 @@ const SWAYING_TAGS = new Set(['foliage', 'grass']);
 const MAP_SHADER_FEATURES = ['baseMap', 'normalMap', 'metallicRoughnessMap', 'occlusionMap', 'emissiveMap'];
 // Tags whose look the main fragment shader draws with code that other tags never reach.
 const TAG_SHADER_FEATURES = new Set(['floor', 'water', 'foliage', 'terrain', 'grass', 'fire', 'smoke', 'unlit']);
+
+function shaderFeaturesOfLighting(lighting) {
+  const features = [];
+  if (lighting.spotCount > 0) features.push('spotLights');
+  if (lighting.areaCount > 0) features.push('areaLights');
+  if (lighting.shadowCasters.length > 0) features.push('localShadows');
+  return features;
+}
 
 function shaderFeaturesOfParts(parts) {
   const features = new Set();
@@ -77,6 +86,11 @@ const SPLAT_COLOR_UNIT = 11;
 const SPLAT_NORMAL_UNIT = 12;
 const SPLAT_PACKED_UNIT = 13;
 const SPLAT_MASK_UNIT = 14;
+const LOCAL_SHADOW_UNIT = 15;
+const LIGHT_UNIFORMS = ['pointLightCount', 'pointLightPositions[0]', 'pointLightColors[0]', 'pointLightRadii[0]', 'pointLightShadowTiles[0]',
+  'spotLightCount', 'spotLightPositions[0]', 'spotLightColors[0]', 'spotLightDirections[0]', 'spotLightParameters[0]',
+  'areaLightCount', 'areaLightPositions[0]', 'areaLightColors[0]', 'areaLightNormals[0]', 'areaLightTangents[0]',
+  'localShadowAtlas', 'localShadowMatrices[0]', 'localShadowTexelAngles[0]', 'keyColor', 'fillIntensity', 'ambientIntensity'];
 const SPLAT_UNIFORMS = ['splatEnabled', 'splatColor', 'splatNormal', 'splatPacked', 'splatMask', 'splatLayer[0]', 'splatTint[0]', 'splatSlope[0]', 'splatHeightRange[0]', 'splatMaskChannel[0]', 'splatMaskInvert[0]', 'splatBlend', 'splatOptions', 'splatMaskBounds', 'splatVariation'];
 
 function validateMaterialMaps(material) {
@@ -426,6 +440,7 @@ export class Renderer67 {
     this.lightProjection = mat4.create();
     this.inverseViewProjection = mat4.create();
     this.shaderFeatures = shaderFeaturesOfParts(groups.flat());
+    shaderFeaturesOfLighting(this.lighting).forEach(feature => this.shaderFeatures.add(feature));
     const pending = {
       main: this.startMainProgram(),
       depth: startProgram(this.context, depthVertexShader, depthFragmentShader),
@@ -495,7 +510,7 @@ export class Renderer67 {
   finishMainProgram(pendingProgram) {
     this.program = finishProgram(this.context, pendingProgram);
     this.uniforms = Object.fromEntries(['boxMapScale', 'boxMapAxis', 'viewProjection', 'lightProjection', 'eye', 'armorColor', 'armorSurface', 'exposure', 'inspection', 'shadowMap', ...MAP_UNIFORMS, ...MAP_FLAGS, ...SKIN_UNIFORMS, ...MORPH_UNIFORMS, 'normalScale', 'occlusionStrength', 'materialMoss', ...SPLAT_UNIFORMS, 'hdrEnabled', 'time', 'wind', 'worldMode', 'daylight', 'fogColor', 'lightDirection', 'fogDensity', 'waterRipple', 'rippleTime', 'explosionProgress', 'explosionCenter', 'assemblyAmount', ...ALPHA_UNIFORMS].map((name) => [name, this.context.getUniformLocation(this.program, name)]));
-    for (const name of ['pointLightCount', 'pointLightPositions[0]', 'pointLightColors[0]', 'pointLightRadii[0]', 'keyColor', 'fillIntensity', 'ambientIntensity']) {
+    for (const name of LIGHT_UNIFORMS) {
       this.uniforms[name] = this.context.getUniformLocation(this.program, name);
     }
     for (const name of ENVIRONMENT_UNIFORMS) this.uniforms[name] = this.context.getUniformLocation(this.program, name);
@@ -641,8 +656,12 @@ export class Renderer67 {
   // Parts can arrive after construction (replaceParts) or change their tag (updateParts). When one needs a shader feature
   // that the program left out, the program is compiled again with that feature added.
   requireShaderFeatures(parts) {
+    this.requireFeatureNames([...shaderFeaturesOfParts(parts)]);
+  }
+
+  requireFeatureNames(features) {
     if (this.benchmark || !this.shaderFeatures) return;
-    const missing = [...shaderFeaturesOfParts(parts)].filter(feature => !this.shaderFeatures.has(feature));
+    const missing = features.filter(feature => !this.shaderFeatures.has(feature));
     if (missing.length === 0) return;
     missing.forEach(feature => this.shaderFeatures.add(feature));
     this.rebuildMainProgram();
@@ -1010,8 +1029,16 @@ export class Renderer67 {
     context.enable(context.DEPTH_TEST);
     context.enable(context.CULL_FACE);
     context.clear(context.DEPTH_BUFFER_BIT);
+    this.drawShadowCasters();
+    context.bindFramebuffer(context.FRAMEBUFFER, null);
+    this.shadowsDirty = false;
+  }
+
+  // Draws every shadow-casting batch into the bound depth target with this.lightProjection.
+  drawShadowCasters(lightMatrix = this.lightProjection) {
+    const context = this.context;
     context.useProgram(this.depthProgram);
-    context.uniformMatrix4fv(this.depthUniform, false, this.lightProjection);
+    context.uniformMatrix4fv(this.depthUniform, false, lightMatrix);
     context.uniform1f(this.depthAssemblyUniform, this.assemblyAmount ?? 0);
     context.uniform1f(this.depthWindUniforms.time, this.windState.time);
     context.uniform1f(this.depthWindUniforms.wind, this.windState.strength);
@@ -1022,8 +1049,54 @@ export class Renderer67 {
     for (const batch of this.batches) if (!batch.floor && batch.castShadow) this.drawAlphaBatch(batch, false);
     context.disable(context.POLYGON_OFFSET_FILL);
     context.enable(context.CULL_FACE);
+  }
+
+  allocateLocalShadowAtlas() {
+    const context = this.context;
+    this.localShadowTexture = context.createTexture();
+    context.activeTexture(context.TEXTURE0 + LOCAL_SHADOW_UNIT);
+    context.bindTexture(context.TEXTURE_2D, this.localShadowTexture);
+    context.texImage2D(context.TEXTURE_2D, 0, context.DEPTH_COMPONENT24, SHADOW_ATLAS_WIDTH, SHADOW_ATLAS_HEIGHT, 0, context.DEPTH_COMPONENT, context.UNSIGNED_INT, null);
+    context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MIN_FILTER, context.NEAREST);
+    context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MAG_FILTER, context.NEAREST);
+    context.texParameteri(context.TEXTURE_2D, context.TEXTURE_WRAP_S, context.CLAMP_TO_EDGE);
+    context.texParameteri(context.TEXTURE_2D, context.TEXTURE_WRAP_T, context.CLAMP_TO_EDGE);
+    this.localShadowFramebuffer = context.createFramebuffer();
+    context.bindFramebuffer(context.FRAMEBUFFER, this.localShadowFramebuffer);
+    context.framebufferTexture2D(context.FRAMEBUFFER, context.DEPTH_ATTACHMENT, context.TEXTURE_2D, this.localShadowTexture, 0);
+    context.drawBuffers([context.NONE]);
+    context.readBuffer(context.NONE);
+    if (context.checkFramebufferStatus(context.FRAMEBUFFER) !== context.FRAMEBUFFER_COMPLETE) throw new Error('Local shadow framebuffer is incomplete.');
+    context.activeTexture(context.TEXTURE0);
+  }
+
+  // Builds the view of each atlas tile, and draws the atlas again only when a light moved or the casters changed.
+  updateLocalShadows(casterChanged) {
+    const casters = this.lighting.shadowCasters;
+    if (casters.length === 0 || this.benchmark) return;
+    const matrices = this.localShadowMatrices ??= new Float32Array(24 * 16);
+    const texelAngles = this.localShadowTexelAngles ??= new Float32Array(24);
+    const previous = this.localShadowPreviousMatrices ??= new Float32Array(24 * 16);
+    const tileMatrix = new Float32Array(16);
+    casters.forEach((caster, tile) => {
+      texelAngles[tile] = writeShadowTile(caster, tileMatrix);
+      matrices.set(tileMatrix, tile * 16);
+    });
+    const moved = casters.length !== this.localShadowTileCount || matrices.some((value, index) => value !== previous[index]);
+    if (!moved && !casterChanged && this.localShadowTexture) return;
+    previous.set(matrices);
+    this.localShadowTileCount = casters.length;
+    const context = this.context;
+    if (!this.localShadowTexture) this.allocateLocalShadowAtlas();
+    context.bindFramebuffer(context.FRAMEBUFFER, this.localShadowFramebuffer);
+    context.viewport(0, 0, SHADOW_ATLAS_WIDTH, SHADOW_ATLAS_HEIGHT);
+    context.enable(context.DEPTH_TEST);
+    context.clear(context.DEPTH_BUFFER_BIT);
+    for (let tile = 0; tile < casters.length; tile++) {
+      context.viewport(...tileViewport(tile));
+      this.drawShadowCasters(matrices.subarray(tile * 16, tile * 16 + 16));
+    }
     context.bindFramebuffer(context.FRAMEBUFFER, null);
-    this.shadowsDirty = false;
   }
 
   /** Stores the wind time and strength the shadow pass must use; true when swaying batches need a new shadow map. */
@@ -1530,10 +1603,13 @@ export class Renderer67 {
     const assemblyAmount = Math.max(0, Math.min(1, frame.assemblyAmount ?? 0));
     // Swaying foliage moves every frame, so its shadow map is redrawn whenever time or wind changes.
     const windChanged = this.updateWindState(frame);
-    if (this.assemblyAmount !== assemblyAmount || this.shadowsDirty || windChanged) {
+    const casterChanged = this.assemblyAmount !== assemblyAmount || this.shadowsDirty || windChanged;
+    this.requireFeatureNames(shaderFeaturesOfLighting(this.lighting));
+    if (casterChanged) {
       this.assemblyAmount = assemblyAmount;
       this.createShadowMap();
     }
+    this.updateLocalShadows(casterChanged);
     const environmentMap = this.activateEnvironment(environment.map);
     applyProjection(this.projection, frame, this.canvas.width / this.canvas.height, { world: this.world });
     mat4.lookAt(this.view, eye, target, frame.up ?? [0, 1, 0]);
@@ -1564,6 +1640,7 @@ export class Renderer67 {
     context.uniform4fv(this.uniforms['pointLightPositions[0]'], this.lighting.positions);
     context.uniform4fv(this.uniforms['pointLightColors[0]'], this.lighting.colors);
     context.uniform1fv(this.uniforms['pointLightRadii[0]'], this.lighting.radii);
+    this.applyLocalLightUniforms();
     context.uniform3fv(this.uniforms.keyColor, this.lighting.keyColor);
     context.uniform1f(this.uniforms.fillIntensity, this.lighting.fillIntensity);
     context.uniform1f(this.uniforms.ambientIntensity, this.lighting.ambientIntensity);
@@ -1599,8 +1676,34 @@ export class Renderer67 {
     this.cpuMilliseconds = performance.now() - start;
   }
 
+  applyLocalLightUniforms() {
+    const context = this.context;
+    const lighting = this.lighting;
+    const uniforms = this.uniforms;
+    context.uniform1fv(uniforms['pointLightShadowTiles[0]'], lighting.pointShadows);
+    context.uniform1i(uniforms.spotLightCount, lighting.spotCount);
+    context.uniform4fv(uniforms['spotLightPositions[0]'], lighting.spotPositions);
+    context.uniform4fv(uniforms['spotLightColors[0]'], lighting.spotColors);
+    context.uniform4fv(uniforms['spotLightDirections[0]'], lighting.spotDirections);
+    context.uniform4fv(uniforms['spotLightParameters[0]'], lighting.spotParameters);
+    context.uniform1i(uniforms.areaLightCount, lighting.areaCount);
+    context.uniform4fv(uniforms['areaLightPositions[0]'], lighting.areaPositions);
+    context.uniform4fv(uniforms['areaLightColors[0]'], lighting.areaColors);
+    context.uniform4fv(uniforms['areaLightNormals[0]'], lighting.areaNormals);
+    context.uniform4fv(uniforms['areaLightTangents[0]'], lighting.areaTangents);
+    if (lighting.shadowCasters.length === 0 || !this.localShadowTexture) return;
+    context.uniformMatrix4fv(uniforms['localShadowMatrices[0]'], false, this.localShadowMatrices);
+    context.uniform1fv(uniforms['localShadowTexelAngles[0]'], this.localShadowTexelAngles);
+    context.activeTexture(context.TEXTURE0 + LOCAL_SHADOW_UNIT);
+    context.bindTexture(context.TEXTURE_2D, this.localShadowTexture);
+    context.uniform1i(uniforms.localShadowAtlas, LOCAL_SHADOW_UNIT);
+    context.activeTexture(context.TEXTURE0);
+  }
+
   dispose() {
     this.releaseFrameTargets();
+    if (this.localShadowTexture) this.context.deleteTexture(this.localShadowTexture);
+    if (this.localShadowFramebuffer) this.context.deleteFramebuffer(this.localShadowFramebuffer);
     this.batches.forEach((batch) => this.context.deleteVertexArray(batch.vertexArray));
     this.buffers.forEach((buffer) => this.context.deleteBuffer(buffer));
     this.geometryBuffers?.clear();

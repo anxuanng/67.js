@@ -66,7 +66,10 @@ The environment provides `fogColor`, `fogDensity`, `skyTop`, `skyBottom`, `light
 The sky colors are display RGB. Fog colors are linear RGB.
 
 Local `environment.pointLights` support eight world-space sources with inverse-square falloff.
-Each light provides `position` and optional `color`, `intensity`, `radius` and `range`.
+Each light provides `position` and optional `color`, `intensity`, `radius`, `range` and `castShadow`.
+`environment.spotLights` (eight) take `position`, `direction`, and optional `angle` (outer half angle in radians, default 0.785), `penumbra` (0 to 1, default 0.15), `color`, `intensity`, `radius`, `range` and `castShadow`. Intensity is candela, the same unit as a point light.
+`environment.areaLights` (four) are rectangles with `position`, `direction` (the side that emits), `width`, `height`, optional `up`, `color` and `intensity` (candela seen head on). They cast no shadow.
+`castShadow: true` on a point light uses 6 of the 24 shadow tiles, on a spot light 1. Past 24 the edit is rejected. Shadows reach `range`, or 30 units when `range` is 0. Set `castShadow` on the few lights that show a visible shadow, because each one adds a depth pass.
 `keyIntensity`, `fillIntensity` and `ambientIntensity` independently scale existing lighting.
 Read the checkout's `docs/lighting.md` for defaults, numeric limits and frame overrides.
 Point lights currently cast no local shadows. Radius limits attenuation without creating an area emitter.
@@ -194,7 +197,7 @@ Bounds describe authored base geometry, not the deformed skin/morph silhouette. 
 
 Read `docs/agent-look.md` for authored lighting, fog, effects and shadow coverage, included in npm `0.5.0`.
 Use atomic `set-environment`, `set-effects` and `set-shadow` partial records instead of editing renderer internals through MCP.
-Nested `volumeFog` and `bloom` fields merge. The `pointLights` field replaces the full list. Point lights do not cast local shadows.
+Nested `volumeFog` and `bloom` fields merge. The `pointLights`, `spotLights` and `areaLights` fields each replace the full list. Point and spot lights cast shadows only with `castShadow: true`; area lights never do.
 
 Volume fog requires opaque HDR/depth rendering. The preview adapter allocates depth support at creation and rejects unsupported fog before commit.
 Keep key-light direction aligned with the derived shadow projector. The optional addon exports `resolveAgentShadow` for custom adapters.
