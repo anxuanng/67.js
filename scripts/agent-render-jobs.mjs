@@ -3,6 +3,7 @@ import { randomUUID, createHash } from 'node:crypto';
 import { isAbsolute, join, resolve } from 'node:path';
 
 import { RENDER_PASS_NAMES } from '../src/agent-scene-capabilities.js';
+import { PATH_TRACER_JOB_LIMITS } from '../src/path-tracer-capabilities.js';
 
 const UUID =/^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
 const STATES = ['queued', 'running', 'finalizing', 'completed', 'cancelling', 'cancelled', 'failed', 'interrupted'];
@@ -57,7 +58,7 @@ function jsonCopy(value, maximum = MAXIMUM_JSON_BYTES) {
 }
 
 function settingsFrom(input, clips, recipe) {
-  objectKeys(input, ['kind', 'width', 'height', 'fps', 'duration', 'animation', 'motion', 'rendererTime', 'passes'], 'settings');
+  objectKeys(input, ['kind', 'width', 'height', 'fps', 'duration', 'animation', 'motion', 'rendererTime', 'passes', 'renderer'], 'settings');
   if (!['image', 'stills', 'video'].includes(input.kind)) throw new TypeError('kind must be image, stills or video.');
   const width = boundedNumber(input.width, 64, 1024, 'width', true);
   const height = boundedNumber(input.height, 64, 1024, 'height', true);
@@ -68,6 +69,7 @@ function settingsFrom(input, clips, recipe) {
   if (frameCount > 900) throw new RangeError('Job exceeds 900 frames.');
   const result = { kind: input.kind, width, height, fps, duration, frameCount };
   if (input.passes !== undefined) result.passes = passesFrom(input.passes, input.kind);
+  if (input.renderer !== undefined) result.renderer = rendererFrom(input.renderer, input.kind, input.passes);
   const lastSampleTime = input.kind === 'image' ? 0 : input.kind === 'stills' ? duration : (frameCount - 1) / fps;
   if (input.motion !== undefined) {
     objectKeys(input.motion, ['start'], 'motion');
@@ -99,6 +101,20 @@ function settingsFrom(input, clips, recipe) {
     result.rendererTime = { start: 0, rate: 1 };
   }
   boundedNumber(result.rendererTime.start + lastSampleTime * result.rendererTime.rate, 0, 3600, 'renderer time end');
+  return result;
+}
+
+function rendererFrom(renderer, kind, passes) {
+  objectKeys(renderer, ['type', 'samples', 'bounces', 'denoise', 'seed', 'maxSeconds'], 'renderer');
+  if (renderer.type !== 'pathTracer') throw new TypeError('renderer.type must be pathTracer.');
+  if (kind !== 'image') throw new RangeError('The path tracer renders one image: use kind image.');
+  if (passes !== undefined) throw new RangeError('The path tracer writes the lit image only: leave passes out.');
+  if (renderer.denoise !== undefined && typeof renderer.denoise !== 'boolean') throw new TypeError('renderer.denoise must be a boolean.');
+  const result = { type: 'pathTracer', denoise: renderer.denoise ?? true };
+  for (const name of Object.keys(PATH_TRACER_JOB_LIMITS)) {
+    const { minimum, maximum, default: fallback } = PATH_TRACER_JOB_LIMITS[name];
+    result[name] = boundedNumber(renderer[name] ?? fallback, minimum, maximum, `renderer ${name}`, name !== 'maxSeconds');
+  }
   return result;
 }
 

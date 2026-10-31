@@ -58,3 +58,21 @@ EEVEE against Cycles is a yardstick: it shows what a good rasterizer scores. In 
 - `car-paint` scored 0.1521 against Cycles and `glass` 0.1326 (it was 0.1450 with the `liquid` material). The other scenes scored the same as in the table above, to four digits. The table above is the 2026-10-30 baseline and has not been rewritten.
 - `fog` has no noise on either side. EEVEE and 67.js approximate scattering, and Cycles follows 8 volume bounces.
 - Sample counts are fixed: 256 for Cycles with denoising, 64 for EEVEE and 4 MSAA samples for 67.js.
+
+Path tracer (issue #57): `npm run reference -- --path-tracer [--samples 32]` draws each scene with `addons/path-tracer` (CPU, 960 by 540, four threads, below-normal priority) and scores it against the Cycles renders of an earlier run into `path-tracer.json`; `baseline.json` and `images/` stay as they are. Measured 2026-10-31 at 32 samples with the tracer's own denoiser, on a Ryzen 5 5600X that another session was also loading (seconds are wall time and are inflated by that):
+
+| Scene | 67.js rasterizer | Path tracer | Seconds | Not drawn by the tracer |
+| --- | --- | --- | --- | --- |
+| `brick-graph` | 0.2269 | 0.1538 | 34.2 | normal map (bump) |
+| `car-paint` | 0.1521 | 0.1372 | 44.5 | |
+| `character` | 0.0995 | 0.1143 | 35.5 | |
+| `fog` | 0.2612 | 0.5622 | 33.5 | volume fog |
+| `foliage` | 0.1594 | 0.1597 | 126.1 | leaf translucency |
+| `glass` | 0.1326 | 0.1237 | 50.3 | |
+| `lit-interior` | 0.5055 | 0.1993 | 238.0 | |
+| `material-spheres` | 0.1598 | 0.1215 | 66.8 | |
+| `metal` | 0.1868 | 0.1467 | 43.2 | |
+| `outdoor-hdri` | 0.0676 | 0.1036 | 25.1 | |
+| `spot-area` | 0.1242 | 0.0639 | 71.6 | |
+
+The mean against Cycles is 0.171 for the path tracer and 0.189 for the rasterizer (the light bake gets `lit-interior` to 0.1444, better than the tracer's 0.1993). The tracer is worse on `outdoor-hdri` and `character`: in the images the floor is darker than in Cycles (the cause is not found), and `fog` shows the missing volume. The denoiser blurs some soft shadows. Cycles used 256 samples. See `docs/path-tracer.md` for what the tracer draws and skips.

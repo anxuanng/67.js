@@ -71,6 +71,17 @@ Videos hold the lit image only.
 A seek to any frame gives the same pixels: a job samples each frame from its time and keeps no state between frames.
 `npm run smoke:render-passes` proves it through MCP: it renders eight stills with every pass, then renders frame 3 again as an image in a different order of seeks and compares the bytes of the lit image and all five passes.
 
+## Path tracer
+
+An `image` job can ask for the offline [path tracer](path-tracer.md) with `settings.renderer`:
+
+```json
+{ "kind": "image", "width": 960, "height": 540,
+  "renderer": { "type": "pathTracer", "samples": 64, "bounces": 8, "denoise": true, "seed": 0, "maxSeconds": 120 } }
+```
+
+Every field after `type` is optional. Limits: `samples` 1 to 1024, `bounces` 1 to 16, `seed` 0 to 2147483647, `maxSeconds` 1 to 240 (the job also keeps its own five minute deadline). `passes` and the other kinds are refused with it. The tracer loads in the job page on demand, uses four threads, and writes `render.png`; `scene_render_result` metrics carry `pathTracer` with the samples, threads, seconds and what the scene asked for that was not drawn. The same recipe and seed give the same PNG. A job that passes `maxSeconds` fails and writes no image.
+
 ## Controller API
 
 This module provides persistent job records around a trusted render callback.

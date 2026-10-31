@@ -1,5 +1,6 @@
-import { buildTriangleBvh, rayBoxDistance, traverseTriangleBvh } from './triangle-bvh.js';
-import { intersectRayTriangle, readTriangle } from './triangle-math.js';
+import { buildTriangleBvh } from './triangle-bvh.js';
+import { readTriangle } from './triangle-math.js';
+import { createTracer, pointLightFalloff } from './ray-query.js';
 import { extractRender } from './mesh-render.js';
 import { meshFromGeometry } from './mesh-convert.js';
 import { unwrapUv } from './mesh-uv.js';
@@ -152,38 +153,6 @@ function sceneScale(positions) {
   return Math.max(largest, 1e-3);
 }
 
-/** Ray queries with preallocated state: the traversal callbacks are built once, not once per ray. */
-function createTracer(world) {
-  const origin = new Float64Array(3);
-  const direction = new Float64Array(3);
-  const triangle = new Float64Array(9);
-  const state = { nearestDistance: Infinity, nearestTriangle: -1, stopAtAnyHit: false };
-  const scoreBounds = (bounds, offset) => rayBoxDistance(origin, direction, bounds, offset);
-  const shouldVisit = score => score < state.nearestDistance;
-  const visitTriangle = triangleId => {
-    readTriangle(world.positions, world.indices, triangleId, triangle);
-    const distance = intersectRayTriangle(origin, direction, triangle);
-    if (distance < 0 || distance >= state.nearestDistance) return false;
-    state.nearestDistance = distance;
-    state.nearestTriangle = triangleId;
-    return state.stopAtAnyHit;
-  };
-  function trace(ox, oy, oz, dx, dy, dz, limit, stopAtAnyHit) {
-    origin[0] = ox;
-    origin[1] = oy;
-    origin[2] = oz;
-    direction[0] = dx;
-    direction[1] = dy;
-    direction[2] = dz;
-    state.nearestDistance = limit;
-    state.nearestTriangle = -1;
-    state.stopAtAnyHit = stopAtAnyHit;
-    traverseTriangleBvh(world.bvh, scoreBounds, shouldVisit, visitTriangle);
-    return state;
-  }
-  return { trace };
-}
-
 /** Integer hash to [0, 1): the only source of randomness, so a bake repeats exactly. */
 function hashUnit(first, second, third) {
   let value = Math.imul(first ^ 0x9e3779b9, 0x85ebca6b) ^ Math.imul(second + 0x7f4a7c15, 0xc2b2ae35) ^ Math.imul(third + 0x165667b1, 0x27d4eb2f);
@@ -226,16 +195,6 @@ function cosineDirection(normal, firstUnit, secondUnit, out) {
   out[0] = tangentX * localX + bitangentX * localY + normal[0] * localZ;
   out[1] = tangentY * localX + bitangentY * localY + normal[1] * localZ;
   out[2] = tangentZ * localX + bitangentZ * localY + normal[2] * localZ;
-}
-
-function pointLightFalloff(distanceSquared, light) {
-  let cutoff = 1;
-  if (light.range > 0) {
-    const ratio = distanceSquared / (light.range * light.range);
-    const fade = Math.max(1 - ratio * ratio, 0);
-    cutoff = fade * fade;
-  }
-  return cutoff / Math.max(distanceSquared, light.radius * light.radius);
 }
 
 /**

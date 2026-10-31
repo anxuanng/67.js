@@ -43,7 +43,7 @@ const sourceDocuments = [
   'retarget.md',
   'skeleton-pose.md',
   'vehicle.md',
-  'vegetation.md', 'terrain.md', 'grass.md', 'clutter.md', 'light-bake.md',
+  'vegetation.md', 'terrain.md', 'grass.md', 'clutter.md', 'light-bake.md', 'path-tracer.md',
   'camera-path.md', 'lighting.md', 'volumetric.md', 'film-physics.md',
   'surface-attachment.md', 'agent-scene.md', 'mcp.md', 'agent-look.md', 'agent-asset.md', 'agent-render-jobs.md', 'agent-motion.md', 'agent-character-motion.md', 'agent-review.md',
 ];
