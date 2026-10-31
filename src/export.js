@@ -138,10 +138,26 @@ function createIdentityTracker() {
 }
 
 function materialKeyOf(material, identify) {
-  const textures = TEXTURE_CHANNELS.map(channel => material[channel] ? identify(material[channel]) : null);
+  const textures = [...TEXTURE_CHANNELS, 'lightMap'].map(channel => material[channel] ? identify(material[channel]) : null);
   const fields = { ...material };
-  for (const channel of [...TEXTURE_CHANNELS, 'pattern', 'boxMapScale', 'boxMapAxis']) delete fields[channel];
+  for (const channel of [...TEXTURE_CHANNELS, 'lightMap', 'pattern', 'boxMapScale', 'boxMapAxis']) delete fields[channel];
   return JSON.stringify([fields, textures, material.boxMapScale ?? 0, material.boxMapAxis ?? 1]);
+}
+
+/**
+ * glTF has no light map slot, so a baked light map goes out as the emissive texture on TEXCOORD_1: the light that
+ * arrives, tinted by the base colour factor and not by a base color texture. Parts with their own emission keep it.
+ */
+function writeLightMap(writer, textureWriter, material, gltfMaterial) {
+  if (!material.lightMap || material.emissiveMap || (material.emission ?? 0) !== 0) return;
+  const tint = material.color.map(channel => channel * (1 - material.metallic));
+  gltfMaterial.emissiveFactor = tint;
+  gltfMaterial.emissiveTexture = { index: textureWriter.textureIndex(material.lightMap, 'lightMap'), texCoord: 1 };
+  const strength = material.lightMapScale ?? 1;
+  if (strength !== 1) {
+    gltfMaterial.extensions = { ...gltfMaterial.extensions, [EMISSIVE_STRENGTH]: { emissiveStrength: strength } };
+    writer.addExtension(EMISSIVE_STRENGTH, { required: true });
+  }
 }
 
 function writeMaterial(writer, textureWriter, material) {
@@ -167,6 +183,7 @@ function writeMaterial(writer, textureWriter, material) {
   if (material.normalMap) gltfMaterial.normalTexture = { ...textureOf('normalMap'), scale: material.normalScale?.[0] ?? 1 };
   if (material.occlusionMap) gltfMaterial.occlusionTexture = { ...textureOf('occlusionMap'), strength: material.occlusionStrength ?? 1 };
   if (material.emissiveMap) gltfMaterial.emissiveTexture = textureOf('emissiveMap');
+  writeLightMap(writer, textureWriter, material, gltfMaterial);
   return gltfMaterial;
 }
 
@@ -176,6 +193,7 @@ function writeGeometry(writer, geometry) {
   const primitive = { attributes, indices: writer.addAccessor(geometry.indices, 'SCALAR', 34963) };
   if (geometry.colors) attributes.COLOR_0 = writer.addAccessor(geometry.colors, 'VEC3', ARRAY_BUFFER);
   if (geometry.uvs) attributes.TEXCOORD_0 = writer.addAccessor(geometry.uvs, 'VEC2', ARRAY_BUFFER);
+  if (geometry.lightUvs) attributes.TEXCOORD_1 = writer.addAccessor(geometry.lightUvs, 'VEC2', ARRAY_BUFFER);
   if (geometry.skinIndices) {
     attributes.JOINTS_0 = writer.addAccessor(Uint16Array.from(geometry.skinIndices), 'VEC4', ARRAY_BUFFER, { bounds: false });
     attributes.WEIGHTS_0 = writer.addAccessor(normalizedWeights(geometry.skinWeights), 'VEC4', ARRAY_BUFFER, { bounds: false });
