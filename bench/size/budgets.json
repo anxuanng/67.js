@@ -26,16 +26,16 @@
   "entry:skeleton-pose": 19200,
   "entry:vehicle": 14700,
   "entry:vegetation": 17900,
-  "entry:terrain": 3100,
+  "entry:terrain": 3400,
   "entry:grass": 4400,
   "entry:clutter": 5300,
   "entry:light-bake": 25900,
   "entry:path-tracer": 13800,
   "entry:texture-set": 900,
-  "entry:agent-scene": 65400,
-  "entry:agent-scene+lazy": 218600,
-  "entry:agent-asset": 96800,
-  "entry:agent-asset+lazy": 229600,
+  "entry:agent-scene": 65700,
+  "entry:agent-scene+lazy": 222500,
+  "entry:agent-asset": 97000,
+  "entry:agent-asset+lazy": 233500,
   "entry:hdri": 3300,
   "entry:camera-effects": 8600,
   "entry:render-passes": 1700,
@@ -43,7 +43,7 @@
   "scene:lit-box": 61100,
   "scene:gltf-box": 81500,
   "scene:gltf-box+lazy": 83600,
-  "scene:agent-scene": 96800,
-  "scene:agent-scene+lazy": 250000
+  "scene:agent-scene": 97000,
+  "scene:agent-scene+lazy": 253900
  }
 }

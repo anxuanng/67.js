@@ -114,9 +114,9 @@
    "brotli": 14786
   },
   "entry:terrain": {
-   "min": 6661,
-   "gzip": 3006,
-   "brotli": 2712
+   "min": 7387,
+   "gzip": 3322,
+   "brotli": 3012
   },
   "entry:grass": {
    "min": 9441,
@@ -144,24 +144,24 @@
    "brotli": 762
   },
   "entry:agent-scene": {
-   "min": 209457,
-   "gzip": 64112,
-   "brotli": 55993
+   "min": 209968,
+   "gzip": 64321,
+   "brotli": 56194
   },
   "entry:agent-scene+lazy": {
-   "min": 626190,
-   "gzip": 214248,
-   "brotli": 189205
+   "min": 635119,
+   "gzip": 218126,
+   "brotli": 192679
   },
   "entry:agent-asset": {
-   "min": 303562,
-   "gzip": 94893,
-   "brotli": 82975
+   "min": 303994,
+   "gzip": 95078,
+   "brotli": 83130
   },
   "entry:agent-asset+lazy": {
-   "min": 662034,
-   "gzip": 225055,
-   "brotli": 198170
+   "min": 670884,
+   "gzip": 228911,
+   "brotli": 201552
   },
   "entry:hdri": {
    "min": 8075,
@@ -199,14 +199,14 @@
    "brotli": 71399
   },
   "scene:agent-scene": {
-   "min": 320697,
-   "gzip": 94869,
-   "brotli": 82532
+   "min": 321129,
+   "gzip": 95055,
+   "brotli": 82718
   },
   "scene:agent-scene+lazy": {
-   "min": 737430,
-   "gzip": 245010,
-   "brotli": 215663
+   "min": 746280,
+   "gzip": 248859,
+   "brotli": 219206
   }
  }
 }
