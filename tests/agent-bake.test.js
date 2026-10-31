@@ -63,12 +63,14 @@ test('a recipe bake lights the room with lightmaps and reports its time and skip
   assert.equal(bake.reused, false);
   assert.ok(bake.seconds > 0);
   assert.ok(bake.texels > 0);
-  assert.deepEqual(bake.skipped.map(entry => entry.name), ['bulb']);
+  assert.deepEqual(bake.skipped, []);
   const floor = scene.parts.find(part => part.name === 'floor');
   assert.ok(floor.material.emissiveMap);
   assert.equal(floor.material.color[0], 0.8);
   const bulb = scene.parts.find(part => part.name === 'bulb');
   assert.equal(bulb.material.emissiveMap, undefined);
+  assert.ok(bulb.material.lightMap);
+  assert.equal(bulb.material.emission, 2);
   assert.equal(createAgentScene(closedRoomWithoutBake()).parts.some(part => part.material.emissiveMap), false);
 });
 
@@ -116,4 +118,34 @@ test('a failed bake leaves the scene as it was', () => {
   assert.throws(() => scene.apply([{ type: 'set-bake', bake: { samples: 5000 } }], { expectedRevision: 0 }));
   assert.equal(scene.revision, 0);
   assert.equal(scene.inspect().bake.samples, BAKE_PRESETS.draft.samples);
+});
+
+test('a brick wall keeps its pattern and receives bounced light through a light map', () => {
+  const recipe = closedRoom();
+  recipe.materials.push({ id: 'bricks', color: [1, 1, 1], roughness: 0.9, pattern: { type: 'bricks', size: 1 } });
+  recipe.nodes.find(node => node.id === 'back').material = 'bricks';
+  const scene = createAgentScene(recipe);
+  assert.deepEqual(scene.inspect().bake.skipped, []);
+  const wall = scene.parts.find(part => part.name === 'back');
+  assert.ok(wall.material.lightMap);
+  assert.ok(wall.material.map);
+  assert.ok(wall.material.boxMapScale > 0);
+  assert.equal(wall.geometry.lightUvs.length, wall.geometry.positions.length / 3 * 2);
+  const again = createAgentScene(recipe).parts.find(part => part.name === 'back');
+  assert.deepEqual(Array.from(again.material.lightMap.image.data), Array.from(wall.material.lightMap.image.data));
+});
+
+test('a node that hosts a hair system bakes without an error and is reported as skipped', () => {
+  const recipe = closedRoom({
+    geometries: [{ id: 'box', type: 'box' }, { id: 'head', type: 'sphere', segments: 12, rings: 8 }],
+    particles: { systems: [{ type: 'hair', node: 'fur', surface: 'head', seed: 5, count: 40, length: [0.1, 0.2], segments: 3 }] },
+  });
+  recipe.nodes.push({ id: 'head', geometry: 'head', material: 'white', translation: [0.5, 0.5, 0.5], scale: [0.3, 0.3, 0.3] });
+  recipe.nodes.push({ id: 'fur', geometry: 'box', material: 'white' });
+  const scene = createAgentScene(recipe);
+  const skipped = scene.inspect().bake.skipped.find(entry => entry.name === 'fur');
+  assert.ok(skipped);
+  assert.match(skipped.reason, /hair|particle/);
+  assert.ok(scene.parts.find(part => part.name === 'head').material.emissiveMap);
+  assert.equal(scene.parts.find(part => part.name === 'fur').material.emissiveMap, undefined);
 });

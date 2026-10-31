@@ -4,6 +4,7 @@ import { box, cylinder, sphere, torus } from '/src/geometry.js';
 import { createEnvironmentMap, loadHdri } from '/src/hdri.js';
 import { parseGltf } from '/src/gltf.js';
 import { createTree, vegetationParts } from '/src/vegetation.js';
+import { createAgentScene, loadAgentSceneModules } from '/src/agent-scene.js';
 import { materialPatternTextures, normalizeMaterialPattern } from '/src/material-patterns.js';
 
 const HDRI_FILE = 'public/hdri/kloofendal_48d_partly_cloudy_puresky_1k.hdr';
@@ -132,6 +133,44 @@ export const REFERENCE_SCENES = {
       parts, blenderWorld: lighting.blenderWorld,
       environment: environment(lighting, { pointLights }),
       camera: { eye: [0, 1.5, 3.9], target: [0, 1, -1], up: [0, 1, 0], fov: 50, near: 0.05, far: 50 },
+    };
+  },
+
+  // A closed room built from a recipe, with brick walls: the bake has to give a patterned wall bounced light and keep its bricks.
+  async 'brick-room'() {
+    const lighting = constantLighting(0.02);
+    const pointLights = [
+      { position: [0, 2.6, -0.5], color: [1, 0.9, 0.75], intensity: 8, radius: 0.05, castShadow: true },
+      { position: [-2.5, 1.5, 1.5], color: [1, 0.6, 0.4], intensity: 2, radius: 0.05, castShadow: true },
+    ];
+    const placedBox = (id, translation, scale, material) => ({ id, geometry: 'box', material, translation, scale });
+    const recipe = {
+      format: '67js.scene', schemaVersion: 1,
+      geometries: [{ id: 'box', type: 'box' }, { id: 'ball', type: 'sphere', segments: 48, rings: 32 }],
+      materials: [
+        { id: 'bricks', color: [1, 1, 1], roughness: 0.9, pattern: { type: 'bricks', size: 0.5 } },
+        { id: 'plaster', color: [0.7, 0.68, 0.62], roughness: 0.9 },
+        { id: 'boards', color: [0.45, 0.32, 0.22], roughness: 0.6 },
+        { id: 'teal', color: [0.2, 0.5, 0.45], roughness: 0.2 },
+      ],
+      nodes: [
+        placedBox('room-floor', [0, -0.05, 0], [8, 0.1, 8], 'boards'),
+        placedBox('room-ceiling', [0, 3.05, 0], [8, 0.1, 8], 'plaster'),
+        placedBox('room-back', [0, 1.5, -4.05], [8, 3.2, 0.1], 'bricks'),
+        placedBox('room-left', [-4.05, 1.5, 0], [0.1, 3.2, 8], 'bricks'),
+        placedBox('room-right', [4.05, 1.5, 0], [0.1, 3.2, 8], 'bricks'),
+        placedBox('room-front', [0, 1.5, 4.05], [8, 3.2, 0.1], 'plaster'),
+        placedBox('table', [0, 0.7, -1], [2.4, 0.1, 1.2], 'plaster'),
+        { id: 'vase', geometry: 'ball', material: 'teal', translation: [-0.5, 1.05, -1], scale: [0.3, 0.3, 0.3] },
+      ],
+      camera: { eye: [0, 1.5, 3.6], target: [0, 1.1, -1], fov: 60, near: 0.05, far: 50 },
+    };
+    await loadAgentSceneModules(recipe);
+    const scene = createAgentScene(recipe);
+    return {
+      parts: scene.parts, blenderWorld: lighting.blenderWorld,
+      environment: environment(lighting, { pointLights }),
+      camera: { eye: [0, 1.5, 3.6], target: [0, 1.1, -1], up: [0, 1, 0], fov: 60, near: 0.05, far: 50 },
     };
   },
 

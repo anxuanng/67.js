@@ -28,6 +28,7 @@ export const MAX_BAKE_POINT_LIGHTS = 8;
 const MAP_FIELDS = ['map', 'normalMap', 'metallicRoughnessMap', 'occlusionMap', 'emissiveMap'];
 const SURFACE_UTILIZATION_FLOOR = 0.05;
 const DILATION_PASSES = 2;
+const AVERAGE_GRID = 16;
 const LIGHT_MAP_CLAMP_TO_EDGE = 33071;
 const LIGHT_MAP_LINEAR = 9729;
 
@@ -93,18 +94,45 @@ function validatePart(part, index) {
 
 function skipReason(part) {
   const material = part.material;
+  if (part.generatesGeometry) return 'a hair or particle system rebuilds its geometry every frame, so it has no fixed surface to bake';
   if (part.skin || part.morph || part.geometry.skinIndices || part.geometry.morphTargets) return 'skinned or morphing parts move, so a fixed lightmap would not follow';
   if ((material.tag ?? 'surface') !== 'surface') return `the ${material.tag} material draws its own look`;
-  if (MAP_FIELDS.some(field => material[field])) return 'it already has texture maps, which use the only UV channel the renderer reads';
-  if (material.pattern || material.layers) return 'it has a procedural pattern or layers';
-  if ((material.emission ?? 0) > 0) return 'it emits light itself';
   if (material.opacity !== undefined && material.opacity < 1 || material.alphaMode && material.alphaMode !== 'opaque') return 'it is transparent';
   return null;
 }
 
+/**
+ * A plain part shows the light through its emissive map on UV channel 0. A part with texture maps, a pattern, layers or
+ * its own emission keeps channel 0 and its look, and receives the light through the lightMap slot on a second UV set.
+ */
+function usesLightMapSlot(material) {
+  return MAP_FIELDS.some(field => material[field]) || Boolean(material.pattern || material.layers) || (material.emission ?? 0) > 0;
+}
+
+function srgbToLinear(byte) {
+  const unit = byte / 255;
+  return unit <= 0.04045 ? unit / 12.92 : ((unit + 0.055) / 1.055) ** 2.4;
+}
+
+/** Mean linear colour of a base color map on a fixed grid of samples, or white when the image bytes are not readable. */
+function averageMapColor(map) {
+  const image = map?.image;
+  if (!image?.data || !(image.width > 0) || !(image.height > 0)) return [1, 1, 1];
+  const sum = [0, 0, 0];
+  for (let row = 0; row < AVERAGE_GRID; row++) {
+    for (let column = 0; column < AVERAGE_GRID; column++) {
+      const x = Math.floor((column + 0.5) / AVERAGE_GRID * image.width);
+      const y = Math.floor((row + 0.5) / AVERAGE_GRID * image.height);
+      for (let channel = 0; channel < 3; channel++) sum[channel] += srgbToLinear(image.data[(y * image.width + x) * 4 + channel]);
+    }
+  }
+  return sum.map(total => total / (AVERAGE_GRID * AVERAGE_GRID));
+}
+
 function diffuseAlbedo(material) {
   const keep = 1 - (material.metallic ?? 0);
-  return material.color.map(channel => Math.max(channel, 0) * keep);
+  const mapAverage = averageMapColor(material.map);
+  return material.color.map((channel, index) => Math.max(channel, 0) * keep * mapAverage[index]);
 }
 
 function emittedRadiance(material) {
@@ -345,6 +373,37 @@ function unwrapForLightmap(geometry) {
   return { geometry: unwrappedGeometry, utilization: Math.max(unwrapped.utilization, SURFACE_UTILIZATION_FLOOR) };
 }
 
+/**
+ * Gives a geometry lightmap UVs in `lightUvs` and keeps its own `uvs` and `colors`. The unwrap splits vertices along its
+ * seams, so each source vertex index rides through it as a corner colour and the attributes are gathered back from it.
+ */
+function unwrapIntoSecondUvSet(geometry) {
+  const { positions, normals, indices } = geometry;
+  const vertexCount = positions.length / 3;
+  const sourceIndices = new Float32Array(vertexCount * 3);
+  for (let vertex = 0; vertex < vertexCount; vertex++) sourceIndices[vertex * 3] = vertex;
+  const mesh = meshFromGeometry({ positions, normals, indices, colors: sourceIndices }, { quads: false, tags: 'none' });
+  const unwrapped = unwrapUv(mesh);
+  const { geometry: extracted } = extractRender(unwrapped.mesh);
+  const newCount = extracted.positions.length / 3;
+  const result = { positions: extracted.positions, normals: extracted.normals, indices: extracted.indices, lightUvs: extracted.uvs };
+  const uvs = geometry.uvs ? new Float32Array(newCount * 2) : null;
+  const colors = geometry.colors ? new Float32Array(newCount * 3) : null;
+  for (let vertex = 0; vertex < newCount; vertex++) {
+    const source = Math.round(extracted.colors[vertex * 3]);
+    if (uvs) {
+      uvs[vertex * 2] = geometry.uvs[source * 2];
+      uvs[vertex * 2 + 1] = geometry.uvs[source * 2 + 1];
+    }
+    if (colors) {
+      for (let channel = 0; channel < 3; channel++) colors[vertex * 3 + channel] = geometry.colors[source * 3 + channel];
+    }
+  }
+  if (uvs) result.uvs = uvs;
+  if (colors) result.colors = colors;
+  return { geometry: result, utilization: Math.max(unwrapped.utilization, SURFACE_UTILIZATION_FLOOR) };
+}
+
 function lightmapResolution(area, utilization, options) {
   const wanted = Math.sqrt(area / utilization) * options.texelsPerUnit;
   const rounded = Math.ceil(wanted / 4) * 4;
@@ -357,7 +416,8 @@ function rasterizeTexels(geometry, matrix, resolution) {
   const positions = new Float64Array(texelCount * 3);
   const normals = new Float64Array(texelCount * 3);
   const covered = new Uint8Array(texelCount);
-  const { positions: vertexPositions, normals: vertexNormals, uvs, indices } = geometry;
+  const { positions: vertexPositions, normals: vertexNormals, indices } = geometry;
+  const uvs = geometry.lightUvs ?? geometry.uvs;
   const worldCorner = [0, 0, 0, 0, 0, 0, 0, 0, 0];
   for (let triangle = 0; triangle < indices.length / 3; triangle++) {
     const corners = [indices[triangle * 3], indices[triangle * 3 + 1], indices[triangle * 3 + 2]];
@@ -461,6 +521,10 @@ function bakedPart(part, geometry, texture, peak) {
   return { ...part, geometry, material: { ...part.material, emission: peak, emissiveColor: [1, 1, 1], emissiveMap: texture } };
 }
 
+function lightMappedPart(part, geometry, texture, peak) {
+  return { ...part, geometry, material: { ...part.material, lightMap: texture, lightMapScale: peak } };
+}
+
 /**
  * Bakes bounced light into the parts and returns new parts (the input is not changed) plus a report.
  * lighting: { pointLights: [{ position, color, intensity, radius, range }], keyColor, lightDirection }, the same shapes
@@ -483,6 +547,7 @@ export function bakeLightmaps(parts, lighting, options = {}) {
   const emissionOfPart = parts.map(part => emittedRadiance(part.material));
   const gather = createGatherer({ world, tracer, albedoOfPart, emissionOfPart, directIrradiance, offset, samples: settings.samples, bounces: settings.bounces });
   const unwrapCache = new Map();
+  const secondSetCache = new Map();
   const plans = [];
   const skipped = [];
   let texelTotal = 0;
@@ -492,11 +557,13 @@ export function bakeLightmaps(parts, lighting, options = {}) {
       skipped.push({ name: part.name, reason });
       return;
     }
-    if (!unwrapCache.has(part.geometry)) unwrapCache.set(part.geometry, unwrapForLightmap(part.geometry));
-    const unwrapped = unwrapCache.get(part.geometry);
+    const slot = usesLightMapSlot(part.material);
+    const cache = slot ? secondSetCache : unwrapCache;
+    if (!cache.has(part.geometry)) cache.set(part.geometry, slot ? unwrapIntoSecondUvSet(part.geometry) : unwrapForLightmap(part.geometry));
+    const unwrapped = cache.get(part.geometry);
     const resolution = lightmapResolution(worldTriangleArea(part), unwrapped.utilization, settings);
     texelTotal += resolution * resolution;
-    plans.push({ part, index, unwrapped, resolution });
+    plans.push({ part, index, unwrapped, resolution, slot });
   });
   const rayWork = texelTotal * settings.samples * settings.bounces * (1 + lights.pointLights.length + (lights.sun ? 1 : 0));
   if (texelTotal > MAX_BAKE_TEXELS) throw new RangeError(`Light bake would use ${texelTotal} texels; the limit is ${MAX_BAKE_TEXELS}. Lower maxResolution or texelsPerUnit.`);
@@ -504,7 +571,7 @@ export function bakeLightmaps(parts, lighting, options = {}) {
   const baked = parts.slice();
   const partReports = [];
   const sum = [0, 0, 0];
-  for (const { part, index, unwrapped, resolution } of plans) {
+  for (const { part, index, unwrapped, resolution, slot } of plans) {
     const { positions, normals, covered } = rasterizeTexels(unwrapped.geometry, part.matrix, resolution);
     const radiance = new Float32Array(resolution * resolution * 3);
     const albedo = albedoOfPart[index];
@@ -520,14 +587,16 @@ export function bakeLightmaps(parts, lighting, options = {}) {
       }
       gather(point, normal, index * 1_000_003 + texel, sum);
       for (let channel = 0; channel < 3; channel++) {
-        radiance[texel * 3 + channel] = sum[channel] * albedo[channel];
+        // The lightMap slot stores the light that arrives; the shader multiplies it by the live surface colour.
+        radiance[texel * 3 + channel] = slot ? sum[channel] : sum[channel] * albedo[channel];
         peak = Math.max(peak, radiance[texel * 3 + channel]);
       }
     }
     partReports.push({ name: part.name, resolution, peak });
     if (peak <= 0) continue;
     dilate(radiance, covered, resolution);
-    baked[index] = bakedPart(part, unwrapped.geometry, lightmapTexture(radiance, resolution, peak), peak);
+    const texture = lightmapTexture(radiance, resolution, peak);
+    baked[index] = (slot ? lightMappedPart : bakedPart)(part, unwrapped.geometry, texture, peak);
   }
   const report = { parts: partReports, skipped, texels: texelTotal, rayWork, seconds: (performance.now() - started) / 1000 };
   return { parts: baked, report };
