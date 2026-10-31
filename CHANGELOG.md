@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Make the first frame and the SwiftShader frame cost less, with the same pixels. The main fragment shader now compiles only the features that a scene uses (maps, splat layers, moss, alpha and the special material tags), and a part that needs another feature later recompiles it. All programs, with the environment prefilter, now start together and use `KHR_parallel_shader_compile`. On an RTX 3060 the first frame went from 3.7 to 4.4 seconds down to 0.5 to 1.0 seconds, and a SwiftShader frame costs 0.4 to 0.5 times what it did. `bench/runtime/PROFILE.md` has the profile
 - Load glTF without Three.js: the addon has its own GLB and glTF parser, node sampler and animation clips, so a box with the addon drops from 159,422 to 67,467 bytes gzip. Draco, meshopt and KTX2 still come from the decoders you pass in `options.decoders`. Only the default scene is decoded, and a node outside it is decoded only when a skin or an animation names it
 - Update the bundled `zod` to 4.6.7, which fixes a memory exhaustion advisory in the validation of oversized collections
 - Make the MCP preview server reject requests with another Host header, which closes DNS rebinding
