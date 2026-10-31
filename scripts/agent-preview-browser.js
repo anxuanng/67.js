@@ -90,7 +90,8 @@ function draw(record, time = 0, camera = record.scene.camera, frameOptions = {})
   record.renderer.resize();
   if (record.rendererTopology !== record.scene.topologyRevision) {
     const textured = hasPatternTextures(record.scene.parts);
-    if (textured || record.rendererTextured) {
+    // replaceParts refuses skinned and morphed parts, so an edited imported part takes a new renderer as well.
+    if (textured || record.rendererTextured || record.asset) {
       rebuildRenderer(record);
     } else {
       record.renderer.replaceParts(record.scene.parts);
@@ -274,7 +275,9 @@ function clipExport(record, clipIndex) {
   const sourceClip = clipFromGltfAnimation(animation);
   const name = String(animation.name || `clip ${clipIndex}`);
   const clip = { ...sourceClip, name, tracks: [...sourceClip.tracks, ...weightTracksFromGltfAnimation(animation)] };
-  return { parts: [...asset.parts], options: { nodes: asset.nodes, clips: [clip] } };
+  // Edited parts export their edited geometry on the source part's own matrix, skin and morph.
+  const parts = asset.parts.map((part, index) => scene.parts[index].geometry === part.geometry ? part : { ...part, geometry: scene.parts[index].geometry });
+  return { parts, options: { nodes: asset.nodes, clips: [clip] } };
 }
 
 function bytesToBase64(bytes) {
@@ -454,6 +457,7 @@ window.__agentPreview = {
     }
     let asset;
     try {
+      if (input.recipe?.meshEdits) await loadAllAgentSceneModules();
       asset = await parseGltf(bytes.buffer, { maxBytes: 16 * 1024 * 1024, maxVertices: 250000, maxParts: 4096, maxTexturePixels: 4194304, maxJoints: 1024 });
       return createPreview(createAgentAssetScene(asset, input.recipe), input, asset);
     } catch (error) {
@@ -467,8 +471,9 @@ window.__agentPreview = {
   inspectMeshes({ sessionId, ...options }) {
     const scene = requireSession(sessionId).scene;
     if (typeof scene.inspectMeshes !== 'function') {
-      throw new TypeError('mesh_inspect supports procedural recipe scenes. Imported asset scenes are not inspected as polygon meshes yet.');
+      throw new TypeError('mesh_inspect needs a procedural recipe scene or an imported asset scene.');
     }
+    if (!allAgentSceneModulesLoaded()) return loadAllAgentSceneModules().then(() => this.inspectMeshes({ sessionId, ...options }));
     return { sessionId, ...scene.inspectMeshes(options) };
   },
   apply(input) {
@@ -492,7 +497,7 @@ window.__agentPreview = {
   editMesh({ sessionId, expectedRevision, geometry, edits, replace }) {
     const record = requireSession(sessionId);
     if (typeof record.scene.inspectMeshes !== 'function') {
-      throw new TypeError('mesh_edit supports procedural recipe scenes. Imported asset scenes have no editable mesh geometry yet.');
+      throw new TypeError('mesh_edit needs a procedural recipe scene or an imported asset scene.');
     }
     const operation = { type: 'edit-mesh', geometry, edits, ...(replace === undefined ? {} : { replace }) };
     return afterMeshBooleans(edits, () => {
@@ -503,8 +508,8 @@ window.__agentPreview = {
   },
   setMeshStack({ sessionId, expectedRevision, geometry, stack, apply }) {
     const record = requireSession(sessionId);
-    if (typeof record.scene.inspectMeshes !== 'function') {
-      throw new TypeError('mesh_stack supports procedural recipe scenes.');
+    if (typeof record.scene.inspectMeshes !== 'function' || record.asset) {
+      throw new TypeError('mesh_stack supports procedural recipe scenes. Imported parts take mesh_edit with a mesh ID such as mesh-0.');
     }
     const operation = { type: 'set-mesh-stack', geometry, ...(stack === undefined ? {} : { stack }), ...(apply === undefined ? {} : { apply }) };
     const status = this.applyLoaded({ sessionId, operations: [operation], expectedRevision });

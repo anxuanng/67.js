@@ -91,14 +91,22 @@ Changing the clip defaults time to zero. With `clip:null`, omit time.
 Environment
 `volumeFog` and effects `bloom` merge partial nested records. A supplied
 `pointLights` list replaces the full list, including `[]` to clear it.
-Geometry and topology commands reject. Imported mesh editing or sculpting
-through MCP is outside this module's contract.
+`edit-mesh` (`mesh_edit` with a part ID such as `mesh-10`) edits the topology of one imported part with the same
+edit vocabulary as a recipe mesh; the log is kept in the recipe as `meshEdits: [{ id, edits }]`. The part becomes a welded
+polygon mesh with axis tags and a `material-<n>` tag on every face, and the edits run in the part's local space (imported
+parts are often tiny and rotated: `mesh_inspect` reports `localToWorldScale` and `localAxesInWorld`). New vertices take
+skin weights (four heaviest joints), morph deltas and vertex colours from the nearest original surface point; faces an edit
+leaves without UVs read the nearest original UV island. On a skinned or morphed part an edit that puts geometry farther
+than a quarter of the part's bounds diagonal from the original surface is rejected, because the transfer would be a guess.
+Edits are atomic, undone by checkpoint, and every output passes `validateTopology`. `mesh_stack`, relations and other
+geometry commands still reject.
 
 `parts` is a frozen, stable list. Part objects, matrices, geometry, skin, morph,
 and material wrapper identities survive every successful transaction. Material
 factor getters read immutable snapshots. Map descriptors retain their original
-references. `topologyRevision` remains zero. Renderer adapters can call their
-ordinary update path after edits without replacing geometry resources.
+references. Part objects, geometry and `topologyRevision` change only when the edit log changes (`parts` is then a new
+frozen list whose matrices are the same arrays); renderer adapters take a new renderer for an edited asset, because skinned
+and morphed parts cannot be replaced in place. Pose, look and material edits keep every identity.
 
 `checkpoint()` returns an opaque private handle. At most eight handles can be
 live. `restore(handle, {expectedRevision})` publishes its recipe and increments
@@ -114,7 +122,7 @@ budgets still belong to `parseGltf()`. Configure them before decoding.
 ## Inspection and ownership
 
 `exportRecipe()` and the camera/look getters return detached JSON.
-`inspect({ids?, limit?, includeBounds?})` returns revision, fixed topology
+`inspect({ids?, limit?, includeBounds?})` returns revision, topology
 revision, IDs, labels, counts, unique geometry bytes, animation metadata, and
 at most 64 nodes by default. The limit can be 1 to 256. Bounds requests scan at
 most two million authored base vertices across the selected visible nodes.

@@ -217,6 +217,13 @@ export const REFERENCES = {
       ],
     },
   },
+  'robot-leg-hole': {
+    format: '67js.asset', schemaVersion: 1, assetId: 'ab'.repeat(32),
+    meshEdits: [{
+      id: 'mesh-10',
+      edits: [{ op: 'boolean', operation: 'difference', cutter: { type: 'cylinder', segments: 24 }, scale: [0.0003, 0.01, 0.0003] }],
+    }],
+  },
   'robot-reach': {
     format: '67js.asset', schemaVersion: 1, assetId: 'ab'.repeat(32),
     animation: { clip: 2, time: 0 },

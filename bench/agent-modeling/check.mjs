@@ -134,6 +134,14 @@ function checkOne(check, measures) {
       const along = offset.reduce((total, value, axis) => total + value * check.direction[axis], 0);
       return { pass: along >= check.minOffset, detail: `${check.node} sits ${round(along)} m toward ${JSON.stringify(check.direction)} at t=${check.time}` };
     }
+    case 'assetHole': {
+      const target = measures.editedParts.find(part => part.label === check.part);
+      if (!target) return { pass: false, detail: `no mesh edits on the part ${check.part}; edited parts: ${measures.editedParts.map(part => part.label).join(', ') || 'none'}` };
+      const others = measures.editedParts.filter(part => part !== target).map(part => part.label);
+      const volumeKept = target.volumeRatio >= check.volumeKept[0] && target.volumeRatio <= check.volumeKept[1];
+      const pass = target.genus === check.genus && target.closedParts === 1 && target.partCount === 1 && target.lintOk && volumeKept && others.length === 0;
+      return { pass, detail: `${check.part}: genus ${target.genus}, ${target.partCount} part(s), lint ${target.lintOk}, ${round(target.volumeRatio)} of the volume kept, other edited parts ${others.join(', ') || 'none'}` };
+    }
     case 'assetClip': {
       return { pass: measures.clipName === check.name, detail: `clip ${measures.clipName ?? 'none'}` };
     }

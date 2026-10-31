@@ -1,6 +1,7 @@
 import {
   MESH_EDIT_OPERATIONS, MAX_MESH_EDITS, STACK_OPERATIONS, MAX_STACK_NODES,
   FIELD_OPERATOR_NAMES, FIELD_ATTRIBUTES, MAX_FIELD_NODES, MAX_FIELD_DEPTH, MAX_FIELD_ELEMENTS, INSTANCE_SOURCES, MAX_INSTANCE_CANDIDATES,
+  IMPORTED_MESH_EDIT_LIMITS,
 } from './mesh-operations.js';
 
 // What agent scenes support and their default limits, as plain data. The MCP server reads these without bundling
@@ -75,6 +76,13 @@ export const AGENT_SCENE_CAPABILITIES = Object.freeze({
   materialMappings: MATERIAL_MAPPINGS,
   renderPasses: Object.freeze({ names: RENDER_PASS_NAMES, files: 'render-<pass>.png or frame-N-<pass>.png, raw and unantialiased; opaque and cutout geometry only', depth: `16 bits in red and green over ${RENDER_PASS_DEPTH_RANGE} m`, objectId: '24 bits in RGB; the job result lists the part names' }),
   materialGraph: Object.freeze({ outputs: MATERIAL_GRAPH_OUTPUTS, operators: MATERIAL_GRAPH_OPERATORS, ...MATERIAL_GRAPH_LIMITS, nodes: MATERIAL_GRAPH_NODES }),
+  // mesh_edit on an imported GLB part (geometry mesh-<n>, listed by scene_inspect). Edits run in the part's local space
+  // (mesh_inspect gives localToWorldScale and localAxesInWorld) on a welded mesh with axis tags and a material tag.
+  importedMeshEdits: Object.freeze({
+    ...IMPORTED_MESH_EDIT_LIMITS,
+    transfer: 'New vertices take skin weights, morph deltas and colours from the nearest original surface point; faces left without UVs read the nearest original UV island. Not supported: mesh_stack, relations, instancing.',
+    rejects: 'On a skinned or morphed part an edit farther than maxTransferFraction of the part bounds diagonal from the original surface; booleans on open parts (fill_holes first).',
+  }),
   fixedResources: false, dynamicTopology: true, checkpoints: true, positiveScaleOnly: true,
   authoredLook: true, maxPointLights: 8,
   lightingSetups: LIGHTING_SETUP_NAMES, defaultLightingSetup: DEFAULT_LIGHTING_SETUP,

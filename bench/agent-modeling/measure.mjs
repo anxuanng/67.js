@@ -239,7 +239,27 @@ async function measureLayerPose(recipe, asset) {
 }
 
 /** Reload an exported recipe for the fixture robot and read which clip and which IK solvers it ended with. */
+/** Topology of every imported part the recipe edits: genus, closure, lint, and the volume left after the edits. */
+function measureEditedParts(scene, asset, recipe) {
+  const labels = new Map(scene.inspect({ limit: 256 }).nodes.map(node => [node.id, node.label]));
+  return (recipe.meshEdits ?? []).map(entry => {
+    const index = Number(entry.id.slice(5));
+    const report = scene.inspectMeshes({ geometries: [entry.id] }).meshes[0];
+    const eulerCharacteristic = report.counts.vertices - report.counts.edges + report.counts.faces;
+    const originalVolume = signedVolume(asset.parts[index].geometry);
+    return {
+      id: entry.id, label: labels.get(entry.id), lintOk: report.ok, closedParts: report.parts.closed, partCount: report.parts.count,
+      genus: (2 * report.parts.count - eulerCharacteristic) / 2,
+      volumeRatio: signedVolume(scene.parts[index].geometry) / originalVolume,
+    };
+  });
+}
+
 export async function measureAssetRecipe(recipe) {
+  if (recipe.meshEdits) {
+    await loadAllAgentSceneModules();
+    await loadMeshBooleans();
+  }
   const asset = await loadFixtureRobot();
   const scene = createAgentAssetScene(asset, recipe);
   const layerPose = await measureLayerPose(recipe, await loadFixtureRobot());
@@ -254,6 +274,7 @@ export async function measureAssetRecipe(recipe) {
   return {
     clipName: recipe.animation ? asset.animations[recipe.animation.clip]?.name : null,
     layerPose,
+    editedParts: measureEditedParts(scene, asset, recipe),
     camera: recipe.camera ?? null,
     reachSolvers: solvers.filter(solver => solver.type === 'two-bone').map(solver => {
       const [firstTarget, lastTarget] = endpoints(solver.target);

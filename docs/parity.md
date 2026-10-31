@@ -242,7 +242,7 @@ The goal also needs this work, and no page in the Blender manual covers it.
 | Agent measurement | partial | A task suite runs on one model and reads recipes only. | #29, #30, #31, #69 |
 | Pull request checks | partial | The `Test` workflow reports a status and does not block a merge. | #32 |
 | Relations between parts | partial | The agent version of snapping: node `relations` (`attach`, `gap`, `flush`, `align`, `centered`) over world bounds or a tagged region, solved again on every edit, cycles rejected. Tests in [part-relations](../tests/part-relations.test.js); suite tasks `kettle-resize` and `desk-resize` with plain twins (no gain in calls measured on Sonnet). No snapping to edges or vertices, no relation on the part's own tagged region. | #44 |
-| Imported mesh editing | missing | Imported assets accept poses and transforms. Their topology is fixed. | #48 |
+| Imported mesh editing | partial | `mesh_edit` takes an imported part ID. Skin weights, morph deltas and colours of new vertices come from the nearest original surface point, missing UVs from the nearest island; an edit that reaches too far on a skinned or morphed part is rejected. Not here: merging several parts into one mesh, tags from several material groups. Evidence: tests/agent-asset-mesh.test.js, scripts/smoke-imported-topology.mjs. | #48 |
 | Rendering backend | missing | WebGL2 only. WebGPU is not evaluated. | #56 |
 | Terrain and navigation | partial | Terrain with 4 splat layers and no holes. There is no navmesh. | #64 |
 | Tool cost and errors | partial | Lint and errors exist. No budget limits schema size, and not every error is checked. | #65, #66 |

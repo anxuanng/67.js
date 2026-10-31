@@ -51,6 +51,10 @@ Booleans first need `await loadMeshBooleans()` from the same module (and the `ma
 
 Use checkpoints before risky batches. A failed `mesh_edit` changes nothing, so retrying with a corrected edit is safe.
 
+## Imported parts
+
+`mesh_edit` and `mesh_inspect` also take the part ID of an imported asset (`mesh-10`; `scene_inspect` lists them). Read `mesh_inspect` first: bounds are in the part's local space, which is often tiny and rotated, so use `localToWorldScale` and `localAxesInWorld` to size a cutter or pick a direction. A boolean needs a closed part (`parts.closed` equals `parts.count`); on an open one run `fill_holes` first. A cylinder cutter has radius 1 and height 1 along its Y axis before `scale`. New vertices keep skin weights, morphs and colours by copying the nearest original surface; an edit that reaches far from the surface on a skinned or morphed part is rejected, so cut or inset instead of extruding far. `mesh_stack` does not apply to imported parts.
+
 ## Choosing faces and edges
 
 Faces carry tags. A base gets `top`, `bottom`, `side`, `left` (-X), `right` (+X), `front` (+Z), `back` (-Z).

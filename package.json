@@ -109,6 +109,7 @@
     "smoke:site": "node scripts/smoke-site.mjs",
     "publish:ci": "node scripts/publish-ci.mjs",
     "smoke:character": "node scripts/smoke-character.mjs",
+    "smoke:imported-topology": "node scripts/smoke-imported-topology.mjs",
     "smoke:agent-character": "node scripts/smoke-agent-character.mjs",
     "smoke:agent-review": "node scripts/smoke-agent-review.mjs",
     "smoke:agent-branches": "node scripts/smoke-agent-branches.mjs",

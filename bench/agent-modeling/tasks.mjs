@@ -190,6 +190,18 @@ finished, call scene_export_recipe once: the exported recipe is what gets graded
       { kind: 'shot', minSideOffset: 2, maxDepthOffset: 2, targetHeight: [0.5, 4], distance: [3, 12] },
     ],
   },
+  {
+    id: 'robot-leg-hole',
+    assets: true,
+    prompt: `The asset catalog holds an imported robot character. Create a scene from it. Cut one round hole, about 0.06 m
+across in scene units, straight through the robot's left leg (the part labelled LegL), so that the leg is still a single
+closed solid with exactly one hole through it. Do not change any other part. Check the leg with mesh_inspect when you are
+done. When it is finished, call scene_export_recipe once: the exported recipe is what gets graded.`,
+    ownPreamble: true,
+    checks: [
+      { kind: 'assetHole', part: 'LegL', genus: 1, volumeKept: [0.9, 0.995] },
+    ],
+  },
 ];
 
 export const TASKS = [

@@ -207,7 +207,7 @@ The committed revision and separate render failure remain visible in that case.
 Request a smaller `scene_look` to release large frame targets before retrying reconciliation.
 
 The [asset scene contract](agent-asset.md) defines root transforms, material overrides and absolute clip/time samples.
-Imported scenes retain their decoded topology. Mesh membership edits remain specific to procedural scenes.
+Imported scenes decode once, and `mesh_edit` and `mesh_inspect` take a part ID such as `mesh-10` to edit or check the topology of one imported part (see [the asset scene contract](agent-asset.md)); `mesh_stack` stays procedural.
 Their bounds describe authored base vertices in the sampled world transforms, without claiming deformed skin or morph bounds.
 
 The tools expose no arbitrary JavaScript execution, remote URLs or arbitrary caller-selected file paths.
