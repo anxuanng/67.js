@@ -6,7 +6,7 @@ import { readFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { randomUUID } from 'node:crypto';
 import { createContext, Script } from 'node:vm';
-import { AGENT_SCENE_CAPABILITIES, AGENT_SCENE_DEFAULT_LIMITS, RENDER_PASS_NAMES, RENDER_PASS_DEPTH_RANGE, VIDEO_ENCODERS, MAXIMUM_VIDEO_SECONDS } from '../src/agent-scene-capabilities.js';
+import { AGENT_SCENE_CAPABILITIES, AGENT_SCENE_DEFAULT_LIMITS, RENDER_PASS_NAMES, RENDER_PASS_DEPTH_RANGE, VIDEO_ENCODERS, MAXIMUM_VIDEO_SECONDS, MAXIMUM_JOB_SIDE, MAXIMUM_JOB_PIXELS, MAXIMUM_MEMORY_MIB } from '../src/agent-scene-capabilities.js';
 import { PATH_TRACER_CAPABILITIES } from '../src/path-tracer-capabilities.js';
 import { audioInputArguments, createAudioLibrary, measureStreamSeconds } from '../scripts/job-audio.mjs';
 import { filmTimelineDuration, filmTimelineShotStarts, sampleFilmTimeline } from '../src/film-timeline.js';
@@ -100,7 +100,7 @@ async function reviewRuntimeHarness({ failShot, blockShot = false, oversize = fa
   const context = createContext({ createServer, randomUUID, existsSync: () => true,
     readFile: async () => '', packageMetadata: { version: 'test' },
     createRequire: () => ({ resolve: () => { throw new Error('no peer in tests'); } }),
-    AGENT_SCENE_CAPABILITIES, AGENT_SCENE_DEFAULT_LIMITS, RENDER_PASS_NAMES, RENDER_PASS_DEPTH_RANGE, VIDEO_ENCODERS, MAXIMUM_VIDEO_SECONDS, PATH_TRACER_CAPABILITIES,
+    AGENT_SCENE_CAPABILITIES, AGENT_SCENE_DEFAULT_LIMITS, RENDER_PASS_NAMES, RENDER_PASS_DEPTH_RANGE, VIDEO_ENCODERS, MAXIMUM_VIDEO_SECONDS, MAXIMUM_JOB_SIDE, MAXIMUM_JOB_PIXELS, MAXIMUM_MEMORY_MIB, PATH_TRACER_CAPABILITIES,
     audioInputArguments, createAudioLibrary, measureStreamSeconds, filmTimelineDuration, filmTimelineShotStarts, sampleFilmTimeline, normalizeReview, REVIEW_LIMITS, isPreviewHost, BRANCH_LIMITS, validateBranchName,
     chromium: { launch: async () => browser }, URL, Buffer, process, performance, setTimeout, clearTimeout,
   });
@@ -251,7 +251,7 @@ test('runtime close promptly aborts a pending private review and skips source re
 
 test('invalid preview configuration rejects before any browser or renderer allocation', () => {
   assert.throws(() => createAgentRuntime({ backend: 'fake' }), /backend/);
-  for (const memory of [0, 31, 257, 64.5, NaN]) {
+  for (const memory of [0, 31, 385, 1024, 64.5, NaN]) {
     assert.throws(() => createAgentRuntime({ memory }), /memory/);
   }
   assert.throws(() => createAgentRuntime({ browser: 'does-not-exist-browser.exe' }), /browser/);

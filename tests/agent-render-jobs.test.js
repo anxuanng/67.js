@@ -166,6 +166,16 @@ test('deadline aborts a cooperative callback and close detects an uncooperative 
   await hung.close();
 });
 
+test('1920x1080 and 1080x1920 jobs are admitted', async context => {
+  const root = await temporary(context);
+  const controller = await createAgentRenderJobs({ root, limits, run: writeImage });
+  for (const [width, height] of [[1920, 1080], [1080, 1920]]) {
+    const { jobId } = await controller.submit({ ...request(), settings: { kind: 'image', width, height } });
+    assert.equal((await terminal(controller, jobId)).settings.width, width);
+  }
+  await controller.close();
+});
+
 test('validation enforces range, geometry-independent storage limits and one pending frame', async context => {
   const root = await temporary(context);
   let calls = 0;
@@ -176,7 +186,9 @@ test('validation enforces range, geometry-independent storage limits and one pen
   } });
   for (const settings of [
     { kind: 'video', width: 65, height: 64 },
-    { kind: 'image', width: 1025, height: 64 },
+    { kind: 'image', width: 1921, height: 64 },
+    { kind: 'image', width: 1920, height: 1081 },
+    { kind: 'image', width: 1920, height: 1920 },
     { kind: 'video', width: 64, height: 64, fps: 31 },
     { kind: 'video', width: 64, height: 64, duration: 61 },
   ]) await assert.rejects(controller.submit({ ...request(), settings }));

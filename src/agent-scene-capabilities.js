@@ -88,6 +88,22 @@ export const RENDER_PASS_NAMES = Object.freeze(['albedo', 'normal', 'emission', 
 // extension, no drive or protocol syntax.
 export const VIDEO_ENCODERS = Object.freeze(['cpu', 'nvenc']);
 export const MAXIMUM_VIDEO_SECONDS = 60;
+/** Recipe bake presets and ranges. A bake over 20 s fails the edit before the 30 s page deadline would close the runtime. */
+export const BAKE_PRESETS = Object.freeze({
+  draft: Object.freeze({ samples: 32, bounces: 1, texelsPerUnit: 3 }),
+  standard: Object.freeze({ samples: 128, bounces: 2, texelsPerUnit: 6 }),
+  fine: Object.freeze({ samples: 192, bounces: 2, texelsPerUnit: 7 }),
+});
+export const BAKE_RANGES = Object.freeze({ samples: [1, 256], bounces: [1, 3], texelsPerUnit: [1, 12] });
+export const BAKE_MAXIMUM_SECONDS = 20;
+/** Render job output: each side up to 1920 and never more pixels than 1920x1080 (portrait 1080x1920 fits). */
+export const MAXIMUM_JOB_SIDE = 1920;
+export const MAXIMUM_JOB_PIXELS = 1920 * 1080;
+/**
+ * Largest --memory value in MiB the MCP server accepts. Measured: a 1920x1080 frame needs about 175 MiB of targets
+ * (planRenderSize estimate, 4 samples), Node RSS peaks under 180 MiB, so 384 leaves about 200 MiB for scene textures and geometry.
+ */
+export const MAXIMUM_MEMORY_MIB = 384;
 export const AUDIO_FILE_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}\.(wav|mp3|ogg|flac)$/;
 // Metres that depth pass values 0 to 65535 span, measured from the camera.
 export const RENDER_PASS_DEPTH_RANGE = 100;
@@ -116,7 +132,7 @@ export const AGENT_SCENE_CAPABILITIES = Object.freeze({
   operations: Object.freeze([
     'set-node', 'set-material', 'set-camera', 'add-node', 'remove-node',
     'add-geometry', 'remove-geometry', 'add-material', 'remove-material',
-    'set-environment', 'set-effects', 'set-shadow', 'set-motion', 'set-armatures', 'set-physics', 'set-cloth', 'set-timeline', 'set-particles', 'edit-mesh', 'set-mesh-stack',
+    'set-environment', 'set-effects', 'set-shadow', 'set-motion', 'set-armatures', 'set-physics', 'set-cloth', 'set-timeline', 'set-particles', 'set-bake', 'edit-mesh', 'set-mesh-stack',
   ]),
   materialTags: Object.freeze(['surface', 'unlit', 'liquid', 'foam']),
   materialLayers: Object.freeze(Object.fromEntries(MATERIAL_LAYER_FIELDS.map(field => [field, Object.freeze({
@@ -196,6 +212,13 @@ export const AGENT_SCENE_CAPABILITIES = Object.freeze({
     sectionFields: 'systems, gravity ([0,-9.81,0]), wind (m/s; moves emitter particles only with drag > 0, and sets the hair sway direction)',
     notes: 'A particle is a pure function of seed, index and time; raising count keeps earlier ones. No collision but the floor, no bounce, rotation, colour or alpha; no hair collision, combing or clumping. Report: maxAlive and endsAt per system.',
     limits: Object.freeze({ maxSystems: 4, maxParticlesPerSystem: 2000, maxParticles: 4000, maxVertices: 100000, maxLifetime: 60 }),
+  }),
+  // Recipe bake: bounced light written into lightmaps at build time (src/light-bake.js, loaded on demand).
+  bake: Object.freeze({
+    fields: 'preset, or samples (1-256), bounces (1-3), texelsPerUnit (1-12) over it. Same recipe, same bytes.',
+    presets: BAKE_PRESETS,
+    notes: 'Bounced light from point lights and the key light, for closed rooms. Reruns only when parts, lights, materials or bake change, never on seek or camera. Skips parts with maps, pattern, emission, alpha, skin or morph (scene_inspect bake.skipped, bake.seconds). Spot and area lights, environment map and specular are not baked. Over 20 s fails the edit.',
+    limits: Object.freeze({ maxSeconds: BAKE_MAXIMUM_SECONDS, maxPointLights: 8 }),
   }),
   motionLimits: Object.freeze({ maxTracks: 128, maxKeyframesPerTrack: 64, maxKeyframes: 2048, maxDuration: 30 }),
 });

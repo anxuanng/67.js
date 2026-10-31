@@ -7,7 +7,7 @@ import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import packageMetadata from '../package.json' with { type: 'json' };
 import { MODIFIER_OPERATIONS } from '../src/mesh-operations.js';
-import { MATERIAL_PATTERN_TYPES, MATERIAL_MAPPINGS, LIGHTING_SETUP_NAMES, RENDER_PASS_NAMES, VIDEO_ENCODERS } from '../src/agent-scene-capabilities.js';
+import { MATERIAL_PATTERN_TYPES, MATERIAL_MAPPINGS, LIGHTING_SETUP_NAMES, RENDER_PASS_NAMES, VIDEO_ENCODERS, MAXIMUM_JOB_SIDE, MAXIMUM_MEMORY_MIB } from '../src/agent-scene-capabilities.js';
 import { MATERIAL_LAYER_SCALAR_RANGES, MATERIAL_LAYER_COLOR_RANGES } from '../src/material-layers.js';
 
 const finite = z.number().min(-3.4028234663852886e38).max(3.4028234663852886e38);
@@ -234,7 +234,7 @@ function primitiveGeometries(identified) {
     ...(identified ? curveAndTextGeometries(id) : []),
   ];
 }
-const selectRule = z.record(z.string(), z.unknown()).describe('Face selection rule: {"all":true}, {"tag":"top"}, {"normal":[0,1,0],"maxAngle":10} (degrees), {"inside":{"min":[x,y,z],"max":[x,y,z]}} (face centroids), {"faces":[indices]}, {"and":[rules]}, {"or":[rules]}, {"not":rule}, {"grow":rule,"steps":1}, {"boundary":rule}, {"field":expression} (faces where a field expression is nonzero, evaluated at face centroids). Tags come from the base (top, bottom, side, left, right, front, back) and from earlier edits (<name>.cap, <name>.side, <name>.rim, or a tag op).');
+const selectRule = z.record(z.string(), z.unknown()).describe('Face selection rule: {"all":true}, {"tag":"top"}, {"normal":[0,1,0],"maxAngle":10} (degrees), {"inside":{"min":[x,y,z],"max":[x,y,z]}} (centroids), {"faces":[indices]}, {"and":[rules]}, {"or":[rules]}, {"not":rule}, {"grow":rule,"steps":1}, {"boundary":rule}, {"field":expression} (nonzero at centroids). Tags: top, bottom, side, left, right, front, back, and <name>.cap, <name>.side, <name>.rim or a tag op.');
 const editName = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]{0,47}$/).optional().describe('Prefix for the tags this edit creates. Defaults to <op>-<index>.');
 const edgeRule = z.record(z.string(), z.unknown()).describe('Edge rule: {"all":true}, {"angle":30}, {"along":[x,y,z]}, {"between":[faceRule,faceRule]}, {"boundaryOf":faceRule} or {"open":true} for boundary edges (also {"open":{"inside":{"min":[x,y,z],"max":[x,y,z]}}}).');
 const meshEdit = z.discriminatedUnion('op', [
@@ -522,6 +522,7 @@ const recipe = z.strictObject({
   cloth: cloth.nullable().optional(),
   timeline: timelineReference.nullable().optional(),
   particles: z.record(z.string(), z.unknown()).nullable().optional().describe('Particle emitters and hair, seeked by motionTime. Fields: scene_capabilities particles.'),
+  bake: z.record(z.string(), z.unknown()).nullable().optional().describe('Bounced light baked at build time. Fields: scene_capabilities bake.'),
 }).describe('Bounded scene recipe; the backend validates it.');
 const assetRecipe = z.strictObject({
   format: z.literal('67js.asset'),
@@ -557,6 +558,7 @@ const operation = z.discriminatedUnion('type', [
   z.strictObject({ type: z.literal('set-cloth'), cloth: z.record(z.string(), z.unknown()).nullable() }),
   z.strictObject({ type: z.literal('set-timeline'), timeline: z.record(z.string(), z.unknown()).nullable() }),
   z.strictObject({ type: z.literal('set-particles'), particles: z.record(z.string(), z.unknown()).nullable() }),
+  z.strictObject({ type: z.literal('set-bake'), bake: z.record(z.string(), z.unknown()).nullable() }),
   z.strictObject({ type: z.literal('set-environment'), environment }),
   z.strictObject({ type: z.literal('set-effects'), effects }),
   z.strictObject({ type: z.literal('set-shadow'), shadow }),
@@ -578,8 +580,8 @@ const expectedRevision = z.number().int().min(0).max(Number.MAX_SAFE_INTEGER).de
 const jobFields = { jobId: z.uuid().describe('Render job UUID returned by scene_render_submit or capabilities jobs.records.') };
 const renderSettings = z.strictObject({
   kind: z.enum(['image', 'stills', 'video']),
-  width: z.number().int().min(64).max(1024),
-  height: z.number().int().min(64).max(1024),
+  width: z.number().int().min(64).max(MAXIMUM_JOB_SIDE),
+  height: z.number().int().min(64).max(MAXIMUM_JOB_SIDE),
   fps: z.number().int().min(1).max(30).optional(),
   duration: z.number().min(0.1).max(60).optional(),
   animation: z.strictObject({ clip: z.number().int().min(0), start: z.number().min(0).max(3600).optional() }).optional(),
@@ -710,12 +712,12 @@ export async function runMcpCli({ argumentsValue = process.argv.slice(2),
     const name = argumentsValue[index];
     const value = argumentsValue[index + 1];
     if (!['--backend', '--browser', '--memory', '--assets', '--jobs', '--ffmpeg', '--audio'].includes(name) || value === undefined) {
-      throw new Error('Use --backend cpu|gpu, --browser <local executable path>, --memory <32..256 MiB>, --assets <absolute GLB directory>, --jobs <absolute private output directory>, --ffmpeg <absolute executable>, and --audio <absolute folder of .wav, .mp3, .ogg or .flac files for video jobs>.');
+      throw new Error(`Use --backend cpu|gpu, --browser <local executable path>, --memory <32..${MAXIMUM_MEMORY_MIB} MiB>, --assets <absolute GLB directory>, --jobs <absolute private output directory>, --ffmpeg <absolute executable>, and --audio <absolute folder of .wav, .mp3, .ogg or .flac files for video jobs>.`);
     }
     options[name.slice(2)] = name === '--memory' ? Number(value) : value;
   }
-  if (!['cpu', 'gpu'].includes(options.backend) || !Number.isInteger(options.memory) || options.memory < 32 || options.memory > 256) {
-    throw new Error('Backend must be cpu or gpu, and memory must be an integer from 32 to 256 MiB.');
+  if (!['cpu', 'gpu'].includes(options.backend) || !Number.isInteger(options.memory) || options.memory < 32 || options.memory > MAXIMUM_MEMORY_MIB) {
+    throw new Error(`Backend must be cpu or gpu, and memory must be an integer from 32 to ${MAXIMUM_MEMORY_MIB} MiB.`);
   }
   setPriority(0, constants.priority.PRIORITY_BELOW_NORMAL);
   const { createAgentRuntime } = await import('./agent-runtime.mjs');

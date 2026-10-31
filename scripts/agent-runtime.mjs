@@ -6,7 +6,7 @@ import { dirname, isAbsolute, join } from 'node:path';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import packageMetadata from '../package.json' with { type: 'json' };
-import { AGENT_SCENE_CAPABILITIES, AGENT_SCENE_DEFAULT_LIMITS, RENDER_PASS_NAMES, RENDER_PASS_DEPTH_RANGE, VIDEO_ENCODERS, MAXIMUM_VIDEO_SECONDS } from '../src/agent-scene-capabilities.js';
+import { AGENT_SCENE_CAPABILITIES, AGENT_SCENE_DEFAULT_LIMITS, RENDER_PASS_NAMES, RENDER_PASS_DEPTH_RANGE, VIDEO_ENCODERS, MAXIMUM_VIDEO_SECONDS, MAXIMUM_JOB_SIDE, MAXIMUM_JOB_PIXELS, MAXIMUM_MEMORY_MIB } from '../src/agent-scene-capabilities.js';
 import { PATH_TRACER_CAPABILITIES } from '../src/path-tracer-capabilities.js';
 import { createAgentAssetCatalog } from './agent-asset-catalog.mjs';
 import { createAgentRenderJobs, EXPORT_DIRECTORY_NAME } from './agent-render-jobs.mjs';
@@ -20,6 +20,8 @@ import { sessionProblem } from '../src/agent-errors.js';
 
 const SCENE_LIMITS = AGENT_SCENE_DEFAULT_LIMITS;
 const MAXIMUM_IMAGE_BYTES = 1024 * 1024;
+// A job writes files, not MCP image responses, so a 1920x1080 PNG may be larger than an inline image.
+const MAXIMUM_JOB_FRAME_BYTES = 12 * 1024 * 1024;
 // The object ID pass lists the part behind each ID in the job metrics; longer lists are cut and flagged.
 const MAXIMUM_OBJECT_NAMES = 1000;
 // A path trace shares the machine with the person using it, so it takes half of the eight-thread ceiling.
@@ -48,8 +50,8 @@ export function createAgentRuntime({ backend = 'gpu', browser: browserPath, memo
   if (!['gpu', 'cpu'].includes(backend)) {
     throw new RangeError('backend must be gpu or cpu.');
   }
-  if (!Number.isInteger(memory) || memory < 32 || memory > 256) {
-    throw new RangeError('memory must be an integer from 32 to 256 MiB.');
+  if (!Number.isInteger(memory) || memory < 32 || memory > MAXIMUM_MEMORY_MIB) {
+    throw new RangeError(`memory must be an integer from 32 to ${MAXIMUM_MEMORY_MIB} MiB.`);
   }
   if (browserPath !== undefined && (typeof browserPath !== 'string' || !existsSync(browserPath))) {
     throw new Error('The configured browser executable does not exist.');
@@ -325,7 +327,7 @@ export function createAgentRuntime({ backend = 'gpu', browser: browserPath, memo
       const audio = settings.audio ? await prepareAudio(settings) : undefined;
       if (settings.kind === 'video') {
         encoder = createFrameEncoder({ executable: ffmpeg, output: join(directory, 'render.mp4.partial'),
-          fps: settings.fps, format: 'jpeg', signal, backend: settings.encoder === 'nvenc' ? 'gpu' : 'cpu',
+          fps: settings.fps, format: 'jpeg', signal, maximumFrameBytes: MAXIMUM_JOB_FRAME_BYTES, backend: settings.encoder === 'nvenc' ? 'gpu' : 'cpu',
           audioArguments: settings.audio ? audioInputArguments(audio.path, settings.audio.offset) : [] });
         metrics.videoEncoder = settings.encoder === 'nvenc' ? 'h264_nvenc' : 'libx264';
       }
@@ -353,7 +355,7 @@ export function createAgentRuntime({ backend = 'gpu', browser: browserPath, memo
           metrics.height = height;
           metrics.pathTracer = traced.report;
           const tracedBytes = Buffer.from(traced.data, 'base64');
-          if (tracedBytes.length > MAXIMUM_IMAGE_BYTES) throw new Error('Path traced image exceeded 1 MiB.');
+          if (tracedBytes.length > MAXIMUM_JOB_FRAME_BYTES) throw new Error('Path traced image exceeded 12 MiB.');
           await writeFile(join(directory, 'render.png.partial'), tracedBytes, { flag: 'wx' });
           artifacts.push({ temporary: 'render.png.partial', filename: 'render.png', mimeType: 'image/png' });
           await progress({ frames: 1, maximumPendingFrames: 1 });
@@ -373,7 +375,7 @@ export function createAgentRuntime({ backend = 'gpu', browser: browserPath, memo
             ...(settings.kind === 'video' ? { quality: 95 } : { optimizeForSpeed: true }) });
           const captureBytes = Buffer.from(captured.data, 'base64');
           metrics.captureSeconds += (performance.now() - captureStarted) / 1000;
-          if (captureBytes.length > MAXIMUM_IMAGE_BYTES) throw new Error('Captured job frame exceeded 1 MiB.');
+          if (captureBytes.length > MAXIMUM_JOB_FRAME_BYTES) throw new Error('Captured job frame exceeded 12 MiB.');
           signal.throwIfAborted();
           return captureBytes;
         }
@@ -480,6 +482,7 @@ export function createAgentRuntime({ backend = 'gpu', browser: browserPath, memo
           commands: ['set-root', 'set-asset-node', 'set-motion', 'set-animation', 'set-material', 'set-camera', 'set-environment', 'set-effects', 'set-shadow'],
         },
         jobs: { configured: Boolean(jobRoot), kinds: ['image', 'stills', 'video'], passes: RENDER_PASS_NAMES, pathTracer: PATH_TRACER_CAPABILITIES, maximumActiveJobs: 1,
+          maximumWidth: MAXIMUM_JOB_SIDE, maximumHeight: MAXIMUM_JOB_SIDE, maximumPixels: MAXIMUM_JOB_PIXELS,
           maximumDuration: MAXIMUM_VIDEO_SECONDS, maximumFps: 30, maximumFrames: 900, maximumStills: 8,
           encoder: 'H.264', encoders: VIDEO_ENCODERS, audio: Boolean(audioRoot), timeline: true, previewSuspendedDuringJob: true,
           glbExport: { maximumBytes: MAXIMUM_GLB_BYTES, maximumKept: MAXIMUM_KEPT_GLBS, maximumTextureSize: 4096 },

@@ -78,6 +78,39 @@ async function renderReferenceScene(id, { describe, ambientOcclusion = 0, ambien
   return result;
 }
 
+// Frame time of one scene with and without the light bake: a bake only adds an emissive map to each part, so this shows what it costs to draw.
+async function measureReferenceFrameTime(id, { bake, warmupFrames = 20, measuredFrames = 200 }) {
+  const scene = await REFERENCE_SCENES[id]();
+  const baked = bake ? await bakeScene(scene, {}) : null;
+  const renderer = new Renderer67(document.querySelector('canvas'), baked ? baked.parts : scene.parts, {
+    ground: false, hdr: true, depth: true, samples: 4, pixelRatio: 1, memoryBudgetMiB: 1024, world: true,
+    environment: scene.environment, shadowBounds: scene.shadow,
+  });
+  renderer.resize();
+  const frame = { ...scene.camera, environment: scene.environment, time: 0, exposure: 1, effects: { ambientOcclusion: 0, ambientOcclusionRadius: 0.5 } };
+  // finish() returns before a hardware GPU is done, so reading one pixel back is what waits for the frame.
+  const pixel = new Uint8Array(4);
+  const finishDrawing = () => renderer.context.readPixels(0, 0, 1, 1, renderer.context.RGBA, renderer.context.UNSIGNED_BYTE, pixel);
+  for (let index = 0; index < warmupFrames; index++) {
+    renderer.render(frame);
+    finishDrawing();
+  }
+  const frameMilliseconds = [];
+  for (let index = 0; index < measuredFrames; index++) {
+    const started = performance.now();
+    renderer.render(frame);
+    finishDrawing();
+    frameMilliseconds.push(performance.now() - started);
+  }
+  renderer.dispose();
+  frameMilliseconds.sort((first, second) => first - second);
+  const total = frameMilliseconds.reduce((sum, value) => sum + value, 0);
+  return { baked: Boolean(bake), frames: measuredFrames, meanMilliseconds: total / measuredFrames,
+    medianMilliseconds: frameMilliseconds[Math.floor(measuredFrames / 2)], p95Milliseconds: frameMilliseconds[Math.floor(measuredFrames * 0.95)] };
+}
+
+window.measureReferenceFrameTime = measureReferenceFrameTime;
+
 async function renderReferencePathTraced(id, options) {
   const scene = await REFERENCE_SCENES[id]();
   const { renderPathTracedImage } = await import('/src/path-tracer.js');

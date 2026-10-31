@@ -1,6 +1,6 @@
 # Light bake
 
-`67js/addons/light-bake` writes the light that bounces between surfaces into one lightmap texture per part. It is in the current source and not yet published. It is code only: recipes and the MCP tools cannot ask for a bake yet (issue #55).
+`67js/addons/light-bake` writes the light that bounces between surfaces into one lightmap texture per part. It is in the current source and not yet published. Recipes reach it through the `bake` section (see below), so MCP agents can bake without code (issue #55).
 
 ```js
 import { bakeLightmaps } from '67js/addons/light-bake';
@@ -13,6 +13,22 @@ const { parts: bakedParts, report } = bakeLightmaps(parts, {
 
 const renderer = new Renderer67(canvas, bakedParts, rendererOptions);
 ```
+
+## In a recipe
+
+```json
+{ "bake": { "preset": "standard" } }
+```
+
+`bake` (or the `set-bake` operation, `null` clears it) takes a `preset` and optional `samples`, `bounces` and `texelsPerUnit` that override it:
+
+| Preset | samples | bounces | texelsPerUnit |
+| --- | --- | --- | --- |
+| `draft` | 32 | 1 | 3 |
+| `standard` (default) | 128 | 2 | 6 |
+| `fine` | 192 | 2 | 7 |
+
+Ranges are 1 to 256 samples, 1 to 3 bounces and 1 to 12 texels per unit. The bake lights the rest pose with the recipe's point lights and key light (key colour times `keyIntensity`). It runs when the scene builds and again only when a part, its matrix, a light, a material or the bake fields change: camera edits, effects edits, motion seeks and renders reuse the result. A bake over 20 s fails the edit and leaves the scene as it was. The same recipe gives the same lightmap bytes. `scene_inspect` returns `bake`: the resolved fields, `texels`, `rayWork`, `seconds` (of the run that made the lightmaps), `bakedParts`, `skipped` (name and reason) and `reused`. Baked parts read every other material field live, so motion tracks on colour still work; the lightmap itself is fixed at the rest pose.
 
 ## What it bakes
 
@@ -42,4 +58,4 @@ The result is deterministic: the same parts, lights and options give the same by
 
 ## Measured
 
-The `lit-interior` reference scene (25,648 texels at the defaults) bakes in about 6 s in the page on an RTX 3060 machine, running at below-normal priority. Its score against Cycles goes from 0.5055 to 0.1444 with the bake (`npm run reference -- --bake lit-interior`; details in `bench/reference/README.md`). Frame time with and without the bake has not been measured.
+The `lit-interior` reference scene (25,648 texels at the defaults) bakes in about 6 s in the page on an RTX 3060 machine, running at below-normal priority. Its score against Cycles goes from 0.5055 to 0.1444 with the bake (`npm run reference -- --bake lit-interior`; details in `bench/reference/README.md`). Frame time on the same scene (960x540, 4 samples, RTX 3060, below-normal priority, 200 frames read back after each draw, two runs of each in alternating order): median 2.08 and 2.02 ms without the bake, 1.88 and 1.66 ms with it, so the bake costs no measurable draw time (one extra texture read per baked part; the spread between runs is load on the machine). `node bench/reference/frame-time.mjs lit-interior gpu` repeats it. The recipe path on a closed room with 8 boxes bakes 13,184 texels in 4.8 s at `standard`.
