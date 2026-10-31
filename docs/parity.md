@@ -83,7 +83,7 @@ To move to a new Blender release, run `node scripts/parity-manual-snapshot.mjs`.
 | Modeling > Modifiers > Generate > Screw Modifier | partial | `lathe` covers a full turn. There is no stack node or screw offset. | | #42 |
 | Modeling > Modifiers > Generate > Skin Modifier | missing | No equivalent. | | #42 |
 | Modeling > Modifiers > Generate > Solidify Modifier | done | Stack node with thickness, offset and even thickness. | [mesh-stack](../tests/mesh-stack.test.js), [Blender results](../tests/fixtures/blender/golden.json) | |
-| Modeling > Modifiers > Generate > Subdivision Surface Modifier | missing | No subdivision. | | #39 |
+| Modeling > Modifiers > Generate > Subdivision Surface Modifier | done | `subdivide` edit and stack node: Catmull-Clark to 4 levels, semi-sharp creases, sharp boundaries, tags, UVs. Counts, area and positions match Blender; volume differs under 1% on four cases. | [src/mesh-subdivide.js](../src/mesh-subdivide.js), [tests/blender-golden.test.js](../tests/blender-golden.test.js), [tests/mesh-subdivide.test.js](../tests/mesh-subdivide.test.js), [pebble task](../bench/agent-modeling/tasks.mjs) | #39 |
 | Modeling > Modifiers > Generate > Triangulate Modifier | missing | Render data is triangulated. There is no node that changes the mesh. | | #42 |
 | Modeling > Modifiers > Generate > Volume to Mesh Modifier | missing | No volume objects. | | |
 | Modeling > Modifiers > Generate > Weld Modifier | partial | `merge_by_distance` is an edit. It is not a stack node. | | #42 |
@@ -237,7 +237,7 @@ The goal also needs this work, and no page in the Blender manual covers it.
 | Work | Status | Why | Issues |
 | --- | --- | --- | --- |
 | Parity evidence | partial | This ledger exists. The Blender comparisons do not. | #24, #25, #26 |
-| Bundle size | partial | `npm run size` checks a budget for each entry, and the package has a 1 MiB limit. three.js is gone from the glTF path and still in the modeling paths. | #27, #33, #34, #35, #36 |
+| Bundle size | partial | `npm run size` checks a budget for each entry, and the package has a 1 MiB limit. three.js is gone from the library; only the benchmark page imports it. | #27, #33, #34, #35, #36 |
 | Runtime speed | partial | `bench/runtime` compares 7 scenes, and three.js wins most of them. There is no culling, LOD selection or adaptive quality, and bakes run on the main thread. | #28, #37, #38, #74 |
 | Agent measurement | partial | A task suite runs on one model and reads recipes only. | #29, #30, #31, #69 |
 | Pull request checks | partial | The `Test` workflow reports a status and does not block a merge. | #32 |

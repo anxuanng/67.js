@@ -1,8 +1,12 @@
-import { BufferAttribute, BufferGeometry, Euler, Matrix4, Mesh, Vector3 } from 'three';
-import { DecalGeometry } from 'three/addons/geometries/DecalGeometry.js';
+import { vec3 } from 'gl-matrix';
+import { clipTrianglesToProjector, createProjectorMatrix, invertMatrix } from './surface-decal.js';
 
 const PROCEDURAL_TAGS = new Set(['armor', 'floor', 'water', 'foliage', 'grass', 'terrain', 'fire', 'smoke']);
 const OPTION_FIELDS = new Set(['position', 'rotation', 'size', 'clearance', 'maxAngle', 'maxVertices', 'maxTriangles']);
+
+function createVector(x = 0, y = 0, z = 0) {
+  return Float64Array.of(x, y, z);
+}
 
 function finiteFloat(value, label) {
   if (typeof value !== 'number' || !Number.isFinite(value) || !Number.isFinite(Math.fround(value))) {
@@ -57,61 +61,64 @@ function validateTarget(target, maxTriangles) {
   return geometry;
 }
 
+function readPoint(array, vertex) {
+  return createVector(array[vertex * 3], array[vertex * 3 + 1], array[vertex * 3 + 2]);
+}
+
+function faceDirection(points) {
+  const first = vec3.subtract(createVector(), points[1], points[0]);
+  const second = vec3.subtract(createVector(), points[2], points[0]);
+  const face = vec3.cross(createVector(), first, second);
+  const area = vec3.length(face);
+  return area === 0 ? null : vec3.scale(face, face, 1 / area);
+}
+
 function candidateIndices(geometry, projectorInverse, direction, size, maxAngle, maxVertices) {
   const indices = [];
-  const points = [new Vector3(), new Vector3(), new Vector3()];
-  const projected = [new Vector3(), new Vector3(), new Vector3()];
-  const normal = new Vector3();
-  const edge = new Vector3();
-  const face = new Vector3();
   const minimumFacing = Math.max(0, Math.cos(maxAngle));
   let vertexBound = 0;
   let drawable = false;
   for (let offset = 0; offset < geometry.indices.length; offset += 3) {
-    for (let corner = 0; corner < 3; corner++) points[corner].fromArray(geometry.positions, geometry.indices[offset + corner] * 3);
-    face.subVectors(points[1], points[0]).cross(edge.subVectors(points[2], points[0]));
-    const area = Math.hypot(face.x, face.y, face.z);
-    if (area === 0) continue;
+    const corners = [0, 1, 2].map(corner => geometry.indices[offset + corner]);
+    const points = corners.map(vertex => readPoint(geometry.positions, vertex));
+    const face = faceDirection(points);
+    if (!face) continue;
     drawable = true;
-    face.multiplyScalar(1 / area);
-    const facing = face.dot(direction);
+    const facing = vec3.dot(face, direction);
     if (facing <= 0 || facing < minimumFacing) continue;
-    for (let corner = 0; corner < 3; corner++) {
-      normal.fromArray(geometry.normals, geometry.indices[offset + corner] * 3);
-      if (normal.dot(face) <= 0) throw new RangeError('Surface target normals must face outward with their triangles.');
-      projected[corner].copy(points[corner]).applyMatrix4(projectorInverse);
+    for (const vertex of corners) {
+      if (vec3.dot(readPoint(geometry.normals, vertex), face) <= 0) throw new RangeError('Surface target normals must face outward with their triangles.');
     }
+    const projected = points.map(point => vec3.transformMat4(createVector(), point, projectorInverse));
     let outside = false;
     let clippingPlanes = 0;
     for (let axis = 0; axis < 3; axis++) {
-      const minimum = Math.min(projected[0].getComponent(axis), projected[1].getComponent(axis), projected[2].getComponent(axis));
-      const maximum = Math.max(projected[0].getComponent(axis), projected[1].getComponent(axis), projected[2].getComponent(axis));
+      const minimum = Math.min(projected[0][axis], projected[1][axis], projected[2][axis]);
+      const maximum = Math.max(projected[0][axis], projected[1][axis], projected[2][axis]);
       const halfSize = size[axis] / 2;
       if (minimum > halfSize || maximum < -halfSize) outside = true;
       if (maximum > halfSize) clippingPlanes++;
       if (minimum < -halfSize) clippingPlanes++;
     }
     if (outside) continue;
-    // Each of the six maintained clipping passes can double triangle fragments.
+    // Each of the six clipping passes can double triangle fragments.
     vertexBound += 3 * 2 ** clippingPlanes;
     if (vertexBound > maxVertices) throw new RangeError('Surface clipping reservation exceeds maxVertices. Reduce the projector or raise the limit.');
-    indices.push(geometry.indices[offset], geometry.indices[offset + 1], geometry.indices[offset + 2]);
+    indices.push(...corners);
   }
   if (!drawable) throw new RangeError('Surface target has no drawable triangles.');
   if (indices.length === 0) throw new RangeError('Surface projector misses all outward-facing target triangles.');
   return indices;
 }
 
-function patchGeometry(source, clearance, maxVertices) {
-  const sourcePositions = source.getAttribute('position').array;
-  const sourceNormals = source.getAttribute('normal').array;
-  const sourceUvs = source.getAttribute('uv').array;
+function patchGeometry(decal, clearance, maxVertices) {
+  const sourcePositions = decal.positions;
   const vertexCount = sourcePositions.length / 3;
   if (vertexCount === 0) throw new RangeError('Surface projector clips to an empty patch.');
   if (vertexCount > maxVertices) throw new RangeError('Surface output exceeds maxVertices.');
   const positions = new Float32Array(sourcePositions);
-  const normals = new Float32Array(sourceNormals);
-  const uvs = new Float32Array(sourceUvs);
+  const normals = new Float32Array(decal.normals);
+  const uvs = new Float32Array(decal.uvs);
   for (let vertex = 0; vertex < vertexCount; vertex++) {
     const offset = vertex * 3;
     const length = Math.hypot(normals[offset], normals[offset + 1], normals[offset + 2]);
@@ -130,35 +137,21 @@ function patchGeometry(source, clearance, maxVertices) {
     }
   }
   const indices = [];
-  const first = new Vector3();
-  const second = new Vector3();
-  const third = new Vector3();
-  const edge = new Vector3();
-  const sourceFirst = new Vector3();
-  const sourceSecond = new Vector3();
-  const sourceThird = new Vector3();
-  const sourceFace = new Vector3();
-  const displacement = new Vector3();
   for (let vertex = 0; vertex < vertexCount; vertex += 3) {
-    sourceFirst.fromArray(sourcePositions, vertex * 3);
-    sourceSecond.fromArray(sourcePositions, (vertex + 1) * 3).sub(sourceFirst);
-    sourceThird.fromArray(sourcePositions, (vertex + 2) * 3).sub(sourceFirst);
-    sourceFace.crossVectors(sourceSecond, sourceThird);
-    const sourceArea = Math.hypot(sourceFace.x, sourceFace.y, sourceFace.z);
-    if (sourceArea === 0) continue;
-    sourceFace.multiplyScalar(1 / sourceArea);
+    const sourceCorners = [0, 1, 2].map(corner => readPoint(sourcePositions, vertex + corner));
+    const sourceFace = faceDirection(sourceCorners);
+    if (!sourceFace) continue;
     if (clearance > 0) {
       for (let corner = 0; corner < 3; corner++) {
-        const offset = (vertex + corner) * 3;
-        displacement.set(positions[offset] - sourcePositions[offset], positions[offset + 1] - sourcePositions[offset + 1], positions[offset + 2] - sourcePositions[offset + 2]);
-        if (displacement.dot(sourceFace) <= 0) throw new RangeError('Surface clearance cannot create a positive triangle-plane gap at Float32 precision. Increase clearance or center the target locally.');
+        const displacement = vec3.subtract(createVector(), readPoint(positions, vertex + corner), sourceCorners[corner]);
+        if (vec3.dot(displacement, sourceFace) <= 0) throw new RangeError('Surface clearance cannot create a positive triangle-plane gap at Float32 precision. Increase clearance or center the target locally.');
       }
     }
-    first.fromArray(positions, vertex * 3);
-    second.fromArray(positions, (vertex + 1) * 3).sub(first);
-    third.fromArray(positions, (vertex + 2) * 3).sub(first);
-    edge.crossVectors(second, third);
-    if (Math.hypot(edge.x, edge.y, edge.z) === 0 || edge.dot(sourceFace) <= 0) {
+    const moved = [0, 1, 2].map(corner => readPoint(positions, vertex + corner));
+    const edgeFirst = vec3.subtract(createVector(), moved[1], moved[0]);
+    const edgeSecond = vec3.subtract(createVector(), moved[2], moved[0]);
+    const edge = vec3.cross(createVector(), edgeFirst, edgeSecond);
+    if (vec3.length(edge) === 0 || vec3.dot(edge, sourceFace) <= 0) {
       throw new RangeError('Surface clearance collapses or reverses a triangle. Reduce clearance.');
     }
     indices.push(vertex, vertex + 1, vertex + 2);
@@ -186,23 +179,10 @@ export function createSurfacePatch(target, options = {}) {
   const maxVertices = limit(options.maxVertices ?? 250_000, 3, 'maxVertices');
   const maxTriangles = limit(options.maxTriangles ?? 250_000, 1, 'maxTriangles');
   const geometry = validateTarget(target, maxTriangles);
-  const orientation = new Euler(...rotation, 'XYZ');
-  const projector = new Matrix4().makeRotationFromEuler(orientation).setPosition(...position);
-  const inverse = projector.clone().invert();
-  const direction = new Vector3(0, 0, 1).transformDirection(projector);
-  const selected = candidateIndices(geometry, inverse, direction, size, maxAngle, maxVertices);
-  const source = new BufferGeometry();
-  let decal;
-  try {
-    source.setAttribute('position', new BufferAttribute(geometry.positions, 3));
-    source.setAttribute('normal', new BufferAttribute(geometry.normals, 3));
-    source.setIndex(new BufferAttribute(new Uint32Array(selected), 1));
-    const mesh = new Mesh(source, null);
-    // Identity matrix keeps DecalGeometry output in target-local space.
-    decal = new DecalGeometry(mesh, new Vector3(...position), orientation, new Vector3(...size));
-    return patchGeometry(decal, clearance, maxVertices);
-  } finally {
-    decal?.dispose();
-    source.dispose();
-  }
+  const projector = createProjectorMatrix(position, rotation);
+  const direction = vec3.normalize(createVector(), createVector(projector[8], projector[9], projector[10]));
+  const selected = candidateIndices(geometry, invertMatrix(projector), direction, size, maxAngle, maxVertices);
+  // Clipping happens in target-local space, so the patch lands where the target's own vertices are.
+  const decal = clipTrianglesToProjector(geometry.positions, geometry.normals, selected, projector, size);
+  return patchGeometry(decal, clearance, maxVertices);
 }

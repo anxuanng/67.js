@@ -153,9 +153,8 @@ The explicit design gives the caller control over rebuilds, disposal, budgets, a
 It avoids hidden invalidation rules and prevents source edits from changing a query midway through evaluation.
 Fresh results also avoid partially updated output objects after validation fails.
 
-The implementation reuses maintained triangle intersection, BVH traversal, and ray methods from [three-mesh-bvh 0.9.16](https://github.com/gkjohnson/three-mesh-bvh/releases/tag/v0.9.16).
-The library documents local coordinate frames, indirect indices, and query methods in its [API reference](https://github.com/gkjohnson/three-mesh-bvh/blob/v0.9.16/API.md).
-It does not supply the closed-manifold validation and containment contract described here.
-Those checks remain part of this module.
+The index is a typed-array BVH (`src/triangle-bvh.js`) with its own triangle tests (`src/triangle-math.js`), and imports neither Three.js nor three-mesh-bvh.
+It returned the same hits, distances and pair results as three-mesh-bvh 0.9.16 on the test fixtures and on random queries.
+Closed-manifold validation and the containment contract described here are part of this module.
 
 These APIs are available in the current source build. The published npm version can lag behind it.

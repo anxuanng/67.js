@@ -12,6 +12,7 @@ from mathutils import Vector
 FIXTURE_DIRECTORY = Path(__file__).resolve().parent.parent / "tests" / "fixtures" / "blender"
 DEFAULT_MAX_ANGLE = 10
 ANGLE_EPSILON = 1e-9
+CREASE_TO_SHARPNESS = 10
 
 
 def new_bmesh(mesh_input):
@@ -56,6 +57,9 @@ def selected_edges(bm, rule):
         direction = Vector(rule["along"]).normalized()
         limit = cos(radians(rule.get("maxAngle", DEFAULT_MAX_ANGLE))) - ANGLE_EPSILON
         return [edge for edge in bm.edges if edge_is_along(edge, direction, limit)]
+    if "angle" in rule:
+        limit = cos(radians(rule["angle"])) + ANGLE_EPSILON
+        return [edge for edge in bm.edges if len(edge.link_faces) == 2 and edge.link_faces[0].normal.dot(edge.link_faces[1].normal) <= limit]
     if "boundaryOf" in rule:
         inside = set(selected_faces(bm, rule["boundaryOf"]))
         return [edge for edge in bm.edges if edge_crosses(edge, inside)]
@@ -213,11 +217,35 @@ def add_boolean(mesh_object, edit, inputs):
     modifier.object = cutter
 
 
+# Blender stores a crease from 0 to 1. Measured against 67.js sharpness, crease squared times 10 is the sharpness.
+def add_subdivision(mesh_object, edit, _inputs):
+    levels = edit.get("levels", 1)
+    if "crease" in edit:
+        bm = bmesh.new()
+        bm.from_mesh(mesh_object.data)
+        refresh(bm)
+        creased = {edge.index for edge in selected_edges(bm, edit["crease"])}
+        bm.free()
+        crease = mesh_object.data.attributes.new("crease_edge", "FLOAT", "EDGE")
+        value = sqrt(min(edit.get("sharpness", 10), CREASE_TO_SHARPNESS) / CREASE_TO_SHARPNESS)
+        crease.data.foreach_set("value", [value if index in creased else 0.0 for index in range(len(mesh_object.data.edges))])
+    modifier = mesh_object.modifiers.new("Subdivision", "SUBSURF")
+    modifier.subdivision_type = "CATMULL_CLARK"
+    modifier.levels = levels
+    modifier.render_levels = levels
+    modifier.quality = 3
+    modifier.use_creases = True
+    # The limit surface moves the points onto the final surface, where plain Catmull-Clark leaves them at the level.
+    modifier.use_limit_surface = False
+    modifier.boundary_smooth = "PRESERVE_CORNERS"
+
+
 MODIFIERS = {
     "mirror": add_mirror,
     "array": add_array,
     "solidify": add_solidify,
     "boolean": add_boolean,
+    "subdivide": add_subdivision,
 }
 
 
