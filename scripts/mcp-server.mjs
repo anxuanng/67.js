@@ -202,6 +202,15 @@ const shadow = z.strictObject({
   near: bounded(0.001, 1e6).optional(),
   far: bounded(0.001, 1e6).optional(),
 }).describe('Directional shadow coverage. Backend checks Float32 view/projection consistency.');
+// Curve and text sit in the geometry list only, not in mesh bases or cutters. Value types and limits are checked by the
+// engine and listed in scene_capabilities curveText, because every tool that takes a recipe repeats this schema.
+const looseField = z.unknown().optional();
+function curveAndTextGeometries(id) {
+  return [
+    z.strictObject({ ...id, type: z.literal('curve'), points: z.array(z.unknown()).max(1024), closed: looseField, radius: looseField, taper: looseField, profile: looseField, resolution: looseField, radialSegments: looseField }).describe('Bezier sweep; see scene_capabilities curveText.'),
+    z.strictObject({ ...id, type: z.literal('text'), text: z.string().max(256), size: looseField, depth: looseField, font: looseField, align: looseField, curveSegments: looseField }).describe('3D text; see scene_capabilities curveText.'),
+  ];
+}
 function primitiveGeometries(identified) {
   const id = identified ? { id: identifier } : {};
   return [
@@ -212,6 +221,7 @@ function primitiveGeometries(identified) {
     z.strictObject({ ...id, type: z.literal('lathe'), profile: z.array(point2).min(2).max(4096), segments, startAngle: finite.optional(), sweep: finite.optional() }),
     z.strictObject({ ...id, type: z.literal('extrude'), contour: ring, holes: z.array(ring).max(128).optional(), depth: finite.optional(), steps: detail(1, 256), bevel: finite.optional(), bevelThickness: finite.optional(), bevelSegments: detail(1, 32) }),
     z.strictObject({ ...id, type: z.literal('tube'), path: z.array(vector3).min(2).max(4096), radius: finite.optional(), segments, radialSegments: detail(3, 128), closed: z.boolean().optional() }),
+    ...(identified ? curveAndTextGeometries(id) : []),
   ];
 }
 const selectRule = z.record(z.string(), z.unknown()).describe('Face selection rule: {"all":true}, {"tag":"top"}, {"normal":[0,1,0],"maxAngle":10} (degrees), {"inside":{"min":[x,y,z],"max":[x,y,z]}} (face centroids), {"faces":[indices]}, {"and":[rules]}, {"or":[rules]}, {"not":rule}, {"grow":rule,"steps":1}, {"boundary":rule}, {"field":expression} (faces where a field expression is nonzero, evaluated at face centroids). Tags come from the base (top, bottom, side, left, right, front, back) and from earlier edits (<name>.cap, <name>.side, <name>.rim, or a tag op).');

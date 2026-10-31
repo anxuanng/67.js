@@ -22,6 +22,16 @@ export const MATERIAL_GRAPH_OPERATORS = Object.freeze([
   'add', 'sub', 'mul', 'div', 'min', 'max', 'pow', 'abs', 'floor', 'fract', 'sqrt', 'invert', 'clamp', 'smoothstep', 'mix',
 ]);
 export const MATERIAL_GRAPH_LIMITS = Object.freeze({ maxNodes: MAX_FIELD_NODES, maxDepth: MAX_FIELD_DEPTH, maxStops: 8, maxWork: 30_000_000 });
+// Curve and text geometry. A text geometry is bounded by vertices per curve segment: the bundled font stays under
+// 640 per character and a registered font is held to 128 outline points per glyph (2400).
+export const CURVE_TEXT_LIMITS = Object.freeze({
+  maxCurvePoints: 1024, maxProfilePoints: 256, maxTextCharacters: 256, maxTextLines: 16,
+  verticesPerCharacterSegment: 640, verticesPerCustomCharacterSegment: 2400, maxPointsPerGlyph: 128,
+});
+export const CURVE_TEXT_DETAILS = Object.freeze({
+  curve: 'Cubic Bezier sweep. points: [x,y,z] (smooth automatic handles) or {position, handleIn?, handleOut?} with handles as absolute positions (a lone handle is mirrored). radius (0.05), taper: radius factors 0+ spread along the length, e.g. [1,0.2], profile: [[x,y]...] cross-section in radius units (default round, radialSegments 8; sharp corners stay flat shaded), resolution: samples per span (12), closed. Open curves get flat caps.',
+  text: 'Extruded text in the XY plane, first baseline on y=0, reading along +X, facing +Z, centred through depth. text (use \n for lines), size (1, em height), depth (0.2), align left|center|right, curveSegments 1-16 per outline curve (4), font (default DejaVu Sans, printable ASCII; other fonts come from registerAgentSceneFont in code, not MCP).',
+});
 export const MATERIAL_MAPPINGS = Object.freeze(['box', 'uv']);
 export const MATERIAL_GRAPH_NODES = Object.freeze({
   outputs: 'color (linear RGB; a number is grey), roughness, metallic, emission (colour; defaults to 1), height (becomes a normal map).',
@@ -56,7 +66,7 @@ export const RENDER_PASS_DEPTH_RANGE = 100;
 
 export const AGENT_SCENE_CAPABILITIES = Object.freeze({
   format: '67js.scene', schemaVersion: 1,
-  geometryTypes: Object.freeze(['box', 'cylinder', 'sphere', 'torus', 'lathe', 'extrude', 'tube', 'mesh']),
+  geometryTypes: Object.freeze(['box', 'cylinder', 'sphere', 'torus', 'lathe', 'extrude', 'tube', 'curve', 'text', 'mesh']),
   meshEdits: Object.freeze({ operations: Object.freeze(Object.keys(MESH_EDIT_OPERATIONS)), maxEdits: MAX_MESH_EDITS }),
   meshStack: Object.freeze({ operations: STACK_OPERATIONS, maxNodes: MAX_STACK_NODES }),
   fieldExpressions: Object.freeze({
@@ -74,6 +84,7 @@ export const AGENT_SCENE_CAPABILITIES = Object.freeze({
   materialPatterns: MATERIAL_PATTERN_TYPES, maxMaterialPatterns: MAX_MATERIAL_PATTERNS,
   materialMappings: MATERIAL_MAPPINGS,
   renderPasses: Object.freeze({ names: RENDER_PASS_NAMES, files: 'render-<pass>.png or frame-N-<pass>.png, raw and unantialiased; opaque and cutout geometry only', depth: `16 bits in red and green over ${RENDER_PASS_DEPTH_RANGE} m`, objectId: '24 bits in RGB; the job result lists the part names' }),
+  curveText: Object.freeze({ ...CURVE_TEXT_LIMITS, details: CURVE_TEXT_DETAILS }),
   materialGraph: Object.freeze({ outputs: MATERIAL_GRAPH_OUTPUTS, operators: MATERIAL_GRAPH_OPERATORS, ...MATERIAL_GRAPH_LIMITS, nodes: MATERIAL_GRAPH_NODES }),
   fixedResources: false, dynamicTopology: true, checkpoints: true, positiveScaleOnly: true,
   authoredLook: true, maxPointLights: 8,

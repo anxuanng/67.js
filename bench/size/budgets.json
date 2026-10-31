@@ -11,7 +11,7 @@
   "entry:motion": 13600,
   "entry:canvas2d": 9400,
   "entry:gltf": 48500,
-  "entry:modeling": 6600,
+  "entry:modeling": 8500,
   "entry:sculpt": 2500,
   "entry:surface": 10100,
   "entry:mesh-query": 15900,
@@ -28,16 +28,16 @@
   "entry:grass": 4400,
   "entry:clutter": 5300,
   "entry:texture-set": 900,
-  "entry:agent-scene": 59200,
-  "entry:agent-scene+lazy": 169800,
+  "entry:agent-scene": 59800,
+  "entry:agent-scene+lazy": 180000,
   "entry:agent-asset": 88700,
-  "entry:agent-asset+lazy": 178900,
+  "entry:agent-asset+lazy": 188900,
   "entry:hdri": 3300,
   "entry:camera-effects": 8600,
   "entry:render-passes": 1700,
   "scene:lit-box": 58200,
   "scene:gltf-box": 77800,
   "scene:agent-scene": 87200,
-  "scene:agent-scene+lazy": 197700
+  "scene:agent-scene+lazy": 207300
  }
 }
