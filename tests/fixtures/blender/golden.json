@@ -23261,5 +23261,69 @@
    "area": 13.48201,
    "hausdorff": 0.012668
   }
+ },
+ "curves": {
+  "bezier-pipe-open": {
+   "vertexCount": 216,
+   "volume": 0.114057,
+   "area": 2.527249,
+   "boundsMin": [
+    -0.08,
+    -0.06,
+    -0.1
+   ],
+   "boundsMax": [
+    3.09686,
+    1.14908,
+    1.09878
+   ]
+  },
+  "bezier-ring-closed": {
+   "vertexCount": 1024,
+   "volume": 0.192075,
+   "area": 3.919132,
+   "boundsMin": [
+    -1.1,
+    -1.1,
+    -0.1
+   ],
+   "boundsMax": [
+    1.1,
+    1.1,
+    0.1
+   ]
+  }
+ },
+ "texts": {
+  "text-B": {
+   "vertexCount": 804,
+   "volume": 0.040713,
+   "area": 1.290173,
+   "boundsMin": [
+    0.09814,
+    0.0,
+    -0.1
+   ],
+   "boundsMax": [
+    0.61524,
+    0.72901,
+    0.1
+   ]
+  },
+  "text-Hi": {
+   "vertexCount": 80,
+   "volume": 0.046583,
+   "area": 1.57423,
+   "boundsMin": [
+    0.09814,
+    0.0,
+    -0.1
+   ],
+   "boundsMax": [
+    0.93604,
+    0.75977,
+    0.1
+   ]
+  }
  }
 }

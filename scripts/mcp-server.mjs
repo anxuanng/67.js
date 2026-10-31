@@ -61,7 +61,7 @@ const materialPattern = z.strictObject({
   seed: z.number().int().min(0).max(2147483647).optional(),
   axis: z.enum(['x', 'y', 'z']).optional().describe('Object axis the grain runs along. Defaults to y.'),
   resolution: z.union([z.literal(256), z.literal(512), z.literal(1024)]).optional().describe('Texture size. Defaults to 512; each pattern takes about 4 MiB at 512.'),
-}).describe('Procedural texture baked for this material. By default it needs no UVs and is projected along the object axes; mapping uv follows the geometry UVs instead. color then tints it (defaults to white), and roughness and metallic scale it.');
+}).describe('Procedural texture; box mapping needs no UVs. color tints it, roughness and metallic scale it.');
 function layerNumber(field, description) {
   const [minimum, maximum] = MATERIAL_LAYER_SCALAR_RANGES[field];
   return z.number()
@@ -204,6 +204,15 @@ const shadow = z.strictObject({
   near: bounded(0.001, 1e6).optional(),
   far: bounded(0.001, 1e6).optional(),
 }).describe('Directional shadow coverage. Backend checks Float32 view/projection consistency.');
+// Curve and text sit in the geometry list only, not in mesh bases or cutters. Value types and limits are checked by the
+// engine and listed in scene_capabilities curveText, because every tool that takes a recipe repeats this schema.
+const looseField = z.unknown().optional();
+function curveAndTextGeometries(id) {
+  return [
+    z.strictObject({ ...id, type: z.literal('curve'), points: z.array(z.unknown()).max(1024), closed: looseField, radius: looseField, taper: looseField, profile: looseField, resolution: looseField, radialSegments: looseField }).describe('Bezier sweep; see scene_capabilities curveText.'),
+    z.strictObject({ ...id, type: z.literal('text'), text: z.string().max(256), size: looseField, depth: looseField, font: looseField, align: looseField, curveSegments: looseField }).describe('3D text; see scene_capabilities curveText.'),
+  ];
+}
 function primitiveGeometries(identified) {
   const id = identified ? { id: identifier } : {};
   return [
@@ -214,6 +223,7 @@ function primitiveGeometries(identified) {
     z.strictObject({ ...id, type: z.literal('lathe'), profile: z.array(point2).min(2).max(4096), segments, startAngle: finite.optional(), sweep: finite.optional() }),
     z.strictObject({ ...id, type: z.literal('extrude'), contour: ring, holes: z.array(ring).max(128).optional(), depth: finite.optional(), steps: detail(1, 256), bevel: finite.optional(), bevelThickness: finite.optional(), bevelSegments: detail(1, 32) }),
     z.strictObject({ ...id, type: z.literal('tube'), path: z.array(vector3).min(2).max(4096), radius: finite.optional(), segments, radialSegments: detail(3, 128), closed: z.boolean().optional() }),
+    ...(identified ? curveAndTextGeometries(id) : []),
   ];
 }
 const selectRule = z.record(z.string(), z.unknown()).describe('Face selection rule: {"all":true}, {"tag":"top"}, {"normal":[0,1,0],"maxAngle":10} (degrees), {"inside":{"min":[x,y,z],"max":[x,y,z]}} (face centroids), {"faces":[indices]}, {"and":[rules]}, {"or":[rules]}, {"not":rule}, {"grow":rule,"steps":1}, {"boundary":rule}, {"field":expression} (faces where a field expression is nonzero, evaluated at face centroids). Tags come from the base (top, bottom, side, left, right, front, back) and from earlier edits (<name>.cap, <name>.side, <name>.rim, or a tag op).');
@@ -444,7 +454,7 @@ const physics = z.strictObject({
   gravity: vector3.optional().describe('Defaults to [0, -9.81, 0].'),
   bodies: z.array(physicsBody).min(1).max(64),
   joints: z.array(physicsJoint).max(64).optional().describe('Joint bodies are the node IDs of physics bodies.'),
-}).describe('Rigid-body physics recorded offline with Rapier at 60 steps a second, then played back by time like motion: scene_look and scene_review motionTime seek into the recording, so a seek back shows the identical frame. Bodies are recipe nodes; scene_inspect reports contacts, sensor events and resting state as numbers. Needs the optional peer dependency @dimforge/rapier3d-compat. A node cannot have a physics body and a motion translation or rotation track.');
+}).describe('Rigid-body physics recorded offline with Rapier at 60 steps a second and played back by time: motionTime seeks into the recording. Bodies are recipe nodes; scene_inspect reports contacts and resting state. Needs the optional peer @dimforge/rapier3d-compat. A node cannot have both a body and a motion translation or rotation track.');
 // The full motion schema (tracks, ik, constraints, drivers) is in scene_create's recipe. scene_apply and asset recipes
 // take the same object, validated by the backend, without repeating about 35 KB of schema in each tool.
 const recipeMotionReference = z.record(z.string(), z.unknown()).describe('The same object as recipe.motion in scene_create: duration, loop, tracks, ik, constraints, drivers. Read that tool for the fields. On an imported asset it also takes layers, up to 8 clips played at motion time before tracks and ik: { clip (scene_inspect animations id), mask: { joints, descendants, exclude } of node IDs, weight, speed, offset, loop, additive, reference, bones: { clip node: asset node } to retarget by name, morph }. A masked layer waves while another walks.');
