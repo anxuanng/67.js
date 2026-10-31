@@ -2,12 +2,11 @@ import { TAG_PREFIX, meshTags } from './mesh-data.js';
 import { MAX_FIELD_NODES, MAX_FIELD_DEPTH, MAX_FIELD_ELEMENTS, MAX_FIELD_WORK, FIELD_ATTRIBUTES } from './mesh-operations.js';
 import { faceCentroids, faceNormals, vertexNormals } from './mesh-normals.js';
 import {
-  COMPONENTS, MAX_LITERAL, MAX_OPERANDS, buildLifted, compileNode, constantScalar, createMathOperators, isBoundedNumber, partsOf,
-  scalarValue, vectorValue,
+  COMPONENTS, compileNode, createOperators, describeKey, isBoundedNumber, isPlainObject, requireScalar, scalarValue, vectorValue,
 } from './expression.js';
 
-// Bounded field expressions: a small JSON language that computes one value per mesh element (a number, or a vector
-// of three numbers) from attributes, noise and math. Agents may be following instructions injected into their input,
+// Bounded field expressions: the field context of the one expression language in expression.js. It computes one value
+// per mesh element (a number, or a vector of three numbers) from attributes, noise and math. Agents may be following instructions injected into their input,
 // so an expression is data and never code: it is read by walking plain objects against a fixed table of operators,
 // compiled once into closures over typed arrays, and checked against its limits before anything is evaluated.
 // No string is ever executed or used as a property name: operators come from a Map, and the only other strings
@@ -23,17 +22,11 @@ import {
 const MAX_NOISE_OCTAVES = 4;
 const MAX_NOISE_SCALE = 1000;
 const MAX_SEED = 0x7fffffff;
-const MAX_REPORTED_KEY_LENGTH = 24;
 const TAG_NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,47}$/;
 const KIND_NAMES = Object.freeze({ scalar: 'number', vector: 'vector' });
 
 function fieldError(message) {
   return new TypeError(`Field expression: ${message}`);
-}
-
-function describeKey(key) {
-  const clipped = key.length > MAX_REPORTED_KEY_LENGTH ? `${key.slice(0, MAX_REPORTED_KEY_LENGTH)}...` : key;
-  return JSON.stringify(clipped);
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -90,61 +83,16 @@ function fractalNoise(x, y, z, seed, octaves) {
 // ---------------------------------------------------------------------------------------------------------------
 // Field operators: the math operators come from expression.js, lifted to vectors. What is here is the part only
 // fields have: vectors, comparisons and logic that need numbers, and the safe edge cases that keep a value finite.
-
-function requireScalar(value, label) {
-  if (value.kind !== 'scalar') throw fieldError(`${label} needs a number, not a vector.`);
-  return value.evaluate;
-}
+// ---------------------------------------------------------------------------------------------------------------
+// Vector operators, the part of the language only fields have. The scalar operators come from expression.js.
 
 function requireVector(value, label) {
   if (value.kind !== 'vector') throw fieldError(`${label} needs a vector.`);
   return value.parts;
 }
 
-function compareScalars(compute) {
-  return ([left, right]) => {
-    const leftEvaluate = requireScalar(left, 'a comparison');
-    const rightEvaluate = requireScalar(right, 'a comparison');
-    return scalarValue(index => (compute(leftEvaluate(index), rightEvaluate(index)) ? 1 : 0));
-  };
-}
-
-function branch([condition, whenTrue, whenFalse]) {
-  const test = requireScalar(condition, 'if');
-  const [trueX, trueY, trueZ] = partsOf(whenTrue);
-  const [falseX, falseY, falseZ] = partsOf(whenFalse);
-  if (whenTrue.kind === 'scalar' && whenFalse.kind === 'scalar') {
-    return scalarValue(index => (test(index) !== 0 ? trueX(index) : falseX(index)));
-  }
-  return vectorValue(
-    index => (test(index) !== 0 ? trueX(index) : falseX(index)),
-    index => (test(index) !== 0 ? trueY(index) : falseY(index)),
-    index => (test(index) !== 0 ? trueZ(index) : falseZ(index)),
-  );
-}
-
 function finiteOrZero(number) {
   return Number.isFinite(number) ? number : 0;
-}
-
-function smoothstep(edgeStart, edgeEnd, input) {
-  if (edgeStart === edgeEnd) return input < edgeStart ? 0 : 1;
-  const fraction = Math.min(1, Math.max(0, (input - edgeStart) / (edgeEnd - edgeStart)));
-  return fraction * fraction * (3 - 2 * fraction);
-}
-
-function combineLogic(isAnd) {
-  return args => {
-    const evaluators = args.map(argument => requireScalar(argument, 'a logic operator'));
-    return scalarValue(index => {
-      for (const evaluate of evaluators) {
-        const truthy = evaluate(index) !== 0;
-        if (isAnd && !truthy) return 0;
-        if (!isAnd && truthy) return 1;
-      }
-      return isAnd ? 1 : 0;
-    });
-  };
 }
 
 function dotValues([left, right]) {
@@ -196,62 +144,26 @@ function selectComponent(componentIndex) {
   return ([operand]) => scalarValue(requireVector(operand, 'a component read')[componentIndex]);
 }
 
-// Where the two dialects disagree, a field expression stays finite: a division by zero or the square root of a
-// negative number gives 0 rather than an error.
-const fieldSemantics = Object.freeze({
-  divide: (left, right) => (right === 0 ? 0 : left / right),
-  modulo: (left, right) => (right === 0 ? 0 : left - right * Math.floor(left / right)),
-  power: (base, exponent) => finiteOrZero(Math.pow(base, exponent)),
-  squareRoot: number => (number < 0 ? 0 : Math.sqrt(number)),
-  smoothstep,
-});
-
-const fieldOperator = (min, max, build) => ({ min, max, build });
-const unaryOperator = build => fieldOperator(1, 1, build);
+const vectorOperator = (min, max, build) => ({ min, max, build });
 
 // Operators live in a Map so that input keys such as "__proto__" or "constructor" are plain unknown names.
-const OPERATORS = new Map();
-for (const [name, { min, max, compute }] of createMathOperators(fieldSemantics)) {
-  const isComparison = name === 'lt' || name === 'gt';
-  const build = isComparison ? compareScalars(compute) : buildLifted({ max, compute });
-  OPERATORS.set(name, fieldOperator(min, max, build));
-}
-OPERATORS.set('if', fieldOperator(3, 3, branch));
-for (const [name, compute] of [['ceil', Math.ceil], ['round', Math.round], ['sign', Math.sign]]) {
-  OPERATORS.set(name, unaryOperator(buildLifted({ max: 1, compute })));
-}
-OPERATORS.set('lte', fieldOperator(2, 2, compareScalars((left, right) => left <= right)));
-OPERATORS.set('gte', fieldOperator(2, 2, compareScalars((left, right) => left >= right)));
-OPERATORS.set('eq', fieldOperator(2, 2, compareScalars((left, right) => left === right)));
-OPERATORS.set('and', fieldOperator(2, MAX_OPERANDS, combineLogic(true)));
-OPERATORS.set('or', fieldOperator(2, MAX_OPERANDS, combineLogic(false)));
-OPERATORS.set('not', unaryOperator(([operand]) => {
-  const evaluate = requireScalar(operand, 'not');
-  return scalarValue(index => (evaluate(index) === 0 ? 1 : 0));
-}));
-OPERATORS.set('vec', fieldOperator(3, 3, buildVector));
-OPERATORS.set('dot', fieldOperator(2, 2, dotValues));
-OPERATORS.set('cross', fieldOperator(2, 2, crossValues));
-OPERATORS.set('distance', fieldOperator(2, 2, distanceValues));
-OPERATORS.set('length', unaryOperator(lengthValue));
-OPERATORS.set('normalize', unaryOperator(normalizeValue));
-OPERATORS.set('x', unaryOperator(selectComponent(0)));
-OPERATORS.set('y', unaryOperator(selectComponent(1)));
-OPERATORS.set('z', unaryOperator(selectComponent(2)));
+const OPERATORS = createOperators();
+OPERATORS.set('vec', vectorOperator(3, 3, buildVector));
+OPERATORS.set('dot', vectorOperator(2, 2, dotValues));
+OPERATORS.set('cross', vectorOperator(2, 2, crossValues));
+OPERATORS.set('distance', vectorOperator(2, 2, distanceValues));
+OPERATORS.set('length', vectorOperator(1, 1, lengthValue));
+OPERATORS.set('normalize', vectorOperator(1, 1, normalizeValue));
+OPERATORS.set('x', vectorOperator(1, 1, selectComponent(0)));
+OPERATORS.set('y', vectorOperator(1, 1, selectComponent(1)));
+OPERATORS.set('z', vectorOperator(1, 1, selectComponent(2)));
 
 export { MAX_FIELD_NODES, MAX_FIELD_DEPTH, MAX_FIELD_ELEMENTS, MAX_FIELD_WORK };
 const SOURCE_KEYS = Object.freeze(['attr', 'noise', 'random']);
 export const FIELD_OPERATORS = Object.freeze([...OPERATORS.keys(), ...SOURCE_KEYS]);
 
-
 // ---------------------------------------------------------------------------------------------------------------
 // Compiling an expression against an element context: { count, positions(), normals(), tag(name) }.
-
-function isPlainObject(value) {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
-  const prototype = Object.getPrototypeOf(value);
-  return prototype === Object.prototype || prototype === null;
-}
 
 function integerInRange(value, minimum, maximum, label) {
   if (!Number.isInteger(value) || value < minimum || value > maximum) throw fieldError(`${label} must be an integer from ${minimum} to ${maximum}.`);
@@ -290,7 +202,7 @@ function compileAttribute(node, context) {
 
 function compileNoise(node, state, depth) {
   const settings = node.noise;
-  if (!isPlainObject(settings) || Object.keys(node).length !== 1) throw fieldError('noise takes { scale, seed, octaves, at }.');
+  if (!isPlainObject(settings)) throw fieldError('noise takes { scale, seed, octaves, at }.');
   onlyKeys(settings, ['scale', 'seed', 'octaves', 'at'], 'noise');
   const scale = settings.scale ?? 1;
   if (typeof scale !== 'number' || !(scale > 0) || scale > MAX_NOISE_SCALE) throw fieldError(`noise scale must be above 0 and at most ${MAX_NOISE_SCALE}.`);
@@ -303,56 +215,41 @@ function compileNoise(node, state, depth) {
 
 function compileRandom(node) {
   const settings = node.random;
-  if (!isPlainObject(settings) || Object.keys(node).length !== 1) throw fieldError('random takes { seed }.');
+  if (!isPlainObject(settings)) throw fieldError('random takes { seed }.');
   onlyKeys(settings, ['seed'], 'random');
   const seed = integerInRange(settings.seed ?? 0, 0, MAX_SEED, 'random seed');
   return scalarValue(index => seededRandom(index, 0, seed));
 }
 
-function compileOperator(operator, name, operand, state, depth) {
-  let compiledArguments;
-  if (operator.max === 1) {
-    compiledArguments = [compileNode(operand, state, depth + 1)];
-  } else {
-    if (!Array.isArray(operand) || operand.length < operator.min || operand.length > operator.max) {
-      throw fieldError(`${name} needs ${operator.min === operator.max ? operator.min : `${operator.min} to ${operator.max}`} arguments in an array.`);
-    }
-    compiledArguments = operand.map(argument => compileNode(argument, state, depth + 1));
+function compileVectorLiteral(node) {
+  if (node.length !== 3 || !node.every(isBoundedNumber)) {
+    throw fieldError('a vector literal is three finite numbers; build one from expressions with "vec".');
   }
-  return operator.build(compiledArguments);
+  const [literalX, literalY, literalZ] = node;
+  return vectorValue(() => literalX, () => literalY, () => literalZ);
 }
 
-function compileOther(node, state, depth) {
-  if (typeof node === 'boolean') return constantScalar(node ? 1 : 0);
-  if (Array.isArray(node)) {
-    if (node.length !== 3 || !node.every(isBoundedNumber)) {
-      throw fieldError('a vector literal is three finite numbers; build one from expressions with "vec".');
-    }
-    const [literalX, literalY, literalZ] = node;
-    return vectorValue(() => literalX, () => literalY, () => literalZ);
-  }
-  if (!isPlainObject(node)) throw fieldError('each node is a number, a boolean, a vector of three numbers or an object with one operator.');
-  const keys = Object.keys(node);
+// Inputs only a field has: a vector literal, an attribute, noise and random. Anything else is an operator.
+function compileInput(node, state, depth) {
+  if (Array.isArray(node)) return compileVectorLiteral(node);
+  if (!isPlainObject(node)) return undefined;
   if (Object.hasOwn(node, 'attr')) return compileAttribute(node, state.context);
-  if (keys.length !== 1) throw fieldError(`a node holds exactly one operator; got ${keys.length}.`);
-  const name = keys[0];
-  if (name === 'noise') return compileNoise(node, state, depth);
-  if (name === 'random') return compileRandom(node);
-  const operator = OPERATORS.get(name);
-  if (!operator) throw fieldError(`unknown operator ${describeKey(name)}. Use one of ${FIELD_OPERATORS.join(', ')}.`);
-  return compileOperator(operator, name, node[name], state, depth);
+  const keys = Object.keys(node);
+  if (keys.length !== 1) return undefined;
+  if (keys[0] === 'noise') return compileNoise(node, state, depth);
+  if (keys[0] === 'random') return compileRandom(node);
+  return undefined;
 }
 
 const FIELD_DIALECT = Object.freeze({
+  name: 'field',
+  accepts: 'a number, a boolean, a vector of three numbers, an attribute, noise, random or an operator object',
   maxNodes: MAX_FIELD_NODES,
   maxDepth: MAX_FIELD_DEPTH,
-  messages: Object.freeze({
-    nodes: `more than ${MAX_FIELD_NODES} nodes.`,
-    depth: `nesting deeper than ${MAX_FIELD_DEPTH}.`,
-    number: `numbers must be finite and within ${MAX_LITERAL}.`,
-  }),
+  operators: OPERATORS,
+  sourceNames: SOURCE_KEYS,
   reject: fieldError,
-  compileOther,
+  compileInput,
 });
 
 /**
