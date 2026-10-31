@@ -1,5 +1,5 @@
 import { mat4, mat3 } from 'gl-matrix';
-import { box, cylinder, sphere, torus } from './geometry.js';
+import { box, cylinder, grid, sphere, torus } from './geometry.js';
 import { createSceneGraph } from './scene-graph.js';
 import { applyProjection } from './camera.js';
 import { normalizeAgentLook, environmentPatchWithSetup } from './agent-look.js';
@@ -336,7 +336,7 @@ function cameraFrom(value = {}) {
 
 const GEOMETRY_FIELDS = {
   box: ['bevel', 'subdivisions'], cylinder: ['segments', 'bevel', 'bevelSegments'],
-  sphere: ['segments', 'rings'], torus: ['tubeRadius', 'segments', 'sides', 'arc', 'start'],
+  sphere: ['segments', 'rings'], grid: ['segments'], torus: ['tubeRadius', 'segments', 'sides', 'arc', 'start'],
   lathe: ['profile', 'segments', 'startAngle', 'sweep'],
   extrude: ['contour', 'holes', 'depth', 'steps', 'bevel', 'bevelThickness', 'bevelSegments'],
   tube: ['path', 'radius', 'segments', 'radialSegments', 'closed'],
@@ -374,6 +374,8 @@ function geometryEstimate(value) {
       return (detail('segments', 80, 3, 2048) + 1) * 2 * (detail('bevelSegments', 6, 1, 128) + 1) + 2 * ((value.segments ?? 80) + 2);
     case 'sphere':
       return (detail('segments', 64, 3, 2048) + 1) * (detail('rings', 40, 2, 2048) + 1);
+    case 'grid':
+      return (detail('segments', 16, 1, 64) + 1) ** 2;
     case 'torus':
       return (detail('segments', 96, 3, 2048) + 1) * (detail('sides', 24, 3, 128) + 1) + 2 * ((value.sides ?? 24) + 2);
     case 'lathe':
@@ -457,6 +459,8 @@ function generateGeometry(value, maxVertices) {
       return cylinder(value.segments, value.bevel, value.bevelSegments);
     case 'sphere':
       return sphere(value.segments, value.rings);
+    case 'grid':
+      return grid(value.segments);
     case 'torus':
       return torus(value.tubeRadius, value.segments, value.sides, value.arc, value.start);
     case 'lathe':
@@ -575,7 +579,7 @@ function addArmatures(recipe, limits) {
 
 function normalizeRecipe(input, limits) {
   let recipe = copiedJson(input, limits.maxRecipeBytes);
-  knownKeys(recipe, ['format', 'schemaVersion', 'geometries', 'materials', 'nodes', 'armatures', 'camera', 'environment', 'effects', 'shadow', 'motion', 'physics'], 'recipe');
+  knownKeys(recipe, ['format', 'schemaVersion', 'geometries', 'materials', 'nodes', 'armatures', 'camera', 'environment', 'effects', 'shadow', 'motion', 'physics', 'cloth'], 'recipe');
   if (recipe.format !== '67js.scene' || recipe.schemaVersion !== 1) {
     throw new RangeError('Expected 67js.scene schemaVersion 1.');
   }
@@ -621,6 +625,9 @@ function normalizeRecipe(input, limits) {
   }
   if (Object.hasOwn(recipe, 'physics')) {
     recipe.physics = agentSceneModule('physics').normalizeAgentPhysics(recipe.physics, recipe);
+  }
+  if (Object.hasOwn(recipe, 'cloth')) {
+    recipe.cloth = agentSceneModule('cloth').normalizeAgentCloth(recipe.cloth, recipe);
   }
   recipe = copiedJson(recipe, limits.maxRecipeBytes);
   return recipe;
@@ -739,11 +746,24 @@ function stagePose(stagedState, time) {
   }
   const camera = sampled?.camera ? cameraPoseFrom(sampled.camera) : stagedState.recipe.camera;
   retainedMatrices(stagedState.parts);
-  return { graph, materialUpdates, camera, time };
+  const clothGeometries = time === null ? null : stagedState.clothSampler?.sample(time) ?? null;
+  return { graph, materialUpdates, camera, time, clothGeometries };
 }
 
+// Deformed cloth is a new geometry per sampled time, so those parts are replaced and the renderer sees a topology change.
+function partsWithCloth(restParts, clothGeometries) {
+  if (!clothGeometries) {
+    return restParts;
+  }
+  return Object.freeze(restParts.map(part => {
+    const geometry = clothGeometries.get(part.name);
+    return geometry ? Object.freeze({ ...part, geometry }) : part;
+  }));
+}
+
+/** Returns true when the parts handed to a renderer changed, which the caller counts as a topology change. */
 function publishPose(stagedState, pose) {
-  for (const part of stagedState.parts) {
+  for (const part of stagedState.restParts) {
     Float32Array.prototype.set.call(part.matrix, pose.graph.getNode(part.name).worldMatrix);
   }
   for (const update of pose.materialUpdates) {
@@ -752,6 +772,10 @@ function publishPose(stagedState, pose) {
   publishSkinPoses(stagedState.skinStages);
   stagedState.renderCamera = pose.camera;
   stagedState.motionTime = pose.time;
+  const nextParts = partsWithCloth(stagedState.restParts, pose.clothGeometries);
+  const partsChanged = nextParts !== stagedState.parts;
+  stagedState.parts = nextParts;
+  return partsChanged;
 }
 
 function removeNode(candidate, operation) {
@@ -796,6 +820,7 @@ export function createAgentScene(input, inputLimits = {}) {
   let revision = 0;
   let topologyRevision = 0;
   let physicsBake = null;
+  let clothBake = null;
   const skinCache = new Map();
   const checkpoints = new Map();
 
@@ -888,8 +913,8 @@ export function createAgentScene(input, inputLimits = {}) {
       const handle = existing ?? materialHandle(snapshot);
       materialHandles.set(material.id, handle);
     }
-    const activeParts = new Map(state?.parts.map(part => [part.name, part]) ?? []);
-    const preferredParts = new Map(preferred?.parts.map(part => [part.name, part]) ?? []);
+    const activeParts = new Map(state?.restParts.map(part => [part.name, part]) ?? []);
+    const preferredParts = new Map(preferred?.restParts.map(part => [part.name, part]) ?? []);
     const nextParts = recipe.nodes.filter(node => node.geometry !== undefined).map(node => {
       const binding = skinBindings.get(node.id);
       const geometry = binding?.geometry ?? geometries.get(node.geometry);
@@ -904,12 +929,14 @@ export function createAgentScene(input, inputLimits = {}) {
       });
     });
     retainedMatrices(nextParts);
-    const sameParts = state && state.parts.length === nextParts.length &&
-      state.parts.every((part, index) => part === nextParts[index]);
+    const sameParts = state && state.restParts.length === nextParts.length &&
+      state.restParts.every((part, index) => part === nextParts[index]);
+    const restParts = sameParts ? state.restParts : Object.freeze(nextParts);
     const stagedState = {
       recipe, geometryRecords, geometries, graph, materialHandles,
-      parts: sameParts ? state.parts : Object.freeze(nextParts),
-      topologyChanged: Boolean(state && !sameParts),
+      parts: restParts, restParts,
+      // A renderer holding the deformed cloth parts of the old state needs the rest parts back as a topology change.
+      topologyChanged: Boolean(state && (!sameParts || state.parts !== state.restParts)),
       stats: geometryStats(geometryRecords.values()),
     };
     stagedState.localBounds = localBounds;
@@ -917,7 +944,8 @@ export function createAgentScene(input, inputLimits = {}) {
     stagedState.skinStages = createSkinStages(skinBindings);
     stagedState.motionSampler = recipe.motion ? agentSceneModule('motion').compileAgentMotion(recipe.motion, recipe) : null;
     stagedState.physicsSampler = stagePhysics(recipe, geometryRecords);
-    const animated = Boolean(stagedState.motionSampler || stagedState.physicsSampler);
+    stagedState.clothSampler = stageCloth(recipe, geometryRecords);
+    const animated = Boolean(stagedState.motionSampler || stagedState.physicsSampler || stagedState.clothSampler);
     stagedState.poseGraph = animated ? compile(recipe, geometries, localBounds, limits) : null;
     stagedState.initialPose = stagePose(stagedState, animated ? 0 : null);
     return stagedState;
@@ -935,6 +963,21 @@ export function createAgentScene(input, inputLimits = {}) {
       physicsBake = { key, sampler: agentSceneModule('physics').bakeAgentPhysics(recipe.physics, recipe, geometries) };
     }
     return physicsBake.sampler;
+  }
+
+  // Same rule as physics: an unchanged cloth section on unchanged geometry and nodes reuses the last bake.
+  function stageCloth(recipe, geometryRecords) {
+    if (!recipe.cloth) {
+      return null;
+    }
+    const involved = new Set([...recipe.cloth.sheets, ...(recipe.cloth.colliders ?? [])].map(entry => entry.node));
+    const involvedNodes = recipe.nodes.filter(node => involved.has(node.id));
+    const key = JSON.stringify([recipe.cloth, involvedNodes, involvedNodes.map(node => geometryRecords.get(node.geometry).signature)]);
+    if (clothBake?.key !== key) {
+      const geometries = new Map([...geometryRecords].map(([id, record]) => [id, record.geometry]));
+      clothBake = { key, sampler: agentSceneModule('cloth').bakeAgentCloth(recipe.cloth, recipe, geometries) };
+    }
+    return clothBake.sampler;
   }
 
   function commit(stagedState, incrementRevision) {
@@ -979,10 +1022,12 @@ export function createAgentScene(input, inputLimits = {}) {
       if (time !== null && (!Number.isFinite(time) || time < 0 || time > 3600)) {
         throw new RangeError('Motion time must be null or within zero and 3600 seconds.');
       }
-      if (time !== null && !state.motionSampler && !state.physicsSampler) {
-        throw new RangeError('This procedural recipe has no motion or physics.');
+      if (time !== null && !state.motionSampler && !state.physicsSampler && !state.clothSampler) {
+        throw new RangeError('This procedural recipe has no motion, physics or cloth.');
       }
-      publishPose(state, stagePose(state, time));
+      if (publishPose(state, stagePose(state, time))) {
+        topologyRevision++;
+      }
       return state.motionTime;
     },
     get environment() {
@@ -1042,6 +1087,14 @@ export function createAgentScene(input, inputLimits = {}) {
             throw new TypeError('set-physics requires physics; use null to clear it.');
           }
           candidate.physics = operation.physics;
+          continue;
+        }
+        if (operation.type === 'set-cloth') {
+          knownKeys(operation, ['type', 'cloth'], 'operation');
+          if (!Object.hasOwn(operation, 'cloth')) {
+            throw new TypeError('set-cloth requires cloth; use null to clear it.');
+          }
+          candidate.cloth = operation.cloth;
           continue;
         }
         const lookField = Object.hasOwn(LOOK_OPERATION_FIELDS, operation.type) ? LOOK_OPERATION_FIELDS[operation.type] : null;
@@ -1153,7 +1206,7 @@ export function createAgentScene(input, inputLimits = {}) {
           fields = CAMERA_FIELDS;
           target = candidate.camera;
         } else {
-          throw new TypeError(`Unsupported operation type: ${operation.type}. Use one of set-node, set-material, set-camera, set-motion, set-physics, set-environment, set-effects, set-shadow, add-node, add-geometry, add-material, remove-node, remove-geometry, remove-material, edit-mesh, set-mesh-stack.`);
+          throw new TypeError(`Unsupported operation type: ${operation.type}. Use one of set-node, set-material, set-camera, set-motion, set-physics, set-cloth, set-environment, set-effects, set-shadow, add-node, add-geometry, add-material, remove-node, remove-geometry, remove-material, edit-mesh, set-mesh-stack.`);
         }
         knownKeys(operation, ['type', ...(operation.type === 'set-camera' ? [] : ['id']), ...fields], 'operation');
         if (!target) {
@@ -1204,6 +1257,7 @@ export function createAgentScene(input, inputLimits = {}) {
         ...(state.recipe.motion?.ik?.length ? { motionIk: agentSceneModule('motion').compileAgentMotion(state.recipe.motion, state.recipe).sweepIk() } : {}),
         motion: state.recipe.motion ? { duration: state.recipe.motion.duration, loop: state.recipe.motion.loop, tracks: state.recipe.motion.tracks.length, time: state.motionTime } : null,
         physics: state.physicsSampler ? state.physicsSampler.report() : null,
+        ...(state.clothSampler ? { cloth: state.clothSampler.report() } : {}),
         ...(state.recipe.armatures ? { rig: rigReport(state.recipe, state.skinBindings) } : {}),
         boundsSpace: 'authored-base-world',
         ...(diagnostics.length ? { diagnostics } : {}),
@@ -1254,7 +1308,7 @@ export function createAgentScene(input, inputLimits = {}) {
         recipe: structuredClone(state.recipe),
         geometryRecords: new Map(state.geometryRecords),
         materialHandles: new Map(state.materialHandles),
-        parts: state.parts,
+        restParts: state.restParts,
       });
       return handle;
     },

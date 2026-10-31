@@ -85,6 +85,12 @@ export function sphere(segments = 64, rings = 40) {
   return result;
 }
 
+// A flat unit sheet in XY facing +Z with a regular grid of vertices: the rest shape for cloth and for flat banners.
+export function grid(segments = 16) {
+  integer(segments, 1, 64, 'segments');
+  return surface(segments, segments, (across, down) => ({ position: [across - 0.5, 0.5 - down, 0], normal: [0, 0, 1] }));
+}
+
 // The torus lies in XY, facing +Z. Partial arcs are useful for interrupted armor rings.
 export function torus(tubeRadius = 0.08, segments = 96, sides = 24, arc = FULL_TURN, start = 0) {
   finiteFloat(tubeRadius, 'tubeRadius');
