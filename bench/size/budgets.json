@@ -1,5 +1,5 @@
 {
- "archiveBytes": 717978,
+ "archiveBytes": 721503,
  "goals": {
   "lit-box": 50000,
   "gltf-box": 80000,
@@ -28,6 +28,7 @@
   "entry:terrain": 3100,
   "entry:grass": 4400,
   "entry:clutter": 5300,
+  "entry:light-bake": 25400,
   "entry:texture-set": 900,
   "entry:agent-scene": 61800,
   "entry:agent-scene+lazy": 191900,

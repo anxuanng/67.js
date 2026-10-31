@@ -14,9 +14,9 @@
  },
  "bundles": {
   "entry:core": {
-   "min": 283167,
-   "gzip": 80916,
-   "brotli": 68973
+   "min": 283213,
+   "gzip": 80927,
+   "brotli": 69079
   },
   "entry:model": {
    "min": 40093,
@@ -122,6 +122,11 @@
    "min": 12056,
    "gzip": 5185,
    "brotli": 4675
+  },
+  "entry:light-bake": {
+   "min": 67640,
+   "gzip": 24805,
+   "brotli": 21989
   },
   "entry:texture-set": {
    "min": 1837,
