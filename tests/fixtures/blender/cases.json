@@ -4,6 +4,7 @@
       "vertices": [[-0.5,-0.5,-0.5],[0.5,-0.5,-0.5],[0.5,0.5,-0.5],[-0.5,0.5,-0.5],[-0.5,-0.5,0.5],[0.5,-0.5,0.5],[0.5,0.5,0.5],[-0.5,0.5,0.5]],
       "faces": [[0,3,2,1],[4,5,6,7],[0,1,5,4],[1,2,6,5],[2,3,7,6],[3,0,4,7]]
     },
+    "cube-split": {"vertices":[[-0.5,-0.5,-0.5],[-0.5,0.5,-0.5],[0.5,0.5,-0.5],[0.5,-0.5,-0.5],[-0.5,-0.5,0.5],[0.5,-0.5,0.5],[0.5,0.5,0.5],[-0.5,0.5,0.5],[-0.5,-0.5,-0.5],[0.5,-0.5,-0.5],[0.5,-0.5,0.5],[-0.5,-0.5,0.5],[0.5,-0.5,-0.5],[0.5,0.5,-0.5],[0.5,0.5,0.5],[0.5,-0.5,0.5],[0.5,0.5,-0.5],[-0.5,0.5,-0.5],[-0.5,0.5,0.5],[0.5,0.5,0.5],[-0.5,0.5,-0.5],[-0.5,-0.5,-0.5],[-0.5,-0.5,0.5],[-0.5,0.5,0.5]],"faces":[[0,1,2,3],[4,5,6,7],[8,9,10,11],[12,13,14,15],[16,17,18,19],[20,21,22,23]]},
     "cube-open": {
       "vertices": [[-0.5,-0.5,-0.5],[0.5,-0.5,-0.5],[0.5,0.5,-0.5],[-0.5,0.5,-0.5],[-0.5,-0.5,0.5],[0.5,-0.5,0.5],[0.5,0.5,0.5],[-0.5,0.5,0.5]],
       "faces": [[0,3,2,1],[0,1,5,4],[1,2,6,5],[2,3,7,6],[3,0,4,7]]
@@ -119,8 +120,190 @@
     { "id": "decimate-sphere-half", "input": "sphere-bumpy", "compare": "surface", "edit": {"op":"decimate","ratio":0.5} },
     { "id": "decimate-sphere-tenth", "input": "sphere-bumpy", "compare": "surface", "edit": {"op":"decimate","ratio":0.1} },
     { "id": "decimate-torus-quarter", "input": "torus-fine", "compare": "surface", "edit": {"op":"decimate","ratio":0.25} },
+    { "id": "weld-cube-split", "input": "cube-split", "edit": {"op":"weld","distance":0.001} },
+    { "id": "triangulate-cube", "input": "cube", "edit": {"op":"triangulate"} },
+    { "id": "triangulate-cylinder", "input": "cylinder", "edit": {"op":"triangulate"} },
+    { "id": "triangulate-cylinder-caps-only", "input": "cylinder", "edit": {"op":"triangulate","minVertices":5} },
+    { "id": "triangulate-pentagon", "input": "square-midpoint", "edit": {"op":"triangulate"} },
+    { "id": "edge-split-cube", "input": "cube", "edit": {"op":"edge_split"} },
+    { "id": "edge-split-cylinder", "input": "cylinder", "edit": {"op":"edge_split"} },
+    { "id": "edge-split-cylinder-wide", "input": "cylinder", "edit": {"op":"edge_split","angle":60} },
+    { "id": "edge-split-grid", "input": "grid", "edit": {"op":"edge_split"} },
+    { "id": "smooth-grid", "input": "grid", "edit": {"op":"smooth","factor":0.5,"iterations":2} },
+    { "id": "smooth-cube-full", "input": "cube", "edit": {"op":"smooth","factor":1,"iterations":1} },
+    { "id": "smooth-sphere-bumpy", "input": "sphere-bumpy", "edit": {"op":"smooth","factor":0.8,"iterations":3} },
+    { "id": "simple-deform-twist-cylinder", "input": "cylinder", "edit": {"op":"simple_deform","mode":"twist","axis":"z","angle":90} },
+    { "id": "simple-deform-bend-grid", "input": "grid", "edit": {"op":"simple_deform","mode":"bend","axis":"z","angle":90} },
+    { "id": "simple-deform-bend-cylinder", "input": "cylinder", "edit": {"op":"simple_deform","mode":"bend","axis":"x","angle":60} },
+    { "id": "simple-deform-taper-cylinder", "input": "cylinder", "edit": {"op":"simple_deform","mode":"taper","axis":"z","factor":0.5} },
+    { "id": "simple-deform-stretch-cylinder-x", "input": "cylinder", "edit": {"op":"simple_deform","mode":"stretch","axis":"x","factor":-0.4} },
+    { "id": "cast-cube-mean", "input": "cube", "edit": {"op":"cast","factor":1} },
+    { "id": "cast-cylinder-size", "input": "cylinder", "edit": {"op":"cast","factor":0.6,"size":1.5} },
+    { "id": "cast-sphere-bumpy", "input": "sphere-bumpy", "edit": {"op":"cast","factor":0.5} },
     { "id": "decimate-bowl-half", "input": "bowl-open", "compare": "surface", "edit": {"op":"decimate","ratio":0.5} },
     { "id": "remesh-sphere", "input": "sphere-bumpy", "compare": "surface", "edit": {"op":"remesh","voxelSize":0.1} },
     { "id": "remesh-torus", "input": "torus-fine", "compare": "surface", "edit": {"op":"remesh","voxelSize":0.08} }
+  ],
+ "curves": [
+   {
+    "id": "bezier-pipe-open",
+    "curve": {
+     "points": [
+      {
+       "position": [
+        0,
+        0,
+        0
+       ],
+       "handleIn": [
+        -0.5,
+        -0.5,
+        0
+       ],
+       "handleOut": [
+        0.6,
+        0.8,
+        0
+       ]
+      },
+      {
+       "position": [
+        2,
+        1,
+        0.5
+       ],
+       "handleIn": [
+        1.4,
+        1.2,
+        0.2
+       ],
+       "handleOut": [
+        2.6,
+        0.8,
+        0.8
+       ]
+      },
+      {
+       "position": [
+        3,
+        0,
+        1
+       ],
+       "handleIn": [
+        2.9,
+        0.5,
+        1
+       ],
+       "handleOut": [
+        3.2,
+        -0.4,
+        1.2
+       ]
+      }
+     ],
+     "radius": 0.1,
+     "radialSegments": 8,
+     "resolution": 12
+    }
+   },
+   {
+    "id": "bezier-ring-closed",
+    "curve": {
+     "points": [
+      {
+       "position": [
+        1,
+        0,
+        0
+       ],
+       "handleIn": [
+        1,
+        -0.5522847498,
+        0
+       ],
+       "handleOut": [
+        1,
+        0.5522847498,
+        0
+       ]
+      },
+      {
+       "position": [
+        0,
+        1,
+        0
+       ],
+       "handleIn": [
+        0.5522847498,
+        1,
+        0
+       ],
+       "handleOut": [
+        -0.5522847498,
+        1,
+        0
+       ]
+      },
+      {
+       "position": [
+        -1,
+        0,
+        0
+       ],
+       "handleIn": [
+        -1,
+        0.5522847498,
+        0
+       ],
+       "handleOut": [
+        -1,
+        -0.5522847498,
+        0
+       ]
+      },
+      {
+       "position": [
+        0,
+        -1,
+        0
+       ],
+       "handleIn": [
+        -0.5522847498,
+        -1,
+        0
+       ],
+       "handleOut": [
+        0.5522847498,
+        -1,
+        0
+       ]
+      }
+     ],
+     "closed": true,
+     "radius": 0.1,
+     "radialSegments": 16,
+     "resolution": 16
+    }
+   }
+  ],
+  "texts": [
+   {
+    "id": "text-B",
+    "text": {
+     "text": "B",
+     "size": 1,
+     "depth": 0.2,
+     "curveSegments": 12
+    }
+   },
+   {
+    "id": "text-Hi",
+    "text": {
+     "text": "Hi",
+     "size": 1,
+     "depth": 0.2,
+     "curveSegments": 12
+    }
+   }
   ]
 }

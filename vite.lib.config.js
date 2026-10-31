@@ -40,6 +40,8 @@ export default defineConfig({
         hdri: 'src/hdri.js',
         'camera-effects': 'src/camera-effects.js',
         'render-passes': 'src/render-passes.js',
+        // Page of the MCP preview. It imports the engine chunks above instead of bundling its own copy.
+        'mcp/preview': 'scripts/agent-preview-browser.js',
       },
       formats: ['es'],
       fileName: (_, entry) => entry === 'core' ? '67.module.js' : `${entry}.js`,

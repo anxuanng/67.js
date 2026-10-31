@@ -108,6 +108,8 @@ async function readTimerQueries(context, queries, timer) {
 
 async function createAdapter(engine, canvas, scene, characters) {
   if (engine === '67js') return create67Adapter(canvas, scene, characters);
+  if (engine === '67js-no-lod') return create67Adapter(canvas, scene, characters, { lods: false });
+  if (engine === '67js-no-culling') return create67Adapter(canvas, scene, characters, { culling: false, lods: false });
   if (engine === 'three-instanced') return createThreeAdapter(canvas, scene, characters, { instanced: true });
   return createThreeAdapter(canvas, scene, characters);
 }
@@ -125,6 +127,7 @@ async function runBenchmark(sceneId, engine, frames) {
   adapter.render();
   waitForGpu(adapter.context);
   const firstFrameMilliseconds = performance.now() - started;
+  const firstImage = canvas.toDataURL('image/png');
   const timer = adapter.context.getExtension('EXT_disjoint_timer_query_webgl2');
   let time = 0;
   for (let frame = 0; frame < WARMUP_FRAMES; frame++) {
@@ -164,7 +167,8 @@ async function runBenchmark(sceneId, engine, frames) {
   const triangles = watcher.counters.triangles / frames;
   adapter.update(0);
   adapter.render();
-  const image = canvas.toDataURL('image/png').split(',')[1];
+  const finalImage = canvas.toDataURL('image/png');
+  const image = finalImage.split(',')[1];
   const result = {
     scene: sceneId, engine,
     firstFrameMilliseconds,
@@ -176,6 +180,8 @@ async function runBenchmark(sceneId, engine, frames) {
     gpuBytes: watcher.gpuBytes(),
     heapBytes: heapBefore === null ? null : heapBytes() - heapBefore,
     glError: adapter.context.getError(),
+    // The frame at time 0 after many frames must match the first frame drawn: nothing may depend on what came before.
+    repeatable: finalImage === firstImage,
     image,
   };
   adapter.dispose();

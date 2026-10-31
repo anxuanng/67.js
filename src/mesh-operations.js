@@ -3,6 +3,17 @@
 
 export const MAX_MESH_EDITS = 64;
 
+// Modifiers that work on the whole mesh and take no selection or name. Their fields are checked in mesh-modifiers.js and
+// each one is described for agents by MESH_MODIFIER_NOTES in agent-scene-capabilities.js.
+export const MODIFIER_OPERATIONS = Object.freeze({
+  weld: { fields: ['distance'], tags: [] },
+  triangulate: { fields: ['minVertices'], tags: [] },
+  edge_split: { fields: ['angle'], tags: [] },
+  smooth: { fields: ['factor', 'iterations'], tags: [] },
+  simple_deform: { fields: ['mode', 'axis', 'angle', 'factor'], tags: [] },
+  cast: { fields: ['factor', 'size'], tags: [] },
+});
+
 export const MESH_EDIT_OPERATIONS = Object.freeze({
   extrude_face_region: { fields: ['select', 'name', 'offset', 'direction', 'alongNormals'], tags: ['cap', 'side'] },
   extrude_individual: { fields: ['select', 'name', 'offset', 'direction'], tags: ['cap', 'side'] },
@@ -35,9 +46,11 @@ export const MESH_EDIT_OPERATIONS = Object.freeze({
   displace: { fields: ['select', 'field', 'strength', 'midlevel', 'direction'], tags: [] },
   decimate: { fields: ['ratio'], tags: [] },
   remesh: { fields: ['voxelSize', 'resolution'], tags: [] },
+  ...MODIFIER_OPERATIONS,
 });
 
-export const STACK_OPERATIONS = Object.freeze(['mirror', 'array', 'solidify', 'bevel', 'uv_unwrap', 'subdivide', 'set_position', 'displace', 'decimate', 'remesh']);export const MAX_STACK_NODES = 16;
+export const STACK_OPERATIONS = Object.freeze(['mirror', 'array', 'solidify', 'bevel', 'uv_unwrap', 'subdivide', 'set_position', 'displace', 'decimate', 'remesh', ...Object.keys(MODIFIER_OPERATIONS)]);
+export const MAX_STACK_NODES = 16;
 
 // Field expressions (mesh-fields.js) and instancing (mesh-instances.js): limits and names as plain data. A test
 // keeps FIELD_OPERATOR_NAMES equal to the operators the language really has.

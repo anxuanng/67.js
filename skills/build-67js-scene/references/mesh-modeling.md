@@ -213,6 +213,15 @@ an open mesh needs `fill_holes` first. Levels of detail for a part are made in c
 ] }
 ```
 
+Whole-mesh modifiers (no selection, no name) go in the stack or the edit log. `simple_deform` twists or bends (`angle` in degrees) or tapers or stretches (`factor`) about `axis` x, y or z over the mesh's extent along it, so give the mesh enough rings first (`subdivisions` on a box). `smooth` relaxes vertices toward their neighbours (`factor`, `iterations`), `cast` pulls them toward a sphere, `weld` merges vertices closer than `distance`, `edge_split` separates faces along edges sharper than `angle`, and `triangulate` cuts faces into triangles (last, for export). Defaults for each are in `scene_capabilities` `meshModifiers`.
+
+```json
+{ "id": "twisted-column", "type": "mesh", "base": { "type": "box", "bevel": 0, "subdivisions": 8 }, "stack": [
+  { "op": "simple_deform", "mode": "twist", "axis": "y", "angle": 120 },
+  { "op": "smooth", "factor": 0.3, "iterations": 2 }
+] }
+```
+
 ## Fields: noise, gradients and repeats
 
 A field expression is a small JSON formula over each vertex or face. `displace` and `set_position` take one, and

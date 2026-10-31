@@ -23,6 +23,16 @@ export const MATERIAL_GRAPH_OPERATORS = Object.freeze([
   'add', 'sub', 'mul', 'div', 'min', 'max', 'pow', 'abs', 'floor', 'fract', 'sqrt', 'invert', 'clamp', 'smoothstep', 'mix',
 ]);
 export const MATERIAL_GRAPH_LIMITS = Object.freeze({ maxNodes: MAX_FIELD_NODES, maxDepth: MAX_FIELD_DEPTH, maxStops: 8, maxWork: 30_000_000 });
+// Curve and text geometry. A text geometry is bounded by vertices per curve segment: the bundled font stays under
+// 640 per character and a registered font is held to 128 outline points per glyph (2400).
+export const CURVE_TEXT_LIMITS = Object.freeze({
+  maxCurvePoints: 1024, maxProfilePoints: 256, maxTextCharacters: 256, maxTextLines: 16,
+  verticesPerCharacterSegment: 640, verticesPerCustomCharacterSegment: 2400, maxPointsPerGlyph: 128,
+});
+export const CURVE_TEXT_DETAILS = Object.freeze({
+  curve: 'Cubic Bezier sweep. points: [x,y,z] or {position, handleIn?, handleOut?}. radius (0.05), taper, profile ([[x,y]...]), radialSegments, resolution, closed. See docs/modeling.md.',
+  text: 'Extruded text, baseline y=0 along +X, facing +Z. text (\n for lines), size (1), depth (0.2), align left|center|right, curveSegments, font. See docs/modeling.md.',
+});
 export const MATERIAL_MAPPINGS = Object.freeze(['box', 'uv']);
 export const MATERIAL_GRAPH_NODES = Object.freeze({
   outputs: 'color (linear RGB; a number is grey), roughness, metallic, emission (colour; defaults to 1), height (becomes a normal map).',
@@ -55,11 +65,22 @@ export const RENDER_PASS_NAMES = Object.freeze(['albedo', 'normal', 'emission', 
 // Metres that depth pass values 0 to 65535 span, measured from the camera.
 export const RENDER_PASS_DEPTH_RANGE = 100;
 
+// Fields and defaults of the whole-mesh modifiers, which the tool schemas leave out to stay small.
+export const MESH_MODIFIER_NOTES = Object.freeze({
+  weld: 'distance 0.001: merge closer vertices.',
+  triangulate: 'minVertices 4: split faces with that many corners or more.',
+  edge_split: 'angle 30: split edges bending more than this many degrees.',
+  smooth: 'factor 0.5 (-2 to 2) steps toward the neighbour mean; iterations 1 to 64.',
+  simple_deform: 'mode twist or bend use angle (45 degrees), taper or stretch use factor (0.5); axis x, y or z (z).',
+  cast: 'sphere about the origin: factor 0 to 1 (0.5), size radius (0 = mean vertex distance).',
+});
+
 export const AGENT_SCENE_CAPABILITIES = Object.freeze({
   format: '67js.scene', schemaVersion: 1,
-  geometryTypes: Object.freeze(['box', 'cylinder', 'sphere', 'torus', 'lathe', 'extrude', 'tube', 'mesh']),
+  geometryTypes: Object.freeze(['box', 'cylinder', 'sphere', 'torus', 'lathe', 'extrude', 'tube', 'curve', 'text', 'mesh']),
   meshEdits: Object.freeze({ operations: Object.freeze(Object.keys(MESH_EDIT_OPERATIONS)), maxEdits: MAX_MESH_EDITS }),
   meshStack: Object.freeze({ operations: STACK_OPERATIONS, maxNodes: MAX_STACK_NODES }),
+  meshModifiers: MESH_MODIFIER_NOTES,
   fieldExpressions: Object.freeze({
     operators: FIELD_OPERATOR_NAMES, attributes: FIELD_ATTRIBUTES,
     maxNodes: MAX_FIELD_NODES, maxDepth: MAX_FIELD_DEPTH, maxElements: MAX_FIELD_ELEMENTS,
@@ -75,6 +96,12 @@ export const AGENT_SCENE_CAPABILITIES = Object.freeze({
   materialPatterns: MATERIAL_PATTERN_TYPES, maxMaterialPatterns: MAX_MATERIAL_PATTERNS,
   materialMappings: MATERIAL_MAPPINGS,
   renderPasses: Object.freeze({ names: RENDER_PASS_NAMES, files: 'render-<pass>.png or frame-N-<pass>.png, raw and unantialiased; opaque and cutout geometry only', depth: `16 bits in red and green over ${RENDER_PASS_DEPTH_RANGE} m`, objectId: '24 bits in RGB; the job result lists the part names' }),
+  curveText: Object.freeze({
+    maxCurvePoints: CURVE_TEXT_LIMITS.maxCurvePoints, maxProfilePoints: CURVE_TEXT_LIMITS.maxProfilePoints,
+    maxTextCharacters: CURVE_TEXT_LIMITS.maxTextCharacters, maxTextLines: CURVE_TEXT_LIMITS.maxTextLines,
+    verticesPerCharacterSegment: CURVE_TEXT_LIMITS.verticesPerCharacterSegment,
+    details: CURVE_TEXT_DETAILS,
+  }),
   materialGraph: Object.freeze({ outputs: MATERIAL_GRAPH_OUTPUTS, operators: MATERIAL_GRAPH_OPERATORS, ...MATERIAL_GRAPH_LIMITS, nodes: MATERIAL_GRAPH_NODES }),
   // mesh_edit on an imported GLB part (geometry mesh-<n>, listed by scene_inspect). Edits run in the part's local space
   // (mesh_inspect gives localToWorldScale and localAxesInWorld) on a welded mesh with axis tags and a material tag.

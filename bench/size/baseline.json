@@ -14,9 +14,9 @@
  },
  "bundles": {
   "entry:core": {
-   "min": 277742,
-   "gzip": 79043,
-   "brotli": 67459
+   "min": 283098,
+   "gzip": 80905,
+   "brotli": 69041
   },
   "entry:model": {
    "min": 40093,
@@ -41,12 +41,12 @@
   "entry:gltf": {
    "min": 154791,
    "gzip": 47466,
-   "brotli": 40606
+   "brotli": 40652
   },
   "entry:modeling": {
-   "min": 15517,
-   "gzip": 6416,
-   "brotli": 5712
+   "min": 21149,
+   "gzip": 8439,
+   "brotli": 7477
   },
   "entry:sculpt": {
    "min": 5937,
@@ -64,9 +64,9 @@
    "brotli": 12998
   },
   "entry:mesh": {
-   "min": 211217,
-   "gzip": 71785,
-   "brotli": 60836
+   "min": 218273,
+   "gzip": 73689,
+   "brotli": 62497
   },
   "entry:shrinkwrap": {
    "min": 56188,
@@ -129,24 +129,24 @@
    "brotli": 762
   },
   "entry:agent-scene": {
-   "min": 196231,
-   "gzip": 59549,
-   "brotli": 51498
+   "min": 198395,
+   "gzip": 60310,
+   "brotli": 52173
   },
   "entry:agent-scene+lazy": {
-   "min": 521318,
-   "gzip": 173529,
-   "brotli": 151186
+   "min": 554003,
+   "gzip": 185152,
+   "brotli": 161241
   },
   "entry:agent-asset": {
-   "min": 290533,
-   "gzip": 90002,
-   "brotli": 78364
+   "min": 288753,
+   "gzip": 89153,
+   "brotli": 77831
   },
   "entry:agent-asset+lazy": {
-   "min": 557359,
-   "gzip": 184007,
-   "brotli": 160003
+   "min": 586100,
+   "gzip": 194020,
+   "brotli": 168904
   },
   "entry:hdri": {
    "min": 8075,
@@ -164,24 +164,24 @@
    "brotli": 1425
   },
   "scene:lit-box": {
-   "min": 209451,
-   "gzip": 57034,
-   "brotli": 48658
+   "min": 214877,
+   "gzip": 58928,
+   "brotli": 50227
   },
   "scene:gltf-box": {
-   "min": 268357,
-   "gzip": 76237,
-   "brotli": 65528
+   "min": 273787,
+   "gzip": 78107,
+   "brotli": 67034
   },
   "scene:agent-scene": {
-   "min": 300528,
-   "gzip": 86909,
-   "brotli": 74567
+   "min": 308000,
+   "gzip": 89595,
+   "brotli": 76794
   },
   "scene:agent-scene+lazy": {
-   "min": 625615,
-   "gzip": 200890,
-   "brotli": 174248
+   "min": 663608,
+   "gzip": 214440,
+   "brotli": 185852
   }
  }
 }

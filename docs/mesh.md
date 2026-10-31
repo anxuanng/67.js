@@ -197,7 +197,7 @@ These three (and `bevel`, below) work as edits and as stack nodes:
 
 ### Modifier stack
 
-A recipe mesh may carry `stack`, a list of `mirror`, `array`, `solidify`, `bevel`, `subdivide`, `uv_unwrap`, `set_position`, `displace`, `decimate` and `remesh` nodes (up to 16) evaluated after the
+A recipe mesh may carry `stack`, a list of `mirror`, `array`, `solidify`, `bevel`, `subdivide`, `uv_unwrap`, `set_position`, `displace`, `decimate`, `remesh`, `weld`, `triangulate`, `edge_split`, `smooth`, `simple_deform` and `cast` nodes (up to 16) evaluated after the
 edits without changing them, as Blender's modifier stack. Every prefix (the edit result, then each node) is cached
 by its recipe text in a least-recently-used cache bounded at 64 entries and 64 MiB, so changing a late node reuses
 the earlier work. Results list one entry per node with `cached: true` when reused. `meshCacheStats()` reports hits
@@ -205,6 +205,21 @@ and misses. `evaluateMeshStack(mesh, stack, { cache, cacheKey })` runs a stack o
 
 The `mesh_stack` tool sets the whole stack in one revision. `apply: n` moves the first `n` nodes into the edit log,
 as Blender's Apply modifier, which leaves the result unchanged.
+
+### Whole-mesh modifiers
+
+`weld`, `triangulate`, `edge_split`, `smooth`, `simple_deform` and `cast` take no selection and no name, and work as edits or stack nodes. Their fields and defaults are plain data in `MESH_MODIFIER_NOTES` (`src/agent-scene-capabilities.js`), which `scene_capabilities` returns as `meshModifiers`; the code is in `src/mesh-modifiers.js` and `src/mesh-restructure.js`.
+
+| op | fields | does |
+| --- | --- | --- |
+| `weld` | `distance` (0.001) | Merges vertices closer than the distance, as Merge by Distance; faces that collapse go. |
+| `triangulate` | `minVertices` (4) | Cuts faces with that many corners or more into triangles; tags, uv and winding carry over. |
+| `edge_split` | `angle` (30) | Gives each smooth fan of faces its own vertex, so edges bending more than `angle` degrees, and edges shared by three faces, come apart. |
+| `smooth` | `factor` (0.5), `iterations` (1, up to 64) | Moves each vertex `factor / 2` toward the mean of its edge neighbours. |
+| `simple_deform` | `mode`, `axis` (z), `angle` (45) or `factor` (0.5) | Twist and bend take `angle` degrees, taper and stretch take `factor`, both measured over the mesh extent along the axis. A mesh with no extent along it stays as it is. |
+| `cast` | `factor` (0.5), `size` (0) | Blends vertices toward a sphere about the local origin; size 0 uses the mean vertex distance. |
+
+`triangulate` and `edge_split` check their output size before building it, against the same vertex and face limits as the other edits. Each op has cases in `tests/fixtures/blender/cases.json` and matches Blender 5.2 with no listed difference. Not yet: `screw`, `skin`, `wireframe`, `lattice`, `curve`, `hook`, `wave`, `shrinkwrap`, `weighted_normal`, `smooth_by_angle` and `scatter_on_surface` as stack nodes (`instances` already scatters), and cast shapes other than the sphere.
 
 ### Field expressions
 
@@ -372,7 +387,8 @@ cells). The mesh must be closed, and the result carries no tags or attributes.
 `generateAssetLods` for a static imported asset) returns level 0, the input, and one level for each ratio, from strictly
 decreasing ratios in (0, 1), up to 8. Each level has `triangles`, `error` (the farthest its vertices lie from the input surface, in
 the input's units) and `relativeError` (over the bounds diagonal); the asset form returns a whole asset per level.
-Skinned and morphed parts are refused. `surfaceDeviation(a, b)` gives the vertex Hausdorff distance both ways.
+Skinned and morphed parts are refused. `surfaceDeviation(a, b)` gives the vertex Hausdorff distance both ways. Hand the levels to a
+part as `lods` and `Renderer67` picks one per instance by its size on screen: see `docs/culling-lod.md`.
 
 Why our own collapse and not meshoptimizer 1.3.0 (npm, MIT, 2026-09-25): on the same sphere, torus and open bowl at
 ratios 0.5, 0.2 and 0.05 our Hausdorff error was 0.25 to 0.85 of its error (0.0088 against 0.0153 at 0.5 and 0.0647 against 0.0773

@@ -9,7 +9,7 @@ import { selectFaces } from './mesh-select.js';
 export const DISPLACE_DIRECTIONS = Object.freeze(['normal', 'x', 'y', 'z']);
 const AXIS_DIRECTIONS = new Map([['x', [1, 0, 0]], ['y', [0, 1, 0]], ['z', [0, 0, 1]]]);
 
-function withPositions(mesh, positions) {
+export function withPositions(mesh, positions) {
   return createMeshData({
     positions, faceOffsets: mesh.faceOffsets, cornerVertices: mesh.cornerVertices,
     edgeVertices: mesh.edgeVertices, cornerEdges: mesh.cornerEdges, attributes: mesh.attributes,

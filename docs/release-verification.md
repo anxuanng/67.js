@@ -1,5 +1,19 @@
 # Release verification
 
+## Unreleased: preview shares the package chunks
+
+The MCP preview page no longer bundles its own engine copy; it imports the chunks of the package build.
+Source checks used Windows Node.js, installed Chrome and CPU SwiftShader. Registry publication was not checked.
+
+| Check | Measured result |
+| --- | --- |
+| Archive | 904,975 bytes before, 666,214 after, so 382,362 bytes are free under 1 MiB. |
+| Node tests | 1129 tests passed. |
+| Clean source archive | `npm run smoke:package` passed. |
+| Installed MCP CLI | `npm run smoke:mcp-package` (not protocol only) passed with a modern and a legacy client, and checked every `previewChunks` hash. |
+| Real character | `npm run smoke:character` passed on the GPU. |
+| First scene | Median of runtime launch, page load and first scene on SwiftShader: 981 ms before (7 runs), 974 ms after (11 runs). |
+
 ## 0.9.1
 
 This patch updates the packaged roadmap and standalone MCP command. Runtime behavior matches the verified `0.9.0` source below.

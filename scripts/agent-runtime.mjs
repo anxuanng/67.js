@@ -4,6 +4,7 @@ import { existsSync } from 'node:fs';
 import { lstat, mkdir, readFile, unlink, writeFile } from 'node:fs/promises';
 import { dirname, isAbsolute, join } from 'node:path';
 import { createRequire } from 'node:module';
+import { fileURLToPath } from 'node:url';
 import packageMetadata from '../package.json' with { type: 'json' };
 import { AGENT_SCENE_CAPABILITIES, AGENT_SCENE_DEFAULT_LIMITS, RENDER_PASS_NAMES, RENDER_PASS_DEPTH_RANGE } from '../src/agent-scene-capabilities.js';
 import { createAgentAssetCatalog } from './agent-asset-catalog.mjs';
@@ -22,6 +23,8 @@ const MAXIMUM_QUEUED_CALLS = 16;
 const MAXIMUM_GLB_BYTES = 32 * 1024 * 1024;
 const MAXIMUM_KEPT_GLBS = 8;
 const EVALUATION_TIMEOUT_MS = 30000;
+// The preview page imports engine chunks that sit beside the package entries, one folder above preview.js.
+const ENGINE_CHUNK_URL = /^\/[\w.-]+\.js$/;
 const html = '<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;height:100%;background:#182126}canvas{display:block;width:100vw;height:100vh}</style></head><body><canvas></canvas><script type="module" src="/preview.js"></script></body></html>';
 
 /** Local, serialized browser preview. No browser is launched until scene creation. */
@@ -135,6 +138,18 @@ export function createAgentRuntime({ backend = 'gpu', browser: browserPath, memo
     }
   }
 
+  // The page shares engine chunks with the package entries, so it asks for them by name next to preview.js.
+  function serveEngineChunk(url, response) {
+    const chunkDirectory = fileURLToPath(new URL('../', previewUrl));
+    readFile(join(chunkDirectory, url.slice(1))).then(bytes => {
+      response.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+      response.end(bytes);
+    }, () => {
+      response.writeHead(404);
+      response.end();
+    });
+  }
+
   // Mesh booleans load Manifold and recipe physics loads Rapier, both optional peer dependencies, from the host's
   // node_modules. Without one the page gets a 404 and the edit reports the install command.
   function serveVendorFile({ resolve, type }, response) {
@@ -176,6 +191,10 @@ export function createAgentRuntime({ backend = 'gpu', browser: browserPath, memo
         const vendor = request.method === 'GET' ? VENDOR_FILES[request.url] : undefined;
         if (vendor) {
           serveVendorFile(vendor, response);
+          return;
+        }
+        if (request.method === 'GET' && request.url !== '/preview.js' && ENGINE_CHUNK_URL.test(request.url)) {
+          serveEngineChunk(request.url, response);
           return;
         }
         if (request.method !== 'GET' || !['/', '/preview.js'].includes(request.url)) {

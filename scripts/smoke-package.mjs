@@ -7,6 +7,7 @@ import { createHash } from 'node:crypto';
 
 const metadata = JSON.parse(await readFile('package.json', 'utf8'));
 const release = JSON.parse(await readFile('public/release.json', 'utf8'));
+const sizeBudgets = JSON.parse(await readFile('bench/size/budgets.json', 'utf8'));
 const archive = resolve('public', release.tarball.slice(1));
 const binary = await readFile(archive);
 assert.equal(release.version, metadata.version);
@@ -31,7 +32,7 @@ if (published) {
   const sourcePackResult = JSON.parse(sourcePack.stdout);
   const packedSource = Array.isArray(sourcePackResult) ? sourcePackResult[0] : sourcePackResult[metadata.name];
   assert.ok(packedSource?.filename, 'npm pack must return a source archive.');
-  assert.ok(packedSource.size < 1024 * 1024, 'The current source package must fit within a 1 MiB archive.');
+  assert.ok(packedSource.size <= sizeBudgets.archiveBytes, `The current source package is ${packedSource.size} bytes, over its archive budget of ${sizeBudgets.archiveBytes} in bench/size/budgets.json.`);
   const sourceArchive = resolve(consumer, packedSource.filename);
   installTarget = `67js@file:${sourceArchive.replaceAll('\\', '/')}`;
 }
