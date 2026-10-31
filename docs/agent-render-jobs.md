@@ -264,15 +264,16 @@ This conservative repair step prevents two recovery processes from deleting a ne
 | Retained records | 32 |
 | Total store bytes | 512 MiB |
 | Combined output bytes per job | 128 MiB |
-| PNG artifact bytes | 1 MiB each |
+| PNG artifact bytes | 12 MiB each (a 1920x1080 frame) |
 | Snapshot JSON | 1 MiB |
 | Asset bytes | 16 MiB |
-| Dimensions | 64 to 1024 pixels each |
+| Dimensions | 64 to 1920 pixels each, at most 1920x1080 pixels in all (1080x1920 fits) |
 | Video frame rate | 1 to 30 fps |
 | Duration | 0.1 to 60 seconds |
 | Maximum video frames | 900 |
 | Still frames | 8 |
-| Job elapsed deadline | Five minutes |
+| Job elapsed deadline | 60 seconds plus 2 seconds per frame, multiplied for frames larger than 1024x576 (360 frames at 1024x576 get 13 minutes), never more than 30 minutes |
+| Video encoder drain and finalization | 30 seconds each |
 | Close settlement deadline | Five seconds |
 
 The controller rejects odd MP4 dimensions.

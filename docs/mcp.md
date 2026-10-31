@@ -54,7 +54,7 @@ The MCP connection uses stdin and stdout, without an HTTP MCP listener.
 The browser path is optional for a standard Google Chrome installation. Pass `--browser` for another Chromium executable.
 Using Node directly also avoids shell-specific npm launcher behavior in MCP clients on Windows.
 `--backend` accepts `gpu` or `cpu` and defaults to `gpu`.
-`--memory` accepts an integer from 32 to 256 MiB and defaults to 192.
+`--memory` accepts an integer from 32 to 384 MiB and defaults to 192. A 1920x1080 frame needs about 175 MiB of render targets (measured, 4 samples), so the default fits an empty room at that size and 256 leaves room for textures; raise it for textured scenes.
 
 `--assets` selects an absolute directory containing self-contained GLB files.
 The asset catalog reads regular files directly inside that directory, with limits of 64 files and 16 MiB per file.
@@ -207,7 +207,7 @@ The [scene contract](agent-scene.md) defines the geometry fields, transforms, ma
 | Unique geometry buffers | 32 MiB |
 | Recipe or command JSON | 1 MiB |
 | Incoming stdio buffer | 2 MiB |
-| Preview dimensions | 64 to 1024 pixels per dimension |
+| Preview dimensions | 64 to 1024 pixels per dimension (render jobs: up to 1920x1080) |
 | Default preview dimensions | 768 by 512 pixels |
 | PNG payload | 1 MiB |
 

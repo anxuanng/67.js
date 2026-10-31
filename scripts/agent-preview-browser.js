@@ -69,7 +69,7 @@ function renderInfo(renderer) {
 }
 
 function hasPatternTextures(parts) {
-  return parts.some(part => part.material.boxMapScale);
+  return parts.some(part => part.material.boxMapScale || part.material.emissiveMap);
 }
 
 // replaceParts streams only untextured parts, so a topology change around pattern textures takes a new renderer.

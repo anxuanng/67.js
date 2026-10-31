@@ -14,9 +14,9 @@
  },
  "bundles": {
   "entry:core": {
-   "min": 283499,
-   "gzip": 80972,
-   "brotli": 69112
+   "min": 283595,
+   "gzip": 81018,
+   "brotli": 69071
   },
   "entry:model": {
    "min": 40093,
@@ -139,24 +139,24 @@
    "brotli": 762
   },
   "entry:agent-scene": {
-   "min": 204745,
-   "gzip": 62551,
-   "brotli": 54219
+   "min": 206699,
+   "gzip": 63263,
+   "brotli": 54923
   },
   "entry:agent-scene+lazy": {
-   "min": 597754,
-   "gzip": 202334,
-   "brotli": 176571
+   "min": 614147,
+   "gzip": 210233,
+   "brotli": 185269
   },
   "entry:agent-asset": {
-   "min": 299072,
-   "gzip": 93045,
-   "brotli": 81048
+   "min": 300910,
+   "gzip": 93744,
+   "brotli": 81565
   },
   "entry:agent-asset+lazy": {
-   "min": 633820,
-   "gzip": 212853,
-   "brotli": 185359
+   "min": 650097,
+   "gzip": 220739,
+   "brotli": 193778
   },
   "entry:hdri": {
    "min": 8075,
@@ -184,14 +184,14 @@
    "brotli": 67034
   },
   "scene:agent-scene": {
-   "min": 314066,
-   "gzip": 91720,
-   "brotli": 78757
+   "min": 315953,
+   "gzip": 92416,
+   "brotli": 79459
   },
   "scene:agent-scene+lazy": {
-   "min": 707075,
-   "gzip": 231506,
-   "brotli": 201092
+   "min": 723401,
+   "gzip": 239390,
+   "brotli": 209757
   }
  }
 }

@@ -213,7 +213,7 @@ export async function renderMedia(values = process.argv.slice(2)) {
       const audioArguments = audioPath && existsSync(audioPath) ? ['-ss', String(start), '-i', audioPath] : [];
       encoder = createFrameEncoder({ executable: ffmpeg, output, fps, format: captureFormat,
         backend: encoderBackend, audioArguments, maximumFrameBytes: 64 * 1024 * 1024,
-        maximumOutputBytes: Number.MAX_SAFE_INTEGER, timeoutMs: 30000 });
+        maximumOutputBytes: Number.MAX_SAFE_INTEGER });
       const frameCount = Math.ceil(duration * fps);
       const captureSequenceStarted = performance.now();
       for (let frame = 0; frame < frameCount; frame++) {

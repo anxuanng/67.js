@@ -2,14 +2,34 @@ import { mkdir, open, readFile, writeFile, rename, unlink, rmdir, readdir, lstat
 import { randomUUID, createHash } from 'node:crypto';
 import { isAbsolute, join, resolve } from 'node:path';
 
-import { RENDER_PASS_NAMES, VIDEO_ENCODERS, AUDIO_FILE_PATTERN, MAXIMUM_VIDEO_SECONDS } from '../src/agent-scene-capabilities.js';
+import { RENDER_PASS_NAMES, VIDEO_ENCODERS, AUDIO_FILE_PATTERN, MAXIMUM_VIDEO_SECONDS, MAXIMUM_JOB_SIDE, MAXIMUM_JOB_PIXELS } from '../src/agent-scene-capabilities.js';
 import { normalizeFilmTimeline, filmTimelineDuration } from '../src/film-timeline.js';
 import { PATH_TRACER_JOB_LIMITS } from '../src/path-tracer-capabilities.js';
 
 const UUID =/^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
 const STATES = ['queued', 'running', 'finalizing', 'completed', 'cancelling', 'cancelled', 'failed', 'interrupted'];
 const TERMINAL = new Set(['completed', 'cancelled', 'failed', 'interrupted']);
-const DEFAULT_LIMITS = Object.freeze({ maxRecords: 32, maxStoreBytes: 512 * 1024 ** 2, maxOutputBytes: 128 * 1024 ** 2, maxFrameBytes: 1024 ** 2, deadlineMs: 300000, cleanupMs: 5000 });
+/** Hard ceiling on one job's elapsed time. The deadline below it grows with the job's frames and pixels. */
+export const MAXIMUM_JOB_DEADLINE_MS = 30 * 60 * 1000;
+const BASE_DEADLINE_MS = 60 * 1000;
+const FRAME_ALLOWANCE_MS = 2000;
+const REFERENCE_FRAME_PIXELS = 1024 * 576;
+/** A 1920x1080 PNG of a busy scene runs to several MiB, so a frame may be up to 12 MiB. */
+const DEFAULT_LIMITS = Object.freeze({ maxRecords: 32, maxStoreBytes: 512 * 1024 ** 2, maxOutputBytes: 128 * 1024 ** 2, maxFrameBytes: 12 * 1024 ** 2, deadlineMs: MAXIMUM_JOB_DEADLINE_MS, cleanupMs: 5000 });
+
+/** Time the page needs to start, draw the scene and encode the PNG around a path trace that runs for its whole maxSeconds. */
+const PATH_TRACE_OVERHEAD_MS = 60 * 1000;
+
+/**
+ * 60 s plus 2 s per frame, scaled up for frames larger than 1024x576, never above the ceiling. A path trace may run for
+ * its own maxSeconds, so its deadline also reaches that plus the overhead and the trace stops itself first.
+ */
+export function jobDeadlineMs({ frameCount, width, height, renderer }, maximumMs = MAXIMUM_JOB_DEADLINE_MS) {
+  const sizeScale = Math.max(1, (width * height) / REFERENCE_FRAME_PIXELS);
+  const frameDeadline = Math.ceil(BASE_DEADLINE_MS + frameCount * FRAME_ALLOWANCE_MS * sizeScale);
+  const traceDeadline = renderer?.type === 'pathTracer' ? Math.ceil(renderer.maxSeconds * 1000) + PATH_TRACE_OVERHEAD_MS : 0;
+  return Math.min(maximumMs, Math.max(frameDeadline, traceDeadline));
+}
 const MAXIMUM_JSON_BYTES = 1024 ** 2;
 const MAXIMUM_ASSET_BYTES = 16 * 1024 ** 2;
 /** Sibling folder of the job directories where the runtime keeps GLB exports; the store never reads or counts it. */
@@ -61,8 +81,9 @@ function jsonCopy(value, maximum = MAXIMUM_JSON_BYTES) {
 function settingsFrom(input, clips, recipe) {
   objectKeys(input, ['kind', 'width', 'height', 'fps', 'duration', 'animation', 'motion', 'rendererTime', 'passes', 'renderer', 'timeline', 'audio', 'encoder'], 'settings');
   if (!['image', 'stills', 'video'].includes(input.kind)) throw new TypeError('kind must be image, stills or video.');
-  const width = boundedNumber(input.width, 64, 1024, 'width', true);
-  const height = boundedNumber(input.height, 64, 1024, 'height', true);
+  const width = boundedNumber(input.width, 64, MAXIMUM_JOB_SIDE, 'width', true);
+  const height = boundedNumber(input.height, 64, MAXIMUM_JOB_SIDE, 'height', true);
+  if (width * height > MAXIMUM_JOB_PIXELS) throw new RangeError('width x height must not exceed 1920x1080 pixels.');
   if (input.kind === 'video' && (width % 2 || height % 2)) throw new RangeError('Video dimensions must be even.');
   const fps = boundedNumber(input.fps ?? 24, 1, 30, 'fps', true);
   const timelineStart = timelineStartFrom(input, recipe);
@@ -406,7 +427,7 @@ export async function createAgentRenderJobs({ root, run, limits: inputLimits = {
       record.reason = job.failure;
       controller.abort(new Error(job.failure));
       persist(job).catch(() => {});
-    }, limits.deadlineMs);
+    }, jobDeadlineMs(record.settings, limits.deadlineMs));
     const renamed = [];
     try {
       if (controller.signal.aborted) throw controller.signal.reason;
