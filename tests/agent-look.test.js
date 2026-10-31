@@ -27,7 +27,7 @@ test('default look is complete, detached JSON and idempotent', () => {
   });
   assert.deepEqual(look.effects, {
     saturation: 1, contrast: 1, temperature: 0, vignette: 0, grain: 0,
-    ambientOcclusion: 0.8, ambientOcclusionRadius: 0.5,
+    ambientOcclusion: 0, ambientOcclusionRadius: 0.5,
     bloom: { strength: 0.12, threshold: 1, radius: 1 }, exposure: 1,
   });
   assert.deepEqual(look.shadow, { target: [0, 1, 0], extent: 3.5, distance: 8, near: 0.1, far: 15 });

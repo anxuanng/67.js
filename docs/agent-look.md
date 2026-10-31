@@ -130,7 +130,7 @@ High radiance can clip at the renderer's half-float HDR target limit of `65504` 
 
 ## Lighting setups
 
-A recipe with no lighting settings uses `daylight`: a small procedural sky map (128 by 64, generated in code, no files or URLs) lights every surface and shows in metal and glossy reflections, with a warm key light for shadows.
+A recipe with no lighting settings uses `daylight` (and no occlusion): a small procedural sky map (128 by 64, generated in code, no files or URLs) lights every surface and shows in metal and glossy reflections, with a warm key light for shadows.
 The four setups are `daylight`, `overcast` (even grey light, weak key), `sunset` (low warm sun, dark blue zenith) and `studio` (neutral room with three soft boxes).
 Setting `setup` through `set-environment` resets `lightDirection`, `keyColor`, `keyIntensity`, `fillIntensity`, `ambientIntensity`, `skyTop` and `skyBottom` to that setup; fields in the same call still win, and fields set earlier are replaced.
 Remote URLs and HDRI files are not accepted from tool input.
@@ -187,7 +187,7 @@ See [volume fog](volumetric.md) for renderer requirements and frame-time limits.
 The controls reuse `resolveEffects` with a preview bloom strength of `0.12`.
 Exposure remains independent and maps to `frame.exposure`.
 Bloom strength zero disables bloom.
-Ambient occlusion reads the depth texture, so it needs the HDR depth target that previews use. The program compiles and its half-resolution target allocates on first use. On SwiftShader at 960 by 540 it adds about 16 ms to a 190 ms frame (measured, 8 percent). The engine itself leaves it off unless a frame asks; only recipes default to `0.8`. Pixels that direct light already brightens keep less of it, because occlusion belongs to indirect light.
+Ambient occlusion reads the depth texture, so it needs the HDR depth target that previews use. The program compiles and its half-resolution target allocates on first use. On SwiftShader at 960 by 540 it adds about 16 ms to a 190 ms frame (measured, 8 percent). It is off by default: against Cycles on 10 reference scenes it improved no score by more than 0.002 and made most slightly worse, because the largest gaps are cast shadow shape and reflections, not contact darkening. Pixels that direct light already brightens keep less of it, because occlusion belongs to indirect light.
 
 | Field | Default | Range |
 | --- | --- | --- |
@@ -197,7 +197,7 @@ Ambient occlusion reads the depth texture, so it needs the HDR depth target that
 | `temperature` | `0` | `-1` to `1` |
 | `vignette` | `0` | `0` to `1` |
 | `grain` | `0` | `0` to `0.1` |
-| `ambientOcclusion` | `0.8` | `0` to `1`. Screen-space contact darkening; `0` skips the pass and its program |
+| `ambientOcclusion` | `0` | `0` to `1`. Screen-space contact darkening, off by default; any value above `0` runs the pass |
 | `ambientOcclusionRadius` | `0.5` | `0.01` to `100` world units |
 | `bloom.strength` | `0.12` | `0` to `2` |
 | `bloom.threshold` | `1` | `0` to `10` |

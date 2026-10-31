@@ -21,7 +21,7 @@ export const RECIPE_ALPHA_MODES = Object.freeze(['opaque', 'blend']);
 // Named lighting setups (see lighting-setups.js) and the occlusion strength that recipes get when they set none.
 export const LIGHTING_SETUP_NAMES = Object.freeze(['daylight', 'overcast', 'sunset', 'studio']);
 export const DEFAULT_LIGHTING_SETUP = 'daylight';
-export const DEFAULT_AMBIENT_OCCLUSION = 0.8;
+export const DEFAULT_AMBIENT_OCCLUSION = 0;
 
 export const AGENT_SCENE_CAPABILITIES = Object.freeze({
   format: '67js.scene', schemaVersion: 1,

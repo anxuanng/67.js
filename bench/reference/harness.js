@@ -1,7 +1,6 @@
 // Runs in the page: draws one reference scene, and describes it as plain data for Blender.
 import { Renderer67 } from '/src/renderer.js';
 import { REFERENCE_SCENES } from './scenes.js';
-import { DEFAULT_AMBIENT_OCCLUSION } from '/src/agent-scene-capabilities.js';
 
 function encodeBytes(typedArray) {
   const bytes = new Uint8Array(typedArray.buffer, typedArray.byteOffset, typedArray.byteLength);
@@ -71,7 +70,7 @@ function describeScene(id, scene) {
   };
 }
 
-async function renderReferenceScene(id, { describe }) {
+async function renderReferenceScene(id, { describe, ambientOcclusion = 0, ambientOcclusionRadius = 0.5 }) {
   const scene = await REFERENCE_SCENES[id]();
   const canvas = document.querySelector('canvas');
   const renderer = new Renderer67(canvas, scene.parts, {
@@ -79,7 +78,7 @@ async function renderReferenceScene(id, { describe }) {
     environment: scene.environment, shadowBounds: scene.shadow,
   });
   renderer.resize();
-  const frame = { ...scene.camera, environment: scene.environment, time: 0, exposure: 1, effects: { ambientOcclusion: DEFAULT_AMBIENT_OCCLUSION } };
+  const frame = { ...scene.camera, environment: scene.environment, time: 0, exposure: 1, effects: { ambientOcclusion, ambientOcclusionRadius } };
   renderer.render(frame);
   renderer.render(frame);
   const debug = renderer.context.getExtension('WEBGL_debug_renderer_info');

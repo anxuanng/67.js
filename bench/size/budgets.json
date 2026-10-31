@@ -31,7 +31,7 @@
   "entry:agent-scene": 129200,
   "entry:agent-asset": 136600,
   "entry:hdri": 3300,
-  "scene:lit-box": 56000,
+  "scene:lit-box": 56100,
   "scene:gltf-box": 75300,
   "scene:agent-scene": 155700
  }
