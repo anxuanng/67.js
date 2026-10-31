@@ -143,6 +143,20 @@ rounded to a radius of about 0.01 m.`,
     ],
   },
   {
+    id: 'pebble',
+    prompt: `A smooth river pebble: 0.08 m long (X), 0.03 m tall (Y) and 0.05 m deep (Z), one closed solid with no flat
+faces and no sharp edges, resting on the ground.`,
+    checks: [
+      { kind: 'lint' },
+      { kind: 'parts', max: 1 },
+      { kind: 'size', expected: [0.08, 0.03, 0.05] },
+      { kind: 'ground' },
+      { kind: 'holes', equals: 0 },
+      { kind: 'volume', min: 5.5e-5, max: 8e-5 },
+      { kind: 'triangles', min: 200 },
+    ],
+  },
+  {
     id: 'crate-uv',
     prompt: `A wooden crate that will get a tiled wood texture. The body is a 0.6 m cube. Each of its four sides has a
 recessed panel: a frame about 0.04 m wide around a panel sunk about 0.02 m into the side. On top sits a raised lid,

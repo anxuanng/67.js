@@ -44,7 +44,7 @@ To move to a new Blender release, run `node scripts/parity-manual-snapshot.mjs`.
 | Modeling > Meshes > Primitives | partial | Box, cylinder, sphere and torus. There is no plane, grid, cone, ico sphere or monkey primitive. | | |
 | Modeling > Meshes > Tools | partial | The operations behind extrude and loop cut exist as edits. Spin is covered only by `lathe`. | | #41 |
 | Modeling > Meshes > Selecting | partial | Rules: all, tag, normal, inside, faces, and, or, not, grow, boundary. There is no loop, linked, similar or sharp edge selection. | | #41 |
-| Modeling > Meshes > Editing | partial | 16 edits, including extrude, inset, bevel, loop cut, boolean and merge. There is no bisect, knife, bridge, fill or dissolve. | [Blender results](../tests/fixtures/blender/golden.json) | #41 |
+| Modeling > Meshes > Editing | partial | 26 edits, including extrude, inset, bevel, loop cut, boolean, merge, bisect, bridge, fill, grid fill, dissolve, edge subdivision and a knife by projected polyline. All but the knife match Blender on fixtures; the knife is compared only with a straight plane cut. | [Blender results](../tests/fixtures/blender/golden.json) | #41 |
 | Modeling > Meshes > Properties | partial | `smoothAngle` and face tags. There is no sharp edge attribute or crease. | | #39 |
 | Modeling > Meshes > UVs | partial | `uv_unwrap` with LSCM, axis charts and shelf packing. Patterns can not use the result yet. | | #50 |
 | Modeling > Meshes > Mesh Analysis | partial | `lintMesh` reports topology problems. There is no check for thin walls or intersections. | | #66 |
@@ -83,7 +83,7 @@ To move to a new Blender release, run `node scripts/parity-manual-snapshot.mjs`.
 | Modeling > Modifiers > Generate > Screw Modifier | partial | `lathe` covers a full turn. There is no stack node or screw offset. | | #42 |
 | Modeling > Modifiers > Generate > Skin Modifier | missing | No equivalent. | | #42 |
 | Modeling > Modifiers > Generate > Solidify Modifier | done | Stack node with thickness, offset and even thickness. | [mesh-stack](../tests/mesh-stack.test.js), [Blender results](../tests/fixtures/blender/golden.json) | |
-| Modeling > Modifiers > Generate > Subdivision Surface Modifier | missing | No subdivision. | | #39 |
+| Modeling > Modifiers > Generate > Subdivision Surface Modifier | done | `subdivide` edit and stack node: Catmull-Clark to 4 levels, semi-sharp creases, sharp boundaries, tags, UVs. Counts, area and positions match Blender; volume differs under 1% on four cases. | [src/mesh-subdivide.js](../src/mesh-subdivide.js), [tests/blender-golden.test.js](../tests/blender-golden.test.js), [tests/mesh-subdivide.test.js](../tests/mesh-subdivide.test.js), [pebble task](../bench/agent-modeling/tasks.mjs) | #39 |
 | Modeling > Modifiers > Generate > Triangulate Modifier | missing | Render data is triangulated. There is no node that changes the mesh. | | #42 |
 | Modeling > Modifiers > Generate > Volume to Mesh Modifier | missing | No volume objects. | | |
 | Modeling > Modifiers > Generate > Weld Modifier | partial | `merge_by_distance` is an edit. It is not a stack node. | | #42 |
@@ -225,7 +225,7 @@ To move to a new Blender release, run `node scripts/parity-manual-snapshot.mjs`.
 | Assets, Files, & Data System > Importing & Exporting Files | out of scope | Decided in issue #23: GLB is the exchange format. | | |
 | Add-ons > Node Wrangler | out of scope | Interface for a mouse. | | |
 | Add-ons > Rigify | missing | No rig presets. | | #46 |
-| Add-ons > glTF 2.0 | partial | Import is broad. Export can not write textures, skeletons or clips. | [gltf](../tests/gltf.test.js), [export](../tests/export.test.js) | #49 |
+| Add-ons > glTF 2.0 | partial | Import is broad. Export writes the five texture channels as PNG, skins with joints, morph targets and node clips, and bakes pattern materials with box projected UVs; Blender 5.2 and three.js open the RobotExpressive export with its 43 bones and 14 clips. Not yet: morph weight clips, an MCP export tool. | [gltf](../tests/gltf.test.js), [export](../tests/export.test.js), [round trip](../tests/export-roundtrip.test.js) | #49 |
 | Add-ons > Manage UI Translations | out of scope | Blender interface work. | | |
 | Add-ons > VR Scene Inspection | out of scope | Interface for a person. | | |
 | Advanced | out of scope | Decided in issue #23: 67.js does not run agent code. MCP and the JavaScript API take the place of `bpy`. | | |

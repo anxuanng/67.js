@@ -20,7 +20,18 @@ export const MESH_EDIT_OPERATIONS = Object.freeze({
   bevel: { fields: ['name', 'edges', 'width', 'segments', 'profile', 'clampOverlap'], tags: ['strip', 'corner'] },
   loop_cut: { fields: ['name', 'edges', 'cuts', 'factor'], tags: ['band-<k>'] },
   uv_unwrap: { fields: ['seams', 'margin', 'maxDistortion'], tags: [] },
+  subdivide: { fields: ['levels', 'crease', 'sharpness'], tags: [] },
+  fill_holes: { fields: ['name', 'sides'], tags: ['fill'] },
+  dissolve_faces: { fields: ['select', 'name'], tags: ['merged'] },
+  dissolve_edges: { fields: ['edges', 'name'], tags: ['merged'] },
+  dissolve_verts: { fields: ['verts', 'name'], tags: ['merged'] },
+  dissolve_limited: { fields: ['edges', 'angle', 'name'], tags: ['merged'] },
+  bisect_plane: { fields: ['name', 'point', 'normal', 'distance', 'clearInner', 'clearOuter', 'fill'], tags: ['inner', 'outer', 'cap'] },
+  bridge_edge_loops: { fields: ['edges', 'name', 'segments', 'twistOffset'], tags: ['bridge'] },
+  subdivide_edges: { fields: ['edges', 'name', 'cuts'], tags: ['split'] },
+  grid_fill: { fields: ['edges', 'name'], tags: ['fill'] },
+  knife_project: { fields: ['name', 'path', 'direction'], tags: ['cut'] },
 });
 
-export const STACK_OPERATIONS = Object.freeze(['mirror', 'array', 'solidify', 'bevel', 'uv_unwrap']);
+export const STACK_OPERATIONS = Object.freeze(['mirror', 'array', 'solidify', 'bevel', 'uv_unwrap', 'subdivide']);
 export const MAX_STACK_NODES = 16;
