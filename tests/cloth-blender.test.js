@@ -45,6 +45,63 @@ test('a hanging sheet ends where Blender hangs it, within 1 percent of the sheet
   assert.ok(Math.abs(Math.min(...ours.map(point => point[1])) - Math.min(...theirs.map(point => point[1]))) < 0.01, 'free edge height');
 });
 
+function stretchAndArea(points, restLength) {
+  const at = (row, column) => points[row * (SEGMENTS + 1) + column];
+  let longest = 0;
+  let area = 0;
+  for (let row = 0; row <= SEGMENTS; row++) {
+    for (let column = 0; column <= SEGMENTS; column++) {
+      for (const [rowStep, columnStep] of [[0, 1], [1, 0]]) {
+        if (row + rowStep > SEGMENTS || column + columnStep > SEGMENTS) continue;
+        const other = at(row + rowStep, column + columnStep);
+        longest = Math.max(longest, Math.hypot(...at(row, column).map((value, axis) => value - other[axis])) / restLength);
+      }
+      if (row < SEGMENTS && column < SEGMENTS) {
+        const corner = at(row, column);
+        const right = at(row, column + 1);
+        const below = at(row + 1, column);
+        const diagonal = at(row + 1, column + 1);
+        for (const [first, second, third] of [[corner, right, below], [right, diagonal, below]]) {
+          const u = second.map((value, axis) => value - first[axis]);
+          const v = third.map((value, axis) => value - first[axis]);
+          area += Math.hypot(u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]) / 2;
+        }
+      }
+    }
+  }
+  return { longest, areaRatio: area / (SHEET_SIZE * SHEET_SIZE) };
+}
+
+const SHEET_SIZE = 1.6;
+
+function drapeScene(seconds) {
+  return createAgentScene(recipe(
+    [{ id: 'sheet', geometry: 'sheet', material: 'paint', translation: [0, 1, 0], rotation: [-0.7071068, 0, 0, 0.7071068], scale: [SHEET_SIZE, SHEET_SIZE, 1] },
+      { id: 'ball', geometry: 'ball', material: 'paint', scale: [BALL_RADIUS, BALL_RADIUS, BALL_RADIUS] }],
+    { duration: seconds, sheets: [{ node: 'sheet' }], colliders: [{ node: 'ball', shape: 'ball' }] },
+  ));
+}
+
+test('the draped sheet stays within 10 percent of its rest edge lengths and 5 percent of its rest area', () => {
+  const scene = drapeScene(4);
+  for (const time of [1, 2, 4]) {
+    scene.sampleMotion(time);
+    const { longest, areaRatio } = stretchAndArea(worldPositions(scene), SHEET_SIZE / SEGMENTS);
+    assert.ok(longest < 1.1, `longest edge at ${time} s is ${longest} times its rest length`);
+    assert.ok(Math.abs(areaRatio - 1) < 0.05, `area at ${time} s is ${areaRatio} times its rest area`);
+  }
+});
+
+test('the Blender drape bake had not settled at the compared frame, nor at 8 seconds, so the gap is a timing and model difference', () => {
+  const bake = golden.cases['drape-over-ball'];
+  const motion = (first, second) => meanDistance(bake.history[first], bake.history[second]);
+  assert.equal(bake.framesSimulated, 481);
+  assert.ok(motion('121', '181') > 0.1, 'still moving between 2 and 3 seconds');
+  assert.ok(motion('361', '481') > 0.2, 'still moving between 6 and 8 seconds');
+  const blender = stretchAndArea(bake.positions, SHEET_SIZE / SEGMENTS);
+  assert.ok(blender.longest < 1.1, 'Blender stretches little too, so stiffness does not explain the gap');
+});
+
 test('a sheet dropped on a ball stays outside it in 67.js and in Blender, though the drape shapes differ', () => {
   const scene = createAgentScene(recipe(
     [{ id: 'sheet', geometry: 'sheet', material: 'paint', translation: [0, 1, 0], rotation: [-0.7071068, 0, 0, 0.7071068], scale: [1.6, 1.6, 1] },

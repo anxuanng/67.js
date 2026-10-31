@@ -24,7 +24,7 @@ def reset_scene():
     scene = bpy.context.scene
     scene.render.fps = FRAMES_PER_SECOND
     scene.frame_start = 1
-    scene.frame_end = SECONDS * FRAMES_PER_SECOND + 1
+    scene.frame_end = 4 * SECONDS * FRAMES_PER_SECOND + 1
     scene.gravity = (0.0, 0.0, -9.81)
     return scene
 
@@ -68,16 +68,33 @@ def add_cloth(obj, pinned_indices, vertex_mass):
     modifier.collision_settings.use_self_collision = False
     modifier.collision_settings.distance_min = 0.01
     modifier.point_cache.frame_start = 1
-    modifier.point_cache.frame_end = SECONDS * FRAMES_PER_SECOND + 1
+    modifier.point_cache.frame_end = 4 * SECONDS * FRAMES_PER_SECOND + 1
     return modifier
 
 
-def final_positions(obj):
-    scene = bpy.context.scene
-    for frame in range(scene.frame_start, scene.frame_end + 1):
-        scene.frame_set(frame)
+HISTORY_FRAMES = (61, 91, 121, 181, 241, 361, 481)
+
+
+def vertex_positions(obj):
     evaluated = obj.evaluated_get(bpy.context.evaluated_depsgraph_get())
     return [[round(v.co.x, 5), round(v.co.z, 5), round(-v.co.y, 5)] for v in evaluated.data.vertices]
+
+
+def simulate(obj):
+    """Step every frame in order (the cloth cache needs that) and keep the positions at a few frames.
+
+    The comparison frame is the one at SECONDS; the later frames show whether the bake has settled."""
+    scene = bpy.context.scene
+    history = {}
+    for frame in range(scene.frame_start, scene.frame_end + 1):
+        scene.frame_set(frame)
+        if frame in HISTORY_FRAMES:
+            history[str(frame)] = vertex_positions(obj)
+    return {
+        "positions": history[str(SECONDS * FRAMES_PER_SECOND + 1)],
+        "history": history,
+        "framesSimulated": scene.frame_end - scene.frame_start + 1,
+    }
 
 
 def hanging_flag():
@@ -88,7 +105,7 @@ def hanging_flag():
     area = width * height
     vertex_mass = 0.2 * area / ((SEGMENTS + 1) ** 2)
     add_cloth(flag, top_row, vertex_mass)
-    return {"positions": final_positions(flag), "vertexMass": vertex_mass}
+    return {**simulate(flag), "vertexMass": vertex_mass}
 
 
 def drape_over_ball():
@@ -101,7 +118,7 @@ def drape_over_ball():
     ball.collision.thickness_outer = 0.01
     vertex_mass = 0.2 * size * size / ((SEGMENTS + 1) ** 2)
     add_cloth(sheet, [], vertex_mass)
-    return {"positions": final_positions(sheet), "vertexMass": vertex_mass}
+    return {**simulate(sheet), "vertexMass": vertex_mass}
 
 
 cases = {"hanging-flag": hanging_flag(), "drape-over-ball": drape_over_ball()}

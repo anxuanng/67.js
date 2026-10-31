@@ -413,9 +413,24 @@ Blender comparison (`scripts/blender-cloth.py`, Blender 5.2.2, default stiffness
 | Case | Result |
 | --- | --- |
 | 2 x 1.5 m sheet pinned along its top, 2 s | Mean vertex distance 0.08 percent of the height, free edge 1.2485 m against 1.25 m. Both hang straight, so this is a weak test. |
-| 1.6 m sheet dropped on a 0.4 m ball, 2 s | Does not match: the lowest point is -0.47 m in 67.js and 0.35 m in Blender, and the mean vertex distance is 63 percent of the sheet size. Neither enters the ball. Raising `stiffness` and `bend` to 1 changes it to 57 percent. The cause is not found; it may be Blender's cloth damping and collision margins, so no parity is claimed for draping. |
+| 1.6 m sheet dropped on a 0.4 m ball, 2 s | Does not match: mean vertex distance 63 percent of the sheet size (lowest point -0.47 m in 67.js, 0.35 m in Blender). This is a model and timing difference, not a stretch defect (numbers below). No parity is claimed for draping. |
 
-Solvers differ in kind (Blender uses springs with implicit integration; this is position-based), and a reviewer's by-eye comparison of a drape is still open.
+Drape measurements (same 13 x 13 grid, 1.6 m sheet at 1 m, ball radius 0.4 m at the origin, mass 0.2 kg/m2; Blender 5.2.2 default stiffness, quality 8, air damping 1; 67.js defaults):
+
+| | 67.js | Blender |
+| --- | --- | --- |
+| Longest edge over rest length, at 2 s | 1.021 | 1.048 |
+| Mean edge over rest length, at 2 s | 1.001 | 1.007 |
+| Sheet area over rest area, at 2 s | 1.003 | 1.013 |
+| Frames simulated | 481 (8 s, 4 substeps each) | 481 (8 s) |
+| Nearest vertex to the ball centre when resting on it | 0.410 (radius + 0.01 thickness) | 0.427 (radius + 0.01 ball distance + 0.01 cloth distance, plus the 48-segment sphere) |
+| Mean vertex motion in the last 2 s | 0.025 m, nearly settled | 0.30 m, still sliding off the ball |
+
+- Stretch is far inside 10 percent in both solvers, so stiffness or iteration count does not explain the gap; `tests/cloth-blender.test.js` pins the 67.js drape to 10 percent per edge and 5 percent in area.
+- The setups match except collision margins, which differ by 17 mm and are too small to matter.
+- Blender had not settled at the compared frame (2 s, lowest point 0.35 m), nor at 8 s (lowest -0.83 m, still falling): the sheet falls slowly, reaching the ball near 2 s, where 67.js lands within 0.4 s, and then slides off one side. At 8 s the distance is still 58 percent of the sheet size. Matching 67.js `damping` to 3 or 8 only moves the 2 s distance from 63 to 60 or 61 percent, so air drag does not explain it either. The cause is a difference between the models (Blender's cloth is damped springs with its own collision response and falls slowly; this solver is position-based), and nothing was tuned to hide it.
+
+Solvers differ in kind, and a reviewer's by-eye comparison of a drape is still open.
 
 Repeat recordings require identical inputs, creation order, timestep, solver options, and Rapier version.
 Rapier documents cross-platform determinism for its WASM solver under identical initial conditions.
