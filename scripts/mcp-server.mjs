@@ -61,7 +61,7 @@ const materialPattern = z.strictObject({
   seed: z.number().int().min(0).max(2147483647).optional(),
   axis: z.enum(['x', 'y', 'z']).optional().describe('Object axis the grain runs along. Defaults to y.'),
   resolution: z.union([z.literal(256), z.literal(512), z.literal(1024)]).optional().describe('Texture size. Defaults to 512; each pattern takes about 4 MiB at 512.'),
-}).describe('Procedural texture baked for this material. By default it needs no UVs and is projected along the object axes; mapping uv follows the geometry UVs instead. color then tints it (defaults to white), and roughness and metallic scale it.');
+}).describe('Procedural texture; box mapping needs no UVs. color tints it, roughness and metallic scale it.');
 function layerNumber(field, description) {
   const [minimum, maximum] = MATERIAL_LAYER_SCALAR_RANGES[field];
   return z.number()
@@ -454,7 +454,7 @@ const physics = z.strictObject({
   gravity: vector3.optional().describe('Defaults to [0, -9.81, 0].'),
   bodies: z.array(physicsBody).min(1).max(64),
   joints: z.array(physicsJoint).max(64).optional().describe('Joint bodies are the node IDs of physics bodies.'),
-}).describe('Rigid-body physics recorded offline with Rapier at 60 steps a second, then played back by time like motion: scene_look and scene_review motionTime seek into the recording, so a seek back shows the identical frame. Bodies are recipe nodes; scene_inspect reports contacts, sensor events and resting state as numbers. Needs the optional peer dependency @dimforge/rapier3d-compat. A node cannot have a physics body and a motion translation or rotation track.');
+}).describe('Rigid-body physics recorded offline with Rapier at 60 steps a second and played back by time: motionTime seeks into the recording. Bodies are recipe nodes; scene_inspect reports contacts and resting state. Needs the optional peer @dimforge/rapier3d-compat. A node cannot have both a body and a motion translation or rotation track.');
 // The full motion schema (tracks, ik, constraints, drivers) is in scene_create's recipe. scene_apply and asset recipes
 // take the same object, validated by the backend, without repeating about 35 KB of schema in each tool.
 const recipeMotionReference = z.record(z.string(), z.unknown()).describe('The same object as recipe.motion in scene_create: duration, loop, tracks, ik, constraints, drivers. Read that tool for the fields. On an imported asset it also takes layers, up to 8 clips played at motion time before tracks and ik: { clip (scene_inspect animations id), mask: { joints, descendants, exclude } of node IDs, weight, speed, offset, loop, additive, reference, bones: { clip node: asset node } to retarget by name, morph }. A masked layer waves while another walks.');

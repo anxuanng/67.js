@@ -29,8 +29,8 @@ export const CURVE_TEXT_LIMITS = Object.freeze({
   verticesPerCharacterSegment: 640, verticesPerCustomCharacterSegment: 2400, maxPointsPerGlyph: 128,
 });
 export const CURVE_TEXT_DETAILS = Object.freeze({
-  curve: 'Cubic Bezier sweep. points: [x,y,z] (smooth automatic handles) or {position, handleIn?, handleOut?} with handles as absolute positions (a lone handle is mirrored). radius (0.05), taper: radius factors 0+ spread along the length, e.g. [1,0.2], profile: [[x,y]...] cross-section in radius units (default round, radialSegments 8; sharp corners stay flat shaded), resolution: samples per span (12), closed. Open curves get flat caps.',
-  text: 'Extruded text in the XY plane, first baseline on y=0, reading along +X, facing +Z, centred through depth. text (use \n for lines), size (1, em height), depth (0.2), align left|center|right, curveSegments 1-16 per outline curve (4), font (default DejaVu Sans, printable ASCII; other fonts come from registerAgentSceneFont in code, not MCP).',
+  curve: 'Cubic Bezier sweep. points: [x,y,z] or {position, handleIn?, handleOut?}. radius (0.05), taper, profile ([[x,y]...]), radialSegments, resolution, closed. See docs/modeling.md.',
+  text: 'Extruded text, baseline y=0 along +X, facing +Z. text (\n for lines), size (1), depth (0.2), align left|center|right, curveSegments, font. See docs/modeling.md.',
 });
 export const MATERIAL_MAPPINGS = Object.freeze(['box', 'uv']);
 export const MATERIAL_GRAPH_NODES = Object.freeze({
@@ -84,7 +84,12 @@ export const AGENT_SCENE_CAPABILITIES = Object.freeze({
   materialPatterns: MATERIAL_PATTERN_TYPES, maxMaterialPatterns: MAX_MATERIAL_PATTERNS,
   materialMappings: MATERIAL_MAPPINGS,
   renderPasses: Object.freeze({ names: RENDER_PASS_NAMES, files: 'render-<pass>.png or frame-N-<pass>.png, raw and unantialiased; opaque and cutout geometry only', depth: `16 bits in red and green over ${RENDER_PASS_DEPTH_RANGE} m`, objectId: '24 bits in RGB; the job result lists the part names' }),
-  curveText: Object.freeze({ ...CURVE_TEXT_LIMITS, details: CURVE_TEXT_DETAILS }),
+  curveText: Object.freeze({
+    maxCurvePoints: CURVE_TEXT_LIMITS.maxCurvePoints, maxProfilePoints: CURVE_TEXT_LIMITS.maxProfilePoints,
+    maxTextCharacters: CURVE_TEXT_LIMITS.maxTextCharacters, maxTextLines: CURVE_TEXT_LIMITS.maxTextLines,
+    verticesPerCharacterSegment: CURVE_TEXT_LIMITS.verticesPerCharacterSegment,
+    details: CURVE_TEXT_DETAILS,
+  }),
   materialGraph: Object.freeze({ outputs: MATERIAL_GRAPH_OUTPUTS, operators: MATERIAL_GRAPH_OPERATORS, ...MATERIAL_GRAPH_LIMITS, nodes: MATERIAL_GRAPH_NODES }),
   fixedResources: false, dynamicTopology: true, checkpoints: true, positiveScaleOnly: true,
   authoredLook: true, maxPointLights: 8,

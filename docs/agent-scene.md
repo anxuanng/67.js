@@ -47,8 +47,7 @@ The normal frame loop can render retained parts without calling inspection or ex
 
 ### On-demand code
 
-Mesh editing, `lathe`, `extrude`, `tube` and `curve` geometry, `text` geometry with its font, material `pattern` and `motion` load on demand, so a recipe of
-Mesh editing, `lathe`, `extrude` and `tube` geometry, material `pattern`, `motion` and node `relations` load on demand, so a recipe of
+Mesh editing, `lathe`, `extrude`, `tube` and `curve` geometry, `text` geometry with its font, material `pattern`, `motion` and node `relations` load on demand, so a recipe of
 primitives pays about half the bytes. `createAgentScene` and `apply` stay synchronous. When a recipe uses one of them,
 load its code first; a missing module throws an error that names this call.
 
