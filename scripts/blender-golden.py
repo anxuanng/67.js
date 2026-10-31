@@ -11,7 +11,9 @@ from mathutils import Vector
 
 FIXTURE_DIRECTORY = Path(__file__).resolve().parent.parent / "tests" / "fixtures" / "blender"
 DEFAULT_MAX_ANGLE = 10
+UNLIMITED_SIDES = 4096
 ANGLE_EPSILON = 1e-9
+CREASE_TO_SHARPNESS = 10
 
 
 def new_bmesh(mesh_input):
@@ -49,13 +51,36 @@ def selected_faces(bm, rule):
     raise ValueError(f"Unsupported face rule: {rule}")
 
 
+def selected_vertices(bm, rule):
+    if "vertices" in rule:
+        return [bm.verts[index] for index in rule["vertices"]]
+    if "valence" in rule:
+        return [vertex for vertex in bm.verts if len(vertex.link_edges) == rule["valence"]]
+    if rule.get("all"):
+        return list(bm.verts)
+    raise ValueError(f"Unsupported vertex rule: {rule}")
+
+
+def edge_midpoint_inside(edge, box):
+    if box is None:
+        return True
+    middle = (edge.verts[0].co + edge.verts[1].co) / 2
+    return all(box["min"][axis] - 1e-6 <= middle[axis] <= box["max"][axis] + 1e-6 for axis in range(3))
+
+
 def selected_edges(bm, rule):
+    if "open" in rule:
+        box = None if rule["open"] is True else rule["open"]["inside"]
+        return [edge for edge in bm.edges if len(edge.link_faces) == 1 and edge_midpoint_inside(edge, box)]
     if rule.get("all"):
         return [edge for edge in bm.edges if len(edge.link_faces) == 2]
     if "along" in rule:
         direction = Vector(rule["along"]).normalized()
         limit = cos(radians(rule.get("maxAngle", DEFAULT_MAX_ANGLE))) - ANGLE_EPSILON
         return [edge for edge in bm.edges if edge_is_along(edge, direction, limit)]
+    if "angle" in rule:
+        limit = cos(radians(rule["angle"])) + ANGLE_EPSILON
+        return [edge for edge in bm.edges if len(edge.link_faces) == 2 and edge.link_faces[0].normal.dot(edge.link_faces[1].normal) <= limit]
     if "boundaryOf" in rule:
         inside = set(selected_faces(bm, rule["boundaryOf"]))
         return [edge for edge in bm.edges if edge_crosses(edge, inside)]
@@ -162,6 +187,77 @@ def loop_cut(bm, edit):
     bmesh.ops.subdivide_edges(bm, edges=edges, cuts=cuts, use_grid_fill=True, edge_percents=edge_percents)
 
 
+def fill_holes(bm, edit):
+    boundary = [edge for edge in bm.edges if edge.is_boundary]
+    bmesh.ops.holes_fill(bm, edges=boundary, sides=edit.get("sides", UNLIMITED_SIDES))
+
+
+def dissolve_faces(bm, edit):
+    bmesh.ops.dissolve_faces(bm, faces=selected_faces(bm, edit["select"]), use_verts=False)
+
+
+def dissolve_edges(bm, edit):
+    bmesh.ops.dissolve_edges(bm, edges=selected_edges(bm, edit["edges"]), use_verts=False, use_face_split=False)
+
+
+def dissolve_verts(bm, edit):
+    bmesh.ops.dissolve_verts(bm, verts=selected_vertices(bm, edit["verts"]), use_face_split=False, use_boundary_tear=False)
+
+
+def dissolve_limited(bm, edit):
+    bmesh.ops.dissolve_limit(
+        bm,
+        angle_limit=radians(edit.get("angle", 5)),
+        use_dissolve_boundaries=False,
+        verts=list(bm.verts),
+        edges=list(bm.edges),
+    )
+
+
+def bisect_plane(bm, edit):
+    geometry = list(bm.verts) + list(bm.edges) + list(bm.faces)
+    result = bmesh.ops.bisect_plane(
+        bm,
+        geom=geometry,
+        dist=edit.get("distance", 1e-4),
+        plane_co=edit["point"],
+        plane_no=edit["normal"],
+        clear_inner=edit.get("clearInner", False),
+        clear_outer=edit.get("clearOuter", False),
+    )
+    if edit.get("fill"):
+        cut = [element for element in result["geom_cut"] if isinstance(element, bmesh.types.BMEdge) and element.is_boundary]
+        bmesh.ops.holes_fill(bm, edges=cut, sides=UNLIMITED_SIDES)
+
+
+def bridge_edge_loops(bm, edit):
+    result = bmesh.ops.bridge_loops(
+        bm,
+        edges=selected_edges(bm, edit["edges"]),
+        use_pairs=False,
+        use_cyclic=False,
+        use_merge=False,
+        merge_factor=0.5,
+        twist_offset=edit.get("twistOffset", 0),
+    )
+    segments = edit.get("segments", 1)
+    if segments > 1:
+        bmesh.ops.subdivide_edges(bm, edges=result["edges"], cuts=segments - 1, use_grid_fill=True)
+
+
+def subdivide_edges(bm, edit):
+    bmesh.ops.subdivide_edges(bm, edges=selected_edges(bm, edit["edges"]), cuts=edit["cuts"], use_grid_fill=True)
+
+
+# Blender's knife project needs a viewport, so a straight cut is compared with the plane through the line that holds
+# the projection direction. It agrees where the line spans the whole mesh.
+def knife_project(bm, edit):
+    start = Vector(edit["path"][0])
+    end = Vector(edit["path"][1])
+    normal = (end - start).cross(Vector(edit["direction"])).normalized()
+    bisect_plane(bm, {"point": list(start), "normal": list(normal)})
+
+
 BMESH_OPERATIONS = {
     "extrude_face_region": extrude_face_region,
     "extrude_individual": extrude_individual,
@@ -169,6 +265,15 @@ BMESH_OPERATIONS = {
     "inset_individual": inset_individual,
     "bevel": bevel,
     "loop_cut": loop_cut,
+    "fill_holes": fill_holes,
+    "dissolve_faces": dissolve_faces,
+    "dissolve_edges": dissolve_edges,
+    "dissolve_verts": dissolve_verts,
+    "dissolve_limited": dissolve_limited,
+    "bisect_plane": bisect_plane,
+    "bridge_edge_loops": bridge_edge_loops,
+    "subdivide_edges": subdivide_edges,
+    "knife_project": knife_project,
 }
 
 
@@ -213,17 +318,125 @@ def add_boolean(mesh_object, edit, inputs):
     modifier.object = cutter
 
 
+# Blender stores a crease from 0 to 1. Measured against 67.js sharpness, crease squared times 10 is the sharpness.
+def add_subdivision(mesh_object, edit, _inputs):
+    levels = edit.get("levels", 1)
+    if "crease" in edit:
+        bm = bmesh.new()
+        bm.from_mesh(mesh_object.data)
+        refresh(bm)
+        creased = {edge.index for edge in selected_edges(bm, edit["crease"])}
+        bm.free()
+        crease = mesh_object.data.attributes.new("crease_edge", "FLOAT", "EDGE")
+        value = sqrt(min(edit.get("sharpness", 10), CREASE_TO_SHARPNESS) / CREASE_TO_SHARPNESS)
+        crease.data.foreach_set("value", [value if index in creased else 0.0 for index in range(len(mesh_object.data.edges))])
+    modifier = mesh_object.modifiers.new("Subdivision", "SUBSURF")
+    modifier.subdivision_type = "CATMULL_CLARK"
+    modifier.levels = levels
+    modifier.render_levels = levels
+    modifier.quality = 3
+    modifier.use_creases = True
+    # The limit surface moves the points onto the final surface, where plain Catmull-Clark leaves them at the level.
+    modifier.use_limit_surface = False
+    modifier.boundary_smooth = "PRESERVE_CORNERS"
+
+
+# Set Position through a Geometry Nodes modifier. Only the part of the field language the cases use is translated:
+# numbers, "vec", position components, add, sub and mul. Anything else raises, so a case can never silently differ.
+def field_socket(tree, expression, position_xyz):
+    if isinstance(expression, (int, float)):
+        node = tree.nodes.new("ShaderNodeValue")
+        node.outputs[0].default_value = float(expression)
+        return node.outputs[0]
+    if "attr" in expression and expression["attr"] == "position" and "component" in expression:
+        return position_xyz.outputs["xyz".index(expression["component"])]
+    operations = {"add": "ADD", "sub": "SUBTRACT", "mul": "MULTIPLY"}
+    for name, operation in operations.items():
+        if name in expression:
+            left, right = expression[name]
+            node = tree.nodes.new("ShaderNodeMath")
+            node.operation = operation
+            tree.links.new(field_socket(tree, left, position_xyz), node.inputs[0])
+            tree.links.new(field_socket(tree, right, position_xyz), node.inputs[1])
+            return node.outputs[0]
+    raise ValueError(f"Unsupported field expression for the Blender golden: {expression}")
+
+
+def add_set_position(mesh_object, edit, _inputs):
+    tree = bpy.data.node_groups.new("SetPosition", "GeometryNodeTree")
+    tree.interface.new_socket("Geometry", in_out="INPUT", socket_type="NodeSocketGeometry")
+    tree.interface.new_socket("Geometry", in_out="OUTPUT", socket_type="NodeSocketGeometry")
+    group_input = tree.nodes.new("NodeGroupInput")
+    group_output = tree.nodes.new("NodeGroupOutput")
+    set_position = tree.nodes.new("GeometryNodeSetPosition")
+    position = tree.nodes.new("GeometryNodeInputPosition")
+    position_xyz = tree.nodes.new("ShaderNodeSeparateXYZ")
+    tree.links.new(position.outputs["Position"], position_xyz.inputs["Vector"])
+    combine = tree.nodes.new("ShaderNodeCombineXYZ")
+    for axis, component in enumerate(edit["offset"]["vec"]):
+        tree.links.new(field_socket(tree, component, position_xyz), combine.inputs[axis])
+    tree.links.new(group_input.outputs[0], set_position.inputs["Geometry"])
+    tree.links.new(combine.outputs["Vector"], set_position.inputs["Offset"])
+    tree.links.new(set_position.outputs["Geometry"], group_output.inputs[0])
+    modifier = mesh_object.modifiers.new("SetPosition", "NODES")
+    modifier.node_group = tree
+
+
+# Displace with a field as the texture. A constant field means no texture. The one varying field the cases use, a
+# linear gradient along local x, is Blender's Blend texture, whose value is (x + 1) / 2.
+LINEAR_GRADIENT_X = {"mul": [{"add": [{"attr": "position", "component": "x"}, 1]}, 0.5]}
+
+
+def add_displace(mesh_object, edit, _inputs):
+    modifier = mesh_object.modifiers.new("Displace", "DISPLACE")
+    modifier.strength = edit.get("strength", 1)
+    modifier.mid_level = edit.get("midlevel", 0.5)
+    modifier.direction = edit.get("direction", "normal").upper()
+    if edit["field"] != 1:
+        if edit["field"] != LINEAR_GRADIENT_X:
+            raise ValueError(f"Unsupported field for the Blender golden: {edit['field']}")
+        texture = bpy.data.textures.new("Gradient", "BLEND")
+        texture.progression = "LINEAR"
+        modifier.texture = texture
+        modifier.texture_coords = "LOCAL"
+
+
 MODIFIERS = {
+    "set_position": add_set_position,
+    "displace": add_displace,
     "mirror": add_mirror,
     "array": add_array,
     "solidify": add_solidify,
     "boolean": add_boolean,
+    "subdivide": add_subdivision,
 }
 
 
 def run_bmesh_case(case, inputs):
     bm = new_bmesh(inputs[case["input"]])
     BMESH_OPERATIONS[case["edit"]["op"]](bm, case["edit"])
+    refresh(bm)
+    return bm
+
+
+# bmesh.ops.grid_fill returns nothing in background mode, so the Fill > Grid Fill operator runs in edit mode instead.
+def run_operator_case(case, inputs):
+    mesh_object = new_object("Input", inputs[case["input"]])
+    bpy.context.view_layer.objects.active = mesh_object
+    mesh_object.select_set(True)
+    bpy.ops.object.mode_set(mode="EDIT")
+    bpy.ops.mesh.select_all(action="DESELECT")
+    edit_bm = bmesh.from_edit_mesh(mesh_object.data)
+    refresh(edit_bm)
+    loop_edges = selected_edges(edit_bm, case["edit"]["edges"])
+    for edge in loop_edges:
+        edge.select_set(True)
+    edit_bm.select_flush_mode()
+    bmesh.update_edit_mesh(mesh_object.data)
+    bpy.ops.mesh.fill_grid(span=len(loop_edges) // 4, offset=0, use_interp_simple=False)
+    bpy.ops.object.mode_set(mode="OBJECT")
+    bm = bmesh.new()
+    bm.from_mesh(mesh_object.data)
     refresh(bm)
     return bm
 
@@ -286,6 +499,8 @@ def main():
         remove_all_objects()
         operation = case["edit"]["op"]
         runner = run_bmesh_case if operation in BMESH_OPERATIONS else run_modifier_case
+        if operation == "grid_fill":
+            runner = run_operator_case
         bm = runner(case, fixture["inputs"])
         results[case["id"]] = measure(bm)
         bm.free()

@@ -243,6 +243,9 @@ uniform vec3 fogColor;
 uniform float fogDensity;
 // x: thickness in metres, y: index of refraction, z: refraction strength, w: scattering
 uniform vec4 liquidOptics;
+// A transmissive PBR material: x: transmission, y: index of refraction, z: thickness in metres, w: attenuation distance
+uniform vec4 glassState;
+uniform vec3 glassTint;
 // x: foam opacity, y: foam edge softness
 uniform vec2 foamShape;
 out vec4 outputColor;
@@ -315,24 +318,34 @@ void main() {
   float roughness = clamp(surface.y, 0.02, 1.0);
   vec2 screen = gl_FragCoord.xy / resolution;
   // A convex body is thickest where it faces the camera and thins to nothing at its silhouette.
-  float thickness = liquidOptics.x * mix(0.15, 1.0, facing);
-  vec3 bent = refract(-viewDirection, normal, 1.0 / liquidOptics.y);
+  bool glass = glassState.x > 0.0;
+  float indexOfRefraction = glass ? glassState.y : liquidOptics.y;
+  float thickness = (glass ? glassState.z : liquidOptics.x) * mix(0.15, 1.0, facing);
+  vec3 bent = refract(-viewDirection, normal, 1.0 / indexOfRefraction);
   vec4 projected = viewProjection * vec4(worldPosition + bent * thickness, 1.0);
   vec2 refracted = projected.w > 0.0 ? projected.xy / projected.w * 0.5 + 0.5 : screen;
-  refracted = clamp(mix(screen, refracted, liquidOptics.z), vec2(0.001), vec2(0.999));
+  refracted = clamp(mix(screen, refracted, glass ? 1.0 : liquidOptics.z), vec2(0.001), vec2(0.999));
   vec3 behind = texture(sceneColor, refracted).rgb;
   // The material colour is what one metre of this liquid lets through.
-  vec3 transmittance = pow(clamp(color, vec3(0.001), vec3(1.0)), vec3(thickness));
-  float reflectance = 0.02 + 0.98 * pow(1.0 - facing, 5.0);
-  vec3 inScatter = color * (ambientLight(normal) + keyColor * max(dot(normal, light), 0.0) * 0.2) * liquidOptics.w * (1.0 - transmittance);
+  // For a PBR material the colour tints what passes through and the attenuation colour is what attenuationDistance metres let through.
+  vec3 absorption = pow(clamp(glass ? glassTint : color, vec3(0.001), vec3(1.0)), vec3(glass ? thickness / glassState.w : thickness));
+  vec3 transmittance = glass ? color * absorption : absorption;
+  float surfaceReflectance = pow((indexOfRefraction - 1.0) / (indexOfRefraction + 1.0), 2.0);
+  float reflectance = surfaceReflectance + (1.0 - surfaceReflectance) * pow(1.0 - facing, 5.0);
+  vec3 inScatter = color * (ambientLight(normal) + keyColor * max(dot(normal, light), 0.0) * 0.2) * (glass ? 0.0 : liquidOptics.w) * (1.0 - transmittance);
+  // The share of a PBR material that does not transmit is lit like a diffuse surface.
+  vec3 diffuseShare = glass ? color * (1.0 - glassState.x) * (ambientLight(normal) + keyColor * max(dot(normal, light), 0.0) / PI) : vec3(0.0);
   vec3 reflection = environmentColor(reflect(-viewDirection, normal), roughness) * ambientIntensity;
   vec3 highlight = keyColor * specularLobe(normal, viewDirection, light, roughness);
-  vec3 surfaceLight = inScatter * (1.0 - reflectance) + reflection * reflectance + highlight;
+  vec3 surfaceLight = (inScatter + diffuseShare) * (1.0 - reflectance) + reflection * reflectance + highlight;
   surfaceLight = mix(surfaceLight, fogColor, fog);
-  outputColor = vec4(behind * transmittance * (1.0 - reflectance) * (1.0 - fog) + displayed(surfaceLight), 1.0);
+  float transmitted = glass ? glassState.x : 1.0;
+  outputColor = vec4(behind * transmittance * transmitted * (1.0 - reflectance) * (1.0 - fog) + displayed(surfaceLight), 1.0);
 }`;
 
-export const fragmentShader = `#version 300 es
+function buildFragmentShader(featureDefines) {
+  return `#version 300 es
+${featureDefines}
 precision highp float;
 in vec3 worldPosition;
 in vec3 worldNormal;
@@ -355,6 +368,20 @@ uniform int pointLightCount;
 uniform vec4 pointLightPositions[8];
 uniform vec4 pointLightColors[8];
 uniform float pointLightRadii[8];
+uniform float pointLightShadowTiles[8];
+uniform int spotLightCount;
+uniform vec4 spotLightPositions[8];
+uniform vec4 spotLightColors[8];
+uniform vec4 spotLightDirections[8];
+uniform vec4 spotLightParameters[8];
+uniform int areaLightCount;
+uniform vec4 areaLightPositions[4];
+uniform vec4 areaLightColors[4];
+uniform vec4 areaLightNormals[4];
+uniform vec4 areaLightTangents[4];
+uniform sampler2D localShadowAtlas;
+uniform mat4 localShadowMatrices[24];
+uniform float localShadowTexelAngles[24];
 uniform vec3 keyColor;
 uniform float fillIntensity;
 uniform float ambientIntensity;
@@ -381,6 +408,10 @@ in vec3 boxNormal;
 flat in mat3 boxNormalMatrix;
 uniform float boxMapScale;
 uniform int boxMapAxis;
+// Dielectric reflectance at normal incidence, clear coat (strength, roughness) and sheen (colour, roughness)
+uniform vec3 materialDielectric;
+uniform vec2 materialCoat;
+uniform vec4 materialSheen;
 uniform vec4 materialMoss;
 uniform float hdrEnabled;
 uniform float alphaMode;
@@ -446,6 +477,46 @@ float shadowVisibility(vec3 normal) {
   return visibility / 9.0;
 }
 
+// Atlas tiles are 512 texels square on a 4 x 4 grid. The receiver is pushed off its surface by about two shadow texels,
+// which removes acne without a depth bias that grows with distance.
+float localShadowVisibility(float tile, vec3 position, vec3 normal, float lightDistance) {
+  int tileIndex = int(tile);
+  vec3 shifted = position + normal * (lightDistance * localShadowTexelAngles[tileIndex] * 2.0);
+  vec4 clip = localShadowMatrices[tileIndex] * vec4(shifted, 1.0);
+  if (clip.w <= 0.0) return 1.0;
+  vec3 projected = clip.xyz / clip.w * 0.5 + 0.5;
+  if (projected.z > 1.0 || any(lessThan(projected.xy, vec2(0.0))) || any(greaterThan(projected.xy, vec2(1.0)))) return 1.0;
+  ivec2 tileOrigin = ivec2(tileIndex % 4, tileIndex / 4) * 512;
+  vec2 pixel = projected.xy * 512.0 - 0.5;
+  ivec2 corner = ivec2(floor(pixel));
+  vec2 blend = fract(pixel);
+  float receiverDepth = projected.z - 0.00002;
+  float lit[4];
+  for (int tap = 0; tap < 4; tap++) {
+    ivec2 texel = clamp(corner + ivec2(tap & 1, tap >> 1), ivec2(0), ivec2(511));
+    lit[tap] = step(receiverDepth, texelFetch(localShadowAtlas, tileOrigin + texel, 0).r);
+  }
+  return mix(mix(lit[0], lit[1], blend.x), mix(lit[2], lit[3], blend.x), blend.y);
+}
+
+// Cube face of a point light's shadow, in the order +X, -X, +Y, -Y, +Z, -Z.
+float pointShadowFace(vec3 fromLight) {
+  vec3 magnitude = abs(fromLight);
+  if (magnitude.x >= magnitude.y && magnitude.x >= magnitude.z) return fromLight.x < 0.0 ? 1.0 : 0.0;
+  if (magnitude.y >= magnitude.z) return fromLight.y < 0.0 ? 3.0 : 2.0;
+  return fromLight.z < 0.0 ? 5.0 : 4.0;
+}
+
+float localAttenuation(float distanceSquared, float range, float radius) {
+  float cutoff = 1.0;
+  if (range > 0.0) {
+    float squaredRatio = distanceSquared / (range * range);
+    float fade = max(1.0 - squaredRatio * squaredRatio, 0.0);
+    cutoff = fade * fade;
+  }
+  return cutoff / max(distanceSquared, radius * radius);
+}
+
 vec3 studio(vec3 direction, float roughness) {
   vec3 color = mix(vec3(0.025, 0.035, 0.045), vec3(0.22, 0.25, 0.27), smoothstep(-0.3, 0.8, direction.y));
   float blur = roughness * 0.35;
@@ -469,7 +540,7 @@ vec3 illuminate(vec3 normal, vec3 viewDirection, vec3 lightDirection, vec3 radia
   float masking = pow(roughness + 1.0, 2.0) / 8.0;
   float geometry = normalView / (normalView * (1.0 - masking) + masking);
   geometry *= normalLight / (normalLight * (1.0 - masking) + masking);
-  vec3 reflectance = fresnel(max(dot(halfway, viewDirection), 0.0), mix(vec3(0.04), color, metallic));
+  vec3 reflectance = fresnel(max(dot(halfway, viewDirection), 0.0), mix(materialDielectric, color, metallic));
   vec3 specular = distribution * geometry * reflectance / max(4.0 * normalView * normalLight, 0.001);
   vec3 diffuse = (1.0 - reflectance) * (1.0 - metallic) * color / PI;
   return (diffuse + specular) * radiance * normalLight;
@@ -557,7 +628,7 @@ void mossMasks(vec3 normal, float amount, out float sharpMask, out float softMas
 
 // Opaque draws 1, mask resolves to a cutout (smooth coverage with MSAA) and blend keeps the fraction.
 float surfaceAlpha(float textureAlpha) {
-  if (alphaMode < 0.5) return 1.0;
+  if (!USES_ALPHA_MODE) return 1.0;
   float alpha = materialOpacity * textureAlpha;
   if (alphaMode > 1.5) return alpha;
   if (alphaToCoverage > 0.5) {
@@ -570,26 +641,60 @@ float surfaceAlpha(float textureAlpha) {
   return 1.0;
 }
 
+vec3 surroundingsColor(vec3 direction, float roughness) {
+  if (environmentEnabled > 0.5) return environmentRadiance(direction, roughness * environmentLevelMax);
+  if (worldMode > 0.5) return mix(fogColor * 0.8, vec3(0.20, 0.38, 0.52) * 1.6, smoothstep(-0.15, 0.7, direction.y)) * 0.5 * daylight;
+  return studio(direction, roughness);
+}
+
+// Clear coat: a second dielectric specular lobe over the base. Light that reflects off it never reaches the base.
+// Passing 0.04 as the colour of a fully metallic surface gives the lobe's own reflectance and no diffuse part.
+vec3 clearCoatLayer(vec3 baseRadiance, vec3 normal, vec3 viewDirection, float visibility) {
+  float roughness = clamp(materialCoat.y, 0.075, 1.0);
+  float coatFresnel = fresnel(max(dot(normal, viewDirection), 0.001), vec3(0.04)).x * materialCoat.x;
+  vec3 mirror = surroundingsColor(reflect(-viewDirection, normal), roughness) * coatFresnel * ambientIntensity;
+  vec3 highlight = illuminate(normal, viewDirection, normalize(lightDirection), keyColor * visibility, vec3(0.04), 1.0, roughness);
+  return baseRadiance * (1.0 - coatFresnel) + mirror + highlight * materialCoat.x;
+}
+
+// Sheen: the Charlie distribution with the Neubelt visibility term (KHR_materials_sheen), plus a rim of ambient light.
+vec3 sheenLayer(vec3 baseRadiance, vec3 normal, vec3 viewDirection, float visibility) {
+  float roughness = clamp(materialSheen.w, 0.07, 1.0);
+  float inverseAlpha = 1.0 / (roughness * roughness);
+  vec3 lightVector = normalize(lightDirection);
+  vec3 halfway = normalize(viewDirection + lightVector);
+  float normalLight = max(dot(normal, lightVector), 0.0);
+  float normalView = max(dot(normal, viewDirection), 0.001);
+  float sine = sqrt(max(1.0 - pow(max(dot(normal, halfway), 0.0), 2.0), 0.0));
+  float distribution = (2.0 + inverseAlpha) * pow(sine, inverseAlpha) / (2.0 * PI);
+  float visibilityTerm = 1.0 / (4.0 * (normalLight + normalView - normalLight * normalView));
+  vec3 keyTerm = materialSheen.rgb * distribution * visibilityTerm * normalLight * keyColor * visibility;
+  vec3 ambientTerm = environmentEnabled > 0.5 ? environmentDiffuse(normal) : mix(vec3(0.16, 0.20, 0.22), vec3(0.19, 0.25, 0.30) * max(daylight, 0.08), worldMode);
+  vec3 rimTerm = materialSheen.rgb * ambientTerm * pow(1.0 - normalView, 3.0) * ambientIntensity;
+  float shadowedBase = 1.0 - 0.2 * max(materialSheen.r, max(materialSheen.g, materialSheen.b));
+  return baseRadiance * shadowedBase + keyTerm + rimTerm;
+}
+
 void main() {
   vec3 normal = normalize(worldNormal);
   // Foliage and grass cards are single-sided geometry whose shading normal already leans toward the
   // canopy, so the back face keeps it instead of flipping to point into the crown.
-  bool canopyShaded = surface.w == 4.0 || surface.w == 7.0;
+  bool canopyShaded = CANOPY_TAG;
   if (doubleSided > 0.5 && !gl_FrontFacing && !canopyShaded) normal = -normal;
-  if (hasNormalMap > 0.5) normal = boxMapScale > 0.0 ? boxMappedNormal(normal) : mappedNormal(normal);
+  if (USES_NORMAL_MAP) normal = boxMapScale > 0.0 ? boxMappedNormal(normal) : mappedNormal(normal);
   vec3 viewDirection = normalize(eye - worldPosition);
   vec3 color = mix(baseColor, armorColor, step(0.5, surface.w) * (1.0 - step(1.5, surface.w)));
-  if (splatEnabled < 0.5) color *= vertexTint;
+  if (!USES_SPLAT) color *= vertexTint;
   float textureAlpha = 1.0;
-  if (hasBaseMap > 0.5) {
+  if (USES_BASE_MAP) {
     vec4 sampledBase = boxMapScale > 0.0 ? sampleBox(baseMap) : texture(baseMap, textureUV);
     color *= sampledBase.rgb;
     textureAlpha = sampledBase.a;
   }
   float alpha = surfaceAlpha(textureAlpha);
   vec3 emission = emissionColor * surface.z;
-  if (hasEmissiveMap > 0.5) emission *= texture(emissiveMap, textureUV).rgb;
-  if (surface.w == 10.0) {
+  if (USES_EMISSIVE_MAP) emission *= texture(emissiveMap, textureUV).rgb;
+  if (TAG_UNLIT) {
     vec3 radiance = color * exposure + emission;
     outputColor = vec4(hdrEnabled > 0.5 ? radiance : pow(max(radiance, vec3(0)), vec3(1.0 / 2.2)), alpha);
     return;
@@ -600,17 +705,17 @@ void main() {
     metallic = armorSurface.x;
     roughness = armorSurface.y;
   }
-  if (hasMetallicRoughnessMap > 0.5) {
+  if (USES_METALLIC_ROUGHNESS_MAP) {
     vec4 sampled = boxMapScale > 0.0 ? sampleBox(metallicRoughnessMap) : texture(metallicRoughnessMap, textureUV);
     metallic *= sampled.b;
     roughness *= sampled.g;
   }
   float splatCavity = 1.0;
-  if (splatEnabled > 0.5) applySplat(color, normal, roughness, splatCavity);
+  if (USES_SPLAT) applySplat(color, normal, roughness, splatCavity);
   roughness = clamp(roughness, 0.075, 1.0);
   vec3 normalChange = max(abs(dFdx(normal)), abs(dFdy(normal)));
   roughness = clamp(sqrt(roughness * roughness + dot(normalChange, normalChange) * 0.3), 0.075, 1.0);
-  if (surface.w == 3.0) {
+  if (TAG_WATER) {
     normal = normalize(vec3(-cos(worldPosition.x * 1.4 + time * 0.8) * 0.035, 1.0, -cos(worldPosition.z * 1.8 - time) * 0.036));
     float radius = length(worldPosition.xz - waterRipple.xz);
     float age = time - rippleTime;
@@ -620,12 +725,12 @@ void main() {
     color = mix(color, vec3(0.10, 0.23, 0.25), pow(1.0 - max(dot(normal, viewDirection), 0.0), 4.0));
     roughness = 0.16;
   }
-  if (surface.w == 4.0 || surface.w == 7.0) {
+  if (CANOPY_TAG) {
     float leaves = sin(worldPosition.x * 13.0 + sin(worldPosition.y * 9.0)) * sin(worldPosition.z * 11.0 - worldPosition.y * 5.0);
     color *= 0.78 + leaves * 0.16;
     normal = normalize(normal + vec3(sin(worldPosition.z * 12.0), sin(worldPosition.x * 9.0), cos(worldPosition.y * 11.0)) * 0.06);
   }
-  if (surface.w == 5.0) {
+  if (TAG_TERRAIN) {
     vec2 terrainPosition = worldPosition.xz + worldPosition.y * vec2(0.31, 0.43);
     float footprint = max(fwidth(terrainPosition.x), fwidth(terrainPosition.y));
     vec3 broad = terrainNoise(terrainPosition * 0.32);
@@ -642,7 +747,7 @@ void main() {
   }
   float mossCover = 0.0;
   vec3 mossTone = vec3(0.0);
-  if (materialMoss.x > 0.0) {
+  if (USES_MOSS) {
     float mossSoft;
     mossMasks(normal, materialMoss.x, mossCover, mossSoft);
     float mossFootprint = length(fwidth(worldPosition));
@@ -664,22 +769,60 @@ void main() {
     vec3 offset = pointLightPositions[index].xyz - worldPosition;
     float distanceSquared = dot(offset, offset);
     if (distanceSquared < 1e-12 || pointLightColors[index].w == 0.0) continue;
-    float range = pointLightPositions[index].w;
-    float cutoff = 1.0;
-    if (range > 0.0) {
-      float squaredRatio = distanceSquared / (range * range);
-      float fade = max(1.0 - squaredRatio * squaredRatio, 0.0);
-      cutoff = fade * fade;
-    }
-    if (cutoff == 0.0) continue;
-    float radius = pointLightRadii[index];
-    float attenuation = cutoff / max(distanceSquared, radius * radius);
+    float attenuation = localAttenuation(distanceSquared, pointLightPositions[index].w, pointLightRadii[index]);
+    if (attenuation == 0.0) continue;
     vec3 lightRadiance = pointLightColors[index].rgb * pointLightColors[index].w * attenuation;
+    if (USES_LOCAL_SHADOWS && pointLightShadowTiles[index] >= 0.0) {
+      float tile = pointLightShadowTiles[index] + pointShadowFace(-offset);
+      lightRadiance *= localShadowVisibility(tile, worldPosition, normal, sqrt(distanceSquared));
+    }
     radiance += illuminate(normal, viewDirection, offset * inversesqrt(distanceSquared), lightRadiance, color, metallic, roughness);
   }
-  vec3 reflectance = fresnel(max(dot(normal, viewDirection), 0.0), mix(vec3(0.04), color, metallic));
+  if (USES_SPOT_LIGHTS) {
+    for (int index = 0; index < 8; index++) {
+      if (index >= spotLightCount) break;
+      vec3 offset = spotLightPositions[index].xyz - worldPosition;
+      float distanceSquared = dot(offset, offset);
+      if (distanceSquared < 1e-12 || spotLightColors[index].w == 0.0) continue;
+      vec3 toLight = offset * inversesqrt(distanceSquared);
+      float coneCosine = dot(-toLight, spotLightDirections[index].xyz);
+      // The same cone mask as Blender: smoothstep between the outer and inner cosines.
+      float cone = smoothstep(spotLightDirections[index].w, spotLightParameters[index].y, coneCosine);
+      float attenuation = localAttenuation(distanceSquared, spotLightPositions[index].w, spotLightParameters[index].x) * cone;
+      if (attenuation == 0.0) continue;
+      vec3 lightRadiance = spotLightColors[index].rgb * spotLightColors[index].w * attenuation;
+      if (USES_LOCAL_SHADOWS && spotLightParameters[index].z >= 0.0) {
+        lightRadiance *= localShadowVisibility(spotLightParameters[index].z, worldPosition, normal, sqrt(distanceSquared));
+      }
+      radiance += illuminate(normal, viewDirection, toLight, lightRadiance, color, metallic, roughness);
+    }
+  }
+  if (USES_AREA_LIGHTS) {
+    for (int index = 0; index < 4; index++) {
+      if (index >= areaLightCount) break;
+      vec3 lightNormal = areaLightNormals[index].xyz;
+      vec3 widthAxis = areaLightTangents[index].xyz;
+      vec3 heightAxis = cross(lightNormal, widthAxis);
+      vec2 halfSize = vec2(areaLightNormals[index].w, areaLightTangents[index].w) * 0.5;
+      vec3 fromCenter = worldPosition - areaLightPositions[index].xyz;
+      // Representative point: the closest point of the rectangle stands in for the whole source.
+      vec3 closest = areaLightPositions[index].xyz
+        + widthAxis * clamp(dot(fromCenter, widthAxis), -halfSize.x, halfSize.x)
+        + heightAxis * clamp(dot(fromCenter, heightAxis), -halfSize.y, halfSize.y);
+      vec3 offset = closest - worldPosition;
+      float distanceSquared = dot(offset, offset);
+      vec3 toLight = offset * inversesqrt(max(distanceSquared, 1e-12));
+      float emission = max(dot(-toLight, lightNormal), 0.0);
+      float area = 4.0 * halfSize.x * halfSize.y;
+      // Adding area / pi keeps the term finite at the surface and matches a disc source on its axis.
+      float attenuation = emission / (distanceSquared + area / PI);
+      vec3 lightRadiance = areaLightColors[index].rgb * areaLightColors[index].w * attenuation;
+      radiance += illuminate(normal, viewDirection, toLight, lightRadiance, color, metallic, roughness);
+    }
+  }
+  vec3 reflectance = fresnel(max(dot(normal, viewDirection), 0.0), mix(materialDielectric, color, metallic));
   float occlusion = 1.0;
-  if (hasOcclusionMap > 0.5) occlusion = mix(1.0, texture(occlusionMap, textureUV).r, occlusionStrength);
+  if (USES_OCCLUSION_MAP) occlusion = mix(1.0, texture(occlusionMap, textureUV).r, occlusionStrength);
   occlusion *= splatCavity;
   // Leaf and grass cards keep a faint sheen; full sky reflection washed grazing cards grey-blue.
   float skyReflection = canopyShaded ? 0.3 : 1.0;
@@ -694,38 +837,40 @@ void main() {
   }
   vec3 keyResponse = keyColor / mix(vec3(5.2, 4.7, 4.1), vec3(3.7, 3.4, 2.9), worldMode);
   keyResponse *= mix(daylight, 1.0, worldMode);
-  if (surface.w == 4.0 || surface.w == 7.0) radiance += color * max(dot(-normal, normalize(lightDirection)), 0.0) * 0.3 * keyResponse;
+  if (CANOPY_TAG) radiance += color * max(dot(-normal, normalize(lightDirection)), 0.0) * 0.3 * keyResponse;
   if (mossCover > 0.001) {
     float sheen = pow(1.0 - max(dot(normal, viewDirection), 0.0), 4.0);
     float wrap = max(dot(normal, normalize(lightDirection)) + 0.5, 0.0) / 1.5;
     radiance += mossTone * (sheen * 0.8 + wrap * 0.35) * keyResponse * visibility * mossCover;
   }
-  if (surface.w == 7.0) {
+  if (TAG_GRASS) {
     // Sun through thin blades: they glow yellow-green when the camera looks toward the light, most at the thin tips
     // (uv.y runs 1 at the root to 0 at the tip; grass without UVs gets a middle value).
     float towardSun = pow(max(dot(-viewDirection, normalize(lightDirection)), 0.0), 3.0);
     float thinness = textureUV.x > -0.5 ? 1.0 - textureUV.y * 0.8 : 0.6;
     radiance += color * vec3(1.1, 1.25, 0.55) * towardSun * thinness * 1.4 * keyResponse * visibility;
   }
+  if (materialSheen.rgb != vec3(0.0)) radiance = sheenLayer(radiance, normal, viewDirection, visibility);
+  if (materialCoat.x > 0.0) radiance = clearCoatLayer(radiance, normal, viewDirection, visibility);
   radiance += emission;
-  if (surface.w == 3.0) {
+  if (TAG_WATER) {
     float reflectivity = 0.20 + 0.65 * pow(1.0 - max(dot(normal, viewDirection), 0.0), 3.0);
     vec3 reflection = mix(vec3(0.12, 0.24, 0.28), vec3(0.40, 0.63, 0.78), clamp(reflect(-viewDirection, normal).y, 0.0, 1.0));
     radiance = mix(radiance * 0.6, reflection * daylight * ambientIntensity, reflectivity);
     radiance += vec3(1.0, 0.85, 0.55) * pow(max(dot(reflect(-normalize(lightDirection), normal), viewDirection), 0.0), 220.0) * 2.0 * keyResponse;
   }
-  if (surface.w == 2.0) {
+  if (TAG_FLOOR) {
     float contact = 1.0 - 0.45 * exp(-dot(worldPosition.xz, worldPosition.xz) * 1.4);
     radiance = vec3(0.034, 0.041, 0.046) * (0.4 + visibility * 0.6) * contact;
     float fog = 1.0 - exp(-length(worldPosition.xz) * 0.05);
     radiance = mix(radiance, vec3(0.018, 0.022, 0.026), fog);
   }
-  if (surface.w == 8.0) {
+  if (TAG_FIRE) {
     float turbulence = sin(worldPosition.x * 3.0 + time * 4.0) * sin(worldPosition.y * 4.2 - time * 3.0) * sin(worldPosition.z * 3.7);
     float heat = pow(clamp(0.55 + turbulence * 0.5 - explosionProgress * 0.12, 0.0, 1.0), 3.0);
     radiance = mix(vec3(0.22, 0.003, 0.0002), vec3(8.0, 2.8, 0.15), heat) * max(0.2, surface.z * 0.10);
   }
-  if (surface.w == 9.0) {
+  if (TAG_SMOKE) {
     float turbulence = sin(worldPosition.x * 2.0 + time) * sin(worldPosition.y * 3.3 - time * 0.6);
     radiance = color * (0.22 + turbulence * 0.12) + vec3(0.35, 0.05, 0.005) * max(0.0, 1.0 - explosionProgress) * max(0.0, -normal.y);
   }
@@ -733,7 +878,7 @@ void main() {
   radiance = mix(radiance, fogColor, fog * worldMode);
   if (inspection > 0.5) radiance = normal * 0.5 + 0.5;
   outputColor = vec4(hdrEnabled > 0.5 ? clamp(radiance * exposure, vec3(0), vec3(65504.0)) : pow(toneMap(radiance * exposure), vec3(1.0 / 2.2)), alpha);
-  if (surface.w == 2.0 && inspection < 0.5) {
+  if (TAG_FLOOR && inspection < 0.5) {
     float distanceFade = exp(-length(worldPosition.xz) * 0.08);
     float contact = 1.0 - 0.1 * exp(-dot(worldPosition.xz, worldPosition.xz) * 1.4);
     vec3 floorColor = mix(vec3(0.145, 0.162, 0.177), vec3(0.17, 0.19, 0.205), distanceFade);
@@ -741,3 +886,39 @@ void main() {
     outputColor = vec4(hdrEnabled > 0.5 ? pow(result, vec3(2.2)) : result, 1.0);
   }
 }`;
+}
+
+// Every feature the main fragment shader can leave out, with the GLSL condition that turns it on. A feature that a scene
+// never uses becomes the constant `false`, so the driver drops its code instead of compiling and branching over it.
+const SHADER_FEATURE_CONDITIONS = {
+  normalMap: ['USES_NORMAL_MAP', 'hasNormalMap > 0.5'],
+  baseMap: ['USES_BASE_MAP', 'hasBaseMap > 0.5'],
+  metallicRoughnessMap: ['USES_METALLIC_ROUGHNESS_MAP', 'hasMetallicRoughnessMap > 0.5'],
+  occlusionMap: ['USES_OCCLUSION_MAP', 'hasOcclusionMap > 0.5'],
+  emissiveMap: ['USES_EMISSIVE_MAP', 'hasEmissiveMap > 0.5'],
+  splat: ['USES_SPLAT', 'splatEnabled > 0.5'],
+  moss: ['USES_MOSS', 'materialMoss.x > 0.0'],
+  alphaMode: ['USES_ALPHA_MODE', 'alphaMode > 0.5'],
+  floor: ['TAG_FLOOR', 'surface.w == 2.0'],
+  water: ['TAG_WATER', 'surface.w == 3.0'],
+  foliage: ['TAG_FOLIAGE', 'surface.w == 4.0'],
+  terrain: ['TAG_TERRAIN', 'surface.w == 5.0'],
+  grass: ['TAG_GRASS', 'surface.w == 7.0'],
+  fire: ['TAG_FIRE', 'surface.w == 8.0'],
+  smoke: ['TAG_SMOKE', 'surface.w == 9.0'],
+  unlit: ['TAG_UNLIT', 'surface.w == 10.0'],
+  spotLights: ['USES_SPOT_LIGHTS', 'spotLightCount > 0'],
+  areaLights: ['USES_AREA_LIGHTS', 'areaLightCount > 0'],
+  localShadows: ['USES_LOCAL_SHADOWS', 'true'],
+};
+
+export const SHADER_FEATURES = Object.freeze(Object.keys(SHADER_FEATURE_CONDITIONS));
+
+export function createFragmentShader(features = SHADER_FEATURES) {
+  const enabled = new Set(features);
+  const lines = Object.entries(SHADER_FEATURE_CONDITIONS).map(([feature, [macro, condition]]) => `#define ${macro} ${enabled.has(feature) ? `(${condition})` : 'false'}`);
+  lines.push('#define CANOPY_TAG (TAG_FOLIAGE || TAG_GRASS)');
+  return buildFragmentShader(lines.join('\n'));
+}
+
+export const fragmentShader = createFragmentShader();

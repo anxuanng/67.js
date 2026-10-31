@@ -107,8 +107,8 @@ renderer.render(camera);
 Translation, rotation, and scale tracks are supported.
 The importer rejects animation poses that become singular or change triangle winding.
 
-The current source supports four-influence [GPU skinning](skinning.md). GPU skinning is available from version `0.4.0`.
-The current source also supports relative POSITION/NORMAL morph targets and weight animations. See [morph import](gltf-morph.md).
+The current source supports four-influence [GPU skinning](https://67js.codepawl.com/skinning.md). GPU skinning is available from version `0.4.0`.
+The current source also supports relative POSITION/NORMAL morph targets and weight animations. See [morph import](https://67js.codepawl.com/gltf-morph.md).
 Morph primitives require authored base normals. TANGENT targets and per-target flat normal generation remain unsupported.
 
 The caller owns the Renderer67 instance.
@@ -140,7 +140,7 @@ Line and point primitives are unsupported.
 | `KHR_draco_mesh_compression` | Needs `options.decoders.draco`. |
 | `EXT_meshopt_compression` | Needs `options.decoders.meshopt`. |
 | `KHR_texture_basisu` | Needs `options.decoders.ktx2`. |
-| `KHR_materials_clearcoat`, `_transmission`, `_ior`, `_specular`, `_sheen`, `_volume` | Accepted but not rendered. Each one used adds a line to `asset.warnings`. Listing one in `extensionsRequired` fails the import. |
+| `KHR_materials_clearcoat`, `_transmission`, `_ior`, `_specular`, `_sheen`, `_volume` | Read as factors and rendered as material layers, see `docs/material-maps.md`. Their textures are ignored. `KHR_materials_anisotropy` and `KHR_materials_iridescence` are accepted but not rendered. Each one used adds a line to `asset.warnings`. Listing one in `extensionsRequired` fails the import. |
 
 `KHR_materials_transmission` with a factor above zero sets `material.transmission` to that factor.
 It is a hint only: the renderer does not draw transmission yet.

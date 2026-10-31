@@ -4,8 +4,9 @@
 // agent sees: welding render triangles again can invent non-manifold edges that the polygon mesh does not have.
 import { readFile } from 'node:fs/promises';
 import { createAgentAssetScene } from '../../src/agent-asset.js';
-import { createAgentScene, loadMeshBooleans, needsMeshBooleans } from '../../src/agent-scene.js';
+import { createAgentScene, loadMeshBooleans, needsMeshBooleans, loadPhysicsEngine, needsPhysics } from '../../src/agent-scene.js';
 import { parseGltf } from '../../src/gltf.js';
+import { GEOMETRY_PROBLEMS } from '../../src/mesh-lint.js';
 
 const WELD_DISTANCE = 1e-5;
 
@@ -214,10 +215,74 @@ export async function measureAssetRecipe(recipe) {
   };
 }
 
+// Seeking away and back must give the same matrices, whatever the solver did in between.
+function seekIsStable(scene, duration) {
+  const snapshot = () => scene.parts.map(part => Array.from(part.matrix));
+  scene.sampleMotion(duration / 2);
+  const first = snapshot();
+  scene.sampleMotion(duration);
+  scene.sampleMotion(0);
+  scene.sampleMotion(duration / 2);
+  const second = snapshot();
+  scene.sampleMotion(null);
+  return JSON.stringify(first) === JSON.stringify(second);
+}
+
+const RIG_SAMPLES = 8;
+
+function skinnedDiagonal(part) {
+  const { positions, skinIndices, skinWeights } = part.geometry;
+  const palette = part.skin.jointMatrices;
+  const minimum = [Infinity, Infinity, Infinity];
+  const maximum = [-Infinity, -Infinity, -Infinity];
+  for (let vertex = 0; vertex < positions.length / 3; vertex++) {
+    const blended = [0, 0, 0];
+    for (let influence = 0; influence < 4; influence++) {
+      const weight = skinWeights[vertex * 4 + influence];
+      if (weight === 0) continue;
+      const moved = transformPoint(palette.subarray(skinIndices[vertex * 4 + influence] * 16), positions[vertex * 3], positions[vertex * 3 + 1], positions[vertex * 3 + 2]);
+      for (let axis = 0; axis < 3; axis++) blended[axis] += moved[axis] * weight;
+    }
+    const world = transformPoint(part.matrix, ...blended);
+    for (let axis = 0; axis < 3; axis++) {
+      minimum[axis] = Math.min(minimum[axis], world[axis]);
+      maximum[axis] = Math.max(maximum[axis], world[axis]);
+    }
+  }
+  return Math.hypot(...maximum.map((value, axis) => value - minimum[axis]));
+}
+
+/** Bones, skinning, and the walk sampled at even times: joint world positions and each skinned part's deformed size. */
+function measureRig(scene, duration) {
+  const recipe = scene.exportRecipe();
+  const inspected = scene.inspect({}).rig;
+  const meshNodes = recipe.nodes.filter(node => node.geometry);
+  const skinnedParts = () => scene.parts.filter(part => part.skin);
+  const samples = Array.from({ length: duration > 0 ? RIG_SAMPLES : 0 }, (_, step) => {
+    const time = duration * step / RIG_SAMPLES;
+    scene.sampleMotion(time);
+    const skin = skinnedParts()[0]?.skin;
+    const joints = Object.fromEntries((skin?.joints ?? []).map((joint, index) => [joint.name, Array.from(skin.jointWorldMatrices.subarray(index * 16 + 12, index * 16 + 15))]));
+    return { time, joints, diagonals: Object.fromEntries(skinnedParts().map(part => [part.name, skinnedDiagonal(part)])) };
+  });
+  scene.sampleMotion(null);
+  const restDiagonals = Object.fromEntries(skinnedParts().map(part => [part.name, skinnedDiagonal(part)]));
+  return {
+    bones: recipe.armatures.flatMap(armature => armature.bones.map(bone => `${armature.prefix}${bone.name}`)),
+    meshNodes: meshNodes.length, skinnedNodes: meshNodes.filter(node => node.skin).length,
+    unweightedVertices: inspected.reduce((total, armature) => total + armature.skinned.reduce((sum, skinned) => sum + skinned.unweightedVertices, 0), 0),
+    problems: inspected.flatMap(armature => armature.jointAxisProblems),
+    samples, restDiagonals,
+  };
+}
+
 /** Load the recipe and measure what it builds. Throws if the recipe itself is invalid. */
 export async function measureRecipe(recipe) {
   if (needsMeshBooleans(recipe)) await loadMeshBooleans();
+  if (needsPhysics(recipe)) await loadPhysicsEngine();
   const scene = createAgentScene(recipe);
+  const physics = scene.inspect({}).physics;
+  const physicsSeekStable = physics ? seekIsStable(scene, recipe.physics.duration) : null;
   const geometries = scene.parts.map(worldGeometry);
   const reports = new Map();
   const reportOf = id => {
@@ -254,12 +319,17 @@ export async function measureRecipe(recipe) {
     parts += report.parts.count;
     closedParts += report.parts.closed;
     eulerCharacteristic += report.counts.vertices - report.counts.edges + report.counts.faces;
-    for (const problem of report.problems) problemKinds.add(problem.kind);
-    lintProblems += report.problems.length;
+    // Spatial warnings are advice, not pass or fail: a mug handle is meant to break symmetry.
+    const gradedProblems = report.problems.filter(problem => !(problem.kind in GEOMETRY_PROBLEMS));
+    for (const problem of gradedProblems) problemKinds.add(problem.kind);
+    lintProblems += gradedProblems.length;
   }
   const allClosed = closedParts === parts;
   return {
     nodes: geometries.length,
+    physics,
+    physicsSeekStable,
+    rig: recipe.armatures ? measureRig(scene, recipe.motion?.duration ?? 0) : null,
     patternTypes: scene.exportRecipe().materials.filter(material => material.pattern).map(material => material.pattern.type),
     parts,
     closedParts,

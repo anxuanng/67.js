@@ -1,4 +1,5 @@
 import { meshBounds, tagCounts } from './mesh-data.js';
+import { lintMeshGeometry } from './mesh-lint-geometry.js';
 import { faceNormals } from './mesh-normals.js';
 import { cornerFaces, edgeCornerTable, faceParts } from './mesh-topology.js';
 
@@ -11,7 +12,17 @@ const PROBLEMS = Object.freeze({
   'inverted-part': { severity: 'error', fix: 'Run flip_normals on the part; its normals point inward.' },
   'degenerate-face': { severity: 'error', fix: 'Run merge_by_distance or dissolve the zero-area faces.' },
   'loose-vertex': { severity: 'warning', fix: 'Delete loose vertices; they do not render and confuse bounds.' },
-  'boundary-edge': { severity: 'warning', fix: 'Open surface. Fill the hole or add solidify if the part must be closed.' },
+  'boundary-edge': { severity: 'warning', fix: 'Open surface. Run fill_holes to cap each boundary loop, or add solidify if the part must be closed.' },
+});
+
+// Spatial checks, opt in through lintMesh(mesh, { geometry: true }) because each builds a BVH. All are warnings: a mesh
+// can cross itself, be thin or float on purpose, so none of them turns ok off.
+export const GEOMETRY_PROBLEMS = Object.freeze({
+  'intersecting-parts': { severity: 'warning', fix: 'Two parts cross each other (sample holds first * 1000 + second part index). Move them apart, or run a union boolean if they should be one solid.' },
+  'self-intersection': { severity: 'warning', fix: 'A closed part cuts through itself. Undo the last extrude, inset or translate that folded it, or lower its offset.' },
+  'thin-wall': { severity: 'warning', fix: 'The wall behind these faces (sample is face indices) is under 0.5% of the mesh size thick. Thicken it with solidify, or move the faces apart.' },
+  'floating-part': { severity: 'warning', fix: 'This part (sample is part indices) touches no other part. Translate it onto its neighbour, or ignore this if it is meant to stand alone.' },
+  asymmetric: { severity: 'warning', fix: 'The mesh is mirror-symmetric except for the vertices in sample. Rebuild one half and mirror it, or set_position those vertices to their partners.' },
 });
 
 function addProblem(problems, kind, element) {
@@ -101,7 +112,7 @@ function insideOtherPart(mesh, facePart, part) {
  * Returns { ok, counts, parts, tags, bounds, problems }, where each problem has kind, severity, count, a sample of
  * element indices (faces, edges or vertices by kind) and a suggested fix. ok is false when any error is present.
  */
-export function lintMesh(mesh) {
+export function lintMesh(mesh, { geometry = false } = {}) {
   const problems = new Map();
   const table = edgeCornerTable(mesh);
   const facesOfCorners = cornerFaces(mesh);
@@ -138,15 +149,25 @@ export function lintMesh(mesh) {
   const volumes = partVolumes(mesh, facePart, partCount);
   let closedParts = 0;
   let cavities = 0;
+  const solidParts = [];
   for (let part = 0; part < partCount; part++) {
     if (partOpen[part] || partWindingBroken[part]) continue;
     closedParts++;
-    if (volumes[part] >= 0) continue;
+    if (volumes[part] >= 0) {
+      solidParts.push(part);
+      continue;
+    }
     // A negative shell inside another part is a cavity (a hollow), which is valid; elsewhere it is inside out.
     if (insideOtherPart(mesh, facePart, part)) cavities++;
     else addProblem(problems, 'inverted-part', part);
   }
   const problemList = [...problems.values()];
+  let skippedChecks;
+  if (geometry) {
+    const spatial = lintMeshGeometry(mesh, { facePart, partCount, solidParts, bounds, diagonal });
+    for (const found of spatial.problems) problemList.push({ ...found, ...GEOMETRY_PROBLEMS[found.kind] });
+    if (spatial.skipped.length) skippedChecks = spatial.skipped;
+  }
   return {
     ok: !problemList.some(problem => problem.severity === 'error'),
     counts: { vertices: mesh.vertexCount, edges: mesh.edgeCount, faces: mesh.faceCount, corners: mesh.cornerCount },
@@ -154,5 +175,6 @@ export function lintMesh(mesh) {
     tags: tagCounts(mesh),
     bounds,
     problems: problemList,
+    ...(skippedChecks ? { skippedChecks } : {}),
   };
 }

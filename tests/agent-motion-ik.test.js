@@ -158,7 +158,7 @@ test('recipes export and reload with their ik', () => {
 
 test('mistakes say what to pass', () => {
   const create = (ik, overrides) => createAgentScene(armRecipe({ duration: 1, tracks: [], ik }, overrides));
-  assert.throws(() => createAgentScene(armRecipe({ duration: 1, tracks: [] })), /at least one track or IK solver/);
+  assert.throws(() => createAgentScene(armRecipe({ duration: 1, tracks: [] })), /at least one track, IK solver, constraint or driver/);
   assert.throws(() => create([{ type: 'fabrik', target: [0, 0, 0] }]), /type must be two-bone or aim/);
   assert.throws(() => create([armIk([0, 0, 0], { root: 'nope' })]), /root must be a node ID/);
   assert.throws(() => create([armIk({ node: 'nope' })]), /target node must be a node ID/);

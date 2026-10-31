@@ -33,11 +33,11 @@ An MCP server lets an agent author a scene as a JSON recipe, look at PNG preview
 
 <table>
   <tr>
-    <td width="50%"><a href="docs/terrain.md"><img src="https://67js.codepawl.com/previews/terrain.webp" alt="Rolling hills of scanned grass and mud rising to rocky ridges" /></a><br /><b>Terrain</b>: chunked heightfield, four scanned ground layers</td>
-    <td width="50%"><a href="docs/spume.md"><img src="https://67js.codepawl.com/previews/spume.webp" alt="A jet of baked liquid hitting a concrete slab" /></a><br /><b>Spume liquid</b>: baked water that refracts and sprays</td>
+    <td width="50%"><a href="https://67js.codepawl.com/terrain.md"><img src="https://67js.codepawl.com/previews/terrain.webp" alt="Rolling hills of scanned grass and mud rising to rocky ridges" /></a><br /><b>Terrain</b>: chunked heightfield, four scanned ground layers</td>
+    <td width="50%"><a href="https://67js.codepawl.com/spume.md"><img src="https://67js.codepawl.com/previews/spume.webp" alt="A jet of baked liquid hitting a concrete slab" /></a><br /><b>Spume liquid</b>: baked water that refracts and sprays</td>
   </tr>
   <tr>
-    <td><a href="docs/vehicle.md"><img src="https://67js.codepawl.com/previews/vehicle.webp" alt="A jeep leaning into a bend on a marked path" /></a><br /><b>Vehicles</b>: steering, body roll and wheels on a path</td>
+    <td><a href="https://67js.codepawl.com/vehicle.md"><img src="https://67js.codepawl.com/previews/vehicle.webp" alt="A jeep leaning into a bend on a marked path" /></a><br /><b>Vehicles</b>: steering, body roll and wheels on a path</td>
     <td><a href="docs/lighting.md"><img src="https://67js.codepawl.com/previews/lighting.webp" alt="Metal spheres of rising roughness lit by an HDR environment" /></a><br /><b>HDRI lighting</b>: reflections that blur with roughness</td>
   </tr>
   <tr>
@@ -117,15 +117,15 @@ Each addon is a separate import, so a page loads only what it uses.
 | --- | --- | --- |
 | Rendering | `67js` | Instanced PBR renderer, shadows, MSAA, HDR, bloom, alpha masks and blending, render budgets. See [lighting](docs/lighting.md) and [material maps](docs/material-maps.md). |
 | Environment | `67js/addons/hdri` | Image-based lighting from Radiance `.hdr` files, with blurred reflections. |
-| Terrain | `67js/addons/terrain`, `67js/addons/texture-set` | [Chunked terrain](docs/terrain.md) with level of detail and a four-layer splat material from scanned textures. |
-| Grass | `67js/addons/grass` | [Grass fields](docs/grass.md) of clumped, curved blades with rolling wind gusts, paths and level of detail. |
-| Clutter | `67js/addons/clutter` | [Pebbles, rocks, twigs and fallen leaves](docs/clutter.md) scattered over terrain in streamed tiles. |
-| Vegetation | `67js/addons/vegetation` | [Seeded trees, bushes and grass](docs/vegetation.md) with scanned leaves and bark, wind and level of detail. |
-| Liquid | `67js/addons/spume` | [Baked liquid playback](docs/spume.md) with refraction and spray from the Spume solver. |
-| Vehicles | `67js/addons/vehicle` | [Wheeled vehicles on a path](docs/vehicle.md): wheel spin, steering, roll, pitch and ground following. |
-| Characters | `67js/addons/gltf`, `67js/addons/retarget`, `67js/addons/skeleton-pose` | [glTF import](docs/gltf.md) with skins, morphs and compressed meshes, [clip retargeting](docs/retarget.md) between rigs, and [pose layers with IK](docs/skeleton-pose.md). |
+| Terrain | `67js/addons/terrain`, `67js/addons/texture-set` | [Chunked terrain](https://67js.codepawl.com/terrain.md) with level of detail and a four-layer splat material from scanned textures. |
+| Grass | `67js/addons/grass` | [Grass fields](https://67js.codepawl.com/grass.md) of clumped, curved blades with rolling wind gusts, paths and level of detail. |
+| Clutter | `67js/addons/clutter` | [Pebbles, rocks, twigs and fallen leaves](https://67js.codepawl.com/clutter.md) scattered over terrain in streamed tiles. |
+| Vegetation | `67js/addons/vegetation` | [Seeded trees, bushes and grass](https://67js.codepawl.com/vegetation.md) with scanned leaves and bark, wind and level of detail. |
+| Liquid | `67js/addons/spume` | [Baked liquid playback](https://67js.codepawl.com/spume.md) with refraction and spray from the Spume solver. |
+| Vehicles | `67js/addons/vehicle` | [Wheeled vehicles on a path](https://67js.codepawl.com/vehicle.md): wheel spin, steering, roll, pitch and ground following. |
+| Characters | `67js/addons/gltf`, `67js/addons/retarget`, `67js/addons/skeleton-pose` | [glTF import](docs/gltf.md) with skins, morphs and compressed meshes, [clip retargeting](https://67js.codepawl.com/retarget.md) between rigs, and [pose layers with IK](docs/skeleton-pose.md). |
 | Physics | `67js/addons/physics` | [Rapier contacts and joints](docs/physics.md) recorded into a timeline for repeatable seeks. |
-| Modeling | `67js/addons/modeling`, `sculpt`, `surface`, `shrinkwrap`, `mesh-query` | [Modeling](docs/modeling.md), [sculpt brushes](docs/sculpt.md), [surface patches](docs/surface.md), [shrinkwrap](docs/shrinkwrap.md) and [mesh queries](docs/mesh-query.md). |
+| Modeling | `67js/addons/modeling`, `sculpt`, `surface`, `shrinkwrap`, `mesh-query` | [Modeling](docs/modeling.md), [sculpt brushes](https://67js.codepawl.com/sculpt.md), [surface patches](https://67js.codepawl.com/surface.md), [shrinkwrap](https://67js.codepawl.com/shrinkwrap.md) and [mesh queries](https://67js.codepawl.com/mesh-query.md). |
 | Polygon mesh | `67js/addons/mesh` | [Mesh editing for agents](docs/mesh.md): tagged faces, extrude, inset, bevel, loop cut, booleans, a modifier stack and UV unwrap. |
 | Agents | `67js/addons/agent-scene`, `67js/addons/agent-asset` | [Scene sessions](docs/agent-scene.md) with revisions, checkpoints and atomic edits. |
 

@@ -45,6 +45,22 @@ The renderer owns GPU allocation and disposal.
 The authoring session does not allocate GPU resources.
 The normal frame loop can render retained parts without calling inspection or exporting the recipe.
 
+### On-demand code
+
+Mesh editing, `lathe`, `extrude` and `tube` geometry, material `pattern` and `motion` load on demand, so a recipe of
+primitives pays about half the bytes. `createAgentScene` and `apply` stay synchronous. When a recipe uses one of them,
+load its code first; a missing module throws an error that names this call.
+
+```js
+import { createAgentScene, loadAgentSceneModules } from '67js/addons/agent-scene';
+
+await loadAgentSceneModules(recipe);
+const scene = createAgentScene(recipe);
+```
+
+`loadAllAgentSceneModules()` loads everything, for a host that runs any recipe an agent writes (the MCP preview does).
+Call `loadAgentSceneModules(operations)` before `apply` when the operations add such features.
+
 ## Recipe contract
 
 The recipe must contain `format`, `schemaVersion`, `geometries`, `materials`, and `nodes`.
@@ -149,6 +165,29 @@ The session normalizes the nonzero up vector and rejects collinear view directio
 View and projection matrices must remain finite and nonsingular at Float32 precision.
 Projection validation uses aspect one because the renderer owns the actual target aspect.
 An explicit top view can use `eye: [0, 3, 0]`, `target: [0, 0, 0]`, and `up: [0, 0, -1]`.
+
+### Instances on points
+
+A node with `instances` repeats its geometry and material at points. At `scene_create` it becomes a group node (the
+node's id, with its transform and parent) and one child node per point (`<id>.0`, `<id>.1`, and so on), all sharing
+the geometry and material, so the renderer draws them as one instanced batch. After that they are ordinary nodes.
+`instances` is accepted in the recipe, not in an `add-node` operation.
+
+```text
+{ "id": "grass", "geometry": "blade", "material": "green", "parent": "ground",
+  "instances": { "surface": { "geometry": "ground-shape", "count": 300 }, "seed": 3,
+                 "where": { "gt": [{ "attr": "position", "component": "x" }, 0] },
+                 "yaw": true, "scale": [0.7, 1.3] } }
+```
+
+Give exactly one point source. `grid` is `{ counts: [nx, ny, nz], spacing: [dx, dy, dz] }`, centred on the group.
+`scatter` is `{ count, min, max }`, seeded random points in a box. `surface` is `{ geometry, count }`, seeded points
+on the triangles of a recipe geometry in proportion to their area; they are in that geometry's own space, so parent
+the group to the node that carries it. `seed` (default 0) fixes the placement. `where` is a number
+[field expression](mesh.md#field-expressions) over the points (position, normal, index): points where it is 0 are
+dropped. `yaw` turns each instance randomly about up, `alignToNormal` (surface only) tilts up to the surface normal, and `scale`
+is a random uniform `[min, max]`. At most 2048 candidate points per node, and the scene's node limit still applies.
+The group's own scale applies to the spacing and the points, because they are in its space.
 
 ## Transactions and ownership
 

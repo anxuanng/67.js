@@ -111,12 +111,19 @@ Inspect or export the recipe before retrying. Context loss still permits recipe 
 | `scene_restore` | `sessionId`, `checkpointId`, `expectedRevision` | Updated revision, inspection, and render status |
 | `scene_release_checkpoint` | `sessionId`, `checkpointId` | Release confirmation |
 | `scene_export_recipe` | `sessionId` | Canonical recipe and revision |
+| `scene_export_glb` | `sessionId`, optional `clip`, `motionTime`, `maxTextureSize` | A GLB file under `<jobs>/exports/` with a server-chosen name: path, bytes, SHA-256. See [GLB export](export-glb.md) |
 | `scene_dispose` | `sessionId` | Disposal confirmation |
 | `scene_render_submit` | `sessionId`, `expectedRevision`, `settings` | Snapshot job ID and queued record |
 | `scene_render_status` | `jobId` | State and durable frame progress |
 | `scene_render_cancel` | `jobId` | Cancellation acknowledgement |
 | `scene_render_result` | `jobId` | Completed output paths, hashes and metrics |
 | `scene_render_release` | `jobId` | Confirmation that owned job files were removed |
+
+### Tool cost and diagnostics
+
+Every tool schema is read on every turn, so `node scripts/measure-tool-cost.mjs` reports the bytes and estimated tokens of each schema and of each typical result, and `tests/tool-cost.test.js` fails when one passes `bench/tool-cost-budgets.json`. The schemas total 173,216 bytes (about 49,500 tokens). To save space, a mesh geometry's `edits` and `stack` in a recipe, and `motion` in `scene_apply` and asset recipes, are advertised as plain objects: the full field list is in `mesh_edit`, `mesh_stack` and `scene_create`, and the backend still validates every field and names the valid choices when one is wrong. A small mesh change is far cheaper as `mesh_edit` (187 bytes in the measured case) than as a whole recipe rewrite (1,254 bytes with the dispose).
+
+`mesh_inspect` lint adds warnings for `intersecting-parts`, `self-intersection`, `thin-wall`, `floating-part` and `asymmetric`. They never set `ok` to false, run within face budgets, and list any check they skipped in `skippedChecks`. `scene_inspect` returns a `diagnostics` list only when there is something to say: ignored material fields, blended transmission, unused materials or geometries, and for imported assets the decoder's not-drawn features, rigs with no joints or no skin, and assets with no clips. Each item has `kind`, `severity`, `target`, `message` and `fix`.
 
 The recipe uses `format: '67js.scene'` and `schemaVersion: 1`.
 Supported geometry types are `box`, `cylinder`, `sphere`, `torus`, `lathe`, `extrude`, `tube`, and `mesh`.
@@ -204,6 +211,7 @@ The tools expose no arbitrary JavaScript execution, remote URLs or arbitrary cal
 Release `0.8.0` supports [imported source-node tracks](agent-character-motion.md) through the bounded motion recipe.
 Facial morph track authoring and rig creation remain unsupported.
 Render jobs use a configured private store and fixed output filenames.
+`scene_export_glb` writes only to `exports/` inside that store, under a UUID name the server picks, with mode 0600; it keeps the newest eight files and caps each at 32 MiB.
 
 See [render jobs](agent-render-jobs.md) for the snapshot workflow and storage limits.
 Embedded texture decoding uses private browser blob URLs. Remote asset requests remain blocked.

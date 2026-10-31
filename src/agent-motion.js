@@ -1,6 +1,8 @@
 import { createAnimationClip, compileAnimationSampler } from './animation.js';
 import { createCameraPath } from './camera-path.js';
 import { createSkeletonPose } from './skeleton-pose.js';
+import { createNodeConstraintEvaluator, normalizeConstraints, normalizeDrivers } from './node-constraints.js';
+import { bounded, denseArray, finite, knownKeys, valueFrom } from './motion-validation.js';
 
 const PROPERTIES = {
   node: { translation: 3, rotation: 4, scale: 3 },
@@ -11,57 +13,6 @@ const INTERPOLATIONS = ['LINEAR', 'STEP', 'SMOOTH', 'CUBICSPLINE'];
 const MAX_IK_SOLVERS = 16;
 const IK_SWEEP_SAMPLES = 33;
 const CAMERA_DEFAULTS = { eye: [4, 3, 5], target: [0, 0, 0], up: [0, 1, 0], fov: 45, near: 0.1, far: 1000 };
-
-function knownKeys(value, fields, label) {
-  if (!value || Object.getPrototypeOf(value) !== Object.prototype) {
-    throw new TypeError(`${label} must be a plain object.`);
-  }
-  for (const key of Reflect.ownKeys(value)) {
-    const descriptor = Object.getOwnPropertyDescriptor(value, key);
-    if (typeof key !== 'string' || !fields.includes(key) || !descriptor.enumerable || !Object.hasOwn(descriptor, 'value')) {
-      throw new TypeError(`Unknown or unsupported ${label} field: ${String(key)}.`);
-    }
-  }
-}
-
-function finite(value, label) {
-  if (!Number.isFinite(value) || !Number.isFinite(Math.fround(value))) {
-    throw new RangeError(`${label} must be finite at Float32 precision.`);
-  }
-  return value;
-}
-
-function bounded(value, minimum, maximum, label) {
-  finite(value, label);
-  if (value < minimum || value > maximum) {
-    throw new RangeError(`${label} must be within ${minimum} and ${maximum}.`);
-  }
-  return value;
-}
-
-function denseArray(value, maximum, label) {
-  if (!Array.isArray(value) || value.length > maximum || Object.keys(value).length !== value.length ||
-      Reflect.ownKeys(value).length !== value.length + 1 || Object.keys(value).some((key, index) => key !== String(index))) {
-    throw new TypeError(`${label} must be a bounded dense array.`);
-  }
-  for (let index = 0; index < value.length; index++) {
-    if (!Object.hasOwn(Object.getOwnPropertyDescriptor(value, index), 'value')) {
-      throw new TypeError(`${label} cannot contain accessors.`);
-    }
-  }
-  return value;
-}
-
-function valueFrom(value, size, label) {
-  if (size === 1) {
-    return finite(value, label);
-  }
-  denseArray(value, size, label);
-  if (value.length !== size) {
-    throw new TypeError(`${label} needs ${size} components.`);
-  }
-  return value.map(component => finite(component, label));
-}
 
 function validateValue(kind, property, value) {
   const components = typeof value === 'number' ? [value] : value;
@@ -171,10 +122,28 @@ function ikWeight(input, duration, label) {
   return weight;
 }
 
+/** { root: { x: [min, max], y, z }, middle: {...} } in degrees, the turn away from the rest rotation in the joint's own axes. */
+function jointLimits(input, label) {
+  knownKeys(input, ['root', 'middle'], label);
+  const limits = {};
+  for (const joint of Object.keys(input)) {
+    knownKeys(input[joint], ['x', 'y', 'z'], `${label} ${joint}`);
+    limits[joint] = {};
+    for (const axis of Object.keys(input[joint])) {
+      const range = valueFrom(input[joint][axis], 2, `${label} ${joint}.${axis}`);
+      if (range[0] > range[1] || range[0] < -180 || range[1] > 180) {
+        throw new RangeError(`${label} ${joint}.${axis} must be [min, max] degrees within -180 and 180, min first.`);
+      }
+      limits[joint][axis] = range;
+    }
+  }
+  return limits;
+}
+
 function normalizeIkSolver(input, position, nodes, visibleNodes, duration) {
   const label = `Motion ik ${position}`;
   if (input?.type === 'two-bone') {
-    knownKeys(input, ['type', 'root', 'middle', 'end', 'target', 'pole', 'weight', 'keepEndRotation'], label);
+    knownKeys(input, ['type', 'root', 'middle', 'end', 'target', 'pole', 'weight', 'keepEndRotation', 'limits', 'bendToward'], label);
     const solver = {
       type: 'two-bone',
       root: nodeIdFrom(input.root, nodes, `${label} root`),
@@ -191,6 +160,12 @@ function normalizeIkSolver(input, position, nodes, visibleNodes, duration) {
         throw new TypeError(`${label} keepEndRotation must be boolean.`);
       }
       solver.keepEndRotation = input.keepEndRotation;
+    }
+    if (input.limits !== undefined) {
+      solver.limits = jointLimits(input.limits, `${label} limits`);
+    }
+    if (input.bendToward !== undefined) {
+      solver.bendToward = valueFrom(input.bendToward, 3, `${label} bendToward`);
     }
     return solver;
   }
@@ -294,15 +269,15 @@ export function normalizeAgentMotion(input, recipe) {
   if (input === null || input === undefined) {
     return null;
   }
-  knownKeys(input, ['duration', 'loop', 'tracks', 'ik'], 'motion');
+  knownKeys(input, ['duration', 'loop', 'tracks', 'ik', 'constraints', 'drivers'], 'motion');
   const duration = bounded(input.duration, 0.1, 30, 'Motion duration');
   const loop = input.loop === undefined ? false : input.loop;
   if (typeof loop !== 'boolean') {
     throw new TypeError('Motion loop must be boolean.');
   }
   denseArray(input.tracks, 128, 'Motion tracks');
-  if (!input.tracks.length && !input.ik?.length) {
-    throw new RangeError('Motion needs at least one track or IK solver. Use null to clear it.');
+  if (!input.tracks.length && !input.ik?.length && !input.constraints?.length && !input.drivers?.length) {
+    throw new RangeError('Motion needs at least one track, IK solver, constraint or driver. Use null to clear it.');
   }
   const nodes = new Set((recipe.nodes ?? []).map(node => node.id));
   const materials = new Set((recipe.materials ?? []).map(material => material.id));
@@ -361,6 +336,18 @@ export function normalizeAgentMotion(input, recipe) {
     result.ik = normalizeIk(input.ik, recipe, tracks, duration);
     if (keyframeCount + ikKeyframeCount(result.ik) > 2048) {
       throw new RangeError('Motion exceeds 2048 total keyframes.');
+    }
+  }
+  const visibleIds = new Set(ikHierarchy(recipe).map(node => node.id));
+  if (input.constraints !== undefined) {
+    result.constraints = normalizeConstraints(input.constraints, nodes, visibleIds);
+  }
+  if (input.drivers !== undefined) {
+    result.drivers = normalizeDrivers(input.drivers, nodes, materials, visibleIds);
+    for (const { target } of result.drivers) {
+      if (identities.has(JSON.stringify([target.kind, target.id, target.property]))) {
+        throw new RangeError(`Motion driver for ${target.id} ${target.property} clashes with a track on the same property.`);
+      }
     }
   }
   return result;
@@ -428,7 +415,7 @@ function createIkEvaluator(motion, recipe, stagedNodeTracks) {
     return {
       ...common, type: 'two-bone', root: solver.root, middle: solver.middle, end: solver.end,
       ...(solver.pole ? { pole: pointReader(solver.pole, `pole ${position}`) } : {}),
-      keepEndRotation: solver.keepEndRotation,
+      keepEndRotation: solver.keepEndRotation, limits: solver.limits, bendToward: solver.bendToward,
     };
   });
   pose = createSkeletonPose({ rig, ik: definitions });
@@ -485,6 +472,12 @@ function validateRadiance(material) {
   }
 }
 
+/** IDs of the nodes a driver or constraint writes. */
+function constrainedNodeIds(motion) {
+  const driven = (motion.drivers ?? []).filter(driver => driver.target.kind === 'node').map(driver => driver.target.id);
+  return new Set([...driven, ...(motion.constraints ?? []).map(constraint => constraint.node)]);
+}
+
 /** Retains published maps and vectors. A failed sample leaves them unchanged. */
 export function compileAgentMotion(input, recipe) {
   const motion = normalizeAgentMotion(input, recipe);
@@ -521,14 +514,32 @@ export function compileAgentMotion(input, recipe) {
     stagedNodeTracks.get(track.id)[track.property] = staged;
   }
   const ikEvaluator = motion.ik?.length ? createIkEvaluator(motion, recipe, stagedNodeTracks) : null;
-  // An imported asset's base pose comes from its decoder, so it asks for IK itself with solveStagedIk.
-  const ikUsesStagedPose = Boolean(ikEvaluator && recipe.ikHierarchy);
+  const constraintEvaluator = createNodeConstraintEvaluator({
+    hierarchy: ikHierarchy(recipe), rootMatrix: recipe.ikRootMatrix,
+    constraints: motion.constraints, drivers: motion.drivers, materials: recipe.materials ?? [],
+  });
+  // An imported asset's base pose comes from its decoder, so it asks for IK and constraints itself with solveStagedPose.
+  const ikUsesStagedPose = Boolean((ikEvaluator || constraintEvaluator) && recipe.ikHierarchy);
   if (ikEvaluator && !ikUsesStagedPose) {
     for (const id of ikEvaluator.staged.keys()) {
       if (!output.nodes.has(id)) output.nodes.set(id, {});
       const nodePatch = output.nodes.get(id);
       if (!nodePatch.rotation) nodePatch.rotation = new Float64Array(4);
     }
+  }
+  if (constraintEvaluator && !ikUsesStagedPose) {
+    for (const id of constrainedNodeIds(motion)) {
+      if (!output.nodes.has(id)) output.nodes.set(id, {});
+      const nodePatch = output.nodes.get(id);
+      nodePatch.translation ??= new Float64Array(3);
+      nodePatch.rotation ??= new Float64Array(4);
+      nodePatch.scale ??= new Float64Array(3);
+    }
+  }
+  const drivenMaterials = (motion.drivers ?? []).filter(driver => driver.target.kind === 'material');
+  for (const { target } of drivenMaterials) {
+    if (!output.materials.has(target.id)) output.materials.set(target.id, {});
+    output.materials.get(target.id)[target.property] = target.component === undefined ? 0 : new Float64Array(3);
   }
   const baselines = new Map((recipe.materials ?? []).map(material => [material.id, structuredClone(material)]));
   const cameraTracks = motion.tracks.filter(track => track.kind === 'camera');
@@ -550,12 +561,36 @@ export function compileAgentMotion(input, recipe) {
     };
   }
   const materialSamples = new Map([...output.materials.keys()].map(id => [id, { ...baselines.get(id) }]));
+  /** Node values straight from the tracks. A node without a track keeps its rest value. */
+  const trackBases = () => new Map([...stagedNodeTracks].map(([id, tracks]) => [id, { ...tracks }]));
+  /** The tracks with IK's rotations on top: the pose drivers and constraints start from. */
+  function poseBases() {
+    const bases = trackBases();
+    for (const [id, rotation] of ikEvaluator?.staged ?? []) bases.set(id, { ...bases.get(id), rotation });
+    return bases;
+  }
   return Object.freeze({
     ikUsesStagedPose,
-    /** Solve IK over a pose an asset staged for this time. Returns the node rotations to add. */
-    solveStagedIk(time, nodePoses) {
-      ikEvaluator.solve(time, nodePoses);
-      return [...ikEvaluator.staged].map(([id, rotation]) => ({ id, rotation: Array.from(rotation) }));
+    /**
+     * Solve IK, then drivers and constraints, over a pose an asset staged for this time ({ id, translation, rotation,
+     * scale } per node). Returns the node overrides to add: rotations for IK nodes, whole transforms for constrained ones.
+     */
+    solveStagedPose(time, nodePoses) {
+      const overrides = new Map();
+      const bases = new Map(nodePoses.map(({ id, translation, rotation, scale }) => [id, { translation, rotation, scale }]));
+      if (ikEvaluator) {
+        ikEvaluator.solve(time, nodePoses);
+        for (const [id, rotation] of ikEvaluator.staged) {
+          overrides.set(id, { rotation: Array.from(rotation) });
+          bases.set(id, { ...bases.get(id), rotation });
+        }
+      }
+      if (constraintEvaluator) {
+        for (const [id, frame] of constraintEvaluator.evaluate(time, bases).nodes) {
+          overrides.set(id, { translation: Array.from(frame.translation), rotation: Array.from(frame.rotation), scale: Array.from(frame.scale) });
+        }
+      }
+      return [...overrides].map(([id, fields]) => ({ id, ...fields }));
     },
     /**
      * How IK fares across the whole clip: one { type, reached, worstError, atTime } per solver. Moves the sampler.
@@ -563,16 +598,24 @@ export function compileAgentMotion(input, recipe) {
      */
     sweepIk(stagedPoseAt) {
       if (!ikEvaluator) return [];
-      const worst = motion.ik.map(solver => ({ type: solver.type, reached: true, worstError: 0, atTime: 0 }));
+      const worst = motion.ik.map(solver => ({ type: solver.type, reached: true, worstError: 0, atTime: 0, warnings: [], limited: [] }));
       for (let sample = 0; sample < IK_SWEEP_SAMPLES; sample++) {
         const time = motion.duration * sample / (IK_SWEEP_SAMPLES - 1);
         sampler.sample(time);
         ikEvaluator.solve(time, stagedPoseAt?.(time)).forEach((result, position) => {
           const record = worst[position];
+          const atTime = Number(time.toFixed(3));
           record.reached = record.reached && result.reached;
           if (result.error > record.worstError) {
             record.worstError = Number(result.error.toFixed(6));
-            record.atTime = Number(time.toFixed(3));
+            record.atTime = atTime;
+          }
+          // Each distinct warning and each limited axis is reported once, at the first time it shows.
+          for (const warning of result.warnings ?? []) {
+            if (!record.warnings.some(known => known.code === warning.code)) record.warnings.push({ ...warning, atTime });
+          }
+          for (const change of result.limited ?? []) {
+            if (!record.limited.some(known => known.joint === change.joint && known.axis === change.axis)) record.limited.push({ ...change, atTime });
           }
         });
       }
@@ -588,6 +631,15 @@ export function compileAgentMotion(input, recipe) {
           materialSamples.get(track.id)[track.property] = value;
         }
       }
+      if (!ikUsesStagedPose) ikEvaluator?.solve(time);
+      const evaluated = constraintEvaluator?.evaluate(time, ikUsesStagedPose ? trackBases() : poseBases());
+      const drivenValues = [];
+      for (const { target } of drivenMaterials) {
+        const value = evaluated.materials.get(target.id)[target.property];
+        validateValue('material', target.property, value);
+        materialSamples.get(target.id)[target.property] = value;
+        drivenValues.push({ target, value });
+      }
       for (const material of materialSamples.values()) {
         validateRadiance(material);
       }
@@ -601,8 +653,7 @@ export function compileAgentMotion(input, recipe) {
           throw new RangeError('Sampled camera lens is invalid at Float32 precision.');
         }
       }
-      if (!ikUsesStagedPose) ikEvaluator?.solve(time);
-      // Publish only after every track, material product, camera pose and IK solve passes.
+      // Publish only after every track, material product, camera pose, IK solve and constraint passes.
       for (const { track, patch, staged } of bindings) {
         if (staged.length === 1) {
           patch[track.property] = staged[0];
@@ -612,6 +663,19 @@ export function compileAgentMotion(input, recipe) {
       }
       if (ikEvaluator && !ikUsesStagedPose) {
         for (const [id, rotation] of ikEvaluator.staged) output.nodes.get(id).rotation.set(rotation);
+      }
+      if (evaluated && !ikUsesStagedPose) {
+        for (const [id, frame] of evaluated.nodes) {
+          const nodePatch = output.nodes.get(id);
+          nodePatch.translation.set(frame.translation);
+          nodePatch.rotation.set(frame.rotation);
+          nodePatch.scale.set(frame.scale);
+        }
+      }
+      for (const { target, value } of drivenValues) {
+        const materialPatch = output.materials.get(target.id);
+        if (typeof value === 'number') materialPatch[target.property] = value;
+        else materialPatch[target.property].set(value);
       }
       if (cameraPath) {
         for (const field of ['eye', 'target', 'up']) {

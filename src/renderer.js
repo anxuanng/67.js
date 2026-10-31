@@ -1,14 +1,17 @@
 import { mat4, mat3 } from 'gl-matrix';
-import { vertexShader, fragmentShader, liquidFragmentShader, depthVertexShader, depthFragmentShader, benchmarkVertexShader, benchmarkFragmentShader } from './shaders.js';
+import { vertexShader, createFragmentShader, liquidFragmentShader, depthVertexShader, depthFragmentShader, benchmarkVertexShader, benchmarkFragmentShader } from './shaders.js';
 import { fullscreenVertex, postFragment, skyFragment, bloomFragment } from './post.js';
+import { ambientOcclusionFragment } from './ambient-occlusion.js';
 import { planRenderSize, estimateTextureBytes, estimateFrameBytes } from './budget.js';
 import { applyProjection } from './camera.js';
 import { resolveEffects } from './effects.js';
 import { createLightingState, updateLightingState } from './lighting.js';
+import { SHADOW_ATLAS_WIDTH, SHADOW_ATLAS_HEIGHT, tileViewport, writeShadowTile } from './local-shadows.js';
 import { resolveVolumeFog } from './volumetric.js';
-import { assertEnvironmentMap, createEnvironmentResources, environmentBackgroundFragment, estimateEnvironmentBytes } from './environment.js';
+import { assertEnvironmentMap, createEnvironmentResources, environmentBackgroundFragment, environmentBrdfFragment, environmentPrefilterFragment, estimateEnvironmentBytes } from './environment.js';
 import { validateSkinGeometry, validateSkinPose, skinTextureLayout, packSkinInfluences } from './skinning.js';
 import { validateSplatMaterial, splatBatchState, splatTextureBytes, resolveSplatSize, packSplatParameters, buildSplatPixels } from './splat.js';
+import { materialLayerState } from './material-layers.js';
 import { validateMorphGeometry, validateMorphPose, validateMorphTransform, packMorphTargets } from './morph.js';
 
 const MATERIAL_TAGS = { armor: 1, floor: 2, water: 3, foliage: 4, terrain: 5, grass: 7, fire: 8, smoke: 9, unlit: 10, liquid: 11, foam: 12 };
@@ -16,6 +19,8 @@ const MATERIAL_TAGS = { armor: 1, floor: 2, water: 3, foliage: 4, terrain: 5, gr
 const TRANSLUCENT_TAGS = new Set(['liquid', 'foam']);
 const DEFAULT_LIQUID = Object.freeze({ thickness: 0.5, ior: 1.33, refraction: 1, scattering: 1, foamOpacity: 0.55, foamSoftness: 1 });
 const INSTANCE_STRIDE = 41;
+// Shaders get this in place of an infinite attenuation distance, which is not a safe uniform value.
+const MAX_FINITE_DISTANCE = 3e38;
 const ALPHA_MODES = { opaque: 0, mask: 1, blend: 2 };
 const ZERO_VECTOR = Object.freeze([0, 0, 0]);
 const MATERIAL_MAPS = ['map', 'normalMap', 'metallicRoughnessMap', 'occlusionMap', 'emissiveMap'];
@@ -27,7 +32,34 @@ const PROCEDURAL_MATERIAL_TAGS = new Set(['water', 'foliage', 'grass', 'terrain'
 // Tags whose vertices sway in the wind; the shadow pass must be redrawn when time moves.
 const SWAYING_TAGS = new Set(['foliage', 'grass']);
 
+const MAP_SHADER_FEATURES = ['baseMap', 'normalMap', 'metallicRoughnessMap', 'occlusionMap', 'emissiveMap'];
+// Tags whose look the main fragment shader draws with code that other tags never reach.
+const TAG_SHADER_FEATURES = new Set(['floor', 'water', 'foliage', 'terrain', 'grass', 'fire', 'smoke', 'unlit']);
+
+function shaderFeaturesOfLighting(lighting) {
+  const features = [];
+  if (lighting.spotCount > 0) features.push('spotLights');
+  if (lighting.areaCount > 0) features.push('areaLights');
+  if (lighting.shadowCasters.length > 0) features.push('localShadows');
+  return features;
+}
+
+function shaderFeaturesOfParts(parts) {
+  const features = new Set();
+  for (const { material } of parts) {
+    MATERIAL_MAPS.forEach((field, index) => {
+      if (material[field]) features.add(MAP_SHADER_FEATURES[index]);
+    });
+    if (material.layers) features.add('splat');
+    if (material.moss > 0) features.add('moss');
+    if ((material.alphaMode ?? 'opaque') !== 'opaque') features.add('alphaMode');
+    if (TAG_SHADER_FEATURES.has(material.tag)) features.add(material.tag);
+  }
+  return features;
+}
+
 function renderPass(material) {
+  if (material.transmission > 0) return 'liquid';
   return TRANSLUCENT_TAGS.has(material.tag) ? material.tag : 'opaque';
 }
 
@@ -59,6 +91,11 @@ const SPLAT_COLOR_UNIT = 11;
 const SPLAT_NORMAL_UNIT = 12;
 const SPLAT_PACKED_UNIT = 13;
 const SPLAT_MASK_UNIT = 14;
+const LOCAL_SHADOW_UNIT = 15;
+const LIGHT_UNIFORMS = ['pointLightCount', 'pointLightPositions[0]', 'pointLightColors[0]', 'pointLightRadii[0]', 'pointLightShadowTiles[0]',
+  'spotLightCount', 'spotLightPositions[0]', 'spotLightColors[0]', 'spotLightDirections[0]', 'spotLightParameters[0]',
+  'areaLightCount', 'areaLightPositions[0]', 'areaLightColors[0]', 'areaLightNormals[0]', 'areaLightTangents[0]',
+  'localShadowAtlas', 'localShadowMatrices[0]', 'localShadowTexelAngles[0]', 'keyColor', 'fillIntensity', 'ambientIntensity'];
 const SPLAT_UNIFORMS = ['splatEnabled', 'splatColor', 'splatNormal', 'splatPacked', 'splatMask', 'splatLayer[0]', 'splatTint[0]', 'splatSlope[0]', 'splatHeightRange[0]', 'splatMaskChannel[0]', 'splatMaskInvert[0]', 'splatBlend', 'splatOptions', 'splatMaskBounds', 'splatVariation'];
 
 function validateMaterialMaps(material) {
@@ -166,31 +203,36 @@ function packInstance(data, index, part, normalMatrix) {
   data.set(part.material.emissiveColor ?? part.material.color, offset + 38);
 }
 
-function compileProgram(context, vertexSource, fragmentSource) {
+// Starting a program without asking for its result lets the driver build several programs at once.
+function startProgram(context, vertexSource, fragmentSource) {
   const program = context.createProgram();
+  context.getExtension('KHR_parallel_shader_compile');
   const shaders = [];
   for (const [kind, source] of [[context.VERTEX_SHADER, vertexSource], [context.FRAGMENT_SHADER, fragmentSource]]) {
     const shader = context.createShader(kind);
     context.shaderSource(shader, source);
     context.compileShader(shader);
-    if (!context.getShaderParameter(shader, context.COMPILE_STATUS)) {
-      const message = context.getShaderInfoLog(shader);
-      context.deleteShader(shader);
-      shaders.forEach((compiled) => context.deleteShader(compiled));
-      context.deleteProgram(program);
-      throw new Error(`Shader compilation failed: ${message}`);
-    }
-    shaders.push(shader);
     context.attachShader(program, shader);
+    shaders.push(shader);
   }
   context.linkProgram(program);
+  return { program, shaders };
+}
+
+function finishProgram(context, { program, shaders }) {
+  const linked = context.getProgramParameter(program, context.LINK_STATUS);
+  const failedShader = shaders.find(shader => !context.getShaderParameter(shader, context.COMPILE_STATUS));
+  const message = failedShader ? context.getShaderInfoLog(failedShader) : context.getProgramInfoLog(program);
   shaders.forEach((shader) => context.deleteShader(shader));
-  if (!context.getProgramParameter(program, context.LINK_STATUS)) {
-    const message = context.getProgramInfoLog(program);
+  if (!linked) {
     context.deleteProgram(program);
-    throw new Error(`Shader linking failed: ${message}`);
+    throw new Error(failedShader ? `Shader compilation failed: ${message}` : `Shader linking failed: ${message}`);
   }
   return program;
+}
+
+function compileProgram(context, vertexSource, fragmentSource) {
+  return finishProgram(context, startProgram(context, vertexSource, fragmentSource));
 }
 
 function groundPart() {
@@ -223,7 +265,7 @@ export function groupParts(parts, batching = true) {
     const key = batching ? part.geometry : part;
     if (!groups.has(key)) groups.set(key, new Map());
     let maps = groups.get(key);
-    for (const value of [...materialMapState(part.material), part.skin ?? null, part.morph ?? null, castsShadow(part), renderPass(part.material), ...materialAlphaState(part.material)]) {
+    for (const value of [...materialMapState(part.material), ...materialLayerState(part.material), part.skin ?? null, part.morph ?? null, castsShadow(part), renderPass(part.material), ...materialAlphaState(part.material)]) {
       if (!maps.has(value)) maps.set(value, new Map());
       maps = maps.get(value);
     }
@@ -402,24 +444,32 @@ export class Renderer67 {
     this.viewProjection = mat4.create();
     this.lightProjection = mat4.create();
     this.inverseViewProjection = mat4.create();
-    this.program = compileProgram(this.context, benchmark ? benchmarkVertexShader : vertexShader, benchmark ? benchmarkFragmentShader : fragmentShader);
-    this.depthProgram = compileProgram(this.context, depthVertexShader, depthFragmentShader);
-    this.uniforms = Object.fromEntries(['boxMapScale', 'boxMapAxis', 'viewProjection', 'lightProjection', 'eye', 'armorColor', 'armorSurface', 'exposure', 'inspection', 'shadowMap', ...MAP_UNIFORMS, ...MAP_FLAGS, ...SKIN_UNIFORMS, ...MORPH_UNIFORMS, 'normalScale', 'occlusionStrength', 'materialMoss', ...SPLAT_UNIFORMS, 'hdrEnabled', 'time', 'wind', 'worldMode', 'daylight', 'fogColor', 'lightDirection', 'fogDensity', 'waterRipple', 'rippleTime', 'explosionProgress', 'explosionCenter', 'assemblyAmount', ...ALPHA_UNIFORMS].map((name) => [name, this.context.getUniformLocation(this.program, name)]));
-    for (const name of ['pointLightCount', 'pointLightPositions[0]', 'pointLightColors[0]', 'pointLightRadii[0]', 'keyColor', 'fillIntensity', 'ambientIntensity']) {
-      this.uniforms[name] = this.context.getUniformLocation(this.program, name);
+    this.shaderFeatures = shaderFeaturesOfParts(groups.flat());
+    shaderFeaturesOfLighting(this.lighting).forEach(feature => this.shaderFeatures.add(feature));
+    const pending = {
+      main: this.startMainProgram(),
+      depth: startProgram(this.context, depthVertexShader, depthFragmentShader),
+    };
+    if (!benchmark) {
+      pending.post = startProgram(this.context, fullscreenVertex, postFragment);
+      pending.sky = startProgram(this.context, fullscreenVertex, skyFragment);
+      pending.bloom = startProgram(this.context, fullscreenVertex, bloomFragment);
+      pending.liquid = startProgram(this.context, vertexShader, liquidFragmentShader);
+      if (environment.map) this.startEnvironmentPrograms();
     }
-    for (const name of ENVIRONMENT_UNIFORMS) this.uniforms[name] = this.context.getUniformLocation(this.program, name);
+    this.finishMainProgram(pending.main);
+    this.depthProgram = finishProgram(this.context, pending.depth);
     this.depthSkinUniforms = Object.fromEntries(SKIN_UNIFORMS.map(name => [name, this.context.getUniformLocation(this.depthProgram, name)]));
     this.depthMorphUniforms = Object.fromEntries(MORPH_UNIFORMS.map(name => [name, this.context.getUniformLocation(this.depthProgram, name)]));
     if (!benchmark) {
-      this.postProgram = compileProgram(this.context, fullscreenVertex, postFragment);
-      this.skyProgram = compileProgram(this.context, fullscreenVertex, skyFragment);
-      this.postUniforms = Object.fromEntries(['transparent', 'frameTexture', 'bloomTexture', 'bloomStrength', 'hdrEnabled', 'grade', 'vignette', 'grainAmount', 'resolution', 'monochrome', 'fade', 'cinematic', 'time', 'volumeExplosion', 'explosionProgress', 'inverseViewProjection', 'eye', 'sceneDepth', 'volumeShadowMap', 'volumeLightProjection', 'volumeLightDirection', 'volumeLightColor', 'volumeDensity', 'volumeMinimum', 'volumeMaximum', 'volumeColor', 'volumeAmbient', 'volumeDrift', 'volumeSteps', 'volumeAnisotropy', 'volumeNoiseAmount', 'volumeNoiseScale', 'volumeMaxDistance', 'orthographic'].map((name) => [name, this.context.getUniformLocation(this.postProgram, name)]));
-      this.bloomProgram = compileProgram(this.context, fullscreenVertex, bloomFragment);
+      this.postProgram = finishProgram(this.context, pending.post);
+      this.skyProgram = finishProgram(this.context, pending.sky);
+      this.postUniforms = Object.fromEntries(['transparent', 'frameTexture', 'bloomTexture', 'bloomStrength', 'hdrEnabled', 'grade', 'vignette', 'grainAmount', 'resolution', 'monochrome', 'fade', 'cinematic', 'time', 'volumeExplosion', 'explosionProgress', 'inverseViewProjection', 'eye', 'sceneDepth', 'volumeShadowMap', 'volumeLightProjection', 'volumeLightDirection', 'volumeLightColor', 'volumeDensity', 'volumeMinimum', 'volumeMaximum', 'volumeColor', 'volumeAmbient', 'volumeDrift', 'volumeSteps', 'volumeAnisotropy', 'volumeNoiseAmount', 'volumeNoiseScale', 'volumeMaxDistance', 'orthographic', 'occlusionTexture', 'occlusionStrength', 'occlusionTexel'].map((name) => [name, this.context.getUniformLocation(this.postProgram, name)]));
+      this.bloomProgram = finishProgram(this.context, pending.bloom);
       this.bloomUniforms = Object.fromEntries(['sourceTexture', 'texelDirection', 'threshold', 'extract'].map(name => [name, this.context.getUniformLocation(this.bloomProgram, name)]));
       this.skyUniforms = Object.fromEntries(['skyTop', 'skyBottom', 'sunDirection', 'inverseViewProjection', 'eye', 'time', 'daylight', 'hdrEnabled'].map((name) => [name, this.context.getUniformLocation(this.skyProgram, name)]));
-      this.liquidProgram = compileProgram(this.context, vertexShader, liquidFragmentShader);
-      this.liquidUniforms = Object.fromEntries(['viewProjection', 'lightProjection', 'eye', 'sceneColor', 'resolution', 'exposure', 'hdrEnabled', 'worldMode', 'daylight', 'lightDirection', 'keyColor', 'ambientIntensity', 'fogColor', 'fogDensity', 'liquidOptics', 'foamShape', ...ENVIRONMENT_LOOKUP_UNIFORMS, 'time', 'wind', 'explosionProgress', 'explosionCenter', 'assemblyAmount', ...SKIN_UNIFORMS, ...MORPH_UNIFORMS].map((name) => [name, this.context.getUniformLocation(this.liquidProgram, name)]));
+      this.liquidProgram = finishProgram(this.context, pending.liquid);
+      this.liquidUniforms = Object.fromEntries(['viewProjection', 'lightProjection', 'eye', 'sceneColor', 'resolution', 'exposure', 'hdrEnabled', 'worldMode', 'daylight', 'lightDirection', 'keyColor', 'ambientIntensity', 'fogColor', 'fogDensity', 'glassState', 'glassTint', 'liquidOptics', 'foamShape', ...ENVIRONMENT_LOOKUP_UNIFORMS, 'time', 'wind', 'explosionProgress', 'explosionCenter', 'assemblyAmount', ...SKIN_UNIFORMS, ...MORPH_UNIFORMS].map((name) => [name, this.context.getUniformLocation(this.liquidProgram, name)]));
     }
     this.depthAlphaUniforms = Object.fromEntries(DEPTH_ALPHA_UNIFORMS.map(name => [name, this.context.getUniformLocation(this.depthProgram, name)]));
     this.depthUniform = this.context.getUniformLocation(this.depthProgram, 'lightProjection');
@@ -449,6 +499,26 @@ export class Renderer67 {
     this.createShadowMap();
     this.resize();
     if (!this.benchmark && !this.multisampleFramebuffer) this.allocateFrameTargets(this.canvas.width, this.canvas.height);
+  }
+
+  // Compiles the main program with only the shader features that this renderer's parts use, and finds its uniforms.
+  startMainProgram() {
+    const benchmark = this.benchmark;
+    const fragmentSource = benchmark ? benchmarkFragmentShader : createFragmentShader(this.shaderFeatures);
+    return startProgram(this.context, benchmark ? benchmarkVertexShader : vertexShader, fragmentSource);
+  }
+
+  buildMainProgram() {
+    this.finishMainProgram(this.startMainProgram());
+  }
+
+  finishMainProgram(pendingProgram) {
+    this.program = finishProgram(this.context, pendingProgram);
+    this.uniforms = Object.fromEntries(['materialDielectric', 'materialCoat', 'materialSheen', 'boxMapScale', 'boxMapAxis', 'viewProjection', 'lightProjection', 'eye', 'armorColor', 'armorSurface', 'exposure', 'inspection', 'shadowMap', ...MAP_UNIFORMS, ...MAP_FLAGS, ...SKIN_UNIFORMS, ...MORPH_UNIFORMS, 'normalScale', 'occlusionStrength', 'materialMoss', ...SPLAT_UNIFORMS, 'hdrEnabled', 'time', 'wind', 'worldMode', 'daylight', 'fogColor', 'lightDirection', 'fogDensity', 'waterRipple', 'rippleTime', 'explosionProgress', 'explosionCenter', 'assemblyAmount', ...ALPHA_UNIFORMS].map((name) => [name, this.context.getUniformLocation(this.program, name)]));
+    for (const name of LIGHT_UNIFORMS) {
+      this.uniforms[name] = this.context.getUniformLocation(this.program, name);
+    }
+    for (const name of ENVIRONMENT_UNIFORMS) this.uniforms[name] = this.context.getUniformLocation(this.program, name);
   }
 
   get samples() {
@@ -588,7 +658,34 @@ export class Renderer67 {
     if (this.splatPlaceholder) this.context.deleteTexture(this.splatPlaceholder);
   }
 
+  // Parts can arrive after construction (replaceParts) or change their tag (updateParts). When one needs a shader feature
+  // that the program left out, the program is compiled again with that feature added.
+  requireShaderFeatures(parts) {
+    this.requireFeatureNames([...shaderFeaturesOfParts(parts)]);
+  }
+
+  requireFeatureNames(features) {
+    if (this.benchmark || !this.shaderFeatures) return;
+    const missing = features.filter(feature => !this.shaderFeatures.has(feature));
+    if (missing.length === 0) return;
+    missing.forEach(feature => this.shaderFeatures.add(feature));
+    this.rebuildMainProgram();
+  }
+
+  rebuildMainProgram() {
+    const context = this.context;
+    const previousProgram = this.program;
+    this.buildMainProgram();
+    context.deleteProgram(previousProgram);
+    context.useProgram(this.program);
+    for (const [name, unit] of [['skinInfluences', 6], ['jointPalette', 7], ['morphTargets', 8], ['splatColor', SPLAT_COLOR_UNIT], ['splatNormal', SPLAT_NORMAL_UNIT], ['splatPacked', SPLAT_PACKED_UNIT], ['splatMask', SPLAT_MASK_UNIT], ['environmentSpecular', ENVIRONMENT_SPECULAR_UNIT], ['environmentBrdf', ENVIRONMENT_BRDF_UNIT]]) {
+      context.uniform1i(this.uniforms[name], unit);
+    }
+    context.uniform1f(this.uniforms.splatEnabled, 0);
+  }
+
   uploadBatch(parts) {
+    this.requireShaderFeatures(parts);
     const context = this.context;
     const vertexArray = context.createVertexArray();
     try {
@@ -668,8 +765,9 @@ export class Renderer67 {
     const morphTexture = morph ? this.createMorphTexture(geometry, morph) : null;
     const morphWeights = morph ? new Float32Array(morph.weights) : null;
     const [alphaMode, alphaCutoff, opacity, doubleSided] = materialAlphaState(parts[0].material);
-    const batch = { alphaMode, alphaCutoff, opacity, doubleSided, parts: [...parts], vertexArray, instanceBuffer, instanceData, textures, mapState, splat, texture: textures[0], map, skin, skinTexture, influenceTexture, morph, morphTexture, morphWeights, indexCount: geometry.indices.length, instanceCount: parts.length, floor: parts[0].material.tag === 'floor', castShadow: castsShadow(parts[0]), pass: renderPass(parts[0].material) };
-    parts.forEach((part, index) => this.partLocations.set(part, { batch, index, geometry: part.geometry, map, mapState, skin, jointMatrices: skin?.jointMatrices, skinIndices: geometry.skinIndices, skinWeights: geometry.skinWeights, morph, morphWeights: morph?.weights, morphTargets: geometry.morphTargets, normalMatrix: mat3.create(), committedMatrix: batch.instanceData.subarray(index * INSTANCE_STRIDE, index * INSTANCE_STRIDE + 16) }));
+    const layerState = materialLayerState(parts[0].material);
+    const batch = { alphaMode, alphaCutoff, opacity, doubleSided, layerState, parts: [...parts], vertexArray, instanceBuffer, instanceData, textures, mapState, splat, texture: textures[0], map, skin, skinTexture, influenceTexture, morph, morphTexture, morphWeights, indexCount: geometry.indices.length, instanceCount: parts.length, floor: parts[0].material.tag === 'floor', castShadow: castsShadow(parts[0]), pass: renderPass(parts[0].material) };
+    parts.forEach((part, index) => this.partLocations.set(part, { batch, index, geometry: part.geometry, map, mapState, layerState, skin, jointMatrices: skin?.jointMatrices, skinIndices: geometry.skinIndices, skinWeights: geometry.skinWeights, morph, morphWeights: morph?.weights, morphTargets: geometry.morphTargets, normalMatrix: mat3.create(), committedMatrix: batch.instanceData.subarray(index * INSTANCE_STRIDE, index * INSTANCE_STRIDE + 16) }));
     return batch;
   }
 
@@ -696,7 +794,8 @@ export class Renderer67 {
       const sameState = location?.geometry === first.geometry && batch?.castShadow === castsShadow(first) &&
         batch.floor === (first.material.tag === 'floor') && batchPass(batch) === renderPass(first.material) &&
         [batch.alphaMode, batch.alphaCutoff, batch.opacity, batch.doubleSided].every((value, index) => value === alphaState[index]) &&
-        batch.mapState.every((value, index) => value === mapState[index]);
+        batch.mapState.every((value, index) => value === mapState[index]) &&
+        batch.layerState.every((value, index) => value === materialLayerState(first.material)[index]);
       if (sameParts && sameState) {
         retained.add(batch);
         return { group, batch };
@@ -861,7 +960,7 @@ export class Renderer67 {
       for (let index = 0; index < MATERIAL_MAPS.length; index++) {
         if ((part.material[MATERIAL_MAPS[index]] ?? null) !== mapState[index]) throw new Error(`Material map or scale changes require a new renderer: ${part.name}`);
       }
-      if (normalScale[0] !== mapState[5] || normalScale[1] !== mapState[6] || (part.material.occlusionStrength ?? 1) !== mapState[7] || mossState(part.material).some((value, index) => value !== mapState[8 + index])) throw new Error(`Material map or scale changes require a new renderer: ${part.name}`);
+      if (normalScale[0] !== mapState[5] || normalScale[1] !== mapState[6] || (part.material.occlusionStrength ?? 1) !== mapState[7] || mossState(part.material).some((value, index) => value !== mapState[8 + index]) || materialLayerState(part.material).some((value, index) => value !== location.layerState[index])) throw new Error(`Material map or scale changes require a new renderer: ${part.name}`);
       validateTransform(part, location.normalMatrix);
     }
     // A palette upload also changes consumers absent from the submitted part list.
@@ -882,6 +981,8 @@ export class Renderer67 {
     this.updateBatches.clear();
     for (const part of parts) {
       const location = this.partLocations.get(part);
+      // A tag can change between frames without a new batch, so its shader code may not be compiled yet.
+      if (TAG_SHADER_FEATURES.has(part.material.tag) && !this.shaderFeatures?.has(part.material.tag)) this.requireShaderFeatures([part]);
       packInstance(location.batch.instanceData, location.index, part, location.normalMatrix);
       this.updateBatches.add(location.batch);
     }
@@ -935,8 +1036,16 @@ export class Renderer67 {
     context.enable(context.DEPTH_TEST);
     context.enable(context.CULL_FACE);
     context.clear(context.DEPTH_BUFFER_BIT);
+    this.drawShadowCasters();
+    context.bindFramebuffer(context.FRAMEBUFFER, null);
+    this.shadowsDirty = false;
+  }
+
+  // Draws every shadow-casting batch into the bound depth target with this.lightProjection.
+  drawShadowCasters(lightMatrix = this.lightProjection) {
+    const context = this.context;
     context.useProgram(this.depthProgram);
-    context.uniformMatrix4fv(this.depthUniform, false, this.lightProjection);
+    context.uniformMatrix4fv(this.depthUniform, false, lightMatrix);
     context.uniform1f(this.depthAssemblyUniform, this.assemblyAmount ?? 0);
     context.uniform1f(this.depthWindUniforms.time, this.windState.time);
     context.uniform1f(this.depthWindUniforms.wind, this.windState.strength);
@@ -947,8 +1056,54 @@ export class Renderer67 {
     for (const batch of this.batches) if (!batch.floor && batch.castShadow) this.drawAlphaBatch(batch, false);
     context.disable(context.POLYGON_OFFSET_FILL);
     context.enable(context.CULL_FACE);
+  }
+
+  allocateLocalShadowAtlas() {
+    const context = this.context;
+    this.localShadowTexture = context.createTexture();
+    context.activeTexture(context.TEXTURE0 + LOCAL_SHADOW_UNIT);
+    context.bindTexture(context.TEXTURE_2D, this.localShadowTexture);
+    context.texImage2D(context.TEXTURE_2D, 0, context.DEPTH_COMPONENT24, SHADOW_ATLAS_WIDTH, SHADOW_ATLAS_HEIGHT, 0, context.DEPTH_COMPONENT, context.UNSIGNED_INT, null);
+    context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MIN_FILTER, context.NEAREST);
+    context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MAG_FILTER, context.NEAREST);
+    context.texParameteri(context.TEXTURE_2D, context.TEXTURE_WRAP_S, context.CLAMP_TO_EDGE);
+    context.texParameteri(context.TEXTURE_2D, context.TEXTURE_WRAP_T, context.CLAMP_TO_EDGE);
+    this.localShadowFramebuffer = context.createFramebuffer();
+    context.bindFramebuffer(context.FRAMEBUFFER, this.localShadowFramebuffer);
+    context.framebufferTexture2D(context.FRAMEBUFFER, context.DEPTH_ATTACHMENT, context.TEXTURE_2D, this.localShadowTexture, 0);
+    context.drawBuffers([context.NONE]);
+    context.readBuffer(context.NONE);
+    if (context.checkFramebufferStatus(context.FRAMEBUFFER) !== context.FRAMEBUFFER_COMPLETE) throw new Error('Local shadow framebuffer is incomplete.');
+    context.activeTexture(context.TEXTURE0);
+  }
+
+  // Builds the view of each atlas tile, and draws the atlas again only when a light moved or the casters changed.
+  updateLocalShadows(casterChanged) {
+    const casters = this.lighting.shadowCasters;
+    if (casters.length === 0 || this.benchmark) return;
+    const matrices = this.localShadowMatrices ??= new Float32Array(24 * 16);
+    const texelAngles = this.localShadowTexelAngles ??= new Float32Array(24);
+    const previous = this.localShadowPreviousMatrices ??= new Float32Array(24 * 16);
+    const tileMatrix = new Float32Array(16);
+    casters.forEach((caster, tile) => {
+      texelAngles[tile] = writeShadowTile(caster, tileMatrix);
+      matrices.set(tileMatrix, tile * 16);
+    });
+    const moved = casters.length !== this.localShadowTileCount || matrices.some((value, index) => value !== previous[index]);
+    if (!moved && !casterChanged && this.localShadowTexture) return;
+    previous.set(matrices);
+    this.localShadowTileCount = casters.length;
+    const context = this.context;
+    if (!this.localShadowTexture) this.allocateLocalShadowAtlas();
+    context.bindFramebuffer(context.FRAMEBUFFER, this.localShadowFramebuffer);
+    context.viewport(0, 0, SHADOW_ATLAS_WIDTH, SHADOW_ATLAS_HEIGHT);
+    context.enable(context.DEPTH_TEST);
+    context.clear(context.DEPTH_BUFFER_BIT);
+    for (let tile = 0; tile < casters.length; tile++) {
+      context.viewport(...tileViewport(tile));
+      this.drawShadowCasters(matrices.subarray(tile * 16, tile * 16 + 16));
+    }
     context.bindFramebuffer(context.FRAMEBUFFER, null);
-    this.shadowsDirty = false;
   }
 
   /** Stores the wind time and strength the shadow pass must use; true when swaying batches need a new shadow map. */
@@ -986,12 +1141,66 @@ export class Renderer67 {
       context.deleteFramebuffer(target.framebuffer);
     }
     this.bloomTargets = [];
+    this.releaseOcclusionTarget();
     this.multisampleFramebuffer = null;
     this.resolveFramebuffer = null;
     this.multisampleColor = null;
     this.multisampleDepth = null;
     this.frameTexture = null;
     this.depthTexture = null;
+  }
+
+  releaseOcclusionTarget() {
+    if (!this.occlusionTarget) return;
+    this.context.deleteTexture(this.occlusionTarget.texture);
+    this.context.deleteFramebuffer(this.occlusionTarget.framebuffer);
+    this.occlusionTarget = null;
+  }
+
+  // Compiled and allocated on first use, so scenes without occlusion pay nothing.
+  ensureOcclusionTarget() {
+    const context = this.context;
+    if (!this.occlusionProgram) {
+      this.occlusionProgram = compileProgram(context, fullscreenVertex, ambientOcclusionFragment);
+      const names = ['sceneDepth', 'inverseViewProjection', 'eye', 'radius', 'projectionScale', 'aspect', 'orthographic'];
+      this.occlusionUniforms = Object.fromEntries(names.map(name => [name, context.getUniformLocation(this.occlusionProgram, name)]));
+    }
+    if (this.occlusionTarget) return;
+    const width = Math.max(1, Math.ceil(this.canvas.width / 2));
+    const height = Math.max(1, Math.ceil(this.canvas.height / 2));
+    const texture = context.createTexture();
+    context.bindTexture(context.TEXTURE_2D, texture);
+    context.texImage2D(context.TEXTURE_2D, 0, context.R8, width, height, 0, context.RED, context.UNSIGNED_BYTE, null);
+    context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MIN_FILTER, context.LINEAR);
+    context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MAG_FILTER, context.LINEAR);
+    context.texParameteri(context.TEXTURE_2D, context.TEXTURE_WRAP_S, context.CLAMP_TO_EDGE);
+    context.texParameteri(context.TEXTURE_2D, context.TEXTURE_WRAP_T, context.CLAMP_TO_EDGE);
+    const framebuffer = context.createFramebuffer();
+    context.bindFramebuffer(context.FRAMEBUFFER, framebuffer);
+    context.framebufferTexture2D(context.FRAMEBUFFER, context.COLOR_ATTACHMENT0, context.TEXTURE_2D, texture, 0);
+    this.occlusionTarget = { texture, framebuffer, width, height };
+  }
+
+  drawAmbientOcclusion(frame, effects) {
+    const context = this.context;
+    this.ensureOcclusionTarget();
+    const uniforms = this.occlusionUniforms;
+    context.bindFramebuffer(context.FRAMEBUFFER, this.occlusionTarget.framebuffer);
+    context.viewport(0, 0, this.occlusionTarget.width, this.occlusionTarget.height);
+    context.disable(context.DEPTH_TEST);
+    context.disable(context.CULL_FACE);
+    context.bindVertexArray(null);
+    context.useProgram(this.occlusionProgram);
+    context.activeTexture(context.TEXTURE1);
+    context.bindTexture(context.TEXTURE_2D, this.depthTexture);
+    context.uniform1i(uniforms.sceneDepth, 1);
+    context.uniformMatrix4fv(uniforms.inverseViewProjection, false, this.inverseViewProjection);
+    context.uniform3fv(uniforms.eye, frame.eye);
+    context.uniform1f(uniforms.radius, effects.ambientOcclusionRadius);
+    context.uniform1f(uniforms.projectionScale, 0.5 * this.projection[5]);
+    context.uniform1f(uniforms.aspect, this.canvas.width / this.canvas.height);
+    context.uniform1f(uniforms.orthographic, frame.projection === 'orthographic' ? 1 : 0);
+    context.drawArrays(context.TRIANGLES, 0, 3);
   }
 
   allocateFrameTargets(width, height) {
@@ -1048,6 +1257,21 @@ export class Renderer67 {
     context.bindFramebuffer(context.FRAMEBUFFER, null);
   }
 
+  // The prefilter and BRDF programs build while the other programs do, instead of after them.
+  startEnvironmentPrograms() {
+    this.pendingEnvironmentPrograms = new Map();
+    for (const fragmentSource of [environmentPrefilterFragment, environmentBrdfFragment]) {
+      this.pendingEnvironmentPrograms.set(fragmentSource, startProgram(this.context, fullscreenVertex, fragmentSource));
+    }
+  }
+
+  compileEnvironmentProgram(context, vertexSource, fragmentSource) {
+    const pendingProgram = this.pendingEnvironmentPrograms?.get(fragmentSource);
+    if (!pendingProgram) return compileProgram(context, vertexSource, fragmentSource);
+    this.pendingEnvironmentPrograms.delete(fragmentSource);
+    return finishProgram(context, pendingProgram);
+  }
+
   initializeEnvironment(map) {
     const context = this.context;
     context.useProgram(this.program);
@@ -1074,7 +1298,7 @@ export class Renderer67 {
     assertEnvironmentMap(map);
     if (this.environmentResources?.data === map.data) return false;
     estimateEnvironmentBytes(map, this.capabilities.maximumTextureSize);
-    const resources = createEnvironmentResources(this.context, map, { compileProgram, fullscreenVertex });
+    const resources = createEnvironmentResources(this.context, map, { compileProgram: (context, vertexSource, fragmentSource) => this.compileEnvironmentProgram(context, vertexSource, fragmentSource), fullscreenVertex });
     this.environmentResources?.dispose();
     this.environmentResources = resources;
     this.textureBytes += resources.bytes - this.environmentBytes;
@@ -1154,6 +1378,8 @@ export class Renderer67 {
     context.bindFramebuffer(context.DRAW_FRAMEBUFFER, this.resolveFramebuffer);
     context.blitFramebuffer(0, 0, this.canvas.width, this.canvas.height, 0, 0, this.canvas.width, this.canvas.height, context.COLOR_BUFFER_BIT | (this.depth ? context.DEPTH_BUFFER_BIT : 0), context.NEAREST);
     if (effects.bloom.strength > 0) this.drawBloom(effects.bloom);
+    const occluded = effects.ambientOcclusion > 0 && Boolean(this.depthTexture);
+    if (occluded) this.drawAmbientOcclusion(frame, effects);
     context.bindFramebuffer(context.FRAMEBUFFER, null);
     context.viewport(0, 0, this.canvas.width, this.canvas.height);
     context.disable(context.DEPTH_TEST);
@@ -1188,6 +1414,11 @@ export class Renderer67 {
     context.bindTexture(context.TEXTURE_2D, effects.bloom.strength > 0 ? this.bloomTargets[1].texture : this.whiteTexture);
     context.uniform1i(this.postUniforms.bloomTexture, 2);
     context.uniform1f(this.postUniforms.bloomStrength, effects.bloom.strength);
+    context.activeTexture(context.TEXTURE4);
+    context.bindTexture(context.TEXTURE_2D, occluded ? this.occlusionTarget.texture : this.whiteTexture);
+    context.uniform1i(this.postUniforms.occlusionTexture, 4);
+    context.uniform1f(this.postUniforms.occlusionStrength, occluded ? effects.ambientOcclusion : 0);
+    context.uniform2f(this.postUniforms.occlusionTexel, 1 / Math.ceil(this.canvas.width / 2), 1 / Math.ceil(this.canvas.height / 2));
     context.uniform1f(this.postUniforms.transparent, this.transparent ? 1 : 0);
     context.uniform1f(this.postUniforms.hdrEnabled, this.hdr ? 1 : 0);
     context.uniform3f(this.postUniforms.grade, effects.saturation, effects.contrast, effects.temperature);
@@ -1250,6 +1481,9 @@ export class Renderer67 {
     context.bindTexture(context.TEXTURE_2D, this.frameTexture);
     context.uniform1i(uniforms.sceneColor, 0);
     for (const batch of liquids) {
+      const layers = batch.layerState;
+      context.uniform4f(uniforms.glassState, layers[9], layers[10], layers[11], Math.min(layers[12], MAX_FINITE_DISTANCE));
+      context.uniform3f(uniforms.glassTint, layers[13], layers[14], layers[15]);
       context.bindVertexArray(batch.vertexArray);
       context.drawElementsInstanced(context.TRIANGLES, batch.indexCount, context.UNSIGNED_INT, 0, batch.instanceCount);
     }
@@ -1414,6 +1648,10 @@ export class Renderer67 {
       this.context.uniform2f(this.uniforms.normalScale, batch.mapState[5], batch.mapState[6]);
       this.context.uniform1f(this.uniforms.occlusionStrength, batch.mapState[7]);
       this.context.uniform4f(this.uniforms.materialMoss, batch.mapState[8], batch.mapState[9], batch.mapState[10], batch.mapState[11]);
+      const layers = batch.layerState;
+      this.context.uniform3f(this.uniforms.materialDielectric, layers[0], layers[1], layers[2]);
+      this.context.uniform2f(this.uniforms.materialCoat, layers[3], layers[4]);
+      this.context.uniform4f(this.uniforms.materialSheen, layers[5], layers[6], layers[7], layers[8]);
       this.context.uniform1f(this.uniforms.boxMapScale, batch.mapState[12]);
       this.context.uniform1i(this.uniforms.boxMapAxis, batch.mapState[13]);
       this.bindSplat(batch.splat);
@@ -1440,10 +1678,13 @@ export class Renderer67 {
     const assemblyAmount = Math.max(0, Math.min(1, frame.assemblyAmount ?? 0));
     // Swaying foliage moves every frame, so its shadow map is redrawn whenever time or wind changes.
     const windChanged = this.updateWindState(frame);
-    if (this.assemblyAmount !== assemblyAmount || this.shadowsDirty || windChanged) {
+    const casterChanged = this.assemblyAmount !== assemblyAmount || this.shadowsDirty || windChanged;
+    this.requireFeatureNames(shaderFeaturesOfLighting(this.lighting));
+    if (casterChanged) {
       this.assemblyAmount = assemblyAmount;
       this.createShadowMap();
     }
+    this.updateLocalShadows(casterChanged);
     const environmentMap = this.activateEnvironment(environment.map);
     applyProjection(this.projection, frame, this.canvas.width / this.canvas.height, { world: this.world });
     mat4.lookAt(this.view, eye, target, frame.up ?? [0, 1, 0]);
@@ -1474,6 +1715,7 @@ export class Renderer67 {
     context.uniform4fv(this.uniforms['pointLightPositions[0]'], this.lighting.positions);
     context.uniform4fv(this.uniforms['pointLightColors[0]'], this.lighting.colors);
     context.uniform1fv(this.uniforms['pointLightRadii[0]'], this.lighting.radii);
+    this.applyLocalLightUniforms();
     context.uniform3fv(this.uniforms.keyColor, this.lighting.keyColor);
     context.uniform1f(this.uniforms.fillIntensity, this.lighting.fillIntensity);
     context.uniform1f(this.uniforms.ambientIntensity, this.lighting.ambientIntensity);
@@ -1509,8 +1751,34 @@ export class Renderer67 {
     this.cpuMilliseconds = performance.now() - start;
   }
 
+  applyLocalLightUniforms() {
+    const context = this.context;
+    const lighting = this.lighting;
+    const uniforms = this.uniforms;
+    context.uniform1fv(uniforms['pointLightShadowTiles[0]'], lighting.pointShadows);
+    context.uniform1i(uniforms.spotLightCount, lighting.spotCount);
+    context.uniform4fv(uniforms['spotLightPositions[0]'], lighting.spotPositions);
+    context.uniform4fv(uniforms['spotLightColors[0]'], lighting.spotColors);
+    context.uniform4fv(uniforms['spotLightDirections[0]'], lighting.spotDirections);
+    context.uniform4fv(uniforms['spotLightParameters[0]'], lighting.spotParameters);
+    context.uniform1i(uniforms.areaLightCount, lighting.areaCount);
+    context.uniform4fv(uniforms['areaLightPositions[0]'], lighting.areaPositions);
+    context.uniform4fv(uniforms['areaLightColors[0]'], lighting.areaColors);
+    context.uniform4fv(uniforms['areaLightNormals[0]'], lighting.areaNormals);
+    context.uniform4fv(uniforms['areaLightTangents[0]'], lighting.areaTangents);
+    if (lighting.shadowCasters.length === 0 || !this.localShadowTexture) return;
+    context.uniformMatrix4fv(uniforms['localShadowMatrices[0]'], false, this.localShadowMatrices);
+    context.uniform1fv(uniforms['localShadowTexelAngles[0]'], this.localShadowTexelAngles);
+    context.activeTexture(context.TEXTURE0 + LOCAL_SHADOW_UNIT);
+    context.bindTexture(context.TEXTURE_2D, this.localShadowTexture);
+    context.uniform1i(uniforms.localShadowAtlas, LOCAL_SHADOW_UNIT);
+    context.activeTexture(context.TEXTURE0);
+  }
+
   dispose() {
     this.releaseFrameTargets();
+    if (this.localShadowTexture) this.context.deleteTexture(this.localShadowTexture);
+    if (this.localShadowFramebuffer) this.context.deleteFramebuffer(this.localShadowFramebuffer);
     this.batches.forEach((batch) => this.context.deleteVertexArray(batch.vertexArray));
     this.buffers.forEach((buffer) => this.context.deleteBuffer(buffer));
     this.geometryBuffers?.clear();
@@ -1521,6 +1789,7 @@ export class Renderer67 {
     if (this.postProgram) this.context.deleteProgram(this.postProgram);
     if (this.skyProgram) this.context.deleteProgram(this.skyProgram);
     if (this.bloomProgram) this.context.deleteProgram(this.bloomProgram);
+    if (this.occlusionProgram) this.context.deleteProgram(this.occlusionProgram);
     if (this.environmentBackgroundProgram) this.context.deleteProgram(this.environmentBackgroundProgram);
     this.environmentResources?.dispose();
     for (const texture of this.textures.values()) this.context.deleteTexture(texture);

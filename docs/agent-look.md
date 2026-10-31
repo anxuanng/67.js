@@ -105,12 +105,15 @@ Sky colors use display RGB, matching the renderer's existing environment contrac
 
 | Field | Default | Range or meaning |
 | --- | --- | --- |
-| `world` | `false` | Boolean world presentation flag |
-| `lightDirection` | `[-3, 6, 4]` | Components within ±1000000, length at least `0.000001` |
-| `keyColor` | `[5.2, 4.7, 4.1]` | Components from `0` to `1000` |
+| `world` | `false` | Boolean world presentation flag. With `true` the setup environment is also the background |
+| `setup` | `daylight` | `daylight`, `overcast`, `sunset` or `studio`. See Lighting setups |
+| `environmentIntensity` | `1` | `0` to `100`. Scales the setup's environment light and reflections |
+| `environmentRotation` | `0` | `-100` to `100` radians around the vertical axis |
+| `lightDirection` | the setup's | Components within ±1000000, length at least `0.000001` |
+| `keyColor` | the setup's | Components from `0` to `1000` |
 | `keyIntensity` | `1` | `0` to `100` |
-| `fillIntensity` | `1` | `0` to `100` |
-| `ambientIntensity` | `1` | `0` to `100` |
+| `fillIntensity` | `0` | `0` to `100` |
+| `ambientIntensity` | `1` | `0` to `100`. Scales the environment light |
 | `daylight` | `1` | `0` to `100` |
 | `pointLights` | `[]` | At most eight point light records |
 | `skyTop` | `[0.2, 0.38, 0.52]` | Components from `0` to `1` |
@@ -124,6 +127,15 @@ Zero intensity disables that lighting contribution.
 Direction magnitude remains in the canonical recipe.
 The shadow projector uses its normalized direction, so changing only magnitude does not change shadow placement.
 High radiance can clip at the renderer's half-float HDR target limit of `65504` before bloom and tone mapping.
+
+## Lighting setups
+
+A recipe with no lighting settings uses `daylight` (and no occlusion): a small procedural sky map (128 by 64, generated in code, no files or URLs) lights every surface and shows in metal and glossy reflections, with a warm key light for shadows.
+The four setups are `daylight`, `overcast` (even grey light, weak key), `sunset` (low warm sun, dark blue zenith) and `studio` (neutral room with three soft boxes).
+Setting `setup` through `set-environment` resets `lightDirection`, `keyColor`, `keyIntensity`, `fillIntensity`, `ambientIntensity`, `skyTop` and `skyBottom` to that setup; fields in the same call still win, and fields set earlier are replaced.
+Remote URLs and HDRI files are not accepted from tool input.
+This changes the look of every recipe that sets no lighting: before, the default had no environment map, a key color of `[5.2, 4.7, 4.1]` and a fill intensity of `1`.
+To get the earlier flat look, set `keyColor`, `fillIntensity` and `environmentIntensity: 0` yourself.
 
 ## Point lights
 
@@ -168,13 +180,14 @@ These controls reuse `resolveVolumeFog` and its existing domain rules.
 Fog bounds reject dimensions that collapse after Float32 rounding.
 The current volume supports one directional scattering source.
 Local point scattering, transparent depth, multiple scattering, and multiple volumes remain outside this contract.
-See [volume fog](volumetric.md) for renderer requirements and frame-time limits.
+See [volume fog](https://67js.codepawl.com/volumetric.md) for renderer requirements and frame-time limits.
 
 ## Effects
 
 The controls reuse `resolveEffects` with a preview bloom strength of `0.12`.
 Exposure remains independent and maps to `frame.exposure`.
 Bloom strength zero disables bloom.
+Ambient occlusion reads the depth texture, so it needs the HDR depth target that previews use. The program compiles and its half-resolution target allocates on first use. On SwiftShader at 960 by 540 it adds about 16 ms to a 190 ms frame (measured, 8 percent). It is off by default: against Cycles on 10 reference scenes it improved no score by more than 0.002 and made most slightly worse, because the largest gaps are cast shadow shape and reflections, not contact darkening. Pixels that direct light already brightens keep less of it, because occlusion belongs to indirect light.
 
 | Field | Default | Range |
 | --- | --- | --- |
@@ -184,6 +197,8 @@ Bloom strength zero disables bloom.
 | `temperature` | `0` | `-1` to `1` |
 | `vignette` | `0` | `0` to `1` |
 | `grain` | `0` | `0` to `0.1` |
+| `ambientOcclusion` | `0` | `0` to `1`. Screen-space contact darkening, off by default; any value above `0` runs the pass |
+| `ambientOcclusionRadius` | `0.5` | `0.01` to `100` world units |
 | `bloom.strength` | `0.12` | `0` to `2` |
 | `bloom.threshold` | `1` | `0` to `10` |
 | `bloom.radius` | `1` | `0.1` to `4` |

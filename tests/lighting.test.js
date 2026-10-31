@@ -56,3 +56,61 @@ test('malformed later lights reject atomically before replacing any retained lig
   assert.throws(() => updateLightingState(state, { ambientIntensity: Infinity }));
   assert.deepEqual(state, snapshot);
 });
+
+test('spot lights store a normalized direction and the Blender cone cosines', () => {
+  const state = createLightingState();
+  updateLightingState(state, { spotLights: [{ position: [0, 3, 0], direction: [0, -2, 0], angle: Math.PI / 3, penumbra: 0.5, intensity: 9 }] });
+  assert.equal(state.spotCount, 1);
+  assert.deepEqual(Array.from(state.spotDirections.slice(0, 3)), [0, -1, 0]);
+  const cosineOuter = Math.cos(Math.PI / 3);
+  assert.ok(Math.abs(state.spotDirections[3] - cosineOuter) < 1e-6);
+  assert.ok(Math.abs(state.spotParameters[1] - (cosineOuter + (1 - cosineOuter) * 0.5)) < 1e-6);
+  assert.equal(state.spotParameters[2], -1);
+  assert.equal(state.spotColors[3], 9);
+});
+
+test('a hard-edged spot light keeps its inner cosine above the outer one', () => {
+  const state = createLightingState();
+  updateLightingState(state, { spotLights: [{ position: [0, 3, 0], direction: [0, -1, 0], penumbra: 0 }] });
+  assert.ok(state.spotParameters[1] > state.spotDirections[3]);
+});
+
+test('shadow tiles go to point lights first, six for a point light and one for a spot light', () => {
+  const state = createLightingState();
+  updateLightingState(state, {
+    spotLights: [{ position: [0, 3, 0], direction: [0, -1, 0], castShadow: true }],
+    pointLights: [{ position: [1, 1, 1] }, { position: [2, 2, 2], castShadow: true }],
+  });
+  assert.equal(state.pointShadows[0], -1);
+  assert.equal(state.pointShadows[1], 0);
+  assert.equal(state.spotParameters[2], 6);
+  assert.equal(state.shadowCasters.length, 7);
+});
+
+test('shadow casters beyond the 24 tile atlas are rejected before any state changes', () => {
+  const state = createLightingState();
+  updateLightingState(state, { pointLights: [{ position: [1, 1, 1] }] });
+  const fivePointLights = [0, 1, 2, 3, 4].map(index => ({ position: [index, 1, 1], castShadow: true }));
+  assert.throws(() => updateLightingState(state, { pointLights: fivePointLights }), /atlas/);
+  assert.equal(state.pointCount, 1);
+});
+
+test('area lights store a unit normal and a width axis perpendicular to it', () => {
+  const state = createLightingState();
+  updateLightingState(state, { areaLights: [{ position: [0, 3, 0], direction: [0, -1, 0], up: [0, 0, 1], width: 2, height: 1, intensity: 5 }] });
+  assert.equal(state.areaCount, 1);
+  const normal = Array.from(state.areaNormals.slice(0, 3));
+  const tangent = Array.from(state.areaTangents.slice(0, 3));
+  assert.equal(normal[0] * tangent[0] + normal[1] * tangent[1] + normal[2] * tangent[2], 0);
+  assert.equal(state.areaNormals[3], 2);
+  assert.equal(state.areaTangents[3], 1);
+  assert.equal(state.areaColors[3], 5);
+});
+
+test('malformed spot and area lights are rejected', () => {
+  const state = createLightingState();
+  assert.throws(() => updateLightingState(state, { spotLights: [{ position: [0, 0, 0], direction: [0, 0, 0] }] }), /zero length/);
+  assert.throws(() => updateLightingState(state, { spotLights: [{ position: [0, 0, 0], direction: [0, -1, 0], angle: 2 }] }), /angle/);
+  assert.throws(() => updateLightingState(state, { areaLights: [{ position: [0, 0, 0], direction: [0, -1, 0], width: 0, height: 1 }] }), /width/);
+  assert.throws(() => updateLightingState(state, { areaLights: new Array(5).fill({ position: [0, 0, 0], direction: [0, -1, 0], width: 1, height: 1 }) }), /at most 4/);
+});

@@ -39,9 +39,9 @@ function constantLighting(value) {
   return { map, blenderWorld: { type: 'constant', value } };
 }
 
-function environment(lighting, { lightDirection = [-3, 6, 4], keyColor = [0, 0, 0], pointLights = [], volumeFog } = {}) {
+function environment(lighting, { lightDirection = [-3, 6, 4], keyColor = [0, 0, 0], pointLights = [], spotLights = [], areaLights = [], volumeFog } = {}) {
   return {
-    world: true, fillIntensity: 0, ambientIntensity: 1, fogDensity: 0, lightDirection, keyColor, pointLights,
+    world: true, fillIntensity: 0, ambientIntensity: 1, fogDensity: 0, lightDirection, keyColor, pointLights, spotLights, areaLights,
     map: lighting.map, ...(volumeFog ? { volumeFog } : {}),
   };
 }
@@ -82,14 +82,39 @@ export const REFERENCE_SCENES = {
       part('block', cube, [0.6, 1, -1], [0.4, 0.5, 0.4], { color: [0.75, 0.7, 0.2], roughness: 0.5 }),
     ];
     const pointLights = [
-      { position: [0, 2.6, -0.5], color: [1, 0.9, 0.75], intensity: 8, radius: 0.05 },
-      { position: [-2.5, 1.5, 1.5], color: [1, 0.6, 0.4], intensity: 2, radius: 0.05 },
-      { position: [2.5, 1.5, 1.5], color: [0.5, 0.7, 1], intensity: 2, radius: 0.05 },
+      { position: [0, 2.6, -0.5], color: [1, 0.9, 0.75], intensity: 8, radius: 0.05, castShadow: true },
+      { position: [-2.5, 1.5, 1.5], color: [1, 0.6, 0.4], intensity: 2, radius: 0.05, castShadow: true },
+      { position: [2.5, 1.5, 1.5], color: [0.5, 0.7, 1], intensity: 2, radius: 0.05, castShadow: true },
     ];
     return {
       parts, blenderWorld: lighting.blenderWorld,
       environment: environment(lighting, { pointLights }),
       camera: { eye: [0, 1.5, 3.9], target: [0, 1, -1], up: [0, 1, 0], fov: 50, near: 0.05, far: 50 },
+    };
+  },
+
+  // A shadowing spot light with a soft cone edge and a rectangular panel, over objects that block the spot.
+  async 'spot-area'() {
+    const lighting = constantLighting(0.01);
+    const cube = box(0, 1);
+    const wall = { color: [0.7, 0.68, 0.62], roughness: 0.9 };
+    const parts = [
+      part('stage-floor', cube, [0, -0.05, 0], [10, 0.1, 10], { color: [0.55, 0.5, 0.45], roughness: 0.7 }),
+      part('stage-back', cube, [0, 1.5, -4.05], [10, 3.2, 0.1], wall),
+      part('column', cube, [-0.9, 0.75, -1.5], [0.4, 1.5, 0.4], { color: [0.6, 0.6, 0.65], roughness: 0.5 }),
+      part('ball', sphere(48, 32), [0.6, 0.5, -1], [0.5, 0.5, 0.5], { color: [0.8, 0.25, 0.2], roughness: 0.3 }),
+      part('block', cube, [1.8, 0.3, -2], [0.6, 0.6, 0.6], { color: [0.2, 0.45, 0.75], roughness: 0.6 }),
+    ];
+    const spotLights = [
+      { position: [-2.4, 3.2, 0.5], direction: [2.4, -3.2, -1.7], angle: 0.5, penumbra: 0.3, color: [1, 0.92, 0.8], intensity: 40, radius: 0.05, castShadow: true },
+    ];
+    const areaLights = [
+      { position: [2.2, 2.6, 0], direction: [0, -1, 0], up: [0, 0, 1], width: 1.5, height: 0.8, color: [0.7, 0.8, 1], intensity: 4 },
+    ];
+    return {
+      parts, blenderWorld: lighting.blenderWorld,
+      environment: environment(lighting, { spotLights, areaLights }),
+      camera: { eye: [0, 1.8, 4.5], target: [0, 0.7, -1.5], up: [0, 1, 0], fov: 50, near: 0.05, far: 50 },
     };
   },
 
@@ -126,12 +151,28 @@ export const REFERENCE_SCENES = {
       parts.push(part(`stripe-${index}`, cube, [(index - 1.5) * 1, 1, -1.5], [0.5, 2, 0.2], { color, roughness: 0.6 }));
     });
     parts.push(part('glass-sphere', sphere(96, 64), [0, 0.9, 0.5], [0.9, 0.9, 0.9], {
-      tag: 'liquid', color: [1, 1, 1], roughness: 0.02, liquid: { ior: 1.5, thickness: 1.8, refraction: 1, scattering: 0 },
+      color: [1, 1, 1], roughness: 0.02, transmission: 1, ior: 1.5, thickness: 1.8,
     }));
     return {
       parts, blenderWorld: lighting.blenderWorld,
       environment: environment(lighting, { keyColor: SUN_COLOR }),
       camera: { eye: [0, 1.8, 6], target: [0, 0.9, 0], up: [0, 1, 0], fov: 35, near: 0.1, far: 200 },
+      shadow: { eye: [-6, 12, 8], target: [0, 0, 0], up: [0, 1, 0], extent: 6, near: 0.1, far: 40 },
+    };
+  },
+
+  async 'car-paint'() {
+    const lighting = await skyLighting();
+    const parts = [
+      floor([0.2, 0.2, 0.22]),
+      part('lacquer-red', sphere(96, 64), [-1.6, 0.8, 0], [0.8, 0.8, 0.8], { color: [0.55, 0.02, 0.02], roughness: 0.5, clearcoat: 1, clearcoatRoughness: 0.03 }),
+      part('flake-blue', sphere(96, 64), [0, 0.8, 0], [0.8, 0.8, 0.8], { color: [0.03, 0.12, 0.6], metallic: 0.8, roughness: 0.4, clearcoat: 1, clearcoatRoughness: 0.03 }),
+      part('uncoated-red', sphere(96, 64), [1.6, 0.8, 0], [0.8, 0.8, 0.8], { color: [0.55, 0.02, 0.02], roughness: 0.5 }),
+    ];
+    return {
+      parts, blenderWorld: lighting.blenderWorld,
+      environment: environment(lighting, { keyColor: SUN_COLOR }),
+      camera: { eye: [0, 2.2, 7], target: [0, 0.7, 0], up: [0, 1, 0], fov: 35, near: 0.1, far: 200 },
       shadow: { eye: [-6, 12, 8], target: [0, 0, 0], up: [0, 1, 0], extent: 6, near: 0.1, far: 40 },
     };
   },

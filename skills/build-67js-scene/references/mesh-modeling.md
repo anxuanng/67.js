@@ -65,7 +65,7 @@ Edits add `<name>.cap`, `<name>.side`, `<name>.rim`, `<name>.cut`, `<name>.band-
 | Combinations | `{ "and": [...] }`, `{ "or": [...] }`, `{ "not": rule }` |
 | A ring around a region | `{ "grow": { "tag": "top" }, "steps": 1 }` |
 
-Edge rules (for `bevel` and `loop_cut`):
+Edge rules (for `bevel`, `loop_cut` and the `crease` of `subdivide`):
 
 | Need | Edge rule |
 | --- | --- |
@@ -181,6 +181,91 @@ A planter (open box with walls) and a rounded soap bar:
 ] }
 ```
 
+Smooth organic shapes: `subdivide` rounds a coarse box or cylinder (each level makes about 4 times the faces; 2 or 3
+levels is enough). A `crease` edge rule keeps chosen edges sharp for `sharpness` levels (default 10, always sharp), so a
+cylinder keeps crisp rims while its sides stay round. Shape the coarse mesh first, then subdivide, then `uv_unwrap`.
+A subdivided cube shrinks to about 0.85 of its size at 3 levels, so check the result with `scene_look` or `mesh_inspect`
+bounds and rescale the node.
+
+```json
+{ "id": "pebble", "type": "mesh", "base": { "type": "box", "bevel": 0 }, "stack": [{ "op": "subdivide", "levels": 3 }] }
+```
+
+```json
+{ "id": "button", "type": "mesh", "base": { "type": "cylinder", "segments": 16, "bevel": 0 }, "stack": [
+  { "op": "subdivide", "levels": 2, "crease": { "angle": 60 }, "sharpness": 3 }
+] }
+```
+
+## Fields: noise, gradients and repeats
+
+A field expression is a small JSON formula over each vertex or face. `displace` and `set_position` take one, and
+`{ "field": expression }` selects faces by one. The formula is plain JSON, so write it as data and never as code.
+Use `{"attr":"position","component":"y"}` for a coordinate, `{"noise":{"scale":3,"seed":7}}` for smooth noise in 0 to
+1 (use `midlevel: 0.5` so it pushes both ways), and `mul`, `add`, `clamp`, `gt` and `if` to shape it. Full list in
+`docs/mesh.md#field-expressions`; the limits are 64 nodes and depth 12.
+
+A lumpy boulder from one expression (a sphere keeps its topology, so it stays closed):
+
+```json
+{ "id": "boulder", "type": "mesh", "base": { "type": "sphere", "segments": 24, "rings": 12 }, "edits": [
+  { "op": "displace", "field": { "noise": { "scale": 2, "seed": 3, "octaves": 2 } }, "strength": 0.5 }
+] }
+```
+
+Taper a box into a tower by scaling x and z with height, then inset the top face, picked by a field on its normal:
+
+```json
+{ "id": "tower", "type": "mesh", "base": { "type": "box", "bevel": 0 }, "edits": [
+  { "op": "set_position", "position": { "vec": [
+    { "mul": [{ "attr": "position", "component": "x" }, { "sub": [1, { "mul": [0.5, { "add": [{ "attr": "position", "component": "y" }, 0.5] }] }] }] },
+    { "attr": "position", "component": "y" },
+    { "mul": [{ "attr": "position", "component": "z" }, { "sub": [1, { "mul": [0.5, { "add": [{ "attr": "position", "component": "y" }, 0.5] }] }] }] }
+  ] } },
+  { "op": "inset_region", "select": { "field": { "gt": [{ "dot": [{ "attr": "normal" }, [0, 1, 0]] }, 0.9] } }, "thickness": 0.05, "name": "top" }
+] }
+```
+
+Do not model fifteen pillars: repeat one. Put `instances` on the node, with a `grid`, a `scatter` or a `surface`
+source, a `seed`, and an optional `where` field. A node's scale applies to the grid spacing, so scale the group to the
+size of one pillar and give the spacing in pillar units:
+
+```text
+{ "id": "court", "geometry": "pillar", "material": "stone", "translation": [0, 0.25, 0], "scale": [0.1, 0.5, 0.1],
+  "instances": { "grid": { "counts": [5, 1, 3], "spacing": [4, 1, 5] } } }
+```
+
+That gives 15 pillars 0.4 m by 0.5 m apart, drawn as one batch. `instances` goes in the recipe given to `scene_create`.
+
+## Cutting and repairing
+
+Use these when a part has a hole, needs an opening or has too many faces. Each names what it makes with `<name>.<tag>`.
+
+```json
+{
+  "id": "halved-crate", "type": "mesh",
+  "base": { "type": "box", "bevel": 0 },
+  "edits": [
+    { "op": "bisect_plane", "name": "half", "point": [0, 0.1, 0], "normal": [0, 1, 0], "clearOuter": true, "fill": true }
+  ]
+}
+```
+
+Other edits take the same shape, for example:
+
+```text
+{ "op": "fill_holes", "name": "lid" }
+{ "op": "bridge_edge_loops", "name": "neck", "edges": { "open": true }, "segments": 3 }
+{ "op": "dissolve_limited", "angle": 5 }
+```
+
+- `bisect_plane` keeps the side the normal points to when `clearInner`, the other when `clearOuter`; `fill` tags the cap `<name>.cap`.
+- `fill_holes` caps every closed open boundary (`sides` limits their size); `grid_fill` fills an even loop with quads instead.
+- `bridge_edge_loops` needs exactly two boundary loops of equal length. `{ "open": true }` picks all holes; add `"inside": { "min", "max" }` to pick one.
+- `dissolve_edges`, `dissolve_faces`, `dissolve_verts` and `dissolve_limited` remove edges and vertices that only split a flat surface. `dissolve_limited` with a small angle undoes a loop cut.
+- `subdivide_edges` splits chosen edges; with all four edges of a quad chosen it makes a grid.
+- `knife_project` cuts along a polyline projected along `direction`, front and back. Start and end the line outside the mesh.
+
 ## Giving a part a surface
 
 A material `pattern` textures any part with no UVs, after any edits. `size` is metres per repeat, so it stays right on
@@ -204,9 +289,12 @@ adding another pattern: a scene holds at most 16 different ones. `uv_unwrap` is 
 | `must be closed for a boolean` | Fix the open or non-manifold edges it counts, or `merge_by_distance` first |
 | `need the optional peer dependency manifold-3d` | Booleans are unavailable here; model the cut another way or ask for the peer |
 | `rings cross` | Cut each direction in its own `loop_cut` edit |
+| `selects N boundary loops; bridge needs exactly 2` | Narrow `edges` with `{ "open": { "inside": { "min", "max" } } }` |
+| `needs the same number` (bridge) | Run `subdivide_edges` on the shorter loop first |
+| lint `boundary-edge` | `fill_holes`, or `solidify` if the part must be closed |
 | bevel `edges` lower than expected | An earlier inset or extrude left untagged rim faces at the edge; bevel earlier, or widen the rule |
 | bevel `clamped: true` | A neighbouring face is narrower than the width; bevel before the narrow inset, or use a smaller width |
-| `over the limit of N vertices` | Fewer segments, fewer array copies, or split the part |
+| `over the limit of N vertices` | Fewer segments, fewer array copies, fewer subdivide levels, or split the part |
 | lint `inverted-part` | `flip_normals` on that part |
 | lint `degenerate-face` | An offset or width of 0, or a clamp at the edge length; change the value |
 

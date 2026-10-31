@@ -1,17 +1,21 @@
 import { mat4 } from 'gl-matrix';
-import { createLightingState, updateLightingState, MAX_POINT_LIGHTS } from './lighting.js';
+import { createLightingState, updateLightingState, MAX_POINT_LIGHTS, MAX_SPOT_LIGHTS, MAX_AREA_LIGHTS } from './lighting.js';
 import { resolveEffects } from './effects.js';
 import { resolveVolumeFog } from './volumetric.js';
 import { resolveLiquidOptics } from './renderer.js';
+import { createLightingSetupMap, lightingSetupFields } from './lighting-setups.js';
+import { DEFAULT_LIGHTING_SETUP, LIGHTING_SETUP_NAMES, DEFAULT_AMBIENT_OCCLUSION } from './agent-scene-capabilities.js';
 
 const ENVIRONMENT_FIELDS = [
-  'world', 'lightDirection', 'keyColor', 'keyIntensity', 'fillIntensity', 'ambientIntensity',
-  'daylight', 'pointLights', 'skyTop', 'skyBottom', 'fogColor', 'fogDensity', 'volumeFog', 'liquid',
+  'world', 'setup', 'environmentIntensity', 'environmentRotation', 'lightDirection', 'keyColor', 'keyIntensity', 'fillIntensity', 'ambientIntensity',
+  'daylight', 'pointLights', 'spotLights', 'areaLights', 'skyTop', 'skyBottom', 'fogColor', 'fogDensity', 'volumeFog', 'liquid',
 ];
 const LIQUID_FIELDS = ['thickness', 'ior', 'refraction', 'scattering', 'foamOpacity', 'foamSoftness'];
-const EFFECT_FIELDS = ['exposure', 'saturation', 'contrast', 'temperature', 'vignette', 'grain', 'bloom'];
+const EFFECT_FIELDS = ['exposure', 'saturation', 'contrast', 'temperature', 'vignette', 'grain', 'ambientOcclusion', 'ambientOcclusionRadius', 'bloom'];
 const SHADOW_FIELDS = ['target', 'extent', 'distance', 'near', 'far'];
-const POINT_LIGHT_FIELDS = ['position', 'color', 'intensity', 'radius', 'range'];
+const POINT_LIGHT_FIELDS = ['position', 'color', 'intensity', 'radius', 'range', 'castShadow'];
+const SPOT_LIGHT_FIELDS = ['position', 'direction', 'angle', 'penumbra', 'color', 'intensity', 'radius', 'range', 'castShadow'];
+const AREA_LIGHT_FIELDS = ['position', 'direction', 'up', 'width', 'height', 'color', 'intensity'];
 const VOLUME_VECTOR_FIELDS = ['minimum', 'maximum', 'color', 'ambient', 'drift'];
 const VOLUME_NUMBER_FIELDS = ['density', 'steps', 'anisotropy', 'noiseAmount', 'noiseScale', 'maxDistance'];
 const BLOOM_FIELDS = ['strength', 'threshold', 'radius'];
@@ -100,13 +104,79 @@ function fallback(value, defaultValue) {
   return value === undefined ? defaultValue : value;
 }
 
-function directionFrom(value) {
-  const direction = vectorInRange(value, -1e6, 1e6, 'lightDirection');
+function directionFrom(value, label = 'lightDirection') {
+  const direction = vectorInRange(value, -1e6, 1e6, label);
   const length = Math.hypot(...direction);
   if (length < 1e-6) {
-    throw new RangeError('lightDirection length must be at least 0.000001.');
+    throw new RangeError(`${label} length must be at least 0.000001.`);
   }
   return { direction, unitDirection: direction.map(component => component / length) };
+}
+
+function lightListFrom(value, maximum, name) {
+  const lights = fallback(value, []);
+  if (!Array.isArray(lights) || lights.length > maximum) {
+    throw new RangeError(`${name} must contain at most ${maximum} lights.`);
+  }
+  return lights;
+}
+
+function rangeFrom(light, label) {
+  const range = numberInRange(fallback(light.range, 0), 0, 1e6, `${label} range`);
+  if (range !== 0 && range < 0.001) {
+    throw new RangeError(`${label} range must be zero or at least 0.001.`);
+  }
+  return range;
+}
+
+// Only a light that casts shadows carries the field, so recipes without shadows keep their exported shape.
+function shadowFieldFrom(light, label) {
+  const castShadow = fallback(light.castShadow, false);
+  if (typeof castShadow !== 'boolean') {
+    throw new TypeError(`${label} castShadow must be boolean.`);
+  }
+  return castShadow ? { castShadow } : {};
+}
+
+function pointLightFrom(light) {
+  knownKeys(light, POINT_LIGHT_FIELDS, 'point light');
+  return {
+    position: vectorInRange(light.position, -1e6, 1e6, 'point light position'),
+    color: vectorInRange(fallback(light.color, [1, 1, 1]), 0, 1, 'point light color'),
+    intensity: numberInRange(fallback(light.intensity, 1), 0, 1e5, 'point light intensity'),
+    radius: numberInRange(fallback(light.radius, 0.05), 0.001, 1e6, 'point light radius'),
+    range: rangeFrom(light, 'point light'),
+    ...shadowFieldFrom(light, 'point light'),
+  };
+}
+
+function spotLightFrom(light) {
+  knownKeys(light, SPOT_LIGHT_FIELDS, 'spot light');
+  return {
+    position: vectorInRange(light.position, -1e6, 1e6, 'spot light position'),
+    direction: directionFrom(light.direction, 'spot light direction').direction,
+    angle: numberInRange(fallback(light.angle, Math.PI / 4), 0.01, Math.PI / 2 - 0.01, 'spot light angle'),
+    penumbra: numberInRange(fallback(light.penumbra, 0.15), 0, 1, 'spot light penumbra'),
+    color: vectorInRange(fallback(light.color, [1, 1, 1]), 0, 1, 'spot light color'),
+    intensity: numberInRange(fallback(light.intensity, 1), 0, 1e5, 'spot light intensity'),
+    radius: numberInRange(fallback(light.radius, 0.05), 0.001, 1e6, 'spot light radius'),
+    range: rangeFrom(light, 'spot light'),
+    ...shadowFieldFrom(light, 'spot light'),
+  };
+}
+
+function areaLightFrom(light) {
+  knownKeys(light, AREA_LIGHT_FIELDS, 'area light');
+  const resolved = {
+    position: vectorInRange(light.position, -1e6, 1e6, 'area light position'),
+    direction: directionFrom(light.direction, 'area light direction').direction,
+    width: numberInRange(light.width, 0.001, 1e4, 'area light width'),
+    height: numberInRange(light.height, 0.001, 1e4, 'area light height'),
+    color: vectorInRange(fallback(light.color, [1, 1, 1]), 0, 1, 'area light color'),
+    intensity: numberInRange(fallback(light.intensity, 1), 0, 1e5, 'area light intensity'),
+  };
+  if (light.up !== undefined) resolved.up = directionFrom(light.up, 'area light up').direction;
+  return resolved;
 }
 
 function volumeFogFrom(input = {}) {
@@ -130,45 +200,62 @@ function environmentFrom(input = {}) {
   if (typeof world !== 'boolean') {
     throw new TypeError('environment.world must be boolean.');
   }
-  const pointLights = fallback(input.pointLights, []);
-  if (!Array.isArray(pointLights) || pointLights.length > MAX_POINT_LIGHTS) {
-    throw new RangeError(`pointLights must contain at most ${MAX_POINT_LIGHTS} lights.`);
+  const setup = fallback(input.setup, DEFAULT_LIGHTING_SETUP);
+  if (!LIGHTING_SETUP_NAMES.includes(setup)) {
+    throw new RangeError(`environment.setup must be one of ${LIGHTING_SETUP_NAMES.join(', ')}.`);
   }
+  const defaults = lightingSetupFields(setup);
   const environment = {
     world,
-    lightDirection: directionFrom(fallback(input.lightDirection, [-3, 6, 4])).direction,
-    keyColor: vectorInRange(fallback(input.keyColor, [5.2, 4.7, 4.1]), 0, 1000, 'keyColor'),
-    keyIntensity: numberInRange(fallback(input.keyIntensity, 1), 0, 100, 'keyIntensity'),
-    fillIntensity: numberInRange(fallback(input.fillIntensity, 1), 0, 100, 'fillIntensity'),
-    ambientIntensity: numberInRange(fallback(input.ambientIntensity, 1), 0, 100, 'ambientIntensity'),
+    setup,
+    environmentIntensity: numberInRange(fallback(input.environmentIntensity, 1), 0, 100, 'environmentIntensity'),
+    environmentRotation: numberInRange(fallback(input.environmentRotation, 0), -100, 100, 'environmentRotation'),
+    lightDirection: directionFrom(fallback(input.lightDirection, defaults.lightDirection)).direction,
+    keyColor: vectorInRange(fallback(input.keyColor, defaults.keyColor), 0, 1000, 'keyColor'),
+    keyIntensity: numberInRange(fallback(input.keyIntensity, defaults.keyIntensity), 0, 100, 'keyIntensity'),
+    fillIntensity: numberInRange(fallback(input.fillIntensity, defaults.fillIntensity), 0, 100, 'fillIntensity'),
+    ambientIntensity: numberInRange(fallback(input.ambientIntensity, defaults.ambientIntensity), 0, 100, 'ambientIntensity'),
     daylight: numberInRange(fallback(input.daylight, 1), 0, 100, 'daylight'),
-    pointLights: pointLights.map(light => {
-      knownKeys(light, POINT_LIGHT_FIELDS, 'point light');
-      const range = numberInRange(fallback(light.range, 0), 0, 1e6, 'point light range');
-      if (range !== 0 && range < 0.001) {
-        throw new RangeError('Point light range must be zero or at least 0.001.');
-      }
-      return {
-        position: vectorInRange(light.position, -1e6, 1e6, 'point light position'),
-        color: vectorInRange(fallback(light.color, [1, 1, 1]), 0, 1, 'point light color'),
-        intensity: numberInRange(fallback(light.intensity, 1), 0, 1e5, 'point light intensity'),
-        radius: numberInRange(fallback(light.radius, 0.05), 0.001, 1e6, 'point light radius'),
-        range,
-      };
-    }),
-    skyTop: vectorInRange(fallback(input.skyTop, [0.2, 0.38, 0.52]), 0, 1, 'skyTop'),
-    skyBottom: vectorInRange(fallback(input.skyBottom, [0.62, 0.7, 0.67]), 0, 1, 'skyBottom'),
+    pointLights: lightListFrom(input.pointLights, MAX_POINT_LIGHTS, 'pointLights').map(pointLightFrom),
+    skyTop: vectorInRange(fallback(input.skyTop, defaults.skyTop), 0, 1, 'skyTop'),
+    skyBottom: vectorInRange(fallback(input.skyBottom, defaults.skyBottom), 0, 1, 'skyBottom'),
     fogColor: vectorInRange(fallback(input.fogColor, [0.35, 0.43, 0.43]), 0, 1, 'fogColor'),
     fogDensity: numberInRange(fallback(input.fogDensity, 0.006), 0, 10, 'fogDensity'),
     volumeFog: volumeFogFrom(input.volumeFog),
   };
-  // Optional so recipes without liquids keep their exported shape.
+  // Optional so recipes without these lights or liquids keep their exported shape.
+  if (input.spotLights !== undefined) {
+    environment.spotLights = lightListFrom(input.spotLights, MAX_SPOT_LIGHTS, 'spotLights').map(spotLightFrom);
+  }
+  if (input.areaLights !== undefined) {
+    environment.areaLights = lightListFrom(input.areaLights, MAX_AREA_LIGHTS, 'areaLights').map(areaLightFrom);
+  }
   if (input.liquid !== undefined) {
     knownKeys(input.liquid, LIQUID_FIELDS, 'liquid');
     environment.liquid = copiedJson(resolveLiquidOptics(copiedJson(input.liquid)));
   }
   updateLightingState(createLightingState(), environment, { world });
   return environment;
+}
+
+/**
+ * Setup-derived fields come with the setup name, so switching setups never keeps the old key light.
+ * Fields in the patch itself still win.
+ */
+export function environmentPatchWithSetup(patch) {
+  if (patch.setup === undefined) {
+    return patch;
+  }
+  return { ...lightingSetupFields(patch.setup), ...patch };
+}
+
+/** The procedural environment map that lights a normalized environment; the same object returns while inputs hold. */
+export function agentEnvironmentMap(environment) {
+  return createLightingSetupMap(environment.setup, {
+    intensity: environment.environmentIntensity,
+    rotation: environment.environmentRotation,
+    showBackground: environment.world,
+  });
 }
 
 function effectsFrom(input = {}) {
@@ -185,7 +272,8 @@ function effectsFrom(input = {}) {
       numberInRange(bloom[field], -Number.MAX_VALUE, Number.MAX_VALUE, `bloom.${field}`);
     }
   }
-  const resolved = resolveEffects({ ...input, bloom: { strength: 0.12, threshold: 1, radius: 1, ...bloom } });
+  const ambientOcclusion = fallback(input.ambientOcclusion, DEFAULT_AMBIENT_OCCLUSION);
+  const resolved = resolveEffects({ ...input, ambientOcclusion, bloom: { strength: 0.12, threshold: 1, radius: 1, ...bloom } });
   return { ...resolved, exposure: numberInRange(fallback(input.exposure, 1), 0.01, 16, 'exposure') };
 }
 

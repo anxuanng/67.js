@@ -11,9 +11,10 @@ const origin = process.argv[4] ?? 'http://127.0.0.1:5173';
 await mkdir('artifacts', { recursive: true });
 const recipe = createAgentPreviewFixture();
 const harness = `<!doctype html><html><head><style>html,body{margin:0;height:100%;background:#152126}canvas{width:100vw;height:100vh;display:block}</style></head><body><canvas id="scene"></canvas><script type="module">
-import {createAgentScene} from '/src/agent-scene.js';
+import {createAgentScene,loadAllAgentSceneModules} from '/src/agent-scene.js';
 import {Renderer67} from '/src/renderer.js';
 import {exportGlb} from '/src/export.js';
+await loadAllAgentSceneModules();
 const session=createAgentScene(${JSON.stringify(recipe)});
 const renderer=new Renderer67(document.querySelector('canvas'),session.parts,{ground:true,hdr:true,samples:4,pixelRatio:1,memoryBudgetMiB:192});
 const effects={bloom:{strength:0.12,threshold:1,radius:1},saturation:1,contrast:1,temperature:0,vignette:0,grain:0};

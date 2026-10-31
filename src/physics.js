@@ -1,6 +1,8 @@
 import { mat4, quat, vec3 } from 'gl-matrix';
 
 let rapierPromise;
+let rapierEngine;
+let loadRapierModule = () => import('@dimforge/rapier3d-compat');
 const ZERO = [0, 0, 0];
 const IDENTITY = [0, 0, 0, 1];
 const MIN_NORMAL_FLOAT32 = 2 ** -126;
@@ -15,7 +17,39 @@ const LIMITS = {
   maxJoints: [512, 8192],
   maxEvents: [10000, 100000],
   maxFrames: [3601, 1000000],
+  maxColliderTriangles: [20000, 200000],
+  maxHullPoints: [2048, 16384],
+  maxContactEvents: [4096, 100000],
 };
+// A body counts as resting once it stays under both speeds until the last frame.
+const REST_LINEAR_SPEED = 0.02;
+const REST_ANGULAR_SPEED = 0.05;
+const MAX_GROUP_BITS = 0xffff;
+
+/** Replace how the Rapier module is imported, for hosts that serve it from a URL. */
+export function setPhysicsModuleLoader(loader) {
+  loadRapierModule = loader;
+  rapierPromise = undefined;
+  rapierEngine = undefined;
+}
+
+/** Load the Rapier WASM engine once. After it resolves, bakePhysicsScene runs synchronously. */
+export function loadPhysicsEngine() {
+  rapierPromise ??= loadRapierModule().then(async module => {
+    const rapier = module.default ?? module;
+    await rapier.init();
+    rapierEngine = rapier;
+    return rapier;
+  }, error => {
+    rapierPromise = undefined;
+    throw error;
+  });
+  return rapierPromise;
+}
+
+export function physicsEngineLoaded() {
+  return rapierEngine !== undefined;
+}
 
 function fields(value, allowed, label) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
@@ -159,6 +193,69 @@ function initialJointCoordinate(joint, bodies) {
   }
 }
 
+function finiteArray(values, label, maximumLength) {
+  if (!Array.isArray(values) && !ArrayBuffer.isView(values)) {
+    throw new TypeError(`${label} must be an array of numbers`);
+  }
+  if (values.length > maximumLength) {
+    throw new RangeError(`${label} has ${values.length} numbers; the limit is ${maximumLength}`);
+  }
+  return Float32Array.from(values, (number, index) => scalar(number, `${label}[${index}]`));
+}
+
+function convexHullCollider(collider, limits) {
+  if (collider.vertices !== undefined || collider.indices !== undefined || collider.radius !== undefined || collider.halfHeight !== undefined || collider.halfExtents !== undefined) {
+    throw new TypeError('convexHull only accepts points');
+  }
+  if (!collider.points || collider.points.length % 3 !== 0 || collider.points.length < 12) {
+    throw new TypeError('convexHull points must hold at least four xyz points');
+  }
+  const points = finiteArray(collider.points, 'points', limits.maxHullPoints * 3);
+  const minimum = [Infinity, Infinity, Infinity];
+  const maximum = [-Infinity, -Infinity, -Infinity];
+  let largestExtent = 0;
+  for (let index = 0; index < points.length; index += 3) {
+    for (let axis = 0; axis < 3; axis++) {
+      minimum[axis] = Math.min(minimum[axis], points[index + axis]);
+      maximum[axis] = Math.max(maximum[axis], points[index + axis]);
+    }
+    largestExtent = Math.max(largestExtent, Math.hypot(points[index], points[index + 1], points[index + 2]));
+  }
+  const size = maximum.map((value, axis) => value - minimum[axis]);
+  // The solver derives true mass from the hull; this bounding box only sizes the safety checks.
+  return { shape: 'convexHull', points, volume: size[0] * size[1] * size[2], smallestExtent: Math.min(...size) / 2, largestExtent };
+}
+
+function trimeshCollider(collider, body, limits, budget) {
+  if (body.type === 'dynamic') {
+    throw new TypeError('trimesh colliders need a fixed or kinematic body; use convexHull for a dynamic body');
+  }
+  if (collider.points !== undefined || collider.radius !== undefined || collider.halfHeight !== undefined || collider.halfExtents !== undefined) {
+    throw new TypeError('trimesh only accepts vertices and indices');
+  }
+  if (!collider.vertices || collider.vertices.length % 3 !== 0 || !collider.indices || collider.indices.length % 3 !== 0 || !collider.indices.length) {
+    throw new TypeError('trimesh needs xyz vertices and triangle indices');
+  }
+  // Counts are checked before any typed array is allocated.
+  budget.triangles += collider.indices.length / 3;
+  if (budget.triangles > limits.maxColliderTriangles) {
+    throw new RangeError(`trimesh colliders hold ${budget.triangles} triangles; maxColliderTriangles is ${limits.maxColliderTriangles}`);
+  }
+  const vertices = finiteArray(collider.vertices, 'vertices', limits.maxColliderTriangles * 3 * 3);
+  const vertexCount = vertices.length / 3;
+  const indices = Uint32Array.from(collider.indices, (index, position) => integer(index, `indices[${position}]`, 0, vertexCount - 1));
+  return { shape: 'trimesh', vertices, indices };
+}
+
+function meshCollider(collider, body, limits, budget) {
+  if (collider.shape === 'convexHull') return convexHullCollider(collider, limits);
+  if (collider.shape === 'trimesh') return trimeshCollider(collider, body, limits, budget);
+  if (collider.points !== undefined || collider.vertices !== undefined || collider.indices !== undefined) {
+    throw new TypeError(`${collider.shape} does not accept points, vertices or indices`);
+  }
+  return null;
+}
+
 function prepare(definition, options) {
   fields(definition, ['bodies', 'colliders', 'joints', 'events', 'gravity'], 'definition');
   fields(options, ['frameCount', 'timestep', 'solverIterations', 'maxMemoryBytes', ...Object.keys(LIMITS)], 'options');
@@ -222,9 +319,27 @@ function prepare(definition, options) {
     }
     return bodyIndices.get(name);
   }
+  const meshBudget = { triangles: 0 };
   const colliders = rawColliders.map(collider => {
-    fields(collider, ['name', 'body', 'shape', 'radius', 'halfHeight', 'halfExtents', 'translation', 'rotation', 'mass', 'density', 'friction', 'restitution'], `collider ${collider.name}`);
+    fields(collider, ['name', 'body', 'shape', 'radius', 'halfHeight', 'halfExtents', 'points', 'vertices', 'indices', 'translation', 'rotation', 'mass', 'density', 'friction', 'restitution', 'sensor', 'groups', 'mask'], `collider ${collider.name}`);
     const body = bodyIndex(collider.body);
+    const mesh = meshCollider(collider, bodies[body], limits, meshBudget);
+    if (collider.sensor !== undefined && typeof collider.sensor !== 'boolean') {
+      throw new TypeError('sensor must be boolean');
+    }
+    const common = {
+      body,
+      translation: vector(collider.translation, 3, 'collider translation', ZERO),
+      rotation: rotation(collider.rotation, 'collider rotation'),
+      friction: scalar(collider.friction ?? 0.5, 'friction', 0),
+      restitution: scalar(collider.restitution ?? 0, 'restitution', 0, 1),
+      sensor: collider.sensor ?? false,
+      groups: integer(collider.groups ?? MAX_GROUP_BITS, 'groups', 0, MAX_GROUP_BITS),
+      mask: integer(collider.mask ?? MAX_GROUP_BITS, 'mask', 0, MAX_GROUP_BITS),
+    };
+    if (mesh?.shape === 'trimesh') {
+      return { ...common, ...mesh, effectiveMass: 0, minimumInertia: 0, largestExtent: 0 };
+    }
     let radius;
     let halfHeight;
     let halfExtents;
@@ -255,6 +370,9 @@ function prepare(definition, options) {
       halfHeight = positive(collider.halfHeight, 'halfHeight');
       volume = Math.PI * radius ** 2 * 2 * halfHeight + 4 * Math.PI * radius ** 3 / 3;
       smallestExtent = radius;
+    } else if (mesh) {
+      volume = mesh.volume;
+      smallestExtent = mesh.smallestExtent;
     } else {
       throw new TypeError(`unsupported collider shape ${collider.shape}`);
     }
@@ -269,23 +387,20 @@ function prepare(definition, options) {
       positive(mass / volume, 'collider effective density');
     }
     const minimumInertia = normalPositive(0.1 * effectiveMass * smallestExtent ** 2, 'collider minimum inertia scale');
-    const largestExtent = halfExtents ? Math.max(...halfExtents) : radius + (halfHeight ?? 0);
+    const largestExtent = mesh ? mesh.largestExtent : halfExtents ? Math.max(...halfExtents) : radius + (halfHeight ?? 0);
     positive(effectiveMass * largestExtent ** 2, 'collider maximum inertia scale');
     return {
-      body,
+      ...common,
       shape: collider.shape,
       radius,
       halfHeight,
       halfExtents,
+      points: mesh?.points,
       mass,
       density,
       effectiveMass,
       minimumInertia,
       largestExtent,
-      translation: vector(collider.translation, 3, 'collider translation', ZERO),
-      rotation: rotation(collider.rotation, 'collider rotation'),
-      friction: scalar(collider.friction ?? 0.5, 'friction', 0),
-      restitution: scalar(collider.restitution ?? 0, 'restitution', 0, 1),
     };
   });
   const massTotals = Array(bodies.length).fill(0);
@@ -293,6 +408,7 @@ function prepare(definition, options) {
   const minimumInertiaTotals = Array(bodies.length).fill(0);
   const maximumColliderOffsets = Array(bodies.length).fill(0);
   for (const collider of colliders) {
+    if (collider.shape === 'trimesh') continue;
     const index = collider.body;
     massTotals[index] = normalPositive(massTotals[index] + collider.effectiveMass, 'compound body mass');
     inertiaTotals[index] = positive(inertiaTotals[index] + collider.effectiveMass * (collider.largestExtent ** 2 + Math.hypot(...collider.translation) ** 2), 'compound body inertia scale');
@@ -422,6 +538,7 @@ function prepare(definition, options) {
     frameCount,
     timestep,
     solverIterations,
+    maxContactEvents: limits.maxContactEvents,
     memoryPlan,
   };
 }
@@ -570,12 +687,59 @@ function applyJointMotor(rapier, joint, motor) {
 /** Bake a named rigid-body graph with Rapier, then release its solver world. */
 export async function createPhysicsScene(definition, options = {}) {
   const preparedScene = prepare(definition, options);
-  rapierPromise ??= import('@dimforge/rapier3d-compat').then(async ({ default: rapier }) => {
-    await rapier.init();
-    return rapier;
-  });
-  const rapier = await rapierPromise;
+  await loadPhysicsEngine();
+  return bakePrepared(preparedScene);
+}
+
+/** Synchronous bake for hosts that already awaited loadPhysicsEngine. */
+export function bakePhysicsScene(definition, options = {}) {
+  if (!rapierEngine) {
+    throw new Error('Physics engine is not loaded. Await loadPhysicsEngine() first.');
+  }
+  return bakePrepared(prepare(definition, options));
+}
+
+function colliderDescriptor(rapier, collider) {
+  let descriptor;
+  if (collider.shape === 'ball') {
+    descriptor = rapier.ColliderDesc.ball(collider.radius);
+  } else if (collider.shape === 'cuboid') {
+    descriptor = rapier.ColliderDesc.cuboid(...collider.halfExtents);
+  } else if (collider.shape === 'capsule') {
+    descriptor = rapier.ColliderDesc.capsule(collider.halfHeight, collider.radius);
+  } else if (collider.shape === 'convexHull') {
+    descriptor = rapier.ColliderDesc.convexHull(collider.points);
+    if (!descriptor) {
+      throw new RangeError('convexHull points are degenerate: they must span a volume');
+    }
+  } else {
+    descriptor = rapier.ColliderDesc.trimesh(collider.vertices, collider.indices);
+  }
+  descriptor.setTranslation(...collider.translation);
+  descriptor.setRotation(xyzw(collider.rotation));
+  descriptor.setFriction(collider.friction);
+  descriptor.setRestitution(collider.restitution);
+  descriptor.setSensor(collider.sensor);
+  descriptor.setCollisionGroups(((collider.groups << 16) | collider.mask) >>> 0);
+  descriptor.setActiveEvents(rapier.ActiveEvents.COLLISION_EVENTS);
+  if (collider.shape !== 'trimesh') {
+    if (collider.mass === undefined) {
+      descriptor.setDensity(collider.density);
+    } else {
+      descriptor.setMass(collider.mass);
+    }
+  }
+  return descriptor;
+}
+
+function bakePrepared(preparedScene) {
+  const rapier = rapierEngine;
   const world = new rapier.World(xyz(preparedScene.gravity));
+  const eventQueue = new rapier.EventQueue(true);
+  const contactEvents = [];
+  const colliderIndices = new Map();
+  const lastMovingFrames = new Int32Array(preparedScene.bodies.length).fill(-1);
+  let contactEventsTruncated = false;
   let timeline;
   try {
     world.timestep = preparedScene.timestep;
@@ -600,26 +764,10 @@ export async function createPhysicsScene(definition, options = {}) {
       }
       return world.createRigidBody(descriptor);
     });
-    for (const collider of preparedScene.colliders) {
-      let descriptor;
-      if (collider.shape === 'ball') {
-        descriptor = rapier.ColliderDesc.ball(collider.radius);
-      } else if (collider.shape === 'cuboid') {
-        descriptor = rapier.ColliderDesc.cuboid(...collider.halfExtents);
-      } else {
-        descriptor = rapier.ColliderDesc.capsule(collider.halfHeight, collider.radius);
-      }
-      descriptor.setTranslation(...collider.translation);
-      descriptor.setRotation(xyzw(collider.rotation));
-      descriptor.setFriction(collider.friction);
-      descriptor.setRestitution(collider.restitution);
-      if (collider.mass === undefined) {
-        descriptor.setDensity(collider.density);
-      } else {
-        descriptor.setMass(collider.mass);
-      }
-      world.createCollider(descriptor, bodies[collider.body]);
-    }
+    preparedScene.colliders.forEach((collider, colliderIndex) => {
+      const created = world.createCollider(colliderDescriptor(rapier, collider), bodies[collider.body]);
+      colliderIndices.set(created.handle, colliderIndex);
+    });
     const joints = preparedScene.joints.map(joint => {
       const anchorA = xyz(joint.anchorA);
       const anchorB = xyz(joint.anchorB);
@@ -671,13 +819,26 @@ export async function createPhysicsScene(definition, options = {}) {
             }
           }
         }
-        world.step();
+        world.step(eventQueue);
+        eventQueue.drainCollisionEvents((firstHandle, secondHandle, started) => {
+          if (contactEvents.length >= preparedScene.maxContactEvents) {
+            contactEventsTruncated = true;
+            return;
+          }
+          const first = colliderIndices.get(firstHandle);
+          const second = colliderIndices.get(secondHandle);
+          const sensor = preparedScene.colliders[first].sensor || preparedScene.colliders[second].sensor;
+          contactEvents.push(Object.freeze({ frame, kind: sensor ? 'sensor' : 'contact', started, colliderA: first, colliderB: second }));
+        });
       }
       for (let bodyIndex = 0; bodyIndex < bodies.length; bodyIndex++) {
         const linearVelocity = bodies[bodyIndex].linvel();
         const angularVelocity = bodies[bodyIndex].angvel();
         scalar(linearVelocity.x ** 2 + linearVelocity.y ** 2 + linearVelocity.z ** 2, 'solver linear velocity squared norm', 0);
         scalar(angularVelocity.x ** 2 + angularVelocity.y ** 2 + angularVelocity.z ** 2, 'solver angular velocity squared norm', 0);
+        if (Math.hypot(linearVelocity.x, linearVelocity.y, linearVelocity.z) > REST_LINEAR_SPEED || Math.hypot(angularVelocity.x, angularVelocity.y, angularVelocity.z) > REST_ANGULAR_SPEED) {
+          lastMovingFrames[bodyIndex] = frame;
+        }
         const position = bodies[bodyIndex].translation();
         const bodyRotation = bodies[bodyIndex].rotation();
         const offset = (frame * bodies.length + bodyIndex) * 7;
@@ -700,12 +861,13 @@ export async function createPhysicsScene(definition, options = {}) {
       }
     }
   } finally {
+    eventQueue.free();
     world.free();
   }
-  return recordedScene(preparedScene, timeline);
+  return recordedScene(preparedScene, timeline, { contactEvents, contactEventsTruncated, lastMovingFrames });
 }
 
-function recordedScene(preparedScene, timeline) {
+function recordedScene(preparedScene, timeline, recording) {
   const bodyNames = Object.freeze(preparedScene.bodies.map(body => body.name));
   const indices = new Map(bodyNames.map((name, index) => [name, index]));
   const poseStride = bodyNames.length * 7;
@@ -881,6 +1043,12 @@ function recordedScene(preparedScene, timeline) {
     bodyIndex,
     sample,
     bindParts,
+    colliderNames: Object.freeze(preparedScene.colliders.map(collider => preparedScene.bodies[collider.body].name)),
+    /** Contact and sensor start or stop events in step order, with collider indices into colliderNames. */
+    contactEvents: Object.freeze(recording.contactEvents),
+    contactEventsTruncated: recording.contactEventsTruncated,
+    /** Per body: the frame at which it came to rest and stayed there, or -1 while it still moves at the end. */
+    restFrames: Object.freeze(Array.from(recording.lastMovingFrames, frame => frame < preparedScene.frameCount - 1 ? frame + 1 : -1)),
     dispose() {
       timeline = null;
     },

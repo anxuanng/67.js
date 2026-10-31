@@ -29,7 +29,7 @@ Version `0.8.0` adds source-node authoring on imported GLBs with retained rigs, 
 
 Version `0.9.0` adds isolated multi-angle and pose review with unchanged source revision and preview state.
 
-The stdio MCP server supplies twenty-one schema-backed tools and persistent CPU/GPU image previews.
+The stdio MCP server supplies twenty-two schema-backed tools and persistent CPU/GPU image previews.
 Recipes retain lighting, volumetric fog, grading and directional shadow coverage with atomic edits and undo.
 Imported asset sessions retain supported textures, rigs, morphs and clips from a configured local GLB catalog.
 
@@ -50,3 +50,7 @@ Evaluate WebGPU after collecting WebGL2 bottleneck measurements.
 Extend deformation with surface bindings, remeshing and authored humanoid rigs.
 Improve character assets and cinematic environments through measured rendering and inspected reference frames.
 Blender is the visual quality reference for authored scenes. Rendering parity and universal speed advantages remain goals that need evidence.
+
+## Package size
+
+Large features that carry data or a heavy dependency should ship as separate optional packages (for example `@codepawlhq/67js-film`), not as more entries of the main archive. Lazy loading alone does not help here: a lazy chunk still sits in the same npm archive, so it saves page weight but not the 1 MiB archive budget. A separate package does both, and users who never import it never download it. The cost is a second version to release and a peer range to keep in step, so small code-only addons (a few tens of KB gzip) stay in the main package. The film demo left the main archive for this reason.

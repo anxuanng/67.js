@@ -476,7 +476,7 @@ Disconnect observers, cancel animation frames, release pointer state and call `d
 ## Models and AI agents
 
 Version `0.5.0` includes [agent scene sessions](/agent-scene.md) and the `67js-mcp` command.
-Its [MCP server](/mcp.md) provides twenty-one tools for authoring, previewing and exporting scenes through a persistent browser runtime.
+Its [MCP server](/mcp.md) provides twenty-two tools for authoring, previewing and exporting scenes through a persistent browser runtime.
 Release `0.7.0` adds [agent motion](/agent-motion.md) for deterministic joint, material and camera keyframes.
 Read the MCP guide for npm installation, client configuration and CPU/GPU selection.
 The [agent look contract](/agent-look.md) adds retained lighting, volumetric fog, grading and directional shadows to recipe edits and checkpoints.
@@ -530,7 +530,7 @@ Core exports are available from `67js`:
 
 `planRenderSize` accepts width, height, pixelRatio, samples, memoryBudgetMiB, geometryBytes, textureBytes, hdr, bloom, shadowResolution and maximumSize. It returns actual dimensions, estimatedBytes and reduced status. `estimateFrameBytes(width, height, samples, shadowResolution, { hdr, bloom })` estimates target storage. Neither function measures total VRAM.
 
-`67js/addons/model`: createModel. `67js/addons/nature`: createNatureWorld. `67js/addons/film`: deterministic film recipes. `67js/addons/motion`: createMotionScene.
+`67js/addons/model`: createModel. `67js/addons/nature`: createNatureWorld. `67js/addons/motion`: createMotionScene.
 
 `67js/addons/canvas2d`: 2D recipes. `67js/addons/gltf`: optional asset decoding. These are separate imports to keep the core smaller.
 

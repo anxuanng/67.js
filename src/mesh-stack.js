@@ -1,5 +1,5 @@
 import { createMeshData, deriveEdges, TAG_PREFIX, meshBounds } from './mesh-data.js';
-import { faceNormals } from './mesh-normals.js';
+import { faceNormals, vertexNormals } from './mesh-normals.js';
 import { edgeCornerTable } from './mesh-topology.js';
 import { mergeByDistance } from './mesh-ops.js';
 
@@ -110,6 +110,20 @@ export class MeshBuilder {
       positions: Float32Array.from(this.positions), faceOffsets, cornerVertices,
       edgeVertices: edges.edgeVertices, cornerEdges: edges.cornerEdges, attributes,
     });
+  }
+}
+
+/** A corner made from several source corners, each with a weight; integer attributes copy the heaviest one. */
+function blendWeighted(data, attribute, corner, weights, blends) {
+  const heaviest = weights.reduce((best, entry) => (entry[1] > best[1] ? entry : best));
+  for (let component = 0; component < attribute.size; component++) {
+    if (!blends) {
+      data[corner * attribute.size + component] = attribute.data[heaviest[0] * attribute.size + component];
+      continue;
+    }
+    let sum = 0;
+    for (const [source, weight] of weights) sum += attribute.data[source * attribute.size + component] * weight;
+    data[corner * attribute.size + component] = sum;
   }
 }
 
@@ -236,33 +250,6 @@ export function arrayMesh(mesh, { count = 2, offset = [0, 0, 0], relativeOffset 
   if (merge > 0) {
     result = mergeByDistance(result, merge).mesh;
     result = removeCoincidentFaces(result).mesh;
-  }
-  return result;
-}
-
-/** Angle-weighted vertex normals from face normals. */
-function vertexNormals(mesh) {
-  const { normals } = faceNormals(mesh);
-  const sums = new Float64Array(mesh.vertexCount * 3);
-  for (let face = 0; face < mesh.faceCount; face++) {
-    const start = mesh.faceOffsets[face];
-    const end = mesh.faceOffsets[face + 1];
-    for (let corner = start; corner < end; corner++) {
-      const previous = mesh.cornerVertices[corner === start ? end - 1 : corner - 1] * 3;
-      const current = mesh.cornerVertices[corner] * 3;
-      const next = mesh.cornerVertices[corner + 1 === end ? start : corner + 1] * 3;
-      const first = [0, 1, 2].map(axis => mesh.positions[previous + axis] - mesh.positions[current + axis]);
-      const second = [0, 1, 2].map(axis => mesh.positions[next + axis] - mesh.positions[current + axis]);
-      const lengths = Math.hypot(...first) * Math.hypot(...second);
-      const angle = lengths > 0 ? Math.acos(Math.max(-1, Math.min(1, (first[0] * second[0] + first[1] * second[1] + first[2] * second[2]) / lengths))) : 0;
-      for (let axis = 0; axis < 3; axis++) sums[current + axis] += normals[face * 3 + axis] * angle;
-    }
-  }
-  const result = new Float64Array(mesh.vertexCount * 3);
-  for (let vertex = 0; vertex < mesh.vertexCount; vertex++) {
-    const length = Math.hypot(sums[vertex * 3], sums[vertex * 3 + 1], sums[vertex * 3 + 2]);
-    if (length === 0) continue;
-    for (let axis = 0; axis < 3; axis++) result[vertex * 3 + axis] = sums[vertex * 3 + axis] / length;
   }
   return result;
 }

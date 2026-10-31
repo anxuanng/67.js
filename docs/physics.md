@@ -331,11 +331,59 @@ The selected shape adds complete joint motor snapshots to the existing serializa
 This preserves pre-async validation, deterministic bake order and arbitrary recorded seeks after the solver world is freed.
 
 The addon supports rigid-body contacts, compound colliders, impulses, kinematics, articulated graphs, and single-coordinate joint limits and motors.
-It does not implement cloth, soft bodies, mesh colliders, spherical multi-axis controls, sensors, collision masks, or live solver editing.
+It does not implement cloth, soft bodies, spherical multi-axis controls, or live solver editing.
 It does not bind physics directly to skeletal bones or generate a humanoid skeleton.
 Those features need additional public contracts.
 Creating a scene bakes synchronously after asynchronous WASM initialization and can block the main thread.
 A worker integration can move that bake off the render thread.
+
+## Mesh colliders, sensors and masks
+
+A collider takes `shape: 'convexHull'` with `points` (flat xyz, at most `maxHullPoints`, default 2048) or `shape: 'trimesh'` with `vertices` and `indices` (at most `maxColliderTriangles` triangles across the scene, default 20000).
+Counts are checked before any typed array is allocated, and indices must point at a vertex.
+A trimesh needs a `fixed` or `kinematic` body, because it encloses no volume to take a mass from.
+Use a convex hull for a dynamic body; its true mass comes from the hull, and the bounding box only sizes the safety checks.
+
+`sensor: true` makes a collider report overlaps without pushing anything.
+`groups` and `mask` are 16-bit integers. Two colliders touch only when each one's `groups` shares a bit with the other's `mask`.
+Both default to `0xffff`.
+
+The recorded scene lists what happened:
+
+- `contactEvents`: `{ frame, kind: 'contact' | 'sensor', started, colliderA, colliderB }` in step order, with indices into `colliderNames`. `contactEventsTruncated` is true past `maxContactEvents` (default 4096).
+- `restFrames`: per body, the frame from which it stays under 0.02 m/s and 0.05 rad/s until the end, or `-1` while it still moves.
+
+`bakePhysicsScene` is the synchronous twin of `createPhysicsScene`. Await `loadPhysicsEngine()` once, then bake without awaiting.
+`setPhysicsModuleLoader` replaces how Rapier is imported, for a host that serves it from a URL, as the MCP preview does.
+
+## Recipe physics
+
+A scene recipe takes a `physics` section, and `set-physics` edits it (`null` clears it):
+
+```json
+"physics": {
+  "duration": 3,
+  "gravity": [0, -9.81, 0],
+  "bodies": [
+    { "node": "tray", "type": "fixed", "shape": "trimesh" },
+    { "node": "ball-1", "shape": "ball", "restitution": 0.3, "layer": 1, "collidesWith": [0] }
+  ],
+  "joints": [{ "type": "revolute", "bodyA": "door", "bodyB": "frame", "axis": [0, 1, 0], "limits": [0, 1.5] }]
+}
+```
+
+Each body is a root node with a geometry. Its collider is fitted to that geometry at the node scale: `box`, `ball` and `capsule` from the bounds, `convex` from at most 2048 distinct vertices, `trimesh` from every triangle.
+Defaults are `box` for dynamic bodies and sensors, `trimesh` for fixed ones.
+`layer` (0 to 15) and `collidesWith` replace raw bit masks.
+A node cannot have both a physics body and a motion `translation` or `rotation` track.
+Limits: 64 bodies, 64 joints, 10 seconds, 60 steps a second, so at most 601 frames.
+
+The bake runs once, when the scene is created or the section changes, and is reused while the section and the geometry stay the same.
+After that the scene treats physics like motion: `sampleMotion(time)` and the MCP `motionTime` read the recording, so a seek back gives the same matrices. A time past `duration` holds the last pose, and `null` restores the authored pose.
+Rapier is loaded on demand, an optional peer dependency. The MCP runtime serves it from `node_modules` to the preview page, like Manifold, so the server bundle does not carry it.
+
+`scene_inspect` returns a `physics` report: per body the `finalPosition`, `finalSpeed` and `restsAtTime` (null while moving), the `contacts` between bodies with `firstTime`, `count` and `touchingAtEnd`, and the sensor `enter` and `leave` events with times.
+An agent can check that a ball came to rest on a mesh from these numbers, without a picture.
 
 Repeat recordings require identical inputs, creation order, timestep, solver options, and Rapier version.
 Rapier documents cross-platform determinism for its WASM solver under identical initial conditions.

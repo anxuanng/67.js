@@ -1,0 +1,331 @@
+import { bakePhysicsScene, loadPhysicsEngine, physicsEngineLoaded, setPhysicsModuleLoader } from './physics.js';
+
+export { loadPhysicsEngine, physicsEngineLoaded, setPhysicsModuleLoader };
+export { needsPhysics } from './agent-scene-modules.js';
+
+const FRAMES_PER_SECOND = 60;
+const MAX_DURATION_SECONDS = 10;
+const MAX_BODIES = 64;
+const MAX_JOINTS = 64;
+const MAX_LAYER = 15;
+const MAX_TRIMESH_TRIANGLES = 20000;
+const MAX_HULL_POINTS = 2048;
+const MAX_SOURCE_VERTICES = 65536;
+const MAX_REPORTED_CONTACTS = 64;
+const MAX_REPORTED_SENSOR_EVENTS = 128;
+const BODY_TYPES = ['dynamic', 'fixed', 'kinematic'];
+const SHAPES = ['box', 'ball', 'capsule', 'convex', 'trimesh'];
+const JOINT_TYPES = ['spherical', 'revolute', 'prismatic', 'fixed'];
+const BODY_FIELDS = ['node', 'type', 'shape', 'mass', 'density', 'friction', 'restitution', 'sensor', 'velocity', 'angularVelocity', 'layer', 'collidesWith'];
+const JOINT_FIELDS = ['type', 'bodyA', 'bodyB', 'anchorA', 'anchorB', 'axis', 'limits'];
+const PHYSICS_FIELDS = ['duration', 'gravity', 'bodies', 'joints'];
+
+function knownKeys(value, fields, label) {
+  if (!value || Object.getPrototypeOf(value) !== Object.prototype) {
+    throw new TypeError(`${label} must be a plain object.`);
+  }
+  for (const key of Object.keys(value)) {
+    if (!fields.includes(key)) {
+      throw new TypeError(`Unknown or unsupported ${label} field: ${key}. Allowed fields: ${fields.join(", ")}.`);
+    }
+  }
+}
+
+function finiteNumber(value, label, minimum = -Infinity, maximum = Infinity) {
+  if (typeof value !== 'number' || !Number.isFinite(value) || !Number.isFinite(Math.fround(value)) || value < minimum || value > maximum) {
+    throw new RangeError(`${label} must be a finite number within ${minimum} and ${maximum}.`);
+  }
+  return value;
+}
+
+function numberList(value, size, label) {
+  if (!Array.isArray(value) || value.length !== size) {
+    throw new TypeError(`${label} needs ${size} numbers.`);
+  }
+  return value.map(component => finiteNumber(component, label));
+}
+
+function nodeIdentifier(value, label) {
+  if (typeof value !== 'string' || !value.trim() || value.length > 128) {
+    throw new TypeError(`${label} needs a node ID of 1 to 128 characters.`);
+  }
+  return value;
+}
+
+function boundedArray(value, maximum, label) {
+  if (!Array.isArray(value) || value.length > maximum) {
+    throw new TypeError(`${label} must be an array of at most ${maximum} entries.`);
+  }
+  return value;
+}
+
+function normalizeBody(input, recipeNodes, motionNodeIds, claimedNodes) {
+  knownKeys(input, BODY_FIELDS, 'physics body');
+  const nodeId = nodeIdentifier(input.node, 'Physics body node');
+  const node = recipeNodes.get(nodeId);
+  if (!node) {
+    throw new RangeError(`Physics body node was not found: ${nodeId}.`);
+  }
+  if (node.geometry === undefined) {
+    throw new RangeError(`Physics body node ${nodeId} has no geometry to fit a collider to.`);
+  }
+  if (node.parent !== null) {
+    throw new RangeError(`Physics body node ${nodeId} must be a root node; reparent it or move its parent into the body.`);
+  }
+  if (claimedNodes.has(nodeId)) {
+    throw new RangeError(`Node ${nodeId} has more than one physics body.`);
+  }
+  if (motionNodeIds.has(nodeId)) {
+    throw new RangeError(`Node ${nodeId} has a motion translation or rotation track and a physics body. Pick one.`);
+  }
+  claimedNodes.add(nodeId);
+  const type = input.type ?? 'dynamic';
+  if (!BODY_TYPES.includes(type)) {
+    throw new RangeError(`Physics body type must be one of ${BODY_TYPES.join(', ')}.`);
+  }
+  if (input.sensor !== undefined && typeof input.sensor !== 'boolean') {
+    throw new TypeError('Physics body sensor must be boolean.');
+  }
+  const sensor = input.sensor ?? false;
+  const shape = input.shape ?? (sensor ? 'box' : type === 'dynamic' ? 'box' : 'trimesh');
+  if (!SHAPES.includes(shape)) {
+    throw new RangeError(`Physics shape must be one of ${SHAPES.join(', ')}.`);
+  }
+  if (shape === 'trimesh' && type === 'dynamic') {
+    throw new RangeError(`Body ${nodeId} is dynamic: use shape convex, box, ball or capsule. Trimesh is for fixed or kinematic bodies.`);
+  }
+  if (type !== 'dynamic' && (input.velocity !== undefined || input.angularVelocity !== undefined)) {
+    throw new TypeError(`Body ${nodeId} is ${type}: only dynamic bodies take velocity.`);
+  }
+  if (input.mass !== undefined && input.density !== undefined) {
+    throw new TypeError('A physics body takes mass or density, not both.');
+  }
+  const body = { node: nodeId, type, shape };
+  if (sensor) body.sensor = true;
+  if (input.mass !== undefined) body.mass = finiteNumber(input.mass, 'Physics mass', 1e-6, 1e9);
+  if (input.density !== undefined) body.density = finiteNumber(input.density, 'Physics density', 1e-6, 1e9);
+  if (input.friction !== undefined) body.friction = finiteNumber(input.friction, 'Physics friction', 0, 100);
+  if (input.restitution !== undefined) body.restitution = finiteNumber(input.restitution, 'Physics restitution', 0, 1);
+  if (input.velocity !== undefined) body.velocity = numberList(input.velocity, 3, 'Physics velocity');
+  if (input.angularVelocity !== undefined) body.angularVelocity = numberList(input.angularVelocity, 3, 'Physics angularVelocity');
+  if (input.layer !== undefined) body.layer = Math.trunc(finiteNumber(input.layer, 'Physics layer', 0, MAX_LAYER));
+  if (input.collidesWith !== undefined) {
+    const layers = boundedArray(input.collidesWith, MAX_LAYER + 1, 'Physics collidesWith');
+    body.collidesWith = [...new Set(layers.map(layer => Math.trunc(finiteNumber(layer, 'Physics collidesWith layer', 0, MAX_LAYER))))].sort((first, second) => first - second);
+  }
+  return body;
+}
+
+function normalizeJoint(input, bodyNodeIds) {
+  knownKeys(input, JOINT_FIELDS, 'physics joint');
+  if (!JOINT_TYPES.includes(input.type)) {
+    throw new RangeError(`Physics joint type must be one of ${JOINT_TYPES.join(', ')}.`);
+  }
+  for (const field of ['bodyA', 'bodyB']) {
+    if (!bodyNodeIds.has(input[field])) {
+      throw new RangeError(`Physics joint ${field} must be the node of a physics body: ${input[field]}.`);
+    }
+  }
+  const joint = { type: input.type, bodyA: input.bodyA, bodyB: input.bodyB };
+  for (const field of ['anchorA', 'anchorB', 'axis']) {
+    if (input[field] !== undefined) joint[field] = numberList(input[field], 3, `Physics joint ${field}`);
+  }
+  if (input.limits !== undefined) joint.limits = numberList(input.limits, 2, 'Physics joint limits');
+  return joint;
+}
+
+/** Validate a recipe physics section against its nodes. Returns the plain, bounded form stored in the recipe. */
+export function normalizeAgentPhysics(input, recipe) {
+  if (input === null || input === undefined) {
+    return null;
+  }
+  knownKeys(input, PHYSICS_FIELDS, 'physics');
+  const duration = finiteNumber(input.duration, 'Physics duration', 0.1, MAX_DURATION_SECONDS);
+  const recipeNodes = new Map(recipe.nodes.map(node => [node.id, node]));
+  const motionNodeIds = new Set((recipe.motion?.tracks ?? [])
+    .filter(track => track.kind === 'node' && (track.property === 'translation' || track.property === 'rotation'))
+    .map(track => track.id));
+  const claimedNodes = new Set();
+  const bodies = boundedArray(input.bodies, MAX_BODIES, 'Physics bodies').map(body => normalizeBody(body, recipeNodes, motionNodeIds, claimedNodes));
+  if (!bodies.length) {
+    throw new RangeError('Physics needs at least one body. Use null to clear it.');
+  }
+  const result = { duration, bodies };
+  if (input.gravity !== undefined) result.gravity = numberList(input.gravity, 3, 'Physics gravity');
+  if (input.joints !== undefined) {
+    result.joints = boundedArray(input.joints, MAX_JOINTS, 'Physics joints').map(joint => normalizeJoint(joint, claimedNodes));
+  }
+  return result;
+}
+
+function scaledBounds(positions, scale) {
+  const minimum = [Infinity, Infinity, Infinity];
+  const maximum = [-Infinity, -Infinity, -Infinity];
+  for (let index = 0; index < positions.length; index += 3) {
+    for (let axis = 0; axis < 3; axis++) {
+      const coordinate = positions[index + axis] * scale[axis];
+      minimum[axis] = Math.min(minimum[axis], coordinate);
+      maximum[axis] = Math.max(maximum[axis], coordinate);
+    }
+  }
+  const center = minimum.map((value, axis) => (value + maximum[axis]) / 2);
+  const halfExtents = minimum.map((value, axis) => Math.max((maximum[axis] - value) / 2, 1e-4));
+  return { center, halfExtents };
+}
+
+function convexPoints(positions, scale, nodeId) {
+  if (positions.length / 3 > MAX_SOURCE_VERTICES) {
+    throw new RangeError(`Geometry of ${nodeId} has ${positions.length / 3} vertices; a convex collider reads at most ${MAX_SOURCE_VERTICES}. Use shape box or a coarser geometry.`);
+  }
+  const distinct = new Map();
+  for (let index = 0; index < positions.length; index += 3) {
+    const point = [positions[index] * scale[0], positions[index + 1] * scale[1], positions[index + 2] * scale[2]];
+    distinct.set(point.map(component => component.toFixed(5)).join(','), point);
+    if (distinct.size > MAX_HULL_POINTS) {
+      throw new RangeError(`Geometry of ${nodeId} has more than ${MAX_HULL_POINTS} distinct vertices for a convex collider. Use shape box or a coarser geometry.`);
+    }
+  }
+  return [...distinct.values()].flat();
+}
+
+function trimeshArrays(geometry, scale, nodeId) {
+  const triangleCount = geometry.indices.length / 3;
+  if (triangleCount > MAX_TRIMESH_TRIANGLES) {
+    throw new RangeError(`Geometry of ${nodeId} has ${triangleCount} triangles; a trimesh collider holds at most ${MAX_TRIMESH_TRIANGLES}. Use a coarser geometry or shape box.`);
+  }
+  const vertices = [];
+  for (let index = 0; index < geometry.positions.length; index += 3) {
+    vertices.push(geometry.positions[index] * scale[0], geometry.positions[index + 1] * scale[1], geometry.positions[index + 2] * scale[2]);
+  }
+  return { vertices, indices: Array.from(geometry.indices) };
+}
+
+function colliderFromGeometry(body, node, geometry) {
+  const { center, halfExtents } = scaledBounds(geometry.positions, node.scale);
+  if (body.shape === 'box') {
+    return { shape: 'cuboid', halfExtents, translation: center };
+  }
+  if (body.shape === 'ball') {
+    return { shape: 'ball', radius: Math.max(...halfExtents), translation: center };
+  }
+  if (body.shape === 'capsule') {
+    const radius = Math.max(halfExtents[0], halfExtents[2]);
+    return { shape: 'capsule', radius, halfHeight: Math.max(halfExtents[1] - radius, radius * 0.01), translation: center };
+  }
+  if (body.shape === 'convex') {
+    return { shape: 'convexHull', points: convexPoints(geometry.positions, node.scale, node.id) };
+  }
+  return { shape: 'trimesh', ...trimeshArrays(geometry, node.scale, node.id) };
+}
+
+function layerBits(layers) {
+  return layers.reduce((bits, layer) => bits | (1 << layer), 0);
+}
+
+function physicsDefinition(physics, recipe, geometries) {
+  const nodes = new Map(recipe.nodes.map(node => [node.id, node]));
+  const definition = { bodies: [], colliders: [], joints: [] };
+  if (physics.gravity) definition.gravity = physics.gravity;
+  for (const body of physics.bodies) {
+    const node = nodes.get(body.node);
+    definition.bodies.push({
+      name: node.id, type: body.type, translation: node.translation, rotation: node.rotation,
+      ...(body.velocity ? { linearVelocity: body.velocity } : {}),
+      ...(body.angularVelocity ? { angularVelocity: body.angularVelocity } : {}),
+    });
+    const collider = {
+      name: node.id, body: node.id,
+      ...colliderFromGeometry(body, node, geometries.get(node.geometry)),
+      ...(body.sensor ? { sensor: true } : {}),
+      ...(body.friction !== undefined ? { friction: body.friction } : {}),
+      ...(body.restitution !== undefined ? { restitution: body.restitution } : {}),
+      groups: 1 << (body.layer ?? 0),
+      mask: body.collidesWith ? layerBits(body.collidesWith) : 0xffff,
+    };
+    if (collider.shape !== 'trimesh') {
+      if (body.mass !== undefined) collider.mass = body.mass;
+      else collider.density = body.density ?? 1;
+    }
+    definition.colliders.push(collider);
+  }
+  (physics.joints ?? []).forEach((joint, index) => definition.joints.push({ name: `joint-${index}`, ...joint }));
+  return definition;
+}
+
+const roundedTime = (frame, timestep) => Number((frame * timestep).toFixed(3));
+const roundedVector = values => Array.from(values, value => Number(value.toFixed(4)));
+
+function contactReport(scene, physics) {
+  const sensorNodes = new Set(physics.bodies.filter(body => body.sensor).map(body => body.node));
+  const pairs = new Map();
+  const sensorEvents = [];
+  for (const event of scene.contactEvents) {
+    const first = scene.colliderNames[event.colliderA];
+    const second = scene.colliderNames[event.colliderB];
+    if (event.kind === 'sensor') {
+      if (sensorEvents.length < MAX_REPORTED_SENSOR_EVENTS) {
+        const sensor = sensorNodes.has(first) ? first : second;
+        sensorEvents.push({ sensor, other: sensor === first ? second : first, kind: event.started ? 'enter' : 'leave', time: roundedTime(event.frame, scene.timestep) });
+      }
+      continue;
+    }
+    const key = [first, second].sort().join('|');
+    const pair = pairs.get(key) ?? { a: first < second ? first : second, b: first < second ? second : first, firstTime: roundedTime(event.frame, scene.timestep), touching: 0, count: 0 };
+    pair.touching += event.started ? 1 : -1;
+    pair.count += event.started ? 1 : 0;
+    pairs.set(key, pair);
+  }
+  const contacts = [...pairs.values()].slice(0, MAX_REPORTED_CONTACTS)
+    .map(({ a, b, firstTime, touching, count }) => ({ a, b, firstTime, count, touchingAtEnd: touching > 0 }));
+  return { contacts, sensorEvents };
+}
+
+function bodyReport(scene, physics) {
+  const lastPose = scene.sample(scene.duration);
+  const previousPose = scene.sample(Math.max(0, scene.duration - scene.timestep));
+  return physics.bodies.map(body => {
+    const offset = scene.bodyIndex(body.node) * 7;
+    const finalPosition = Array.from(lastPose.subarray(offset, offset + 3));
+    const finalSpeed = Math.hypot(...finalPosition.map((value, axis) => value - previousPose[offset + axis])) / scene.timestep;
+    const restFrame = scene.restFrames[scene.bodyIndex(body.node)];
+    return {
+      node: body.node, type: body.type, shape: body.shape,
+      finalPosition: roundedVector(finalPosition), finalSpeed: Number(finalSpeed.toFixed(4)),
+      ...(body.type === 'dynamic' ? { restsAtTime: restFrame < 0 ? null : roundedTime(restFrame, scene.timestep) } : {}),
+    };
+  });
+}
+
+/**
+ * Bake the physics section with Rapier. The solver must already be loaded (see loadPhysicsEngine).
+ * The result is a pure function of time: `sample(t)` returns node patches and a seek never replays the solver.
+ */
+export function bakeAgentPhysics(physics, recipe, geometries) {
+  const definition = physicsDefinition(physics, recipe, geometries);
+  const frameCount = Math.round(physics.duration * FRAMES_PER_SECOND) + 1;
+  const scene = bakePhysicsScene(definition, { frameCount, timestep: 1 / FRAMES_PER_SECOND, maxColliderTriangles: MAX_TRIMESH_TRIANGLES, maxHullPoints: MAX_HULL_POINTS });
+  const patches = new Map(physics.bodies.map(body => [body.node, { translation: new Float64Array(3), rotation: new Float64Array(4) }]));
+  const pose = new Float32Array(scene.bodyNames.length * 7);
+  let reportCache = null;
+  return Object.freeze({
+    duration: physics.duration,
+    sample(time) {
+      scene.sample(time, pose);
+      for (const [nodeId, patch] of patches) {
+        const offset = scene.bodyIndex(nodeId) * 7;
+        patch.translation.set(pose.subarray(offset, offset + 3));
+        patch.rotation.set(pose.subarray(offset + 3, offset + 7));
+      }
+      return patches;
+    },
+    /** Contacts, sensor events and resting state, as numbers an agent can read without a picture. */
+    report() {
+      reportCache ??= {
+        duration: physics.duration, frames: scene.frameCount, gravity: physics.gravity ?? [0, -9.81, 0],
+        bodies: bodyReport(scene, physics), ...contactReport(scene, physics),
+        eventsTruncated: scene.contactEventsTruncated,
+      };
+      return structuredClone(reportCache);
+    },
+  });
+}

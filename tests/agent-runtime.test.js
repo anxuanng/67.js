@@ -255,8 +255,8 @@ test('invalid preview configuration rejects before any browser or renderer alloc
 
 test('requests cannot address an absent session or enter a closing runtime', async () => {
   const runtime = createAgentRuntime();
-  await assert.rejects(runtime.inspect({ sessionId: 'missing' }), /Unknown/);
-  await assert.rejects(runtime.look({ sessionId: 'missing' }), /Unknown/);
+  await assert.rejects(runtime.inspect({ sessionId: 'missing' }), /Unknown|No scene is active/);
+  await assert.rejects(runtime.look({ sessionId: 'missing' }), /Unknown|No scene is active/);
   const closing = runtime.close();
   await assert.rejects(runtime.checkpoint({ sessionId: 'missing' }), /closing|closed/);
   await closing;

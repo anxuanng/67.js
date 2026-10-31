@@ -1,7 +1,7 @@
 # Renders each described scene in Cycles and EEVEE, and saves linear pixels as .npy for the scorer.
 #   blender -b --factory-startup --python bench/reference/render-blender.py -- <work directory>
-# Light units were measured on a white plane: sun strength equals irradiance, and a point light has 4 pi watts for each
-# unit of 67.js intensity.
+# Light units were measured on a white plane: sun strength equals irradiance, a point or spot light has 4 pi watts for each
+# unit of 67.js intensity, and an area light has pi watts for each unit.
 import base64
 import json
 import math
@@ -18,6 +18,7 @@ HEIGHT = 540
 CYCLES_SAMPLES = 256
 EEVEE_SAMPLES = 64
 WATTS_PER_INTENSITY = 4 * math.pi
+WATTS_PER_AREA_INTENSITY = math.pi
 SUN_ANGLE = math.radians(1)
 # 67.js is Y up, and Blender is Z up.
 Y_UP_TO_Z_UP = Matrix(((1, 0, 0, 0), (0, 0, -1, 0), (0, 1, 0, 0), (0, 0, 0, 1)))
@@ -50,6 +51,10 @@ def build_mesh(name, geometry):
     positions = decode(geometry["positions"]).reshape(-1, 3)
     normals = decode(geometry["normals"]).reshape(-1, 3)
     triangles = decode(geometry["indices"]).reshape(-1, 3)
+    # A triangle that repeats a vertex has no area and is invisible, but Blender builds an invalid face from it
+    # and crashes in mesh_set_custom_normals (the skinned character has three).
+    repeats_vertex = (triangles[:, 0] == triangles[:, 1]) | (triangles[:, 1] == triangles[:, 2]) | (triangles[:, 0] == triangles[:, 2])
+    triangles = triangles[~repeats_vertex]
     mesh = bpy.data.meshes.new(name)
     mesh.from_pydata(positions.tolist(), [], triangles.tolist())
     mesh.normals_split_custom_set_from_vertices(normals.tolist())
@@ -128,6 +133,31 @@ def add_vertex_colors(material, principled, description):
     links.new(multiply.outputs["Color"], principled.inputs["Base Color"])
 
 
+def add_material_layers(material, principled, description):
+    """Maps the 67.js material layers onto the Principled BSDF inputs of the same meaning."""
+    principled.inputs["Coat Weight"].default_value = description.get("clearcoat", 0)
+    principled.inputs["Coat Roughness"].default_value = description.get("clearcoatRoughness", 0)
+    principled.inputs["Transmission Weight"].default_value = description.get("transmission", principled.inputs["Transmission Weight"].default_value)
+    principled.inputs["IOR"].default_value = description.get("ior", principled.inputs["IOR"].default_value)
+    sheen_color = description.get("sheenColor", [0, 0, 0])
+    if any(sheen_color):
+        principled.inputs["Sheen Weight"].default_value = 1
+        set_linear_color(principled.inputs["Sheen Tint"], sheen_color)
+        principled.inputs["Sheen Roughness"].default_value = description.get("sheenRoughness", 0)
+    # Blender's specular level 0.5 is the 4 percent reflectance that 67.js calls specular 1.
+    principled.inputs["Specular IOR Level"].default_value = 0.5 * description.get("specular", 1)
+    set_linear_color(principled.inputs["Specular Tint"], description.get("specularColor", [1, 1, 1]))
+    attenuation_distance = description.get("attenuationDistance")
+    if attenuation_distance:
+        absorption = material.node_tree.nodes.new("ShaderNodeVolumeAbsorption")
+        attenuation_color = description.get("attenuationColor", [1, 1, 1])
+        set_linear_color(absorption.inputs["Color"], attenuation_color)
+        # Beer-Lambert: the colour is what attenuationDistance metres let through.
+        mean_log = sum(math.log(max(channel, 0.001)) for channel in attenuation_color) / 3
+        absorption.inputs["Density"].default_value = -mean_log / attenuation_distance
+        material.node_tree.links.new(absorption.outputs["Volume"], material.node_tree.nodes["Material Output"].inputs["Volume"])
+
+
 def build_material(name, description, has_vertex_colors):
     material = bpy.data.materials.new(name)
     material.use_nodes = True
@@ -138,6 +168,7 @@ def build_material(name, description, has_vertex_colors):
     if description.get("tag") == "liquid":
         principled.inputs["Transmission Weight"].default_value = 1
         principled.inputs["IOR"].default_value = description["liquid"]["ior"]
+    add_material_layers(material, principled, description)
     if "map" in description:
         add_texture(material, principled, description, has_vertex_colors)
     elif has_vertex_colors:
@@ -205,6 +236,52 @@ def build_lights(scene, environment):
         point_object = bpy.data.objects.new(f"Point-{index}", light)
         point_object.location = to_blender(point["position"])
         scene.collection.objects.link(point_object)
+    for index, spot in enumerate(environment.get("spotLights", [])):
+        build_spot_light(scene, index, spot)
+    for index, area in enumerate(environment.get("areaLights", [])):
+        build_area_light(scene, index, area)
+
+
+def build_spot_light(scene, index, spot):
+    # A Blender spot light has the watts of a point light of the same strength, and its cone only masks that light.
+    # Both use one cone mask: a smoothstep from the outer cosine to a penumbra fraction of the way to cosine 1.
+    light = bpy.data.lights.new(f"Spot-{index}", "SPOT")
+    light.energy = spot["intensity"] * WATTS_PER_INTENSITY
+    light.color = spot["color"]
+    light.shadow_soft_size = spot["radius"]
+    light.spot_size = 2 * spot["angle"]
+    light.spot_blend = spot["penumbra"]
+    spot_object = bpy.data.objects.new(f"Spot-{index}", light)
+    spot_object.location = to_blender(spot["position"])
+    spot_object.rotation_mode = "QUATERNION"
+    direction = Vector(to_blender(spot["direction"])).normalized()
+    spot_object.rotation_quaternion = direction.to_track_quat("-Z", "Y")
+    scene.collection.objects.link(spot_object)
+
+
+def build_area_light(scene, index, area):
+    # Measured on a white plane: a Blender area light of W watts matches a 67.js area light of W / pi candela, and the
+    # 67.js formula stays within about 1.2 percent on the axis from 0.2 m to 2 m for 1 m and 2 m squares.
+    light = bpy.data.lights.new(f"Area-{index}", "AREA")
+    light.energy = area["intensity"] * WATTS_PER_AREA_INTENSITY
+    light.color = area["color"]
+    light.shape = "RECTANGLE"
+    light.size = area["width"]
+    light.size_y = area["height"]
+    area_object = bpy.data.objects.new(f"Area-{index}", light)
+    area_object.location = to_blender(area["position"])
+    normal = Vector(to_blender(area["direction"])).normalized()
+    up = Vector(to_blender(area.get("up", [0, 1, 0]))).normalized()
+    width_axis = up.cross(normal)
+    if width_axis.length < 1e-3:
+        width_axis = Vector((1, 0, 0))
+    width_axis.normalize()
+    height_axis = width_axis.cross(normal)
+    # The light shines toward its local -Z, and the 67.js rectangle faces along its direction.
+    rotation = Matrix((width_axis, height_axis, -normal)).transposed()
+    area_object.rotation_mode = "QUATERNION"
+    area_object.rotation_quaternion = rotation.to_quaternion()
+    scene.collection.objects.link(area_object)
 
 
 def build_fog(scene, fog):
