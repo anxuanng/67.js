@@ -60,6 +60,20 @@
     { "id": "boolean-difference-cube", "input": "cube", "edit": { "op": "boolean", "operation": "difference", "cutter": { "type": "cube" }, "translation": [0.5,0.5,0.5] } },
     { "id": "boolean-union-cube", "input": "cube", "edit": { "op": "boolean", "operation": "union", "cutter": { "type": "cube" }, "translation": [0.5,0.5,0.5] } },
     { "id": "boolean-intersect-cube", "input": "cube", "edit": { "op": "boolean", "operation": "intersect", "cutter": { "type": "cube" }, "translation": [0.5,0.5,0.5] } },
-    { "id": "boolean-through-hole", "input": "cube", "edit": { "op": "boolean", "operation": "difference", "cutter": { "type": "cylinder" }, "scale": [0.25,0.25,1] } }
+    { "id": "boolean-through-hole", "input": "cube", "edit": { "op": "boolean", "operation": "difference", "cutter": { "type": "cylinder" }, "scale": [0.25,0.25,1] } },
+    {"id":"subdivide-cube-level-1","input":"cube","edit":{"op":"subdivide","levels":1}},
+    {"id":"subdivide-cube-level-2","input":"cube","edit":{"op":"subdivide","levels":2}},
+    {"id":"subdivide-cube-level-3","input":"cube","edit":{"op":"subdivide","levels":3}},
+    {"id":"subdivide-grid-level-1","input":"grid","edit":{"op":"subdivide","levels":1}},
+    {"id":"subdivide-grid-level-2","input":"grid","edit":{"op":"subdivide","levels":2}},
+    {"id":"subdivide-grid-level-3","input":"grid","edit":{"op":"subdivide","levels":3}},
+    {"id":"subdivide-cylinder-level-1","input":"cylinder","edit":{"op":"subdivide","levels":1}},
+    {"id":"subdivide-cylinder-level-2","input":"cylinder","edit":{"op":"subdivide","levels":2}},
+    {"id":"subdivide-cylinder-level-3","input":"cylinder","edit":{"op":"subdivide","levels":3}},
+    {"id":"subdivide-cube-crease-all","input":"cube","edit":{"op":"subdivide","levels":2,"crease":{"all":true},"sharpness":10}},
+    {"id":"subdivide-cylinder-crease-rims","input":"cylinder","edit":{"op":"subdivide","levels":2,"crease":{"angle":60},"sharpness":10}},
+    {"id":"subdivide-cube-crease-two-levels","input":"cube","edit":{"op":"subdivide","levels":3,"crease":{"all":true},"sharpness":2}},
+    {"id":"subdivide-cube-crease-half","input":"cube","edit":{"op":"subdivide","levels":2,"crease":{"all":true},"sharpness":0.5}},
+    {"id":"subdivide-grid-crease-middle","input":"grid","edit":{"op":"subdivide","levels":2,"crease":{"along":[1,0,0]},"sharpness":10}}
   ]
 }

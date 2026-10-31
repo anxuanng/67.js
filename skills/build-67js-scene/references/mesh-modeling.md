@@ -65,7 +65,7 @@ Edits add `<name>.cap`, `<name>.side`, `<name>.rim`, `<name>.cut`, `<name>.band-
 | Combinations | `{ "and": [...] }`, `{ "or": [...] }`, `{ "not": rule }` |
 | A ring around a region | `{ "grow": { "tag": "top" }, "steps": 1 }` |
 
-Edge rules (for `bevel` and `loop_cut`):
+Edge rules (for `bevel`, `loop_cut` and the `crease` of `subdivide`):
 
 | Need | Edge rule |
 | --- | --- |
@@ -181,6 +181,22 @@ A planter (open box with walls) and a rounded soap bar:
 ] }
 ```
 
+Smooth organic shapes: `subdivide` rounds a coarse box or cylinder (each level makes about 4 times the faces; 2 or 3
+levels is enough). A `crease` edge rule keeps chosen edges sharp for `sharpness` levels (default 10, always sharp), so a
+cylinder keeps crisp rims while its sides stay round. Shape the coarse mesh first, then subdivide, then `uv_unwrap`.
+A subdivided cube shrinks to about 0.85 of its size at 3 levels, so check the result with `scene_look` or `mesh_inspect`
+bounds and rescale the node.
+
+```json
+{ "id": "pebble", "type": "mesh", "base": { "type": "box", "bevel": 0 }, "stack": [{ "op": "subdivide", "levels": 3 }] }
+```
+
+```json
+{ "id": "button", "type": "mesh", "base": { "type": "cylinder", "segments": 16, "bevel": 0 }, "stack": [
+  { "op": "subdivide", "levels": 2, "crease": { "angle": 60 }, "sharpness": 3 }
+] }
+```
+
 ## Giving a part a surface
 
 A material `pattern` textures any part with no UVs, after any edits. `size` is metres per repeat, so it stays right on
@@ -206,7 +222,7 @@ adding another pattern: a scene holds at most 16 different ones. `uv_unwrap` is 
 | `rings cross` | Cut each direction in its own `loop_cut` edit |
 | bevel `edges` lower than expected | An earlier inset or extrude left untagged rim faces at the edge; bevel earlier, or widen the rule |
 | bevel `clamped: true` | A neighbouring face is narrower than the width; bevel before the narrow inset, or use a smaller width |
-| `over the limit of N vertices` | Fewer segments, fewer array copies, or split the part |
+| `over the limit of N vertices` | Fewer segments, fewer array copies, fewer subdivide levels, or split the part |
 | lint `inverted-part` | `flip_normals` on that part |
 | lint `degenerate-face` | An offset or width of 0, or a clamp at the edge length; change the value |
 

@@ -83,7 +83,7 @@ To move to a new Blender release, run `node scripts/parity-manual-snapshot.mjs`.
 | Modeling > Modifiers > Generate > Screw Modifier | partial | `lathe` covers a full turn. There is no stack node or screw offset. | | #42 |
 | Modeling > Modifiers > Generate > Skin Modifier | missing | No equivalent. | | #42 |
 | Modeling > Modifiers > Generate > Solidify Modifier | done | Stack node with thickness, offset and even thickness. | [mesh-stack](../tests/mesh-stack.test.js), [Blender results](../tests/fixtures/blender/golden.json) | |
-| Modeling > Modifiers > Generate > Subdivision Surface Modifier | missing | No subdivision. | | #39 |
+| Modeling > Modifiers > Generate > Subdivision Surface Modifier | done | `subdivide` edit and stack node: Catmull-Clark to 4 levels, semi-sharp creases, sharp boundaries, tags, UVs. Counts, area and positions match Blender; volume differs under 1% on four cases. | [src/mesh-subdivide.js](../src/mesh-subdivide.js), [tests/blender-golden.test.js](../tests/blender-golden.test.js), [tests/mesh-subdivide.test.js](../tests/mesh-subdivide.test.js), [pebble task](../bench/agent-modeling/tasks.mjs) | #39 |
 | Modeling > Modifiers > Generate > Triangulate Modifier | missing | Render data is triangulated. There is no node that changes the mesh. | | #42 |
 | Modeling > Modifiers > Generate > Volume to Mesh Modifier | missing | No volume objects. | | |
 | Modeling > Modifiers > Generate > Weld Modifier | partial | `merge_by_distance` is an edit. It is not a stack node. | | #42 |

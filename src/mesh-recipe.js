@@ -10,6 +10,7 @@ import { mirrorMesh, arrayMesh, solidifyMesh } from './mesh-stack.js';
 import { bevelEdges } from './mesh-bevel.js';
 import { loopCut } from './mesh-loopcut.js';
 import { unwrapUv } from './mesh-uv.js';
+import { subdivideMesh, subdivisionSize, MAX_SUBDIVISION_LEVELS, MAX_CREASE_SHARPNESS } from './mesh-subdivide.js';
 import { MESH_EDIT_OPERATIONS, MAX_MESH_EDITS, STACK_OPERATIONS, MAX_STACK_NODES } from './mesh-operations.js';
 export { MESH_EDIT_OPERATIONS, MAX_MESH_EDITS, STACK_OPERATIONS, MAX_STACK_NODES };
 
@@ -159,6 +160,23 @@ export function normalizeMeshEdits(edits) {
         normalized.margin = edit.margin === undefined ? 0.01 : finiteNumber(edit.margin, index, 'margin', { minimum: 0, maximum: 0.2 });
         normalized.maxDistortion = edit.maxDistortion === undefined ? 0.25 : finiteNumber(edit.maxDistortion, index, 'maxDistortion', { minimum: 0, maximum: 100 });
         break;
+      case 'subdivide':
+        if (!Number.isInteger(edit.levels ?? 1) || (edit.levels ?? 1) < 1 || (edit.levels ?? 1) > MAX_SUBDIVISION_LEVELS) {
+          throw editError(index, `levels must be an integer from 1 to ${MAX_SUBDIVISION_LEVELS}`);
+        }
+        normalized.levels = edit.levels ?? 1;
+        if (edit.crease !== undefined) {
+          if (!edit.crease || typeof edit.crease !== 'object' || Array.isArray(edit.crease)) {
+            throw editError(index, 'crease must be an edge rule, for example { "angle": 60 } or { "between": [faceRule, faceRule] }');
+          }
+          normalized.crease = edit.crease;
+          normalized.sharpness = edit.sharpness === undefined
+            ? MAX_CREASE_SHARPNESS
+            : finiteNumber(edit.sharpness, index, 'sharpness', { minimum: 0, maximum: MAX_CREASE_SHARPNESS, exclusiveMinimum: true });
+        } else if (edit.sharpness !== undefined) {
+          throw editError(index, 'sharpness needs a crease rule');
+        }
+        break;
       case 'merge_by_distance':
         normalized.distance = finiteNumber(edit.distance ?? 1e-4, index, 'distance', { minimum: 0, maximum: 1e3 });
         break;
@@ -168,7 +186,18 @@ export function normalizeMeshEdits(edits) {
 }
 
 // An array multiplies a mesh in one step, so its size must be known before it allocates.
+function checkSubdivideBudget(mesh, edit, limits, index) {
+  const size = subdivisionSize(mesh, edit.levels);
+  if (size.vertices > limits.maxVertices || size.faces > limits.maxFaces) {
+    throw new RangeError(`Mesh edit ${index} (subdivide) would make ${size.vertices} vertices and ${size.faces} faces, over the limit of ${limits.maxVertices} vertices and ${limits.maxFaces} faces. Lower levels, or use a simpler mesh.`);
+  }
+}
+
 function checkArrayBudget(mesh, edit, limits, index) {
+  if (edit.op === 'subdivide') {
+    checkSubdivideBudget(mesh, edit, limits, index);
+    return;
+  }
   if (edit.op !== 'array') return;
   const vertices = mesh.vertexCount * edit.count;
   const faces = mesh.faceCount * edit.count;
@@ -259,6 +288,16 @@ function runEdit(current, edit, index, { resolveCutter }) {
     if (outcome.clamped) result.clamped = true;
     result.tags = tagSummary(outcome.mesh, edit.name);
     return { mesh: outcome.mesh, result };
+  }
+  if (edit.op === 'subdivide') {
+    let subdivided;
+    try {
+      subdivided = subdivideMesh(current, { levels: edit.levels, crease: edit.crease, sharpness: edit.sharpness });
+    } catch (error) {
+      throw new error.constructor(`Mesh edit ${index} (subdivide): ${error.message}`);
+    }
+    result.levels = edit.levels;
+    return { mesh: subdivided, result };
   }
   if (edit.op === 'uv_unwrap') {
     let outcome;
