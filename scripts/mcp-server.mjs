@@ -501,8 +501,8 @@ const armaturesReference = z.array(z.record(z.string(), z.unknown())).max(16).de
 const recipe = z.strictObject({
   format: z.literal('67js.scene'),
   schemaVersion: z.literal(1),
-  geometries: z.array(geometry).max(256),
-  materials: z.array(z.strictObject({ id: identifier, tag: materialTag, ...materialFields })).max(256),
+  geometries: z.array(geometry).max(256).optional(),
+  materials: z.array(z.strictObject({ id: identifier, tag: materialTag, ...materialFields })).max(256).optional().describe('Omit for none.'),
   nodes: z.array(nodeRecord).max(4096),
   armatures: z.array(armature).max(16).optional(),
   camera: z.strictObject(cameraFields).optional(),
@@ -602,6 +602,11 @@ function isEngineFault(message) {
   return ENGINE_FAULT.test(message);
 }
 
+// After a failed create no scene exists, so mesh_inspect and the other tools cannot look into the failure. Agents tried
+// anyway (5 of 32 errors in one recorded run) and met a second error.
+const CREATE_TOOLS = new Set(['scene_create', 'scene_create_asset']);
+const SCENE_NOT_CREATED_ADVICE = 'No scene was created, so the other tools have nothing to inspect: fix the recipe as the message says and call scene_create again.';
+
 function jsonResult(value) {
   return { content: [{ type: 'text', text: JSON.stringify(value) }], structuredContent: value };
 }
@@ -633,7 +638,10 @@ export function createAgentMcpServer(runtime, { version = packageMetadata.versio
       try {
         return await run(withActiveSession(argumentsValue, inputSchema));
       } catch (error) {
-        return { isError: true, content: [{ type: 'text', text: `${name} failed: ${readableErrorMessage(error)}` }] };
+        const message = readableErrorMessage(error);
+        // A refused create because a scene already exists leaves that scene in place: no advice then.
+        const sceneMissing = CREATE_TOOLS.has(name) && !message.startsWith('Dispose the current scene');
+        return { isError: true, content: [{ type: 'text', text: `${name} failed: ${message}${sceneMissing ? ` ${SCENE_NOT_CREATED_ADVICE}` : ''}` }] };
       }
     });
   }

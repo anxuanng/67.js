@@ -625,3 +625,15 @@ test('an existing default material is reused and a node with only a material sti
   orphan.nodes[1].material = 'finish';
   assert.throws(() => createAgentScene(orphan), /Name a geometry to draw it, or drop material/);
 });
+
+test('a recipe without a materials or geometries list reads them as empty, and the export lists them', () => {
+  const minimal = { format: '67js.scene', schemaVersion: 1,
+    geometries: [{ id: 'box', type: 'box', bevel: 0 }],
+    nodes: [{ id: 'part', geometry: 'box' }] };
+  const exported = createAgentScene(minimal).exportRecipe();
+  assert.deepEqual(exported.materials.map(material => material.id), ['default']);
+  const bare = createAgentScene({ format: '67js.scene', schemaVersion: 1, nodes: [{ id: 'group' }] }).exportRecipe();
+  assert.deepEqual(bare.geometries, []);
+  assert.deepEqual(bare.materials, []);
+  assert.throws(() => createAgentScene({ format: '67js.scene', schemaVersion: 1 }), /nodes/);
+});

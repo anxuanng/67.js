@@ -170,7 +170,7 @@ function identifier(value) {
 
 function resources(values, maximum, label, validate) {
   if (!Array.isArray(values) || values.length > maximum) {
-    throw new RangeError(`${label} exceeds its resource limit or is not an array.`);
+    throw new RangeError(`${label} exceeds its resource limit of ${maximum} or is not an array. Pass "${label}": [] for none, or remove some.`);
   }
   const seen = new Set();
   return values.map(value => {
@@ -603,6 +603,9 @@ function normalizeRecipe(input, limits) {
   if (recipe.format !== '67js.scene' || recipe.schemaVersion !== 1) {
     throw new RangeError('Expected 67js.scene schemaVersion 1.');
   }
+  // A scene with no mesh, or whose nodes all take the default material, has nothing to list: absent means empty.
+  recipe.geometries ??= [];
+  recipe.materials ??= [];
   recipe.geometries = resources(recipe.geometries, limits.maxGeometries, 'geometries', value => {
     geometryEstimate(value);
     const definition = { id: value.id, type: value.type };

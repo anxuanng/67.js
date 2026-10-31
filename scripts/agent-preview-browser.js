@@ -461,7 +461,8 @@ window.__agentPreview = {
     }
     let asset;
     try {
-      if (input.recipe?.meshEdits) await loadAllAgentSceneModules();
+      // Labels, mesh reports and motion read the on-demand modules on any asset, not only one with mesh edits.
+      await loadAllAgentSceneModules();
       asset = await parseGltf(bytes.buffer, { maxBytes: 16 * 1024 * 1024, maxVertices: 250000, maxParts: 4096, maxTexturePixels: 4194304, maxJoints: 1024 });
       return createPreview(createAgentAssetScene(asset, input.recipe), input, asset);
     } catch (error) {

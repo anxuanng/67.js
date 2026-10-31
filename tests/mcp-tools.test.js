@@ -467,3 +467,26 @@ test('scene_apply names the fix when the fields of set-node are wrapped in a nod
     operations: [{ type: 'set-node', node: { id: 'mesh', translation: [1, 0, 0] } }] } }).catch(error => error);
   assert.match(String(wrapped.message ?? wrapped.content?.[0]?.text), /Move the fields of node up one level/);
 });
+
+test('scene_create accepts a recipe with no materials list', async context => {
+  const { client } = await connect(context);
+  const minimal = recipe();
+  delete minimal.materials;
+  delete minimal.nodes[0].material;
+  const created = await client.callTool({ name: 'scene_create', arguments: { recipe: minimal } });
+  assert.equal(created.isError, undefined);
+});
+
+test('a failed scene_create says the scene was not created and what to do, so the agent retries instead of inspecting', async context => {
+  const { client } = await connect(context);
+  const broken = recipe();
+  broken.nodes[0].geometry = 'nothing';
+  const result = await client.callTool({ name: 'scene_create', arguments: { recipe: broken } });
+  assert.equal(result.isError, true);
+  const text = result.content[0].text;
+  assert.match(text, /No scene was created/);
+  assert.match(text, /call scene_create again/);
+  const inspected = await client.callTool({ name: 'scene_inspect', arguments: { ids: ['mesh'] } });
+  assert.equal(inspected.isError, true);
+  assert.doesNotMatch(inspected.content[0].text, /No scene was created/);
+});
