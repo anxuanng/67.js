@@ -180,7 +180,7 @@ These controls reuse `resolveVolumeFog` and its existing domain rules.
 Fog bounds reject dimensions that collapse after Float32 rounding.
 The current volume supports one directional scattering source.
 Local point scattering, transparent depth, multiple scattering, and multiple volumes remain outside this contract.
-See [volume fog](volumetric.md) for renderer requirements and frame-time limits.
+See [volume fog](https://67js.codepawl.com/volumetric.md) for renderer requirements and frame-time limits.
 
 ## Effects
 

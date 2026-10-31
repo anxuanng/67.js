@@ -113,6 +113,32 @@ try {
   assert.notEqual(atEnd, atMiddle);
   assert.equal(await look(sessionId, null, 1), atMiddle, 'seeking back gives the same picture');
 
+  // Leg IK with a tight knee limit, a bend direction, and a constraint and driver on the same character.
+  const legTarget = { interpolation: 'SMOOTH', keyframes: [{ time: 0, value: [-0.6, 1.2, 0.9] }, { time: 2, value: [-0.6, 0.9, 1.2] }] };
+  const legMotion = {
+    duration: 2,
+    tracks: [],
+    ik: [{
+      // The robot's shin ends in a helper node below LowerLeg.R; its separate Foot.R bone is not part of the leg chain.
+      type: 'two-bone', root: idOf('UpperLeg.R'), middle: idOf('LowerLeg.R'), end: nodes.find(node => /^LowerLeg.?R_end$/.test(node.label)).id, target: legTarget,
+      pole: [-0.6, 1.6, 3], bendToward: [0, 0, 1], limits: { middle: { x: [-20, 20] } },
+    }],
+    constraints: [{ type: 'limit_rotation', node: idOf('Head'), x: [-10, 10], y: [-10, 10], space: 'local' }],
+    drivers: [{ target: { kind: 'node', id: idOf('Head'), property: 'rotation', component: 'z' }, expression: { mul: [{ sin: [{ mul: ['time', 3] }] }, 8] } }],
+  };
+  const legApplied = (await call('scene_apply', { sessionId, expectedRevision: revision, operations: [{ type: 'set-motion', motion: legMotion }] })).structuredContent;
+  assert.equal(legApplied.renderSucceeded, true, legApplied.renderError);
+  revision = legApplied.revision;
+  const legReport = (await call('scene_inspect', { sessionId, kind: 'hierarchy', limit: 1 })).structuredContent.motionIk[0];
+  assert.ok(Array.isArray(legReport.limited) && Array.isArray(legReport.warnings), JSON.stringify(legReport));
+  report.legIk = legReport;
+  const legStart = await look(sessionId, 'leg-start', 0);
+  const legEnd = await look(sessionId, 'leg-end', 2);
+  assert.notEqual(legEnd, legStart, 'the leg target and the driver move the character');
+  assert.equal(await look(sessionId, null, 0), legStart, 'seeking back gives the same picture with constraints and drivers');
+  const armMotionApplied = (await call('scene_apply', { sessionId, expectedRevision: revision, operations: [{ type: 'set-motion', motion }] })).structuredContent;
+  revision = armMotionApplied.revision;
+
   const restored = (await call('scene_restore', { sessionId, checkpointId: checkpoint.checkpointId, expectedRevision: revision })).structuredContent;
   revision = restored.revision;
   assert.equal(await look(sessionId), base, 'restore gives back the exact picture from before the IK');

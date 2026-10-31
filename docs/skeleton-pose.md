@@ -45,7 +45,7 @@ only a `rig` just computes joint positions. `rig` defaults to `createRigFromSkin
 one with `rootMatrix` when a scaled node sits above the root joints.
 
 Anywhere a joint is named you can use the joint name or a humanoid bone name such as `leftUpperArm`
-(see [retargeting](retarget.md)), so a setup can move between rigs. An asset's joint names are its decoded node names, in
+(see [retargeting](https://67js.codepawl.com/retarget.md)), so a setup can move between rigs. An asset's joint names are its decoded node names, in
 `asset.nodes[n].name`: the loader removes characters such as dots, so `Foot.L` in the file is `FootL` here.
 
 ## Layers
@@ -73,6 +73,8 @@ joint's own frame (`local = local * delta`), and weight scales the delta. An add
 | `pole` | World point the middle joint bends toward, or `(time, middlePosition) => point`. Without one, it keeps the current bend |
 | `weight` | 0 to 1 (default 1), or a function of time |
 | `keepEndRotation` | Default `true`: the end joint keeps its world rotation, so a foot stays flat while the leg moves |
+| `limits` | `{ root: { x: [min, max], y, z }, middle: {...} }` in degrees: the turn away from the joint's rest rotation, per axis of its own, as Euler XYZ. Applied after the solve; `ikResults[n].limited` lists each change as `{ joint, axis, requested, applied }` |
+| `bendToward` | World direction the middle joint should bend toward. `ikResults[n].warnings` gets `wrong-bend` when the solve bends the other way, and `hyperextended` when the limb is locked straight. Without it, a limb that rests bent is checked against its rest bend |
 
 The solve is analytic, keeps bone lengths, and turns the two upper joints by the shortest rotations, so twist already in
 the pose survives. A limb that is straight in the pose with its target straight ahead has no bend direction, so give
@@ -113,10 +115,10 @@ root rather than of the lower leg, so two-bone IK refuses them with an error; it
 ## Limits
 
 - A foot or hand held by IK keeps its rotation from the clip, so a foot on a slope does not tilt to match the ground.
-- Uniform scale only, as in the [retargeting](retarget.md) rig. Clip scale tracks are ignored.
+- Uniform scale only, as in the [retargeting](https://67js.codepawl.com/retarget.md) rig. Clip scale tracks are ignored.
 - No joint angle limits. A pole keeps a knee on the right side, but nothing stops a target from bending it too far.
 - No full-body solve: moving a hand does not move the hips. Solvers run one at a time, so order them from the base of the
   body outward.
 - Clip layers and masks are code only. Recipes and imported assets get IK through MCP with [`motion.ik`](agent-motion.md#inverse-kinematics).
-- The [animation mixer](animation-mixer.md) works on rigid part transforms and has no layers, masks or IK. Use this addon
+- The [animation mixer](https://67js.codepawl.com/animation-mixer.md) works on rigid part transforms and has no layers, masks or IK. Use this addon
   for skinned rigs.

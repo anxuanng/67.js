@@ -1,4 +1,4 @@
-import { createAgentScene, needsMeshBooleans, loadMeshBooleans, meshBooleansLoaded, setManifoldModuleLoader, needsPhysics, loadPhysicsEngine, physicsEngineLoaded, setPhysicsModuleLoader } from '../src/agent-scene.js';
+import { createAgentScene, loadAllAgentSceneModules, allAgentSceneModulesLoaded, needsMeshBooleans, loadMeshBooleans, meshBooleansLoaded, setManifoldModuleLoader, needsPhysics, loadPhysicsEngine, physicsEngineLoaded, setPhysicsModuleLoader } from '../src/agent-scene.js';
 import { Renderer67 } from '../src/renderer.js';
 import { applyProjection } from '../src/camera.js';
 import { mat4 } from 'gl-matrix';
@@ -8,13 +8,14 @@ import { parseGltf } from '../src/gltf.js';
 import { exportGlb } from '../src/export.js';
 import { weightTracksFromGltfAnimation } from '../src/export-skeleton.js';
 import { clipFromGltfAnimation } from '../src/skeleton-pose.js';
+import { sessionProblem } from '../src/agent-errors.js';
 
 let active = null;
 let canvas = document.querySelector('canvas');
 
 function requireSession(sessionId) {
   if (!active || active.sessionId !== sessionId) {
-    throw new Error('Unknown or disposed scene session.');
+    throw new Error(sessionProblem(sessionId, active?.sessionId));
   }
   return active;
 }
@@ -194,8 +195,10 @@ setManifoldModuleLoader(() => import(/* @vite-ignore */ new URL('/vendor/manifol
 // Rapier is the same kind of optional peer: its WASM travels inside the module served from /vendor/rapier.js.
 setPhysicsModuleLoader(() => import(/* @vite-ignore */ new URL('/vendor/rapier.js', location.href).href));
 
-// The boolean engine is WebAssembly and loads asynchronously, once. Calls that do not need it stay synchronous.
+// The preview bundle is one file, so the on-demand scene modules load together on the first call and later calls stay
+// synchronous. The boolean engine is WebAssembly and loads asynchronously, once, only for calls that need it.
 function afterMeshBooleans(value, run) {
+  if (!allAgentSceneModulesLoaded()) return loadAllAgentSceneModules().then(() => afterMeshBooleans(value, run));
   const loads = [];
   if (!meshBooleansLoaded() && needsMeshBooleans(value)) loads.push(loadMeshBooleans());
   if (!physicsEngineLoaded() && needsPhysics(value)) loads.push(loadPhysicsEngine());
@@ -210,7 +213,8 @@ function seekForExport(record, motionTime) {
 
 // The scene's parts already carry the current pose, including IK and node overrides, so skinned parts export it as is.
 function posedExport(record) {
-  return { parts: record.scene.parts.map(withoutRoundoffShear), options: {} };
+  const rig = record.scene.rigExport?.() ?? { nodes: [], clips: [] };
+  return { parts: record.scene.parts.map(withoutRoundoffShear), options: rig.nodes.length ? rig : {} };
 }
 
 // Chains of bone transforms leave world matrices with Float32 roundoff that the exporter reads as shear. Real shear

@@ -47,7 +47,7 @@ To move to a new Blender release, run `node scripts/parity-manual-snapshot.mjs`.
 | Modeling > Meshes > Editing | partial | 26 edits, including extrude, inset, bevel, loop cut, boolean, merge, bisect, bridge, fill, grid fill, dissolve, edge subdivision and a knife by projected polyline. All but the knife match Blender on fixtures; the knife is compared only with a straight plane cut. | [Blender results](../tests/fixtures/blender/golden.json) | #41 |
 | Modeling > Meshes > Properties | partial | `smoothAngle` and face tags. There is no sharp edge attribute or crease. | | #39 |
 | Modeling > Meshes > UVs | partial | `uv_unwrap` with LSCM, axis charts and shelf packing. Patterns can not use the result yet. | | #50 |
-| Modeling > Meshes > Mesh Analysis | partial | `lintMesh` reports topology problems. There is no check for thin walls or intersections. | | #66 |
+| Modeling > Meshes > Mesh Analysis | partial | `lintMesh` reports topology problems. With `{ geometry: true }` (always on in `mesh_inspect`) it also warns of crossing parts, a solid cutting itself, thin walls, floating parts and near-symmetry, using the BVH within face budgets. Checks are heuristics on parts, not Blender's exact Select Non-Manifold or Intersect checks. | [tests/mesh-lint-geometry.test.js](../tests/mesh-lint-geometry.test.js), [src/mesh-lint-geometry.js](../src/mesh-lint-geometry.js) | #66 |
 | Modeling > Meshes > Remeshing | missing | No remesh. | | #40 |
 | Modeling > Curves | partial | `tube` follows a curve and `extrude` follows a contour. There is no curve object. | | #45 |
 | Modeling > Curves (New) | missing | No hair curves. | | #63 |
@@ -88,7 +88,7 @@ To move to a new Blender release, run `node scripts/parity-manual-snapshot.mjs`.
 | Modeling > Modifiers > Generate > Volume to Mesh Modifier | missing | No volume objects. | | |
 | Modeling > Modifiers > Generate > Weld Modifier | partial | `merge_by_distance` is an edit. It is not a stack node. | | #42 |
 | Modeling > Modifiers > Generate > Wireframe Modifier | missing | No equivalent. | | #42 |
-| Modeling > Modifiers > Deform > Armature Modifier | partial | GPU skinning for imported rigs. Recipes can not bind a mesh. | [skinning](../tests/skinning.test.js) | #46 |
+| Modeling > Modifiers > Deform > Armature Modifier | partial | A node `skin` binds a recipe mesh to an armature with automatic weights, and imported rigs keep GPU skinning. No envelope mode and no hand-edited weights. | [rigging](../tests/rigging.test.js), [skinning](../tests/skinning.test.js) | #46 |
 | Modeling > Modifiers > Deform > Cast Modifier | missing | No equivalent. | | #42 |
 | Modeling > Modifiers > Deform > Curve Modifier | missing | No equivalent. | | #42 |
 | Modeling > Modifiers > Deform > Displace Modifier | done | `displace` edit and stack node with a field as the texture, along the normal or an axis, with strength, midlevel and a face selection. Positions match Blender with a constant and with a Blend texture. | [src/mesh-field-edits.js](../src/mesh-field-edits.js), [tests/blender-golden.test.js](../tests/blender-golden.test.js), [src/mesh-fields.js](../src/mesh-fields.js), [tests/mesh-fields.test.js](../tests/mesh-fields.test.js) | #43 |
@@ -126,47 +126,47 @@ To move to a new Blender release, run `node scripts/parity-manual-snapshot.mjs`.
 | Sculpting & Painting > Sculpting | partial | Inflate, displace and smooth strokes in code. Recipes can not reach them, and there is no remesh during a stroke. | [sculpt](../tests/sculpt.test.js) | #47 |
 | Sculpting & Painting > Texture Paint | missing | No painting into textures. | | |
 | Sculpting & Painting > Vertex Paint | partial | Imported vertex colors render. Recipes can not author them. | | |
-| Sculpting & Painting > Weight Paint | missing | No vertex groups in recipes. Automatic weights replace painting by hand. | | #46 |
+| Sculpting & Painting > Weight Paint | partial | Automatic weights replace painting by hand. Skin weights are a mesh attribute, but there are no named vertex groups and no painting. | [rigging](../tests/rigging.test.js) | #46 |
 | Sculpting & Painting > Curves Sculpting | missing | No hair curves. | | #63 |
 | Grease Pencil | out of scope | Decided in issue #23. | | |
 | Animation & Rigging > Animation Editors | out of scope | Interface for a mouse. | | |
 | Animation & Rigging > Keyframes | partial | Linear, step, smooth and Hermite curves with deterministic seeks. There are no other easing types or keying sets. | [animation](../tests/animation.test.js) | |
-| Animation & Rigging > Armatures > Bones | missing | Recipes can not author bones. | | #46 |
-| Animation & Rigging > Armatures > Properties | missing | Recipes can not author armatures. | | #46 |
-| Animation & Rigging > Armatures > Structure | partial | Imported rigs keep their hierarchy. Recipes can not author one. | [gltf](../tests/gltf.test.js) | #46 |
-| Animation & Rigging > Armatures > Skinning | partial | Four-influence GPU skinning. There is no automatic binding. | [skinning](../tests/skinning.test.js) | #46 |
+| Animation & Rigging > Armatures > Bones | partial | Recipe `armatures` list bones with a name, parent, head and tail, and each bone is a recipe node that tracks and `motion.ik` address. No roll, bone shapes or custom properties. | [rigging](../tests/rigging.test.js) | #46 |
+| Animation & Rigging > Armatures > Properties | partial | An armature has an id, a parent node, a transform, an optional bone-ID prefix and a `humanoid` or `quadruped` preset fitted to a mesh node or to bounds. No display settings or bone collections. | [rigging](../tests/rigging.test.js) | #46 |
+| Animation & Rigging > Armatures > Structure | partial | Imported rigs keep their hierarchy, and recipes author one. A rig exports to GLB with its bones and a baked walk clip; Blender 5.2 opens it as 1 armature, 21 bones, 14 vertex-grouped meshes and 1 action. | [gltf](../tests/gltf.test.js), [rigging](../tests/rigging.test.js) | #46 |
+| Animation & Rigging > Armatures > Skinning | partial | Four-influence GPU skinning, with automatic binding by distance to the bone segments. Not heat diffusion, so two limbs that pass close can share weights; `scene_inspect` reports unweighted vertices, bones with no vertices and joint axis problems. | [skinning](../tests/skinning.test.js), [rigging](../tests/rigging.test.js) | #46 |
 | Animation & Rigging > Armatures > Posing | partial | Layers, masks, additive poses and IK in code. MCP has IK and one clip. | [skeleton-pose](../tests/skeleton-pose.test.js), [agent-asset-ik](../tests/agent-asset-ik.test.js) | #58, #59 |
 | Animation & Rigging > Lattice | missing | No lattice. | | #42 |
 | Animation & Rigging > Constraints > Interface | out of scope | Interface for a mouse. | | |
 | Animation & Rigging > Constraints > Motion Tracking | out of scope | Motion tracking is out of scope in issue #23. | | |
-| Animation & Rigging > Constraints > Transform > Copy Location Constraint | missing | No constraint. | | #58 |
-| Animation & Rigging > Constraints > Transform > Copy Rotation Constraint | missing | No constraint. | | #58 |
-| Animation & Rigging > Constraints > Transform > Copy Scale Constraint | missing | No constraint. | | #58 |
+| Animation & Rigging > Constraints > Transform > Copy Location Constraint | partial | `copy_location` in `motion.constraints`: axes, invert, offset, world or local space, influence. Matches Blender where tested. | [agent-motion-constraints](../tests/agent-motion-constraints.test.js) | #58 |
+| Animation & Rigging > Constraints > Transform > Copy Rotation Constraint | partial | `copy_rotation`: Euler axes, invert, replace or add, world or local. World matrices match Blender 5.2 in 2 cases. | [blender-constraints](../tests/blender-constraints.test.js) | #58 |
+| Animation & Rigging > Constraints > Transform > Copy Scale Constraint | partial | `copy_scale`: axes and offset, world or local. | [agent-motion-constraints](../tests/agent-motion-constraints.test.js) | #58 |
 | Animation & Rigging > Constraints > Transform > Copy Transforms Constraint | missing | No constraint. | | #58 |
 | Animation & Rigging > Constraints > Transform > Limit Distance Constraint | missing | No constraint. | | #58 |
-| Animation & Rigging > Constraints > Transform > Limit Location Constraint | missing | No constraint. | | #58 |
-| Animation & Rigging > Constraints > Transform > Limit Rotation Constraint | missing | Joints have no limits, except `maxAngle` on aim IK. | | #58 |
+| Animation & Rigging > Constraints > Transform > Limit Location Constraint | partial | `limit_location`: per-axis clamp, world or local. | [agent-motion-constraints](../tests/agent-motion-constraints.test.js) | #58 |
+| Animation & Rigging > Constraints > Transform > Limit Rotation Constraint | partial | `limit_rotation` constraint and per-axis `limits` on two-bone IK joints, reported in `motionIk`. Matches Blender 5.2. | [blender-constraints](../tests/blender-constraints.test.js), [skeleton-pose-limits](../tests/skeleton-pose-limits.test.js) | #58 |
 | Animation & Rigging > Constraints > Transform > Limit Scale Constraint | missing | No constraint. | | #58 |
 | Animation & Rigging > Constraints > Transform > Maintain Volume Constraint | missing | No constraint. | | |
 | Animation & Rigging > Constraints > Transform > Transformation Constraint | missing | No constraint. | | |
 | Animation & Rigging > Constraints > Transform > Transform Cache Constraint | missing | No constraint. | | |
 | Animation & Rigging > Constraints > Tracking > Clamp To Constraint | missing | No constraint. | | |
 | Animation & Rigging > Constraints > Tracking > Damped Track Constraint | partial | Aim IK turns one joint toward a target. It is not a general constraint. | [agent-motion-ik](../tests/agent-motion-ik.test.js) | #58 |
-| Animation & Rigging > Constraints > Tracking > Inverse Kinematics Constraint | partial | Two-bone and aim IK, in code and in `motion.ik`. There are no longer chains or limits. | [agent-motion-ik](../tests/agent-motion-ik.test.js), [agent-asset-ik](../tests/agent-asset-ik.test.js) | #58 |
+| Animation & Rigging > Constraints > Tracking > Inverse Kinematics Constraint | partial | Two-bone and aim IK, in code and in `motion.ik`, with joint limits and sanity warnings on two-bone. There are no longer chains. | [agent-motion-ik](../tests/agent-motion-ik.test.js), [agent-asset-ik](../tests/agent-asset-ik.test.js) | #58 |
 | Animation & Rigging > Constraints > Tracking > Locked Track Constraint | missing | No constraint. | | |
 | Animation & Rigging > Constraints > Tracking > Spline IK Constraint | missing | No constraint. | | |
 | Animation & Rigging > Constraints > Tracking > Stretch To Constraint | missing | No constraint. | | |
-| Animation & Rigging > Constraints > Tracking > Track To Constraint | partial | Cameras track a target. Nodes have no track constraint. | [camera-path](../tests/camera-path.test.js) | #58 |
+| Animation & Rigging > Constraints > Tracking > Track To Constraint | partial | `track_to` on nodes: track and up axes, `worldUp`. Matches Blender 5.2 in 2 cases. Cameras still use camera paths. | [blender-constraints](../tests/blender-constraints.test.js), [camera-path](../tests/camera-path.test.js) | #58 |
 | Animation & Rigging > Constraints > Relationship > Action Constraint | missing | No constraint. | | |
 | Animation & Rigging > Constraints > Relationship > Armature Constraint | missing | No constraint. | | |
-| Animation & Rigging > Constraints > Relationship > Child Of Constraint | partial | Static parents. A parent can not change or blend over time. | [scene-graph](../tests/scene-graph.test.js) | #58 |
-| Animation & Rigging > Constraints > Relationship > Floor Constraint | missing | No constraint. | | #58 |
+| Animation & Rigging > Constraints > Relationship > Child Of Constraint | partial | `child_of` in `motion.constraints`: follows a moving target from its rest inverse (or none), with an influence that can be animated by an expression. Matches Blender 5.2 in 2 cases. No per-channel switches. | [blender-constraints](../tests/blender-constraints.test.js), [scene-graph](../tests/scene-graph.test.js) | #58 |
+| Animation & Rigging > Constraints > Relationship > Floor Constraint | partial | `floor`: keeps a node on one side of a plane through the target, axis and offset. Matches Blender 5.2 for the Z floor with an offset; no `use_rotation`. | [blender-constraints](../tests/blender-constraints.test.js) | #58 |
 | Animation & Rigging > Constraints > Relationship > Follow Path Constraint | partial | Camera paths only. | [camera-path](../tests/camera-path.test.js) | |
 | Animation & Rigging > Constraints > Relationship > Geometry Attribute Constraint | missing | No constraint. | | |
 | Animation & Rigging > Constraints > Relationship > Pivot Constraint | missing | No constraint. | | |
 | Animation & Rigging > Constraints > Relationship > Shrinkwrap Constraint | partial | `addons/surface-attachment` binds points to a surface in code. | [surface-attachment](../tests/surface-attachment.test.js) | |
 | Animation & Rigging > Actions | partial | Clips, weights and crossfades in code. An asset through MCP plays one clip at a time. | [animation-mixer](../tests/animation-mixer.test.js) | #59 |
-| Animation & Rigging > Drivers | missing | No drivers. | | #58 |
+| Animation & Rigging > Drivers | partial | `motion.drivers`: a node component or material property from a bounded expression over time and other nodes. No custom properties, shape keys or variables. | [agent-motion-constraints](../tests/agent-motion-constraints.test.js) | #58 |
 | Animation & Rigging > Markers | missing | No markers or events. | | #60 |
 | Animation & Rigging > Shape Keys | partial | Morph targets import, render and animate. Recipes can not author them. | [morph](../tests/morph.test.js) | #59 |
 | Animation & Rigging > Motion Paths | out of scope | Viewport display for hand work. `scene_inspect` reports motion as numbers. | | |

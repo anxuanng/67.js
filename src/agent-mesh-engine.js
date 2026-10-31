@@ -1,0 +1,5 @@
+// Everything the agent scene needs for mesh geometry, behind one on-demand import (see agent-scene-modules.js).
+export { meshReport, generateMeshGeometry } from './agent-mesh.js';
+export { normalizeMeshEdits, normalizeMeshStack } from './mesh-recipe.js';
+export { expandInstancedNodes } from './mesh-instances.js';
+export { loadMeshBooleans, meshBooleansLoaded, setManifoldModuleLoader } from './mesh-boolean.js';

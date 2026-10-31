@@ -14,9 +14,9 @@
  },
  "bundles": {
   "entry:core": {
-   "min": 269229,
-   "gzip": 76877,
-   "brotli": 65768
+   "min": 274298,
+   "gzip": 77983,
+   "brotli": 66640
   },
   "entry:model": {
    "min": 40093,
@@ -39,9 +39,9 @@
    "brotli": 7331
   },
   "entry:gltf": {
-   "min": 151944,
-   "gzip": 46674,
-   "brotli": 39985
+   "min": 152103,
+   "gzip": 46693,
+   "brotli": 39999
   },
   "entry:modeling": {
    "min": 15517,
@@ -64,9 +64,9 @@
    "brotli": 12998
   },
   "entry:mesh": {
-   "min": 144153,
-   "gzip": 48359,
-   "brotli": 41816
+   "min": 194667,
+   "gzip": 65618,
+   "brotli": 55758
   },
   "entry:shrinkwrap": {
    "min": 56188,
@@ -94,9 +94,9 @@
    "brotli": 12962
   },
   "entry:skeleton-pose": {
-   "min": 51635,
-   "gzip": 16806,
-   "brotli": 14274
+   "min": 55080,
+   "gzip": 18056,
+   "brotli": 15427
   },
   "entry:vehicle": {
    "min": 42067,
@@ -129,14 +129,24 @@
    "brotli": 762
   },
   "entry:agent-scene": {
-   "min": 399226,
-   "gzip": 126629,
-   "brotli": 107783
+   "min": 189885,
+   "gzip": 57054,
+   "brotli": 49352
+  },
+  "entry:agent-scene+lazy": {
+   "min": 474013,
+   "gzip": 155506,
+   "brotli": 135715
   },
   "entry:agent-asset": {
-   "min": 425353,
-   "gzip": 133851,
-   "brotli": 113836
+   "min": 269646,
+   "gzip": 81874,
+   "brotli": 71244
+  },
+  "entry:agent-asset+lazy": {
+   "min": 501114,
+   "gzip": 162775,
+   "brotli": 141809
   },
   "entry:hdri": {
    "min": 8075,
@@ -144,19 +154,24 @@
    "brotli": 2801
   },
   "scene:lit-box": {
-   "min": 200858,
-   "gzip": 54820,
-   "brotli": 46863
+   "min": 206306,
+   "gzip": 56013,
+   "brotli": 47870
   },
   "scene:gltf-box": {
-   "min": 258708,
-   "gzip": 73797,
-   "brotli": 63362
+   "min": 264183,
+   "gzip": 74981,
+   "brotli": 64331
   },
   "scene:agent-scene": {
-   "min": 498424,
-   "gzip": 152612,
-   "brotli": 129631
+   "min": 293270,
+   "gzip": 84072,
+   "brotli": 72169
+  },
+  "scene:agent-scene+lazy": {
+   "min": 577398,
+   "gzip": 182530,
+   "brotli": 158566
   }
  }
 }

@@ -1,6 +1,7 @@
-import { bakePhysicsScene, loadPhysicsEngine, physicsEngineLoaded } from './physics.js';
+import { bakePhysicsScene, loadPhysicsEngine, physicsEngineLoaded, setPhysicsModuleLoader } from './physics.js';
 
-export { loadPhysicsEngine, physicsEngineLoaded };
+export { loadPhysicsEngine, physicsEngineLoaded, setPhysicsModuleLoader };
+export { needsPhysics } from './agent-scene-modules.js';
 
 const FRAMES_PER_SECOND = 60;
 const MAX_DURATION_SECONDS = 10;
@@ -19,18 +20,13 @@ const BODY_FIELDS = ['node', 'type', 'shape', 'mass', 'density', 'friction', 're
 const JOINT_FIELDS = ['type', 'bodyA', 'bodyB', 'anchorA', 'anchorB', 'axis', 'limits'];
 const PHYSICS_FIELDS = ['duration', 'gravity', 'bodies', 'joints'];
 
-/** True when a recipe or an operation list carries a physics section, so the host loads the solver first. */
-export function needsPhysics(value) {
-  return JSON.stringify(value ?? null).includes('"physics":{');
-}
-
 function knownKeys(value, fields, label) {
   if (!value || Object.getPrototypeOf(value) !== Object.prototype) {
     throw new TypeError(`${label} must be a plain object.`);
   }
   for (const key of Object.keys(value)) {
     if (!fields.includes(key)) {
-      throw new TypeError(`Unknown or unsupported ${label} field: ${key}.`);
+      throw new TypeError(`Unknown or unsupported ${label} field: ${key}. Allowed fields: ${fields.join(", ")}.`);
     }
   }
 }
