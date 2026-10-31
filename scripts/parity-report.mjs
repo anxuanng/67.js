@@ -20,6 +20,8 @@ function printLine(name, counts) {
 
 console.log(`${''.padEnd(32)}${['done', 'partial', 'missing', 'out', 'compared', 'done%'].map(title => title.padStart(8)).join('')}`);
 for (const [section, counts] of sections) printLine(section, counts);
+const modifierRows = manualRows.filter(row => row.path.startsWith('Modeling > Modifiers'));
+printLine('  of which Modifiers', ledgerCoverage(modifierRows).overall);
 printLine('All rows', overall);
 
 const unowned = manualRows.filter(row => ['partial', 'missing'].includes(row.status) && row.issues.length === 0);

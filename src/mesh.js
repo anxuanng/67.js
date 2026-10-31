@@ -27,3 +27,5 @@ export {
   mergeByDistance, tagFaces, connectedRegions, FALLOFF_CURVES,
 } from './mesh-ops.js';
 export { cornerFaces, cornerCycles, edgeCornerTable, faceParts } from './mesh-topology.js';
+export { triangulateFaces, splitSharpEdges } from './mesh-restructure.js';
+export { runModifierEdit, normalizeModifierEdit, SIMPLE_DEFORM_MODES, MAX_SMOOTH_ITERATIONS } from './mesh-modifiers.js';

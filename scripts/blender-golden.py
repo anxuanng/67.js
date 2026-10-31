@@ -417,7 +417,59 @@ def add_remesh(mesh_object, edit, _inputs):
     modifier.use_smooth_shade = False
 
 
+def add_weld(mesh_object, edit, _inputs):
+    modifier = mesh_object.modifiers.new("Weld", "WELD")
+    modifier.mode = "ALL"
+    modifier.merge_threshold = edit.get("distance", 0.001)
+
+
+def add_triangulate(mesh_object, edit, _inputs):
+    modifier = mesh_object.modifiers.new("Triangulate", "TRIANGULATE")
+    modifier.min_vertices = edit.get("minVertices", 4)
+    modifier.quad_method = "BEAUTY"
+    modifier.ngon_method = "BEAUTY"
+
+
+def add_edge_split(mesh_object, edit, _inputs):
+    modifier = mesh_object.modifiers.new("EdgeSplit", "EDGE_SPLIT")
+    modifier.use_edge_angle = True
+    modifier.use_edge_sharp = False
+    modifier.split_angle = radians(edit.get("angle", 30))
+
+
+def add_smooth(mesh_object, edit, _inputs):
+    modifier = mesh_object.modifiers.new("Smooth", "SMOOTH")
+    modifier.factor = edit.get("factor", 0.5)
+    modifier.iterations = edit.get("iterations", 1)
+
+
+def add_simple_deform(mesh_object, edit, _inputs):
+    modifier = mesh_object.modifiers.new("SimpleDeform", "SIMPLE_DEFORM")
+    modifier.deform_method = edit["mode"].upper()
+    modifier.deform_axis = edit.get("axis", "z").upper()
+    # Blender stores angle and factor in one field, so set only the one this mode uses.
+    if edit["mode"] in ("twist", "bend"):
+        modifier.angle = radians(edit.get("angle", 45))
+    else:
+        modifier.factor = edit.get("factor", 0.5)
+
+
+def add_cast(mesh_object, edit, _inputs):
+    modifier = mesh_object.modifiers.new("Cast", "CAST")
+    modifier.cast_type = "SPHERE"
+    modifier.factor = edit.get("factor", 0.5)
+    modifier.radius = 0
+    modifier.size = edit.get("size", 0)
+    modifier.use_radius_as_size = False
+
+
 MODIFIERS = {
+    "weld": add_weld,
+    "triangulate": add_triangulate,
+    "edge_split": add_edge_split,
+    "smooth": add_smooth,
+    "simple_deform": add_simple_deform,
+    "cast": add_cast,
     "decimate": add_decimate,
     "remesh": add_remesh,
     "set_position": add_set_position,
