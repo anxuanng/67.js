@@ -17,7 +17,7 @@ function transformPoint(matrix, x, y, z) {
   ];
 }
 
-function worldGeometry(part) {
+export function worldGeometry(part) {
   const source = part.geometry;
   const positions = new Float32Array(source.positions.length);
   for (let vertex = 0; vertex < source.positions.length / 3; vertex++) {
