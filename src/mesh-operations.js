@@ -46,8 +46,17 @@ export const MESH_EDIT_OPERATIONS = Object.freeze({
   displace: { fields: ['select', 'field', 'strength', 'midlevel', 'direction'], tags: [] },
   decimate: { fields: ['ratio'], tags: [] },
   remesh: { fields: ['voxelSize', 'resolution'], tags: [] },
+  sculpt: { fields: ['select', 'strokes'], tags: [] },
+  shrinkwrap: { fields: ['select', 'target', 'translation', 'rotation', 'scale', 'mode', 'direction', 'offset', 'maxDistance', 'onMiss'], tags: [] },
   ...MODIFIER_OPERATIONS,
 });
+
+// Limits of the sculpt and shrinkwrap edits, and their vocabulary, as plain data.
+export const SCULPT_STROKE_TYPES = Object.freeze(['inflate', 'displace', 'smooth']);
+export const MAX_SCULPT_STROKES = 32;
+export const MAX_SCULPT_VISITS = 5_000_000;
+export const SHRINKWRAP_MODES = Object.freeze(['nearest', 'project']);
+export const MAX_SHRINKWRAP_TRIANGLE_TESTS = 20_000_000;
 
 export const STACK_OPERATIONS = Object.freeze(['mirror', 'array', 'solidify', 'bevel', 'uv_unwrap', 'subdivide', 'set_position', 'displace', 'decimate', 'remesh', ...Object.keys(MODIFIER_OPERATIONS)]);
 export const MAX_STACK_NODES = 16;
