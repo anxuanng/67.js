@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Remove `67js/addons/film` from the npm package. It held the 187-second trailer demo with its baked physics recording, 75 KB gzip of the archive. Nothing else in the package used it. To keep using it, copy `src/film.js`, `src/film-rig.js`, `src/film-character.js`, `src/film-physics-definition.js` and `src/film-physics-clip.json` from the repository, or read the trailer on the site at `/film.html`. The archive goes from 901,314 to 829,085 bytes
 - Load glTF without Three.js: the addon has its own GLB and glTF parser, node sampler and animation clips, so a box with the addon drops from 159,422 to 67,467 bytes gzip. Draco, meshopt and KTX2 still come from the decoders you pass in `options.decoders`. Only the default scene is decoded, and a node outside it is decoded only when a skin or an animation names it
 - Update the bundled `zod` to 4.6.7, which fixes a memory exhaustion advisory in the validation of oversized collections
 - Make the MCP preview server reject requests with another Host header, which closes DNS rebinding
