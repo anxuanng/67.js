@@ -246,6 +246,23 @@ For this task the object does not need to rest on the ground.`,
     ],
   },
   {
+    id: 'leg-plant',
+    prompt: `A walking character's leg that plants its foot on two points, the way a real knee bends. Use three nodes with
+these exact IDs, each with a small visible geometry: hip at [0, 1, 0], knee 0.5 m below the hip, and foot 0.5 m below the knee.
+Make knee a child of hip and foot a child of knee. The character faces +z, so the knee must bend forward, never backward.
+Add a 2 second motion in which the foot is exactly at [0.1, 0.5, 0.35] at time 0 and exactly at [0.1, 0.6, 0.2] at time 2,
+with both bones keeping their lengths and the knee in front of the hip-to-foot line at both times.
+For this task the object does not need to rest on the ground.`,
+    checks: [
+      { kind: 'nodeAt', node: 'foot', time: 0, position: [0.1, 0.5, 0.35] },
+      { kind: 'nodeAt', node: 'foot', time: 2, position: [0.1, 0.6, 0.2] },
+      { kind: 'nodeDistance', from: 'hip', to: 'knee', time: 1, distance: 0.5 },
+      { kind: 'nodeDistance', from: 'knee', to: 'foot', time: 1, distance: 0.5 },
+      { kind: 'bendsToward', from: 'hip', node: 'knee', to: 'foot', time: 0, direction: [0, 0, 1], minOffset: 0.02 },
+      { kind: 'bendsToward', from: 'hip', node: 'knee', to: 'foot', time: 2, direction: [0, 0, 1], minOffset: 0.02 },
+    ],
+  },
+  {
     id: 'robot-reach',
     assets: true,
     prompt: `The asset catalog holds an imported robot character. Create a scene from it with its Idle clip selected at

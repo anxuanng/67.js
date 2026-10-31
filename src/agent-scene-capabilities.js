@@ -37,5 +37,7 @@ export const AGENT_SCENE_CAPABILITIES = Object.freeze({
   lightLinking: false,
   proceduralMotion: true,
   motionIk: Object.freeze(['two-bone', 'aim']),
+  motionConstraints: Object.freeze(['copy_location', 'copy_rotation', 'copy_scale', 'limit_location', 'limit_rotation', 'track_to', 'child_of', 'floor']),
+  motionDrivers: Object.freeze({ maxDrivers: 32, maxConstraints: 32, maxExpressionParts: 64, maxExpressionDepth: 8 }),
   motionLimits: Object.freeze({ maxTracks: 128, maxKeyframesPerTrack: 64, maxKeyframes: 2048, maxDuration: 30 }),
 });

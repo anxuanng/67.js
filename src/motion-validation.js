@@ -1,0 +1,52 @@
+// Checks shared by the motion normalizers: agent input is untrusted plain data, so every field is named and bounded.
+
+export function knownKeys(value, fields, label) {
+  if (!value || Object.getPrototypeOf(value) !== Object.prototype) {
+    throw new TypeError(`${label} must be a plain object.`);
+  }
+  for (const key of Reflect.ownKeys(value)) {
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+    if (typeof key !== 'string' || !fields.includes(key) || !descriptor.enumerable || !Object.hasOwn(descriptor, 'value')) {
+      throw new TypeError(`Unknown or unsupported ${label} field: ${String(key)}.`);
+    }
+  }
+}
+
+export function finite(value, label) {
+  if (!Number.isFinite(value) || !Number.isFinite(Math.fround(value))) {
+    throw new RangeError(`${label} must be finite at Float32 precision.`);
+  }
+  return value;
+}
+
+export function bounded(value, minimum, maximum, label) {
+  finite(value, label);
+  if (value < minimum || value > maximum) {
+    throw new RangeError(`${label} must be within ${minimum} and ${maximum}.`);
+  }
+  return value;
+}
+
+export function denseArray(value, maximum, label) {
+  if (!Array.isArray(value) || value.length > maximum || Object.keys(value).length !== value.length ||
+      Reflect.ownKeys(value).length !== value.length + 1 || Object.keys(value).some((key, index) => key !== String(index))) {
+    throw new TypeError(`${label} must be a bounded dense array.`);
+  }
+  for (let index = 0; index < value.length; index++) {
+    if (!Object.hasOwn(Object.getOwnPropertyDescriptor(value, index), 'value')) {
+      throw new TypeError(`${label} cannot contain accessors.`);
+    }
+  }
+  return value;
+}
+
+export function valueFrom(value, size, label) {
+  if (size === 1) {
+    return finite(value, label);
+  }
+  denseArray(value, size, label);
+  if (value.length !== size) {
+    throw new TypeError(`${label} needs ${size} components.`);
+  }
+  return value.map(component => finite(component, label));
+}

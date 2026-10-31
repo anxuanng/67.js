@@ -21,18 +21,18 @@
   "entry:physics": 16500,
   "entry:spume": 9000,
   "entry:retarget": 15700,
-  "entry:skeleton-pose": 17200,
+  "entry:skeleton-pose": 18100,
   "entry:vehicle": 14700,
   "entry:vegetation": 17900,
   "entry:terrain": 3100,
   "entry:grass": 4400,
   "entry:clutter": 5300,
   "entry:texture-set": 900,
-  "entry:agent-scene": 110900,
-  "entry:agent-asset": 118400,
+  "entry:agent-scene": 115200,
+  "entry:agent-asset": 122600,
   "entry:hdri": 3300,
   "scene:lit-box": 56000,
   "scene:gltf-box": 75300,
-  "scene:agent-scene": 137600
+  "scene:agent-scene": 141400
  }
 }

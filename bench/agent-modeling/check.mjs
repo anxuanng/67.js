@@ -69,6 +69,15 @@ function checkOne(check, measures) {
       const distance = Math.hypot(...from.map((value, axis) => value - to[axis]));
       return { pass: Math.abs(distance - check.distance) <= 0.01, detail: `${round(distance)} m apart at t=${check.time}` };
     }
+    case 'bendsToward': {
+      const root = measures.nodePosition(check.from, check.time);
+      const middle = measures.nodePosition(check.node, check.time);
+      const end = measures.nodePosition(check.to, check.time);
+      if (!root || !middle || !end) return { pass: false, detail: `no drawn node ${check.from}, ${check.node} or ${check.to}` };
+      const offset = middle.map((value, axis) => value - (root[axis] + end[axis]) / 2);
+      const along = offset.reduce((total, value, axis) => total + value * check.direction[axis], 0);
+      return { pass: along >= check.minOffset, detail: `${check.node} sits ${round(along)} m toward ${JSON.stringify(check.direction)} at t=${check.time}` };
+    }
     case 'assetClip': {
       return { pass: measures.clipName === check.name, detail: `clip ${measures.clipName ?? 'none'}` };
     }

@@ -1,6 +1,7 @@
 import { mat4, quat, vec3 } from 'gl-matrix';
 import { compileAnimationSampler, createAnimationClip } from './animation.js';
 import { updateSkinPose } from './skinning.js';
+import { eulerFromQuaternion, quaternionFromEuler } from './rotation-euler.js';
 import {
   bindSourceTracks, computeWorldPose, createPoseState, createRigFromSkin, mapHumanoidBones, prepareRigGeometry, validateRigJoints,
 } from './retarget.js';
@@ -146,6 +147,108 @@ function checkedVector(value, label) {
   return value;
 }
 
+const LIMIT_AXES = ['x', 'y', 'z'];
+// The solver stops just short of full stretch (a 2 to 3 degree bend), so a locked limb reads as about 177 degrees.
+const HYPEREXTENSION_ANGLE = 175 * TO_RADIANS;
+const MIN_BEND_FRACTION = 0.01;
+const MIN_REST_BEND_FRACTION = 0.02;
+
+/**
+ * Joint limits from { root: { x: [min, max], y, z }, middle: {...} } in degrees. Angles are the joint's turn away from its
+ * rest rotation, in its own axes, as Euler XYZ (the order Blender uses). An axis left out is free.
+ */
+function createJointLimits(definition, label, jointIndices, prepared) {
+  if (definition === undefined) return [];
+  if (!definition || typeof definition !== 'object' || Array.isArray(definition)) throw new TypeError(`${label} limits must be { root, middle } with an x, y or z range each.`);
+  return Object.entries(definition).map(([role, axes]) => {
+    if (!Object.hasOwn(jointIndices, role)) throw new RangeError(`${label} limits: ${role} must be root or middle.`);
+    const unknownAxis = Object.keys(axes ?? {}).find(axis => !LIMIT_AXES.includes(axis));
+    if (unknownAxis !== undefined) throw new RangeError(`${label} limits ${role}: ${unknownAxis} must be x, y or z.`);
+    const ranges = LIMIT_AXES.map(axis => {
+      const range = axes[axis];
+      if (range === undefined) return null;
+      if (!Array.isArray(range) || range.length !== 2 || !range.every(Number.isFinite) || range[0] > range[1] || range[0] < -180 || range[1] > 180) {
+        throw new RangeError(`${label} limits ${role}.${axis} must be [min, max] degrees within -180 and 180, min first.`);
+      }
+      return range.map(degrees => degrees * TO_RADIANS);
+    });
+    const index = jointIndices[role];
+    return { index, name: prepared.joints[index].name, ranges };
+  });
+}
+
+function roundedDegrees(radians) {
+  return Number((radians / TO_RADIANS).toFixed(4));
+}
+
+/** Clamp each limited joint's local rotation. Returns one { joint, axis, requested, applied } (degrees) per change. */
+function applyJointLimits(limits, prepared, localRotations) {
+  const changes = [];
+  for (const limit of limits) {
+    const rest = prepared.restRotations[limit.index];
+    const delta = quat.multiply(new Float64Array(4), quat.invert(new Float64Array(4), rest), localRotations[limit.index]);
+    const angles = eulerFromQuaternion(delta);
+    let changed = false;
+    angles.forEach((angle, axis) => {
+      const range = limit.ranges[axis];
+      if (!range) return;
+      const clamped = Math.min(range[1], Math.max(range[0], angle));
+      if (Math.abs(clamped - angle) < 1e-9) return;
+      changes.push({ joint: limit.name, axis: LIMIT_AXES[axis], requested: roundedDegrees(angle), applied: roundedDegrees(clamped) });
+      angles[axis] = clamped;
+      changed = true;
+    });
+    if (!changed) continue;
+    quaternionFromEuler(delta, angles[0], angles[1], angles[2]);
+    quat.normalize(localRotations[limit.index], quat.multiply(localRotations[limit.index], rest, delta));
+  }
+  return changes;
+}
+
+/** How far the middle joint sits off the straight line from root to end, as a vector. */
+function bendVector(rootPosition, middlePosition, endPosition) {
+  const line = vec3.subtract(new Float64Array(3), endPosition, rootPosition);
+  const toMiddle = vec3.subtract(new Float64Array(3), middlePosition, rootPosition);
+  const lineLengthSquared = vec3.squaredLength(line);
+  if (lineLengthSquared < NEAR_ZERO) return toMiddle;
+  return vec3.scaleAndAdd(toMiddle, toMiddle, line, -vec3.dot(toMiddle, line) / lineLengthSquared);
+}
+
+/** The side the limb bent toward at rest, in the frame of the joint above the root. Null when the rest limb is straight. */
+function restBendInParentFrame(prepared, root, middle, end) {
+  const { positions, rotations } = prepared.restWorld;
+  const bend = bendVector(positions[root], positions[middle], positions[end]);
+  const chainLength = vec3.distance(positions[root], positions[middle]) + vec3.distance(positions[middle], positions[end]);
+  if (vec3.length(bend) < chainLength * MIN_REST_BEND_FRACTION) return null;
+  const parent = prepared.joints[root].parent;
+  const parentRotation = parent >= 0 ? rotations[parent] : prepared.rootRotation;
+  return vec3.transformQuat(new Float64Array(3), bend, quat.invert(new Float64Array(4), parentRotation));
+}
+
+/** Sanity checks on a solved limb: locked straight, or bent the opposite way to its natural direction. */
+function bendWarnings(solver, state, prepared) {
+  const warnings = [];
+  const rootPosition = state.positions[solver.root];
+  const middlePosition = state.positions[solver.middle];
+  const endPosition = state.positions[solver.end];
+  const interiorAngle = vec3.angle(vec3.subtract(new Float64Array(3), rootPosition, middlePosition), vec3.subtract(new Float64Array(3), endPosition, middlePosition));
+  if (interiorAngle > HYPEREXTENSION_ANGLE) {
+    warnings.push({ code: 'hyperextended', message: `${prepared.joints[solver.middle].name} is locked straight (${roundedDegrees(interiorAngle)} degrees). The target is at or beyond the limb's reach, so a real joint would hyperextend.` });
+  }
+  let expected = solver.bendToward;
+  if (!expected && solver.restBend) {
+    const parent = prepared.joints[solver.root].parent;
+    expected = vec3.transformQuat(new Float64Array(3), solver.restBend, parent >= 0 ? state.rotations[parent] : prepared.rootRotation);
+  }
+  if (!expected) return warnings;
+  const bend = bendVector(rootPosition, middlePosition, endPosition);
+  const chainLength = vec3.distance(rootPosition, middlePosition) + vec3.distance(middlePosition, endPosition);
+  if (vec3.length(bend) >= chainLength * MIN_BEND_FRACTION && vec3.dot(bend, expected) < 0) {
+    warnings.push({ code: 'wrong-bend', message: `${prepared.joints[solver.middle].name} bends away from its natural direction. Move the pole to the other side, or set bendToward.` });
+  }
+  return warnings;
+}
+
 function createSolver(definition, position, prepared, resolveJoint) {
   const label = `IK ${position}`;
   const weight = weightFunction(definition?.weight ?? 1, `${label} weight`);
@@ -158,7 +261,13 @@ function createSolver(definition, position, prepared, resolveJoint) {
       throw new RangeError(`${label}: end must descend from middle, and middle from root.`);
     }
     if (definition.pole !== undefined && typeof definition.pole !== 'function') checkedVector(definition.pole, `${label} pole`);
-    return { type: 'two-bone', label, weight, root, middle, end, target: definition.target, pole: definition.pole, keepEndRotation: definition.keepEndRotation !== false };
+    const limits = createJointLimits(definition.limits, label, { root, middle }, prepared);
+    const bendToward = definition.bendToward === undefined ? null : vec3.normalize(new Float64Array(3), checkedVector(definition.bendToward, `${label} bendToward`));
+    return {
+      type: 'two-bone', label, weight, root, middle, end, target: definition.target, pole: definition.pole, limits, bendToward,
+      restBend: restBendInParentFrame(prepared, root, middle, end),
+      keepEndRotation: definition.keepEndRotation !== false,
+    };
   }
   if (definition.type === 'aim') {
     const names = definition.joints ?? (definition.joint === undefined ? [] : [definition.joint]);
@@ -201,7 +310,7 @@ function createSolverContext(prepared, state, localRotations, localTranslations)
     quat.normalize(localRotations[index], quat.slerp(localRotations[index], localRotations[index], scratch, weight));
     update();
   }
-  return { state, update, setWorldRotation };
+  return { state, prepared, localRotations, update, setWorldRotation };
 }
 
 /**
@@ -209,11 +318,11 @@ function createSolverContext(prepared, state, localRotations, localTranslations)
  * turns the two upper joints with the shortest rotations, so twist already in the pose survives.
  */
 function solveTwoBone(solver, time, context) {
-  const { state, setWorldRotation } = context;
+  const { state, prepared, localRotations, update, setWorldRotation } = context;
   const weight = checkedWeight(solver.weight, time, `${solver.label} weight`);
   const endPosition = state.positions[solver.end];
   const target = resolvedPoint(solver.target, time, endPosition, `${solver.label} target`);
-  if (weight === 0) return { reached: true, error: 0 };
+  if (weight === 0) return { reached: true, error: 0, warnings: [], limited: [] };
   const rootPosition = Float64Array.from(state.positions[solver.root]);
   const middlePosition = Float64Array.from(state.positions[solver.middle]);
   const startEnd = Float64Array.from(endPosition);
@@ -223,7 +332,7 @@ function solveTwoBone(solver, time, context) {
   const toTarget = vec3.subtract(new Float64Array(3), target, rootPosition);
   const targetDistance = vec3.length(toTarget);
   if (targetDistance < NEAR_ZERO || upperLength < NEAR_ZERO || lowerLength < NEAR_ZERO) {
-    return { reached: false, error: vec3.distance(startEnd, target) };
+    return { reached: false, error: vec3.distance(startEnd, target), warnings: [], limited: [] };
   }
   const direction = vec3.scale(new Float64Array(3), toTarget, 1 / targetDistance);
   // Stop just short of the limits: a fully straight limb has no defined bend plane for the next frame.
@@ -259,9 +368,11 @@ function solveTwoBone(solver, time, context) {
   const newMiddleRotation = quat.multiply(new Float64Array(4), middleTurn, quat.multiply(new Float64Array(4), rootTurn, state.rotations[solver.middle]));
   setWorldRotation(solver.root, newRootRotation, weight);
   setWorldRotation(solver.middle, newMiddleRotation, weight);
+  const limited = applyJointLimits(solver.limits, prepared, localRotations);
+  if (limited.length) update();
   if (solver.keepEndRotation) setWorldRotation(solver.end, endRotation, weight);
   const error = vec3.distance(state.positions[solver.end], target);
-  return { reached: error <= margin * 2 + NEAR_ZERO, error };
+  return { reached: error <= margin * 2 + NEAR_ZERO, error, warnings: bendWarnings(solver, state, prepared), limited };
 }
 
 /** Turn a joint, or a chain sharing the turn evenly, so its forward axis points at the target. */

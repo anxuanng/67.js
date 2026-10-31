@@ -286,6 +286,38 @@ const ikPoint = z.union([
   ikKeyframes(vector3, 'A moving world position.'),
 ]);
 const ikWeight = z.union([unit, ikKeyframes(unit, 'Fade the solve in or out over time.')]).optional();
+const degreeRange = z.tuple([z.number().min(-180).max(180), z.number().min(-180).max(180)]);
+const jointLimit = z.strictObject({ x: degreeRange.optional(), y: degreeRange.optional(), z: degreeRange.optional() });
+const axisName = z.enum(['x', 'y', 'z']);
+const axisNames = z.array(axisName).min(1).max(3);
+const signedAxis = z.enum(['+x', '-x', '+y', '-y', '+z', '-z']);
+const constraintSpace = z.enum(['world', 'local']).optional();
+const limitRange = z.tuple([z.number().min(-1e6).max(1e6), z.number().min(-1e6).max(1e6)]).optional();
+// A bounded expression: data only, never code. See docs/agent-motion.md for the operators.
+const expression = z.lazy(() => z.union([
+  z.number().min(-1e6).max(1e6),
+  z.literal('time'),
+  z.strictObject({ node: identifier, property: z.enum(['translation', 'rotation', 'scale']), component: axisName, space: z.enum(['local', 'world']).optional() }),
+  z.record(z.string().max(24), z.array(expression).min(1).max(8)),
+])).describe('Number, "time", {"node","property","component","space"} read, or one operator such as {"mul":[2,"time"]}. Operators: add mul min max sub div pow mod atan2 gt lt neg abs sin cos sqrt floor fract saturate clamp mix smoothstep if. At most 64 parts, 8 deep.');
+const influence = z.union([unit, expression]).optional().describe('0 to 1 blend of the constraint, or an expression.');
+const constraint = z.discriminatedUnion('type', [
+  z.strictObject({ type: z.literal('copy_location'), node: identifier, target: identifier, axes: axisNames.optional(), invert: axisNames.optional(), offset: z.boolean().optional(), space: constraintSpace, influence }),
+  z.strictObject({ type: z.literal('copy_rotation'), node: identifier, target: identifier, axes: axisNames.optional(), invert: axisNames.optional(), mix: z.enum(['replace', 'add']).optional(), space: constraintSpace, influence }),
+  z.strictObject({ type: z.literal('copy_scale'), node: identifier, target: identifier, axes: axisNames.optional(), offset: z.boolean().optional(), space: constraintSpace, influence }),
+  z.strictObject({ type: z.literal('limit_location'), node: identifier, x: limitRange, y: limitRange, z: limitRange, space: constraintSpace, influence }),
+  z.strictObject({ type: z.literal('limit_rotation'), node: identifier, x: degreeRange.optional(), y: degreeRange.optional(), z: degreeRange.optional(), space: constraintSpace, influence }),
+  z.strictObject({ type: z.literal('track_to'), node: identifier, target: identifier, trackAxis: signedAxis.optional(), upAxis: axisName.optional(), worldUp: vector3.optional(), influence }),
+  z.strictObject({ type: z.literal('child_of'), node: identifier, target: identifier, inverse: z.enum(['rest', 'none']).optional(), influence }),
+  z.strictObject({ type: z.literal('floor'), node: identifier, target: identifier, axis: signedAxis.optional(), offset: z.number().min(-1e6).max(1e6).optional(), influence }),
+]);
+const driver = z.strictObject({
+  target: z.union([
+    z.strictObject({ kind: z.literal('node'), id: identifier, property: z.enum(['translation', 'rotation', 'scale']), component: axisName }),
+    z.strictObject({ kind: z.literal('material'), id: identifier, property: z.enum(['color', 'emissiveColor', 'emission', 'metallic', 'roughness']), component: axisName.optional() }),
+  ]),
+  expression,
+});
 const ikSolver = z.discriminatedUnion('type', [
   z.strictObject({
     type: z.literal('two-bone'),
@@ -294,6 +326,8 @@ const ikSolver = z.discriminatedUnion('type', [
     pole: ikPoint.optional().describe('World point the middle joint bends toward. Give one, or a straight limb has no bend direction.'),
     weight: ikWeight,
     keepEndRotation: z.boolean().optional().describe('Default true: end keeps its world rotation, so a foot or gripper stays level.'),
+    limits: z.strictObject({ root: jointLimit.optional(), middle: jointLimit.optional() }).optional().describe('Joint limits in degrees: how far root or middle may turn from its rest rotation, per axis of its own, as Euler XYZ. scene_inspect motionIk lists each pose a limit changed.'),
+    bendToward: vector3.optional().describe('World direction the middle joint should bend toward, such as [0, 0, 1] for a knee on a character facing +z. motionIk warns with wrong-bend when the solve bends the other way. Rigs that rest bent need none.'),
   }).describe('Limb of three nodes, each a descendant of the one before: shoulder, elbow, wrist. Computes their rotations, so you need no quaternions. Nodes with IK nodes below them must have uniform scale: put sizes on child mesh nodes.'),
   z.strictObject({
     type: z.literal('aim'),
@@ -309,6 +343,8 @@ const ikSolver = z.discriminatedUnion('type', [
 const motion = z.strictObject({
   duration: z.number().min(0.1).max(30),
   ik: z.array(ikSolver).max(16).optional().describe('Inverse kinematics run after the tracks and any selected clip, in order, on recipes and imported assets. IDs are recipe node IDs or an asset\'s node-N IDs; find them with scene_inspect kind hierarchy. scene_inspect reports motionIk: whether each solver reaches its target across the clip.'),
+  constraints: z.array(constraint).max(32).optional().describe('Blender-style node constraints, run in order after the tracks, drivers and IK, each on the pose the one before left: copy_location, copy_rotation, copy_scale, limit_location, limit_rotation, track_to, child_of, floor. Euler angles are XYZ in degrees; space defaults to world. Same result at any time, so seeking equals playing.'),
+  drivers: z.array(driver).max(32).optional().describe('Drive one node component or material property from a bounded expression over time and other nodes\' values. A driven property cannot also have a track.'),
   loop: z.boolean().optional(),
   tracks: z.array(z.union([
     motionTrack('node', 'translation', vector3, vector3),
