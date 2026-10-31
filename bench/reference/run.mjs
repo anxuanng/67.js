@@ -14,6 +14,9 @@ const CHROME = process.env.CHROME_PATH ?? 'C:/Program Files/Google/Chrome/Applic
 const BLENDER = process.env.BLENDER_PATH ?? 'C:/Program Files/Blender Foundation/Blender 5.2/blender.exe';
 const WIDTH = 960;
 const HEIGHT = 540;
+// This process runs below normal priority, so a busy machine takes the page load past Playwright's 30 second default
+// (measured 22 s, against 5 s when idle). Load time does not affect any score.
+const PAGE_LOAD_TIMEOUT = 180000;
 const BACKEND_ARGUMENTS = {
   gpu: ['--enable-webgl', '--ignore-gpu-blocklist', '--disable-renderer-backgrounding'],
   cpu: ['--enable-webgl', '--ignore-gpu-blocklist', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'],
@@ -35,8 +38,8 @@ async function renderBackend(backend, serverUrl, graphics) {
     const page = await browser.newPage({ viewport: { width: WIDTH, height: HEIGHT } });
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
-    await page.goto(`${serverUrl}/bench/reference/harness.html`);
-    await page.waitForFunction(() => window.renderReferenceScene);
+    await page.goto(`${serverUrl}/bench/reference/harness.html`, { timeout: PAGE_LOAD_TIMEOUT });
+    await page.waitForFunction(() => window.renderReferenceScene, null, { timeout: PAGE_LOAD_TIMEOUT });
     const sceneIds = await page.evaluate(() => window.referenceSceneIds);
     for (const id of sceneIds) {
       if (onlyScene && id !== onlyScene) continue;
