@@ -34,7 +34,7 @@ const nodeFields = {
   rotation: quaternion.optional().describe('Nonzero local XYZW quaternion. The backend normalizes it.'),
   scale: z.tuple([positive, positive, positive]).optional().describe('Positive local XYZ scale.'),
 };
-const fieldExpression = z.union([finite, z.boolean(), vector3, z.record(z.string(), z.unknown())]).describe('Field expression, plain JSON and never code. A number, a boolean or [x,y,z] is a constant; an object holds one operator: math add mul sub div mod pow min max clamp mix smoothstep neg abs sqrt sin cos floor ceil round fract sign; comparison lt lte gt gte eq; logic and or not if [cond,a,b]; vectors vec [x,y,z] dot cross distance length normalize x y z; sources {"attr":"position"|"normal"|"index"|"tag","component":"x"|"y"|"z","name":tag}, {"noise":{"scale":3,"seed":7,"octaves":1}} in 0..1, {"random":{"seed":1}} per element in 0..1. Example: {"mul":[{"attr":"position","component":"y"},0.5]}. At most 64 nodes, depth 12, 250000 elements.');
+const fieldExpression = z.union([finite, z.boolean(), vector3, z.record(z.string(), z.unknown())]).describe('Field expression, plain JSON and never code; driver expressions use the same language. A number, a boolean or [x,y,z] is a constant; an object holds one operator: math add mul sub div mod pow atan2 min max clamp saturate mix smoothstep neg abs sqrt sin cos floor ceil round fract sign; comparison lt lte gt gte eq; logic and or not if [cond,a,b]; vectors vec [x,y,z] dot cross distance length normalize x y z; sources {"attr":"position"|"normal"|"index"|"tag","component":"x"|"y"|"z","name":tag}, {"noise":{"scale":3,"seed":7,"octaves":1}} in 0..1, {"random":{"seed":1}} per element in 0..1. Example: {"mul":[{"attr":"position","component":"y"},0.5]}. At most 64 nodes, depth 12, 250000 elements.');
 const instanceCount = z.number().int().min(1).max(2048);
 const instanceSpec = z.strictObject({
   grid: z.strictObject({ counts: z.tuple([instanceCount, instanceCount, instanceCount]), spacing: vector3 }).optional().describe('Grid of counts[0] x counts[1] x counts[2] points centred on the group.'),
@@ -350,8 +350,8 @@ const expression = z.lazy(() => z.union([
   z.number().min(-1e6).max(1e6),
   z.literal('time'),
   z.strictObject({ node: identifier, property: z.enum(['translation', 'rotation', 'scale']), component: axisName, space: z.enum(['local', 'world']).optional() }),
-  z.record(z.string().max(24), z.array(expression).min(1).max(8)),
-])).describe('Number, "time", {"node","property","component","space"} read, or one operator such as {"mul":[2,"time"]}. Operators: add mul min max sub div pow mod atan2 gt lt neg abs sin cos sqrt floor fract saturate clamp mix smoothstep if. At most 64 parts, 8 deep.');
+  z.record(z.string().max(24), z.union([z.array(expression).min(1).max(8), expression])),
+])).describe('Number, "time", {"node","property","component","space"} read, or an operator like {"mul":[2,"time"]}, {"neg":x} too. Operators as in field expressions (scene_capabilities), no vectors, attributes or noise. At most 64 parts, 8 deep.');
 const influence = z.union([unit, expression]).optional().describe('0 to 1 blend of the constraint, or an expression.');
 const constraint = z.discriminatedUnion('type', [
   z.strictObject({ type: z.literal('copy_location'), node: identifier, target: identifier, axes: axisNames.optional(), invert: axisNames.optional(), offset: z.boolean().optional(), space: constraintSpace, influence }),

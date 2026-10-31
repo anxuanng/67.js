@@ -47,8 +47,8 @@ export const MAX_FIELD_ELEMENTS = 250_000;
 export const MAX_FIELD_WORK = 8_000_000;
 export const FIELD_ATTRIBUTES = Object.freeze(['position', 'normal', 'index', 'tag']);
 export const FIELD_OPERATOR_NAMES = Object.freeze([
-  'add', 'mul', 'min', 'max', 'sub', 'div', 'mod', 'pow', 'clamp', 'mix', 'smoothstep',
-  'neg', 'abs', 'sqrt', 'sin', 'cos', 'floor', 'ceil', 'round', 'fract', 'sign',
+  'add', 'mul', 'min', 'max', 'sub', 'div', 'mod', 'pow', 'atan2', 'clamp', 'mix', 'smoothstep',
+  'neg', 'abs', 'sqrt', 'sin', 'cos', 'floor', 'ceil', 'round', 'fract', 'sign', 'saturate',
   'lt', 'lte', 'gt', 'gte', 'eq', 'and', 'or', 'not', 'if',
   'vec', 'dot', 'cross', 'distance', 'length', 'normalize', 'x', 'y', 'z',
   'attr', 'noise', 'random',

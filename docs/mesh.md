@@ -210,7 +210,9 @@ as Blender's Apply modifier, which leaves the result unchanged.
 
 A field expression is plain JSON that computes one number, or one vector, for each point or face of a mesh. It is
 data and never code: `src/mesh-fields.js` reads it against a fixed table of operators, compiles it once into
-closures over typed arrays, and checks the limits before it evaluates anything. No string is executed, and no input
+closures over typed arrays, and checks the limits before it evaluates anything. This is the one expression language of the
+engine, in `src/expression.js`; motion drivers use it with `time` and node reads in place of attributes (see
+[agent motion](agent-motion.md)). No string is executed, and no input
 string is used as a property name, so a recipe written by an agent that follows injected instructions cannot run code
 or reach `__proto__` or `constructor`. The same expression gives the same bytes on every run.
 
@@ -220,13 +222,15 @@ or reach `__proto__` or `constructor`. The same expression gives the same bytes 
 { "gt": [{ "dot": [{ "attr": "normal" }, [0, 1, 0]] }, 0.9] }
 ```
 
-A number is a constant, `true` and `false` are 1 and 0, and an array of three numbers is a constant vector.
+A number is a constant, `true` and `false` are 1 and 0, and an array of three numbers is a constant vector. An operator takes
+its operands as an array; one with a single operand may write it bare, `{ "neg": x }`.
 Operators that take numbers also take vectors and work on each component; a number spreads to all three.
 
 | Group | Operators |
 | --- | --- |
-| Math | `add` `mul` `min` `max` (2 to 8 operands), `sub` `div` `mod` `pow`, `clamp` `mix` `smoothstep` (3), `neg` `abs` `sqrt` `sin` `cos` `floor` `ceil` `round` `fract` `sign` (1). `div` and `mod` by 0 give 0. |
+| Math | `add` `mul` `min` `max` (2 to 8 operands), `sub` `div` `mod` `pow` `atan2`, `clamp` `mix` `smoothstep` (3), `neg` `abs` `sqrt` `sin` `cos` `floor` `ceil` `round` `fract` `sign` `saturate` (1). `div` and `mod` by 0, a negative `sqrt` and an overflowing `pow` give 0; `smoothstep` with equal edges is a step. |
 | Comparison and logic | `lt` `lte` `gt` `gte` `eq` give 1 or 0; `and` `or` `not`; `if: [condition, a, b]` |
+| Motion only | `"time"` and `{ "node", "property", "component", "space" }` read time and node values in a driver; a field rejects them, and a driver rejects the field inputs below. |
 | Vectors | `vec: [x, y, z]`, `dot` `cross` `distance`, `length` `normalize`, `x` `y` `z` read a component |
 | Attributes | `{ "attr": "position" \| "normal" }` with optional `component`, `{ "attr": "index" }`, `{ "attr": "tag", "name": "top" }` |
 | Random | `{ "noise": { "scale", "seed", "octaves", "at" } }` smooth value noise in 0 to 1 at a position (default the element's), `{ "random": { "seed" } }` a number in 0 to 1 per element |

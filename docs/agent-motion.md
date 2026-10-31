@@ -165,12 +165,12 @@ Not covered yet: `use_*` switches on `child_of`, `limit_scale`, `copy_transforms
 XYZ in degrees) or `{ "kind": "material", "id", "property" }` for `emission`, `metallic` and `roughness`, or with a
 `component` for `color` and `emissiveColor` (`x`, `y`, `z` for red, green, blue). A driven property cannot also have a track.
 
-An expression is JSON data and is never run as code: a number, the string `"time"`, a read of another node
-`{ "node", "property", "component", "space" }`, or one operator object such as `{ "mul": ["time", 2] }`. Operators: `add`,
-`mul`, `min`, `max` (2 to 8 operands), `sub`, `div`, `pow`, `mod`, `atan2`, `gt`, `lt`, `neg`, `abs`, `sin`, `cos` (radians),
-`sqrt`, `floor`, `fract`, `saturate`, `clamp(x, low, high)`, `mix(a, b, t)`, `smoothstep(low, high, x)` and
-`if(condition, then, otherwise)`. An expression has at most 64 parts and 8 levels, and a result that is not finite is an
-error. The operator names follow the field expressions of the mesh addon where they overlap.
+An expression is JSON data and is never run as code. It is the motion context of the one expression language described in
+[field expressions](mesh.md#field-expressions): the same operators with the same results, the same syntax, and limits of 64
+parts and 8 levels. Where a field reads mesh attributes, a driver reads `"time"` (seconds) or a node
+`{ "node", "property", "component", "space" }`, for example `{ "mul": ["time", 2] }`; vectors, attributes and noise are field
+inputs and are rejected here with a message that says so. `sin` and `cos` take radians. One difference remains: `div` by zero
+gives 0 in a field but is a non-finite result in a driver, which is an error, so a mistaken driver is reported.
 
 ### Evaluation order
 
