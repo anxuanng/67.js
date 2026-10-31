@@ -1,7 +1,8 @@
 # glTF asset bridge
 
 `src/gltf.js` converts glTF 2.0 assets into Renderer67 parts.
-It uses the optional Three.js `GLTFLoader` for decoding, without creating a Three.js renderer.
+It decodes GLB and glTF files with its own parser (`src/gltf-decode.js`), so the addon does not import Three.js.
+A box with the addon is 67,467 bytes gzip, against 159,422 when it used `GLTFLoader`.
 The core renderer does not import this addon.
 
 ```js
@@ -91,7 +92,7 @@ The importer rejects a requested texture that fails to decode, rather than retur
 
 ## Animation and ownership
 
-`animations` contains the decoded Three.js animation clips, including their names, durations, and tracks.
+`animations` contains the decoded animation clips, including their names, durations, and tracks. Each track has `name` (`Node.position`, `Node.quaternion`, `Node.scale` or `Node.morphTargetInfluences`), `times`, `values`, `getInterpolation()` and `createInterpolant(result)`, the same fields the Three.js clips had.
 `applyAnimation(time, clipIndex = 0)` evaluates node and joint animation at an absolute time in seconds.
 Time clamps to the selected clip's duration.
 The hook updates the existing part matrices and returns the same `parts` array.
@@ -148,7 +149,8 @@ Without the matching decoder, a file that uses a compression extension fails wit
 
 ### Decoders
 
-The decoders are the Three.js loaders. 67.js does not bundle or fetch their wasm files, so you choose where they are served.
+The decoders are the Three.js loaders, and they stay yours: only an application that passes one imports Three.js. 67.js does not bundle or fetch their wasm files, so you choose where they are served.
+A Draco loader needs `decodeDracoFile(buffer, onLoad, attributeIds, attributeTypes, colorSpace, onError)`, a meshopt decoder needs `ready` and `decodeGltfBuffer`, and a KTX2 loader needs `load(url, onLoad, onProgress, onError)`.
 
 ```js
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';

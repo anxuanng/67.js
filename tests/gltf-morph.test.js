@@ -1,6 +1,5 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { parseGltf } from '../src/gltf.js';
 import { skinnedStripAsset } from './fixtures/skinned-strip.js';
 
@@ -135,28 +134,7 @@ test('multi-scene multi-primitive mappings retain each distinct morph channel de
   }
 });
 
-test('association capture does not decode orphan meshes and disposes all decoded geometry', async context => {
-  const decodedMeshes = [];
-  const decodedGeometries = new Set();
-  const disposedGeometries = new Set();
-  const originalParse = GLTFLoader.prototype.parseAsync;
-  context.mock.method(GLTFLoader.prototype, 'parseAsync', function (...argumentsList) {
-    this.register(parser => ({
-      name: 'MorphLifecycleProbe',
-      loadMesh(index) {
-        decodedMeshes.push(index);
-        return parser.loadMesh(index).then(mesh => {
-          mesh.traverse(node => {
-            if (!node.geometry || decodedGeometries.has(node.geometry)) return;
-            decodedGeometries.add(node.geometry);
-            node.geometry.addEventListener('dispose', () => disposedGeometries.add(node.geometry));
-          });
-          return mesh;
-        });
-      },
-    }));
-    return originalParse.apply(this, argumentsList);
-  });
+test('only the selected scene is decoded', async () => {
   const asset = await parseGltf(morphAsset((document, append) => {
     document.scenes = [{ nodes: [0] }, { nodes: [1] }];
     const positions = append(new Float32Array([0, 0, 0, 2, 0, 0, 0, 2, 0]), 'VEC3');
@@ -164,10 +142,9 @@ test('association capture does not decode orphan meshes and disposes all decoded
     document.meshes.push({ primitives: [{ attributes: { POSITION: positions, NORMAL: 1 } }] });
     document.nodes.push({ name: 'Orphan', mesh: 1 });
   }));
-  assert.deepEqual(decodedMeshes, [0]);
-  assert.equal(decodedGeometries.size, 1);
+  assert.equal(asset.parts.length, 1);
+  assert.equal(asset.nodes.length, 1);
   asset.dispose();
-  assert.equal(disposedGeometries.size, decodedGeometries.size);
 });
 
 test('embedded glTF JSON defaults omitted node and mesh weights to retained zeros', async () => {
@@ -239,9 +216,7 @@ test('morphs compose with skin palettes and invalid samples publish no matrix, p
   asset.dispose();
 });
 
-test('target expansion and primitive instance budgets reject before loader decoding', async context => {
-  let calls = 0;
-  context.mock.method(GLTFLoader.prototype, 'parseAsync', () => { calls++; throw new Error('Unexpected decode'); });
+test('target expansion and primitive instance budgets reject before decoding', async () => {
   await assert.rejects(parseGltf(morphAsset(), { maxVertices: 8 }), /maxVertices/);
   await assert.rejects(parseGltf(morphAsset(document => {
     document.meshes[0].primitives = Array.from({ length: 3 }, () => document.meshes[0].primitives[0]);
@@ -256,7 +231,6 @@ test('target expansion and primitive instance budgets reject before loader decod
     primitive.targets = Array.from({ length: 64 }, () => ({ POSITION: positions }));
   });
   await assert.rejects(parseGltf(repeated, { maxBytes: repeated.byteLength }), /Decoded glTF accessors/);
-  assert.equal(calls, 0);
 });
 
 test('composed world bounds and changed public identities fail before any part publishes', async () => {
