@@ -9,6 +9,7 @@ import { clone as cloneSkeleton } from 'three/addons/utils/SkeletonUtils.js';
 import { Renderer67 } from '/src/renderer.js';
 import { createEnvironmentMap } from '/src/hdri.js';
 import { parseGltf } from '/src/gltf.js';
+import { generateGeometryLods } from '/src/mesh-lod.js';
 
 const AMBIENT_RADIANCE = 0.3;
 const SECONDS_PER_CHARACTER_OFFSET = 0.4;
@@ -32,7 +33,14 @@ function engineMaterial(material) {
   return { tag: 'surface', emission: 0, ...rest, ...(opacity === undefined ? {} : { alphaMode: 'blend', opacity }) };
 }
 
-export async function create67Adapter(canvas, scene, characters) {
+// The options turn culling and level selection off one at a time, so each one's share of a measured gain can be told apart.
+function levelsForScene(scene) {
+  const levels = new Map();
+  for (const [name, ratios] of Object.entries(scene.lods ?? {})) levels.set(name, generateGeometryLods(scene.geometries[name], { ratios }));
+  return levels;
+}
+
+export async function create67Adapter(canvas, scene, characters, { culling = true, lods = true } = {}) {
   const environment = {
     world: true, fillIntensity: 0, ambientIntensity: 1, fogDensity: 0,
     lightDirection: scene.sun.direction, keyColor: scene.sun.color,
@@ -41,8 +49,10 @@ export async function create67Adapter(canvas, scene, characters) {
       width: 8, height: 4, data: new Float32Array(8 * 4 * 3).fill(AMBIENT_RADIANCE), showBackground: true,
     }),
   };
+  const lodsByGeometry = lods ? levelsForScene(scene) : new Map();
   const parts = scene.objects.map((object, index) => ({
     name: `object-${index}`, geometry: scene.geometries[object.geometry], matrix: object.matrix, material: engineMaterial(object.material),
+    ...(lodsByGeometry.has(object.geometry) ? { lods: lodsByGeometry.get(object.geometry) } : {}),
   }));
   const assets = [];
   if (characters) {
@@ -57,7 +67,7 @@ export async function create67Adapter(canvas, scene, characters) {
     ? { eye: scene.sun.direction.map(value => value * 5), target: [0, 0, 0], up: [0, 1, 0], extent: scene.shadowExtent, near: 0.1, far: 150 }
     : {};
   const renderer = new Renderer67(canvas, parts, {
-    ground: false, hdr: true, depth: false, samples: 4, pixelRatio: 1, memoryBudgetMiB: 2048, world: true, environment, shadowBounds,
+    ground: false, hdr: true, depth: false, samples: 4, pixelRatio: 1, memoryBudgetMiB: 2048, world: true, environment, shadowBounds, culling,
   });
   renderer.resize();
   const frame = { eye: scene.camera.eye, target: scene.camera.target, up: [0, 1, 0], fov: scene.camera.fov, near: scene.camera.near, far: scene.camera.far, environment, time: 0, exposure: 1, effects: {} };

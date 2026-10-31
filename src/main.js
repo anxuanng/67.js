@@ -1,6 +1,7 @@
 import './style.css';
 import './brand.js';
 import { Renderer67 } from './renderer.js';
+import { createAdaptiveResolution, createGpuTimer } from './adaptive-quality.js';
 import { createModel } from './model.js';
 import { downloadGlb } from './export.js';
 import { assemblyOffset } from './assembly.js';
@@ -8,6 +9,10 @@ import { approachValue } from './preview-transition.js';
 
 const canvas = document.querySelector('#viewport');
 const renderParameters = new URLSearchParams(location.search);
+const isExport = renderParameters.get('export') === '1';
+// Live viewing lowers the resolution when frames run long. An export keeps full quality, so it has none.
+const adaptiveResolution = isExport ? null : createAdaptiveResolution({ exporting: false });
+let selectedPixelRatio = isExport ? 1 : 1.5;
 const parts = createModel();
 const finishes = {
   yellow: { name: 'Factory yellow', color: [0.62, 0.34, 0.035], surface: [0.48, 0.43] },
@@ -75,10 +80,18 @@ function draw(time) {
   lastTime = time;
   renderer.render(camera());
   cpuTotal += renderer.cpuMilliseconds;
+  adaptResolution();
   frameCount++;
   document.querySelector('#cpu').textContent = `${(cpuTotal / frameCount).toFixed(2)} ms CPU`;
   if (frameCount > 60) { cpuTotal = renderer.cpuMilliseconds; frameCount = 1; }
   if (state.rotating || state.touring || state.assembly !== state.assemblyTarget) invalidate();
+}
+
+function adaptResolution() {
+  if (!adaptiveResolution) return;
+  const previousRatio = renderer.pixelRatio;
+  renderer.pixelRatio = selectedPixelRatio * adaptiveResolution.update(renderer.gpuMilliseconds ?? renderer.cpuMilliseconds);
+  if (renderer.pixelRatio !== previousRatio) renderer.resize();
 }
 
 function invalidate() {
@@ -87,7 +100,7 @@ function invalidate() {
 
 function initialize() {
   const visibleParts = state.layer === 'all' ? parts : parts.filter((part) => part.assembly?.layer === state.layer);
-  renderer = new Renderer67(canvas, visibleParts, { hdr: true, samples: Number(renderParameters.get('samples') ?? 4), memoryBudgetMiB: Number(renderParameters.get('memory') ?? 256), pixelRatio: renderParameters.get('export') === '1' ? 1 : 1.5, shadowBounds: { extent: 6, eye: [-3, 7, 4], target: [0, 1.5, 0] } });
+  renderer = new Renderer67(canvas, visibleParts, { hdr: true, samples: Number(renderParameters.get('samples') ?? 4), memoryBudgetMiB: Number(renderParameters.get('memory') ?? 256), pixelRatio: selectedPixelRatio, createGpuTimer: isExport ? null : createGpuTimer, shadowBounds: { extent: 6, eye: [-3, 7, 4], target: [0, 1.5, 0] } });
   document.querySelector('#parts').textContent = `${visibleParts.length} parts · ${Math.round(renderer.triangles / 1000)}k triangles`;
   document.querySelector('#calls').textContent = `${renderer.batches.length} geometry draws`;
   invalidate();
@@ -230,7 +243,8 @@ document.querySelector('#inspect').addEventListener('click', (event) => {
 });
 document.querySelector('#quality').addEventListener('change', (event) => {
   if (!renderer) return;
-  renderer.pixelRatio = Number(event.target.value);
+  selectedPixelRatio = Number(event.target.value);
+  renderer.pixelRatio = selectedPixelRatio * (adaptiveResolution?.scale ?? 1);
   renderer.resize();
   invalidate();
 });

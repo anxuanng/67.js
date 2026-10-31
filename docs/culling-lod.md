@@ -1,0 +1,45 @@
+# Culling, levels of detail and adaptive resolution
+
+`Renderer67` skips what the camera can not see and can draw far copies of a model with fewer triangles. Both are decided on the CPU from the camera and the instance matrices alone. A scene that has no off-screen parts and no levels draws as before.
+
+## Culling
+
+On by default, with no schema and no option to set. Each frame the renderer tests every instance of a batch (the parts that share a geometry and a material) against the six planes of the view frustum, using the geometry's bounding sphere scaled by the instance matrix. The colour pass then draws only the instances that touch the frustum. A batch with nothing visible costs no draw call, a batch that is entirely visible uses its full instance buffer as before, and a partly visible batch uploads the visible instances once.
+
+What is not culled, because its bounding sphere would not hold or because it draws in another pass:
+
+- Skinned and morphed parts.
+- `foliage`, `grass`, `water`, `fire` and `smoke` materials, whose vertex shader moves vertices.
+- Parts with an `assembly`.
+- Alpha-blended, `liquid` and `foam` batches.
+- The shadow passes. A caster outside the view can still shadow the view, so shadow maps draw every caster.
+
+Pass `culling: false` to the `Renderer67` options to turn it off, for example to compare a picture.
+
+## Levels of detail
+
+Give a part `lods`, the array that `generateGeometryLods(geometry, { ratios })` returns (`generateAssetLods` gives one asset per level, so use the geometries of its parts). Level 0 must be the part's own `geometry`. Parts with the same geometry and the same `lods` array share one batch, and each instance picks its own level.
+
+```js
+const levels = generateGeometryLods(rock, { ratios: [0.25, 0.06] });
+const parts = positions.map((position, index) => ({ name: `rock-${index}`, geometry: rock, lods: levels, matrix: translate(position), material }));
+const renderer = new Renderer67(canvas, parts, { lodPixelError: 1 });
+```
+
+An instance uses the coarsest level whose `error` (the farthest its vertices lie from level 0, in geometry units, times the instance's largest scale) covers at most `lodPixelError` pixels on screen at its distance. The default is 1 pixel. Level 0 is always allowed, so a close instance is never reduced.
+
+`lods` is refused for the parts that culling skips (the list above), because their levels could not be chosen from a bounding sphere.
+
+## Determinism
+
+The selection is a pure function of the geometry, the instance matrices, the camera and the canvas height. It keeps no state between frames, so a seek to any time draws the same instances at the same levels as playing up to it. `tests/render-culling.test.js` checks this on the selection, and `npm run benchmark:runtime` draws the first frame again after every measured frame and fails when the picture differs.
+
+## GPU timing and adaptive resolution
+
+`createGpuTimer(context)` from `src/adaptive-quality.js` wraps `EXT_disjoint_timer_query_webgl2` (it returns `null` without the extension). Pass the function itself as the `createGpuTimer` option of `Renderer67` and the renderer times each frame. A result arrives a few frames late, so `renderer.gpuMilliseconds` holds the latest finished one, or `null` after a disjoint measurement. Without the option nothing is timed and the timer code is not bundled.
+
+`createAdaptiveResolution({ exporting: false, targetMilliseconds, minimumScale, step, window })` from `src/adaptive-quality.js` returns a controller. Feed it one frame time per frame with `update(milliseconds)` and multiply the pixel ratio by the scale it returns. It lowers the scale by one `step` when the average of `window` frames is over the target, raises it only after a whole window under 0.6 of the target, and never goes below `minimumScale` (default 0.5). `createAdaptiveResolution({ exporting: true })` throws: exports keep full quality, and the live viewer in `src/main.js` builds a controller only when its `export` parameter is not `1`.
+
+## Measured
+
+See `bench/runtime/README.md`, scene `large-outdoor`.
