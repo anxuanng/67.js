@@ -42,6 +42,12 @@ own mesh report:
 | dice | Rounded edges plus 21 recessed pips, in one piece (harder) |
 | flange | A hollow pipe with flanges and 12 bolt holes, in one piece (harder) |
 | chair | Many exact parts, with open gaps between back slats (harder) |
+| chamfer-plate | Long: a plate with a chamfered top rim and six blind pockets, in one piece (chamfer edit, six cuts) |
+| slotted-rail | Long: a bar with every edge chamfered and five through slots, in one piece |
+| crate-revision | Long: starts from the crate recipe in the prompt; raise the lid, then drill a blind hole into the body |
+| bracket-revision | Long: starts from the L bracket recipe in the prompt; lengthen the base, recentre it, move to three holes |
+| workshop | Long: a whole scene, a floor slab with a table, a chair and a mug, 12 parts that rest on each other |
+| robot-shot | Long: the robot with both hands placed by IK, then a side-on camera, checked from the exported recipe |
 
 `references.mjs` holds one hand-built solution per task. `tests/agent-modeling-suite.test.js` checks that every
 reference passes and that broken variants fail. That keeps a wrong checker from costing an agent run.
@@ -63,6 +69,27 @@ the session, goes to `results/<run>.json`. Grade one recipe by hand with
 
 Compare runs only when they use the same model and suite version. A single run per task is noisy, so read differences
 of one or two tasks as noise.
+
+### Several runs and several models
+
+`--runs 3` repeats every task three times, each in a fresh session. Raw files are named `<task>-<attempt>`, each record
+has an `attempt`, and the summary adds `byModel`: runs, passes, success rate, tool calls, tool errors, input and output
+tokens and cost for the model and for each of its tasks. `--resume <run name> --runs 3` skips the attempts already
+recorded and continues. One run file holds one model, so a second model is a second run:
+
+```sh
+node bench/agent-modeling/run.mjs --claude <path to claude> --model sonnet --runs 3 --label long
+node bench/agent-modeling/run.mjs --claude <path to claude> --model haiku --runs 3 --label long
+node bench/agent-modeling/aggregate.mjs bench/agent-modeling/results/<sonnet run>.json bench/agent-modeling/results/<haiku run>.json
+```
+
+`aggregate.mjs` prints one row per model and one per task. Recorded failure details have local paths replaced by
+`<local path>`, and `tests/agent-suite-aggregate.test.js` fails if a results file holds one.
+
+The six long tasks (from `chamfer-plate` on) are meant to be hard for a single `scene_create`: they need sub-element
+edits (chamfers, cuts), changes to a given scene, many parts or a posed character with a camera. Their references pass
+and each plausible wrong variant fails the right check (`tests/agent-modeling-suite.test.js`), but no model has run
+them yet, so how hard they are is not measured.
 
 ## Look score
 

@@ -1,0 +1,3612 @@
+{
+  "run": "2026-10-31-08-50-haiku-long",
+  "model": "claude-haiku-5-5",
+  "date": "2026-10-31T10:38:12.502Z",
+  "skill": false,
+  "runsPerTask": 3,
+  "passed": 59,
+  "tasks": 66,
+  "toolCalls": 497,
+  "costUsd": 10.8,
+  "byModel": {
+    "claude-haiku-5-5": {
+      "runs": 66,
+      "passed": 59,
+      "successRate": 0.894,
+      "toolCalls": 497,
+      "toolErrors": 40,
+      "inputTokens": 63187451,
+      "outputTokens": 467279,
+      "costUsd": 10.8,
+      "tasks": {
+        "crate": {
+          "runs": 3,
+          "passed": 3,
+          "successRate": 1,
+          "toolCalls": 18,
+          "toolErrors": 0,
+          "inputTokens": 2474546,
+          "outputTokens": 17586,
+          "costUsd": 0.46
+        },
+        "bolt": {
+          "runs": 3,
+          "passed": 3,
+          "successRate": 1,
+          "toolCalls": 22,
+          "toolErrors": 2,
+          "inputTokens": 2321444,
+          "outputTokens": 12643,
+          "costUsd": 0.44
+        },
+        "window": {
+          "runs": 3,
+          "passed": 2,
+          "successRate": 0.667,
+          "toolCalls": 18,
+          "toolErrors": 1,
+          "inputTokens": 2202232,
+          "outputTokens": 12979,
+          "costUsd": 0.43
+        },
+        "table": {
+          "runs": 3,
+          "passed": 3,
+          "successRate": 1,
+          "toolCalls": 19,
+          "toolErrors": 0,
+          "inputTokens": 2071650,
+          "outputTokens": 9224,
+          "costUsd": 0.41
+        },
+        "mug": {
+          "runs": 3,
+          "passed": 3,
+          "successRate": 1,
+          "toolCalls": 22,
+          "toolErrors": 4,
+          "inputTokens": 2703640,
+          "outputTokens": 35833,
+          "costUsd": 0.54
+        },
+        "gear": {
+          "runs": 3,
+          "passed": 3,
+          "successRate": 1,
+          "toolCalls": 22,
+          "toolErrors": 1,
+          "inputTokens": 2934555,
+          "outputTokens": 29828,
+          "costUsd": 0.53
+        },
+        "fence": {
+          "runs": 3,
+          "passed": 3,
+          "successRate": 1,
+          "toolCalls": 21,
+          "toolErrors": 2,
+          "inputTokens": 2570848,
+          "outputTokens": 10072,
+          "costUsd": 0.44
+        },
+        "bracket": {
+          "runs": 3,
+          "passed": 3,
+          "successRate": 1,
+          "toolCalls": 20,
+          "toolErrors": 0,
+          "inputTokens": 2610846,
+          "outputTokens": 18830,
+          "costUsd": 0.47
+        },
+        "soap": {
+          "runs": 3,
+          "passed": 2,
+          "successRate": 0.667,
+          "toolCalls": 15,
+          "toolErrors": 2,
+          "inputTokens": 2005690,
+          "outputTokens": 16373,
+          "costUsd": 0.42
+        },
+        "crate-uv": {
+          "runs": 3,
+          "passed": 2,
+          "successRate": 0.667,
+          "toolCalls": 19,
+          "toolErrors": 0,
+          "inputTokens": 2675210,
+          "outputTokens": 30413,
+          "costUsd": 0.51
+        },
+        "crate-wood": {
+          "runs": 3,
+          "passed": 3,
+          "successRate": 1,
+          "toolCalls": 45,
+          "toolErrors": 3,
+          "inputTokens": 5081034,
+          "outputTokens": 29694,
+          "costUsd": 0.65
+        },
+        "dice": {
+          "runs": 3,
+          "passed": 2,
+          "successRate": 0.667,
+          "toolCalls": 21,
+          "toolErrors": 1,
+          "inputTokens": 2927323,
+          "outputTokens": 36968,
+          "costUsd": 0.57
+        },
+        "flange": {
+          "runs": 3,
+          "passed": 3,
+          "successRate": 1,
+          "toolCalls": 19,
+          "toolErrors": 4,
+          "inputTokens": 2361826,
+          "outputTokens": 20094,
+          "costUsd": 0.47
+        },
+        "chair": {
+          "runs": 3,
+          "passed": 3,
+          "successRate": 1,
+          "toolCalls": 17,
+          "toolErrors": 3,
+          "inputTokens": 2382424,
+          "outputTokens": 13197,
+          "costUsd": 0.47
+        },
+        "arm-reach": {
+          "runs": 3,
+          "passed": 3,
+          "successRate": 1,
+          "toolCalls": 27,
+          "toolErrors": 3,
+          "inputTokens": 3568086,
+          "outputTokens": 25148,
+          "costUsd": 0.55
+        },
+        "robot-reach": {
+          "runs": 3,
+          "passed": 3,
+          "successRate": 1,
+          "toolCalls": 32,
+          "toolErrors": 5,
+          "inputTokens": 3373798,
+          "outputTokens": 10438,
+          "costUsd": 0.25
+        },
+        "chamfer-plate": {
+          "runs": 3,
+          "passed": 3,
+          "successRate": 1,
+          "toolCalls": 21,
+          "toolErrors": 0,
+          "inputTokens": 2997903,
+          "outputTokens": 27610,
+          "costUsd": 0.53
+        },
+        "slotted-rail": {
+          "runs": 3,
+          "passed": 2,
+          "successRate": 0.667,
+          "toolCalls": 18,
+          "toolErrors": 2,
+          "inputTokens": 2606847,
+          "outputTokens": 18388,
+          "costUsd": 0.47
+        },
+        "crate-revision": {
+          "runs": 3,
+          "passed": 3,
+          "successRate": 1,
+          "toolCalls": 21,
+          "toolErrors": 1,
+          "inputTokens": 2609513,
+          "outputTokens": 13488,
+          "costUsd": 0.45
+        },
+        "bracket-revision": {
+          "runs": 3,
+          "passed": 3,
+          "successRate": 1,
+          "toolCalls": 23,
+          "toolErrors": 0,
+          "inputTokens": 2752508,
+          "outputTokens": 36614,
+          "costUsd": 0.54
+        },
+        "workshop": {
+          "runs": 3,
+          "passed": 1,
+          "successRate": 0.333,
+          "toolCalls": 16,
+          "toolErrors": 0,
+          "inputTokens": 2102657,
+          "outputTokens": 15252,
+          "costUsd": 0.43
+        },
+        "robot-shot": {
+          "runs": 3,
+          "passed": 3,
+          "successRate": 1,
+          "toolCalls": 41,
+          "toolErrors": 6,
+          "inputTokens": 5852871,
+          "outputTokens": 26607,
+          "costUsd": 0.76
+        }
+      }
+    }
+  },
+  "records": [
+    {
+      "task": "crate",
+      "attempt": 1,
+      "pass": true,
+      "passed": 8,
+      "total": 8,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 3,
+      "toolErrors": 0,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_create": 1,
+        "scene_export_recipe": 1,
+        "scene_dispose": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "mesh",
+          "box"
+        ],
+        "meshOperations": [
+          "boolean"
+        ],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 1,
+            "side": 1,
+            "three-quarter": 1
+          },
+          "mean": 1
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/1/crate-front.png",
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/1/crate-side.png",
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/1/crate-three-quarter.png"
+        ]
+      },
+      "turns": 5,
+      "costUsd": 0.133454,
+      "inputTokens": 519910,
+      "outputTokens": 4200,
+      "wallSeconds": 45,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "bolt",
+      "attempt": 1,
+      "pass": true,
+      "passed": 7,
+      "total": 7,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 8,
+      "toolErrors": 1,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_capabilities": 1,
+        "scene_create": 1,
+        "mesh_inspect": 2,
+        "scene_inspect": 1,
+        "scene_look": 1,
+        "scene_export_recipe": 1,
+        "scene_dispose": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "cylinder"
+        ],
+        "meshOperations": [],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 1,
+            "side": 1,
+            "three-quarter": 1
+          },
+          "mean": 1
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/1/bolt-front.png",
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/1/bolt-side.png",
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/1/bolt-three-quarter.png"
+        ]
+      },
+      "turns": 10,
+      "costUsd": 0.14778673,
+      "inputTokens": 776626,
+      "outputTokens": 4885,
+      "wallSeconds": 64,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "window",
+      "attempt": 1,
+      "pass": false,
+      "passed": 4,
+      "total": 5,
+      "failed": [
+        "volume: 0.02419 m3"
+      ],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 6,
+      "toolErrors": 1,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_create": 1,
+        "mesh_inspect": 2,
+        "scene_look": 1,
+        "scene_export_recipe": 1,
+        "scene_dispose": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "mesh"
+        ],
+        "meshOperations": [
+          "boolean"
+        ],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 0.8309,
+            "side": 1,
+            "three-quarter": 0.9227
+          },
+          "mean": 0.9179
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/1/window-front.png",
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/1/window-side.png",
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/1/window-three-quarter.png"
+        ]
+      },
+      "turns": 8,
+      "costUsd": 0.13674543,
+      "inputTokens": 647152,
+      "outputTokens": 3968,
+      "wallSeconds": 59,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "table",
+      "attempt": 1,
+      "pass": true,
+      "passed": 6,
+      "total": 6,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 6,
+      "toolErrors": 0,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_create": 1,
+        "scene_capabilities": 1,
+        "mesh_inspect": 1,
+        "scene_look": 1,
+        "scene_export_recipe": 1,
+        "scene_dispose": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "box"
+        ],
+        "meshOperations": [],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 1,
+            "side": 0.1684,
+            "three-quarter": 0.6073
+          },
+          "mean": 0.5919
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/1/table-front.png",
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/1/table-side.png",
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/1/table-three-quarter.png"
+        ]
+      },
+      "turns": 8,
+      "costUsd": 0.13569538,
+      "inputTokens": 650173,
+      "outputTokens": 3220,
+      "wallSeconds": 79,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "mug",
+      "attempt": 1,
+      "pass": true,
+      "passed": 7,
+      "total": 7,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 6,
+      "toolErrors": 0,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_capabilities": 1,
+        "scene_create": 1,
+        "mesh_inspect": 1,
+        "scene_look": 1,
+        "scene_export_recipe": 1,
+        "scene_dispose": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "mesh"
+        ],
+        "meshOperations": [
+          "boolean",
+          "translate"
+        ],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 0.6395,
+            "side": 1,
+            "three-quarter": 0.7042
+          },
+          "mean": 0.7812
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/1/mug-front.png",
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/1/mug-side.png",
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/1/mug-three-quarter.png"
+        ]
+      },
+      "turns": 8,
+      "costUsd": 0.16809023,
+      "inputTokens": 685277,
+      "outputTokens": 12150,
+      "wallSeconds": 80,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "gear",
+      "attempt": 1,
+      "pass": true,
+      "passed": 5,
+      "total": 5,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 7,
+      "toolErrors": 0,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_capabilities": 1,
+        "scene_create": 1,
+        "scene_inspect": 1,
+        "mesh_inspect": 1,
+        "scene_look": 1,
+        "scene_export_recipe": 1,
+        "scene_dispose": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "extrude"
+        ],
+        "meshOperations": [],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 0.9868,
+            "side": 0.9868,
+            "three-quarter": 0.9241
+          },
+          "mean": 0.9659
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/1/gear-front.png",
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/1/gear-side.png",
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/1/gear-three-quarter.png"
+        ]
+      },
+      "turns": 9,
+      "costUsd": 0.16704438,
+      "inputTokens": 925373,
+      "outputTokens": 8275,
+      "wallSeconds": 62,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "fence",
+      "attempt": 1,
+      "pass": true,
+      "passed": 6,
+      "total": 6,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 6,
+      "toolErrors": 0,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_capabilities": 1,
+        "scene_create": 1,
+        "scene_look": 1,
+        "mesh_inspect": 1,
+        "scene_export_recipe": 1,
+        "scene_dispose": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "box"
+        ],
+        "meshOperations": [],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 1,
+            "side": 1,
+            "three-quarter": 1
+          },
+          "mean": 1
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/1/fence-front.png",
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/1/fence-side.png",
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/1/fence-three-quarter.png"
+        ]
+      },
+      "turns": 8,
+      "costUsd": 0.14056723,
+      "inputTokens": 770845,
+      "outputTokens": 3031,
+      "wallSeconds": 45,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "bracket",
+      "attempt": 1,
+      "pass": true,
+      "passed": 6,
+      "total": 6,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 8,
+      "toolErrors": 0,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_create": 1,
+        "mesh_inspect": 1,
+        "mesh_edit": 1,
+        "scene_apply": 1,
+        "scene_inspect": 1,
+        "scene_look": 1,
+        "scene_export_recipe": 1,
+        "scene_dispose": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "mesh"
+        ],
+        "meshOperations": [
+          "boolean"
+        ],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 1,
+            "side": 1,
+            "three-quarter": 1
+          },
+          "mean": 1
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/1/bracket-front.png",
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/1/bracket-side.png",
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/1/bracket-three-quarter.png"
+        ]
+      },
+      "turns": 10,
+      "costUsd": 0.15878138000000003,
+      "inputTokens": 910608,
+      "outputTokens": 6109,
+      "wallSeconds": 55,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "soap",
+      "attempt": 1,
+      "pass": true,
+      "passed": 7,
+      "total": 7,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 8,
+      "toolErrors": 1,
+      "toolsByName": {
+        "scene_capabilities": 1,
+        "ToolSearch": 1,
+        "scene_create": 2,
+        "mesh_inspect": 1,
+        "scene_inspect": 1,
+        "scene_look": 1,
+        "scene_export_recipe": 1,
+        "scene_dispose": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "mesh"
+        ],
+        "meshOperations": [
+          "translate",
+          "bevel"
+        ],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 1,
+            "side": 1,
+            "three-quarter": 1
+          },
+          "mean": 1
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/1/soap-front.png",
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/1/soap-side.png",
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/1/soap-three-quarter.png"
+        ]
+      },
+      "turns": 10,
+      "costUsd": 0.16493373,
+      "inputTokens": 954243,
+      "outputTokens": 7851,
+      "wallSeconds": 73,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "crate-uv",
+      "attempt": 1,
+      "pass": false,
+      "passed": 7,
+      "total": 9,
+      "failed": [
+        "recessed panel on +X: 1 loops at x = 0.29",
+        "recessed panel on -Z: 1 loops at z = -0.29"
+      ],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 5,
+      "toolErrors": 0,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_create": 1,
+        "mesh_inspect": 1,
+        "scene_look": 1,
+        "scene_export_recipe": 1,
+        "scene_dispose": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "mesh"
+        ],
+        "meshOperations": [
+          "inset_region",
+          "extrude_individual",
+          "uv_unwrap",
+          "boolean"
+        ],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 1,
+            "side": 1,
+            "three-quarter": 1
+          },
+          "mean": 1
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/1/crate-uv-front.png",
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/1/crate-uv-side.png",
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/1/crate-uv-three-quarter.png"
+        ]
+      },
+      "turns": 7,
+      "costUsd": 0.16842168,
+      "inputTokens": 804654,
+      "outputTokens": 10807,
+      "wallSeconds": 90,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "crate-wood",
+      "attempt": 1,
+      "pass": true,
+      "passed": 9,
+      "total": 9,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 17,
+      "toolErrors": 1,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_capabilities": 1,
+        "scene_create": 1,
+        "mesh_inspect": 1,
+        "scene_look": 6,
+        "scene_apply": 6,
+        "scene_export_recipe": 1,
+        "scene_dispose": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "mesh"
+        ],
+        "meshOperations": [
+          "boolean"
+        ],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 1,
+            "side": 1,
+            "three-quarter": 1
+          },
+          "mean": 1
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/1/crate-wood-front.png",
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/1/crate-wood-side.png",
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/1/crate-wood-three-quarter.png"
+        ]
+      },
+      "turns": 19,
+      "costUsd": 0.22225778,
+      "inputTokens": 1635796,
+      "outputTokens": 12051,
+      "wallSeconds": 103,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "dice",
+      "attempt": 1,
+      "pass": true,
+      "passed": 12,
+      "total": 12,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 8,
+      "toolErrors": 1,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "Skill": 1,
+        "scene_capabilities": 1,
+        "scene_create": 2,
+        "mesh_inspect": 1,
+        "scene_look": 1,
+        "scene_export_recipe": 1,
+        "scene_dispose": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "mesh"
+        ],
+        "meshOperations": [
+          "bevel",
+          "boolean"
+        ],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 1,
+            "side": 1,
+            "three-quarter": 1
+          },
+          "mean": 1
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/1/dice-front.png",
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/1/dice-side.png",
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/1/dice-three-quarter.png"
+        ]
+      },
+      "turns": 11,
+      "costUsd": 0.21488328,
+      "inputTokens": 1053373,
+      "outputTokens": 16394,
+      "wallSeconds": 110,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "flange",
+      "attempt": 1,
+      "pass": true,
+      "passed": 9,
+      "total": 9,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 7,
+      "toolErrors": 3,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_create": 3,
+        "mesh_inspect": 2,
+        "scene_look": 1,
+        "scene_export_recipe": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "mesh"
+        ],
+        "meshOperations": [
+          "boolean"
+        ],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 1,
+            "side": 1,
+            "three-quarter": 1
+          },
+          "mean": 1
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/1/flange-front.png",
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/1/flange-side.png",
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/1/flange-three-quarter.png"
+        ]
+      },
+      "turns": 9,
+      "costUsd": 0.16022818000000003,
+      "inputTokens": 787191,
+      "outputTokens": 8299,
+      "wallSeconds": 68,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "chair",
+      "attempt": 1,
+      "pass": true,
+      "passed": 7,
+      "total": 7,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 4,
+      "toolErrors": 1,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_create": 2,
+        "scene_export_recipe": 1,
+        "scene_dispose": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "box"
+        ],
+        "meshOperations": [],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 1,
+            "side": 1,
+            "three-quarter": 1
+          },
+          "mean": 1
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/1/chair-front.png",
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/1/chair-side.png",
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/1/chair-three-quarter.png"
+        ]
+      },
+      "turns": 6,
+      "costUsd": 0.13723918000000002,
+      "inputTokens": 645606,
+      "outputTokens": 4303,
+      "wallSeconds": 96,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "arm-reach",
+      "attempt": 1,
+      "pass": true,
+      "passed": 5,
+      "total": 5,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 9,
+      "toolErrors": 0,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "Skill": 1,
+        "scene_capabilities": 1,
+        "scene_create": 2,
+        "mesh_inspect": 2,
+        "scene_dispose": 2,
+        "scene_export_recipe": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "lathe"
+        ],
+        "meshOperations": [],
+        "motionIk": [
+          "two-bone"
+        ],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 0.3596,
+            "side": 0.3623,
+            "three-quarter": 0.3611
+          },
+          "mean": 0.361
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/1/arm-reach-front.png",
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/1/arm-reach-side.png",
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/1/arm-reach-three-quarter.png"
+        ]
+      },
+      "turns": 12,
+      "costUsd": 0.19958913,
+      "inputTokens": 1287647,
+      "outputTokens": 9370,
+      "wallSeconds": 91,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "robot-reach",
+      "attempt": 1,
+      "pass": true,
+      "passed": 2,
+      "total": 2,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 11,
+      "toolErrors": 2,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_capabilities": 1,
+        "scene_asset_catalog": 1,
+        "scene_create_asset": 1,
+        "scene_inspect": 4,
+        "scene_apply": 1,
+        "scene_look": 2,
+        "scene_export_recipe": 1
+      },
+      "features": {
+        "geometryTypes": [],
+        "meshOperations": [],
+        "motionIk": [
+          "two-bone"
+        ],
+        "motionTracks": 0
+      },
+      "look": {
+        "skipped": "asset recipes have no static silhouette"
+      },
+      "turns": 13,
+      "costUsd": 0.07853624000000001,
+      "inputTokens": 1080930,
+      "outputTokens": 3426,
+      "wallSeconds": 60,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "chamfer-plate",
+      "attempt": 1,
+      "pass": true,
+      "passed": 9,
+      "total": 9,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 7,
+      "toolErrors": 0,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "Skill": 1,
+        "scene_capabilities": 1,
+        "scene_create": 1,
+        "mesh_inspect": 1,
+        "scene_look": 1,
+        "scene_export_recipe": 1,
+        "scene_dispose": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "mesh"
+        ],
+        "meshOperations": [
+          "translate",
+          "bevel",
+          "boolean"
+        ],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 1,
+            "side": 1,
+            "three-quarter": 1
+          },
+          "mean": 1
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/1/chamfer-plate-front.png",
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/1/chamfer-plate-side.png",
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/1/chamfer-plate-three-quarter.png"
+        ]
+      },
+      "turns": 10,
+      "costUsd": 0.19147097999999999,
+      "inputTokens": 1022548,
+      "outputTokens": 10661,
+      "wallSeconds": 86,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "slotted-rail",
+      "attempt": 1,
+      "pass": true,
+      "passed": 9,
+      "total": 9,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 7,
+      "toolErrors": 1,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_capabilities": 1,
+        "scene_create": 2,
+        "mesh_inspect": 1,
+        "scene_look": 1,
+        "scene_export_recipe": 1,
+        "scene_dispose": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "mesh"
+        ],
+        "meshOperations": [
+          "translate",
+          "bevel",
+          "boolean"
+        ],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 1,
+            "side": 1,
+            "three-quarter": 1
+          },
+          "mean": 1
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/1/slotted-rail-front.png",
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/1/slotted-rail-side.png",
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/1/slotted-rail-three-quarter.png"
+        ]
+      },
+      "turns": 9,
+      "costUsd": 0.16227578000000004,
+      "inputTokens": 916528,
+      "outputTokens": 6846,
+      "wallSeconds": 76,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "crate-revision",
+      "attempt": 1,
+      "pass": true,
+      "passed": 10,
+      "total": 10,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 6,
+      "toolErrors": 0,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_capabilities": 1,
+        "scene_create": 1,
+        "mesh_edit": 1,
+        "scene_look": 1,
+        "scene_export_recipe": 1,
+        "scene_dispose": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "mesh"
+        ],
+        "meshOperations": [
+          "translate",
+          "inset_individual",
+          "extrude_individual",
+          "inset_region",
+          "extrude_face_region",
+          "boolean"
+        ],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 1,
+            "side": 1,
+            "three-quarter": 1
+          },
+          "mean": 1
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/1/crate-revision-front.png",
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/1/crate-revision-side.png",
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/1/crate-revision-three-quarter.png"
+        ]
+      },
+      "turns": 8,
+      "costUsd": 0.14506323,
+      "inputTokens": 785774,
+      "outputTokens": 4274,
+      "wallSeconds": 52,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "bracket-revision",
+      "attempt": 1,
+      "pass": true,
+      "passed": 7,
+      "total": 7,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 8,
+      "toolErrors": 0,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_capabilities": 1,
+        "scene_create": 1,
+        "scene_checkpoint": 1,
+        "scene_apply": 1,
+        "mesh_inspect": 1,
+        "scene_look": 1,
+        "scene_export_recipe": 1,
+        "scene_dispose": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "box",
+          "mesh"
+        ],
+        "meshOperations": [
+          "boolean"
+        ],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 1,
+            "side": 1,
+            "three-quarter": 1
+          },
+          "mean": 1
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/1/bracket-revision-front.png",
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/1/bracket-revision-side.png",
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/1/bracket-revision-three-quarter.png"
+        ]
+      },
+      "turns": 10,
+      "costUsd": 0.18517458000000003,
+      "inputTokens": 965587,
+      "outputTokens": 13638,
+      "wallSeconds": 103,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "workshop",
+      "attempt": 1,
+      "pass": false,
+      "passed": 8,
+      "total": 10,
+      "failed": [
+        "size: y 0.85 vs 0.9",
+        "chair seat and four table legs: 4 loops at y = 0.49"
+      ],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 6,
+      "toolErrors": 0,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_capabilities": 1,
+        "scene_create": 1,
+        "scene_look": 1,
+        "mesh_inspect": 1,
+        "scene_export_recipe": 1,
+        "scene_dispose": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "box",
+          "cylinder"
+        ],
+        "meshOperations": [],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 0.6634,
+            "side": 0.7748,
+            "three-quarter": 0.9841
+          },
+          "mean": 0.8074
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/1/workshop-front.png",
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/1/workshop-side.png",
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/1/workshop-three-quarter.png"
+        ]
+      },
+      "turns": 8,
+      "costUsd": 0.14097053,
+      "inputTokens": 662809,
+      "outputTokens": 4904,
+      "wallSeconds": 48,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "robot-shot",
+      "attempt": 1,
+      "pass": true,
+      "passed": 4,
+      "total": 4,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 12,
+      "toolErrors": 2,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_capabilities": 1,
+        "scene_asset_catalog": 1,
+        "scene_create_asset": 1,
+        "scene_inspect": 4,
+        "scene_apply": 2,
+        "scene_look": 2,
+        "scene_export_recipe": 1
+      },
+      "features": {
+        "geometryTypes": [],
+        "meshOperations": [],
+        "motionIk": [
+          "two-bone",
+          "two-bone"
+        ],
+        "motionTracks": 0
+      },
+      "look": {
+        "skipped": "asset recipes have no static silhouette"
+      },
+      "turns": 14,
+      "costUsd": 0.21575283000000003,
+      "inputTokens": 1455058,
+      "outputTokens": 7679,
+      "wallSeconds": 80,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "crate",
+      "attempt": 2,
+      "pass": true,
+      "passed": 8,
+      "total": 8,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 9,
+      "toolErrors": 0,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_capabilities": 1,
+        "scene_create": 2,
+        "mesh_inspect": 2,
+        "scene_dispose": 2,
+        "scene_look": 1,
+        "scene_export_recipe": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "mesh"
+        ],
+        "meshOperations": [
+          "boolean"
+        ],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 1,
+            "side": 1,
+            "three-quarter": 1
+          },
+          "mean": 1
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/2/crate-front.png",
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/2/crate-side.png",
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/2/crate-three-quarter.png"
+        ]
+      },
+      "turns": 11,
+      "costUsd": 0.17494032999999998,
+      "inputTokens": 1170112,
+      "outputTokens": 6705,
+      "wallSeconds": 61,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "bolt",
+      "attempt": 2,
+      "pass": true,
+      "passed": 7,
+      "total": 7,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 7,
+      "toolErrors": 0,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_capabilities": 1,
+        "scene_create": 1,
+        "scene_inspect": 1,
+        "mesh_inspect": 1,
+        "scene_look": 1,
+        "scene_export_recipe": 1,
+        "scene_dispose": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "cylinder"
+        ],
+        "meshOperations": [],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 1,
+            "side": 1,
+            "three-quarter": 1
+          },
+          "mean": 1
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/2/bolt-front.png",
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/2/bolt-side.png",
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/2/bolt-three-quarter.png"
+        ]
+      },
+      "turns": 9,
+      "costUsd": 0.14216203,
+      "inputTokens": 770206,
+      "outputTokens": 3388,
+      "wallSeconds": 87,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "window",
+      "attempt": 2,
+      "pass": true,
+      "passed": 5,
+      "total": 5,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 6,
+      "toolErrors": 0,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_capabilities": 1,
+        "scene_create": 1,
+        "mesh_inspect": 1,
+        "scene_look": 1,
+        "scene_export_recipe": 1,
+        "scene_dispose": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "mesh"
+        ],
+        "meshOperations": [
+          "boolean"
+        ],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 1,
+            "side": 1,
+            "three-quarter": 1
+          },
+          "mean": 1
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/2/window-front.png",
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/2/window-side.png",
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/2/window-three-quarter.png"
+        ]
+      },
+      "turns": 8,
+      "costUsd": 0.14699848000000001,
+      "inputTokens": 778614,
+      "outputTokens": 4698,
+      "wallSeconds": 145,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "table",
+      "attempt": 2,
+      "pass": true,
+      "passed": 6,
+      "total": 6,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 6,
+      "toolErrors": 0,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_create": 1,
+        "scene_capabilities": 1,
+        "mesh_inspect": 1,
+        "scene_look": 1,
+        "scene_export_recipe": 1,
+        "scene_dispose": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "box"
+        ],
+        "meshOperations": [],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 1,
+            "side": 0.1684,
+            "three-quarter": 0.6073
+          },
+          "mean": 0.5919
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/2/table-front.png",
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/2/table-side.png",
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/2/table-three-quarter.png"
+        ]
+      },
+      "turns": 8,
+      "costUsd": 0.13352748,
+      "inputTokens": 647973,
+      "outputTokens": 2582,
+      "wallSeconds": 58,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "mug",
+      "attempt": 2,
+      "pass": true,
+      "passed": 7,
+      "total": 7,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 9,
+      "toolErrors": 3,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_capabilities": 1,
+        "scene_create": 4,
+        "mesh_inspect": 1,
+        "scene_look": 1,
+        "scene_export_recipe": 1,
+        "scene_dispose": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "mesh"
+        ],
+        "meshOperations": [
+          "boolean"
+        ],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 0.6453,
+            "side": 1,
+            "three-quarter": 0.7148
+          },
+          "mean": 0.7867
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/2/mug-front.png",
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/2/mug-side.png",
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/2/mug-three-quarter.png"
+        ]
+      },
+      "turns": 11,
+      "costUsd": 0.20264707999999998,
+      "inputTokens": 1216326,
+      "outputTokens": 14135,
+      "wallSeconds": 92,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "gear",
+      "attempt": 2,
+      "pass": true,
+      "passed": 5,
+      "total": 5,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 7,
+      "toolErrors": 0,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_capabilities": 1,
+        "scene_create": 1,
+        "scene_inspect": 1,
+        "mesh_inspect": 1,
+        "scene_look": 1,
+        "scene_export_recipe": 1,
+        "scene_dispose": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "extrude"
+        ],
+        "meshOperations": [],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 0.9868,
+            "side": 0.9868,
+            "three-quarter": 0.8515
+          },
+          "mean": 0.9417
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/2/gear-front.png",
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/2/gear-side.png",
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/2/gear-three-quarter.png"
+        ]
+      },
+      "turns": 9,
+      "costUsd": 0.17035748,
+      "inputTokens": 929155,
+      "outputTokens": 9143,
+      "wallSeconds": 79,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "fence",
+      "attempt": 2,
+      "pass": true,
+      "passed": 6,
+      "total": 6,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 7,
+      "toolErrors": 0,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_capabilities": 1,
+        "scene_create": 1,
+        "mesh_inspect": 1,
+        "scene_look": 1,
+        "scene_apply": 1,
+        "scene_export_recipe": 1,
+        "scene_dispose": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "box"
+        ],
+        "meshOperations": [],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 1,
+            "side": 1,
+            "three-quarter": 1
+          },
+          "mean": 1
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/2/fence-front.png",
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/2/fence-side.png",
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/2/fence-three-quarter.png"
+        ]
+      },
+      "turns": 9,
+      "costUsd": 0.14989028000000001,
+      "inputTokens": 901407,
+      "outputTokens": 3442,
+      "wallSeconds": 40,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "bracket",
+      "attempt": 2,
+      "pass": true,
+      "passed": 6,
+      "total": 6,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 6,
+      "toolErrors": 0,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_capabilities": 1,
+        "scene_create": 1,
+        "mesh_inspect": 1,
+        "scene_look": 1,
+        "scene_export_recipe": 1,
+        "scene_dispose": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "mesh"
+        ],
+        "meshOperations": [
+          "boolean"
+        ],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 1,
+            "side": 1,
+            "three-quarter": 1
+          },
+          "mean": 1
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/2/bracket-front.png",
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/2/bracket-side.png",
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/2/bracket-three-quarter.png"
+        ]
+      },
+      "turns": 8,
+      "costUsd": 0.15415648,
+      "inputTokens": 787907,
+      "outputTokens": 6685,
+      "wallSeconds": 58,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "soap",
+      "attempt": 2,
+      "pass": true,
+      "passed": 7,
+      "total": 7,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 7,
+      "toolErrors": 1,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_create": 3,
+        "scene_dispose": 2,
+        "mesh_inspect": 1,
+        "scene_export_recipe": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "mesh"
+        ],
+        "meshOperations": [
+          "translate",
+          "bevel"
+        ],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 1,
+            "side": 1,
+            "three-quarter": 1
+          },
+          "mean": 1
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/2/soap-front.png",
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/2/soap-side.png",
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/2/soap-three-quarter.png"
+        ]
+      },
+      "turns": 9,
+      "costUsd": 0.15919283,
+      "inputTokens": 905100,
+      "outputTokens": 6814,
+      "wallSeconds": 55,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "crate-uv",
+      "attempt": 2,
+      "pass": true,
+      "passed": 9,
+      "total": 9,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 8,
+      "toolErrors": 0,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_capabilities": 1,
+        "scene_create": 1,
+        "scene_checkpoint": 1,
+        "mesh_edit": 1,
+        "mesh_stack": 1,
+        "scene_look": 1,
+        "scene_export_recipe": 1,
+        "scene_dispose": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "mesh"
+        ],
+        "meshOperations": [
+          "boolean",
+          "uv_unwrap"
+        ],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 1,
+            "side": 1,
+            "three-quarter": 1
+          },
+          "mean": 1
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/2/crate-uv-front.png",
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/2/crate-uv-side.png",
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/2/crate-uv-three-quarter.png"
+        ]
+      },
+      "turns": 10,
+      "costUsd": 0.18123228,
+      "inputTokens": 1068180,
+      "outputTokens": 10132,
+      "wallSeconds": 77,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "crate-wood",
+      "attempt": 2,
+      "pass": true,
+      "passed": 9,
+      "total": 9,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 15,
+      "toolErrors": 1,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_capabilities": 1,
+        "scene_create": 2,
+        "mesh_inspect": 1,
+        "scene_look": 5,
+        "scene_apply": 4,
+        "scene_export_recipe": 1,
+        "scene_dispose": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "mesh",
+          "box"
+        ],
+        "meshOperations": [
+          "inset_individual",
+          "extrude_individual"
+        ],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 1,
+            "side": 1,
+            "three-quarter": 1
+          },
+          "mean": 1
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/2/crate-wood-front.png",
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/2/crate-wood-side.png",
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/2/crate-wood-three-quarter.png"
+        ]
+      },
+      "turns": 17,
+      "costUsd": 0.23283848,
+      "inputTokens": 2116269,
+      "outputTokens": 8467,
+      "wallSeconds": 77,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "dice",
+      "attempt": 2,
+      "pass": true,
+      "passed": 12,
+      "total": 12,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 7,
+      "toolErrors": 0,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_capabilities": 1,
+        "scene_create": 1,
+        "scene_checkpoint": 1,
+        "mesh_edit": 1,
+        "scene_look": 1,
+        "scene_export_recipe": 1,
+        "scene_dispose": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "mesh"
+        ],
+        "meshOperations": [
+          "bevel",
+          "boolean"
+        ],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 0.9989,
+            "side": 0.9989,
+            "three-quarter": 0.9889
+          },
+          "mean": 0.9956
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/2/dice-front.png",
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/2/dice-side.png",
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/2/dice-three-quarter.png"
+        ]
+      },
+      "turns": 9,
+      "costUsd": 0.17653668,
+      "inputTokens": 936940,
+      "outputTokens": 9922,
+      "wallSeconds": 71,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "flange",
+      "attempt": 2,
+      "pass": true,
+      "passed": 9,
+      "total": 9,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 6,
+      "toolErrors": 1,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_create": 1,
+        "mesh_inspect": 2,
+        "scene_look": 1,
+        "scene_export_recipe": 1,
+        "scene_dispose": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "mesh"
+        ],
+        "meshOperations": [
+          "boolean"
+        ],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 1,
+            "side": 1,
+            "three-quarter": 1
+          },
+          "mean": 1
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/2/flange-front.png",
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/2/flange-side.png",
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/2/flange-three-quarter.png"
+        ]
+      },
+      "turns": 8,
+      "costUsd": 0.14475122999999998,
+      "inputTokens": 658248,
+      "outputTokens": 5771,
+      "wallSeconds": 64,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "chair",
+      "attempt": 2,
+      "pass": true,
+      "passed": 7,
+      "total": 7,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 7,
+      "toolErrors": 1,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_capabilities": 1,
+        "scene_create": 1,
+        "mesh_inspect": 1,
+        "scene_look": 1,
+        "scene_inspect": 1,
+        "scene_export_recipe": 1,
+        "scene_dispose": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "box"
+        ],
+        "meshOperations": [],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 1,
+            "side": 1,
+            "three-quarter": 1
+          },
+          "mean": 1
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/2/chair-front.png",
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/2/chair-side.png",
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/2/chair-three-quarter.png"
+        ]
+      },
+      "turns": 9,
+      "costUsd": 0.14720943,
+      "inputTokens": 780667,
+      "outputTokens": 4398,
+      "wallSeconds": 58,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "arm-reach",
+      "attempt": 2,
+      "pass": true,
+      "passed": 5,
+      "total": 5,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 14,
+      "toolErrors": 2,
+      "toolsByName": {
+        "ToolSearch": 2,
+        "scene_capabilities": 1,
+        "scene_create": 1,
+        "scene_inspect": 1,
+        "scene_look": 3,
+        "scene_apply": 3,
+        "mesh_inspect": 2,
+        "mesh_edit": 1,
+        "scene_export_recipe": 1,
+        "scene_dispose": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "lathe"
+        ],
+        "meshOperations": [],
+        "motionIk": [
+          "two-bone"
+        ],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 0.2187,
+            "side": 0.2186,
+            "three-quarter": 0.2178
+          },
+          "mean": 0.2184
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/2/arm-reach-front.png",
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/2/arm-reach-side.png",
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/2/arm-reach-three-quarter.png"
+        ]
+      },
+      "turns": 17,
+      "costUsd": 0.22397367999999995,
+      "inputTokens": 1758391,
+      "outputTokens": 11170,
+      "wallSeconds": 113,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "robot-reach",
+      "attempt": 2,
+      "pass": true,
+      "passed": 2,
+      "total": 2,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 10,
+      "toolErrors": 2,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_capabilities": 1,
+        "scene_asset_catalog": 1,
+        "scene_create_asset": 1,
+        "scene_inspect": 4,
+        "scene_apply": 1,
+        "scene_look": 1,
+        "scene_export_recipe": 1
+      },
+      "features": {
+        "geometryTypes": [],
+        "meshOperations": [],
+        "motionIk": [
+          "two-bone"
+        ],
+        "motionTracks": 0
+      },
+      "look": {
+        "skipped": "asset recipes have no static silhouette"
+      },
+      "turns": 12,
+      "costUsd": 0.08243855,
+      "inputTokens": 1086818,
+      "outputTokens": 3680,
+      "wallSeconds": 73,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "chamfer-plate",
+      "attempt": 2,
+      "pass": true,
+      "passed": 9,
+      "total": 9,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 7,
+      "toolErrors": 0,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_create": 1,
+        "scene_inspect": 1,
+        "mesh_inspect": 1,
+        "mesh_edit": 1,
+        "scene_look": 1,
+        "scene_export_recipe": 1,
+        "scene_dispose": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "mesh"
+        ],
+        "meshOperations": [
+          "bevel",
+          "boolean"
+        ],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 1,
+            "side": 1,
+            "three-quarter": 1
+          },
+          "mean": 1
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/2/chamfer-plate-front.png",
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/2/chamfer-plate-side.png",
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/2/chamfer-plate-three-quarter.png"
+        ]
+      },
+      "turns": 9,
+      "costUsd": 0.16722793,
+      "inputTokens": 922920,
+      "outputTokens": 8377,
+      "wallSeconds": 70,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "slotted-rail",
+      "attempt": 2,
+      "pass": false,
+      "passed": 8,
+      "total": 9,
+      "failed": [
+        "chamfered end edges: blocked at 0.1995,0.0295; blocked at -0.1995,0.0005"
+      ],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 4,
+      "toolErrors": 1,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_create": 2,
+        "mesh_inspect": 1,
+        "scene_export_recipe": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "mesh"
+        ],
+        "meshOperations": [
+          "boolean",
+          "bevel"
+        ],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 0.9964,
+            "side": 0.9766,
+            "three-quarter": 0.9242
+          },
+          "mean": 0.9657
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/2/slotted-rail-front.png",
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/2/slotted-rail-side.png",
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/2/slotted-rail-three-quarter.png"
+        ]
+      },
+      "turns": 6,
+      "costUsd": 0.13825518,
+      "inputTokens": 644198,
+      "outputTokens": 4597,
+      "wallSeconds": 58,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "crate-revision",
+      "attempt": 2,
+      "pass": true,
+      "passed": 10,
+      "total": 10,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 9,
+      "toolErrors": 1,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_capabilities": 1,
+        "scene_create": 1,
+        "scene_checkpoint": 2,
+        "mesh_inspect": 1,
+        "mesh_edit": 1,
+        "scene_look": 1,
+        "scene_export_recipe": 1,
+        "scene_dispose": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "mesh"
+        ],
+        "meshOperations": [
+          "translate",
+          "inset_individual",
+          "extrude_individual",
+          "inset_region",
+          "extrude_face_region",
+          "boolean"
+        ],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 1,
+            "side": 1,
+            "three-quarter": 1
+          },
+          "mean": 1
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/2/crate-revision-front.png",
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/2/crate-revision-side.png",
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/2/crate-revision-three-quarter.png"
+        ]
+      },
+      "turns": 11,
+      "costUsd": 0.16328243,
+      "inputTokens": 1039919,
+      "outputTokens": 5074,
+      "wallSeconds": 85,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "bracket-revision",
+      "attempt": 2,
+      "pass": true,
+      "passed": 7,
+      "total": 7,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 8,
+      "toolErrors": 0,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_capabilities": 1,
+        "scene_create": 1,
+        "scene_apply": 1,
+        "mesh_inspect": 1,
+        "scene_inspect": 1,
+        "scene_look": 1,
+        "scene_export_recipe": 1,
+        "scene_dispose": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "box",
+          "extrude"
+        ],
+        "meshOperations": [],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 1,
+            "side": 1,
+            "three-quarter": 1
+          },
+          "mean": 1
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/2/bracket-revision-front.png",
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/2/bracket-revision-side.png",
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/2/bracket-revision-three-quarter.png"
+        ]
+      },
+      "turns": 10,
+      "costUsd": 0.18553777999999999,
+      "inputTokens": 970266,
+      "outputTokens": 12426,
+      "wallSeconds": 83,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "workshop",
+      "attempt": 2,
+      "pass": false,
+      "passed": 8,
+      "total": 10,
+      "failed": [
+        "size: y 0.85 vs 0.9",
+        "chair seat and four table legs: 4 loops at y = 0.49"
+      ],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 4,
+      "toolErrors": 0,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_create": 1,
+        "mesh_inspect": 1,
+        "scene_export_recipe": 1,
+        "scene_dispose": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "box",
+          "cylinder"
+        ],
+        "meshOperations": [],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 0.6634,
+            "side": 0.7748,
+            "three-quarter": 0.9841
+          },
+          "mean": 0.8074
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/2/workshop-front.png",
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/2/workshop-side.png",
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/2/workshop-three-quarter.png"
+        ]
+      },
+      "turns": 6,
+      "costUsd": 0.14021447999999997,
+      "inputTokens": 652541,
+      "outputTokens": 4783,
+      "wallSeconds": 50,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "robot-shot",
+      "attempt": 2,
+      "pass": true,
+      "passed": 4,
+      "total": 4,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 13,
+      "toolErrors": 2,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_capabilities": 1,
+        "scene_asset_catalog": 1,
+        "scene_create_asset": 1,
+        "scene_inspect": 3,
+        "scene_apply": 3,
+        "scene_look": 2,
+        "scene_review": 1,
+        "scene_export_recipe": 1
+      },
+      "features": {
+        "geometryTypes": [],
+        "meshOperations": [],
+        "motionIk": [
+          "two-bone",
+          "two-bone"
+        ],
+        "motionTracks": 0
+      },
+      "look": {
+        "skipped": "asset recipes have no static silhouette"
+      },
+      "turns": 15,
+      "costUsd": 0.26673278,
+      "inputTokens": 1981702,
+      "outputTokens": 9552,
+      "wallSeconds": 106,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "crate",
+      "attempt": 3,
+      "pass": true,
+      "passed": 8,
+      "total": 8,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 6,
+      "toolErrors": 0,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_capabilities": 1,
+        "scene_create": 1,
+        "mesh_inspect": 1,
+        "scene_look": 1,
+        "scene_export_recipe": 1,
+        "scene_dispose": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "mesh"
+        ],
+        "meshOperations": [
+          "boolean"
+        ],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 1,
+            "side": 1,
+            "three-quarter": 1
+          },
+          "mean": 1
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/3/crate-front.png",
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/3/crate-side.png",
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/3/crate-three-quarter.png"
+        ]
+      },
+      "turns": 8,
+      "costUsd": 0.15439553,
+      "inputTokens": 784524,
+      "outputTokens": 6681,
+      "wallSeconds": 73,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "bolt",
+      "attempt": 3,
+      "pass": true,
+      "passed": 7,
+      "total": 7,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 7,
+      "toolErrors": 1,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_capabilities": 1,
+        "scene_create": 1,
+        "mesh_inspect": 2,
+        "scene_look": 1,
+        "scene_export_recipe": 1,
+        "scene_dispose": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "cylinder"
+        ],
+        "meshOperations": [],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 0.9621,
+            "side": 0.9621,
+            "three-quarter": 0.9666
+          },
+          "mean": 0.9636
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/3/bolt-front.png",
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/3/bolt-side.png",
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/3/bolt-three-quarter.png"
+        ]
+      },
+      "turns": 9,
+      "costUsd": 0.14533948000000002,
+      "inputTokens": 774612,
+      "outputTokens": 4370,
+      "wallSeconds": 58,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "window",
+      "attempt": 3,
+      "pass": true,
+      "passed": 5,
+      "total": 5,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 6,
+      "toolErrors": 0,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_capabilities": 1,
+        "scene_create": 1,
+        "mesh_inspect": 1,
+        "scene_look": 1,
+        "scene_export_recipe": 1,
+        "scene_dispose": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "mesh"
+        ],
+        "meshOperations": [
+          "boolean"
+        ],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 1,
+            "side": 1,
+            "three-quarter": 1
+          },
+          "mean": 1
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/3/window-front.png",
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/3/window-side.png",
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/3/window-three-quarter.png"
+        ]
+      },
+      "turns": 8,
+      "costUsd": 0.14561398,
+      "inputTokens": 776466,
+      "outputTokens": 4313,
+      "wallSeconds": 102,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "table",
+      "attempt": 3,
+      "pass": true,
+      "passed": 6,
+      "total": 6,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 7,
+      "toolErrors": 0,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_capabilities": 1,
+        "scene_create": 1,
+        "scene_inspect": 1,
+        "scene_look": 1,
+        "mesh_inspect": 1,
+        "scene_export_recipe": 1,
+        "scene_dispose": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "box"
+        ],
+        "meshOperations": [],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 1,
+            "side": 0.1684,
+            "three-quarter": 0.6073
+          },
+          "mean": 0.5919
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/3/table-front.png",
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/3/table-side.png",
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/3/table-three-quarter.png"
+        ]
+      },
+      "turns": 9,
+      "costUsd": 0.14296243,
+      "inputTokens": 773504,
+      "outputTokens": 3422,
+      "wallSeconds": 54,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "mug",
+      "attempt": 3,
+      "pass": true,
+      "passed": 7,
+      "total": 7,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 7,
+      "toolErrors": 1,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_capabilities": 1,
+        "scene_create": 1,
+        "mesh_inspect": 2,
+        "scene_look": 1,
+        "scene_export_recipe": 1,
+        "scene_dispose": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "mesh"
+        ],
+        "meshOperations": [
+          "boolean"
+        ],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 0.9085,
+            "side": 1,
+            "three-quarter": 0.9615
+          },
+          "mean": 0.9567
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/3/mug-front.png",
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/3/mug-side.png",
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/3/mug-three-quarter.png"
+        ]
+      },
+      "turns": 9,
+      "costUsd": 0.16459478000000002,
+      "inputTokens": 802037,
+      "outputTokens": 9548,
+      "wallSeconds": 79,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "gear",
+      "attempt": 3,
+      "pass": true,
+      "passed": 5,
+      "total": 5,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 8,
+      "toolErrors": 1,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_capabilities": 1,
+        "scene_create": 2,
+        "scene_inspect": 1,
+        "mesh_inspect": 1,
+        "scene_look": 1,
+        "scene_export_recipe": 1,
+        "scene_dispose": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "extrude"
+        ],
+        "meshOperations": [],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 0.9868,
+            "side": 0.9868,
+            "three-quarter": 0.9197
+          },
+          "mean": 0.9644
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/3/gear-front.png",
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/3/gear-side.png",
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/3/gear-three-quarter.png"
+        ]
+      },
+      "turns": 10,
+      "costUsd": 0.18965663000000002,
+      "inputTokens": 1080027,
+      "outputTokens": 12410,
+      "wallSeconds": 90,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "fence",
+      "attempt": 3,
+      "pass": true,
+      "passed": 6,
+      "total": 6,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 8,
+      "toolErrors": 2,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_capabilities": 1,
+        "scene_create": 2,
+        "mesh_inspect": 2,
+        "scene_look": 1,
+        "scene_export_recipe": 1,
+        "scene_dispose": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "box"
+        ],
+        "meshOperations": [],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 1,
+            "side": 1,
+            "three-quarter": 1
+          },
+          "mean": 1
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/3/fence-front.png",
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/3/fence-side.png",
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/3/fence-three-quarter.png"
+        ]
+      },
+      "turns": 10,
+      "costUsd": 0.15002618,
+      "inputTokens": 898596,
+      "outputTokens": 3599,
+      "wallSeconds": 47,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "bracket",
+      "attempt": 3,
+      "pass": true,
+      "passed": 6,
+      "total": 6,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 6,
+      "toolErrors": 0,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_capabilities": 1,
+        "scene_create": 1,
+        "mesh_inspect": 1,
+        "scene_look": 1,
+        "scene_export_recipe": 1,
+        "scene_dispose": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "mesh"
+        ],
+        "meshOperations": [
+          "boolean"
+        ],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 1,
+            "side": 1,
+            "three-quarter": 1
+          },
+          "mean": 1
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/3/bracket-front.png",
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/3/bracket-side.png",
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/3/bracket-three-quarter.png"
+        ]
+      },
+      "turns": 8,
+      "costUsd": 0.15803238,
+      "inputTokens": 912331,
+      "outputTokens": 6036,
+      "wallSeconds": 66,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "soap",
+      "attempt": 3,
+      "pass": false,
+      "passed": 0,
+      "total": 7,
+      "failed": [
+        "export: no exported recipe"
+      ],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 0,
+      "toolErrors": 0,
+      "toolsByName": {
+        "ToolSearch": 1
+      },
+      "features": null,
+      "look": null,
+      "turns": 2,
+      "costUsd": 0.09977263,
+      "inputTokens": 146347,
+      "outputTokens": 1708,
+      "wallSeconds": 23,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "crate-uv",
+      "attempt": 3,
+      "pass": true,
+      "passed": 9,
+      "total": 9,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 6,
+      "toolErrors": 0,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_capabilities": 1,
+        "scene_create": 1,
+        "mesh_inspect": 1,
+        "scene_look": 1,
+        "scene_export_recipe": 1,
+        "scene_dispose": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "mesh"
+        ],
+        "meshOperations": [
+          "boolean",
+          "uv_unwrap"
+        ],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 1,
+            "side": 1,
+            "three-quarter": 1
+          },
+          "mean": 1
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/3/crate-uv-front.png",
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/3/crate-uv-side.png",
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/3/crate-uv-three-quarter.png"
+        ]
+      },
+      "turns": 8,
+      "costUsd": 0.16478103000000002,
+      "inputTokens": 802376,
+      "outputTokens": 9474,
+      "wallSeconds": 78,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "crate-wood",
+      "attempt": 3,
+      "pass": true,
+      "passed": 9,
+      "total": 9,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 13,
+      "toolErrors": 1,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_capabilities": 1,
+        "scene_create": 2,
+        "mesh_inspect": 1,
+        "scene_look": 4,
+        "scene_apply": 3,
+        "scene_export_recipe": 1,
+        "scene_dispose": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "mesh",
+          "box"
+        ],
+        "meshOperations": [
+          "boolean"
+        ],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 1,
+            "side": 1,
+            "three-quarter": 1
+          },
+          "mean": 1
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/3/crate-wood-front.png",
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/3/crate-wood-side.png",
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/3/crate-wood-three-quarter.png"
+        ]
+      },
+      "turns": 15,
+      "costUsd": 0.19495213,
+      "inputTokens": 1328969,
+      "outputTokens": 9176,
+      "wallSeconds": 105,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "dice",
+      "attempt": 3,
+      "pass": false,
+      "passed": 11,
+      "total": 12,
+      "failed": [
+        "5 pips on -X: 2 loops at x = -0.047"
+      ],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 6,
+      "toolErrors": 0,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_capabilities": 1,
+        "scene_create": 1,
+        "mesh_edit": 1,
+        "scene_look": 1,
+        "scene_export_recipe": 1,
+        "scene_dispose": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "mesh"
+        ],
+        "meshOperations": [
+          "boolean"
+        ],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 0.9979,
+            "side": 0.9979,
+            "three-quarter": 0.9847
+          },
+          "mean": 0.9935
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/3/dice-front.png",
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/3/dice-side.png",
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/3/dice-three-quarter.png"
+        ]
+      },
+      "turns": 8,
+      "costUsd": 0.17883113000000003,
+      "inputTokens": 937010,
+      "outputTokens": 10652,
+      "wallSeconds": 74,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "flange",
+      "attempt": 3,
+      "pass": true,
+      "passed": 9,
+      "total": 9,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 6,
+      "toolErrors": 0,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_capabilities": 1,
+        "scene_create": 1,
+        "mesh_edit": 1,
+        "scene_look": 1,
+        "scene_export_recipe": 1,
+        "scene_dispose": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "mesh"
+        ],
+        "meshOperations": [
+          "boolean"
+        ],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 1,
+            "side": 1,
+            "three-quarter": 1
+          },
+          "mean": 1
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/3/flange-front.png",
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/3/flange-side.png",
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/3/flange-three-quarter.png"
+        ]
+      },
+      "turns": 8,
+      "costUsd": 0.16046698000000006,
+      "inputTokens": 916387,
+      "outputTokens": 6024,
+      "wallSeconds": 50,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "chair",
+      "attempt": 3,
+      "pass": true,
+      "passed": 7,
+      "total": 7,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 6,
+      "toolErrors": 1,
+      "toolsByName": {
+        "ToolSearch": 2,
+        "scene_create": 2,
+        "scene_look": 1,
+        "scene_inspect": 1,
+        "scene_export_recipe": 1,
+        "scene_dispose": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "box"
+        ],
+        "meshOperations": [],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 1,
+            "side": 1,
+            "three-quarter": 1
+          },
+          "mean": 1
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/3/chair-front.png",
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/3/chair-side.png",
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/3/chair-three-quarter.png"
+        ]
+      },
+      "turns": 9,
+      "costUsd": 0.18946753000000002,
+      "inputTokens": 956151,
+      "outputTokens": 4496,
+      "wallSeconds": 41,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "arm-reach",
+      "attempt": 3,
+      "pass": true,
+      "passed": 5,
+      "total": 5,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 4,
+      "toolErrors": 1,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_create": 1,
+        "scene_export_recipe": 2,
+        "scene_dispose": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "lathe"
+        ],
+        "meshOperations": [],
+        "motionIk": [
+          "two-bone"
+        ],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 0.311,
+            "side": 0.2909,
+            "three-quarter": 0.292
+          },
+          "mean": 0.298
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/3/arm-reach-front.png",
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/3/arm-reach-side.png",
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/3/arm-reach-three-quarter.png"
+        ]
+      },
+      "turns": 6,
+      "costUsd": 0.13111788000000002,
+      "inputTokens": 522048,
+      "outputTokens": 4608,
+      "wallSeconds": 38,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "robot-reach",
+      "attempt": 3,
+      "pass": true,
+      "passed": 2,
+      "total": 2,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 11,
+      "toolErrors": 1,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_capabilities": 1,
+        "scene_asset_catalog": 1,
+        "scene_create_asset": 1,
+        "scene_inspect": 3,
+        "scene_checkpoint": 1,
+        "scene_apply": 1,
+        "scene_look": 1,
+        "scene_export_recipe": 1,
+        "scene_dispose": 1
+      },
+      "features": {
+        "geometryTypes": [],
+        "meshOperations": [],
+        "motionIk": [
+          "two-bone"
+        ],
+        "motionTracks": 0
+      },
+      "look": {
+        "skipped": "asset recipes have no static silhouette"
+      },
+      "turns": 13,
+      "costUsd": 0.08808590999999999,
+      "inputTokens": 1206050,
+      "outputTokens": 3332,
+      "wallSeconds": 64,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "chamfer-plate",
+      "attempt": 3,
+      "pass": true,
+      "passed": 9,
+      "total": 9,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 7,
+      "toolErrors": 0,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_capabilities": 1,
+        "scene_create": 1,
+        "mesh_inspect": 1,
+        "mesh_edit": 1,
+        "scene_look": 1,
+        "scene_export_recipe": 1,
+        "scene_dispose": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "mesh"
+        ],
+        "meshOperations": [
+          "bevel",
+          "boolean"
+        ],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 1,
+            "side": 1,
+            "three-quarter": 1
+          },
+          "mean": 1
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/3/chamfer-plate-front.png",
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/3/chamfer-plate-side.png",
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/3/chamfer-plate-three-quarter.png"
+        ]
+      },
+      "turns": 9,
+      "costUsd": 0.17529273000000004,
+      "inputTokens": 1052435,
+      "outputTokens": 8572,
+      "wallSeconds": 110,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "slotted-rail",
+      "attempt": 3,
+      "pass": true,
+      "passed": 9,
+      "total": 9,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 7,
+      "toolErrors": 0,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_capabilities": 1,
+        "scene_create": 1,
+        "mesh_inspect": 1,
+        "mesh_edit": 1,
+        "scene_look": 1,
+        "scene_export_recipe": 1,
+        "scene_dispose": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "mesh"
+        ],
+        "meshOperations": [
+          "translate",
+          "bevel",
+          "boolean"
+        ],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 1,
+            "side": 1,
+            "three-quarter": 1
+          },
+          "mean": 1
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/3/slotted-rail-front.png",
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/3/slotted-rail-side.png",
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/3/slotted-rail-three-quarter.png"
+        ]
+      },
+      "turns": 9,
+      "costUsd": 0.16918133000000005,
+      "inputTokens": 1046121,
+      "outputTokens": 6945,
+      "wallSeconds": 75,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "crate-revision",
+      "attempt": 3,
+      "pass": true,
+      "passed": 10,
+      "total": 10,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 6,
+      "toolErrors": 0,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_capabilities": 1,
+        "scene_create": 1,
+        "mesh_edit": 1,
+        "scene_look": 1,
+        "scene_export_recipe": 1,
+        "scene_dispose": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "mesh"
+        ],
+        "meshOperations": [
+          "translate",
+          "inset_individual",
+          "extrude_individual",
+          "inset_region",
+          "extrude_face_region",
+          "boolean"
+        ],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 1,
+            "side": 1,
+            "three-quarter": 1
+          },
+          "mean": 1
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/3/crate-revision-front.png",
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/3/crate-revision-side.png",
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/3/crate-revision-three-quarter.png"
+        ]
+      },
+      "turns": 8,
+      "costUsd": 0.14608248,
+      "inputTokens": 783820,
+      "outputTokens": 4140,
+      "wallSeconds": 65,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "bracket-revision",
+      "attempt": 3,
+      "pass": true,
+      "passed": 7,
+      "total": 7,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 7,
+      "toolErrors": 0,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_create": 1,
+        "scene_apply": 1,
+        "mesh_inspect": 1,
+        "scene_inspect": 1,
+        "scene_look": 1,
+        "scene_export_recipe": 1,
+        "scene_dispose": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "box",
+          "mesh"
+        ],
+        "meshOperations": [
+          "boolean"
+        ],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 1,
+            "side": 1,
+            "three-quarter": 1
+          },
+          "mean": 1
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/3/bracket-revision-front.png",
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/3/bracket-revision-side.png",
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/3/bracket-revision-three-quarter.png"
+        ]
+      },
+      "turns": 9,
+      "costUsd": 0.16900278000000002,
+      "inputTokens": 816655,
+      "outputTokens": 10550,
+      "wallSeconds": 96,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "workshop",
+      "attempt": 3,
+      "pass": true,
+      "passed": 10,
+      "total": 10,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 6,
+      "toolErrors": 0,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_capabilities": 1,
+        "scene_create": 1,
+        "mesh_inspect": 1,
+        "scene_look": 1,
+        "scene_export_recipe": 1,
+        "scene_dispose": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "box",
+          "cylinder"
+        ],
+        "meshOperations": [],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 1,
+            "side": 1,
+            "three-quarter": 1
+          },
+          "mean": 1
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/3/workshop-front.png",
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/3/workshop-side.png",
+          "artifacts/agent-modeling/2026-10-31-08-50-haiku-long/look/3/workshop-three-quarter.png"
+        ]
+      },
+      "turns": 8,
+      "costUsd": 0.14911418,
+      "inputTokens": 787307,
+      "outputTokens": 5565,
+      "wallSeconds": 43,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "robot-shot",
+      "attempt": 3,
+      "pass": true,
+      "passed": 4,
+      "total": 4,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 16,
+      "toolErrors": 2,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_capabilities": 1,
+        "scene_asset_catalog": 1,
+        "scene_create_asset": 1,
+        "scene_inspect": 4,
+        "scene_apply": 4,
+        "scene_look": 3,
+        "scene_export_recipe": 1,
+        "scene_dispose": 1
+      },
+      "features": {
+        "geometryTypes": [],
+        "meshOperations": [],
+        "motionIk": [
+          "two-bone",
+          "two-bone"
+        ],
+        "motionTracks": 0
+      },
+      "look": {
+        "skipped": "asset recipes have no static silhouette"
+      },
+      "turns": 18,
+      "costUsd": 0.27533828000000005,
+      "inputTokens": 2416111,
+      "outputTokens": 9376,
+      "wallSeconds": 83,
+      "exitCode": 0,
+      "stopped": "success"
+    }
+  ]
+}

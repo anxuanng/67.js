@@ -109,7 +109,108 @@ function boltHoleEdits() {
   return edits;
 }
 
+/** Resize the unit box to half extents by moving each tagged face, the way the crate and soap references do. */
+function boxFaceEdits([halfX, halfY, halfZ]) {
+  return [
+    { op: 'translate', select: { tag: 'right' }, offset: [halfX - 0.5, 0, 0] },
+    { op: 'translate', select: { tag: 'left' }, offset: [0.5 - halfX, 0, 0] },
+    { op: 'translate', select: { tag: 'top' }, offset: [0, halfY - 0.5, 0] },
+    { op: 'translate', select: { tag: 'bottom' }, offset: [0, 0.5 - halfY, 0] },
+    { op: 'translate', select: { tag: 'front' }, offset: [0, 0, halfZ - 0.5] },
+    { op: 'translate', select: { tag: 'back' }, offset: [0, 0, 0.5 - halfZ] },
+  ];
+}
+
+function boxCut(name, center, size) {
+  return { op: 'boolean', operation: 'difference', name, cutter: { type: 'box', bevel: 0 }, translation: center, scale: size };
+}
+
+function pocketEdits() {
+  const edits = [];
+  for (const x of [-0.055, 0, 0.055]) {
+    for (const z of [-0.0275, 0.0275]) edits.push(boxCut(`pocket-${edits.length}`, [x, 0.015, z], [0.04, 0.02, 0.04]));
+  }
+  return edits;
+}
+
+function slotEdits() {
+  return [-0.16, -0.08, 0, 0.08, 0.16].map((x, index) => boxCut(`slot-${index}`, [x, 0, 0], [0.05, 0.1, 0.02]));
+}
+
+const revisedCrateEdits = [
+  ...crateEdits.map(edit => (edit.op === 'extrude_face_region' ? { ...edit, offset: 0.06 } : edit)),
+  { op: 'boolean', operation: 'difference', name: 'drill', cutter: { type: 'cylinder', segments: 32, bevel: 0 }, translation: [0, 0.3, 0], scale: [0.03, 0.2, 0.03] },
+];
+
+function workshopNodes() {
+  const legs = (prefix, centerZ, halfSpanX, halfSpanZ, size, height, centerY) => [[-1, -1], [-1, 1], [1, -1], [1, 1]].map(([signX, signZ], index) => ({
+    id: `${prefix}-leg-${index}`, geometry: 'block', translation: [signX * halfSpanX, centerY, centerZ + signZ * halfSpanZ], scale: [size, height, size],
+  }));
+  return [
+    { id: 'floor', geometry: 'block', translation: [0, 0.025, 0], scale: [3, 0.05, 3] },
+    { id: 'table-top', geometry: 'block', translation: [0, 0.78, 0], scale: [1.2, 0.04, 0.6] },
+    ...legs('table', 0, 0.525, 0.225, 0.05, 0.71, 0.405),
+    { id: 'seat', geometry: 'block', translation: [0, 0.485, 0.8], scale: [0.4, 0.03, 0.4] },
+    ...legs('chair', 0.8, 0.18, 0.18, 0.04, 0.42, 0.26),
+    { id: 'mug', geometry: 'cup', translation: [0.3, 0.85, -0.05], scale: [0.04, 0.1, 0.04] },
+  ];
+}
+
+function robotArmSolver(root, middle, end, target) {
+  return { type: 'two-bone', root, middle, end, keepEndRotation: false, target };
+}
+
 export const REFERENCES = {
+  'chamfer-plate': scene(
+    [{
+      id: 'plate', type: 'mesh', base: { type: 'box', bevel: 0 }, edits: [
+        ...boxFaceEdits([0.1, 0.015, 0.06]),
+        { op: 'bevel', edges: { between: [{ tag: 'top' }, { tag: 'side' }] }, width: 0.005, segments: 1 },
+        ...pocketEdits(),
+      ],
+    }],
+    [{ id: 'plate', geometry: 'plate', translation: [0, 0.015, 0] }],
+  ),
+  'slotted-rail': scene(
+    [{
+      id: 'rail', type: 'mesh', base: { type: 'box', bevel: 0 }, edits: [
+        ...boxFaceEdits([0.2, 0.015, 0.03]),
+        { op: 'bevel', edges: { all: true }, width: 0.004, segments: 1 },
+        ...slotEdits(),
+      ],
+    }],
+    [{ id: 'rail', geometry: 'rail', translation: [0, 0.015, 0] }],
+  ),
+  'crate-revision': scene(
+    [{ id: 'crate', type: 'mesh', base: { type: 'box', bevel: 0 }, edits: revisedCrateEdits }],
+    [{ id: 'crate', geometry: 'crate', translation: [0, 0.3, 0] }],
+  ),
+  'bracket-revision': scene(
+    [
+      { id: 'base', type: 'extrude', depth: 0.02, contour: rectangle(-0.15, -0.05, 0.15, 0.05), holes: [-0.05, 0.03, 0.11].map(x => circle(0.01, 32, x, 0, true)) },
+      { id: 'block', type: 'box', bevel: 0 },
+    ],
+    [
+      { id: 'base', geometry: 'base', rotation: axisRotation('x', -Math.PI / 2) },
+      { id: 'upright', geometry: 'block', translation: [-0.14, 0.095, 0], scale: [0.02, 0.15, 0.1] },
+    ],
+  ),
+  workshop: scene(
+    [{ id: 'block', type: 'box', bevel: 0 }, { id: 'cup', type: 'cylinder', segments: 32, bevel: 0 }],
+    workshopNodes(),
+  ),
+  'robot-shot': {
+    format: '67js.asset', schemaVersion: 1, assetId: 'ab'.repeat(32),
+    animation: { clip: 2, time: 0 },
+    camera: { target: [0, 2, 0], eye: [7, 2.5, 0.5], up: [0, 1, 0], fov: 45, near: 0.1, far: 100 },
+    motion: {
+      duration: 1, tracks: [],
+      ik: [
+        robotArmSolver('node-37', 'node-39', 'node-40', [-1.3, 2.6, 0.8]),
+        robotArmSolver('node-17', 'node-19', 'node-20', [1.3, 2.4, 0.8]),
+      ],
+    },
+  },
   'robot-reach': {
     format: '67js.asset', schemaVersion: 1, assetId: 'ab'.repeat(32),
     animation: { clip: 2, time: 0 },

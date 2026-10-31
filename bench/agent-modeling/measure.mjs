@@ -206,6 +206,7 @@ export async function measureAssetRecipe(recipe) {
   };
   return {
     clipName: recipe.animation ? asset.animations[recipe.animation.clip]?.name : null,
+    camera: recipe.camera ?? null,
     reachSolvers: solvers.filter(solver => solver.type === 'two-bone').map(solver => {
       const [firstTarget, lastTarget] = endpoints(solver.target);
       const report = reports[solvers.indexOf(solver)];
