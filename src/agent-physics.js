@@ -30,7 +30,7 @@ function knownKeys(value, fields, label) {
   }
   for (const key of Object.keys(value)) {
     if (!fields.includes(key)) {
-      throw new TypeError(`Unknown or unsupported ${label} field: ${key}.`);
+      throw new TypeError(`Unknown or unsupported ${label} field: ${key}. Allowed fields: ${fields.join(", ")}.`);
     }
   }
 }

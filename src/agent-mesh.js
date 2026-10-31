@@ -131,7 +131,7 @@ export function meshReport(geometry) {
   if (report) return report;
   const polygon = polygonMeshes.get(geometry);
   const mesh = polygon?.mesh ?? meshFromGeometry(geometry);
-  const lint = lintMesh(mesh);
+  const lint = lintMesh(mesh, { geometry: true });
   report = Object.freeze({
     ok: lint.ok,
     counts: { ...lint.counts, triangles: geometry.indices.length / 3, renderVertices: geometry.positions.length / 3 },
@@ -140,6 +140,7 @@ export function meshReport(geometry) {
     tags: lint.tags,
     bounds: roundedBounds(lint.bounds),
     problems: lint.problems,
+    ...(lint.skippedChecks ? { skippedChecks: lint.skippedChecks } : {}),
     ...(polygon ? { edits: polygon.results, stack: polygon.stack } : {}),
   });
   reports.set(geometry, report);

@@ -47,7 +47,7 @@ To move to a new Blender release, run `node scripts/parity-manual-snapshot.mjs`.
 | Modeling > Meshes > Editing | partial | 26 edits, including extrude, inset, bevel, loop cut, boolean, merge, bisect, bridge, fill, grid fill, dissolve, edge subdivision and a knife by projected polyline. All but the knife match Blender on fixtures; the knife is compared only with a straight plane cut. | [Blender results](../tests/fixtures/blender/golden.json) | #41 |
 | Modeling > Meshes > Properties | partial | `smoothAngle` and face tags. There is no sharp edge attribute or crease. | | #39 |
 | Modeling > Meshes > UVs | partial | `uv_unwrap` with LSCM, axis charts and shelf packing. Patterns can not use the result yet. | | #50 |
-| Modeling > Meshes > Mesh Analysis | partial | `lintMesh` reports topology problems. There is no check for thin walls or intersections. | | #66 |
+| Modeling > Meshes > Mesh Analysis | partial | `lintMesh` reports topology problems. With `{ geometry: true }` (always on in `mesh_inspect`) it also warns of crossing parts, a solid cutting itself, thin walls, floating parts and near-symmetry, using the BVH within face budgets. Checks are heuristics on parts, not Blender's exact Select Non-Manifold or Intersect checks. | [tests/mesh-lint-geometry.test.js](../tests/mesh-lint-geometry.test.js), [src/mesh-lint-geometry.js](../src/mesh-lint-geometry.js) | #66 |
 | Modeling > Meshes > Remeshing | missing | No remesh. | | #40 |
 | Modeling > Curves | partial | `tube` follows a curve and `extrude` follows a contour. There is no curve object. | | #45 |
 | Modeling > Curves (New) | missing | No hair curves. | | #63 |

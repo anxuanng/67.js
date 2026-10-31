@@ -12,6 +12,7 @@ import { expandInstancedNodes } from './mesh-instances.js';
 import { AGENT_SCENE_CAPABILITIES, AGENT_SCENE_DEFAULT_LIMITS, MAX_MATERIAL_PATTERNS, RECIPE_ALPHA_MODES } from './agent-scene-capabilities.js';
 import { MATERIAL_LAYER_FIELDS, validateMaterialLayers } from './material-layers.js';
 import { materialPatternTextures, normalizeMaterialPattern } from './material-patterns.js';
+import { recipeDiagnostics } from './agent-diagnostics.js';
 export { AGENT_SCENE_CAPABILITIES, AGENT_SCENE_DEFAULT_LIMITS };
 export { normalizeAgentLook, resolveAgentShadow } from './agent-look.js';
 export { needsMeshBooleans } from './agent-mesh.js';
@@ -48,7 +49,7 @@ function knownKeys(value, allowed, label) {
   }
   for (const key of Object.keys(value)) {
     if (!allowed.includes(key)) {
-      throw new TypeError(`Unknown ${label} field: ${key}.`);
+      throw new TypeError(`Unknown ${label} field: ${key}. Allowed fields: ${allowed.join(", ")}.`);
     }
   }
 }
@@ -179,7 +180,7 @@ function resources(values, maximum, label, validate) {
   return values.map(value => {
     identifier(value?.id);
     if (seen.has(value.id)) {
-      throw new RangeError(`Duplicate ${label} ID: ${value.id}.`);
+      throw new RangeError(`Duplicate ${label} ID: ${value.id}. IDs must be unique: rename one, or remove the other.`);
     }
     seen.add(value.id);
     return validate(value);
@@ -273,7 +274,7 @@ function nodeFrom(value) {
   }
   result.rotation = result.rotation.map(component => component / length);
   if ((value.geometry !== undefined) !== (value.material !== undefined)) {
-    throw new TypeError('Mesh nodes need both geometry and material IDs.');
+    throw new TypeError(`Node ${value.id}: set both geometry and material, or neither for a group node.`);
   }
   if (value.geometry !== undefined) {
     identifier(value.geometry);
@@ -332,7 +333,7 @@ const GEOMETRY_FIELDS = {
 
 function geometryEstimate(value) {
   if (!Object.hasOwn(GEOMETRY_FIELDS, value.type)) {
-    throw new TypeError('Unsupported geometry type.');
+    throw new TypeError(`Unsupported geometry type: ${value.type}. Use one of ${Object.keys(GEOMETRY_FIELDS).join(', ')}.`);
   }
   knownKeys(value, ['id', 'type', ...GEOMETRY_FIELDS[value.type]], 'geometry');
   function detail(field, fallback, minimum, maximum) {
@@ -440,7 +441,7 @@ function compile(recipe, geometries, localBounds, limits) {
   const materials = new Map(recipe.materials.map(material => [material.id, material]));
   const graph = createSceneGraph(recipe.nodes.map(node => {
     if (node.geometry !== undefined && (!geometries.has(node.geometry) || !materials.has(node.material))) {
-      throw new RangeError(`Unknown resource referenced by node ${node.id}.`);
+      throw new RangeError(`Node ${node.id} uses ${geometries.has(node.geometry) ? `material ${node.material}` : `geometry ${node.geometry}`}, which does not exist. Add it to the recipe, or point the node at one of: ${(geometries.has(node.geometry) ? [...materials.keys()] : [...geometries.keys()]).join(', ')}.`);
     }
     return { name: node.id, parent: node.parent,
       matrix: mat4.fromRotationTranslationScale(mat4.create(), node.rotation, node.translation, node.scale),
@@ -670,7 +671,7 @@ function removeNode(candidate, operation) {
     throw new TypeError('recursive must be boolean.');
   }
   if (!candidate.nodes.some(node => node.id === operation.id)) {
-    throw new RangeError(`Operation ID was not found: ${operation.id}.`);
+    throw new RangeError(`${operation.type} target was not found: ${operation.id}. List current IDs with scene_inspect, or add it first with add-node, add-geometry or add-material.`);
   }
   const children = new Map();
   for (const node of candidate.nodes) {
@@ -948,7 +949,7 @@ export function createAgentScene(input, inputLimits = {}) {
             nodeFrom(record);
           }
           if (candidate[collection].some(existing => existing.id === record.id)) {
-            throw new RangeError(`Duplicate ${collection} ID: ${record.id}.`);
+            throw new RangeError(`Duplicate ${collection} ID: ${record.id}. IDs must be unique: pick a new ID, or remove the existing one first.`);
           }
           candidate[collection].push(record);
           continue;
@@ -958,7 +959,7 @@ export function createAgentScene(input, inputLimits = {}) {
           identifier(operation.geometry);
           const target = candidate.geometries.find(geometry => geometry.id === operation.geometry);
           if (!target) {
-            throw new RangeError(`Geometry ID was not found: ${operation.geometry}.`);
+            throw new RangeError(`Geometry ID was not found: ${operation.geometry}. Known geometry IDs: ${[...candidate.geometries.map(known => known.id)].join(', ')}.`);
           }
           if (target.type !== 'mesh') {
             throw new TypeError(`Geometry ${operation.geometry} is a ${target.type}. Add a mesh geometry with base: { type: '${target.type}', ... } to edit it.`);
@@ -978,7 +979,7 @@ export function createAgentScene(input, inputLimits = {}) {
           identifier(operation.geometry);
           const target = candidate.geometries.find(geometry => geometry.id === operation.geometry);
           if (!target) {
-            throw new RangeError(`Geometry ID was not found: ${operation.geometry}.`);
+            throw new RangeError(`Geometry ID was not found: ${operation.geometry}. Known geometry IDs: ${[...candidate.geometries.map(known => known.id)].join(', ')}.`);
           }
           if (target.type !== 'mesh') {
             throw new TypeError(`Geometry ${operation.geometry} is a ${target.type}. Only mesh geometries have a modifier stack.`);
@@ -1007,7 +1008,7 @@ export function createAgentScene(input, inputLimits = {}) {
           identifier(operation.id);
           const index = candidate[removal].findIndex(record => record.id === operation.id);
           if (index < 0) {
-            throw new RangeError(`Operation ID was not found: ${operation.id}.`);
+            throw new RangeError(`${operation.type} target was not found: ${operation.id}. List current IDs with scene_inspect, or add it first with add-node, add-geometry or add-material.`);
           }
           candidate[removal].splice(index, 1);
           if (operation.type === 'remove-material') {
@@ -1027,11 +1028,11 @@ export function createAgentScene(input, inputLimits = {}) {
           fields = CAMERA_FIELDS;
           target = candidate.camera;
         } else {
-          throw new TypeError('Unsupported operation type.');
+          throw new TypeError(`Unsupported operation type: ${operation.type}. Use one of set-node, set-material, set-camera, set-motion, set-physics, set-environment, set-effects, set-shadow, add-node, add-geometry, add-material, remove-node, remove-geometry, remove-material, edit-mesh, set-mesh-stack.`);
         }
         knownKeys(operation, ['type', ...(operation.type === 'set-camera' ? [] : ['id']), ...fields], 'operation');
         if (!target) {
-          throw new RangeError(`Operation ID was not found: ${operation.id}.`);
+          throw new RangeError(`${operation.type} target was not found: ${operation.id}. List current IDs with scene_inspect, or add it first with add-node, add-geometry or add-material.`);
         }
         for (const field of fields) {
           if (Object.hasOwn(operation, field)) {
@@ -1054,7 +1055,7 @@ export function createAgentScene(input, inputLimits = {}) {
         identifier(id);
         const node = state.recipe.nodes.find(value => value.id === id);
         if (!node) {
-          throw new RangeError(`Inspection ID was not found: ${id}.`);
+          throw new RangeError(`Inspection ID was not found: ${id}. Call scene_inspect without ids to list node IDs.`);
         }
         return node;
       });
@@ -1072,12 +1073,14 @@ export function createAgentScene(input, inputLimits = {}) {
         return result;
       });
       const resident = geometryStats(ownedGeometryRecords());
+      const diagnostics = recipeDiagnostics(state.recipe);
       return {
         revision, topologyRevision,
         ...(state.recipe.motion?.ik?.length ? { motionIk: compileAgentMotion(state.recipe.motion, state.recipe).sweepIk() } : {}),
         motion: state.recipe.motion ? { duration: state.recipe.motion.duration, loop: state.recipe.motion.loop, tracks: state.recipe.motion.tracks.length, time: state.motionTime } : null,
         physics: state.physicsSampler ? state.physicsSampler.report() : null,
         boundsSpace: 'authored-base-world',
+        ...(diagnostics.length ? { diagnostics } : {}),
         counts: {
           nodes: state.recipe.nodes.length, parts: state.parts.length,
           geometries: state.geometries.size, materials: state.recipe.materials.length,
@@ -1133,13 +1136,13 @@ export function createAgentScene(input, inputLimits = {}) {
       expected(options);
       const checkpoint = checkpoints.get(handle);
       if (!checkpoint) {
-        throw new RangeError('Unknown or released checkpoint.');
+        throw new RangeError('Unknown or released checkpoint. Save one with scene_checkpoint, or use a checkpointId that scene_checkpoint returned and you have not released.');
       }
       return commit(stage(checkpoint.recipe, checkpoint), true);
     },
     releaseCheckpoint(handle) {
       if (!checkpoints.delete(handle)) {
-        throw new RangeError('Unknown or released checkpoint.');
+        throw new RangeError('Unknown or released checkpoint. Save one with scene_checkpoint, or use a checkpointId that scene_checkpoint returned and you have not released.');
       }
     },
   });

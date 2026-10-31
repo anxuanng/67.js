@@ -6,6 +6,7 @@ import { readFile } from 'node:fs/promises';
 import { createAgentAssetScene } from '../../src/agent-asset.js';
 import { createAgentScene, loadMeshBooleans, needsMeshBooleans, loadPhysicsEngine, needsPhysics } from '../../src/agent-scene.js';
 import { parseGltf } from '../../src/gltf.js';
+import { GEOMETRY_PROBLEMS } from '../../src/mesh-lint.js';
 
 const WELD_DISTANCE = 1e-5;
 
@@ -269,8 +270,10 @@ export async function measureRecipe(recipe) {
     parts += report.parts.count;
     closedParts += report.parts.closed;
     eulerCharacteristic += report.counts.vertices - report.counts.edges + report.counts.faces;
-    for (const problem of report.problems) problemKinds.add(problem.kind);
-    lintProblems += report.problems.length;
+    // Spatial warnings are advice, not pass or fail: a mug handle is meant to break symmetry.
+    const gradedProblems = report.problems.filter(problem => !(problem.kind in GEOMETRY_PROBLEMS));
+    for (const problem of gradedProblems) problemKinds.add(problem.kind);
+    lintProblems += gradedProblems.length;
   }
   const allClosed = closedParts === parts;
   return {
