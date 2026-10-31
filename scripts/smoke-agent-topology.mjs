@@ -12,8 +12,9 @@ assert.ok(['gpu', 'cpu'].includes(backend));
 await mkdir('artifacts', { recursive: true });
 const fixture = createAgentPreviewFixture();
 const harness = `<!doctype html><html><head><style>html,body{margin:0;height:100%;background:#182126}canvas{width:100vw;height:100vh;display:block}</style></head><body><canvas></canvas><script type="module">
-import {createAgentScene} from '/src/agent-scene.js';
+import {createAgentScene,loadAllAgentSceneModules} from '/src/agent-scene.js';
 import {Renderer67} from '/src/renderer.js';
+await loadAllAgentSceneModules();
 const recipe=${JSON.stringify(fixture)};
 const session=createAgentScene({...recipe,geometries:[],materials:[],nodes:[]});
 const renderer=new Renderer67(document.querySelector('canvas'),session.parts,{ground:false,hdr:true,samples:4,pixelRatio:1,memoryBudgetMiB:192});

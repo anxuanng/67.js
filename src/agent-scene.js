@@ -1,23 +1,18 @@
 import { mat4, mat3 } from 'gl-matrix';
 import { box, cylinder, sphere, torus } from './geometry.js';
-import { lathe, extrude, tube } from './modeling.js';
 import { createSceneGraph } from './scene-graph.js';
 import { applyProjection } from './camera.js';
 import { normalizeAgentLook } from './agent-look.js';
-import { normalizeAgentMotion, compileAgentMotion } from './agent-motion.js';
-import { normalizeAgentPhysics, bakeAgentPhysics } from './agent-physics.js';
-import { meshReport, generateMeshGeometry, MESH_SMOOTH_ANGLE_DEFAULT } from './agent-mesh.js';
-import { normalizeMeshEdits, normalizeMeshStack } from './mesh-recipe.js';
-import { expandInstancedNodes } from './mesh-instances.js';
-import { AGENT_SCENE_CAPABILITIES, AGENT_SCENE_DEFAULT_LIMITS, MAX_MATERIAL_PATTERNS, RECIPE_ALPHA_MODES } from './agent-scene-capabilities.js';
+import { agentSceneModule } from './agent-scene-modules.js';
+import { MESH_SMOOTH_ANGLE_DEFAULT, AGENT_SCENE_CAPABILITIES, AGENT_SCENE_DEFAULT_LIMITS, MAX_MATERIAL_PATTERNS, RECIPE_ALPHA_MODES } from './agent-scene-capabilities.js';
 import { MATERIAL_LAYER_FIELDS, validateMaterialLayers } from './material-layers.js';
-import { materialPatternTextures, normalizeMaterialPattern } from './material-patterns.js';
 export { AGENT_SCENE_CAPABILITIES, AGENT_SCENE_DEFAULT_LIMITS };
 export { normalizeAgentLook, resolveAgentShadow } from './agent-look.js';
-export { needsMeshBooleans } from './agent-mesh.js';
-export { needsPhysics, loadPhysicsEngine, physicsEngineLoaded } from './agent-physics.js';
-export { setPhysicsModuleLoader } from './physics.js';
-export { loadMeshBooleans, meshBooleansLoaded, setManifoldModuleLoader } from './mesh-boolean.js';
+export {
+  needsMeshBooleans, loadMeshBooleans, meshBooleansLoaded, setManifoldModuleLoader,
+  needsPhysics, loadPhysicsEngine, physicsEngineLoaded, setPhysicsModuleLoader,
+  loadAgentSceneModules, loadAllAgentSceneModules, allAgentSceneModulesLoaded, agentSceneModulesNeeded,
+} from './agent-scene-modules.js';
 
 const DEFAULT_LIMITS = AGENT_SCENE_DEFAULT_LIMITS;
 const MAX_MESH_REPORTS = 16;
@@ -205,7 +200,7 @@ function materialFrom(value) {
   }
   if (value.pattern !== undefined) {
     if (result.tag !== 'surface') throw new RangeError('Material pattern needs the surface tag.');
-    result.pattern = normalizeMaterialPattern(value.pattern);
+    result.pattern = agentSceneModule('patterns').normalizeMaterialPattern(value.pattern);
   }
   result.opacity = defaultValue(value.opacity, 1);
   finite(result.opacity, 'opacity');
@@ -387,11 +382,11 @@ function geometryEstimate(value) {
         throw new TypeError('mesh base must be a primitive or profile geometry record without an id (box, cylinder, sphere, torus, lathe, extrude or tube).');
       }
       let estimate = geometryEstimate({ id: 'base', ...base });
-      for (const edit of normalizeMeshEdits(value.edits ?? [])) {
+      for (const edit of agentSceneModule('mesh').normalizeMeshEdits(value.edits ?? [])) {
         if (edit.op === 'boolean') estimate += cutterEstimate(edit.cutter);
       }
       // Stack nodes multiply the mesh: arrays by their count, mirror and solidify at most by two.
-      for (const node of normalizeMeshStack(value.stack ?? [])) estimate *= node.op === 'array' ? node.count : 2;
+      for (const node of agentSceneModule('mesh').normalizeMeshStack(value.stack ?? [])) estimate *= node.op === 'array' ? node.count : 2;
       if (value.smoothAngle !== undefined && (value.smoothAngle < 0 || value.smoothAngle > 180)) {
         throw new RangeError('smoothAngle is degrees from 0 to 180.');
       }
@@ -399,6 +394,10 @@ function geometryEstimate(value) {
       return estimate * 2;
     }
   }
+}
+
+function hasInstancedNodes(nodes) {
+  return !Array.isArray(nodes) || nodes.some(node => node && typeof node === 'object' && Object.hasOwn(node, 'instances'));
 }
 
 function cutterEstimate(cutter) {
@@ -419,13 +418,13 @@ function generateGeometry(value, maxVertices) {
     case 'torus':
       return torus(value.tubeRadius, value.segments, value.sides, value.arc, value.start);
     case 'lathe':
-      return lathe(value.profile, { ...value, maxVertices });
+      return agentSceneModule('modeling').lathe(value.profile, { ...value, maxVertices });
     case 'extrude':
-      return extrude(value.contour, { ...value, maxVertices });
+      return agentSceneModule('modeling').extrude(value.contour, { ...value, maxVertices });
     case 'tube':
-      return tube(value.path, { ...value, maxVertices });
+      return agentSceneModule('modeling').tube(value.path, { ...value, maxVertices });
     case 'mesh':
-      return generateMeshGeometry(() => generateGeometry(value.base, maxVertices), value.edits ?? [], {
+      return agentSceneModule('mesh').generateMeshGeometry(() => generateGeometry(value.base, maxVertices), value.edits ?? [], {
         maxVertices, smoothAngle: value.smoothAngle ?? MESH_SMOOTH_ANGLE_DEFAULT,
         stack: value.stack ?? [], cacheKey: JSON.stringify(value.base),
         resolveCutter: cutter => {
@@ -509,7 +508,7 @@ function normalizeRecipe(input, limits) {
   if (distinctPatterns.size > MAX_MATERIAL_PATTERNS) {
     throw new RangeError(`A scene holds at most ${MAX_MATERIAL_PATTERNS} different material patterns; it has ${distinctPatterns.size}. Reuse a pattern and tint it with color.`);
   }
-  recipe.nodes = expandInstancedNodes(recipe.nodes, {
+  if (hasInstancedNodes(recipe.nodes)) recipe.nodes = agentSceneModule('mesh').expandInstancedNodes(recipe.nodes, {
     maxNodes: limits.maxNodes,
     resolveSurface: id => {
       const definition = recipe.geometries.find(geometry => geometry.id === id);
@@ -527,10 +526,10 @@ function normalizeRecipe(input, limits) {
   }
   Object.assign(recipe, normalizeAgentLook(look));
   if (Object.hasOwn(recipe, 'motion')) {
-    recipe.motion = normalizeAgentMotion(recipe.motion, recipe);
+    recipe.motion = recipe.motion === null || recipe.motion === undefined ? null : agentSceneModule('motion').normalizeAgentMotion(recipe.motion, recipe);
   }
   if (Object.hasOwn(recipe, 'physics')) {
-    recipe.physics = normalizeAgentPhysics(recipe.physics, recipe);
+    recipe.physics = agentSceneModule('physics').normalizeAgentPhysics(recipe.physics, recipe);
   }
   recipe = copiedJson(recipe, limits.maxRecipeBytes);
   return recipe;
@@ -570,7 +569,7 @@ function materialHandle(snapshot) {
       enumerable: true,
       // Baked on first read, so validating or inspecting a recipe never pays for it.
       get() {
-        return holder.snapshot.pattern ? materialPatternTextures(holder.snapshot.pattern)[field] : undefined;
+        return holder.snapshot.pattern ? agentSceneModule('patterns').materialPatternTextures(holder.snapshot.pattern)[field] : undefined;
       },
     });
   }
@@ -810,7 +809,7 @@ export function createAgentScene(input, inputLimits = {}) {
       stats: geometryStats(geometryRecords.values()),
     };
     stagedState.localBounds = localBounds;
-    stagedState.motionSampler = compileAgentMotion(recipe.motion ?? null, recipe);
+    stagedState.motionSampler = recipe.motion ? agentSceneModule('motion').compileAgentMotion(recipe.motion, recipe) : null;
     stagedState.physicsSampler = stagePhysics(recipe, geometryRecords);
     const animated = Boolean(stagedState.motionSampler || stagedState.physicsSampler);
     stagedState.poseGraph = animated ? compile(recipe, geometries, localBounds, limits) : null;
@@ -827,7 +826,7 @@ export function createAgentScene(input, inputLimits = {}) {
     const key = JSON.stringify([recipe.physics, bodyNodes, bodyNodes.map(node => geometryRecords.get(node.geometry).signature)]);
     if (physicsBake?.key !== key) {
       const geometries = new Map([...geometryRecords].map(([id, record]) => [id, record.geometry]));
-      physicsBake = { key, sampler: bakeAgentPhysics(recipe.physics, recipe, geometries) };
+      physicsBake = { key, sampler: agentSceneModule('physics').bakeAgentPhysics(recipe.physics, recipe, geometries) };
     }
     return physicsBake.sampler;
   }
@@ -970,7 +969,7 @@ export function createAgentScene(input, inputLimits = {}) {
             throw new TypeError('edit-mesh needs an edits array.');
           }
           target.edits = operation.replace ? operation.edits : [...(target.edits ?? []), ...operation.edits];
-          normalizeMeshEdits(target.edits);
+          agentSceneModule('mesh').normalizeMeshEdits(target.edits);
           continue;
         }
         if (operation.type === 'set-mesh-stack') {
@@ -984,7 +983,7 @@ export function createAgentScene(input, inputLimits = {}) {
             throw new TypeError(`Geometry ${operation.geometry} is a ${target.type}. Only mesh geometries have a modifier stack.`);
           }
           const stack = operation.stack ?? target.stack ?? [];
-          normalizeMeshStack(stack);
+          agentSceneModule('mesh').normalizeMeshStack(stack);
           const applied = operation.apply ?? 0;
           if (!Number.isInteger(applied) || applied < 0 || applied > stack.length) {
             throw new RangeError(`apply must be an integer from 0 to the stack length ${stack.length}.`);
@@ -992,7 +991,7 @@ export function createAgentScene(input, inputLimits = {}) {
           // Applying moves the first nodes into the edit log, as Blender's Apply modifier does.
           target.edits = [...(target.edits ?? []), ...stack.slice(0, applied)];
           target.stack = stack.slice(applied);
-          normalizeMeshEdits(target.edits);
+          agentSceneModule('mesh').normalizeMeshEdits(target.edits);
           continue;
         }
         if (operation.type === 'remove-node') {
@@ -1074,7 +1073,7 @@ export function createAgentScene(input, inputLimits = {}) {
       const resident = geometryStats(ownedGeometryRecords());
       return {
         revision, topologyRevision,
-        ...(state.recipe.motion?.ik?.length ? { motionIk: compileAgentMotion(state.recipe.motion, state.recipe).sweepIk() } : {}),
+        ...(state.recipe.motion?.ik?.length ? { motionIk: agentSceneModule('motion').compileAgentMotion(state.recipe.motion, state.recipe).sweepIk() } : {}),
         motion: state.recipe.motion ? { duration: state.recipe.motion.duration, loop: state.recipe.motion.loop, tracks: state.recipe.motion.tracks.length, time: state.motionTime } : null,
         physics: state.physicsSampler ? state.physicsSampler.report() : null,
         boundsSpace: 'authored-base-world',
@@ -1112,7 +1111,7 @@ export function createAgentScene(input, inputLimits = {}) {
         if (!geometry) {
           throw new RangeError(`Geometry ID was not found: ${id}. Known IDs: ${[...state.geometries.keys()].join(', ')}.`);
         }
-        return { geometry: id, ...meshReport(geometry) };
+        return { geometry: id, ...agentSceneModule('mesh').meshReport(geometry) };
       });
       return { revision, meshes, truncated: requested.length > selected.length };
     },

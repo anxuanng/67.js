@@ -73,7 +73,7 @@ Inputs must be finite numbers. Positions are within ±1,000,000 scene units. Col
 
 Key/fill/ambient intensity is between zero and 100. Key color components are between zero and 1,000. Large coordinates still inherit Float32 rendering precision limits.
 
-A point light casts a shadow only with `castShadow: true` (see [Local shadows](#local-shadows)); without it the light can illuminate through opaque walls. The original directional shadow map remains in use. Source-only [volume fog](volumetric.md) receives directional scattering and shadows. Point-light scattering and indirect bounces remain unfinished.
+A point light casts a shadow only with `castShadow: true` (see [Local shadows](#local-shadows)); without it the light can illuminate through opaque walls. The original directional shadow map remains in use. Source-only [volume fog](https://67js.codepawl.com/volumetric.md) receives directional scattering and shadows. Point-light scattering and indirect bounces remain unfinished.
 
 ## Spot lights
 
