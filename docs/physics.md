@@ -385,6 +385,38 @@ Rapier is loaded on demand, an optional peer dependency. The MCP runtime serves 
 `scene_inspect` returns a `physics` report: per body the `finalPosition`, `finalSpeed` and `restsAtTime` (null while moving), the `contacts` between bodies with `firstTime`, `count` and `touchingAtEnd`, and the sensor `enter` and `leave` events with times.
 An agent can check that a ball came to rest on a mesh from these numbers, without a picture.
 
+## Recipe cloth
+
+A recipe `cloth` section records deformable sheets with a position-based solver (`src/cloth.js`, `src/agent-cloth.js`). It needs no peer dependency and loads on demand with the `cloth` module, so a scene without cloth pays nothing.
+
+```json
+{ "geometries": [{ "id": "flag", "type": "grid", "segments": 20 }, { "id": "ball", "type": "sphere" }],
+  "nodes": [{ "id": "flag", "geometry": "flag", "material": "cloth", "translation": [0, 2.5, 0], "scale": [2, 1.2, 1] },
+            { "id": "ball", "geometry": "ball", "material": "stone", "translation": [0.2, 1.4, 0.35], "scale": [0.3, 0.3, 0.3] }],
+  "cloth": { "duration": 3, "wind": [4, 0, 2],
+             "sheets": [{ "node": "flag", "pin": ["left"] }],
+             "colliders": [{ "node": "ball", "shape": "ball" }] } }
+```
+
+- A sheet is a root node with any triangle mesh. The `grid` geometry (`segments` 1 to 64) is a flat unit sheet in XY facing +Z, sized by the node scale. Vertices at one position share a particle, so a seam does not tear.
+- `pin` holds edges of the local bounds in place: `top`, `bottom`, `left`, `right` or a corner such as `topLeft`.
+- Sheet fields: `stiffness` (0.01 to 1, default 0.9), `bend` (0 to 1, default 0.1), `density` in kg/m2 (default 0.2), `damping` in 1/s (default 0.3), `friction` (default 0.3) and `thickness` in metres (default 0.01). `gravity` and a steady `wind` in m/s sit on the section.
+- Colliders are fixed root nodes fitted to their geometry bounds as a `ball` or an oriented `box` (default). A thin box is a floor.
+- A sheet or collider cannot have a motion translation or rotation track or a physics body. No cloth-to-cloth or self collision, and no soft bodies yet.
+- The bake runs when the scene is created: 60 frames a second, 4 substeps and 8 constraint passes a frame, constraints solved in a fixed order with no random numbers. `sample(time)` blends the two nearest frames, so the same time always gives the same positions and a seek backwards repeats them. Time zero is the authored sheet and a time past `duration` holds the last frame.
+- Limits: 8 sheets, 16 colliders, 10 seconds, 5000 particles a sheet, 3 million recorded particle positions and 150 million solver operations a bake (about 3 seconds). Larger input is rejected with the limit in the message. A 32 by 32 grid for 4 seconds bakes in about 1.4 s.
+- A seek replaces the sheet's part, so the renderer sees a topology change (`topologyRevision`); the MCP preview uses `replaceParts` and `scene_look` with `motionTime` repeats the same PNG bytes (`npm run smoke:agent-cloth`).
+- `scene_inspect` returns a `cloth` report: particles, triangles, pinned count and the final bounds of each sheet.
+
+Blender comparison (`scripts/blender-cloth.py`, Blender 5.2.2, default stiffness, mass set from the same kg/m2; `tests/cloth-blender.test.js`):
+
+| Case | Result |
+| --- | --- |
+| 2 x 1.5 m sheet pinned along its top, 2 s | Mean vertex distance 0.08 percent of the height, free edge 1.2485 m against 1.25 m. Both hang straight, so this is a weak test. |
+| 1.6 m sheet dropped on a 0.4 m ball, 2 s | Does not match: the lowest point is -0.47 m in 67.js and 0.35 m in Blender, and the mean vertex distance is 63 percent of the sheet size. Neither enters the ball. Raising `stiffness` and `bend` to 1 changes it to 57 percent. The cause is not found; it may be Blender's cloth damping and collision margins, so no parity is claimed for draping. |
+
+Solvers differ in kind (Blender uses springs with implicit integration; this is position-based), and a reviewer's by-eye comparison of a drape is still open.
+
 Repeat recordings require identical inputs, creation order, timestep, solver options, and Rapier version.
 Rapier documents cross-platform determinism for its WASM solver under identical initial conditions.
 Input calculations such as `Math.sin` can differ across platforms and invalidate that guarantee.

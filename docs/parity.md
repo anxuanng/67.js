@@ -110,7 +110,7 @@ To move to a new Blender release, run `node scripts/parity-manual-snapshot.mjs`.
 | Modeling > Modifiers > Normals > Normal Edit Modifier | missing | No equivalent. | | |
 | Modeling > Modifiers > Normals > Weighted Normal Modifier | missing | No equivalent. Not in the first slice of #42, which took the modifiers agents use most. | | #42 |
 | Modeling > Modifiers > Normals > Smooth By Angle Modifier | partial | `smoothAngle` is a geometry setting. It is not a stack node. Not in the first slice of #42, which took the modifiers agents use most. | | #42 |
-| Modeling > Modifiers > Physics > Cloth Modifier | missing | No cloth. | | #62 |
+| Modeling > Modifiers > Physics > Cloth Modifier | partial | Recipe `cloth`: a position-based sheet solver with pinned edges, steady wind, gravity and fixed ball or box colliders, recorded at 60 frames a second so a seek repeats exactly. No self collision, no per-vertex stiffness or pin weights. A hanging sheet matches a Blender bake to 0.08 percent of its height; a sheet dropped on a ball does not match (see docs/physics.md). | [cloth](../tests/cloth.test.js), [cloth-blender](../tests/cloth-blender.test.js) | #62 |
 | Modeling > Modifiers > Physics > Collision Modifier | partial | Rapier colliders fitted to recipe geometry as box, ball, capsule, convex hull or trimesh, so a body rests on an authored mesh. | [agent-physics](../tests/agent-physics.test.js) | #61 |
 | Modeling > Modifiers > Physics > Dynamic Paint Modifier | missing | No equivalent. | | |
 | Modeling > Modifiers > Physics > Explode Modifier | missing | No equivalent. | | |
@@ -176,7 +176,7 @@ To move to a new Blender release, run `node scripts/parity-manual-snapshot.mjs`.
 | Physics > Rigid Body > Rigid Body Properties | partial | Dynamic, fixed and kinematic bodies with mass, density, friction, restitution and velocity, in code and in recipes. Trimesh and convex colliders, no bone-bound bodies yet. | [physics-colliders](../tests/physics-colliders.test.js) | #61 |
 | Physics > Rigid Body > Rigid Body World | partial | Recorded simulation with deterministic seeks, in code and in a recipe `physics` section (MCP, a seek back repeats the PNG). | [agent-physics](../tests/agent-physics.test.js) | #61 |
 | Physics > Rigid Body > Rigid Body Constraints | partial | Fixed, spherical, revolute and prismatic joints, with limits and motors, in code. | [physics](../tests/physics.test.js) | #61 |
-| Physics > Cloth | missing | No cloth. | | #62 |
+| Physics > Cloth | partial | Same solver as the Cloth Modifier row: gravity, wind, pins, ball and box collisions, thickness and friction, and a `scene_inspect` report. Blender's tension, compression, shear and bending stiffness map to one `stiffness` and one `bend`. | [cloth](../tests/cloth.test.js) | #62 |
 | Physics > Soft Body | missing | No soft bodies. | | #62 |
 | Physics > Fluid | partial | `addons/spume` plays back a liquid baked outside the browser. There is no smoke or fire. | [spume](../tests/spume.test.js) | #63 |
 | Physics > Particle System | missing | No shared particle system. Sparks exist only in the demo film. | | #63 |

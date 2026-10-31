@@ -334,6 +334,7 @@ const recipeMeshEdits = z.array(z.record(z.string(), z.unknown())).max(64);
 const recipeMeshStack = z.array(z.record(z.string(), z.unknown())).max(16);
 const geometry = z.discriminatedUnion('type', [
   ...primitiveGeometries(true),
+  z.strictObject({ id: identifier, type: z.literal('grid'), segments: detail(1, 64) }),
   z.strictObject({ id: identifier, type: z.literal('mesh'), base: z.discriminatedUnion('type', primitiveGeometries(false)).describe('Starting shape, converted to welded quads with axis face tags.'), edits: recipeMeshEdits.optional().describe('Replayable edit log, applied in order. Each item has the shape of one mesh_edit edit; read that tool for every op and field.'), stack: recipeMeshStack.optional().describe('Non-destructive modifier stack evaluated after the edits. Each item has the shape of one mesh_stack node; read that tool for the ops.'), smoothAngle: bounded(0, 180).optional().describe('Edges bending more than this many degrees render hard. Defaults to 30.') }),
 ]);
 function motionTrack(kind, property, value, tangent) {
@@ -434,18 +435,18 @@ const motion = z.strictObject({
   ])).max(128),
 }).describe('One absolute-time procedural clip. Local node transforms propagate through parents. Cubic tangents are derivatives per second. Backend checks references, duplicate tracks, 2048 total keys and every sampled pose.');
 const physicsBody = z.strictObject({
-  node: identifier.describe('A root recipe node with a geometry. The collider is fitted to that geometry at the node scale, and the body drives the node pose.'),
-  type: z.enum(['dynamic', 'fixed', 'kinematic']).optional().describe('Defaults to dynamic. Fixed bodies never move.'),
-  shape: z.enum(['box', 'ball', 'capsule', 'convex', 'trimesh']).optional().describe('Collider fitted to the geometry. Defaults: box for dynamic bodies and sensors, trimesh for fixed ones. Trimesh follows every triangle (at most 20000) and needs a fixed or kinematic body; convex wraps at most 2048 distinct vertices.'),
-  mass: positive.optional().describe('Kilograms. Give mass or density, not both.'),
+  node: identifier.describe('Root node with a geometry; the collider is fitted to it and the body drives its pose.'),
+  type: z.enum(['dynamic', 'fixed', 'kinematic']).optional().describe('Defaults to dynamic.'),
+  shape: z.enum(['box', 'ball', 'capsule', 'convex', 'trimesh']).optional().describe('Defaults: box for dynamic and sensors, trimesh for fixed. Trimesh (at most 20000 triangles) needs a fixed or kinematic body; convex takes at most 2048 distinct vertices.'),
+  mass: positive.optional().describe('Kilograms; mass or density, not both.'),
   density: positive.optional().describe('Defaults to 1.'),
   friction: nonnegative.optional(),
   restitution: unit.optional(),
-  sensor: z.boolean().optional().describe('A trigger volume: nothing bounces off it, and scene_inspect lists enter and leave times.'),
+  sensor: z.boolean().optional().describe('Trigger volume; scene_inspect lists enter and leave times.'),
   velocity: vector3.optional(),
   angularVelocity: vector3.optional(),
-  layer: z.number().int().min(0).max(15).optional().describe('Collision layer, 0 to 15. Defaults to 0.'),
-  collidesWith: z.array(z.number().int().min(0).max(15)).max(16).optional().describe('Layers this body hits. Two bodies collide only when each lists the other\'s layer. Defaults to all.'),
+  layer: z.number().int().min(0).max(15).optional(),
+  collidesWith: z.array(z.number().int().min(0).max(15)).max(16).optional().describe('Layers hit; both bodies must list each other. Defaults to all.'),
 });
 const physicsJoint = z.strictObject({
   type: z.enum(['spherical', 'revolute', 'prismatic', 'fixed']),
@@ -461,7 +462,19 @@ const physics = z.strictObject({
   gravity: vector3.optional().describe('Defaults to [0, -9.81, 0].'),
   bodies: z.array(physicsBody).min(1).max(64),
   joints: z.array(physicsJoint).max(64).optional().describe('Joint bodies are the node IDs of physics bodies.'),
-}).describe('Rigid-body physics recorded offline with Rapier at 60 steps a second and played back by time: motionTime seeks into the recording. Bodies are recipe nodes; scene_inspect reports contacts and resting state. Needs the optional peer @dimforge/rapier3d-compat. A node cannot have both a body and a motion translation or rotation track.');
+}).describe('Rigid bodies recorded offline with Rapier (optional peer) at 60 fps and seeked by motionTime. scene_inspect reports contacts and resting state. A node cannot have a body and a motion translation or rotation track.');
+const clothSheet = z.strictObject({
+  node: identifier.describe('Root mesh node that stays put, such as a grid.'),
+  pin: z.array(z.enum(['top', 'bottom', 'left', 'right', 'topLeft', 'topRight', 'bottomLeft', 'bottomRight'])).max(8).optional(),
+  stiffness: unit.optional(), bend: unit.optional(), density: positive.optional(), damping: nonnegative.optional(), friction: unit.optional(), thickness: nonnegative.optional(),
+});
+const cloth = z.strictObject({
+  duration: z.number().min(0.1).max(10),
+  gravity: vector3.optional(),
+  wind: vector3.optional(),
+  sheets: z.array(clothSheet).min(1).max(8),
+  colliders: z.array(z.strictObject({ node: identifier, shape: z.enum(['ball', 'box']).optional() })).max(16).optional(),
+}).describe('Cloth baked at 60 fps and seeked by motionTime. Units and defaults: scene_capabilities cloth.');
 // The full motion schema (tracks, ik, constraints, drivers) is in scene_create's recipe. scene_apply and asset recipes
 // take the same object, validated by the backend, without repeating about 35 KB of schema in each tool.
 const recipeMotionReference = z.record(z.string(), z.unknown()).describe('The same object as recipe.motion in scene_create: duration, loop, tracks, ik, constraints, drivers. Read that tool for the fields. On an imported asset it also takes layers, up to 8 clips played at motion time before tracks and ik: { clip (scene_inspect animations id), mask: { joints, descendants, exclude } of node IDs, weight, speed, offset, loop, additive, reference, bones: { clip node: asset node } to retarget by name, morph }. A masked layer waves while another walks.');
@@ -498,6 +511,7 @@ const recipe = z.strictObject({
   shadow: shadow.optional(),
   motion: motion.nullable().optional(),
   physics: physics.nullable().optional(),
+  cloth: cloth.nullable().optional(),
 }).describe('Bounded scene recipe. Backend validates references, mesh resource pairs, hierarchy, geometry budgets and camera consistency.');
 const assetRecipe = z.strictObject({
   format: z.literal('67js.asset'),
@@ -522,7 +536,8 @@ const operation = z.discriminatedUnion('type', [
   z.strictObject({ type: z.literal('set-camera'), ...cameraFields }),
   z.strictObject({ type: z.literal('set-motion'), motion: recipeMotionReference.nullable() }),
   z.strictObject({ type: z.literal('set-armatures'), armatures: armaturesReference.nullable() }),
-  z.strictObject({ type: z.literal('set-physics'), physics: physics.nullable() }),
+  z.strictObject({ type: z.literal('set-physics'), physics: z.record(z.string(), z.unknown()).nullable().describe('Same object as recipe.physics in scene_create.') }),
+  z.strictObject({ type: z.literal('set-cloth'), cloth: z.record(z.string(), z.unknown()).nullable() }),
   z.strictObject({ type: z.literal('set-environment'), environment }),
   z.strictObject({ type: z.literal('set-effects'), effects }),
   z.strictObject({ type: z.literal('set-shadow'), shadow }),
