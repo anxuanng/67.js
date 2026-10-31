@@ -13,6 +13,7 @@ const MODULE_LOADERS = {
   particles: () => import('./agent-particles.js'),
   patterns: () => import('./material-patterns.js'),
   relations: () => import('./agent-relations.js'),
+  timeline: () => import('./film-timeline.js'),
 };
 
 const loadedModules = {};
@@ -31,6 +32,7 @@ const MODULE_MARKERS = {
   particles: ['"particles":{'],
   patterns: ['"pattern"'],
   relations: ['"relations":'],
+  timeline: ['"timeline":{'],
 };
 
 /** Whether a recipe, operation list or edit list contains a boolean edit, which needs loadMeshBooleans() first. */

@@ -178,7 +178,7 @@ test('validation enforces range, geometry-independent storage limits and one pen
     { kind: 'video', width: 65, height: 64 },
     { kind: 'image', width: 1025, height: 64 },
     { kind: 'video', width: 64, height: 64, fps: 31 },
-    { kind: 'video', width: 64, height: 64, duration: 31 },
+    { kind: 'video', width: 64, height: 64, duration: 61 },
   ]) await assert.rejects(controller.submit({ ...request(), settings }));
   await assert.rejects(controller.submit({ ...request(), snapshot: { recipe: {}, clips: [{ duration: 1 }] }, settings: { kind: 'video', width: 64, height: 64, duration: 1, animation: { clip: 0, start: 0.1 } } }), /clip duration/);
   await assert.rejects(controller.submit({ ...request(), snapshot: { recipe: { sparse: Array(2) } } }), /dense/);

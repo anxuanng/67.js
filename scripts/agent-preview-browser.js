@@ -181,6 +181,14 @@ function initializeRenderer(scene, { memoryBudgetMiB, backend }) {
   })));
 }
 
+// Camera fields from a timeline shot on top of the sampled camera, checked with the scene's own camera rules.
+function withCameraOverrides(camera, overrides) {
+  const merged = createAgentScene({ format: '67js.scene', schemaVersion: 1,
+    geometries: [], materials: [], nodes: [], camera: { ...camera, ...overrides } }).camera;
+  validatePreviewCamera(merged);
+  return merged;
+}
+
 // The camera at the start of the shutter interval, sampled from time so the same seek always gives the same blur.
 function previousCameraFor(record, motionTime) {
   const shutter = record.scene.effects.motionBlur.shutter;
@@ -431,8 +439,10 @@ window.__agentPreview = {
     }
   },
   // `pass` draws one render pass instead of the lit image. Object ID frames also list the part behind each ID.
-  frame({ sessionId, animation, motionTime, rendererTime = 0, pass, passDepthRange }) {
+  // `camera` overrides camera fields (a timeline shot) and `brightness` scales exposure for a dip through black.
+  frame({ sessionId, animation, motionTime, rendererTime = 0, pass, passDepthRange, camera: cameraOverrides, brightness = 1 }) {
     const record = requireSession(sessionId);
+    if (!Number.isFinite(brightness) || brightness < 0 || brightness > 1) throw new RangeError('Invalid frame brightness.');
     if (!Number.isFinite(rendererTime) || rendererTime < 0 || rendererTime > 3600) throw new RangeError('Invalid render time.');
     if (record.asset && (animation !== undefined || motionTime !== undefined)) {
       record.scene.sampleFrame({ ...(animation === undefined ? {} : { animation }),
@@ -440,8 +450,11 @@ window.__agentPreview = {
     } else if (motionTime !== undefined) {
       record.scene.sampleMotion(motionTime);
     }
-    const previousCamera = pass ? undefined : previousCameraFor(record, motionTime);
-    draw(record, rendererTime, undefined, { pass, passDepthRange, previousCamera });
+    const shotCamera = cameraOverrides ? withCameraOverrides(record.scene.camera, cameraOverrides) : undefined;
+    const sampledPreviousCamera = pass ? undefined : previousCameraFor(record, motionTime);
+    const previousCamera = sampledPreviousCamera && cameraOverrides ? withCameraOverrides(sampledPreviousCamera, cameraOverrides) : sampledPreviousCamera;
+    const exposure = record.scene.effects.exposure * brightness;
+    draw(record, rendererTime, shotCamera, { pass, passDepthRange, previousCamera, ...(brightness === 1 ? {} : { exposure }) });
     const info = renderInfo(record.renderer);
     return pass === 'objectId' ? { ...info, objectNames: record.renderer.passSupport.objectNames() } : info;
   },

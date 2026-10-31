@@ -599,7 +599,7 @@ function withDefaultMaterial(recipe) {
 
 function normalizeRecipe(input, limits) {
   let recipe = copiedJson(input, limits.maxRecipeBytes);
-  knownKeys(recipe, ['format', 'schemaVersion', 'geometries', 'materials', 'nodes', 'armatures', 'camera', 'environment', 'effects', 'shadow', 'motion', 'physics', 'cloth', 'particles'], 'recipe');
+  knownKeys(recipe, ['format', 'schemaVersion', 'geometries', 'materials', 'nodes', 'armatures', 'camera', 'environment', 'effects', 'shadow', 'motion', 'physics', 'cloth', 'timeline', 'particles'], 'recipe');
   if (recipe.format !== '67js.scene' || recipe.schemaVersion !== 1) {
     throw new RangeError('Expected 67js.scene schemaVersion 1.');
   }
@@ -652,11 +652,24 @@ function normalizeRecipe(input, limits) {
   if (Object.hasOwn(recipe, 'cloth')) {
     recipe.cloth = agentSceneModule('cloth').normalizeAgentCloth(recipe.cloth, recipe);
   }
+  if (Object.hasOwn(recipe, 'timeline')) {
+    if (recipe.timeline === null) {
+      delete recipe.timeline;
+    } else {
+      recipe.timeline = agentSceneModule('timeline').normalizeFilmTimeline(recipe.timeline, recipe, { checkCamera: shotCameraOverrides => cameraOverridesFrom(recipe.camera, shotCameraOverrides) });
+    }
+  }
   if (Object.hasOwn(recipe, 'particles')) {
     recipe.particles = agentSceneModule('particles').normalizeAgentParticles(recipe.particles, recipe);
   }
   recipe = copiedJson(recipe, limits.maxRecipeBytes);
   return recipe;
+}
+
+// A shot camera is a partial camera: it must be valid on top of the recipe camera, and only its own fields are kept.
+function cameraOverridesFrom(baseCamera, overrides) {
+  cameraFrom({ ...baseCamera, ...overrides });
+  return structuredClone(overrides);
 }
 
 function geometryStats(records) {
@@ -1142,6 +1155,14 @@ export function createAgentScene(input, inputLimits = {}) {
           candidate.physics = operation.physics;
           continue;
         }
+        if (operation.type === 'set-timeline') {
+          knownKeys(operation, ['type', 'timeline'], 'operation');
+          if (!Object.hasOwn(operation, 'timeline')) {
+            throw new TypeError('set-timeline requires timeline; use null to clear it.');
+          }
+          candidate.timeline = operation.timeline;
+          continue;
+        }
         if (operation.type === 'set-cloth') {
           knownKeys(operation, ['type', 'cloth'], 'operation');
           if (!Object.hasOwn(operation, 'cloth')) {
@@ -1267,7 +1288,7 @@ export function createAgentScene(input, inputLimits = {}) {
           fields = CAMERA_FIELDS;
           target = candidate.camera;
         } else {
-          throw new TypeError(`Unsupported operation type: ${operation.type}. Use one of set-node, set-material, set-camera, set-motion, set-physics, set-cloth, set-particles, set-environment, set-effects, set-shadow, add-node, add-geometry, add-material, remove-node, remove-geometry, remove-material, edit-mesh, set-mesh-stack.`);
+          throw new TypeError(`Unsupported operation type: ${operation.type}. Use one of set-node, set-material, set-camera, set-motion, set-physics, set-cloth, set-timeline, set-particles, set-environment, set-effects, set-shadow, add-node, add-geometry, add-material, remove-node, remove-geometry, remove-material, edit-mesh, set-mesh-stack.`);
         }
         knownKeys(operation, ['type', ...(operation.type === 'set-camera' ? [] : ['id']), ...fields], 'operation');
         if (!target) {
