@@ -291,6 +291,23 @@ Other edits take the same shape, for example:
 - `subdivide_edges` splits chosen edges; with all four edges of a quad chosen it makes a grid.
 - `knife_project` cuts along a polyline projected along `direction`, front and back. Start and end the line outside the mesh.
 
+## Organic shapes and decals
+
+`sculpt` pushes vertices with brush strokes: `inflate` along the normal, `displace` along a `direction`, `smooth` toward the
+neighbours. A tag in `select` keeps the strokes to a region. It does not add faces, so subdivide first when the form needs
+more detail. `shrinkwrap` moves vertices onto a primitive `target` (nearest point, or `project` along a `direction`) and
+stands them `offset` off it: a flat grid base shrunk onto a ball is a label or decal that follows the curve, and
+`solidify` makes it a closed plate. Place the sheet in front of the target first, in the mesh's local space, and give it
+enough `segments` for the curve.
+
+```json
+{ "id": "badge", "type": "mesh", "base": { "type": "grid", "segments": 16 }, "edits": [
+  { "op": "set_position", "position": { "vec": [{ "mul": [{ "attr": "position", "component": "x" }, 0.8] }, { "mul": [{ "attr": "position", "component": "y" }, 0.8] }, 1.6] } },
+  { "op": "shrinkwrap", "target": { "type": "sphere" }, "mode": "project", "direction": [0, 0, -1], "offset": 0.02 },
+  { "op": "solidify", "thickness": 0.02, "offset": -1 }
+] }
+```
+
 ## Giving a part a surface
 
 A material `pattern` textures any part with no UVs, after any edits. `size` is metres per repeat, so it stays right on

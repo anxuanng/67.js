@@ -65,6 +65,32 @@ function checkWalkPath(check, measures) {
   return { pass: problems.length === 0, detail: [...new Set(problems)].slice(0, 3).join('; ') || `${WALK_SAMPLES} samples around the opening, on the ground` };
 }
 
+/** Every vertex of a node lies between two distances of a point, and the node spreads over a minimum extent. */
+function checkShell(check, measures) {
+  const positions = measures.nodePositions(check.node);
+  if (!positions) return { pass: false, detail: `no drawn node ${check.node}` };
+  const low = [Infinity, Infinity, Infinity];
+  const high = [-Infinity, -Infinity, -Infinity];
+  let nearest = Infinity;
+  let farthest = 0;
+  for (let offset = 0; offset < positions.length; offset += 3) {
+    const distance = Math.hypot(positions[offset] - check.centre[0], positions[offset + 1] - check.centre[1], positions[offset + 2] - check.centre[2]);
+    nearest = Math.min(nearest, distance);
+    farthest = Math.max(farthest, distance);
+    for (let axis = 0; axis < 3; axis++) {
+      low[axis] = Math.min(low[axis], positions[offset + axis]);
+      high[axis] = Math.max(high[axis], positions[offset + axis]);
+    }
+  }
+  const problems = [];
+  if (nearest < check.min) problems.push(`a vertex is ${round(nearest)} m from the centre, under ${check.min}`);
+  if (farthest > check.max) problems.push(`a vertex is ${round(farthest)} m from the centre, over ${check.max}`);
+  check.spread.forEach((minimum, axis) => {
+    if (high[axis] - low[axis] < minimum) problems.push(`${'xyz'[axis]} spreads ${round(high[axis] - low[axis])} m, under ${minimum}`);
+  });
+  return { pass: problems.length === 0, detail: problems.join('; ') || `${check.node} between ${round(nearest)} and ${round(farthest)} m of the centre` };
+}
+
 function checkOne(check, measures) {
   switch (check.kind) {
     case 'lint':
@@ -154,6 +180,8 @@ function checkOne(check, measures) {
     }
     case 'walkPath':
       return checkWalkPath(check, measures);
+    case 'shell':
+      return checkShell(check, measures);
     case 'bendsToward': {
       const root = measures.nodePosition(check.from, check.time);
       const middle = measures.nodePosition(check.node, check.time);

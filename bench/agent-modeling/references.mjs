@@ -467,6 +467,23 @@ export const REFERENCES = {
     ] }],
     [{ id: 'soap', geometry: 'soap', translation: [0, 0.015, 0] }],
   ),
+  'ball-badge': scene(
+    [
+      { id: 'ball', type: 'sphere' },
+      {
+        id: 'badge', type: 'mesh', base: { type: 'grid', segments: 16 },
+        edits: [
+          { op: 'set_position', position: { vec: [{ mul: [{ attr: 'position', component: 'x' }, 0.8] }, { mul: [{ attr: 'position', component: 'y' }, 0.8] }, 1.6] } },
+          { op: 'shrinkwrap', target: { type: 'sphere' }, mode: 'project', direction: [0, 0, -1], offset: 0.02 },
+          { op: 'solidify', thickness: 0.02, offset: -1 },
+        ],
+      },
+    ],
+    [
+      { id: 'ball', geometry: 'ball', translation: [0, 0.5, 0], scale: [0.5, 0.5, 0.5] },
+      { id: 'badge', geometry: 'badge', translation: [0, 0.5, 0], scale: [0.5, 0.5, 0.5] },
+    ],
+  ),
   pebble: scene(
     [{ id: 'pebble', type: 'mesh', base: { type: 'box', bevel: 0 }, stack: [{ op: 'subdivide', levels: 3 }] }],
     [{ id: 'pebble', geometry: 'pebble', translation: [0, PEBBLE_SIZE[1] / 2, 0], scale: PEBBLE_SIZE.map(size => size / SUBDIVIDED_CUBE_SPAN) }],

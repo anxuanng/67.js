@@ -260,7 +260,43 @@ def knife_project(bm, edit):
     bisect_plane(bm, {"point": list(start), "normal": list(normal)})
 
 
+# Blender has no modifier for sculpt brushes that runs without a viewport, so the reference runs the same brush formula
+# on Blender's own mesh: displacement along the angle-weighted vertex normal (inflate) or a fixed direction (displace),
+# or a step toward the mean of the edge neighbours (smooth), scaled by a quintic falloff that has zero first and second
+# derivatives at the rim and the centre value one.
+def brush_falloff(relative):
+    return 1 - relative**3 * (10 + relative * (-15 + 6 * relative))
+
+
+def sculpt(bm, edit):
+    bm.verts.index_update()
+    points = [vertex.co.copy() for vertex in bm.verts]
+    normals = [vertex.normal.copy() for vertex in bm.verts]
+    neighbours = [[edge.other_vert(vertex).index for edge in vertex.link_edges] for vertex in bm.verts]
+    for stroke in edit["strokes"]:
+        centre = Vector(stroke["center"])
+        smoothing = stroke["type"] == "smooth"
+        moved = [point.copy() for point in points] if smoothing else points
+        for index, point in enumerate(points):
+            distance = (point - centre).length
+            if distance >= stroke["radius"] or stroke["strength"] == 0:
+                continue
+            weight = stroke["strength"] * brush_falloff(distance / stroke["radius"])
+            if smoothing:
+                if not neighbours[index]:
+                    continue
+                mean = sum((points[other] for other in neighbours[index]), Vector((0, 0, 0))) / len(neighbours[index])
+                moved[index] = point + (mean - point) * weight
+            else:
+                direction = normals[index] if stroke["type"] == "inflate" else Vector(stroke["direction"]).normalized()
+                points[index] = point + direction * weight
+        points = moved
+    for vertex, point in zip(bm.verts, points):
+        vertex.co = point
+
+
 BMESH_OPERATIONS = {
+    "sculpt": sculpt,
     "extrude_face_region": extrude_face_region,
     "extrude_individual": extrude_individual,
     "inset_region": inset_region,
@@ -318,6 +354,27 @@ def add_boolean(mesh_object, edit, inputs):
     modifier.operation = edit["operation"].upper()
     modifier.solver = "MANIFOLD"
     modifier.object = cutter
+
+
+# Blender's Shrinkwrap modifier. Its projection runs along one axis, so the cases project along -Z.
+def add_shrinkwrap(mesh_object, edit, inputs):
+    target = new_object("Target", inputs[edit["target"]["type"]])
+    target.location = edit.get("translation", [0, 0, 0])
+    target.scale = edit.get("scale", [1, 1, 1])
+    target.hide_render = True
+    modifier = mesh_object.modifiers.new("Shrinkwrap", "SHRINKWRAP")
+    modifier.target = target
+    modifier.wrap_mode = "ON_SURFACE"
+    modifier.offset = edit.get("offset", 0)
+    if edit.get("mode", "nearest") == "project":
+        if edit["direction"] != [0, 0, -1]:
+            raise ValueError("The Blender golden projects along -Z only.")
+        modifier.wrap_method = "PROJECT"
+        modifier.use_project_z = True
+        modifier.use_negative_direction = True
+        modifier.use_positive_direction = False
+    else:
+        modifier.wrap_method = "NEAREST_SURFACEPOINT"
 
 
 # Blender stores a crease from 0 to 1. Measured against 67js sharpness, crease squared times 10 is the sharpness.
@@ -480,6 +537,7 @@ MODIFIERS = {
     "solidify": add_solidify,
     "boolean": add_boolean,
     "subdivide": add_subdivision,
+    "shrinkwrap": add_shrinkwrap,
 }
 
 

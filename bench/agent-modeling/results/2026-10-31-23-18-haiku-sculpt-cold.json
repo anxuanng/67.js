@@ -1,0 +1,148 @@
+{
+  "run": "2026-10-31-23-18-haiku-sculpt-cold",
+  "model": "claude-haiku-5-5",
+  "date": "2026-10-31T23:25:43.735Z",
+  "skill": false,
+  "runsPerTask": 2,
+  "passed": 2,
+  "tasks": 2,
+  "toolCalls": 19,
+  "costUsd": 0.37,
+  "byModel": {
+    "claude-haiku-5-5": {
+      "runs": 2,
+      "passed": 2,
+      "successRate": 1,
+      "toolCalls": 19,
+      "toolErrors": 3,
+      "inputTokens": 2543691,
+      "outputTokens": 20190,
+      "costUsd": 0.37,
+      "tasks": {
+        "ball-badge": {
+          "runs": 2,
+          "passed": 2,
+          "successRate": 1,
+          "toolCalls": 19,
+          "toolErrors": 3,
+          "inputTokens": 2543691,
+          "outputTokens": 20190,
+          "costUsd": 0.37
+        }
+      }
+    }
+  },
+  "records": [
+    {
+      "task": "ball-badge",
+      "attempt": 1,
+      "pass": true,
+      "passed": 6,
+      "total": 6,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 10,
+      "toolErrors": 1,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_capabilities": 1,
+        "scene_create": 1,
+        "mesh_inspect": 1,
+        "mesh_edit": 2,
+        "scene_apply": 2,
+        "scene_look": 1,
+        "scene_export_recipe": 1,
+        "scene_dispose": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "sphere",
+          "mesh"
+        ],
+        "meshOperations": [
+          "subdivide_edges",
+          "set_position"
+        ],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 0.9993,
+            "side": 0.999,
+            "three-quarter": 0.9991
+          },
+          "mean": 0.9991
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-10-31-23-18-haiku-sculpt-cold/look/1/ball-badge-front.png",
+          "artifacts/agent-modeling/2026-10-31-23-18-haiku-sculpt-cold/look/1/ball-badge-side.png",
+          "artifacts/agent-modeling/2026-10-31-23-18-haiku-sculpt-cold/look/1/ball-badge-three-quarter.png"
+        ]
+      },
+      "turns": 12,
+      "costUsd": 0.18854315000000002,
+      "inputTokens": 1332151,
+      "outputTokens": 9835,
+      "wallSeconds": 159,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "ball-badge",
+      "attempt": 2,
+      "pass": true,
+      "passed": 6,
+      "total": 6,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 9,
+      "toolErrors": 2,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_capabilities": 1,
+        "scene_create": 3,
+        "mesh_edit": 1,
+        "scene_inspect": 1,
+        "scene_look": 1,
+        "scene_export_recipe": 1,
+        "scene_dispose": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "sphere",
+          "mesh"
+        ],
+        "meshOperations": [
+          "subdivide_edges",
+          "set_position"
+        ],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 0.9993,
+            "side": 0.9988,
+            "three-quarter": 0.9988
+          },
+          "mean": 0.999
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-10-31-23-18-haiku-sculpt-cold/look/2/ball-badge-front.png",
+          "artifacts/agent-modeling/2026-10-31-23-18-haiku-sculpt-cold/look/2/ball-badge-side.png",
+          "artifacts/agent-modeling/2026-10-31-23-18-haiku-sculpt-cold/look/2/ball-badge-three-quarter.png"
+        ]
+      },
+      "turns": 11,
+      "costUsd": 0.17938708000000003,
+      "inputTokens": 1211540,
+      "outputTokens": 10355,
+      "wallSeconds": 151,
+      "exitCode": 0,
+      "stopped": "success"
+    }
+  ]
+}
