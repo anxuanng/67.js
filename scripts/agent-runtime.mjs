@@ -11,6 +11,7 @@ import { createAgentRenderJobs, EXPORT_DIRECTORY_NAME } from './agent-render-job
 import { createFrameEncoder } from './frame-encoder.mjs';
 import { isPreviewHost } from './preview-host.mjs';
 import { normalizeReview, REVIEW_LIMITS } from './agent-review.mjs';
+import { sessionProblem } from '../src/agent-errors.js';
 
 const SCENE_LIMITS = AGENT_SCENE_DEFAULT_LIMITS;
 const MAXIMUM_IMAGE_BYTES = 1024 * 1024;
@@ -212,7 +213,7 @@ export function createAgentRuntime({ backend = 'gpu', browser: browserPath, memo
 
   function requireSession(sessionId) {
     if (!activeSessionId || sessionId !== activeSessionId) {
-      throw new Error('Unknown or disposed scene session.');
+      throw new Error(sessionProblem(sessionId, activeSessionId));
     }
   }
 

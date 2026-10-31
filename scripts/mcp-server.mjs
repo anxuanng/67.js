@@ -12,10 +12,10 @@ const finite = z.number().min(-3.4028234663852886e38).max(3.4028234663852886e38)
 const positive = finite.positive();
 const nonnegative = finite.nonnegative();
 const unit = z.number().min(0).max(1);
-const identifier = z.string().min(1).max(128).regex(/\S/).describe('Stable resource or node ID, with at least one non-space character.');
-const vector3 = z.tuple([finite, finite, finite]);
-const color = z.tuple([unit, unit, unit]);
-const quaternion = z.tuple([finite, finite, finite, finite]);
+const identifier = z.string().min(1).max(128).regex(/\S/).describe('Stable resource or node ID, with at least one non-space character.').meta({ id: 'Identifier' });
+const vector3 = z.tuple([finite, finite, finite]).meta({ id: 'Vector3' });
+const color = z.tuple([unit, unit, unit]).meta({ id: 'Color' });
+const quaternion = z.tuple([finite, finite, finite, finite]).meta({ id: 'Quaternion' });
 const point2 = z.tuple([finite, finite]);
 const detail = (minimum, maximum) => z.number().int().min(minimum).max(maximum).optional();
 const segments = detail(3, 2048);
@@ -289,9 +289,13 @@ const stackNodes = [
 ];
 const meshStack = z.array(z.discriminatedUnion('op', stackNodes)).max(16);
 const meshEdits = z.array(z.discriminatedUnion('op', [...meshEdit.options, ...stackNodes])).max(64);
+// The full edit and stack schemas live in mesh_edit and mesh_stack. Repeating them in every recipe cost about 45 KB
+// per tool; the backend still validates each item and names the valid ops when one is wrong.
+const recipeMeshEdits = z.array(z.record(z.string(), z.unknown())).max(64);
+const recipeMeshStack = z.array(z.record(z.string(), z.unknown())).max(16);
 const geometry = z.discriminatedUnion('type', [
   ...primitiveGeometries(true),
-  z.strictObject({ id: identifier, type: z.literal('mesh'), base: z.discriminatedUnion('type', primitiveGeometries(false)).describe('Starting shape, converted to welded quads with axis face tags.'), edits: meshEdits.optional().describe('Replayable edit log, applied in order.'), stack: meshStack.optional().describe('Non-destructive modifier stack (mirror, array, solidify, bevel, uv_unwrap, subdivide) evaluated after the edits.'), smoothAngle: bounded(0, 180).optional().describe('Edges bending more than this many degrees render hard. Defaults to 30.') }),
+  z.strictObject({ id: identifier, type: z.literal('mesh'), base: z.discriminatedUnion('type', primitiveGeometries(false)).describe('Starting shape, converted to welded quads with axis face tags.'), edits: recipeMeshEdits.optional().describe('Replayable edit log, applied in order. Each item has the shape of one mesh_edit edit; read that tool for every op and field.'), stack: recipeMeshStack.optional().describe('Non-destructive modifier stack evaluated after the edits. Each item has the shape of one mesh_stack node; read that tool for the ops.'), smoothAngle: bounded(0, 180).optional().describe('Edges bending more than this many degrees render hard. Defaults to 30.') }),
 ]);
 function motionTrack(kind, property, value, tangent) {
   return z.strictObject({
@@ -419,6 +423,9 @@ const physics = z.strictObject({
   bodies: z.array(physicsBody).min(1).max(64),
   joints: z.array(physicsJoint).max(64).optional().describe('Joint bodies are the node IDs of physics bodies.'),
 }).describe('Rigid-body physics recorded offline with Rapier at 60 steps a second, then played back by time like motion: scene_look and scene_review motionTime seek into the recording, so a seek back shows the identical frame. Bodies are recipe nodes; scene_inspect reports contacts, sensor events and resting state as numbers. Needs the optional peer dependency @dimforge/rapier3d-compat. A node cannot have a physics body and a motion translation or rotation track.');
+// The full motion schema (tracks, ik, constraints, drivers) is in scene_create's recipe. scene_apply and asset recipes
+// take the same object, validated by the backend, without repeating about 35 KB of schema in each tool.
+const recipeMotionReference = z.record(z.string(), z.unknown()).describe('The same object as recipe.motion in scene_create: duration, loop, tracks, ik, constraints, drivers. Read that tool for the fields.');
 const boneRecord = z.strictObject({
   name: z.string().min(1).max(64).describe('Unique within the armature. Humanoid rigs use the canonical names (hips, spine, chest, neck, head, leftUpperArm, leftLowerArm, leftHand, leftUpperLeg, leftLowerLeg, leftFoot, leftToes, and right...) so retarget works.'),
   parent: z.string().min(1).max(64).nullable().optional().describe('Parent bone name, or null for a root bone.'),
@@ -438,6 +445,7 @@ const armature = z.strictObject({
   }).optional(),
   bones: z.array(boneRecord).min(1).max(128).optional().describe('Explicit bones, instead of a preset.'),
 }).describe('A skeleton. Each bone becomes a recipe node named after it (parented like the bones, rotating about its head), so motion tracks, motion.ik and set-node address bones by name. Mesh nodes bind with skin. scene_inspect rig lists unweighted vertices, bones with no vertices and joint axis problems.');
+const armaturesReference = z.array(z.record(z.string(), z.unknown())).max(16).describe('The same array as recipe.armatures in scene_create: id, parent, preset, fit, bones. Read that tool for the fields.');
 const recipe = z.strictObject({
   format: z.literal('67js.scene'),
   schemaVersion: z.literal(1),
@@ -467,14 +475,14 @@ const assetRecipe = z.strictObject({
   animation: z.strictObject({ clip: z.number().int().min(0), time: nonnegative }).nullable().optional().describe('Absolute clip/time sample. null selects the original decoded pose.'),
   materialOverrides: z.array(z.strictObject({ id: identifier, ...materialFields })).max(4096).optional(),
   nodeOverrides: z.array(z.strictObject({ id: identifier, translation: vector3.optional(), rotation: quaternion.optional(), scale: z.tuple([positive, positive, positive]).optional() })).max(4096).optional(),
-  motion: motion.nullable().optional(),
+  motion: recipeMotionReference.nullable().optional(),
 });
 const operation = z.discriminatedUnion('type', [
   z.strictObject({ type: z.literal('set-node'), id: identifier, geometry: identifier.optional(), material: identifier.optional(), ...nodeFields }),
   z.strictObject({ type: z.literal('set-material'), id: identifier, ...materialFields }),
   z.strictObject({ type: z.literal('set-camera'), ...cameraFields }),
-  z.strictObject({ type: z.literal('set-motion'), motion: motion.nullable() }),
-  z.strictObject({ type: z.literal('set-armatures'), armatures: z.array(armature).max(16).nullable() }),
+  z.strictObject({ type: z.literal('set-motion'), motion: recipeMotionReference.nullable() }),
+  z.strictObject({ type: z.literal('set-armatures'), armatures: armaturesReference.nullable() }),
   z.strictObject({ type: z.literal('set-physics'), physics: physics.nullable() }),
   z.strictObject({ type: z.literal('set-environment'), environment }),
   z.strictObject({ type: z.literal('set-effects'), effects }),
@@ -506,6 +514,13 @@ const renderSettings = z.strictObject({
 const readOnly = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false };
 const edit = { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false };
 
+// Errors from the preview page arrive as "page.evaluate: RangeError: <message>\n    at <bundle url>...": the stack
+// names bundle internals the agent cannot act on, so only the message is returned.
+export function readableErrorMessage(error) {
+  const message = error instanceof Error ? error.message : String(error);
+  return message.split(/\s+at (?:\S+ \()?https?:\/\//)[0].replace(/^page\.evaluate: (?:\w*Error: )?/, '').trim();
+}
+
 function jsonResult(value) {
   return { content: [{ type: 'text', text: JSON.stringify(value) }], structuredContent: value };
 }
@@ -527,8 +542,7 @@ export function createAgentMcpServer(runtime, { version = packageMetadata.versio
       try {
         return await run(argumentsValue);
       } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        return { isError: true, content: [{ type: 'text', text: `${name} failed: ${message}` }] };
+        return { isError: true, content: [{ type: 'text', text: `${name} failed: ${readableErrorMessage(error)}` }] };
       }
     });
   }

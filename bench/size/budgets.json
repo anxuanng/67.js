@@ -15,7 +15,7 @@
   "entry:sculpt": 2500,
   "entry:surface": 10100,
   "entry:mesh-query": 15900,
-  "entry:mesh": 49400,
+  "entry:mesh": 67000,
   "entry:shrinkwrap": 18300,
   "entry:surface-attachment": 11800,
   "entry:physics": 18000,
@@ -28,14 +28,14 @@
   "entry:grass": 4400,
   "entry:clutter": 5300,
   "entry:texture-set": 900,
-  "entry:agent-scene": 56500,
-  "entry:agent-scene+lazy": 146500,
-  "entry:agent-asset": 81200,
-  "entry:agent-asset+lazy": 153300,
+  "entry:agent-scene": 57500,
+  "entry:agent-scene+lazy": 158000,
+  "entry:agent-asset": 82800,
+  "entry:agent-asset+lazy": 165300,
   "entry:hdri": 3300,
   "scene:lit-box": 56000,
   "scene:gltf-box": 75300,
-  "scene:agent-scene": 82900,
-  "scene:agent-scene+lazy": 172900
+  "scene:agent-scene": 83900,
+  "scene:agent-scene+lazy": 184300
  }
 }

@@ -8,13 +8,14 @@ import { parseGltf } from '../src/gltf.js';
 import { exportGlb } from '../src/export.js';
 import { weightTracksFromGltfAnimation } from '../src/export-skeleton.js';
 import { clipFromGltfAnimation } from '../src/skeleton-pose.js';
+import { sessionProblem } from '../src/agent-errors.js';
 
 let active = null;
 let canvas = document.querySelector('canvas');
 
 function requireSession(sessionId) {
   if (!active || active.sessionId !== sessionId) {
-    throw new Error('Unknown or disposed scene session.');
+    throw new Error(sessionProblem(sessionId, active?.sessionId));
   }
   return active;
 }

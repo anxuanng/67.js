@@ -16,7 +16,7 @@ const INTERNAL_FILES =new Set(['owner.json', 'snapshot.json', 'asset.glb', 'stat
 function objectKeys(value, allowed, label) {
   if (!value || Object.getPrototypeOf(value) !== Object.prototype) throw new TypeError(`${label} must be a plain object.`);
   for (const key of Object.keys(value)) {
-    if (!allowed.includes(key)) throw new TypeError(`Unknown ${label} field: ${key}.`);
+    if (!allowed.includes(key)) throw new TypeError(`Unknown ${label} field: ${key}. Allowed fields: ${allowed.join(", ")}.`);
   }
 }
 

@@ -1,5 +1,6 @@
 import { mat4, mat3 } from 'gl-matrix';
 import { createAgentScene } from './agent-scene.js';
+import { assetDiagnostics } from './agent-diagnostics.js';
 import { fitPerspectiveDistance } from './camera.js';
 import { validateSkinGeometry, validateSkinPose } from './skinning.js';
 import { validateMorphGeometry, validateMorphTransform } from './morph.js';
@@ -37,7 +38,7 @@ function knownKeys(value, fields, label) {
   }
   for (const key of Object.keys(value)) {
     if (!fields.includes(key)) {
-      throw new TypeError(`Unknown ${label} field: ${key}.`);
+      throw new TypeError(`Unknown ${label} field: ${key}. Allowed fields: ${fields.join(", ")}.`);
     }
   }
 }
@@ -565,6 +566,17 @@ export function createAgentAssetScene(asset, inputRecipe) {
   }
 
   /** scene_inspect's motionIk: how each solver fares across the clip, from a sampler that leaves the published pose alone. */
+  function diagnosticsReport() {
+    const diagnostics = assetDiagnostics({
+      assetId: canonicalAssetId,
+      warnings: asset.warnings,
+      skinnedParts: records.filter(record => record.source.skin).length,
+      jointCount: [...sourceNodes.values()].filter(node => node.joint).length,
+      clipCount: asset.animations.length,
+    });
+    return diagnostics.length ? { diagnostics } : {};
+  }
+
   function motionIkReport() {
     if (!recipe.motion?.ik?.length) return {};
     const sweeper = agentMotion.compileAgentMotion(recipe.motion, motionRecipe(recipe));
@@ -730,7 +742,7 @@ export function createAgentAssetScene(asset, inputRecipe) {
       }
       if (options.kind === 'hierarchy') {
         if (options.includeBounds) {
-          throw new TypeError('Hierarchy inspection has no deformed silhouette bounds.');
+          throw new TypeError('Hierarchy inspection has no deformed silhouette bounds. Drop includeBounds, or inspect without kind to get mesh bounds.');
         }
         if (options.ids !== undefined && (!Array.isArray(options.ids) || options.ids.length > sourceNodes.size)) {
           throw new RangeError('Hierarchy IDs must fit the source-node count.');
@@ -742,7 +754,7 @@ export function createAgentAssetScene(asset, inputRecipe) {
           return sourceNodes.get(id);
         });
         const nodes = structuredClone(selected.slice(offset, offset + limit));
-        return { revision, topologyRevision: 0, assetId: canonicalAssetId, kind: 'hierarchy', ...motionIkReport(),
+        return { revision, topologyRevision: 0, assetId: canonicalAssetId, kind: 'hierarchy', ...motionIkReport(), ...diagnosticsReport(),
           counts: { nodes: sourceNodes.size, joints: [...sourceNodes.values()].filter(node => node.joint).length },
           nodes, offset, truncated: offset + nodes.length < selected.length,
           motion: recipe.motion ? { duration: recipe.motion.duration, loop: recipe.motion.loop, tracks: recipe.motion.tracks.length, time: motionTime } : null };
@@ -753,7 +765,7 @@ export function createAgentAssetScene(asset, inputRecipe) {
       const selected = options.ids === undefined ? records : options.ids.map(id => {
         const record = records.find(value => value.id === id);
         if (!record) {
-          throw new RangeError(`Unknown mesh ID: ${id}.`);
+          throw new RangeError(`Unknown mesh ID: ${id}. Imported mesh IDs look like mesh-0, mesh-1; call scene_inspect without ids to list them, or with kind hierarchy for source nodes.`);
         }
         return record;
       });
@@ -789,7 +801,7 @@ export function createAgentAssetScene(asset, inputRecipe) {
         }
       }
       return {
-        revision, topologyRevision: 0, assetId: canonicalAssetId,
+        revision, topologyRevision: 0, assetId: canonicalAssetId, ...diagnosticsReport(),
         counts: { nodes: parts.length, parts: parts.length, geometries: geometries.size, materials: materials.size, vertices },
         geometryBytes, animation: structuredClone(recipe.animation),
         motion: recipe.motion ? { duration: recipe.motion.duration, loop: recipe.motion.loop, tracks: recipe.motion.tracks.length, time: motionTime } : null,
@@ -808,13 +820,13 @@ export function createAgentAssetScene(asset, inputRecipe) {
     restore(handle, options = {}) {
       expected(options);
       if (!checkpoints.has(handle)) {
-        throw new RangeError('Unknown or released asset checkpoint.');
+        throw new RangeError('Unknown or released asset checkpoint. Save one with scene_checkpoint, or use a checkpointId that scene_checkpoint returned and you have not released.');
       }
       return publish(checkpoints.get(handle));
     },
     releaseCheckpoint(handle) {
       if (!checkpoints.delete(handle)) {
-        throw new RangeError('Unknown or released asset checkpoint.');
+        throw new RangeError('Unknown or released asset checkpoint. Save one with scene_checkpoint, or use a checkpointId that scene_checkpoint returned and you have not released.');
       }
     },
   });
