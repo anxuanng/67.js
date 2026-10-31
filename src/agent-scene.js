@@ -1026,13 +1026,20 @@ export function createAgentScene(input, inputLimits = {}) {
     }
     const worldMatrices = new Map(sourceRestParts.map(part => [part.name, new Float32Array(graph.getNode(part.name).worldMatrix)]));
     const { pointLights, keyColor, keyIntensity, lightDirection } = recipe.environment;
-    const generatedGeometryNames = new Set((recipe.particles?.systems ?? []).map(system => system.node));
-    const key = JSON.stringify([recipe.bake, [...generatedGeometryNames], pointLights, keyColor, keyIntensity, lightDirection, recipe.materials,
+    const generatedGeometryGenerators = new Map();
+    for (const system of recipe.particles?.systems ?? []) {
+      generatedGeometryGenerators.set(system.node, 'a hair or particle system');
+    }
+    for (const sheet of recipe.cloth?.sheets ?? []) {
+      generatedGeometryGenerators.set(sheet.node, 'a cloth simulation');
+    }
+    const { spotLights, areaLights } = recipe.environment;
+    const key = JSON.stringify([recipe.bake, [...generatedGeometryGenerators], pointLights, spotLights, areaLights, keyColor, keyIntensity, lightDirection, recipe.materials,
       [...worldMatrices].map(([name, matrix]) => [name, Array.from(matrix)])]);
     if (lightBake?.key === key && lightBake.sourceRestParts === sourceRestParts) {
       return { ...lightBake, reused: true };
     }
-    const baked = agentSceneModule('bake').bakeAgentParts(sourceRestParts, worldMatrices, recipe.environment, recipe.bake, generatedGeometryNames);
+    const baked = agentSceneModule('bake').bakeAgentParts(sourceRestParts, worldMatrices, recipe.environment, recipe.bake, generatedGeometryGenerators);
     lightBake = { key, sourceRestParts, parts: baked.parts, report: baked.report };
     return { ...lightBake, reused: false };
   }

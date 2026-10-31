@@ -24,6 +24,10 @@ export const MAX_BAKE_TEXELS = 1_000_000;
 export const MAX_BAKE_TRIANGLES = 200_000;
 export const MAX_BAKE_PARTS = 256;
 export const MAX_BAKE_POINT_LIGHTS = 8;
+export const MAX_BAKE_SPOT_LIGHTS = 8;
+export const MAX_BAKE_AREA_LIGHTS = 4;
+// The renderer's own soft edge for a spot light that gives none.
+const DEFAULT_SPOT_PENUMBRA = 0.15;
 
 const MAP_FIELDS = ['map', 'normalMap', 'metallicRoughnessMap', 'occlusionMap', 'emissiveMap'];
 const SURFACE_UTILIZATION_FLOOR = 0.05;
@@ -53,6 +57,62 @@ function finiteVector(value, length) {
   return (Array.isArray(value) || ArrayBuffer.isView(value)) && value.length === length && Array.from(value).every(Number.isFinite);
 }
 
+function normalizedDirection(direction, label) {
+  if (!finiteVector(direction, 3) || Math.hypot(...direction) === 0) throw new RangeError(`${label} needs a finite, nonzero direction.`);
+  const length = Math.hypot(...direction);
+  return Array.from(direction, component => component / length);
+}
+
+function checkedLightList(lights, maximum, name) {
+  if (!Array.isArray(lights) || lights.length > maximum) throw new RangeError(`Light bake takes at most ${maximum} ${name}.`);
+}
+
+function checkedLightBasics(light, label) {
+  if (!finiteVector(light.position, 3) || !finiteVector(light.color ?? [1, 1, 1], 3) || !Number.isFinite(light.intensity) || light.intensity < 0) {
+    throw new RangeError(`${label} needs a position, a color and a nonnegative intensity.`);
+  }
+}
+
+/** Spot lights in the form the path tracer uses: a unit axis, the cosine of the outer half angle and the soft edge width. */
+function normalizeSpotLights(spotLights) {
+  checkedLightList(spotLights, MAX_BAKE_SPOT_LIGHTS, 'spot lights');
+  return spotLights.map((light, index) => {
+    const label = `Light bake spot light ${index}`;
+    checkedLightBasics(light, label);
+    const angle = light.angle ?? Math.PI / 4;
+    const penumbra = light.penumbra ?? DEFAULT_SPOT_PENUMBRA;
+    const range = light.range ?? 0;
+    const radius = light.radius ?? 0.05;
+    if (![angle, penumbra, range, radius].every(Number.isFinite) || angle <= 0 || angle >= Math.PI || penumbra < 0 || range < 0 || radius < 0) {
+      throw new RangeError(`${label} has an invalid angle, penumbra, range or radius.`);
+    }
+    const cosineHalfAngle = Math.cos(angle);
+    return {
+      position: Array.from(light.position), color: Array.from(light.color ?? [1, 1, 1]), intensity: light.intensity, range, radius,
+      direction: normalizedDirection(light.direction, label), cosineHalfAngle, blend: (1 - cosineHalfAngle) * penumbra,
+    };
+  });
+}
+
+/** Rectangular area lights: a unit normal and the two unit axes that span the rectangle (width along `across`). */
+function normalizeAreaLights(areaLights) {
+  checkedLightList(areaLights, MAX_BAKE_AREA_LIGHTS, 'area lights');
+  return areaLights.map((light, index) => {
+    const label = `Light bake area light ${index}`;
+    checkedLightBasics(light, label);
+    if (!(light.width >= 0) || !(light.height >= 0) || !Number.isFinite(light.width) || !Number.isFinite(light.height)) {
+      throw new RangeError(`${label} needs a finite width and height.`);
+    }
+    const normal = normalizedDirection(light.direction, label);
+    const guide = normalizedDirection(light.up ?? [0, 1, 0], label);
+    let across = [guide[1] * normal[2] - guide[2] * normal[1], guide[2] * normal[0] - guide[0] * normal[2], guide[0] * normal[1] - guide[1] * normal[0]];
+    const acrossLength = Math.hypot(...across);
+    across = acrossLength < 1e-3 ? [1, 0, 0] : across.map(component => component / acrossLength);
+    const along = [normal[1] * across[2] - normal[2] * across[1], normal[2] * across[0] - normal[0] * across[2], normal[0] * across[1] - normal[1] * across[0]];
+    return { position: Array.from(light.position), color: Array.from(light.color ?? [1, 1, 1]), intensity: light.intensity, width: light.width, height: light.height, normal, across, along };
+  });
+}
+
 function normalizeLights(lighting) {
   if (lighting === null || typeof lighting !== 'object') throw new TypeError('Light bake needs a lighting object.');
   const pointLights = lighting.pointLights ?? [];
@@ -66,13 +126,15 @@ function normalizeLights(lighting) {
     if (!Number.isFinite(range) || range < 0 || !Number.isFinite(radius) || radius < 0) throw new RangeError(`Light bake point light ${index} has an invalid range or radius.`);
     return { position: Array.from(light.position), color: Array.from(light.color ?? [1, 1, 1]), intensity: light.intensity, range, radius };
   });
+  const spotLights = normalizeSpotLights(lighting.spotLights ?? []);
+  const areaLights = normalizeAreaLights(lighting.areaLights ?? []);
   const keyColor = lighting.keyColor ?? [0, 0, 0];
   const lightDirection = lighting.lightDirection ?? [0, 1, 0];
   if (!finiteVector(keyColor, 3) || keyColor.some(channel => channel < 0) || !finiteVector(lightDirection, 3)) throw new RangeError('Light bake keyColor and lightDirection must be finite vectors.');
   const directionLength = Math.hypot(...lightDirection);
   const hasSun = keyColor.some(channel => channel > 0) && directionLength > 0;
   const sunDirection = hasSun ? lightDirection.map(component => component / directionLength) : [0, 1, 0];
-  return { pointLights: normalizedPoints, sun: hasSun ? { color: Array.from(keyColor), direction: sunDirection } : null };
+  return { pointLights: normalizedPoints, spotLights, areaLights, sun: hasSun ? { color: Array.from(keyColor), direction: sunDirection } : null };
 }
 
 function validatePart(part, index) {
@@ -94,7 +156,10 @@ function validatePart(part, index) {
 
 function skipReason(part) {
   const material = part.material;
-  if (part.generatesGeometry) return 'a hair or particle system rebuilds its geometry every frame, so it has no fixed surface to bake';
+  if (part.generatesGeometry) {
+    const generator = typeof part.generatesGeometry === 'string' ? part.generatesGeometry : 'a hair or particle system';
+    return `${generator} rebuilds its geometry every frame, so it has no fixed surface to bake`;
+  }
   if (part.skin || part.morph || part.geometry.skinIndices || part.geometry.morphTargets) return 'skinned or morphing parts move, so a fixed lightmap would not follow';
   if ((material.tag ?? 'surface') !== 'surface') return `the ${material.tag} material draws its own look`;
   if (material.opacity !== undefined && material.opacity < 1 || material.alphaMode && material.alphaMode !== 'opaque') return 'it is transparent';
@@ -244,6 +309,51 @@ function createDirectIrradiance(tracer, lights, offset, scale) {
   }
   const toLight = [0, 0, 0];
   const power = [0, 0, 0];
+  // Aims `toLight` at a light's position and returns the distance, or 0 when the point sits on the light.
+  function aimAtPosition(point, lightX, lightY, lightZ) {
+    const deltaX = lightX - point[0];
+    const deltaY = lightY - point[1];
+    const deltaZ = lightZ - point[2];
+    const distanceSquared = deltaX * deltaX + deltaY * deltaY + deltaZ * deltaZ;
+    if (distanceSquared < 1e-12) return { distance: 0, distanceSquared };
+    const distance = Math.sqrt(distanceSquared);
+    toLight[0] = deltaX / distance;
+    toLight[1] = deltaY / distance;
+    toLight[2] = deltaZ / distance;
+    return { distance, distanceSquared };
+  }
+  function addSpotLight(point, normal, light) {
+    const { distance, distanceSquared } = aimAtPosition(point, light.position[0], light.position[1], light.position[2]);
+    if (distance === 0) return;
+    const axisCosine = -(light.direction[0] * toLight[0] + light.direction[1] * toLight[1] + light.direction[2] * toLight[2]);
+    const inside = axisCosine - light.cosineHalfAngle;
+    if (inside <= 0) return;
+    const edge = light.blend > 0 && inside < light.blend ? inside / light.blend : 1;
+    const mask = edge * edge * (3 - 2 * edge);
+    const strength = light.intensity * pointLightFalloff(distanceSquared, light) * mask;
+    for (let channel = 0; channel < 3; channel++) power[channel] = light.color[channel] * strength;
+    addLight(point, normal, toLight, distance - offset, power);
+  }
+  // One shadow ray to a point of the rectangle that changes with every call. The sequence depends only on the order of
+  // the calls, so a bake repeats exactly and the many paths of a texel average the soft shadow.
+  let areaSampleCount = 0;
+  function addAreaLight(point, normal, light, lightIndex) {
+    areaSampleCount++;
+    const across = (hashUnit(areaSampleCount, 17, lightIndex) - 0.5) * light.width;
+    const along = (hashUnit(areaSampleCount, 19, lightIndex) - 0.5) * light.height;
+    const { distance, distanceSquared } = aimAtPosition(
+      point,
+      light.position[0] + light.across[0] * across + light.along[0] * along,
+      light.position[1] + light.across[1] * across + light.along[1] * along,
+      light.position[2] + light.across[2] * across + light.along[2] * along,
+    );
+    if (distance === 0) return;
+    const emitCosine = -(light.normal[0] * toLight[0] + light.normal[1] * toLight[1] + light.normal[2] * toLight[2]);
+    if (emitCosine <= 0) return;
+    const strength = light.intensity * emitCosine / distanceSquared;
+    for (let channel = 0; channel < 3; channel++) power[channel] = light.color[channel] * strength;
+    addLight(point, normal, toLight, distance - offset, power);
+  }
   return function directIrradiance(point, normal) {
     result[0] = 0;
     result[1] = 0;
@@ -262,6 +372,8 @@ function createDirectIrradiance(tracer, lights, offset, scale) {
       for (let channel = 0; channel < 3; channel++) power[channel] = light.color[channel] * strength;
       addLight(point, normal, toLight, distance - offset, power);
     }
+    for (const light of lights.spotLights) addSpotLight(point, normal, light);
+    for (let index = 0; index < lights.areaLights.length; index++) addAreaLight(point, normal, lights.areaLights[index], index);
     if (lights.sun) addLight(point, normal, lights.sun.direction, shadowReach, lights.sun.color);
     return result;
   };
@@ -528,29 +640,32 @@ function lightMappedPart(part, geometry, texture, peak) {
 /**
  * Bakes bounced light into the parts and returns new parts (the input is not changed) plus a report.
  * lighting: { pointLights: [{ position, color, intensity, radius, range }], keyColor, lightDirection }, the same shapes
- * the renderer takes. Spot and area lights are not baked.
+ * the renderer takes, plus optional spotLights and areaLights in their renderer shapes.
  * options: maxResolution, texelsPerUnit, samples, bounces, maxSeconds (see BAKE_LIMITS). The time limit throws and
  * never truncates, so a bake that finishes always has the same bytes.
  */
 export function bakeLightmaps(parts, lighting, options = {}) {
+  const plan = planLightmaps(parts, lighting, options);
+  return traceLightmaps(plan, plan.settings);
+}
+
+/**
+ * Everything a bake decides before the first ray: validated options and lights, the unwrap of each bakeable part and the
+ * parts that are skipped. It reads no clock to decide anything, so `estimateBake` of one plan is the same on every
+ * machine. Pass the plan and the final settings to `traceLightmaps`.
+ */
+export function planLightmaps(parts, lighting, options = {}) {
   const settings = normalizeBakeOptions(options);
   const lights = normalizeLights(lighting);
   if (!Array.isArray(parts) || parts.length === 0 || parts.length > MAX_BAKE_PARTS) throw new RangeError(`Light bake takes from 1 to ${MAX_BAKE_PARTS} parts.`);
   parts.forEach(validatePart);
+  const triangleTotal = parts.reduce((total, part) => total + part.geometry.indices.length / 3, 0);
+  if (triangleTotal > MAX_BAKE_TRIANGLES) throw new RangeError(`Light bake takes at most ${MAX_BAKE_TRIANGLES} triangles in total.`);
   const started = performance.now();
-  const world = buildWorld(parts);
-  const scale = sceneScale(world.positions);
-  const offset = scale * 1e-4;
-  const tracer = createTracer(world);
-  const directIrradiance = createDirectIrradiance(tracer, lights, offset, scale);
-  const albedoOfPart = parts.map(part => diffuseAlbedo(part.material));
-  const emissionOfPart = parts.map(part => emittedRadiance(part.material));
-  const gather = createGatherer({ world, tracer, albedoOfPart, emissionOfPart, directIrradiance, offset, samples: settings.samples, bounces: settings.bounces });
   const unwrapCache = new Map();
   const secondSetCache = new Map();
-  const plans = [];
+  const entries = [];
   const skipped = [];
-  let texelTotal = 0;
   parts.forEach((part, index) => {
     const reason = skipReason(part);
     if (reason) {
@@ -560,18 +675,43 @@ export function bakeLightmaps(parts, lighting, options = {}) {
     const slot = usesLightMapSlot(part.material);
     const cache = slot ? secondSetCache : unwrapCache;
     if (!cache.has(part.geometry)) cache.set(part.geometry, slot ? unwrapIntoSecondUvSet(part.geometry) : unwrapForLightmap(part.geometry));
-    const unwrapped = cache.get(part.geometry);
-    const resolution = lightmapResolution(worldTriangleArea(part), unwrapped.utilization, settings);
-    texelTotal += resolution * resolution;
-    plans.push({ part, index, unwrapped, resolution, slot });
+    entries.push({ part, index, unwrapped: cache.get(part.geometry), area: worldTriangleArea(part), slot });
   });
-  const rayWork = texelTotal * settings.samples * settings.bounces * (1 + lights.pointLights.length + (lights.sun ? 1 : 0));
+  return { parts, lights, settings, started, entries, skipped };
+}
+
+/** Texels and ray work of a planned bake at the given settings, with no tracing. Ray work counts one bounce ray plus one shadow ray per light. */
+export function estimateBake(plan, { samples, bounces, texelsPerUnit }) {
+  const resolutionSettings = { texelsPerUnit, maxResolution: plan.settings.maxResolution };
+  const texels = plan.entries.reduce((total, { area, unwrapped }) => {
+    const resolution = lightmapResolution(area, unwrapped.utilization, resolutionSettings);
+    return total + resolution * resolution;
+  }, 0);
+  const { lights } = plan;
+  const raysPerHit = 1 + lights.pointLights.length + lights.spotLights.length + lights.areaLights.length + (lights.sun ? 1 : 0);
+  return { texels, rayWork: texels * samples * bounces * raysPerHit };
+}
+
+/** Traces a plan with the given settings (samples, bounces, texelsPerUnit, maxSeconds) and returns the baked parts and the report. */
+export function traceLightmaps(plan, tracedSettings) {
+  const { parts, lights, started, skipped } = plan;
+  const settings = { ...plan.settings, ...tracedSettings };
+  const { texels: texelTotal, rayWork } = estimateBake(plan, settings);
   if (texelTotal > MAX_BAKE_TEXELS) throw new RangeError(`Light bake would use ${texelTotal} texels; the limit is ${MAX_BAKE_TEXELS}. Lower maxResolution or texelsPerUnit.`);
   if (rayWork > MAX_BAKE_RAY_WORK) throw new RangeError(`Light bake would trace about ${rayWork} rays; the limit is ${MAX_BAKE_RAY_WORK}. Lower samples, bounces or texelsPerUnit.`);
+  const world = buildWorld(parts);
+  const scale = sceneScale(world.positions);
+  const offset = scale * 1e-4;
+  const tracer = createTracer(world);
+  const directIrradiance = createDirectIrradiance(tracer, lights, offset, scale);
+  const albedoOfPart = parts.map(part => diffuseAlbedo(part.material));
+  const emissionOfPart = parts.map(part => emittedRadiance(part.material));
+  const gather = createGatherer({ world, tracer, albedoOfPart, emissionOfPart, directIrradiance, offset, samples: settings.samples, bounces: settings.bounces });
   const baked = parts.slice();
   const partReports = [];
   const sum = [0, 0, 0];
-  for (const { part, index, unwrapped, resolution, slot } of plans) {
+  for (const { part, index, unwrapped, area, slot } of plan.entries) {
+    const resolution = lightmapResolution(area, unwrapped.utilization, settings);
     const { positions, normals, covered } = rasterizeTexels(unwrapped.geometry, part.matrix, resolution);
     const radiance = new Float32Array(resolution * resolution * 3);
     const albedo = albedoOfPart[index];
