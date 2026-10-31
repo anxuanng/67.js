@@ -64,11 +64,22 @@ export const RENDER_PASS_NAMES = Object.freeze(['albedo', 'normal', 'emission', 
 // Metres that depth pass values 0 to 65535 span, measured from the camera.
 export const RENDER_PASS_DEPTH_RANGE = 100;
 
+// Fields and defaults of the whole-mesh modifiers, which the tool schemas leave out to stay small.
+export const MESH_MODIFIER_NOTES = Object.freeze({
+  weld: 'distance 0.001: merge closer vertices.',
+  triangulate: 'minVertices 4: split faces with that many corners or more.',
+  edge_split: 'angle 30: split edges bending more than this many degrees.',
+  smooth: 'factor 0.5 (-2 to 2) steps toward the neighbour mean; iterations 1 to 64.',
+  simple_deform: 'mode twist or bend use angle (45 degrees), taper or stretch use factor (0.5); axis x, y or z (z).',
+  cast: 'sphere about the origin: factor 0 to 1 (0.5), size radius (0 = mean vertex distance).',
+});
+
 export const AGENT_SCENE_CAPABILITIES = Object.freeze({
   format: '67js.scene', schemaVersion: 1,
   geometryTypes: Object.freeze(['box', 'cylinder', 'sphere', 'torus', 'lathe', 'extrude', 'tube', 'curve', 'text', 'mesh']),
   meshEdits: Object.freeze({ operations: Object.freeze(Object.keys(MESH_EDIT_OPERATIONS)), maxEdits: MAX_MESH_EDITS }),
   meshStack: Object.freeze({ operations: STACK_OPERATIONS, maxNodes: MAX_STACK_NODES }),
+  meshModifiers: MESH_MODIFIER_NOTES,
   fieldExpressions: Object.freeze({
     operators: FIELD_OPERATOR_NAMES, attributes: FIELD_ATTRIBUTES,
     maxNodes: MAX_FIELD_NODES, maxDepth: MAX_FIELD_DEPTH, maxElements: MAX_FIELD_ELEMENTS,

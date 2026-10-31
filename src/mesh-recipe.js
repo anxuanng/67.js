@@ -15,6 +15,7 @@ import { validateField } from './mesh-fields.js';
 import { setPosition, displaceMesh, DISPLACE_DIRECTIONS } from './mesh-field-edits.js';
 import { subdivideMesh, subdivisionSize, MAX_SUBDIVISION_LEVELS, MAX_CREASE_SHARPNESS } from './mesh-subdivide.js';
 import { decimateMesh } from './mesh-decimate.js';
+import { isModifierOperation, normalizeModifierEdit, runModifierEdit } from './mesh-modifiers.js';
 import { remeshMesh, remeshGridSize, MAX_REMESH_RESOLUTION } from './mesh-remesh.js';
 import { MESH_EDIT_OPERATIONS, MAX_MESH_EDITS, STACK_OPERATIONS, MAX_STACK_NODES } from './mesh-operations.js';
 export { MESH_EDIT_OPERATIONS, MAX_MESH_EDITS, STACK_OPERATIONS, MAX_STACK_NODES };
@@ -221,6 +222,7 @@ export function normalizeMeshEdits(edits) {
         break;
     }
     if (CUT_OPERATIONS.includes(edit.op)) normalizeCutEdit(edit, normalized, index, { finiteNumber, vector });
+    if (isModifierOperation(edit.op)) normalizeModifierEdit(edit, normalized, index, { finiteNumber });
     return normalized;
   });
 }
@@ -284,9 +286,19 @@ export function transformMesh(mesh, { translation, rotation, scale }) {
 }
 
 /** Run one normalized edit on MeshData and describe what it did. */
-function runEdit(current, edit, index, { resolveCutter }) {
+function runEdit(current, edit, index, { resolveCutter, limits }) {
   const result = { op: edit.op };
   if (edit.name) result.name = edit.name;
+  if (isModifierOperation(edit.op)) {
+    let outcome;
+    try {
+      outcome = runModifierEdit(current, edit, limits);
+    } catch (error) {
+      throw new error.constructor(`Mesh edit ${index} (${edit.op}): ${error.message}`);
+    }
+    Object.assign(result, outcome.result);
+    return { mesh: outcome.mesh, result };
+  }
   if (edit.op === 'boolean') {
     if (!resolveCutter) throw new TypeError(`Mesh edit ${index} (boolean) needs a cutter resolver; recipe meshes provide one.`);
     let cutter;
@@ -489,7 +501,7 @@ export function applyMeshEdits(mesh, edits, { maxVertices = 250_000, maxFaces = 
   let current = mesh;
   normalized.forEach((edit, index) => {
     checkArrayBudget(current, edit, limits, index);
-    const outcome = runEdit(current, edit, index, { resolveCutter });
+    const outcome = runEdit(current, edit, index, { resolveCutter, limits });
     current = outcome.mesh;
     checkBudget(current, limits, index, edit.op);
     outcome.result.after = { vertices: current.vertexCount, faces: current.faceCount };
@@ -533,7 +545,7 @@ export function evaluateMeshStack(mesh, stack, { maxVertices = 250_000, maxFaces
       result = { ...hit.result, cached: true };
     } else {
       checkArrayBudget(current, node, limits, index);
-      const outcome = runEdit(current, node, index, {});
+      const outcome = runEdit(current, node, index, { limits });
       current = outcome.mesh;
       checkBudget(current, limits, index, node.op);
       outcome.result.after = { vertices: current.vertexCount, faces: current.faceCount };
