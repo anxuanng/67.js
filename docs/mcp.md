@@ -77,8 +77,9 @@ Closing stdin or sending `SIGINT` or `SIGTERM` closes the runtime and releases i
 6. Call `scene_look` to assess the rendered image.
 7. Call `scene_restore` with the current revision if the experiment fails.
 8. Call `scene_release_checkpoint` when you no longer need the saved state.
-9. Call `scene_export_recipe` to retain the canonical recipe.
-10. Call `scene_dispose` to release the scene before creating another one.
+9. To try variants, call `scene_apply` once per variant with a `branch` name (the scene stays as it is), compare them with one `scene_review` that has a `branch` per shot, then call `scene_restore` with the winning `branch` to keep it.
+10. Call `scene_export_recipe` to retain the canonical recipe.
+11. Call `scene_dispose` to release the scene before creating another one.
 
 `scene_create`, `scene_apply`, and `scene_restore` return the session ID, current revision, inspection, and render status.
 `scene_checkpoint` returns a checkpoint UUID scoped to its session UUID.
@@ -105,10 +106,10 @@ Inspect or export the recipe before retrying. Context loss still permits recipe 
 | `mesh_inspect` | `sessionId`, optional `geometries` (up to 16 IDs) | Per geometry: polygon counts, face sizes, parts, face tags, bounds and lint problems with fixes |
 | `mesh_edit` | `sessionId`, `expectedRevision`, `geometry`, `edits`, optional `replace` | Updated revision, render status and the mesh report with per-edit results |
 | `mesh_stack` | `sessionId`, `expectedRevision`, `geometry`, optional `stack`, `apply` | Updated revision, render status and the mesh report with per-node results |
-| `scene_look` | `sessionId`, optional `width`, `height`, `motionTime` | PNG image and metadata |
-| `scene_review` | `sessionId`, `expectedRevision`, `shots`, optional `width`, `height` | Labeled PNG grid and metadata from an isolated snapshot |
+| `scene_look` | `sessionId`, optional `width`, `height`, `motionTime`, `labels` | PNG image and metadata |
+| `scene_review` | `sessionId`, `expectedRevision`, `shots` (each with an optional `branch`), optional `width`, `height`, `labels` | Labeled PNG grid and metadata from an isolated snapshot |
 | `scene_checkpoint` | `sessionId` | Checkpoint ID, session ID, and revision |
-| `scene_restore` | `sessionId`, `checkpointId`, `expectedRevision` | Updated revision, inspection, and render status |
+| `scene_restore` | `sessionId`, `expectedRevision`, and a `checkpointId` or a `branch` | Updated revision, inspection, and render status |
 | `scene_release_checkpoint` | `sessionId`, `checkpointId` | Release confirmation |
 | `scene_export_recipe` | `sessionId` | Canonical recipe and revision |
 | `scene_export_glb` | `sessionId`, optional `clip`, `motionTime`, `maxTextureSize` | A GLB file under `<jobs>/exports/` with a server-chosen name: path, bytes, SHA-256. See [GLB export](export-glb.md) |
@@ -138,6 +139,8 @@ Imported clip sampling remains available through `set-animation`.
 
 `scene_review` compares up to four cameras or motion samples without changing the source recipe, revision or preview pose.
 Each shot starts from the authored base pose. The [review guide](agent-review.md) describes separate clocks, dimensions and resource limits.
+
+`scene_apply` with a `branch` name forks instead of editing: the operations run on a scratch copy and the result is stored as that branch, so the scene, its revision and its checkpoints stay as they are. Branches are named with lowercase letters, digits, `_` and `-` (at most 24 characters); up to eight can exist, and branches that end in the same recipe share one snapshot. `scene_restore` with `branch` replays that branch's operations on the scene as one revision and drops every branch; it fails if the scene changed since the fork. Procedural scenes only. See the [review guide](agent-review.md#compare-branches-and-read-labels).
 
 `set-node` can rebind a mesh to another geometry/material pair.
 

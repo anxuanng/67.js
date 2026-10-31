@@ -64,6 +64,19 @@ These samples require authored motion. Nonlooping motion holds its endpoint afte
 `rendererTime` controls shader animation independently and defaults to zero.
 Camera fields override only the private shot camera. They do not author tracks or edit the source camera.
 
+## Compare branches and read labels
+
+A shot can name a branch made by `scene_apply` with `branch`. The branch renders in its own private scene, so one review compares variants without a restore, a revision or a look per variant:
+
+```json
+{ "sessionId": "<scene UUID>", "expectedRevision": 3, "labels": true,
+  "shots": [{ "branch": "warm" }, { "branch": "cool" }, { "label": "Now" }] }
+```
+
+Shots of the same branch share one private scene. Each shot reports `branch` and `branchStale`, true when the scene changed after the fork. Branch shots cannot sample an imported clip.
+
+`labels: true`, on `scene_review` and on `scene_look`, draws the node name, a material tag other than `surface` and the mesh lint problems (in orange) at each visible part's bounds centre. The same list returns as JSON, `labels: [{ id, name, tag, faceTags, problems, x, y }]`, with `x` and `y` in the pixels of that image or shot. At most 24 parts are labelled; hidden parts are left out. Names are cut to printable ASCII. Imported assets get names and tags but no lint.
+
 ## Budgets and ownership
 
 | Limit | Value |

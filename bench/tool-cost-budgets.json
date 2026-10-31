@@ -1,16 +1,16 @@
 {
-  "measured": "2026-10-31, from scripts/measure-tool-cost.mjs; was 373388 schema bytes before shared IDs and recipe references",
-  "schemaTotalBytes": 190700,
+  "measured": "2026-10-31, from scripts/measure-tool-cost.mjs; raised by 800 total and 150 for scene_apply for branch and labels fields (no new tool); raised by 650 total and 80 for scene_apply for clip layers, bone masks and retargeting through MCP; raised by 20 for scene_create and 20 for the scene_capabilities result after merging the expression language with the material graph; was 373388 schema bytes before shared IDs and recipe references",
+  "schemaTotalBytes": 191350,
   "schemaToolBytes": {
-    "scene_create": 60900,
-    "scene_apply": 47800,
+    "scene_create": 60920,
+    "scene_apply": 47880,
     "mesh_edit": 34000,
     "scene_create_asset": 20150,
     "mesh_stack": 11500
   },
   "schemaOtherToolBytes": 4000,
   "resultBytes": {
-    "scene_capabilities": 3410,
+    "scene_capabilities": 3430,
     "scene_create": 1400,
     "scene_inspect": 1400,
     "mesh_inspect": 1200,
