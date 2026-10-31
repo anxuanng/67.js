@@ -1,7 +1,7 @@
 # Profile, contour and path modeling
 
 Available from version `0.4.0`.
-The optional modeling entry uses the installed Three.js geometry algorithms and converts their output to 67.js meshes.
+The optional modeling entry builds its meshes itself and has no dependency on Three.js.
 The core renderer does not import the modeling addon.
 
 ```js
@@ -63,9 +63,9 @@ Center small geometry near the origin and place it with part transforms when wor
 
 ## API choice
 
-Plain point arrays keep profiles serializable and avoid exposing Three.js classes through the API.
-Accepting Three.js Shape/Curve objects offers custom curve subclasses, but couples callers to that dependency and weakens input bounds.
-The addon reuses Three.js triangulation, bevel construction and curve frames. THIRD-PARTY-NOTICES.md contains its license.
+Plain point arrays keep profiles serializable and keep any other library's classes out of the API.
+Accepting custom curve objects would let callers supply their own curve classes, but weakens input bounds.
+Lathe, bevel construction and curve frames follow the formulas Three.js used before, so those outputs are unchanged. Extrusion caps use an ear-clipping triangulation of the addon's own, so a cap can be split along different diagonals than before, with the same area, volume and bounds.
 
 The Aster lantern at `/modeling.html` combines these tools with texture channels and the shared scene graph.
 It is a procedural modeling demonstration, not a mesh editor or a Blender feature parity claim.
