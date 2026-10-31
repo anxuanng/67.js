@@ -23224,6 +23224,42 @@
      -1.05
     ]
    ]
+  },
+  "decimate-sphere-half": {
+   "faceCount": 608,
+   "volume": 4.143237,
+   "area": 13.725116,
+   "hausdorff": 0.027064
+  },
+  "decimate-sphere-tenth": {
+   "faceCount": 120,
+   "volume": 4.084994,
+   "area": 13.793516,
+   "hausdorff": 0.063438
+  },
+  "decimate-torus-quarter": {
+   "faceCount": 256,
+   "volume": 2.301407,
+   "area": 13.776178,
+   "hausdorff": 0.030366
+  },
+  "decimate-bowl-half": {
+   "faceCount": 592,
+   "volume": 4.097792,
+   "area": 12.71941,
+   "hausdorff": 0.016792
+  },
+  "remesh-sphere": {
+   "faceCount": 2066,
+   "volume": 4.12985,
+   "area": 13.104959,
+   "hausdorff": 0.070482
+  },
+  "remesh-torus": {
+   "faceCount": 3144,
+   "volume": 2.302192,
+   "area": 13.48201,
+   "hausdorff": 0.012668
   }
  }
 }

@@ -8,6 +8,7 @@ from pathlib import Path
 import bmesh
 import bpy
 from mathutils import Vector
+from mathutils.bvhtree import BVHTree
 
 FIXTURE_DIRECTORY = Path(__file__).resolve().parent.parent / "tests" / "fixtures" / "blender"
 DEFAULT_MAX_ANGLE = 10
@@ -401,7 +402,24 @@ def add_displace(mesh_object, edit, _inputs):
         modifier.texture_coords = "LOCAL"
 
 
+def add_decimate(mesh_object, edit, _inputs):
+    modifier = mesh_object.modifiers.new("Decimate", "DECIMATE")
+    modifier.decimate_type = "COLLAPSE"
+    modifier.ratio = edit["ratio"]
+    modifier.use_collapse_triangulate = True
+
+
+def add_remesh(mesh_object, edit, _inputs):
+    modifier = mesh_object.modifiers.new("Remesh", "REMESH")
+    modifier.mode = "VOXEL"
+    modifier.voxel_size = edit["voxelSize"]
+    modifier.adaptivity = 0
+    modifier.use_smooth_shade = False
+
+
 MODIFIERS = {
+    "decimate": add_decimate,
+    "remesh": add_remesh,
     "set_position": add_set_position,
     "displace": add_displace,
     "mirror": add_mirror,
@@ -485,6 +503,40 @@ def measure(bm):
     }
 
 
+def surface_tree(bm):
+    triangulated = bm.copy()
+    bmesh.ops.triangulate(triangulated, faces=list(triangulated.faces))
+    triangulated.verts.ensure_lookup_table()
+    tree = BVHTree.FromBMesh(triangulated)
+    return tree, triangulated
+
+
+def farthest_vertex(bm, tree):
+    farthest = 0.0
+    for vertex in bm.verts:
+        location = tree.find_nearest(vertex.co)[0]
+        if location is not None:
+            farthest = max(farthest, (location - vertex.co).length)
+    return farthest
+
+
+# Approximating operations change the face count, so they are compared by what the surface does: its volume and area
+# and its Hausdorff distance to the input, measured at vertices in both directions (the same way the JS test does).
+def measure_surface(bm, reference):
+    measured = measure(bm)
+    output_tree, output_copy = surface_tree(bm)
+    reference_tree, reference_copy = surface_tree(reference)
+    hausdorff = max(farthest_vertex(bm, reference_tree), farthest_vertex(reference, output_tree))
+    output_copy.free()
+    reference_copy.free()
+    return {
+        "faceCount": measured["faceCount"],
+        "volume": measured["volume"],
+        "area": measured["area"],
+        "hausdorff": round(hausdorff, 6),
+    }
+
+
 def remove_all_objects():
     for mesh_object in list(bpy.data.objects):
         bpy.data.objects.remove(mesh_object)
@@ -502,7 +554,12 @@ def main():
         if operation == "grid_fill":
             runner = run_operator_case
         bm = runner(case, fixture["inputs"])
-        results[case["id"]] = measure(bm)
+        if case.get("compare") == "surface":
+            reference = new_bmesh(fixture["inputs"][case["input"]])
+            results[case["id"]] = measure_surface(bm, reference)
+            reference.free()
+        else:
+            results[case["id"]] = measure(bm)
         bm.free()
     output = {"blenderVersion": bpy.app.version_string, "results": results}
     (FIXTURE_DIRECTORY / "golden.json").write_text(json.dumps(output, indent=1) + "\n", encoding="utf-8")

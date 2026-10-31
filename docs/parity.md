@@ -48,7 +48,7 @@ To move to a new Blender release, run `node scripts/parity-manual-snapshot.mjs`.
 | Modeling > Meshes > Properties | partial | `smoothAngle` and face tags. There is no sharp edge attribute or crease. | | #39 |
 | Modeling > Meshes > UVs | partial | `uv_unwrap` with LSCM, axis charts and shelf packing. Patterns can not use the result yet. | | #50 |
 | Modeling > Meshes > Mesh Analysis | partial | `lintMesh` reports topology problems. With `{ geometry: true }` (always on in `mesh_inspect`) it also warns of crossing parts, a solid cutting itself, thin walls, floating parts and near-symmetry, using the BVH within face budgets. Checks are heuristics on parts, not Blender's exact Select Non-Manifold or Intersect checks. | [tests/mesh-lint-geometry.test.js](../tests/mesh-lint-geometry.test.js), [src/mesh-lint-geometry.js](../src/mesh-lint-geometry.js) | #66 |
-| Modeling > Meshes > Remeshing | missing | No remesh. | | #40 |
+| Modeling > Meshes > Remeshing | partial | `remesh` rebuilds a closed mesh as an even quad surface on a voxel grid (surface nets over a BVH signed distance). Quad remesh and Instant Meshes style retopology are not here. | [blender golden](../tests/blender-golden.test.js) | #40 |
 | Modeling > Curves | partial | `tube` follows a curve and `extrude` follows a contour. There is no curve object. | | #45 |
 | Modeling > Curves (New) | missing | No hair curves. | | #63 |
 | Modeling > Surfaces | out of scope | Issue #45 records NURBS surfaces as out of scope unless demand appears. | | |
@@ -72,13 +72,13 @@ To move to a new Blender release, run `node scripts/parity-manual-snapshot.mjs`.
 | Modeling > Modifiers > Generate > Boolean Modifier | partial | Manifold boolean as an edit. It is not a stack node. | [mesh-boolean](../tests/mesh-boolean.test.js), [Blender results](../tests/fixtures/blender/golden.json) | |
 | Modeling > Modifiers > Generate > Build Modifier | missing | No equivalent. | | |
 | Modeling > Modifiers > Generate > Curve to Tube Modifier | partial | `tube` is a geometry type. It is not a stack node. | [modeling](../tests/modeling.test.js) | #45 |
-| Modeling > Modifiers > Generate > Decimate Modifier | missing | No decimation. | | #40 |
+| Modeling > Modifiers > Generate > Decimate Modifier | partial | Collapse mode as `decimate` with a ratio, keeping open boundaries and tag borders; `generateMeshLods`, `generateGeometryLods` and `generateAssetLods` make levels with a measured error. Unsubdivide and planar modes, vertex-group weighting and symmetry are missing. Compared with Blender on 4 shared fixtures by volume, area and Hausdorff distance. | [blender golden](../tests/blender-golden.test.js), [decimate](../tests/mesh-decimate.test.js) | #40 |
 | Modeling > Modifiers > Generate > Edge Split Modifier | missing | No equivalent. `smoothAngle` splits normals by angle. | | #42 |
 | Modeling > Modifiers > Generate > Mask Modifier | missing | No equivalent. | | |
 | Modeling > Modifiers > Generate > Mesh to Volume Modifier | missing | No volume objects. | | |
 | Modeling > Modifiers > Generate > Mirror Modifier | done | Stack node with axis and merge. | [mesh-stack](../tests/mesh-stack.test.js), [Blender results](../tests/fixtures/blender/golden.json) | |
 | Modeling > Modifiers > Generate > Multiresolution Modifier | missing | No multiresolution. | | |
-| Modeling > Modifiers > Generate > Remesh Modifier | missing | No remesh. | | #40 |
+| Modeling > Modifiers > Generate > Remesh Modifier | partial | Voxel mode as `remesh` (voxel size or resolution), as an edit or a stack node, compared with Blender on 2 shared fixtures. Blocks, smooth and sharp modes are missing. | [blender golden](../tests/blender-golden.test.js), [decimate](../tests/mesh-decimate.test.js) | #40 |
 | Modeling > Modifiers > Generate > Scatter on Surface Modifier | partial | `instances` with a `surface` source scatters a node at seeded, area-weighted points with yaw, scale and normal alignment, and `where` filters them. No minimum distance or density map, and `addons/clutter` and `addons/grass` still scatter in code. | [src/mesh-instances.js](../src/mesh-instances.js), [tests/mesh-fields.test.js](../tests/mesh-fields.test.js) | #42 |
 | Modeling > Modifiers > Generate > Screw Modifier | partial | `lathe` covers a full turn. There is no stack node or screw offset. | | #42 |
 | Modeling > Modifiers > Generate > Skin Modifier | missing | No equivalent. | | #42 |

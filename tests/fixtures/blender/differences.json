@@ -46,5 +46,11 @@
     "edgeCount": "Blender's check here is a plane through the line that holds the projection direction, which also cuts the two faces that run along that direction. 67.js cuts only faces the projection can see side-on to the line, so those two faces keep their edges and gain the cut points as corners.",
     "faceCount": "The two faces that run along the projection direction are not split by the knife, so 67.js has two faces fewer than the plane cut.",
     "faceSizes": "Those two faces stay whole with the cut points inserted, so they become hexagons where Blender has four quads."
+  },
+  "remesh-sphere": {
+    "faceCount": "Both build a quad surface on a grid of the same voxel size, but the grids start at different points and Blender's OpenVDB mesher and the surface nets of 67.js cut the surface into different cells, so the counts differ by 2.2%. Volume, area and Hausdorff distance agree."
+  },
+  "remesh-torus": {
+    "faceCount": "Both build a quad surface on a grid of the same voxel size, but the grids start at different points and Blender's OpenVDB mesher and the surface nets of 67.js cut the surface into different cells, so 67.js has 6.6% fewer quads. Volume, area and Hausdorff distance agree."
   }
 }

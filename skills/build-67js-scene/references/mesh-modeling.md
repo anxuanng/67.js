@@ -197,6 +197,18 @@ bounds and rescale the node.
 ] }
 ```
 
+Fewer faces: `decimate` keeps a `ratio` of the triangles (counted after triangulation), holds open boundaries and the borders
+between tags where they are, keeps tags, and drops `uv` (so `uv_unwrap` after it). `remesh` rebuilds a closed mesh as
+an even quad surface from a `voxelSize` or a `resolution` (cells along the longest side, at most 192); it drops tags, and
+an open mesh needs `fill_holes` first. Levels of detail for a part are made in code with `generateGeometryLods`.
+
+```json
+{ "id": "boulder", "type": "mesh", "base": { "type": "box", "bevel": 0 }, "stack": [
+  { "op": "subdivide", "levels": 3 },
+  { "op": "decimate", "ratio": 0.3 }
+] }
+```
+
 ## Fields: noise, gradients and repeats
 
 A field expression is a small JSON formula over each vertex or face. `displace` and `set_position` take one, and
