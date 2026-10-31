@@ -197,7 +197,7 @@ These three (and `bevel`, below) work as edits and as stack nodes:
 
 ### Modifier stack
 
-A recipe mesh may carry `stack`, a list of `mirror`, `array`, `solidify`, `bevel`, `subdivide`, `uv_unwrap`, `set_position` and `displace` nodes (up to 16) evaluated after the
+A recipe mesh may carry `stack`, a list of `mirror`, `array`, `solidify`, `bevel`, `subdivide`, `uv_unwrap`, `set_position`, `displace`, `decimate` and `remesh` nodes (up to 16) evaluated after the
 edits without changing them, as Blender's modifier stack. Every prefix (the edit result, then each node) is cached
 by its recipe text in a least-recently-used cache bounded at 64 entries and 64 MiB, so changing a late node reuses
 the earlier work. Results list one entry per node with `cached: true` when reused. `meshCacheStats()` reports hits
@@ -350,6 +350,36 @@ Volume differs by under 1% on four cases, because it is measured on bent quads f
 Timing, measured on this machine: one level on a 100,489-quad grid takes about 225 ms (402k faces out), and about 390 ms
 with a crease on every edge. That is fast enough that 67.js does not keep a stencil table; a stack node reuses its cached
 result until an earlier node changes.
+
+### Decimate, remesh and levels of detail
+
+`decimate` (`ratio`, above 0 and at most 1) reduces the triangulated mesh by quadric edge collapse. The ratio is of
+triangles, never below four. Open boundaries and the borders between faces with different tags are constraints: their
+vertices only collapse along the constraint and extra planes hold them in place. Tags carry over; corner and edge
+attributes (`uv`, colour, `sharp`) are dropped, so unwrap after it. The result reports `triangles` before and after, and
+`stoppedEarly` when constraints stopped it above the ratio. `decimateMesh(mesh, { ratio })` is the same in code.
+
+`remesh` (`voxelSize`, or `resolution` cells along the longest side up to 192) samples the signed distance to the
+surface on a grid and builds a closed quad surface with surface nets. Only cells near the surface are queried through the
+triangle BVH; the rest take their sign from a flood fill. The grid is checked before it is allocated (192 per side, 4,194,304
+cells). The mesh must be closed, and the result carries no tags or attributes.
+
+`generateMeshLods(mesh, { ratios })` (also `generateGeometryLods` for renderer geometry such as a recipe part, and
+`generateAssetLods` for a static imported asset) returns level 0, the input, and one level for each ratio, from strictly
+decreasing ratios in (0, 1), up to 8. Each level has `triangles`, `error` (the farthest its vertices lie from the input surface, in
+the input's units) and `relativeError` (over the bounds diagonal); the asset form returns a whole asset per level.
+Skinned and morphed parts are refused. `surfaceDeviation(a, b)` gives the vertex Hausdorff distance both ways.
+
+Why our own collapse and not meshoptimizer 1.3.0 (npm, MIT, 2026-09-25): on the same sphere, torus and open bowl at
+ratios 0.5, 0.2 and 0.05 our Hausdorff error was 0.25 to 0.85 of its error (0.0088 against 0.0153 at 0.5 and 0.0647 against 0.0773
+at 0.05 on the sphere, 0.0403 against 0.1603 at 0.05 on the open bowl with its borders locked), and the volume stayed closer
+in all nine runs. It has no tag support, and its simplifier adds about 15 KB gzip of WebAssembly (the build three.js ships), where
+this code, with remesh and the levels, adds about 7 KB gzip to the lazy mesh code and nothing to the initial load (+32 bytes). It is about 28 times faster, so the cost is time: about 2.5 seconds for a 100k-triangle sphere down to a
+tenth, against about 0.09 seconds.
+
+Blender comparison (`tests/fixtures/blender`): 4 decimate and 2 remesh cases on a bumpy sphere, a torus and an open bowl,
+compared with the Decimate (collapse) and Remesh (voxel) modifiers by face count, volume, area and the Hausdorff distance to
+the input, because face counts differ. `differences.json` lists the remesh face counts, which differ by 2% and 7%.
 
 ### UV unwrap
 

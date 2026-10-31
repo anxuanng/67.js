@@ -4,6 +4,7 @@ import test from 'node:test';
 import { createMeshData } from '../src/mesh.js';
 import { loadMeshBooleans } from '../src/mesh-boolean.js';
 import { applyMeshEdits } from '../src/mesh-recipe.js';
+import { surfaceDeviation } from '../src/mesh-surface-distance.js';
 
 const FIXTURE_DIRECTORY = new URL('./fixtures/blender/', import.meta.url);
 const readFixture = name => JSON.parse(readFileSync(new URL(name, FIXTURE_DIRECTORY), 'utf8'));
@@ -14,6 +15,16 @@ const knownDifferences = readFixture('differences.json');
 const POSITION_TOLERANCE = 1e-3;
 const MEASURE_TOLERANCE = 1e-3;
 const METRICS = ['vertexCount', 'edgeCount', 'faceCount', 'faceSizes', 'volume', 'area', 'positions'];
+// Decimate and remesh approximate their input, so their face counts differ. They are compared by surface: the volume
+// and area within 1.5%, the face count within 2%, and the Hausdorff distance to the input, which must not exceed Blender's by
+// more than a quarter plus a thousandth of a unit.
+const SURFACE_METRICS = ['faceCount', 'volume', 'area', 'hausdorff'];
+const SURFACE_FACE_COUNT_TOLERANCE = 0.02;
+const SURFACE_MEASURE_TOLERANCE = 0.015;
+const HAUSDORFF_FACTOR = 1.25;
+const HAUSDORFF_SLACK = 1e-3;
+const exactCases = cases.filter(({ compare }) => compare !== 'surface');
+const surfaceCases = cases.filter(({ compare }) => compare === 'surface');
 
 await loadMeshBooleans();
 
@@ -123,13 +134,44 @@ test('every listed difference names a case and a metric', () => {
   for (const [id, differences] of Object.entries(knownDifferences)) {
     assert.ok(ids.has(id), `Unknown case ${id}`);
     for (const [metric, reason] of Object.entries(differences)) {
-      assert.ok(METRICS.includes(metric), `Unknown metric ${metric} on ${id}`);
+      assert.ok([...METRICS, 'hausdorff'].includes(metric), `Unknown metric ${metric} on ${id}`);
       assert.ok(reason.length > 20, `${id} ${metric} needs a reason`);
     }
   }
 });
 
-for (const blenderCase of cases) {
+function surfaceMetricDifference(metric, actual, expected) {
+  if (metric === 'hausdorff') {
+    return actual > expected * HAUSDORFF_FACTOR + HAUSDORFF_SLACK ? `${actual.toFixed(5)} against Blender's ${expected.toFixed(5)}` : null;
+  }
+  const tolerance = metric === 'faceCount' ? SURFACE_FACE_COUNT_TOLERANCE : SURFACE_MEASURE_TOLERANCE;
+  const relative = Math.abs(actual - expected) / Math.max(expected, 1e-9);
+  return relative > tolerance ? `${actual.toFixed(5)} against ${expected.toFixed(5)}` : null;
+}
+
+for (const blenderCase of surfaceCases) {
+  test(`${blenderCase.id} is as close to its input as Blender's, apart from its listed differences`, () => {
+    const output = runCase(blenderCase);
+    const measured = measure(output);
+    const actual = {
+      faceCount: measured.faceCount,
+      volume: measured.volume,
+      area: measured.area,
+      hausdorff: surfaceDeviation(output, meshFromInput(inputs[blenderCase.input])).hausdorff,
+    };
+    const expected = golden.results[blenderCase.id];
+    const listed = knownDifferences[blenderCase.id] ?? {};
+    const problems = [];
+    for (const metric of SURFACE_METRICS) {
+      const difference = surfaceMetricDifference(metric, actual[metric], expected[metric]);
+      if (listed[metric] && !difference) problems.push(`${metric} now matches Blender, so remove it from differences.json`);
+      if (!listed[metric] && difference) problems.push(`${metric}: ${difference}`);
+    }
+    assert.deepEqual(problems, []);
+  });
+}
+
+for (const blenderCase of exactCases) {
   test(`${blenderCase.id} matches Blender, apart from its listed differences`, () => {
     const actual = measure(runCase(blenderCase));
     const expected = golden.results[blenderCase.id];

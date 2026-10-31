@@ -33,10 +33,11 @@ export const MESH_EDIT_OPERATIONS = Object.freeze({
   knife_project: { fields: ['name', 'path', 'direction'], tags: ['cut'] },
   set_position: { fields: ['select', 'position', 'offset'], tags: [] },
   displace: { fields: ['select', 'field', 'strength', 'midlevel', 'direction'], tags: [] },
+  decimate: { fields: ['ratio'], tags: [] },
+  remesh: { fields: ['voxelSize', 'resolution'], tags: [] },
 });
 
-export const STACK_OPERATIONS = Object.freeze(['mirror', 'array', 'solidify', 'bevel', 'uv_unwrap', 'subdivide', 'set_position', 'displace']);
-export const MAX_STACK_NODES = 16;
+export const STACK_OPERATIONS = Object.freeze(['mirror', 'array', 'solidify', 'bevel', 'uv_unwrap', 'subdivide', 'set_position', 'displace', 'decimate', 'remesh']);export const MAX_STACK_NODES = 16;
 
 // Field expressions (mesh-fields.js) and instancing (mesh-instances.js): limits and names as plain data. A test
 // keeps FIELD_OPERATOR_NAMES equal to the operators the language really has.

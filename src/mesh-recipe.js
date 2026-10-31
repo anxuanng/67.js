@@ -14,6 +14,8 @@ import { unwrapUv } from './mesh-uv.js';
 import { validateField } from './mesh-fields.js';
 import { setPosition, displaceMesh, DISPLACE_DIRECTIONS } from './mesh-field-edits.js';
 import { subdivideMesh, subdivisionSize, MAX_SUBDIVISION_LEVELS, MAX_CREASE_SHARPNESS } from './mesh-subdivide.js';
+import { decimateMesh } from './mesh-decimate.js';
+import { remeshMesh, remeshGridSize, MAX_REMESH_RESOLUTION } from './mesh-remesh.js';
 import { MESH_EDIT_OPERATIONS, MAX_MESH_EDITS, STACK_OPERATIONS, MAX_STACK_NODES } from './mesh-operations.js';
 export { MESH_EDIT_OPERATIONS, MAX_MESH_EDITS, STACK_OPERATIONS, MAX_STACK_NODES };
 
@@ -201,6 +203,19 @@ export function normalizeMeshEdits(edits) {
         if (edit.direction !== undefined && !DISPLACE_DIRECTIONS.includes(edit.direction)) throw editError(index, `direction must be one of ${DISPLACE_DIRECTIONS.join(', ')}`);
         normalized.direction = edit.direction ?? 'normal';
         break;
+      case 'decimate':
+        normalized.ratio = finiteNumber(edit.ratio, index, 'ratio', { minimum: 0, maximum: 1, exclusiveMinimum: true });
+        break;
+      case 'remesh':
+        if ((edit.voxelSize === undefined) === (edit.resolution === undefined)) throw editError(index, 'remesh needs exactly one of voxelSize or resolution');
+        if (edit.voxelSize !== undefined) normalized.voxelSize = finiteNumber(edit.voxelSize, index, 'voxelSize', { minimum: 0, exclusiveMinimum: true });
+        if (edit.resolution !== undefined) {
+          if (!Number.isInteger(edit.resolution) || edit.resolution < 4 || edit.resolution > MAX_REMESH_RESOLUTION) {
+            throw editError(index, `resolution must be an integer from 4 to ${MAX_REMESH_RESOLUTION}`);
+          }
+          normalized.resolution = edit.resolution;
+        }
+        break;
       case 'merge_by_distance':
         normalized.distance =finiteNumber(edit.distance ?? 1e-4, index, 'distance', { minimum: 0, maximum: 1e3 });
         break;
@@ -222,6 +237,14 @@ function checkArrayBudget(mesh, edit, limits, index) {
   checkCutBudget(mesh, edit, limits, index);
   if (edit.op === 'subdivide') {
     checkSubdivideBudget(mesh, edit, limits, index);
+    return;
+  }
+  if (edit.op === 'remesh') {
+    try {
+      remeshGridSize(mesh, edit);
+    } catch (error) {
+      throw new error.constructor(`Mesh edit ${index} (remesh): ${error.message}`);
+    }
     return;
   }
   if (edit.op !== 'array') return;
@@ -346,6 +369,27 @@ function runEdit(current, edit, index, { resolveCutter }) {
     }
     result.levels = edit.levels;
     return { mesh: subdivided, result };
+  }
+  if (edit.op === 'decimate') {
+    let outcome;
+    try {
+      outcome = decimateMesh(current, edit);
+    } catch (error) {
+      throw new error.constructor(`Mesh edit ${index} (decimate): ${error.message}`);
+    }
+    result.triangles = outcome.triangles;
+    if (!outcome.reachedTarget) result.stoppedEarly = true;
+    return { mesh: outcome.mesh, result };
+  }
+  if (edit.op === 'remesh') {
+    let outcome;
+    try {
+      outcome = remeshMesh(current, edit);
+    } catch (error) {
+      throw new error.constructor(`Mesh edit ${index} (remesh): ${error.message}`);
+    }
+    result.voxelSize = Number(outcome.voxelSize.toPrecision(5));
+    return { mesh: outcome.mesh, result };
   }
   if (edit.op === 'uv_unwrap') {
     let outcome;
