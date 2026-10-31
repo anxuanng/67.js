@@ -44,7 +44,7 @@ To move to a new Blender release, run `node scripts/parity-manual-snapshot.mjs`.
 | Modeling > Meshes > Primitives | partial | Box, cylinder, sphere and torus. There is no plane, grid, cone, ico sphere or monkey primitive. | | |
 | Modeling > Meshes > Tools | partial | The operations behind extrude and loop cut exist as edits. Spin is covered only by `lathe`. | | #41 |
 | Modeling > Meshes > Selecting | partial | Rules: all, tag, normal, inside, faces, and, or, not, grow, boundary. There is no loop, linked, similar or sharp edge selection. | | #41 |
-| Modeling > Meshes > Editing | partial | 16 edits, including extrude, inset, bevel, loop cut, boolean and merge. There is no bisect, knife, bridge, fill or dissolve. | [Blender results](../tests/fixtures/blender/golden.json) | #41 |
+| Modeling > Meshes > Editing | partial | 26 edits, including extrude, inset, bevel, loop cut, boolean, merge, bisect, bridge, fill, grid fill, dissolve, edge subdivision and a knife by projected polyline. All but the knife match Blender on fixtures; the knife is compared only with a straight plane cut. | [Blender results](../tests/fixtures/blender/golden.json) | #41 |
 | Modeling > Meshes > Properties | partial | `smoothAngle` and face tags. There is no sharp edge attribute or crease. | | #39 |
 | Modeling > Meshes > UVs | partial | `uv_unwrap` with LSCM, axis charts and shelf packing. Patterns can not use the result yet. | | #50 |
 | Modeling > Meshes > Mesh Analysis | partial | `lintMesh` reports topology problems. There is no check for thin walls or intersections. | | #66 |
@@ -188,7 +188,7 @@ To move to a new Blender release, run `node scripts/parity-manual-snapshot.mjs`.
 | Rendering > Render Engines > Cycles | missing | No path tracer and no render baking. | | #55, #57 |
 | Rendering > Render Engines > Workbench | out of scope | A viewport engine for working by hand. | | |
 | Rendering > Cameras | partial | Perspective, orthographic views, focal length and animated paths. There is no depth of field. | [camera-path](../tests/camera-path.test.js), [camera](../tests/camera.test.js) | #54 |
-| Rendering > Lights > Light Objects | partial | One directional light with a shadow, and 8 point lights without shadows. There are no spot or area lights. | [lighting](../tests/lighting.test.js) | #52 |
+| Rendering > Lights > Light Objects | partial | One directional light with a shadow, 8 point lights, 8 spot lights and 4 rectangular area lights. Point and spot lights can cast shadows from one 24-tile atlas (a point light takes 6 tiles, a spot light 1). Area lights use a representative point and cast no shadow. The directional shadow is a single map, not cascaded. | [lighting](../tests/lighting.test.js), `npm run reference` scene `spot-area` | #52 |
 | Rendering > Lights > Light Linking | missing | No light linking. | | #52 |
 | Rendering > Lights > World Environment | partial | Recipes have sky colors, daylight and fog. Code can load an HDRI, and recipes can not reach it. | [environment](../tests/environment.test.js) | #53 |
 | Rendering > Materials > Components | partial | Surfaces with PBR factors and five maps, a clear coat, transmission with thickness, attenuation and IOR, sheen, and specular weight and tint. There is no anisotropy, iridescence, subsurface scattering, volume material or displacement. | [texture-set](../tests/texture-set.test.js) | #50, #51 |
@@ -225,7 +225,7 @@ To move to a new Blender release, run `node scripts/parity-manual-snapshot.mjs`.
 | Assets, Files, & Data System > Importing & Exporting Files | out of scope | Decided in issue #23: GLB is the exchange format. | | |
 | Add-ons > Node Wrangler | out of scope | Interface for a mouse. | | |
 | Add-ons > Rigify | missing | No rig presets. | | #46 |
-| Add-ons > glTF 2.0 | partial | Import is broad. Export can not write textures, skeletons or clips. | [gltf](../tests/gltf.test.js), [export](../tests/export.test.js) | #49 |
+| Add-ons > glTF 2.0 | partial | Import is broad. Export writes the five texture channels as PNG, skins with joints, morph targets and node clips, and bakes pattern materials with box projected UVs; Blender 5.2 and three.js open the RobotExpressive export with its 43 bones and 14 clips. Not yet: morph weight clips, an MCP export tool. | [gltf](../tests/gltf.test.js), [export](../tests/export.test.js), [round trip](../tests/export-roundtrip.test.js) | #49 |
 | Add-ons > Manage UI Translations | out of scope | Blender interface work. | | |
 | Add-ons > VR Scene Inspection | out of scope | Interface for a person. | | |
 | Advanced | out of scope | Decided in issue #23: 67.js does not run agent code. MCP and the JavaScript API take the place of `bpy`. | | |

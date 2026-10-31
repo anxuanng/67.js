@@ -124,7 +124,28 @@ const environment = z.strictObject({
     intensity: bounded(0, 1e5).optional(),
     radius: bounded(0.001, 1e6).optional(),
     range: z.union([z.literal(0), bounded(0.001, 1e6)]).optional(),
-  })).max(8).optional().describe('Replace the entire list; [] removes all point lights. No local shadows.'),
+    castShadow: z.boolean().optional().describe('Casts a cube shadow; uses 6 of the 24 shadow atlas tiles.'),
+  })).max(8).optional().describe('Replace the entire list; [] removes all point lights. Intensity is candela: inverse-square falloff.'),
+  spotLights: z.array(z.strictObject({
+    position: boundedVector(-1e6, 1e6),
+    direction: boundedVector(-1e6, 1e6).describe('Nonzero direction the cone points along.'),
+    angle: bounded(0.01, Math.PI / 2 - 0.01).optional().describe('Outer half angle of the cone in radians; default pi/4.'),
+    penumbra: unit.optional().describe('Fraction of the cone cosine range that fades out; 0 is a hard edge, default 0.15.'),
+    color: color.optional(),
+    intensity: bounded(0, 1e5).optional().describe('Candela, the same units as a point light.'),
+    radius: bounded(0.001, 1e6).optional(),
+    range: z.union([z.literal(0), bounded(0.001, 1e6)]).optional(),
+    castShadow: z.boolean().optional().describe('Casts a shadow; uses 1 of the 24 shadow atlas tiles.'),
+  })).max(8).optional().describe('Replace the entire list; [] removes all spot lights.'),
+  areaLights: z.array(z.strictObject({
+    position: boundedVector(-1e6, 1e6).describe('Center of the rectangle.'),
+    direction: boundedVector(-1e6, 1e6).describe('Nonzero direction the rectangle faces; it emits to that side only.'),
+    up: boundedVector(-1e6, 1e6).optional().describe('Sets which way the height axis runs; default world up.'),
+    width: bounded(0.001, 1e4),
+    height: bounded(0.001, 1e4),
+    color: color.optional(),
+    intensity: bounded(0, 1e5).optional().describe('Candela of the whole rectangle seen head on.'),
+  })).max(4).optional().describe('Replace the entire list; [] removes all area lights. Area lights cast no shadow.'),
   skyTop: color.optional(),
   skyBottom: color.optional(),
   fogColor: color.optional(),
@@ -166,6 +187,7 @@ function primitiveGeometries(identified) {
 }
 const selectRule = z.record(z.string(), z.unknown()).describe('Face selection rule: {"all":true}, {"tag":"top"}, {"normal":[0,1,0],"maxAngle":10} (degrees), {"inside":{"min":[x,y,z],"max":[x,y,z]}} (face centroids), {"faces":[indices]}, {"and":[rules]}, {"or":[rules]}, {"not":rule}, {"grow":rule,"steps":1}, {"boundary":rule}. Tags come from the base (top, bottom, side, left, right, front, back) and from earlier edits (<name>.cap, <name>.side, <name>.rim, or a tag op).');
 const editName = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]{0,47}$/).optional().describe('Prefix for the tags this edit creates. Defaults to <op>-<index>.');
+const edgeRule = z.record(z.string(), z.unknown()).describe('Edge rule: {"all":true}, {"angle":30}, {"along":[x,y,z]}, {"between":[faceRule,faceRule]}, {"boundaryOf":faceRule} or {"open":true} for boundary edges (also {"open":{"inside":{"min":[x,y,z],"max":[x,y,z]}}}).');
 const meshEdit = z.discriminatedUnion('op', [
   z.strictObject({ op: z.literal('extrude_face_region'), select: selectRule.optional(), name: editName, offset: finite.describe('Distance along each connected region\'s average normal (negative pushes in).'), direction: vector3.optional().describe('Move along this direction instead of the normal.'), alongNormals: z.boolean().optional().describe('Move each vertex along its own normal instead, keeping the region joined: use for rings and curved bands.') }),
   z.strictObject({ op: z.literal('extrude_individual'), select: selectRule.optional(), name: editName, offset: finite.describe('Distance along each face\'s own normal.'), direction: vector3.optional() }),
@@ -181,6 +203,28 @@ const meshEdit = z.discriminatedUnion('op', [
     cuts: z.number().int().min(1).max(16).optional().describe('New loops per ring, evenly spaced. Defaults to 1.'),
     factor: bounded(0, 1).optional().describe('Single cut only: position from the low side of each ring edge. Defaults to 0.5.'),
   }).describe('Loop cut across quads. Bands between cuts get <name>.band-0 (low side) to <name>.band-<cuts>.'),
+  z.strictObject({ op: z.literal('fill_holes'), name: editName, sides: z.number().int().min(3).max(4096).optional().describe('Skip boundary loops with more edges than this.') }).describe('Cap each closed boundary loop with one polygon, tagged <name>.fill. Fixes the lint boundary-edge warning.'),
+  z.strictObject({ op: z.literal('dissolve_faces'), name: editName, select: selectRule }).describe('Merge connected selected faces into one polygon each, tagged <name>.merged.'),
+  z.strictObject({ op: z.literal('dissolve_edges'), name: editName, edges: edgeRule }).describe('Merge the two faces beside each selected edge, tagged <name>.merged.'),
+  z.strictObject({ op: z.literal('dissolve_verts'), name: editName, verts: z.record(z.string(), z.unknown()).describe('Vertex rule: {"all":true}, {"vertices":[indices]}, {"valence":2} or {"inside":{"min":[x,y,z],"max":[x,y,z]}}.') }).describe('Remove vertices. Two-edge vertices leave their faces; others merge the faces around them.'),
+  z.strictObject({ op: z.literal('dissolve_limited'), name: editName, edges: edgeRule.optional().describe('Defaults to all edges.'), angle: bounded(0, 180).optional().describe('Degrees of bend still counted as flat. Defaults to 5.') }).describe('Dissolve flat edges and the straight vertices left behind; undoes a loop cut.'),
+  z.strictObject({
+    op: z.literal('bisect_plane'), name: editName,
+    point: vector3.describe('A point on the plane, in the mesh\'s local space.'), normal: vector3.describe('Plane normal. The inner side is behind it, the outer side in front.'),
+    distance: bounded(0, 1000).optional().describe('Vertices this close to the plane count as on it. Defaults to 0.0001.'),
+    clearInner: z.boolean().optional(), clearOuter: z.boolean().optional(),
+    fill: z.boolean().optional().describe('Cap the cut, tagged <name>.cap. With both sides kept the halves become two closed shells.'),
+  }).describe('Cut at a plane. Faces get <name>.inner or <name>.outer by side.'),
+  z.strictObject({
+    op: z.literal('bridge_edge_loops'), name: editName, edges: edgeRule.describe('Rule that selects exactly two boundary loops with the same edge count, usually {"open":true}.'),
+    segments: z.number().int().min(1).max(64).optional().describe('Quads across the strip. Defaults to 1.'), twistOffset: z.number().int().min(-4096).max(4096).optional().describe('Rotate the second loop by this many vertices after the closest match.'),
+  }).describe('Join two boundary loops with a strip of quads, tagged <name>.bridge.'),
+  z.strictObject({ op: z.literal('subdivide_edges'), name: editName, edges: edgeRule, cuts: z.number().int().min(1).max(16).optional().describe('New points per edge. Defaults to 1.') }).describe('Split edges. Quads with opposite edges split become bands, with all four a grid; others keep an n-gon. New faces get <name>.split.'),
+  z.strictObject({ op: z.literal('grid_fill'), name: editName, edges: edgeRule.describe('Rule that selects closed boundary loops of an even edge count, usually {"open":true}.') }).describe('Fill each closed boundary loop with a grid of quads, tagged <name>.fill.'),
+  z.strictObject({
+    op: z.literal('knife_project'), name: editName,
+    path: z.array(vector3).min(2).max(256).describe('Polyline in the mesh\'s local space.'), direction: vector3.describe('Direction the line is projected along, for example [0,0,-1].'),
+  }).describe('Cut along a polyline projected along a direction, through front and back faces. Split faces get <name>.cut.'),
   z.strictObject({ op: z.literal('tag'), select: selectRule, name: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]{0,47}$/).describe('Tag to add to the selected faces.') }),
   z.strictObject({
     op: z.literal('boolean'), name: editName,

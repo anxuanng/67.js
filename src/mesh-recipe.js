@@ -9,6 +9,7 @@ import { createMeshData } from './mesh-data.js';
 import { mirrorMesh, arrayMesh, solidifyMesh } from './mesh-stack.js';
 import { bevelEdges } from './mesh-bevel.js';
 import { loopCut } from './mesh-loopcut.js';
+import { CUT_OPERATIONS, normalizeCutEdit, runCutEdit, checkCutBudget } from './mesh-cut-edits.js';
 import { unwrapUv } from './mesh-uv.js';
 import { subdivideMesh, subdivisionSize, MAX_SUBDIVISION_LEVELS, MAX_CREASE_SHARPNESS } from './mesh-subdivide.js';
 import { MESH_EDIT_OPERATIONS, MAX_MESH_EDITS, STACK_OPERATIONS, MAX_STACK_NODES } from './mesh-operations.js';
@@ -49,7 +50,7 @@ export function normalizeMeshEdits(edits) {
     }
     const normalized = { op: edit.op };
     if (definition.fields.includes('select')) {
-      if (edit.select === undefined && ['delete', 'tag'].includes(edit.op)) throw editError(index, `${edit.op} needs select`);
+      if (edit.select === undefined && ['delete', 'tag', 'dissolve_faces'].includes(edit.op)) throw editError(index, `${edit.op} needs select`);
       normalized.select = edit.select ?? { all: true };
     }
     if (definition.fields.includes('name')) {
@@ -181,6 +182,7 @@ export function normalizeMeshEdits(edits) {
         normalized.distance = finiteNumber(edit.distance ?? 1e-4, index, 'distance', { minimum: 0, maximum: 1e3 });
         break;
     }
+    if (CUT_OPERATIONS.includes(edit.op)) normalizeCutEdit(edit, normalized, index, { finiteNumber, vector });
     return normalized;
   });
 }
@@ -194,6 +196,7 @@ function checkSubdivideBudget(mesh, edit, limits, index) {
 }
 
 function checkArrayBudget(mesh, edit, limits, index) {
+  checkCutBudget(mesh, edit, limits, index);
   if (edit.op === 'subdivide') {
     checkSubdivideBudget(mesh, edit, limits, index);
     return;
@@ -287,6 +290,18 @@ function runEdit(current, edit, index, { resolveCutter }) {
     result.width = outcome.width;
     if (outcome.clamped) result.clamped = true;
     result.tags = tagSummary(outcome.mesh, edit.name);
+    return { mesh: outcome.mesh, result };
+  }
+  if (CUT_OPERATIONS.includes(edit.op)) {
+    let outcome;
+    try {
+      outcome = runCutEdit(current, edit);
+    } catch (error) {
+      throw new error.constructor(`Mesh edit ${index} (${edit.op}): ${error.message}`);
+    }
+    Object.assign(result, outcome.result);
+    const tags = tagSummary(outcome.mesh, edit.name);
+    if (Object.keys(tags).length) result.tags = tags;
     return { mesh: outcome.mesh, result };
   }
   if (edit.op === 'subdivide') {

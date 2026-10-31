@@ -248,6 +248,38 @@ each other in one edit are refused; cut them in separate edits. The result repor
 A typical sequence: `loop_cut` with `cuts: 2`, then `extrude_individual` or `extrude_face_region` with
 `alongNormals` on `<name>.band-1` to raise a belt around the middle.
 
+### Cutting tools
+
+These edits cut, join, fill and merge faces. Each tags the faces it makes with `<name>.<tag>`, and each result passes
+`validateTopology`. Edge rules (the `edges` field) are those of bevel and loop cut, plus `{ "open": true }` for
+boundary edges (those with one face) and `{ "open": { "inside": { "min": [x, y, z], "max": [x, y, z] } } }` for the
+boundary edges whose midpoint is in a box, which picks one hole among several.
+
+| Edit | Fields | Tags | What it does |
+| --- | --- | --- | --- |
+| `fill_holes` | `sides` | `fill` | Caps each closed boundary loop with one polygon; `sides` skips loops with more edges. |
+| `dissolve_faces` | `select` | `merged` | Merges connected selected faces into one polygon each. |
+| `dissolve_edges` | `edges` | `merged` | Merges the two faces beside each selected edge. Boundary edges are ignored. |
+| `dissolve_verts` | `verts` | `merged` | Removes vertices: a vertex with two edges just leaves its faces, one with more merges the faces around it. |
+| `dissolve_limited` | `edges` (default all), `angle` (default 5) | `merged` | Dissolves edges whose faces bend by at most `angle` degrees, then the straight vertices left behind. |
+| `bisect_plane` | `point`, `normal`, `distance`, `clearInner`, `clearOuter`, `fill` | `inner`, `outer`, `cap` | Cuts at a plane. `clearInner` removes the side behind the normal, `clearOuter` the side in front. `fill` caps the cut; with both sides kept the halves separate into two closed shells. |
+| `bridge_edge_loops` | `edges`, `segments`, `twistOffset` | `bridge` | Joins exactly two boundary loops with the same edge count by a strip of quads, `segments` deep. |
+| `subdivide_edges` | `edges`, `cuts` | `split` | Splits each selected edge into `cuts` + 1 pieces. Quads with two opposite edges split become bands, with four split a grid, and any other face keeps one n-gon with the new points inserted. |
+| `grid_fill` | `edges` | `fill` | Fills each closed boundary loop of an even number of edges (4 or more) with a grid of quads. |
+| `knife_project` | `path`, `direction` | `cut` | Cuts along a polyline of object-space points projected along `direction`, through front and back faces. |
+
+`dissolve_verts` rules: `{ "all": true }`, `{ "vertices": [indices] }`, `{ "valence": 2 }` (vertices with exactly that many
+neighbours) or `{ "inside": { "min", "max" } }`. `dissolve_edges`, `dissolve_verts` and `dissolve_faces` refuse a merge
+that would leave a face with a hole or pinch it. `bisect_plane` throws when the plane misses every face, and when a face
+is crossed more than twice (a concave face); split it first. `bridge_edge_loops` aligns closed loops at the rotation with
+the shortest total distance, then turns them by `twistOffset` vertices. A knife stretch that starts or ends inside a face
+makes no cut, and a face that runs along `direction` is not split (its edge points are still inserted). The sizes of
+`subdivide_edges` are checked before it allocates.
+
+Open boundaries reported by lint (`boundary-edge`) are fixed with `fill_holes`. Names follow `bmesh.ops`
+(`holes_fill`, `dissolve_*`, `bisect_plane`, `bridge_loops`, `grid_fill`, `subdivide_edges`) where the meaning matches, and
+`point` and `normal` are Blender's `plane_co` and `plane_no`.
+
 ### Subdivide
 
 `subdivide` is Catmull-Clark subdivision with semi-sharp creases, as an edit or as a stack node, on the rules Pixar

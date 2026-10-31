@@ -1,8 +1,12 @@
 import { validateMorphGeometry, validateMorphPose } from './morph.js';
 import { gltfExtensionsFromLayers } from './gltf-layers.js';
+import { validateSkinGeometry } from './skinning.js';
+import { boxProjectedGeometry } from './export-box-uv.js';
+import { createTextureWriter } from './export-textures.js';
+import { createGlbWriter } from './export-writer.js';
+import { buildHierarchy, decomposeMatrix, hierarchyNodeFields, hostOfPart, normalizedWeights, relativeMatrix, writeAnimations, writeSkin } from './export-skeleton.js';
 
 const EMISSIVE_STRENGTH = 'KHR_materials_emissive_strength';
-const COMPONENT_COUNTS = { SCALAR: 1, VEC2: 2, VEC3: 3 };
 
 function validateFloatChannel(values, length, label, bounded = false) {
   if (!(values instanceof Float32Array) || values.length !== length) {
@@ -30,11 +34,6 @@ function writeAlphaFields(gltfMaterial, material) {
     gltfMaterial.alphaCutoff = material.alphaCutoff ?? 0.5;
   }
   if (material.doubleSided === true) gltfMaterial.doubleSided = true;
-}
-
-function declareExtensions(document, names, required) {
-  document.extensionsUsed = [...new Set([...(document.extensionsUsed ?? []), ...names])];
-  if (required) document.extensionsRequired = [...new Set([...(document.extensionsRequired ?? []), ...names])];
 }
 
 function validateFactor(value, label, maximum = 1) {
@@ -69,14 +68,18 @@ function validateGeometry(geometry) {
   }
 }
 
-function validatePart(part) {
-  if (!part.matrix || part.matrix.length !== 16 || Array.from(part.matrix).some(value => !Number.isFinite(value) || !Number.isFinite(Math.fround(value)))) {
+// A skinned part takes its pose from its joints, so only parts with a node transform need a valid matrix.
+function validateMatrix(matrix) {
+  if (!matrix || matrix.length !== 16 || Array.from(matrix).some(value => !Number.isFinite(value) || !Number.isFinite(Math.fround(value)))) {
     throw new RangeError('GLB matrix requires 16 finite components.');
   }
-  if (part.matrix[3] !== 0 || part.matrix[7] !== 0 || part.matrix[11] !== 0 || part.matrix[15] !== 1) {
+  if (matrix[3] !== 0 || matrix[7] !== 0 || matrix[11] !== 0 || matrix[15] !== 1) {
     throw new RangeError('GLB matrix requires an affine transform.');
   }
-  validateTransformColumns(part.matrix);
+  validateTransformColumns(matrix);
+}
+
+function validatePart(part) {
   const material = part.material;
   if (!material || typeof material !== 'object') throw new TypeError('GLB parts require a material.');
   validateColor(material.color, 'GLB base color');
@@ -105,12 +108,105 @@ function validateTransformColumns(matrix) {
   }
 }
 
-function paddedLength(length) {
-  return Math.ceil(length / 4) * 4;
+const TEXTURE_CHANNELS = ['map', 'normalMap', 'metallicRoughnessMap', 'occlusionMap', 'emissiveMap'];
+const OPTION_NAMES = ['clips', 'nodes', 'maxTextureSize'];
+
+function validateOptions(options) {
+  if (!options || typeof options !== 'object') throw new TypeError('GLB export options must be an object.');
+  for (const name of Object.keys(options)) {
+    if (!OPTION_NAMES.includes(name)) throw new TypeError(`GLB export does not take ${name}. Options: ${OPTION_NAMES.join(', ')}.`);
+  }
+  if (options.clips !== undefined && !Array.isArray(options.clips)) throw new TypeError('GLB export clips must be an array.');
+  if (options.nodes !== undefined && !Array.isArray(options.nodes)) throw new TypeError('GLB export nodes must be an array.');
 }
 
-export function exportGlb(parts) {
+function validateSkinnedPart(part) {
+  validateSkinGeometry(part.geometry, part.skin);
+}
+
+function columnLengths(matrix) {
+  return [0, 4, 8].map(offset => Math.hypot(matrix[offset], matrix[offset + 1], matrix[offset + 2]));
+}
+
+function createIdentityTracker() {
+  const identities = new WeakMap();
+  let next = 0;
+  return object => {
+    if (!identities.has(object)) identities.set(object, next++);
+    return identities.get(object);
+  };
+}
+
+function materialKeyOf(material, identify) {
+  const textures = TEXTURE_CHANNELS.map(channel => material[channel] ? identify(material[channel]) : null);
+  const fields = { ...material };
+  for (const channel of [...TEXTURE_CHANNELS, 'pattern', 'boxMapScale', 'boxMapAxis']) delete fields[channel];
+  return JSON.stringify([fields, textures, material.boxMapScale ?? 0, material.boxMapAxis ?? 1]);
+}
+
+function writeMaterial(writer, textureWriter, material) {
+  const pbr = { baseColorFactor: [...material.color, 1], metallicFactor: material.metallic, roughnessFactor: material.roughness };
+  const gltfMaterial = {
+    pbrMetallicRoughness: pbr,
+    emissiveFactor: (material.emission ?? 0) === 0 ? [0, 0, 0] : Array.from(material.emissiveColor ?? material.color),
+  };
+  writeAlphaFields(gltfMaterial, material);
+  const layerExtensions = gltfExtensionsFromLayers(material);
+  if (Object.keys(layerExtensions).length > 0) {
+    gltfMaterial.extensions = layerExtensions;
+    for (const extensionName of Object.keys(layerExtensions)) writer.addExtension(extensionName);
+  }
+  const strength = material.emission ?? 0;
+  if (strength !== 0 && strength !== 1) {
+    gltfMaterial.extensions = { ...gltfMaterial.extensions, [EMISSIVE_STRENGTH]: { emissiveStrength: strength } };
+    writer.addExtension(EMISSIVE_STRENGTH, { required: true });
+  }
+  const textureOf = channel => ({ index: textureWriter.textureIndex(material[channel], channel) });
+  if (material.map) pbr.baseColorTexture = textureOf('map');
+  if (material.metallicRoughnessMap) pbr.metallicRoughnessTexture = textureOf('metallicRoughnessMap');
+  if (material.normalMap) gltfMaterial.normalTexture = { ...textureOf('normalMap'), scale: material.normalScale?.[0] ?? 1 };
+  if (material.occlusionMap) gltfMaterial.occlusionTexture = { ...textureOf('occlusionMap'), strength: material.occlusionStrength ?? 1 };
+  if (material.emissiveMap) gltfMaterial.emissiveTexture = textureOf('emissiveMap');
+  return gltfMaterial;
+}
+
+function writeGeometry(writer, geometry) {
+  const ARRAY_BUFFER = 34962;
+  const attributes = { POSITION: writer.addAccessor(geometry.positions, 'VEC3', ARRAY_BUFFER), NORMAL: writer.addAccessor(geometry.normals, 'VEC3', ARRAY_BUFFER) };
+  const primitive = { attributes, indices: writer.addAccessor(geometry.indices, 'SCALAR', 34963) };
+  if (geometry.colors) attributes.COLOR_0 = writer.addAccessor(geometry.colors, 'VEC3', ARRAY_BUFFER);
+  if (geometry.uvs) attributes.TEXCOORD_0 = writer.addAccessor(geometry.uvs, 'VEC2', ARRAY_BUFFER);
+  if (geometry.skinIndices) {
+    attributes.JOINTS_0 = writer.addAccessor(Uint16Array.from(geometry.skinIndices), 'VEC4', ARRAY_BUFFER, { bounds: false });
+    attributes.WEIGHTS_0 = writer.addAccessor(normalizedWeights(geometry.skinWeights), 'VEC4', ARRAY_BUFFER, { bounds: false });
+  }
+  if (geometry.morphTargets) {
+    primitive.targets = geometry.morphTargets.map(target => {
+      const channels = {};
+      if (target.positions) channels.POSITION = writer.addAccessor(target.positions, 'VEC3', ARRAY_BUFFER);
+      if (target.normals) channels.NORMAL = writer.addAccessor(target.normals, 'VEC3', ARRAY_BUFFER);
+      return channels;
+    });
+  }
+  return primitive;
+}
+
+function requireUvsForTextures(part) {
+  const textured = TEXTURE_CHANNELS.some(channel => part.material[channel]);
+  const boxMapped = (part.material.boxMapScale ?? 0) > 0;
+  if (textured && !boxMapped && !part.geometry.uvs) {
+    throw new RangeError(`GLB part ${part.name} has textures but its geometry has no uvs. Add a uv_unwrap node to the mesh stack, or set geometry.uvs.`);
+  }
+}
+
+/**
+ * Returns a self-contained GLB ArrayBuffer for the parts.
+ * Options: `clips` (createAnimationClip form, track targets are node names), `nodes` (the `nodes` of a parsed asset,
+ * which hold joints and groups, so skinned parts and clips keep their hierarchy), `maxTextureSize` (default 2048).
+ */
+export function exportGlb(parts, options = {}) {
   if (!Array.isArray(parts) || parts.length === 0) throw new TypeError('GLB export requires a nonempty parts array.');
+  validateOptions(options);
   const validatedGeometries = new Set();
   const morphMetadata = new Map();
   for (const part of parts) {
@@ -125,120 +221,94 @@ export function exportGlb(parts) {
     } else {
       morphMetadata.set(part.geometry, validateMorphGeometry(part.geometry, part.morph));
     }
-    if (part.skin || part.geometry.skinIndices || part.geometry.skinWeights) {
-      throw new RangeError('GLB export cannot preserve skinning yet. Bake the pose or export through a tool that preserves the skeleton.');
-    }
-    for (const channel of ['map', 'normalMap', 'metallicRoughnessMap', 'occlusionMap', 'emissiveMap']) {
-      if (part.material[channel]) {
-        throw new RangeError(`GLB export cannot preserve ${channel} yet. Texture export must be implemented before exporting this material.`);
-      }
-    }
+    validateSkinnedPart(part);
+    requireUvsForTextures(part);
   }
-  const document = {
-    asset: { version: '2.0', generator: '67.js' },
-    scene: 0,
-    scenes: [{ nodes: parts.map((_, index) => index) }],
-    nodes: [],
-    meshes: [],
-    materials: [],
-    accessors: [],
-    bufferViews: [],
-    buffers: [],
-  };
-  const chunks = [];
-  let byteLength = 0;
+  const hierarchy = buildHierarchy(parts, options.nodes);
+  const worldCache = new Map();
+  parts.forEach((part, partIndex) => {
+    if (part.skin) return;
+    const host = part.matrix?.length === 16 ? hostOfPart(partIndex, hierarchy, worldCache) : null;
+    validateMatrix(host ? relativeMatrix(part.matrix, host.world) : part.matrix);
+  });
+  const writer = createGlbWriter();
+  const { document } = writer;
+  const textureWriter = createTextureWriter(writer, options.maxTextureSize);
+  const nodeIndexByName = new Map(hierarchy.map((node, index) => [node.name, index]));
   const geometries = new Map();
   const materials = new Map();
   const meshes = new Map();
-  function accessor(data, type, target) {
-    const viewIndex = document.bufferViews.length;
-    document.bufferViews.push({ buffer: 0, byteOffset: byteLength, byteLength: data.byteLength, target });
-    chunks.push({ offset: byteLength, data: new Uint8Array(data.buffer, data.byteOffset, data.byteLength) });
-    byteLength += paddedLength(data.byteLength);
-    const entry = { bufferView: viewIndex, componentType: data instanceof Float32Array ? 5126 : 5125, count: data.length / COMPONENT_COUNTS[type], type };
-    if (type === 'VEC3') {
-      entry.min = [Infinity, Infinity, Infinity];
-      entry.max = [-Infinity, -Infinity, -Infinity];
-      for (let index = 0; index < data.length; index++) {
-        const component = index % 3;
-        entry.min[component] = Math.min(entry.min[component], data[index]);
-        entry.max[component] = Math.max(entry.max[component], data[index]);
-      }
+  const skins = new Map();
+  const identify = createIdentityTracker();
+
+  function geometryFor(part) {
+    const boxMapped = (part.material.boxMapScale ?? 0) > 0;
+    const scale = columnLengths(part.matrix);
+    const variant = boxMapped ? `box:${part.material.boxMapScale}:${part.material.boxMapAxis ?? 1}:${scale.join(',')}` : 'authored';
+    if (!geometries.has(part.geometry)) geometries.set(part.geometry, new Map());
+    const variants = geometries.get(part.geometry);
+    if (!variants.has(variant)) {
+      const source = boxMapped ? boxProjectedGeometry(part.geometry, scale, part.material.boxMapScale, part.material.boxMapAxis ?? 1) : part.geometry;
+      variants.set(variant, writeGeometry(writer, source));
     }
-    document.accessors.push(entry);
-    return document.accessors.length - 1;
+    return variants.get(variant);
   }
-  for (const part of parts) {
-    if (!geometries.has(part.geometry)) {
-      const geometry = {
-        attributes: { POSITION: accessor(part.geometry.positions, 'VEC3', 34962), NORMAL: accessor(part.geometry.normals, 'VEC3', 34962) },
-        indices: accessor(part.geometry.indices, 'SCALAR', 34963),
-      };
-      if (part.geometry.colors) geometry.attributes.COLOR_0 = accessor(part.geometry.colors, 'VEC3', 34962);
-      if (part.geometry.uvs) geometry.attributes.TEXCOORD_0 = accessor(part.geometry.uvs, 'VEC2', 34962);
-      if (part.geometry.morphTargets) {
-        geometry.targets = part.geometry.morphTargets.map(target => {
-          const channels = {};
-          if (target.positions) channels.POSITION = accessor(target.positions, 'VEC3', 34962);
-          if (target.normals) channels.NORMAL = accessor(target.normals, 'VEC3', 34962);
-          return channels;
-        });
-      }
-      geometries.set(part.geometry, geometry);
-    }
-    const materialKey = JSON.stringify(part.material);
+
+  for (const node of hierarchy) document.nodes.push({ name: node.name, ...hierarchyNodeFields(node) });
+  hierarchy.forEach((node, index) => {
+    if (node.parent >= 0) (document.nodes[node.parent].children ??= []).push(index);
+  });
+  const sceneRoots = hierarchy.flatMap((node, index) => node.parent < 0 ? [index] : []);
+  parts.forEach((part, partIndex) => {
+    const geometry = geometryFor(part);
+    const materialKey = materialKeyOf(part.material, identify);
     if (!materials.has(materialKey)) {
       materials.set(materialKey, document.materials.length);
-      const material = {
-        pbrMetallicRoughness: { baseColorFactor: [...part.material.color, 1], metallicFactor: part.material.metallic, roughnessFactor: part.material.roughness },
-        emissiveFactor: (part.material.emission ?? 0) === 0 ? [0, 0, 0] : Array.from(part.material.emissiveColor ?? part.material.color),
-      };
-      writeAlphaFields(material, part.material);
-      const layerExtensions = gltfExtensionsFromLayers(part.material);
-      if (Object.keys(layerExtensions).length > 0) {
-        material.extensions = layerExtensions;
-        declareExtensions(document, Object.keys(layerExtensions), false);
-      }
-      const strength = part.material.emission ?? 0;
-      if (strength !== 0 && strength !== 1) {
-        material.extensions = { ...material.extensions, [EMISSIVE_STRENGTH]: { emissiveStrength: strength } };
-        declareExtensions(document, [EMISSIVE_STRENGTH], true);
-      }
-      document.materials.push(material);
+      document.materials.push(writeMaterial(writer, textureWriter, part.material));
     }
-    const geometry = geometries.get(part.geometry);
     const material = materials.get(materialKey);
     const meshKey = `${geometry.indices}:${material}`;
     if (!meshes.has(meshKey)) {
       meshes.set(meshKey, document.meshes.length);
       document.meshes.push({ primitives: [{ ...geometry, material }] });
     }
-    const node = { name: part.name, mesh: meshes.get(meshKey), matrix: Array.from(part.matrix) };
+    const host = part.skin ? null : hostOfPart(partIndex, hierarchy, worldCache);
+    // The mesh node of an imported asset is one of its nodes: keep the mesh on it instead of nesting a same-named node.
+    const mergeIntoHost = host && hierarchy[host.index].name === part.name && hierarchy[host.index].meshIds.length === 1;
+    // Clips address nodes by name, and loaders rename duplicates, so a mesh node never shares a joint's name.
+    const meshNodeName = nodeIndexByName.has(part.name) ? `${part.name} mesh` : part.name;
+    const node = mergeIntoHost ? document.nodes[host.index] : { name: meshNodeName };
+    node.mesh = meshes.get(meshKey);
     if (part.morph) node.weights = Array.from(part.morph.weights);
+    if (part.skin) {
+      // A skinned mesh takes its pose from its joints, so its own node stays at the origin.
+      node.skin = writeSkin(writer, part.skin, nodeIndexByName, skins);
+    } else if (!mergeIntoHost) {
+      node.matrix = Array.from(host ? relativeMatrix(part.matrix, host.world) : part.matrix);
+    }
+    if (mergeIntoHost) return;
     document.nodes.push(node);
+    const nodeIndex = document.nodes.length - 1;
+    if (host) (document.nodes[host.index].children ??= []).push(nodeIndex);
+    else sceneRoots.push(nodeIndex);
+  });
+  document.scenes[0].nodes = sceneRoots;
+  if (options.clips?.length) {
+    for (const [index, node] of document.nodes.entries()) {
+      if (!nodeIndexByName.has(node.name)) nodeIndexByName.set(node.name, index);
+    }
+    writeAnimations(writer, options.clips, nodeIndexByName, nodeIndex => {
+      const node = document.nodes[nodeIndex];
+      if (!node.matrix) return;
+      Object.assign(node, decomposeMatrix(node.matrix));
+      delete node.matrix;
+    });
   }
-  document.buffers.push({ byteLength });
-  const json = new TextEncoder().encode(JSON.stringify(document));
-  const jsonLength = paddedLength(json.length);
-  const result = new ArrayBuffer(12 + 8 + jsonLength + 8 + byteLength);
-  const header = new DataView(result);
-  header.setUint32(0, 0x46546c67, true);
-  header.setUint32(4, 2, true);
-  header.setUint32(8, result.byteLength, true);
-  header.setUint32(12, jsonLength, true);
-  header.setUint32(16, 0x4e4f534a, true);
-  const bytes = new Uint8Array(result);
-  bytes.fill(32, 20, 20 + jsonLength);
-  bytes.set(json, 20);
-  const binaryHeader = 20 + jsonLength;
-  header.setUint32(binaryHeader, byteLength, true);
-  header.setUint32(binaryHeader + 4, 0x004e4942, true);
-  for (const chunk of chunks) bytes.set(chunk.data, binaryHeader + 8 + chunk.offset);
-  return result;
+  return writer.finish();
 }
 
-export function downloadGlb(parts) {
-  const url = URL.createObjectURL(new Blob([exportGlb(parts)], { type: 'model/gltf-binary' }));
+export function downloadGlb(parts, options) {
+  const url = URL.createObjectURL(new Blob([exportGlb(parts, options)], { type: 'model/gltf-binary' }));
   const link = document.createElement('a');
   link.href = url;
   link.download = '67js-wall-e.glb';

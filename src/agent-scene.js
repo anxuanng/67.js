@@ -879,7 +879,9 @@ export function createAgentScene(input, inputLimits = {}) {
         if (lookField) {
           knownKeys(operation, ['type', lookField], 'operation');
           const patch = operation[lookField];
-          knownKeys(patch, Object.keys(candidate[lookField]), lookField);
+          // Spot and area lights are absent from a recipe until it sets them.
+          const optionalFields = lookField === 'environment' ? ['spotLights', 'areaLights'] : [];
+          knownKeys(patch, [...Object.keys(candidate[lookField]), ...optionalFields], lookField);
           const nestedField = lookField === 'environment' ? 'volumeFog' : lookField === 'effects' ? 'bloom' : null;
           const merged = { ...candidate[lookField], ...patch };
           if (nestedField && Object.hasOwn(patch, nestedField)) {
@@ -1044,6 +1046,8 @@ export function createAgentScene(input, inputLimits = {}) {
         look: {
           world: state.recipe.environment.world,
           pointLights: state.recipe.environment.pointLights.length,
+          spotLights: state.recipe.environment.spotLights?.length ?? 0,
+          areaLights: state.recipe.environment.areaLights?.length ?? 0,
           volumeFogDensity: state.recipe.environment.volumeFog.density,
           exposure: state.recipe.effects.exposure,
         },
