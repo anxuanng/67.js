@@ -6,6 +6,8 @@ const SUBDIVIDED_CUBE_SPAN = 0.8492;
 const PEBBLE_SIZE = [0.08, 0.03, 0.05];
 
 import { walkerRecipe } from './walker.mjs';
+import { KETTLE_RESIZED, KETTLE_RESIZED_PLAIN } from './kettle.mjs';
+import { DESK_FINAL, DESK_FINAL_PLAIN } from './desk.mjs';
 
 const material = [{ id: 'paint', color: [0.6, 0.55, 0.5] }];
 
@@ -161,6 +163,10 @@ function robotArmSolver(root, middle, end, target) {
 }
 
 export const REFERENCES = {
+  'kettle-resize': KETTLE_RESIZED,
+  'kettle-resize-plain': KETTLE_RESIZED_PLAIN,
+  'desk-resize': DESK_FINAL,
+  'desk-resize-plain': DESK_FINAL_PLAIN,
   'chamfer-plate': scene(
     [{
       id: 'plate', type: 'mesh', base: { type: 'box', bevel: 0 }, edits: [
@@ -220,6 +226,16 @@ export const REFERENCES = {
         type: 'two-bone', root: 'node-37', middle: 'node-39', end: 'node-40', keepEndRotation: false,
         target: { keyframes: [{ time: 0, value: [-1.3, 2.6, 0.8] }, { time: 2, value: [-1, 1.7, 1.1] }] },
       }],
+    },
+  },
+  'robot-walk-wave': {
+    format: '67js.asset', schemaVersion: 1, assetId: 'ab'.repeat(32),
+    motion: {
+      duration: 2, loop: true,
+      layers: [
+        { clip: 10 },
+        { clip: 12, mask: { joints: ['node-37'] }, morph: false },
+      ],
     },
   },
   'tray-drop': {

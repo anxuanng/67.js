@@ -91,6 +91,29 @@ test('the robot shot needs both hands on target and a side-on camera', async () 
   assert.deepEqual(failedKinds(await gradeRecipe(task, noCamera)), ['shot']);
 });
 
+test('the walk and wave check needs both clips, the legs walking and only the right arm waving', async () => {
+  const task = taskById('robot-walk-wave');
+  const noWave = structuredClone(REFERENCES['robot-walk-wave']);
+  noWave.motion.layers.pop();
+  assert.deepEqual(failedKinds(await gradeRecipe(task, noWave)), ['assetWalkAndWave']);
+
+  const waveEverywhere = structuredClone(REFERENCES['robot-walk-wave']);
+  delete waveEverywhere.motion.layers[1].mask;
+  assert.deepEqual(failedKinds(await gradeRecipe(task, waveEverywhere)), ['assetWalkAndWave']);
+
+  const wrongClip = structuredClone(REFERENCES['robot-walk-wave']);
+  wrongClip.motion.layers[1].clip = 2;
+  assert.deepEqual(failedKinds(await gradeRecipe(task, wrongClip)), ['assetWalkAndWave']);
+
+  const waveOnLegs = structuredClone(REFERENCES['robot-walk-wave']);
+  waveOnLegs.motion.layers[1].mask.joints = ['node-37', 'node-57'];
+  assert.deepEqual(failedKinds(await gradeRecipe(task, waveOnLegs)), ['assetWalkAndWave']);
+
+  const noMotion = structuredClone(REFERENCES['robot-walk-wave']);
+  delete noMotion.motion;
+  assert.deepEqual(failedKinds(await gradeRecipe(task, noMotion)), ['assetWalkAndWave']);
+});
+
 test('tasks that change an existing scene carry their starting recipe in the prompt', () => {
   for (const id of ['crate-revision', 'bracket-revision']) {
     const task = taskById(id);

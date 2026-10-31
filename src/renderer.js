@@ -1,6 +1,7 @@
 import { mat4, mat3 } from 'gl-matrix';
 import { vertexShader, createFragmentShader, liquidFragmentShader, depthVertexShader, depthFragmentShader, benchmarkVertexShader, benchmarkFragmentShader } from './shaders.js';
-import { fullscreenVertex, postFragment, skyFragment, bloomFragment } from './post.js';
+import { postFragment, skyFragment, bloomFragment } from './post.js';
+import { fullscreenVertex, startProgram, finishProgram, compileProgram } from './gl-program.js';
 import { ambientOcclusionFragment } from './ambient-occlusion.js';
 import { planRenderSize, estimateTextureBytes, estimateFrameBytes } from './budget.js';
 import { applyProjection } from './camera.js';
@@ -206,6 +207,9 @@ function packInstance(data, index, part, normalMatrix) {
   data.set(part.material.emissiveColor ?? part.material.color, offset + 38);
 }
 
+// The objectId mode of RENDER_PASS_MODES in render-passes.js.
+const OBJECT_ID_PASS_MODE = 5;
+
 function isCullable(parts) {
   const first = parts[0];
   if (first.skin || first.morph || DEFORMING_TAGS.has(first.material.tag)) return false;
@@ -223,38 +227,6 @@ function validateLods(part, levels) {
       throw new RangeError(`lods errors must be finite and not decrease from level to level: ${part.name}`);
     }
   });
-}
-
-// Starting a program without asking for its result lets the driver build several programs at once.
-function startProgram(context, vertexSource, fragmentSource) {
-  const program = context.createProgram();
-  context.getExtension('KHR_parallel_shader_compile');
-  const shaders = [];
-  for (const [kind, source] of [[context.VERTEX_SHADER, vertexSource], [context.FRAGMENT_SHADER, fragmentSource]]) {
-    const shader = context.createShader(kind);
-    context.shaderSource(shader, source);
-    context.compileShader(shader);
-    context.attachShader(program, shader);
-    shaders.push(shader);
-  }
-  context.linkProgram(program);
-  return { program, shaders };
-}
-
-function finishProgram(context, { program, shaders }) {
-  const linked = context.getProgramParameter(program, context.LINK_STATUS);
-  const failedShader = shaders.find(shader => !context.getShaderParameter(shader, context.COMPILE_STATUS));
-  const message = failedShader ? context.getShaderInfoLog(failedShader) : context.getProgramInfoLog(program);
-  shaders.forEach((shader) => context.deleteShader(shader));
-  if (!linked) {
-    context.deleteProgram(program);
-    throw new Error(failedShader ? `Shader compilation failed: ${message}` : `Shader linking failed: ${message}`);
-  }
-  return program;
-}
-
-function compileProgram(context, vertexSource, fragmentSource) {
-  return finishProgram(context, startProgram(context, vertexSource, fragmentSource));
 }
 
 function groundPart() {
@@ -398,6 +370,10 @@ export class Renderer67 {
     this.batches = [];
     this.partLocations = new Map();
     this.updateBatches = new Set();
+    // Addons plug in here: full-frame effects (camera-effects.js) run between the resolve and the post pass, and
+    // render-passes.js sets passSupport. None by default.
+    this.postStages = [];
+    this.passSupport = null;
     this.updateSkins = new Set();
     this.updateMorphs = new Set();
     this.skinTextures = new Map();
@@ -544,7 +520,7 @@ export class Renderer67 {
 
   finishMainProgram(pendingProgram) {
     this.program = finishProgram(this.context, pendingProgram);
-    this.uniforms = Object.fromEntries(['materialDielectric', 'materialCoat', 'materialSheen', 'boxMapScale', 'boxMapAxis', 'viewProjection', 'lightProjection', 'eye', 'armorColor', 'armorSurface', 'exposure', 'inspection', 'shadowMap', ...MAP_UNIFORMS, ...MAP_FLAGS, ...SKIN_UNIFORMS, ...MORPH_UNIFORMS, 'normalScale', 'occlusionStrength', 'materialMoss', ...SPLAT_UNIFORMS, 'hdrEnabled', 'time', 'wind', 'worldMode', 'daylight', 'fogColor', 'lightDirection', 'fogDensity', 'waterRipple', 'rippleTime', 'explosionProgress', 'explosionCenter', 'assemblyAmount', ...ALPHA_UNIFORMS].map((name) => [name, this.context.getUniformLocation(this.program, name)]));
+    this.uniforms = Object.fromEntries(['materialDielectric', 'materialCoat', 'materialSheen', 'boxMapScale', 'boxMapAxis', 'viewProjection', 'lightProjection', 'eye', 'armorColor', 'armorSurface', 'exposure', 'inspection', 'shadowMap', ...MAP_UNIFORMS, ...MAP_FLAGS, ...SKIN_UNIFORMS, ...MORPH_UNIFORMS, 'normalScale', 'occlusionStrength', 'materialMoss', ...SPLAT_UNIFORMS, 'hdrEnabled', 'time', 'wind', 'worldMode', 'daylight', 'fogColor', 'lightDirection', 'fogDensity', 'waterRipple', 'rippleTime', 'explosionProgress', 'explosionCenter', 'assemblyAmount', 'renderPassMode', 'renderPassDepthRange', 'renderPassObjectBase', ...ALPHA_UNIFORMS].map((name) => [name, this.context.getUniformLocation(this.program, name)]));
     for (const name of LIGHT_UNIFORMS) {
       this.uniforms[name] = this.context.getUniformLocation(this.program, name);
     }
@@ -1260,6 +1236,8 @@ export class Renderer67 {
     }
     this.bloomTargets = [];
     this.releaseOcclusionTarget();
+    this.passSupport?.releaseTargets(context);
+    for (const stage of this.postStages ?? []) stage.releaseTargets(context);
     this.multisampleFramebuffer = null;
     this.resolveFramebuffer = null;
     this.multisampleColor = null;
@@ -1273,6 +1251,11 @@ export class Renderer67 {
     this.context.deleteTexture(this.occlusionTarget.texture);
     this.context.deleteFramebuffer(this.occlusionTarget.framebuffer);
     this.occlusionTarget = null;
+  }
+
+  /** Whether a batch is drawn by the opaque loop, and so by render passes. Its parts take object IDs in this order. */
+  drawsInOpaqueLoop(batch) {
+    return batchPass(batch) === 'opaque' && batch.alphaMode !== 'blend';
   }
 
   // Compiled and allocated on first use, so scenes without occlusion pay nothing.
@@ -1495,7 +1478,9 @@ export class Renderer67 {
     context.bindFramebuffer(context.READ_FRAMEBUFFER, this.multisampleFramebuffer);
     context.bindFramebuffer(context.DRAW_FRAMEBUFFER, this.resolveFramebuffer);
     context.blitFramebuffer(0, 0, this.canvas.width, this.canvas.height, 0, 0, this.canvas.width, this.canvas.height, context.COLOR_BUFFER_BIT | (this.depth ? context.DEPTH_BUFFER_BIT : 0), context.NEAREST);
-    if (effects.bloom.strength > 0) this.drawBloom(effects.bloom);
+    let sourceTexture = this.frameTexture;
+    for (const stage of this.postStages) sourceTexture = stage.apply(this, frame, effects, sourceTexture) ?? sourceTexture;
+    if (effects.bloom.strength > 0) this.drawBloom(effects.bloom, sourceTexture);
     const occluded = effects.ambientOcclusion > 0 && Boolean(this.depthTexture);
     if (occluded) this.drawAmbientOcclusion(frame, effects);
     context.bindFramebuffer(context.FRAMEBUFFER, null);
@@ -1505,7 +1490,7 @@ export class Renderer67 {
     context.bindVertexArray(null);
     context.useProgram(this.postProgram);
     context.activeTexture(context.TEXTURE0);
-    context.bindTexture(context.TEXTURE_2D, this.frameTexture);
+    context.bindTexture(context.TEXTURE_2D, sourceTexture);
     context.uniform1i(this.postUniforms.frameTexture, 0);
     context.activeTexture(context.TEXTURE1);
     context.bindTexture(context.TEXTURE_2D, this.depthTexture ?? this.whiteTexture);
@@ -1619,7 +1604,7 @@ export class Renderer67 {
     context.bindVertexArray(null);
   }
 
-  drawBloom(bloom) {
+  drawBloom(bloom, sourceTexture = this.frameTexture) {
     const context = this.context;
     context.disable(context.DEPTH_TEST);
     context.disable(context.CULL_FACE);
@@ -1631,7 +1616,7 @@ export class Renderer67 {
     for (let pass = 0; pass < 2; pass++) {
       context.bindFramebuffer(context.FRAMEBUFFER, this.bloomTargets[pass].framebuffer);
       context.activeTexture(context.TEXTURE0);
-      context.bindTexture(context.TEXTURE_2D, pass === 0 ? this.frameTexture : this.bloomTargets[0].texture);
+      context.bindTexture(context.TEXTURE_2D, pass === 0 ? sourceTexture : this.bloomTargets[0].texture);
       context.uniform1f(this.bloomUniforms.extract, pass === 0 ? 1 : 0);
       context.uniform2f(this.bloomUniforms.texelDirection, pass === 0 ? bloom.radius / this.bloomWidth : 0, pass === 1 ? bloom.radius / this.bloomHeight : 0);
       context.drawArrays(context.TRIANGLES, 0, 3);
@@ -1659,7 +1644,7 @@ export class Renderer67 {
       }
       return;
     }
-    const useCoverage = masked && this.samples > 1 && !this.benchmark;
+    const useCoverage = masked && this.samples > 1 && !this.benchmark && !this.renderingPass;
     if (useCoverage) {
       context.enable(context.SAMPLE_ALPHA_TO_COVERAGE);
     } else {
@@ -1784,6 +1769,13 @@ export class Renderer67 {
     this.context.drawElementsInstanced(this.context.TRIANGLES, batch.indexCount, this.context.UNSIGNED_INT, 0, batch.instanceCount);
   }
 
+  // A render pass draws raw material data instead of the lit image; the addon validates frame.pass and returns the shader mode.
+  preparePass(frame) {
+    if (frame.pass === undefined) return 0;
+    if (!this.passSupport) throw new Error('Render passes need installRenderPasses(renderer) from 67js/addons/render-passes.');
+    return this.passSupport.prepare(frame);
+  }
+
   render(frame) {
     const { eye, target = [0, 1.2, 0], armorColor = [0.53, 0.39, 0.24], armorSurface = [0.88, 0.32], exposure = 1, inspection = false } = frame;
     const effects = resolveEffects(frame.effects);
@@ -1805,6 +1797,8 @@ export class Renderer67 {
     const windChanged = this.updateWindState(frame);
     const casterChanged = this.assemblyAmount !== assemblyAmount || this.shadowsDirty || windChanged;
     this.requireFeatureNames(shaderFeaturesOfLighting(this.lighting));
+    const passMode = this.preparePass(frame);
+    this.renderingPass = passMode > 0;
     if (casterChanged) {
       this.assemblyAmount = assemblyAmount;
       this.createShadowMap();
@@ -1816,16 +1810,19 @@ export class Renderer67 {
     mat4.multiply(this.viewProjection, this.projection, this.view);
     mat4.invert(this.inverseViewProjection, this.viewProjection);
     extractFrustumPlanes(this.viewProjection, this.frustumPlanes);
-    context.bindFramebuffer(context.FRAMEBUFFER, this.benchmark ? null : this.multisampleFramebuffer);
+    this.viewForward = [-this.view[2], -this.view[6], -this.view[10]];
+    context.bindFramebuffer(context.FRAMEBUFFER, passMode ? this.passSupport.framebuffer : this.benchmark ? null : this.multisampleFramebuffer);
     context.viewport(0, 0, this.canvas.width, this.canvas.height);
-    if (this.transparent) {
+    if (passMode) {
+      context.clearColor(...this.passSupport.background(frame.pass));
+    } else if (this.transparent) {
       context.clearColor(0, 0, 0, 0);
     } else {
       context.clearColor(0.145, 0.162, 0.177, 1);
     }
     context.clear(context.COLOR_BUFFER_BIT | context.DEPTH_BUFFER_BIT);
-    const environmentBackgroundDrawn = this.drawEnvironmentBackground(environmentMap, frame, exposure);
-    if (this.world && !this.benchmark && !environmentBackgroundDrawn) this.drawSky(frame);
+    const environmentBackgroundDrawn = !passMode && this.drawEnvironmentBackground(environmentMap, frame, exposure);
+    if (this.world && !this.benchmark && !passMode && !environmentBackgroundDrawn) this.drawSky(frame);
     context.enable(context.DEPTH_TEST);
     context.enable(context.CULL_FACE);
     context.useProgram(this.program);
@@ -1861,19 +1858,30 @@ export class Renderer67 {
     context.bindTexture(context.TEXTURE_2D, this.shadowTexture);
     context.uniform1i(this.uniforms.shadowMap, 0);
     this.applyEnvironmentUniforms(environmentMap);
+    context.uniform1f(this.uniforms.renderPassMode, passMode);
+    context.uniform1f(this.uniforms.renderPassDepthRange, frame.passDepthRange ?? 100);
+    let objectBase = 0;
     for (const batch of this.batches) {
       if (this.benchmark) {
         this.drawBatch(batch, true);
-      } else if (batchPass(batch) === 'opaque' && batch.alphaMode !== 'blend') {
-        this.drawAlphaBatch(batch, true, true);
+      } else if (this.drawsInOpaqueLoop(batch)) {
+        context.uniform1f(this.uniforms.renderPassObjectBase, objectBase);
+        objectBase += batch.instanceCount;
+        // Object IDs are the instance ordinal, which culling and level selection renumber, so that pass draws every instance.
+        this.drawAlphaBatch(batch, true, passMode !== OBJECT_ID_PASS_MODE);
       }
     }
     context.disable(context.SAMPLE_ALPHA_TO_COVERAGE);
     context.enable(context.CULL_FACE);
     context.bindVertexArray(null);
-    if (!this.benchmark) this.drawTranslucent(frame, environment, assemblyAmount, environmentMap);
-    if (!this.benchmark) this.drawBlendBatches(frame);
-    if (!this.benchmark) this.resolveFrame(frame, effects, environment, volume);
+    if (passMode) {
+      this.passSupport.copyToCanvas();
+    } else if (!this.benchmark) {
+      this.drawTranslucent(frame, environment, assemblyAmount, environmentMap);
+      this.drawBlendBatches(frame);
+      this.resolveFrame(frame, effects, environment, volume);
+    }
+    this.renderingPass = false;
     this.endGpuTiming();
     this.cpuMilliseconds = performance.now() - start;
   }
@@ -1931,6 +1939,8 @@ export class Renderer67 {
     if (this.skyProgram) this.context.deleteProgram(this.skyProgram);
     if (this.bloomProgram) this.context.deleteProgram(this.bloomProgram);
     if (this.occlusionProgram) this.context.deleteProgram(this.occlusionProgram);
+    this.passSupport?.dispose(this.context);
+    for (const stage of this.postStages ?? []) stage.dispose(this.context);
     if (this.environmentBackgroundProgram) this.context.deleteProgram(this.environmentBackgroundProgram);
     this.environmentResources?.dispose();
     for (const texture of this.textures.values()) this.context.deleteTexture(texture);

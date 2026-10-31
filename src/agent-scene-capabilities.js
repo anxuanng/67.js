@@ -23,6 +23,23 @@ export const MATERIAL_GRAPH_OPERATORS = Object.freeze([
 ]);
 export const MATERIAL_GRAPH_LIMITS = Object.freeze({ maxNodes: MAX_FIELD_NODES, maxDepth: MAX_FIELD_DEPTH, maxStops: 8, maxWork: 30_000_000 });
 export const MATERIAL_MAPPINGS = Object.freeze(['box', 'uv']);
+export const MATERIAL_GRAPH_NODES = Object.freeze({
+  outputs: 'color (linear RGB; a number is grey), roughness, metallic, emission (colour; defaults to 1), height (becomes a normal map).',
+  node: 'A number, [x, y, z], or an object with exactly one operator.',
+  textures: Object.freeze({
+    noise: '{"noise":{"scale":8,"seed":1,"octaves":4}}',
+    voronoi: '{"voronoi":{"scale":6,"output":"distance"|"edge"|"cell"}}',
+    wave: '{"wave":{"frequency":4,"direction":"u"|"v"|"diagonal","shape":"sine"|"saw"|"triangle"}}',
+    checker: '{"checker":{"count":8}} (even count)',
+    gradient: '{"gradient":{"type":"u"|"v"|"radial"}}',
+    note: 'Each takes "at", a vector such as {"uv":"both"}, to warp it. Scales are whole numbers 1 to 64 so it tiles.',
+  }),
+  uv: '{"uv":"u"|"v"|"both"} are the coordinates.',
+  ramp: '{"ramp":{"value":node,"stops":[[0,[r,g,b]],[1,[r,g,b]]]}} maps a number to colours, 2 to 8 stops rising from 0 to 1.',
+  maths: 'add sub mul div min max pow take [a,b]; abs floor fract sqrt invert take one node; clamp smoothstep mix take [a,b,c]; {"vec":[r,g,b]}. Numbers combine with vectors per component.',
+  example: '{"color":{"ramp":{"value":{"noise":{"scale":8}},"stops":[[0,[0.1,0.05,0.02]],[1,[0.6,0.4,0.2]]]}},"height":{"noise":{"scale":8}}}',
+  mapping: 'box (default) projects along the object axes and needs no UVs; uv follows geometry UVs, so the mesh needs a uv_unwrap node or geometry.uvs. size and axis only apply to box.',
+});
 
 // Recipe textures are opaque patterns, so cutout masking has nothing to cut.
 export const RECIPE_ALPHA_MODES = Object.freeze(['opaque', 'blend']);
@@ -31,6 +48,11 @@ export const RECIPE_ALPHA_MODES = Object.freeze(['opaque', 'blend']);
 export const LIGHTING_SETUP_NAMES = Object.freeze(['daylight', 'overcast', 'sunset', 'studio']);
 export const DEFAULT_LIGHTING_SETUP = 'daylight';
 export const DEFAULT_AMBIENT_OCCLUSION = 0;
+
+// Render passes a render job can write next to the lit image (see RENDER_PASS_MODES in renderer.js, which must list the same names).
+export const RENDER_PASS_NAMES = Object.freeze(['albedo', 'normal', 'emission', 'depth', 'objectId']);
+// Metres that depth pass values 0 to 65535 span, measured from the camera.
+export const RENDER_PASS_DEPTH_RANGE = 100;
 
 export const AGENT_SCENE_CAPABILITIES = Object.freeze({
   format: '67js.scene', schemaVersion: 1,
@@ -51,7 +73,8 @@ export const AGENT_SCENE_CAPABILITIES = Object.freeze({
   alphaModes: RECIPE_ALPHA_MODES,
   materialPatterns: MATERIAL_PATTERN_TYPES, maxMaterialPatterns: MAX_MATERIAL_PATTERNS,
   materialMappings: MATERIAL_MAPPINGS,
-  materialGraph: Object.freeze({ outputs: MATERIAL_GRAPH_OUTPUTS, operators: MATERIAL_GRAPH_OPERATORS, ...MATERIAL_GRAPH_LIMITS }),
+  renderPasses: Object.freeze({ names: RENDER_PASS_NAMES, files: 'render-<pass>.png or frame-N-<pass>.png, raw and unantialiased; opaque and cutout geometry only', depth: `16 bits in red and green over ${RENDER_PASS_DEPTH_RANGE} m`, objectId: '24 bits in RGB; the job result lists the part names' }),
+  materialGraph: Object.freeze({ outputs: MATERIAL_GRAPH_OUTPUTS, operators: MATERIAL_GRAPH_OPERATORS, ...MATERIAL_GRAPH_LIMITS, nodes: MATERIAL_GRAPH_NODES }),
   fixedResources: false, dynamicTopology: true, checkpoints: true, positiveScaleOnly: true,
   authoredLook: true, maxPointLights: 8,
   lightingSetups: LIGHTING_SETUP_NAMES, defaultLightingSetup: DEFAULT_LIGHTING_SETUP,
@@ -64,6 +87,18 @@ export const AGENT_SCENE_CAPABILITIES = Object.freeze({
   proceduralMotion: true,
   motionIk: Object.freeze(['two-bone', 'aim']),
   // Authored rigs: armatures expand into bone nodes, and a node `skin` binds a mesh with automatic weights (four influences).
+  // Node relations place a mesh node against other mesh nodes (world bounds), solved again after every edit.
+  relations: Object.freeze({
+    maxPerNode: 8, maxNodes: 256, sides: Object.freeze(['+x', '-x', '+y', '-y', '+z', '-z']),
+    kinds: Object.freeze({
+      attach: 'to, side, offset: touch the face of the target on side and centre on the other axes; offset is the distance, negative sinks in',
+      gap: 'to, side, offset: as attach on that axis only',
+      flush: 'to, side, offset: own face on side level with the same face of the target',
+      align: 'to, axis, at (min, center, max), offset: anchor on one axis',
+      centered: 'to, axes (default x, y, z): centre on those axes',
+    }),
+    notes: 'Optional region (a mesh tag) uses only those faces of the target. One relation per axis, no loops, mesh nodes only. A relation replaces translation on its axes. set-node with relations [] removes them.',
+  }),
   rigging: Object.freeze({ presets: Object.freeze(['humanoid', 'quadruped']), maxArmatures: 16, maxBones: 128, maxInfluences: 4, weights: 'bone-distance' }),
   motionConstraints: Object.freeze(['copy_location', 'copy_rotation', 'copy_scale', 'limit_location', 'limit_rotation', 'track_to', 'child_of', 'floor']),
   motionDrivers: Object.freeze({ maxDrivers: 32, maxConstraints: 32, maxExpressionParts: 64, maxExpressionDepth: 8 }),

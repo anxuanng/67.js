@@ -2,6 +2,8 @@
 // the agent exports (see measure.mjs and check.mjs); none of them looks at how the object was built.
 
 import { REFERENCES } from './references.mjs';
+import { KETTLE_START, KETTLE_START_PLAIN } from './kettle.mjs';
+import { DESK_START, DESK_START_PLAIN, DESK_CHECKS } from './desk.mjs';
 
 export const PROMPT_PREAMBLE = `You are modeling with the 67.js MCP tools. Build the object described below as a procedural recipe scene:
 start it with scene_create, refine it with mesh_edit, mesh_stack and scene_apply, and look at it with scene_look when
@@ -24,6 +26,40 @@ const crateChecks = [
 // prompt, which the agent has to change instead of rebuilding from nothing.
 const START_INSTRUCTION = 'Start by calling scene_create with exactly this recipe, then change that scene (do not start over):';
 const compactRecipe = recipe => JSON.stringify(recipe);
+
+// The same resize twice: the start recipe either states where the lid, handle and spout sit (relations) or holds
+// absolute positions. The difference in tool calls is what relations are worth to an agent.
+const KETTLE_PROMPT = `The kettle scene below has a body with a lid, a handle and a spout against it. Make the body 0.3 m wide (X)
+and 0.24 m tall (Y), still 0.12 m deep, resting on the ground and centred on X = 0. The lid must still sit on top of the body,
+the handle against its +X side and the spout against its -X side, each touching the body and centred on it as before. Keep
+the lid, handle and spout the size they are.`;
+const KETTLE_CHECKS = [
+  { kind: 'lint' },
+  { kind: 'size', expected: [0.37, 0.26, 0.12] },
+  { kind: 'ground' },
+  { kind: 'touches', node: 'lid', against: 'body', side: '+y' },
+  { kind: 'touches', node: 'handle', against: 'body', side: '+x' },
+  { kind: 'touches', node: 'spout', against: 'body', side: '-x' },
+];
+const KETTLE_TASKS = [
+  { id: 'kettle-resize', startRecipe: KETTLE_START, prompt: KETTLE_PROMPT, checks: KETTLE_CHECKS },
+  { id: 'kettle-resize-plain', startRecipe: KETTLE_START_PLAIN, prompt: KETTLE_PROMPT, checks: KETTLE_CHECKS },
+];
+
+// Twelve stacked parts and three resizes, one after the other, with a check between steps. The start recipe either
+// holds relations or absolute positions; the same checks grade both after the last step.
+const DESK_PROMPT = `The desk scene below has 12 parts stacked on each other: a top, four legs, two drawers hanging under the top
+with a handle on the front (+Z) of each, a lamp on a base and a book on the top. Do three steps in order, and after each step
+call scene_inspect with includeBounds to check the result before the next. Step 1: widen the top to 1.6 m along X.
+Step 2: deepen the top to 0.8 m along Z and deepen both drawers to 0.7 m along Z. Step 3: thicken the top to 0.08 m while its
+upper surface stays at 0.75 m, and shorten the legs so they still run from the ground to the underside of the top. Keep the
+size of every other part. After the last step every part must sit where it sat before, relative to what it sits against: legs
+0.05 m in from the edges of the top, drawers 0.1 m in from the ends of the top and centred in Z, a handle touching the front
+of its drawer and centred on it, the lamp base and the book on the top at the same offsets from its ends, the lamp on its base.`;
+const DESK_TASKS = [
+  { id: 'desk-resize', startRecipe: DESK_START, prompt: DESK_PROMPT, checks: DESK_CHECKS },
+  { id: 'desk-resize-plain', startRecipe: DESK_START_PLAIN, prompt: DESK_PROMPT, checks: DESK_CHECKS },
+];
 
 const LONG_TASKS = [
   {
@@ -469,6 +505,20 @@ recipe is what gets graded.`,
     checks: [
       { kind: 'assetClip', name: 'Idle' },
       { kind: 'assetReach', endLabel: 'Palm2.R', from: [-1.3, 2.6, 0.8], to: [-1, 1.7, 1.1] },
+    ],
+  },
+  ...KETTLE_TASKS,
+  ...DESK_TASKS,
+  {
+    id: 'robot-walk-wave',
+    assets: true,
+    prompt: `The asset catalog holds an imported robot character. Create a scene from it, then give it a 2 second looping motion in
+which it walks and waves at the same time: its legs and body play the Walking clip, and only its right arm (the
+joint labelled UpperArm.R and everything below it) plays the Wave clip instead. Find the clips and joints by inspecting the
+scene. When it is finished, call scene_export_recipe once: the exported recipe is what gets graded.`,
+    ownPreamble: true,
+    checks: [
+      { kind: 'assetWalkAndWave', walk: 'Walking', wave: 'Wave', legs: ['LegL', 'LegR', 'LowerLegL_1', 'LowerLegR_1'], arm: 'ArmR', otherArm: 'ArmL' },
     ],
   },
   ...LONG_TASKS,

@@ -135,7 +135,7 @@ To move to a new Blender release, run `node scripts/parity-manual-snapshot.mjs`.
 | Animation & Rigging > Armatures > Properties | partial | An armature has an id, a parent node, a transform, an optional bone-ID prefix and a `humanoid` or `quadruped` preset fitted to a mesh node or to bounds. No display settings or bone collections. | [rigging](../tests/rigging.test.js) | #46 |
 | Animation & Rigging > Armatures > Structure | partial | Imported rigs keep their hierarchy, and recipes author one. A rig exports to GLB with its bones and a baked walk clip; Blender 5.2 opens it as 1 armature, 21 bones, 14 vertex-grouped meshes and 1 action. | [gltf](../tests/gltf.test.js), [rigging](../tests/rigging.test.js) | #46 |
 | Animation & Rigging > Armatures > Skinning | partial | Four-influence GPU skinning, with automatic binding by distance to the bone segments. Not heat diffusion, so two limbs that pass close can share weights; `scene_inspect` reports unweighted vertices, bones with no vertices and joint axis problems. | [skinning](../tests/skinning.test.js), [rigging](../tests/rigging.test.js) | #46 |
-| Animation & Rigging > Armatures > Posing | partial | Layers, masks, additive poses and IK in code. MCP has IK and one clip. | [skeleton-pose](../tests/skeleton-pose.test.js), [agent-asset-ik](../tests/agent-asset-ik.test.js) | #58, #59 |
+| Animation & Rigging > Armatures > Posing | partial | Layers, masks, additive poses and IK in code. MCP asset recipes take `motion.layers` (clips, masks, weights, additive, rename retarget) beside IK; no foot tilt on slopes or full-body IK. | [skeleton-pose](../tests/skeleton-pose.test.js), [agent-asset-ik](../tests/agent-asset-ik.test.js) | #58, #59 |
 | Animation & Rigging > Lattice | missing | No lattice. | | #42 |
 | Animation & Rigging > Constraints > Interface | out of scope | Interface for a mouse. | | |
 | Animation & Rigging > Constraints > Motion Tracking | out of scope | Motion tracking is out of scope in issue #23. | | |
@@ -165,10 +165,10 @@ To move to a new Blender release, run `node scripts/parity-manual-snapshot.mjs`.
 | Animation & Rigging > Constraints > Relationship > Geometry Attribute Constraint | missing | No constraint. | | |
 | Animation & Rigging > Constraints > Relationship > Pivot Constraint | missing | No constraint. | | |
 | Animation & Rigging > Constraints > Relationship > Shrinkwrap Constraint | partial | `addons/surface-attachment` binds points to a surface in code. | [surface-attachment](../tests/surface-attachment.test.js) | |
-| Animation & Rigging > Actions | partial | Clips, weights and crossfades in code. An asset through MCP plays one clip at a time. | [animation-mixer](../tests/animation-mixer.test.js) | #59 |
+| Animation & Rigging > Actions | partial | Clips, weights and crossfades in code. An asset through MCP plays several clips as masked layers at motion time; there are no crossfades or state machines there. | [animation-mixer](../tests/animation-mixer.test.js), [agent-asset-layers](../tests/agent-asset-layers.test.js) | #59 |
 | Animation & Rigging > Drivers | partial | `motion.drivers`: a node component or material property from a bounded expression over time and other nodes. No custom properties, shape keys or variables. | [agent-motion-constraints](../tests/agent-motion-constraints.test.js) | #58 |
 | Animation & Rigging > Markers | missing | No markers or events. | | #60 |
-| Animation & Rigging > Shape Keys | partial | Morph targets import, render and animate. Recipes can not author them. | [morph](../tests/morph.test.js) | #59 |
+| Animation & Rigging > Shape Keys | partial | Morph targets import, render and animate, and clip layers drive imported morph weights (`createAssetPose`, MCP `motion.layers`). Recipes can not author them. | [morph](../tests/morph.test.js), [agent-asset-layers](../tests/agent-asset-layers.test.js) | #59 |
 | Animation & Rigging > Motion Paths | out of scope | Viewport display for hand work. `scene_inspect` reports motion as numbers. | | |
 | Animation & Rigging > In-Betweens | out of scope | Pose tools for a hand. Agents write keyframes and IK targets. | | |
 | Physics > Rigid Body > Rigid Body Properties | partial | Dynamic, fixed and kinematic bodies with mass, density, friction, restitution and velocity, in code and in recipes. Trimesh and convex colliders, no bone-bound bodies yet. | [physics-colliders](../tests/physics-colliders.test.js) | #61 |
@@ -187,7 +187,7 @@ To move to a new Blender release, run `node scripts/parity-manual-snapshot.mjs`.
 | Rendering > Render Engines > EEVEE | partial | A WebGL2 rasterizer with PBR, one directional shadow, 8 point lights, fog and bloom. There are no light probes. | [renderer](../tests/renderer.test.js), [scores against EEVEE](../bench/reference/baseline.json) | #52, #53, #55, #56 |
 | Rendering > Render Engines > Cycles | missing | No path tracer and no render baking. | | #55, #57 |
 | Rendering > Render Engines > Workbench | out of scope | A viewport engine for working by hand. | | |
-| Rendering > Cameras | partial | Perspective, orthographic views, focal length and animated paths. There is no depth of field. | [camera-path](../tests/camera-path.test.js), [camera](../tests/camera.test.js) | #54 |
+| Rendering > Cameras | partial | Perspective, orthographic views, focal length, animated paths, depth of field from depth and camera motion blur, both repeatable per frame. Object motion blur and bokeh shapes are missing. | [camera-path](../tests/camera-path.test.js), [camera](../tests/camera.test.js), [render-passes](../tests/render-passes.test.js) | #54 |
 | Rendering > Lights > Light Objects | partial | One directional light with a shadow, 8 point lights, 8 spot lights and 4 rectangular area lights. Point and spot lights can cast shadows from one 24-tile atlas (a point light takes 6 tiles, a spot light 1). Area lights use a representative point and cast no shadow. The directional shadow is a single map, not cascaded. | [lighting](../tests/lighting.test.js), `npm run reference` scene `spot-area` | #52 |
 | Rendering > Lights > Light Linking | missing | No light linking. | | #52 |
 | Rendering > Lights > World Environment | partial | Recipes pick a named setup (`daylight`, `overcast`, `sunset`, `studio`) that carries a procedural environment map, with opt-in screen-space ambient occlusion. Code can load any HDRI; recipes reach only the named maps, with no URLs or files. No reflections between objects yet. | [environment](../tests/environment.test.js), [default look](../tests/default-look.test.js) | #53 |
@@ -207,7 +207,7 @@ To move to a new Blender release, run `node scripts/parity-manual-snapshot.mjs`.
 | Rendering > Shader Nodes > Group | missing | No node graph. | | #50 |
 | Rendering > Color Management | partial | ACES tone mapping and grading. There is no choice of color space or display. | [effects](../tests/effects.test.js) | |
 | Rendering > Freestyle | missing | No line rendering. | | |
-| Rendering > View Layers & Passes | missing | No layers or passes. | | #54 |
+| Rendering > View Layers & Passes | partial | Render jobs write albedo, normal, emission, depth and object ID passes as PNG files. There are no view layers, no cryptomatte and no lighting passes (diffuse, glossy, shadow). | [render-passes](../tests/render-passes.test.js) | #54 |
 | Rendering > Render Output > Output Properties | partial | PNG and MP4, frame rate, duration and size. There is no stereo or metadata. | [agent-render-jobs](../tests/agent-render-jobs.test.js) | #60 |
 | Rendering > Render Output > Audio Rendering | missing | Render jobs have no audio. | | #60 |
 | Rendering > Render Output > Rendering Animations | done | Snapshot render jobs with progress, cancel and verified output. | [agent-render-jobs](../tests/agent-render-jobs.test.js) | |
@@ -241,7 +241,7 @@ The goal also needs this work, and no page in the Blender manual covers it.
 | Runtime speed | partial | `bench/runtime` compares 8 scenes, and three.js wins most of the 7 older ones. Frustum culling per part and per instance group is on by default, `lods` from `generateGeometryLods` pick a level per instance by pixel error (`docs/culling-lod.md`), and `createGpuTimer` plus `createAdaptiveResolution` give live viewers GPU timing and a bounded resolution scale. On `large-outdoor` 67.js is 1.55 ms against 6.0 ms for three.js on an RTX 3060. Part of #37: recipes have no way to declare `lods` yet, shadow passes are not culled, and bakes run on the main thread. | #28, #37, #38, #74 |
 | Agent measurement | partial | A task suite runs on one model and reads recipes only. | #29, #30, #31, #69 |
 | Pull request checks | partial | The `Test` workflow reports a status and does not block a merge. | #32 |
-| Relations between parts | missing | The agent version of snapping. | #44 |
+| Relations between parts | partial | The agent version of snapping: node `relations` (`attach`, `gap`, `flush`, `align`, `centered`) over world bounds or a tagged region, solved again on every edit, cycles rejected. Tests in [part-relations](../tests/part-relations.test.js); suite tasks `kettle-resize` and `desk-resize` with plain twins (no gain in calls measured on Sonnet). No snapping to edges or vertices, no relation on the part's own tagged region. | #44 |
 | Imported mesh editing | missing | Imported assets accept poses and transforms. Their topology is fixed. | #48 |
 | Rendering backend | missing | WebGL2 only. WebGPU is not evaluated. | #56 |
 | Terrain and navigation | partial | Terrain with 4 splat layers and no holes. There is no navmesh. | #64 |

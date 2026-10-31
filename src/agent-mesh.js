@@ -1,4 +1,5 @@
 import { meshFromGeometry } from './mesh-convert.js';
+import { facesWithTag } from './mesh-data.js';
 import { lintMesh } from './mesh-lint.js';
 import { applyMeshEdits, evaluateMeshStack } from './mesh-recipe.js';
 import { extractRender } from './mesh-render.js';
@@ -102,6 +103,29 @@ export function generateMeshGeometry(baseGeometry, edits, {
   }
   polygonMeshes.set(geometry, { mesh: evaluated.mesh, results: edited.result, stack: evaluated.results });
   return geometry;
+}
+
+/**
+ * Local-space positions of the faces that carry a mesh tag, shaped like geometry so bounds code can read them. Throws a
+ * message naming the next step when the part is a plain shape, or the tag is unknown or on no faces.
+ */
+export function taggedFacePositions(geometry, tag) {
+  const polygon = polygonMeshes.get(geometry);
+  if (!polygon) {
+    throw new RangeError('this part is a plain shape with no tagged faces. Use a mesh geometry and tag faces with a mesh_edit tag op, or drop region.');
+  }
+  const { mesh } = polygon;
+  const positions = [];
+  for (const face of facesWithTag(mesh, tag)) {
+    for (let corner = mesh.faceOffsets[face]; corner < mesh.faceOffsets[face + 1]; corner++) {
+      const vertex = mesh.cornerVertices[corner];
+      positions.push(mesh.positions[vertex * 3], mesh.positions[vertex * 3 + 1], mesh.positions[vertex * 3 + 2]);
+    }
+  }
+  if (positions.length === 0) {
+    throw new RangeError(`tag ${tag} is on no faces. Tag some faces, or use another region.`);
+  }
+  return { positions: Float32Array.from(positions) };
 }
 
 function faceSizeHistogram(mesh) {

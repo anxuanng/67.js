@@ -14,9 +14,9 @@
  },
  "bundles": {
   "entry:core": {
-   "min": 279820,
-   "gzip": 79852,
-   "brotli": 68242
+   "min": 283098,
+   "gzip": 80905,
+   "brotli": 69041
   },
   "entry:model": {
    "min": 40093,
@@ -39,9 +39,9 @@
    "brotli": 7331
   },
   "entry:gltf": {
-   "min": 152150,
-   "gzip": 46707,
-   "brotli": 40067
+   "min": 154791,
+   "gzip": 47466,
+   "brotli": 40652
   },
   "entry:modeling": {
    "min": 15517,
@@ -94,9 +94,9 @@
    "brotli": 12962
   },
   "entry:skeleton-pose": {
-   "min": 55080,
-   "gzip": 18056,
-   "brotli": 15427
+   "min": 57354,
+   "gzip": 18778,
+   "brotli": 16077
   },
   "entry:vehicle": {
    "min": 42067,
@@ -129,49 +129,59 @@
    "brotli": 762
   },
   "entry:agent-scene": {
-   "min": 190657,
-   "gzip": 57330,
-   "brotli": 49632
+   "min": 195659,
+   "gzip": 59291,
+   "brotli": 51288
   },
   "entry:agent-scene+lazy": {
-   "min": 497784,
-   "gzip": 164818,
-   "brotli": 143871
+   "min": 513028,
+   "gzip": 170622,
+   "brotli": 148944
   },
   "entry:agent-asset": {
-   "min": 273341,
-   "gzip": 83733,
-   "brotli": 72953
+   "min": 286211,
+   "gzip": 88211,
+   "brotli": 76977
   },
   "entry:agent-asset+lazy": {
-   "min": 524940,
-   "gzip": 172137,
-   "brotli": 149809
+   "min": 545319,
+   "gzip": 179569,
+   "brotli": 156544
   },
   "entry:hdri": {
    "min": 8075,
    "gzip": 3138,
    "brotli": 2801
   },
+  "entry:camera-effects": {
+   "min": 23985,
+   "gzip": 8396,
+   "brotli": 6688
+  },
+  "entry:render-passes": {
+   "min": 3412,
+   "gzip": 1608,
+   "brotli": 1425
+  },
   "scene:lit-box": {
-   "min": 211766,
-   "gzip": 57906,
-   "brotli": 49427
+   "min": 214877,
+   "gzip": 58928,
+   "brotli": 50227
   },
   "scene:gltf-box": {
-   "min": 269645,
-   "gzip": 76810,
-   "brotli": 66055
+   "min": 273787,
+   "gzip": 78107,
+   "brotli": 67034
   },
   "scene:agent-scene": {
-   "min": 299465,
-   "gzip": 86309,
-   "brotli": 74093
+   "min": 305458,
+   "gzip": 88650,
+   "brotli": 75931
   },
   "scene:agent-scene+lazy": {
-   "min": 606592,
-   "gzip": 193797,
-   "brotli": 168354
+   "min": 622827,
+   "gzip": 199984,
+   "brotli": 173556
   }
  }
 }

@@ -8,6 +8,7 @@ import { REQUIRED_HUMANOID_BONES } from '../../src/retarget.js';
 const AXES = { x: 0, y: 1, z: 2 };
 const SIZE_TOLERANCE = 0.03;
 const SIZE_FLOOR = 0.003;
+const TOUCH_TOLERANCE = 0.003;
 const GROUND_TOLERANCE = 0.005;
 
 const round = value => Number(value.toPrecision(4));
@@ -94,6 +95,23 @@ function checkOne(check, measures) {
       const everyPart = measures.uv.parts === measures.uv.of;
       return { pass: followsUvs && everyPart && measures.uv.stretch <= check.maxStretch, detail: followsUvs ? `graph on UVs, stretch ${round(measures.uv.stretch)}, ${measures.uv.parts}/${measures.uv.of} parts with UVs` : 'no graph material with mapping uv' };
     }
+    case 'touches': {
+      const node = measures.nodeBounds(check.node);
+      const against = measures.nodeBounds(check.against);
+      if (!node || !against) return { pass: false, detail: `no drawn node ${check.node} or ${check.against}` };
+      const axis = AXES[check.side[1]];
+      const gap = check.side[0] === '+' ? node.min[axis] - against.max[axis] : against.min[axis] - node.max[axis];
+      const otherAxes = [0, 1, 2].filter(other => other !== axis);
+      const overlaps = otherAxes.every(other => node.min[other] < against.max[other] && node.max[other] > against.min[other]);
+      return { pass: Math.abs(gap) <= TOUCH_TOLERANCE && overlaps, detail: `${check.node} is ${round(gap)} m from ${check.against}${overlaps ? '' : ' and does not overlap it'}` };
+    }
+    case 'centreAt': {
+      const bounds = measures.nodeBounds(check.node);
+      if (!bounds) return { pass: false, detail: `no drawn node ${check.node}` };
+      const centre = bounds.min.map((minimum, axis) => (minimum + bounds.max[axis]) / 2);
+      const distance = Math.hypot(...centre.map((value, axis) => value - check.position[axis]));
+      return { pass: distance <= 0.01, detail: `${check.node} centre is ${round(distance)} m from where it belongs` };
+    }
     case 'nodeAt': {
       const position = measures.nodePosition(check.node, check.time);
       if (!position) return { pass: false, detail: `no drawn node ${check.node}` };
@@ -118,6 +136,22 @@ function checkOne(check, measures) {
     }
     case 'assetClip': {
       return { pass: measures.clipName === check.name, detail: `clip ${measures.clipName ?? 'none'}` };
+    }
+    case 'assetWalkAndWave': {
+      const pose = measures.layerPose;
+      if (!pose) return { pass: false, detail: 'no motion layers in the recipe' };
+      const walking = pose.alone[check.walk];
+      const waving = pose.alone[check.wave];
+      if (!walking || !waving) return { pass: false, detail: `layers play ${pose.clipNames.join(', ')}; need ${check.walk} and ${check.wave}` };
+      const distance = (first, second) => Math.max(...first.map((value, index) => Math.abs(value - second[index])));
+      const legsFollowWalk = pose.combined.every((sample, time) => check.legs.every(part => distance(sample[part], walking[time][part]) < 1e-3));
+      const legsMove = check.legs.every(part => distance(pose.combined[0][part], pose.combined[1][part]) > 0.1);
+      const armLeavesWalk = pose.combined.some((sample, time) => distance(sample[check.arm], walking[time][check.arm]) > 1);
+      const otherArmWalks = pose.combined.every((sample, time) => distance(sample[check.otherArm], walking[time][check.otherArm]) < 1e-3);
+      return {
+        pass: legsFollowWalk && legsMove && armLeavesWalk && otherArmWalks,
+        detail: `legs follow ${check.walk} ${legsFollowWalk}, legs move ${legsMove}, ${check.arm} waves ${armLeavesWalk}, ${check.otherArm} keeps walking ${otherArmWalks}`,
+      };
     }
     case 'assetReach': {
       const solver = measures.reachSolvers.find(candidate => candidate.endLabel === check.endLabel);

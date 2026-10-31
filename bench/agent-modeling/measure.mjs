@@ -4,7 +4,7 @@
 // agent sees: welding render triangles again can invent non-manifold edges that the polygon mesh does not have.
 import { readFile } from 'node:fs/promises';
 import { createAgentAssetScene } from '../../src/agent-asset.js';
-import { createAgentScene, loadMeshBooleans, needsMeshBooleans, loadPhysicsEngine, needsPhysics } from '../../src/agent-scene.js';
+import { createAgentScene, loadAllAgentSceneModules, loadMeshBooleans, needsMeshBooleans, loadPhysicsEngine, needsPhysics } from '../../src/agent-scene.js';
 import { parseGltf } from '../../src/gltf.js';
 import { GEOMETRY_PROBLEMS } from '../../src/mesh-lint.js';
 
@@ -16,6 +16,16 @@ function transformPoint(matrix, x, y, z) {
     matrix[1] * x + matrix[5] * y + matrix[9] * z + matrix[13],
     matrix[2] * x + matrix[6] * y + matrix[10] * z + matrix[14],
   ];
+}
+
+function boundsOfPositions(positions) {
+  const bounds = { min: [Infinity, Infinity, Infinity], max: [-Infinity, -Infinity, -Infinity] };
+  for (let index = 0; index < positions.length; index++) {
+    const axis = index % 3;
+    bounds.min[axis] = Math.min(bounds.min[axis], positions[index]);
+    bounds.max[axis] = Math.max(bounds.max[axis], positions[index]);
+  }
+  return bounds;
 }
 
 export function worldGeometry(part) {
@@ -191,11 +201,48 @@ function lineHits(geometries, axis, point) {
   return hits;
 }
 
+async function loadFixtureRobot() {
+  const bytes = await readFile(new URL('../../tests/fixtures/RobotExpressive.glb', import.meta.url));
+  return parseGltf(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength), { maxVertices: 500000 });
+}
+
+const LAYER_SAMPLE_TIMES = [0.15, 0.55];
+
+function matricesByPartName(scene, asset) {
+  return Object.fromEntries(asset.parts.map((part, index) => [part.name, Array.from(scene.parts[index].matrix)]));
+}
+
+/**
+ * Pose matrices of every part at fixed times, for the recipe and for each of its layers' clips played alone, so a check can
+ * tell which clip each part follows. Null when the recipe has no motion layers.
+ */
+async function measureLayerPose(recipe, asset) {
+  const layers = recipe.motion?.layers;
+  if (!layers?.length) return null;
+  const clipNames = layers.map(layer => asset.animations[layer.clip]?.name);
+  const duration = recipe.motion.duration;
+  const poseAt = async motion => {
+    const robot = await loadFixtureRobot();
+    const scene = createAgentAssetScene(robot, { ...recipe, animation: null, motion });
+    return LAYER_SAMPLE_TIMES.map(time => {
+      scene.sampleMotion(time);
+      return matricesByPartName(scene, robot);
+    });
+  };
+  const alone = {};
+  for (const [position, layer] of layers.entries()) {
+    // The layer keeps its own speed, offset and loop, so a clip played at another rate is still compared with itself.
+    const { mask, ...unmasked } = layer;
+    alone[clipNames[position]] = await poseAt({ duration, loop: recipe.motion.loop, layers: [{ ...unmasked, morph: false }] });
+  }
+  return { clipNames, times: LAYER_SAMPLE_TIMES, combined: await poseAt(recipe.motion), alone };
+}
+
 /** Reload an exported recipe for the fixture robot and read which clip and which IK solvers it ended with. */
 export async function measureAssetRecipe(recipe) {
-  const bytes = await readFile(new URL('../../tests/fixtures/RobotExpressive.glb', import.meta.url));
-  const asset = await parseGltf(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength), { maxVertices: 500000 });
+  const asset = await loadFixtureRobot();
   const scene = createAgentAssetScene(asset, recipe);
+  const layerPose = await measureLayerPose(recipe, await loadFixtureRobot());
   const labels = new Map(asset.nodes.map(node => [node.id, node.label]));
   const reports = scene.inspect({ kind: 'hierarchy', limit: 1 }).motionIk ?? [];
   const solvers = recipe.motion?.ik ?? [];
@@ -206,6 +253,7 @@ export async function measureAssetRecipe(recipe) {
   };
   return {
     clipName: recipe.animation ? asset.animations[recipe.animation.clip]?.name : null,
+    layerPose,
     camera: recipe.camera ?? null,
     reachSolvers: solvers.filter(solver => solver.type === 'two-bone').map(solver => {
       const [firstTarget, lastTarget] = endpoints(solver.target);
@@ -278,6 +326,7 @@ function measureRig(scene, duration) {
 
 /** Load the recipe and measure what it builds. Throws if the recipe itself is invalid. */
 export async function measureRecipe(recipe) {
+  await loadAllAgentSceneModules();
   if (needsMeshBooleans(recipe)) await loadMeshBooleans();
   if (needsPhysics(recipe)) await loadPhysicsEngine();
   const scene = createAgentScene(recipe);
@@ -348,6 +397,10 @@ export async function measureRecipe(recipe) {
       scene.sampleMotion(time);
       const part = scene.parts.find(candidate => candidate.name === name);
       return part ? [part.matrix[12], part.matrix[13], part.matrix[14]] : null;
+    },
+    nodeBounds(name) {
+      const part = scene.parts.find(candidate => candidate.name === name);
+      return part ? boundsOfPositions(worldGeometry(part).positions) : null;
     },
     lineHits: (axis, point) => lineHits(geometries, axis, point),
   };

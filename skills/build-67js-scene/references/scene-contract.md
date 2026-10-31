@@ -199,6 +199,8 @@ Read `docs/agent-look.md` for authored lighting, fog, effects and shadow coverag
 Use atomic `set-environment`, `set-effects` and `set-shadow` partial records instead of editing renderer internals through MCP.
 Nested `volumeFog` and `bloom` fields merge. The `pointLights`, `spotLights` and `areaLights` fields each replace the full list. Point and spot lights cast shadows only with `castShadow: true`; area lights never do.
 
+`effects.depthOfField` (`blur` 0 to 1, `focusDistance` in metres) and `effects.motionBlur` (`shutter` seconds, camera tracks only, render jobs with `settings.motion`) are off by default and repeat per frame. A render job of kind `image` or `stills` with `settings.passes` (`albedo`, `normal`, `emission`, `depth`, `objectId`) also writes each pass as a raw PNG; `docs/agent-render-jobs.md` gives the encodings.
+
 Volume fog requires opaque HDR/depth rendering. The preview adapter allocates depth support at creation and rejects unsupported fog before commit.
 Keep key-light direction aligned with the derived shadow projector. The optional addon exports `resolveAgentShadow` for custom adapters.
 Checkpoint before relighting, inspect the actual image and restore or export the complete recipe. Look changes retain topology and geometry.
