@@ -502,8 +502,8 @@ const timelineReference = z.record(z.string(), z.unknown()).describe('Shots in o
 const recipe = z.strictObject({
   format: z.literal('67js.scene'),
   schemaVersion: z.literal(1),
-  geometries: z.array(geometry).max(256),
-  materials: z.array(z.strictObject({ id: identifier, tag: materialTag, ...materialFields })).max(256),
+  geometries: z.array(geometry).max(256).optional(),
+  materials: z.array(z.strictObject({ id: identifier, tag: materialTag, ...materialFields })).max(256).optional().describe('Omit for none.'),
   nodes: z.array(nodeRecord).max(4096),
   armatures: z.array(armature).max(16).optional(),
   camera: z.strictObject(cameraFields).optional(),
@@ -533,9 +533,16 @@ const assetRecipe = z.strictObject({
   nodeOverrides: z.array(z.strictObject({ id: identifier, translation: vector3.optional(), rotation: quaternion.optional(), scale: z.tuple([positive, positive, positive]).optional() })).max(4096).optional(),
   motion: recipeMotionReference.nullable().optional(),
 });
+// Agents copy the add-node shape into set-node and set-material and wrap the fields in a node or material key. Name the
+// fix in the message instead of the bare "unrecognized key".
+function flatFieldsHint(operationType, wrapperKey) {
+  return issue => issue.code === 'unrecognized_keys' && issue.keys.includes(wrapperKey)
+    ? `${operationType} takes its fields beside type, not inside ${wrapperKey}: {"type":"${operationType}","id":"<id>",...fields}. Move the fields of ${wrapperKey} up one level.`
+    : undefined;
+}
 const operation = z.discriminatedUnion('type', [
-  z.strictObject({ type: z.literal('set-node'), id: identifier, geometry: identifier.optional(), material: identifier.optional(), ...nodeFields }),
-  z.strictObject({ type: z.literal('set-material'), id: identifier, ...materialFields }),
+  z.strictObject({ type: z.literal('set-node'), id: identifier, geometry: identifier.optional(), material: identifier.optional(), ...nodeFields }, { error: flatFieldsHint('set-node', 'node') }),
+  z.strictObject({ type: z.literal('set-material'), id: identifier, ...materialFields }, { error: flatFieldsHint('set-material', 'material') }),
   z.strictObject({ type: z.literal('set-camera'), ...cameraFields }),
   z.strictObject({ type: z.literal('set-motion'), motion: recipeMotionReference.nullable() }),
   z.strictObject({ type: z.literal('set-armatures'), armatures: armaturesReference.nullable() }),
@@ -558,7 +565,7 @@ const operation = z.discriminatedUnion('type', [
 ]);
 const branchName = z.string().regex(BRANCH_NAME_PATTERN).describe('Branch name, up to 24 characters.');
 const labelsFlag = z.boolean().optional().describe('Draw part names, tags and lint problems on the image; returned with pixel positions.');
-const sessionFields = { sessionId: z.uuid().describe('Session UUID returned by scene_create.') };
+const sessionFields = { sessionId: z.uuid('sessionId is not a valid UUID. Leave it out to use the active scene.').optional().describe('Leave out: the active scene is used.') };
 const checkpointFields = { ...sessionFields, checkpointId: z.uuid().describe('Checkpoint UUID returned by scene_checkpoint for this session.') };
 const expectedRevision = z.number().int().min(0).max(Number.MAX_SAFE_INTEGER).describe('Current revision returned by create, inspect, apply or restore. Stale edits fail atomically.');
 const jobFields = { jobId: z.uuid().describe('Render job UUID returned by scene_render_submit or capabilities jobs.records.') };
@@ -583,8 +590,28 @@ const edit = { readOnlyHint: false, destructiveHint: true, idempotentHint: false
 // names bundle internals the agent cannot act on, so only the message is returned.
 export function readableErrorMessage(error) {
   const message = error instanceof Error ? error.message : String(error);
-  return message.split(/\s+at (?:\S+ \()?https?:\/\//)[0].replace(/^page\.evaluate: (?:\w*Error: )?/, '').trim();
+  const readable = message.split(/\s+at (?:\S+ \()?https?:\/\//)[0].replace(/^page\.evaluate: (?:\w*Error: )?/, '').trim();
+  if (!isEngineFault(readable)) {
+    return readable;
+  }
+  console.error(`67js internal error: ${readable}`);
+  return ENGINE_FAULT_ADVICE;
 }
+
+// The messages a JavaScript engine raises for a bug in our code (a missing field read, a wrong type called), as opposed
+// to the validation messages we write ourselves. They name no input the agent can change, so the agent gets advice and
+// the detail goes to the server log.
+const ENGINE_FAULT = /Cannot (?:read|set) propert(?:y|ies) of (?:undefined|null)|Cannot destructure|is not a function|is not iterable|is not defined|Cannot convert undefined or null/;
+const ENGINE_FAULT_ADVICE = 'Internal error in the 67js server, not caused by your input. Call scene_inspect to check the scene, retry once, and if it repeats, leave out the optional field you just added (for example labels) or report the tool name.';
+
+function isEngineFault(message) {
+  return ENGINE_FAULT.test(message);
+}
+
+// After a failed create no scene exists, so mesh_inspect and the other tools cannot look into the failure. Agents tried
+// anyway (5 of 32 errors in one recorded run) and met a second error.
+const CREATE_TOOLS = new Set(['scene_create', 'scene_create_asset']);
+const SCENE_NOT_CREATED_ADVICE = 'No scene was created, so the other tools have nothing to inspect: fix the recipe as the message says and call scene_create again.';
 
 function jsonResult(value) {
   return { content: [{ type: 'text', text: JSON.stringify(value) }], structuredContent: value };
@@ -602,12 +629,25 @@ export function createAgentMcpServer(runtime, { version = packageMetadata.versio
       error => console.error(`67js runtime cleanup failed: ${error.message}`),
     );
   };
+  // One scene exists at a time, so a call that leaves sessionId out means that scene. A stale or invented ID is still
+  // rejected by the runtime: acting on a scene the caller did not name could edit the wrong one.
+  function withActiveSession(argumentsValue, inputSchema) {
+    const takesSession = inputSchema.shape !== undefined && 'sessionId' in inputSchema.shape;
+    if (!takesSession || argumentsValue.sessionId !== undefined) {
+      return argumentsValue;
+    }
+    const activeSessionId = runtime.activeSessionId();
+    return activeSessionId ? { ...argumentsValue, sessionId: activeSessionId } : argumentsValue;
+  }
   function register(name, description, inputSchema, annotations, run) {
     server.registerTool(name, { description, inputSchema, annotations }, async argumentsValue => {
       try {
-        return await run(argumentsValue);
+        return await run(withActiveSession(argumentsValue, inputSchema));
       } catch (error) {
-        return { isError: true, content: [{ type: 'text', text: `${name} failed: ${readableErrorMessage(error)}` }] };
+        const message = readableErrorMessage(error);
+        // A refused create because a scene already exists leaves that scene in place: no advice then.
+        const sceneMissing = CREATE_TOOLS.has(name) && !message.startsWith('Dispose the current scene');
+        return { isError: true, content: [{ type: 'text', text: `${name} failed: ${message}${sceneMissing ? ` ${SCENE_NOT_CREATED_ADVICE}` : ''}` }] };
       }
     });
   }

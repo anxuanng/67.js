@@ -99,6 +99,7 @@ async function connect(context) {
       return { disposed: true, sessionId };
     },
     async close() { closed = true; },
+    activeSessionId() { return scene ? sessionId : null; },
   };
   const server = createAgentMcpServer(runtime);
   const client = new Client({ name: '67js-boundary-test', version: '1' });
@@ -440,4 +441,52 @@ test('SDK dynamic batches create resources, reject dangling edits, and restore s
   const restored = await call('scene_restore', { sessionId, checkpointId: initial.checkpointId, expectedRevision: 1 });
   assert.equal(restored.structuredContent.inspection.counts.parts, 0);
   assert.equal(restored.structuredContent.inspection.counts.geometries, 0);
+});
+
+test('a tool that takes a sessionId defaults to the active scene, and still rejects a session that is not active', async context => {
+  const { client, sessionId } = await connect(context);
+  const { tools } = await client.listTools();
+  for (const tool of tools.filter(candidate => candidate.inputSchema.properties?.sessionId)) {
+    assert.ok(!tool.inputSchema.required?.includes('sessionId'), `${tool.name} must not require sessionId`);
+  }
+  await client.callTool({ name: 'scene_create', arguments: { recipe: recipe() } });
+  const inspected = await client.callTool({ name: 'scene_inspect', arguments: {} });
+  assert.equal(inspected.isError, undefined);
+  assert.equal(inspected.structuredContent.sessionId, sessionId);
+  const checkpoint = await client.callTool({ name: 'scene_checkpoint', arguments: {} });
+  assert.equal(checkpoint.isError, undefined);
+  await rejected(client, 'scene_inspect', { sessionId: 'not-a-uuid' });
+  const invalid = await client.callTool({ name: 'scene_inspect', arguments: { sessionId: 'not-a-uuid' } }).catch(error => error);
+  assert.match(String(invalid.message ?? invalid.content?.[0]?.text), /Leave it out/);
+});
+
+test('scene_apply names the fix when the fields of set-node are wrapped in a node key', async context => {
+  const { client } = await connect(context);
+  await client.callTool({ name: 'scene_create', arguments: { recipe: recipe() } });
+  const wrapped = await client.callTool({ name: 'scene_apply', arguments: { expectedRevision: 0,
+    operations: [{ type: 'set-node', node: { id: 'mesh', translation: [1, 0, 0] } }] } }).catch(error => error);
+  assert.match(String(wrapped.message ?? wrapped.content?.[0]?.text), /Move the fields of node up one level/);
+});
+
+test('scene_create accepts a recipe with no materials list', async context => {
+  const { client } = await connect(context);
+  const minimal = recipe();
+  delete minimal.materials;
+  delete minimal.nodes[0].material;
+  const created = await client.callTool({ name: 'scene_create', arguments: { recipe: minimal } });
+  assert.equal(created.isError, undefined);
+});
+
+test('a failed scene_create says the scene was not created and what to do, so the agent retries instead of inspecting', async context => {
+  const { client } = await connect(context);
+  const broken = recipe();
+  broken.nodes[0].geometry = 'nothing';
+  const result = await client.callTool({ name: 'scene_create', arguments: { recipe: broken } });
+  assert.equal(result.isError, true);
+  const text = result.content[0].text;
+  assert.match(text, /No scene was created/);
+  assert.match(text, /call scene_create again/);
+  const inspected = await client.callTool({ name: 'scene_inspect', arguments: { ids: ['mesh'] } });
+  assert.equal(inspected.isError, true);
+  assert.doesNotMatch(inspected.content[0].text, /No scene was created/);
 });

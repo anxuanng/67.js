@@ -1,0 +1,1885 @@
+{
+  "run": "2026-10-31-13-29-haiku-main-5d9c88c",
+  "model": "claude-haiku-5-5",
+  "date": "2026-10-31T14:08:45.205Z",
+  "skill": false,
+  "runsPerTask": 1,
+  "passed": 33,
+  "tasks": 34,
+  "toolCalls": 255,
+  "costUsd": 4.47,
+  "byModel": {
+    "claude-haiku-5-5": {
+      "runs": 34,
+      "passed": 33,
+      "successRate": 0.971,
+      "toolCalls": 255,
+      "toolErrors": 31,
+      "inputTokens": 29006415,
+      "outputTokens": 246683,
+      "costUsd": 4.47,
+      "tasks": {
+        "crate": {
+          "runs": 1,
+          "passed": 1,
+          "successRate": 1,
+          "toolCalls": 6,
+          "toolErrors": 0,
+          "inputTokens": 815130,
+          "outputTokens": 6423,
+          "costUsd": 0.14
+        },
+        "bolt": {
+          "runs": 1,
+          "passed": 1,
+          "successRate": 1,
+          "toolCalls": 8,
+          "toolErrors": 1,
+          "inputTokens": 910107,
+          "outputTokens": 4391,
+          "costUsd": 0.14
+        },
+        "window": {
+          "runs": 1,
+          "passed": 1,
+          "successRate": 1,
+          "toolCalls": 9,
+          "toolErrors": 3,
+          "inputTokens": 923306,
+          "outputTokens": 5950,
+          "costUsd": 0.15
+        },
+        "table": {
+          "runs": 1,
+          "passed": 1,
+          "successRate": 1,
+          "toolCalls": 6,
+          "toolErrors": 0,
+          "inputTokens": 682008,
+          "outputTokens": 2707,
+          "costUsd": 0.12
+        },
+        "mug": {
+          "runs": 1,
+          "passed": 1,
+          "successRate": 1,
+          "toolCalls": 6,
+          "toolErrors": 1,
+          "inputTokens": 688715,
+          "outputTokens": 8132,
+          "costUsd": 0.14
+        },
+        "gear": {
+          "runs": 1,
+          "passed": 1,
+          "successRate": 1,
+          "toolCalls": 8,
+          "toolErrors": 2,
+          "inputTokens": 969656,
+          "outputTokens": 16201,
+          "costUsd": 0.18
+        },
+        "fence": {
+          "runs": 1,
+          "passed": 1,
+          "successRate": 1,
+          "toolCalls": 5,
+          "toolErrors": 2,
+          "inputTokens": 556128,
+          "outputTokens": 3199,
+          "costUsd": 0.11
+        },
+        "bracket": {
+          "runs": 1,
+          "passed": 1,
+          "successRate": 1,
+          "toolCalls": 7,
+          "toolErrors": 1,
+          "inputTokens": 922308,
+          "outputTokens": 6761,
+          "costUsd": 0.15
+        },
+        "soap": {
+          "runs": 1,
+          "passed": 1,
+          "successRate": 1,
+          "toolCalls": 7,
+          "toolErrors": 1,
+          "inputTokens": 925949,
+          "outputTokens": 6593,
+          "costUsd": 0.15
+        },
+        "pebble": {
+          "runs": 1,
+          "passed": 1,
+          "successRate": 1,
+          "toolCalls": 6,
+          "toolErrors": 0,
+          "inputTokens": 766218,
+          "outputTokens": 2682,
+          "costUsd": 0.12
+        },
+        "crate-uv": {
+          "runs": 1,
+          "passed": 1,
+          "successRate": 1,
+          "toolCalls": 6,
+          "toolErrors": 0,
+          "inputTokens": 706422,
+          "outputTokens": 8819,
+          "costUsd": 0.14
+        },
+        "crate-wood": {
+          "runs": 1,
+          "passed": 1,
+          "successRate": 1,
+          "toolCalls": 6,
+          "toolErrors": 1,
+          "inputTokens": 674787,
+          "outputTokens": 5328,
+          "costUsd": 0.13
+        },
+        "crate-graph": {
+          "runs": 1,
+          "passed": 1,
+          "successRate": 1,
+          "toolCalls": 7,
+          "toolErrors": 1,
+          "inputTokens": 833196,
+          "outputTokens": 11020,
+          "costUsd": 0.16
+        },
+        "dice": {
+          "runs": 1,
+          "passed": 1,
+          "successRate": 1,
+          "toolCalls": 5,
+          "toolErrors": 0,
+          "inputTokens": 589747,
+          "outputTokens": 8933,
+          "costUsd": 0.14
+        },
+        "flange": {
+          "runs": 1,
+          "passed": 1,
+          "successRate": 1,
+          "toolCalls": 6,
+          "toolErrors": 1,
+          "inputTokens": 682533,
+          "outputTokens": 6461,
+          "costUsd": 0.13
+        },
+        "chair": {
+          "runs": 1,
+          "passed": 1,
+          "successRate": 1,
+          "toolCalls": 5,
+          "toolErrors": 1,
+          "inputTokens": 561697,
+          "outputTokens": 4308,
+          "costUsd": 0.12
+        },
+        "arm-reach": {
+          "runs": 1,
+          "passed": 1,
+          "successRate": 1,
+          "toolCalls": 6,
+          "toolErrors": 0,
+          "inputTokens": 704079,
+          "outputTokens": 8723,
+          "costUsd": 0.14
+        },
+        "leg-plant": {
+          "runs": 1,
+          "passed": 1,
+          "successRate": 1,
+          "toolCalls": 12,
+          "toolErrors": 1,
+          "inputTokens": 1190374,
+          "outputTokens": 10689,
+          "costUsd": 0.18
+        },
+        "tray-drop": {
+          "runs": 1,
+          "passed": 1,
+          "successRate": 1,
+          "toolCalls": 6,
+          "toolErrors": 1,
+          "inputTokens": 680472,
+          "outputTokens": 6008,
+          "costUsd": 0.13
+        },
+        "pillar-court": {
+          "runs": 1,
+          "passed": 1,
+          "successRate": 1,
+          "toolCalls": 7,
+          "toolErrors": 1,
+          "inputTokens": 918651,
+          "outputTokens": 5540,
+          "costUsd": 0.14
+        },
+        "rigged-walker": {
+          "runs": 1,
+          "passed": 0,
+          "successRate": 0,
+          "toolCalls": 6,
+          "toolErrors": 0,
+          "inputTokens": 931070,
+          "outputTokens": 23749,
+          "costUsd": 0.22
+        },
+        "robot-reach": {
+          "runs": 1,
+          "passed": 1,
+          "successRate": 1,
+          "toolCalls": 9,
+          "toolErrors": 2,
+          "inputTokens": 937741,
+          "outputTokens": 3145,
+          "costUsd": 0.08
+        },
+        "kettle-resize": {
+          "runs": 1,
+          "passed": 1,
+          "successRate": 1,
+          "toolCalls": 4,
+          "toolErrors": 0,
+          "inputTokens": 363797,
+          "outputTokens": 3090,
+          "costUsd": 0.02
+        },
+        "kettle-resize-plain": {
+          "runs": 1,
+          "passed": 1,
+          "successRate": 1,
+          "toolCalls": 5,
+          "toolErrors": 0,
+          "inputTokens": 532855,
+          "outputTokens": 2860,
+          "costUsd": 0.02
+        },
+        "desk-resize": {
+          "runs": 1,
+          "passed": 1,
+          "successRate": 1,
+          "toolCalls": 11,
+          "toolErrors": 1,
+          "inputTokens": 1329502,
+          "outputTokens": 9199,
+          "costUsd": 0.18
+        },
+        "desk-resize-plain": {
+          "runs": 1,
+          "passed": 1,
+          "successRate": 1,
+          "toolCalls": 9,
+          "toolErrors": 0,
+          "inputTokens": 800077,
+          "outputTokens": 9410,
+          "costUsd": 0.14
+        },
+        "robot-walk-wave": {
+          "runs": 1,
+          "passed": 1,
+          "successRate": 1,
+          "toolCalls": 8,
+          "toolErrors": 1,
+          "inputTokens": 656251,
+          "outputTokens": 2916,
+          "costUsd": 0.02
+        },
+        "chamfer-plate": {
+          "runs": 1,
+          "passed": 1,
+          "successRate": 1,
+          "toolCalls": 11,
+          "toolErrors": 2,
+          "inputTokens": 1405030,
+          "outputTokens": 8619,
+          "costUsd": 0.18
+        },
+        "slotted-rail": {
+          "runs": 1,
+          "passed": 1,
+          "successRate": 1,
+          "toolCalls": 11,
+          "toolErrors": 1,
+          "inputTokens": 1392958,
+          "outputTokens": 6774,
+          "costUsd": 0.19
+        },
+        "crate-revision": {
+          "runs": 1,
+          "passed": 1,
+          "successRate": 1,
+          "toolCalls": 8,
+          "toolErrors": 1,
+          "inputTokens": 926401,
+          "outputTokens": 5006,
+          "costUsd": 0.14
+        },
+        "bracket-revision": {
+          "runs": 1,
+          "passed": 1,
+          "successRate": 1,
+          "toolCalls": 7,
+          "toolErrors": 1,
+          "inputTokens": 742360,
+          "outputTokens": 12347,
+          "costUsd": 0.16
+        },
+        "workshop": {
+          "runs": 1,
+          "passed": 1,
+          "successRate": 1,
+          "toolCalls": 6,
+          "toolErrors": 0,
+          "inputTokens": 700271,
+          "outputTokens": 5035,
+          "costUsd": 0.13
+        },
+        "robot-shot": {
+          "runs": 1,
+          "passed": 1,
+          "successRate": 1,
+          "toolCalls": 15,
+          "toolErrors": 3,
+          "inputTokens": 1714949,
+          "outputTokens": 10778,
+          "costUsd": 0.14
+        },
+        "robot-leg-hole": {
+          "runs": 1,
+          "passed": 1,
+          "successRate": 1,
+          "toolCalls": 11,
+          "toolErrors": 1,
+          "inputTokens": 871670,
+          "outputTokens": 4887,
+          "costUsd": 0.03
+        }
+      }
+    }
+  },
+  "records": [
+    {
+      "task": "crate",
+      "attempt": 1,
+      "pass": true,
+      "passed": 8,
+      "total": 8,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 6,
+      "toolErrors": 0,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_capabilities": 1,
+        "scene_create": 1,
+        "mesh_inspect": 1,
+        "scene_look": 1,
+        "scene_export_recipe": 1,
+        "scene_dispose": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "mesh",
+          "box"
+        ],
+        "meshOperations": [
+          "inset_individual",
+          "extrude_individual"
+        ],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "error": "page.evaluate: Error: This recipe needs the mesh code, which loads on demand: await loadAgentSceneModules(recipe) before createAgentScene or apply."
+      },
+      "turns": 8,
+      "costUsd": 0.14210987999999997,
+      "inputTokens": 815130,
+      "outputTokens": 6423,
+      "wallSeconds": 48,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "bolt",
+      "attempt": 1,
+      "pass": true,
+      "passed": 7,
+      "total": 7,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 8,
+      "toolErrors": 1,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_capabilities": 1,
+        "scene_create": 2,
+        "mesh_inspect": 1,
+        "scene_inspect": 1,
+        "scene_look": 1,
+        "scene_export_recipe": 1,
+        "scene_dispose": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "cylinder"
+        ],
+        "meshOperations": [],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 1,
+            "side": 1,
+            "three-quarter": 1
+          },
+          "mean": 1
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-10-31-13-29-haiku-main-5d9c88c/look/1/bolt-front.png",
+          "artifacts/agent-modeling/2026-10-31-13-29-haiku-main-5d9c88c/look/1/bolt-side.png",
+          "artifacts/agent-modeling/2026-10-31-13-29-haiku-main-5d9c88c/look/1/bolt-three-quarter.png"
+        ]
+      },
+      "turns": 10,
+      "costUsd": 0.13943368,
+      "inputTokens": 910107,
+      "outputTokens": 4391,
+      "wallSeconds": 49,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "window",
+      "attempt": 1,
+      "pass": true,
+      "passed": 5,
+      "total": 5,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 9,
+      "toolErrors": 3,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_capabilities": 1,
+        "scene_create": 3,
+        "mesh_inspect": 2,
+        "scene_look": 1,
+        "scene_export_recipe": 1,
+        "scene_dispose": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "mesh"
+        ],
+        "meshOperations": [
+          "boolean"
+        ],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 1,
+            "side": 1,
+            "three-quarter": 1
+          },
+          "mean": 1
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-10-31-13-29-haiku-main-5d9c88c/look/1/window-front.png",
+          "artifacts/agent-modeling/2026-10-31-13-29-haiku-main-5d9c88c/look/1/window-side.png",
+          "artifacts/agent-modeling/2026-10-31-13-29-haiku-main-5d9c88c/look/1/window-three-quarter.png"
+        ]
+      },
+      "turns": 11,
+      "costUsd": 0.14605823,
+      "inputTokens": 923306,
+      "outputTokens": 5950,
+      "wallSeconds": 46,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "table",
+      "attempt": 1,
+      "pass": true,
+      "passed": 6,
+      "total": 6,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 6,
+      "toolErrors": 0,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_capabilities": 1,
+        "scene_create": 1,
+        "scene_inspect": 1,
+        "mesh_inspect": 1,
+        "scene_export_recipe": 1,
+        "scene_dispose": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "box"
+        ],
+        "meshOperations": [],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 1,
+            "side": 0.1582,
+            "three-quarter": 0.5769
+          },
+          "mean": 0.5784
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-10-31-13-29-haiku-main-5d9c88c/look/1/table-front.png",
+          "artifacts/agent-modeling/2026-10-31-13-29-haiku-main-5d9c88c/look/1/table-side.png",
+          "artifacts/agent-modeling/2026-10-31-13-29-haiku-main-5d9c88c/look/1/table-three-quarter.png"
+        ]
+      },
+      "turns": 8,
+      "costUsd": 0.12210062999999999,
+      "inputTokens": 682008,
+      "outputTokens": 2707,
+      "wallSeconds": 28,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "mug",
+      "attempt": 1,
+      "pass": true,
+      "passed": 7,
+      "total": 7,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 6,
+      "toolErrors": 1,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_create": 1,
+        "mesh_inspect": 2,
+        "scene_look": 1,
+        "scene_export_recipe": 1,
+        "scene_dispose": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "mesh"
+        ],
+        "meshOperations": [
+          "boolean"
+        ],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "error": "page.evaluate: Error: This recipe needs the modeling code, which loads on demand: await loadAgentSceneModules(recipe) before createAgentScene or apply."
+      },
+      "turns": 8,
+      "costUsd": 0.13685558,
+      "inputTokens": 688715,
+      "outputTokens": 8132,
+      "wallSeconds": 55,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "gear",
+      "attempt": 1,
+      "pass": true,
+      "passed": 5,
+      "total": 5,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 8,
+      "toolErrors": 2,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_create": 3,
+        "mesh_inspect": 1,
+        "scene_inspect": 1,
+        "scene_look": 1,
+        "scene_export_recipe": 1,
+        "scene_dispose": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "mesh"
+        ],
+        "meshOperations": [
+          "boolean"
+        ],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 0.9868,
+            "side": 0.9868,
+            "three-quarter": 0.8489
+          },
+          "mean": 0.9408
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-10-31-13-29-haiku-main-5d9c88c/look/1/gear-front.png",
+          "artifacts/agent-modeling/2026-10-31-13-29-haiku-main-5d9c88c/look/1/gear-side.png",
+          "artifacts/agent-modeling/2026-10-31-13-29-haiku-main-5d9c88c/look/1/gear-three-quarter.png"
+        ]
+      },
+      "turns": 10,
+      "costUsd": 0.18128508000000004,
+      "inputTokens": 969656,
+      "outputTokens": 16201,
+      "wallSeconds": 108,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "fence",
+      "attempt": 1,
+      "pass": true,
+      "passed": 6,
+      "total": 6,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 5,
+      "toolErrors": 2,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_create": 2,
+        "mesh_inspect": 1,
+        "scene_export_recipe": 1,
+        "scene_dispose": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "mesh"
+        ],
+        "meshOperations": [],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "error": "page.evaluate: Error: This recipe needs the mesh code, which loads on demand: await loadAgentSceneModules(recipe) before createAgentScene or apply."
+      },
+      "turns": 7,
+      "costUsd": 0.11216418,
+      "inputTokens": 556128,
+      "outputTokens": 3199,
+      "wallSeconds": 31,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "bracket",
+      "attempt": 1,
+      "pass": true,
+      "passed": 6,
+      "total": 6,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 7,
+      "toolErrors": 1,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_capabilities": 1,
+        "scene_create": 2,
+        "mesh_inspect": 1,
+        "scene_apply": 1,
+        "scene_export_recipe": 1,
+        "scene_dispose": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "mesh"
+        ],
+        "meshOperations": [
+          "boolean"
+        ],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "error": "page.evaluate: Error: This recipe needs the modeling code, which loads on demand: await loadAgentSceneModules(recipe) before createAgentScene or apply."
+      },
+      "turns": 9,
+      "costUsd": 0.14759048,
+      "inputTokens": 922308,
+      "outputTokens": 6761,
+      "wallSeconds": 75,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "soap",
+      "attempt": 1,
+      "pass": true,
+      "passed": 7,
+      "total": 7,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 7,
+      "toolErrors": 1,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_capabilities": 1,
+        "scene_create": 2,
+        "mesh_inspect": 1,
+        "scene_look": 1,
+        "scene_export_recipe": 1,
+        "scene_dispose": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "mesh"
+        ],
+        "meshOperations": [
+          "set_position",
+          "bevel"
+        ],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "error": "page.evaluate: Error: This recipe needs the mesh code, which loads on demand: await loadAgentSceneModules(recipe) before createAgentScene or apply."
+      },
+      "turns": 9,
+      "costUsd": 0.14745628000000002,
+      "inputTokens": 925949,
+      "outputTokens": 6593,
+      "wallSeconds": 83,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "pebble",
+      "attempt": 1,
+      "pass": true,
+      "passed": 7,
+      "total": 7,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 6,
+      "toolErrors": 0,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_create": 1,
+        "scene_inspect": 2,
+        "scene_apply": 1,
+        "scene_export_recipe": 1,
+        "scene_dispose": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "sphere"
+        ],
+        "meshOperations": [],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 0.9767,
+            "side": 0.9757,
+            "three-quarter": 0.9608
+          },
+          "mean": 0.9711
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-10-31-13-29-haiku-main-5d9c88c/look/1/pebble-front.png",
+          "artifacts/agent-modeling/2026-10-31-13-29-haiku-main-5d9c88c/look/1/pebble-side.png",
+          "artifacts/agent-modeling/2026-10-31-13-29-haiku-main-5d9c88c/look/1/pebble-three-quarter.png"
+        ]
+      },
+      "turns": 8,
+      "costUsd": 0.12176943,
+      "inputTokens": 766218,
+      "outputTokens": 2682,
+      "wallSeconds": 45,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "crate-uv",
+      "attempt": 1,
+      "pass": true,
+      "passed": 9,
+      "total": 9,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 6,
+      "toolErrors": 0,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_capabilities": 1,
+        "scene_create": 1,
+        "mesh_inspect": 1,
+        "scene_look": 1,
+        "scene_export_recipe": 1,
+        "scene_dispose": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "mesh"
+        ],
+        "meshOperations": [
+          "boolean",
+          "inset_individual",
+          "extrude_individual",
+          "uv_unwrap"
+        ],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "error": "page.evaluate: Error: This recipe needs the patterns code, which loads on demand: await loadAgentSceneModules(recipe) before createAgentScene or apply."
+      },
+      "turns": 8,
+      "costUsd": 0.14464568000000003,
+      "inputTokens": 706422,
+      "outputTokens": 8819,
+      "wallSeconds": 85,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "crate-wood",
+      "attempt": 1,
+      "pass": true,
+      "passed": 9,
+      "total": 9,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 6,
+      "toolErrors": 1,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_create": 2,
+        "mesh_inspect": 1,
+        "scene_look": 1,
+        "scene_export_recipe": 1,
+        "scene_dispose": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "mesh"
+        ],
+        "meshOperations": [
+          "boolean"
+        ],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "error": "page.evaluate: Error: This recipe needs the patterns code, which loads on demand: await loadAgentSceneModules(recipe) before createAgentScene or apply."
+      },
+      "turns": 8,
+      "costUsd": 0.12692842999999998,
+      "inputTokens": 674787,
+      "outputTokens": 5328,
+      "wallSeconds": 46,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "crate-graph",
+      "attempt": 1,
+      "pass": true,
+      "passed": 9,
+      "total": 9,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 7,
+      "toolErrors": 1,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_capabilities": 1,
+        "scene_create": 2,
+        "mesh_inspect": 1,
+        "scene_look": 1,
+        "scene_export_recipe": 1,
+        "scene_dispose": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "mesh"
+        ],
+        "meshOperations": [
+          "boolean",
+          "uv_unwrap"
+        ],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "error": "page.evaluate: Error: This recipe needs the patterns code, which loads on demand: await loadAgentSceneModules(recipe) before createAgentScene or apply."
+      },
+      "turns": 9,
+      "costUsd": 0.15929233000000004,
+      "inputTokens": 833196,
+      "outputTokens": 11020,
+      "wallSeconds": 72,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "dice",
+      "attempt": 1,
+      "pass": true,
+      "passed": 12,
+      "total": 12,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 5,
+      "toolErrors": 0,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_create": 1,
+        "mesh_inspect": 1,
+        "scene_look": 1,
+        "scene_export_recipe": 1,
+        "scene_dispose": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "mesh"
+        ],
+        "meshOperations": [
+          "boolean"
+        ],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 0.9989,
+            "side": 0.9989,
+            "three-quarter": 0.9899
+          },
+          "mean": 0.9959
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-10-31-13-29-haiku-main-5d9c88c/look/1/dice-front.png",
+          "artifacts/agent-modeling/2026-10-31-13-29-haiku-main-5d9c88c/look/1/dice-side.png",
+          "artifacts/agent-modeling/2026-10-31-13-29-haiku-main-5d9c88c/look/1/dice-three-quarter.png"
+        ]
+      },
+      "turns": 7,
+      "costUsd": 0.13768523,
+      "inputTokens": 589747,
+      "outputTokens": 8933,
+      "wallSeconds": 59,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "flange",
+      "attempt": 1,
+      "pass": true,
+      "passed": 9,
+      "total": 9,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 6,
+      "toolErrors": 1,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_create": 2,
+        "mesh_inspect": 1,
+        "scene_look": 1,
+        "scene_export_recipe": 1,
+        "scene_dispose": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "mesh"
+        ],
+        "meshOperations": [
+          "boolean"
+        ],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "error": "page.evaluate: Error: This recipe needs the modeling code, which loads on demand: await loadAgentSceneModules(recipe) before createAgentScene or apply."
+      },
+      "turns": 8,
+      "costUsd": 0.13228493,
+      "inputTokens": 682533,
+      "outputTokens": 6461,
+      "wallSeconds": 44,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "chair",
+      "attempt": 1,
+      "pass": true,
+      "passed": 7,
+      "total": 7,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 5,
+      "toolErrors": 1,
+      "toolsByName": {
+        "ToolSearch": 2,
+        "scene_create": 2,
+        "scene_look": 1,
+        "scene_export_recipe": 1,
+        "scene_dispose": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "box"
+        ],
+        "meshOperations": [],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 1,
+            "side": 1,
+            "three-quarter": 1
+          },
+          "mean": 1
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-10-31-13-29-haiku-main-5d9c88c/look/1/chair-front.png",
+          "artifacts/agent-modeling/2026-10-31-13-29-haiku-main-5d9c88c/look/1/chair-side.png",
+          "artifacts/agent-modeling/2026-10-31-13-29-haiku-main-5d9c88c/look/1/chair-three-quarter.png"
+        ]
+      },
+      "turns": 8,
+      "costUsd": 0.11743373,
+      "inputTokens": 561697,
+      "outputTokens": 4308,
+      "wallSeconds": 53,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "arm-reach",
+      "attempt": 1,
+      "pass": true,
+      "passed": 5,
+      "total": 5,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 6,
+      "toolErrors": 0,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_capabilities": 1,
+        "scene_create": 1,
+        "scene_look": 1,
+        "scene_inspect": 1,
+        "scene_export_recipe": 1,
+        "scene_dispose": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "mesh",
+          "lathe"
+        ],
+        "meshOperations": [
+          "fill_holes",
+          "boolean"
+        ],
+        "motionIk": [
+          "two-bone"
+        ],
+        "motionTracks": 0
+      },
+      "look": {
+        "error": "page.evaluate: Error: This recipe needs the motion code, which loads on demand: await loadAgentSceneModules(recipe) before createAgentScene or apply."
+      },
+      "turns": 8,
+      "costUsd": 0.14427793000000003,
+      "inputTokens": 704079,
+      "outputTokens": 8723,
+      "wallSeconds": 66,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "leg-plant",
+      "attempt": 1,
+      "pass": true,
+      "passed": 6,
+      "total": 6,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 12,
+      "toolErrors": 1,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_capabilities": 1,
+        "scene_create": 3,
+        "scene_apply": 1,
+        "scene_look": 2,
+        "scene_inspect": 1,
+        "scene_dispose": 2,
+        "mesh_inspect": 1,
+        "scene_export_recipe": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "lathe",
+          "sphere"
+        ],
+        "meshOperations": [],
+        "motionIk": [
+          "two-bone"
+        ],
+        "motionTracks": 0
+      },
+      "look": {
+        "error": "page.evaluate: Error: This recipe needs the motion code, which loads on demand: await loadAgentSceneModules(recipe) before createAgentScene or apply."
+      },
+      "turns": 14,
+      "costUsd": 0.17864598000000004,
+      "inputTokens": 1190374,
+      "outputTokens": 10689,
+      "wallSeconds": 69,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "tray-drop",
+      "attempt": 1,
+      "pass": true,
+      "passed": 4,
+      "total": 4,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 6,
+      "toolErrors": 1,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_create": 2,
+        "mesh_inspect": 1,
+        "scene_look": 1,
+        "scene_export_recipe": 1,
+        "scene_dispose": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "mesh",
+          "sphere"
+        ],
+        "meshOperations": [
+          "boolean"
+        ],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 0.9973,
+            "side": 0.9982,
+            "three-quarter": 0.9994
+          },
+          "mean": 0.9983
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-10-31-13-29-haiku-main-5d9c88c/look/1/tray-drop-front.png",
+          "artifacts/agent-modeling/2026-10-31-13-29-haiku-main-5d9c88c/look/1/tray-drop-side.png",
+          "artifacts/agent-modeling/2026-10-31-13-29-haiku-main-5d9c88c/look/1/tray-drop-three-quarter.png"
+        ]
+      },
+      "turns": 8,
+      "costUsd": 0.12999913000000002,
+      "inputTokens": 680472,
+      "outputTokens": 6008,
+      "wallSeconds": 46,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "pillar-court",
+      "attempt": 1,
+      "pass": true,
+      "passed": 7,
+      "total": 7,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 7,
+      "toolErrors": 1,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_capabilities": 1,
+        "scene_create": 2,
+        "scene_inspect": 1,
+        "mesh_inspect": 1,
+        "scene_export_recipe": 1,
+        "scene_dispose": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "box"
+        ],
+        "meshOperations": [],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 1,
+            "side": 1,
+            "three-quarter": 1
+          },
+          "mean": 1
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-10-31-13-29-haiku-main-5d9c88c/look/1/pillar-court-front.png",
+          "artifacts/agent-modeling/2026-10-31-13-29-haiku-main-5d9c88c/look/1/pillar-court-side.png",
+          "artifacts/agent-modeling/2026-10-31-13-29-haiku-main-5d9c88c/look/1/pillar-court-three-quarter.png"
+        ]
+      },
+      "turns": 9,
+      "costUsd": 0.14463932999999998,
+      "inputTokens": 918651,
+      "outputTokens": 5540,
+      "wallSeconds": 54,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "rigged-walker",
+      "attempt": 1,
+      "pass": false,
+      "passed": 5,
+      "total": 6,
+      "failed": [
+        "walk cycle: m-leftFoot is 1.944x its size at t=0; m-leftFoot is 1.674x its size at t=0.125; m-leftFoot is 1.404x its size at t=0.25; m-rightFoot is 1.4x its size at t=0.375"
+      ],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 6,
+      "toolErrors": 0,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_capabilities": 1,
+        "scene_create": 1,
+        "scene_look": 1,
+        "scene_review": 1,
+        "scene_export_recipe": 1,
+        "scene_dispose": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "box"
+        ],
+        "meshOperations": [],
+        "motionIk": [],
+        "motionTracks": 10
+      },
+      "look": {
+        "error": "page.evaluate: Error: This recipe needs the motion code, which loads on demand: await loadAgentSceneModules(recipe) before createAgentScene or apply."
+      },
+      "turns": 8,
+      "costUsd": 0.21711492999999998,
+      "inputTokens": 931070,
+      "outputTokens": 23749,
+      "wallSeconds": 144,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "robot-reach",
+      "attempt": 1,
+      "pass": true,
+      "passed": 2,
+      "total": 2,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 9,
+      "toolErrors": 2,
+      "toolsByName": {
+        "ToolSearch": 2,
+        "scene_asset_catalog": 1,
+        "scene_create_asset": 1,
+        "scene_inspect": 4,
+        "scene_capabilities": 1,
+        "scene_apply": 1,
+        "scene_export_recipe": 1
+      },
+      "features": {
+        "geometryTypes": [],
+        "meshOperations": [],
+        "motionIk": [
+          "two-bone"
+        ],
+        "motionTracks": 0
+      },
+      "look": {
+        "skipped": "asset recipes have no static silhouette"
+      },
+      "turns": 12,
+      "costUsd": 0.08238143000000002,
+      "inputTokens": 937741,
+      "outputTokens": 3145,
+      "wallSeconds": 37,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "kettle-resize",
+      "attempt": 1,
+      "pass": true,
+      "passed": 6,
+      "total": 6,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 4,
+      "toolErrors": 0,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_create": 1,
+        "scene_apply": 1,
+        "scene_inspect": 1,
+        "scene_export_recipe": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "box"
+        ],
+        "meshOperations": [],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "error": "page.evaluate: Error: This recipe needs the relations code, which loads on demand: await loadAgentSceneModules(recipe) before createAgentScene or apply."
+      },
+      "turns": 6,
+      "costUsd": 0.01799424,
+      "inputTokens": 363797,
+      "outputTokens": 3090,
+      "wallSeconds": 27,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "kettle-resize-plain",
+      "attempt": 1,
+      "pass": true,
+      "passed": 6,
+      "total": 6,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 5,
+      "toolErrors": 0,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_create": 1,
+        "scene_apply": 1,
+        "scene_inspect": 1,
+        "scene_export_recipe": 1,
+        "scene_dispose": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "box"
+        ],
+        "meshOperations": [],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 1,
+            "side": 1,
+            "three-quarter": 1
+          },
+          "mean": 1
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-10-31-13-29-haiku-main-5d9c88c/look/1/kettle-resize-plain-front.png",
+          "artifacts/agent-modeling/2026-10-31-13-29-haiku-main-5d9c88c/look/1/kettle-resize-plain-side.png",
+          "artifacts/agent-modeling/2026-10-31-13-29-haiku-main-5d9c88c/look/1/kettle-resize-plain-three-quarter.png"
+        ]
+      },
+      "turns": 7,
+      "costUsd": 0.01950767,
+      "inputTokens": 532855,
+      "outputTokens": 2860,
+      "wallSeconds": 26,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "desk-resize",
+      "attempt": 1,
+      "pass": true,
+      "passed": 21,
+      "total": 21,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 11,
+      "toolErrors": 1,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_create": 1,
+        "scene_apply": 4,
+        "scene_inspect": 4,
+        "scene_export_recipe": 1,
+        "scene_dispose": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "box"
+        ],
+        "meshOperations": [],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "error": "page.evaluate: Error: This recipe needs the relations code, which loads on demand: await loadAgentSceneModules(recipe) before createAgentScene or apply."
+      },
+      "turns": 13,
+      "costUsd": 0.18340278000000002,
+      "inputTokens": 1329502,
+      "outputTokens": 9199,
+      "wallSeconds": 66,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "desk-resize-plain",
+      "attempt": 1,
+      "pass": true,
+      "passed": 21,
+      "total": 21,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 9,
+      "toolErrors": 0,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_create": 1,
+        "scene_apply": 3,
+        "scene_inspect": 3,
+        "scene_export_recipe": 1,
+        "scene_dispose": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "box"
+        ],
+        "meshOperations": [],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 1,
+            "side": 1,
+            "three-quarter": 1
+          },
+          "mean": 1
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-10-31-13-29-haiku-main-5d9c88c/look/1/desk-resize-plain-front.png",
+          "artifacts/agent-modeling/2026-10-31-13-29-haiku-main-5d9c88c/look/1/desk-resize-plain-side.png",
+          "artifacts/agent-modeling/2026-10-31-13-29-haiku-main-5d9c88c/look/1/desk-resize-plain-three-quarter.png"
+        ]
+      },
+      "turns": 11,
+      "costUsd": 0.14272308,
+      "inputTokens": 800077,
+      "outputTokens": 9410,
+      "wallSeconds": 57,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "robot-walk-wave",
+      "attempt": 1,
+      "pass": true,
+      "passed": 1,
+      "total": 1,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 8,
+      "toolErrors": 1,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_capabilities": 1,
+        "scene_asset_catalog": 1,
+        "scene_create_asset": 1,
+        "scene_inspect": 1,
+        "scene_apply": 1,
+        "scene_look": 2,
+        "scene_export_recipe": 1
+      },
+      "features": {
+        "geometryTypes": [],
+        "meshOperations": [],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "skipped": "asset recipes have no static silhouette"
+      },
+      "turns": 10,
+      "costUsd": 0.021041880000000002,
+      "inputTokens": 656251,
+      "outputTokens": 2916,
+      "wallSeconds": 41,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "chamfer-plate",
+      "attempt": 1,
+      "pass": true,
+      "passed": 9,
+      "total": 9,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 11,
+      "toolErrors": 2,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_capabilities": 1,
+        "scene_create": 2,
+        "mesh_inspect": 1,
+        "mesh_edit": 1,
+        "scene_look": 1,
+        "scene_apply": 2,
+        "scene_inspect": 1,
+        "scene_export_recipe": 1,
+        "scene_dispose": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "mesh"
+        ],
+        "meshOperations": [
+          "translate",
+          "bevel",
+          "boolean"
+        ],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "error": "page.evaluate: Error: This recipe needs the modeling code, which loads on demand: await loadAgentSceneModules(recipe) before createAgentScene or apply."
+      },
+      "turns": 13,
+      "costUsd": 0.18122553000000005,
+      "inputTokens": 1405030,
+      "outputTokens": 8619,
+      "wallSeconds": 98,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "slotted-rail",
+      "attempt": 1,
+      "pass": true,
+      "passed": 9,
+      "total": 9,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 11,
+      "toolErrors": 1,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "Skill": 1,
+        "scene_capabilities": 1,
+        "scene_create": 1,
+        "mesh_inspect": 1,
+        "mesh_edit": 3,
+        "scene_apply": 1,
+        "scene_look": 1,
+        "scene_export_recipe": 1,
+        "scene_dispose": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "mesh"
+        ],
+        "meshOperations": [
+          "set_position",
+          "bevel",
+          "boolean"
+        ],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 1,
+            "side": 1,
+            "three-quarter": 1
+          },
+          "mean": 1
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-10-31-13-29-haiku-main-5d9c88c/look/1/slotted-rail-front.png",
+          "artifacts/agent-modeling/2026-10-31-13-29-haiku-main-5d9c88c/look/1/slotted-rail-side.png",
+          "artifacts/agent-modeling/2026-10-31-13-29-haiku-main-5d9c88c/look/1/slotted-rail-three-quarter.png"
+        ]
+      },
+      "turns": 14,
+      "costUsd": 0.18514113000000001,
+      "inputTokens": 1392958,
+      "outputTokens": 6774,
+      "wallSeconds": 56,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "crate-revision",
+      "attempt": 1,
+      "pass": true,
+      "passed": 10,
+      "total": 10,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 8,
+      "toolErrors": 1,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_capabilities": 1,
+        "scene_create": 1,
+        "mesh_inspect": 2,
+        "mesh_edit": 1,
+        "scene_look": 1,
+        "scene_export_recipe": 1,
+        "scene_dispose": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "mesh"
+        ],
+        "meshOperations": [
+          "translate",
+          "inset_individual",
+          "extrude_individual",
+          "inset_region",
+          "extrude_face_region",
+          "boolean"
+        ],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 1,
+            "side": 1,
+            "three-quarter": 1
+          },
+          "mean": 1
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-10-31-13-29-haiku-main-5d9c88c/look/1/crate-revision-front.png",
+          "artifacts/agent-modeling/2026-10-31-13-29-haiku-main-5d9c88c/look/1/crate-revision-side.png",
+          "artifacts/agent-modeling/2026-10-31-13-29-haiku-main-5d9c88c/look/1/crate-revision-three-quarter.png"
+        ]
+      },
+      "turns": 10,
+      "costUsd": 0.14212278000000003,
+      "inputTokens": 926401,
+      "outputTokens": 5006,
+      "wallSeconds": 43,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "bracket-revision",
+      "attempt": 1,
+      "pass": true,
+      "passed": 7,
+      "total": 7,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 7,
+      "toolErrors": 1,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_capabilities": 1,
+        "scene_create": 1,
+        "scene_apply": 2,
+        "scene_inspect": 1,
+        "scene_look": 1,
+        "scene_export_recipe": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "box",
+          "extrude"
+        ],
+        "meshOperations": [],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "error": "page.evaluate: Error: This recipe needs the modeling code, which loads on demand: await loadAgentSceneModules(recipe) before createAgentScene or apply."
+      },
+      "turns": 9,
+      "costUsd": 0.16028693000000002,
+      "inputTokens": 742360,
+      "outputTokens": 12347,
+      "wallSeconds": 72,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "workshop",
+      "attempt": 1,
+      "pass": true,
+      "passed": 10,
+      "total": 10,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 6,
+      "toolErrors": 0,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_capabilities": 1,
+        "scene_create": 1,
+        "mesh_inspect": 1,
+        "scene_look": 1,
+        "scene_export_recipe": 1,
+        "scene_dispose": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "box",
+          "cylinder"
+        ],
+        "meshOperations": [],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 0.9714,
+            "side": 0.9755,
+            "three-quarter": 0.9999
+          },
+          "mean": 0.9823
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-10-31-13-29-haiku-main-5d9c88c/look/1/workshop-front.png",
+          "artifacts/agent-modeling/2026-10-31-13-29-haiku-main-5d9c88c/look/1/workshop-side.png",
+          "artifacts/agent-modeling/2026-10-31-13-29-haiku-main-5d9c88c/look/1/workshop-three-quarter.png"
+        ]
+      },
+      "turns": 8,
+      "costUsd": 0.13051813,
+      "inputTokens": 700271,
+      "outputTokens": 5035,
+      "wallSeconds": 44,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "robot-shot",
+      "attempt": 1,
+      "pass": true,
+      "passed": 4,
+      "total": 4,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 15,
+      "toolErrors": 3,
+      "toolsByName": {
+        "ToolSearch": 2,
+        "scene_capabilities": 1,
+        "scene_asset_catalog": 1,
+        "scene_create_asset": 1,
+        "scene_inspect": 3,
+        "scene_apply": 2,
+        "scene_look": 5,
+        "scene_review": 1,
+        "scene_export_recipe": 1
+      },
+      "features": {
+        "geometryTypes": [],
+        "meshOperations": [],
+        "motionIk": [
+          "two-bone",
+          "two-bone"
+        ],
+        "motionTracks": 0
+      },
+      "look": {
+        "skipped": "asset recipes have no static silhouette"
+      },
+      "turns": 18,
+      "costUsd": 0.14255954000000004,
+      "inputTokens": 1714949,
+      "outputTokens": 10778,
+      "wallSeconds": 90,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "robot-leg-hole",
+      "attempt": 1,
+      "pass": true,
+      "passed": 1,
+      "total": 1,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 11,
+      "toolErrors": 1,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_capabilities": 1,
+        "scene_asset_catalog": 1,
+        "scene_create_asset": 1,
+        "scene_inspect": 2,
+        "mesh_inspect": 2,
+        "scene_checkpoint": 1,
+        "mesh_edit": 1,
+        "scene_export_recipe": 1,
+        "scene_dispose": 1
+      },
+      "features": {
+        "geometryTypes": [],
+        "meshOperations": [],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "skipped": "asset recipes have no static silhouette"
+      },
+      "turns": 13,
+      "costUsd": 0.03133839000000001,
+      "inputTokens": 871670,
+      "outputTokens": 4887,
+      "wallSeconds": 63,
+      "exitCode": 0,
+      "stopped": "success"
+    }
+  ]
+}

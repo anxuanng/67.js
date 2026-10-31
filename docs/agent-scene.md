@@ -296,7 +296,7 @@ Commands can add or remove nodes and resources.
 Adding a duplicate ID or removing a missing ID fails.
 Resource removal can precede rebinding or dependent node removal in the same batch.
 The final recipe must contain every resource and parent referenced by surviving nodes.
-Mesh nodes require both geometry and material IDs in the final recipe.
+Mesh nodes require both geometry and material IDs in the final recipe. A node in `scene_create` that names a geometry and leaves out the material gets the material `default` (grey, every field at its default), which is added to `materials` when missing, so the exported recipe names it. `geometries` and `materials` may be left out of a recipe and read as empty; `nodes` is required. A node that names a material without a geometry is rejected: name a geometry or drop the material.
 
 Nonrecursive removal rejects a node that has children at that command's position in the batch.
 Child removal or reparenting must precede nonrecursive parent removal.

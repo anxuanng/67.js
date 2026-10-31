@@ -170,7 +170,7 @@ function identifier(value) {
 
 function resources(values, maximum, label, validate) {
   if (!Array.isArray(values) || values.length > maximum) {
-    throw new RangeError(`${label} exceeds its resource limit or is not an array.`);
+    throw new RangeError(`${label} exceeds its resource limit of ${maximum} or is not an array. Pass "${label}": [] for none, or remove some.`);
   }
   const seen = new Set();
   return values.map(value => {
@@ -273,7 +273,7 @@ function nodeFrom(value) {
   }
   result.rotation = result.rotation.map(component => component / length);
   if ((value.geometry !== undefined) !== (value.material !== undefined)) {
-    throw new TypeError(`Node ${value.id}: set both geometry and material, or neither for a group node.`);
+    throw new TypeError(`Node ${value.id}: set both geometry and material, or neither for a group node. Name a geometry to draw it, or drop material to make it a group.`);
   }
   if (value.geometry !== undefined) {
     identifier(value.geometry);
@@ -577,12 +577,35 @@ function addArmatures(recipe, limits) {
   recipe.nodes = [...derived, ...recipe.nodes];
 }
 
+const DEFAULT_MATERIAL_ID = 'default';
+
+/**
+ * A node that names a geometry and no material gets the material "default" (neutral grey, every field at its default),
+ * added to the recipe when it is missing, so the normalized and exported recipe stays explicit.
+ */
+function withDefaultMaterial(recipe) {
+  const materials = recipe.materials;
+  const nodes = Array.isArray(recipe.nodes) ? recipe.nodes : [];
+  const unpainted = nodes.filter(node => node?.geometry !== undefined && node.material === undefined);
+  if (unpainted.length === 0 || !Array.isArray(materials)) {
+    return materials;
+  }
+  for (const node of unpainted) {
+    node.material = DEFAULT_MATERIAL_ID;
+  }
+  const alreadyDefined = materials.some(material => material?.id === DEFAULT_MATERIAL_ID);
+  return alreadyDefined ? materials : [...materials, { id: DEFAULT_MATERIAL_ID }];
+}
+
 function normalizeRecipe(input, limits) {
   let recipe = copiedJson(input, limits.maxRecipeBytes);
   knownKeys(recipe, ['format', 'schemaVersion', 'geometries', 'materials', 'nodes', 'armatures', 'camera', 'environment', 'effects', 'shadow', 'motion', 'physics', 'cloth', 'timeline', 'particles'], 'recipe');
   if (recipe.format !== '67js.scene' || recipe.schemaVersion !== 1) {
     throw new RangeError('Expected 67js.scene schemaVersion 1.');
   }
+  // A scene with no mesh, or whose nodes all take the default material, has nothing to list: absent means empty.
+  recipe.geometries ??= [];
+  recipe.materials ??= [];
   recipe.geometries = resources(recipe.geometries, limits.maxGeometries, 'geometries', value => {
     geometryEstimate(value);
     const definition = { id: value.id, type: value.type };
@@ -593,7 +616,7 @@ function normalizeRecipe(input, limits) {
     }
     return definition;
   });
-  recipe.materials = resources(recipe.materials, limits.maxMaterials, 'materials', materialFrom);
+  recipe.materials = resources(withDefaultMaterial(recipe), limits.maxMaterials, 'materials', materialFrom);
   const distinctPatterns = new Set(recipe.materials.filter(material => material.pattern).map(material => JSON.stringify(material.pattern)));
   if (distinctPatterns.size > MAX_MATERIAL_PATTERNS) {
     throw new RangeError(`A scene holds at most ${MAX_MATERIAL_PATTERNS} different material patterns; it has ${distinctPatterns.size}. Reuse a pattern and tint it with color.`);
