@@ -9,6 +9,7 @@ const MODULE_LOADERS = {
   text: () => import('./text-geometry.js'),
   motion: () => import('./agent-motion.js'),
   physics: () => import('./agent-physics.js'),
+  cloth: () => import('./agent-cloth.js'),
   patterns: () => import('./material-patterns.js'),
   relations: () => import('./agent-relations.js'),
 };
@@ -25,6 +26,7 @@ const MODULE_MARKERS = {
   text: ['"type":"text"'],
   motion: ['"motion":{'],
   physics: ['"physics":{'],
+  cloth: ['"cloth":{'],
   patterns: ['"pattern"'],
   relations: ['"relations":'],
 };
