@@ -1036,8 +1036,7 @@ export function createAgentScene(input, inputLimits = {}) {
     if (!recipe.physics) {
       return null;
     }
-    const bodyNodes = recipe.nodes.filter(node => recipe.physics.bodies.some(body => body.node === node.id));
-    const key = JSON.stringify([recipe.physics, bodyNodes, bodyNodes.map(node => geometryRecords.get(node.geometry).signature)]);
+    const key = agentSceneModule('physics').physicsBakeKey(recipe, geometryRecords);
     if (physicsBake?.key !== key) {
       const geometries = new Map([...geometryRecords].map(([id, record]) => [id, record.geometry]));
       physicsBake = { key, sampler: agentSceneModule('physics').bakeAgentPhysics(recipe.physics, recipe, geometries) };

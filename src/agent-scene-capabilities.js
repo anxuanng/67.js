@@ -195,7 +195,8 @@ export const AGENT_SCENE_CAPABILITIES = Object.freeze({
     bodyTypes: Object.freeze(['dynamic', 'fixed', 'kinematic']),
     shapes: Object.freeze(['box', 'ball', 'capsule', 'convex', 'trimesh']),
     jointTypes: Object.freeze(['spherical', 'revolute', 'prismatic', 'fixed']),
-    sensors: true, collisionLayers: 16, boneBodies: false,
+    sensors: true, collisionLayers: 16,
+    ragdoll: 'physics.ragdoll {armature}: limp capsule per bone; needs a floor',
     limits: Object.freeze({ maxBodies: 64, maxJoints: 64, maxDuration: 10, framesPerSecond: 60, maxTrimeshTriangles: 20000, maxHullPoints: 2048 }),
   }),
   // Recipe cloth: a position-based solver (no peer dependency) records any root mesh node as a deformable sheet.

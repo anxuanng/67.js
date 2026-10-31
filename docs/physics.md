@@ -385,6 +385,24 @@ Rapier is loaded on demand, an optional peer dependency. The MCP runtime serves 
 `scene_inspect` returns a `physics` report: per body the `finalPosition`, `finalSpeed` and `restsAtTime` (null while moving), the `contacts` between bodies with `firstTime`, `count` and `touchingAtEnd`, and the sensor `enter` and `leave` events with times.
 An agent can check that a ball came to rest on a mesh from these numbers, without a picture.
 
+## Recipe ragdoll
+
+Part of issue #96. A ragdoll binds one physics body to every bone of a rig and writes the simulated result back as the local pose of each bone node, so skinning, export and seeking work as for any other pose.
+
+```json
+{ "physics": { "duration": 4, "bodies": [{ "node": "floor", "type": "fixed" }], "ragdoll": { "armature": "rig" } } }
+```
+
+For a recipe armature, `ragdoll.armature` names it. The optional `density`, `friction`, `restitution` and `layer` (default 1) apply to every bone. An imported asset takes `physics: { duration, floor, gravity, ragdoll }` in its own recipe (`set-physics` edits it); every joint of the asset becomes a bone, `floor` is a world height (default 0) and the character falls from the pose its clip and overrides give at the start.
+
+- Each bone is one capsule from its head to its tail, joined to its parent bone by a spherical joint. Bones never touch each other, so the capsules at a joint do not push apart. The lightest bone weighs a quarter of the longest, because a joint between a very light and a very heavy body blows up the solver.
+- The bake is a table of poses by time, recorded at 60 frames a second for at most 10 seconds and 48 bones. A seek to the same time gives the same bytes, and an unchanged section on an unchanged rig reuses the last bake.
+- Joints have no swing limits, and Rapier has none for a spherical joint. Linear blend skinning inverts where neighbouring joints turn about 180 degrees apart, and the engine refuses such a pose, so a posed bone stays within 120 degrees of its rest pose. In a deep fold the drawn bone can therefore differ from its collider, and a joint can sit below the floor by a fraction of a bone length. The report is read from the colliders.
+- Rigs need uniform scale above the bones (a scale of 100 on an armature node is fine). A bone with no length, more than 48 bones, a bone with a translation or rotation track in the same recipe, or a missing floor body in a scene recipe is refused or falls forever.
+- On an asset, physics wins over motion tracks and `ik` on joints.
+- `scene_inspect` returns `physics.ragdoll`: `bones`, `lowestY`, `highestY`, `fastestFinalSpeed` and `restsAtTime` (null while still moving). Read those instead of a picture.
+- Rapier stays an optional peer. A recipe without `physics` loads none of this code.
+
 ## Recipe cloth
 
 A recipe `cloth` section records deformable sheets with a position-based solver (`src/cloth.js`, `src/agent-cloth.js`). It needs no peer dependency and loads on demand with the `cloth` module, so a scene without cloth pays nothing.

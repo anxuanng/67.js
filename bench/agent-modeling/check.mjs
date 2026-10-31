@@ -142,6 +142,14 @@ function checkOne(check, measures) {
       const pass = target.genus === check.genus && target.closedParts === 1 && target.partCount === 1 && target.lintOk && volumeKept && others.length === 0;
       return { pass, detail: `${check.part}: genus ${target.genus}, ${target.partCount} part(s), lint ${target.lintOk}, ${round(target.volumeRatio)} of the volume kept, other edited parts ${others.join(', ') || 'none'}` };
     }
+    case 'assetRagdoll': {
+      const ragdoll = measures.ragdoll;
+      if (!ragdoll) return { pass: false, detail: 'the recipe has no physics ragdoll' };
+      const liftedAboveFloor = ragdoll.startHeight - ragdoll.floor >= check.minimumDrop;
+      const lyingOnFloor = ragdoll.lowestY <= check.floorTolerance && ragdoll.highestY <= check.maximumHeight;
+      return { pass: liftedAboveFloor && lyingOnFloor && ragdoll.duration >= check.minimumDuration,
+        detail: `root ${ragdoll.startHeight} over floor ${ragdoll.floor}, ${ragdoll.duration} s, ends between y ${ragdoll.lowestY} and ${ragdoll.highestY}` };
+    }
     case 'assetClip': {
       return { pass: measures.clipName === check.name, detail: `clip ${measures.clipName ?? 'none'}` };
     }

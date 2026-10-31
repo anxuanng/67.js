@@ -256,9 +256,14 @@ function measureEditedParts(scene, asset, recipe) {
 }
 
 export async function measureAssetRecipe(recipe) {
-  if (recipe.meshEdits) {
+  if (recipe.meshEdits || recipe.physics) {
     await loadAllAgentSceneModules();
+  }
+  if (recipe.meshEdits) {
     await loadMeshBooleans();
+  }
+  if (needsPhysics(recipe)) {
+    await loadPhysicsEngine();
   }
   const asset = await loadFixtureRobot();
   const scene = createAgentAssetScene(asset, recipe);
@@ -274,6 +279,7 @@ export async function measureAssetRecipe(recipe) {
   return {
     clipName: recipe.animation ? asset.animations[recipe.animation.clip]?.name : null,
     layerPose,
+    ragdoll: recipe.physics?.ragdoll ? { startHeight: recipe.root?.translation?.[1] ?? 0, floor: recipe.physics.floor ?? 0, duration: recipe.physics.duration, ...scene.inspect({}).physics.ragdoll } : null,
     editedParts: measureEditedParts(scene, asset, recipe),
     camera: recipe.camera ?? null,
     reachSolvers: solvers.filter(solver => solver.type === 'two-bone').map(solver => {

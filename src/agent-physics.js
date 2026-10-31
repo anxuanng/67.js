@@ -1,3 +1,6 @@
+import { mat4, vec3 } from 'gl-matrix';
+import { restWorldMatrix, boneTails, boneNodeId } from './rig.js';
+import { createRagdoll, ragdollPatches, ragdollReport } from './ragdoll.js';
 import { bakePhysicsScene, loadPhysicsEngine, physicsEngineLoaded, setPhysicsModuleLoader } from './physics.js';
 
 export { loadPhysicsEngine, physicsEngineLoaded, setPhysicsModuleLoader };
@@ -18,7 +21,8 @@ const SHAPES = ['box', 'ball', 'capsule', 'convex', 'trimesh'];
 const JOINT_TYPES = ['spherical', 'revolute', 'prismatic', 'fixed'];
 const BODY_FIELDS = ['node', 'type', 'shape', 'mass', 'density', 'friction', 'restitution', 'sensor', 'velocity', 'angularVelocity', 'layer', 'collidesWith'];
 const JOINT_FIELDS = ['type', 'bodyA', 'bodyB', 'anchorA', 'anchorB', 'axis', 'limits'];
-const PHYSICS_FIELDS = ['duration', 'gravity', 'bodies', 'joints'];
+const PHYSICS_FIELDS = ['duration', 'gravity', 'bodies', 'joints', 'ragdoll'];
+const RAGDOLL_FIELDS = ['armature', 'density', 'friction', 'restitution', 'layer'];
 
 function knownKeys(value, fields, label) {
   if (!value || Object.getPrototypeOf(value) !== Object.prototype) {
@@ -134,6 +138,44 @@ function normalizeJoint(input, bodyNodeIds) {
   return joint;
 }
 
+function normalizeRagdoll(input, recipe, motionNodeIds) {
+  knownKeys(input, RAGDOLL_FIELDS, 'physics ragdoll');
+  const armature = (recipe.armatures ?? []).find(candidate => candidate.id === input.armature);
+  if (!armature) {
+    throw new RangeError(`Physics ragdoll armature was not found: ${JSON.stringify(String(input.armature).slice(0, 48))}. Add it to the recipe armatures.`);
+  }
+  const ragdoll = { armature: armature.id };
+  if (input.density !== undefined) ragdoll.density = finiteNumber(input.density, 'Ragdoll density', 1e-6, 1e9);
+  if (input.friction !== undefined) ragdoll.friction = finiteNumber(input.friction, 'Ragdoll friction', 0, 100);
+  if (input.restitution !== undefined) ragdoll.restitution = finiteNumber(input.restitution, 'Ragdoll restitution', 0, 1);
+  if (input.layer !== undefined) ragdoll.layer = Math.trunc(finiteNumber(input.layer, 'Ragdoll layer', 0, MAX_LAYER));
+  for (const bone of armature.bones) {
+    if (motionNodeIds.has(boneNodeId(armature, bone.name))) {
+      throw new RangeError(`Bone ${bone.name} has a motion translation or rotation track and a ragdoll. Pick one.`);
+    }
+  }
+  ragdollForRecipe(ragdoll, recipe);
+  return ragdoll;
+}
+
+/** The ragdoll of an armature, placed from the recipe's rest pose. Throws on a bone without length or too many bones. */
+function ragdollForRecipe(ragdoll, recipe) {
+  const armature = recipe.armatures.find(candidate => candidate.id === ragdoll.armature);
+  const nodesById = new Map(recipe.nodes.map(node => [node.id, node]));
+  const armatureWorld = restWorldMatrix(armature.id, nodesById);
+  const tails = boneTails(armature);
+  const bones = armature.bones.map((bone, index) => {
+    const id = boneNodeId(armature, bone.name);
+    return {
+      id, parentId: bone.parent === null ? null : boneNodeId(armature, bone.parent),
+      worldMatrix: restWorldMatrix(id, nodesById), parentWorldMatrix: restWorldMatrix(nodesById.get(id).parent, nodesById),
+      tail: Array.from(vec3.transformMat4(vec3.create(), tails[index], armatureWorld)),
+    };
+  });
+  const { armature: armatureId, ...options } = ragdoll;
+  return createRagdoll(bones, options);
+}
+
 /** Validate a recipe physics section against its nodes. Returns the plain, bounded form stored in the recipe. */
 export function normalizeAgentPhysics(input, recipe) {
   if (input === null || input === undefined) {
@@ -146,11 +188,12 @@ export function normalizeAgentPhysics(input, recipe) {
     .filter(track => track.kind === 'node' && (track.property === 'translation' || track.property === 'rotation'))
     .map(track => track.id));
   const claimedNodes = new Set();
-  const bodies = boundedArray(input.bodies, MAX_BODIES, 'Physics bodies').map(body => normalizeBody(body, recipeNodes, motionNodeIds, claimedNodes));
-  if (!bodies.length) {
+  const bodies = boundedArray(input.bodies ?? [], MAX_BODIES, 'Physics bodies').map(body => normalizeBody(body, recipeNodes, motionNodeIds, claimedNodes));
+  if (!bodies.length && input.ragdoll === undefined) {
     throw new RangeError('Physics needs at least one body. Use null to clear it.');
   }
   const result = { duration, bodies };
+  if (input.ragdoll !== undefined) result.ragdoll = normalizeRagdoll(input.ragdoll, recipe, motionNodeIds);
   if (input.gravity !== undefined) result.gravity = numberList(input.gravity, 3, 'Physics gravity');
   if (input.joints !== undefined) {
     result.joints = boundedArray(input.joints, MAX_JOINTS, 'Physics joints').map(joint => normalizeJoint(joint, claimedNodes));
@@ -222,7 +265,7 @@ function layerBits(layers) {
   return layers.reduce((bits, layer) => bits | (1 << layer), 0);
 }
 
-function physicsDefinition(physics, recipe, geometries) {
+function physicsDefinition(physics, recipe, geometries, ragdoll) {
   const nodes = new Map(recipe.nodes.map(node => [node.id, node]));
   const definition = { bodies: [], colliders: [], joints: [] };
   if (physics.gravity) definition.gravity = physics.gravity;
@@ -247,6 +290,11 @@ function physicsDefinition(physics, recipe, geometries) {
       else collider.density = body.density ?? 1;
     }
     definition.colliders.push(collider);
+  }
+  if (ragdoll) {
+    definition.bodies.push(...ragdoll.definition.bodies);
+    definition.colliders.push(...ragdoll.definition.colliders);
+    definition.joints.push(...ragdoll.definition.joints);
   }
   (physics.joints ?? []).forEach((joint, index) => definition.joints.push({ name: `joint-${index}`, ...joint }));
   return definition;
@@ -296,22 +344,38 @@ function bodyReport(scene, physics) {
   });
 }
 
+/** Identity of a bake: the section, the nodes it moves and the geometry under them. A ragdoll also reads the rig. */
+export function physicsBakeKey(recipe, geometryRecords) {
+  const bodyNodes = recipe.nodes.filter(node => recipe.physics.bodies.some(body => body.node === node.id));
+  const rig = recipe.physics.ragdoll ? [recipe.nodes, recipe.armatures] : null;
+  return JSON.stringify([recipe.physics, bodyNodes, bodyNodes.map(node => geometryRecords.get(node.geometry).signature), rig]);
+}
+
 /**
  * Bake the physics section with Rapier. The solver must already be loaded (see loadPhysicsEngine).
  * The result is a pure function of time: `sample(t)` returns node patches and a seek never replays the solver.
  */
 export function bakeAgentPhysics(physics, recipe, geometries) {
-  const definition = physicsDefinition(physics, recipe, geometries);
+  const ragdoll = physics.ragdoll ? ragdollForRecipe(physics.ragdoll, recipe) : null;
+  const definition = physicsDefinition(physics, recipe, geometries, ragdoll);
   const frameCount = Math.round(physics.duration * FRAMES_PER_SECOND) + 1;
   const scene = bakePhysicsScene(definition, { frameCount, timestep: 1 / FRAMES_PER_SECOND, maxColliderTriangles: MAX_TRIMESH_TRIANGLES, maxHullPoints: MAX_HULL_POINTS });
   const patches = new Map(physics.bodies.map(body => [body.node, { translation: new Float64Array(3), rotation: new Float64Array(4) }]));
+  const ragdollTable = ragdoll ? ragdollPatches(ragdoll) : new Map();
+  for (const [nodeId, patch] of ragdollTable) patches.set(nodeId, patch);
   const pose = new Float32Array(scene.bodyNames.length * 7);
+  const readBodyPose = nodeId => {
+    const offset = scene.bodyIndex(nodeId) * 7;
+    return { translation: pose.subarray(offset, offset + 3), rotation: pose.subarray(offset + 3, offset + 7) };
+  };
   let reportCache = null;
   return Object.freeze({
     duration: physics.duration,
     sample(time) {
       scene.sample(time, pose);
+      ragdoll?.writePatches(readBodyPose, ragdollTable);
       for (const [nodeId, patch] of patches) {
+        if (ragdollTable.has(nodeId)) continue;
         const offset = scene.bodyIndex(nodeId) * 7;
         patch.translation.set(pose.subarray(offset, offset + 3));
         patch.rotation.set(pose.subarray(offset + 3, offset + 7));
@@ -324,8 +388,105 @@ export function bakeAgentPhysics(physics, recipe, geometries) {
         duration: physics.duration, frames: scene.frameCount, gravity: physics.gravity ?? [0, -9.81, 0],
         bodies: bodyReport(scene, physics), ...contactReport(scene, physics),
         eventsTruncated: scene.contactEventsTruncated,
+        ...(ragdoll ? { ragdoll: ragdollReport(ragdoll, scene) } : {}),
       };
       return structuredClone(reportCache);
+    },
+  });
+}
+
+const ASSET_PHYSICS_FIELDS = ['duration', 'gravity', 'floor', 'ragdoll'];
+const FLOOR_HALF_EXTENT = 200;
+const FLOOR_HALF_THICKNESS = 0.5;
+
+/** Validate the physics of an imported asset: a ragdoll of its joints falling onto a floor at a world height. */
+export function normalizeAssetPhysics(input) {
+  knownKeys(input, ASSET_PHYSICS_FIELDS, 'asset physics');
+  const physics = { duration: finiteNumber(input.duration, 'Physics duration', 0.1, MAX_DURATION_SECONDS) };
+  if (input.gravity !== undefined) physics.gravity = numberList(input.gravity, 3, 'Physics gravity');
+  if (input.floor !== undefined) physics.floor = finiteNumber(input.floor, 'Physics floor', -1e6, 1e6);
+  if (input.ragdoll === undefined) {
+    throw new TypeError('Asset physics needs a ragdoll section: it is what moves the asset joints.');
+  }
+  knownKeys(input.ragdoll, RAGDOLL_FIELDS.filter(field => field !== 'armature'), 'physics ragdoll');
+  const ragdoll = {};
+  for (const [field, minimum, maximum] of [['density', 1e-6, 1e9], ['friction', 0, 100], ['restitution', 0, 1]]) {
+    if (input.ragdoll[field] !== undefined) ragdoll[field] = finiteNumber(input.ragdoll[field], `Ragdoll ${field}`, minimum, maximum);
+  }
+  if (input.ragdoll.layer !== undefined) ragdoll.layer = Math.trunc(finiteNumber(input.ragdoll.layer, 'Ragdoll layer', 0, MAX_LAYER));
+  return { ...physics, ragdoll };
+}
+
+function worldMatrixOfNode(node, nodesById, localMatrices, worldMatrices, rootMatrix) {
+  if (worldMatrices.has(node.id)) return worldMatrices.get(node.id);
+  const parentMatrix = node.parent === null ? rootMatrix : worldMatrixOfNode(nodesById.get(node.parent), nodesById, localMatrices, worldMatrices, rootMatrix);
+  const world = mat4.multiply(mat4.create(), parentMatrix, localMatrices.get(node.id));
+  worldMatrices.set(node.id, world);
+  return world;
+}
+
+function nearestJointAncestor(node, nodesById) {
+  let current = node.parent === null ? undefined : nodesById.get(node.parent);
+  while (current && !current.joint) current = current.parent === null ? undefined : nodesById.get(current.parent);
+  return current?.id ?? null;
+}
+
+function assetRagdollBones(nodes, nodePoses, rootMatrix) {
+  const nodesById = new Map(nodes.map(node => [node.id, node]));
+  const localMatrices = new Map(nodePoses.map(pose => [pose.id, mat4.fromRotationTranslationScale(mat4.create(), pose.rotation, pose.translation, pose.scale)]));
+  const worldMatrices = new Map();
+  const joints = nodes.filter(node => node.joint);
+  const lockedJoint = joints.find(node => !node.editable);
+  if (lockedJoint) {
+    throw new RangeError(`Joint ${lockedJoint.id} cannot be edited (mirrored or sheared), so a ragdoll cannot drive it.`);
+  }
+  const depthOf = node => (node.parent === null ? 0 : 1 + depthOf(nodesById.get(node.parent)));
+  const ordered = joints.map(node => ({ node, depth: depthOf(node) })).sort((first, second) => first.depth - second.depth).map(entry => entry.node);
+  const worlds = new Map(ordered.map(node => [node.id, worldMatrixOfNode(node, nodesById, localMatrices, worldMatrices, rootMatrix)]));
+  const skeleton = { bones: ordered.map(node => ({
+    name: node.id, parent: nearestJointAncestor(node, nodesById), head: Array.from(mat4.getTranslation(vec3.create(), worlds.get(node.id))),
+  })) };
+  const tails = boneTails(skeleton);
+  return ordered.map((node, index) => ({
+    id: node.id, parentId: skeleton.bones[index].parent, worldMatrix: worlds.get(node.id), tail: tails[index],
+    parentWorldMatrix: node.parent === null ? rootMatrix : worldMatrixOfNode(nodesById.get(node.parent), nodesById, localMatrices, worldMatrices, rootMatrix),
+  }));
+}
+
+/**
+ * Bake a ragdoll of an imported asset's joints, starting from the pose the asset has now (clip and overrides) and falling
+ * onto a floor at world height `physics.floor`. `nodes` are the asset's source nodes, `nodePoses` their local poses and
+ * `rootMatrix` the asset root. The sampler returns local translation and rotation per joint, a pure function of time.
+ */
+export function bakeAssetRagdoll(physics, nodes, nodePoses, rootMatrix) {
+  const ragdoll = createRagdoll(assetRagdollBones(nodes, nodePoses, rootMatrix), physics.ragdoll);
+  const floorHeight = physics.floor ?? 0;
+  const definition = {
+    bodies: [{ name: 'ragdoll-floor', type: 'fixed', translation: [0, floorHeight - FLOOR_HALF_THICKNESS, 0] }, ...ragdoll.definition.bodies],
+    colliders: [
+      { name: 'ragdoll-floor', body: 'ragdoll-floor', shape: 'cuboid', halfExtents: [FLOOR_HALF_EXTENT, FLOOR_HALF_THICKNESS, FLOOR_HALF_EXTENT] },
+      ...ragdoll.definition.colliders,
+    ],
+    joints: ragdoll.definition.joints,
+    ...(physics.gravity ? { gravity: physics.gravity } : {}),
+  };
+  const frameCount = Math.round(physics.duration * FRAMES_PER_SECOND) + 1;
+  const scene = bakePhysicsScene(definition, { frameCount, timestep: 1 / FRAMES_PER_SECOND, maxColliderTriangles: MAX_TRIMESH_TRIANGLES, maxHullPoints: MAX_HULL_POINTS });
+  const patches = ragdollPatches(ragdoll);
+  const pose = new Float32Array(scene.bodyNames.length * 7);
+  const readBodyPose = nodeId => {
+    const offset = scene.bodyIndex(nodeId) * 7;
+    return { translation: pose.subarray(offset, offset + 3), rotation: pose.subarray(offset + 3, offset + 7) };
+  };
+  return Object.freeze({
+    duration: physics.duration,
+    sample(time) {
+      scene.sample(time, pose);
+      ragdoll.writePatches(readBodyPose, patches);
+      return patches;
+    },
+    report() {
+      return { duration: physics.duration, frames: scene.frameCount, gravity: physics.gravity ?? [0, -9.81, 0], ragdoll: ragdollReport(ragdoll, scene) };
     },
   });
 }

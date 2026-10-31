@@ -519,6 +519,18 @@ recipe is what gets graded.`,
       { kind: 'assetReach', endLabel: 'Palm2.R', from: [-1.3, 2.6, 0.8], to: [-1, 1.7, 1.1] },
     ],
   },
+  {
+    id: 'robot-ragdoll',
+    assets: true,
+    prompt: `The asset catalog holds an imported robot character, about 3 m tall. Create a scene from it with its root lifted so its
+feet start 2 m above the ground plane (world height 0), and make it fall limp: it drops, hits the ground and collapses in a
+heap within 4 seconds, its body lying low on the ground at the end. When it is finished, call scene_export_recipe once: the
+exported recipe is what gets graded.`,
+    ownPreamble: true,
+    checks: [
+      { kind: 'assetRagdoll', minimumDrop: 1.5, minimumDuration: 3, floorTolerance: 0.3, maximumHeight: 1.6 },
+    ],
+  },
   ...KETTLE_TASKS,
   ...DESK_TASKS,
   {

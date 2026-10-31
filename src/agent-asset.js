@@ -32,8 +32,9 @@ export const AGENT_ASSET_CAPABILITIES = Object.freeze({
   format: '67js.asset', schemaVersion: 1, fixedTopology: false,
   operations: Object.freeze([
     'set-camera', 'set-environment', 'set-effects', 'set-shadow',
-    'set-root', 'set-animation', 'set-material', 'set-asset-node', 'set-motion', 'edit-mesh',
+    'set-root', 'set-animation', 'set-material', 'set-asset-node', 'set-motion', 'set-physics', 'edit-mesh',
   ]),
+  ragdoll: 'physics {duration, floor?, ragdoll {}}: joints fall limp onto a floor at world height floor (default 0)',
   boundsKind: 'authored-base-world',
 });
 
@@ -314,6 +315,8 @@ export function createAgentAssetScene(asset, inputRecipe) {
   let matrices = [];
   let revision = 0;
   let sampler = null;
+  let physicsSampler = null;
+  let physicsBake = null;
   let layerEvaluator = null;
   let motionTime = null;
   let sampledCamera;
@@ -409,7 +412,7 @@ export function createAgentAssetScene(asset, inputRecipe) {
 
   function normalize(input) {
     const candidate = copiedJson(input);
-    knownKeys(candidate, ['format', 'schemaVersion', 'assetId', 'camera', ...LOOK_FIELDS, 'root', 'animation', 'materialOverrides', 'nodeOverrides', 'motion', 'meshEdits'], 'asset recipe');
+    knownKeys(candidate, ['format', 'schemaVersion', 'assetId', 'camera', ...LOOK_FIELDS, 'root', 'animation', 'materialOverrides', 'nodeOverrides', 'motion', 'physics', 'meshEdits'], 'asset recipe');
     if (candidate.format !== '67js.asset' || candidate.schemaVersion !== 1 ||
         typeof candidate.assetId !== 'string' || candidate.assetId.toLowerCase() !== canonicalAssetId) {
       throw new RangeError('Expected the bound 67js.asset schemaVersion 1 assetId.');
@@ -479,6 +482,9 @@ export function createAgentAssetScene(asset, inputRecipe) {
       throw new RangeError('Motion ik needs a uniform asset root scale.');
     }
     result.motion = agentMotion.normalizeAgentMotion(candidate.motion, motionRecipe(result));
+    if (candidate.physics !== undefined && candidate.physics !== null) {
+      result.physics = agentSceneModule('physics').normalizeAssetPhysics(candidate.physics);
+    }
     return copiedJson(result);
   }
 
@@ -543,6 +549,25 @@ export function createAgentAssetScene(asset, inputRecipe) {
     return nodeOverrides;
   }
 
+  /** A ragdoll bake costs a solver run, so an unchanged section on an unchanged starting pose reuses the last one. */
+  function stageAssetPhysics(candidate) {
+    if (!candidate.physics) return null;
+    const key = JSON.stringify([candidate.physics, candidate.animation, candidate.nodeOverrides, candidate.root]);
+    if (physicsBake?.key !== key) {
+      const root = candidate.root;
+      const rootMatrix = mat4.fromRotationTranslationScale(mat4.create(), root.rotation, root.translation, root.scale);
+      const startingPoses = stagedNodePoses(candidate.animation, candidate.nodeOverrides);
+      physicsBake = { key, sampler: agentSceneModule('physics').bakeAssetRagdoll(candidate.physics, [...sourceNodes.values()], startingPoses, rootMatrix) };
+    }
+    return physicsBake.sampler;
+  }
+
+  /** Joint poses from the ragdoll at a time. Physics holds its last pose after its duration. */
+  function ragdollOverrides(stagedPhysics, time) {
+    const patches = stagedPhysics.sample(Math.min(time, stagedPhysics.duration));
+    return [...patches].map(([id, patch]) => ({ id, translation: Array.from(patch.translation), rotation: Array.from(patch.rotation) }));
+  }
+
   function publish(input, autoFrame = false, increment = true, transientTime = undefined, transientAnimation = undefined) {
     let candidate = transientTime === undefined ? normalize(input) : recipe;
     if (transientAnimation !== undefined) {
@@ -550,11 +575,12 @@ export function createAgentAssetScene(asset, inputRecipe) {
     }
     let stagedSampler = transientTime === undefined ? agentMotion.compileAgentMotion(candidate.motion, motionRecipe(candidate)) : sampler;
     const stagedLayers = transientTime === undefined ? compileLayers(candidate.motion) : layerEvaluator;
-    const targetTime = transientTime === undefined ? (candidate.motion ? 0 : null) : transientTime;
-    if (targetTime !== null && !stagedSampler) {
-      throw new RangeError('The asset has no authored motion to sample.');
+    const stagedPhysics = transientTime === undefined ? stageAssetPhysics(candidate) : physicsSampler;
+    const targetTime = transientTime === undefined ? (candidate.motion || candidate.physics ? 0 : null) : transientTime;
+    if (targetTime !== null && !stagedSampler && !stagedPhysics) {
+      throw new RangeError('The asset has no authored motion or physics to sample.');
     }
-    let sampled = targetTime === null ? null : stagedSampler.sample(targetTime);
+    let sampled = targetTime === null ? null : stagedSampler?.sample(targetTime);
     if (asset.parts.length !== records.length) {
       throw new RangeError('Decoded part membership must remain fixed.');
     }
@@ -574,6 +600,11 @@ export function createAgentAssetScene(asset, inputRecipe) {
     if (targetTime !== null && stagedSampler?.ikUsesStagedPose) {
       const nodePoses = stagedNodePoses(candidate.animation, [...nodeOverrides.values()]);
       for (const override of stagedSampler.solveStagedPose(targetTime, nodePoses)) {
+        nodeOverrides.set(override.id, { ...nodeOverrides.get(override.id), ...override });
+      }
+    }
+    if (targetTime !== null && stagedPhysics) {
+      for (const override of ragdollOverrides(stagedPhysics, targetTime)) {
         nodeOverrides.set(override.id, { ...nodeOverrides.get(override.id), ...override });
       }
     }
@@ -604,7 +635,7 @@ export function createAgentAssetScene(asset, inputRecipe) {
         candidate.camera = framedCamera(framingBounds(records.map(record => geometryInfoOf(record, stagedEdits)), stagedMatrices));
         candidate = normalize(candidate);
         stagedSampler = agentMotion.compileAgentMotion(candidate.motion, motionRecipe(candidate));
-        sampled = targetTime === null ? null : stagedSampler.sample(targetTime);
+        sampled = targetTime === null ? null : stagedSampler?.sample(targetTime);
       }
       const stagedMaterials = new Map([...materialRecords].map(([id, record]) => [id, { ...record.baseline }]));
       for (const override of candidate.materialOverrides) {
@@ -644,6 +675,7 @@ export function createAgentAssetScene(asset, inputRecipe) {
       if (transientTime === undefined) {
         recipe = candidate;
         sampler = stagedSampler;
+        physicsSampler = stagedPhysics;
         layerEvaluator = stagedLayers;
       }
       materialSnapshots = stagedMaterials;
@@ -776,6 +808,12 @@ export function createAgentAssetScene(asset, inputRecipe) {
             throw new TypeError('set-motion requires a motion record or explicit null.');
           }
           candidate.motion = operation.motion;
+        } else if (operation.type === 'set-physics') {
+          knownKeys(operation, ['type', 'physics'], 'operation');
+          if (!Object.hasOwn(operation, 'physics')) {
+            throw new TypeError('set-physics requires physics; use null to clear it.');
+          }
+          candidate.physics = operation.physics;
         } else if (operation.type === 'set-asset-node') {
           knownKeys(operation, ['type', 'id', ...ROOT_FIELDS], 'operation');
           if (!sourceNodes.has(operation.id)) {
@@ -904,6 +942,7 @@ export function createAgentAssetScene(asset, inputRecipe) {
         counts: { nodes: parts.length, parts: parts.length, geometries: activeGeometries.size, materials: materials.size, vertices },
         geometryBytes, animation: structuredClone(recipe.animation),
         motion: recipe.motion ? { duration: recipe.motion.duration, loop: recipe.motion.loop, tracks: recipe.motion.tracks.length, layers: recipe.motion.layers?.length ?? 0, time: motionTime } : null,
+        physics: physicsSampler ? physicsSampler.report() : null,
         animations: asset.animations.map((clip, index) => ({ id: index, label: String(clip.name ?? `Clip ${index}`).slice(0, 256), duration: clip.duration })),
         nodes, offset, truncated: selected.length > offset + nodes.length,
       };

@@ -1,0 +1,77 @@
+{
+  "run": "2026-10-31-22-07-haiku-run",
+  "model": "claude-haiku-5-5",
+  "date": "2026-10-31T22:10:35.124Z",
+  "skill": false,
+  "runsPerTask": 1,
+  "passed": 0,
+  "tasks": 1,
+  "toolCalls": 20,
+  "costUsd": 0.25,
+  "byModel": {
+    "claude-haiku-5-5": {
+      "runs": 1,
+      "passed": 0,
+      "successRate": 0,
+      "toolCalls": 20,
+      "toolErrors": 3,
+      "inputTokens": 2314153,
+      "outputTokens": 24481,
+      "costUsd": 0.25,
+      "tasks": {
+        "robot-ragdoll": {
+          "runs": 1,
+          "passed": 0,
+          "successRate": 0,
+          "toolCalls": 20,
+          "toolErrors": 3,
+          "inputTokens": 2314153,
+          "outputTokens": 24481,
+          "costUsd": 0.25
+        }
+      }
+    }
+  },
+  "records": [
+    {
+      "task": "robot-ragdoll",
+      "attempt": 1,
+      "pass": false,
+      "passed": 0,
+      "total": 1,
+      "failed": [
+        "assetRagdoll: the recipe has no physics ragdoll"
+      ],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 20,
+      "toolErrors": 3,
+      "toolsByName": {
+        "ToolSearch": 2,
+        "scene_capabilities": 1,
+        "scene_asset_catalog": 1,
+        "scene_create_asset": 1,
+        "scene_inspect": 3,
+        "scene_apply": 6,
+        "scene_look": 2,
+        "scene_review": 5,
+        "scene_export_recipe": 1
+      },
+      "features": {
+        "geometryTypes": [],
+        "meshOperations": [],
+        "motionIk": [],
+        "motionTracks": 1
+      },
+      "look": {
+        "error": "Cannot read properties of undefined (reading 'format')"
+      },
+      "turns": 23,
+      "costUsd": 0.25004268,
+      "inputTokens": 2314153,
+      "outputTokens": 24481,
+      "wallSeconds": 188,
+      "exitCode": 0,
+      "stopped": "success"
+    }
+  ]
+}
