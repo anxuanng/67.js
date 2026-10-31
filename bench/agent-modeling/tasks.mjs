@@ -509,6 +509,18 @@ recipe is what gets graded.`,
   },
   ...KETTLE_TASKS,
   ...DESK_TASKS,
+  {
+    id: 'robot-walk-wave',
+    assets: true,
+    prompt: `The asset catalog holds an imported robot character. Create a scene from it, then give it a 2 second looping motion in
+which it walks and waves at the same time: its legs and body play the Walking clip, and only its right arm (the
+joint labelled UpperArm.R and everything below it) plays the Wave clip instead. Find the clips and joints by inspecting the
+scene. When it is finished, call scene_export_recipe once: the exported recipe is what gets graded.`,
+    ownPreamble: true,
+    checks: [
+      { kind: 'assetWalkAndWave', walk: 'Walking', wave: 'Wave', legs: ['LegL', 'LegR', 'LowerLegL_1', 'LowerLegR_1'], arm: 'ArmR', otherArm: 'ArmL' },
+    ],
+  },
   ...LONG_TASKS,
 ];
 

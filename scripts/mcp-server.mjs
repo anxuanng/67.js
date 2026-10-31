@@ -6,7 +6,7 @@ import { setPriority, constants } from 'node:os';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import packageMetadata from '../package.json' with { type: 'json' };
-import { MATERIAL_PATTERN_TYPES, MATERIAL_MAPPINGS, MATERIAL_GRAPH_OUTPUTS, MATERIAL_GRAPH_OPERATORS, MATERIAL_GRAPH_LIMITS, LIGHTING_SETUP_NAMES } from '../src/agent-scene-capabilities.js';
+import { MATERIAL_PATTERN_TYPES, MATERIAL_MAPPINGS, LIGHTING_SETUP_NAMES, RENDER_PASS_NAMES } from '../src/agent-scene-capabilities.js';
 import { MATERIAL_LAYER_SCALAR_RANGES, MATERIAL_LAYER_COLOR_RANGES } from '../src/material-layers.js';
 
 const finite = z.number().min(-3.4028234663852886e38).max(3.4028234663852886e38);
@@ -36,7 +36,7 @@ const nodeFields = {
   rotation: quaternion.optional().describe('Nonzero local XYZW quaternion. The backend normalizes it.'),
   scale: z.tuple([positive, positive, positive]).optional().describe('Positive local XYZ scale.'),
 };
-const fieldExpression = z.union([finite, z.boolean(), vector3, z.record(z.string(), z.unknown())]).describe('Field expression, plain JSON and never code. A number, a boolean or [x,y,z] is a constant; an object holds one operator: math add mul sub div mod pow min max clamp mix smoothstep neg abs sqrt sin cos floor ceil round fract sign; comparison lt lte gt gte eq; logic and or not if [cond,a,b]; vectors vec [x,y,z] dot cross distance length normalize x y z; sources {"attr":"position"|"normal"|"index"|"tag","component":"x"|"y"|"z","name":tag}, {"noise":{"scale":3,"seed":7,"octaves":1}} in 0..1, {"random":{"seed":1}} per element in 0..1. Example: {"mul":[{"attr":"position","component":"y"},0.5]}. At most 64 nodes, depth 12, 250000 elements.');
+const fieldExpression = z.union([finite, z.boolean(), vector3, z.record(z.string(), z.unknown())]).describe('Field expression, plain JSON and never code; driver expressions use the same language. A number, a boolean or [x,y,z] is a constant; an object holds one operator: math add mul sub div mod pow atan2 min max clamp saturate mix smoothstep neg abs sqrt sin cos floor ceil round fract sign; comparison lt lte gt gte eq; logic and or not if [cond,a,b]; vectors vec [x,y,z] dot cross distance length normalize x y z; sources {"attr":"position"|"normal"|"index"|"tag","component":"x"|"y"|"z","name":tag}, {"noise":{"scale":3,"seed":7,"octaves":1}} in 0..1, {"random":{"seed":1}} per element in 0..1. Example: {"mul":[{"attr":"position","component":"y"},0.5]}. At most 64 nodes, depth 12, 250000 elements.');
 const instanceCount = z.number().int().min(1).max(2048);
 const instanceSpec = z.strictObject({
   grid: z.strictObject({ counts: z.tuple([instanceCount, instanceCount, instanceCount]), spacing: vector3 }).optional().describe('Grid of counts[0] x counts[1] x counts[2] points centred on the group.'),
@@ -49,12 +49,11 @@ const instanceSpec = z.strictObject({
   scale: z.tuple([z.number().min(0.001).max(1000), z.number().min(0.001).max(1000)]).optional().describe('Random uniform scale range [min, max].'),
 }).describe('Exactly one of grid, scatter or surface. Expands at scene_create into a group node plus one child node per point (<id>.0, <id>.1, ...) that share geometry and material and draw as one instanced batch. At most 2048 candidate points.');
 const nodeRecord = z.strictObject({ armature: identifier.optional().describe('Set on nodes an armature generates, and ignored on input. Edit bones through armatures.'), id: identifier, geometry: identifier.optional(), material: identifier.optional(), instances: instanceSpec.optional().describe('Repeat geometry and material at points; needs both ids. Only in the recipe given to scene_create, not in add-node.'), ...nodeFields });
-const graphNode = z.union([finite, vector3, z.record(z.string(), z.unknown())]);
-const materialGraph = z.strictObject(Object.fromEntries(MATERIAL_GRAPH_OUTPUTS.map(output => [output, graphNode.optional()]))).describe(`Node graph, plain JSON and never code or shader text, baked on the CPU into textures. One or more outputs: color (linear RGB; a number is grey), roughness, metallic, emission (colour; needs no emission field, it defaults to 1), height (becomes a normal map: bump gives relief). A node is a number, [x,y,z] or an object with one operator: ${MATERIAL_GRAPH_OPERATORS.join(' ')}. Textures: {"noise":{"scale":8,"seed":1,"octaves":4}}, {"voronoi":{"scale":6,"output":"distance"|"edge"|"cell"}}, {"wave":{"frequency":4,"direction":"u"|"v"|"diagonal","shape":"sine"|"saw"|"triangle"}}, {"checker":{"count":8}}, {"gradient":{"type":"u"|"v"|"radial"}}; each takes "at" (a vector such as {"uv":"both"}) to warp it, scales are whole numbers 1 to 64 so it tiles. {"uv":"u"|"v"|"both"} are the coordinates. {"ramp":{"value":node,"stops":[[0,[r,g,b]],[1,[r,g,b]]]}} maps a number to colours (2 to ${MATERIAL_GRAPH_LIMITS.maxStops} stops). Maths: add sub mul div min max pow take [a,b]; abs floor fract sqrt invert take one node; clamp smoothstep mix take [a,b,c]; {"vec":[r,g,b]}. Numbers combine with vectors per component. At most ${MATERIAL_GRAPH_LIMITS.maxNodes} nodes, depth ${MATERIAL_GRAPH_LIMITS.maxDepth}, and a work limit that wants a smaller resolution for a big graph. Example: {"color":{"ramp":{"value":{"noise":{"scale":8}},"stops":[[0,[0.1,0.05,0.02]],[1,[0.6,0.4,0.2]]]}},"height":{"noise":{"scale":8}}}`);
+const materialGraph = z.record(z.string(), z.unknown()).describe('Node graph as plain JSON, never code. Outputs, nodes, inputs and limits are in scene_capabilities materialGraph.');
 const materialPattern = z.strictObject({
   type: z.enum([...MATERIAL_PATTERN_TYPES, 'graph']).describe('Surface look: a preset, or graph for your own node graph (give graph). Directional presets (wood, planks, metal) run along axis.'),
   graph: materialGraph.optional().describe('Only with type graph.'),
-  mapping: z.enum(MATERIAL_MAPPINGS).optional().describe('box (default) projects along the object axes and needs no UVs; uv follows the geometry UVs, so the mesh needs a uv_unwrap node or geometry.uvs. size and axis only apply to box.'),
+  mapping: z.enum(MATERIAL_MAPPINGS).optional().describe('box (default) or uv, which needs UVs; see scene_capabilities.'),
   colors: z.array(color).min(2).max(3).optional().describe('Linear RGB colours to mix, darker first. Bricks take a third for the mortar. Each type has good defaults.'),
   size: z.number().min(0.01).max(100).optional().describe('Metres per repeat of the texture, so it keeps its real size on any object and node scale.'),
   count: z.number().int().min(1).max(64).optional().describe('Features per repeat: planks, bricks across, tiles across, wood rings or noise cells.'),
@@ -195,6 +194,8 @@ const effects = z.strictObject({
     threshold: bounded(0, 10).optional(),
     radius: bounded(0.1, 4).optional(),
   }).optional(),
+  depthOfField: z.strictObject({ blur: unit.optional(), focusDistance: bounded(0.01, 100000).optional() }).optional().describe('Lens blur: blur 0 to 1, focusDistance metres.'),
+  motionBlur: z.strictObject({ shutter: bounded(0, 0.5).optional() }).optional().describe('Camera motion smear, shutter in seconds.'),
 });
 const shadow = z.strictObject({
   target: boundedVector(-1e6, 1e6).optional(),
@@ -352,8 +353,8 @@ const expression = z.lazy(() => z.union([
   z.number().min(-1e6).max(1e6),
   z.literal('time'),
   z.strictObject({ node: identifier, property: z.enum(['translation', 'rotation', 'scale']), component: axisName, space: z.enum(['local', 'world']).optional() }),
-  z.record(z.string().max(24), z.array(expression).min(1).max(8)),
-])).describe('Number, "time", {"node","property","component","space"} read, or one operator such as {"mul":[2,"time"]}. Operators: add mul min max sub div pow mod atan2 gt lt neg abs sin cos sqrt floor fract saturate clamp mix smoothstep if. At most 64 parts, 8 deep.');
+  z.record(z.string().max(24), z.union([z.array(expression).min(1).max(8), expression])),
+])).describe('Number, "time", {"node","property","component","space"} read, or an operator like {"mul":[2,"time"]}, {"neg":x} too. Operators as in field expressions (scene_capabilities), no vectors, attributes or noise. At most 64 parts, 8 deep.');
 const influence = z.union([unit, expression]).optional().describe('0 to 1 blend of the constraint, or an expression.');
 const constraint = z.discriminatedUnion('type', [
   z.strictObject({ type: z.literal('copy_location'), node: identifier, target: identifier, axes: axisNames.optional(), invert: axisNames.optional(), offset: z.boolean().optional(), space: constraintSpace, influence }),
@@ -446,7 +447,7 @@ const physics = z.strictObject({
 }).describe('Rigid-body physics recorded offline with Rapier at 60 steps a second, then played back by time like motion: scene_look and scene_review motionTime seek into the recording, so a seek back shows the identical frame. Bodies are recipe nodes; scene_inspect reports contacts, sensor events and resting state as numbers. Needs the optional peer dependency @dimforge/rapier3d-compat. A node cannot have a physics body and a motion translation or rotation track.');
 // The full motion schema (tracks, ik, constraints, drivers) is in scene_create's recipe. scene_apply and asset recipes
 // take the same object, validated by the backend, without repeating about 35 KB of schema in each tool.
-const recipeMotionReference = z.record(z.string(), z.unknown()).describe('The same object as recipe.motion in scene_create: duration, loop, tracks, ik, constraints, drivers. Read that tool for the fields.');
+const recipeMotionReference = z.record(z.string(), z.unknown()).describe('The same object as recipe.motion in scene_create: duration, loop, tracks, ik, constraints, drivers. Read that tool for the fields. On an imported asset it also takes layers, up to 8 clips played at motion time before tracks and ik: { clip (scene_inspect animations id), mask: { joints, descendants, exclude } of node IDs, weight, speed, offset, loop, additive, reference, bones: { clip node: asset node } to retarget by name, morph }. A masked layer waves while another walks.');
 const boneRecord = z.strictObject({
   name: z.string().min(1).max(64).describe('Unique within the armature. Humanoid rigs use the canonical names (hips, spine, chest, neck, head, leftUpperArm, leftLowerArm, leftHand, leftUpperLeg, leftLowerLeg, leftFoot, leftToes, and right...) so retarget works.'),
   parent: z.string().min(1).max(64).nullable().optional().describe('Parent bone name, or null for a root bone.'),
@@ -533,6 +534,7 @@ const renderSettings = z.strictObject({
   animation: z.strictObject({ clip: z.number().int().min(0), start: z.number().min(0).max(3600).optional() }).optional(),
   motion: z.strictObject({ start: z.number().min(0).max(3600).optional() }).optional(),
   rendererTime: z.strictObject({ start: z.number().min(0).max(3600).optional(), rate: z.number().min(-16).max(16).optional() }).optional(),
+  passes: z.array(z.enum(RENDER_PASS_NAMES)).min(1).max(RENDER_PASS_NAMES.length).optional().describe('image and stills only: also write raw PNGs per frame for these passes; opaque geometry only.'),
 }).describe('Immutable snapshot render: one PNG, eight evenly spaced PNGs, or CPU H.264 MP4. Video dimensions must be even. Defaults: 24 fps, one second. Use motion.start for authored recipe tracks, animation for an imported clip, or both to layer them. Omitted motion holds time zero. Nonlooping samples must fit the authored duration.');
 const readOnly = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false };
 const edit = { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false };

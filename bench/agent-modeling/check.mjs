@@ -137,6 +137,22 @@ function checkOne(check, measures) {
     case 'assetClip': {
       return { pass: measures.clipName === check.name, detail: `clip ${measures.clipName ?? 'none'}` };
     }
+    case 'assetWalkAndWave': {
+      const pose = measures.layerPose;
+      if (!pose) return { pass: false, detail: 'no motion layers in the recipe' };
+      const walking = pose.alone[check.walk];
+      const waving = pose.alone[check.wave];
+      if (!walking || !waving) return { pass: false, detail: `layers play ${pose.clipNames.join(', ')}; need ${check.walk} and ${check.wave}` };
+      const distance = (first, second) => Math.max(...first.map((value, index) => Math.abs(value - second[index])));
+      const legsFollowWalk = pose.combined.every((sample, time) => check.legs.every(part => distance(sample[part], walking[time][part]) < 1e-3));
+      const legsMove = check.legs.every(part => distance(pose.combined[0][part], pose.combined[1][part]) > 0.1);
+      const armLeavesWalk = pose.combined.some((sample, time) => distance(sample[check.arm], walking[time][check.arm]) > 1);
+      const otherArmWalks = pose.combined.every((sample, time) => distance(sample[check.otherArm], walking[time][check.otherArm]) < 1e-3);
+      return {
+        pass: legsFollowWalk && legsMove && armLeavesWalk && otherArmWalks,
+        detail: `legs follow ${check.walk} ${legsFollowWalk}, legs move ${legsMove}, ${check.arm} waves ${armLeavesWalk}, ${check.otherArm} keeps walking ${otherArmWalks}`,
+      };
+    }
     case 'assetReach': {
       const solver = measures.reachSolvers.find(candidate => candidate.endLabel === check.endLabel);
       if (!solver) return { pass: false, detail: `no two-bone solver ending at ${check.endLabel}` };

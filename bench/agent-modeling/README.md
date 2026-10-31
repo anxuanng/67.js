@@ -186,3 +186,7 @@ What this does and does not show:
 
 The suite now finds tool friction and tracks cost, but does not measure how good an object looks. Tasks with free form,
 such as organic shapes or a look to match, would need a score for appearance before they could test more.
+
+## Clip layers (2026-10-31)
+
+`robot-walk-wave` asks for a character that walks and waves at once through `motion.layers`. The check `assetWalkAndWave` reloads the exported recipe, plays each layer alone (keeping its own speed, offset and loop) and compares part matrices at two times: the legs must match Walking and move, the right arm must leave Walking, the left arm must keep walking. Cold Sonnet, no skill, `results/2026-10-31-11-40-sonnet-walk-wave-cold-fixed-grader.json`: 1 of 1, 7 tool calls (2 errors), $0.31. A first run, with a check that compared against Walking at speed 1 only, failed on a recipe the agent had correct (it set per-layer speeds); the check was fixed and that recipe grades as a pass. One run is not a rate.

@@ -72,6 +72,8 @@ function previewHarness() {
     parseGltf, Uint8Array, atob,
     applyProjection, mat4, resolveAgentShadow, agentEnvironmentMap, BRANCH_LIMITS, createBranchStore, printableLabel,
     Renderer67: FaultInjectedRenderer,
+    // The optional addons only plug stages into a real renderer; the fault-injected one needs none.
+    installCameraEffects: renderer => renderer, installRenderPasses: renderer => renderer,
   });
   // Evaluate only trusted repository adapter code; inject the driver boundary for failure cases.
   new Script(source).runInContext(context);

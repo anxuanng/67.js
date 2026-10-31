@@ -1,5 +1,7 @@
 import { createAgentScene, loadAllAgentSceneModules, allAgentSceneModulesLoaded, needsMeshBooleans, loadMeshBooleans, meshBooleansLoaded, setManifoldModuleLoader, needsPhysics, loadPhysicsEngine, physicsEngineLoaded, setPhysicsModuleLoader } from '../src/agent-scene.js';
 import { Renderer67 } from '../src/renderer.js';
+import { installCameraEffects } from '../src/camera-effects.js';
+import { installRenderPasses } from '../src/render-passes.js';
 import { applyProjection } from '../src/camera.js';
 import { mat4 } from 'gl-matrix';
 import { resolveAgentShadow, agentEnvironmentMap } from '../src/agent-look.js';
@@ -79,7 +81,7 @@ function rebuildRenderer(record) {
   record.shadowKey = null;
 }
 
-function draw(record, time = 0, camera = record.scene.camera) {
+function draw(record, time = 0, camera = record.scene.camera, frameOptions = {}) {
   if (!record.renderer) throw new Error('The scene renderer is leased to a render job.');
   if (record.renderer.context.isContextLost()) {
     throw new Error('The render context was lost. Export the recipe and dispose this session.');
@@ -109,7 +111,7 @@ function draw(record, time = 0, camera = record.scene.camera) {
     record.shadowKey = shadowKey;
   }
   record.renderer.world = environment.world;
-  record.renderer.render({ ...camera, environment: { ...environment, map: agentEnvironmentMap(environment) }, effects, exposure: effects.exposure, time });
+  record.renderer.render({ ...camera, environment: { ...environment, map: agentEnvironmentMap(environment) }, effects, exposure: effects.exposure, time, ...frameOptions });
   const error = record.renderer.context.getError();
   if (error !== 0) {
     throw new Error(`WebGL render failed with error ${error}.`);
@@ -165,7 +167,7 @@ function resetCanvas() {
 }
 
 function initializeRenderer(scene, { memoryBudgetMiB, backend }) {
-  return new Renderer67(canvas, scene.parts, {
+  return installRenderPasses(installCameraEffects(new Renderer67(canvas, scene.parts, {
     ground: false,
     hdr: true,
     depth: true,
@@ -175,7 +177,17 @@ function initializeRenderer(scene, { memoryBudgetMiB, backend }) {
     pixelRatio: 1,
     samples: backend === 'cpu' ? 1 : 4,
     memoryBudgetMiB,
-  });
+  })));
+}
+
+// The camera at the start of the shutter interval, sampled from time so the same seek always gives the same blur.
+function previousCameraFor(record, motionTime) {
+  const shutter = record.scene.effects.motionBlur.shutter;
+  if (shutter <= 0 || motionTime === undefined || record.asset) return undefined;
+  record.scene.sampleMotion(Math.max(0, motionTime - shutter));
+  const previousCamera = record.scene.camera;
+  record.scene.sampleMotion(motionTime);
+  return previousCamera;
 }
 
 function createPreview(scene, { sessionId, memoryBudgetMiB, backend }, asset) {
@@ -411,7 +423,8 @@ window.__agentPreview = {
       throw error;
     }
   },
-  frame({ sessionId, animation, motionTime, rendererTime = 0 }) {
+  // `pass` draws one render pass instead of the lit image. Object ID frames also list the part behind each ID.
+  frame({ sessionId, animation, motionTime, rendererTime = 0, pass, passDepthRange }) {
     const record = requireSession(sessionId);
     if (!Number.isFinite(rendererTime) || rendererTime < 0 || rendererTime > 3600) throw new RangeError('Invalid render time.');
     if (record.asset && (animation !== undefined || motionTime !== undefined)) {
@@ -420,8 +433,10 @@ window.__agentPreview = {
     } else if (motionTime !== undefined) {
       record.scene.sampleMotion(motionTime);
     }
-    draw(record, rendererTime);
-    return renderInfo(record.renderer);
+    const previousCamera = pass ? undefined : previousCameraFor(record, motionTime);
+    draw(record, rendererTime, undefined, { pass, passDepthRange, previousCamera });
+    const info = renderInfo(record.renderer);
+    return pass === 'objectId' ? { ...info, objectNames: record.renderer.passSupport.objectNames() } : info;
   },
   create(input) {
     if (active) throw new Error('Dispose the current scene before creating another.');
