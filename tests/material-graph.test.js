@@ -234,3 +234,16 @@ test('the same graph shares one baked texture set across materials', () => {
   assert.equal(materialPatternTextures(pattern), materialPatternTextures(pattern));
   assert.ok(checkerboardSum(materialPatternTextures(pattern).map.image) > 0);
 });
+
+test('graph errors name the valid options, and scene_capabilities lists the nodes an agent can use', () => {
+  assert.throws(() => compileMaterialGraph({ color: { glow: 1 } }), /unknown operator "glow"\. Use one of uv, vec, ramp/);
+  assert.throws(() => compileMaterialGraph({ shine: 1 }), /color, roughness, metallic, emission, height/);
+  assert.throws(() => compileMaterialGraph({ color: { noise: { size: 4 } } }), /does not take "size"; fields: /);
+  assert.throws(() => compileMaterialGraph({ color: { wave: { frequency: 4, shape: 'square' } } }), /must be one of sine, saw, triangle/);
+  const { nodes } = AGENT_SCENE_CAPABILITIES.materialGraph;
+  assert.ok(nodes.textures.noise.includes('"noise"'));
+  const documented = JSON.stringify(nodes);
+  for (const operator of MATERIAL_GRAPH_OPERATORS) {
+    assert.ok(documented.includes(operator), `${operator} is documented in scene_capabilities`);
+  }
+});
