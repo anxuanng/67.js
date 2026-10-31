@@ -11,6 +11,7 @@ from mathutils import Vector
 
 FIXTURE_DIRECTORY = Path(__file__).resolve().parent.parent / "tests" / "fixtures" / "blender"
 DEFAULT_MAX_ANGLE = 10
+UNLIMITED_SIDES = 4096
 ANGLE_EPSILON = 1e-9
 CREASE_TO_SHARPNESS = 10
 
@@ -50,7 +51,27 @@ def selected_faces(bm, rule):
     raise ValueError(f"Unsupported face rule: {rule}")
 
 
+def selected_vertices(bm, rule):
+    if "vertices" in rule:
+        return [bm.verts[index] for index in rule["vertices"]]
+    if "valence" in rule:
+        return [vertex for vertex in bm.verts if len(vertex.link_edges) == rule["valence"]]
+    if rule.get("all"):
+        return list(bm.verts)
+    raise ValueError(f"Unsupported vertex rule: {rule}")
+
+
+def edge_midpoint_inside(edge, box):
+    if box is None:
+        return True
+    middle = (edge.verts[0].co + edge.verts[1].co) / 2
+    return all(box["min"][axis] - 1e-6 <= middle[axis] <= box["max"][axis] + 1e-6 for axis in range(3))
+
+
 def selected_edges(bm, rule):
+    if "open" in rule:
+        box = None if rule["open"] is True else rule["open"]["inside"]
+        return [edge for edge in bm.edges if len(edge.link_faces) == 1 and edge_midpoint_inside(edge, box)]
     if rule.get("all"):
         return [edge for edge in bm.edges if len(edge.link_faces) == 2]
     if "along" in rule:
@@ -166,6 +187,77 @@ def loop_cut(bm, edit):
     bmesh.ops.subdivide_edges(bm, edges=edges, cuts=cuts, use_grid_fill=True, edge_percents=edge_percents)
 
 
+def fill_holes(bm, edit):
+    boundary = [edge for edge in bm.edges if edge.is_boundary]
+    bmesh.ops.holes_fill(bm, edges=boundary, sides=edit.get("sides", UNLIMITED_SIDES))
+
+
+def dissolve_faces(bm, edit):
+    bmesh.ops.dissolve_faces(bm, faces=selected_faces(bm, edit["select"]), use_verts=False)
+
+
+def dissolve_edges(bm, edit):
+    bmesh.ops.dissolve_edges(bm, edges=selected_edges(bm, edit["edges"]), use_verts=False, use_face_split=False)
+
+
+def dissolve_verts(bm, edit):
+    bmesh.ops.dissolve_verts(bm, verts=selected_vertices(bm, edit["verts"]), use_face_split=False, use_boundary_tear=False)
+
+
+def dissolve_limited(bm, edit):
+    bmesh.ops.dissolve_limit(
+        bm,
+        angle_limit=radians(edit.get("angle", 5)),
+        use_dissolve_boundaries=False,
+        verts=list(bm.verts),
+        edges=list(bm.edges),
+    )
+
+
+def bisect_plane(bm, edit):
+    geometry = list(bm.verts) + list(bm.edges) + list(bm.faces)
+    result = bmesh.ops.bisect_plane(
+        bm,
+        geom=geometry,
+        dist=edit.get("distance", 1e-4),
+        plane_co=edit["point"],
+        plane_no=edit["normal"],
+        clear_inner=edit.get("clearInner", False),
+        clear_outer=edit.get("clearOuter", False),
+    )
+    if edit.get("fill"):
+        cut = [element for element in result["geom_cut"] if isinstance(element, bmesh.types.BMEdge) and element.is_boundary]
+        bmesh.ops.holes_fill(bm, edges=cut, sides=UNLIMITED_SIDES)
+
+
+def bridge_edge_loops(bm, edit):
+    result = bmesh.ops.bridge_loops(
+        bm,
+        edges=selected_edges(bm, edit["edges"]),
+        use_pairs=False,
+        use_cyclic=False,
+        use_merge=False,
+        merge_factor=0.5,
+        twist_offset=edit.get("twistOffset", 0),
+    )
+    segments = edit.get("segments", 1)
+    if segments > 1:
+        bmesh.ops.subdivide_edges(bm, edges=result["edges"], cuts=segments - 1, use_grid_fill=True)
+
+
+def subdivide_edges(bm, edit):
+    bmesh.ops.subdivide_edges(bm, edges=selected_edges(bm, edit["edges"]), cuts=edit["cuts"], use_grid_fill=True)
+
+
+# Blender's knife project needs a viewport, so a straight cut is compared with the plane through the line that holds
+# the projection direction. It agrees where the line spans the whole mesh.
+def knife_project(bm, edit):
+    start = Vector(edit["path"][0])
+    end = Vector(edit["path"][1])
+    normal = (end - start).cross(Vector(edit["direction"])).normalized()
+    bisect_plane(bm, {"point": list(start), "normal": list(normal)})
+
+
 BMESH_OPERATIONS = {
     "extrude_face_region": extrude_face_region,
     "extrude_individual": extrude_individual,
@@ -173,6 +265,15 @@ BMESH_OPERATIONS = {
     "inset_individual": inset_individual,
     "bevel": bevel,
     "loop_cut": loop_cut,
+    "fill_holes": fill_holes,
+    "dissolve_faces": dissolve_faces,
+    "dissolve_edges": dissolve_edges,
+    "dissolve_verts": dissolve_verts,
+    "dissolve_limited": dissolve_limited,
+    "bisect_plane": bisect_plane,
+    "bridge_edge_loops": bridge_edge_loops,
+    "subdivide_edges": subdivide_edges,
+    "knife_project": knife_project,
 }
 
 
@@ -256,6 +357,28 @@ def run_bmesh_case(case, inputs):
     return bm
 
 
+# bmesh.ops.grid_fill returns nothing in background mode, so the Fill > Grid Fill operator runs in edit mode instead.
+def run_operator_case(case, inputs):
+    mesh_object = new_object("Input", inputs[case["input"]])
+    bpy.context.view_layer.objects.active = mesh_object
+    mesh_object.select_set(True)
+    bpy.ops.object.mode_set(mode="EDIT")
+    bpy.ops.mesh.select_all(action="DESELECT")
+    edit_bm = bmesh.from_edit_mesh(mesh_object.data)
+    refresh(edit_bm)
+    loop_edges = selected_edges(edit_bm, case["edit"]["edges"])
+    for edge in loop_edges:
+        edge.select_set(True)
+    edit_bm.select_flush_mode()
+    bmesh.update_edit_mesh(mesh_object.data)
+    bpy.ops.mesh.fill_grid(span=len(loop_edges) // 4, offset=0, use_interp_simple=False)
+    bpy.ops.object.mode_set(mode="OBJECT")
+    bm = bmesh.new()
+    bm.from_mesh(mesh_object.data)
+    refresh(bm)
+    return bm
+
+
 def run_modifier_case(case, inputs):
     mesh_object = new_object("Input", inputs[case["input"]])
     MODIFIERS[case["edit"]["op"]](mesh_object, case["edit"], inputs)
@@ -314,6 +437,8 @@ def main():
         remove_all_objects()
         operation = case["edit"]["op"]
         runner = run_bmesh_case if operation in BMESH_OPERATIONS else run_modifier_case
+        if operation == "grid_fill":
+            runner = run_operator_case
         bm = runner(case, fixture["inputs"])
         results[case["id"]] = measure(bm)
         bm.free()

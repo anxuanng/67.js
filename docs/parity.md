@@ -44,7 +44,7 @@ To move to a new Blender release, run `node scripts/parity-manual-snapshot.mjs`.
 | Modeling > Meshes > Primitives | partial | Box, cylinder, sphere and torus. There is no plane, grid, cone, ico sphere or monkey primitive. | | |
 | Modeling > Meshes > Tools | partial | The operations behind extrude and loop cut exist as edits. Spin is covered only by `lathe`. | | #41 |
 | Modeling > Meshes > Selecting | partial | Rules: all, tag, normal, inside, faces, and, or, not, grow, boundary. There is no loop, linked, similar or sharp edge selection. | | #41 |
-| Modeling > Meshes > Editing | partial | 16 edits, including extrude, inset, bevel, loop cut, boolean and merge. There is no bisect, knife, bridge, fill or dissolve. | [Blender results](../tests/fixtures/blender/golden.json) | #41 |
+| Modeling > Meshes > Editing | partial | 26 edits, including extrude, inset, bevel, loop cut, boolean, merge, bisect, bridge, fill, grid fill, dissolve, edge subdivision and a knife by projected polyline. All but the knife match Blender on fixtures; the knife is compared only with a straight plane cut. | [Blender results](../tests/fixtures/blender/golden.json) | #41 |
 | Modeling > Meshes > Properties | partial | `smoothAngle` and face tags. There is no sharp edge attribute or crease. | | #39 |
 | Modeling > Meshes > UVs | partial | `uv_unwrap` with LSCM, axis charts and shelf packing. Patterns can not use the result yet. | | #50 |
 | Modeling > Meshes > Mesh Analysis | partial | `lintMesh` reports topology problems. There is no check for thin walls or intersections. | | #66 |
