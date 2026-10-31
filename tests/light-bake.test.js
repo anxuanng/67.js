@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { box } from '../src/geometry.js';
+import { exportGlb } from '../src/export.js';
 import { BAKE_LIMITS, MAX_BAKE_POINT_LIGHTS, bakeLightmaps, normalizeBakeOptions } from '../src/light-bake.js';
 
 const cube = box(0, 1);
@@ -69,12 +70,58 @@ test('light reaches a surface the lamp cannot see, and a dark scene bakes nothin
 
 test('parts that cannot take a lightmap are skipped with a reason and still block light', () => {
   const parts = smallRoom();
-  parts.push(placed('painted', [1, 0.5, 1], [0.5, 1, 0.5], { map: { image: { width: 1, height: 1, data: new Uint8ClampedArray(4) }, colorSpace: 'srgb' } }));
-  parts.push(placed('lamp-shade', [0, 2, 1], [0.2, 0.2, 0.2], { emission: 2 }));
+  parts.push(placed('glass', [1, 0.5, 1], [0.5, 1, 0.5], { alphaMode: 'blend', opacity: 0.4 }));
+  parts.push(placed('lava', [0, 2, 1], [0.2, 0.2, 0.2], { tag: 'fire' }));
   const { parts: baked, report } = bakeLightmaps(parts, lamp, fastOptions);
-  assert.deepEqual(report.skipped.map(entry => entry.name), ['painted', 'lamp-shade']);
+  assert.deepEqual(report.skipped.map(entry => entry.name), ['glass', 'lava']);
   assert.equal(baked[7], parts[7]);
   assert.equal(baked[8], parts[8]);
+});
+
+test('a textured part keeps its map and UV channel 0 and receives light through a second UV set', () => {
+  const mapImage = { width: 2, height: 2, data: new Uint8ClampedArray([200, 60, 40, 255, 220, 90, 60, 255, 190, 70, 50, 255, 210, 80, 50, 255]) };
+  const brickMap = { image: mapImage, colorSpace: 'srgb' };
+  const parts = smallRoom();
+  const cubeUvs = new Float32Array(cube.positions.length / 3 * 2);
+  for (let vertex = 0; vertex < cube.positions.length / 3; vertex++) {
+    cubeUvs[vertex * 2] = cube.positions[vertex * 3] + 0.5;
+    cubeUvs[vertex * 2 + 1] = cube.positions[vertex * 3 + 1] + 0.5;
+  }
+  const texturedCube = { ...cube, uvs: cubeUvs };
+  parts.push({ ...placed('wall', [1.5, 1, 1.5], [1, 2, 1], { map: brickMap }), geometry: texturedCube });
+  const { parts: baked, report } = bakeLightmaps(parts, lamp, { ...fastOptions, samples: 16 });
+  const wall = baked[7];
+  assert.equal(report.skipped.length, 0);
+  assert.equal(wall.material.map, brickMap);
+  assert.equal(wall.material.emissiveMap, undefined);
+  assert.equal(wall.material.emission, 0);
+  assert.equal(wall.material.lightMap.colorSpace, 'srgb');
+  assert.ok(wall.material.lightMapScale > 0);
+  const vertexCount = wall.geometry.positions.length / 3;
+  assert.equal(wall.geometry.lightUvs.length, vertexCount * 2);
+  assert.equal(wall.geometry.uvs.length, vertexCount * 2);
+  const sourceUvs = new Set();
+  for (let index = 0; index < cubeUvs.length; index += 2) sourceUvs.add(`${cubeUvs[index]},${cubeUvs[index + 1]}`);
+  for (let index = 0; index < wall.geometry.uvs.length; index += 2) assert.ok(sourceUvs.has(`${wall.geometry.uvs[index]},${wall.geometry.uvs[index + 1]}`));
+  const again = bakeLightmaps(parts, lamp, { ...fastOptions, samples: 16 }).parts[7];
+  assert.deepEqual(Array.from(again.material.lightMap.image.data), Array.from(wall.material.lightMap.image.data));
+});
+
+test('an emitting part is baked through the light map slot and still lights the others', () => {
+  const parts = smallRoom();
+  parts.push(placed('lamp-shade', [-1.5, 2, 1], [0.2, 0.2, 0.2], { emission: 2 }));
+  const { parts: baked, report } = bakeLightmaps(parts, lamp, fastOptions);
+  assert.equal(report.skipped.length, 0);
+  assert.equal(baked[7].material.emission, 2);
+  assert.ok(baked[7].material.lightMap);
+});
+
+test('a part marked as generating its own geometry is skipped', () => {
+  const parts = smallRoom();
+  parts[0] = { ...parts[0], generatesGeometry: true };
+  const { parts: baked, report } = bakeLightmaps(parts, lamp, fastOptions);
+  assert.deepEqual(report.skipped.map(entry => entry.name), ['floor']);
+  assert.equal(baked[0], parts[0]);
 });
 
 test('options are validated with their bounds', () => {
@@ -121,6 +168,22 @@ test('hostile parts and lights are refused before any ray is traced', () => {
 test('a bake that would trace too many rays is refused up front', () => {
   const heavy = { samples: BAKE_LIMITS.samples.maximum, bounces: BAKE_LIMITS.bounces.maximum, texelsPerUnit: BAKE_LIMITS.texelsPerUnit.maximum, maxResolution: BAKE_LIMITS.maxResolution.maximum };
   assert.throws(() => bakeLightmaps(smallRoom(), lamp, heavy), /limit is/);
+});
+
+test('a light mapped part exports its second UV set as TEXCOORD_1 and its light map as the emissive texture', () => {
+  const parts = smallRoom();
+  const mapImage = { width: 2, height: 2, data: new Uint8ClampedArray(16).fill(180) };
+  const withMap = placed('wall', [1.5, 1, 1.5], [1, 2, 1], { map: { image: mapImage, colorSpace: 'srgb' } });
+  parts.push({ ...withMap, geometry: { ...cube, uvs: new Float32Array(cube.positions.length / 3 * 2) } });
+  const baked = bakeLightmaps(parts, lamp, fastOptions).parts;
+  const view = new DataView(exportGlb(baked));
+  const json = JSON.parse(new TextDecoder().decode(new Uint8Array(view.buffer, 20, view.getUint32(12, true))));
+  const lightMapped = json.meshes.find((mesh, index) => json.nodes.some(node => node.mesh === index && node.name === 'wall'));
+  assert.ok(lightMapped.primitives[0].attributes.TEXCOORD_1 !== undefined);
+  assert.ok(lightMapped.primitives[0].attributes.TEXCOORD_0 !== undefined);
+  const material = json.materials[lightMapped.primitives[0].material];
+  assert.equal(material.emissiveTexture.texCoord, 1);
+  assert.ok(material.pbrMetallicRoughness.baseColorTexture);
 });
 
 test('a bake that runs out of time throws instead of returning a partial result', () => {

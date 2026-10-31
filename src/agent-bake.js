@@ -6,7 +6,7 @@ import { BAKE_PRESETS, BAKE_RANGES, BAKE_MAXIMUM_SECONDS } from './agent-scene-c
 // without a bake never download the ray tracer.
 
 const BAKE_FIELDS = ['preset', 'samples', 'bounces', 'texelsPerUnit'];
-const BAKED_MATERIAL_FIELDS = ['emission', 'emissiveColor', 'emissiveMap'];
+const BAKED_MATERIAL_FIELDS = ['emission', 'emissiveColor', 'emissiveMap', 'lightMap', 'lightMapScale'];
 
 /** Validates a recipe bake section and returns the plain, resolved form stored in the recipe (null clears it). */
 export function normalizeAgentBake(input) {
@@ -47,14 +47,20 @@ function liveBakedMaterial(liveMaterial, bakedMaterial) {
  * Returns the new parts, which share the originals' matrices so poses still move them, and a report: texels,
  * rayWork, seconds, skipped parts with reasons.
  */
-export function bakeAgentParts(parts, worldMatrices, environment, settings) {
+export function bakeAgentParts(parts, worldMatrices, environment, settings, generatedGeometryNames = new Set()) {
   const sunScale = environment.keyIntensity ?? 1;
   const lighting = {
     pointLights: environment.pointLights,
     keyColor: Array.from(environment.keyColor, channel => channel * sunScale),
     lightDirection: environment.lightDirection,
   };
-  const snapshots = parts.map(part => ({ ...part, matrix: worldMatrices.get(part.name), material: { ...part.material } }));
+  // A hair or particle host is drawn from geometry built every frame, which has no lightmap UVs.
+  const snapshots = parts.map(part => ({
+    ...part,
+    matrix: worldMatrices.get(part.name),
+    material: { ...part.material },
+    generatesGeometry: generatedGeometryNames.has(part.name),
+  }));
   const { parts: bakedSnapshots, report } = bakeLightmaps(snapshots, lighting, { ...settings, maxSeconds: BAKE_MAXIMUM_SECONDS });
   const bakedParts = parts.map((part, index) => {
     if (bakedSnapshots[index] === snapshots[index]) {

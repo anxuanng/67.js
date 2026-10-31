@@ -2,6 +2,7 @@
 import { Renderer67 } from '/src/renderer.js';
 import { REFERENCE_SCENES } from './scenes.js';
 import { skinnedGeometry } from '/src/path-tracer-scene.js';
+import { boxProjectedGeometry } from '/src/export-box-uv.js';
 import '/src/material-layer-shaders.js';
 
 function encodeBytes(typedArray) {
@@ -28,13 +29,28 @@ function plainData(value) {
   return value;
 }
 
+// A pattern material is box projected in the shader and has no UVs. Blender gets the same projection written as UVs,
+// per part, because the projection depends on the part's scale.
+function boxProjectedFor(part, cache) {
+  const boxMapScale = part.material.boxMapScale;
+  if (!(boxMapScale > 0) || part.geometry.uvs) return part.geometry;
+  const { matrix } = part;
+  const scale = [0, 1, 2].map(column => Math.hypot(matrix[column * 4], matrix[column * 4 + 1], matrix[column * 4 + 2]));
+  const key = `${scale.join(',')}|${boxMapScale}|${part.material.boxMapAxis ?? 1}`;
+  if (!cache.has(part.geometry)) cache.set(part.geometry, new Map());
+  const byScale = cache.get(part.geometry);
+  if (!byScale.has(key)) byScale.set(key, boxProjectedGeometry(part.geometry, scale, boxMapScale, part.material.boxMapAxis ?? 1));
+  return byScale.get(key);
+}
+
 // Blender's glTF importer cannot reproduce this rig's pose (three.js and 67js agree on it), so Blender gets the
 // skinned result as plain geometry. A score then measures shading, and not an importer's pose.
 function describeScene(id, scene) {
   const { map: _map, ...environment } = scene.environment;
   const geometries = new Map();
+  const boxProjected = new Map();
   const describedParts = scene.parts.map(part => {
-    const geometry = part.skin ? skinnedGeometry(part) : part.geometry;
+    const geometry = part.skin ? skinnedGeometry(part) : boxProjectedFor(part, boxProjected);
     if (!geometries.has(geometry)) geometries.set(geometry, geometries.size);
     return { name: part.name, geometry: geometries.get(geometry), matrix: [...part.matrix], material: plainData(part.material) };
   });

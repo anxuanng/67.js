@@ -99,7 +99,7 @@ layout(location=9) in vec3 instanceColor;
 layout(location=10) in vec4 instanceSurface;
 layout(location=11) in vec3 assemblyOffset;
 layout(location=12) in vec3 assemblyDetailOffset;
-layout(location=13) in vec2 uv;
+layout(location=13) in vec4 uvSets;
 layout(location=14) in vec3 vertexColor;
 layout(location=15) in vec3 instanceEmissive;
 uniform mat4 viewProjection;
@@ -115,6 +115,7 @@ flat out vec3 baseColor;
 flat out vec4 surface;
 out vec4 shadowPosition;
 out vec2 textureUV;
+out vec2 lightmapUV;
 out vec3 vertexTint;
 flat out vec3 emissionColor;
 flat out float instanceOrdinal;
@@ -125,6 +126,7 @@ ${skinningShader}
 ${morphingShader}
 ${windShader}
 void main() {
+  vec2 uv = uvSets.xy;
   mat4 deformation = skinTransform();
   vec4 world = instanceMatrix * deformation * vec4(morphedPosition(position), 1.0);
   world.xyz += assemblyOffset * assemblyAmount + assemblyDetailOffset * smoothstep(0.3, 1.0, assemblyAmount);
@@ -145,6 +147,7 @@ void main() {
   boxNormalMatrix = instanceNormal;
   baseColor = instanceColor;
   textureUV = uv;
+  lightmapUV = uvSets.zw;
   vertexTint = vertexColor;
   emissionColor = instanceEmissive;
   instanceOrdinal = float(gl_InstanceID);
@@ -355,9 +358,13 @@ flat in vec3 baseColor;
 flat in vec4 surface;
 in vec4 shadowPosition;
 in vec2 textureUV;
+in vec2 lightmapUV;
 in vec3 vertexTint;
 flat in vec3 emissionColor;
 flat in float instanceOrdinal;
+uniform sampler2D lightMap;
+uniform float lightMapScale;
+uniform float hasLightMap;
 uniform vec3 eye;
 uniform float renderPassMode;
 uniform float renderPassDepthRange;
@@ -865,6 +872,8 @@ ${featureCode("mainSetup")}  float visibility = shadowVisibility(normal);
     radiance += surroundings * reflectance * skyReflection * (1.0 - roughness * 0.55) * mix(1.0, 0.5 * daylight, worldMode) * occlusion * ambientIntensity;
     radiance += color * (1.0 - metallic) * mix(vec3(0.16, 0.20, 0.22), vec3(0.19, 0.25, 0.30) * max(daylight, 0.08), worldMode) * (0.45 + 0.55 * max(normal.y, 0.0)) * occlusion * ambientIntensity;
   }
+  // Baked bounced light arrives as irradiance, so the surface colour (pattern and texture included) tints it here.
+  if (USES_LIGHT_MAP) radiance += color * (1.0 - metallic) * texture(lightMap, lightmapUV).rgb * lightMapScale;
   vec3 keyResponse = keyColor / mix(vec3(5.2, 4.7, 4.1), vec3(3.7, 3.4, 2.9), worldMode);
   keyResponse *= mix(daylight, 1.0, worldMode);
   if (CANOPY_TAG) radiance += color * max(dot(-normal, normalize(lightDirection)), 0.0) * 0.3 * keyResponse;
@@ -926,6 +935,7 @@ const SHADER_FEATURE_CONDITIONS = {
   metallicRoughnessMap: ['USES_METALLIC_ROUGHNESS_MAP', 'hasMetallicRoughnessMap > 0.5'],
   occlusionMap: ['USES_OCCLUSION_MAP', 'hasOcclusionMap > 0.5'],
   emissiveMap: ['USES_EMISSIVE_MAP', 'hasEmissiveMap > 0.5'],
+  lightMap: ['USES_LIGHT_MAP', 'hasLightMap > 0.5'],
   splat: ['USES_SPLAT', 'splatEnabled > 0.5'],
   moss: ['USES_MOSS', 'materialMoss.x > 0.0'],
   alphaMode: ['USES_ALPHA_MODE', 'alphaMode > 0.5'],
