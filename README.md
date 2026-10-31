@@ -189,7 +189,7 @@ Read [CONTRIBUTING.md](CONTRIBUTING.md) before you open a pull request. It cover
 ## Credits
 
 - [gl-matrix](https://github.com/toji/gl-matrix) supplies the matrix math.
-- The glTF addon bundles the [Three.js](https://threejs.org/) glTF decoder under its MIT license. The core renderer does not depend on Three.js.
+- The glTF addon has its own parser and does not depend on [Three.js](https://threejs.org/). The Draco, meshopt and KTX2 decoders are Three.js loaders that you pass in.
 - Textures, leaf atlases and the HDRI on the site are CC0 scans from [Poly Haven](https://polyhaven.com) and [ambientCG](https://ambientcg.com). See [the texture credits](public/textures/CREDITS.md).
 - WALL·E is a Disney/Pixar character. The study is procedural geometry with no external model assets.
 - The trailer study follows the shot order of [a Universal Pictures trailer](https://www.youtube.com/watch?v=uYPbbksJxIg) with procedural sets and an original score. It contains no film footage or soundtrack samples.

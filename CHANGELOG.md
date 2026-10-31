@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Load glTF without Three.js: the addon has its own GLB and glTF parser, node sampler and animation clips, so a box with the addon drops from 159,422 to 67,467 bytes gzip. Draco, meshopt and KTX2 still come from the decoders you pass in `options.decoders`. Only the default scene is decoded, and a node outside it is decoded only when a skin or an animation names it
 - Update the bundled `zod` to 4.6.7, which fixes a memory exhaustion advisory in the validation of oversized collections
 - Make the MCP preview server reject requests with another Host header, which closes DNS rebinding
 - Check the size of a mesh `array` before it allocates. Before this, the check ran after the copies existed
