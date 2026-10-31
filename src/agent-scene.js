@@ -599,7 +599,7 @@ function withDefaultMaterial(recipe) {
 
 function normalizeRecipe(input, limits) {
   let recipe = copiedJson(input, limits.maxRecipeBytes);
-  knownKeys(recipe, ['format', 'schemaVersion', 'geometries', 'materials', 'nodes', 'armatures', 'camera', 'environment', 'effects', 'shadow', 'motion', 'physics', 'cloth'], 'recipe');
+  knownKeys(recipe, ['format', 'schemaVersion', 'geometries', 'materials', 'nodes', 'armatures', 'camera', 'environment', 'effects', 'shadow', 'motion', 'physics', 'cloth', 'particles'], 'recipe');
   if (recipe.format !== '67js.scene' || recipe.schemaVersion !== 1) {
     throw new RangeError('Expected 67js.scene schemaVersion 1.');
   }
@@ -648,6 +648,9 @@ function normalizeRecipe(input, limits) {
   }
   if (Object.hasOwn(recipe, 'cloth')) {
     recipe.cloth = agentSceneModule('cloth').normalizeAgentCloth(recipe.cloth, recipe);
+  }
+  if (Object.hasOwn(recipe, 'particles')) {
+    recipe.particles = agentSceneModule('particles').normalizeAgentParticles(recipe.particles, recipe);
   }
   recipe = copiedJson(recipe, limits.maxRecipeBytes);
   return recipe;
@@ -766,8 +769,19 @@ function stagePose(stagedState, time) {
   }
   const camera = sampled?.camera ? cameraPoseFrom(sampled.camera) : stagedState.recipe.camera;
   retainedMatrices(stagedState.parts);
-  const clothGeometries = time === null ? null : stagedState.clothSampler?.sample(time) ?? null;
-  return { graph, materialUpdates, camera, time, clothGeometries };
+  return { graph, materialUpdates, camera, time, clothGeometries: sampledGeometries(stagedState, time) };
+}
+
+// Cloth and particles replace the geometry of their own nodes at a sampled time; no node belongs to both.
+function sampledGeometries(stagedState, time) {
+  if (time === null) {
+    return null;
+  }
+  const geometries = new Map();
+  for (const sampler of [stagedState.clothSampler, stagedState.particleSampler]) {
+    sampler?.sample(time)?.forEach((geometry, nodeId) => geometries.set(nodeId, geometry));
+  }
+  return geometries.size ? geometries : null;
 }
 
 // Deformed cloth is a new geometry per sampled time, so those parts are replaced and the renderer sees a topology change.
@@ -841,6 +855,7 @@ export function createAgentScene(input, inputLimits = {}) {
   let topologyRevision = 0;
   let physicsBake = null;
   let clothBake = null;
+  let particleBake = null;
   const skinCache = new Map();
   const checkpoints = new Map();
 
@@ -965,7 +980,8 @@ export function createAgentScene(input, inputLimits = {}) {
     stagedState.motionSampler = recipe.motion ? agentSceneModule('motion').compileAgentMotion(recipe.motion, recipe) : null;
     stagedState.physicsSampler = stagePhysics(recipe, geometryRecords);
     stagedState.clothSampler = stageCloth(recipe, geometryRecords);
-    const animated = Boolean(stagedState.motionSampler || stagedState.physicsSampler || stagedState.clothSampler);
+    stagedState.particleSampler = stageParticles(recipe, geometryRecords);
+    const animated = Boolean(stagedState.motionSampler || stagedState.physicsSampler || stagedState.clothSampler || stagedState.particleSampler);
     stagedState.poseGraph = animated ? compile(recipe, geometries, localBounds, limits) : null;
     stagedState.initialPose = stagePose(stagedState, animated ? 0 : null);
     return stagedState;
@@ -998,6 +1014,20 @@ export function createAgentScene(input, inputLimits = {}) {
       clothBake = { key, sampler: agentSceneModule('cloth').bakeAgentCloth(recipe.cloth, recipe, geometries) };
     }
     return clothBake.sampler;
+  }
+
+  // Particle launches are cheap to recompute, but an unchanged section on unchanged nodes still reuses them.
+  function stageParticles(recipe, geometryRecords) {
+    if (!recipe.particles) {
+      return null;
+    }
+    const involvedNodes = recipe.nodes.filter(node => recipe.particles.systems.some(system => system.node === node.id));
+    const key = JSON.stringify([recipe.particles, involvedNodes, involvedNodes.map(node => geometryRecords.get(node.geometry).signature)]);
+    if (particleBake?.key !== key) {
+      const geometries = new Map([...geometryRecords].map(([id, record]) => [id, record.geometry]));
+      particleBake = { key, sampler: agentSceneModule('particles').bakeAgentParticles(recipe.particles, recipe, geometries) };
+    }
+    return particleBake.sampler;
   }
 
   function commit(stagedState, incrementRevision) {
@@ -1042,8 +1072,8 @@ export function createAgentScene(input, inputLimits = {}) {
       if (time !== null && (!Number.isFinite(time) || time < 0 || time > 3600)) {
         throw new RangeError('Motion time must be null or within zero and 3600 seconds.');
       }
-      if (time !== null && !state.motionSampler && !state.physicsSampler && !state.clothSampler) {
-        throw new RangeError('This procedural recipe has no motion, physics or cloth.');
+      if (time !== null && !state.motionSampler && !state.physicsSampler && !state.clothSampler && !state.particleSampler) {
+        throw new RangeError('This procedural recipe has no motion, physics, cloth or particles.');
       }
       if (publishPose(state, stagePose(state, time))) {
         topologyRevision++;
@@ -1115,6 +1145,14 @@ export function createAgentScene(input, inputLimits = {}) {
             throw new TypeError('set-cloth requires cloth; use null to clear it.');
           }
           candidate.cloth = operation.cloth;
+          continue;
+        }
+        if (operation.type === 'set-particles') {
+          knownKeys(operation, ['type', 'particles'], 'operation');
+          if (!Object.hasOwn(operation, 'particles')) {
+            throw new TypeError('set-particles requires particles; use null to clear it.');
+          }
+          candidate.particles = operation.particles;
           continue;
         }
         const lookField = Object.hasOwn(LOOK_OPERATION_FIELDS, operation.type) ? LOOK_OPERATION_FIELDS[operation.type] : null;
@@ -1226,7 +1264,7 @@ export function createAgentScene(input, inputLimits = {}) {
           fields = CAMERA_FIELDS;
           target = candidate.camera;
         } else {
-          throw new TypeError(`Unsupported operation type: ${operation.type}. Use one of set-node, set-material, set-camera, set-motion, set-physics, set-cloth, set-environment, set-effects, set-shadow, add-node, add-geometry, add-material, remove-node, remove-geometry, remove-material, edit-mesh, set-mesh-stack.`);
+          throw new TypeError(`Unsupported operation type: ${operation.type}. Use one of set-node, set-material, set-camera, set-motion, set-physics, set-cloth, set-particles, set-environment, set-effects, set-shadow, add-node, add-geometry, add-material, remove-node, remove-geometry, remove-material, edit-mesh, set-mesh-stack.`);
         }
         knownKeys(operation, ['type', ...(operation.type === 'set-camera' ? [] : ['id']), ...fields], 'operation');
         if (!target) {
@@ -1278,6 +1316,7 @@ export function createAgentScene(input, inputLimits = {}) {
         motion: state.recipe.motion ? { duration: state.recipe.motion.duration, loop: state.recipe.motion.loop, tracks: state.recipe.motion.tracks.length, time: state.motionTime } : null,
         physics: state.physicsSampler ? state.physicsSampler.report() : null,
         ...(state.clothSampler ? { cloth: state.clothSampler.report() } : {}),
+        ...(state.particleSampler ? { particles: state.particleSampler.report() } : {}),
         ...(state.recipe.armatures ? { rig: rigReport(state.recipe, state.skinBindings) } : {}),
         boundsSpace: 'authored-base-world',
         ...(diagnostics.length ? { diagnostics } : {}),

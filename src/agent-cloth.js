@@ -1,6 +1,7 @@
 import { mat4 } from 'gl-matrix';
 import { bakeCloth, sampleClothFrames, weldVertices } from './cloth.js';
 import { recomputeNormals } from './geometry-normals.js';
+import { bakingContext, boundedArray, finiteNumber, knownKeys, rootNodeWithGeometry, vectorOfThree } from './agent-recipe-checks.js';
 
 const FRAMES_PER_SECOND = 60;
 const MAX_DURATION_SECONDS = 10;
@@ -12,58 +13,6 @@ const CLOTH_FIELDS = ['duration', 'gravity', 'wind', 'sheets', 'colliders'];
 const SHEET_FIELDS = ['node', 'pin', 'stiffness', 'bend', 'density', 'damping', 'friction', 'thickness'];
 const COLLIDER_FIELDS = ['node', 'shape'];
 const PIN_TOLERANCE = 1e-4;
-
-function knownKeys(value, fields, label) {
-  if (!value || Object.getPrototypeOf(value) !== Object.prototype) {
-    throw new TypeError(`${label} must be a plain object.`);
-  }
-  for (const key of Object.keys(value)) {
-    if (!fields.includes(key)) {
-      throw new TypeError(`Unknown or unsupported ${label} field: ${key}. Allowed fields: ${fields.join(', ')}.`);
-    }
-  }
-}
-
-function finiteNumber(value, label, minimum, maximum) {
-  if (typeof value !== 'number' || !Number.isFinite(value) || !Number.isFinite(Math.fround(value)) || value < minimum || value > maximum) {
-    throw new RangeError(`${label} must be a finite number within ${minimum} and ${maximum}.`);
-  }
-  return value;
-}
-
-function vectorOfThree(value, label, limit) {
-  if (!Array.isArray(value) || value.length !== 3) {
-    throw new TypeError(`${label} needs 3 numbers.`);
-  }
-  return value.map(component => finiteNumber(component, label, -limit, limit));
-}
-
-function boundedArray(value, maximum, label) {
-  if (!Array.isArray(value) || value.length > maximum) {
-    throw new TypeError(`${label} must be an array of at most ${maximum} entries.`);
-  }
-  return value;
-}
-
-function rootNodeWithGeometry(nodeId, recipeNodes, claimedNodes, motionNodeIds, physicsNodeIds, label) {
-  const node = typeof nodeId === 'string' ? recipeNodes.get(nodeId) : undefined;
-  if (!node) {
-    throw new RangeError(`${label} node was not found: ${String(nodeId).slice(0, 64)}.`);
-  }
-  if (node.geometry === undefined) {
-    throw new RangeError(`${label} node ${nodeId} has no geometry.`);
-  }
-  if (node.parent !== null) {
-    throw new RangeError(`${label} node ${nodeId} must be a root node; reparent it first.`);
-  }
-  if (claimedNodes.has(nodeId)) {
-    throw new RangeError(`Node ${nodeId} is used twice in cloth.`);
-  }
-  if (motionNodeIds.has(nodeId) || physicsNodeIds.has(nodeId)) {
-    throw new RangeError(`Node ${nodeId} has a motion translation or rotation track or a physics body. Cloth needs a node that stays where it is.`);
-  }
-  claimedNodes.add(nodeId);
-}
 
 function normalizeSheet(input, context) {
   knownKeys(input, SHEET_FIELDS, 'cloth sheet');
@@ -101,14 +50,7 @@ export function normalizeAgentCloth(input, recipe) {
     return null;
   }
   knownKeys(input, CLOTH_FIELDS, 'cloth');
-  const context = {
-    recipeNodes: new Map(recipe.nodes.map(node => [node.id, node])),
-    claimedNodes: new Set(),
-    motionNodeIds: new Set((recipe.motion?.tracks ?? [])
-      .filter(track => track.kind === 'node' && (track.property === 'translation' || track.property === 'rotation'))
-      .map(track => track.id)),
-    physicsNodeIds: new Set((recipe.physics?.bodies ?? []).map(body => body.node)),
-  };
+  const context = bakingContext(recipe);
   const result = { duration: finiteNumber(input.duration, 'Cloth duration', 0.1, MAX_DURATION_SECONDS) };
   result.sheets = boundedArray(input.sheets, MAX_SHEETS, 'Cloth sheets').map(sheet => normalizeSheet(sheet, context));
   if (!result.sheets.length) {

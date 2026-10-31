@@ -512,6 +512,7 @@ const recipe = z.strictObject({
   motion: motion.nullable().optional(),
   physics: physics.nullable().optional(),
   cloth: cloth.nullable().optional(),
+  particles: z.record(z.string(), z.unknown()).nullable().optional().describe('Particle emitters and hair, seeked by motionTime. Fields: scene_capabilities particles.'),
 }).describe('Bounded scene recipe. Backend validates references, mesh resource pairs, hierarchy, geometry budgets and camera consistency.');
 const assetRecipe = z.strictObject({
   format: z.literal('67js.asset'),
@@ -545,6 +546,7 @@ const operation = z.discriminatedUnion('type', [
   z.strictObject({ type: z.literal('set-armatures'), armatures: armaturesReference.nullable() }),
   z.strictObject({ type: z.literal('set-physics'), physics: z.record(z.string(), z.unknown()).nullable().describe('Same object as recipe.physics in scene_create.') }),
   z.strictObject({ type: z.literal('set-cloth'), cloth: z.record(z.string(), z.unknown()).nullable() }),
+  z.strictObject({ type: z.literal('set-particles'), particles: z.record(z.string(), z.unknown()).nullable() }),
   z.strictObject({ type: z.literal('set-environment'), environment }),
   z.strictObject({ type: z.literal('set-effects'), effects }),
   z.strictObject({ type: z.literal('set-shadow'), shadow }),
