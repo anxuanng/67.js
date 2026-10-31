@@ -1,12 +1,12 @@
 import { mat4, mat3 } from 'gl-matrix';
-import { vertexShader, fragmentShader, liquidFragmentShader, depthVertexShader, depthFragmentShader, benchmarkVertexShader, benchmarkFragmentShader } from './shaders.js';
+import { vertexShader, createFragmentShader, liquidFragmentShader, depthVertexShader, depthFragmentShader, benchmarkVertexShader, benchmarkFragmentShader } from './shaders.js';
 import { fullscreenVertex, postFragment, skyFragment, bloomFragment } from './post.js';
 import { planRenderSize, estimateTextureBytes, estimateFrameBytes } from './budget.js';
 import { applyProjection } from './camera.js';
 import { resolveEffects } from './effects.js';
 import { createLightingState, updateLightingState } from './lighting.js';
 import { resolveVolumeFog } from './volumetric.js';
-import { assertEnvironmentMap, createEnvironmentResources, environmentBackgroundFragment, estimateEnvironmentBytes } from './environment.js';
+import { assertEnvironmentMap, createEnvironmentResources, environmentBackgroundFragment, environmentBrdfFragment, environmentPrefilterFragment, estimateEnvironmentBytes } from './environment.js';
 import { validateSkinGeometry, validateSkinPose, skinTextureLayout, packSkinInfluences } from './skinning.js';
 import { validateSplatMaterial, splatBatchState, splatTextureBytes, resolveSplatSize, packSplatParameters, buildSplatPixels } from './splat.js';
 import { validateMorphGeometry, validateMorphPose, validateMorphTransform, packMorphTargets } from './morph.js';
@@ -26,6 +26,24 @@ const PROCEDURAL_MATERIAL_TAGS = new Set(['water', 'foliage', 'grass', 'terrain'
 
 // Tags whose vertices sway in the wind; the shadow pass must be redrawn when time moves.
 const SWAYING_TAGS = new Set(['foliage', 'grass']);
+
+const MAP_SHADER_FEATURES = ['baseMap', 'normalMap', 'metallicRoughnessMap', 'occlusionMap', 'emissiveMap'];
+// Tags whose look the main fragment shader draws with code that other tags never reach.
+const TAG_SHADER_FEATURES = new Set(['floor', 'water', 'foliage', 'terrain', 'grass', 'fire', 'smoke', 'unlit']);
+
+function shaderFeaturesOfParts(parts) {
+  const features = new Set();
+  for (const { material } of parts) {
+    MATERIAL_MAPS.forEach((field, index) => {
+      if (material[field]) features.add(MAP_SHADER_FEATURES[index]);
+    });
+    if (material.layers) features.add('splat');
+    if (material.moss > 0) features.add('moss');
+    if ((material.alphaMode ?? 'opaque') !== 'opaque') features.add('alphaMode');
+    if (TAG_SHADER_FEATURES.has(material.tag)) features.add(material.tag);
+  }
+  return features;
+}
 
 function renderPass(material) {
   return TRANSLUCENT_TAGS.has(material.tag) ? material.tag : 'opaque';
@@ -166,31 +184,36 @@ function packInstance(data, index, part, normalMatrix) {
   data.set(part.material.emissiveColor ?? part.material.color, offset + 38);
 }
 
-function compileProgram(context, vertexSource, fragmentSource) {
+// Starting a program without asking for its result lets the driver build several programs at once.
+function startProgram(context, vertexSource, fragmentSource) {
   const program = context.createProgram();
+  context.getExtension('KHR_parallel_shader_compile');
   const shaders = [];
   for (const [kind, source] of [[context.VERTEX_SHADER, vertexSource], [context.FRAGMENT_SHADER, fragmentSource]]) {
     const shader = context.createShader(kind);
     context.shaderSource(shader, source);
     context.compileShader(shader);
-    if (!context.getShaderParameter(shader, context.COMPILE_STATUS)) {
-      const message = context.getShaderInfoLog(shader);
-      context.deleteShader(shader);
-      shaders.forEach((compiled) => context.deleteShader(compiled));
-      context.deleteProgram(program);
-      throw new Error(`Shader compilation failed: ${message}`);
-    }
-    shaders.push(shader);
     context.attachShader(program, shader);
+    shaders.push(shader);
   }
   context.linkProgram(program);
+  return { program, shaders };
+}
+
+function finishProgram(context, { program, shaders }) {
+  const linked = context.getProgramParameter(program, context.LINK_STATUS);
+  const failedShader = shaders.find(shader => !context.getShaderParameter(shader, context.COMPILE_STATUS));
+  const message = failedShader ? context.getShaderInfoLog(failedShader) : context.getProgramInfoLog(program);
   shaders.forEach((shader) => context.deleteShader(shader));
-  if (!context.getProgramParameter(program, context.LINK_STATUS)) {
-    const message = context.getProgramInfoLog(program);
+  if (!linked) {
     context.deleteProgram(program);
-    throw new Error(`Shader linking failed: ${message}`);
+    throw new Error(failedShader ? `Shader compilation failed: ${message}` : `Shader linking failed: ${message}`);
   }
   return program;
+}
+
+function compileProgram(context, vertexSource, fragmentSource) {
+  return finishProgram(context, startProgram(context, vertexSource, fragmentSource));
 }
 
 function groundPart() {
@@ -402,23 +425,30 @@ export class Renderer67 {
     this.viewProjection = mat4.create();
     this.lightProjection = mat4.create();
     this.inverseViewProjection = mat4.create();
-    this.program = compileProgram(this.context, benchmark ? benchmarkVertexShader : vertexShader, benchmark ? benchmarkFragmentShader : fragmentShader);
-    this.depthProgram = compileProgram(this.context, depthVertexShader, depthFragmentShader);
-    this.uniforms = Object.fromEntries(['boxMapScale', 'boxMapAxis', 'viewProjection', 'lightProjection', 'eye', 'armorColor', 'armorSurface', 'exposure', 'inspection', 'shadowMap', ...MAP_UNIFORMS, ...MAP_FLAGS, ...SKIN_UNIFORMS, ...MORPH_UNIFORMS, 'normalScale', 'occlusionStrength', 'materialMoss', ...SPLAT_UNIFORMS, 'hdrEnabled', 'time', 'wind', 'worldMode', 'daylight', 'fogColor', 'lightDirection', 'fogDensity', 'waterRipple', 'rippleTime', 'explosionProgress', 'explosionCenter', 'assemblyAmount', ...ALPHA_UNIFORMS].map((name) => [name, this.context.getUniformLocation(this.program, name)]));
-    for (const name of ['pointLightCount', 'pointLightPositions[0]', 'pointLightColors[0]', 'pointLightRadii[0]', 'keyColor', 'fillIntensity', 'ambientIntensity']) {
-      this.uniforms[name] = this.context.getUniformLocation(this.program, name);
+    this.shaderFeatures = shaderFeaturesOfParts(groups.flat());
+    const pending = {
+      main: this.startMainProgram(),
+      depth: startProgram(this.context, depthVertexShader, depthFragmentShader),
+    };
+    if (!benchmark) {
+      pending.post = startProgram(this.context, fullscreenVertex, postFragment);
+      pending.sky = startProgram(this.context, fullscreenVertex, skyFragment);
+      pending.bloom = startProgram(this.context, fullscreenVertex, bloomFragment);
+      pending.liquid = startProgram(this.context, vertexShader, liquidFragmentShader);
+      if (environment.map) this.startEnvironmentPrograms();
     }
-    for (const name of ENVIRONMENT_UNIFORMS) this.uniforms[name] = this.context.getUniformLocation(this.program, name);
+    this.finishMainProgram(pending.main);
+    this.depthProgram = finishProgram(this.context, pending.depth);
     this.depthSkinUniforms = Object.fromEntries(SKIN_UNIFORMS.map(name => [name, this.context.getUniformLocation(this.depthProgram, name)]));
     this.depthMorphUniforms = Object.fromEntries(MORPH_UNIFORMS.map(name => [name, this.context.getUniformLocation(this.depthProgram, name)]));
     if (!benchmark) {
-      this.postProgram = compileProgram(this.context, fullscreenVertex, postFragment);
-      this.skyProgram = compileProgram(this.context, fullscreenVertex, skyFragment);
+      this.postProgram = finishProgram(this.context, pending.post);
+      this.skyProgram = finishProgram(this.context, pending.sky);
       this.postUniforms = Object.fromEntries(['transparent', 'frameTexture', 'bloomTexture', 'bloomStrength', 'hdrEnabled', 'grade', 'vignette', 'grainAmount', 'resolution', 'monochrome', 'fade', 'cinematic', 'time', 'volumeExplosion', 'explosionProgress', 'inverseViewProjection', 'eye', 'sceneDepth', 'volumeShadowMap', 'volumeLightProjection', 'volumeLightDirection', 'volumeLightColor', 'volumeDensity', 'volumeMinimum', 'volumeMaximum', 'volumeColor', 'volumeAmbient', 'volumeDrift', 'volumeSteps', 'volumeAnisotropy', 'volumeNoiseAmount', 'volumeNoiseScale', 'volumeMaxDistance', 'orthographic'].map((name) => [name, this.context.getUniformLocation(this.postProgram, name)]));
-      this.bloomProgram = compileProgram(this.context, fullscreenVertex, bloomFragment);
+      this.bloomProgram = finishProgram(this.context, pending.bloom);
       this.bloomUniforms = Object.fromEntries(['sourceTexture', 'texelDirection', 'threshold', 'extract'].map(name => [name, this.context.getUniformLocation(this.bloomProgram, name)]));
       this.skyUniforms = Object.fromEntries(['skyTop', 'skyBottom', 'sunDirection', 'inverseViewProjection', 'eye', 'time', 'daylight', 'hdrEnabled'].map((name) => [name, this.context.getUniformLocation(this.skyProgram, name)]));
-      this.liquidProgram = compileProgram(this.context, vertexShader, liquidFragmentShader);
+      this.liquidProgram = finishProgram(this.context, pending.liquid);
       this.liquidUniforms = Object.fromEntries(['viewProjection', 'lightProjection', 'eye', 'sceneColor', 'resolution', 'exposure', 'hdrEnabled', 'worldMode', 'daylight', 'lightDirection', 'keyColor', 'ambientIntensity', 'fogColor', 'fogDensity', 'liquidOptics', 'foamShape', ...ENVIRONMENT_LOOKUP_UNIFORMS, 'time', 'wind', 'explosionProgress', 'explosionCenter', 'assemblyAmount', ...SKIN_UNIFORMS, ...MORPH_UNIFORMS].map((name) => [name, this.context.getUniformLocation(this.liquidProgram, name)]));
     }
     this.depthAlphaUniforms = Object.fromEntries(DEPTH_ALPHA_UNIFORMS.map(name => [name, this.context.getUniformLocation(this.depthProgram, name)]));
@@ -449,6 +479,26 @@ export class Renderer67 {
     this.createShadowMap();
     this.resize();
     if (!this.benchmark && !this.multisampleFramebuffer) this.allocateFrameTargets(this.canvas.width, this.canvas.height);
+  }
+
+  // Compiles the main program with only the shader features that this renderer's parts use, and finds its uniforms.
+  startMainProgram() {
+    const benchmark = this.benchmark;
+    const fragmentSource = benchmark ? benchmarkFragmentShader : createFragmentShader(this.shaderFeatures);
+    return startProgram(this.context, benchmark ? benchmarkVertexShader : vertexShader, fragmentSource);
+  }
+
+  buildMainProgram() {
+    this.finishMainProgram(this.startMainProgram());
+  }
+
+  finishMainProgram(pendingProgram) {
+    this.program = finishProgram(this.context, pendingProgram);
+    this.uniforms = Object.fromEntries(['boxMapScale', 'boxMapAxis', 'viewProjection', 'lightProjection', 'eye', 'armorColor', 'armorSurface', 'exposure', 'inspection', 'shadowMap', ...MAP_UNIFORMS, ...MAP_FLAGS, ...SKIN_UNIFORMS, ...MORPH_UNIFORMS, 'normalScale', 'occlusionStrength', 'materialMoss', ...SPLAT_UNIFORMS, 'hdrEnabled', 'time', 'wind', 'worldMode', 'daylight', 'fogColor', 'lightDirection', 'fogDensity', 'waterRipple', 'rippleTime', 'explosionProgress', 'explosionCenter', 'assemblyAmount', ...ALPHA_UNIFORMS].map((name) => [name, this.context.getUniformLocation(this.program, name)]));
+    for (const name of ['pointLightCount', 'pointLightPositions[0]', 'pointLightColors[0]', 'pointLightRadii[0]', 'keyColor', 'fillIntensity', 'ambientIntensity']) {
+      this.uniforms[name] = this.context.getUniformLocation(this.program, name);
+    }
+    for (const name of ENVIRONMENT_UNIFORMS) this.uniforms[name] = this.context.getUniformLocation(this.program, name);
   }
 
   get samples() {
@@ -588,7 +638,30 @@ export class Renderer67 {
     if (this.splatPlaceholder) this.context.deleteTexture(this.splatPlaceholder);
   }
 
+  // Parts can arrive after construction (replaceParts) or change their tag (updateParts). When one needs a shader feature
+  // that the program left out, the program is compiled again with that feature added.
+  requireShaderFeatures(parts) {
+    if (this.benchmark || !this.shaderFeatures) return;
+    const missing = [...shaderFeaturesOfParts(parts)].filter(feature => !this.shaderFeatures.has(feature));
+    if (missing.length === 0) return;
+    missing.forEach(feature => this.shaderFeatures.add(feature));
+    this.rebuildMainProgram();
+  }
+
+  rebuildMainProgram() {
+    const context = this.context;
+    const previousProgram = this.program;
+    this.buildMainProgram();
+    context.deleteProgram(previousProgram);
+    context.useProgram(this.program);
+    for (const [name, unit] of [['skinInfluences', 6], ['jointPalette', 7], ['morphTargets', 8], ['splatColor', SPLAT_COLOR_UNIT], ['splatNormal', SPLAT_NORMAL_UNIT], ['splatPacked', SPLAT_PACKED_UNIT], ['splatMask', SPLAT_MASK_UNIT], ['environmentSpecular', ENVIRONMENT_SPECULAR_UNIT], ['environmentBrdf', ENVIRONMENT_BRDF_UNIT]]) {
+      context.uniform1i(this.uniforms[name], unit);
+    }
+    context.uniform1f(this.uniforms.splatEnabled, 0);
+  }
+
   uploadBatch(parts) {
+    this.requireShaderFeatures(parts);
     const context = this.context;
     const vertexArray = context.createVertexArray();
     try {
@@ -882,6 +955,8 @@ export class Renderer67 {
     this.updateBatches.clear();
     for (const part of parts) {
       const location = this.partLocations.get(part);
+      // A tag can change between frames without a new batch, so its shader code may not be compiled yet.
+      if (TAG_SHADER_FEATURES.has(part.material.tag) && !this.shaderFeatures?.has(part.material.tag)) this.requireShaderFeatures([part]);
       packInstance(location.batch.instanceData, location.index, part, location.normalMatrix);
       this.updateBatches.add(location.batch);
     }
@@ -1048,6 +1123,21 @@ export class Renderer67 {
     context.bindFramebuffer(context.FRAMEBUFFER, null);
   }
 
+  // The prefilter and BRDF programs build while the other programs do, instead of after them.
+  startEnvironmentPrograms() {
+    this.pendingEnvironmentPrograms = new Map();
+    for (const fragmentSource of [environmentPrefilterFragment, environmentBrdfFragment]) {
+      this.pendingEnvironmentPrograms.set(fragmentSource, startProgram(this.context, fullscreenVertex, fragmentSource));
+    }
+  }
+
+  compileEnvironmentProgram(context, vertexSource, fragmentSource) {
+    const pendingProgram = this.pendingEnvironmentPrograms?.get(fragmentSource);
+    if (!pendingProgram) return compileProgram(context, vertexSource, fragmentSource);
+    this.pendingEnvironmentPrograms.delete(fragmentSource);
+    return finishProgram(context, pendingProgram);
+  }
+
   initializeEnvironment(map) {
     const context = this.context;
     context.useProgram(this.program);
@@ -1074,7 +1164,7 @@ export class Renderer67 {
     assertEnvironmentMap(map);
     if (this.environmentResources?.data === map.data) return false;
     estimateEnvironmentBytes(map, this.capabilities.maximumTextureSize);
-    const resources = createEnvironmentResources(this.context, map, { compileProgram, fullscreenVertex });
+    const resources = createEnvironmentResources(this.context, map, { compileProgram: (context, vertexSource, fragmentSource) => this.compileEnvironmentProgram(context, vertexSource, fragmentSource), fullscreenVertex });
     this.environmentResources?.dispose();
     this.environmentResources = resources;
     this.textureBytes += resources.bytes - this.environmentBytes;
