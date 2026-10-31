@@ -173,7 +173,7 @@ test('cloth recipes need the cloth module and plain recipes do not', () => {
 
 test('set-cloth edits the section, null clears it and the recipe round trips', () => {
   const scene = createAgentScene(flagRecipe(null));
-  assert.throws(() => scene.sampleMotion(1), /no motion, physics or cloth/);
+  assert.throws(() => scene.sampleMotion(1), /no motion, physics, cloth or particles/);
   scene.apply([{ type: 'set-cloth', cloth: hangingFlag }], { expectedRevision: scene.revision });
   scene.sampleMotion(1);
   const exported = scene.exportRecipe();

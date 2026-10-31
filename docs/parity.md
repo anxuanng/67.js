@@ -57,7 +57,7 @@ To move to a new Blender release, run `node scripts/parity-manual-snapshot.mjs`.
 | Modeling > Metaball | out of scope | Issue #45 records metaballs as out of scope unless demand appears. | | |
 | Modeling > Text | partial | The `text` geometry extrudes outlines of the bundled DejaVu Sans (printable ASCII, 20 KB loaded on demand) or of a font table registered in code, with size, depth, alignment, lines and curve resolution. One glyph and a word match Blender 5.2 with the same font to 2e-5 in volume and area. There is no kerning, no bevel, no character styles, no text on a curve, no non-ASCII glyphs in the bundled font, and no font through MCP. | [curve-text](../tests/curve-text.test.js), [Blender comparison](../tests/blender-curve-text.test.js) | #45 |
 | Modeling > Point Cloud | missing | No point clouds. | | #43 |
-| Modeling > Volumes | missing | Depth-clipped volume fog exists. There are no volume objects. | | #63 |
+| Modeling > Volumes | missing | Depth-clipped volume fog exists. There are no volume objects. Smoke and fire are not built, by decision: a measured CPU grid step costs 0.46 s at 64 cubed (docs/physics.md, "Decision"). | | #63 |
 | Modeling > Empties | done | A node with no geometry acts as an empty parent. | [agent-scene](../tests/agent-scene.test.js) | |
 | Modeling > Modifiers > Common Modifier Options | done | A recipe mesh holds an ordered stack. `set-mesh-stack` replaces the stack or applies a node into the edit log. | [mesh-stack](../tests/mesh-stack.test.js) | |
 | Modeling > Modifiers > Edit > Data Transfer Modifier | missing | No equivalent. | | |
@@ -114,10 +114,10 @@ To move to a new Blender release, run `node scripts/parity-manual-snapshot.mjs`.
 | Modeling > Modifiers > Physics > Collision Modifier | partial | Rapier colliders fitted to recipe geometry as box, ball, capsule, convex hull or trimesh, so a body rests on an authored mesh. | [agent-physics](../tests/agent-physics.test.js) | #61 |
 | Modeling > Modifiers > Physics > Dynamic Paint Modifier | missing | No equivalent. | | |
 | Modeling > Modifiers > Physics > Explode Modifier | missing | No equivalent. | | |
-| Modeling > Modifiers > Physics > Fluid Modifier | partial | `addons/spume` plays back a liquid baked outside the browser. | [spume](../tests/spume.test.js) | #63 |
+| Modeling > Modifiers > Physics > Fluid Modifier | partial | `addons/spume` plays back a liquid baked outside the browser. Decision (#63): no browser liquid solver, see docs/physics.md "Decision". | [spume](../tests/spume.test.js) | #63 |
 | Modeling > Modifiers > Physics > Ocean Modifier | missing | No equivalent. | | |
-| Modeling > Modifiers > Physics > Particle Instance Modifier | missing | No particle system. | | #63 |
-| Modeling > Modifiers > Physics > Particle System Modifier | missing | No particle system. | | #63 |
+| Modeling > Modifiers > Physics > Particle Instance Modifier | partial | An emitter system repeats its node's mesh once per particle. There is no choice of instanced object with rotation, no collection and no moving source. | [particles](../tests/particles.test.js) | #63 |
+| Modeling > Modifiers > Physics > Particle System Modifier | partial | Recipe `particles`: seeded emitters (point, box, sphere, disc) with gravity, drag, wind, a floor and size over life, and hair strands from a surface. A seek is a closed-form evaluation, so it repeats exactly. No force fields, no collision beyond a floor, no children or hair dynamics, and no comparison against Blender was run. See docs/physics.md. | [particles](../tests/particles.test.js) | #63 |
 | Modeling > Modifiers > Physics > Soft Body Modifier | missing | No soft bodies. | | #62 |
 | Modeling > Modifiers > Geometry Nodes Modifier | partial | Bounded JSON field expressions drive `set_position`, `displace`, a `field` selection rule and `instances`; they are one language, `src/expression.js`, with motion drivers. There is no node graph, no loops, no custom node groups, and no realize, curve or volume nodes. | [src/mesh-fields.js](../src/mesh-fields.js), [tests/mesh-fields.test.js](../tests/mesh-fields.test.js), [tests/blender-golden.test.js](../tests/blender-golden.test.js), [pillar-court task](../bench/agent-modeling/tasks.mjs) | #43 |
 | Modeling > Geometry Nodes | partial | Fields over attributes, noise and math (position, normal, index, tags), Set Position, Instance on Points (grid, scatter, surface) and Displace. Noise is not Blender's noise function, and there is no Blender comparison for instancing. Issue #43 chose bounded JSON expressions and not a visual editor. | [src/mesh-fields.js](../src/mesh-fields.js), [tests/mesh-fields.test.js](../tests/mesh-fields.test.js), [tests/blender-golden.test.js](../tests/blender-golden.test.js) | #43 |
@@ -178,8 +178,8 @@ To move to a new Blender release, run `node scripts/parity-manual-snapshot.mjs`.
 | Physics > Rigid Body > Rigid Body Constraints | partial | Fixed, spherical, revolute and prismatic joints, with limits and motors, in code. | [physics](../tests/physics.test.js) | #61 |
 | Physics > Cloth | partial | Same solver as the Cloth Modifier row: gravity, wind, pins, ball and box collisions, thickness and friction, and a `scene_inspect` report. Blender's tension, compression, shear and bending stiffness map to one `stiffness` and one `bend`. | [cloth](../tests/cloth.test.js) | #62 |
 | Physics > Soft Body | missing | No soft bodies. | | #62 |
-| Physics > Fluid | partial | `addons/spume` plays back a liquid baked outside the browser. There is no smoke or fire. | [spume](../tests/spume.test.js) | #63 |
-| Physics > Particle System | missing | No shared particle system. Sparks exist only in the demo film. | | #63 |
+| Physics > Fluid | partial | `addons/spume` plays back a liquid baked outside the browser. There is no smoke or fire, by decision (#63): docs/physics.md "Decision" has the measured grid cost. | [spume](../tests/spume.test.js) | #63 |
+| Physics > Particle System | partial | Recipe `particles` emitters and hair: see the Particle System Modifier row. Sparks, dust (drag, grow) and fur work from a recipe and seek deterministically. | [particles](../tests/particles.test.js) | #63 |
 | Physics > Dynamic Paint | missing | No equivalent. | | |
 | Physics > Forces > Gravity | partial | Physics definitions and recipe `physics.gravity` set gravity. | [physics](../tests/physics.test.js) | #61 |
 | Physics > Forces > Force Fields | missing | No force fields. | | #63 |

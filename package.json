@@ -105,6 +105,7 @@
     "smoke:agent-motion": "node scripts/smoke-agent-motion.mjs",
     "smoke:agent-physics": "node scripts/smoke-agent-physics.mjs",
     "smoke:agent-cloth": "node scripts/smoke-agent-cloth.mjs",
+    "smoke:agent-particles": "node scripts/smoke-agent-particles.mjs",
     "smoke:frame-encoder": "node scripts/smoke-frame-encoder.mjs",
     "smoke:enhancements": "node scripts/smoke-enhancements.mjs",
     "smoke:site": "node scripts/smoke-site.mjs",
