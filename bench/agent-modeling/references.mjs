@@ -214,6 +214,23 @@ export const REFERENCES = {
     ),
     materials: [{ id: 'paint', pattern: { type: 'planks', size: 0.6, count: 5 }, roughness: 1 }],
   },
+  'crate-graph': {
+    ...scene(
+      [{ id: 'crate', type: 'mesh', base: { type: 'box', bevel: 0 }, edits: [...crateEdits, { op: 'uv_unwrap' }] }],
+      [{ id: 'crate', geometry: 'crate', translation: [0, 0.3, 0] }],
+    ),
+    materials: [{
+      id: 'paint',
+      pattern: {
+        type: 'graph', mapping: 'uv', bump: 0.6,
+        graph: {
+          color: { ramp: { value: { add: [{ mul: [{ wave: { frequency: 6, direction: 'u', shape: 'triangle' } }, 0.7] }, { mul: [{ noise: { scale: 16, seed: 4 } }, 0.3] }] }, stops: [[0, [0.05, 0.12, 0.2]], [1, [0.8, 0.7, 0.45]]] } },
+          roughness: { mix: [0.5, 0.9, { noise: { scale: 16, seed: 4 } }] },
+          height: { noise: { scale: 24, seed: 7 } },
+        },
+      },
+    }],
+  },
   'crate-uv': scene(
     [{ id: 'crate', type: 'mesh', base: { type: 'box', bevel: 0 }, edits: [...crateEdits, { op: 'uv_unwrap' }] }],
     [{ id: 'crate', geometry: 'crate', translation: [0, 0.3, 0] }],

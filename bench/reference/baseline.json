@@ -1,128 +1,144 @@
 {
-  "metric": "FLIP (LDR), mean error, lower is better",
-  "blenderVersion": "5.2.2 LTS",
-  "seconds": {
-    "character": {
-      "cycles": 4.5,
-      "eevee": 1.1
-    },
-    "fog": {
-      "cycles": 16.6,
-      "eevee": 1.1
-    },
-    "foliage": {
-      "cycles": 5.8,
-      "eevee": 1
-    },
-    "glass": {
-      "cycles": 5.8,
-      "eevee": 0.4
-    },
-    "lit-interior": {
-      "cycles": 10,
-      "eevee": 0.6
-    },
-    "material-spheres": {
-      "cycles": 6.7,
-      "eevee": 0.4
-    },
-    "metal": {
-      "cycles": 5,
-      "eevee": 0.3
-    },
-    "outdoor-hdri": {
-      "cycles": 4.1,
-      "eevee": 0.4
-    },
-    "spot-area": {
-      "cycles": 20.3,
-      "eevee": 13.2
-    }
+ "metric": "FLIP (LDR), mean error, lower is better",
+ "blenderVersion": "5.2.2 LTS",
+ "seconds": {
+  "brick-graph": {
+   "cycles": 8.9,
+   "eevee": 15.2
   },
-  "graphics": {
-    "gpu": "ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 (0x00002487) Direct3D11 vs_5_0 ps_5_0, D3D11)",
-    "cpu": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)"
+  "car-paint": {
+   "cycles": 13.8,
+   "eevee": 11.5
   },
-  "scores": {
-    "car-paint": {
-      "gpu-vs-cycles": 0.1521,
-      "gpu-vs-eevee": 0.1323,
-      "cpu-vs-cycles": 0.152,
-      "cpu-vs-eevee": 0.1323,
-      "eevee-vs-cycles": 0.0819,
-      "gpu-vs-cpu": 0.0055
-    },
-    "character": {
-      "gpu-vs-cycles": 0.0995,
-      "gpu-vs-eevee": 0.0833,
-      "cpu-vs-cycles": 0.099,
-      "cpu-vs-eevee": 0.0826,
-      "eevee-vs-cycles": 0.074,
-      "gpu-vs-cpu": 0.0068
-    },
-    "fog": {
-      "gpu-vs-cycles": 0.2612,
-      "gpu-vs-eevee": 0.0542,
-      "cpu-vs-cycles": 0.2608,
-      "cpu-vs-eevee": 0.0542,
-      "eevee-vs-cycles": 0.2662,
-      "gpu-vs-cpu": 0.0085
-    },
-    "foliage": {
-      "gpu-vs-cycles": 0.1594,
-      "gpu-vs-eevee": 0.1386,
-      "cpu-vs-cycles": 0.159,
-      "cpu-vs-eevee": 0.1384,
-      "eevee-vs-cycles": 0.0783,
-      "gpu-vs-cpu": 0.0096
-    },
-    "glass": {
-      "gpu-vs-cycles": 0.145,
-      "gpu-vs-eevee": 0.1469,
-      "cpu-vs-cycles": 0.1447,
-      "cpu-vs-eevee": 0.1471,
-      "eevee-vs-cycles": 0.115,
-      "gpu-vs-cpu": 0.0074
-    },
-    "lit-interior": {
-      "gpu-vs-cycles": 0.4997,
-      "gpu-vs-eevee": 0.1204,
-      "cpu-vs-cycles": 0.4993,
-      "cpu-vs-eevee": 0.1209,
-      "eevee-vs-cycles": 0.5159,
-      "gpu-vs-cpu": 0.006
-    },
-    "material-spheres": {
-      "gpu-vs-cycles": 0.1598,
-      "gpu-vs-eevee": 0.1196,
-      "cpu-vs-cycles": 0.1595,
-      "cpu-vs-eevee": 0.1194,
-      "eevee-vs-cycles": 0.1006,
-      "gpu-vs-cpu": 0.0069
-    },
-    "metal": {
-      "gpu-vs-cycles": 0.1868,
-      "gpu-vs-eevee": 0.1565,
-      "cpu-vs-cycles": 0.1867,
-      "cpu-vs-eevee": 0.1565,
-      "eevee-vs-cycles": 0.0934,
-      "gpu-vs-cpu": 0.0063
-    },
-    "outdoor-hdri": {
-      "gpu-vs-cycles": 0.0676,
-      "gpu-vs-eevee": 0.052,
-      "cpu-vs-cycles": 0.0672,
-      "cpu-vs-eevee": 0.0515,
-      "eevee-vs-cycles": 0.0383,
-      "gpu-vs-cpu": 0.0058
-    },
-    "spot-area": {
-      "gpu-vs-cycles": 0.1242,
-      "gpu-vs-eevee": 0.1707,
-      "cpu-vs-cycles": 0.1242,
-      "cpu-vs-eevee": 0.1709,
-      "eevee-vs-cycles": 0.1935,
-      "gpu-vs-cpu": 0.0032
-    }
+  "character": {
+   "cycles": 21.6,
+   "eevee": 6.2
+  },
+  "fog": {
+   "cycles": 40.5,
+   "eevee": 7.2
+  },
+  "foliage": {
+   "cycles": 13.0,
+   "eevee": 4.6
+  },
+  "glass": {
+   "cycles": 11.5,
+   "eevee": 2.6
+  },
+  "lit-interior": {
+   "cycles": 19.4,
+   "eevee": 2.6
+  },
+  "material-spheres": {
+   "cycles": 12.7,
+   "eevee": 9.4
+  },
+  "metal": {
+   "cycles": 38.4,
+   "eevee": 13.3
+  },
+  "outdoor-hdri": {
+   "cycles": 17.1,
+   "eevee": 7.1
+  },
+  "spot-area": {
+   "cycles": 31.3,
+   "eevee": 5.6
   }
+ },
+ "graphics": {
+  "gpu": "ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 (0x00002487) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+  "cpu": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)"
+ },
+ "scores": {
+  "brick-graph": {
+   "gpu-vs-cycles": 0.2269,
+   "gpu-vs-eevee": 0.148,
+   "cpu-vs-cycles": 0.2268,
+   "cpu-vs-eevee": 0.1479,
+   "eevee-vs-cycles": 0.144,
+   "gpu-vs-cpu": 0.0074
+  },
+  "car-paint": {
+   "gpu-vs-cycles": 0.1521,
+   "gpu-vs-eevee": 0.1324,
+   "cpu-vs-cycles": 0.152,
+   "cpu-vs-eevee": 0.1324,
+   "eevee-vs-cycles": 0.082,
+   "gpu-vs-cpu": 0.0055
+  },
+  "character": {
+   "gpu-vs-cycles": 0.0995,
+   "gpu-vs-eevee": 0.0833,
+   "cpu-vs-cycles": 0.099,
+   "cpu-vs-eevee": 0.0826,
+   "eevee-vs-cycles": 0.074,
+   "gpu-vs-cpu": 0.0068
+  },
+  "fog": {
+   "gpu-vs-cycles": 0.2612,
+   "gpu-vs-eevee": 0.0542,
+   "cpu-vs-cycles": 0.2608,
+   "cpu-vs-eevee": 0.0543,
+   "eevee-vs-cycles": 0.2662,
+   "gpu-vs-cpu": 0.0085
+  },
+  "foliage": {
+   "gpu-vs-cycles": 0.1594,
+   "gpu-vs-eevee": 0.1386,
+   "cpu-vs-cycles": 0.159,
+   "cpu-vs-eevee": 0.1384,
+   "eevee-vs-cycles": 0.0783,
+   "gpu-vs-cpu": 0.0096
+  },
+  "glass": {
+   "gpu-vs-cycles": 0.1326,
+   "gpu-vs-eevee": 0.1472,
+   "cpu-vs-cycles": 0.1323,
+   "cpu-vs-eevee": 0.1474,
+   "eevee-vs-cycles": 0.115,
+   "gpu-vs-cpu": 0.0075
+  },
+  "lit-interior": {
+   "gpu-vs-cycles": 0.5055,
+   "gpu-vs-eevee": 0.0923,
+   "cpu-vs-cycles": 0.5051,
+   "cpu-vs-eevee": 0.0928,
+   "eevee-vs-cycles": 0.5159,
+   "gpu-vs-cpu": 0.0062
+  },
+  "material-spheres": {
+   "gpu-vs-cycles": 0.1598,
+   "gpu-vs-eevee": 0.1196,
+   "cpu-vs-cycles": 0.1595,
+   "cpu-vs-eevee": 0.1194,
+   "eevee-vs-cycles": 0.1006,
+   "gpu-vs-cpu": 0.0069
+  },
+  "metal": {
+   "gpu-vs-cycles": 0.1868,
+   "gpu-vs-eevee": 0.1565,
+   "cpu-vs-cycles": 0.1867,
+   "cpu-vs-eevee": 0.1565,
+   "eevee-vs-cycles": 0.0934,
+   "gpu-vs-cpu": 0.0063
+  },
+  "outdoor-hdri": {
+   "gpu-vs-cycles": 0.0676,
+   "gpu-vs-eevee": 0.052,
+   "cpu-vs-cycles": 0.0672,
+   "cpu-vs-eevee": 0.0515,
+   "eevee-vs-cycles": 0.0383,
+   "gpu-vs-cpu": 0.0058
+  },
+  "spot-area": {
+   "gpu-vs-cycles": 0.1242,
+   "gpu-vs-eevee": 0.1707,
+   "cpu-vs-cycles": 0.1242,
+   "cpu-vs-eevee": 0.1709,
+   "eevee-vs-cycles": 0.1935,
+   "gpu-vs-cpu": 0.0032
+  }
+ }
 }

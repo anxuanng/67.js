@@ -14,6 +14,15 @@ export const AGENT_SCENE_DEFAULT_LIMITS = Object.freeze({
 
 export const MATERIAL_PATTERN_TYPES = Object.freeze(['noise', 'wood', 'planks', 'bricks', 'tiles', 'marble', 'stone', 'concrete', 'metal', 'rust', 'fabric']);
 export const MAX_MATERIAL_PATTERNS = 16;
+// A material graph bakes to textures on the CPU and never becomes shader text. Its node and depth limits are the field
+// expression limits; maxWork is work units per pixel times pixels, so a costly graph needs a smaller texture.
+export const MATERIAL_GRAPH_OUTPUTS = Object.freeze(['color', 'roughness', 'metallic', 'emission', 'height']);
+export const MATERIAL_GRAPH_OPERATORS = Object.freeze([
+  'uv', 'vec', 'ramp', 'noise', 'voronoi', 'wave', 'checker', 'gradient',
+  'add', 'sub', 'mul', 'div', 'min', 'max', 'pow', 'abs', 'floor', 'fract', 'sqrt', 'invert', 'clamp', 'smoothstep', 'mix',
+]);
+export const MATERIAL_GRAPH_LIMITS = Object.freeze({ maxNodes: MAX_FIELD_NODES, maxDepth: MAX_FIELD_DEPTH, maxStops: 8, maxWork: 30_000_000 });
+export const MATERIAL_MAPPINGS = Object.freeze(['box', 'uv']);
 
 // Recipe textures are opaque patterns, so cutout masking has nothing to cut.
 export const RECIPE_ALPHA_MODES = Object.freeze(['opaque', 'blend']);
@@ -36,6 +45,8 @@ export const AGENT_SCENE_CAPABILITIES = Object.freeze({
   materialTags: Object.freeze(['surface', 'unlit', 'liquid', 'foam']),
   alphaModes: RECIPE_ALPHA_MODES,
   materialPatterns: MATERIAL_PATTERN_TYPES, maxMaterialPatterns: MAX_MATERIAL_PATTERNS,
+  materialMappings: MATERIAL_MAPPINGS,
+  materialGraph: Object.freeze({ outputs: MATERIAL_GRAPH_OUTPUTS, operators: MATERIAL_GRAPH_OPERATORS, ...MATERIAL_GRAPH_LIMITS }),
   fixedResources: false, dynamicTopology: true, checkpoints: true, positiveScaleOnly: true,
   authoredLook: true, maxPointLights: 8,
   // Local lights: spot and rectangular area lights. Shadows share one 2048 x 3072 depth atlas of 24 tiles; a shadowed

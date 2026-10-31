@@ -56,6 +56,12 @@ function checkOne(check, measures) {
       const found = measures.patternTypes.filter(type => check.types.includes(type));
       return { pass: found.length > 0, detail: measures.patternTypes.join(', ') || 'no material pattern' };
     }
+    case 'uvPattern': {
+      // A graph material that follows the geometry UVs, and every part that wears it has them.
+      const followsUvs = measures.patternTypes.some((type, index) => type === 'graph' && measures.patternMappings[index] === 'uv');
+      const everyPart = measures.uv.parts === measures.uv.of;
+      return { pass: followsUvs && everyPart && measures.uv.stretch <= check.maxStretch, detail: followsUvs ? `graph on UVs, stretch ${round(measures.uv.stretch)}, ${measures.uv.parts}/${measures.uv.of} parts with UVs` : 'no graph material with mapping uv' };
+    }
     case 'nodeAt': {
       const position = measures.nodePosition(check.node, check.time);
       if (!position) return { pass: false, detail: `no drawn node ${check.node}` };

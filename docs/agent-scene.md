@@ -119,7 +119,7 @@ Image textures and the other procedural material tags are outside this version.
 
 | Field | Meaning |
 | --- | --- |
-| `type` | `noise`, `wood`, `planks`, `bricks`, `tiles`, `marble`, `stone`, `concrete`, `metal`, `rust` or `fabric` |
+| `type` | `noise`, `wood`, `planks`, `bricks`, `tiles`, `marble`, `stone`, `concrete`, `metal`, `rust` or `fabric`, or `graph` (with `graph`) |
 | `colors` | Two linear RGB colours to mix, darker first. `bricks` also takes a third, for the mortar. Each type has defaults |
 | `size` | Metres per repeat of the texture, from 0.01 to 100 |
 | `count` | Features per repeat, from 1 to 64: planks, bricks or tiles across, wood rings, or noise cells |
@@ -127,11 +127,12 @@ Image textures and the other procedural material tags are outside this version.
 | `seed` | Nonnegative whole number. The same definition always bakes the same pixels |
 | `axis` | Object axis the grain runs along: `x`, `y` (default) or `z` |
 | `resolution` | Texture size: 256, 512 (default) or 1024 |
+| `mapping` | `box` (default) or `uv`: how the texture is placed. See Material graphs |
 
 A pattern needs no UVs. The texture is projected along the object's three axes and blended by the surface normal, so it
 works on every geometry type and after mesh edits. Coordinates are in metres on the object, after its node scale, so a
 stretched box keeps the texture's real size and the pattern moves with the node. Corners between faces show where one
-projection meets another; `uv_unwrap` results are not used by patterns.
+projection meets another; set `mapping: "uv"` to follow `uv_unwrap` results instead (see Material graphs).
 
 `color` defaults to white and tints the pattern. `roughness` and `metallic` scale what the pattern stores, so use
 `roughness: 1` for its own surface and `metallic: 1` for `metal` and `rust` (rust stores where it is no longer metal).
@@ -140,6 +141,48 @@ A scene holds at most 16 different patterns, and materials that differ only in `
 share one. Each takes about 4 MiB of texture memory at 512. Measured in Node on a Ryzen 5 5600X, baking at 512 took
 about 0.2 to 0.55 s per pattern, which happens when the scene first renders it. Changing a pattern rebuilds the
 renderer.
+
+### Material graphs
+
+`pattern` with `type: "graph"` bakes your own node graph on the CPU into textures. A graph is plain JSON and never code:
+it is read against a fixed table of operators, checked against its limits before any pixel is computed, and turned into
+texture images, so no text from a recipe ever reaches the shader. The language shares the shape of the field expressions
+(one operator per object, numbers are constants, `[r, g, b]` is a constant vector).
+
+```json
+{ "id": "brick", "pattern": { "type": "graph", "mapping": "uv", "bump": 1.5, "graph": {
+  "color": { "ramp": { "value": { "noise": { "scale": 8, "seed": 3 } }, "stops": [[0, [0.15, 0.05, 0.03]], [1, [0.6, 0.25, 0.15]]] } },
+  "roughness": 0.9,
+  "height": { "noise": { "scale": 8, "seed": 3 } } } } }
+```
+
+| Graph output | Becomes |
+| --- | --- |
+| `color` | Base colour map, linear RGB (a number is grey). Without it the material `color` stands alone |
+| `roughness`, `metallic` | The metallic-roughness map. A material that has either output defaults the matching factor to 1 |
+| `emission` | The emissive map. The material `emission` defaults to 1 when the graph has it |
+| `height` | A normal map, so it gives bump. `bump` (0 to 4, default 1) scales the relief |
+
+Nodes: `uv` (`"u"`, `"v"` or `"both"`), `noise`, `voronoi` (`output`: `distance`, `edge` or `cell`, a random value per cell),
+`wave` (`sine`, `saw` or `triangle` along `u`, `v` or `diagonal`), `checker`, `gradient` (`u`, `v` or `radial`), `ramp`
+(2 to 8 stops of numbers or colours), `vec`, and the maths nodes `add`, `sub`, `mul`, `div`, `min`, `max`, `pow`, `abs`, `floor`,
+`fract`, `sqrt`, `invert`, `clamp`, `smoothstep` and `mix`. Maths nodes work on each component of a vector. Every texture
+node takes `at`, a vector expression such as `{ "add": [{ "uv": "both" }, { "mul": [{ "vec": [0.1, 0, 0] }, 1] }] }`, to warp
+it. Scales and counts are whole numbers (1 to 64, even for `checker`), so every texture node tiles.
+
+Limits, checked while the recipe is read: at most 64 nodes in all outputs, depth 12 (the field expression limits), at most 8 ramp
+stops, `resolution` of 256, 512 or 1024, and a work budget of 30 million units, where a plain node costs 1, a `noise` octave 3
+and a `voronoi` 8, per pixel and per pixel of the texture. A heavy graph at 1024 can be over it; use 512. A graph that is over a
+limit, holds an unknown operator or key, or holds any text other than the fixed names above is rejected with a message that
+names the problem. Baking the heaviest graph the budget allows took about 2 seconds in Node.
+
+#### Mapping
+
+`mapping` is `box` (default) or `uv`, and it applies to presets as well as graphs. `uv` samples the texture with the
+geometry's UVs, so a mesh with a `uv_unwrap` stack node (or `geometry.uvs`) carries it without box projection seams; the
+texture repeats outside 0 to 1 and tiles. `size` and `axis` only apply to `box`. A `uv` pattern on geometry without UVs
+fails at render and at `scene_export_glb` with a message that names `uv_unwrap`. GLB export writes the baked graph textures
+and the geometry UVs.
 
 Nodes contain `id`, optional `label`, `parent`, `translation`, `rotation`, and `scale`.
 Mesh nodes also require both `geometry` and `material` resource IDs.

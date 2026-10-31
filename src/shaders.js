@@ -693,7 +693,7 @@ void main() {
   }
   float alpha = surfaceAlpha(textureAlpha);
   vec3 emission = emissionColor * surface.z;
-  if (USES_EMISSIVE_MAP) emission *= texture(emissiveMap, textureUV).rgb;
+  if (USES_EMISSIVE_MAP) emission *= (boxMapScale > 0.0 ? sampleBox(emissiveMap) : texture(emissiveMap, textureUV)).rgb;
   if (TAG_UNLIT) {
     vec3 radiance = color * exposure + emission;
     outputColor = vec4(hdrEnabled > 0.5 ? radiance : pow(max(radiance, vec3(0)), vec3(1.0 / 2.2)), alpha);

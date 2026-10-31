@@ -29,13 +29,13 @@
   "entry:clutter": 5300,
   "entry:texture-set": 900,
   "entry:agent-scene": 49200,
-  "entry:agent-scene+lazy": 140600,
+  "entry:agent-scene+lazy": 141400,
   "entry:agent-asset": 75600,
-  "entry:agent-asset+lazy": 147700,
+  "entry:agent-asset+lazy": 148400,
   "entry:hdri": 3300,
   "scene:lit-box": 56000,
   "scene:gltf-box": 75300,
   "scene:agent-scene": 75700,
-  "scene:agent-scene+lazy": 167100
+  "scene:agent-scene+lazy": 167400
  }
 }
