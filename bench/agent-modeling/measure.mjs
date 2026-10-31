@@ -184,6 +184,21 @@ function countTips(geometries, bounds) {
 }
 
 /** Number of triangles a line along `axis` crosses at the given coordinates of the other two axes, in axis order. */
+// Height of the surface under (x, z): the first triangle that covers the point from above, or null over a hole.
+function surfaceHeightAt({ positions, indices }, pointX, pointZ) {
+  for (let triangle = 0; triangle < indices.length; triangle += 3) {
+    const [first, second, third] = [indices[triangle], indices[triangle + 1], indices[triangle + 2]].map(vertex => [positions[vertex * 3], positions[vertex * 3 + 1], positions[vertex * 3 + 2]]);
+    const determinant = (second[2] - third[2]) * (first[0] - third[0]) + (third[0] - second[0]) * (first[2] - third[2]);
+    if (determinant === 0) continue;
+    const weightFirst = ((second[2] - third[2]) * (pointX - third[0]) + (third[0] - second[0]) * (pointZ - third[2])) / determinant;
+    const weightSecond = ((third[2] - first[2]) * (pointX - third[0]) + (first[0] - third[0]) * (pointZ - third[2])) / determinant;
+    const weightThird = 1 - weightFirst - weightSecond;
+    if (weightFirst < -1e-9 || weightSecond < -1e-9 || weightThird < -1e-9) continue;
+    return weightFirst * first[1] + weightSecond * second[1] + weightThird * third[1];
+  }
+  return null;
+}
+
 function lineHits(geometries, axis, point) {
   const axisIndex = { x: 0, y: 1, z: 2 }[axis];
   const [firstAxis, secondAxis] = [0, 1, 2].filter(candidate => candidate !== axisIndex);
@@ -418,6 +433,10 @@ export async function measureRecipe(recipe) {
       scene.sampleMotion(time);
       const part = scene.parts.find(candidate => candidate.name === name);
       return part ? [part.matrix[12], part.matrix[13], part.matrix[14]] : null;
+    },
+    surfaceHeight(name, pointX, pointZ) {
+      const part = scene.parts.find(candidate => candidate.name === name);
+      return part ? surfaceHeightAt(worldGeometry(part), pointX, pointZ) : null;
     },
     nodeBounds(name) {
       const part = scene.parts.find(candidate => candidate.name === name);

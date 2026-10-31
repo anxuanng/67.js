@@ -157,14 +157,40 @@ function validateOptions({ size, resolution, chunks, levels }) {
 }
 
 const SIDES = Object.freeze(['west', 'east', 'north', 'south']);
+const MAXIMUM_HOLES = 64;
+
+/** Checks the hole list ({ center: [x, z], radius } circles) and returns a copy, or null when there are none. */
+export function normalizeTerrainHoles(holes) {
+  if (holes === undefined) return null;
+  if (!Array.isArray(holes) || holes.length > MAXIMUM_HOLES) throw new RangeError(`holes must be a list of at most ${MAXIMUM_HOLES} circles.`);
+  if (holes.length === 0) return null;
+  return holes.map(hole => {
+    const center = hole?.center;
+    const validCenter = Array.isArray(center) && center.length === 2 && center.every(Number.isFinite);
+    if (!validCenter || !(hole.radius > 0) || !Number.isFinite(hole.radius)) {
+      throw new RangeError('Each hole needs center [x, z] in metres and a positive radius.');
+    }
+    return { center: [center[0], center[1]], radius: hole.radius };
+  });
+}
+
+function pointInsideHoles(holes, pointX, pointZ) {
+  for (const hole of holes) {
+    if (Math.hypot(pointX - hole.center[0], pointZ - hole.center[1]) < hole.radius) return true;
+  }
+  return false;
+}
 
 /**
- * Returns { parts, heightAt, normalAt, bounds, update, triangleCount }.
+ * Returns { parts, heightAt, normalAt, isHole, bounds, update, triangleCount }.
+ * `holes` ([{ center: [x, z], radius }]) cuts round openings through the ground; isHole(x, z) tells whether a point is in one.
  * Ground spans x and z from -size / 2 to size / 2. Call update(eye) each frame (or when the camera moves) and, when it
  * returns a non-empty list, pass the scene parts to renderer.replaceParts.
  */
-export function createTerrain({ size = 512, resolution = 32, chunks = 8, levels = 4, height, seed = 1, material = DEFAULT_MATERIAL, lodDistance, eye } = {}) {
+export function createTerrain({ size = 512, resolution = 32, chunks = 8, levels = 4, height, seed = 1, material = DEFAULT_MATERIAL, lodDistance, eye, holes } = {}) {
   validateOptions({ size, resolution, chunks, levels });
+  const holeCircles = normalizeTerrainHoles(holes);
+  const isHole = (worldX, worldZ) => holeCircles !== null && pointInsideHoles(holeCircles, worldX, worldZ);
   const heightFunction = resolveHeightFunction(height, size, seed);
   const chunkSize = size / chunks;
   const gridCells = chunks * resolution;
@@ -259,6 +285,10 @@ export function createTerrain({ size = 512, resolution = 32, chunks = 8, levels 
     let cursor = 0;
     for (let row = 0; row < cells; row++) {
       for (let column = 0; column < cells; column++) {
+        // A cell whose centre lies inside a hole is left out, so a coarser level cuts a coarser hole.
+        const cellCenterX = origin + (firstColumn + (column + 0.5) * step) * spacing;
+        const cellCenterZ = origin + (firstRow + (row + 0.5) * step) * spacing;
+        if (isHole(cellCenterX, cellCenterZ)) continue;
         const corner00 = row * side + column;
         const corner10 = corner00 + 1;
         const corner01 = corner00 + side;
@@ -267,7 +297,7 @@ export function createTerrain({ size = 512, resolution = 32, chunks = 8, levels 
         cursor += 6;
       }
     }
-    return { positions, normals, uvs, indices };
+    return { positions, normals, uvs, indices: cursor === indices.length ? indices : indices.slice(0, cursor) };
   }
 
   function snappedHeight(column, row, side, step, gridColumn, gridRow, edgeLevels, level) {
@@ -330,7 +360,7 @@ export function createTerrain({ size = 512, resolution = 32, chunks = 8, levels 
   }
 
   update(eye ?? [0, highest + size * 0.5, 0]);
-  return { parts, heightAt, normalAt, bounds, update, get triangleCount() { return triangleTotal; }, chunkSize, resolution, levels, chunkLevels: () => chunkStates.map(state => state.level) };
+  return { parts, heightAt, normalAt, isHole, bounds, update, get triangleCount() { return triangleTotal; }, chunkSize, resolution, levels, chunkLevels: () => chunkStates.map(state => state.level) };
 }
 
 function identityMatrix() {

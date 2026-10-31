@@ -154,3 +154,22 @@ test('the tray-drop checks reject a box collider, a missing section and a body t
   fallingThrough.physics.bodies[0].collidesWith = [1];
   assert.deepEqual(failedKinds(await gradeRecipe(taskById('tray-drop'), fallingThrough)), ['balls rest on the pocket floor']);
 });
+
+test('the terrain walk needs the opening, the hills and a walk that goes around the opening', async () => {
+  const task = taskById('terrain-hole-walk');
+  const closedGround = structuredClone(REFERENCES['terrain-hole-walk']);
+  delete closedGround.geometries[0].holes;
+  assert.deepEqual(failedKinds(await gradeRecipe(task, closedGround)), ['through']);
+
+  const flatGround = structuredClone(REFERENCES['terrain-hole-walk']);
+  flatGround.geometries[0].amplitude = 0;
+  assert.deepEqual(failedKinds(await gradeRecipe(task, flatGround)), ['groundRelief']);
+
+  const straightWalk = structuredClone(REFERENCES['terrain-hole-walk']);
+  straightWalk.motion.tracks[0].keyframes = [{ time: 0, value: [-15, 0.5, -15] }, { time: 10, value: [15, 0.5, 15] }];
+  assert.deepEqual(failedKinds(await gradeRecipe(task, straightWalk)), ['walkPath']);
+
+  const hoveringWalker = structuredClone(REFERENCES['terrain-hole-walk']);
+  for (const keyframe of hoveringWalker.motion.tracks[0].keyframes) keyframe.value[1] = 4;
+  assert.deepEqual(failedKinds(await gradeRecipe(task, hoveringWalker)), ['walkPath']);
+});

@@ -84,6 +84,12 @@ Memory: three `TEXTURE_2D_ARRAY`s on units 11 to 13 (sRGB colour, normal, roughn
 - `update(eye)` picks a level per chunk from its distance (`lodDistance`, default 1.6 chunk sizes, doubling per level) and returns the parts whose geometry changed. Edges shared with a coarser neighbour are snapped onto the neighbour's edge, so there are no cracks and no skirts.
 - UVs are world metres `(x, z)`. Vertex normals are smooth and shared across chunk borders.
 
+## Holes
+
+`createTerrain({ holes: [{ center: [x, z], radius }] })` (up to 64 circles, radius in metres) leaves no surface where a cell centre falls inside a circle, so a cave mouth or a shaft opens through the ground. `terrain.isHole(x, z)` tells whether a point is inside one. `heightAt` and `normalAt` ignore holes and still return the surface that would be there, so check `isHole` before standing something on it. A coarser level of detail cuts a coarser hole (its cells are bigger), so give a hole a radius of a few finest cells at least. A hole that covers a whole chunk gives that chunk empty geometry. Without `holes` the meshes are byte-identical to before (a test keeps a digest).
+
+In a recipe, the same ground is the `terrain` geometry (`size`, `resolution`, `seed`, `amplitude`, `holes`): see [agent-scene](agent-scene.md).
+
 ## Measured
 
 Windows, RTX 3060, headless Chrome, 1600x900, 4x MSAA, HDRI, shadows, bloom, 600 m terrain with 10x10 chunks at resolution 32 and about 1,000 to 1,750 trees:
@@ -97,7 +103,8 @@ Splat textures take 68 MiB of 74 MiB texture memory at 1K per layer.
 
 ## Limits
 
-- Up to four layers; one splat material per draw (chunks share one).
+- Up to four layers; one splat material per draw (chunks share one). More layers need a shader change and are not built.
+- No navmesh or path query yet.
 - Overhangs are not represented: the terrain is a heightfield.
 - Changing `layers` or `splat` after the renderer exists needs a new renderer.
 - The weight texture follows its descriptor's filtering (mipmapped by default); 1024 square over 600 m gives 0.6 m texels.
