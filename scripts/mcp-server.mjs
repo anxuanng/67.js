@@ -7,7 +7,7 @@ import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import packageMetadata from '../package.json' with { type: 'json' };
 import { MODIFIER_OPERATIONS } from '../src/mesh-operations.js';
-import { MATERIAL_PATTERN_TYPES, MATERIAL_MAPPINGS, LIGHTING_SETUP_NAMES, RENDER_PASS_NAMES } from '../src/agent-scene-capabilities.js';
+import { MATERIAL_PATTERN_TYPES, MATERIAL_MAPPINGS, LIGHTING_SETUP_NAMES, RENDER_PASS_NAMES, VIDEO_ENCODERS } from '../src/agent-scene-capabilities.js';
 import { MATERIAL_LAYER_SCALAR_RANGES, MATERIAL_LAYER_COLOR_RANGES } from '../src/material-layers.js';
 
 const finite = z.number().min(-3.4028234663852886e38).max(3.4028234663852886e38);
@@ -37,7 +37,7 @@ const nodeFields = {
   rotation: quaternion.optional().describe('Nonzero local XYZW quaternion. The backend normalizes it.'),
   scale: z.tuple([positive, positive, positive]).optional().describe('Positive local XYZ scale.'),
 };
-const fieldExpression = z.union([finite, z.boolean(), vector3, z.record(z.string(), z.unknown())]).describe('Field expression, plain JSON and never code; driver expressions use the same language. A number, a boolean or [x,y,z] is a constant; an object holds one operator: math add mul sub div mod pow atan2 min max clamp saturate mix smoothstep neg abs sqrt sin cos floor ceil round fract sign; comparison lt lte gt gte eq; logic and or not if [cond,a,b]; vectors vec [x,y,z] dot cross distance length normalize x y z; sources {"attr":"position"|"normal"|"index"|"tag","component":"x"|"y"|"z","name":tag}, {"noise":{"scale":3,"seed":7,"octaves":1}} in 0..1, {"random":{"seed":1}} per element in 0..1. Example: {"mul":[{"attr":"position","component":"y"},0.5]}. At most 64 nodes, depth 12, 250000 elements.');
+const fieldExpression = z.union([finite, z.boolean(), vector3, z.record(z.string(), z.unknown())]).describe('Field expression, plain JSON and never code; driver expressions use the same language. A number, a boolean or [x,y,z] is a constant; an object holds one operator: math add mul sub div mod pow atan2 min max clamp saturate mix smoothstep neg abs sqrt sin cos floor ceil round fract sign; comparison lt lte gt gte eq; logic and or not if [cond,a,b]; vectors vec [x,y,z] dot cross distance length normalize x y z; sources {"attr":"position"|"normal"|"index"|"tag","component":"x"|"y"|"z","name":tag}, {"noise":{"scale":3,"seed":7,"octaves":1}} in 0..1, {"random":{"seed":1}} per element in 0..1. Limits in scene_capabilities fieldExpressions.');
 const instanceCount = z.number().int().min(1).max(2048);
 const instanceSpec = z.strictObject({
   grid: z.strictObject({ counts: z.tuple([instanceCount, instanceCount, instanceCount]), spacing: vector3 }).optional().describe('Grid of counts[0] x counts[1] x counts[2] points centred on the group.'),
@@ -498,6 +498,7 @@ const armature = z.strictObject({
   bones: z.array(boneRecord).min(1).max(128).optional().describe('Explicit bones, instead of a preset.'),
 }).describe('A skeleton. Each bone becomes a recipe node named after it (parented like the bones, rotating about its head), so motion tracks, motion.ik and set-node address bones by name. Mesh nodes bind with skin. scene_inspect rig lists unweighted vertices, bones with no vertices and joint axis problems.');
 const armaturesReference = z.array(z.record(z.string(), z.unknown())).max(16).describe('The same array as recipe.armatures in scene_create: id, parent, preset, fit, bones. Read that tool for the fields.');
+const timelineReference = z.record(z.string(), z.unknown()).describe('Shots in order, up to 60 s; fields in scene_capabilities filmTimeline.');
 const recipe = z.strictObject({
   format: z.literal('67js.scene'),
   schemaVersion: z.literal(1),
@@ -512,8 +513,9 @@ const recipe = z.strictObject({
   motion: motion.nullable().optional(),
   physics: physics.nullable().optional(),
   cloth: cloth.nullable().optional(),
+  timeline: timelineReference.nullable().optional(),
   particles: z.record(z.string(), z.unknown()).nullable().optional().describe('Particle emitters and hair, seeked by motionTime. Fields: scene_capabilities particles.'),
-}).describe('Bounded scene recipe. Backend validates references, mesh resource pairs, hierarchy, geometry budgets and camera consistency.');
+}).describe('Bounded scene recipe; the backend validates it.');
 const assetRecipe = z.strictObject({
   format: z.literal('67js.asset'),
   schemaVersion: z.literal(1),
@@ -539,6 +541,7 @@ const operation = z.discriminatedUnion('type', [
   z.strictObject({ type: z.literal('set-armatures'), armatures: armaturesReference.nullable() }),
   z.strictObject({ type: z.literal('set-physics'), physics: z.record(z.string(), z.unknown()).nullable().describe('Same object as recipe.physics in scene_create.') }),
   z.strictObject({ type: z.literal('set-cloth'), cloth: z.record(z.string(), z.unknown()).nullable() }),
+  z.strictObject({ type: z.literal('set-timeline'), timeline: z.record(z.string(), z.unknown()).nullable() }),
   z.strictObject({ type: z.literal('set-particles'), particles: z.record(z.string(), z.unknown()).nullable() }),
   z.strictObject({ type: z.literal('set-environment'), environment }),
   z.strictObject({ type: z.literal('set-effects'), effects }),
@@ -564,10 +567,13 @@ const renderSettings = z.strictObject({
   width: z.number().int().min(64).max(1024),
   height: z.number().int().min(64).max(1024),
   fps: z.number().int().min(1).max(30).optional(),
-  duration: z.number().min(0.1).max(30).optional(),
+  duration: z.number().min(0.1).max(60).optional(),
   animation: z.strictObject({ clip: z.number().int().min(0), start: z.number().min(0).max(3600).optional() }).optional(),
   motion: z.strictObject({ start: z.number().min(0).max(3600).optional() }).optional(),
   rendererTime: z.strictObject({ start: z.number().min(0).max(3600).optional(), rate: z.number().min(-16).max(16).optional() }).optional(),
+  timeline: z.strictObject({ start: z.number().min(0).max(60).optional() }).optional().describe('Play the recipe timeline from start (default 0); duration defaults to the rest of it. It owns the motion clock, so leave motion and animation out.'),
+  audio: z.strictObject({ file: z.string().max(68), offset: z.number().min(0).max(3600).optional() }).optional().describe('Video only: a file name in the --audio folder (.wav, .mp3, .ogg, .flac) mixed in from offset seconds.'),
+  encoder: z.enum(VIDEO_ENCODERS).optional().describe('Video only: cpu (default) or nvenc.'),
   passes: z.array(z.enum(RENDER_PASS_NAMES)).min(1).max(RENDER_PASS_NAMES.length).optional().describe('image and stills only: also write raw PNGs per frame for these passes; opaque geometry only.'),
 }).describe('Immutable snapshot render: one PNG, eight evenly spaced PNGs, or CPU H.264 MP4. Video dimensions must be even. Defaults: 24 fps, one second. Use motion.start for authored recipe tracks, animation for an imported clip, or both to layer them. Omitted motion holds time zero. Nonlooping samples must fit the authored duration.');
 const readOnly = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false };
@@ -655,8 +661,8 @@ export async function runMcpCli({ argumentsValue = process.argv.slice(2),
   for (let index = 0; index < argumentsValue.length; index += 2) {
     const name = argumentsValue[index];
     const value = argumentsValue[index + 1];
-    if (!['--backend', '--browser', '--memory', '--assets', '--jobs', '--ffmpeg'].includes(name) || value === undefined) {
-      throw new Error('Use --backend cpu|gpu, --browser <local executable path>, --memory <32..256 MiB>, --assets <absolute GLB directory>, --jobs <absolute private output directory>, and --ffmpeg <absolute executable>.');
+    if (!['--backend', '--browser', '--memory', '--assets', '--jobs', '--ffmpeg', '--audio'].includes(name) || value === undefined) {
+      throw new Error('Use --backend cpu|gpu, --browser <local executable path>, --memory <32..256 MiB>, --assets <absolute GLB directory>, --jobs <absolute private output directory>, --ffmpeg <absolute executable>, and --audio <absolute folder of .wav, .mp3, .ogg or .flac files for video jobs>.');
     }
     options[name.slice(2)] = name === '--memory' ? Number(value) : value;
   }

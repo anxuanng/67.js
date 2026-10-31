@@ -169,7 +169,7 @@ To move to a new Blender release, run `node scripts/parity-manual-snapshot.mjs`.
 | Animation & Rigging > Constraints > Relationship > Shrinkwrap Constraint | partial | `addons/surface-attachment` binds points to a surface in code. | [surface-attachment](../tests/surface-attachment.test.js) | |
 | Animation & Rigging > Actions | partial | Clips, weights and crossfades in code. An asset through MCP plays several clips as masked layers at motion time; there are no crossfades or state machines there. | [animation-mixer](../tests/animation-mixer.test.js), [agent-asset-layers](../tests/agent-asset-layers.test.js) | #59 |
 | Animation & Rigging > Drivers | partial | `motion.drivers`: a node component or material property from a bounded expression over time and other nodes. No custom properties, shape keys or variables. | [agent-motion-constraints](../tests/agent-motion-constraints.test.js) | #58 |
-| Animation & Rigging > Markers | missing | No markers or events. | | #60 |
+| Animation & Rigging > Markers | partial | Recipe timeline shots are named, listed with their start second in job metrics, and cut with their own camera, motion start and an optional dip through black (no strips, layers or crossfades; the video sequence editor is a non-goal). No markers inside a shot and no events. | [film-timeline](../tests/film-timeline.test.js) | #60 |
 | Animation & Rigging > Shape Keys | partial | Morph targets import, render and animate, and clip layers drive imported morph weights (`createAssetPose`, MCP `motion.layers`). Recipes can not author them. | [morph](../tests/morph.test.js), [agent-asset-layers](../tests/agent-asset-layers.test.js) | #59 |
 | Animation & Rigging > Motion Paths | out of scope | Viewport display for hand work. `scene_inspect` reports motion as numbers. | | |
 | Animation & Rigging > In-Betweens | out of scope | Pose tools for a hand. Agents write keyframes and IK targets. | | |
@@ -210,8 +210,8 @@ To move to a new Blender release, run `node scripts/parity-manual-snapshot.mjs`.
 | Rendering > Color Management | partial | ACES tone mapping and grading. There is no choice of color space or display. | [effects](../tests/effects.test.js) | |
 | Rendering > Freestyle | missing | No line rendering. | | |
 | Rendering > View Layers & Passes | partial | Render jobs write albedo, normal, emission, depth and object ID passes as PNG files. There are no view layers, no cryptomatte and no lighting passes (diffuse, glossy, shadow). | [render-passes](../tests/render-passes.test.js) | #54 |
-| Rendering > Render Output > Output Properties | partial | PNG and MP4, frame rate, duration and size. There is no stereo or metadata. | [agent-render-jobs](../tests/agent-render-jobs.test.js) | #60 |
-| Rendering > Render Output > Audio Rendering | missing | Render jobs have no audio. | | #60 |
+| Rendering > Render Output > Output Properties | partial | PNG and MP4, frame rate, duration (to 60 s) and size, and a CPU or NVENC encoder. There is no stereo or metadata. | [agent-render-jobs](../tests/agent-render-jobs.test.js) | #60 |
+| Rendering > Render Output > Audio Rendering | partial | A video job mixes one local WAV, MP3, OGG or FLAC file with an offset and reports measured sync. No several tracks, mixing, gain or generated sound. | [film-timeline](../tests/film-timeline.test.js), `npm run smoke:film-timeline` | #60 |
 | Rendering > Render Output > Rendering Animations | done | Snapshot render jobs with progress, cancel and verified output. | [agent-render-jobs](../tests/agent-render-jobs.test.js) | |
 | Rendering > Render Output > Animation Player | out of scope | Interface for a person. | | |
 | Compositing | partial | A fixed chain of bloom, grading and FXAA. There is no graph. | [effects](../tests/effects.test.js) | #54 |
