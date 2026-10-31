@@ -62,6 +62,12 @@ export const DEFAULT_AMBIENT_OCCLUSION = 0;
 
 // Render passes a render job can write next to the lit image (see RENDER_PASS_MODES in renderer.js, which must list the same names).
 export const RENDER_PASS_NAMES = Object.freeze(['albedo', 'normal', 'emission', 'depth', 'objectId']);
+// Video encoders a render job can choose (nvenc is h264_nvenc and fails the job when the GPU or ffmpeg lacks it), the
+// longest video, and the audio file names a job may mix in from the --audio folder: one path segment with a known
+// extension, no drive or protocol syntax.
+export const VIDEO_ENCODERS = Object.freeze(['cpu', 'nvenc']);
+export const MAXIMUM_VIDEO_SECONDS = 60;
+export const AUDIO_FILE_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}\.(wav|mp3|ogg|flac)$/;
 // Metres that depth pass values 0 to 65535 span, measured from the camera.
 export const RENDER_PASS_DEPTH_RANGE = 100;
 
@@ -89,13 +95,19 @@ export const AGENT_SCENE_CAPABILITIES = Object.freeze({
   operations: Object.freeze([
     'set-node', 'set-material', 'set-camera', 'add-node', 'remove-node',
     'add-geometry', 'remove-geometry', 'add-material', 'remove-material',
-    'set-environment', 'set-effects', 'set-shadow', 'set-motion', 'set-armatures', 'set-physics', 'set-cloth', 'edit-mesh', 'set-mesh-stack',
+    'set-environment', 'set-effects', 'set-shadow', 'set-motion', 'set-armatures', 'set-physics', 'set-cloth', 'set-timeline', 'edit-mesh', 'set-mesh-stack',
   ]),
   materialTags: Object.freeze(['surface', 'unlit', 'liquid', 'foam']),
   alphaModes: RECIPE_ALPHA_MODES,
   materialPatterns: MATERIAL_PATTERN_TYPES, maxMaterialPatterns: MAX_MATERIAL_PATTERNS,
   materialMappings: MATERIAL_MAPPINGS,
   renderPasses: Object.freeze({ names: RENDER_PASS_NAMES, files: 'render-<pass>.png or frame-N-<pass>.png, raw and unantialiased; opaque and cutout geometry only', depth: `16 bits in red and green over ${RENDER_PASS_DEPTH_RANGE} m`, objectId: '24 bits in RGB; the job result lists the part names' }),
+  // Recipe timeline (src/film-timeline.js), rendered with settings.timeline; the rest is in docs/agent-render-jobs.md.
+  filmTimeline: Object.freeze({
+    maxShots: 64, maxTotalSeconds: 60, maxShotSeconds: 30,
+    shot: 'name (unique), duration, motionStart (default: the shot start, so non-looping motion must cover it), camera (partial: eye target up fov near far), dip (s; fades through black at the cut into this shot).',
+    notSupported: 'layers, overlaps, crossfades, markers, events, imported assets',
+  }),
   curveText: Object.freeze({
     maxCurvePoints: CURVE_TEXT_LIMITS.maxCurvePoints, maxProfilePoints: CURVE_TEXT_LIMITS.maxProfilePoints,
     maxTextCharacters: CURVE_TEXT_LIMITS.maxTextCharacters, maxTextLines: CURVE_TEXT_LIMITS.maxTextLines,

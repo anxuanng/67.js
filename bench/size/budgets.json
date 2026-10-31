@@ -1,5 +1,5 @@
 {
- "archiveBytes": 721300,
+ "archiveBytes": 729000,
  "goals": {
   "lit-box": 50000,
   "gltf-box": 80000,
@@ -30,15 +30,15 @@
   "entry:clutter": 5300,
   "entry:texture-set": 900,
   "entry:agent-scene": 61800,
-  "entry:agent-scene+lazy": 194600,
+  "entry:agent-scene+lazy": 196100,
   "entry:agent-asset": 92800,
-  "entry:agent-asset+lazy": 205000,
+  "entry:agent-asset+lazy": 206500,
   "entry:hdri": 3300,
   "entry:camera-effects": 8600,
   "entry:render-passes": 1700,
   "scene:lit-box": 60200,
   "scene:gltf-box": 79700,
   "scene:agent-scene": 91700,
-  "scene:agent-scene+lazy": 223850
+  "scene:agent-scene+lazy": 225300
  }
 }

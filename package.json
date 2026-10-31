@@ -102,6 +102,7 @@
     "smoke:agent-assets": "node scripts/smoke-agent-assets.mjs",
     "smoke:agent-render-jobs": "node scripts/smoke-agent-render-jobs.mjs",
     "smoke:render-passes": "node scripts/smoke-render-passes.mjs",
+    "smoke:film-timeline": "node scripts/smoke-film-timeline.mjs",
     "smoke:agent-motion": "node scripts/smoke-agent-motion.mjs",
     "smoke:agent-physics": "node scripts/smoke-agent-physics.mjs",
     "smoke:agent-cloth": "node scripts/smoke-agent-cloth.mjs",
