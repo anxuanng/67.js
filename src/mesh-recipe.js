@@ -11,6 +11,8 @@ import { bevelEdges } from './mesh-bevel.js';
 import { loopCut } from './mesh-loopcut.js';
 import { CUT_OPERATIONS, normalizeCutEdit, runCutEdit, checkCutBudget } from './mesh-cut-edits.js';
 import { unwrapUv } from './mesh-uv.js';
+import { validateField } from './mesh-fields.js';
+import { setPosition, displaceMesh, DISPLACE_DIRECTIONS } from './mesh-field-edits.js';
 import { subdivideMesh, subdivisionSize, MAX_SUBDIVISION_LEVELS, MAX_CREASE_SHARPNESS } from './mesh-subdivide.js';
 import { MESH_EDIT_OPERATIONS, MAX_MESH_EDITS, STACK_OPERATIONS, MAX_STACK_NODES } from './mesh-operations.js';
 export { MESH_EDIT_OPERATIONS, MAX_MESH_EDITS, STACK_OPERATIONS, MAX_STACK_NODES };
@@ -35,6 +37,15 @@ function finiteNumber(value, index, label, { minimum = -MAX_OFFSET, maximum = MA
 function vector(value, index, label) {
   if (!Array.isArray(value) || value.length !== 3) throw editError(index, `${label} needs three numbers`);
   return value.map(component => finiteNumber(component, index, label));
+}
+
+function checkedField(expression, index, label, kind) {
+  try {
+    validateField(expression, { kind });
+  } catch (error) {
+    throw editError(index, `${label}: ${error.message}`);
+  }
+  return expression;
 }
 
 /** Validate an edit list without running it. Returns normalized copies with default names filled in. */
@@ -178,8 +189,20 @@ export function normalizeMeshEdits(edits) {
           throw editError(index, 'sharpness needs a crease rule');
         }
         break;
+      case 'set_position':
+        if (edit.position === undefined && edit.offset === undefined) throw editError(index, 'set_position needs a position or an offset expression');
+        if (edit.position !== undefined) normalized.position = checkedField(edit.position, index, 'position', 'vector');
+        if (edit.offset !== undefined) normalized.offset = checkedField(edit.offset, index, 'offset', 'vector');
+        break;
+      case 'displace':
+        normalized.field = checkedField(edit.field, index, 'field', 'scalar');
+        normalized.strength = edit.strength === undefined ? 1 : finiteNumber(edit.strength, index, 'strength');
+        normalized.midlevel = edit.midlevel === undefined ? 0.5 : finiteNumber(edit.midlevel, index, 'midlevel');
+        if (edit.direction !== undefined && !DISPLACE_DIRECTIONS.includes(edit.direction)) throw editError(index, `direction must be one of ${DISPLACE_DIRECTIONS.join(', ')}`);
+        normalized.direction = edit.direction ?? 'normal';
+        break;
       case 'merge_by_distance':
-        normalized.distance = finiteNumber(edit.distance ?? 1e-4, index, 'distance', { minimum: 0, maximum: 1e3 });
+        normalized.distance =finiteNumber(edit.distance ?? 1e-4, index, 'distance', { minimum: 0, maximum: 1e3 });
         break;
     }
     if (CUT_OPERATIONS.includes(edit.op)) normalizeCutEdit(edit, normalized, index, { finiteNumber, vector });
@@ -302,6 +325,16 @@ function runEdit(current, edit, index, { resolveCutter }) {
     Object.assign(result, outcome.result);
     const tags = tagSummary(outcome.mesh, edit.name);
     if (Object.keys(tags).length) result.tags = tags;
+    return { mesh: outcome.mesh, result };
+  }
+  if (edit.op === 'set_position' || edit.op === 'displace') {
+    let outcome;
+    try {
+      outcome = edit.op === 'set_position' ? setPosition(current, edit) : displaceMesh(current, edit);
+    } catch (error) {
+      throw new error.constructor(`Mesh edit ${index} (${edit.op}): ${error.message}`);
+    }
+    result.movedVertices = outcome.movedVertices;
     return { mesh: outcome.mesh, result };
   }
   if (edit.op === 'subdivide') {

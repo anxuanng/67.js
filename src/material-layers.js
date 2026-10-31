@@ -1,0 +1,116 @@
+// Extra PBR layers on top of the base metallic-roughness material, named as in the glTF KHR_materials_* extensions.
+// This module holds plain data only, so the MCP server, recipes, the glTF code and the renderer share one set of ranges.
+
+const UNIT = Object.freeze([0, 1]);
+
+export const MATERIAL_LAYER_DEFAULTS = Object.freeze({
+  clearcoat: 0,
+  clearcoatRoughness: 0,
+  transmission: 0,
+  thickness: 0,
+  ior: 1.5,
+  attenuationColor: Object.freeze([1, 1, 1]),
+  attenuationDistance: Infinity,
+  sheenColor: Object.freeze([0, 0, 0]),
+  sheenRoughness: 0,
+  specular: 1,
+  specularColor: Object.freeze([1, 1, 1]),
+});
+
+export const MATERIAL_LAYER_FIELDS = Object.freeze(Object.keys(MATERIAL_LAYER_DEFAULTS));
+
+export const MATERIAL_LAYER_SCALAR_RANGES = Object.freeze({
+  clearcoat: UNIT,
+  clearcoatRoughness: UNIT,
+  transmission: UNIT,
+  thickness: Object.freeze([0, 1000]),
+  ior: Object.freeze([1, 2.5]),
+  sheenRoughness: UNIT,
+  specular: Object.freeze([0, 4]),
+});
+
+export const MATERIAL_LAYER_COLOR_RANGES = Object.freeze({
+  attenuationColor: UNIT,
+  sheenColor: UNIT,
+  specularColor: Object.freeze([0, 4]),
+});
+
+function describeRange([minimum, maximum]) {
+  return `between ${minimum} and ${maximum}`;
+}
+
+function checkScalar(field, value) {
+  const [minimum, maximum] = MATERIAL_LAYER_SCALAR_RANGES[field];
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < minimum || value > maximum) {
+    throw new RangeError(`${field} must be ${describeRange(MATERIAL_LAYER_SCALAR_RANGES[field])}, got ${value}. Use a number inside that range.`);
+  }
+}
+
+function checkColor(field, value) {
+  const [minimum, maximum] = MATERIAL_LAYER_COLOR_RANGES[field];
+  const isLinearColor = Array.isArray(value) && value.length === 3 &&
+    value.every(component => typeof component === 'number' && Number.isFinite(component) && component >= minimum && component <= maximum);
+  if (!isLinearColor) {
+    throw new RangeError(`${field} must be three linear RGB numbers ${describeRange(MATERIAL_LAYER_COLOR_RANGES[field])}. Pass [red, green, blue].`);
+  }
+}
+
+function checkAttenuationDistance(value) {
+  const isPositive = typeof value === 'number' && value > 0 && Number.isFinite(value);
+  if (!isPositive) {
+    throw new RangeError(`attenuationDistance must be a finite number above 0 (metres), got ${value}. Leave it out for no absorption.`);
+  }
+}
+
+/** Throws a RangeError that names the field and the fix for the first layer value that is out of range. */
+export function validateMaterialLayers(material) {
+  for (const field of Object.keys(MATERIAL_LAYER_SCALAR_RANGES)) {
+    if (material[field] !== undefined) checkScalar(field, material[field]);
+  }
+  for (const field of Object.keys(MATERIAL_LAYER_COLOR_RANGES)) {
+    if (material[field] !== undefined) checkColor(field, material[field]);
+  }
+  if (material.attenuationDistance !== undefined && material.attenuationDistance !== Infinity) {
+    checkAttenuationDistance(material.attenuationDistance);
+  }
+  if (material.transmission > 0 && material.tag !== undefined && material.tag !== 'surface' && material.tag !== 'gltf' && material.tag !== 'liquid') {
+    throw new RangeError(`transmission needs a standard PBR material tag, got ${material.tag}. Use the surface tag.`);
+  }
+}
+
+export function materialLayerValue(material, field) {
+  return material[field] ?? MATERIAL_LAYER_DEFAULTS[field];
+}
+
+/** True when the material asks for any layer beyond the base material. */
+export function hasMaterialLayers(material) {
+  return MATERIAL_LAYER_FIELDS.some(field => material[field] !== undefined && material[field] !== MATERIAL_LAYER_DEFAULTS[field]
+    && JSON.stringify(material[field]) !== JSON.stringify(MATERIAL_LAYER_DEFAULTS[field]));
+}
+
+/** Reflectance of a dielectric at normal incidence, as the glTF specular and IOR extensions combine it. */
+export function dielectricReflectance(material) {
+  const ior = materialLayerValue(material, 'ior');
+  const fromIor = ((ior - 1) / (ior + 1)) ** 2;
+  const weight = materialLayerValue(material, 'specular');
+  return materialLayerValue(material, 'specularColor').map(component => Math.min(fromIor * component, 1) * weight);
+}
+
+/** Plain values the renderer batches by: dielectric F0 (3), coat (2), sheen (4), transmission (4), attenuation colour (3). */
+export function materialLayerState(material) {
+  validateMaterialLayers(material);
+  return [
+    ...dielectricReflectance(material),
+    materialLayerValue(material, 'clearcoat'),
+    materialLayerValue(material, 'clearcoatRoughness'),
+    ...materialLayerValue(material, 'sheenColor'),
+    materialLayerValue(material, 'sheenRoughness'),
+    materialLayerValue(material, 'transmission'),
+    materialLayerValue(material, 'ior'),
+    materialLayerValue(material, 'thickness'),
+    materialLayerValue(material, 'attenuationDistance'),
+    ...materialLayerValue(material, 'attenuationColor'),
+  ];
+}
+
+export const MATERIAL_LAYER_STATE_LENGTH = 16;

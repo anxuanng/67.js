@@ -158,6 +158,11 @@ Job snapshots must retain authored motion independently of imported animation an
 Release `0.8.0` reuses this motion contract for [imported character joints](agent-character-motion.md).
 The helper does not implement mixer controls, facial morph tracks or live playback clocks.
 
+## Physics beside motion
+
+A recipe can also carry a `physics` section (see "Recipe physics" in `docs/physics.md`). It is recorded once with Rapier and played back through the same `sampleMotion(time)` and MCP `motionTime`, so one seek moves tracks, IK and bodies together.
+A body node takes its pose from the recording. A node cannot have a body and a motion translation or rotation track, and a scene may have physics without any motion tracks.
+
 ## Bounds and checks
 
 The controller accepts durations between 0.1 and 30 seconds.
