@@ -41,11 +41,11 @@ export async function runBenchmark(parts, onProgress = () => {}) {
   const camera = { eye: [4, 3.1, 5], target: [0, 1.2, 0] };
   try {
     for (const batching of [true, false]) {
-      onProgress(`Measuring 67.js ${batching ? 'instanced' : 'individual meshes'}…`);
+      onProgress(`Measuring 67js ${batching ? 'instanced' : 'individual meshes'}…`);
       const renderer = new Renderer67(canvas, parts, { batching, pixelRatio: 1, benchmark: true });
       try {
         const milliseconds = await measure(() => renderer.render(camera), renderer.context);
-        results.push({ name: `67.js ${batching ? 'instanced' : 'individual'}`, milliseconds, calls: renderer.batches.length, pixelAgreement: comparePixels(renderer.context, () => renderer.render(camera)) });
+        results.push({ name: `67js ${batching ? 'instanced' : 'individual'}`, milliseconds, calls: renderer.batches.length, pixelAgreement: comparePixels(renderer.context, () => renderer.render(camera)) });
       } finally {
         renderer.dispose();
       }

@@ -1,8 +1,8 @@
-# 67.js guide
+# 67js guide
 
 Build a scene once. Make it interactive. Export the frame or film.
 
-67.js is a WebGL2 graphics toolkit with shared geometry, deterministic animation and a bounded media pipeline. It is not API-compatible with Three.js and does not provide a Blender-style modeling editor.
+67js is a WebGL2 graphics toolkit with shared geometry, deterministic animation and a bounded media pipeline. It is not API-compatible with Three.js and does not provide a Blender-style modeling editor.
 
 ## Install
 
@@ -513,7 +513,7 @@ The CPU addon owns recipe state. The separate Node MCP server connects it to bro
 
 Give the agent this guide and the matching repository skill. Start with a scene brief: focal subject, visual references, camera, output size, required interaction, GPU/CPU backend and memory budget. Read the matching scene recipe and run the smallest trial first.
 
-Suggested prompt: “Use 67.js to build an interactive mechanical study. Reuse meshes, use a 256MiB render budget, provide orbit and keyboard controls, pause hidden playback, and capture a real wide and mobile preview. List unsupported features. Do not claim speed superiority without a comparable benchmark.”
+Suggested prompt: “Use 67js to build an interactive mechanical study. Reuse meshes, use a 256MiB render budget, provide orbit and keyboard controls, pause hidden playback, and capture a real wide and mobile preview. List unsupported features. Do not claim speed superiority without a comparable benchmark.”
 
 Agent workflow: inspect the installed `VERSION` and supported exports. Create finite invertible transforms. Share geometry identities. Validate bounds.
 
@@ -547,7 +547,7 @@ Core exports are available from `67js`:
 
 `67js/addons/canvas2d`: 2D recipes. `67js/addons/gltf`: optional asset decoding. These are separate imports to keep the core smaller.
 
-67.js targets WebGL2. Version `0.4.0` includes the APIs below. Check the installed package version and release metadata before using them.
+67js targets WebGL2. Version `0.4.0` includes the APIs below. Check the installed package version and release metadata before using them.
 
 ## Release and source availability
 

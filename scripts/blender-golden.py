@@ -320,7 +320,7 @@ def add_boolean(mesh_object, edit, inputs):
     modifier.object = cutter
 
 
-# Blender stores a crease from 0 to 1. Measured against 67.js sharpness, crease squared times 10 is the sharpness.
+# Blender stores a crease from 0 to 1. Measured against 67js sharpness, crease squared times 10 is the sharpness.
 def add_subdivision(mesh_object, edit, _inputs):
     levels = edit.get("levels", 1)
     if "crease" in edit:
@@ -613,7 +613,7 @@ def evaluated_measure(curve_object):
     return result
 
 
-# A Bezier curve with a round bevel: the 67.js radialSegments 4 + 2n sides is Blender's bevel resolution n, and the
+# A Bezier curve with a round bevel: the 67js radialSegments 4 + 2n sides is Blender's bevel resolution n, and the
 # caps are filled. Handles are absolute positions in both.
 def run_curve_case(case):
     spec = case["curve"]
@@ -639,7 +639,7 @@ def run_curve_case(case):
     return evaluated_measure(curve_object)
 
 
-# Blender's own default font is not DejaVu Sans, so the text cases load the font 67.js bundles. Get DejaVuSans.ttf with
+# Blender's own default font is not DejaVu Sans, so the text cases load the font 67js bundles. Get DejaVuSans.ttf with
 # "npm pack dejavu-fonts-ttf" (ttf/DejaVuSans.ttf in the package) and point DEJAVU_SANS_TTF at it.
 def bundled_font():
     path = os.environ.get("DEJAVU_SANS_TTF")
@@ -648,7 +648,7 @@ def bundled_font():
     return bpy.data.fonts.load(path)
 
 
-# Blender's text object extrudes both ways from the baseline plane, so its extrude is half the 67.js depth.
+# Blender's text object extrudes both ways from the baseline plane, so its extrude is half the 67js depth.
 def text_measure(name, body, size, extrude, curve_segments):
     font_data = bpy.data.curves.new(name, "FONT")
     font_data.font = bundled_font()

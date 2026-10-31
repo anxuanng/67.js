@@ -102,7 +102,7 @@ test('the Blender drape bake had not settled at the compared frame, nor at 8 sec
   assert.ok(blender.longest < 1.1, 'Blender stretches little too, so stiffness does not explain the gap');
 });
 
-test('a sheet dropped on a ball stays outside it in 67.js and in Blender, though the drape shapes differ', () => {
+test('a sheet dropped on a ball stays outside it in 67js and in Blender, though the drape shapes differ', () => {
   const scene = createAgentScene(recipe(
     [{ id: 'sheet', geometry: 'sheet', material: 'paint', translation: [0, 1, 0], rotation: [-0.7071068, 0, 0, 0.7071068], scale: [1.6, 1.6, 1] },
       { id: 'ball', geometry: 'ball', material: 'paint', scale: [BALL_RADIUS, BALL_RADIUS, BALL_RADIUS] }],
@@ -110,6 +110,6 @@ test('a sheet dropped on a ball stays outside it in 67.js and in Blender, though
   ));
   scene.sampleMotion(golden.seconds);
   const nearest = points => Math.min(...points.map(point => Math.hypot(...point)));
-  assert.ok(nearest(worldPositions(scene)) > BALL_RADIUS - 0.01, 'no 67.js particle inside the ball');
+  assert.ok(nearest(worldPositions(scene)) > BALL_RADIUS - 0.01, 'no 67js particle inside the ball');
   assert.ok(nearest(golden.cases['drape-over-ball'].positions) > BALL_RADIUS - 0.03, 'no Blender vertex inside the ball');
 });

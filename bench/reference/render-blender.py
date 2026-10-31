@@ -1,7 +1,7 @@
 # Renders each described scene in Cycles and EEVEE, and saves linear pixels as .npy for the scorer.
 #   blender -b --factory-startup --python bench/reference/render-blender.py -- <work directory>
 # Light units were measured on a white plane: sun strength equals irradiance, a point or spot light has 4 pi watts for each
-# unit of 67.js intensity, and an area light has pi watts for each unit.
+# unit of 67js intensity, and an area light has pi watts for each unit.
 import base64
 import json
 import math
@@ -20,9 +20,9 @@ EEVEE_SAMPLES = 64
 WATTS_PER_INTENSITY = 4 * math.pi
 WATTS_PER_AREA_INTENSITY = math.pi
 SUN_ANGLE = math.radians(1)
-# 67.js is Y up, and Blender is Z up.
+# 67js is Y up, and Blender is Z up.
 Y_UP_TO_Z_UP = Matrix(((1, 0, 0, 0), (0, 0, -1, 0), (0, 1, 0, 0), (0, 0, 0, 1)))
-# The centre of an environment image looks toward -Z in 67.js, which is +Y here. In Blender it looks toward -X.
+# The centre of an environment image looks toward -Z in 67js, which is +Y here. In Blender it looks toward -X.
 ENVIRONMENT_ROTATION_Z = -math.pi / 2
 NUMPY_TYPES = {
     "Float32Array": np.float32,
@@ -135,7 +135,7 @@ def add_vertex_colors(material, principled, description):
 
 
 def add_material_layers(material, principled, description):
-    """Maps the 67.js material layers onto the Principled BSDF inputs of the same meaning."""
+    """Maps the 67js material layers onto the Principled BSDF inputs of the same meaning."""
     principled.inputs["Coat Weight"].default_value = description.get("clearcoat", 0)
     principled.inputs["Coat Roughness"].default_value = description.get("clearcoatRoughness", 0)
     principled.inputs["Transmission Weight"].default_value = description.get("transmission", principled.inputs["Transmission Weight"].default_value)
@@ -145,7 +145,7 @@ def add_material_layers(material, principled, description):
         principled.inputs["Sheen Weight"].default_value = 1
         set_linear_color(principled.inputs["Sheen Tint"], sheen_color)
         principled.inputs["Sheen Roughness"].default_value = description.get("sheenRoughness", 0)
-    # Blender's specular level 0.5 is the 4 percent reflectance that 67.js calls specular 1.
+    # Blender's specular level 0.5 is the 4 percent reflectance that 67js calls specular 1.
     principled.inputs["Specular IOR Level"].default_value = 0.5 * description.get("specular", 1)
     set_linear_color(principled.inputs["Specular Tint"], description.get("specularColor", [1, 1, 1]))
     attenuation_distance = description.get("attenuationDistance")
@@ -163,13 +163,13 @@ GRAPH_MATH_OPERATIONS = {
     "add": "ADD", "sub": "SUBTRACT", "mul": "MULTIPLY", "div": "DIVIDE", "min": "MINIMUM", "max": "MAXIMUM",
     "pow": "POWER", "abs": "ABSOLUTE", "floor": "FLOOR", "fract": "FRACT", "sqrt": "SQRT",
 }
-# 67.js noise has no seed in Blender, and Blender's noise function differs from the one in src/material-texture-kit.js,
+# 67js noise has no seed in Blender, and Blender's noise function differs from the one in src/material-texture-kit.js,
 # so a graph with noise only matches in how it looks, not pixel for pixel.
 GRAPH_BUMP_DISTANCE = 0.15
 
 
 class GraphTranslator:
-    """Builds the Blender nodes for a 67.js material graph (src/material-graph.js). Values are a number, a socket,
+    """Builds the Blender nodes for a 67js material graph (src/material-graph.js). Values are a number, a socket,
     {"color": socket or three numbers} or {"vector": three numbers or sockets}. Only the nodes the reference scenes use exist."""
 
     def __init__(self, material):
@@ -307,7 +307,7 @@ class GraphTranslator:
 
 
 def add_graph(material, principled, description):
-    """Builds the material from its graph, so Blender evaluates the same nodes 67.js baked into textures."""
+    """Builds the material from its graph, so Blender evaluates the same nodes 67js baked into textures."""
     translator = GraphTranslator(material)
     graph = description["graph"]
     links = material.node_tree.links
@@ -430,8 +430,8 @@ def build_spot_light(scene, index, spot):
 
 
 def build_area_light(scene, index, area):
-    # Measured on a white plane: a Blender area light of W watts matches a 67.js area light of W / pi candela, and the
-    # 67.js formula stays within about 1.2 percent on the axis from 0.2 m to 2 m for 1 m and 2 m squares.
+    # Measured on a white plane: a Blender area light of W watts matches a 67js area light of W / pi candela, and the
+    # 67js formula stays within about 1.2 percent on the axis from 0.2 m to 2 m for 1 m and 2 m squares.
     light = bpy.data.lights.new(f"Area-{index}", "AREA")
     light.energy = area["intensity"] * WATTS_PER_AREA_INTENSITY
     light.color = area["color"]
@@ -447,7 +447,7 @@ def build_area_light(scene, index, area):
         width_axis = Vector((1, 0, 0))
     width_axis.normalize()
     height_axis = width_axis.cross(normal)
-    # The light shines toward its local -Z, and the 67.js rectangle faces along its direction.
+    # The light shines toward its local -Z, and the 67js rectangle faces along its direction.
     rotation = Matrix((width_axis, height_axis, -normal)).transposed()
     area_object.rotation_mode = "QUATERNION"
     area_object.rotation_quaternion = rotation.to_quaternion()

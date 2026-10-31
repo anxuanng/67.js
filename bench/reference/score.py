@@ -1,4 +1,4 @@
-# Scores each 67.js render against Cycles and EEVEE with FLIP, and saves side by side images.
+# Scores each 67js render against Cycles and EEVEE with FLIP, and saves side by side images.
 #   uv run --no-project --python 3.12 --with flip-evaluator --with pillow --with numpy python -I bench/reference/score.py <work directory> <output directory>
 # FLIP is 0 for identical images, and higher means a larger visible difference. EEVEE against Cycles is a yardstick:
 # it shows what a good rasterizer scores on the same scene.
@@ -45,8 +45,8 @@ def side_by_side(cycles, eevee, gpu, scores):
     panels = [
         panel(cycles, "Cycles"),
         panel(eevee, f"EEVEE (FLIP {scores['eevee-vs-cycles']})"),
-        panel(gpu, f"67.js GPU (FLIP {scores['gpu-vs-cycles']})"),
-        panel(error_map, "FLIP error, 67.js GPU against Cycles"),
+        panel(gpu, f"67js GPU (FLIP {scores['gpu-vs-cycles']})"),
+        panel(error_map, "FLIP error, 67js GPU against Cycles"),
     ]
     sheet = Image.new("RGB", (PANEL_WIDTH * 2, (PANEL_HEIGHT + LABEL_HEIGHT) * 2))
     for index, item in enumerate(panels):
