@@ -2,17 +2,15 @@ import { meshFromGeometry } from './mesh-convert.js';
 import { lintMesh } from './mesh-lint.js';
 import { applyMeshEdits, evaluateMeshStack } from './mesh-recipe.js';
 import { extractRender } from './mesh-render.js';
+import { MESH_SMOOTH_ANGLE_DEFAULT } from './agent-scene-capabilities.js';
+
+export { MESH_SMOOTH_ANGLE_DEFAULT };
+export { needsMeshBooleans } from './agent-scene-modules.js';
 
 // Compact, agent-facing mesh reports for scene geometry. Reports are cached per immutable geometry object, so
 // repeated inspection of an unchanged scene costs nothing.
 
-export const MESH_SMOOTH_ANGLE_DEFAULT = 30;
 const reports = new WeakMap();
-
-/** Whether a recipe, operation list or edit list contains a boolean edit, which needs loadMeshBooleans() first. */
-export function needsMeshBooleans(value) {
-  return JSON.stringify(value ?? null).includes('"op":"boolean"');
-}
 
 // Render geometry generated from a mesh recipe keeps its polygon mesh and edit results here.
 const polygonMeshes = new WeakMap();

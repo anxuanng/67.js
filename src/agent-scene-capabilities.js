@@ -47,3 +47,6 @@ export const AGENT_SCENE_CAPABILITIES = Object.freeze({
   motionIk: Object.freeze(['two-bone', 'aim']),
   motionLimits: Object.freeze({ maxTracks: 128, maxKeyframesPerTrack: 64, maxKeyframes: 2048, maxDuration: 30 }),
 });
+
+/** Degrees between faces above which a mesh geometry keeps a hard edge, as Blender's auto smooth does. */
+export const MESH_SMOOTH_ANGLE_DEFAULT = 30;

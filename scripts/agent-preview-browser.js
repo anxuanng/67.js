@@ -1,4 +1,4 @@
-import { createAgentScene, needsMeshBooleans, loadMeshBooleans, meshBooleansLoaded, setManifoldModuleLoader } from '../src/agent-scene.js';
+import { createAgentScene, loadAllAgentSceneModules, allAgentSceneModulesLoaded, needsMeshBooleans, loadMeshBooleans, meshBooleansLoaded, setManifoldModuleLoader } from '../src/agent-scene.js';
 import { Renderer67 } from '../src/renderer.js';
 import { applyProjection } from '../src/camera.js';
 import { mat4 } from 'gl-matrix';
@@ -192,8 +192,10 @@ function createPreview(scene, { sessionId, memoryBudgetMiB, backend }, asset) {
 // Manifold is an optional peer dependency; the runtime serves it from the host's node_modules on this origin.
 setManifoldModuleLoader(() => import(/* @vite-ignore */ new URL('/vendor/manifold.js', location.href).href));
 
-// The boolean engine is WebAssembly and loads asynchronously, once. Calls that do not need it stay synchronous.
+// The preview bundle is one file, so the on-demand scene modules load together on the first call and later calls stay
+// synchronous. The boolean engine is WebAssembly and loads asynchronously, once, only for calls that need it.
 function afterMeshBooleans(value, run) {
+  if (!allAgentSceneModulesLoaded()) return loadAllAgentSceneModules().then(() => afterMeshBooleans(value, run));
   if (meshBooleansLoaded() || !needsMeshBooleans(value)) return run();
   return loadMeshBooleans().then(run);
 }
