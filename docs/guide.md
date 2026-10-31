@@ -311,6 +311,17 @@ renderer.render({
 
 Bloom cannot recover missing geometry or lighting detail.
 
+### Depth of field, motion blur and render passes
+
+Depth of field and camera motion blur live in `67js/addons/camera-effects`, so the core carries none of their shader text.
+Call `installCameraEffects(renderer)` on a renderer made with `depth: true`, then set `effects.depthOfField: { blur: 0.6, focusDistance: 4 }` or `effects.motionBlur: { shutter: 0.1 }`.
+Motion blur also needs `frame.previousCamera` (`eye`, `target`, `up` and the lens fields) for the camera at `time - shutter`; derive it from the frame time and the result repeats on every seek.
+Each effect compiles and allocates its targets on the first frame that turns it on. These targets are not in the memory estimate.
+
+`renderer.render({ ...camera, pass: 'depth' })` draws a raw pass instead of the lit image: `albedo`, `normal`, `emission`, `depth` (with `passDepthRange` metres, default 100) or `objectId`.
+Passes draw without multisampling into their own target, and `renderer.passObjectNames()` lists the part behind each object ID.
+The pass branch of the main shader compiles on the first pass request. MCP render jobs write passes to files; see [agent render jobs](agent-render-jobs.md#render-passes).
+
 Outdoor `environment` accepts `skyTop`, `skyBottom` (display RGB), `fogColor` (linear RGB), `fogDensity`, `lightDirection` and `daylight`. Set `world: true` and `ground: false`. Frames can override environment and supply `time`, `wind`, `waterRipple` and `rippleTime`.
 
 ## Local lights and volume fog

@@ -23,6 +23,11 @@ export const LIGHTING_SETUP_NAMES = Object.freeze(['daylight', 'overcast', 'suns
 export const DEFAULT_LIGHTING_SETUP = 'daylight';
 export const DEFAULT_AMBIENT_OCCLUSION = 0;
 
+// Render passes a render job can write next to the lit image (see RENDER_PASS_MODES in renderer.js, which must list the same names).
+export const RENDER_PASS_NAMES = Object.freeze(['albedo', 'normal', 'emission', 'depth', 'objectId']);
+// Metres that depth pass values 0 to 65535 span, measured from the camera.
+export const RENDER_PASS_DEPTH_RANGE = 100;
+
 export const AGENT_SCENE_CAPABILITIES = Object.freeze({
   format: '67js.scene', schemaVersion: 1,
   geometryTypes: Object.freeze(['box', 'cylinder', 'sphere', 'torus', 'lathe', 'extrude', 'tube', 'mesh']),

@@ -6,7 +6,7 @@ import { readFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { randomUUID } from 'node:crypto';
 import { createContext, Script } from 'node:vm';
-import { AGENT_SCENE_CAPABILITIES, AGENT_SCENE_DEFAULT_LIMITS } from '../src/agent-scene-capabilities.js';
+import { AGENT_SCENE_CAPABILITIES, AGENT_SCENE_DEFAULT_LIMITS, RENDER_PASS_NAMES, RENDER_PASS_DEPTH_RANGE } from '../src/agent-scene-capabilities.js';
 import { normalizeReview, REVIEW_LIMITS } from '../scripts/agent-review.mjs';
 
 test('runtime reports real scene capabilities without launching a browser and closes idempotently', async () => {
@@ -96,7 +96,7 @@ async function reviewRuntimeHarness({ failShot, blockShot = false, oversize = fa
   const context = createContext({ createServer, randomUUID, existsSync: () => true,
     readFile: async () => '', packageMetadata: { version: 'test' },
     createRequire: () => ({ resolve: () => { throw new Error('no peer in tests'); } }),
-    AGENT_SCENE_CAPABILITIES, AGENT_SCENE_DEFAULT_LIMITS, normalizeReview, REVIEW_LIMITS, isPreviewHost,
+    AGENT_SCENE_CAPABILITIES, AGENT_SCENE_DEFAULT_LIMITS, RENDER_PASS_NAMES, RENDER_PASS_DEPTH_RANGE, normalizeReview, REVIEW_LIMITS, isPreviewHost,
     chromium: { launch: async () => browser }, URL, Buffer, process, performance, setTimeout, clearTimeout,
   });
   new Script(`${source}\nglobalThis.runtime = createAgentRuntime({ backend: 'cpu' });`).runInContext(context);

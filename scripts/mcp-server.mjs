@@ -5,7 +5,7 @@ import { setPriority, constants } from 'node:os';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import packageMetadata from '../package.json' with { type: 'json' };
-import { MATERIAL_PATTERN_TYPES, LIGHTING_SETUP_NAMES } from '../src/agent-scene-capabilities.js';
+import { MATERIAL_PATTERN_TYPES, LIGHTING_SETUP_NAMES, RENDER_PASS_NAMES } from '../src/agent-scene-capabilities.js';
 import { MATERIAL_LAYER_SCALAR_RANGES, MATERIAL_LAYER_COLOR_RANGES } from '../src/material-layers.js';
 
 const finite = z.number().min(-3.4028234663852886e38).max(3.4028234663852886e38);
@@ -188,6 +188,8 @@ const effects = z.strictObject({
     threshold: bounded(0, 10).optional(),
     radius: bounded(0.1, 4).optional(),
   }).optional(),
+  depthOfField: z.strictObject({ blur: unit.optional(), focusDistance: bounded(0.01, 100000).optional() }).optional().describe('Lens blur: blur 0 off to 1, focusDistance metres (5).'),
+  motionBlur: z.strictObject({ shutter: bounded(0, 0.5).optional() }).optional().describe('Camera motion smear in seconds; render jobs with settings.motion.'),
 });
 const shadow = z.strictObject({
   target: boundedVector(-1e6, 1e6).optional(),
@@ -524,6 +526,7 @@ const renderSettings = z.strictObject({
   animation: z.strictObject({ clip: z.number().int().min(0), start: z.number().min(0).max(3600).optional() }).optional(),
   motion: z.strictObject({ start: z.number().min(0).max(3600).optional() }).optional(),
   rendererTime: z.strictObject({ start: z.number().min(0).max(3600).optional(), rate: z.number().min(-16).max(16).optional() }).optional(),
+  passes: z.array(z.enum(RENDER_PASS_NAMES)).min(1).max(RENDER_PASS_NAMES.length).optional().describe('image and stills only: also write these raw, unantialiased PNGs per frame as render-<pass>.png or frame-N-<pass>.png. Opaque and cutout geometry only. depth packs 16 bits in red and green over 100 m, objectId packs 24 bits in RGB and its result lists the part names.'),
 }).describe('Immutable snapshot render: one PNG, eight evenly spaced PNGs, or CPU H.264 MP4. Video dimensions must be even. Defaults: 24 fps, one second. Use motion.start for authored recipe tracks, animation for an imported clip, or both to layer them. Omitted motion holds time zero. Nonlooping samples must fit the authored duration.');
 const readOnly = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false };
 const edit = { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false };

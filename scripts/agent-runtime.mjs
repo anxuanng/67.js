@@ -5,7 +5,7 @@ import { lstat, mkdir, readFile, unlink, writeFile } from 'node:fs/promises';
 import { dirname, isAbsolute, join } from 'node:path';
 import { createRequire } from 'node:module';
 import packageMetadata from '../package.json' with { type: 'json' };
-import { AGENT_SCENE_CAPABILITIES, AGENT_SCENE_DEFAULT_LIMITS } from '../src/agent-scene-capabilities.js';
+import { AGENT_SCENE_CAPABILITIES, AGENT_SCENE_DEFAULT_LIMITS, RENDER_PASS_NAMES, RENDER_PASS_DEPTH_RANGE } from '../src/agent-scene-capabilities.js';
 import { createAgentAssetCatalog } from './agent-asset-catalog.mjs';
 import { createAgentRenderJobs, EXPORT_DIRECTORY_NAME } from './agent-render-jobs.mjs';
 import { createFrameEncoder } from './frame-encoder.mjs';
@@ -15,6 +15,8 @@ import { sessionProblem } from '../src/agent-errors.js';
 
 const SCENE_LIMITS = AGENT_SCENE_DEFAULT_LIMITS;
 const MAXIMUM_IMAGE_BYTES = 1024 * 1024;
+// The object ID pass lists the part behind each ID in the job metrics; longer lists are cut and flagged.
+const MAXIMUM_OBJECT_NAMES = 1000;
 const MAXIMUM_QUEUED_CALLS = 16;
 const MAXIMUM_GLB_BYTES = 32 * 1024 * 1024;
 const MAXIMUM_KEPT_GLBS = 8;
@@ -311,19 +313,37 @@ export function createAgentRuntime({ backend = 'gpu', browser: browserPath, memo
         metrics.width = width;
         metrics.height = height;
         metrics.estimatedBytes = rendered.estimatedBytes;
-        const captureStarted = performance.now();
-        const captured = await session.send('Page.captureScreenshot', { fromSurface: true,
-          format: settings.kind === 'video' ? 'jpeg' : 'png',
-          ...(settings.kind === 'video' ? { quality: 95 } : { optimizeForSpeed: true }) });
-        const bytes = Buffer.from(captured.data, 'base64');
-        metrics.captureSeconds += (performance.now() - captureStarted) / 1000;
-        if (bytes.length > MAXIMUM_IMAGE_BYTES) throw new Error('Captured job frame exceeded 1 MiB.');
-        signal.throwIfAborted();
+        async function captureFrameBytes() {
+          const captureStarted = performance.now();
+          const captured = await session.send('Page.captureScreenshot', { fromSurface: true,
+            format: settings.kind === 'video' ? 'jpeg' : 'png',
+            ...(settings.kind === 'video' ? { quality: 95 } : { optimizeForSpeed: true }) });
+          const captureBytes = Buffer.from(captured.data, 'base64');
+          metrics.captureSeconds += (performance.now() - captureStarted) / 1000;
+          if (captureBytes.length > MAXIMUM_IMAGE_BYTES) throw new Error('Captured job frame exceeded 1 MiB.');
+          signal.throwIfAborted();
+          return captureBytes;
+        }
+        async function writeArtifact(filename, artifactBytes) {
+          await writeFile(join(directory, `${filename}.partial`), artifactBytes, { flag: 'wx' });
+          artifacts.push({ temporary: `${filename}.partial`, filename, mimeType: 'image/png' });
+        }
+        const bytes = await captureFrameBytes();
         if (encoder) await encoder.writeFrame(bytes);
         else {
-          const filename = settings.kind === 'image' ? 'render.png' : `frame-${frame}.png`;
-          await writeFile(join(directory, `${filename}.partial`), bytes, { flag: 'wx' });
-          artifacts.push({ temporary: `${filename}.partial`, filename, mimeType: 'image/png' });
+          const stem = settings.kind === 'image' ? 'render' : `frame-${frame}`;
+          await writeArtifact(`${stem}.png`, bytes);
+          // Passes follow the lit image of the same instant, so each seek yields every file for that frame.
+          for (const pass of settings.passes ?? []) {
+            const passInfo = await jobPage.evaluate(input => window.__agentPreview.frame(input),
+              { ...frameInput, pass, passDepthRange: RENDER_PASS_DEPTH_RANGE });
+            await writeArtifact(`${stem}-${pass}.png`, await captureFrameBytes());
+            if (pass === 'depth') metrics.depthRangeMetres = RENDER_PASS_DEPTH_RANGE;
+            if (pass === 'objectId') {
+              metrics.objectNames = passInfo.objectNames.slice(0, MAXIMUM_OBJECT_NAMES);
+              metrics.objectNamesTruncated = passInfo.objectNames.length > MAXIMUM_OBJECT_NAMES;
+            }
+          }
         }
         metrics.peakNodeBytes = Math.max(metrics.peakNodeBytes, process.memoryUsage().rss);
         const heap = await session.send('Runtime.getHeapUsage');
@@ -381,7 +401,7 @@ export function createAgentRuntime({ backend = 'gpu', browser: browserPath, memo
           maximumVertices: 250000, maximumParts: 4096, maximumTexturePixels: 4194304, maximumJoints: 1024, maximumClips: 256,
           commands: ['set-root', 'set-asset-node', 'set-motion', 'set-animation', 'set-material', 'set-camera', 'set-environment', 'set-effects', 'set-shadow'],
         },
-        jobs: { configured: Boolean(jobRoot), kinds: ['image', 'stills', 'video'], maximumActiveJobs: 1,
+        jobs: { configured: Boolean(jobRoot), kinds: ['image', 'stills', 'video'], passes: RENDER_PASS_NAMES, maximumActiveJobs: 1,
           maximumDuration: 30, maximumFps: 30, maximumFrames: 900, maximumStills: 8,
           encoder: 'CPU H.264', audio: false, previewSuspendedDuringJob: true,
           glbExport: { maximumBytes: MAXIMUM_GLB_BYTES, maximumKept: MAXIMUM_KEPT_GLBS, maximumTextureSize: 4096 },

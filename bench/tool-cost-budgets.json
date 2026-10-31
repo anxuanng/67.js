@@ -1,11 +1,11 @@
 {
   "measured": "2026-10-31, from scripts/measure-tool-cost.mjs; was 373388 schema bytes before shared IDs and recipe references",
-  "schemaTotalBytes": 183800,
+  "schemaTotalBytes": 185700,
   "schemaToolBytes": {
-    "scene_create": 59400,
-    "scene_apply": 44300,
+    "scene_create": 59900,
+    "scene_apply": 44800,
     "mesh_edit": 34000,
-    "scene_create_asset": 18300,
+    "scene_create_asset": 18700,
     "mesh_stack": 11500
   },
   "schemaOtherToolBytes": 4000,

@@ -187,7 +187,7 @@ To move to a new Blender release, run `node scripts/parity-manual-snapshot.mjs`.
 | Rendering > Render Engines > EEVEE | partial | A WebGL2 rasterizer with PBR, one directional shadow, 8 point lights, fog and bloom. There are no light probes. | [renderer](../tests/renderer.test.js), [scores against EEVEE](../bench/reference/baseline.json) | #52, #53, #55, #56 |
 | Rendering > Render Engines > Cycles | missing | No path tracer and no render baking. | | #55, #57 |
 | Rendering > Render Engines > Workbench | out of scope | A viewport engine for working by hand. | | |
-| Rendering > Cameras | partial | Perspective, orthographic views, focal length and animated paths. There is no depth of field. | [camera-path](../tests/camera-path.test.js), [camera](../tests/camera.test.js) | #54 |
+| Rendering > Cameras | partial | Perspective, orthographic views, focal length, animated paths, depth of field from depth and camera motion blur, both repeatable per frame. Object motion blur and bokeh shapes are missing. | [camera-path](../tests/camera-path.test.js), [camera](../tests/camera.test.js), [render-passes](../tests/render-passes.test.js) | #54 |
 | Rendering > Lights > Light Objects | partial | One directional light with a shadow, 8 point lights, 8 spot lights and 4 rectangular area lights. Point and spot lights can cast shadows from one 24-tile atlas (a point light takes 6 tiles, a spot light 1). Area lights use a representative point and cast no shadow. The directional shadow is a single map, not cascaded. | [lighting](../tests/lighting.test.js), `npm run reference` scene `spot-area` | #52 |
 | Rendering > Lights > Light Linking | missing | No light linking. | | #52 |
 | Rendering > Lights > World Environment | partial | Recipes pick a named setup (`daylight`, `overcast`, `sunset`, `studio`) that carries a procedural environment map, with opt-in screen-space ambient occlusion. Code can load any HDRI; recipes reach only the named maps, with no URLs or files. No reflections between objects yet. | [environment](../tests/environment.test.js), [default look](../tests/default-look.test.js) | #53 |
@@ -207,7 +207,7 @@ To move to a new Blender release, run `node scripts/parity-manual-snapshot.mjs`.
 | Rendering > Shader Nodes > Group | missing | No node graph. | | #50 |
 | Rendering > Color Management | partial | ACES tone mapping and grading. There is no choice of color space or display. | [effects](../tests/effects.test.js) | |
 | Rendering > Freestyle | missing | No line rendering. | | |
-| Rendering > View Layers & Passes | missing | No layers or passes. | | #54 |
+| Rendering > View Layers & Passes | partial | Render jobs write albedo, normal, emission, depth and object ID passes as PNG files. There are no view layers, no cryptomatte and no lighting passes (diffuse, glossy, shadow). | [render-passes](../tests/render-passes.test.js) | #54 |
 | Rendering > Render Output > Output Properties | partial | PNG and MP4, frame rate, duration and size. There is no stereo or metadata. | [agent-render-jobs](../tests/agent-render-jobs.test.js) | #60 |
 | Rendering > Render Output > Audio Rendering | missing | Render jobs have no audio. | | #60 |
 | Rendering > Render Output > Rendering Animations | done | Snapshot render jobs with progress, cancel and verified output. | [agent-render-jobs](../tests/agent-render-jobs.test.js) | |

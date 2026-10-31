@@ -26,6 +26,7 @@ test('default look is complete, detached JSON and idempotent', () => {
     volumeFog: resolveVolumeFog(),
   });
   assert.deepEqual(look.effects, {
+    depthOfField: { blur: 0, focusDistance: 5 }, motionBlur: { shutter: 0 },
     saturation: 1, contrast: 1, temperature: 0, vignette: 0, grain: 0,
     ambientOcclusion: 0, ambientOcclusionRadius: 0.5,
     bloom: { strength: 0.12, threshold: 1, radius: 1 }, exposure: 1,

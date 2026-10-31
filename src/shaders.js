@@ -117,6 +117,7 @@ out vec4 shadowPosition;
 out vec2 textureUV;
 out vec3 vertexTint;
 flat out vec3 emissionColor;
+flat out float instanceOrdinal;
 out vec3 boxPosition;
 out vec3 boxNormal;
 flat out mat3 boxNormalMatrix;
@@ -146,6 +147,7 @@ void main() {
   textureUV = uv;
   vertexTint = vertexColor;
   emissionColor = instanceEmissive;
+  instanceOrdinal = float(gl_InstanceID);
   surface = instanceSurface;
   shadowPosition = lightProjection * world;
   gl_Position = viewProjection * world;
@@ -355,7 +357,11 @@ in vec4 shadowPosition;
 in vec2 textureUV;
 in vec3 vertexTint;
 flat in vec3 emissionColor;
+flat in float instanceOrdinal;
 uniform vec3 eye;
+uniform float renderPassMode;
+uniform float renderPassDepthRange;
+uniform float renderPassObjectBase;
 uniform vec3 armorColor;
 uniform vec2 armorSurface;
 uniform float exposure;
@@ -675,6 +681,23 @@ vec3 sheenLayer(vec3 baseRadiance, vec3 normal, vec3 viewDirection, float visibi
   return baseRadiance * shadowedBase + keyTerm + rimTerm;
 }
 
+// Raw data for a render pass: modes are 1 albedo, 2 normal, 3 emission, 4 depth, 5 object ID. Depth packs 16 bits
+// into red and green, object IDs pack 24 bits into red, green and blue. Nothing here is tone mapped or graded.
+vec3 renderPassValue(vec3 color, vec3 normal, vec3 emission) {
+  if (renderPassMode < 1.5) return clamp(color, 0.0, 1.0);
+  if (renderPassMode < 2.5) return normal * 0.5 + 0.5;
+  if (renderPassMode < 3.5) return clamp(emission, 0.0, 1.0);
+  if (renderPassMode < 4.5) {
+    float steps = floor(clamp(length(worldPosition - eye) / renderPassDepthRange, 0.0, 1.0) * 65535.0 + 0.5);
+    float high = floor(steps / 256.0);
+    return vec3(high, steps - high * 256.0, 0.0) / 255.0;
+  }
+  float identifier = renderPassObjectBase + instanceOrdinal + 1.0;
+  float high = floor(identifier / 65536.0);
+  float middle = floor((identifier - high * 65536.0) / 256.0);
+  return vec3(identifier - high * 65536.0 - middle * 256.0, middle, high) / 255.0;
+}
+
 void main() {
   vec3 normal = normalize(worldNormal);
   // Foliage and grass cards are single-sided geometry whose shading normal already leans toward the
@@ -694,6 +717,10 @@ void main() {
   float alpha = surfaceAlpha(textureAlpha);
   vec3 emission = emissionColor * surface.z;
   if (USES_EMISSIVE_MAP) emission *= texture(emissiveMap, textureUV).rgb;
+  if (USES_RENDER_PASS) {
+    outputColor = vec4(renderPassValue(color, normal, emission), 1.0);
+    return;
+  }
   if (TAG_UNLIT) {
     vec3 radiance = color * exposure + emission;
     outputColor = vec4(hdrEnabled > 0.5 ? radiance : pow(max(radiance, vec3(0)), vec3(1.0 / 2.2)), alpha);
@@ -910,6 +937,7 @@ const SHADER_FEATURE_CONDITIONS = {
   spotLights: ['USES_SPOT_LIGHTS', 'spotLightCount > 0'],
   areaLights: ['USES_AREA_LIGHTS', 'areaLightCount > 0'],
   localShadows: ['USES_LOCAL_SHADOWS', 'true'],
+  renderPass: ['USES_RENDER_PASS', 'renderPassMode > 0.5'],
 };
 
 export const SHADER_FEATURES = Object.freeze(Object.keys(SHADER_FEATURE_CONDITIONS));

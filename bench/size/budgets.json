@@ -33,6 +33,8 @@
   "entry:agent-asset": 83600,
   "entry:agent-asset+lazy": 171500,
   "entry:hdri": 3300,
+  "entry:camera-effects": 8600,
+  "entry:render-passes": 1700,
   "scene:lit-box": 57200,
   "scene:gltf-box": 76500,
   "scene:agent-scene": 85800,

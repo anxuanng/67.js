@@ -38,6 +38,8 @@ export default defineConfig({
         'agent-scene': 'src/agent-scene.js',
         'agent-asset': 'src/agent-asset.js',
         hdri: 'src/hdri.js',
+        'camera-effects': 'src/camera-effects.js',
+        'render-passes': 'src/render-passes.js',
       },
       formats: ['es'],
       fileName: (_, entry) => entry === 'core' ? '67.module.js' : `${entry}.js`,
