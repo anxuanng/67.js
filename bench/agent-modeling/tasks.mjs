@@ -246,6 +246,21 @@ For this task the object does not need to rest on the ground.`,
     ],
   },
   {
+    id: 'pillar-court',
+    prompt: `A pillar court: a grid of 5 pillars along X by 3 along Z. Each pillar is a square column 0.1 m wide and
+0.5 m tall. Pillars are 0.4 m apart along X and 0.5 m apart along Z, centre to centre, the whole grid centred on
+X = 0 and Z = 0, every pillar standing on the ground. Repeat one pillar over the grid instead of modelling fifteen.`,
+    checks: [
+      { kind: 'lint' },
+      { kind: 'size', expected: [1.7, 0.5, 1.1] },
+      { kind: 'ground' },
+      { kind: 'holes', equals: 0 },
+      { kind: 'volume', min: 0.0725, max: 0.0775 },
+      { kind: 'section', axis: 'y', at: 0.25, equals: 15, label: 'fifteen pillars' },
+      { kind: 'section', axis: 'x', at: 0.4, equals: 3, label: 'three pillars along Z in the column at X = 0.4' },
+    ],
+  },
+  {
     id: 'robot-reach',
     assets: true,
     prompt: `The asset catalog holds an imported robot character. Create a scene from it with its Idle clip selected at

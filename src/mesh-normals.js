@@ -135,3 +135,48 @@ export function cornerNormals(mesh, { sharpAngle = Infinity } = {}) {
   };
 }
 
+export function faceCentroids(mesh) {
+  const centroids = new Float64Array(mesh.faceCount * 3);
+  for (let face = 0; face < mesh.faceCount; face++) {
+    const start = mesh.faceOffsets[face];
+    const end = mesh.faceOffsets[face + 1];
+    for (let corner = start; corner < end; corner++) {
+      const vertex = mesh.cornerVertices[corner] * 3;
+      centroids[face * 3] += mesh.positions[vertex];
+      centroids[face * 3 + 1] += mesh.positions[vertex + 1];
+      centroids[face * 3 + 2] += mesh.positions[vertex + 2];
+    }
+    const size = end - start;
+    centroids[face * 3] /= size;
+    centroids[face * 3 + 1] /= size;
+    centroids[face * 3 + 2] /= size;
+  }
+  return centroids;
+}
+
+/** Angle-weighted vertex normals from face normals. */
+export function vertexNormals(mesh) {
+  const { normals } = faceNormals(mesh);
+  const sums = new Float64Array(mesh.vertexCount * 3);
+  for (let face = 0; face < mesh.faceCount; face++) {
+    const start = mesh.faceOffsets[face];
+    const end = mesh.faceOffsets[face + 1];
+    for (let corner = start; corner < end; corner++) {
+      const previous = mesh.cornerVertices[corner === start ? end - 1 : corner - 1] * 3;
+      const current = mesh.cornerVertices[corner] * 3;
+      const next = mesh.cornerVertices[corner + 1 === end ? start : corner + 1] * 3;
+      const first = [0, 1, 2].map(axis => mesh.positions[previous + axis] - mesh.positions[current + axis]);
+      const second = [0, 1, 2].map(axis => mesh.positions[next + axis] - mesh.positions[current + axis]);
+      const lengths = Math.hypot(...first) * Math.hypot(...second);
+      const angle = lengths > 0 ? Math.acos(Math.max(-1, Math.min(1, (first[0] * second[0] + first[1] * second[1] + first[2] * second[2]) / lengths))) : 0;
+      for (let axis = 0; axis < 3; axis++) sums[current + axis] += normals[face * 3 + axis] * angle;
+    }
+  }
+  const result = new Float64Array(mesh.vertexCount * 3);
+  for (let vertex = 0; vertex < mesh.vertexCount; vertex++) {
+    const length = Math.hypot(sums[vertex * 3], sums[vertex * 3 + 1], sums[vertex * 3 + 2]);
+    if (length === 0) continue;
+    for (let axis = 0; axis < 3; axis++) result[vertex * 3 + axis] = sums[vertex * 3 + axis] / length;
+  }
+  return result;
+}

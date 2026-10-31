@@ -1,5 +1,6 @@
 import { TAG_PREFIX, meshTags } from './mesh-data.js';
-import { faceNormals } from './mesh-normals.js';
+import { fieldFaceMask } from './mesh-fields.js';
+import { faceNormals, faceCentroids } from './mesh-normals.js';
 import { cornerFaces, edgeCornerTable } from './mesh-topology.js';
 
 // Semantic face selection for agents. A rule is plain JSON; the result is a Uint8Array mask with one byte per face.
@@ -11,11 +12,12 @@ import { cornerFaces, edgeCornerTable } from './mesh-topology.js';
 //   { "faces": [0, 4, 7] }                             explicit face indices
 //   { "and": [rule, ...] }, { "or": [rule, ...] }, { "not": rule }
 //   { "grow": rule, "steps": 1 }                       add faces sharing an edge, repeated
-//   { "boundary": rule }                               faces of the selection that touch an unselected face or an open edge
+//   { "field": expression }                            faces where a field expression (mesh-fields.js) is nonzero
+//   { "boundary": rule }                             faces of the selection that touch an unselected face or an open edge
 
 export const MAX_RULE_DEPTH = 16;
 const MAX_RULE_NODES = 256;
-const RULE_KEYS = ['all', 'tag', 'normal', 'inside', 'faces', 'and', 'or', 'not', 'grow', 'boundary'];
+const RULE_KEYS = ['all', 'tag', 'normal', 'inside', 'faces', 'and', 'or', 'not', 'grow', 'boundary', 'field'];
 
 function ruleError(message) {
   return new TypeError(`Selection rule: ${message}`);
@@ -24,25 +26,6 @@ function ruleError(message) {
 function vector3(value, label) {
   if (!Array.isArray(value) || value.length !== 3 || !value.every(Number.isFinite)) throw ruleError(`${label} needs three finite numbers.`);
   return value;
-}
-
-function faceCentroids(mesh) {
-  const centroids = new Float64Array(mesh.faceCount * 3);
-  for (let face = 0; face < mesh.faceCount; face++) {
-    const start = mesh.faceOffsets[face];
-    const end = mesh.faceOffsets[face + 1];
-    for (let corner = start; corner < end; corner++) {
-      const vertex = mesh.cornerVertices[corner] * 3;
-      centroids[face * 3] += mesh.positions[vertex];
-      centroids[face * 3 + 1] += mesh.positions[vertex + 1];
-      centroids[face * 3 + 2] += mesh.positions[vertex + 2];
-    }
-    const size = end - start;
-    centroids[face * 3] /= size;
-    centroids[face * 3 + 1] /= size;
-    centroids[face * 3 + 2] /= size;
-  }
-  return centroids;
 }
 
 /** Faces sharing an edge with each face, as compressed rows (built lazily once per selection call). */
@@ -172,6 +155,10 @@ export function selectFaces(mesh, rule) {
           }
         }
         return mask;
+      }
+      case 'field': {
+        if (keys.length !== 1) throw ruleError('"field" takes one expression.');
+        return fieldFaceMask(mesh, node.field);
       }
       case 'boundary': {
         if (keys.length !== 1) throw ruleError('"boundary" takes one rule.');

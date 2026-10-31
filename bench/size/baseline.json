@@ -14,9 +14,9 @@
  },
  "bundles": {
   "entry:core": {
-   "min": 268768,
-   "gzip": 76732,
-   "brotli": 65413
+   "min": 269168,
+   "gzip": 76869,
+   "brotli": 65593
   },
   "entry:model": {
    "min": 40093,
@@ -64,9 +64,9 @@
    "brotli": 12998
   },
   "entry:mesh": {
-   "min": 130796,
-   "gzip": 43755,
-   "brotli": 38368
+   "min": 144153,
+   "gzip": 48359,
+   "brotli": 41816
   },
   "entry:shrinkwrap": {
    "min": 56188,
@@ -129,14 +129,14 @@
    "brotli": 762
   },
   "entry:agent-scene": {
-   "min": 344496,
-   "gzip": 108633,
-   "brotli": 92877
+   "min": 363196,
+   "gzip": 115077,
+   "brotli": 97971
   },
   "entry:agent-asset": {
-   "min": 371020,
-   "gzip": 116055,
-   "brotli": 99302
+   "min": 389720,
+   "gzip": 122420,
+   "brotli": 104242
   },
   "entry:hdri": {
    "min": 8075,
@@ -154,9 +154,9 @@
    "brotli": 63362
   },
   "scene:agent-scene": {
-   "min": 444099,
-   "gzip": 134816,
-   "brotli": 114839
+   "min": 462799,
+   "gzip": 141241,
+   "brotli": 120198
   }
  }
 }

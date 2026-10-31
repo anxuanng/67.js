@@ -36,6 +36,18 @@ test('checks reject objects that miss the asked-for features', async () => {
   assert.ok(failedKinds(await gradeRecipe(taskById('gear'), elevenTeeth)).includes('tips'));
 });
 
+test('the pillar court check rejects a grid with a wrong count or spacing', async () => {
+  const fourByThree = structuredClone(REFERENCES['pillar-court']);
+  fourByThree.nodes[0].instances.grid.counts = [4, 1, 3];
+  const missingColumn = failedKinds(await gradeRecipe(taskById('pillar-court'), fourByThree));
+  assert.ok(missingColumn.includes('fifteen pillars'), missingColumn.join(', '));
+  assert.ok(missingColumn.includes('size'));
+
+  const tooTight = structuredClone(REFERENCES['pillar-court']);
+  tooTight.nodes[0].instances.grid.spacing = [3, 1, 5];
+  assert.ok(failedKinds(await gradeRecipe(taskById('pillar-court'), tooTight)).includes('size'));
+});
+
 test('an invalid recipe fails every check with the reason', async () => {
   const grade = await gradeRecipe(taskById('bolt'), { format: '67js.scene', schemaVersion: 1, geometries: [], materials: [], nodes: [{ id: 'x', geometry: 'missing' }] });
   assert.equal(grade.passed, 0);

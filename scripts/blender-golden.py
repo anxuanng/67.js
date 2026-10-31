@@ -341,7 +341,69 @@ def add_subdivision(mesh_object, edit, _inputs):
     modifier.boundary_smooth = "PRESERVE_CORNERS"
 
 
+# Set Position through a Geometry Nodes modifier. Only the part of the field language the cases use is translated:
+# numbers, "vec", position components, add, sub and mul. Anything else raises, so a case can never silently differ.
+def field_socket(tree, expression, position_xyz):
+    if isinstance(expression, (int, float)):
+        node = tree.nodes.new("ShaderNodeValue")
+        node.outputs[0].default_value = float(expression)
+        return node.outputs[0]
+    if "attr" in expression and expression["attr"] == "position" and "component" in expression:
+        return position_xyz.outputs["xyz".index(expression["component"])]
+    operations = {"add": "ADD", "sub": "SUBTRACT", "mul": "MULTIPLY"}
+    for name, operation in operations.items():
+        if name in expression:
+            left, right = expression[name]
+            node = tree.nodes.new("ShaderNodeMath")
+            node.operation = operation
+            tree.links.new(field_socket(tree, left, position_xyz), node.inputs[0])
+            tree.links.new(field_socket(tree, right, position_xyz), node.inputs[1])
+            return node.outputs[0]
+    raise ValueError(f"Unsupported field expression for the Blender golden: {expression}")
+
+
+def add_set_position(mesh_object, edit, _inputs):
+    tree = bpy.data.node_groups.new("SetPosition", "GeometryNodeTree")
+    tree.interface.new_socket("Geometry", in_out="INPUT", socket_type="NodeSocketGeometry")
+    tree.interface.new_socket("Geometry", in_out="OUTPUT", socket_type="NodeSocketGeometry")
+    group_input = tree.nodes.new("NodeGroupInput")
+    group_output = tree.nodes.new("NodeGroupOutput")
+    set_position = tree.nodes.new("GeometryNodeSetPosition")
+    position = tree.nodes.new("GeometryNodeInputPosition")
+    position_xyz = tree.nodes.new("ShaderNodeSeparateXYZ")
+    tree.links.new(position.outputs["Position"], position_xyz.inputs["Vector"])
+    combine = tree.nodes.new("ShaderNodeCombineXYZ")
+    for axis, component in enumerate(edit["offset"]["vec"]):
+        tree.links.new(field_socket(tree, component, position_xyz), combine.inputs[axis])
+    tree.links.new(group_input.outputs[0], set_position.inputs["Geometry"])
+    tree.links.new(combine.outputs["Vector"], set_position.inputs["Offset"])
+    tree.links.new(set_position.outputs["Geometry"], group_output.inputs[0])
+    modifier = mesh_object.modifiers.new("SetPosition", "NODES")
+    modifier.node_group = tree
+
+
+# Displace with a field as the texture. A constant field means no texture. The one varying field the cases use, a
+# linear gradient along local x, is Blender's Blend texture, whose value is (x + 1) / 2.
+LINEAR_GRADIENT_X = {"mul": [{"add": [{"attr": "position", "component": "x"}, 1]}, 0.5]}
+
+
+def add_displace(mesh_object, edit, _inputs):
+    modifier = mesh_object.modifiers.new("Displace", "DISPLACE")
+    modifier.strength = edit.get("strength", 1)
+    modifier.mid_level = edit.get("midlevel", 0.5)
+    modifier.direction = edit.get("direction", "normal").upper()
+    if edit["field"] != 1:
+        if edit["field"] != LINEAR_GRADIENT_X:
+            raise ValueError(f"Unsupported field for the Blender golden: {edit['field']}")
+        texture = bpy.data.textures.new("Gradient", "BLEND")
+        texture.progression = "LINEAR"
+        modifier.texture = texture
+        modifier.texture_coords = "LOCAL"
+
+
 MODIFIERS = {
+    "set_position": add_set_position,
+    "displace": add_displace,
     "mirror": add_mirror,
     "array": add_array,
     "solidify": add_solidify,
