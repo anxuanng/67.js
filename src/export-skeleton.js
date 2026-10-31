@@ -1,7 +1,10 @@
 import { mat4, quat, vec3 } from 'gl-matrix';
 
-const GLTF_PATHS = { translation: 'translation', rotation: 'rotation', scale: 'scale' };
+const GLTF_PATHS = { translation: 'translation', rotation: 'rotation', scale: 'scale', weights: 'weights' };
 const COMPONENTS_BY_PATH = { translation: 3, rotation: 4, scale: 3 };
+const ACCESSOR_TYPE_BY_PATH = { translation: 'VEC3', rotation: 'VEC4', scale: 'VEC3', weights: 'SCALAR' };
+const GLTF_STEP_INTERPOLATION = 2300;
+const GLTF_LINEAR_INTERPOLATION = 2301;
 const IDENTITY_ROTATION = [0, 0, 0, 1];
 
 function transformFields(translation, rotation, scale) {
@@ -139,8 +142,19 @@ export function normalizedWeights(weights) {
   return result;
 }
 
+// A weights keyframe holds one value per morph target, so its width comes from the keyframes.
+function componentCount(track) {
+  if (track.property !== 'weights') return COMPONENTS_BY_PATH[track.property];
+  const count = track.keyframes[0].value.length;
+  const consistent = track.keyframes.every(keyframe => keyframe.value.length === count && Array.from(keyframe.value).every(Number.isFinite));
+  if (!count || !consistent) {
+    throw new RangeError(`GLB weights track on ${track.target} needs the same nonzero count of finite weights in every keyframe.`);
+  }
+  return count;
+}
+
 function trackOutput(track) {
-  const zero = new Array(COMPONENTS_BY_PATH[track.property]).fill(0);
+  const zero = new Array(componentCount(track)).fill(0);
   const rows = [];
   for (const keyframe of track.keyframes) {
     const value = Array.isArray(keyframe.value) ? keyframe.value : Array.from(keyframe.value);
@@ -157,12 +171,12 @@ const GLTF_INTERPOLATION = { LINEAR: 'LINEAR', STEP: 'STEP', SMOOTH: 'CUBICSPLIN
 function writeTrack(writer, animation, track, nodeIndex) {
   const path = GLTF_PATHS[track.property];
   if (!path) {
-    throw new RangeError(`GLB export cannot write ${track.property} tracks (target ${track.target}). Only translation, rotation and scale tracks are exported; remove the others from the clip.`);
+    throw new RangeError(`GLB export cannot write ${track.property} tracks (target ${track.target}). Only translation, rotation, scale and weights tracks are exported; remove the others from the clip.`);
   }
   const times = Float32Array.from(track.keyframes, keyframe => keyframe.time);
   animation.samplers.push({
     input: writer.addAccessor(times, 'SCALAR', undefined, { bounds: true }),
-    output: writer.addAccessor(trackOutput(track), COMPONENTS_BY_PATH[track.property] === 4 ? 'VEC4' : 'VEC3', undefined, { bounds: false }),
+    output: writer.addAccessor(trackOutput(track), ACCESSOR_TYPE_BY_PATH[track.property], undefined, { bounds: false }),
     interpolation: GLTF_INTERPOLATION[track.interpolation ?? 'LINEAR'],
   });
   animation.channels.push({ sampler: animation.samplers.length - 1, target: { node: nodeIndex, path } });
@@ -184,4 +198,29 @@ export function writeAnimations(writer, clips, nodeIndexByName, prepareNodeForAn
     }
     writer.document.animations.push(animation);
   });
+}
+
+/**
+ * Morph weight tracks of an imported animation (`asset.animations[n]`) in clip form. clipFromGltfAnimation skips them,
+ * because the mixer samples only fixed-size properties. Cubic weight keys fail instead of silently changing shape.
+ */
+export function weightTracksFromGltfAnimation(animation) {
+  const tracks = [];
+  for (const track of animation.tracks) {
+    const separator = track.name.lastIndexOf('.');
+    if (track.name.slice(separator + 1) !== 'morphTargetInfluences') continue;
+    const target = track.name.slice(0, separator);
+    const interpolation = track.getInterpolation?.();
+    if (interpolation !== GLTF_LINEAR_INTERPOLATION && interpolation !== GLTF_STEP_INTERPOLATION) {
+      throw new RangeError(`GLB export cannot write cubic morph weights on ${target}. Re-key them as linear or step.`);
+    }
+    const width = track.values.length / track.times.length;
+    tracks.push({
+      target,
+      property: 'weights',
+      interpolation: interpolation === GLTF_STEP_INTERPOLATION ? 'STEP' : 'LINEAR',
+      keyframes: Array.from(track.times, (time, index) => ({ time, value: Array.from(track.values.subarray(index * width, (index + 1) * width)) })),
+    });
+  }
+  return tracks;
 }

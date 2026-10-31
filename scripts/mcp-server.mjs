@@ -6,6 +6,7 @@ import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import packageMetadata from '../package.json' with { type: 'json' };
 import { MATERIAL_PATTERN_TYPES } from '../src/agent-scene-capabilities.js';
+import { MATERIAL_LAYER_SCALAR_RANGES, MATERIAL_LAYER_COLOR_RANGES } from '../src/material-layers.js';
 
 const finite = z.number().min(-3.4028234663852886e38).max(3.4028234663852886e38);
 const positive = finite.positive();
@@ -49,7 +50,36 @@ const materialPattern = z.strictObject({
   axis: z.enum(['x', 'y', 'z']).optional().describe('Object axis the grain runs along. Defaults to y.'),
   resolution: z.union([z.literal(256), z.literal(512), z.literal(1024)]).optional().describe('Texture size. Defaults to 512; each pattern takes about 4 MiB at 512.'),
 }).describe('Procedural texture baked for this material. Needs no UVs: it is projected along the object axes. color then tints it (defaults to white), and roughness and metallic scale it.');
+function layerNumber(field, description) {
+  const [minimum, maximum] = MATERIAL_LAYER_SCALAR_RANGES[field];
+  return z.number()
+    .min(minimum, `${field} must be at least ${minimum}. Raise it to ${minimum} or more.`)
+    .max(maximum, `${field} must be at most ${maximum}. Lower it to ${maximum} or less.`)
+    .describe(description).optional();
+}
+
+function layerColor(field, description) {
+  const [minimum, maximum] = MATERIAL_LAYER_COLOR_RANGES[field];
+  const component = z.number().min(minimum, `${field} components must be at least ${minimum}.`).max(maximum, `${field} components must be at most ${maximum}. Use linear values.`);
+  return z.tuple([component, component, component]).describe(description).optional();
+}
+
+const materialLayerFields = {
+  clearcoat: layerNumber('clearcoat', 'Clear lacquer layer strength, 0 to 1 (car paint, varnish). Needs the surface tag.'),
+  clearcoatRoughness: layerNumber('clearcoatRoughness', 'Roughness of the clear coat, 0 mirror to 1 rough.'),
+  transmission: layerNumber('transmission', 'Share of light that passes through, 0 to 1 (glass, water, gems). It refracts the opaque scene behind it; blended surfaces do not show through it.'),
+  thickness: layerNumber('thickness', 'Metres of material the light crosses. 0 is a thin sheet that does not bend the view; set it with transmission.'),
+  ior: layerNumber('ior', 'Index of refraction, 1 to 2.5 (air 1, water 1.33, glass 1.5, diamond 2.42). Also sets how reflective the surface is.'),
+  attenuationColor: layerColor('attenuationColor', 'Linear RGB colour that light keeps after attenuationDistance metres inside the material.'),
+  attenuationDistance: z.number().positive('attenuationDistance must be above 0. Leave it out for no absorption.').max(3.4e38).describe('Metres inside the material after which light is reduced to attenuationColor.').optional(),
+  sheenColor: layerColor('sheenColor', 'Linear RGB soft grazing-angle glow of cloth and velvet; [0, 0, 0] is off.'),
+  sheenRoughness: layerNumber('sheenRoughness', 'Width of the sheen glow, 0 tight to 1 broad.'),
+  specular: layerNumber('specular', 'Strength of the non-metal reflection, 0 to 4 (1 is normal).'),
+  specularColor: layerColor('specularColor', 'Linear RGB tint of the non-metal reflection.'),
+};
+
 const materialFields = {
+  ...materialLayerFields,
   pattern: materialPattern.optional(),
   color: color.optional().describe('Linear RGB base color, each component between zero and one.'),
   metallic: unit.optional(),
@@ -440,6 +470,7 @@ export function createAgentMcpServer(runtime, { version = packageMetadata.versio
   register('scene_restore', 'Restore a checkpoint atomically using the current revision. The checkpoint remains available and revision increments.', z.strictObject({ ...checkpointFields, expectedRevision }), edit, async argumentsValue => jsonResult(await runtime.restore(argumentsValue)));
   register('scene_release_checkpoint', 'Release one checkpoint slot. Released or foreign checkpoints fail.', z.strictObject(checkpointFields), edit, async argumentsValue => jsonResult(await runtime.releaseCheckpoint(argumentsValue)));
   register('scene_export_recipe', 'Read a detached canonical JSON recipe for reproduction.', z.strictObject(sessionFields), readOnly, async argumentsValue => jsonResult(await runtime.exportRecipe(argumentsValue)));
+  register('scene_export_glb', 'Write the active scene as a GLB file in the configured jobs folder, under a server-chosen name (the result has the path, byte count and SHA-256). Needs --jobs. Exports the current pose with pattern and imported textures, skins, morph weights and IK as posed; motionTime seeks authored motion first. For an imported asset, clip adds that source clip (translation, rotation, scale and morph weight tracks) on the source skeleton, which needs no animation, node overrides or motion in the scene. At most eight files are kept, oldest removed first; the GLB is at most 32 MiB.', z.strictObject({ ...sessionFields, clip: z.number().int().min(0).max(255).optional().describe('Imported assets only: index of the source clip to write.'), motionTime: z.number().min(0).max(3600).optional().describe('Seek authored motion (and IK) to this time before exporting. Leaves the preview there, like scene_look.'), maxTextureSize: z.number().int().min(1).max(4096).optional().describe('Largest texture side in pixels. Defaults to 2048.') }), edit, async argumentsValue => jsonResult(await runtime.exportGlb(argumentsValue)));
   register('scene_dispose', 'Dispose the active scene and its checkpoints, releasing renderer resources.', z.strictObject(sessionFields), edit, async argumentsValue => jsonResult(await runtime.dispose(argumentsValue)));
   register('scene_render_submit', 'Start one asynchronous snapshot job in the configured private job store. Requires the current revision. Temporarily leases the preview renderer; does not change source revision or checkpoints.', z.strictObject({ ...sessionFields, expectedRevision, settings: renderSettings }), { ...edit, destructiveHint: false }, async argumentsValue => jsonResult(await runtime.submitJob(argumentsValue)));
   register('scene_render_status', 'Read render job state and durable frame progress. Terminal states are completed, cancelled, failed and interrupted.', z.strictObject(jobFields), readOnly, async argumentsValue => jsonResult(await runtime.jobStatus(argumentsValue)));

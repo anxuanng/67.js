@@ -116,9 +116,26 @@ const clips = asset.animations.map(clipFromGltfAnimation);
 const glb = exportGlb(asset.parts, { nodes: asset.nodes, clips });
 ```
 
+### Morph weight clips
+
+A track `{ target: 'Face', property: 'weights', keyframes: [{ time, value: [w0, w1] }] }` writes a `weights` channel with one SCALAR output per target and keyframe.
+Every keyframe needs the same nonzero count of finite weights, and the target is the node that carries the morph mesh.
+`clipFromGltfAnimation` skips weight tracks because the mixer samples fixed-size properties.
+`weightTracksFromGltfAnimation(animation)` in `src/export-skeleton.js` reads them from an imported animation, for linear and step keys; cubic weight keys fail.
+
+## MCP tool
+
+`scene_export_glb` exports the active MCP scene, recipe or imported asset, with `--jobs` configured.
+The file goes to `<jobs>/exports/<uuid>.glb`; the call takes no path and the result has the path, `bytes`, `sha256`, `parts` and `clips`.
+The newest eight files stay, the GLB is at most 32 MiB, and `maxTextureSize` goes up to 4096.
+Without `clip` it writes the current pose: pattern and imported textures, skins, morph weights and IK as posed.
+`motionTime` seeks authored motion first and leaves the preview there, like `scene_look`.
+With `clip` (imported assets) it writes that source clip, translation, rotation, scale and weights, on the source skeleton, so the scene must carry no animation, node overrides or motion.
+`node scripts/smoke-glb-export.mjs cpu` runs a patterned recipe, the robot with IK and its Walking clip through the real server and leaves the files in `artifacts/`.
+
 ## Limits
 
-Morph weight animation is not written; static weights are.
+Recipe motion tracks are not converted to clips, and an imported clip cannot be combined with IK or node overrides in the MCP tool.
 A glTF mesh with several primitives comes back as one Blender object per part, so Blender counts more objects than the original, with the same bones, actions and materials.
 Material tracks, IK and the camera are not exported; bake IK into rotation tracks first.
 It stores opaque metallic roughness materials without renderer tags, procedural weathering, custom shaders, lighting, cameras, or postprocessing.
