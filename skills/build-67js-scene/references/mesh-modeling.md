@@ -197,6 +197,46 @@ bounds and rescale the node.
 ] }
 ```
 
+## Fields: noise, gradients and repeats
+
+A field expression is a small JSON formula over each vertex or face. `displace` and `set_position` take one, and
+`{ "field": expression }` selects faces by one. The formula is plain JSON, so write it as data and never as code.
+Use `{"attr":"position","component":"y"}` for a coordinate, `{"noise":{"scale":3,"seed":7}}` for smooth noise in 0 to
+1 (use `midlevel: 0.5` so it pushes both ways), and `mul`, `add`, `clamp`, `gt` and `if` to shape it. Full list in
+`docs/mesh.md#field-expressions`; the limits are 64 nodes and depth 12.
+
+A lumpy boulder from one expression (a sphere keeps its topology, so it stays closed):
+
+```json
+{ "id": "boulder", "type": "mesh", "base": { "type": "sphere", "segments": 24, "rings": 12 }, "edits": [
+  { "op": "displace", "field": { "noise": { "scale": 2, "seed": 3, "octaves": 2 } }, "strength": 0.5 }
+] }
+```
+
+Taper a box into a tower by scaling x and z with height, then inset the top face, picked by a field on its normal:
+
+```json
+{ "id": "tower", "type": "mesh", "base": { "type": "box", "bevel": 0 }, "edits": [
+  { "op": "set_position", "position": { "vec": [
+    { "mul": [{ "attr": "position", "component": "x" }, { "sub": [1, { "mul": [0.5, { "add": [{ "attr": "position", "component": "y" }, 0.5] }] }] }] },
+    { "attr": "position", "component": "y" },
+    { "mul": [{ "attr": "position", "component": "z" }, { "sub": [1, { "mul": [0.5, { "add": [{ "attr": "position", "component": "y" }, 0.5] }] }] }] }
+  ] } },
+  { "op": "inset_region", "select": { "field": { "gt": [{ "dot": [{ "attr": "normal" }, [0, 1, 0]] }, 0.9] } }, "thickness": 0.05, "name": "top" }
+] }
+```
+
+Do not model fifteen pillars: repeat one. Put `instances` on the node, with a `grid`, a `scatter` or a `surface`
+source, a `seed`, and an optional `where` field. A node's scale applies to the grid spacing, so scale the group to the
+size of one pillar and give the spacing in pillar units:
+
+```text
+{ "id": "court", "geometry": "pillar", "material": "stone", "translation": [0, 0.25, 0], "scale": [0.1, 0.5, 0.1],
+  "instances": { "grid": { "counts": [5, 1, 3], "spacing": [4, 1, 5] } } }
+```
+
+That gives 15 pillars 0.4 m by 0.5 m apart, drawn as one batch. `instances` goes in the recipe given to `scene_create`.
+
 ## Cutting and repairing
 
 Use these when a part has a hole, needs an opening or has too many faces. Each names what it makes with `<name>.<tag>`.

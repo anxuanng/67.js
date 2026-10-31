@@ -7,6 +7,7 @@ import { normalizeAgentLook } from './agent-look.js';
 import { normalizeAgentMotion, compileAgentMotion } from './agent-motion.js';
 import { meshReport, generateMeshGeometry, MESH_SMOOTH_ANGLE_DEFAULT } from './agent-mesh.js';
 import { normalizeMeshEdits, normalizeMeshStack } from './mesh-recipe.js';
+import { expandInstancedNodes } from './mesh-instances.js';
 import { AGENT_SCENE_CAPABILITIES, AGENT_SCENE_DEFAULT_LIMITS, MAX_MATERIAL_PATTERNS, RECIPE_ALPHA_MODES } from './agent-scene-capabilities.js';
 import { materialPatternTextures, normalizeMaterialPattern } from './material-patterns.js';
 export { AGENT_SCENE_CAPABILITIES, AGENT_SCENE_DEFAULT_LIMITS };
@@ -495,6 +496,14 @@ function normalizeRecipe(input, limits) {
   if (distinctPatterns.size > MAX_MATERIAL_PATTERNS) {
     throw new RangeError(`A scene holds at most ${MAX_MATERIAL_PATTERNS} different material patterns; it has ${distinctPatterns.size}. Reuse a pattern and tint it with color.`);
   }
+  recipe.nodes = expandInstancedNodes(recipe.nodes, {
+    maxNodes: limits.maxNodes,
+    resolveSurface: id => {
+      const definition = recipe.geometries.find(geometry => geometry.id === id);
+      if (!definition) throw new RangeError(`Instances surface geometry ${JSON.stringify(id.slice(0, 48))} is not in geometries.`);
+      return generateGeometry(definition, Math.min(limits.maxVertices, 1_000_000));
+    },
+  });
   recipe.nodes = resources(recipe.nodes, limits.maxNodes, 'nodes', nodeFrom);
   recipe.camera = cameraFrom(recipe.camera);
   const look = {};

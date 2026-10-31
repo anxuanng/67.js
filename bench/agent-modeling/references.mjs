@@ -184,6 +184,14 @@ export const REFERENCES = {
       { id: 'head', geometry: 'head', translation: [0, 0.12, 0], rotation: axisRotation('x', -Math.PI / 2) },
     ],
   ),
+  'pillar-court': scene(
+    [{ id: 'pillar', type: 'box', bevel: 0 }],
+    [{
+      id: 'court', geometry: 'pillar', translation: [0, 0.25, 0], scale: [0.1, 0.5, 0.1],
+      // The group's scale is 0.1 by 0.5 by 0.1, so a grid step of 4 by 5 is 0.4 m by 0.5 m.
+      instances: { grid: { counts: [5, 1, 3], spacing: [4, 1, 5] } },
+    }],
+  ),
   window: scene(
     [{
       id: 'frame', type: 'extrude', depth: 0.08,

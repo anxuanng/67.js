@@ -79,7 +79,7 @@ To move to a new Blender release, run `node scripts/parity-manual-snapshot.mjs`.
 | Modeling > Modifiers > Generate > Mirror Modifier | done | Stack node with axis and merge. | [mesh-stack](../tests/mesh-stack.test.js), [Blender results](../tests/fixtures/blender/golden.json) | |
 | Modeling > Modifiers > Generate > Multiresolution Modifier | missing | No multiresolution. | | |
 | Modeling > Modifiers > Generate > Remesh Modifier | missing | No remesh. | | #40 |
-| Modeling > Modifiers > Generate > Scatter on Surface Modifier | partial | `addons/clutter` and `addons/grass` scatter in code. Recipes have no scatter node. | | #42 |
+| Modeling > Modifiers > Generate > Scatter on Surface Modifier | partial | `instances` with a `surface` source scatters a node at seeded, area-weighted points with yaw, scale and normal alignment, and `where` filters them. No minimum distance or density map, and `addons/clutter` and `addons/grass` still scatter in code. | [src/mesh-instances.js](../src/mesh-instances.js), [tests/mesh-fields.test.js](../tests/mesh-fields.test.js) | #42 |
 | Modeling > Modifiers > Generate > Screw Modifier | partial | `lathe` covers a full turn. There is no stack node or screw offset. | | #42 |
 | Modeling > Modifiers > Generate > Skin Modifier | missing | No equivalent. | | #42 |
 | Modeling > Modifiers > Generate > Solidify Modifier | done | Stack node with thickness, offset and even thickness. | [mesh-stack](../tests/mesh-stack.test.js), [Blender results](../tests/fixtures/blender/golden.json) | |
@@ -91,7 +91,7 @@ To move to a new Blender release, run `node scripts/parity-manual-snapshot.mjs`.
 | Modeling > Modifiers > Deform > Armature Modifier | partial | GPU skinning for imported rigs. Recipes can not bind a mesh. | [skinning](../tests/skinning.test.js) | #46 |
 | Modeling > Modifiers > Deform > Cast Modifier | missing | No equivalent. | | #42 |
 | Modeling > Modifiers > Deform > Curve Modifier | missing | No equivalent. | | #42 |
-| Modeling > Modifiers > Deform > Displace Modifier | missing | No stack node. `addons/sculpt` displaces in code. | | #42 |
+| Modeling > Modifiers > Deform > Displace Modifier | done | `displace` edit and stack node with a field as the texture, along the normal or an axis, with strength, midlevel and a face selection. Positions match Blender with a constant and with a Blend texture. | [src/mesh-field-edits.js](../src/mesh-field-edits.js), [tests/blender-golden.test.js](../tests/blender-golden.test.js), [src/mesh-fields.js](../src/mesh-fields.js), [tests/mesh-fields.test.js](../tests/mesh-fields.test.js) | #43 |
 | Modeling > Modifiers > Deform > Hook Modifier | missing | No equivalent. | | #42 |
 | Modeling > Modifiers > Deform > Laplacian Deform Modifier | missing | No equivalent. | | |
 | Modeling > Modifiers > Deform > Lattice Modifier | missing | No lattice. | | #42 |
@@ -117,8 +117,8 @@ To move to a new Blender release, run `node scripts/parity-manual-snapshot.mjs`.
 | Modeling > Modifiers > Physics > Particle Instance Modifier | missing | No particle system. | | #63 |
 | Modeling > Modifiers > Physics > Particle System Modifier | missing | No particle system. | | #63 |
 | Modeling > Modifiers > Physics > Soft Body Modifier | missing | No soft bodies. | | #62 |
-| Modeling > Modifiers > Geometry Nodes Modifier | missing | No node graph. | | #43 |
-| Modeling > Geometry Nodes | missing | No fields or node graph. Issue #43 adds bounded JSON expressions and not a visual editor. | | #43 |
+| Modeling > Modifiers > Geometry Nodes Modifier | partial | Bounded JSON field expressions drive `set_position`, `displace`, a `field` selection rule and `instances`. There is no node graph, no loops, no custom node groups, and no realize, curve or volume nodes. | [src/mesh-fields.js](../src/mesh-fields.js), [tests/mesh-fields.test.js](../tests/mesh-fields.test.js), [tests/blender-golden.test.js](../tests/blender-golden.test.js), [pillar-court task](../bench/agent-modeling/tasks.mjs) | #43 |
+| Modeling > Geometry Nodes | partial | Fields over attributes, noise and math (position, normal, index, tags), Set Position, Instance on Points (grid, scatter, surface) and Displace. Noise is not Blender's noise function, and there is no Blender comparison for instancing. Issue #43 chose bounded JSON expressions and not a visual editor. | [src/mesh-fields.js](../src/mesh-fields.js), [tests/mesh-fields.test.js](../tests/mesh-fields.test.js), [tests/blender-golden.test.js](../tests/blender-golden.test.js) | #43 |
 | Modeling > Transform | partial | Node transforms, and `translate` on a selection with falloff. There is no rotate or scale on a selection. | | |
 | Sculpting & Painting > Brushes | out of scope | Brush settings for a hand. Strokes have explicit parameters. | | |
 | Sculpting & Painting > Selection & Visibility | out of scope | Interface for a person in a paint mode. | | |
