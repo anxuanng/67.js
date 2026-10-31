@@ -39,9 +39,9 @@
    "brotli": 7331
   },
   "entry:gltf": {
-   "min": 151944,
-   "gzip": 46674,
-   "brotli": 39985
+   "min": 151968,
+   "gzip": 46679,
+   "brotli": 40033
   },
   "entry:modeling": {
    "min": 15517,
@@ -94,9 +94,9 @@
    "brotli": 12962
   },
   "entry:skeleton-pose": {
-   "min": 51635,
-   "gzip": 16806,
-   "brotli": 14274
+   "min": 55080,
+   "gzip": 18056,
+   "brotli": 15427
   },
   "entry:vehicle": {
    "min": 42067,
@@ -129,14 +129,14 @@
    "brotli": 762
   },
   "entry:agent-scene": {
-   "min": 399226,
-   "gzip": 126629,
-   "brotli": 107783
+   "min": 419435,
+   "gzip": 133124,
+   "brotli": 113067
   },
   "entry:agent-asset": {
-   "min": 425353,
-   "gzip": 133851,
-   "brotli": 113836
+   "min": 445545,
+   "gzip": 140377,
+   "brotli": 119117
   },
   "entry:hdri": {
    "min": 8075,
@@ -149,14 +149,14 @@
    "brotli": 46863
   },
   "scene:gltf-box": {
-   "min": 258708,
-   "gzip": 73797,
+   "min": 258732,
+   "gzip": 73801,
    "brotli": 63362
   },
   "scene:agent-scene": {
-   "min": 498424,
-   "gzip": 152612,
-   "brotli": 129631
+   "min": 518633,
+   "gzip": 159129,
+   "brotli": 135030
   }
  }
 }

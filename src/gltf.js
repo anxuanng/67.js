@@ -1083,7 +1083,7 @@ export async function parseGltf(data, options = {}) {
         /** Local transform of every source node in this candidate pose, after the clip and overrides. */
         nodePoses() {
           requirePending();
-          return [...sourceNodes].map(([id, node]) => ({ id, translation: node.position.toArray(), rotation: node.quaternion.toArray() }));
+          return [...sourceNodes].map(([id, node]) => ({ id, translation: node.position.toArray(), rotation: node.quaternion.toArray(), scale: node.scale.toArray() }));
         },
         commit() {
           requirePending();

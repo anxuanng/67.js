@@ -45,6 +45,8 @@ export const AGENT_SCENE_CAPABILITIES = Object.freeze({
   lightLinking: false,
   proceduralMotion: true,
   motionIk: Object.freeze(['two-bone', 'aim']),
+  motionConstraints: Object.freeze(['copy_location', 'copy_rotation', 'copy_scale', 'limit_location', 'limit_rotation', 'track_to', 'child_of', 'floor']),
+  motionDrivers: Object.freeze({ maxDrivers: 32, maxConstraints: 32, maxExpressionParts: 64, maxExpressionDepth: 8 }),
   // Recipe physics: Rapier (an optional peer) bakes bodies on nodes offline; playback is a seek into the bake.
   physics: Object.freeze({
     bodyTypes: Object.freeze(['dynamic', 'fixed', 'kinematic']),
