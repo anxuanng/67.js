@@ -1,0 +1,79 @@
+{
+ "metric": "FLIP (LDR), mean error against Cycles, lower is better",
+ "scores": {
+  "brick-graph": {
+   "pathtracer-vs-cycles": 0.1538,
+   "seconds": 34.2,
+   "samples": 32,
+   "ignored": [
+    "normalMap is ignored."
+   ]
+  },
+  "car-paint": {
+   "pathtracer-vs-cycles": 0.1372,
+   "seconds": 44.5,
+   "samples": 32,
+   "ignored": []
+  },
+  "character": {
+   "pathtracer-vs-cycles": 0.1143,
+   "seconds": 35.5,
+   "samples": 32,
+   "ignored": [
+    "gltf materials are traced as plain surfaces."
+   ]
+  },
+  "fog": {
+   "pathtracer-vs-cycles": 0.5622,
+   "seconds": 33.5,
+   "samples": 32,
+   "ignored": [
+    "volumeFog is not traced."
+   ]
+  },
+  "foliage": {
+   "pathtracer-vs-cycles": 0.1597,
+   "seconds": 126.1,
+   "samples": 32,
+   "ignored": [
+    "foliage materials are traced as plain surfaces."
+   ]
+  },
+  "glass": {
+   "pathtracer-vs-cycles": 0.1237,
+   "seconds": 50.3,
+   "samples": 32,
+   "ignored": []
+  },
+  "lit-interior": {
+   "pathtracer-vs-cycles": 0.1993,
+   "seconds": 238,
+   "samples": 32,
+   "ignored": []
+  },
+  "material-spheres": {
+   "pathtracer-vs-cycles": 0.1215,
+   "seconds": 66.8,
+   "samples": 32,
+   "ignored": []
+  },
+  "metal": {
+   "pathtracer-vs-cycles": 0.1467,
+   "seconds": 43.2,
+   "samples": 32,
+   "ignored": []
+  },
+  "outdoor-hdri": {
+   "pathtracer-vs-cycles": 0.1036,
+   "seconds": 25.1,
+   "samples": 32,
+   "ignored": []
+  },
+  "spot-area": {
+   "pathtracer-vs-cycles": 0.0639,
+   "seconds": 71.6,
+   "samples": 32,
+   "ignored": []
+  }
+ }
+}

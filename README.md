@@ -122,6 +122,7 @@ Each addon is a separate import, so a page loads only what it uses.
 | Terrain | `67js/addons/terrain`, `67js/addons/texture-set` | [Chunked terrain](https://67js.codepawl.com/terrain.md) with level of detail and a four-layer splat material from scanned textures. |
 | Grass | `67js/addons/grass` | [Grass fields](https://67js.codepawl.com/grass.md) of clumped, curved blades with rolling wind gusts, paths and level of detail. |
 | Clutter | `67js/addons/clutter` | [Pebbles, rocks, twigs and fallen leaves](https://67js.codepawl.com/clutter.md) scattered over terrain in streamed tiles. |
+| Path tracer | `67js/addons/path-tracer` | [Offline stills that follow Cycles](https://67js.codepawl.com/path-tracer.md): bounced light, glass and soft shadows on the CPU. |
 | Light bake | `67js/addons/light-bake` | [Bounced light baked into one lightmap per part](https://67js.codepawl.com/light-bake.md), drawn through the emissive map. |
 | Vegetation | `67js/addons/vegetation` | [Seeded trees, bushes and grass](https://67js.codepawl.com/vegetation.md) with scanned leaves and bark, wind and level of detail. |
 | Liquid | `67js/addons/spume` | [Baked liquid playback](https://67js.codepawl.com/spume.md) with refraction and spray from the Spume solver. |

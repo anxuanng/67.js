@@ -4,6 +4,7 @@ import { isAbsolute, join, resolve } from 'node:path';
 
 import { RENDER_PASS_NAMES, VIDEO_ENCODERS, AUDIO_FILE_PATTERN, MAXIMUM_VIDEO_SECONDS, MAXIMUM_JOB_SIDE, MAXIMUM_JOB_PIXELS } from '../src/agent-scene-capabilities.js';
 import { normalizeFilmTimeline, filmTimelineDuration } from '../src/film-timeline.js';
+import { PATH_TRACER_JOB_LIMITS } from '../src/path-tracer-capabilities.js';
 
 const UUID =/^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
 const STATES = ['queued', 'running', 'finalizing', 'completed', 'cancelling', 'cancelled', 'failed', 'interrupted'];
@@ -16,10 +17,18 @@ const REFERENCE_FRAME_PIXELS = 1024 * 576;
 /** A 1920x1080 PNG of a busy scene runs to several MiB, so a frame may be up to 12 MiB. */
 const DEFAULT_LIMITS = Object.freeze({ maxRecords: 32, maxStoreBytes: 512 * 1024 ** 2, maxOutputBytes: 128 * 1024 ** 2, maxFrameBytes: 12 * 1024 ** 2, deadlineMs: MAXIMUM_JOB_DEADLINE_MS, cleanupMs: 5000 });
 
-/** 60 s plus 2 s per frame, scaled up for frames larger than 1024x576, never above the ceiling. */
-export function jobDeadlineMs({ frameCount, width, height }, maximumMs = MAXIMUM_JOB_DEADLINE_MS) {
+/** Time the page needs to start, draw the scene and encode the PNG around a path trace that runs for its whole maxSeconds. */
+const PATH_TRACE_OVERHEAD_MS = 60 * 1000;
+
+/**
+ * 60 s plus 2 s per frame, scaled up for frames larger than 1024x576, never above the ceiling. A path trace may run for
+ * its own maxSeconds, so its deadline also reaches that plus the overhead and the trace stops itself first.
+ */
+export function jobDeadlineMs({ frameCount, width, height, renderer }, maximumMs = MAXIMUM_JOB_DEADLINE_MS) {
   const sizeScale = Math.max(1, (width * height) / REFERENCE_FRAME_PIXELS);
-  return Math.min(maximumMs, Math.ceil(BASE_DEADLINE_MS + frameCount * FRAME_ALLOWANCE_MS * sizeScale));
+  const frameDeadline = Math.ceil(BASE_DEADLINE_MS + frameCount * FRAME_ALLOWANCE_MS * sizeScale);
+  const traceDeadline = renderer?.type === 'pathTracer' ? Math.ceil(renderer.maxSeconds * 1000) + PATH_TRACE_OVERHEAD_MS : 0;
+  return Math.min(maximumMs, Math.max(frameDeadline, traceDeadline));
 }
 const MAXIMUM_JSON_BYTES = 1024 ** 2;
 const MAXIMUM_ASSET_BYTES = 16 * 1024 ** 2;
@@ -70,7 +79,7 @@ function jsonCopy(value, maximum = MAXIMUM_JSON_BYTES) {
 }
 
 function settingsFrom(input, clips, recipe) {
-  objectKeys(input, ['kind', 'width', 'height', 'fps', 'duration', 'animation', 'motion', 'rendererTime', 'passes', 'timeline', 'audio', 'encoder'], 'settings');
+  objectKeys(input, ['kind', 'width', 'height', 'fps', 'duration', 'animation', 'motion', 'rendererTime', 'passes', 'renderer', 'timeline', 'audio', 'encoder'], 'settings');
   if (!['image', 'stills', 'video'].includes(input.kind)) throw new TypeError('kind must be image, stills or video.');
   const width = boundedNumber(input.width, 64, MAXIMUM_JOB_SIDE, 'width', true);
   const height = boundedNumber(input.height, 64, MAXIMUM_JOB_SIDE, 'height', true);
@@ -84,6 +93,7 @@ function settingsFrom(input, clips, recipe) {
   if (frameCount > 900) throw new RangeError('Job exceeds 900 frames.');
   const result = { kind: input.kind, width, height, fps, duration, frameCount };
   if (input.passes !== undefined) result.passes = passesFrom(input.passes, input.kind);
+  if (input.renderer !== undefined) result.renderer = rendererFrom(input.renderer, input.kind, input.passes);
   const lastSampleTime = input.kind === 'image' ? 0 : input.kind === 'stills' ? duration : (frameCount - 1) / fps;
   if (timelineStart !== undefined) {
     if (input.motion !== undefined || input.animation !== undefined) throw new TypeError('A timeline owns the motion clock; leave motion and animation out.');
@@ -126,6 +136,20 @@ function settingsFrom(input, clips, recipe) {
     result.rendererTime = { start: 0, rate: 1 };
   }
   boundedNumber(result.rendererTime.start + lastSampleTime * result.rendererTime.rate, 0, 3600, 'renderer time end');
+  return result;
+}
+
+function rendererFrom(renderer, kind, passes) {
+  objectKeys(renderer, ['type', 'samples', 'bounces', 'denoise', 'seed', 'maxSeconds'], 'renderer');
+  if (renderer.type !== 'pathTracer') throw new TypeError('renderer.type must be pathTracer.');
+  if (kind !== 'image') throw new RangeError('The path tracer renders one image: use kind image.');
+  if (passes !== undefined) throw new RangeError('The path tracer writes the lit image only: leave passes out.');
+  if (renderer.denoise !== undefined && typeof renderer.denoise !== 'boolean') throw new TypeError('renderer.denoise must be a boolean.');
+  const result = { type: 'pathTracer', denoise: renderer.denoise ?? true };
+  for (const name of Object.keys(PATH_TRACER_JOB_LIMITS)) {
+    const { minimum, maximum, default: fallback } = PATH_TRACER_JOB_LIMITS[name];
+    result[name] = boundedNumber(renderer[name] ?? fallback, minimum, maximum, `renderer ${name}`, name !== 'maxSeconds');
+  }
   return result;
 }
 

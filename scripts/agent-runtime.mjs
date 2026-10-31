@@ -7,6 +7,7 @@ import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import packageMetadata from '../package.json' with { type: 'json' };
 import { AGENT_SCENE_CAPABILITIES, AGENT_SCENE_DEFAULT_LIMITS, RENDER_PASS_NAMES, RENDER_PASS_DEPTH_RANGE, VIDEO_ENCODERS, MAXIMUM_VIDEO_SECONDS, MAXIMUM_JOB_SIDE, MAXIMUM_JOB_PIXELS, MAXIMUM_MEMORY_MIB } from '../src/agent-scene-capabilities.js';
+import { PATH_TRACER_CAPABILITIES } from '../src/path-tracer-capabilities.js';
 import { createAgentAssetCatalog } from './agent-asset-catalog.mjs';
 import { createAgentRenderJobs, EXPORT_DIRECTORY_NAME } from './agent-render-jobs.mjs';
 import { createFrameEncoder } from './frame-encoder.mjs';
@@ -23,6 +24,8 @@ const MAXIMUM_IMAGE_BYTES = 1024 * 1024;
 const MAXIMUM_JOB_FRAME_BYTES = 12 * 1024 * 1024;
 // The object ID pass lists the part behind each ID in the job metrics; longer lists are cut and flagged.
 const MAXIMUM_OBJECT_NAMES = 1000;
+// A path trace shares the machine with the person using it, so it takes half of the eight-thread ceiling.
+const PATH_TRACER_THREADS = 4;
 const MAXIMUM_QUEUED_CALLS = 16;
 const MAXIMUM_GLB_BYTES = 32 * 1024 * 1024;
 const MAXIMUM_KEPT_GLBS = 8;
@@ -344,6 +347,19 @@ export function createAgentRuntime({ backend = 'gpu', browser: browserPath, memo
           ...(shotSample && shotSample.brightness < 1 ? { brightness: shotSample.brightness } : {}),
           ...(settings.animation ? { animation: { clip: settings.animation.clip, time: settings.animation.start + elapsed } } : {}) };
         const renderStarted = performance.now();
+        if (settings.renderer) {
+          const traced = await jobPage.evaluate(input => window.__agentPreview.pathTrace(input), { ...frameInput, options: { width, height, ...settings.renderer, threads: PATH_TRACER_THREADS } });
+          metrics.renderSeconds += (performance.now() - renderStarted) / 1000;
+          metrics.width = width;
+          metrics.height = height;
+          metrics.pathTracer = traced.report;
+          const tracedBytes = Buffer.from(traced.data, 'base64');
+          if (tracedBytes.length > MAXIMUM_JOB_FRAME_BYTES) throw new Error('Path traced image exceeded 12 MiB.');
+          await writeFile(join(directory, 'render.png.partial'), tracedBytes, { flag: 'wx' });
+          artifacts.push({ temporary: 'render.png.partial', filename: 'render.png', mimeType: 'image/png' });
+          await progress({ frames: 1, maximumPendingFrames: 1 });
+          continue;
+        }
         const rendered = await jobPage.evaluate(input => window.__agentPreview.frame(input), frameInput);
         metrics.renderSeconds += (performance.now() - renderStarted) / 1000;
         if (backend === 'cpu' && !/swiftshader/i.test(rendered.graphics)) throw new Error('CPU job did not select SwiftShader.');
@@ -464,7 +480,7 @@ export function createAgentRuntime({ backend = 'gpu', browser: browserPath, memo
           maximumVertices: 250000, maximumParts: 4096, maximumTexturePixels: 4194304, maximumJoints: 1024, maximumClips: 256,
           commands: ['set-root', 'set-asset-node', 'set-motion', 'set-animation', 'set-material', 'set-camera', 'set-environment', 'set-effects', 'set-shadow'],
         },
-        jobs: { configured: Boolean(jobRoot), kinds: ['image', 'stills', 'video'], passes: RENDER_PASS_NAMES, maximumActiveJobs: 1,
+        jobs: { configured: Boolean(jobRoot), kinds: ['image', 'stills', 'video'], passes: RENDER_PASS_NAMES, pathTracer: PATH_TRACER_CAPABILITIES, maximumActiveJobs: 1,
           maximumWidth: MAXIMUM_JOB_SIDE, maximumHeight: MAXIMUM_JOB_SIDE, maximumPixels: MAXIMUM_JOB_PIXELS,
           maximumDuration: MAXIMUM_VIDEO_SECONDS, maximumFps: 30, maximumFrames: 900, maximumStills: 8,
           encoder: 'H.264', encoders: VIDEO_ENCODERS, audio: Boolean(audioRoot), timeline: true, previewSuspendedDuringJob: true,
