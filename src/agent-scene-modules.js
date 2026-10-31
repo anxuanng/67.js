@@ -14,6 +14,7 @@ const MODULE_LOADERS = {
   bake: () => import('./agent-bake.js'),
   patterns: () => import('./material-patterns.js'),
   relations: () => import('./agent-relations.js'),
+  parts: () => import('./agent-parts.js'),
   timeline: () => import('./film-timeline.js'),
   layerShaders: () => import('./material-layer-shaders.js'),
 };
@@ -23,18 +24,22 @@ const pendingLoads = {};
 let manifoldLoader = null;
 let physicsLoader = null;
 
+// Parts expand into relations and wood patterns, and a gear into an extrusion, so a recipe with parts loads those too.
+const PART_MARKERS = ['"parts":', '"type":"add-part"'];
+
 // Each test errs on the side of loading: a false positive costs a chunk, a false negative a clear error.
 const MODULE_MARKERS = {
   mesh: ['"type":"mesh"', '"instances"'],
-  modeling: ['"type":"lathe"', '"type":"extrude"', '"type":"tube"', '"type":"curve"'],
+  modeling: ['"type":"lathe"', '"type":"extrude"', '"type":"tube"', '"type":"curve"', '"type":"gear"'],
   text: ['"type":"text"'],
   motion: ['"motion":{'],
   physics: ['"physics":{'],
   cloth: ['"cloth":{'],
   particles: ['"particles":{'],
   bake: ['"bake":{'],
-  patterns: ['"pattern"'],
-  relations: ['"relations":'],
+  patterns: ['"pattern"', ...PART_MARKERS],
+  relations: ['"relations":', ...PART_MARKERS],
+  parts: PART_MARKERS,
   timeline: ['"timeline":{'],
   layerShaders: ['"anisotropy"', '"iridescence"'],
 };

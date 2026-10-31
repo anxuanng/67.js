@@ -3,6 +3,7 @@ import {
   FIELD_OPERATOR_NAMES, FIELD_ATTRIBUTES, MAX_FIELD_NODES, MAX_FIELD_DEPTH, MAX_FIELD_ELEMENTS, INSTANCE_SOURCES, MAX_INSTANCE_CANDIDATES,
   IMPORTED_MESH_EDIT_LIMITS,
 } from './mesh-operations.js';
+import { AGENT_PART_CAPABILITIES } from './agent-part-catalog.js';
 import { MATERIAL_LAYER_FIELDS, MATERIAL_LAYER_SCALAR_RANGES, MATERIAL_LAYER_COLOR_RANGES } from './material-layers.js';
 
 // What agent scenes support and their default limits, as plain data. The MCP server reads these without bundling
@@ -132,7 +133,7 @@ export const AGENT_SCENE_CAPABILITIES = Object.freeze({
   operations: Object.freeze([
     'set-node', 'set-material', 'set-camera', 'add-node', 'remove-node',
     'add-geometry', 'remove-geometry', 'add-material', 'remove-material',
-    'set-environment', 'set-effects', 'set-shadow', 'set-motion', 'set-armatures', 'set-physics', 'set-cloth', 'set-timeline', 'set-particles', 'set-bake', 'edit-mesh', 'set-mesh-stack',
+    'set-environment', 'set-effects', 'set-shadow', 'set-motion', 'set-armatures', 'set-physics', 'set-cloth', 'set-timeline', 'set-particles', 'set-bake', 'edit-mesh', 'set-mesh-stack', 'add-part',
   ]),
   materialTags: Object.freeze(['surface', 'unlit', 'liquid', 'foam']),
   materialLayers: Object.freeze(Object.fromEntries(MATERIAL_LAYER_FIELDS.map(field => [field, Object.freeze({
@@ -187,6 +188,7 @@ export const AGENT_SCENE_CAPABILITIES = Object.freeze({
     }),
     notes: 'Optional region (a mesh tag) uses only those faces of the target. One relation per axis, no loops, mesh nodes only. A relation replaces translation on its axes. set-node with relations [] removes them.',
   }),
+  parts: AGENT_PART_CAPABILITIES,
   rigging: Object.freeze({ presets: Object.freeze(['humanoid', 'quadruped']), maxArmatures: 16, maxBones: 128, maxInfluences: 4, weights: 'bone-distance' }),
   motionConstraints: Object.freeze(['copy_location', 'copy_rotation', 'copy_scale', 'limit_location', 'limit_rotation', 'track_to', 'child_of', 'floor']),
   motionDrivers: Object.freeze({ maxDrivers: 32, maxConstraints: 32, maxExpressionParts: 64, maxExpressionDepth: 8 }),

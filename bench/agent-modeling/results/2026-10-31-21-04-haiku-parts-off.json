@@ -1,0 +1,243 @@
+{
+  "run": "2026-10-31-21-04-haiku-parts-off",
+  "model": "claude-haiku-5-5",
+  "date": "2026-10-31T21:17:23.461Z",
+  "skill": false,
+  "parts": "off",
+  "runsPerTask": 2,
+  "passed": 4,
+  "tasks": 4,
+  "toolCalls": 18,
+  "costUsd": 0.47,
+  "byModel": {
+    "claude-haiku-5-5": {
+      "runs": 4,
+      "passed": 4,
+      "successRate": 1,
+      "toolCalls": 18,
+      "toolErrors": 1,
+      "inputTokens": 2129601,
+      "outputTokens": 13284,
+      "costUsd": 0.47,
+      "tasks": {
+        "bookcase": {
+          "runs": 2,
+          "passed": 2,
+          "successRate": 1,
+          "toolCalls": 10,
+          "toolErrors": 0,
+          "inputTokens": 1056328,
+          "outputTokens": 6450,
+          "costUsd": 0.24
+        },
+        "desk-lamp": {
+          "runs": 2,
+          "passed": 2,
+          "successRate": 1,
+          "toolCalls": 8,
+          "toolErrors": 1,
+          "inputTokens": 1073273,
+          "outputTokens": 6834,
+          "costUsd": 0.24
+        }
+      }
+    }
+  },
+  "records": [
+    {
+      "task": "bookcase",
+      "attempt": 1,
+      "pass": true,
+      "passed": 5,
+      "total": 5,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 5,
+      "toolErrors": 0,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_create": 1,
+        "mesh_inspect": 1,
+        "scene_look": 1,
+        "scene_export_recipe": 1,
+        "scene_dispose": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "mesh"
+        ],
+        "meshOperations": [],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 1,
+            "side": 1,
+            "three-quarter": 1
+          },
+          "mean": 1
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-10-31-21-04-haiku-parts-off/look/1/bookcase-front.png",
+          "artifacts/agent-modeling/2026-10-31-21-04-haiku-parts-off/look/1/bookcase-side.png",
+          "artifacts/agent-modeling/2026-10-31-21-04-haiku-parts-off/look/1/bookcase-three-quarter.png"
+        ]
+      },
+      "turns": 7,
+      "costUsd": 0.11170242999999999,
+      "inputTokens": 557934,
+      "outputTokens": 2638,
+      "wallSeconds": 140,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "desk-lamp",
+      "attempt": 1,
+      "pass": true,
+      "passed": 6,
+      "total": 6,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 4,
+      "toolErrors": 1,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_create": 2,
+        "scene_export_recipe": 1,
+        "scene_dispose": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "box",
+          "cylinder"
+        ],
+        "meshOperations": [],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 0.9705,
+            "side": 0.9637,
+            "three-quarter": 0.9797
+          },
+          "mean": 0.9713
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-10-31-21-04-haiku-parts-off/look/1/desk-lamp-front.png",
+          "artifacts/agent-modeling/2026-10-31-21-04-haiku-parts-off/look/1/desk-lamp-side.png",
+          "artifacts/agent-modeling/2026-10-31-21-04-haiku-parts-off/look/1/desk-lamp-three-quarter.png"
+        ]
+      },
+      "turns": 6,
+      "costUsd": 0.13004298,
+      "inputTokens": 621003,
+      "outputTokens": 3550,
+      "wallSeconds": 158,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "bookcase",
+      "attempt": 2,
+      "pass": true,
+      "passed": 5,
+      "total": 5,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 5,
+      "toolErrors": 0,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "Skill": 1,
+        "scene_create": 1,
+        "scene_inspect": 1,
+        "mesh_inspect": 1,
+        "scene_export_recipe": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "box"
+        ],
+        "meshOperations": [],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 1,
+            "side": 1,
+            "three-quarter": 1
+          },
+          "mean": 1
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-10-31-21-04-haiku-parts-off/look/2/bookcase-front.png",
+          "artifacts/agent-modeling/2026-10-31-21-04-haiku-parts-off/look/2/bookcase-side.png",
+          "artifacts/agent-modeling/2026-10-31-21-04-haiku-parts-off/look/2/bookcase-three-quarter.png"
+        ]
+      },
+      "turns": 8,
+      "costUsd": 0.12336963000000001,
+      "inputTokens": 498394,
+      "outputTokens": 3812,
+      "wallSeconds": 163,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "desk-lamp",
+      "attempt": 2,
+      "pass": true,
+      "passed": 6,
+      "total": 6,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 4,
+      "toolErrors": 0,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_create": 1,
+        "mesh_inspect": 1,
+        "scene_export_recipe": 1,
+        "scene_dispose": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "box",
+          "cylinder"
+        ],
+        "meshOperations": [],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 0.9705,
+            "side": 0.2783,
+            "three-quarter": 0.7831
+          },
+          "mean": 0.6773
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-10-31-21-04-haiku-parts-off/look/2/desk-lamp-front.png",
+          "artifacts/agent-modeling/2026-10-31-21-04-haiku-parts-off/look/2/desk-lamp-side.png",
+          "artifacts/agent-modeling/2026-10-31-21-04-haiku-parts-off/look/2/desk-lamp-three-quarter.png"
+        ]
+      },
+      "turns": 6,
+      "costUsd": 0.10806673,
+      "inputTokens": 452270,
+      "outputTokens": 3284,
+      "wallSeconds": 160,
+      "exitCode": 0,
+      "stopped": "success"
+    }
+  ]
+}

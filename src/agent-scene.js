@@ -598,15 +598,31 @@ function withDefaultMaterial(recipe) {
   return alreadyDefined ? materials : [...materials, { id: DEFAULT_MATERIAL_ID }];
 }
 
+// Parts are consumed here: their nodes, geometries and materials join the recipe, which no longer lists the parts.
+function expandRecipeParts(recipe) {
+  if (!Object.hasOwn(recipe, 'parts') || !Array.isArray(recipe.geometries) || !Array.isArray(recipe.materials)) {
+    return;
+  }
+  const expansion = agentSceneModule('parts').expandParts(recipe.parts, {
+    geometryIds: (recipe.geometries ?? []).map(geometry => geometry?.id),
+    materialIds: (recipe.materials ?? []).map(material => material?.id),
+  });
+  delete recipe.parts;
+  recipe.geometries = [...recipe.geometries, ...expansion.geometries];
+  recipe.materials = [...recipe.materials, ...expansion.materials];
+  recipe.nodes = [...(Array.isArray(recipe.nodes) ? recipe.nodes : []), ...expansion.nodes];
+}
+
 function normalizeRecipe(input, limits) {
   let recipe = copiedJson(input, limits.maxRecipeBytes);
-  knownKeys(recipe, ['format', 'schemaVersion', 'geometries', 'materials', 'nodes', 'armatures', 'camera', 'environment', 'effects', 'shadow', 'motion', 'physics', 'cloth', 'timeline', 'particles', 'bake'], 'recipe');
+  knownKeys(recipe, ['format', 'schemaVersion', 'geometries', 'materials', 'nodes', 'armatures', 'camera', 'environment', 'effects', 'shadow', 'motion', 'physics', 'cloth', 'timeline', 'particles', 'bake', 'parts'], 'recipe');
   if (recipe.format !== '67js.scene' || recipe.schemaVersion !== 1) {
     throw new RangeError('Expected 67js.scene schemaVersion 1.');
   }
   // A scene with no mesh, or whose nodes all take the default material, has nothing to list: absent means empty.
   recipe.geometries ??= [];
   recipe.materials ??= [];
+  expandRecipeParts(recipe);
   recipe.geometries = resources(recipe.geometries, limits.maxGeometries, 'geometries', value => {
     geometryEstimate(value);
     const definition = { id: value.id, type: value.type };
@@ -1248,6 +1264,17 @@ export function createAgentScene(input, inputLimits = {}) {
             throw new RangeError(`Duplicate ${collection} ID: ${record.id}. IDs must be unique: pick a new ID, or remove the existing one first.`);
           }
           candidate[collection].push(record);
+          continue;
+        }
+        if (operation.type === 'add-part') {
+          knownKeys(operation, ['type', 'part'], 'operation');
+          const expansion = agentSceneModule('parts').expandParts([operation.part], {
+            geometryIds: candidate.geometries.map(geometry => geometry.id),
+            materialIds: candidate.materials.map(material => material.id),
+          });
+          candidate.geometries.push(...expansion.geometries);
+          candidate.materials.push(...expansion.materials);
+          candidate.nodes.push(...expansion.nodes);
           continue;
         }
         if (operation.type === 'edit-mesh') {

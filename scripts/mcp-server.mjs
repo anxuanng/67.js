@@ -506,12 +506,16 @@ const armature = z.strictObject({
 }).describe('A skeleton. Each bone becomes a recipe node named after it (parented like the bones, rotating about its head), so motion tracks, motion.ik and set-node address bones by name. Mesh nodes bind with skin. scene_inspect rig lists unweighted vertices, bones with no vertices and joint axis problems.');
 const armaturesReference = z.array(z.record(z.string(), z.unknown())).max(16).describe('The same array as recipe.armatures in scene_create: id, parent, preset, fit, bones. Read that tool for the fields.');
 const timelineReference = z.record(z.string(), z.unknown()).describe('Shots in order, up to 60 s; fields in scene_capabilities filmTimeline.');
+// Benchmarks compare scene building with and without the part library; SIXTYSEVENJS_PARTS=off removes it from the schema.
+const partsEnabled = process.env.SIXTYSEVENJS_PARTS !== 'off';
+const partRecord = z.record(z.string(), z.unknown());
 const recipe = z.strictObject({
   format: z.literal('67js.scene'),
   schemaVersion: z.literal(1),
   geometries: z.array(geometry).max(256).optional(),
   materials: z.array(z.strictObject({ id: identifier, tag: materialTag, ...materialFields })).max(256).optional().describe('Omit for none.'),
   nodes: z.array(nodeRecord).max(4096),
+  ...(partsEnabled ? { parts: z.array(partRecord).max(64).optional().describe('Ready-made parts: table, chair, shelf, window, door, lamp, crate, pipe, bolt, gear. {id, type, at|on, sizes}; fields in scene_capabilities parts.') } : {}),
   armatures: z.array(armature).max(16).optional(),
   camera: z.strictObject(cameraFields).optional(),
   environment: environment.optional(),
@@ -553,6 +557,7 @@ const operation = z.discriminatedUnion('type', [
   z.strictObject({ type: z.literal('set-material'), id: identifier, ...materialFields }, { error: flatFieldsHint('set-material', 'material') }),
   z.strictObject({ type: z.literal('set-camera'), ...cameraFields }),
   z.strictObject({ type: z.literal('set-motion'), motion: recipeMotionReference.nullable() }),
+  ...(partsEnabled ? [z.strictObject({ type: z.literal('add-part'), part: partRecord })] : []),
   z.strictObject({ type: z.literal('set-armatures'), armatures: armaturesReference.nullable() }),
   z.strictObject({ type: z.literal('set-physics'), physics: z.record(z.string(), z.unknown()).nullable().describe('Same object as recipe.physics in scene_create.') }),
   z.strictObject({ type: z.literal('set-cloth'), cloth: z.record(z.string(), z.unknown()).nullable() }),

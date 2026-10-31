@@ -1,0 +1,241 @@
+{
+  "run": "2026-10-31-20-55-haiku-parts-on",
+  "model": "claude-haiku-5-5",
+  "date": "2026-10-31T21:04:23.331Z",
+  "skill": false,
+  "parts": "on",
+  "runsPerTask": 2,
+  "passed": 4,
+  "tasks": 4,
+  "toolCalls": 15,
+  "costUsd": 0.46,
+  "byModel": {
+    "claude-haiku-5-5": {
+      "runs": 4,
+      "passed": 4,
+      "successRate": 1,
+      "toolCalls": 15,
+      "toolErrors": 0,
+      "inputTokens": 1782197,
+      "outputTokens": 12013,
+      "costUsd": 0.46,
+      "tasks": {
+        "bookcase": {
+          "runs": 2,
+          "passed": 2,
+          "successRate": 1,
+          "toolCalls": 7,
+          "toolErrors": 0,
+          "inputTokens": 831563,
+          "outputTokens": 5209,
+          "costUsd": 0.22
+        },
+        "desk-lamp": {
+          "runs": 2,
+          "passed": 2,
+          "successRate": 1,
+          "toolCalls": 8,
+          "toolErrors": 0,
+          "inputTokens": 950634,
+          "outputTokens": 6804,
+          "costUsd": 0.23
+        }
+      }
+    }
+  },
+  "records": [
+    {
+      "task": "bookcase",
+      "attempt": 1,
+      "pass": true,
+      "passed": 5,
+      "total": 5,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 3,
+      "toolErrors": 0,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_create": 1,
+        "scene_export_recipe": 1,
+        "scene_dispose": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "box"
+        ],
+        "meshOperations": [],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 1,
+            "side": 1,
+            "three-quarter": 1
+          },
+          "mean": 1
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-10-31-20-55-haiku-parts-on/look/1/bookcase-front.png",
+          "artifacts/agent-modeling/2026-10-31-20-55-haiku-parts-on/look/1/bookcase-side.png",
+          "artifacts/agent-modeling/2026-10-31-20-55-haiku-parts-on/look/1/bookcase-three-quarter.png"
+        ]
+      },
+      "turns": 5,
+      "costUsd": 0.11750725000000001,
+      "inputTokens": 381343,
+      "outputTokens": 2329,
+      "wallSeconds": 118,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "desk-lamp",
+      "attempt": 1,
+      "pass": true,
+      "passed": 6,
+      "total": 6,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 3,
+      "toolErrors": 0,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_create": 1,
+        "scene_look": 1,
+        "scene_export_recipe": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "box",
+          "cylinder"
+        ],
+        "meshOperations": [],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 0.9705,
+            "side": 0.9637,
+            "three-quarter": 0.9799
+          },
+          "mean": 0.9714
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-10-31-20-55-haiku-parts-on/look/1/desk-lamp-front.png",
+          "artifacts/agent-modeling/2026-10-31-20-55-haiku-parts-on/look/1/desk-lamp-side.png",
+          "artifacts/agent-modeling/2026-10-31-20-55-haiku-parts-on/look/1/desk-lamp-three-quarter.png"
+        ]
+      },
+      "turns": 5,
+      "costUsd": 0.11786303000000001,
+      "inputTokens": 384183,
+      "outputTokens": 3114,
+      "wallSeconds": 139,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "bookcase",
+      "attempt": 2,
+      "pass": true,
+      "passed": 5,
+      "total": 5,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 4,
+      "toolErrors": 0,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_create": 1,
+        "mesh_inspect": 1,
+        "scene_export_recipe": 1,
+        "scene_dispose": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "box"
+        ],
+        "meshOperations": [],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 1,
+            "side": 1,
+            "three-quarter": 1
+          },
+          "mean": 1
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-10-31-20-55-haiku-parts-on/look/2/bookcase-front.png",
+          "artifacts/agent-modeling/2026-10-31-20-55-haiku-parts-on/look/2/bookcase-side.png",
+          "artifacts/agent-modeling/2026-10-31-20-55-haiku-parts-on/look/2/bookcase-three-quarter.png"
+        ]
+      },
+      "turns": 6,
+      "costUsd": 0.10615508000000003,
+      "inputTokens": 450220,
+      "outputTokens": 2880,
+      "wallSeconds": 81,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "desk-lamp",
+      "attempt": 2,
+      "pass": true,
+      "passed": 6,
+      "total": 6,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 5,
+      "toolErrors": 0,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_create": 1,
+        "scene_inspect": 1,
+        "scene_look": 1,
+        "scene_export_recipe": 1,
+        "scene_dispose": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "box",
+          "cylinder"
+        ],
+        "meshOperations": [],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 0.9705,
+            "side": 0.2783,
+            "three-quarter": 0.7831
+          },
+          "mean": 0.6773
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-10-31-20-55-haiku-parts-on/look/2/desk-lamp-front.png",
+          "artifacts/agent-modeling/2026-10-31-20-55-haiku-parts-on/look/2/desk-lamp-side.png",
+          "artifacts/agent-modeling/2026-10-31-20-55-haiku-parts-on/look/2/desk-lamp-three-quarter.png"
+        ]
+      },
+      "turns": 7,
+      "costUsd": 0.11675668,
+      "inputTokens": 566451,
+      "outputTokens": 3690,
+      "wallSeconds": 137,
+      "exitCode": 0,
+      "stopped": "success"
+    }
+  ]
+}

@@ -1,0 +1,234 @@
+{
+  "run": "2026-10-31-21-31-sonnet-parts-off",
+  "model": "claude-sonnet-5-5",
+  "date": "2026-10-31T21:39:56.157Z",
+  "skill": false,
+  "parts": "off",
+  "runsPerTask": 2,
+  "passed": 4,
+  "tasks": 4,
+  "toolCalls": 8,
+  "costUsd": 1.5,
+  "byModel": {
+    "claude-sonnet-5-5": {
+      "runs": 4,
+      "passed": 4,
+      "successRate": 1,
+      "toolCalls": 8,
+      "toolErrors": 0,
+      "inputTokens": 933734,
+      "outputTokens": 6277,
+      "costUsd": 1.5,
+      "tasks": {
+        "bookcase": {
+          "runs": 2,
+          "passed": 2,
+          "successRate": 1,
+          "toolCalls": 4,
+          "toolErrors": 0,
+          "inputTokens": 477550,
+          "outputTokens": 2647,
+          "costUsd": 0.77
+        },
+        "desk-lamp": {
+          "runs": 2,
+          "passed": 2,
+          "successRate": 1,
+          "toolCalls": 4,
+          "toolErrors": 0,
+          "inputTokens": 456184,
+          "outputTokens": 3630,
+          "costUsd": 0.73
+        }
+      }
+    }
+  },
+  "records": [
+    {
+      "task": "bookcase",
+      "attempt": 1,
+      "pass": true,
+      "passed": 5,
+      "total": 5,
+      "failed": [],
+      "model": "claude-sonnet-5-5",
+      "toolCalls": 2,
+      "toolErrors": 0,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_create": 1,
+        "scene_export_recipe": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "box"
+        ],
+        "meshOperations": [],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 1,
+            "side": 1,
+            "three-quarter": 1
+          },
+          "mean": 1
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-10-31-21-31-sonnet-parts-off/look/1/bookcase-front.png",
+          "artifacts/agent-modeling/2026-10-31-21-31-sonnet-parts-off/look/1/bookcase-side.png",
+          "artifacts/agent-modeling/2026-10-31-21-31-sonnet-parts-off/look/1/bookcase-three-quarter.png"
+        ]
+      },
+      "turns": 4,
+      "costUsd": 0.40730449999999996,
+      "inputTokens": 250301,
+      "outputTokens": 1305,
+      "wallSeconds": 129,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "desk-lamp",
+      "attempt": 1,
+      "pass": true,
+      "passed": 6,
+      "total": 6,
+      "failed": [],
+      "model": "claude-sonnet-5-5",
+      "toolCalls": 2,
+      "toolErrors": 0,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_create": 1,
+        "scene_export_recipe": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "box",
+          "cylinder"
+        ],
+        "meshOperations": [],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 0.9705,
+            "side": 0.9637,
+            "three-quarter": 0.9799
+          },
+          "mean": 0.9714
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-10-31-21-31-sonnet-parts-off/look/1/desk-lamp-front.png",
+          "artifacts/agent-modeling/2026-10-31-21-31-sonnet-parts-off/look/1/desk-lamp-side.png",
+          "artifacts/agent-modeling/2026-10-31-21-31-sonnet-parts-off/look/1/desk-lamp-three-quarter.png"
+        ]
+      },
+      "turns": 4,
+      "costUsd": 0.36618670000000003,
+      "inputTokens": 228018,
+      "outputTokens": 1786,
+      "wallSeconds": 99,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "bookcase",
+      "attempt": 2,
+      "pass": true,
+      "passed": 5,
+      "total": 5,
+      "failed": [],
+      "model": "claude-sonnet-5-5",
+      "toolCalls": 2,
+      "toolErrors": 0,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_create": 1,
+        "scene_export_recipe": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "box"
+        ],
+        "meshOperations": [],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 1,
+            "side": 1,
+            "three-quarter": 1
+          },
+          "mean": 1
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-10-31-21-31-sonnet-parts-off/look/2/bookcase-front.png",
+          "artifacts/agent-modeling/2026-10-31-21-31-sonnet-parts-off/look/2/bookcase-side.png",
+          "artifacts/agent-modeling/2026-10-31-21-31-sonnet-parts-off/look/2/bookcase-three-quarter.png"
+        ]
+      },
+      "turns": 4,
+      "costUsd": 0.3590568,
+      "inputTokens": 227249,
+      "outputTokens": 1342,
+      "wallSeconds": 93,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "desk-lamp",
+      "attempt": 2,
+      "pass": true,
+      "passed": 6,
+      "total": 6,
+      "failed": [],
+      "model": "claude-sonnet-5-5",
+      "toolCalls": 2,
+      "toolErrors": 0,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_create": 1,
+        "scene_export_recipe": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "box",
+          "cylinder"
+        ],
+        "meshOperations": [],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 0.9705,
+            "side": 0.9637,
+            "three-quarter": 0.9799
+          },
+          "mean": 0.9714
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-10-31-21-31-sonnet-parts-off/look/2/desk-lamp-front.png",
+          "artifacts/agent-modeling/2026-10-31-21-31-sonnet-parts-off/look/2/desk-lamp-side.png",
+          "artifacts/agent-modeling/2026-10-31-21-31-sonnet-parts-off/look/2/desk-lamp-three-quarter.png"
+        ]
+      },
+      "turns": 4,
+      "costUsd": 0.3673938,
+      "inputTokens": 228166,
+      "outputTokens": 1844,
+      "wallSeconds": 85,
+      "exitCode": 0,
+      "stopped": "success"
+    }
+  ]
+}

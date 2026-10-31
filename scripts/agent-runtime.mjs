@@ -464,10 +464,19 @@ export function createAgentRuntime({ backend = 'gpu', browser: browserPath, memo
     return { videoSeconds, audioSeconds, differenceSeconds, toleranceSeconds: SYNC_TOLERANCE_SECONDS };
   }
 
+  // SIXTYSEVENJS_PARTS=off is the benchmark control: the part library is absent from the schema and from the listing.
+  function sceneCapabilities() {
+    if (process.env.SIXTYSEVENJS_PARTS !== 'off') {
+      return AGENT_SCENE_CAPABILITIES;
+    }
+    const { parts, ...withoutParts } = AGENT_SCENE_CAPABILITIES;
+    return { ...withoutParts, operations: withoutParts.operations.filter(name => name !== 'add-part') };
+  }
+
   return Object.freeze({
     async capabilities() {
       return {
-        scene: AGENT_SCENE_CAPABILITIES,
+        scene: sceneCapabilities(),
         sceneLimits: SCENE_LIMITS,
         preview: { backend, memoryBudgetMiB: memory, maximumWidth: 1024, maximumHeight: 1024, maximumImageBytes: MAXIMUM_IMAGE_BYTES, maximumActiveScenes: 1, maximumQueuedCalls: MAXIMUM_QUEUED_CALLS, evaluationTimeoutMs: EVALUATION_TIMEOUT_MS },
         review: { ...REVIEW_LIMITS, backend, memoryBudgetMiB: memory, evaluationTimeoutMs: EVALUATION_TIMEOUT_MS,

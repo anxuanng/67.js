@@ -443,6 +443,8 @@ export const REFERENCES = {
     ] }],
     [{ id: 'soap', geometry: 'soap', translation: [0, 0.015, 0] }],
   ),
+  bookcase: { format: '67js.scene', schemaVersion: 1, nodes: [], parts: [{ id: 'case', type: 'shelf', width: 0.8, height: 1.8, depth: 0.3, board: 0.02, shelves: 5, plinth: 0.06, back: 0 }] },
+  'desk-lamp': { format: '67js.scene', schemaVersion: 1, nodes: [], parts: [{ id: 'desk', type: 'table' }, { id: 'light', type: 'lamp', on: 'desk.top' }] },
   pebble: scene(
     [{ id: 'pebble', type: 'mesh', base: { type: 'box', bevel: 0 }, stack: [{ op: 'subdivide', levels: 3 }] }],
     [{ id: 'pebble', geometry: 'pebble', translation: [0, PEBBLE_SIZE[1] / 2, 0], scale: PEBBLE_SIZE.map(size => size / SUBDIVIDED_CUBE_SPAN) }],

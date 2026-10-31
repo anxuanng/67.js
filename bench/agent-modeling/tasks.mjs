@@ -522,6 +522,39 @@ recipe is what gets graded.`,
   ...KETTLE_TASKS,
   ...DESK_TASKS,
   {
+    id: 'bookcase',
+    prompt: `A bookcase standing on the ground, facing +Z: 0.8 m wide (X), 1.8 m tall (Y) and 0.3 m deep (Z). Two side panels run the
+full height and depth. Five horizontal boards run between the sides, evenly spaced: the underside of the lowest board is 0.06 m
+above the ground and the upper surface of the top board is level with the top of the sides. Every panel and board is 0.02 m
+thick. The back is open.`,
+    checks: [
+      { kind: 'lint' },
+      { kind: 'size', expected: [0.8, 1.8, 0.3] },
+      { kind: 'ground' },
+      {
+        kind: 'through', axis: 'z', label: 'five boards between open bays',
+        open: [[0, 0.03], [0, 0.285], [0, 0.715], [0, 1.145], [0, 1.575]],
+        solid: [[0.1, 0.074], [0.1, 0.504], [0.1, 0.934], [0.1, 1.364], [0.1, 1.794], [-0.391, 0.9], [0.391, 0.9], [0.2, 0.504]],
+      },
+      { kind: 'volume', min: 0.039, max: 0.05 },
+    ],
+  },
+  {
+    id: 'desk-lamp',
+    prompt: `A table with a lamp on it. The table top is 1.2 m long (X), 0.75 m deep (Z) and 0.04 m thick, with its upper surface 0.75 m
+above the ground, on four square legs 0.05 m on a side that run from the ground to the underside of the top; each leg's outer faces sit
+0.05 m in from the edges of the top. The lamp stands in the middle of the top: a round base 0.15 m across and 0.02 m thick, a thin
+round pole 0.016 m across, and a shade 0.2 m wide and 0.12 m tall whose top is 0.45 m above the table top.`,
+    checks: [
+      { kind: 'lint' },
+      { kind: 'size', expected: [1.2, 1.2, 0.75] },
+      { kind: 'ground' },
+      { kind: 'section', axis: 'y', at: 0.02, equals: 4, label: 'four legs at the floor' },
+      { kind: 'section', axis: 'y', at: 0.77, equals: 1, label: 'lamp base on the top' },
+      { kind: 'section', axis: 'y', at: 1.0, equals: 1, label: 'lamp pole' },
+    ],
+  },
+  {
     id: 'robot-walk-wave',
     assets: true,
     prompt: `The asset catalog holds an imported robot character. Create a scene from it, then give it a 2 second looping motion in

@@ -1,0 +1,234 @@
+{
+  "run": "2026-10-31-21-25-sonnet-parts-on",
+  "model": "claude-sonnet-5-5",
+  "date": "2026-10-31T21:31:29.326Z",
+  "skill": false,
+  "parts": "on",
+  "runsPerTask": 2,
+  "passed": 4,
+  "tasks": 4,
+  "toolCalls": 8,
+  "costUsd": 1.46,
+  "byModel": {
+    "claude-sonnet-5-5": {
+      "runs": 4,
+      "passed": 4,
+      "successRate": 1,
+      "toolCalls": 8,
+      "toolErrors": 0,
+      "inputTokens": 1013796,
+      "outputTokens": 6117,
+      "costUsd": 1.46,
+      "tasks": {
+        "bookcase": {
+          "runs": 2,
+          "passed": 2,
+          "successRate": 1,
+          "toolCalls": 4,
+          "toolErrors": 0,
+          "inputTokens": 455471,
+          "outputTokens": 2694,
+          "costUsd": 0.72
+        },
+        "desk-lamp": {
+          "runs": 2,
+          "passed": 2,
+          "successRate": 1,
+          "toolCalls": 4,
+          "toolErrors": 0,
+          "inputTokens": 558325,
+          "outputTokens": 3423,
+          "costUsd": 0.74
+        }
+      }
+    }
+  },
+  "records": [
+    {
+      "task": "bookcase",
+      "attempt": 1,
+      "pass": true,
+      "passed": 5,
+      "total": 5,
+      "failed": [],
+      "model": "claude-sonnet-5-5",
+      "toolCalls": 2,
+      "toolErrors": 0,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_create": 1,
+        "scene_export_recipe": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "box"
+        ],
+        "meshOperations": [],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 1,
+            "side": 1,
+            "three-quarter": 1
+          },
+          "mean": 1
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-10-31-21-25-sonnet-parts-on/look/1/bookcase-front.png",
+          "artifacts/agent-modeling/2026-10-31-21-25-sonnet-parts-on/look/1/bookcase-side.png",
+          "artifacts/agent-modeling/2026-10-31-21-25-sonnet-parts-on/look/1/bookcase-three-quarter.png"
+        ]
+      },
+      "turns": 4,
+      "costUsd": 0.3609802,
+      "inputTokens": 227773,
+      "outputTokens": 1416,
+      "wallSeconds": 57,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "desk-lamp",
+      "attempt": 1,
+      "pass": true,
+      "passed": 6,
+      "total": 6,
+      "failed": [],
+      "model": "claude-sonnet-5-5",
+      "toolCalls": 2,
+      "toolErrors": 0,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_create": 1,
+        "scene_export_recipe": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "box",
+          "cylinder"
+        ],
+        "meshOperations": [],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 0.7886,
+            "side": 0.7502,
+            "three-quarter": 0.8903
+          },
+          "mean": 0.8097
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-10-31-21-25-sonnet-parts-on/look/1/desk-lamp-front.png",
+          "artifacts/agent-modeling/2026-10-31-21-25-sonnet-parts-on/look/1/desk-lamp-side.png",
+          "artifacts/agent-modeling/2026-10-31-21-25-sonnet-parts-on/look/1/desk-lamp-three-quarter.png"
+        ]
+      },
+      "turns": 4,
+      "costUsd": 0.3657343,
+      "inputTokens": 228388,
+      "outputTokens": 1677,
+      "wallSeconds": 48,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "bookcase",
+      "attempt": 2,
+      "pass": true,
+      "passed": 5,
+      "total": 5,
+      "failed": [],
+      "model": "claude-sonnet-5-5",
+      "toolCalls": 2,
+      "toolErrors": 0,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_create": 1,
+        "scene_export_recipe": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "box"
+        ],
+        "meshOperations": [],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 1,
+            "side": 1,
+            "three-quarter": 1
+          },
+          "mean": 1
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-10-31-21-25-sonnet-parts-on/look/2/bookcase-front.png",
+          "artifacts/agent-modeling/2026-10-31-21-25-sonnet-parts-on/look/2/bookcase-side.png",
+          "artifacts/agent-modeling/2026-10-31-21-25-sonnet-parts-on/look/2/bookcase-three-quarter.png"
+        ]
+      },
+      "turns": 4,
+      "costUsd": 0.35933139999999997,
+      "inputTokens": 227698,
+      "outputTokens": 1278,
+      "wallSeconds": 48,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "desk-lamp",
+      "attempt": 2,
+      "pass": true,
+      "passed": 6,
+      "total": 6,
+      "failed": [],
+      "model": "claude-sonnet-5-5",
+      "toolCalls": 2,
+      "toolErrors": 0,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_create": 1,
+        "scene_export_recipe": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "box",
+          "cylinder"
+        ],
+        "meshOperations": [],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 0.9705,
+            "side": 0.9637,
+            "three-quarter": 0.9799
+          },
+          "mean": 0.9714
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-10-31-21-25-sonnet-parts-on/look/2/desk-lamp-front.png",
+          "artifacts/agent-modeling/2026-10-31-21-25-sonnet-parts-on/look/2/desk-lamp-side.png",
+          "artifacts/agent-modeling/2026-10-31-21-25-sonnet-parts-on/look/2/desk-lamp-three-quarter.png"
+        ]
+      },
+      "turns": 4,
+      "costUsd": 0.37683649999999996,
+      "inputTokens": 329937,
+      "outputTokens": 1746,
+      "wallSeconds": 81,
+      "exitCode": 0,
+      "stopped": "success"
+    }
+  ]
+}

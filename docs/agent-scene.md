@@ -47,7 +47,7 @@ The normal frame loop can render retained parts without calling inspection or ex
 
 ### On-demand code
 
-Mesh editing, `lathe`, `extrude`, `tube` and `curve` geometry, `text` geometry with its font, material `pattern`, `motion` and node `relations` load on demand, so a recipe of
+Mesh editing, `lathe`, `extrude`, `tube` and `curve` geometry, `text` geometry with its font, material `pattern`, `motion` and node `relations` and `parts` load on demand, so a recipe of
 primitives pays about half the bytes. `createAgentScene` and `apply` stay synchronous. When a recipe uses one of them,
 load its code first; a missing module throws an error that names this call.
 
@@ -267,6 +267,28 @@ translations, whatever the order of the nodes. A relation that cannot be satisfi
 whole edit and names the relation. `relations: []` in `set-node` removes them and keeps the part where it is. The
 exported recipe holds both the relations and the solved translations. Motion and physics move nodes after the solve and
 know nothing of relations. The code loads on demand (`relations`, see On-demand code). The MCP schema only says `relations` is a list; the kinds and fields are in `scene_capabilities` under `relations`.
+
+### Ready-made parts
+
+A recipe `parts` list names reusable parts, so an agent writes one record instead of a dozen nodes. The types are `window`,
+`door`, `shelf`, `table`, `chair`, `lamp`, `pipe`, `bolt`, `gear` and `crate`; `scene_capabilities` lists each one with its
+numbers and defaults (metres, standing on y = 0, facing +Z), and the ranges are in the error when a value is out of range.
+
+```json
+{ "format": "67js.scene", "schemaVersion": 1, "nodes": [],
+  "parts": [ { "id": "desk", "type": "table", "width": 1.4 },
+             { "id": "light", "type": "lamp", "on": "desk.top" } ] }
+```
+
+A part expands inside `scene_create` (or an `add-part` operation, `{ "type": "add-part", "part": { ... } }`) into plain
+geometries, materials and nodes named `<id>.<name>`. The exported recipe has no `parts` field, every node can be edited on
+its own, and the same input always gives the same nodes. Shared geometries and materials are named `part-*` and added once.
+`at` places the bottom centre; `on` stands the part on the top face of a mesh node, centred, by `relations`. Inside a part
+every node holds relations to the first node (the anchor: `top` of a table, `seat` of a chair, `board-0` of a shelf), so one
+`set-node` on the anchor moves or resizes the whole part. `material` names a recipe material for the main body; the
+default is a wood pattern, painted white for windows and bare metal for lamps, pipes, bolts and gears. Nothing runs agent code:
+every number is range-checked, a `pipe` takes axis-aligned `points` (2 to 16), and at most 64 parts per recipe. The code
+loads on demand (`parts`, with `relations`, and `modeling` for a gear). The MCP schema has one short `parts` field.
 
 ## Transactions and ownership
 

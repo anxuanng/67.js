@@ -222,7 +222,7 @@ To move to a new Blender release, run `node scripts/parity-manual-snapshot.mjs`.
 | Assets, Files, & Data System > Custom Properties | missing | Nodes have a label and no other fields. | | |
 | Assets, Files, & Data System > File Paths | out of scope | The MCP server allows only a configured catalog. | | |
 | Assets, Files, & Data System > Linked Libraries | out of scope | Blender file internals. | | |
-| Assets, Files, & Data System > Asset Libraries | partial | A local GLB catalog. There is no library of reusable parts. | [agent-asset-catalog](../tests/agent-asset-catalog.test.js) | #68 |
+| Assets, Files, & Data System > Asset Libraries | partial | A local GLB catalog, and ten parametric parts (window, door, shelf, table, chair, lamp, pipe, bolt, gear, crate) that a recipe `parts` field expands into plain nodes with relations. Saving your own part is not supported. | [agent-asset-catalog](../tests/agent-asset-catalog.test.js), [agent-parts](../tests/agent-parts.test.js) | #68 |
 | Assets, Files, & Data System > Media Formats | partial | Common web images in, and PNG and MP4 out. | | |
 | Assets, Files, & Data System > Importing & Exporting Files | out of scope | Decided in issue #23: GLB is the exchange format. | | |
 | Add-ons > Node Wrangler | out of scope | Interface for a mouse. | | |

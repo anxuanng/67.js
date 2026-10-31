@@ -2,13 +2,16 @@
 // server, then grades the recipe the agent exported.
 //
 // node bench/agent-modeling/run.mjs --claude <claude executable> [--model sonnet] [--tasks crate,bolt]
-//   [--runs 3] [--budget 3] [--timeout 1200] [--label baseline] [--skill] [--resume <run name>]
+//   [--runs 3] [--budget 3] [--timeout 1200] [--label baseline] [--skill] [--parts on|off] [--resume <run name>]
 //
 // --runs repeats every task that many times, each in a fresh session; the summary reports success rate, tool calls,
 // tool errors, tokens and cost for the model and for each task.
 // --resume continues a run that stopped early and skips the task attempts it already recorded. Pass the same --runs.
 // --skill puts the build-67js-scene entry point and its mesh reference in the system prompt. That measures what the
 // skill's knowledge is worth, not whether an agent would load the skill on its own.
+//
+// --parts off starts the MCP server without the part library (no parts field, no add-part, no listing), as the control of a
+// comparison with the library on the schema.
 //
 // Raw transcripts and recipes go to artifacts/agent-modeling/<run>/ (ignored by Git); the summary goes to
 // bench/agent-modeling/results/<run>.json.
@@ -37,6 +40,7 @@ const { values: options } = parseArgs({
     timeout: { type: 'string', default: '1200' },
     label: { type: 'string', default: 'run' },
     skill: { type: 'boolean', default: false },
+    parts: { type: 'string', default: 'on' },
     resume: { type: 'string' },
   },
 });
@@ -56,6 +60,7 @@ function mcpConfig(assetDirectory) {
   return { mcpServers: { [MCP_SERVER_NAME]: {
     command: process.execPath,
     args: [join(repository, 'scripts', 'mcp-server.mjs'), '--backend', 'gpu', '--memory', '192', ...(assetDirectory ? ['--assets', assetDirectory] : [])],
+    ...(options.parts === 'off' ? { env: { SIXTYSEVENJS_PARTS: 'off' } } : {}),
   } } };
 }
 
@@ -213,6 +218,7 @@ function summarize() {
     model: records.find(record => record.model)?.model ?? options.model,
     date: new Date().toISOString(),
     skill: options.skill,
+    parts: options.parts,
     runsPerTask: attempts,
     passed: records.filter(record => record.pass).length,
     tasks: records.length,
