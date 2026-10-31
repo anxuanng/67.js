@@ -4,7 +4,7 @@
 // agent sees: welding render triangles again can invent non-manifold edges that the polygon mesh does not have.
 import { readFile } from 'node:fs/promises';
 import { createAgentAssetScene } from '../../src/agent-asset.js';
-import { createAgentScene, loadMeshBooleans, needsMeshBooleans, loadPhysicsEngine, needsPhysics } from '../../src/agent-scene.js';
+import { createAgentScene, loadAllAgentSceneModules, loadMeshBooleans, needsMeshBooleans, loadPhysicsEngine, needsPhysics } from '../../src/agent-scene.js';
 import { parseGltf } from '../../src/gltf.js';
 import { GEOMETRY_PROBLEMS } from '../../src/mesh-lint.js';
 
@@ -16,6 +16,16 @@ function transformPoint(matrix, x, y, z) {
     matrix[1] * x + matrix[5] * y + matrix[9] * z + matrix[13],
     matrix[2] * x + matrix[6] * y + matrix[10] * z + matrix[14],
   ];
+}
+
+function boundsOfPositions(positions) {
+  const bounds = { min: [Infinity, Infinity, Infinity], max: [-Infinity, -Infinity, -Infinity] };
+  for (let index = 0; index < positions.length; index++) {
+    const axis = index % 3;
+    bounds.min[axis] = Math.min(bounds.min[axis], positions[index]);
+    bounds.max[axis] = Math.max(bounds.max[axis], positions[index]);
+  }
+  return bounds;
 }
 
 export function worldGeometry(part) {
@@ -316,6 +326,7 @@ function measureRig(scene, duration) {
 
 /** Load the recipe and measure what it builds. Throws if the recipe itself is invalid. */
 export async function measureRecipe(recipe) {
+  await loadAllAgentSceneModules();
   if (needsMeshBooleans(recipe)) await loadMeshBooleans();
   if (needsPhysics(recipe)) await loadPhysicsEngine();
   const scene = createAgentScene(recipe);
@@ -386,6 +397,10 @@ export async function measureRecipe(recipe) {
       scene.sampleMotion(time);
       const part = scene.parts.find(candidate => candidate.name === name);
       return part ? [part.matrix[12], part.matrix[13], part.matrix[14]] : null;
+    },
+    nodeBounds(name) {
+      const part = scene.parts.find(candidate => candidate.name === name);
+      return part ? boundsOfPositions(worldGeometry(part).positions) : null;
     },
     lineHits: (axis, point) => lineHits(geometries, axis, point),
   };

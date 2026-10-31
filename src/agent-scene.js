@@ -19,7 +19,7 @@ export {
 const DEFAULT_LIMITS = AGENT_SCENE_DEFAULT_LIMITS;
 const MAX_MESH_REPORTS = 16;
 const CAMERA_DEFAULTS = Object.freeze({ eye: [4, 3, 5], target: [0, 0, 0], up: [0, 1, 0], fov: 45, near: 0.1, far: 1000 });
-const NODE_FIELDS = ['translation', 'rotation', 'scale', 'parent', 'label', 'geometry', 'material', 'skin'];
+const NODE_FIELDS = ['translation', 'rotation', 'scale', 'parent', 'label', 'geometry', 'material', 'skin', 'relations'];
 const MATERIAL_FIELDS = ['color', 'metallic', 'roughness', 'emission', 'emissiveColor', 'opacity', 'alphaMode', 'doubleSided', 'pattern', ...MATERIAL_LAYER_FIELDS];
 const PATTERN_TEXTURE_FIELDS = ['map', 'normalMap', 'metallicRoughnessMap', 'emissiveMap', 'boxMapScale', 'boxMapAxis'];
 const CAMERA_FIELDS = Object.keys(CAMERA_DEFAULTS);
@@ -599,6 +599,9 @@ function normalizeRecipe(input, limits) {
   });
   recipe.nodes = resources(recipe.nodes, limits.maxNodes, 'nodes', nodeFrom);
   addArmatures(recipe, limits);
+  if (recipe.nodes.some(node => node.relations !== undefined)) {
+    recipe.nodes = agentSceneModule('relations').normalizeRelations(recipe.nodes);
+  }
   recipe.camera = cameraFrom(recipe.camera);
   const look = {};
   for (const field of ['environment', 'effects', 'shadow']) {
@@ -860,6 +863,13 @@ export function createAgentScene(input, inputLimits = {}) {
     }
     const geometries = new Map([...geometryRecords].map(([id, record]) => [id, record.geometry]));
     const localBounds = new Map([...geometryRecords.values()].map(record => [record.geometry, record.bounds]));
+    if (recipe.nodes.some(node => node.relations?.length)) {
+      recipe.nodes = agentSceneModule('relations').solveRelations(recipe.nodes, (node, worldMatrix, region) => {
+        const geometry = geometries.get(node.geometry);
+        const regionGeometry = region === undefined ? geometry : agentSceneModule('mesh').taggedFacePositions(geometry, region);
+        return boundsFor(regionGeometry, worldMatrix);
+      });
+    }
     const graph = compile(recipe, geometries, localBounds, limits);
     const skinBindings = bindSkins({ recipe, graph, geometryRecords, cache: skinCache });
     const materialHandles = new Map();

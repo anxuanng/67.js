@@ -1,16 +1,16 @@
 {
-  "measured": "2026-10-31, from scripts/measure-tool-cost.mjs; raised by 800 total and 150 for scene_apply for branch and labels fields (no new tool); raised by 650 total and 80 for scene_apply for clip layers, bone masks and retargeting through MCP; raised by 20 for scene_create and 20 for the scene_capabilities result after merging the expression language with the material graph; was 373388 schema bytes before shared IDs and recipe references; trimmed after the render-passes merge: material graph, depth of field, motion blur and passes details moved to scene_capabilities; curve and text geometry added as two strict schema entries in the geometry list only, field types and limits in scene_capabilities curveText (total 189673, under 190000, scene_capabilities result 6183)",
-  "schemaTotalBytes": 189700,
+  "measured": "2026-10-31, from scripts/measure-tool-cost.mjs; raised by 800 total and 150 for scene_apply for branch and labels fields (no new tool); raised by 650 total and 80 for scene_apply for clip layers, bone masks and retargeting through MCP; raised by 20 for scene_create and 20 for the scene_capabilities result after merging the expression language with the material graph; was 373388 schema bytes before shared IDs and recipe references; trimmed after the render-passes merge: material graph, depth of field, motion blur and passes details moved to scene_capabilities, budgets set to the measured value plus 0.5% (total 188267, scene_capabilities result 5167); raised by 95 for scene_apply and 690 for the scene_capabilities result for node relations",
+  "schemaTotalBytes": 189210,
   "schemaToolBytes": {
-    "scene_create": 60930,
-    "scene_apply": 46730,
-    "mesh_edit": 33740,
+    "scene_create": 60495,
+    "scene_apply": 46320,
+    "mesh_edit": 33875,
     "scene_create_asset": 19450,
     "mesh_stack": 11335
   },
   "schemaOtherToolBytes": 4000,
   "resultBytes": {
-    "scene_capabilities": 6200,
+    "scene_capabilities": 5885,
     "scene_create": 1400,
     "scene_inspect": 1400,
     "mesh_inspect": 1200,

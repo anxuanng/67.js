@@ -32,6 +32,28 @@ function floorObject() {
   };
 }
 
+const OUTDOOR_SIZE = 600;
+const OUTDOOR_OBJECT_COUNT = 6000;
+
+// A fixed pseudo-random sequence, so every engine and every run places the same objects.
+function seededSequence(seed) {
+  let state = seed;
+  return () => {
+    state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
+    return state / 4294967296;
+  };
+}
+
+function scatteredObjects(count, extent, geometry, material) {
+  const next = seededSequence(67);
+  const objects = [];
+  for (let index = 0; index < count; index++) {
+    const scale = 0.8 + next() * 1.2;
+    objects.push({ geometry, matrix: translation((next() - 0.5) * extent, scale, (next() - 0.5) * extent, scale), material });
+  }
+  return objects;
+}
+
 const SUN = { direction: [-3, 6, 4], color: [3, 2.8, 2.5] };
 const SHARED_MATERIAL = { color: [0.7, 0.45, 0.25], metallic: 0, roughness: 0.5 };
 
@@ -43,6 +65,19 @@ export const BENCHMARK_SCENES = {
       objects: gridObjects(5000, 1.5, 'box', 0.5, () => SHARED_MATERIAL),
       sun: SUN, pointLights: [], shadowExtent: 0,
       camera: { eye: [0, 40, 70], target: [0, 0, 0], fov: 45, near: 0.5, far: 400 },
+    }),
+  },
+  'large-outdoor': {
+    description: `${OUTDOOR_OBJECT_COUNT} spheres of about 1,000 triangles over ${OUTDOOR_SIZE} by ${OUTDOOR_SIZE} units, seen from the edge`,
+    build: () => ({
+      geometries: { box: box(0, 1), sphere: sphere(32, 16) },
+      lods: { sphere: [0.25, 0.06] },
+      objects: [
+        { geometry: 'box', matrix: new Float32Array([OUTDOOR_SIZE, 0, 0, 0, 0, 0.1, 0, 0, 0, 0, OUTDOOR_SIZE, 0, 0, -0.05, 0, 1]), material: { color: [0.3, 0.4, 0.25], metallic: 0, roughness: 0.9 } },
+        ...scatteredObjects(OUTDOOR_OBJECT_COUNT, OUTDOOR_SIZE - 20, 'sphere', SHARED_MATERIAL),
+      ],
+      sun: SUN, pointLights: [], shadowExtent: 0,
+      camera: { eye: [0, 4, -290], target: [0, 3, 0], fov: 60, near: 0.5, far: 900 },
     }),
   },
   'many-materials': {

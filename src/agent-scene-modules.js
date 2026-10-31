@@ -10,6 +10,7 @@ const MODULE_LOADERS = {
   motion: () => import('./agent-motion.js'),
   physics: () => import('./agent-physics.js'),
   patterns: () => import('./material-patterns.js'),
+  relations: () => import('./agent-relations.js'),
 };
 
 const loadedModules = {};
@@ -25,6 +26,7 @@ const MODULE_MARKERS = {
   motion: ['"motion":{'],
   physics: ['"physics":{'],
   patterns: ['"pattern"'],
+  relations: ['"relations":'],
 };
 
 /** Whether a recipe, operation list or edit list contains a boolean edit, which needs loadMeshBooleans() first. */
