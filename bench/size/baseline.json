@@ -14,9 +14,9 @@
  },
  "bundles": {
   "entry:core": {
-   "min": 235430,
-   "gzip": 66762,
-   "brotli": 57079
+   "min": 248050,
+   "gzip": 71388,
+   "brotli": 60992
   },
   "entry:model": {
    "min": 40093,
