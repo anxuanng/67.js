@@ -35,7 +35,8 @@ const installedRoot = join(consumer, 'node_modules', '67js');
 const installed = JSON.parse(await readFile(join(installedRoot, 'package.json'), 'utf8'));
 assert.equal(installed.version, metadata.version);
 assert.equal(installed.bin['67js-mcp'], './bin/67js-mcp.mjs');
-assert.deepEqual(installed.dependencies, { 'playwright-core': '1.64.0' });
+const sourceManifest = JSON.parse(await readFile('package.json', 'utf8'));
+assert.deepEqual(installed.dependencies, { 'playwright-core': sourceManifest.dependencies['playwright-core'] });
 for (const dependency of ['vite', 'zod', 'three', 'gl-matrix', '@modelcontextprotocol/server', '@modelcontextprotocol/client', 'playwright']) {
   assert.equal(existsSync(join(consumer, 'node_modules', dependency)), false, `Runtime must not depend on a checkout or ${dependency}.`);
 }

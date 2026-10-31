@@ -3,6 +3,7 @@
 ## Unreleased
 
 - Remove three.js from modeling and the agent scene: `lathe`, `extrude` and `tube` no longer import it, and `scene:agent-scene` drops from 185,681 to 117,290 bytes gzip. `lathe` and `tube` output is identical to before, vertex for vertex. `extrude` walls, bevels, UVs, normals and bounds are identical, and volume matches within 1e-4. Extrusion caps use a new ear-clipping triangulation, so a cap can split along other diagonals, and a cap with collinear points can add or drop a seam vertex. A clockwise hole under a clockwise contour is now flipped to face outward, where it used to keep inward walls
+- Load glTF without Three.js: the addon has its own GLB and glTF parser, node sampler and animation clips, so a box with the addon drops from 159,422 to 67,467 bytes gzip. Draco, meshopt and KTX2 still come from the decoders you pass in `options.decoders`. Only the default scene is decoded, and a node outside it is decoded only when a skin or an animation names it
 - Update the bundled `zod` to 4.6.7, which fixes a memory exhaustion advisory in the validation of oversized collections
 - Make the MCP preview server reject requests with another Host header, which closes DNS rebinding
 - Check the size of a mesh `array` before it allocates. Before this, the check ran after the copies existed
