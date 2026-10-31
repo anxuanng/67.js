@@ -458,6 +458,28 @@ window.__agentPreview = {
     const info = renderInfo(record.renderer);
     return pass === 'objectId' ? { ...info, objectNames: record.renderer.passSupport.objectNames() } : info;
   },
+  // Offline path trace of the scene at one instant. The tracer loads here, on first use, and not with the preview.
+  async pathTrace({ sessionId, animation, motionTime, options }) {
+    const record = requireSession(sessionId);
+    if (record.asset && (animation !== undefined || motionTime !== undefined)) {
+      record.scene.sampleFrame({ ...(animation === undefined ? {} : { animation }),
+        ...(motionTime === undefined ? {} : { motionTime }) });
+    } else if (motionTime !== undefined) {
+      record.scene.sampleMotion(motionTime);
+    }
+    const { renderPathTracedImage } = await import('../src/path-tracer.js');
+    const environment = record.scene.environment;
+    const result = await renderPathTracedImage({
+      parts: record.scene.parts,
+      environment: { ...environment, map: agentEnvironmentMap(environment) },
+      camera: record.scene.camera,
+    }, options);
+    const traced = document.createElement('canvas');
+    traced.width = result.width;
+    traced.height = result.height;
+    traced.getContext('2d').putImageData(new ImageData(result.rgba, result.width, result.height), 0, 0);
+    return { data: traced.toDataURL('image/png').split(',')[1], report: result.report };
+  },
   create(input) {
     if (active) throw new Error('Dispose the current scene before creating another.');
     return afterMeshBooleans(input.recipe, () => createPreview(createAgentScene(input.recipe), input));

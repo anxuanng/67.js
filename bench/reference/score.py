@@ -54,7 +54,25 @@ def side_by_side(cycles, eevee, gpu, scores):
     return sheet
 
 
+def score_path_tracer(work_directory, output_directory):
+    """FLIP of each path traced render against the Cycles render of the same scene, with the time it took."""
+    timings = json.loads((work_directory / "pathtracer-timings.json").read_text(encoding="utf-8"))
+    results = {}
+    for scene_id in sorted(timings):
+        cycles = tone_map_like_67js(np.load(work_directory / f"{scene_id}-cycles.npy"))
+        traced = load_png(work_directory / f"{scene_id}-pathtracer.png")
+        results[scene_id] = {"pathtracer-vs-cycles": flip_score(cycles, traced), **timings[scene_id]}
+    report = {"metric": "FLIP (LDR), mean error against Cycles, lower is better", "scores": results}
+    (output_directory / "path-tracer.json").write_text(json.dumps(report, indent=1) + "\n", encoding="utf-8")
+    print("scene".ljust(20) + "pathtracer-vs-cycles".rjust(22) + "seconds".rjust(10))
+    for scene_id, entry in results.items():
+        print(scene_id.ljust(20) + f"{entry['pathtracer-vs-cycles']:.4f}".rjust(22) + f"{entry['seconds']:.1f}".rjust(10))
+
+
 def main():
+    if "--path-tracer" in sys.argv:
+        score_path_tracer(Path(sys.argv[1]), Path(sys.argv[2]))
+        return
     work_directory = Path(sys.argv[1])
     output_directory = Path(sys.argv[2])
     images_directory = output_directory / "images"
