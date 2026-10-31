@@ -28,7 +28,8 @@ const WORKER_BAND_ROWS = 8;
 // Held in a constant so the bundler leaves the URL alone: the worker is its own package entry, built beside this file.
 const WORKER_FILE = './path-tracer-worker.js';
 const RUSSIAN_ROULETTE_START = 3;
-const IGNORED_MAP_FIELDS = ['normalMap', 'metallicRoughnessMap', 'occlusionMap', 'emissiveMap'];
+const IGNORED_MAP_FIELDS = ['occlusionMap', 'emissiveMap'];
+const UV_ONLY_MAP_FIELDS = ['normalMap', 'metallicRoughnessMap'];
 
 function boundedInteger(options, name) {
   const limit = PATH_TRACER_LIMITS[name];
@@ -74,7 +75,7 @@ function finiteVector(value, name) {
   return value;
 }
 
-function createCamera(camera, width, height) {
+export function createCamera(camera, width, height) {
   const eye = finiteVector(camera.eye, 'eye');
   const target = finiteVector(camera.target, 'target');
   const up = finiteVector(camera.up ?? [0, 1, 0], 'up');
@@ -119,8 +120,71 @@ function createHit() {
   return {
     distance: 0, material: null,
     point: new Float64Array(3), normal: new Float64Array(3), color: new Float64Array(3),
-    texel: new Float64Array(4),
+    texel: new Float64Array(4), mapTexel: new Float64Array(4),
+    metallic: 0, roughness: 0,
   };
+}
+
+// Edges of the hit triangle and the matching UV differences, set by fillHit for the tangent frame of a normal map.
+const TANGENT_EDGES = new Float64Array(6);
+const TANGENT_UV_DIFFERENCES = new Float64Array(4);
+
+/**
+ * Tilts the interpolated normal by a tangent-space normal map, with the tangent frame of the hit triangle as in the
+ * rasterizer: tangent from the UV gradient made perpendicular to the normal, bitangent following the UV handedness.
+ */
+function applyNormalMap(material, hit, u, v) {
+  const edgeOneX = TANGENT_EDGES[0];
+  const edgeOneY = TANGENT_EDGES[1];
+  const edgeOneZ = TANGENT_EDGES[2];
+  const edgeTwoX = TANGENT_EDGES[3];
+  const edgeTwoY = TANGENT_EDGES[4];
+  const edgeTwoZ = TANGENT_EDGES[5];
+  const uOne = TANGENT_UV_DIFFERENCES[0];
+  const vOne = TANGENT_UV_DIFFERENCES[1];
+  const uTwo = TANGENT_UV_DIFFERENCES[2];
+  const vTwo = TANGENT_UV_DIFFERENCES[3];
+  const determinant = uOne * vTwo - uTwo * vOne;
+  if (Math.abs(determinant) < 1e-12) return;
+  const normalX = hit.normal[0];
+  const normalY = hit.normal[1];
+  const normalZ = hit.normal[2];
+  let tangentX = (edgeOneX * vTwo - edgeTwoX * vOne) / determinant;
+  let tangentY = (edgeOneY * vTwo - edgeTwoY * vOne) / determinant;
+  let tangentZ = (edgeOneZ * vTwo - edgeTwoZ * vOne) / determinant;
+  const bitangentX = (edgeTwoX * uOne - edgeOneX * uTwo) / determinant;
+  const bitangentY = (edgeTwoY * uOne - edgeOneY * uTwo) / determinant;
+  const bitangentZ = (edgeTwoZ * uOne - edgeOneZ * uTwo) / determinant;
+  const alongNormal = tangentX * normalX + tangentY * normalY + tangentZ * normalZ;
+  tangentX -= normalX * alongNormal;
+  tangentY -= normalY * alongNormal;
+  tangentZ -= normalZ * alongNormal;
+  const tangentLength = Math.hypot(tangentX, tangentY, tangentZ);
+  if (tangentLength === 0) return;
+  tangentX /= tangentLength;
+  tangentY /= tangentLength;
+  tangentZ /= tangentLength;
+  let crossX = normalY * tangentZ - normalZ * tangentY;
+  let crossY = normalZ * tangentX - normalX * tangentZ;
+  let crossZ = normalX * tangentY - normalY * tangentX;
+  const crossLength = Math.hypot(crossX, crossY, crossZ) || 1;
+  const handedness = (crossX * bitangentX + crossY * bitangentY + crossZ * bitangentZ) < 0 ? -1 : 1;
+  crossX *= handedness / crossLength;
+  crossY *= handedness / crossLength;
+  crossZ *= handedness / crossLength;
+  const { mapTexel } = hit;
+  sampleTexture(material.normalTexture, u, v, mapTexel);
+  const sideways = (mapTexel[0] * 2 - 1) * material.normalScale[0];
+  const forwards = (mapTexel[1] * 2 - 1) * material.normalScale[1];
+  const outwards = mapTexel[2] * 2 - 1;
+  const mappedX = tangentX * sideways + crossX * forwards + normalX * outwards;
+  const mappedY = tangentY * sideways + crossY * forwards + normalY * outwards;
+  const mappedZ = tangentZ * sideways + crossZ * forwards + normalZ * outwards;
+  const mappedLength = Math.hypot(mappedX, mappedY, mappedZ);
+  if (!(mappedLength > 1e-6)) return;
+  hit.normal[0] = mappedX / mappedLength;
+  hit.normal[1] = mappedY / mappedLength;
+  hit.normal[2] = mappedZ / mappedLength;
 }
 
 function sampleTexture(texture, u, v, out) {
@@ -220,6 +284,26 @@ function fillHit(scene, triangleId, originX, originY, originZ, directionX, direc
     hit.color[1] *= hit.texel[1];
     hit.color[2] *= hit.texel[2];
     alpha = hit.texel[3];
+  }
+  hit.metallic = material.metallic;
+  hit.roughness = material.roughness;
+  if (material.surfaceTexture) {
+    sampleTexture(material.surfaceTexture, u, v, hit.mapTexel);
+    hit.roughness *= hit.mapTexel[1];
+    hit.metallic *= hit.mapTexel[2];
+  }
+  if (material.normalTexture) {
+    TANGENT_EDGES[0] = edgeOneX;
+    TANGENT_EDGES[1] = edgeOneY;
+    TANGENT_EDGES[2] = edgeOneZ;
+    TANGENT_EDGES[3] = edgeTwoX;
+    TANGENT_EDGES[4] = edgeTwoY;
+    TANGENT_EDGES[5] = edgeTwoZ;
+    TANGENT_UV_DIFFERENCES[0] = uvs[second * 2] - uvs[first * 2];
+    TANGENT_UV_DIFFERENCES[1] = uvs[second * 2 + 1] - uvs[first * 2 + 1];
+    TANGENT_UV_DIFFERENCES[2] = uvs[third * 2] - uvs[first * 2];
+    TANGENT_UV_DIFFERENCES[3] = uvs[third * 2 + 1] - uvs[first * 2 + 1];
+    applyNormalMap(material, hit, u, v);
   }
   return alpha;
 }
@@ -330,7 +414,10 @@ function createPathTracer(scene, options) {
     );
   }
 
-  const fullWeight = () => 1;
+  // Past the first hit one light is drawn at random instead of all of them, so a scene with many lights costs one shadow
+  // ray per bounce. `selectionProbability` is the chance that this light was the one drawn; dividing by it keeps the sum unbiased.
+  let selectionProbability = 1;
+  const fullWeight = () => 1 / selectionProbability;
 
   function sampleSun(depth, normal) {
     const cosineTheta = 1 - random.next() * (1 - sunCosineMax);
@@ -405,8 +492,9 @@ function createPathTracer(scene, options) {
 
   let environmentSampledPdf = 0;
   const environmentWeight = candidate => {
-    const total = environmentSampledPdf * environmentSampledPdf + candidate.pdf * candidate.pdf;
-    return environmentSampledPdf * environmentSampledPdf / total / environmentSampledPdf;
+    const lightPdf = environmentSampledPdf * selectionProbability;
+    const total = lightPdf * lightPdf + candidate.pdf * candidate.pdf;
+    return lightPdf * lightPdf / total / lightPdf;
   };
 
   function sampleEnvironmentLight(depth, normal) {
@@ -416,7 +504,10 @@ function createPathTracer(scene, options) {
     addDirect(depth, normal, scene.farDistance, environmentWeight);
   }
 
-  function addLights(depth, normal) {
+  const emitterCount = (lights.sun ? 1 : 0) + lights.points.length + lights.spots.length + lights.areas.length + (environment ? 1 : 0);
+
+  function addEveryLight(depth, normal) {
+    selectionProbability = 1;
     if (lights.sun) sampleSun(depth, normal);
     for (const light of lights.points) samplePointLight(depth, normal, light);
     for (const light of lights.spots) sampleSpotLight(depth, normal, light);
@@ -424,12 +515,32 @@ function createPathTracer(scene, options) {
     if (environment) sampleEnvironmentLight(depth, normal);
   }
 
+  function addOneLight(depth, normal) {
+    selectionProbability = 1 / emitterCount;
+    let remaining = Math.floor(random.next() * emitterCount);
+    if (lights.sun) {
+      if (remaining === 0) return sampleSun(depth, normal);
+      remaining--;
+    }
+    if (remaining < lights.points.length) return samplePointLight(depth, normal, lights.points[remaining]);
+    remaining -= lights.points.length;
+    if (remaining < lights.spots.length) return sampleSpotLight(depth, normal, lights.spots[remaining]);
+    remaining -= lights.spots.length;
+    if (remaining < lights.areas.length) return sampleAreaLight(depth, normal, lights.areas[remaining]);
+    return sampleEnvironmentLight(depth, normal);
+  }
+
+  function addLights(depth, normal) {
+    if (depth === 0 || emitterCount <= 1) addEveryLight(depth, normal);
+    else addOneLight(depth, normal);
+  }
+
   function addEscape(depth, previousPdf, afterMirror) {
     if (!environment) return;
     environmentRadiance(environment, direction[0], direction[1], direction[2], sky);
     let weight = 1;
     if (!afterMirror) {
-      const environmentSide = environmentPdf(environment, direction[0], direction[1], direction[2]);
+      const environmentSide = environmentPdf(environment, direction[0], direction[1], direction[2]) * selectionProbability;
       weight = previousPdf * previousPdf / (previousPdf * previousPdf + environmentSide * environmentSide);
     }
     addRadiance(depth, throughput[0] * sky[0] * weight, throughput[1] * sky[1] * weight, throughput[2] * sky[2] * weight);
@@ -486,7 +597,7 @@ function createPathTracer(scene, options) {
       const viewY = -direction[1];
       const viewZ = -direction[2];
       if (isGlass) {
-        const alpha = roughnessToAlpha(material.roughness);
+        const alpha = roughnessToAlpha(hit.roughness);
         if (!sampleGlass(normal, viewX, viewY, viewZ, entering, material.ior, alpha, random.next(), random.next(), random.next(), direction)) break;
         const refracted = direction[0] * normal[0] + direction[1] * normal[1] + direction[2] * normal[2] < 0;
         if (refracted) {
@@ -496,7 +607,7 @@ function createPathTracer(scene, options) {
         }
         afterMirror = true;
       } else {
-        prepareSurface(surface, material, hit.color, normal, viewX, viewY, viewZ);
+        prepareSurface(surface, material, hit.metallic, hit.roughness, hit.color, normal, viewX, viewY, viewZ);
         addLights(depth, normal);
         const lobeUnit = random.next();
         const isMirror = sampleSurface(surface, lobeUnit, random.next(), random.next(), direction);
@@ -554,6 +665,9 @@ export function describeIgnoredFeatures(parts, environment) {
   for (const part of parts) {
     const material = part.material ?? {};
     for (const field of IGNORED_MAP_FIELDS) if (material[field]) notes.add(`${field} is ignored.`);
+    if (material.boxMapScale > 0) {
+      for (const field of UV_ONLY_MAP_FIELDS) if (material[field]) notes.add(`${field} is ignored on box-projected materials.`);
+    }
     if (material.tag && material.tag !== 'surface') notes.add(`${material.tag} materials are traced as plain surfaces.`);
     if (material.alphaMode === 'blend') notes.add('Blended transparency is traced as opaque.');
   }

@@ -74,7 +74,7 @@ try {
 
   const first = await renderedBytes(sessionId, { ...base, renderer: tracer });
   assert.equal(first.metrics.pathTracer.samples, 4);
-  assert.equal(first.metrics.pathTracer.threads, 4);
+  assert.equal(first.metrics.pathTracer.threads, 8);
   const second = await renderedBytes(sessionId, { ...base, renderer: tracer });
   assert.deepEqual(second.bytes, first.bytes, 'The same recipe and seed must give the same PNG.');
   const reseeded = await renderedBytes(sessionId, { ...base, renderer: { ...tracer, seed: 5 } });

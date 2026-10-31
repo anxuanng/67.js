@@ -90,6 +90,10 @@ function resolveMaterial(material) {
     transmission: material.transmission ?? 0,
     ior: material.ior ?? 1.5,
     texture: resolveTexture(material.map),
+    // Box-projected materials (boxMapScale) have no UVs to read these maps with; describeIgnoredFeatures says so.
+    normalTexture: material.boxMapScale > 0 ? null : resolveTexture(material.normalMap),
+    normalScale: material.normalScale ?? [1, 1],
+    surfaceTexture: material.boxMapScale > 0 ? null : resolveTexture(material.metallicRoughnessMap),
     alphaCutoff: material.alphaMode === 'mask' ? material.alphaCutoff ?? 0.5 : 0,
   };
 }

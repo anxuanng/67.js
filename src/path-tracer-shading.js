@@ -208,7 +208,7 @@ export function createSurface() {
  * the light its reflection did not take, so the diffuse colour shrinks with the Fresnel term, and a clear coat takes
  * its share from both lobes below it.
  */
-export function prepareSurface(surface, material, baseColor, normal, viewX, viewY, viewZ) {
+export function prepareSurface(surface, material, metallic, roughness, baseColor, normal, viewX, viewY, viewZ) {
   buildFrame(normal, surface.frame);
   surface.view[0] = viewX;
   surface.view[1] = viewY;
@@ -220,15 +220,15 @@ export function prepareSurface(surface, material, baseColor, normal, viewX, view
   const dielectricFresnel = schlick(dielectricNormalReflectance, viewCosine);
   surface.coatWeight = material.clearcoat > 0 ? material.clearcoat * schlick(DIELECTRIC_COAT_REFLECTANCE, viewCosine) : 0;
   const underCoat = 1 - surface.coatWeight;
-  const diffuseShare = (1 - material.metallic) * (1 - dielectricFresnel) * underCoat;
+  const diffuseShare = (1 - metallic) * (1 - dielectricFresnel) * underCoat;
   for (let channel = 0; channel < 3; channel++) {
     surface.diffuseColor[channel] = baseColor[channel] * diffuseShare;
-    const normalReflectance = dielectricNormalReflectance * (1 - material.metallic) + baseColor[channel] * material.metallic;
+    const normalReflectance = dielectricNormalReflectance * (1 - metallic) + baseColor[channel] * metallic;
     surface.specularNormalReflectance[channel] = normalReflectance;
   }
   const specularLuminance = luminance(surface.specularNormalReflectance[0], surface.specularNormalReflectance[1], surface.specularNormalReflectance[2]);
   surface.specularWeight = underCoat;
-  surface.specularAlpha = roughnessToAlpha(material.roughness);
+  surface.specularAlpha = roughnessToAlpha(roughness);
   surface.coatAlpha = roughnessToAlpha(material.clearcoatRoughness);
   const diffuseLuminance = luminance(surface.diffuseColor[0], surface.diffuseColor[1], surface.diffuseColor[2]);
   const specularChance = schlick(specularLuminance, viewCosine) * underCoat;
