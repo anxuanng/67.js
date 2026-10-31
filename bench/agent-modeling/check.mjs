@@ -16,7 +16,7 @@ function checkOne(check, measures) {
     case 'lint':
       return { pass: measures.lintProblems === 0 && measures.closedParts === measures.parts, detail: measures.lintProblems ? measures.problemKinds.join(', ') : `${measures.closedParts}/${measures.parts} parts closed` };
     case 'parts':
-      return { pass: measures.parts <= check.max, detail: `${measures.parts} parts` };
+      return { pass: measures.parts <= (check.max ?? Infinity) && measures.parts >= (check.min ?? 0), detail: `${measures.parts} parts` };
     case 'size': {
       const failures = [];
       check.expected.forEach((expected, axis) => {
@@ -78,6 +78,15 @@ function checkOne(check, measures) {
       const close = (first, second) => first && Math.hypot(first[0] - second[0], first[1] - second[1], first[2] - second[2]) <= 0.02;
       const onPath = close(solver.firstTarget, check.from) && close(solver.lastTarget, check.to);
       return { pass: onPath && solver.reached, detail: `targets ${JSON.stringify(solver.firstTarget)} to ${JSON.stringify(solver.lastTarget)}, reached ${solver.reached}, worst ${solver.worstError}` };
+    }
+    case 'shot': {
+      const { camera } = measures;
+      if (!camera) return { pass: false, detail: 'no camera in the recipe' };
+      const offset = camera.eye.map((value, axis) => value - camera.target[axis]);
+      const distance = Math.hypot(...offset);
+      const sideOn = offset[0] >= check.minSideOffset && Math.abs(offset[2]) <= check.maxDepthOffset;
+      const framed = camera.target[1] >= check.targetHeight[0] && camera.target[1] <= check.targetHeight[1] && distance >= check.distance[0] && distance <= check.distance[1];
+      return { pass: sideOn && framed, detail: `eye offset ${offset.map(round).join(', ')}, target height ${round(camera.target[1])}` };
     }
     case 'tips':
       return { pass: measures.tips === check.equals, detail: `${measures.tips} tips` };

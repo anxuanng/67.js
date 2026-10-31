@@ -1,6 +1,8 @@
 // The agent modeling tasks. Each prompt gives sizes in metres, so every check is objective. Checks run on the recipe
 // the agent exports (see measure.mjs and check.mjs); none of them looks at how the object was built.
 
+import { REFERENCES } from './references.mjs';
+
 export const PROMPT_PREAMBLE = `You are modeling with the 67.js MCP tools. Build the object described below as a procedural recipe scene:
 start it with scene_create, refine it with mesh_edit, mesh_stack and scene_apply, and look at it with scene_look when
 that helps. Units are metres and Y is up. Rest the object on the ground (lowest point at Y = 0), centred on X = 0 and
@@ -16,6 +18,142 @@ const crateChecks = [
   { kind: 'section', axis: 'x', at: 0.29, equals: 2, label: 'recessed panel on +X' },
   { kind: 'section', axis: 'z', at: -0.29, equals: 2, label: 'recessed panel on -Z' },
   { kind: 'section', axis: 'y', at: 0.615, equals: 1, label: 'raised lid' },
+];
+
+// The long tasks need sub-element edits, several steps or a whole scene. Two of them start from a recipe given in the
+// prompt, which the agent has to change instead of rebuilding from nothing.
+const START_INSTRUCTION = 'Start by calling scene_create with exactly this recipe, then change that scene (do not start over):';
+const compactRecipe = recipe => JSON.stringify(recipe);
+
+const LONG_TASKS = [
+  {
+    id: 'chamfer-plate',
+    prompt: `A hard-surface plate lying on the ground, one solid piece: 0.2 m long (X), 0.03 m thick (Y) and 0.12 m deep
+(Z). The four edges around its top face are chamfered 0.005 m. The top face carries six rectangular pockets sunk 0.01 m,
+each 0.04 m by 0.04 m, in three columns along X (centres at X = -0.055, 0 and 0.055) and two rows along Z (centres at
+Z = -0.0275 and 0.0275). The pockets leave a solid rim around the plate and walls between them.`,
+    checks: [
+      { kind: 'lint' },
+      { kind: 'parts', max: 1 },
+      { kind: 'size', expected: [0.2, 0.03, 0.12] },
+      { kind: 'ground' },
+      { kind: 'holes', equals: 0 },
+      { kind: 'volume', min: 5.9e-4, max: 6.4e-4 },
+      { kind: 'section', axis: 'y', at: 0.025, equals: 7, label: 'plate outline and six pockets' },
+      { kind: 'section', axis: 'y', at: 0.005, equals: 1, label: 'pockets are blind' },
+      {
+        kind: 'through', axis: 'z', label: 'chamfered top edge',
+        open: [[0.0995, 0.0295], [-0.0995, 0.0295]],
+        solid: [[0.0995, 0.0155], [0, 0.0295]],
+      },
+    ],
+  },
+  {
+    id: 'slotted-rail',
+    prompt: `A slotted rail lying on the ground, one solid piece: a bar 0.4 m long (X), 0.03 m tall (Y) and 0.06 m deep (Z),
+with every outer edge chamfered 0.004 m. Five rectangular slots go straight down through it, each 0.05 m along X and
+0.02 m along Z, centred in Z, at X = -0.16, -0.08, 0, 0.08 and 0.16.`,
+    checks: [
+      { kind: 'lint' },
+      { kind: 'parts', max: 1 },
+      { kind: 'size', expected: [0.4, 0.03, 0.06] },
+      { kind: 'ground' },
+      { kind: 'holes', equals: 5 },
+      { kind: 'volume', min: 5.0e-4, max: 5.7e-4 },
+      { kind: 'section', axis: 'y', at: 0.015, equals: 6, label: 'bar outline and five slots' },
+      {
+        kind: 'through', axis: 'y', label: 'slots open, bars between them solid',
+        open: [[-0.16, 0], [-0.08, 0], [0, 0], [0.08, 0], [0.16, 0]],
+        solid: [[-0.12, 0], [-0.04, 0], [0.04, 0], [0.12, 0], [0, 0.025]],
+      },
+      {
+        kind: 'through', axis: 'z', label: 'chamfered end edges',
+        open: [[0.1995, 0.0295], [-0.1995, 0.0005]],
+        solid: [[0.1995, 0.015], [0, 0.0295]],
+      },
+    ],
+  },
+  {
+    id: 'crate-revision',
+    startRecipe: REFERENCES.crate,
+    prompt: `A wooden crate scene is already designed as the recipe below: a 0.6 m cube with recessed side panels and a raised
+lid 0.03 m tall. Make two changes. Raise the lid to 0.06 m tall. Then drill a round blind hole of 0.06 m diameter straight
+down from the top of the lid, centred on the crate, ending 0.5 m above the ground. Keep everything else as it is.`,
+    checks: [
+      { kind: 'lint' },
+      { kind: 'parts', max: 1 },
+      { kind: 'size', expected: [0.6, 0.66, 0.6] },
+      { kind: 'ground' },
+      { kind: 'holes', equals: 0 },
+      { kind: 'volume', min: 0.2, max: 0.218 },
+      { kind: 'section', axis: 'y', at: 0.645, equals: 2, label: 'raised lid with the hole' },
+      { kind: 'section', axis: 'y', at: 0.55, equals: 2, label: 'body with the hole' },
+      { kind: 'section', axis: 'y', at: 0.45, equals: 1, label: 'hole stops at 0.5 m' },
+      { kind: 'section', axis: 'x', at: 0.29, equals: 2, label: 'recessed panel on +X kept' },
+    ],
+  },
+  {
+    id: 'bracket-revision',
+    startRecipe: REFERENCES.bracket,
+    prompt: `An L bracket is already designed as the recipe below. Change it: lengthen the base plate to 0.3 m along X and
+keep the whole bracket centred on X = 0, with the upright still flush with the base's -X end, the same height and the same
+thickness. Replace the two holes by three round holes, 0.02 m in diameter, going straight down through the base at X = -0.05,
+0.03 and 0.11, centred in Z. The bracket is 0.17 m tall overall, as before.`,
+    checks: [
+      { kind: 'lint' },
+      { kind: 'size', expected: [0.3, 0.17, 0.1] },
+      { kind: 'ground' },
+      { kind: 'holes', equals: 3 },
+      { kind: 'volume', min: 8.2e-4, max: 9.4e-4 },
+      { kind: 'section', axis: 'y', at: 0.01, equals: 4, label: 'base with three holes' },
+      {
+        kind: 'through', axis: 'y', label: 'holes at the new positions',
+        open: [[-0.05, 0], [0.03, 0], [0.11, 0]],
+        solid: [[0.06, 0], [0.14, 0], [-0.1, 0]],
+      },
+    ],
+  },
+  {
+    id: 'workshop',
+    prompt: `A small workshop scene on a square floor slab 3 m by 3 m and 0.05 m thick, with its top face 0.05 m above the
+ground (Y = 0). The scene is centred on X = 0 and Z = 0. On the slab stand a table and a chair, plus a mug. The table top is 1.2 m
+long (X), 0.6 m deep (Z) and 0.04 m thick, with its upper surface 0.75 m above the slab; four square legs, 0.05 m on a
+side, run from the slab to the underside of the top, their outer faces 0.05 m in from the top's edges. The table is centred
+on the slab. The chair sits 0.8 m toward +Z from the table's centre: its seat is 0.4 m square and 0.03 m thick, with the
+upper surface 0.45 m above the slab, on four square legs 0.04 m on a side in the seat's corners, flush with its edges
+and stopping at the underside of the seat. The mug is a closed solid cylinder 0.08 m in diameter and 0.1 m tall, standing
+on the table top at X = 0.3, Z = -0.05. Every object rests on what is below it, and the objects do not overlap.`,
+    checks: [
+      { kind: 'lint' },
+      { kind: 'parts', min: 12 },
+      { kind: 'size', expected: [3, 0.9, 3] },
+      { kind: 'ground' },
+      { kind: 'section', axis: 'y', at: 0.02, equals: 1, label: 'floor slab' },
+      { kind: 'section', axis: 'y', at: 0.3, equals: 8, label: 'four table legs and four chair legs' },
+      { kind: 'section', axis: 'y', at: 0.49, equals: 5, label: 'chair seat and four table legs' },
+      { kind: 'section', axis: 'y', at: 0.78, equals: 1, label: 'table top' },
+      { kind: 'section', axis: 'y', at: 0.85, equals: 1, label: 'mug on the table' },
+      { kind: 'volume', min: 0.47, max: 0.52 },
+    ],
+  },
+  {
+    id: 'robot-shot',
+    assets: true,
+    prompt: `The asset catalog holds an imported robot character. Create a scene from it with its Idle clip selected at
+time 0, and make a still shot of it with both hands raised. Add IK so that the palm joint of the right arm (Palm2.R) is at
+world position [-1.3, 2.6, 0.8] and the palm joint of the left arm (Palm2.L) is at [1.3, 2.4, 0.8], with the rest of the
+body on the clip. Then set the camera for a side-on shot: from the +X side of the robot, looking at it, with the eye 3 to
+12 m from the look-at target, at most 2 m off the robot's front-to-back axis (Z), and the look-at target between 0.5 m
+and 4 m above the ground. Look at the result with scene_look to confirm both hands are in the picture. When it is
+finished, call scene_export_recipe once: the exported recipe is what gets graded.`,
+    ownPreamble: true,
+    checks: [
+      { kind: 'assetClip', name: 'Idle' },
+      { kind: 'assetReach', endLabel: 'Palm2.R', from: [-1.3, 2.6, 0.8], to: [-1.3, 2.6, 0.8] },
+      { kind: 'assetReach', endLabel: 'Palm2.L', from: [1.3, 2.4, 0.8], to: [1.3, 2.4, 0.8] },
+      { kind: 'shot', minSideOffset: 2, maxDepthOffset: 2, targetHeight: [0.5, 4], distance: [3, 12] },
+    ],
+  },
 ];
 
 export const TASKS = [
@@ -245,7 +383,14 @@ recipe is what gets graded.`,
       { kind: 'assetReach', endLabel: 'Palm2.R', from: [-1.3, 2.6, 0.8], to: [-1, 1.7, 1.1] },
     ],
   },
+  ...LONG_TASKS,
 ];
+
+/** The task text an agent receives, with the starting recipe appended when the task changes an existing scene. */
+export function taskPrompt(task) {
+  const text = task.prompt.replace(/\n/g, ' ');
+  return task.startRecipe ? `${text} ${START_INSTRUCTION} ${compactRecipe(task.startRecipe)}` : text;
+}
 
 export function taskById(id) {
   const task = TASKS.find(candidate => candidate.id === id);
