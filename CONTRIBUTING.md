@@ -34,7 +34,19 @@ Run `npm run smoke` or the `smoke:*` script for the area that you changed, and l
 A change to skinning, glTF loading, poses or IK also needs `npm run smoke:character`, which takes a real character through the MCP server. Run `npm run prepare:release` first.
 Screenshots and other output go to `artifacts/`, which Git ignores.
 
-Every pull request runs `npm run size`, `npm test`, `prepare:release`, `smoke:package` and the protocol part of `smoke:mcp-package` in the `Test` workflow. `bench/size/README.md` says what to do when a size budget fails. The checks that need a GPU or look at pixels, such as `smoke:mcp` and `smoke:character`, do not run there, so run them yourself.
+Every pull request runs `npm audit`, `npm run size`, `npm test`, `prepare:release`, `smoke:package` and `smoke:mcp-package` in the `Test` workflow. `smoke:mcp-package` draws through the MCP server on SwiftShader in Chrome. `bench/size/README.md` says what to do when a size budget fails.
+
+GitHub offers no branch protection on this private repository, so a red check can not block a merge by itself. Merge a pull request only when the `test` and `GitGuardian Security Checks` checks both pass. The person or agent who merges is responsible for this.
+
+These checks need a GPU or a person's eyes, so they do not run on a pull request. The author runs each one that applies:
+
+| Check | Run it when you change |
+| --- | --- |
+| `npm run smoke:mcp` | MCP tools or the preview, on a GPU |
+| `npm run smoke:character` | Skinning, glTF loading, poses or IK |
+| `npm run reference` | Shaders, lighting or materials |
+| `npm run benchmark:runtime` | The renderer's frame path |
+| `scripts/blender-golden.py` | A case in `tests/fixtures/blender/cases.json`, or the Blender version |
 
 Do not weaken a test to make it pass. If a test is flaky, find the cause and fix the test or the code.
 
