@@ -1,7 +1,7 @@
 # Spume liquid playback
 
 `67js/addons/spume` plays back a liquid bake from [Spume](https://github.com/codepawl/spume), the CodePawl GPU liquid solver.
-Spume bakes offline on an NVIDIA GPU with Python and NVIDIA Warp. The browser never runs the solver: this addon reads the baked cache folder and turns each frame into ordinary rigid 67.js parts.
+Spume bakes offline on an NVIDIA GPU with Python and NVIDIA Warp. The browser never runs the solver: this addon reads the baked cache folder and turns each frame into ordinary rigid 67js parts.
 
 ```js
 import { Renderer67 } from '67js';
@@ -19,7 +19,7 @@ function draw(seconds) {
 
 ## Baking a cache
 
-Bake from a Spume checkout. Units are metres, +Y up, the floor at y = 0, which matches 67.js.
+Bake from a Spume checkout. Units are metres, +Y up, the floor at y = 0, which matches 67js.
 
 ```bash
 uv run python run.py --out out/geyser --name geyser --pressure cg --iterations 20

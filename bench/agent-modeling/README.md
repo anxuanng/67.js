@@ -1,6 +1,6 @@
 # Agent modeling suite
 
-The suite measures how well an agent models through the 67.js MCP tools. It records how often the agent succeeds and
+The suite measures how well an agent models through the 67js MCP tools. It records how often the agent succeeds and
 what each success costs in tool calls, tokens and time. It is the yardstick from the modeling plan: a mesh feature
 earns its place only if it raises these numbers.
 
@@ -61,7 +61,7 @@ node bench/agent-modeling/run.mjs --claude <path to claude> --model sonnet --lab
 ```
 
 Each task gets a fresh non-interactive Claude Code session in an empty temporary folder. The session has only the
-67.js MCP server, its built-in file and shell tools are disabled, and it runs under a per-task budget (`--budget`, in
+67js MCP server, its built-in file and shell tools are disabled, and it runs under a per-task budget (`--budget`, in
 USD, default 3) and timeout (`--timeout`, in seconds, default 1200). Pick tasks with `--tasks crate,bolt`. Raw
 transcripts and exported recipes go to `artifacts/agent-modeling/<run>/`. The summary, with the model ID reported by
 the session, goes to `results/<run>.json`. Grade one recipe by hand with
@@ -123,7 +123,7 @@ score and cannot be regraded. The next run records one.
 
 ## Baseline
 
-`results/2026-10-30-07-48-sonnet-baseline.json`: `claude-sonnet-5-5`, one run per task, without the `build-67js-scene` skill, 67.js 0.11.0.
+`results/2026-10-30-07-48-sonnet-baseline.json`: `claude-sonnet-5-5`, one run per task, without the `build-67js-scene` skill, 67js 0.11.0.
 10 of 10 passed with 67 tool calls and $4.76 in total. The `bracket` record comes from a rerun after its prompt was
 made unambiguous about the total height; the others were graded again after three checker fixes, without new agent runs.
 

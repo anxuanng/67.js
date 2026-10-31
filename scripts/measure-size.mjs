@@ -123,10 +123,10 @@ function printComparisonWithThree(measured, three, goals) {
   for (const [name, threeSize] of Object.entries(three)) {
     const engineSize = measured[`scene:${name}`].gzip;
     const goal = goals[name] === undefined ? '' : `, goal ${goals[name]}`;
-    console.log(`  ${name.padEnd(14)} 67.js ${engineSize}, three.js ${threeSize.gzip}${goal}`);
+    console.log(`  ${name.padEnd(14)} 67js ${engineSize}, three.js ${threeSize.gzip}${goal}`);
   }
   for (const [name, goal] of Object.entries(goals)) {
-    if (!three[name]) console.log(`  ${name.padEnd(14)} 67.js ${measured[`scene:${name}`].gzip}, no three.js equivalent, goal ${goal}`);
+    if (!three[name]) console.log(`  ${name.padEnd(14)} 67js ${measured[`scene:${name}`].gzip}, no three.js equivalent, goal ${goal}`);
   }
 }
 

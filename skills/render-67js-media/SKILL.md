@@ -1,12 +1,12 @@
 ---
 name: render-67js-media
-description: Export 67.js scenes to PNG or MP4 on GPU or CPU. Use for render ảnh/video 3D, export presets, MSAA quality, performance measurements and bounded RAM/VRAM capture without buffering full frame sequences.
+description: Export 67js scenes to PNG or MP4 on GPU or CPU. Use for render ảnh/video 3D, export presets, MSAA quality, performance measurements and bounded RAM/VRAM capture without buffering full frame sequences.
 license: MIT
 ---
 
-# Xuất ảnh và video 67.js
+# Xuất ảnh và video 67js
 
-Locate the 67.js checkout and read its `scripts/render-media.mjs` and `src/budget.js`.
+Locate the 67js checkout and read its `scripts/render-media.mjs` and `src/budget.js`.
 Read [rendering.md](references/rendering.md) for commands, backends and measurement limits.
 Use the repository pipeline rather than constructing a parallel exporter.
 

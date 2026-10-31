@@ -1,4 +1,4 @@
-# Contributing to 67.js
+# Contributing to 67js
 
 Thank you for helping. This file covers setup, the checks a change must pass, the code style and the release flow.
 

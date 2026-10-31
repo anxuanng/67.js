@@ -1,6 +1,6 @@
-# 67.js implementation roadmap
+# 67js implementation roadmap
 
-67.js develops 3D authoring and rendering tools for agents, with browser previews, deterministic animation and exported media.
+67js develops 3D authoring and rendering tools for agents, with browser previews, deterministic animation and exported media.
 This document separates shipping capabilities from work in progress. Performance claims require measurements on matching scenes and hardware.
 
 The end goal is to be as capable as Blender, as light as three.js and as AI friendly as possible. Issue 23 in the project repository defines each part and orders the work. `docs/parity.md` in that repository records the coverage of each Blender feature.

@@ -33,7 +33,7 @@ function addWeightedTransform(output, offset, palette, joint, weight, x, y, z, t
   output[offset + 2] += weight * (palette[base + 2] * x + palette[base + 6] * y + palette[base + 10] * z + palette[base + 14] * translationWeight);
 }
 
-// Blender's glTF importer cannot reproduce this rig's pose (three.js and 67.js agree on it), so Blender gets the
+// Blender's glTF importer cannot reproduce this rig's pose (three.js and 67js agree on it), so Blender gets the
 // skinned result as plain geometry. A score then measures shading, and not an importer's pose.
 function bakeSkinnedGeometry(part) {
   const { geometry, skin } = part;
@@ -70,7 +70,7 @@ function describeScene(id, scene) {
   };
 }
 
-// Blender always gets the original parts: the bake is 67.js's approximation of what Cycles computes.
+// Blender always gets the original parts: the bake is 67js's approximation of what Cycles computes.
 async function bakeScene(scene, bakeOptions) {
   const { bakeLightmaps } = await import('/src/light-bake.js');
   const { pointLights, keyColor, lightDirection } = scene.environment;

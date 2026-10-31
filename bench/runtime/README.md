@@ -1,6 +1,6 @@
 # Runtime against three.js
 
-This suite compares what a frame costs in 67.js and in three.js on 7 matching scenes. **three.js wins most of them today.**
+This suite compares what a frame costs in 67js and in three.js on 7 matching scenes. **three.js wins most of them today.**
 
 ## Culling and levels of detail (issue 37)
 
@@ -23,11 +23,11 @@ CI does not run this suite. It needs Chrome and a GPU, and `tests/runtime-report
 
 ## Result
 
-Measured on 2026-10-31 at 960 by 540 with 4 MSAA samples, against three.js 0.186.1. A ratio above 1 means that 67.js costs more.
+Measured on 2026-10-31 at 960 by 540 with 4 MSAA samples, against three.js 0.186.1. A ratio above 1 means that 67js costs more.
 
 **Full frame on SwiftShader, in milliseconds.** This is the path that a headless agent uses.
 
-| Scene | 67.js | three.js | Ratio |
+| Scene | 67js | three.js | Ratio |
 | --- | --- | --- | --- |
 | `instanced-objects` | 631 | 48 (instanced 44) | 13.3 |
 | `many-materials` | 2,207 | 237 | 9.3 |
@@ -39,7 +39,7 @@ Measured on 2026-10-31 at 960 by 540 with 4 MSAA samples, against three.js 0.186
 
 **Full frame on an RTX 3060, in milliseconds.** Other jobs were using the GPU during this run, so these numbers are noisy.
 
-| Scene | 67.js | three.js | Ratio |
+| Scene | 67js | three.js | Ratio |
 | --- | --- | --- | --- |
 | `instanced-objects` | 1.25 | 4.34 (instanced 0.36) | 0.3 |
 | `many-materials` | 4.75 | 2.97 | 1.6 |
@@ -51,7 +51,7 @@ Measured on 2026-10-31 at 960 by 540 with 4 MSAA samples, against three.js 0.186
 
 **First frame on an RTX 3060, in milliseconds.** Each run has an empty browser profile, so no shader cache helps either engine.
 
-| Scene | 67.js | three.js | Ratio |
+| Scene | 67js | three.js | Ratio |
 | --- | --- | --- | --- |
 | `instanced-objects` | 2,608 | 204 | 12.8 |
 | `many-materials` | 2,564 | 269 | 9.5 |
@@ -66,13 +66,13 @@ Measured on 2026-10-31 at 960 by 540 with 4 MSAA samples, against three.js 0.186
 **three.js wins:**
 
 - Full frames on SwiftShader, in every scene.
-- Full frames on the RTX 3060, in 6 of 7 scenes. In the seventh, an `InstancedMesh` beats 67.js by 3.5 times.
+- Full frames on the RTX 3060, in 6 of 7 scenes. In the seventh, an `InstancedMesh` beats 67js by 3.5 times.
 - The first frame, in every scene.
-- GPU memory that WebGL calls show, in every scene. 67.js allocates about 46 MB for its render targets.
-- Fewer triangles when objects are off camera, because it culls them. 67.js draws all of them (issue 37).
+- GPU memory that WebGL calls show, in every scene. 67js allocates about 46 MB for its render targets.
+- Fewer triangles when objects are off camera, because it culls them. 67js draws all of them (issue 37).
 - Heap memory in `skinned-characters`, because three.js clones one parsed file.
 
-**67.js wins:**
+**67js wins:**
 
 - CPU time to submit a frame, in 6 of 7 scenes. It takes 0.07 ms against 3.91 ms for 5,000 individual meshes. It groups objects into a few draw calls by itself. An `InstancedMesh` needs the same grouping by hand in three.js.
 - Heap memory in 6 of 7 scenes.
@@ -93,9 +93,9 @@ FLIP between the two engines, where 0 means identical.
 | `many-lights` | 0.132 |
 | `many-materials` | 0.241 |
 
-Both engines use the same geometry, lights and tone curve, so these are small differences. `many-materials` is the largest, because half of its spheres are metal and three.js has only an ambient light, with nothing for metal to reflect. 67.js reflects a constant environment map, so it is the one that has reflections.
+Both engines use the same geometry, lights and tone curve, so these are small differences. `many-materials` is the largest, because half of its spheres are metal and three.js has only an ambient light, with nothing for metal to reflect. 67js reflects a constant environment map, so it is the one that has reflections.
 
-The comparison is not exact. 67.js pays for an environment map and an HDR post-processing pass, and three.js does not. A scene with an environment map in three.js costs more than this.
+The comparison is not exact. 67js pays for an environment map and an HDR post-processing pass, and three.js does not. A scene with an environment map in three.js costs more than this.
 
 ## How it measures
 

@@ -1,4 +1,4 @@
-// Runs the agent modeling suite: one fresh, non-interactive Claude Code session per task, with only the 67.js MCP
+// Runs the agent modeling suite: one fresh, non-interactive Claude Code session per task, with only the 67js MCP
 // server, then grades the recipe the agent exported.
 //
 // node bench/agent-modeling/run.mjs --claude <claude executable> [--model sonnet] [--tasks crate,bolt]

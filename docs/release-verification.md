@@ -212,7 +212,7 @@ The figures remain stylized silhouettes, without photorealistic character assets
 
 ## 0.3.0
 
-The package is `@codepawlhq/67js`, installed locally through the `67js` alias. The display name remains 67.js.
+The package is `@codepawlhq/67js`, installed locally through the `67js` alias. The display name remains 67js.
 
 | Check | Measured result |
 | --- | --- |

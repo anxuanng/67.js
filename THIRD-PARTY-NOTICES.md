@@ -76,7 +76,7 @@ The npm, pnpm, Yarn and Bun SVG marks are sourced from Simple Icons and distribu
 The mesh addon loads `manifold-3d` as a separate dependency for booleans.
 Manifold is distributed under the Apache License, Version 2.0.
 Its dependency package includes the complete license text.
-Manifold's JavaScript and WASM code are not bundled into the 67.js library archive.
+Manifold's JavaScript and WASM code are not bundled into the 67js library archive.
 The MCP runtime serves them to its preview page from the installed peer dependency.
 Source and license: https://github.com/elalish/manifold.
 
@@ -85,7 +85,7 @@ Source and license: https://github.com/elalish/manifold.
 The physics addon loads `@dimforge/rapier3d-compat` as a separate dependency.
 Rapier is distributed under the Apache License, Version 2.0.
 Its dependency package includes the complete license text.
-Rapier's JavaScript and WASM code are not bundled into the 67.js library archive.
+Rapier's JavaScript and WASM code are not bundled into the 67js library archive.
 Source and license: https://github.com/dimforge/rapier.js.
 
 ## DejaVu Sans 2.37 (3D text outlines, `src/font-default.js`)

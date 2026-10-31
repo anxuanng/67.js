@@ -1,6 +1,6 @@
-// Renders the reference scenes in 67.js and Blender, then scores them: npm run reference
+// Renders the reference scenes in 67js and Blender, then scores them: npm run reference
 // --ambient-occlusion <strength> [--ambient-occlusion-radius <units>] turns occlusion on (off by default).
-// --bake [<id>,<id>] bakes bounced light into the named scenes (every scene when no ids follow) before 67.js draws them;
+// --bake [<id>,<id>] bakes bounced light into the named scenes (every scene when no ids follow) before 67js draws them;
 // Blender still gets the plain scene.
 // Use --score-only to score existing renders, --skip-blender to keep them, and --scene <id> for one scene.
 import { spawnSync } from 'node:child_process';
