@@ -12,6 +12,7 @@ Version `0.6.0` adds asynchronous snapshot render jobs. Read `/agent-render-jobs
 
 Version `0.8.0` adds imported source-node overrides and motion. Read `/agent-character-motion.md` for joint IDs, layering and pose ownership.
 
+Variants: `scene_apply` with a `branch` name forks without editing, `scene_review` shots take a `branch`, `scene_restore` with `branch` keeps one; `labels: true` on `scene_look` and `scene_review` prints and returns part names and lint with pixel positions.
 Version `0.9.0` adds `scene_review`. Read `/agent-review.md` for a labeled PNG grid of up to four views or poses.
 Review uses an isolated snapshot with separate camera and clock settings. It preserves the source revision and preview pose.
 

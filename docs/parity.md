@@ -246,4 +246,4 @@ The goal also needs this work, and no page in the Blender manual covers it.
 | Rendering backend | missing | WebGL2 only. WebGPU is not evaluated. | #56 |
 | Terrain and navigation | partial | Terrain with 4 splat layers and no holes. There is no navmesh. | #64 |
 | Tool cost and errors | partial | Lint and errors exist. No budget limits schema size, and not every error is checked. | #65, #66 |
-| Branches and labelled images | missing | 8 checkpoints and unlabelled images. | #67 |
+| Branches and labelled images | partial | `scene_apply` `branch` forks a variant over a deduplicated snapshot store (8 branches, scene and revision untouched), `scene_review` shots take a `branch`, `scene_restore` `branch` keeps one. `labels: true` on `scene_look` and `scene_review` prints part names, tags and lint problems and returns them with pixel positions. Procedural scenes only; no suite task yet measures calls. | #67 |
