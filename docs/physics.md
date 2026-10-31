@@ -331,7 +331,7 @@ The selected shape adds complete joint motor snapshots to the existing serializa
 This preserves pre-async validation, deterministic bake order and arbitrary recorded seeks after the solver world is freed.
 
 The addon supports rigid-body contacts, compound colliders, impulses, kinematics, articulated graphs, and single-coordinate joint limits and motors.
-It does not implement cloth, soft bodies, spherical multi-axis controls, or live solver editing.
+It does not implement soft bodies, spherical multi-axis controls, or live solver editing.
 It does not bind physics directly to skeletal bones or generate a humanoid skeleton.
 Those features need additional public contracts.
 Creating a scene bakes synchronously after asynchronous WASM initialization and can block the main thread.
@@ -439,3 +439,32 @@ This addon does not promise identical trajectories across different Rapier versi
 The implementation uses `@dimforge/rapier3d-compat` version `0.21.0`, licensed under Apache 2.0.
 
 Sources: [Rapier JavaScript setup](https://rapier.rs/docs/user_guides/javascript/getting_started_js/), [Rapier joints](https://rapier.rs/docs/user_guides/javascript/joints/) and [Rapier determinism](https://rapier.rs/docs/user_guides/javascript/determinism/).
+
+## Recipe particles and hair
+
+A recipe `particles` section holds up to 4 systems (`src/particles.js`, `src/hair.js`, `src/agent-particles.js`). It needs no peer dependency and loads on demand with the `particles` module, so a scene without particles pays nothing. Blender's particle system has the same two kinds, Emitter and Hair.
+
+```json
+{ "geometries": [{ "id": "speck", "type": "box" }],
+  "nodes": [{ "id": "sparks", "geometry": "speck", "material": "glow" }],
+  "particles": { "systems": [{ "node": "sparks", "seed": 11, "count": 300, "rate": 150, "lifetime": [0.8, 1.6],
+                               "speed": [2, 4], "spread": 35, "size": 0.035, "drag": 0.3, "floor": 0, "scale": "shrink",
+                               "emitter": { "shape": "disc", "position": [-0.8, 0, 0], "radius": 0.15 } }] } }
+```
+
+- An emitter system draws its root node's own geometry once per particle, so keep the shape low-poly. The node's transform does not move or scale particles. `count` is at most 2000 a system and 4000 in total, and at most 100000 vertices are drawn in total (a box is 24 per particle, so a default sphere is too heavy).
+- Fields and defaults are in `scene_capabilities` under `particles`: `seed`, `count`, `rate` (omit for one burst at time 0), `lifetime`, `speed` and `size` (a number or `[min, max]`), `direction`, `spread` (cone half angle, degrees), `emitter` (`point`, `box`, `sphere` or `disc`), `scale` (`constant`, `shrink`, `grow`), `drag` and `floor`. `gravity` and a steady `wind` sit on the section; wind pulls the velocity only where `drag` is above zero.
+- A particle is a closed-form function of its own seeded launch values and the time (drag, wind and gravity have an exact solution), checked against a 1e-5 s integration in `tests/particles.test.js`. There is no stepping, so the state at time t never depends on earlier seeks: the same time gives the same particles, a seek backwards repeats them, the same seed gives identical bytes, and raising `count` keeps the particles already there. The landing time on a `floor` is found once per particle from its launch values.
+- A hair system (`type: "hair"`) grows `count` strands from area-weighted seeded points of a `surface` node into its own `node` (the surface is only read, so several systems can share one). A strand is a triangular tube of 1 to 8 segments tapering to 15 percent, leaning off the surface normal by `lean`, bending with `droop`, and swaying by `sway` metres along the horizontal wind at `swayRate` hertz. Without `sway` the mesh is built once.
+- Both kinds replace their node's part at each sampled time, so the renderer sees a topology change. `npm run smoke:agent-particles` seeks sparks and hair through the MCP preview, repeats the PNG bytes after a seek back and checks that a second session renders the same bytes.
+- `scene_inspect` returns a `particles` report: per emitter the particle count, vertices per particle, `maxAlive` and `endsAt`; per hair system the strands, segments and vertices per strand.
+- Not included: collision between particles or with anything but the floor plane, bounce, per-particle rotation, colour or alpha (one material per node), particles that follow a moving node, hair collision, combing, clumping, children, hair on a skinned surface, UVs on hair (so textured materials do not apply) and fur shading.
+- Measured on the dev machine: creating a scene with 4000 box particles (96000 vertices) takes about 57 ms, and each seek takes 8 to 15 ms; the test bounds a seek at 150 ms.
+
+No Blender parity is claimed for either kind: Blender's particle physics, force fields, children and hair dynamics are not reproduced, and no comparison against a Blender render was run.
+
+### Decision: smoke, fire and liquid in the browser
+
+Smoke and fire: not built. The grid solver is the cost, not the volume look. A naive CPU step (semi-Lagrangian advection of density plus 20 pressure passes, unoptimised JavaScript, measured on the dev machine) takes about 0.09 s on a 32 cubed grid, 0.14 s on 48 cubed, 0.46 s on 64 cubed and 1.3 s on 96 cubed. A 10 second clip at 60 frames is 600 steps: about 4.6 minutes of baking at 64 cubed, and 157 MB of density frames at 4 bytes a cell, before velocity and temperature. That does not fit an agent's tool call or the package budget. A recipe can already use the depth-clipped volumetric fog, and emitter particles with `scale: "grow"` for puffs. If smoke or fire becomes a goal, bake a density sequence outside the browser, as Spume does for liquid, and play it back through a volume object, which needs the volume rendering work first.
+
+Liquid: keep `addons/spume` playback and do not add a browser solver. Spume plays a baked liquid as parts in 8793 bytes gzip (the `entry:spume` baseline from `npm run size`), and the bake runs offline in another project. A browser FLIP or SPH solver would add its own code, a bounded step budget and a surface reconstruction, and it would face the same step times as the grid above. No browser liquid solver was written or measured, so no speed claim is made about one. Revisit only when an agent task needs a liquid that Spume cannot play back.

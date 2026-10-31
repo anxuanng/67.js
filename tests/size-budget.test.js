@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import test from 'node:test';
-import { budgetFor, compareToBudgets, formatRows } from '../scripts/size-budget.mjs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { build } from 'esbuild';
+import { budgetFor, compareToBudgets, formatRows, initialOutputPaths } from '../scripts/size-budget.mjs';
 
 const readJson = path => JSON.parse(readFileSync(new URL(path, import.meta.url), 'utf8'));
 const budgetFile = readJson('../bench/size/budgets.json');
@@ -59,4 +62,27 @@ test('the baseline records the three.js version and its scene sizes', () => {
   assert.equal(baseline.threeVersion, manifest.devDependencies.three);
   assert.ok(baseline.three['lit-box'].gzip > 0);
   assert.ok(baseline.three['gltf-box'].gzip > 0);
+});
+
+test('the initial total follows static imports into shared chunks and skips lazy modules', async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'size-initial-'));
+  try {
+    writeFileSync(join(directory, 'a-lazy.js'), "import { shared } from './shared.js';\nexport const lazyA = () => shared();\n");
+    writeFileSync(join(directory, 'b-lazy.js'), "import { shared } from './shared.js';\nexport const lazyB = () => shared();\n");
+    writeFileSync(join(directory, 'shared.js'), 'export const shared = () => [1, 2, 3].map(value => value * 2);\n');
+    writeFileSync(join(directory, 'main.js'), "import { shared } from './shared.js';\nexport const load = () => import('./a-lazy.js').then(() => import('./b-lazy.js'));\nexport const run = () => shared();\n");
+    const result = await build({
+      stdin: { contents: "export * from './main.js';", resolveDir: directory, loader: 'js' },
+      bundle: true, minify: true, format: 'esm', write: false, metafile: true, splitting: true, outdir: join(directory, 'out'), logLevel: 'silent',
+    });
+    const outputs = result.metafile.outputs;
+    const lazyEntries = Object.keys(outputs).filter(path => outputs[path].entryPoint && outputs[path].entryPoint !== '<stdin>');
+    assert.equal(lazyEntries.length, 2, 'both lazy modules are entry points in the metafile');
+    const initial = [...initialOutputPaths(result.metafile)];
+    assert.ok(initial.some(path => outputs[path].entryPoint === '<stdin>'), 'the stdin entry is counted');
+    assert.ok(initial.some(path => !outputs[path].entryPoint), 'the shared chunk it imports statically is counted');
+    for (const lazy of lazyEntries) assert.ok(!initial.includes(lazy), 'a lazy module is not in the initial total');
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
 });

@@ -10,6 +10,7 @@ const MODULE_LOADERS = {
   motion: () => import('./agent-motion.js'),
   physics: () => import('./agent-physics.js'),
   cloth: () => import('./agent-cloth.js'),
+  particles: () => import('./agent-particles.js'),
   patterns: () => import('./material-patterns.js'),
   relations: () => import('./agent-relations.js'),
 };
@@ -27,6 +28,7 @@ const MODULE_MARKERS = {
   motion: ['"motion":{'],
   physics: ['"physics":{'],
   cloth: ['"cloth":{'],
+  particles: ['"particles":{'],
   patterns: ['"pattern"'],
   relations: ['"relations":'],
 };
