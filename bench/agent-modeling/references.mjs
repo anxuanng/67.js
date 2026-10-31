@@ -1,6 +1,10 @@
 // One hand-built solution per task. tests/agent-modeling-suite.test.js grades them, so a checker that rejects a
 // correct object, or a task whose numbers do not add up, fails before any agent run is spent on it.
 
+// A unit cube subdivided three times spans 0.8492 on each axis, so a scale of size / 0.8492 gives the wanted size.
+const SUBDIVIDED_CUBE_SPAN = 0.8492;
+const PEBBLE_SIZE = [0.08, 0.03, 0.05];
+
 const material = [{ id: 'paint', color: [0.6, 0.55, 0.5] }];
 
 function scene(geometries, nodes) {
@@ -242,5 +246,9 @@ export const REFERENCES = {
       { op: 'bevel', edges: { all: true }, width: 0.01, segments: 4 },
     ] }],
     [{ id: 'soap', geometry: 'soap', translation: [0, 0.015, 0] }],
+  ),
+  pebble: scene(
+    [{ id: 'pebble', type: 'mesh', base: { type: 'box', bevel: 0 }, stack: [{ op: 'subdivide', levels: 3 }] }],
+    [{ id: 'pebble', geometry: 'pebble', translation: [0, PEBBLE_SIZE[1] / 2, 0], scale: PEBBLE_SIZE.map(size => size / SUBDIVIDED_CUBE_SPAN) }],
   ),
 };

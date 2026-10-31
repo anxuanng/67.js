@@ -32,6 +32,7 @@ own mesh report:
 | fence | Repetition (array) and rails between posts |
 | bracket | Two plates and two holes |
 | soap | Rounding every edge (bevel) |
+| pebble | A smooth solid from a box (subdivision) |
 | crate-uv | The crate with even UVs |
 | crate-wood | The crate with a wood material pattern, to see whether agents find `pattern` |
 | arm-reach | A jointed arm whose tip moves between two points, to see whether agents find `motion.ik` |

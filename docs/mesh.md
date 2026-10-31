@@ -196,7 +196,7 @@ These three (and `bevel`, below) work as edits and as stack nodes:
 
 ### Modifier stack
 
-A recipe mesh may carry `stack`, a list of `mirror`, `array`, `solidify`, `bevel` and `uv_unwrap` nodes (up to 16) evaluated after the
+A recipe mesh may carry `stack`, a list of `mirror`, `array`, `solidify`, `bevel`, `subdivide` and `uv_unwrap` nodes (up to 16) evaluated after the
 edits without changing them, as Blender's modifier stack. Every prefix (the edit result, then each node) is cached
 by its recipe text in a least-recently-used cache bounded at 64 entries and 64 MiB, so changing a late node reuses
 the earlier work. Results list one entry per node with `cached: true` when reused. `meshCacheStats()` reports hits
@@ -247,6 +247,31 @@ each other in one edit are refused; cut them in separate edits. The result repor
 
 A typical sequence: `loop_cut` with `cuts: 2`, then `extrude_individual` or `extrude_face_region` with
 `alongNormals` on `<name>.band-1` to raise a belt around the middle.
+
+### Subdivide
+
+`subdivide` is Catmull-Clark subdivision with semi-sharp creases, as an edit or as a stack node, on the rules Pixar
+published and OpenSubdiv implements. Every n-gon becomes n quads, so faces multiply by about 4 per level.
+
+| Field | Meaning |
+| --- | --- |
+| `levels` | 1 to 4 (default 1) |
+| `crease` | Edge rule for creased edges, the same rules as bevel, for example `{ "angle": 60 }` for the rims of a cylinder |
+| `sharpness` | 0 to 10 (default 10), only with `crease`. A crease stays fully sharp for that many levels; a fraction blends the smooth and sharp rules |
+
+Open boundary edges are always sharp, and a boundary vertex with a single face stays a corner (Blender's Keep Corners).
+Faces keep their tags, and corner attributes such as `uv` blend linearly. Edge attributes follow each half of a split
+edge; point attributes are not carried. The size is checked before anything is built, so `levels: 4` on a mesh that
+would pass the face limit fails with the counts instead of running. Put `subdivide` before `uv_unwrap`.
+
+Blender comparison (`tests/fixtures/blender`): vertex, edge and face counts, face sizes, area and every vertex match a
+Subdivision Surface modifier (limit surface off, Keep Corners) at levels 1 to 3 on a cube, an open grid and a cylinder
+with n-gon caps, with creases of sharpness 10, 2 and 0.5. A crease of sharpness s is Blender's crease sqrt(s / 10).
+Volume differs by under 1% on four cases, because it is measured on bent quads from each quad's first corner.
+
+Timing, measured on this machine: one level on a 100,489-quad grid takes about 225 ms (402k faces out), and about 390 ms
+with a crease on every edge. That is fast enough that 67.js does not keep a stencil table; a stack node reuses its cached
+result until an earlier node changes.
 
 ### UV unwrap
 
