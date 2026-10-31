@@ -9,6 +9,7 @@ import { exportGlb } from '../src/export.js';
 import { weightTracksFromGltfAnimation } from '../src/export-skeleton.js';
 import { clipFromGltfAnimation } from '../src/skeleton-pose.js';
 import { sessionProblem } from '../src/agent-errors.js';
+import { BRANCH_LIMITS, createBranchStore, printableLabel } from '../src/agent-branches.js';
 
 let active = null;
 let canvas = document.querySelector('canvas');
@@ -144,6 +145,18 @@ function mutationStatus(record) {
   }
 }
 
+// Draw the part labels onto a copy of the frame, so the preview canvas itself stays unmarked.
+function labeledPng(labels) {
+  if (!labels) return canvas.toDataURL('image/png').split(',')[1];
+  const composed = document.createElement('canvas');
+  composed.width = canvas.width;
+  composed.height = canvas.height;
+  const context = composed.getContext('2d');
+  context.drawImage(canvas, 0, 0);
+  paintLabels(context, labels, 0, 0);
+  return composed.toDataURL('image/png').split(',')[1];
+}
+
 function resetCanvas() {
   canvas.getContext('webgl2')?.getExtension('WEBGL_lose_context')?.loseContext();
   const replacement = document.createElement('canvas');
@@ -174,7 +187,7 @@ function createPreview(scene, { sessionId, memoryBudgetMiB, backend }, asset) {
   try {
     renderer = initializeRenderer(scene, { memoryBudgetMiB, backend });
     const record = { scene, renderer, asset, sessionId, options: { memoryBudgetMiB, backend },
-      checkpoints: new Map(), rendererTopology: scene.topologyRevision, rendererTextured: hasPatternTextures(scene.parts) };
+      checkpoints: new Map(), branches: createBranchStore(), rendererTopology: scene.topologyRevision, rendererTextured: hasPatternTextures(scene.parts) };
     draw(record);
     const result = status(record);
     if (backend === 'gpu' && /swiftshader|llvmpipe|software/i.test(result.render.graphics)) {
@@ -262,18 +275,79 @@ function bytesToBase64(bytes) {
   return btoa(binary);
 }
 
+// The review grid outlives the private scenes drawn into it, because each branch in a review is its own scene.
+let reviewGrid;
+
+function projectToScreen(matrix, point, width, height) {
+  const [x, y, z] = point;
+  const clipX = matrix[0] * x + matrix[4] * y + matrix[8] * z + matrix[12];
+  const clipY = matrix[1] * x + matrix[5] * y + matrix[9] * z + matrix[13];
+  const clipW = matrix[3] * x + matrix[7] * y + matrix[11] * z + matrix[15];
+  if (!(clipW > 0)) return null;
+  const normalizedX = clipX / clipW;
+  const normalizedY = clipY / clipW;
+  if (Math.abs(normalizedX) > 1 || Math.abs(normalizedY) > 1) return null;
+  return { x: Math.round((normalizedX * 0.5 + 0.5) * width), y: Math.round((1 - (normalizedY * 0.5 + 0.5)) * height) };
+}
+
+function meshProblemsByGeometry(scene, geometryIds) {
+  const result = new Map();
+  if (typeof scene.inspectMeshes !== 'function' || geometryIds.length === 0) return result;
+  const { meshes } = scene.inspectMeshes({ geometries: geometryIds.slice(0, 16) });
+  for (const mesh of meshes) {
+    const faceTags = Array.isArray(mesh.tags) ? mesh.tags : Object.keys(mesh.tags ?? {});
+    result.set(mesh.geometry, { problems: mesh.problems.map(problem => problem.kind), faceTags: faceTags.slice(0, 6) });
+  }
+  return result;
+}
+
+/** Name, material tag, face tags and lint problems of the visible parts, with the pixel they project to. */
+function collectLabels(scene, camera, width, height) {
+  const nodes = scene.inspect({ includeBounds: true }).nodes.filter(node => node.bounds);
+  const materialTags = new Map(scene.exportRecipe().materials.map(material => [material.id, material.tag]));
+  const view = mat4.lookAt(mat4.create(), camera.eye, camera.target, camera.up);
+  const matrix = mat4.multiply(mat4.create(), applyProjection(mat4.create(), camera, width / height), view);
+  const geometryIds = [...new Set(nodes.map(node => node.geometry))];
+  const meshInfo = meshProblemsByGeometry(scene, geometryIds);
+  const labels = [];
+  for (const node of nodes) {
+    const center = [0, 1, 2].map(axis => (node.bounds.min[axis] + node.bounds.max[axis]) / 2);
+    const position = projectToScreen(matrix, center, width, height);
+    if (!position || labels.length >= BRANCH_LIMITS.maximumLabels) continue;
+    const mesh = meshInfo.get(node.geometry);
+    labels.push({ id: node.id, name: printableLabel(node.label), tag: materialTags.get(node.material) ?? null,
+      faceTags: mesh?.faceTags ?? [], problems: mesh?.problems ?? [], x: position.x, y: position.y });
+  }
+  return labels;
+}
+
+function paintLabels(context, labels, offsetX, offsetY) {
+  context.font = '11px sans-serif';
+  context.textBaseline = 'middle';
+  for (const label of labels) {
+    const text = [label.name, label.tag === 'surface' ? null : label.tag,...(label.problems.length ? [`! ${label.problems.join(',')}`] : [])].filter(Boolean).join(' ');
+    const x = offsetX + label.x;
+    const y = offsetY + label.y;
+    context.fillStyle = label.problems.length ? '#ff8a65' : '#ffe082';
+    context.fillRect(x - 2, y - 2, 4, 4);
+    context.lineWidth = 3;
+    context.strokeStyle = 'rgba(16,20,22,0.85)';
+    context.strokeText(text, x + 5, y);
+    context.fillText(text, x + 5, y);
+  }
+}
+
 window.__agentPreview = {
-  reviewBegin({ sessionId, width, height }) {
-    const record = requireSession(sessionId);
-    record.reviewGrid = document.createElement('canvas');
-    record.reviewGrid.width = width;
-    record.reviewGrid.height = height;
-    const context = record.reviewGrid.getContext('2d');
+  reviewBegin({ width, height }) {
+    reviewGrid = document.createElement('canvas');
+    reviewGrid.width = width;
+    reviewGrid.height = height;
+    const context = reviewGrid.getContext('2d');
     context.fillStyle = '#202428';
     context.fillRect(0, 0, width, height);
     return { width, height };
   },
-  reviewShot({ sessionId, shot, index, width, height, columns }) {
+  reviewShot({ sessionId, shot, index, width, height, columns, labels: withLabels = false }) {
     const record = requireSession(sessionId);
     const recipe = record.scene.exportRecipe();
     const animation = shot.animation ?? recipe.animation ?? null;
@@ -289,7 +363,7 @@ window.__agentPreview = {
     draw(record, shot.rendererTime, camera);
     const render = renderInfo(record.renderer);
     if (render.width < 64 || render.height < 64) throw new Error('Render budget reduced review below its minimum output size.');
-    const context = record.reviewGrid.getContext('2d');
+    const context = reviewGrid.getContext('2d');
     const x = index % columns * width;
     const y = Math.floor(index / columns) * (height + 24);
     context.drawImage(canvas, x, y + 24, width, height);
@@ -297,13 +371,14 @@ window.__agentPreview = {
     context.font = '12px sans-serif';
     context.textBaseline = 'middle';
     context.fillText(shot.label.replace(/[\r\n\t]/g, ' '), x + 8, y + 12, width - 16);
+    const labels = withLabels ? collectLabels(record.scene, camera, width, height) : undefined;
+    if (labels) paintLabels(context, labels, x, y + 24);
     return { label: shot.label, camera, animation: record.asset ? animation : null,
       motionTime: record.scene.motionTime ?? null, rendererTime: shot.rendererTime,
-      requestedWidth: width, requestedHeight: height, ...render };
+      requestedWidth: width, requestedHeight: height, ...render, ...(labels ? { labels } : {}) };
   },
-  reviewResult({ sessionId }) {
-    const record = requireSession(sessionId);
-    return { data: record.reviewGrid.toDataURL('image/png').split(',')[1], mimeType: 'image/png' };
+  reviewResult() {
+    return { data: reviewGrid.toDataURL('image/png').split(',')[1], mimeType: 'image/png' };
   },
   snapshot({ sessionId, expectedRevision }) {
     const record = requireSession(sessionId);
@@ -421,7 +496,7 @@ window.__agentPreview = {
     const [mesh] = record.scene.inspectMeshes({ geometries: [geometry] }).meshes;
     return { ...status, mesh };
   },
-  look({ sessionId, motionTime }) {
+  look({ sessionId, motionTime, labels: withLabels = false }) {
     const record = requireSession(sessionId);
     if (motionTime !== undefined) {
       if (typeof record.scene.sampleMotion !== 'function') {
@@ -432,11 +507,12 @@ window.__agentPreview = {
     draw(record);
     const render = renderInfo(record.renderer);
     record.lastRender = render;
+    const labels = withLabels ? collectLabels(record.scene, record.scene.camera, canvas.width, canvas.height) : undefined;
     return {
-      data: canvas.toDataURL('image/png').split(',')[1],
+      data: labeledPng(labels),
       mimeType: 'image/png',
       metadata: { sessionId, revision: record.scene.revision, topologyRevision: record.scene.topologyRevision,
-        motionTime: record.scene.motionTime ?? null, ...render },
+        motionTime: record.scene.motionTime ?? null, ...render, ...(labels ? { labels } : {}) },
     };
   },
   checkpoint({ sessionId, checkpointId }) {
@@ -466,6 +542,37 @@ window.__agentPreview = {
     record.checkpoints.delete(checkpointId);
     return { sessionId, checkpointId, released: true };
   },
+  /** Apply operations to a scratch copy and store the result as a branch. The source scene and its revision stay as they are. */
+  branchApply({ sessionId, name, operations, expectedRevision }) {
+    return afterMeshBooleans(operations, () => {
+      const record = requireSession(sessionId);
+      if (record.asset) throw new TypeError('Branches support procedural recipe scenes.');
+      if (record.scene.revision !== expectedRevision) throw new Error('Stale revision for branch.');
+      const baseRecipe = record.scene.exportRecipe();
+      const scratch = createAgentScene(baseRecipe);
+      validatePreviewCamera(candidateCamera(record, operations));
+      scratch.apply(operations, { expectedRevision: scratch.revision });
+      const { shared } = record.branches.fork(name, { recipe: scratch.exportRecipe(), baseRecipe, operations, baseRevision: expectedRevision });
+      return { sessionId, branch: name, sourceRevision: record.scene.revision, shared,
+        branches: record.branches.names(), snapshots: record.branches.snapshotCount() };
+    });
+  },
+  branchRecipe({ sessionId, name }) {
+    const record = requireSession(sessionId);
+    const branch = record.branches.get(name);
+    return { recipe: branch.recipe, stale: branch.baseKey !== JSON.stringify(record.scene.exportRecipe()) };
+  },
+  /** Keep one branch: replay its operations on the live scene (one revision), then drop every branch. */
+  keepBranch({ sessionId, name, expectedRevision }) {
+    const record = requireSession(sessionId);
+    const branch = record.branches.get(name);
+    if (branch.baseKey !== JSON.stringify(record.scene.exportRecipe())) {
+      throw new Error(`The scene changed since branch ${name} was forked. Fork it again from the current revision.`);
+    }
+    const status = this.applyLoaded({ sessionId, operations: branch.operations, expectedRevision });
+    record.branches.clear();
+    return { ...status, kept: name };
+  },
   exportRecipe({ sessionId }) {
     const record = requireSession(sessionId);
     return { sessionId, revision: record.scene.revision, recipe: record.scene.exportRecipe() };
@@ -489,6 +596,7 @@ window.__agentPreview = {
       record.asset?.dispose();
     }
     record.checkpoints.clear();
+    record.branches.clear();
     active = null;
     return { sessionId, disposed: true };
   },
