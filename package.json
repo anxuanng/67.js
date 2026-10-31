@@ -120,7 +120,8 @@
     "parity": "node scripts/parity-report.mjs",
     "reference": "node bench/reference/run.mjs",
     "size": "node scripts/measure-size.mjs",
-    "benchmark:runtime": "node bench/runtime/run.mjs"
+    "benchmark:runtime": "node bench/runtime/run.mjs",
+    "check:tool-schemas": "node scripts/check-tool-schemas.mjs"
   },
   "peerDependencies": {
     "@dimforge/rapier3d-compat": "0.21.0",
@@ -142,6 +143,8 @@
     "@dimforge/rapier3d-compat": "0.21.0",
     "@modelcontextprotocol/client": "2.4.0",
     "@modelcontextprotocol/server": "2.4.0",
+    "ajv": "^8.20.0",
+    "ajv-formats": "^3.0.1",
     "esbuild": "0.28.2",
     "gl-matrix": "3.4.4",
     "highlight.js": "11.12.0",

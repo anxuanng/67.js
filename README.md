@@ -84,6 +84,8 @@ const renderer = new Renderer67(canvas, parts, { samples: 4, memoryBudgetMiB: 25
 renderer.render({ eye: [4, 3, 6], target: [0, 1, 0] });
 ```
 
+To save a PNG from a script without a browser window or an MCP client, use the [render-from-a-script recipe](docs/guide.md#render-a-png-from-a-script-without-mcp).
+
 Call `renderer.resize()` after the canvas changes size, and `renderer.dispose()` before you replace the renderer.
 Use `renderer.updateParts(parts)` to move or recolour parts without a new upload.
 The [guide](docs/guide.md) covers cameras, lights, effects and every material field.
