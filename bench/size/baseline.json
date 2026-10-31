@@ -14,9 +14,9 @@
  },
  "bundles": {
   "entry:core": {
-   "min": 291224,
-   "gzip": 82878,
-   "brotli": 70674
+   "min": 283499,
+   "gzip": 80972,
+   "brotli": 69112
   },
   "entry:model": {
    "min": 40093,
@@ -39,9 +39,9 @@
    "brotli": 7331
   },
   "entry:gltf": {
-   "min": 162083,
-   "gzip": 49171,
-   "brotli": 42078
+   "min": 154791,
+   "gzip": 47466,
+   "brotli": 40652
   },
   "entry:modeling": {
    "min": 21149,
@@ -125,8 +125,13 @@
   },
   "entry:light-bake": {
    "min": 67640,
-   "gzip": 24805,
-   "brotli": 21989
+   "gzip": 24815,
+   "brotli": 21956
+  },
+  "entry:path-tracer": {
+   "min": 31466,
+   "gzip": 12605,
+   "brotli": 11075
   },
   "entry:texture-set": {
    "min": 1837,
@@ -134,28 +139,28 @@
    "brotli": 762
   },
   "entry:agent-scene": {
-   "min": 213311,
-   "gzip": 64903,
-   "brotli": 56243
+   "min": 204745,
+   "gzip": 62551,
+   "brotli": 54219
   },
   "entry:agent-scene+lazy": {
-   "min": 606683,
-   "gzip": 204805,
-   "brotli": 178684
+   "min": 597754,
+   "gzip": 202334,
+   "brotli": 176571
   },
   "entry:agent-asset": {
-   "min": 307638,
-   "gzip": 95450,
-   "brotli": 83096
+   "min": 299072,
+   "gzip": 93045,
+   "brotli": 81048
   },
   "entry:agent-asset+lazy": {
-   "min": 642749,
-   "gzip": 215373,
-   "brotli": 187445
+   "min": 633820,
+   "gzip": 212853,
+   "brotli": 185359
   },
   "entry:hdri": {
    "min": 8075,
-   "gzip": 3139,
+   "gzip": 3138,
    "brotli": 2801
   },
   "entry:camera-effects": {
@@ -169,24 +174,24 @@
    "brotli": 1425
   },
   "scene:lit-box": {
-   "min": 222335,
-   "gzip": 60778,
-   "brotli": 51782
+   "min": 214877,
+   "gzip": 58928,
+   "brotli": 50227
   },
   "scene:gltf-box": {
-   "min": 281459,
-   "gzip": 80004,
-   "brotli": 68504
+   "min": 273787,
+   "gzip": 78107,
+   "brotli": 67034
   },
   "scene:agent-scene": {
-   "min": 323006,
-   "gzip": 94308,
-   "brotli": 81013
+   "min": 314066,
+   "gzip": 91720,
+   "brotli": 78757
   },
   "scene:agent-scene+lazy": {
-   "min": 716378,
-   "gzip": 234207,
-   "brotli": 203426
+   "min": 707075,
+   "gzip": 231506,
+   "brotli": 201092
   }
  }
 }

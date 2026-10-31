@@ -7,6 +7,7 @@ import { createServer } from 'node:http';
 import { randomUUID } from 'node:crypto';
 import { createContext, Script } from 'node:vm';
 import { AGENT_SCENE_CAPABILITIES, AGENT_SCENE_DEFAULT_LIMITS, RENDER_PASS_NAMES, RENDER_PASS_DEPTH_RANGE, VIDEO_ENCODERS, MAXIMUM_VIDEO_SECONDS } from '../src/agent-scene-capabilities.js';
+import { PATH_TRACER_CAPABILITIES } from '../src/path-tracer-capabilities.js';
 import { audioInputArguments, createAudioLibrary, measureStreamSeconds } from '../scripts/job-audio.mjs';
 import { filmTimelineDuration, filmTimelineShotStarts, sampleFilmTimeline } from '../src/film-timeline.js';
 import { normalizeReview, REVIEW_LIMITS } from '../scripts/agent-review.mjs';
@@ -99,7 +100,7 @@ async function reviewRuntimeHarness({ failShot, blockShot = false, oversize = fa
   const context = createContext({ createServer, randomUUID, existsSync: () => true,
     readFile: async () => '', packageMetadata: { version: 'test' },
     createRequire: () => ({ resolve: () => { throw new Error('no peer in tests'); } }),
-    AGENT_SCENE_CAPABILITIES, AGENT_SCENE_DEFAULT_LIMITS, RENDER_PASS_NAMES, RENDER_PASS_DEPTH_RANGE, VIDEO_ENCODERS, MAXIMUM_VIDEO_SECONDS,
+    AGENT_SCENE_CAPABILITIES, AGENT_SCENE_DEFAULT_LIMITS, RENDER_PASS_NAMES, RENDER_PASS_DEPTH_RANGE, VIDEO_ENCODERS, MAXIMUM_VIDEO_SECONDS, PATH_TRACER_CAPABILITIES,
     audioInputArguments, createAudioLibrary, measureStreamSeconds, filmTimelineDuration, filmTimelineShotStarts, sampleFilmTimeline, normalizeReview, REVIEW_LIMITS, isPreviewHost, BRANCH_LIMITS, validateBranchName,
     chromium: { launch: async () => browser }, URL, Buffer, process, performance, setTimeout, clearTimeout,
   });

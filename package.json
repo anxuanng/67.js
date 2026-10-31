@@ -71,6 +71,7 @@
     "./addons/grass": "./build/grass.js",
     "./addons/clutter": "./build/clutter.js",
     "./addons/light-bake": "./build/light-bake.js",
+    "./addons/path-tracer": "./build/path-tracer.js",
     "./addons/texture-set": "./build/texture-set.js",
     "./addons/agent-scene": "./build/agent-scene.js",
     "./addons/agent-asset": "./build/agent-asset.js",
@@ -103,6 +104,7 @@
     "smoke:agent-assets": "node scripts/smoke-agent-assets.mjs",
     "smoke:agent-render-jobs": "node scripts/smoke-agent-render-jobs.mjs",
     "smoke:render-passes": "node scripts/smoke-render-passes.mjs",
+    "smoke:path-tracer": "node scripts/smoke-path-tracer.mjs",
     "smoke:film-timeline": "node scripts/smoke-film-timeline.mjs",
     "smoke:material-layers": "node scripts/smoke-material-layers.mjs",
     "smoke:agent-motion": "node scripts/smoke-agent-motion.mjs",
@@ -121,7 +123,8 @@
     "parity": "node scripts/parity-report.mjs",
     "reference": "node bench/reference/run.mjs",
     "size": "node scripts/measure-size.mjs",
-    "benchmark:runtime": "node bench/runtime/run.mjs"
+    "benchmark:runtime": "node bench/runtime/run.mjs",
+    "check:tool-schemas": "node scripts/check-tool-schemas.mjs"
   },
   "peerDependencies": {
     "@dimforge/rapier3d-compat": "0.21.0",
@@ -143,6 +146,8 @@
     "@dimforge/rapier3d-compat": "0.21.0",
     "@modelcontextprotocol/client": "2.4.0",
     "@modelcontextprotocol/server": "2.4.0",
+    "ajv": "^8.20.0",
+    "ajv-formats": "^3.0.1",
     "esbuild": "0.28.2",
     "gl-matrix": "3.4.4",
     "highlight.js": "11.12.0",

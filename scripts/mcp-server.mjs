@@ -585,6 +585,7 @@ const renderSettings = z.strictObject({
   animation: z.strictObject({ clip: z.number().int().min(0), start: z.number().min(0).max(3600).optional() }).optional(),
   motion: z.strictObject({ start: z.number().min(0).max(3600).optional() }).optional(),
   rendererTime: z.strictObject({ start: z.number().min(0).max(3600).optional(), rate: z.number().min(-16).max(16).optional() }).optional(),
+  renderer: z.strictObject({ type: z.literal('pathTracer'), samples: z.number().optional(), bounces: z.number().optional(), denoise: z.boolean().optional(), seed: z.number().optional(), maxSeconds: z.number().optional() }).optional().describe('image only: offline path tracer; limits and skips in scene_capabilities pathTracer.'),
   timeline: z.strictObject({ start: z.number().min(0).max(60).optional() }).optional().describe('Play the recipe timeline from start (default 0); duration defaults to the rest of it. It owns the motion clock, so leave motion and animation out.'),
   audio: z.strictObject({ file: z.string().max(68), offset: z.number().min(0).max(3600).optional() }).optional().describe('Video only: a file name in the --audio folder (.wav, .mp3, .ogg, .flac) mixed in from offset seconds.'),
   encoder: z.enum(VIDEO_ENCODERS).optional().describe('Video only: cpu (default) or nvenc.'),

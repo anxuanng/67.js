@@ -2,6 +2,8 @@
 // --ambient-occlusion <strength> [--ambient-occlusion-radius <units>] turns occlusion on (off by default).
 // --bake [<id>,<id>] bakes bounced light into the named scenes (every scene when no ids follow) before 67js draws them;
 // Blender still gets the plain scene.
+// --path-tracer [--samples <n>] draws the scenes with the offline path tracer (src/path-tracer.js) instead, keeps the
+// Cycles renders of an earlier run, and scores them into path-tracer.json. Nothing in baseline.json or images/ changes.
 // Use --score-only to score existing renders, --skip-blender to keep them, and --scene <id> for one scene.
 import { spawnSync } from 'node:child_process';
 import { mkdir, writeFile } from 'node:fs/promises';
@@ -35,6 +37,9 @@ const ambientOcclusionRadius = radiusFlag >= 0 ? Number(argumentsGiven[radiusFla
 const bakeFlag = argumentsGiven.indexOf('--bake');
 const bakeValue = bakeFlag >= 0 ? argumentsGiven[bakeFlag + 1] : undefined;
 const bakedSceneIds = bakeFlag >= 0 && bakeValue && !bakeValue.startsWith('--') ? bakeValue.split(',') : null;
+const pathTracerFlag = argumentsGiven.includes('--path-tracer');
+const samplesFlag = argumentsGiven.indexOf('--samples');
+const pathTracerSamples = samplesFlag >= 0 ? Number(argumentsGiven[samplesFlag + 1]) : 64;
 const onlyScene = sceneFlag >= 0 ? argumentsGiven[sceneFlag + 1] : null;
 
 async function renderBackend(backend, serverUrl, graphics) {
@@ -65,6 +70,29 @@ async function renderBackend(backend, serverUrl, graphics) {
   }
 }
 
+async function renderPathTracerScenes(serverUrl) {
+  const browser = await chromium.launch({ executablePath: CHROME, headless: true, args: BACKEND_ARGUMENTS.cpu });
+  const timings = {};
+  try {
+    const page = await browser.newPage({ viewport: { width: WIDTH, height: HEIGHT } });
+    page.setDefaultTimeout(0);
+    await page.goto(`${serverUrl}/bench/reference/harness.html`, { timeout: PAGE_LOAD_TIMEOUT });
+    await page.waitForFunction(() => window.renderReferencePathTraced, null, { timeout: PAGE_LOAD_TIMEOUT });
+    const sceneIds = await page.evaluate(() => window.referenceSceneIds);
+    for (const id of sceneIds) {
+      if (onlyScene && id !== onlyScene) continue;
+      const options = { width: WIDTH, height: HEIGHT, samples: pathTracerSamples, maxSeconds: 1800 };
+      const result = await page.evaluate(([sceneId, tracerOptions]) => window.renderReferencePathTraced(sceneId, tracerOptions), [id, options]);
+      await writeFile(`${WORK_DIRECTORY}/${id}-pathtracer.png`, Buffer.from(result.image, 'base64'));
+      timings[id] = { seconds: Number(result.report.seconds.toFixed(1)), samples: result.report.samples, ignored: result.report.ignored };
+      console.log(`${id} path traced: ${timings[id].seconds} s at ${timings[id].samples} samples`);
+    }
+  } finally {
+    await browser.close();
+  }
+  await writeFile(`${WORK_DIRECTORY}/pathtracer-timings.json`, JSON.stringify(timings, null, 1));
+}
+
 function runChecked(command, commandArguments) {
   const result = spawnSync(command, commandArguments, { stdio: ['ignore', 'pipe', 'inherit'], encoding: 'utf8', maxBuffer: 1 << 28 });
   const lines = result.stdout.split('\n').filter(line => !/^(Fra:|Saved:|Time:|\s*$)/.test(line));
@@ -75,7 +103,17 @@ function runChecked(command, commandArguments) {
 setPriority(0, constants.priority.PRIORITY_BELOW_NORMAL);
 await mkdir(`${WORK_DIRECTORY}/scenes`, { recursive: true });
 
-if (!scoreOnly) {
+if (pathTracerFlag && !scoreOnly) {
+  const server = await createServer({ server: { host: '127.0.0.1', port: 0 }, logLevel: 'silent' });
+  await server.listen();
+  try {
+    await renderPathTracerScenes(`http://127.0.0.1:${server.httpServer.address().port}`);
+  } finally {
+    await server.close();
+  }
+}
+
+if (!scoreOnly && !pathTracerFlag) {
   const server = await createServer({ server: { host: '127.0.0.1', port: 0 }, logLevel: 'silent' });
   await server.listen();
   const graphics = {};
@@ -93,9 +131,9 @@ if (!scoreOnly) {
   }
 }
 
-if (!onlyScene) {
+if (!onlyScene || pathTracerFlag) {
   runChecked('uv', [
     'run', '--no-project', '--python', '3.12', '--with', 'flip-evaluator', '--with', 'pillow', '--with', 'numpy',
-    'python', '-I', 'bench/reference/score.py', WORK_DIRECTORY, OUTPUT_DIRECTORY,
+    'python', '-I', 'bench/reference/score.py', WORK_DIRECTORY, OUTPUT_DIRECTORY, ...(pathTracerFlag ? ['--path-tracer'] : []),
   ]);
 }

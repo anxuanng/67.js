@@ -84,6 +84,8 @@ const renderer = new Renderer67(canvas, parts, { samples: 4, memoryBudgetMiB: 25
 renderer.render({ eye: [4, 3, 6], target: [0, 1, 0] });
 ```
 
+To save a PNG from a script without a browser window or an MCP client, use the [render-from-a-script recipe](docs/guide.md#render-a-png-from-a-script-without-mcp).
+
 Call `renderer.resize()` after the canvas changes size, and `renderer.dispose()` before you replace the renderer.
 Use `renderer.updateParts(parts)` to move or recolour parts without a new upload.
 The [guide](docs/guide.md) covers cameras, lights, effects and every material field.
@@ -120,6 +122,7 @@ Each addon is a separate import, so a page loads only what it uses.
 | Terrain | `67js/addons/terrain`, `67js/addons/texture-set` | [Chunked terrain](https://67js.codepawl.com/terrain.md) with level of detail and a four-layer splat material from scanned textures. |
 | Grass | `67js/addons/grass` | [Grass fields](https://67js.codepawl.com/grass.md) of clumped, curved blades with rolling wind gusts, paths and level of detail. |
 | Clutter | `67js/addons/clutter` | [Pebbles, rocks, twigs and fallen leaves](https://67js.codepawl.com/clutter.md) scattered over terrain in streamed tiles. |
+| Path tracer | `67js/addons/path-tracer` | [Offline stills that follow Cycles](https://67js.codepawl.com/path-tracer.md): bounced light, glass and soft shadows on the CPU. |
 | Light bake | `67js/addons/light-bake` | [Bounced light baked into one lightmap per part](https://67js.codepawl.com/light-bake.md), drawn through the emissive map. |
 | Vegetation | `67js/addons/vegetation` | [Seeded trees, bushes and grass](https://67js.codepawl.com/vegetation.md) with scanned leaves and bark, wind and level of detail. |
 | Liquid | `67js/addons/spume` | [Baked liquid playback](https://67js.codepawl.com/spume.md) with refraction and spray from the Spume solver. |
