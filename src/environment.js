@@ -156,7 +156,7 @@ vec2 equirectangularFromDirection(vec3 direction) {
 }
 `;
 
-const prefilterFragment = `#version 300 es
+export const environmentPrefilterFragment = `#version 300 es
 precision highp float;
 in vec2 textureCoordinate;
 uniform sampler2D sourceMap;
@@ -210,7 +210,7 @@ void main() {
   outputColor = vec4(min(total / max(totalWeight, 0.0001), 65000.0), 1.0);
 }`;
 
-const brdfFragment = `#version 300 es
+export const environmentBrdfFragment = `#version 300 es
 precision highp float;
 in vec2 textureCoordinate;
 out vec4 outputColor;
@@ -354,8 +354,8 @@ export function createEnvironmentResources(context, map, { compileProgram, fulls
   const specularTexture = createHalfFloatTexture(context, context.RGBA16F, layout.levelCount, layout.width, layout.height, { wrapHorizontally: true });
   const brdfTexture = createHalfFloatTexture(context, context.RG16F, 1, ENVIRONMENT_BRDF_SIZE, ENVIRONMENT_BRDF_SIZE, { wrapHorizontally: false });
   const framebuffer = context.createFramebuffer();
-  const prefilterProgram = compileProgram(context, fullscreenVertex, prefilterFragment);
-  const brdfProgram = compileProgram(context, fullscreenVertex, brdfFragment);
+  const prefilterProgram = compileProgram(context, fullscreenVertex, environmentPrefilterFragment);
+  const brdfProgram = compileProgram(context, fullscreenVertex, environmentBrdfFragment);
   context.disable(context.DEPTH_TEST);
   context.disable(context.CULL_FACE);
   context.disable(context.BLEND);
