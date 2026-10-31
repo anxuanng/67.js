@@ -124,8 +124,10 @@ A material on a standard tag (`surface` in recipes, `gltf` and `armor` in code) 
 | `attenuationColor`, `attenuationDistance` | colour 0 to 1, distance above 0 | The colour light keeps after that many metres inside. Leave the distance out for no absorption. |
 | `sheenColor`, `sheenRoughness` | colour 0 to 1, 0 to 1 | A soft glow at grazing angles for cloth. Black is off. |
 | `specular`, `specularColor` | 0 to 4, colour 0 to 4 | Strength and tint of the non-metal reflection. |
+| `anisotropy`, `anisotropyRotation` | 0 to 1, -2π to 2π | Stretches highlights along a grain (brushed metal, hair): the surface is rougher along the tangent than across it, as in `KHR_materials_anisotropy`. The grain follows the UV direction, or rings the world up axis on a mesh without UVs. The rotation turns it around the normal, in radians. |
+| `iridescence`, `iridescenceIor`, `iridescenceThickness` | 0 to 1, 1 to 3, 0 to 1200 nm | A thin film over the surface (soap, oil, beetle shell, anodised metal) that shifts the reflection colour with the view angle, as in `KHR_materials_iridescence`. The film is as thick as `iridescenceThickness` everywhere; the glTF thickness minimum and texture are not kept. |
 
-A material that uses none of them costs nothing extra: the shader branches on uniforms that are zero, and transmission only exists in the pass that was already there for `liquid`.
+A material that uses none of them costs nothing extra: the shader branches on uniforms that are zero, and transmission only exists in the pass that was already there for `liquid`. Anisotropy and iridescence go further: their code is compiled out of the shader unless a part uses them (the `anisotropy` and `iridescence` shader features), so a scene without them draws with the same shader as before.
 
 Limits, stated plainly:
 
@@ -133,10 +135,12 @@ Limits, stated plainly:
 - A transmissive material does not take a clear coat, sheen or maps. Its base map and normal map are ignored.
 - The clear coat uses the surface normal and the key light. Point lights add no coat highlight.
 - Sheen is the Charlie distribution on the key light plus an ambient rim. It does not use a lookup table for energy loss.
-- Anisotropy and iridescence are not rendered. `KHR_materials_anisotropy` and `KHR_materials_iridescence` load with a warning.
+- A transmissive material draws in its own pass and ignores anisotropy and iridescence; `scene_inspect` diagnostics say so.
+- Anisotropy shapes the key light, the fill, point, spot and area lights and the reflected environment (the lookup is bent along the grain). The clear coat above it stays isotropic.
+- Iridescence uses the thin-film model of Belcour and Barla at the view angle, so the film colour follows the viewer but not each light separately. The clear coat stays plain.
 - Textures inside the layer extensions are ignored. Only the factors are read.
 
-glTF import and export carry these layers through `KHR_materials_clearcoat`, `transmission`, `volume`, `ior`, `specular` and `sheen`. `bench/reference` scores `glass` and `car-paint` against Blender's Principled BSDF with the same values.
+glTF import and export carry these layers through `KHR_materials_clearcoat`, `transmission`, `volume`, `ior`, `specular`, `sheen`, `anisotropy` and `iridescence`. `bench/reference` scores `glass`, `car-paint` and `brushed-film` against Blender's Principled BSDF with the same values.
 
 ## Baked graphs and UV patterns
 
@@ -156,5 +160,5 @@ Unlit materials accept base and emissive maps only.
 Texture alpha is ignored for opaque materials, as required by glTF's opaque mode.
 
 This feature does not complete the full material system.
-Anisotropy, iridescence, texture slots inside the layer extensions, node graphs, and authored tangent support remain missing.
+Texture slots inside the layer extensions, node graphs, and authored tangent support remain missing.
 GLB export of these material maps is outside this feature.

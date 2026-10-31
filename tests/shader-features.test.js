@@ -10,7 +10,7 @@ test('the default fragment shader keeps every feature', () => {
 
 test('a feature that a scene does not use becomes a constant false', () => {
   const plain = createFragmentShader([]);
-  for (const macro of ['USES_NORMAL_MAP', 'USES_SPLAT', 'USES_MOSS', 'USES_ALPHA_MODE', 'TAG_WATER', 'TAG_FIRE']) {
+  for (const macro of ['USES_NORMAL_MAP', 'USES_SPLAT', 'USES_MOSS', 'USES_ALPHA_MODE', 'USES_ANISOTROPY', 'USES_IRIDESCENCE', 'TAG_WATER', 'TAG_FIRE']) {
     assert.match(plain, new RegExp(`#define ${macro} false`));
   }
   const withWater = createFragmentShader(['water']);
@@ -24,4 +24,13 @@ test('every feature condition is a macro that the shader body uses', () => {
     const uses = fragmentShader.split(macro).length - 1;
     assert.ok(uses > 1, `${macro} is defined but never used`);
   }
+});
+
+test('anisotropy and iridescence compile in only when a material asks for them', () => {
+  const withAnisotropy = createFragmentShader(['anisotropy']);
+  assert.match(withAnisotropy, /#define USES_ANISOTROPY \(materialAnisotropy\.x > 0\.0\)/);
+  assert.match(withAnisotropy, /#define USES_IRIDESCENCE false/);
+  const withIridescence = createFragmentShader(['iridescence']);
+  assert.match(withIridescence, /#define USES_IRIDESCENCE \(materialIridescence\.x > 0\.0\)/);
+  assert.match(withIridescence, /#define USES_ANISOTROPY false/);
 });

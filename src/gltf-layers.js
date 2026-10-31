@@ -9,6 +9,8 @@ export const GLTF_LAYER_EXTENSIONS = Object.freeze([
   'KHR_materials_ior',
   'KHR_materials_specular',
   'KHR_materials_sheen',
+  'KHR_materials_anisotropy',
+  'KHR_materials_iridescence',
 ]);
 
 // Each row: extension, then the glTF property that feeds each material field.
@@ -19,6 +21,9 @@ const IMPORT_RULES = Object.freeze([
   ['KHR_materials_ior', { ior: 'ior' }],
   ['KHR_materials_specular', { specular: 'specularFactor', specularColor: 'specularColorFactor' }],
   ['KHR_materials_sheen', { sheenColor: 'sheenColorFactor', sheenRoughness: 'sheenRoughnessFactor' }],
+  ['KHR_materials_anisotropy', { anisotropy: 'anisotropyStrength', anisotropyRotation: 'anisotropyRotation' }],
+  // Without a thickness texture the film is as thick as the maximum, so the minimum is not kept.
+  ['KHR_materials_iridescence', { iridescence: 'iridescenceFactor', iridescenceIor: 'iridescenceIor', iridescenceThickness: 'iridescenceThicknessMaximum' }],
 ]);
 
 /** Layer fields of one glTF material definition, validated, as a plain object to spread onto a material. */

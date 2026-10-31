@@ -14,9 +14,9 @@
  },
  "bundles": {
   "entry:core": {
-   "min": 283396,
-   "gzip": 80960,
-   "brotli": 69030
+   "min": 291224,
+   "gzip": 82878,
+   "brotli": 70674
   },
   "entry:model": {
    "min": 40093,
@@ -39,9 +39,9 @@
    "brotli": 7331
   },
   "entry:gltf": {
-   "min": 154791,
-   "gzip": 47466,
-   "brotli": 40652
+   "min": 162083,
+   "gzip": 49171,
+   "brotli": 42078
   },
   "entry:modeling": {
    "min": 21149,
@@ -134,28 +134,28 @@
    "brotli": 762
   },
   "entry:agent-scene": {
-   "min": 204341,
-   "gzip": 62404,
-   "brotli": 54057
+   "min": 213311,
+   "gzip": 64903,
+   "brotli": 56243
   },
   "entry:agent-scene+lazy": {
-   "min": 597350,
-   "gzip": 202187,
-   "brotli": 176409
+   "min": 606683,
+   "gzip": 204805,
+   "brotli": 178684
   },
   "entry:agent-asset": {
-   "min": 298200,
-   "gzip": 92709,
-   "brotli": 80775
+   "min": 307638,
+   "gzip": 95450,
+   "brotli": 83096
   },
   "entry:agent-asset+lazy": {
-   "min": 632948,
-   "gzip": 212517,
-   "brotli": 185086
+   "min": 642749,
+   "gzip": 215373,
+   "brotli": 187445
   },
   "entry:hdri": {
    "min": 8075,
-   "gzip": 3138,
+   "gzip": 3139,
    "brotli": 2801
   },
   "entry:camera-effects": {
@@ -169,24 +169,24 @@
    "brotli": 1425
   },
   "scene:lit-box": {
-   "min": 214877,
-   "gzip": 58928,
-   "brotli": 50227
+   "min": 222335,
+   "gzip": 60778,
+   "brotli": 51782
   },
   "scene:gltf-box": {
-   "min": 273787,
-   "gzip": 78107,
-   "brotli": 67034
+   "min": 281459,
+   "gzip": 80004,
+   "brotli": 68504
   },
   "scene:agent-scene": {
-   "min": 313662,
-   "gzip": 91569,
-   "brotli": 78717
+   "min": 323006,
+   "gzip": 94308,
+   "brotli": 81013
   },
   "scene:agent-scene+lazy": {
-   "min": 706671,
-   "gzip": 231355,
-   "brotli": 201052
+   "min": 716378,
+   "gzip": 234207,
+   "brotli": 203426
   }
  }
 }

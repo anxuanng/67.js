@@ -5,7 +5,9 @@
  * Reads of an inspected scene include them only when there is something to say, to keep default results small.
  */
 const PLAIN_SURFACE_TAGS = new Set(['surface', 'gltf']);
-const LAYER_FIELDS = ['clearcoat', 'sheenColor', 'specular', 'specularColor'];
+const LAYER_FIELDS = ['clearcoat', 'sheenColor', 'specular', 'specularColor', 'anisotropy', 'iridescence'];
+// The pass that draws transmission is a separate shader without these layers.
+const FIELDS_IGNORED_BY_TRANSMISSION = ['anisotropy', 'iridescence'];
 const TRANSMISSION_DETAIL_FIELDS = ['thickness', 'attenuationColor', 'attenuationDistance'];
 
 function diagnostic(kind, severity, target, message, fix) {
@@ -29,7 +31,13 @@ function materialProblems(material) {
         `Remove ${field}, or set the material tag to surface with scene_apply set-material.`));
     }
   }
-  if (!transmitting) {
+  if (transmitting) {
+    for (const field of FIELDS_IGNORED_BY_TRANSMISSION.filter(layer => hasValue(material, layer))) {
+      problems.push(diagnostic('ignored-material-field', 'warning', material.id,
+        `${field} is ignored on a transmitting material.`,
+        `Set transmission to 0 to see ${field}, or remove ${field}.`));
+    }
+  } else {
     for (const field of TRANSMISSION_DETAIL_FIELDS.filter(detail => hasValue(material, detail))) {
       problems.push(diagnostic('ignored-material-field', 'warning', material.id,
         `${field} only matters with transmission, and transmission is 0.`,

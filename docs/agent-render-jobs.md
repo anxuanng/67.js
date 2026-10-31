@@ -68,6 +68,7 @@ editor is a non-goal of the engine (issue #23), so there are no layers, overlaps
 | `duration` | 0.1 to 30 s. The timeline holds up to 64 shots and 60 s. |
 | `motionStart` | Second of the motion clock the shot starts at. Omitted, the shot reads the motion at its place on the timeline, so a non-looping motion must cover it. Only for recipes with motion, physics or cloth. |
 | `camera` | A partial camera (`eye`, `target`, `up`, `fov`, `near`, `far`) on top of the sampled camera. Omitted, the shot keeps the camera of the motion tracks. |
+| `focusDistance`, `blur` | Depth of field for this shot: focus distance 0.01 to 100000 m and blur 0 to 1. Each is optional and replaces the recipe `effects.depthOfField` value for the shot only, so a close-up can pull focus without a global setting. A seek into a shot gives the same bytes as the frame in a sequence. |
 | `dip` | 0.05 to 4 s. The previous shot fades to black over the first half and this one fades up over the second half. |
 
 `set-timeline` edits the section and `null` removes it. A job renders it with `settings.timeline: { start }` (default 0) for kind `image`, `stills` or `video`.
