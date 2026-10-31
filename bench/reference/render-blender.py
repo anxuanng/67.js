@@ -1,7 +1,7 @@
 # Renders each described scene in Cycles and EEVEE, and saves linear pixels as .npy for the scorer.
 #   blender -b --factory-startup --python bench/reference/render-blender.py -- <work directory>
-# Light units were measured on a white plane: sun strength equals irradiance, and a point light has 4 pi watts for each
-# unit of 67.js intensity.
+# Light units were measured on a white plane: sun strength equals irradiance, a point or spot light has 4 pi watts for each
+# unit of 67.js intensity, and an area light has pi watts for each unit.
 import base64
 import json
 import math
@@ -18,6 +18,7 @@ HEIGHT = 540
 CYCLES_SAMPLES = 256
 EEVEE_SAMPLES = 64
 WATTS_PER_INTENSITY = 4 * math.pi
+WATTS_PER_AREA_INTENSITY = math.pi
 SUN_ANGLE = math.radians(1)
 # 67.js is Y up, and Blender is Z up.
 Y_UP_TO_Z_UP = Matrix(((1, 0, 0, 0), (0, 0, -1, 0), (0, 1, 0, 0), (0, 0, 0, 1)))
@@ -205,6 +206,52 @@ def build_lights(scene, environment):
         point_object = bpy.data.objects.new(f"Point-{index}", light)
         point_object.location = to_blender(point["position"])
         scene.collection.objects.link(point_object)
+    for index, spot in enumerate(environment.get("spotLights", [])):
+        build_spot_light(scene, index, spot)
+    for index, area in enumerate(environment.get("areaLights", [])):
+        build_area_light(scene, index, area)
+
+
+def build_spot_light(scene, index, spot):
+    # A Blender spot light has the watts of a point light of the same strength, and its cone only masks that light.
+    # Both use one cone mask: a smoothstep from the outer cosine to a penumbra fraction of the way to cosine 1.
+    light = bpy.data.lights.new(f"Spot-{index}", "SPOT")
+    light.energy = spot["intensity"] * WATTS_PER_INTENSITY
+    light.color = spot["color"]
+    light.shadow_soft_size = spot["radius"]
+    light.spot_size = 2 * spot["angle"]
+    light.spot_blend = spot["penumbra"]
+    spot_object = bpy.data.objects.new(f"Spot-{index}", light)
+    spot_object.location = to_blender(spot["position"])
+    spot_object.rotation_mode = "QUATERNION"
+    direction = Vector(to_blender(spot["direction"])).normalized()
+    spot_object.rotation_quaternion = direction.to_track_quat("-Z", "Y")
+    scene.collection.objects.link(spot_object)
+
+
+def build_area_light(scene, index, area):
+    # Measured on a white plane: a Blender area light of W watts matches a 67.js area light of W / pi candela, and the
+    # 67.js formula stays within about 1.2 percent on the axis from 0.2 m to 2 m for 1 m and 2 m squares.
+    light = bpy.data.lights.new(f"Area-{index}", "AREA")
+    light.energy = area["intensity"] * WATTS_PER_AREA_INTENSITY
+    light.color = area["color"]
+    light.shape = "RECTANGLE"
+    light.size = area["width"]
+    light.size_y = area["height"]
+    area_object = bpy.data.objects.new(f"Area-{index}", light)
+    area_object.location = to_blender(area["position"])
+    normal = Vector(to_blender(area["direction"])).normalized()
+    up = Vector(to_blender(area.get("up", [0, 1, 0]))).normalized()
+    width_axis = up.cross(normal)
+    if width_axis.length < 1e-3:
+        width_axis = Vector((1, 0, 0))
+    width_axis.normalize()
+    height_axis = width_axis.cross(normal)
+    # The light shines toward its local -Z, and the 67.js rectangle faces along its direction.
+    rotation = Matrix((width_axis, height_axis, -normal)).transposed()
+    area_object.rotation_mode = "QUATERNION"
+    area_object.rotation_quaternion = rotation.to_quaternion()
+    scene.collection.objects.link(area_object)
 
 
 def build_fog(scene, fog):

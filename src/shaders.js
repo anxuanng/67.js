@@ -357,6 +357,20 @@ uniform int pointLightCount;
 uniform vec4 pointLightPositions[8];
 uniform vec4 pointLightColors[8];
 uniform float pointLightRadii[8];
+uniform float pointLightShadowTiles[8];
+uniform int spotLightCount;
+uniform vec4 spotLightPositions[8];
+uniform vec4 spotLightColors[8];
+uniform vec4 spotLightDirections[8];
+uniform vec4 spotLightParameters[8];
+uniform int areaLightCount;
+uniform vec4 areaLightPositions[4];
+uniform vec4 areaLightColors[4];
+uniform vec4 areaLightNormals[4];
+uniform vec4 areaLightTangents[4];
+uniform sampler2D localShadowAtlas;
+uniform mat4 localShadowMatrices[24];
+uniform float localShadowTexelAngles[24];
 uniform vec3 keyColor;
 uniform float fillIntensity;
 uniform float ambientIntensity;
@@ -446,6 +460,46 @@ float shadowVisibility(vec3 normal) {
     }
   }
   return visibility / 9.0;
+}
+
+// Atlas tiles are 512 texels square on a 4 x 4 grid. The receiver is pushed off its surface by about two shadow texels,
+// which removes acne without a depth bias that grows with distance.
+float localShadowVisibility(float tile, vec3 position, vec3 normal, float lightDistance) {
+  int tileIndex = int(tile);
+  vec3 shifted = position + normal * (lightDistance * localShadowTexelAngles[tileIndex] * 2.0);
+  vec4 clip = localShadowMatrices[tileIndex] * vec4(shifted, 1.0);
+  if (clip.w <= 0.0) return 1.0;
+  vec3 projected = clip.xyz / clip.w * 0.5 + 0.5;
+  if (projected.z > 1.0 || any(lessThan(projected.xy, vec2(0.0))) || any(greaterThan(projected.xy, vec2(1.0)))) return 1.0;
+  ivec2 tileOrigin = ivec2(tileIndex % 4, tileIndex / 4) * 512;
+  vec2 pixel = projected.xy * 512.0 - 0.5;
+  ivec2 corner = ivec2(floor(pixel));
+  vec2 blend = fract(pixel);
+  float receiverDepth = projected.z - 0.00002;
+  float lit[4];
+  for (int tap = 0; tap < 4; tap++) {
+    ivec2 texel = clamp(corner + ivec2(tap & 1, tap >> 1), ivec2(0), ivec2(511));
+    lit[tap] = step(receiverDepth, texelFetch(localShadowAtlas, tileOrigin + texel, 0).r);
+  }
+  return mix(mix(lit[0], lit[1], blend.x), mix(lit[2], lit[3], blend.x), blend.y);
+}
+
+// Cube face of a point light's shadow, in the order +X, -X, +Y, -Y, +Z, -Z.
+float pointShadowFace(vec3 fromLight) {
+  vec3 magnitude = abs(fromLight);
+  if (magnitude.x >= magnitude.y && magnitude.x >= magnitude.z) return fromLight.x < 0.0 ? 1.0 : 0.0;
+  if (magnitude.y >= magnitude.z) return fromLight.y < 0.0 ? 3.0 : 2.0;
+  return fromLight.z < 0.0 ? 5.0 : 4.0;
+}
+
+float localAttenuation(float distanceSquared, float range, float radius) {
+  float cutoff = 1.0;
+  if (range > 0.0) {
+    float squaredRatio = distanceSquared / (range * range);
+    float fade = max(1.0 - squaredRatio * squaredRatio, 0.0);
+    cutoff = fade * fade;
+  }
+  return cutoff / max(distanceSquared, radius * radius);
 }
 
 vec3 studio(vec3 direction, float roughness) {
@@ -666,18 +720,56 @@ void main() {
     vec3 offset = pointLightPositions[index].xyz - worldPosition;
     float distanceSquared = dot(offset, offset);
     if (distanceSquared < 1e-12 || pointLightColors[index].w == 0.0) continue;
-    float range = pointLightPositions[index].w;
-    float cutoff = 1.0;
-    if (range > 0.0) {
-      float squaredRatio = distanceSquared / (range * range);
-      float fade = max(1.0 - squaredRatio * squaredRatio, 0.0);
-      cutoff = fade * fade;
-    }
-    if (cutoff == 0.0) continue;
-    float radius = pointLightRadii[index];
-    float attenuation = cutoff / max(distanceSquared, radius * radius);
+    float attenuation = localAttenuation(distanceSquared, pointLightPositions[index].w, pointLightRadii[index]);
+    if (attenuation == 0.0) continue;
     vec3 lightRadiance = pointLightColors[index].rgb * pointLightColors[index].w * attenuation;
+    if (USES_LOCAL_SHADOWS && pointLightShadowTiles[index] >= 0.0) {
+      float tile = pointLightShadowTiles[index] + pointShadowFace(-offset);
+      lightRadiance *= localShadowVisibility(tile, worldPosition, normal, sqrt(distanceSquared));
+    }
     radiance += illuminate(normal, viewDirection, offset * inversesqrt(distanceSquared), lightRadiance, color, metallic, roughness);
+  }
+  if (USES_SPOT_LIGHTS) {
+    for (int index = 0; index < 8; index++) {
+      if (index >= spotLightCount) break;
+      vec3 offset = spotLightPositions[index].xyz - worldPosition;
+      float distanceSquared = dot(offset, offset);
+      if (distanceSquared < 1e-12 || spotLightColors[index].w == 0.0) continue;
+      vec3 toLight = offset * inversesqrt(distanceSquared);
+      float coneCosine = dot(-toLight, spotLightDirections[index].xyz);
+      // The same cone mask as Blender: smoothstep between the outer and inner cosines.
+      float cone = smoothstep(spotLightDirections[index].w, spotLightParameters[index].y, coneCosine);
+      float attenuation = localAttenuation(distanceSquared, spotLightPositions[index].w, spotLightParameters[index].x) * cone;
+      if (attenuation == 0.0) continue;
+      vec3 lightRadiance = spotLightColors[index].rgb * spotLightColors[index].w * attenuation;
+      if (USES_LOCAL_SHADOWS && spotLightParameters[index].z >= 0.0) {
+        lightRadiance *= localShadowVisibility(spotLightParameters[index].z, worldPosition, normal, sqrt(distanceSquared));
+      }
+      radiance += illuminate(normal, viewDirection, toLight, lightRadiance, color, metallic, roughness);
+    }
+  }
+  if (USES_AREA_LIGHTS) {
+    for (int index = 0; index < 4; index++) {
+      if (index >= areaLightCount) break;
+      vec3 lightNormal = areaLightNormals[index].xyz;
+      vec3 widthAxis = areaLightTangents[index].xyz;
+      vec3 heightAxis = cross(lightNormal, widthAxis);
+      vec2 halfSize = vec2(areaLightNormals[index].w, areaLightTangents[index].w) * 0.5;
+      vec3 fromCenter = worldPosition - areaLightPositions[index].xyz;
+      // Representative point: the closest point of the rectangle stands in for the whole source.
+      vec3 closest = areaLightPositions[index].xyz
+        + widthAxis * clamp(dot(fromCenter, widthAxis), -halfSize.x, halfSize.x)
+        + heightAxis * clamp(dot(fromCenter, heightAxis), -halfSize.y, halfSize.y);
+      vec3 offset = closest - worldPosition;
+      float distanceSquared = dot(offset, offset);
+      vec3 toLight = offset * inversesqrt(max(distanceSquared, 1e-12));
+      float emission = max(dot(-toLight, lightNormal), 0.0);
+      float area = 4.0 * halfSize.x * halfSize.y;
+      // Adding area / pi keeps the term finite at the surface and matches a disc source on its axis.
+      float attenuation = emission / (distanceSquared + area / PI);
+      vec3 lightRadiance = areaLightColors[index].rgb * areaLightColors[index].w * attenuation;
+      radiance += illuminate(normal, viewDirection, toLight, lightRadiance, color, metallic, roughness);
+    }
   }
   vec3 reflectance = fresnel(max(dot(normal, viewDirection), 0.0), mix(vec3(0.04), color, metallic));
   float occlusion = 1.0;
@@ -764,6 +856,9 @@ const SHADER_FEATURE_CONDITIONS = {
   fire: ['TAG_FIRE', 'surface.w == 8.0'],
   smoke: ['TAG_SMOKE', 'surface.w == 9.0'],
   unlit: ['TAG_UNLIT', 'surface.w == 10.0'],
+  spotLights: ['USES_SPOT_LIGHTS', 'spotLightCount > 0'],
+  areaLights: ['USES_AREA_LIGHTS', 'areaLightCount > 0'],
+  localShadows: ['USES_LOCAL_SHADOWS', 'true'],
 };
 
 export const SHADER_FEATURES = Object.freeze(Object.keys(SHADER_FEATURE_CONDITIONS));

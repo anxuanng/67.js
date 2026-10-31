@@ -1,6 +1,6 @@
 # Reference renders
 
-This suite scores how close a 67.js render is to Blender on 8 fixed scenes. Later work uses these scores as its starting point.
+This suite scores how close a 67.js render is to Blender on 9 fixed scenes. Later work uses these scores as its starting point.
 
 ## Run it
 
@@ -24,6 +24,9 @@ Measured on 2026-10-30 with an RTX 3060, SwiftShader and Blender 5.2.2. The metr
 | `metal` | 0.1868 | 0.0934 | 0.1565 | No reflection between objects |
 | `fog` | 0.2612 | 0.2662 | 0.0542 | No multiple scattering |
 | `lit-interior` | 0.4997 | 0.5159 | 0.1204 | No indirect light, and point lights cast no shadows |
+| `spot-area` | 0.1242 | 0.1935 | 0.1707 | The sphere is lit more weakly at its shaded edge, and the wall has no bounce light |
+
+Rows are the baseline taken before shadows for point lights. The `lit-interior` scene now sets `castShadow` on its three point lights. With shadows, 67.js scores 0.5055 against Cycles (0.4997 before, so 0.0058 worse) and 0.0923 against EEVEE (0.1204 before, better): the shadow shape now matches, but Cycles fills its shadows with indirect light and 67.js leaves them dark. The committed `lit-interior` row stays at the earlier numbers. `spot-area` is new with shadows, a spot light and an area light.
 
 The mean against Cycles is 0.198 for 67.js and 0.160 for EEVEE. The mean difference between the RTX 3060 and SwiftShader is 0.007.
 
