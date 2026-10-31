@@ -129,24 +129,24 @@
    "brotli": 762
   },
   "entry:agent-scene": {
-   "min": 162579,
-   "gzip": 48203,
-   "brotli": 41448
+   "min": 183987,
+   "gzip": 55346,
+   "brotli": 47801
   },
   "entry:agent-scene+lazy": {
-   "min": 422954,
-   "gzip": 137805,
-   "brotli": 120313
+   "min": 439633,
+   "gzip": 143601,
+   "brotli": 125617
   },
   "entry:agent-asset": {
-   "min": 245362,
-   "gzip": 74061,
-   "brotli": 64428
+   "min": 262033,
+   "gzip": 79545,
+   "brotli": 69297
   },
   "entry:agent-asset+lazy": {
-   "min": 448381,
-   "gzip": 144778,
-   "brotli": 126295
+   "min": 465052,
+   "gzip": 150260,
+   "brotli": 131233
   },
   "entry:hdri": {
    "min": 8075,
@@ -164,14 +164,14 @@
    "brotli": 63362
   },
   "scene:agent-scene": {
-   "min": 260808,
-   "gzip": 74153,
-   "brotli": 63460
+   "min": 282212,
+   "gzip": 81177,
+   "brotli": 69763
   },
   "scene:agent-scene+lazy": {
-   "min": 521183,
-   "gzip": 163754,
-   "brotli": 142345
+   "min": 537858,
+   "gzip": 169434,
+   "brotli": 147600
   }
  }
 }

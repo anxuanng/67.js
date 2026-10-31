@@ -212,7 +212,8 @@ function seekForExport(record, motionTime) {
 
 // The scene's parts already carry the current pose, including IK and node overrides, so skinned parts export it as is.
 function posedExport(record) {
-  return { parts: record.scene.parts.map(withoutRoundoffShear), options: {} };
+  const rig = record.scene.rigExport?.() ?? { nodes: [], clips: [] };
+  return { parts: record.scene.parts.map(withoutRoundoffShear), options: rig.nodes.length ? rig : {} };
 }
 
 // Chains of bone transforms leave world matrices with Float32 roundoff that the exporter reads as shear. Real shear
