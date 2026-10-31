@@ -5,7 +5,7 @@ import { Script, createContext } from 'node:vm';
 import { mat4 } from 'gl-matrix';
 import { createAgentScene, needsMeshBooleans, loadMeshBooleans, meshBooleansLoaded, needsPhysics, loadPhysicsEngine, physicsEngineLoaded, loadAllAgentSceneModules, allAgentSceneModulesLoaded } from '../src/agent-scene.js';
 import { applyProjection } from '../src/camera.js';
-import { resolveAgentShadow } from '../src/agent-look.js';
+import { resolveAgentShadow, agentEnvironmentMap } from '../src/agent-look.js';
 import { createAgentAssetScene } from '../src/agent-asset.js';
 import { parseGltf } from '../src/gltf.js';
 import { skinnedStripAsset } from './fixtures/skinned-strip.js';
@@ -69,7 +69,7 @@ function previewHarness() {
     setManifoldModuleLoader: () => {},
     needsPhysics, loadPhysicsEngine, physicsEngineLoaded, setPhysicsModuleLoader: () => {},
     parseGltf, Uint8Array, atob,
-    applyProjection, mat4, resolveAgentShadow,
+    applyProjection, mat4, resolveAgentShadow, agentEnvironmentMap,
     Renderer67: FaultInjectedRenderer,
   });
   // Evaluate only trusted repository adapter code; inject the driver boundary for failure cases.

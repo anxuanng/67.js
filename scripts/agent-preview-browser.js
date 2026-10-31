@@ -2,19 +2,20 @@ import { createAgentScene, loadAllAgentSceneModules, allAgentSceneModulesLoaded,
 import { Renderer67 } from '../src/renderer.js';
 import { applyProjection } from '../src/camera.js';
 import { mat4 } from 'gl-matrix';
-import { resolveAgentShadow } from '../src/agent-look.js';
+import { resolveAgentShadow, agentEnvironmentMap } from '../src/agent-look.js';
 import { createAgentAssetScene } from '../src/agent-asset.js';
 import { parseGltf } from '../src/gltf.js';
 import { exportGlb } from '../src/export.js';
 import { weightTracksFromGltfAnimation } from '../src/export-skeleton.js';
 import { clipFromGltfAnimation } from '../src/skeleton-pose.js';
+import { sessionProblem } from '../src/agent-errors.js';
 
 let active = null;
 let canvas = document.querySelector('canvas');
 
 function requireSession(sessionId) {
   if (!active || active.sessionId !== sessionId) {
-    throw new Error('Unknown or disposed scene session.');
+    throw new Error(sessionProblem(sessionId, active?.sessionId));
   }
   return active;
 }
@@ -107,7 +108,7 @@ function draw(record, time = 0, camera = record.scene.camera) {
     record.shadowKey = shadowKey;
   }
   record.renderer.world = environment.world;
-  record.renderer.render({ ...camera, environment, effects, exposure: effects.exposure, time });
+  record.renderer.render({ ...camera, environment: { ...environment, map: agentEnvironmentMap(environment) }, effects, exposure: effects.exposure, time });
   const error = record.renderer.context.getError();
   if (error !== 0) {
     throw new Error(`WebGL render failed with error ${error}.`);
@@ -156,7 +157,7 @@ function initializeRenderer(scene, { memoryBudgetMiB, backend }) {
     hdr: true,
     depth: true,
     world: scene.environment.world,
-    environment: scene.environment,
+    environment: { ...scene.environment, map: agentEnvironmentMap(scene.environment) },
     shadowBounds: resolveAgentShadow(scene.shadow, scene.environment.lightDirection),
     pixelRatio: 1,
     samples: backend === 'cpu' ? 1 : 4,
@@ -212,7 +213,8 @@ function seekForExport(record, motionTime) {
 
 // The scene's parts already carry the current pose, including IK and node overrides, so skinned parts export it as is.
 function posedExport(record) {
-  return { parts: record.scene.parts.map(withoutRoundoffShear), options: {} };
+  const rig = record.scene.rigExport?.() ?? { nodes: [], clips: [] };
+  return { parts: record.scene.parts.map(withoutRoundoffShear), options: rig.nodes.length ? rig : {} };
 }
 
 // Chains of bone transforms leave world matrices with Float32 roundoff that the exporter reads as shear. Real shear

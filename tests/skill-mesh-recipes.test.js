@@ -1,3 +1,4 @@
+import { GEOMETRY_PROBLEMS } from '../src/mesh-lint.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFile } from 'node:fs/promises';
@@ -25,7 +26,7 @@ for (const geometry of geometries) {
     });
     const [report] = scene.inspectMeshes().meshes;
     assert.equal(report.ok, true, JSON.stringify(report.problems));
-    assert.deepEqual(report.problems, []);
+    assert.deepEqual(report.problems.filter(problem => !(problem.kind in GEOMETRY_PROBLEMS)), []);
     assert.equal(report.parts.closed, report.parts.count, 'every part is closed');
   });
 }

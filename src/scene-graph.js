@@ -107,7 +107,7 @@ export function createSceneGraph(definitions = [], { maxNodes = 4096, maxDepth =
   let parents = new Int32Array(records.length);
   for (let index = 0; index < records.length; index++) {
     const parent = records[index].parent;
-    if (parent !== null && !namedIndices.has(parent)) throw new RangeError(`Node ${records[index].name} parent was not found: ${parent}`);
+    if (parent !== null && !namedIndices.has(parent)) throw new RangeError(`Node ${records[index].name} parent was not found: ${parent}. Add that node first, or set parent to null for a root.`);
     parents[index] = parent === null ? -1 : namedIndices.get(parent);
   }
   let order = compileOrder(parents, maxDepth);

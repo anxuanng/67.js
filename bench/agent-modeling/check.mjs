@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { measureAssetRecipe, measureRecipe } from './measure.mjs';
 import { taskById } from './tasks.mjs';
+import { REQUIRED_HUMANOID_BONES } from '../../src/retarget.js';
 
 const AXES = { x: 0, y: 1, z: 2 };
 const SIZE_TOLERANCE = 0.03;
@@ -10,6 +11,37 @@ const SIZE_FLOOR = 0.003;
 const GROUND_TOLERANCE = 0.005;
 
 const round = value => Number(value.toPrecision(4));
+
+const forwardOf = point => point[2];
+
+// A walk moves both feet far, in opposite phase, bends knees forward and elbows back, and no limb part collapses or stretches.
+function checkWalk(rig, check) {
+  if (!rig?.samples.length) return { pass: false, detail: 'no armature or no motion' };
+  const problems = [];
+  for (const foot of ['leftFoot', 'rightFoot']) {
+    const travel = rig.samples.map(sample => forwardOf(sample.joints[foot] ?? [0, 0, 0]));
+    if (Math.max(...travel) - Math.min(...travel) < check.footTravel) problems.push(`${foot} moves ${round(Math.max(...travel) - Math.min(...travel))} m`);
+  }
+  const first = rig.samples[0];
+  const half = rig.samples[rig.samples.length / 2];
+  if (!first.joints.leftFoot || !half.joints.leftFoot || (forwardOf(first.joints.leftFoot) - forwardOf(first.joints.rightFoot)) * (forwardOf(half.joints.leftFoot) - forwardOf(half.joints.rightFoot)) >= 0) problems.push('the feet do not alternate');
+  const bends = [['LowerLeg', 'UpperLeg', 'Foot', 1], ['LowerArm', 'UpperArm', 'Hand', -1]];
+  for (const sample of rig.samples) {
+    for (const side of ['left', 'right']) {
+      for (const [middle, root, end, direction] of bends) {
+        const [rootZ, middleZ, endZ] = [root, middle, end].map(name => forwardOf(sample.joints[`${side}${name}`] ?? [0, 0, 0]));
+        if ((middleZ - (rootZ + endZ) / 2) * direction < -0.005) problems.push(`${side}${middle} bends the wrong way at t=${round(sample.time)}`);
+      }
+    }
+  }
+  for (const sample of rig.samples) {
+    for (const [name, diagonal] of Object.entries(sample.diagonals)) {
+      const ratio = diagonal / rig.restDiagonals[name];
+      if (ratio < 0.7 || ratio > 1.4) problems.push(`${name} is ${round(ratio)}x its size at t=${round(sample.time)}`);
+    }
+  }
+  return { pass: problems.length === 0, detail: [...new Set(problems)].slice(0, 4).join('; ') || `${rig.samples.length} samples: feet alternate, knees forward, elbows back, parts keep their size` };
+}
 
 function checkOne(check, measures) {
   switch (check.kind) {
@@ -88,6 +120,22 @@ function checkOne(check, measures) {
       const onPath = close(solver.firstTarget, check.from) && close(solver.lastTarget, check.to);
       return { pass: onPath && solver.reached, detail: `targets ${JSON.stringify(solver.firstTarget)} to ${JSON.stringify(solver.lastTarget)}, reached ${solver.reached}, worst ${solver.worstError}` };
     }
+    case 'rigBones': {
+      const missing = REQUIRED_HUMANOID_BONES.filter(bone => !measures.rig?.bones.includes(bone));
+      return { pass: Boolean(measures.rig) && missing.length === 0, detail: measures.rig ? (missing.length ? `missing bones ${missing.join(', ')}` : `${measures.rig.bones.length} bones, all humanoid bones present`) : 'no armature' };
+    }
+    case 'rigSkinned': {
+      const rig = measures.rig;
+      const problems = [];
+      if (!rig) problems.push('no armature');
+      else {
+        if (rig.skinnedNodes !== rig.meshNodes) problems.push(`${rig.meshNodes - rig.skinnedNodes} of ${rig.meshNodes} mesh nodes have no skin`);
+        if (rig.unweightedVertices > 0) problems.push(`${rig.unweightedVertices} unweighted vertices`);
+      }
+      return { pass: problems.length === 0, detail: problems.join('; ') || `${rig.skinnedNodes} mesh nodes skinned, no unweighted vertices` };
+    }
+    case 'rigWalk':
+      return checkWalk(measures.rig, check);
     case 'physicsBody': {
       const body = measures.physics?.bodies.find(candidate => candidate.node === check.node);
       return { pass: body?.type === check.type && body?.shape === check.shape, detail: body ? `${body.node} is ${body.type} ${body.shape}` : `no physics body on ${check.node}` };

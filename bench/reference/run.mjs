@@ -1,4 +1,5 @@
 // Renders the reference scenes in 67.js and Blender, then scores them: npm run reference
+// --ambient-occlusion <strength> [--ambient-occlusion-radius <units>] turns occlusion on (off by default).
 // Use --score-only to score existing renders, --skip-blender to keep them, and --scene <id> for one scene.
 import { spawnSync } from 'node:child_process';
 import { mkdir, writeFile } from 'node:fs/promises';
@@ -22,6 +23,10 @@ const argumentsGiven = process.argv.slice(2);
 const scoreOnly = argumentsGiven.includes('--score-only');
 const skipBlender = argumentsGiven.includes('--skip-blender');
 const sceneFlag = argumentsGiven.indexOf('--scene');
+const occlusionFlag = argumentsGiven.indexOf('--ambient-occlusion');
+const ambientOcclusion = occlusionFlag >= 0 ? Number(argumentsGiven[occlusionFlag + 1]) : 0;
+const radiusFlag = argumentsGiven.indexOf('--ambient-occlusion-radius');
+const ambientOcclusionRadius = radiusFlag >= 0 ? Number(argumentsGiven[radiusFlag + 1]) : 0.5;
 const onlyScene = sceneFlag >= 0 ? argumentsGiven[sceneFlag + 1] : null;
 
 async function renderBackend(backend, serverUrl, graphics) {
@@ -37,7 +42,7 @@ async function renderBackend(backend, serverUrl, graphics) {
       if (onlyScene && id !== onlyScene) continue;
       const started = performance.now();
       const describe = backend === 'gpu';
-      const result = await page.evaluate(([sceneId, shouldDescribe]) => window.renderReferenceScene(sceneId, { describe: shouldDescribe }), [id, describe]);
+      const result = await page.evaluate(([sceneId, shouldDescribe, ambientOcclusion, ambientOcclusionRadius]) => window.renderReferenceScene(sceneId, { describe: shouldDescribe, ambientOcclusion, ambientOcclusionRadius }), [id, describe, ambientOcclusion, ambientOcclusionRadius]);
       if (result.glError !== 0) throw new Error(`${id} on ${backend} gave WebGL error ${result.glError}.`);
       graphics[backend] = result.graphics;
       await writeFile(`${WORK_DIRECTORY}/${id}-${backend}.png`, Buffer.from(result.image, 'base64'));

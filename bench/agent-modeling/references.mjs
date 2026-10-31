@@ -5,6 +5,8 @@
 const SUBDIVIDED_CUBE_SPAN = 0.8492;
 const PEBBLE_SIZE = [0.08, 0.03, 0.05];
 
+import { walkerRecipe } from './walker.mjs';
+
 const material = [{ id: 'paint', color: [0.6, 0.55, 0.5] }];
 
 function scene(geometries, nodes) {
@@ -228,6 +230,7 @@ export const REFERENCES = {
       { id: 'head', geometry: 'head', translation: [0, 0.12, 0], rotation: axisRotation('x', -Math.PI / 2) },
     ],
   ),
+  'rigged-walker': walkerRecipe(),
   'pillar-court': scene(
     [{ id: 'pillar', type: 'box', bevel: 0 }],
     [{
