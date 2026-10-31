@@ -345,7 +345,7 @@ void main() {
   outputColor = vec4(behind * transmittance * transmitted * (1.0 - reflectance) * (1.0 - fog) + displayed(surfaceLight), 1.0);
 }`;
 
-function buildFragmentShader(featureDefines) {
+function buildFragmentShader(featureDefines, featureCode) {
   return `#version 300 es
 ${featureDefines}
 precision highp float;
@@ -534,7 +534,7 @@ vec3 studio(vec3 direction, float roughness) {
 ${environmentLookupGlsl}
 ${environmentShadingGlsl}
 
-vec3 illuminate(vec3 normal, vec3 viewDirection, vec3 lightDirection, vec3 radiance, vec3 color, float metallic, float roughness) {
+${featureCode("declarations")}vec3 illuminate(vec3 normal, vec3 viewDirection, vec3 lightDirection, vec3 radiance, vec3 color, float metallic, float roughness) {
   float normalLight = max(dot(normal, lightDirection), 0.0);
   if (normalLight == 0.0) return vec3(0);
   vec3 halfway = normalize(viewDirection + lightDirection);
@@ -546,9 +546,10 @@ vec3 illuminate(vec3 normal, vec3 viewDirection, vec3 lightDirection, vec3 radia
   float masking = pow(roughness + 1.0, 2.0) / 8.0;
   float geometry = normalView / (normalView * (1.0 - masking) + masking);
   geometry *= normalLight / (normalLight * (1.0 - masking) + masking);
-  vec3 reflectance = fresnel(max(dot(halfway, viewDirection), 0.0), mix(materialDielectric, color, metallic));
+  vec3 baseReflectance = mix(materialDielectric, color, metallic);
+${featureCode("illuminateReflectance")}  vec3 reflectance = fresnel(max(dot(halfway, viewDirection), 0.0), baseReflectance);
   vec3 specular = distribution * geometry * reflectance / max(4.0 * normalView * normalLight, 0.001);
-  vec3 diffuse = (1.0 - reflectance) * (1.0 - metallic) * color / PI;
+${featureCode("illuminateSpecular")}  vec3 diffuse = (1.0 - reflectance) * (1.0 - metallic) * color / PI;
   return (diffuse + specular) * radiance * normalLight;
 }
 
@@ -657,7 +658,7 @@ vec3 surroundingsColor(vec3 direction, float roughness) {
 // Passing 0.04 as the colour of a fully metallic surface gives the lobe's own reflectance and no diffuse part.
 vec3 clearCoatLayer(vec3 baseRadiance, vec3 normal, vec3 viewDirection, float visibility) {
   float roughness = clamp(materialCoat.y, 0.075, 1.0);
-  float coatFresnel = fresnel(max(dot(normal, viewDirection), 0.001), vec3(0.04)).x * materialCoat.x;
+${featureCode("coatReset")}  float coatFresnel = fresnel(max(dot(normal, viewDirection), 0.001), vec3(0.04)).x * materialCoat.x;
   vec3 mirror = surroundingsColor(reflect(-viewDirection, normal), roughness) * coatFresnel * ambientIntensity;
   vec3 highlight = illuminate(normal, viewDirection, normalize(lightDirection), keyColor * visibility, vec3(0.04), 1.0, roughness);
   return baseRadiance * (1.0 - coatFresnel) + mirror + highlight * materialCoat.x;
@@ -787,7 +788,9 @@ void main() {
     roughness = mix(roughness, 1.0, mossCover);
     metallic = mix(metallic, 0.0, mossCover);
   }
-  float visibility = shadowVisibility(normal);
+  vec3 specularNormal = normal;
+  vec3 baseReflectance = mix(materialDielectric, color, metallic);
+${featureCode("mainSetup")}  float visibility = shadowVisibility(normal);
   vec3 radiance = illuminate(normal, viewDirection, normalize(lightDirection), keyColor * visibility, color, metallic, roughness);
   radiance += illuminate(normal, viewDirection, normalize(vec3(4.0, 2.0, -3.0)), mix(vec3(0.8, 2.0, 1.8), vec3(0.12, 0.17, 0.20) * daylight, worldMode) * fillIntensity, color, metallic, roughness);
   radiance += illuminate(normal, viewDirection, normalize(vec3(1.0, 2.0, 5.0)), vec3(0.6, 0.7, 0.8) * mix(1.0, 0.25 * daylight, worldMode) * fillIntensity, color, metallic, roughness);
@@ -847,17 +850,17 @@ void main() {
       radiance += illuminate(normal, viewDirection, toLight, lightRadiance, color, metallic, roughness);
     }
   }
-  vec3 reflectance = fresnel(max(dot(normal, viewDirection), 0.0), mix(materialDielectric, color, metallic));
+  vec3 reflectance = fresnel(max(dot(normal, viewDirection), 0.0), baseReflectance);
   float occlusion = 1.0;
   if (USES_OCCLUSION_MAP) occlusion = mix(1.0, texture(occlusionMap, textureUV).r, occlusionStrength);
   occlusion *= splatCavity;
   // Leaf and grass cards keep a faint sheen; full sky reflection washed grazing cards grey-blue.
   float skyReflection = canopyShaded ? 0.3 : 1.0;
   if (environmentEnabled > 0.5) {
-    radiance += environmentLighting(normal, viewDirection, color, metallic, roughness, occlusion, ambientIntensity, skyReflection);
+    radiance += environmentLighting(normal, specularNormal, baseReflectance, viewDirection, color, metallic, roughness, occlusion, ambientIntensity, skyReflection);
   } else {
     // Outdoors the surroundings are sky and haze; reflecting the studio softboxes there lit grazing leaves white and cyan.
-    vec3 reflected = reflect(-viewDirection, normal);
+    vec3 reflected = reflect(-viewDirection, specularNormal);
     vec3 surroundings = worldMode > 0.5 ? mix(fogColor * 0.8, vec3(0.20, 0.38, 0.52) * 1.6, smoothstep(-0.15, 0.7, reflected.y)) : studio(reflected, roughness);
     radiance += surroundings * reflectance * skyReflection * (1.0 - roughness * 0.55) * mix(1.0, 0.5 * daylight, worldMode) * occlusion * ambientIntensity;
     radiance += color * (1.0 - metallic) * mix(vec3(0.16, 0.20, 0.22), vec3(0.19, 0.25, 0.30) * max(daylight, 0.08), worldMode) * (0.45 + 0.55 * max(normal.y, 0.0)) * occlusion * ambientIntensity;
@@ -940,13 +943,37 @@ const SHADER_FEATURE_CONDITIONS = {
   renderPass: ['USES_RENDER_PASS', 'renderPassMode > 0.5'],
 };
 
+// A feature that is not in the list above has its GLSL in another module, so a scene that never uses it does not carry
+// it. That module calls registerShaderFeatureCode on import, with blocks of GLSL that createFragmentShader splices in:
+// declarations, illuminateReflectance, illuminateSpecular, coatReset and mainSetup, each ending in a newline.
+const registeredFeatureCode = new Map();
+
+/** Register the GLSL of an optional feature. Called by the module that holds it, on import. */
+export function registerShaderFeatureCode(feature, slots) {
+  registeredFeatureCode.set(feature, slots);
+}
+
+function requireFeatureCode(feature) {
+  const slots = registeredFeatureCode.get(feature);
+  if (!slots) {
+    throw new Error(`The ${feature} layer needs its shader code: add import '@codepawlhq/67js/addons/material-layer-shaders' (a recipe: await loadAgentSceneModules(recipe)).`);
+  }
+  return slots;
+}
+
+function featureCodeSplicer(features) {
+  const codes = features.filter(feature => !(feature in SHADER_FEATURE_CONDITIONS)).map(requireFeatureCode);
+  return slot => codes.map(code => code[slot] ?? '').join('');
+}
+
 export const SHADER_FEATURES = Object.freeze(Object.keys(SHADER_FEATURE_CONDITIONS));
 
+/** The fragment shader for a set of features. A feature with separate code throws until its module is imported. */
 export function createFragmentShader(features = SHADER_FEATURES) {
   const enabled = new Set(features);
   const lines = Object.entries(SHADER_FEATURE_CONDITIONS).map(([feature, [macro, condition]]) => `#define ${macro} ${enabled.has(feature) ? `(${condition})` : 'false'}`);
   lines.push('#define CANOPY_TAG (TAG_FOLIAGE || TAG_GRASS)');
-  return buildFragmentShader(lines.join('\n'));
+  return buildFragmentShader(lines.join('\n'), featureCodeSplicer([...enabled]));
 }
 
 export const fragmentShader = createFragmentShader();

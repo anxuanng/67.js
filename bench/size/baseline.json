@@ -14,9 +14,9 @@
  },
  "bundles": {
   "entry:core": {
-   "min": 283595,
-   "gzip": 81018,
-   "brotli": 69071
+   "min": 285004,
+   "gzip": 81468,
+   "brotli": 69421
   },
   "entry:model": {
    "min": 40093,
@@ -39,9 +39,14 @@
    "brotli": 7331
   },
   "entry:gltf": {
-   "min": 154791,
-   "gzip": 47466,
-   "brotli": 40652
+   "min": 155888,
+   "gzip": 47824,
+   "brotli": 41448
+  },
+  "entry:gltf+lazy": {
+   "min": 162321,
+   "gzip": 49816,
+   "brotli": 43258
   },
   "entry:modeling": {
    "min": 21149,
@@ -139,29 +144,29 @@
    "brotli": 762
   },
   "entry:agent-scene": {
-   "min": 206699,
-   "gzip": 63263,
-   "brotli": 54923
+   "min": 208967,
+   "gzip": 63945,
+   "brotli": 55786
   },
   "entry:agent-scene+lazy": {
-   "min": 614147,
-   "gzip": 210233,
-   "brotli": 185269
+   "min": 623239,
+   "gzip": 213035,
+   "brotli": 188048
   },
   "entry:agent-asset": {
-   "min": 300910,
-   "gzip": 93744,
-   "brotli": 81565
+   "min": 303069,
+   "gzip": 94728,
+   "brotli": 82813
   },
   "entry:agent-asset+lazy": {
-   "min": 650097,
-   "gzip": 220739,
-   "brotli": 193778
+   "min": 659080,
+   "gzip": 223845,
+   "brotli": 196982
   },
   "entry:hdri": {
    "min": 8075,
    "gzip": 3138,
-   "brotli": 2801
+   "brotli": 2802
   },
   "entry:camera-effects": {
    "min": 23985,
@@ -173,25 +178,35 @@
    "gzip": 1608,
    "brotli": 1425
   },
+  "entry:material-layer-shaders": {
+   "min": 71379,
+   "gzip": 18505,
+   "brotli": 16205
+  },
   "scene:lit-box": {
-   "min": 214877,
-   "gzip": 58928,
-   "brotli": 50227
+   "min": 215844,
+   "gzip": 59286,
+   "brotli": 50588
   },
   "scene:gltf-box": {
-   "min": 273787,
-   "gzip": 78107,
-   "brotli": 67034
+   "min": 275471,
+   "gzip": 79332,
+   "brotli": 68903
+  },
+  "scene:gltf-box+lazy": {
+   "min": 281904,
+   "gzip": 81319,
+   "brotli": 70712
   },
   "scene:agent-scene": {
-   "min": 315953,
-   "gzip": 92416,
-   "brotli": 79459
+   "min": 318701,
+   "gzip": 94262,
+   "brotli": 81921
   },
   "scene:agent-scene+lazy": {
-   "min": 723401,
-   "gzip": 239390,
-   "brotli": 209757
+   "min": 732973,
+   "gzip": 243364,
+   "brotli": 214130
   }
  }
 }

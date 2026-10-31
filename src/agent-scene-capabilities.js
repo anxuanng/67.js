@@ -3,6 +3,7 @@ import {
   FIELD_OPERATOR_NAMES, FIELD_ATTRIBUTES, MAX_FIELD_NODES, MAX_FIELD_DEPTH, MAX_FIELD_ELEMENTS, INSTANCE_SOURCES, MAX_INSTANCE_CANDIDATES,
   IMPORTED_MESH_EDIT_LIMITS,
 } from './mesh-operations.js';
+import { MATERIAL_LAYER_FIELDS, MATERIAL_LAYER_SCALAR_RANGES, MATERIAL_LAYER_COLOR_RANGES } from './material-layers.js';
 
 // What agent scenes support and their default limits, as plain data. The MCP server reads these without bundling
 // the scene engine (geometry, three.js decoders, the mesh core), which runs in the preview page instead.
@@ -13,7 +14,27 @@ export const AGENT_SCENE_DEFAULT_LIMITS = Object.freeze({
   maxOperations: 256, maxCheckpoints: 8, maxRecipeBytes: 1024 * 1024,
 });
 
-export const MATERIAL_PATTERN_TYPES = Object.freeze(['noise', 'wood', 'planks', 'bricks', 'tiles', 'marble', 'stone', 'concrete', 'metal', 'rust', 'fabric']);
+// What each recipe material layer does, beside its range; the MCP schema keeps one short line per field.
+const MATERIAL_LAYER_NOTES = Object.freeze({
+  clearcoat: 'Lacquer lobe over the base, surface tag.',
+  clearcoatRoughness: 'Coat roughness.',
+  transmission: 'Refracts the opaque scene behind it, surface or liquid tag; blended parts do not show through; no anisotropy, iridescence, sheen or coat.',
+  thickness: 'Metres crossed; 0 does not bend the view.',
+  ior: 'Glass 1.5, water 1.33, diamond 2.42; sets the base reflectance.',
+  attenuationColor: 'Linear RGB kept after attenuationDistance.',
+  attenuationDistance: 'Metres to reach attenuationColor; omit for none.',
+  sheenColor: 'Linear RGB glow at grazing angles; black is off.',
+  sheenRoughness: 'Glow width.',
+  specular: 'Non-metal reflection, 1 is normal.',
+  specularColor: 'Linear RGB tint.',
+  anisotropy: 'Stretches highlights along the grain; the grain follows the UV direction, or rings the up axis without UVs.',
+  anisotropyRotation: 'Turns the grain around the normal, radians.',
+  iridescence: 'Thin-film colour shift on reflections.',
+  iridescenceIor: 'Film index of refraction.',
+  iridescenceThickness: 'Film nanometres; colours cycle as it grows.',
+});
+
+export const MATERIAL_PATTERN_TYPES =Object.freeze(['noise', 'wood', 'planks', 'bricks', 'tiles', 'marble', 'stone', 'concrete', 'metal', 'rust', 'fabric']);
 export const MAX_MATERIAL_PATTERNS = 16;
 // A material graph bakes to textures on the CPU and never becomes shader text. Its node and depth limits are the field
 // expression limits; maxWork is work units per pixel times pixels, so a costly graph needs a smaller texture.
@@ -114,6 +135,10 @@ export const AGENT_SCENE_CAPABILITIES = Object.freeze({
     'set-environment', 'set-effects', 'set-shadow', 'set-motion', 'set-armatures', 'set-physics', 'set-cloth', 'set-timeline', 'set-particles', 'set-bake', 'edit-mesh', 'set-mesh-stack',
   ]),
   materialTags: Object.freeze(['surface', 'unlit', 'liquid', 'foam']),
+  materialLayers: Object.freeze(Object.fromEntries(MATERIAL_LAYER_FIELDS.map(field => [field, Object.freeze({
+    range: MATERIAL_LAYER_SCALAR_RANGES[field] ?? MATERIAL_LAYER_COLOR_RANGES[field] ?? 'above 0',
+    note: MATERIAL_LAYER_NOTES[field],
+  })]))),
   alphaModes: RECIPE_ALPHA_MODES,
   materialPatterns: MATERIAL_PATTERN_TYPES, maxMaterialPatterns: MAX_MATERIAL_PATTERNS,
   materialMappings: MATERIAL_MAPPINGS,
@@ -121,7 +146,7 @@ export const AGENT_SCENE_CAPABILITIES = Object.freeze({
   // Recipe timeline (src/film-timeline.js), rendered with settings.timeline; the rest is in docs/agent-render-jobs.md.
   filmTimeline: Object.freeze({
     maxShots: 64, maxTotalSeconds: 60, maxShotSeconds: 30,
-    shot: 'name (unique), duration, motionStart (default: the shot start, so non-looping motion must cover it), camera (partial: eye target up fov near far), dip (s; fades through black at the cut into this shot).',
+    shot: 'name (unique), duration, motionStart (default: the shot start, so non-looping motion must cover it), camera (partial: eye target up fov near far), focusDistance (m) and blur (0 to 1) for the depth of field of the shot, dip (s; fades through black at the cut into this shot).',
     notSupported: 'layers, overlaps, crossfades, markers, events, imported assets',
   }),
   curveText: Object.freeze({

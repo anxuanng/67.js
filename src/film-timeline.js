@@ -7,7 +7,8 @@ export const FILM_TIMELINE_LIMITS = Object.freeze({
 });
 
 const SHOT_NAME_PATTERN = /^[A-Za-z0-9_-]{1,24}$/;
-const SHOT_FIELDS = ['name', 'duration', 'motionStart', 'camera', 'dip'];
+const SHOT_FIELDS = ['name', 'duration', 'motionStart', 'camera', 'dip', 'focusDistance', 'blur'];
+const MAX_FOCUS_DISTANCE = 100000;
 
 function plainObject(value, label) {
   if (!value || typeof value !== 'object' || Array.isArray(value) || Object.getPrototypeOf(value) !== Object.prototype) {
@@ -77,6 +78,12 @@ export function normalizeFilmTimeline(timeline, recipe, { checkCamera } = {}) {
       plainObject(shot.camera, `Shot ${shot.name} camera`);
       result.camera = checkCamera ? checkCamera(shot.camera) : { ...shot.camera };
     }
+    if (shot.focusDistance !== undefined) {
+      result.focusDistance = numberBetween(shot.focusDistance, 0.01, MAX_FOCUS_DISTANCE, `Shot ${shot.name} focusDistance`);
+    }
+    if (shot.blur !== undefined) {
+      result.blur = numberBetween(shot.blur, 0, 1, `Shot ${shot.name} blur`);
+    }
     startSeconds += duration;
     return result;
   });
@@ -114,9 +121,16 @@ function brightnessAt(timeline, starts, index, shotTime) {
   return Math.max(0, Math.min(1, brightness));
 }
 
+function depthOfFieldOverrides(shot) {
+  const overrides = {};
+  if (shot.focusDistance !== undefined) overrides.focusDistance = shot.focusDistance;
+  if (shot.blur !== undefined) overrides.blur = shot.blur;
+  return Object.keys(overrides).length > 0 ? overrides : null;
+}
+
 /**
  * Everything one frame needs at timeline time `time`: the shot, the motion clock (null for a static recipe), the
- * camera overrides and the brightness of a dip through black. It keeps no state, so any seek gives the same answer.
+ * camera overrides, the depth of field overrides (null keeps the recipe's) and the brightness of a dip through black. It keeps no state, so any seek gives the same answer.
  */
 export function sampleFilmTimeline(timeline, recipe, time) {
   const starts = filmTimelineShotStarts(timeline);
@@ -136,6 +150,6 @@ export function sampleFilmTimeline(timeline, recipe, time) {
   const motionTime = hasAnimatedScene(recipe) ? (shot.motionStart ?? starts[index].start) + shotTime : null;
   return {
     shotIndex: index, shotName: shot.name, shotTime, motionTime,
-    camera: shot.camera ?? null, brightness: brightnessAt(timeline, starts, index, shotTime),
+    camera: shot.camera ?? null, depthOfField: depthOfFieldOverrides(shot), brightness: brightnessAt(timeline, starts, index, shotTime),
   };
 }

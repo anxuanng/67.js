@@ -15,6 +15,11 @@ export const MATERIAL_LAYER_DEFAULTS = Object.freeze({
   sheenRoughness: 0,
   specular: 1,
   specularColor: Object.freeze([1, 1, 1]),
+  anisotropy: 0,
+  anisotropyRotation: 0,
+  iridescence: 0,
+  iridescenceIor: 1.3,
+  iridescenceThickness: 400,
 });
 
 export const MATERIAL_LAYER_FIELDS = Object.freeze(Object.keys(MATERIAL_LAYER_DEFAULTS));
@@ -27,6 +32,11 @@ export const MATERIAL_LAYER_SCALAR_RANGES = Object.freeze({
   ior: Object.freeze([1, 2.5]),
   sheenRoughness: UNIT,
   specular: Object.freeze([0, 4]),
+  anisotropy: UNIT,
+  anisotropyRotation: Object.freeze([-2 * Math.PI, 2 * Math.PI]),
+  iridescence: UNIT,
+  iridescenceIor: Object.freeze([1, 3]),
+  iridescenceThickness: Object.freeze([0, 1200]),
 });
 
 export const MATERIAL_LAYER_COLOR_RANGES = Object.freeze({
@@ -96,7 +106,10 @@ export function dielectricReflectance(material) {
   return materialLayerValue(material, 'specularColor').map(component => Math.min(fromIor * component, 1) * weight);
 }
 
-/** Plain values the renderer batches by: dielectric F0 (3), coat (2), sheen (4), transmission (4), attenuation colour (3). */
+/**
+ * Plain values the renderer batches by: dielectric F0 (3), coat (2), sheen (4), transmission (4), attenuation colour (3),
+ * anisotropy strength and rotation (2), iridescence factor, film IOR and film thickness in nanometres (3).
+ */
 export function materialLayerState(material) {
   validateMaterialLayers(material);
   return [
@@ -110,7 +123,12 @@ export function materialLayerState(material) {
     materialLayerValue(material, 'thickness'),
     materialLayerValue(material, 'attenuationDistance'),
     ...materialLayerValue(material, 'attenuationColor'),
+    materialLayerValue(material, 'anisotropy'),
+    materialLayerValue(material, 'anisotropyRotation'),
+    materialLayerValue(material, 'iridescence'),
+    materialLayerValue(material, 'iridescenceIor'),
+    materialLayerValue(material, 'iridescenceThickness'),
   ];
 }
 
-export const MATERIAL_LAYER_STATE_LENGTH = 16;
+export const MATERIAL_LAYER_STATE_LENGTH = 21;

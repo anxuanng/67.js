@@ -344,6 +344,7 @@ export function createAgentRuntime({ backend = 'gpu', browser: browserPath, memo
           ...(settings.motion ? { motionTime: settings.motion.start + elapsed } : {}),
           ...(shotSample?.motionTime == null ? {} : { motionTime: shotSample.motionTime }),
           ...(shotSample?.camera ? { camera: shotSample.camera } : {}),
+          ...(shotSample?.depthOfField ? { depthOfField: shotSample.depthOfField } : {}),
           ...(shotSample && shotSample.brightness < 1 ? { brightness: shotSample.brightness } : {}),
           ...(settings.animation ? { animation: { clip: settings.animation.clip, time: settings.animation.start + elapsed } } : {}) };
         const renderStarted = performance.now();

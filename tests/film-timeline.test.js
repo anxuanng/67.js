@@ -184,3 +184,35 @@ test('the audio library resolves plain files only and refuses links, empty files
   }
   assert.throws(() => createAudioLibrary('relative/folder'), /absolute/);
 });
+
+test('a shot sets its own focus distance and blur, and a seek gives the same answer', () => {
+  const recipe = recipeWith();
+  const timeline = normalizeFilmTimeline({ shots: [
+    { name: 'wide', duration: 2 },
+    { name: 'portrait', duration: 2, focusDistance: 1.8, blur: 0.7 },
+    { name: 'distance', duration: 2, focusDistance: 40 },
+  ] }, recipe);
+  assert.equal(sampleFilmTimeline(timeline, recipe, 1).depthOfField, null, 'a shot with neither field keeps the recipe depth of field');
+  assert.deepEqual(sampleFilmTimeline(timeline, recipe, 3).depthOfField, { focusDistance: 1.8, blur: 0.7 });
+  assert.deepEqual(sampleFilmTimeline(timeline, recipe, 5).depthOfField, { focusDistance: 40 });
+  const order = [5, 3, 1, 3, 5.5, 3];
+  const samples = order.map(time => JSON.stringify(sampleFilmTimeline(timeline, recipe, time)));
+  assert.equal(samples[1], samples[3]);
+  assert.equal(samples[1], samples[5]);
+  const kept = createAgentScene(recipeWith({ timeline: { shots: [{ name: 'a', duration: 1, focusDistance: 2, blur: 0.5 }] } })).exportRecipe();
+  assert.equal(kept.timeline.shots[0].focusDistance, 2);
+  assert.equal(kept.timeline.shots[0].blur, 0.5);
+});
+
+test('shot focus distance and blur are checked at the boundary', () => {
+  const rejected = [
+    [{ focusDistance: 0 }, /focusDistance must be a number from 0.01 to 100000/],
+    [{ focusDistance: 100001 }, /focusDistance must be/],
+    [{ focusDistance: '2' }, /focusDistance must be/],
+    [{ blur: 1.5 }, /blur must be a number from 0 to 1/],
+    [{ blur: -0.1 }, /blur must be/],
+  ];
+  for (const [fields, message] of rejected) {
+    assert.throws(() => createAgentScene(recipeWith({ timeline: { shots: [{ name: 'a', duration: 1, ...fields }] } })), message);
+  }
+});

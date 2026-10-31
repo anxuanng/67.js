@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createFragmentShader, fragmentShader, SHADER_FEATURES } from '../src/shaders.js';
+import '../src/material-layer-shaders.js';
 
 test('the default fragment shader keeps every feature', () => {
   assert.equal(fragmentShader, createFragmentShader(SHADER_FEATURES));
@@ -24,4 +25,15 @@ test('every feature condition is a macro that the shader body uses', () => {
     const uses = fragmentShader.split(macro).length - 1;
     assert.ok(uses > 1, `${macro} is defined but never used`);
   }
+});
+
+test('anisotropy and iridescence compile in only when a material asks for them', () => {
+  const plain = createFragmentShader([]);
+  assert.doesNotMatch(plain, /anisotropicSpecular|filmReflectance|materialAnisotropy|materialIridescence/);
+  const withAnisotropy = createFragmentShader(['anisotropy']);
+  assert.match(withAnisotropy, /uniform vec2 materialAnisotropy;/);
+  assert.doesNotMatch(withAnisotropy, /materialIridescence/);
+  const withIridescence = createFragmentShader(['iridescence']);
+  assert.match(withIridescence, /uniform vec3 materialIridescence;/);
+  assert.doesNotMatch(withIridescence, /materialAnisotropy/);
 });

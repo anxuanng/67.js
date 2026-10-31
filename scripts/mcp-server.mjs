@@ -77,19 +77,26 @@ function layerColor(field, description) {
   return z.tuple([component, component, component]).describe(description).optional();
 }
 
+// One short line each; ranges and details are in scene_capabilities materialLayers.
 const materialLayerFields = {
-  clearcoat: layerNumber('clearcoat', 'Clear lacquer layer strength, 0 to 1 (car paint, varnish). Needs the surface tag.'),
-  clearcoatRoughness: layerNumber('clearcoatRoughness', 'Roughness of the clear coat, 0 mirror to 1 rough.'),
-  transmission: layerNumber('transmission', 'Share of light that passes through, 0 to 1 (glass, water, gems). It refracts the opaque scene behind it; blended surfaces do not show through it.'),
-  thickness: layerNumber('thickness', 'Metres of material the light crosses. 0 is a thin sheet that does not bend the view; set it with transmission.'),
-  ior: layerNumber('ior', 'Index of refraction, 1 to 2.5 (air 1, water 1.33, glass 1.5, diamond 2.42). Also sets how reflective the surface is.'),
-  attenuationColor: layerColor('attenuationColor', 'Linear RGB colour that light keeps after attenuationDistance metres inside the material.'),
-  attenuationDistance: z.number().positive('attenuationDistance must be above 0. Leave it out for no absorption.').max(3.4e38).describe('Metres inside the material after which light is reduced to attenuationColor.').optional(),
-  sheenColor: layerColor('sheenColor', 'Linear RGB soft grazing-angle glow of cloth and velvet; [0, 0, 0] is off.'),
-  sheenRoughness: layerNumber('sheenRoughness', 'Width of the sheen glow, 0 tight to 1 broad.'),
-  specular: layerNumber('specular', 'Strength of the non-metal reflection, 0 to 4 (1 is normal).'),
-  specularColor: layerColor('specularColor', 'Linear RGB tint of the non-metal reflection.'),
+  clearcoat: layerNumber('clearcoat', 'Clear coat strength.'),
+  clearcoatRoughness: layerNumber('clearcoatRoughness', 'Coat roughness.'),
+  transmission: layerNumber('transmission', 'Light passing through (glass).'),
+  thickness: layerNumber('thickness', 'Metres light crosses.'),
+  ior: layerNumber('ior', 'Index of refraction.'),
+  attenuationColor: layerColor('attenuationColor', 'Linear RGB kept after attenuationDistance.'),
+  attenuationDistance: z.number().positive('attenuationDistance must be above 0. Leave it out for no absorption.').max(3.4e38).describe('Metres to reach attenuationColor.').optional(),
+  sheenColor: layerColor('sheenColor', 'Linear RGB cloth glow.'),
+  sheenRoughness: layerNumber('sheenRoughness', 'Sheen width.'),
+  specular: layerNumber('specular', 'Reflection strength.'),
+  specularColor: layerColor('specularColor', 'Reflection tint.'),
+  anisotropy: layerNumber('anisotropy', 'Highlight stretch along a grain.'),
+  anisotropyRotation: layerNumber('anisotropyRotation', 'Grain turn, radians.'),
+  iridescence: layerNumber('iridescence', 'Thin-film colour shift.'),
+  iridescenceIor: layerNumber('iridescenceIor', 'Film index of refraction.'),
+  iridescenceThickness: layerNumber('iridescenceThickness', 'Film thickness, nanometres.'),
 };
+
 
 const materialFields = {
   ...materialLayerFields,
