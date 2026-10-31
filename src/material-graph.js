@@ -1,0 +1,366 @@
+import { MATERIAL_GRAPH_LIMITS, MATERIAL_GRAPH_OUTPUTS, MATERIAL_GRAPH_OPERATORS } from './agent-scene-capabilities.js';
+import { clampUnit, smoothStep, fractalNoise, cellularNoise, linearToSrgbByte, createImage, normalMapFromHeights } from './material-texture-kit.js';
+
+// A bounded material node graph. Like a field expression (src/mesh-fields.js), a graph is data and never code: it is
+// walked as plain objects against a fixed table of operators, checked against its limits before any pixel is
+// evaluated, and baked on the CPU into textures. Nothing here builds shader source, and the only strings accepted are
+// the fixed names listed below, so agent input can not reach the GPU as text. Issue 98 will merge this with the field
+// language; the shape (one operator per object, numbers are constants, [r, g, b] is a constant vector) already matches.
+//
+//   { "color": { "ramp": { "value": { "noise": { "scale": 8 } }, "stops": [[0, [0.1, 0.05, 0.02]], [1, [0.6, 0.4, 0.2]]] } },
+//     "height": { "noise": { "scale": 8 } } }
+//
+// Every texture node is periodic over the unit square, so a baked graph tiles. Values are numbers or vectors of three.
+
+const MAX_LITERAL = 1e6;
+const MAX_SEED = 0x7fffffff;
+const MAX_REPORTED_KEY_LENGTH = 24;
+const NOISE_SCALE_LIMIT = 64;
+const NOISE_OCTAVE_LIMIT = 6;
+// Work units per pixel for the nodes that cost more than a plain operator.
+const VORONOI_COST = 8;
+const NOISE_COST_PER_OCTAVE = 3;
+
+function graphError(message) {
+  return new TypeError(`Material graph: ${message}`);
+}
+
+function describeKey(key) {
+  const clipped = key.length > MAX_REPORTED_KEY_LENGTH ? `${key.slice(0, MAX_REPORTED_KEY_LENGTH)}...` : key;
+  return JSON.stringify(clipped);
+}
+
+function isPlainObject(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
+}
+
+function onlyKeys(node, allowed, label) {
+  for (const key of Object.keys(node)) {
+    if (!allowed.includes(key)) throw graphError(`${label} does not take ${describeKey(key)}; fields: ${allowed.join(', ')}.`);
+  }
+}
+
+function integerInRange(value, minimum, maximum, label) {
+  if (!Number.isInteger(value) || value < minimum || value > maximum) throw graphError(`${label} must be a whole number from ${minimum} to ${maximum}.`);
+  return value;
+}
+
+function oneOf(value, names, label) {
+  if (typeof value !== 'string' || !names.includes(value)) throw graphError(`${label} must be one of ${names.join(', ')}.`);
+  return value;
+}
+
+function finiteLiteral(value) {
+  return typeof value === 'number' && Number.isFinite(value) && Math.abs(value) <= MAX_LITERAL;
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// Compiled values take the pixel position: { kind: 'scalar', evaluate(u, v) } or { kind: 'vector', parts: [x, y, z] }.
+
+const scalarValue = evaluate => ({ kind: 'scalar', evaluate });
+const vectorValue = (partX, partY, partZ) => ({ kind: 'vector', parts: [partX, partY, partZ] });
+const partsOf = value => (value.kind === 'vector' ? value.parts : [value.evaluate, value.evaluate, value.evaluate]);
+
+function liftComponentwise(values, compute) {
+  if (values.every(value => value.kind === 'scalar')) {
+    const [first, second, third] = values.map(value => value.evaluate);
+    return scalarValue((u, v) => compute(first(u, v), second?.(u, v), third?.(u, v)));
+  }
+  const [first, second, third] = values.map(partsOf);
+  const channel = index => (u, v) => compute(first[index](u, v), second?.[index](u, v), third?.[index](u, v));
+  return vectorValue(channel(0), channel(1), channel(2));
+}
+
+const finiteOrZero = value => (Number.isFinite(value) ? value : 0);
+const fract = value => value - Math.floor(value);
+const mixNumbers = (start, end, factor) => start + (end - start) * factor;
+
+// name: [argument count, compute(first, second, third)]
+const MATH_OPERATORS = new Map([
+  ['add', [2, (a, b) => a + b]],
+  ['sub', [2, (a, b) => a - b]],
+  ['mul', [2, (a, b) => a * b]],
+  ['div', [2, (a, b) => (b === 0 ? 0 : a / b)]],
+  ['min', [2, (a, b) => Math.min(a, b)]],
+  ['max', [2, (a, b) => Math.max(a, b)]],
+  ['pow', [2, (a, b) => Math.abs(a) ** Math.min(Math.max(b, -16), 16)]],
+  ['abs', [1, Math.abs]],
+  ['floor', [1, Math.floor]],
+  ['fract', [1, fract]],
+  ['sqrt', [1, value => Math.sqrt(Math.max(value, 0))]],
+  ['invert', [1, value => 1 - value]],
+  ['clamp', [3, (value, low, high) => Math.min(Math.max(value, low), Math.max(low, high))]],
+  ['smoothstep', [3, (low, high, value) => (low === high ? (value < low ? 0 : 1) : smoothStep(low, high, value))]],
+  ['mix', [3, mixNumbers]],
+]);
+
+// ---------------------------------------------------------------------------------------------------------------
+// Compiling. The state counts nodes, the work each costs per pixel and the deepest nesting.
+
+function compileCoordinates(node) {
+  const axis = oneOf(node.uv, ['u', 'v', 'both'], 'uv');
+  if (Object.keys(node).length !== 1) throw graphError('uv takes no other fields.');
+  if (axis === 'u') return scalarValue(u => u);
+  if (axis === 'v') return scalarValue((u, v) => v);
+  return vectorValue(u => u, (u, v) => v, () => 0);
+}
+
+function compilePosition(settings, state, depth) {
+  if (settings.at === undefined) return [u => u, (u, v) => v];
+  const position = compileNode(settings.at, state, depth + 1);
+  if (position.kind !== 'vector') throw graphError('"at" needs a vector such as {"uv":"both"}.');
+  return position.parts;
+}
+
+function textureSettings(node, name, allowed) {
+  const settings = node[name];
+  if (!isPlainObject(settings) || Object.keys(node).length !== 1) throw graphError(`${name} takes { ${allowed.join(', ')} } and nothing else.`);
+  onlyKeys(settings, allowed, name);
+  return settings;
+}
+
+function compileNoise(node, state, depth) {
+  const settings = textureSettings(node, 'noise', ['scale', 'seed', 'octaves', 'at']);
+  const scale = integerInRange(settings.scale ?? 4, 1, NOISE_SCALE_LIMIT, 'noise scale');
+  const seed = integerInRange(settings.seed ?? 0, 0, MAX_SEED, 'noise seed');
+  const octaves = integerInRange(settings.octaves ?? 4, 1, NOISE_OCTAVE_LIMIT, 'noise octaves');
+  state.cost += octaves * NOISE_COST_PER_OCTAVE;
+  const [positionU, positionV] = compilePosition(settings, state, depth);
+  return scalarValue((u, v) => fractalNoise(positionU(u, v), positionV(u, v), scale, scale, seed, octaves) * 0.5 + 0.5);
+}
+
+const VORONOI_OUTPUTS = ['distance', 'edge', 'cell'];
+
+function compileVoronoi(node, state, depth) {
+  const settings = textureSettings(node, 'voronoi', ['scale', 'seed', 'output', 'at']);
+  const scale = integerInRange(settings.scale ?? 4, 1, NOISE_SCALE_LIMIT, 'voronoi scale');
+  const seed = integerInRange(settings.seed ?? 0, 0, MAX_SEED, 'voronoi seed');
+  const output = oneOf(settings.output ?? 'distance', VORONOI_OUTPUTS, 'voronoi output');
+  state.cost += VORONOI_COST;
+  const [positionU, positionV] = compilePosition(settings, state, depth);
+  return scalarValue((u, v) => {
+    const { nearest, second, cell } = cellularNoise(positionU(u, v), positionV(u, v), scale, seed);
+    if (output === 'cell') return cell / 4294967296;
+    return clampUnit(output === 'edge' ? second - nearest : nearest);
+  });
+}
+
+const WAVE_DIRECTIONS = ['u', 'v', 'diagonal'];
+const WAVE_SHAPES = ['sine', 'saw', 'triangle'];
+
+function compileWave(node, state, depth) {
+  const settings = textureSettings(node, 'wave', ['frequency', 'direction', 'shape', 'at']);
+  const frequency = integerInRange(settings.frequency ?? 4, 1, NOISE_SCALE_LIMIT, 'wave frequency');
+  const direction = oneOf(settings.direction ?? 'u', WAVE_DIRECTIONS, 'wave direction');
+  const shape = oneOf(settings.shape ?? 'sine', WAVE_SHAPES, 'wave shape');
+  const [positionU, positionV] = compilePosition(settings, state, depth);
+  return scalarValue((u, v) => {
+    const along = direction === 'u' ? positionU(u, v) : direction === 'v' ? positionV(u, v) : positionU(u, v) + positionV(u, v);
+    const phase = along * frequency;
+    if (shape === 'sine') return Math.sin(phase * Math.PI * 2) * 0.5 + 0.5;
+    return shape === 'saw' ? fract(phase) : 1 - Math.abs(fract(phase) * 2 - 1);
+  });
+}
+
+function compileChecker(node, state, depth) {
+  const settings = textureSettings(node, 'checker', ['count', 'at']);
+  const count = integerInRange(settings.count ?? 8, 2, NOISE_SCALE_LIMIT, 'checker count');
+  // An odd count would flip the pattern across the tiling seam.
+  if (count % 2 !== 0) throw graphError('checker count must be even so it tiles.');
+  const [positionU, positionV] = compilePosition(settings, state, depth);
+  return scalarValue((u, v) => (Math.floor(positionU(u, v) * count) + Math.floor(positionV(u, v) * count)) % 2 === 0 ? 0 : 1);
+}
+
+const GRADIENT_TYPES = ['u', 'v', 'radial'];
+
+function compileGradient(node, state, depth) {
+  const settings = textureSettings(node, 'gradient', ['type', 'at']);
+  const type = oneOf(settings.type ?? 'u', GRADIENT_TYPES, 'gradient type');
+  const [positionU, positionV] = compilePosition(settings, state, depth);
+  return scalarValue((u, v) => {
+    if (type === 'u') return clampUnit(positionU(u, v));
+    if (type === 'v') return clampUnit(positionV(u, v));
+    return clampUnit(1 - Math.hypot(positionU(u, v) - 0.5, positionV(u, v) - 0.5) * 2);
+  });
+}
+
+function checkedStop(stop, index, previousPosition) {
+  if (!Array.isArray(stop) || stop.length !== 2) throw graphError(`ramp stop ${index} must be [position, value].`);
+  const [position, value] = stop;
+  if (typeof position !== 'number' || !Number.isFinite(position) || position < 0 || position > 1 || position <= previousPosition) {
+    throw graphError('ramp stop positions must rise strictly from 0 to 1.');
+  }
+  const isVector = Array.isArray(value);
+  if (isVector ? value.length !== 3 || !value.every(finiteLiteral) : !finiteLiteral(value)) {
+    throw graphError(`ramp stop ${index} value must be a number or [r, g, b] of finite numbers.`);
+  }
+  return { position, value, isVector };
+}
+
+function compileRamp(node, state, depth) {
+  const settings = textureSettings(node, 'ramp', ['value', 'stops']);
+  const { stops: rawStops } = settings;
+  if (!Array.isArray(rawStops) || rawStops.length < 2 || rawStops.length > MATERIAL_GRAPH_LIMITS.maxStops) {
+    throw graphError(`ramp needs 2 to ${MATERIAL_GRAPH_LIMITS.maxStops} stops.`);
+  }
+  let previousPosition = -1;
+  const stops = rawStops.map((stop, index) => {
+    const checked = checkedStop(stop, index, previousPosition);
+    previousPosition = checked.position;
+    return checked;
+  });
+  if (!stops.every(stop => stop.isVector === stops[0].isVector)) throw graphError('ramp stops are all numbers or all [r, g, b].');
+  const input = compileNode(settings.value, state, depth + 1);
+  if (input.kind !== 'scalar') throw graphError('ramp "value" needs a number.');
+  const channelRamp = channel => (u, v) => {
+    const position = clampUnit(input.evaluate(u, v));
+    const valueOf = stop => (stop.isVector ? stop.value[channel] : stop.value);
+    if (position <= stops[0].position) return valueOf(stops[0]);
+    for (let index = 1; index < stops.length; index++) {
+      if (position <= stops[index].position) {
+        const from = stops[index - 1];
+        const to = stops[index];
+        return mixNumbers(valueOf(from), valueOf(to), (position - from.position) / (to.position - from.position));
+      }
+    }
+    return valueOf(stops[stops.length - 1]);
+  };
+  state.cost += 2;
+  return stops[0].isVector ? vectorValue(channelRamp(0), channelRamp(1), channelRamp(2)) : scalarValue(channelRamp(0));
+}
+
+function compileVector(node, state, depth) {
+  if (!Array.isArray(node.vec) || node.vec.length !== 3 || Object.keys(node).length !== 1) throw graphError('vec needs [x, y, z] in an array.');
+  const [partX, partY, partZ] = node.vec.map(part => {
+    const compiled = compileNode(part, state, depth + 1);
+    if (compiled.kind !== 'scalar') throw graphError('vec parts must be numbers.');
+    return compiled.evaluate;
+  });
+  return vectorValue(partX, partY, partZ);
+}
+
+function compileMath(name, node, state, depth) {
+  const [argumentCount, compute] = MATH_OPERATORS.get(name);
+  const operands = argumentCount === 1 && !Array.isArray(node[name]) ? [node[name]] : node[name];
+  if (!Array.isArray(operands) || operands.length !== argumentCount) throw graphError(`${name} needs ${argumentCount} argument${argumentCount === 1 ? '' : 's'}.`);
+  return liftComponentwise(operands.map(operand => compileNode(operand, state, depth + 1)), compute);
+}
+
+const TEXTURE_COMPILERS = new Map([
+  ['noise', compileNoise], ['voronoi', compileVoronoi], ['wave', compileWave], ['checker', compileChecker], ['gradient', compileGradient],
+]);
+
+function compileNode(node, state, depth) {
+  state.nodeCount++;
+  state.cost++;
+  if (state.nodeCount > MATERIAL_GRAPH_LIMITS.maxNodes) throw graphError(`more than ${MATERIAL_GRAPH_LIMITS.maxNodes} nodes.`);
+  if (depth > MATERIAL_GRAPH_LIMITS.maxDepth) throw graphError(`nesting deeper than ${MATERIAL_GRAPH_LIMITS.maxDepth}.`);
+  if (typeof node === 'number') {
+    if (!finiteLiteral(node)) throw graphError(`numbers must be finite and within ${MAX_LITERAL}.`);
+    return scalarValue(() => node);
+  }
+  if (Array.isArray(node)) {
+    if (node.length !== 3 || !node.every(finiteLiteral)) throw graphError('a vector literal is three finite numbers; build one from expressions with "vec".');
+    const [literalX, literalY, literalZ] = node;
+    return vectorValue(() => literalX, () => literalY, () => literalZ);
+  }
+  if (!isPlainObject(node)) throw graphError('each node is a number, a vector of three numbers or an object with one operator.');
+  const keys = Object.keys(node);
+  if (keys.length !== 1) throw graphError(`a node holds exactly one operator; got ${keys.length}.`);
+  const name = keys[0];
+  if (name === 'uv') return compileCoordinates(node);
+  if (name === 'vec') return compileVector(node, state, depth);
+  if (name === 'ramp') return compileRamp(node, state, depth);
+  if (TEXTURE_COMPILERS.has(name)) return TEXTURE_COMPILERS.get(name)(node, state, depth);
+  if (MATH_OPERATORS.has(name)) return compileMath(name, node, state, depth);
+  throw graphError(`unknown operator ${describeKey(name)}. Use one of ${MATERIAL_GRAPH_OPERATORS.join(', ')}.`);
+}
+
+const SCALAR_OUTPUTS = ['roughness', 'metallic', 'height'];
+
+/**
+ * Check a graph and compile each output. Limits on nodes, depth and work per pixel are enforced here, before any
+ * pixel is evaluated. Returns { outputs: { name: compiled }, nodeCount, cost }.
+ */
+export function compileMaterialGraph(graph) {
+  if (!isPlainObject(graph)) throw graphError(`graph must be an object with outputs: ${MATERIAL_GRAPH_OUTPUTS.join(', ')}.`);
+  onlyKeys(graph, MATERIAL_GRAPH_OUTPUTS, 'graph');
+  const names = Object.keys(graph);
+  if (names.length === 0) throw graphError(`graph needs at least one output: ${MATERIAL_GRAPH_OUTPUTS.join(', ')}.`);
+  const state = { nodeCount: 0, cost: 0 };
+  const outputs = {};
+  for (const name of names) {
+    outputs[name] = compileNode(graph[name], state, 0);
+    if (SCALAR_OUTPUTS.includes(name) && outputs[name].kind !== 'scalar') throw graphError(`${name} needs a number, not a vector.`);
+  }
+  return { outputs, nodeCount: state.nodeCount, cost: state.cost };
+}
+
+/** Throw when a graph is too costly to bake at this size. Called while normalizing, so a bad scene fails at once. */
+export function checkMaterialGraphWork(compiled, resolution) {
+  const work = compiled.cost * resolution * resolution;
+  if (work > MATERIAL_GRAPH_LIMITS.maxWork) {
+    throw new RangeError(`Material graph: ${compiled.cost} work units per pixel at ${resolution} by ${resolution} is over the limit of ${MATERIAL_GRAPH_LIMITS.maxWork}. Use fewer nodes or a smaller resolution.`);
+  }
+}
+
+/** Validate a graph and return a plain copy of it. A normalized graph normalizes to itself. */
+export function normalizeMaterialGraph(graph, resolution) {
+  const compiled = compileMaterialGraph(graph);
+  checkMaterialGraphWork(compiled, resolution);
+  return JSON.parse(JSON.stringify(graph));
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// Baking. Colours are linear RGB, as recipe colours are.
+
+function sampleChannels(compiled, u, v) {
+  if (compiled.kind === 'scalar') {
+    const value = finiteOrZero(compiled.evaluate(u, v));
+    return [value, value, value];
+  }
+  return [finiteOrZero(compiled.parts[0](u, v)), finiteOrZero(compiled.parts[1](u, v)), finiteOrZero(compiled.parts[2](u, v))];
+}
+
+function writeColor(data, offset, channels) {
+  for (let channel = 0; channel < 3; channel++) data[offset + channel] = linearToSrgbByte(channels[channel]);
+  data[offset + 3] = 255;
+}
+
+/** Bake a normalized graph into texture descriptors, one for each output the graph has. Deterministic. */
+export function bakeMaterialGraph(graph, { resolution, bump }) {
+  const compiled = compileMaterialGraph(graph);
+  checkMaterialGraphWork(compiled, resolution);
+  const { color, roughness, metallic, emission, height } = compiled.outputs;
+  const pixelCount = resolution * resolution;
+  const colorData = color ? new Uint8ClampedArray(pixelCount * 4) : null;
+  const emissionData = emission ? new Uint8ClampedArray(pixelCount * 4) : null;
+  const surfaceData = roughness || metallic ? new Uint8ClampedArray(pixelCount * 4) : null;
+  const heights = height ? new Float32Array(pixelCount) : null;
+  for (let row = 0; row < resolution; row++) {
+    for (let column = 0; column < resolution; column++) {
+      const pixel = row * resolution + column;
+      const u = (column + 0.5) / resolution;
+      const v = (row + 0.5) / resolution;
+      const offset = pixel * 4;
+      if (color) writeColor(colorData, offset, sampleChannels(color, u, v));
+      if (emission) writeColor(emissionData, offset, sampleChannels(emission, u, v));
+      if (heights) heights[pixel] = finiteOrZero(height.evaluate(u, v));
+      if (surfaceData) {
+        surfaceData[offset] = 255;
+        surfaceData[offset + 1] = roughness ? Math.round(clampUnit(finiteOrZero(roughness.evaluate(u, v))) * 255) : 255;
+        surfaceData[offset + 2] = metallic ? Math.round(clampUnit(finiteOrZero(metallic.evaluate(u, v))) * 255) : 255;
+        surfaceData[offset + 3] = 255;
+      }
+    }
+  }
+  const descriptor = (data, colorSpace) => (data ? { image: createImage(data, resolution, resolution), colorSpace } : undefined);
+  return {
+    map: descriptor(colorData, 'srgb'),
+    emissiveMap: descriptor(emissionData, 'srgb'),
+    metallicRoughnessMap: descriptor(surfaceData, 'linear'),
+    normalMap: descriptor(heights ? normalMapFromHeights(heights, resolution, bump) : null, 'linear'),
+  };
+}

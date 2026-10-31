@@ -5,7 +5,7 @@ import { setPriority, constants } from 'node:os';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import packageMetadata from '../package.json' with { type: 'json' };
-import { MATERIAL_PATTERN_TYPES, LIGHTING_SETUP_NAMES } from '../src/agent-scene-capabilities.js';
+import { MATERIAL_PATTERN_TYPES, MATERIAL_MAPPINGS, MATERIAL_GRAPH_OUTPUTS, MATERIAL_GRAPH_OPERATORS, MATERIAL_GRAPH_LIMITS, LIGHTING_SETUP_NAMES } from '../src/agent-scene-capabilities.js';
 import { MATERIAL_LAYER_SCALAR_RANGES, MATERIAL_LAYER_COLOR_RANGES } from '../src/material-layers.js';
 
 const finite = z.number().min(-3.4028234663852886e38).max(3.4028234663852886e38);
@@ -46,8 +46,12 @@ const instanceSpec = z.strictObject({
   scale: z.tuple([z.number().min(0.001).max(1000), z.number().min(0.001).max(1000)]).optional().describe('Random uniform scale range [min, max].'),
 }).describe('Exactly one of grid, scatter or surface. Expands at scene_create into a group node plus one child node per point (<id>.0, <id>.1, ...) that share geometry and material and draw as one instanced batch. At most 2048 candidate points.');
 const nodeRecord = z.strictObject({ armature: identifier.optional().describe('Set on nodes an armature generates, and ignored on input. Edit bones through armatures.'), id: identifier, geometry: identifier.optional(), material: identifier.optional(), instances: instanceSpec.optional().describe('Repeat geometry and material at points; needs both ids. Only in the recipe given to scene_create, not in add-node.'), ...nodeFields });
+const graphNode = z.union([finite, vector3, z.record(z.string(), z.unknown())]);
+const materialGraph = z.strictObject(Object.fromEntries(MATERIAL_GRAPH_OUTPUTS.map(output => [output, graphNode.optional()]))).describe(`Node graph, plain JSON and never code or shader text, baked on the CPU into textures. One or more outputs: color (linear RGB; a number is grey), roughness, metallic, emission (colour; needs no emission field, it defaults to 1), height (becomes a normal map: bump gives relief). A node is a number, [x,y,z] or an object with one operator: ${MATERIAL_GRAPH_OPERATORS.join(' ')}. Textures: {"noise":{"scale":8,"seed":1,"octaves":4}}, {"voronoi":{"scale":6,"output":"distance"|"edge"|"cell"}}, {"wave":{"frequency":4,"direction":"u"|"v"|"diagonal","shape":"sine"|"saw"|"triangle"}}, {"checker":{"count":8}}, {"gradient":{"type":"u"|"v"|"radial"}}; each takes "at" (a vector such as {"uv":"both"}) to warp it, scales are whole numbers 1 to 64 so it tiles. {"uv":"u"|"v"|"both"} are the coordinates. {"ramp":{"value":node,"stops":[[0,[r,g,b]],[1,[r,g,b]]]}} maps a number to colours (2 to ${MATERIAL_GRAPH_LIMITS.maxStops} stops). Maths: add sub mul div min max pow take [a,b]; abs floor fract sqrt invert take one node; clamp smoothstep mix take [a,b,c]; {"vec":[r,g,b]}. Numbers combine with vectors per component. At most ${MATERIAL_GRAPH_LIMITS.maxNodes} nodes, depth ${MATERIAL_GRAPH_LIMITS.maxDepth}, and a work limit that wants a smaller resolution for a big graph. Example: {"color":{"ramp":{"value":{"noise":{"scale":8}},"stops":[[0,[0.1,0.05,0.02]],[1,[0.6,0.4,0.2]]]}},"height":{"noise":{"scale":8}}}`);
 const materialPattern = z.strictObject({
-  type: z.enum(MATERIAL_PATTERN_TYPES).describe('Surface look. Directional types (wood, planks, metal) run along axis.'),
+  type: z.enum([...MATERIAL_PATTERN_TYPES, 'graph']).describe('Surface look: a preset, or graph for your own node graph (give graph). Directional presets (wood, planks, metal) run along axis.'),
+  graph: materialGraph.optional().describe('Only with type graph.'),
+  mapping: z.enum(MATERIAL_MAPPINGS).optional().describe('box (default) projects along the object axes and needs no UVs; uv follows the geometry UVs, so the mesh needs a uv_unwrap node or geometry.uvs. size and axis only apply to box.'),
   colors: z.array(color).min(2).max(3).optional().describe('Linear RGB colours to mix, darker first. Bricks take a third for the mortar. Each type has good defaults.'),
   size: z.number().min(0.01).max(100).optional().describe('Metres per repeat of the texture, so it keeps its real size on any object and node scale.'),
   count: z.number().int().min(1).max(64).optional().describe('Features per repeat: planks, bricks across, tiles across, wood rings or noise cells.'),
@@ -55,7 +59,7 @@ const materialPattern = z.strictObject({
   seed: z.number().int().min(0).max(2147483647).optional(),
   axis: z.enum(['x', 'y', 'z']).optional().describe('Object axis the grain runs along. Defaults to y.'),
   resolution: z.union([z.literal(256), z.literal(512), z.literal(1024)]).optional().describe('Texture size. Defaults to 512; each pattern takes about 4 MiB at 512.'),
-}).describe('Procedural texture baked for this material. Needs no UVs: it is projected along the object axes. color then tints it (defaults to white), and roughness and metallic scale it.');
+}).describe('Procedural texture baked for this material. By default it needs no UVs and is projected along the object axes; mapping uv follows the geometry UVs instead. color then tints it (defaults to white), and roughness and metallic scale it.');
 function layerNumber(field, description) {
   const [minimum, maximum] = MATERIAL_LAYER_SCALAR_RANGES[field];
   return z.number()

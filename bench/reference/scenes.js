@@ -4,6 +4,7 @@ import { box, cylinder, sphere, torus } from '/src/geometry.js';
 import { createEnvironmentMap, loadHdri } from '/src/hdri.js';
 import { parseGltf } from '/src/gltf.js';
 import { createTree, vegetationParts } from '/src/vegetation.js';
+import { materialPatternTextures, normalizeMaterialPattern } from '/src/material-patterns.js';
 
 const HDRI_FILE = 'public/hdri/kloofendal_48d_partly_cloudy_puresky_1k.hdr';
 const HDRI_URL = '/hdri/kloofendal_48d_partly_cloudy_puresky_1k.hdr';
@@ -48,7 +49,48 @@ function environment(lighting, { lightDirection = [-3, 6, 4], keyColor = [0, 0, 
 
 const SUN_COLOR = [3, 2.8, 2.5];
 
+// A wall of bricks written as a material graph: a triangle wave across each course for the mortar joints, half a brick of
+// shift on every second course, noise through a colour ramp for the brick tone. Blender gets the same graph as nodes.
+const BRICK_COLUMNS = 6;
+const BRICK_ROWS = 12;
+
+function brickGraph() {
+  const coordinate = axis => ({ uv: axis });
+  const oddCourse = { smoothstep: [0.49, 0.51, { wave: { frequency: BRICK_ROWS / 2, direction: 'v', shape: 'saw' } }] };
+  const shifted = { vec: [{ add: [coordinate('u'), { mul: [oddCourse, 0.5 / BRICK_COLUMNS] }] }, coordinate('v'), 0] };
+  const jointAcross = { smoothstep: [0.12, 0.3, { wave: { frequency: BRICK_COLUMNS, direction: 'u', shape: 'triangle', at: shifted } }] };
+  const jointAlong = { smoothstep: [0.08, 0.2, { wave: { frequency: BRICK_ROWS, direction: 'v', shape: 'triangle' } }] };
+  const body = { min: [jointAcross, jointAlong] };
+  const tone = { ramp: { value: { noise: { scale: 10, seed: 2, octaves: 3 } }, stops: [[0, [0.3, 0.09, 0.05]], [1, [0.58, 0.24, 0.14]]] } };
+  return { color: { mix: [[0.45, 0.42, 0.38], tone, body] }, height: body };
+}
+
+function wallQuad(width, height) {
+  const halfWidth = width / 2;
+  return {
+    positions: new Float32Array([-halfWidth, 0, 0, halfWidth, 0, 0, halfWidth, height, 0, -halfWidth, height, 0]),
+    normals: new Float32Array([0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1]),
+    uvs: new Float32Array([0, 0, 1, 0, 1, 1, 0, 1]),
+    indices: new Uint32Array([0, 1, 2, 0, 2, 3]),
+  };
+}
+
 export const REFERENCE_SCENES = {
+  async 'brick-graph'() {
+    const lighting = await skyLighting();
+    const pattern = normalizeMaterialPattern({ type: 'graph', graph: brickGraph(), mapping: 'uv', bump: 1, resolution: 512 });
+    const { map, normalMap, boxMapScale, boxMapAxis } = materialPatternTextures(pattern);
+    const wall = part('wall', wallQuad(6, 4), [0, 0, 0], [1, 1, 1], { color: [1, 1, 1], roughness: 0.85, map, normalMap, boxMapScale, boxMapAxis });
+    wall.material.graph = pattern.graph;
+    wall.material.graphBump = pattern.bump;
+    return {
+      parts: [floor([0.4, 0.38, 0.32]), wall], blenderWorld: lighting.blenderWorld,
+      environment: environment(lighting, { keyColor: SUN_COLOR }),
+      camera: { eye: [0, 2, 8.5], target: [0, 2, 0], up: [0, 1, 0], fov: 40, near: 0.1, far: 100 },
+      shadow: { eye: [-6, 10, 8], target: [0, 1, 0], up: [0, 1, 0], extent: 8, near: 0.1, far: 40 },
+    };
+  },
+
   async 'material-spheres'() {
     const lighting = await skyLighting();
     const shared = sphere(64, 40);
