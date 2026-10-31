@@ -1,7 +1,7 @@
 export const EFFECT_PRESETS = Object.freeze({
-  neutral: Object.freeze({ saturation: 1, contrast: 1, temperature: 0, vignette: 0, grain: 0, bloom: Object.freeze({ strength: 0, threshold: 1, radius: 1 }) }),
-  cinematic: Object.freeze({ saturation: 0.88, contrast: 1.08, temperature: 0.08, vignette: 0.16, grain: 0.012, bloom: Object.freeze({ strength: 0.25, threshold: 1, radius: 1.5 }) }),
-  vivid: Object.freeze({ saturation: 1.15, contrast: 1.03, temperature: 0, vignette: 0.06, grain: 0, bloom: Object.freeze({ strength: 0.3, threshold: 0.9, radius: 1.2 }) }),
+  neutral: Object.freeze({ saturation: 1, contrast: 1, temperature: 0, vignette: 0, grain: 0, ambientOcclusion: 0, ambientOcclusionRadius: 0.5, bloom: Object.freeze({ strength: 0, threshold: 1, radius: 1 }) }),
+  cinematic: Object.freeze({ saturation: 0.88, contrast: 1.08, temperature: 0.08, vignette: 0.16, grain: 0.012, ambientOcclusion: 0, ambientOcclusionRadius: 0.5, bloom: Object.freeze({ strength: 0.25, threshold: 1, radius: 1.5 }) }),
+  vivid: Object.freeze({ saturation: 1.15, contrast: 1.03, temperature: 0, vignette: 0.06, grain: 0, ambientOcclusion: 0, ambientOcclusionRadius: 0.5, bloom: Object.freeze({ strength: 0.3, threshold: 0.9, radius: 1.2 }) }),
 });
 
 function numberInRange(value, fallback, minimum, maximum, name) {
@@ -20,6 +20,8 @@ export function resolveEffects(effects = {}) {
     temperature: numberInRange(effects.temperature, 0, -1, 1, 'Temperature'),
     vignette: numberInRange(effects.vignette, 0, 0, 1, 'Vignette'),
     grain: numberInRange(effects.grain, 0, 0, 0.1, 'Grain'),
+    ambientOcclusion: numberInRange(effects.ambientOcclusion, 0, 0, 1, 'Ambient occlusion'),
+    ambientOcclusionRadius: numberInRange(effects.ambientOcclusionRadius, 0.5, 0.01, 100, 'Ambient occlusion radius'),
     bloom: {
       strength: numberInRange(bloom.strength, 0, 0, 2, 'Bloom strength'),
       threshold: numberInRange(bloom.threshold, 1, 0, 10, 'Bloom threshold'),

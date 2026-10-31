@@ -18,6 +18,11 @@ export const MAX_MATERIAL_PATTERNS = 16;
 // Recipe textures are opaque patterns, so cutout masking has nothing to cut.
 export const RECIPE_ALPHA_MODES = Object.freeze(['opaque', 'blend']);
 
+// Named lighting setups (see lighting-setups.js) and the occlusion strength that recipes get when they set none.
+export const LIGHTING_SETUP_NAMES = Object.freeze(['daylight', 'overcast', 'sunset', 'studio']);
+export const DEFAULT_LIGHTING_SETUP = 'daylight';
+export const DEFAULT_AMBIENT_OCCLUSION = 0;
+
 export const AGENT_SCENE_CAPABILITIES = Object.freeze({
   format: '67js.scene', schemaVersion: 1,
   geometryTypes: Object.freeze(['box', 'cylinder', 'sphere', 'torus', 'lathe', 'extrude', 'tube', 'mesh']),
@@ -38,6 +43,8 @@ export const AGENT_SCENE_CAPABILITIES = Object.freeze({
   materialPatterns: MATERIAL_PATTERN_TYPES, maxMaterialPatterns: MAX_MATERIAL_PATTERNS,
   fixedResources: false, dynamicTopology: true, checkpoints: true, positiveScaleOnly: true,
   authoredLook: true, maxPointLights: 8,
+  lightingSetups: LIGHTING_SETUP_NAMES, defaultLightingSetup: DEFAULT_LIGHTING_SETUP,
+  ambientOcclusion: Object.freeze({ default: DEFAULT_AMBIENT_OCCLUSION, defaultRadius: 0.5, off: 0 }),
   // Local lights: spot and rectangular area lights. Shadows share one 2048 x 3072 depth atlas of 24 tiles; a shadowed
   // point light uses 6 tiles and a shadowed spot light 1. Area lights cast no shadow. Light linking is not supported.
   maxSpotLights: 8, maxAreaLights: 4,

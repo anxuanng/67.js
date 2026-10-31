@@ -46,7 +46,7 @@ EEVEE against Cycles is a yardstick: it shows what a good rasterizer scores. In 
 ## Limits
 
 - Scores come from one camera for each scene and one machine. They do not measure motion or speed.
-- 67.js reaches an HDRI only from code. A recipe can not set one yet, so these scores are better than what an agent gets today (issue #53).
+- This suite sets an HDRI from code and leaves occlusion off; `--ambient-occlusion <strength> [--ambient-occlusion-radius <units>]` turns it on. A recipe reaches only the named procedural setups, so these scores still describe a better environment than an agent gets (issue #53).
 - The Blender leaf material has no translucency, and the 67.js foliage shader adds it by a trick. `foliage` is therefore partly a difference in materials.
 - `render-blender.py` does not read normal maps. No scene uses one yet, so a new scene with a normal map must add that first.
 - `glass` and `car-paint` use the real 67.js `transmission` and `clearcoat` layers, and the Blender side sets the same values on the Principled BSDF. 67.js refracts through the front surface only, so the sphere does not show the inverted sky that Cycles traces through the back face.
