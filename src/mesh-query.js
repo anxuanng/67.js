@@ -1,5 +1,6 @@
-import { Box3, BufferAttribute, BufferGeometry, DoubleSide, Line3, Matrix4, Ray, Triangle, Vector3 } from 'three';
-import { MeshBVH, SAH } from 'three-mesh-bvh';
+import { mat4, vec3 } from 'gl-matrix';
+import { buildTriangleBvh, pointBoxDistance, rayBoxDistance, traverseBvhPairs, traverseTriangleBvh } from './triangle-bvh.js';
+import { barycentricWeights, closestPointOnTriangle, intersectRayTriangle, readTriangle, triangleNormal, trianglesIntersect } from './triangle-math.js';
 
 const records = new WeakMap();
 const EPSILON = 1e-9;
@@ -8,6 +9,15 @@ const PAIR_OPTIONS = new Set(['mode', 'maxTriangleTests']);
 const NEAREST_OPTIONS = new Set(['maxDistance', 'maxTriangleTests']);
 const PROJECT_OPTIONS = new Set(['origin', 'direction', 'maxDistance', 'maxTriangleTests']);
 const DIRECTIONS = [[0, 0, 1], [1, 0.41421356237, 0.73205080757], [0.61803398875, 1, 0.27182818285], [0.17320508075, 0.44721359550, 1], [-1, 0.31622776602, 0.14142135624], [0.22360679775, -1, 0.70710678118]];
+
+function createVector(x = 0, y = 0, z = 0) {
+  return Float64Array.of(x, y, z);
+}
+
+// gl-matrix allocates Float32Array unless the caller supplies the output, which would lose precision here.
+function createMatrix() {
+  return mat4.identity(new Float64Array(16));
+}
 
 function optionsObject(options, fields) {
   if (!options || typeof options !== 'object' || Array.isArray(options)) throw new TypeError('Query options require an object.');
@@ -37,22 +47,76 @@ function live(index) {
   return record;
 }
 
-// BVH callbacks must unwind normally: the maintained cast stores module-global traversal state.
-function cast(first, second, transform, counter, visitor) {
-  let failure;
-  const intersected = first.bvh.bvhcast(second.bvh, transform, {
-    intersectsTriangles(firstTriangle, secondTriangle, firstIndex, secondIndex) {
-      try {
-        counter.charge();
-        return visitor(firstTriangle, secondTriangle, first.bvh.resolveTriangleIndex(firstIndex), second.bvh.resolveTriangleIndex(secondIndex));
-      } catch (error) {
-        failure = error;
-        return true;
-      }
-    },
+function isFloat32Triple(input) {
+  return (Array.isArray(input) || ArrayBuffer.isView(input)) && input.length === 3 &&
+    Array.from(input).every(value => typeof value === 'number' && Number.isFinite(value) && Number.isFinite(Math.fround(value)));
+}
+
+function transformPositions(positions, matrix) {
+  const moved = new Float64Array(positions.length);
+  const point = createVector();
+  for (let offset = 0; offset < positions.length; offset += 3) {
+    point[0] = positions[offset];
+    point[1] = positions[offset + 1];
+    point[2] = positions[offset + 2];
+    vec3.transformMat4(point, point, matrix);
+    moved.set(point, offset);
+  }
+  return moved;
+}
+
+function transformBounds(bounds, matrix) {
+  const moved = Float64Array.of(Infinity, Infinity, Infinity, -Infinity, -Infinity, -Infinity);
+  const corner = createVector();
+  for (let mask = 0; mask < 8; mask++) {
+    corner[0] = bounds[mask & 1 ? 3 : 0];
+    corner[1] = bounds[mask & 2 ? 4 : 1];
+    corner[2] = bounds[mask & 4 ? 5 : 2];
+    vec3.transformMat4(corner, corner, matrix);
+    for (let axis = 0; axis < 3; axis++) {
+      moved[axis] = Math.min(moved[axis], corner[axis]);
+      moved[3 + axis] = Math.max(moved[3 + axis], corner[axis]);
+    }
+  }
+  return moved;
+}
+
+function boundsContainPoint(bounds, point) {
+  for (let axis = 0; axis < 3; axis++) if (point[axis] < bounds[axis] || point[axis] > bounds[3 + axis]) return false;
+  return true;
+}
+
+function boundsOverlap(first, second) {
+  for (let axis = 0; axis < 3; axis++) if (first[axis] > second[3 + axis] || second[axis] > first[3 + axis]) return false;
+  return true;
+}
+
+function transformDirection(direction, matrix) {
+  return createVector(
+    matrix[0] * direction[0] + matrix[4] * direction[1] + matrix[8] * direction[2],
+    matrix[1] * direction[0] + matrix[5] * direction[1] + matrix[9] * direction[2],
+    matrix[2] * direction[0] + matrix[6] * direction[1] + matrix[10] * direction[2],
+  );
+}
+
+function rotationScaleNorm(matrix) {
+  return Math.hypot(...[0, 1, 2, 4, 5, 6, 8, 9, 10].map(index => matrix[index]));
+}
+
+function maximumAbsolute(values) {
+  return Math.max(...Array.from(values, Math.abs));
+}
+
+function castTriangles(first, second, secondToFirst, counter, visitor) {
+  const secondPositions = transformPositions(second.positions, secondToFirst);
+  const firstTriangle = new Float64Array(9);
+  const secondTriangle = new Float64Array(9);
+  return traverseBvhPairs(first.bvh, second.bvh, secondPositions, (firstId, secondId) => {
+    counter.charge();
+    readTriangle(first.positions, first.bvh.indices, firstId, firstTriangle);
+    readTriangle(secondPositions, second.bvh.indices, secondId, secondTriangle);
+    return visitor(firstTriangle, secondTriangle, firstId, secondId);
   });
-  if (failure) throw failure;
-  return intersected;
 }
 
 function validateGeometry(geometry, maxVertices, maxTriangles) {
@@ -65,34 +129,43 @@ function validateGeometry(geometry, maxVertices, maxTriangles) {
   if (!(positions instanceof Float32Array) || positions.length === 0 || positions.length % 3 !== 0) throw new TypeError('Query positions require nonempty Float32 XYZ vertices.');
   if (!(indices instanceof Uint32Array) || indices.length === 0 || indices.length % 3 !== 0) throw new TypeError('Query indices require nonempty Uint32 triangles.');
   if (positions.length / 3 > maxVertices || indices.length / 3 > maxTriangles) throw new RangeError('Geometry exceeds maxVertices or maxTriangles.');
-  const bounds = new Box3();
-  const point = new Vector3();
+  const low = [Infinity, Infinity, Infinity];
+  const high = [-Infinity, -Infinity, -Infinity];
   for (let offset = 0; offset < positions.length; offset += 3) {
-    point.fromArray(positions, offset);
-    if (![point.x, point.y, point.z].every(Number.isFinite)) throw new RangeError('Query positions must remain finite.');
-    bounds.expandByPoint(point);
+    for (let axis = 0; axis < 3; axis++) {
+      const value = positions[offset + axis];
+      if (!Number.isFinite(value)) throw new RangeError('Query positions must remain finite.');
+      low[axis] = Math.min(low[axis], value);
+      high[axis] = Math.max(high[axis], value);
+    }
   }
   for (const index of indices) if (index >= positions.length / 3) throw new RangeError('Query index exceeds the vertex count.');
-  const center = bounds.getCenter(new Vector3());
-  const extent = bounds.getSize(new Vector3());
-  const scale = Math.max(extent.x, extent.y, extent.z);
+  const center = createVector(...low.map((value, axis) => (value + high[axis]) / 2));
+  const scale = Math.max(...high.map((value, axis) => value - low[axis]));
   if (scale === 0) throw new RangeError('Query geometry has no drawable extent.');
-  const first = new Vector3();
-  const second = new Vector3();
-  const third = new Vector3();
-  const cross = new Vector3();
+  return { center, scale, minimumAltitude: minimumNormalizedAltitude(positions, indices, scale), vertexCount: positions.length / 3, triangleCount: indices.length / 3 };
+}
+
+function minimumNormalizedAltitude(positions, indices, scale) {
+  const second = createVector();
+  const third = createVector();
+  const between = createVector();
+  const cross = createVector();
   let minimumAltitude = Infinity;
   for (let offset = 0; offset < indices.length; offset += 3) {
-    first.fromArray(positions, indices[offset] * 3);
-    second.fromArray(positions, indices[offset + 1] * 3).sub(first).multiplyScalar(1 / scale);
-    third.fromArray(positions, indices[offset + 2] * 3).sub(first).multiplyScalar(1 / scale);
-    const longest = Math.max(second.length(), third.length(), first.subVectors(second, third).length());
-    cross.crossVectors(second, third);
-    const altitude = Math.hypot(cross.x, cross.y, cross.z) / longest;
+    const firstOffset = indices[offset] * 3;
+    for (let axis = 0; axis < 3; axis++) {
+      second[axis] = (positions[indices[offset + 1] * 3 + axis] - positions[firstOffset + axis]) / scale;
+      third[axis] = (positions[indices[offset + 2] * 3 + axis] - positions[firstOffset + axis]) / scale;
+    }
+    vec3.subtract(between, second, third);
+    const longest = Math.max(vec3.length(second), vec3.length(third), vec3.length(between));
+    vec3.cross(cross, second, third);
+    const altitude = vec3.length(cross) / longest;
     if (!Number.isFinite(altitude) || altitude <= 1e-8) throw new RangeError('Query triangle is degenerate or below the normalized precision domain.');
     minimumAltitude = Math.min(minimumAltitude, altitude);
   }
-  return { center, scale, minimumAltitude, vertexCount: positions.length / 3, triangleCount: indices.length / 3 };
+  return minimumAltitude;
 }
 
 function topology(geometry) {
@@ -159,47 +232,57 @@ function topology(geometry) {
   return triangles;
 }
 
+function subtractPoints(first, second) {
+  return vec3.subtract(createVector(), first, second);
+}
+
+function cornerOf(triangle, corner) {
+  return createVector(triangle[corner * 3], triangle[corner * 3 + 1], triangle[corner * 3 + 2]);
+}
+
 function coneContains(origin, first, second, point, normal) {
-  const edgeA = first.clone().sub(origin);
-  const edgeB = second.clone().sub(origin);
-  const direction = point.clone().sub(origin);
-  const cross = new Vector3();
-  const denominator = cross.crossVectors(edgeA, edgeB).dot(normal);
-  const firstWeight = cross.crossVectors(direction, edgeB).dot(normal) / denominator;
-  const secondWeight = cross.crossVectors(edgeA, direction).dot(normal) / denominator;
+  const edgeA = subtractPoints(first, origin);
+  const edgeB = subtractPoints(second, origin);
+  const direction = subtractPoints(point, origin);
+  const cross = createVector();
+  const denominator = vec3.dot(vec3.cross(cross, edgeA, edgeB), normal);
+  const firstWeight = vec3.dot(vec3.cross(cross, direction, edgeB), normal) / denominator;
+  const secondWeight = vec3.dot(vec3.cross(cross, edgeA, direction), normal) / denominator;
   return firstWeight >= -EPSILON && secondWeight >= -EPSILON;
 }
 
 function validateSelfIntersections(record, welded, maximum) {
   const counter = budget(maximum, 'maxValidationPairs');
-  const segment = new Line3();
-  cast(record, record, new Matrix4(), counter, (first, second, firstId, secondId) => {
+  const segment = new Float64Array(6);
+  castTriangles(record, record, createMatrix(), counter, (first, second, firstId, secondId) => {
     if (firstId >= secondId) return false;
-    if (!first.intersectsTriangle(second, segment, true)) return false;
+    if (!trianglesIntersect(first, second, segment)) return false;
     const firstIds = Array.from(welded.subarray(firstId * 3, firstId * 3 + 3));
     const secondIds = Array.from(welded.subarray(secondId * 3, secondId * 3 + 3));
     const shared = firstIds.filter(index => secondIds.includes(index));
     if (shared.length === 0 || shared.length === 3) throw new RangeError('Solid boundary intersects itself.');
-    const firstPoints = [first.a, first.b, first.c];
-    const secondPoints = [second.a, second.b, second.c];
-    const firstNormal = first.getNormal(new Vector3());
-    const secondNormal = second.getNormal(new Vector3());
-    const coplanar = new Vector3().crossVectors(firstNormal, secondNormal).length() <= EPSILON;
+    const firstPoints = [0, 1, 2].map(corner => cornerOf(first, corner));
+    const secondPoints = [0, 1, 2].map(corner => cornerOf(second, corner));
+    const firstNormal = triangleNormal(first, createVector());
+    const secondNormal = triangleNormal(second, createVector());
+    const coplanar = vec3.length(vec3.cross(createVector(), firstNormal, secondNormal)) <= EPSILON;
     if (shared.length === 2) {
       if (coplanar) {
         const origin = firstPoints[firstIds.indexOf(shared[0])];
-        const edge = firstPoints[firstIds.indexOf(shared[1])].clone().sub(origin);
-        const firstTip = firstPoints[firstIds.findIndex(index => !shared.includes(index))].clone().sub(origin);
-        const secondTip = secondPoints[secondIds.findIndex(index => !shared.includes(index))].clone().sub(origin);
-        const firstSide = new Vector3().crossVectors(edge, firstTip).dot(firstNormal);
-        const secondSide = new Vector3().crossVectors(edge, secondTip).dot(firstNormal);
+        const edge = subtractPoints(firstPoints[firstIds.indexOf(shared[1])], origin);
+        const firstTip = subtractPoints(firstPoints[firstIds.findIndex(index => !shared.includes(index))], origin);
+        const secondTip = subtractPoints(secondPoints[secondIds.findIndex(index => !shared.includes(index))], origin);
+        const firstSide = vec3.dot(vec3.cross(createVector(), edge, firstTip), firstNormal);
+        const secondSide = vec3.dot(vec3.cross(createVector(), edge, secondTip), firstNormal);
         if (firstSide * secondSide >= 0) throw new RangeError('Solid adjacent faces overlap or have ambiguous coplanar sides.');
       }
       return false;
     }
     const origin = firstPoints[firstIds.indexOf(shared[0])];
     if (!coplanar) {
-      if (segment.start.distanceTo(origin) > EPSILON || segment.end.distanceTo(origin) > EPSILON) throw new RangeError('Solid faces intersect beyond their shared vertex.');
+      const segmentStart = segment.subarray(0, 3);
+      const segmentEnd = segment.subarray(3, 6);
+      if (vec3.distance(segmentStart, origin) > EPSILON || vec3.distance(segmentEnd, origin) > EPSILON) throw new RangeError('Solid faces intersect beyond their shared vertex.');
       return false;
     }
     const firstOther = firstPoints.filter((point, index) => firstIds[index] !== shared[0]);
@@ -219,69 +302,66 @@ function matrixState(record, values) {
     return Math.fround(value);
   });
   if (elements[3] !== 0 || elements[7] !== 0 || elements[11] !== 0 || elements[15] !== 1) throw new RangeError('Query matrix must be affine.');
-  const matrix = new Matrix4().fromArray(elements).multiply(record.normalization);
-  const determinant = matrix.determinant();
+  const matrix = mat4.multiply(createMatrix(), Float64Array.from(elements), record.normalization);
+  const determinant = mat4.determinant(matrix);
   if (!Number.isFinite(determinant) || determinant === 0) throw new RangeError('Query matrix must be nonsingular.');
-  const inverse = matrix.clone().invert();
-  if (!inverse.elements.every(Number.isFinite)) throw new RangeError('Query matrix inverse exceeds the precision domain.');
-  const bounds = record.bounds.clone().applyMatrix4(matrix);
-  const coordinates = [...bounds.min.toArray(), ...bounds.max.toArray()];
-  if (!coordinates.every(value => Number.isFinite(value) && Number.isFinite(Math.fround(value)))) throw new RangeError('Query world coordinates exceed finite Float32 bounds.');
-  const inverseNorm = Math.hypot(...[0, 1, 2, 4, 5, 6, 8, 9, 10].map(index => inverse.elements[index]));
-  const resolution = Math.max(...coordinates.map(Math.abs)) * 2 ** -21 + 2 ** -149;
-  if (record.minimumAltitude / inverseNorm <= resolution) throw new RangeError('Query transformed triangles collapse within the Float32 precision domain.');
+  const inverse = mat4.invert(createMatrix(), matrix);
+  if (!inverse || !inverse.every(Number.isFinite)) throw new RangeError('Query matrix inverse exceeds the precision domain.');
+  const bounds = transformBounds(record.bounds, matrix);
+  if (!bounds.every(value => Number.isFinite(value) && Number.isFinite(Math.fround(value)))) throw new RangeError('Query world coordinates exceed finite Float32 bounds.');
+  const resolution = maximumAbsolute(bounds) * 2 ** -21 + 2 ** -149;
+  if (record.minimumAltitude / rotationScaleNorm(inverse) <= resolution) throw new RangeError('Query transformed triangles collapse within the Float32 precision domain.');
   return { matrix, inverse, bounds };
 }
 
 function relativeState(second, transform) {
-  const inverse = transform.clone().invert();
-  const inverseNorm = Math.hypot(...[0, 1, 2, 4, 5, 6, 8, 9, 10].map(index => inverse.elements[index]));
-  const bounds = second.bounds.clone().applyMatrix4(transform);
-  const maximum = Math.max(...bounds.min.toArray().map(Math.abs), ...bounds.max.toArray().map(Math.abs));
+  const inverse = mat4.invert(createMatrix(), transform);
+  const inverseNorm = inverse ? rotationScaleNorm(inverse) : 0;
+  const maximum = maximumAbsolute(transformBounds(second.bounds, transform));
   if (!Number.isFinite(maximum) || maximum > 1e6 || second.minimumAltitude / inverseNorm <= 1e-8) {
     throw new RangeError('Relative mesh transform exceeds the normalized triangle precision domain.');
   }
 }
 
 function containment(record, point, counter) {
-  if (!record.bounds.containsPoint(point)) return { inside: false, attempts: 0 };
+  if (!boundsContainPoint(record.bounds, point)) return { inside: false, attempts: 0 };
+  const triangle = new Float64Array(9);
+  const normal = createVector();
+  const hit = createVector();
+  const weights = createVector();
   let previous;
   let accepted = 0;
   let attempts = 0;
   for (const direction of DIRECTIONS) {
     attempts++;
-    const ray = new Ray(point, new Vector3(...direction).normalize());
-    const hit = new Vector3();
-    const weights = new Vector3();
-    const normal = new Vector3();
+    const rayDirection = vec3.normalize(createVector(), direction);
     let count = 0;
     let ambiguous = false;
-    let failure;
-    record.bvh.shapecast({
-      intersectsBounds: bounds => ray.intersectsBox(bounds),
-      intersectsTriangle(triangle) {
-        try {
-          counter.charge();
-          triangle.getNormal(normal);
-          if (Math.abs(normal.dot(ray.direction)) <= EPSILON && Math.abs(normal.dot(point.clone().sub(triangle.a))) <= EPSILON) {
-            ambiguous = true;
-            return true;
-          }
-          if (!ray.intersectTriangle(triangle.a, triangle.b, triangle.c, false, hit)) return false;
-          triangle.getBarycoord(hit, weights);
-          if (hit.distanceTo(point) <= EPSILON || Math.min(weights.x, weights.y, weights.z) <= EPSILON) {
-            ambiguous = true;
-            return true;
-          }
-          count++;
-          return false;
-        } catch (error) {
-          failure = error;
+    traverseTriangleBvh(
+      record.bvh,
+      (bounds, offset) => rayBoxDistance(point, rayDirection, bounds, offset),
+      score => Number.isFinite(score),
+      triangleId => {
+        counter.charge();
+        readTriangle(record.positions, record.bvh.indices, triangleId, triangle);
+        triangleNormal(triangle, normal);
+        const offsetFromCorner = subtractPoints(point, cornerOf(triangle, 0));
+        if (Math.abs(vec3.dot(normal, rayDirection)) <= EPSILON && Math.abs(vec3.dot(normal, offsetFromCorner)) <= EPSILON) {
+          ambiguous = true;
           return true;
         }
+        const distance = intersectRayTriangle(point, rayDirection, triangle);
+        if (distance < 0) return false;
+        vec3.scaleAndAdd(hit, point, rayDirection, distance);
+        barycentricWeights(hit, triangle, weights);
+        if (distance <= EPSILON || Math.min(weights[0], weights[1], weights[2]) <= EPSILON) {
+          ambiguous = true;
+          return true;
+        }
+        count++;
+        return false;
       },
-    });
-    if (failure) throw failure;
+    );
     if (ambiguous) continue;
     const inside = count % 2 === 1;
     if (accepted && previous !== inside) throw new RangeError('Solid containment has inconsistent ray witnesses.');
@@ -293,27 +373,24 @@ function containment(record, point, counter) {
 }
 
 function localVector(input, name) {
-  if ((!Array.isArray(input) && !ArrayBuffer.isView(input)) || input.length !== 3 ||
-      !Array.from(input).every(value => typeof value === 'number' && Number.isFinite(value) && Number.isFinite(Math.fround(value)))) {
-    throw new TypeError(`${name} requires three finite Float32-representable components.`);
-  }
-  return new Vector3(...input);
+  if (!isFloat32Triple(input)) throw new TypeError(`${name} requires three finite Float32-representable components.`);
+  return createVector(...input);
 }
 
 function queryLocalSurface(record, pointInput, directionInput, options) {
   const originalPoint = localVector(pointInput, 'Query point');
-  const point = originalPoint.clone().sub(record.center).multiplyScalar(1 / record.scale);
-  if (Math.max(...point.toArray().map(Math.abs)) > 1e6) throw new RangeError('Query point exceeds the normalized precision domain.');
+  const point = vec3.scale(createVector(), subtractPoints(originalPoint, record.center), 1 / record.scale);
+  if (maximumAbsolute(point) > 1e6) throw new RangeError('Query point exceeds the normalized precision domain.');
   const maximum = options.maxDistance ?? Infinity;
   if ((maximum !== Infinity && (!Number.isFinite(maximum) || !Number.isFinite(Math.fround(maximum)))) || maximum < 0) {
     throw new RangeError('maxDistance must be nonnegative and Float32-representable, or Infinity.');
   }
   const counter = budget(integer(options.maxTriangleTests ?? 2_000_000, 100_000_000, 'maxTriangleTests'), 'maxTriangleTests');
-  let ray;
+  let rayDirection;
   if (directionInput !== undefined) {
     const direction = localVector(directionInput, 'Projection direction');
-    if (direction.length() === 0) throw new RangeError('Projection direction must be nonzero.');
-    ray = new Ray(point, direction.normalize());
+    if (vec3.length(direction) === 0) throw new RangeError('Projection direction must be nonzero.');
+    rayDirection = vec3.normalize(direction, direction);
   }
   let bestDistance = maximum / record.scale;
   let bestLocalDistance = maximum;
@@ -321,56 +398,105 @@ function queryLocalSurface(record, pointInput, directionInput, options) {
   let bestPoint;
   let bestNormal;
   let bestWeights;
-  let failure;
-  const candidate = new Vector3();
-  const candidateLocal = new Vector3();
-  const boundsPoint = new Vector3();
-  record.bvh.shapecast({
-    boundsTraverseOrder(bounds) {
-      if (!ray) return bounds.clampPoint(point, boundsPoint).distanceTo(point);
-      // Ray.intersectBox returns the exit when the origin is inside. The lower bound is zero there.
-      if (bounds.containsPoint(point)) return 0;
-      return ray.intersectBox(bounds, boundsPoint) ? boundsPoint.distanceTo(point) : Infinity;
-    },
-    intersectsBounds: (bounds, leaf, score) => Number.isFinite(score) && score <= bestDistance + EPSILON,
-    intersectsTriangle(triangle, triangleIndex) {
-      try {
-        counter.charge();
-        if (ray) {
-          if (!ray.intersectTriangle(triangle.a, triangle.b, triangle.c, false, candidate)) return false;
-        } else {
-          triangle.closestPointToPoint(point, candidate);
-        }
-        const distance = candidate.distanceTo(point);
-        if (!Number.isFinite(distance)) throw new RangeError('Surface query exceeds the numerical precision domain.');
-        candidateLocal.copy(candidate).multiplyScalar(record.scale).add(record.center);
-        const localDistance = candidateLocal.distanceTo(originalPoint);
-        // Apply the caller's cutoff in its original frame, avoiding normalized subtraction at exact endpoints.
-        if (localDistance > bestLocalDistance || (localDistance === bestLocalDistance && triangleIndex >= bestTriangle)) return false;
-        const weights = triangle.getBarycoord(candidate, new Vector3());
-        const normal = triangle.getNormal(new Vector3());
-        if (!weights || !weights.toArray().every(Number.isFinite) || normal.length() === 0) throw new RangeError('Surface query has invalid triangle coordinates.');
-        bestDistance = distance;
-        bestLocalDistance = localDistance;
-        bestTriangle = triangleIndex;
-        bestPoint = candidateLocal.clone();
-        bestWeights = weights;
-        bestNormal = normal;
-        return false;
-      } catch (error) {
-        failure = error;
-        return true;
+  const triangle = new Float64Array(9);
+  const candidate = createVector();
+  const candidateLocal = createVector();
+  traverseTriangleBvh(
+    record.bvh,
+    (bounds, offset) => rayDirection ? rayBoxDistance(point, rayDirection, bounds, offset) : pointBoxDistance(point, bounds, offset),
+    score => Number.isFinite(score) && score <= bestDistance + EPSILON,
+    triangleId => {
+      counter.charge();
+      readTriangle(record.positions, record.bvh.indices, triangleId, triangle);
+      if (rayDirection) {
+        const hitDistance = intersectRayTriangle(point, rayDirection, triangle);
+        if (hitDistance < 0) return false;
+        vec3.scaleAndAdd(candidate, point, rayDirection, hitDistance);
+      } else {
+        closestPointOnTriangle(point, triangle, candidate);
       }
+      const distance = vec3.distance(candidate, point);
+      if (!Number.isFinite(distance)) throw new RangeError('Surface query exceeds the numerical precision domain.');
+      vec3.add(candidateLocal, vec3.scale(candidateLocal, candidate, record.scale), record.center);
+      const localDistance = vec3.distance(candidateLocal, originalPoint);
+      // Apply the caller's cutoff in its original frame, avoiding normalized subtraction at exact endpoints.
+      if (localDistance > bestLocalDistance || (localDistance === bestLocalDistance && triangleId >= bestTriangle)) return false;
+      const weights = barycentricWeights(candidate, triangle, createVector());
+      const normal = triangleNormal(triangle, createVector());
+      if (!weights || !weights.every(Number.isFinite) || vec3.length(normal) === 0) throw new RangeError('Surface query has invalid triangle coordinates.');
+      bestDistance = distance;
+      bestLocalDistance = localDistance;
+      bestTriangle = triangleId;
+      bestPoint = Float64Array.from(candidateLocal);
+      bestWeights = weights;
+      bestNormal = normal;
+      return false;
     },
-  });
-  if (failure) throw failure;
+  );
   if (!bestPoint) return { hit: null, triangleTests: counter.tests };
   const distance = bestLocalDistance;
-  if (!Number.isFinite(distance) || !bestPoint.toArray().every(value => Number.isFinite(Math.fround(value)))) throw new RangeError('Surface query hit exceeds finite Float32 coordinates.');
-  return { hit: { point: bestPoint.toArray(), distance, triangle: bestTriangle, barycentric: bestWeights.toArray(), normal: bestNormal.toArray() }, triangleTests: counter.tests };
+  if (!Number.isFinite(distance) || !bestPoint.every(value => Number.isFinite(Math.fround(value)))) throw new RangeError('Surface query hit exceeds finite Float32 coordinates.');
+  return { hit: { point: Array.from(bestPoint), distance, triangle: bestTriangle, barycentric: Array.from(bestWeights), normal: Array.from(bestNormal) }, triangleTests: counter.tests };
 }
 
-/** Copies static geometry into a private normalized BVH. Returned handles expose no Three.js objects. */
+function nearestRayHit(record, origin, direction) {
+  const triangle = new Float64Array(9);
+  let bestDistance = Infinity;
+  let bestTriangle = -1;
+  traverseTriangleBvh(
+    record.bvh,
+    (bounds, offset) => rayBoxDistance(origin, direction, bounds, offset),
+    score => Number.isFinite(score) && score <= bestDistance,
+    triangleId => {
+      readTriangle(record.positions, record.bvh.indices, triangleId, triangle);
+      const distance = intersectRayTriangle(origin, direction, triangle);
+      if (distance >= 0 && distance < bestDistance) {
+        bestDistance = distance;
+        bestTriangle = triangleId;
+      }
+      return false;
+    },
+  );
+  if (bestTriangle < 0) return null;
+  return { triangle: bestTriangle, point: vec3.scaleAndAdd(createVector(), origin, direction, bestDistance) };
+}
+
+function readRayField(ray, field) {
+  const input = ray[field];
+  if (!isFloat32Triple(input)) throw new TypeError(`Ray ${field} requires three finite Float32 values.`);
+  return createVector(...Array.from(input, Math.fround));
+}
+
+function raycastIndex(current, matrix, ray) {
+  const state = matrixState(current, matrix);
+  if (!ray || typeof ray !== 'object') throw new TypeError('ray requires origin and direction.');
+  const origin = readRayField(ray, 'origin');
+  const direction = readRayField(ray, 'direction');
+  if (vec3.length(direction) === 0) throw new RangeError('Ray direction must be nonzero.');
+  const maximum = ray.maxDistance ?? Infinity;
+  if ((maximum !== Infinity && !Number.isFinite(maximum)) || maximum < 0) throw new RangeError('Ray maxDistance must be nonnegative.');
+  const localOrigin = vec3.transformMat4(createVector(), origin, state.inverse);
+  const localDirection = vec3.normalize(createVector(), transformDirection(vec3.normalize(createVector(), direction), state.inverse));
+  if (maximumAbsolute(localOrigin) > 1e6) throw new RangeError('Ray origin exceeds the normalized query precision domain.');
+  const result = nearestRayHit(current, localOrigin, localDirection);
+  if (!result) return null;
+  const worldPoint = vec3.transformMat4(createVector(), result.point, state.matrix);
+  const distance = vec3.distance(worldPoint, origin);
+  if (!Number.isFinite(distance) || !worldPoint.every(value => Number.isFinite(Math.fround(value)))) throw new RangeError('Ray hit exceeds finite world coordinates.');
+  if (distance > maximum) return null;
+  const triangle = new Float64Array(9);
+  readTriangle(current.positions, current.bvh.indices, result.triangle, triangle);
+  const weights = barycentricWeights(result.point, triangle, createVector());
+  if (!weights || !weights.every(Number.isFinite)) throw new RangeError('Ray barycentric coordinates exceed the query precision domain.');
+  return { point: Array.from(worldPoint), distance, triangle: result.triangle, barycentric: Array.from(weights) };
+}
+
+function firstVertexIn(record, transform) {
+  const offset = record.bvh.indices[0] * 3;
+  return vec3.transformMat4(createVector(), record.positions.subarray(offset, offset + 3), transform);
+}
+
+/** Copies static geometry into a private normalized BVH. Returned handles expose no mesh internals. */
 export function createMeshQueryIndex(geometry, options = {}) {
   optionsObject(options, INDEX_OPTIONS);
   const maxTriangles = integer(options.maxTriangles ?? 250_000, 1_000_000, 'maxTriangles');
@@ -384,78 +510,47 @@ export function createMeshQueryIndex(geometry, options = {}) {
   const reservedBytes = metadata.vertexCount * (solid ? 152 : 24) + metadata.triangleCount * (solid ? 512 : 128);
   if (reservedBytes > memoryBudgetMiB * 1024 * 1024) throw new RangeError('Mesh query allocation estimate exceeds memoryBudgetMiB.');
   const welded = solid ? topology(geometry) : null;
-  const source = new BufferGeometry();
   const positions = new Float64Array(geometry.positions.length);
   for (let offset = 0; offset < positions.length; offset += 3) {
-    for (let axis = 0; axis < 3; axis++) positions[offset + axis] = (geometry.positions[offset + axis] - metadata.center.getComponent(axis)) / metadata.scale;
+    for (let axis = 0; axis < 3; axis++) positions[offset + axis] = (geometry.positions[offset + axis] - metadata.center[axis]) / metadata.scale;
   }
-  source.setAttribute('position', new BufferAttribute(positions, 3));
-  source.setIndex(new BufferAttribute(new Uint32Array(geometry.indices), 1));
-  const normalization = new Matrix4().makeScale(metadata.scale, metadata.scale, metadata.scale).setPosition(metadata.center);
-  const record = { ...metadata, normalization, geometry: source, bounds: new Box3().setFromBufferAttribute(source.attributes.position), bvh: null, disposed: false, solid };
-  try {
-    record.bvh = new MeshBVH(source, { indirect: true, strategy: SAH, maxDepth: 64, targetLeafSize: 8, verbose: false });
-    const validationPairs = solid ? validateSelfIntersections(record, welded, maxValidationPairs) : 0;
-    const memoryPlan = Object.freeze({ reservedBytes, memoryBudgetMiB, vertexCount: metadata.vertexCount, triangleCount: metadata.triangleCount, validationPairs });
-    const handle = Object.freeze({
-      solid,
-      memoryPlan,
-      info: Object.freeze({ vertexCount: metadata.vertexCount, triangleCount: metadata.triangleCount, estimatedBytes: reservedBytes }),
-      nearest(point, options = {}) {
-        optionsObject(options, NEAREST_OPTIONS);
-        return queryLocalSurface(live(handle), point, undefined, options);
-      },
-      project(ray) {
-        optionsObject(ray, PROJECT_OPTIONS);
-        if (ray.direction === undefined) throw new TypeError('Projection requires direction.');
-        return queryLocalSurface(live(handle), ray.origin, ray.direction, ray);
-      },
-      raycast(matrix, ray) {
-        const current = live(handle);
-        const state = matrixState(current, matrix);
-        if (!ray || typeof ray !== 'object') throw new TypeError('ray requires origin and direction.');
-        const read = field => {
-          const input = ray[field];
-          if ((!Array.isArray(input) && !ArrayBuffer.isView(input)) || input.length !== 3 || !Array.from(input).every(value => typeof value === 'number' && Number.isFinite(value) && Number.isFinite(Math.fround(value)))) throw new TypeError(`Ray ${field} requires three finite Float32 values.`);
-          return new Vector3(...Array.from(input, Math.fround));
-        };
-        const origin = read('origin');
-        const direction = read('direction');
-        if (direction.length() === 0) throw new RangeError('Ray direction must be nonzero.');
-        const maximum = ray.maxDistance ?? Infinity;
-        if ((maximum !== Infinity && !Number.isFinite(maximum)) || maximum < 0) throw new RangeError('Ray maxDistance must be nonnegative.');
-        const localRay = new Ray(origin.clone(), direction.normalize()).applyMatrix4(state.inverse);
-        if (Math.max(...localRay.origin.toArray().map(Math.abs)) > 1e6) throw new RangeError('Ray origin exceeds the normalized query precision domain.');
-        const result = current.bvh.raycastFirst(localRay, DoubleSide);
-        if (!result) return null;
-        const worldPoint = result.point.clone().applyMatrix4(state.matrix);
-        const distance = worldPoint.distanceTo(origin);
-        if (!Number.isFinite(distance) || !worldPoint.toArray().every(value => Number.isFinite(Math.fround(value)))) throw new RangeError('Ray hit exceeds finite world coordinates.');
-        if (distance > maximum) return null;
-        const triangle = result.faceIndex;
-        const positions = current.geometry.attributes.position;
-        const ids = current.geometry.index;
-        const first = new Vector3().fromBufferAttribute(positions, ids.getX(triangle * 3));
-        const second = new Vector3().fromBufferAttribute(positions, ids.getX(triangle * 3 + 1));
-        const third = new Vector3().fromBufferAttribute(positions, ids.getX(triangle * 3 + 2));
-        const weights = new Triangle(first, second, third).getBarycoord(result.point, new Vector3());
-        if (!weights || !weights.toArray().every(Number.isFinite)) throw new RangeError('Ray barycentric coordinates exceed the query precision domain.');
-        return { point: worldPoint.toArray(), distance, triangle, barycentric: weights.toArray() };
-      },
-      dispose() {
-        if (record.disposed) return;
-        record.disposed = true;
-        record.geometry.dispose();
-        record.geometry = null;
-        record.bvh = null;
-      },
-    });
-    records.set(handle, record);
-    return handle;
-  } catch (error) {
-    source.dispose();
-    throw error;
+  const normalization = Float64Array.of(metadata.scale, 0, 0, 0, 0, metadata.scale, 0, 0, 0, 0, metadata.scale, 0, metadata.center[0], metadata.center[1], metadata.center[2], 1);
+  const bounds = Float64Array.of(Infinity, Infinity, Infinity, -Infinity, -Infinity, -Infinity);
+  for (let offset = 0; offset < positions.length; offset += 3) {
+    for (let axis = 0; axis < 3; axis++) {
+      bounds[axis] = Math.min(bounds[axis], positions[offset + axis]);
+      bounds[3 + axis] = Math.max(bounds[3 + axis], positions[offset + axis]);
+    }
   }
+  const bvh = buildTriangleBvh(positions, new Uint32Array(geometry.indices), { leafSize: 8, maxDepth: 64 });
+  const record = { ...metadata, normalization, positions, bounds, bvh, disposed: false, solid };
+  const validationPairs = solid ? validateSelfIntersections(record, welded, maxValidationPairs) : 0;
+  const memoryPlan = Object.freeze({ reservedBytes, memoryBudgetMiB, vertexCount: metadata.vertexCount, triangleCount: metadata.triangleCount, validationPairs });
+  const handle = Object.freeze({
+    solid,
+    memoryPlan,
+    info: Object.freeze({ vertexCount: metadata.vertexCount, triangleCount: metadata.triangleCount, estimatedBytes: reservedBytes }),
+    nearest(point, options = {}) {
+      optionsObject(options, NEAREST_OPTIONS);
+      return queryLocalSurface(live(handle), point, undefined, options);
+    },
+    project(ray) {
+      optionsObject(ray, PROJECT_OPTIONS);
+      if (ray.direction === undefined) throw new TypeError('Projection requires direction.');
+      return queryLocalSurface(live(handle), ray.origin, ray.direction, ray);
+    },
+    raycast(matrix, ray) {
+      return raycastIndex(live(handle), matrix, ray);
+    },
+    dispose() {
+      if (record.disposed) return;
+      record.disposed = true;
+      record.positions = null;
+      record.bvh = null;
+    },
+  });
+  records.set(handle, record);
+  return handle;
 }
 
 /** Surface contacts are not proof of volume penetration. Closed solids additionally test containment. */
@@ -474,14 +569,14 @@ export function createMeshPairQuery(indexA, indexB, options = {}) {
       const stateA = matrixState(currentA, matrixA);
       const stateB = matrixState(currentB, matrixB);
       const result = { kind: mode === 'surfaces' ? 'surface-disjoint' : 'separate', solidRelation: mode === 'surfaces' ? 'not-tested' : 'outside', triangles: null, triangleTests: 0, rayAttempts: 0 };
-      if (!stateA.bounds.intersectsBox(stateB.bounds)) return result;
-      const relativeB = stateA.inverse.clone().multiply(stateB.matrix);
-      const relativeA = stateB.inverse.clone().multiply(stateA.matrix);
+      if (!boundsOverlap(stateA.bounds, stateB.bounds)) return result;
+      const relativeB = mat4.multiply(createMatrix(), stateA.inverse, stateB.matrix);
+      const relativeA = mat4.multiply(createMatrix(), stateB.inverse, stateA.matrix);
       relativeState(currentB, relativeB);
       relativeState(currentA, relativeA);
       const counter = budget(maximum, 'maxTriangleTests');
-      const contact = cast(currentA, currentB, relativeB, counter, (firstTriangle, secondTriangle, firstId, secondId) => {
-        if (!firstTriangle.intersectsTriangle(secondTriangle)) return false;
+      const contact = castTriangles(currentA, currentB, relativeB, counter, (firstTriangle, secondTriangle, firstId, secondId) => {
+        if (!trianglesIntersect(firstTriangle, secondTriangle)) return false;
         result.triangles = [firstId, secondId];
         return true;
       });
@@ -489,10 +584,8 @@ export function createMeshPairQuery(indexA, indexB, options = {}) {
         result.kind = 'surface-intersection';
         result.solidRelation = mode === 'surfaces' ? 'not-tested' : 'boundaries-intersect';
       } else if (mode === 'closed-solids') {
-        const pointA = new Vector3().fromBufferAttribute(currentA.geometry.attributes.position, currentA.geometry.index.getX(0)).applyMatrix4(relativeA);
-        const pointB = new Vector3().fromBufferAttribute(currentB.geometry.attributes.position, currentB.geometry.index.getX(0)).applyMatrix4(relativeB);
-        const firstInside = containment(currentB, pointA, counter);
-        const secondInside = containment(currentA, pointB, counter);
+        const firstInside = containment(currentB, firstVertexIn(currentA, relativeA), counter);
+        const secondInside = containment(currentA, firstVertexIn(currentB, relativeB), counter);
         result.rayAttempts = firstInside.attempts + secondInside.attempts;
         if (firstInside.inside && secondInside.inside) throw new RangeError('Solid containment witnesses are inconsistent.');
         if (firstInside.inside || secondInside.inside) {
