@@ -138,3 +138,9 @@ test('recipe meshes evaluate stacks, reuse cached prefixes and apply nodes into 
   assert.throws(() => scene.apply([{ type: 'set-mesh-stack', geometry: 'wing', stack: [{ op: 'translate', offset: [0, 1, 0] }] }], { expectedRevision: 2 }), /op must be one of mirror/);
   assert.equal(scene.revision, 2);
 });
+
+test('an array over the budget fails before it allocates, and names the fix', () => {
+  const edits = [{ op: 'array', count: 200 }];
+  assert.throws(() => applyMeshEdits(cube(), edits, { maxVertices: 100, maxFaces: 100 }), /would make 1600 vertices .* Lower count/);
+  assert.throws(() => evaluateMeshStack(cube(), edits, { maxVertices: 100, maxFaces: 100 }), /would make 1600 vertices/);
+});
