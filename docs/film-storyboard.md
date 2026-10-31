@@ -1,7 +1,7 @@
-# Oppenheimer: a 67.js trailer study
+# Oppenheimer: a 67js trailer study
 
 This 187-second procedural reconstruction follows the visual structure of [Universal Pictures’ Oppenheimer New Trailer](https://www.youtube.com/watch?v=uYPbbksJxIg).
-The study uses 33 authored cuts across 13 sets, rendered through the actual 67.js WebGL engine.
+The study uses 33 authored cuts across 13 sets, rendered through the actual 67js WebGL engine.
 All geometry, camera moves and motion come from the scene code.
 The output contains no source footage, dialogue or soundtrack.
 

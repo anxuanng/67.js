@@ -1,12 +1,12 @@
 ---
 name: build-67js-scene
-description: Build or refine interactive 3D scenes with 67.js. Use for 67.js models, nature worlds, cinematic scenes, camera controls, materials and anti-aliasing, including "làm cảnh 67.js" and "model bị răng cưa".
+description: Build or refine interactive 3D scenes with 67js. Use for 67js models, nature worlds, cinematic scenes, camera controls, materials and anti-aliasing, including "làm cảnh 67js" and "model bị răng cưa".
 license: MIT
 ---
 
-# Dựng cảnh 3D bằng 67.js
+# Dựng cảnh 3D bằng 67js
 
-Use the actual 67.js checkout. Locate it from the active workspace or Git remote before writing files.
+Use the actual 67js checkout. Locate it from the active workspace or Git remote before writing files.
 Read its `README.md`, `src/renderer.js` and the closest existing scene module.
 Use `simplify-code` and `engineering-workflows` for implementation.
 

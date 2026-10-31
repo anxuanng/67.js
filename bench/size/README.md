@@ -14,7 +14,7 @@
 
 Measured on 2026-10-31 with three.js 0.186.1. Sizes are bytes gzip.
 
-| Scene | 67.js | three.js | Goal |
+| Scene | 67js | three.js | Goal |
 | --- | --- | --- | --- |
 | `lit-box` | 48,762 | 133,652 | 50,000 |
 | `gltf-box` | 159,422 | 155,814 | 80,000 |

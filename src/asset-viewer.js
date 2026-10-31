@@ -136,7 +136,7 @@ function showAsset(loaded, title) {
   syncAnimation();
   document.querySelector('#metrics').textContent = `${asset.parts.length.toLocaleString()} parts · ${renderer.batches.length} draws`;
   document.querySelector('#notice').hidden = true;
-  document.title = `${title} · 67.js asset viewer`;
+  document.title = `${title} · 67js asset viewer`;
   invalidate();
 }
 

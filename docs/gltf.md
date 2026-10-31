@@ -149,7 +149,7 @@ Without the matching decoder, a file that uses a compression extension fails wit
 
 ### Decoders
 
-The decoders are the Three.js loaders, and they stay yours: only an application that passes one imports Three.js. 67.js does not bundle or fetch their wasm files, so you choose where they are served.
+The decoders are the Three.js loaders, and they stay yours: only an application that passes one imports Three.js. 67js does not bundle or fetch their wasm files, so you choose where they are served.
 A Draco loader needs `decodeDracoFile(buffer, onLoad, attributeIds, attributeTypes, colorSpace, onError)`, a meshopt decoder needs `ready` and `decodeGltfBuffer`, and a KTX2 loader needs `load(url, onLoad, onProgress, onError)`.
 
 ```js

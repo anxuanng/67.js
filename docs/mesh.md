@@ -367,7 +367,7 @@ with n-gon caps, with creases of sharpness 10, 2 and 0.5. A crease of sharpness 
 Volume differs by under 1% on four cases, because it is measured on bent quads from each quad's first corner.
 
 Timing, measured on this machine: one level on a 100,489-quad grid takes about 225 ms (402k faces out), and about 390 ms
-with a crease on every edge. That is fast enough that 67.js does not keep a stencil table; a stack node reuses its cached
+with a crease on every edge. That is fast enough that 67js does not keep a stencil table; a stack node reuses its cached
 result until an earlier node changes.
 
 ### Decimate, remesh and levels of detail

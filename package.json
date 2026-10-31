@@ -8,7 +8,7 @@
   "homepage": "https://67js.codepawl.com",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/anxuanng/67.js.git"
+    "url": "git+https://github.com/anxuanng/67js.git"
   },
   "files": [
     "build",
