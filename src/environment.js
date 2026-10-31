@@ -296,13 +296,6 @@ vec3 environmentLighting(vec3 normal, vec3 specularNormal, vec3 baseReflectance,
   return (specular + diffuse) * occlusion * ambient;
 }
 
-vec3 environmentLighting(vec3 normal, vec3 viewDirection, vec3 color, float metallic, float roughness, float occlusion, float ambient, float specularWeight) {
-  return environmentLighting(normal, normal, mix(materialDielectric, color, metallic), viewDirection, color, metallic, roughness, occlusion, ambient, specularWeight);
-}
-
-vec3 environmentLighting(vec3 normal, vec3 viewDirection, vec3 color, float metallic, float roughness, float occlusion, float ambient) {
-  return environmentLighting(normal, viewDirection, color, metallic, roughness, occlusion, ambient, 1.0);
-}
 `;
 
 export const environmentBackgroundFragment = `#version 300 es

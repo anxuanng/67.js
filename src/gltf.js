@@ -14,6 +14,14 @@ export const GLTF_CAPABILITIES = Object.freeze({
   unsupported: ['more than four skin influences', 'singular weighted skin transforms', 'reflected skin transforms', 'TANGENT morph targets', 'morph targets without authored base normals', 'vertex alpha below one', 'different texture transforms on one material', 'skinned or morphed GPU instancing', 'textures inside material layer extensions (factors only)'],
 });
 
+const LAYER_SHADER_EXTENSIONS = Object.freeze(['KHR_materials_anisotropy', 'KHR_materials_iridescence']);
+
+// The shader code for anisotropy and iridescence is not in the core bundle; a file that uses either brings it in.
+async function loadLayerShadersFor(document) {
+  const usesLayerShaders = (document.materials ?? []).some(material => LAYER_SHADER_EXTENSIONS.some(extension => material?.extensions?.[extension]));
+  if (usesLayerShaders) await import('./material-layer-shaders.js');
+}
+
 const DEFAULT_MAX_BYTES = 32 * 1024 * 1024;
 const DEFAULT_MAX_VERTICES = 2_000_000;
 const GLTF_ALPHA_MODES = { OPAQUE: 'opaque', MASK: 'mask', BLEND: 'blend' };
@@ -758,6 +766,7 @@ export async function parseGltf(data, options = {}) {
   const document = documentFrom(data, limits.maxBytes);
   const decoders = options.decoders ?? {};
   const { ignoredExtensions } = validateDocument(document, limits, allowedExtensionsFor(decoders));
+  await loadLayerShadersFor(document);
   const warnings = ignoredExtensions.map(extension => `${extension} is accepted but not rendered.`);
   const dataBytes = typeof data === 'string' ? new TextEncoder().encode(data).byteLength : data.byteLength;
   const resourceBytes = await prepareResources(document, data, dataBytes, options, limits);

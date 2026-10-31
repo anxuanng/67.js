@@ -2,6 +2,7 @@
 import { Renderer67 } from '/src/renderer.js';
 import { REFERENCE_SCENES } from './scenes.js';
 import { skinnedGeometry } from '/src/path-tracer-scene.js';
+import '/src/material-layer-shaders.js';
 
 function encodeBytes(typedArray) {
   const bytes = new Uint8Array(typedArray.buffer, typedArray.byteOffset, typedArray.byteLength);
