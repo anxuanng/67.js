@@ -57,6 +57,14 @@ for (const output of manifest.outputs) {
   assert.equal(bytes.length, output.bytes);
   assert.equal(createHash('sha256').update(bytes).digest('hex'), output.sha256);
 }
+// The preview page imports engine chunks shared with the package entries, so each one must ship and match.
+assert.ok(manifest.previewChunks.length > 0, 'The manifest must list the engine chunks the preview imports.');
+for (const chunk of manifest.previewChunks) {
+  assert.ok(packed.files.some(file => file.path === `build/${chunk.filename}`), `Packed CLI must contain build/${chunk.filename}.`);
+  const bytes = await readFile(join(installedRoot, 'build', chunk.filename));
+  assert.equal(bytes.length, chunk.bytes);
+  assert.equal(createHash('sha256').update(bytes).digest('hex'), chunk.sha256);
+}
 const cli = join(installedRoot, 'bin', '67js-mcp.mjs');
 const version = spawnSync(process.execPath, [cli, '--version'], { cwd: consumer, encoding: 'utf8', windowsHide: true });
 assert.equal(version.status, 0, version.stderr);

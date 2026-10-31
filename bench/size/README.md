@@ -37,6 +37,10 @@ Run `node scripts/measure-size.mjs --update-baseline` to record the new sizes, s
 
 Use `--set-budgets` to reset every budget to 2% over the current size. Use it after work that makes bundles smaller, so that the saving stays. A reset also hides any growth since the last reset, so check the diff.
 
+## Package archive
+
+`archiveBytes` in `budgets.json` caps the npm archive that `npm pack` makes. `npm run smoke:package` checks it, after `npm run prepare:release`. The archive was 904,975 bytes before the MCP preview shared the package's engine chunks and 666,214 after, so lower `archiveBytes` when work shrinks it.
+
 ## Limits
 
 The check reads gzip size only. It does not measure parse time, memory or runtime speed.

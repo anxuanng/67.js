@@ -6,6 +6,7 @@ import { constants, setPriority } from 'node:os';
 import { isBuiltin } from 'node:module';
 import { dirname, resolve, join, relative, isAbsolute } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import libraryConfiguration from '../vite.lib.config.js';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 
@@ -94,25 +95,66 @@ async function collectLicenses(chunks) {
   return { text: `${[...notices, ...embeddedNotices].join('\n\n')}\n`, dependencies: records, embeddedDependencies: [...embedded.values()], licenseGaps: gaps };
 }
 
-function singleModule(result, filename, browser) {
+function singleModule(result, filename) {
   const outputs = (Array.isArray(result) ? result : [result]).flatMap(bundle => bundle.output);
   if (outputs.length !== 1 || outputs[0].type !== 'chunk' || !outputs[0].isEntry || outputs[0].fileName !== filename) {
     throw new Error(`${filename} must be exactly one self-contained entry module, without additional assets or chunks.`);
   }
   const chunk = outputs[0];
   for (const specifier of chunk.imports) {
-    if (browser || (!isBuiltin(specifier) && specifier !== 'playwright-core')) {
+    if (!isBuiltin(specifier) && specifier !== 'playwright-core') {
       throw new Error(`${filename} has an unexpected external import: ${specifier}.`);
     }
   }
   for (const specifier of chunk.dynamicImports) {
     // Rolldown retains a self import to initialize inlined lazy modules without an extra chunk.
-    // manifold-3d is an optional peer dependency loaded on demand; the preview replaces this import at runtime.
-    if (specifier !== filename && specifier !== 'manifold-3d' && specifier !== '@dimforge/rapier3d-compat' && (browser || (!isBuiltin(specifier) && specifier !== 'playwright-core'))) {
+    // manifold-3d is an optional peer dependency loaded on demand.
+    if (specifier !== filename && specifier !== 'manifold-3d' && specifier !== '@dimforge/rapier3d-compat' && !isBuiltin(specifier) && specifier !== 'playwright-core') {
       throw new Error(`${filename} has an unexpected dynamic import: ${specifier}.`);
     }
   }
   return chunk;
+}
+
+const PREVIEW_ENTRY_FILE = 'mcp/preview.js';
+
+/**
+ * The preview page is an entry of the library build, so it shares chunks with the package entries instead of
+ * carrying its own copy of the engine. Rebuild the library in memory to learn which chunks the preview reaches,
+ * then check them on disk, because the manifest and the license notices must cover exactly those files.
+ */
+async function reachablePreviewChunks(build, libraryDirectory) {
+  const libraryResult = await build({
+    ...libraryConfiguration,
+    configFile: false,
+    logLevel: 'silent',
+    build: { ...libraryConfiguration.build, write: false, emptyOutDir: false },
+  });
+  const chunksByName = new Map();
+  for (const bundle of Array.isArray(libraryResult) ? libraryResult : [libraryResult]) {
+    for (const output of bundle.output) {
+      if (output.type === 'chunk') chunksByName.set(output.fileName, output);
+    }
+  }
+  const reached = new Map();
+  const pending = [PREVIEW_ENTRY_FILE];
+  while (pending.length) {
+    const fileName = pending.pop();
+    if (reached.has(fileName)) continue;
+    const chunk = chunksByName.get(fileName);
+    if (!chunk) continue;
+    reached.set(fileName, chunk);
+    pending.push(...chunk.imports, ...chunk.dynamicImports);
+  }
+  if (!reached.has(PREVIEW_ENTRY_FILE)) {
+    throw new Error(`The library build has no ${PREVIEW_ENTRY_FILE} entry.`);
+  }
+  const chunks = [];
+  for (const [fileName, chunk] of reached) {
+    const bytes = await readFile(join(libraryDirectory, fileName));
+    chunks.push({ fileName, chunk, bytes });
+  }
+  return chunks;
 }
 
 export async function buildMcp({ outDir = join(root, 'build', 'mcp') } = {}) {
@@ -136,15 +178,7 @@ export async function buildMcp({ outDir = join(root, 'build', 'mcp') } = {}) {
     build: { write: false, copyPublicDir: false, emptyOutDir: false, outDir: destination, sourcemap: false, minify: true },
   };
   const legalBanner = '/*! 67js MCP bundle. Complete license texts and notices: ./LICENSES.md */';
-  const preview = singleModule(await build({
-    ...configuration,
-    build: {
-      ...configuration.build,
-      target: 'es2022',
-      lib: { entry: join(root, 'scripts', 'agent-preview-browser.js'), formats: ['es'], fileName: () => 'preview.js' },
-      rolldownOptions: { platform: 'browser', external: ['manifold-3d', '@dimforge/rapier3d-compat'], output: { codeSplitting: false, comments: { legal: true }, banner: legalBanner } },
-    },
-  }), 'preview.js', true);
+  const previewChunks = await reachablePreviewChunks(build, join(root, 'build'));
   const server = singleModule(await build({
     ...configuration,
     resolve: { conditions: ['node', 'import', 'default'], mainFields: ['main', 'module'] },
@@ -158,7 +192,7 @@ export async function buildMcp({ outDir = join(root, 'build', 'mcp') } = {}) {
         output: { codeSplitting: false, comments: { legal: true }, banner: legalBanner },
       },
     },
-  }), 'server.mjs', false);
+  }), 'server.mjs');
   // The scene engine runs in the preview page; bundling it into the server again would cost ~120 KB of the npm
   // archive's 1 MiB budget for code the server never calls.
   for (const marker of ['ExtrudeGeometry', 'extrudeFaceRegion', 'createAgentScene']) {
@@ -169,8 +203,9 @@ export async function buildMcp({ outDir = join(root, 'build', 'mcp') } = {}) {
   if (!server.exports.includes('createAgentMcpServer') || !server.exports.includes('runMcpCli')) {
     throw new Error('Node bundle must export createAgentMcpServer and runMcpCli.');
   }
-  const licenses = await collectLicenses([preview, server]);
-  const files = new Map([['preview.js', preview.code], ['server.mjs', server.code], ['LICENSES.md', licenses.text]]);
+  const licenses = await collectLicenses([...previewChunks.map(({ chunk }) => chunk), server]);
+  const previewEntry = previewChunks.find(({ fileName }) => fileName === PREVIEW_ENTRY_FILE);
+  const files = new Map([['preview.js', previewEntry.bytes], ['server.mjs', server.code], ['LICENSES.md', licenses.text]]);
   const outputs = [...files].map(([filename, text]) => {
     const bytes = Buffer.from(text);
     return { filename, bytes: bytes.length, sha256: digest(bytes) };
@@ -188,6 +223,10 @@ export async function buildMcp({ outDir = join(root, 'build', 'mcp') } = {}) {
     embeddedDependencies: licenses.embeddedDependencies,
     licenseGaps: licenses.licenseGaps,
     outputs,
+    previewChunks: previewChunks
+      .filter(({ fileName }) => fileName !== PREVIEW_ENTRY_FILE)
+      .map(({ fileName, bytes }) => ({ filename: fileName, bytes: bytes.length, sha256: digest(bytes) }))
+      .sort((left, right) => left.filename.localeCompare(right.filename)),
   };
   await mkdir(destination, { recursive: true });
   for (const [filename, contents] of files) {
