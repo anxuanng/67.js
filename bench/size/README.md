@@ -41,4 +41,4 @@ Use `--set-budgets` to reset every budget to 2% over the current size. Use it af
 
 The check reads gzip size only. It does not measure parse time, memory or runtime speed.
 
-The check reports a status. It can not block a merge, because this private repository has no branch protection (issue 32).
+The check reports a status. It can not block a merge by itself, because this private repository has no branch protection. `CONTRIBUTING.md` gives the merge rule.

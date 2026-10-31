@@ -167,6 +167,16 @@ export function normalizeMeshEdits(edits) {
   });
 }
 
+// An array multiplies a mesh in one step, so its size must be known before it allocates.
+function checkArrayBudget(mesh, edit, limits, index) {
+  if (edit.op !== 'array') return;
+  const vertices = mesh.vertexCount * edit.count;
+  const faces = mesh.faceCount * edit.count;
+  if (vertices > limits.maxVertices || faces > limits.maxFaces) {
+    throw new RangeError(`Mesh edit ${index} (array) would make ${vertices} vertices and ${faces} faces, over the limit of ${limits.maxVertices} vertices and ${limits.maxFaces} faces. Lower count, or use a simpler mesh.`);
+  }
+}
+
 function checkBudget(mesh, limits, index, op) {
   if (mesh.vertexCount > limits.maxVertices || mesh.faceCount > limits.maxFaces) {
     throw new RangeError(`Mesh edit ${index} (${op}) grows the mesh to ${mesh.vertexCount} vertices and ${mesh.faceCount} faces, over the limit of ${limits.maxVertices} vertices or ${limits.maxFaces} faces.`);
@@ -347,6 +357,7 @@ export function applyMeshEdits(mesh, edits, { maxVertices = 250_000, maxFaces = 
   const results = [];
   let current = mesh;
   normalized.forEach((edit, index) => {
+    checkArrayBudget(current, edit, limits, index);
     const outcome = runEdit(current, edit, index, { resolveCutter });
     current = outcome.mesh;
     checkBudget(current, limits, index, edit.op);
@@ -390,6 +401,7 @@ export function evaluateMeshStack(mesh, stack, { maxVertices = 250_000, maxFaces
       current = hit.mesh;
       result = { ...hit.result, cached: true };
     } else {
+      checkArrayBudget(current, node, limits, index);
       const outcome = runEdit(current, node, index, {});
       current = outcome.mesh;
       checkBudget(current, limits, index, node.op);

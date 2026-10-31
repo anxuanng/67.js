@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Update the bundled `zod` to 4.6.7, which fixes a memory exhaustion advisory in the validation of oversized collections
+- Make the MCP preview server reject requests with another Host header, which closes DNS rebinding
+- Check the size of a mesh `array` before it allocates. Before this, the check ran after the copies existed
 - Change the bevel `profile` to the meaning it has in Blender: 0.5 is a circular arc, 0.25 is flat, 1 is square, and below 0.25 is concave. Before this, 0 was flat and 0.5 was a parabola, so a recipe with a `profile` other than 0.5 changes shape
 - Stop adding a fan of triangles where one beveled edge ends at a vertex with three faces. The third face now takes the profile's points, as in Blender
 

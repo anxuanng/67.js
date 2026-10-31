@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createAgentRuntime } from '../scripts/agent-runtime.mjs';
+import { isPreviewHost } from '../scripts/preview-host.mjs';
 import { readFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { randomUUID } from 'node:crypto';
@@ -95,7 +96,7 @@ async function reviewRuntimeHarness({ failShot, blockShot = false, oversize = fa
   const context = createContext({ createServer, randomUUID, existsSync: () => true,
     readFile: async () => '', packageMetadata: { version: 'test' },
     createRequire: () => ({ resolve: () => { throw new Error('no peer in tests'); } }),
-    AGENT_SCENE_CAPABILITIES, AGENT_SCENE_DEFAULT_LIMITS, normalizeReview, REVIEW_LIMITS,
+    AGENT_SCENE_CAPABILITIES, AGENT_SCENE_DEFAULT_LIMITS, normalizeReview, REVIEW_LIMITS, isPreviewHost,
     chromium: { launch: async () => browser }, URL, Buffer, process, performance, setTimeout, clearTimeout,
   });
   new Script(`${source}\nglobalThis.runtime = createAgentRuntime({ backend: 'cpu' });`).runInContext(context);
@@ -259,4 +260,12 @@ test('requests cannot address an absent session or enter a closing runtime', asy
   const closing = runtime.close();
   await assert.rejects(runtime.checkpoint({ sessionId: 'missing' }), /closing|closed/);
   await closing;
+});
+
+test('the preview server accepts only its own loopback host', () => {
+  assert.equal(isPreviewHost('127.0.0.1:4100', 4100), true);
+  assert.equal(isPreviewHost('evil.example:4100', 4100), false);
+  assert.equal(isPreviewHost('localhost:4100', 4100), false);
+  assert.equal(isPreviewHost('127.0.0.1:4101', 4100), false);
+  assert.equal(isPreviewHost(undefined, 4100), false);
 });

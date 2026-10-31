@@ -9,6 +9,7 @@ import { AGENT_SCENE_CAPABILITIES, AGENT_SCENE_DEFAULT_LIMITS } from '../src/age
 import { createAgentAssetCatalog } from './agent-asset-catalog.mjs';
 import { createAgentRenderJobs } from './agent-render-jobs.mjs';
 import { createFrameEncoder } from './frame-encoder.mjs';
+import { isPreviewHost } from './preview-host.mjs';
 import { normalizeReview, REVIEW_LIMITS } from './agent-review.mjs';
 
 const SCENE_LIMITS = AGENT_SCENE_DEFAULT_LIMITS;
@@ -142,6 +143,11 @@ export function createAgentRuntime({ backend = 'gpu', browser: browserPath, memo
         readFile(previewUrl, 'utf8'),
       ]);
       httpServer = createServer((request, response) => {
+        if (!isPreviewHost(request.headers.host, httpServer.address().port)) {
+          response.writeHead(403);
+          response.end();
+          return;
+        }
         response.setHeader('Cache-Control', 'no-store');
         response.setHeader('Content-Security-Policy', "default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; style-src 'unsafe-inline'; img-src data: blob:; connect-src 'self' blob:");
         const vendor = request.method === 'GET' ? MANIFOLD_FILES[request.url] : undefined;
