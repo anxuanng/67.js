@@ -1,103 +1,13 @@
-import { MATERIAL_PATTERN_TYPES } from './agent-scene-capabilities.js';
+import { MATERIAL_PATTERN_TYPES, MATERIAL_MAPPINGS } from './agent-scene-capabilities.js';
+import { bakeMaterialGraph, normalizeMaterialGraph } from './material-graph.js';
 
 // Procedural surface patterns for recipe materials: seeded, tileable and baked on the CPU into the same texture
 // descriptors a loaded material uses. Texture coordinates run 0 to 1 and every noise is periodic over that square, so
 // a pattern repeats without a visible seam. Directional patterns (wood, planks, brushed metal) run along V.
 
-function hashCell(cellX, cellY, seed) {
-  let hash = Math.imul(cellX, 0x27d4eb2d) ^ Math.imul(cellY, 0x165667b1) ^ Math.imul(seed, 0x9e3779b1);
-  hash = Math.imul(hash ^ (hash >>> 15), 0x85ebca6b);
-  hash = Math.imul(hash ^ (hash >>> 13), 0xc2b2ae35);
-  return (hash ^ (hash >>> 16)) >>> 0;
-}
+import { hashCell, wrapCell, smoothStep, clampUnit, linearToSrgbByte, createImage, normalMapFromHeights, gradientNoise, fractalNoise, ridgedNoise, cellularNoise } from './material-texture-kit.js';
+export { gradientNoise, fractalNoise, ridgedNoise, cellularNoise };
 
-const wrapCell = (cell, period) => ((cell % period) + period) % period;
-const smootherStep = value => value * value * value * (value * (value * 6 - 15) + 10);
-const clampUnit = value => Math.min(1, Math.max(0, value));
-const smoothStep = (minimum, maximum, value) => {
-  const position = clampUnit((value - minimum) / (maximum - minimum));
-  return position * position * (3 - 2 * position);
-};
-
-function cornerGradient(cellX, cellY, offsetX, offsetY, seed) {
-  const angle = hashCell(cellX, cellY, seed) / 4294967296 * Math.PI * 2;
-  return Math.cos(angle) * offsetX + Math.sin(angle) * offsetY;
-}
-
-/** Gradient noise in about -1 to 1, periodic over [0, 1) with the given whole number of cells per axis. */
-export function gradientNoise(positionU, positionV, cellsU, cellsV, seed = 0) {
-  const scaledU = positionU * cellsU;
-  const scaledV = positionV * cellsV;
-  const floorU = Math.floor(scaledU);
-  const floorV = Math.floor(scaledV);
-  const fractionU = scaledU - floorU;
-  const fractionV = scaledV - floorV;
-  const left = wrapCell(floorU, cellsU);
-  const right = wrapCell(floorU + 1, cellsU);
-  const bottom = wrapCell(floorV, cellsV);
-  const top = wrapCell(floorV + 1, cellsV);
-  const blendU = smootherStep(fractionU);
-  const blendV = smootherStep(fractionV);
-  const lower = cornerGradient(left, bottom, fractionU, fractionV, seed) * (1 - blendU)
-    + cornerGradient(right, bottom, fractionU - 1, fractionV, seed) * blendU;
-  const upper = cornerGradient(left, top, fractionU, fractionV - 1, seed) * (1 - blendU)
-    + cornerGradient(right, top, fractionU - 1, fractionV - 1, seed) * blendU;
-  return (lower * (1 - blendV) + upper * blendV) * 1.5;
-}
-
-/** Fractal sum of gradientNoise in about -1 to 1. Each octave doubles the cells, so it stays periodic. */
-export function fractalNoise(positionU, positionV, cellsU, cellsV, seed = 0, octaves = 5, gain = 0.5) {
-  let total = 0;
-  let amplitude = 1;
-  let amplitudeSum = 0;
-  for (let octave = 0; octave < octaves; octave++) {
-    total += gradientNoise(positionU, positionV, cellsU << octave, cellsV << octave, seed + octave * 131) * amplitude;
-    amplitudeSum += amplitude;
-    amplitude *= gain;
-  }
-  return total / amplitudeSum;
-}
-
-/** Ridged fractal noise in 0 to 1: sharp crests where the gradient noise crosses zero. */
-export function ridgedNoise(positionU, positionV, cellsU, cellsV, seed = 0, octaves = 4) {
-  let total = 0;
-  let amplitude = 1;
-  let amplitudeSum = 0;
-  for (let octave = 0; octave < octaves; octave++) {
-    const ridge = 1 - Math.abs(gradientNoise(positionU, positionV, cellsU << octave, cellsV << octave, seed + octave * 211));
-    total += ridge * ridge * amplitude;
-    amplitudeSum += amplitude;
-    amplitude *= 0.5;
-  }
-  return total / amplitudeSum;
-}
-
-/** Periodic Worley noise: distances to the nearest and second nearest feature point, in cell units. */
-export function cellularNoise(positionU, positionV, cells, seed = 0) {
-  const scaledU = positionU * cells;
-  const scaledV = positionV * cells;
-  const floorU = Math.floor(scaledU);
-  const floorV = Math.floor(scaledV);
-  let nearest = Infinity;
-  let second = Infinity;
-  for (let offsetV = -1; offsetV <= 1; offsetV++) {
-    for (let offsetU = -1; offsetU <= 1; offsetU++) {
-      const cellU = floorU + offsetU;
-      const cellV = floorV + offsetV;
-      const hash = hashCell(wrapCell(cellU, cells), wrapCell(cellV, cells), seed);
-      const pointU = cellU + (hash & 0xffff) / 65536;
-      const pointV = cellV + (hash >>> 16) / 65536;
-      const distance = Math.hypot(pointU - scaledU, pointV - scaledV);
-      if (distance < nearest) {
-        second = nearest;
-        nearest = distance;
-      } else if (distance < second) {
-        second = distance;
-      }
-    }
-  }
-  return { nearest, second };
-}
 
 function unitHash(cellX, cellY, seed) {
   return hashCell(cellX, cellY, seed) / 4294967296;
@@ -231,6 +141,10 @@ const PATTERN_DEFAULTS = {
 const RESOLUTIONS = [256, 512, 1024];
 const MAX_COUNT = 64;
 
+const GRAPH_TYPE = 'graph';
+const GRAPH_DEFAULTS = { size: 1, bump: 1 };
+const GRAPH_ONLY_FIELDS = ['colors', 'count', 'seed'];
+
 function patternError(message) {
   return new RangeError(`Material pattern ${message}`);
 }
@@ -250,13 +164,38 @@ function checkedNumber(value, name, minimum, maximum) {
   return value;
 }
 
+function normalizeGraphPattern(value, mappingField) {
+  for (const field of GRAPH_ONLY_FIELDS) {
+    if (value[field] !== undefined) throw patternError(`of type graph does not take ${field}: the graph holds the colours and the noise seeds.`);
+  }
+  const axis = value.axis ?? 'y';
+  if (!['x', 'y', 'z'].includes(axis)) throw patternError('axis must be x, y or z: the object axis the texture V runs along.');
+  const resolution = value.resolution ?? 512;
+  if (!RESOLUTIONS.includes(resolution)) throw patternError(`resolution must be one of ${RESOLUTIONS.join(', ')}.`);
+  return {
+    type: GRAPH_TYPE,
+    graph: normalizeMaterialGraph(value.graph, resolution),
+    size: checkedNumber(value.size ?? GRAPH_DEFAULTS.size, 'size', 0.01, 100),
+    bump: checkedNumber(value.bump ?? GRAPH_DEFAULTS.bump, 'bump', 0, 4),
+    axis,
+    resolution,
+    ...mappingField,
+  };
+}
+
 /** Validate a recipe pattern and fill in its defaults. A normalized pattern normalizes to itself. */
 export function normalizeMaterialPattern(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw patternError(`must be an object such as { "type": "wood" }. Types: ${MATERIAL_PATTERN_TYPES.join(', ')}.`);
-  const known = ['type', 'colors', 'size', 'count', 'bump', 'seed', 'axis', 'resolution'];
+  const known = ['type', 'colors', 'size', 'count', 'bump', 'seed', 'axis', 'resolution', 'mapping', 'graph'];
   for (const key of Object.keys(value)) {
     if (!known.includes(key)) throw patternError(`does not take ${key}. Fields: ${known.join(', ')}.`);
   }
+  const mapping = value.mapping ?? 'box';
+  if (!MATERIAL_MAPPINGS.includes(mapping)) throw patternError(`mapping must be one of ${MATERIAL_MAPPINGS.join(', ')}: box projects along the object axes, uv follows the geometry's UVs.`);
+  // Box mapping is the default, so a preset that does not ask for UVs keeps exactly the shape it always had.
+  const mappingField = mapping === 'uv' ? { mapping } : {};
+  if (value.type === GRAPH_TYPE) return normalizeGraphPattern(value, mappingField);
+  if (value.graph !== undefined) throw patternError('does not take graph unless its type is graph.');
   if (!Object.hasOwn(PATTERN_DEFAULTS, value.type ?? '')) throw patternError(`type must be one of ${MATERIAL_PATTERN_TYPES.join(', ')}.`);
   const defaults = PATTERN_DEFAULTS[value.type];
   const count = value.count ?? defaults.count;
@@ -276,22 +215,19 @@ export function normalizeMaterialPattern(value) {
     seed,
     axis,
     resolution,
+    ...mappingField,
   };
 }
 
-function linearToSrgbByte(value) {
-  const encoded = value <= 0.0031308 ? value * 12.92 : 1.055 * value ** (1 / 2.4) - 0.055;
-  return Math.round(clampUnit(encoded) * 255);
-}
-
-function createImage(data, width, height) {
-  // Browsers upload ImageData directly; Node only reads the pixels, as tests and tools do.
-  return typeof ImageData === 'function' ? new ImageData(data, width, height) : { width, height, data };
-}
 
 /** Bake a normalized pattern into { map, normalMap, metallicRoughnessMap } texture descriptors. Deterministic. */
 export function bakeMaterialPattern(pattern) {
-  const { resolution, type, seed, count, colors, bump, size } = pattern;
+  const placement = {
+    boxMapScale: pattern.mapping === 'uv' ? 0 : 1 / pattern.size,
+    boxMapAxis: ['x', 'y', 'z'].indexOf(pattern.axis),
+  };
+  if (pattern.type === GRAPH_TYPE) return { ...bakeMaterialGraph(pattern.graph, pattern), ...placement };
+  const { resolution, type, seed, count, colors, bump } = pattern;
   const sampler = PATTERN_SAMPLERS[type];
   const pixelCount = resolution * resolution;
   const heights = new Float32Array(pixelCount);
@@ -318,31 +254,12 @@ export function bakeMaterialPattern(pattern) {
       surfaceData[offset + 3] = 255;
     }
   }
-  const normalData = new Uint8ClampedArray(pixelCount * 4);
-  // Height differences are per texel; scale them so a bump of 1 reads the same at any resolution.
-  const slopeScale = bump * resolution / 64;
-  for (let row = 0; row < resolution; row++) {
-    const rowAbove = (row + 1) % resolution;
-    const rowBelow = (row + resolution - 1) % resolution;
-    for (let column = 0; column < resolution; column++) {
-      const columnRight = (column + 1) % resolution;
-      const columnLeft = (column + resolution - 1) % resolution;
-      const slopeU = (heights[row * resolution + columnRight] - heights[row * resolution + columnLeft]) * slopeScale;
-      const slopeV = (heights[rowAbove * resolution + column] - heights[rowBelow * resolution + column]) * slopeScale;
-      const length = Math.hypot(slopeU, slopeV, 1);
-      const offset = (row * resolution + column) * 4;
-      normalData[offset] = Math.round((-slopeU / length * 0.5 + 0.5) * 255);
-      normalData[offset + 1] = Math.round((-slopeV / length * 0.5 + 0.5) * 255);
-      normalData[offset + 2] = Math.round((1 / length * 0.5 + 0.5) * 255);
-      normalData[offset + 3] = 255;
-    }
-  }
+  const normalData = normalMapFromHeights(heights, resolution, bump);
   return {
     map: { image: createImage(colorData, resolution, resolution), colorSpace: 'srgb' },
     normalMap: { image: createImage(normalData, resolution, resolution), colorSpace: 'linear' },
     metallicRoughnessMap: { image: createImage(surfaceData, resolution, resolution), colorSpace: 'linear' },
-    boxMapScale: 1 / size,
-    boxMapAxis: ['x', 'y', 'z'].indexOf(pattern.axis),
+    ...placement,
   };
 }
 

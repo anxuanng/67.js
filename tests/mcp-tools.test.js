@@ -206,6 +206,31 @@ test('review SDK exposes one image and rejects unknown or unbounded shot fields 
   assert.equal(calls(), before);
 });
 
+test('branch names and labels are bounded in every tool schema and rejected before dispatch', async context => {
+  const { client, sessionId, calls } = await connect(context);
+  await client.callTool({ name: 'scene_create', arguments: { recipe: recipe() } });
+  const { tools } = await client.listTools();
+  const schema = name => tools.find(tool => tool.name === name).inputSchema;
+  assert.equal(tools.length, 22, 'branches add fields, not tools');
+  const pattern = '^[a-z][a-z0-9_-]{0,23}$';
+  assert.equal(schema('scene_apply').properties.branch.pattern, pattern);
+  assert.equal(schema('scene_restore').properties.branch.pattern, pattern);
+  assert.equal(schema('scene_review').properties.shots.items.properties.branch.pattern, pattern);
+  assert.equal(schema('scene_look').properties.labels.type, 'boolean');
+  assert.equal(schema('scene_review').properties.labels.type, 'boolean');
+  assert.ok(!schema('scene_restore').required.includes('checkpointId'));
+  const operations = [{ type: 'set-material', id: 'light', color: [1, 1, 1] }];
+  const before = calls();
+  for (const hostile of ['', 'Warm', '1warm', 'a'.repeat(25), '../x', 'a b', 'a\nb', 'https://example.com/x', '__proto__ ', 'a;rm', 7, null]) {
+    await rejected(client, 'scene_apply', { sessionId, expectedRevision: 0, branch: hostile, operations });
+    await rejected(client, 'scene_review', { sessionId, expectedRevision: 0, shots: [{ branch: hostile }] });
+    await rejected(client, 'scene_restore', { sessionId, expectedRevision: 0, branch: hostile });
+  }
+  await rejected(client, 'scene_look', { sessionId, labels: 'yes' });
+  await rejected(client, 'scene_review', { sessionId, expectedRevision: 0, labels: 1, shots: [{}] });
+  assert.equal(calls(), before);
+});
+
 test('SDK rejects unknown fields, missing revisions, invalid vectors and oversized inputs before runtime dispatch', async context => {
   const boundary = await connect(context);
   const { client, sessionId } = boundary;

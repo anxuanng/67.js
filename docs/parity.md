@@ -197,13 +197,13 @@ To move to a new Blender release, run `node scripts/parity-manual-snapshot.mjs`.
 | Rendering > Materials > Settings | partial | Opaque and blend in recipes, and mask on imported assets, with double-sided support. | [gltf-extensions](../tests/gltf-extensions.test.js) | #51 |
 | Rendering > Materials > Line Art | missing | No line rendering. | | |
 | Rendering > Materials > Legacy Textures | out of scope | Blender keeps these for old files. | | |
-| Rendering > Shader Nodes > Input | missing | No node graph. | | #50 |
-| Rendering > Shader Nodes > Output | missing | No node graph. | | #50 |
+| Rendering > Shader Nodes > Input | partial | `uv` coordinates only. There is no object, geometry, camera or light-path input. | [material-graph](../tests/material-graph.test.js) | #50 |
+| Rendering > Shader Nodes > Output | partial | A graph makes base colour, roughness, metallic, emission and height. It is baked to textures on the CPU, so it can not react to light, view or position. | [material-graph](../tests/material-graph.test.js), [brick-graph scene](../bench/reference/scenes.js) | #50 |
 | Rendering > Shader Nodes > Shader | partial | A metallic-roughness surface with clear coat, transmission, sheen and specular layers, and unlit, liquid and foam tags. There is no anisotropy, iridescence or subsurface. | [material-layers](../tests/material-layers.test.js) | #51 |
-| Rendering > Shader Nodes > Displacement | partial | Normal maps. There is no bump from height or displacement. | | #50 |
-| Rendering > Shader Nodes > Texture | partial | Image maps and 11 pattern presets. There is no graph, so an agent can not combine them. | [material-patterns](../tests/material-patterns.test.js) | #50 |
-| Rendering > Shader Nodes > Color | missing | No node graph. | | #50 |
-| Rendering > Shader Nodes > Utilities | missing | No node graph. | | #50 |
+| Rendering > Shader Nodes > Displacement | partial | Bump: a graph's height becomes a normal map. There is no displacement of the surface. | [material-graph](../tests/material-graph.test.js) | #50 |
+| Rendering > Shader Nodes > Texture | partial | Image maps, 11 pattern presets, and graph nodes for noise, voronoi, wave, checker and gradient. Noise is not Blender's noise function, and there is no brick, musgrave, magic or environment node. Patterns follow UVs or box projection. | [material-patterns](../tests/material-patterns.test.js), [material-graph](../tests/material-graph.test.js), [brick-graph scene](../bench/reference/scenes.js) | #50 |
+| Rendering > Shader Nodes > Color | partial | Color ramp, mix and invert. There is no hue, curves, gamma or blend modes. | [material-graph](../tests/material-graph.test.js) | #50 |
+| Rendering > Shader Nodes > Utilities | partial | Maths on numbers and vectors: add, sub, mul, div, min, max, pow, abs, floor, fract, sqrt, clamp and smoothstep. There is no vector maths, mapping, map range or separate and combine nodes. | [material-graph](../tests/material-graph.test.js) | #50 |
 | Rendering > Shader Nodes > Group | missing | No node graph. | | #50 |
 | Rendering > Color Management | partial | ACES tone mapping and grading. There is no choice of color space or display. | [effects](../tests/effects.test.js) | |
 | Rendering > Freestyle | missing | No line rendering. | | |
@@ -246,4 +246,4 @@ The goal also needs this work, and no page in the Blender manual covers it.
 | Rendering backend | missing | WebGL2 only. WebGPU is not evaluated. | #56 |
 | Terrain and navigation | partial | Terrain with 4 splat layers and no holes. There is no navmesh. | #64 |
 | Tool cost and errors | partial | Lint and errors exist. No budget limits schema size, and not every error is checked. | #65, #66 |
-| Branches and labelled images | missing | 8 checkpoints and unlabelled images. | #67 |
+| Branches and labelled images | partial | `scene_apply` `branch` forks a variant over a deduplicated snapshot store (8 branches, scene and revision untouched), `scene_review` shots take a `branch`, `scene_restore` `branch` keeps one. `labels: true` on `scene_look` and `scene_review` prints part names, tags and lint problems and returns them with pixel positions. Procedural scenes only; no suite task yet measures calls. | #67 |

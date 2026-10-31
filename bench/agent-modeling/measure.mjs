@@ -331,6 +331,7 @@ export async function measureRecipe(recipe) {
     physicsSeekStable,
     rig: recipe.armatures ? measureRig(scene, recipe.motion?.duration ?? 0) : null,
     patternTypes: scene.exportRecipe().materials.filter(material => material.pattern).map(material => material.pattern.type),
+    patternMappings: scene.exportRecipe().materials.filter(material => material.pattern).map(material => material.pattern.mapping ?? 'box'),
     parts,
     closedParts,
     holes: allClosed ? (2 * parts - eulerCharacteristic) / 2 : null,

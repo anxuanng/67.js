@@ -57,6 +57,7 @@ def build_mesh(name, geometry):
     triangles = triangles[~repeats_vertex]
     mesh = bpy.data.meshes.new(name)
     mesh.from_pydata(positions.tolist(), [], triangles.tolist())
+    mesh.validate()
     mesh.normals_split_custom_set_from_vertices(normals.tolist())
     uvs = decode(geometry.get("uvs"))
     if uvs is not None:
@@ -158,6 +159,173 @@ def add_material_layers(material, principled, description):
         material.node_tree.links.new(absorption.outputs["Volume"], material.node_tree.nodes["Material Output"].inputs["Volume"])
 
 
+GRAPH_MATH_OPERATIONS = {
+    "add": "ADD", "sub": "SUBTRACT", "mul": "MULTIPLY", "div": "DIVIDE", "min": "MINIMUM", "max": "MAXIMUM",
+    "pow": "POWER", "abs": "ABSOLUTE", "floor": "FLOOR", "fract": "FRACT", "sqrt": "SQRT",
+}
+# 67.js noise has no seed in Blender, and Blender's noise function differs from the one in src/material-texture-kit.js,
+# so a graph with noise only matches in how it looks, not pixel for pixel.
+GRAPH_BUMP_DISTANCE = 0.15
+
+
+class GraphTranslator:
+    """Builds the Blender nodes for a 67.js material graph (src/material-graph.js). Values are a number, a socket,
+    {"color": socket or three numbers} or {"vector": three numbers or sockets}. Only the nodes the reference scenes use exist."""
+
+    def __init__(self, material):
+        self.nodes = material.node_tree.nodes
+        self.links = material.node_tree.links
+        self.coordinates = None
+
+    def connect(self, socket, value):
+        if isinstance(value, (int, float)):
+            socket.default_value = value
+        else:
+            self.links.new(value, socket)
+
+    def math(self, operation, *inputs):
+        node = self.nodes.new("ShaderNodeMath")
+        node.operation = operation
+        for index, value in enumerate(inputs):
+            self.connect(node.inputs[index], value)
+        return node.outputs[0]
+
+    def uv_parts(self):
+        if self.coordinates is None:
+            attribute = self.nodes.new("ShaderNodeUVMap")
+            separate = self.nodes.new("ShaderNodeSeparateXYZ")
+            self.links.new(attribute.outputs["UV"], separate.inputs[0])
+            # The mesh stores 1 - v, because Blender's image rows run the other way (see build_mesh).
+            self.coordinates = (separate.outputs["X"], self.math("SUBTRACT", 1.0, separate.outputs["Y"]))
+        return self.coordinates
+
+    def position(self, settings):
+        if "at" in settings:
+            at = self.compile(settings["at"])
+            return at["vector"][0], at["vector"][1]
+        return self.uv_parts()
+
+    def scalar(self, node):
+        value = self.compile(node)
+        if isinstance(value, dict):
+            raise NotImplementedError("This graph node needs a number.")
+        return value
+
+    def compile(self, node):
+        if isinstance(node, (int, float)):
+            return float(node)
+        if isinstance(node, list):
+            return {"color": node}
+        name, settings = next(iter(node.items()))
+        if name == "uv":
+            u, v = self.uv_parts()
+            return {"u": u, "v": v}.get(settings) or {"vector": [u, v, 0.0]}
+        if name == "vec":
+            return {"vector": [self.scalar(part) for part in settings]}
+        if name == "noise":
+            return self.noise(settings)
+        if name == "wave":
+            return self.wave(settings)
+        if name == "smoothstep":
+            low, high, value = (self.scalar(part) for part in settings)
+            return self.smooth_step(value, low, high)
+        if name == "ramp":
+            return self.ramp(settings)
+        if name == "mix":
+            return self.mix(settings)
+        if name in GRAPH_MATH_OPERATIONS:
+            operands = settings if isinstance(settings, list) else [settings]
+            return self.math(GRAPH_MATH_OPERATIONS[name], *(self.scalar(operand) for operand in operands))
+        raise NotImplementedError(f"The Blender translation has no node for {name}.")
+
+    def smooth_step(self, value, low, high):
+        node = self.nodes.new("ShaderNodeMapRange")
+        node.data_type = "FLOAT"
+        node.interpolation_type = "SMOOTHSTEP"
+        node.clamp = True
+        self.connect(node.inputs["Value"], value)
+        self.connect(node.inputs["From Min"], low)
+        self.connect(node.inputs["From Max"], high)
+        return node.outputs["Result"]
+
+    def noise(self, settings):
+        node = self.nodes.new("ShaderNodeTexNoise")
+        node.noise_dimensions = "2D"
+        node.inputs["Scale"].default_value = settings.get("scale", 4)
+        node.inputs["Detail"].default_value = settings.get("octaves", 4) - 1
+        node.inputs["Roughness"].default_value = 0.5
+        combine = self.nodes.new("ShaderNodeCombineXYZ")
+        for index, part in enumerate(self.position(settings)):
+            self.connect(combine.inputs[index], part)
+        self.links.new(combine.outputs[0], node.inputs["Vector"])
+        return node.outputs["Fac"]
+
+    def wave(self, settings):
+        u, v = self.position(settings)
+        direction = settings.get("direction", "u")
+        along = u if direction == "u" else v
+        if direction == "diagonal":
+            along = self.math("ADD", u, v)
+        phase = self.math("MULTIPLY", along, float(settings.get("frequency", 4)))
+        shape = settings.get("shape", "sine")
+        if shape == "sine":
+            return self.math("MULTIPLY_ADD", self.math("SINE", self.math("MULTIPLY", phase, 2 * math.pi)), 0.5, 0.5)
+        fraction = self.math("FRACT", phase)
+        if shape == "saw":
+            return fraction
+        return self.math("SUBTRACT", 1.0, self.math("ABSOLUTE", self.math("SUBTRACT", self.math("MULTIPLY", fraction, 2.0), 1.0)))
+
+    def ramp(self, settings):
+        node = self.nodes.new("ShaderNodeValToRGB")
+        node.color_ramp.interpolation = "LINEAR"
+        stops = settings["stops"]
+        elements = node.color_ramp.elements
+        while len(elements) < len(stops):
+            elements.new(0.5)
+        for element, (position, color) in zip(elements, stops):
+            element.position = position
+            element.color = (color[0], color[1], color[2], 1)
+        self.connect(node.inputs["Fac"], self.scalar(settings["value"]))
+        return {"color": node.outputs["Color"]}
+
+    def color_socket(self, value, node, index):
+        if isinstance(value, dict) and isinstance(value["color"], list):
+            node.inputs[index].default_value = (value["color"][0], value["color"][1], value["color"][2], 1)
+        else:
+            self.links.new(value["color"], node.inputs[index])
+
+    def mix(self, settings):
+        first, second, factor = (self.compile(part) for part in settings)
+        if not isinstance(first, dict):
+            return self.math("ADD", first, self.math("MULTIPLY", self.math("SUBTRACT", second, first), factor))
+        node = self.nodes.new("ShaderNodeMixRGB")
+        node.blend_type = "MIX"
+        self.connect(node.inputs[0], factor)
+        self.color_socket(first, node, 1)
+        self.color_socket(second, node, 2)
+        return {"color": node.outputs["Color"]}
+
+
+def add_graph(material, principled, description):
+    """Builds the material from its graph, so Blender evaluates the same nodes 67.js baked into textures."""
+    translator = GraphTranslator(material)
+    graph = description["graph"]
+    links = material.node_tree.links
+    if "color" in graph:
+        links.new(translator.compile(graph["color"])["color"], principled.inputs["Base Color"])
+    for output, socket_name in (("roughness", "Roughness"), ("metallic", "Metallic")):
+        if output in graph:
+            translator.connect(principled.inputs[socket_name], translator.scalar(graph[output]))
+    if "height" in graph:
+        bump = material.node_tree.nodes.new("ShaderNodeBump")
+        bump.inputs["Distance"].default_value = GRAPH_BUMP_DISTANCE * description.get("graphBump", 1)
+        translator.connect(bump.inputs["Height"], translator.scalar(graph["height"]))
+        links.new(bump.outputs["Normal"], principled.inputs["Normal"])
+    if "emission" in graph:
+        links.new(translator.compile(graph["emission"])["color"], principled.inputs["Emission Color"])
+        principled.inputs["Emission Strength"].default_value = description.get("emission", 1)
+
+
 def build_material(name, description, has_vertex_colors):
     material = bpy.data.materials.new(name)
     material.use_nodes = True
@@ -169,7 +337,9 @@ def build_material(name, description, has_vertex_colors):
         principled.inputs["Transmission Weight"].default_value = 1
         principled.inputs["IOR"].default_value = description["liquid"]["ior"]
     add_material_layers(material, principled, description)
-    if "map" in description:
+    if "graph" in description:
+        add_graph(material, principled, description)
+    elif "map" in description:
         add_texture(material, principled, description, has_vertex_colors)
     elif has_vertex_colors:
         add_vertex_colors(material, principled, description)
