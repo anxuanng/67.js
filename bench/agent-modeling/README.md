@@ -215,3 +215,16 @@ The exposure change above was reverted: on the six cold recipes no subject pixel
 ## Clip layers (2026-10-31)
 
 `robot-walk-wave` asks for a character that walks and waves at once through `motion.layers`. The check `assetWalkAndWave` reloads the exported recipe, plays each layer alone (keeping its own speed, offset and loop) and compares part matrices at two times: the legs must match Walking and move, the right arm must leave Walking, the left arm must keep walking. Cold Sonnet, no skill, `results/2026-10-31-11-40-sonnet-walk-wave-cold-fixed-grader.json`: 1 of 1, 7 tool calls (2 errors), $0.31. A first run, with a check that compared against Walking at speed 1 only, failed on a recipe the agent had correct (it set per-layer speeds); the check was fixed and that recipe grades as a pass. One run is not a rate.
+
+## Best of three, branches on and off (2026-11-01, issue #67)
+
+`best-of-three` starts from a lamp and offers three shade widths (0.1, 0.18, 0.26 m). The agent keeps the one that covers the 0.08 m bulb by 0.03 m a side and fits a 0.2 m shelf; only 0.18 m does. The check on the exported recipe grades size, ground, part count and the shade's centre. The prompt does not mention branches. `run.mjs --branches off` starts the MCP server with `--branches off` (no `branch` field in any schema, no variants advice in the instructions), and each record has `branchCalls`, the calls that passed a branch name.
+
+| Model | Branches | Pass | Calls (3 runs) | Errors | Cost | `branch` calls |
+| --- | --- | --- | --- | --- | --- | --- |
+| Haiku | on | 3/3 | 7, 5, 3 | 1 | $0.17 | 0 |
+| Haiku | off | 3/3 | 6, 4, 7 | 1 | $0.26 | 0 |
+| Sonnet | on | 3/3 | 3, 3, 3 | 0 | $0.96 | 0 |
+| Sonnet | off | 3/3 | 3, 3, 3 | 0 | $0.88 | 0 |
+
+Result: agents ignored branches in all 12 runs. Sonnet wrote the right shade in its first `scene_apply` and exported (3 calls, with or without branches). Haiku varied from 3 to 7 calls either way, with no sign of an effect. Calls did not drop, so the issue's first done condition is not met. The task is too easy to need a comparison: the goal is arithmetic on sizes the prompt states. A task where the right variant can only be told from a render, or where a wrong pick costs a long repair, is the next try. Until then branches have no measured benefit on this suite.
