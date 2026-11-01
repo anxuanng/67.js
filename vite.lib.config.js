@@ -40,6 +40,7 @@ export default defineConfig({
         'light-bake': 'src/light-bake.js',
         'path-tracer': 'src/path-tracer.js',
         'path-tracer-worker': 'src/path-tracer-worker.js',
+        'kernel-worker': 'src/kernel-worker.js',
         'texture-set': 'src/texture-set.js',
         'agent-scene': 'src/agent-scene.js',
         'agent-asset': 'src/agent-asset.js',

@@ -100,6 +100,7 @@
     "mcp": "node bin/67js-mcp.mjs",
     "smoke:mcp": "node scripts/smoke-mcp.mjs",
     "smoke:mcp-package": "node scripts/smoke-mcp-package.mjs",
+    "smoke:kernel-workers": "node scripts/smoke-kernel-workers.mjs",
     "smoke:agent-topology": "node scripts/smoke-agent-topology.mjs",
     "smoke:agent-look": "node scripts/smoke-agent-look.mjs",
     "smoke:agent-assets": "node scripts/smoke-agent-assets.mjs",

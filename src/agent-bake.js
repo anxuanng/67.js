@@ -1,4 +1,5 @@
 import { planLightmaps, estimateBake, traceLightmaps } from './light-bake.js';
+import { runKernel } from './kernel-offload.js';
 import { knownKeys, finiteNumber } from './agent-recipe-checks.js';
 import { BAKE_PRESETS, BAKE_RANGES, BAKE_MAXIMUM_SECONDS, BAKE_RAY_WORK_BUDGET } from './agent-scene-capabilities.js';
 
@@ -112,6 +113,25 @@ function liveBakedMaterial(liveMaterial, bakedMaterial) {
 }
 
 /**
+ * The light bake as a worker kernel: unwrap, budget fit and trace all run in the same place, because unwrapping and
+ * tracing are both the heavy parts. Only the parts the bake changed travel back, as [index, part] pairs, because a part
+ * that was left alone is the caller's own object and has nothing to send. An explicit setting over the budget throws
+ * the same RangeError here as it would inline, and the worker sends it back with its message.
+ */
+export function bakeChangedParts(snapshots, lighting, settings) {
+  const plan = planLightmaps(snapshots, lighting, { ...settings, maxSeconds: BAKE_MAXIMUM_SECONDS });
+  const { used, reduced } = fitSettingsToBudget(plan, settings);
+  const { parts, report } = traceLightmaps(plan, used);
+  const changed = [];
+  parts.forEach((part, index) => {
+    if (part !== snapshots[index]) {
+      changed.push([index, part]);
+    }
+  });
+  return { changed, report, used, reduced };
+}
+
+/**
  * Bakes the parts at the world matrices given by name (a retained part's own matrix is only refreshed after a commit).
  * Returns the new parts, which share the originals' matrices so poses still move them, and a report: texels,
  * rayWork, seconds, skipped parts with reasons.
@@ -132,9 +152,11 @@ export function bakeAgentParts(parts, worldMatrices, environment, settings, gene
     material: { ...part.material },
     generatesGeometry: generatedGeometryGenerators.get(part.name) ?? false,
   }));
-  const plan = planLightmaps(snapshots, lighting, { ...settings, maxSeconds: BAKE_MAXIMUM_SECONDS });
-  const { used, reduced } = fitSettingsToBudget(plan, settings);
-  const { parts: bakedSnapshots, report } = traceLightmaps(plan, used);
+  const { changed, report, used, reduced } = runKernel('lightBake', [snapshots, lighting, settings], bakeChangedParts);
+  const bakedSnapshots = snapshots.slice();
+  for (const [index, part] of changed) {
+    bakedSnapshots[index] = part;
+  }
   const bakedParts = parts.map((part, index) => {
     if (bakedSnapshots[index] === snapshots[index]) {
       return part;
