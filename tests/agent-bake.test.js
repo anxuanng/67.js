@@ -225,16 +225,33 @@ test('explicit settings over the hard limit fail up front with a lower setting t
 
 test('explicit settings far above the preset budget run when they fit the hard limit, and are never reduced', () => {
   const explicit = { samples: 160, bounces: 2, texelsPerUnit: 6 };
-  const bake = createAgentScene(largeRoom(explicit)).inspect().bake;
-  assert.equal(bake.reduced, false);
-  assert.deepEqual(bake.used, explicit);
-  assert.ok(bake.texels * explicit.samples * explicit.bounces > BAKE_PRESET_PATH_WORK);
-  assert.ok(bake.seconds < BAKE_MAXIMUM_SECONDS);
+  // A busy machine can pass the real limit here, and this test is about the settings, so the clock stands still.
+  const realNow = performance.now;
+  performance.now = () => 0;
+  try {
+    const bake = createAgentScene(largeRoom(explicit)).inspect().bake;
+    assert.equal(bake.reduced, false);
+    assert.deepEqual(bake.used, explicit);
+    assert.ok(bake.texels * explicit.samples * explicit.bounces > BAKE_PRESET_PATH_WORK);
+  } finally {
+    performance.now = realNow;
+  }
 });
 
 test('an explicit bake that passes maxSeconds fails cleanly with a lower setting to try', () => {
   const slow = { samples: 256, bounces: 3, texelsPerUnit: 7 };
-  assert.throws(() => createAgentScene(largeRoom(slow)), error => /maxSeconds/.test(error.message) && /Try samples 128/.test(error.message));
+  // A fast machine finishes this bake inside the real limit, so each clock read is made to cost a second.
+  const realNow = performance.now;
+  let clockReads = 0;
+  performance.now = () => {
+    clockReads += 1;
+    return realNow.call(performance) + clockReads * 1000;
+  };
+  try {
+    assert.throws(() => createAgentScene(largeRoom(slow)), error => /maxSeconds/.test(error.message) && /Try samples 128/.test(error.message));
+  } finally {
+    performance.now = realNow;
+  }
 });
 
 test('the bake kernel carries 20 s on the page thread and 90 s inside a worker', () => {

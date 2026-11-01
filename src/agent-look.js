@@ -7,7 +7,7 @@ import { createLightingSetupMap, lightingSetupFields } from './lighting-setups.j
 import { DEFAULT_LIGHTING_SETUP, LIGHTING_SETUP_NAMES, DEFAULT_AMBIENT_OCCLUSION } from './agent-scene-capabilities.js';
 
 const ENVIRONMENT_FIELDS = [
-  'world', 'setup', 'environmentIntensity', 'environmentRotation', 'lightDirection', 'keyColor', 'keyIntensity', 'fillIntensity', 'ambientIntensity',
+  'world', 'ground', 'setup', 'environmentIntensity', 'environmentRotation', 'lightDirection', 'keyColor', 'keyIntensity', 'fillIntensity', 'ambientIntensity',
   'daylight', 'pointLights', 'spotLights', 'areaLights', 'skyTop', 'skyBottom', 'fogColor', 'fogDensity', 'volumeFog', 'liquid',
 ];
 const LIQUID_FIELDS = ['thickness', 'ior', 'refraction', 'scattering', 'foamOpacity', 'foamSoftness'];
@@ -225,7 +225,13 @@ function environmentFrom(input = {}) {
     fogDensity: numberInRange(fallback(input.fogDensity, 0.006), 0, 10, 'fogDensity'),
     volumeFog: volumeFogFrom(input.volumeFog),
   };
-  // Optional so recipes without these lights or liquids keep their exported shape.
+  // Optional so recipes without these fields keep their exported shape.
+  if (input.ground !== undefined) {
+    if (typeof input.ground !== 'boolean') {
+      throw new TypeError('environment.ground must be a boolean.');
+    }
+    environment.ground = input.ground;
+  }
   if (input.spotLights !== undefined) {
     environment.spotLights = lightListFrom(input.spotLights, MAX_SPOT_LIGHTS, 'spotLights').map(spotLightFrom);
   }

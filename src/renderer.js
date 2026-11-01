@@ -399,7 +399,7 @@ export class Renderer67 {
     this.geometryBytes = 0;
     this.geometryBuffers = new Map();
     this.batching = batching;
-    this.groundPart = ground ? groundPart() : null;
+    this.groundPart = ground === true ? groundPart() : ground || null;
     this.buffers = [];
     this.batches = [];
     this.partLocations = new Map();

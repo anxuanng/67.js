@@ -75,6 +75,8 @@ export function previewHarness() {
     parseGltf, Uint8Array, atob, sessionProblem,
     applyProjection, mat4, resolveAgentShadow, agentEnvironmentMap, BRANCH_LIMITS, createBranchStore, printableLabel,
     Renderer67: FaultInjectedRenderer,
+    // The fault-injected renderer has no floor part; the automatic floor is covered by agent-ground.test.js and the live smokes.
+    agentGroundPlacement: () => null, createAgentGround: () => null, placeAgentGround: () => {},
     // The optional addons only plug stages into a real renderer; the fault-injected one needs none.
     installCameraEffects: renderer => renderer, installRenderPasses: renderer => renderer,
   });
