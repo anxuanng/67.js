@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { AGENT_SCENE_CAPABILITIES, DEFAULT_AMBIENT_OCCLUSION, DEFAULT_LIGHTING_SETUP, LIGHTING_SETUP_NAMES } from '../src/agent-scene-capabilities.js';
+import { AGENT_SCENE_CAPABILITIES, DEFAULT_AMBIENT_OCCLUSION, DEFAULT_EXPOSURE,DEFAULT_LIGHTING_SETUP, LIGHTING_SETUP_NAMES } from '../src/agent-scene-capabilities.js';
 import { agentEnvironmentMap, environmentPatchWithSetup, normalizeAgentLook } from '../src/agent-look.js';
 import { createLightingSetupMap, lightingSetupFields } from '../src/lighting-setups.js';
 import { resolveEffects } from '../src/effects.js';
@@ -25,6 +25,7 @@ test('a recipe with no lighting settings gets the default setup and occlusion', 
   const look = normalizeAgentLook({});
   assert.equal(look.environment.setup, DEFAULT_LIGHTING_SETUP);
   assert.equal(look.effects.ambientOcclusion, DEFAULT_AMBIENT_OCCLUSION);
+  assert.equal(look.effects.exposure, DEFAULT_EXPOSURE);
   assert.deepEqual(look.environment.lightDirection, lightingSetupFields(DEFAULT_LIGHTING_SETUP).lightDirection);
 });
 

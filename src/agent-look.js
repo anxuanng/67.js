@@ -4,7 +4,7 @@ import { resolveEffects } from './effects.js';
 import { resolveVolumeFog } from './volumetric.js';
 import { resolveLiquidOptics } from './renderer.js';
 import { createLightingSetupMap, lightingSetupFields } from './lighting-setups.js';
-import { DEFAULT_LIGHTING_SETUP, LIGHTING_SETUP_NAMES, DEFAULT_AMBIENT_OCCLUSION } from './agent-scene-capabilities.js';
+import { DEFAULT_LIGHTING_SETUP, LIGHTING_SETUP_NAMES, DEFAULT_AMBIENT_OCCLUSION, DEFAULT_EXPOSURE } from './agent-scene-capabilities.js';
 
 const ENVIRONMENT_FIELDS = [
   'world', 'setup', 'environmentIntensity', 'environmentRotation', 'lightDirection', 'keyColor', 'keyIntensity', 'fillIntensity', 'ambientIntensity',
@@ -280,7 +280,7 @@ function effectsFrom(input = {}) {
   }
   const ambientOcclusion = fallback(input.ambientOcclusion, DEFAULT_AMBIENT_OCCLUSION);
   const resolved = resolveEffects({ ...input, ambientOcclusion, ...groups, bloom: { strength: 0.12, threshold: 1, radius: 1, ...groups.bloom } });
-  return { ...resolved, exposure: numberInRange(fallback(input.exposure, 1), 0.01, 16, 'exposure') };
+  return { ...resolved, exposure: numberInRange(fallback(input.exposure, DEFAULT_EXPOSURE), 0.01, 16, 'exposure') };
 }
 
 function shadowFrom(input = {}) {

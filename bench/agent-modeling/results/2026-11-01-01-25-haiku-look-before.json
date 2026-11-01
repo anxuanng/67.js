@@ -1,0 +1,469 @@
+{
+  "run": "2026-11-01-01-25-haiku-look-before",
+  "model": "claude-haiku-5-5",
+  "date": "2026-11-01T01:31:39.273Z",
+  "skill": false,
+  "runsPerTask": 1,
+  "passed": 6,
+  "tasks": 6,
+  "toolCalls": 34,
+  "costUsd": 0.75,
+  "byModel": {
+    "claude-haiku-5-5": {
+      "runs": 6,
+      "passed": 6,
+      "successRate": 1,
+      "toolCalls": 34,
+      "toolErrors": 0,
+      "inputTokens": 3908046,
+      "outputTokens": 25178,
+      "costUsd": 0.75,
+      "tasks": {
+        "crate": {
+          "runs": 1,
+          "passed": 1,
+          "successRate": 1,
+          "toolCalls": 5,
+          "toolErrors": 0,
+          "inputTokens": 569309,
+          "outputTokens": 4585,
+          "costUsd": 0.12
+        },
+        "mug": {
+          "runs": 1,
+          "passed": 1,
+          "successRate": 1,
+          "toolCalls": 6,
+          "toolErrors": 0,
+          "inputTokens": 716255,
+          "outputTokens": 7141,
+          "costUsd": 0.14
+        },
+        "table": {
+          "runs": 1,
+          "passed": 1,
+          "successRate": 1,
+          "toolCalls": 5,
+          "toolErrors": 0,
+          "inputTokens": 560420,
+          "outputTokens": 2181,
+          "costUsd": 0.11
+        },
+        "soap": {
+          "runs": 1,
+          "passed": 1,
+          "successRate": 1,
+          "toolCalls": 8,
+          "toolErrors": 0,
+          "inputTokens": 931780,
+          "outputTokens": 3683,
+          "costUsd": 0.14
+        },
+        "chair": {
+          "runs": 1,
+          "passed": 1,
+          "successRate": 1,
+          "toolCalls": 5,
+          "toolErrors": 0,
+          "inputTokens": 566329,
+          "outputTokens": 3499,
+          "costUsd": 0.12
+        },
+        "gear": {
+          "runs": 1,
+          "passed": 1,
+          "successRate": 1,
+          "toolCalls": 5,
+          "toolErrors": 0,
+          "inputTokens": 563953,
+          "outputTokens": 4089,
+          "costUsd": 0.12
+        }
+      }
+    }
+  },
+  "records": [
+    {
+      "task": "crate",
+      "attempt": 1,
+      "pass": true,
+      "passed": 8,
+      "total": 8,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 5,
+      "toolErrors": 0,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_create": 1,
+        "mesh_inspect": 1,
+        "scene_look": 1,
+        "scene_export_recipe": 1,
+        "scene_dispose": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "mesh"
+        ],
+        "meshOperations": [
+          "boolean"
+        ],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 1,
+            "side": 1,
+            "three-quarter": 1
+          },
+          "mean": 1
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-11-01-01-25-haiku-look-before/look/1/crate-front.png",
+          "artifacts/agent-modeling/2026-11-01-01-25-haiku-look-before/look/1/crate-side.png",
+          "artifacts/agent-modeling/2026-11-01-01-25-haiku-look-before/look/1/crate-three-quarter.png"
+        ],
+        "judges": {
+          "sonnet-vision": {
+            "criteria": {
+              "shape": 3,
+              "proportions": 3,
+              "features": 3,
+              "surface": 3
+            },
+            "total": 12,
+            "score": 1,
+            "note": "The largest difference is colour: the candidate is tan wood and the reference is white. The recess on the right-hand face in the three-quarter view also looks slightly fainter than the reference's."
+          }
+        }
+      },
+      "turns": 7,
+      "costUsd": 0.11963418,
+      "inputTokens": 569309,
+      "outputTokens": 4585,
+      "wallSeconds": 46,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "mug",
+      "attempt": 1,
+      "pass": true,
+      "passed": 7,
+      "total": 7,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 6,
+      "toolErrors": 0,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_capabilities": 1,
+        "scene_create": 1,
+        "mesh_inspect": 1,
+        "scene_look": 1,
+        "scene_export_recipe": 1,
+        "scene_dispose": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "mesh"
+        ],
+        "meshOperations": [
+          "boolean"
+        ],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 0.6616,
+            "side": 1,
+            "three-quarter": 0.7164
+          },
+          "mean": 0.7927
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-11-01-01-25-haiku-look-before/look/1/mug-front.png",
+          "artifacts/agent-modeling/2026-11-01-01-25-haiku-look-before/look/1/mug-side.png",
+          "artifacts/agent-modeling/2026-11-01-01-25-haiku-look-before/look/1/mug-three-quarter.png"
+        ],
+        "judges": {
+          "sonnet-vision": {
+            "criteria": {
+              "shape": 3,
+              "proportions": 2,
+              "features": 2,
+              "surface": 3
+            },
+            "total": 10,
+            "score": 0.8333,
+            "note": "The candidate is a recognisable open-top mug with a loop handle on the +X side. Its handle is a short, round torus that sits high on the wall. The reference handle is a taller, oval loop that reaches lower. The candidate handle is about 0.02 m tall against roughly 0.03 m in the reference, and it is "
+          }
+        }
+      },
+      "turns": 8,
+      "costUsd": 0.14211782999999997,
+      "inputTokens": 716255,
+      "outputTokens": 7141,
+      "wallSeconds": 59,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "table",
+      "attempt": 1,
+      "pass": true,
+      "passed": 6,
+      "total": 6,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 5,
+      "toolErrors": 0,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_create": 1,
+        "mesh_inspect": 1,
+        "scene_look": 1,
+        "scene_export_recipe": 1,
+        "scene_dispose": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "box"
+        ],
+        "meshOperations": [],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 1,
+            "side": 0.1684,
+            "three-quarter": 0.6073
+          },
+          "mean": 0.5919
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-11-01-01-25-haiku-look-before/look/1/table-front.png",
+          "artifacts/agent-modeling/2026-11-01-01-25-haiku-look-before/look/1/table-side.png",
+          "artifacts/agent-modeling/2026-11-01-01-25-haiku-look-before/look/1/table-three-quarter.png"
+        ],
+        "judges": {
+          "sonnet-vision": {
+            "criteria": {
+              "shape": 3,
+              "proportions": 2,
+              "features": 3,
+              "surface": 3
+            },
+            "total": 11,
+            "score": 0.9167,
+            "note": "The largest difference is the leg placement along Z. The candidate's legs sit much closer to the front and back edges of the top than the reference's."
+          }
+        }
+      },
+      "turns": 7,
+      "costUsd": 0.11109133,
+      "inputTokens": 560420,
+      "outputTokens": 2181,
+      "wallSeconds": 35,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "soap",
+      "attempt": 1,
+      "pass": true,
+      "passed": 7,
+      "total": 7,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 8,
+      "toolErrors": 0,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_capabilities": 1,
+        "scene_create": 1,
+        "mesh_inspect": 1,
+        "scene_look": 2,
+        "scene_apply": 1,
+        "scene_export_recipe": 1,
+        "scene_dispose": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "mesh"
+        ],
+        "meshOperations": [
+          "set_position",
+          "bevel"
+        ],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 1,
+            "side": 1,
+            "three-quarter": 1
+          },
+          "mean": 1
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-11-01-01-25-haiku-look-before/look/1/soap-front.png",
+          "artifacts/agent-modeling/2026-11-01-01-25-haiku-look-before/look/1/soap-side.png",
+          "artifacts/agent-modeling/2026-11-01-01-25-haiku-look-before/look/1/soap-three-quarter.png"
+        ],
+        "judges": {
+          "sonnet-vision": {
+            "criteria": {
+              "shape": 3,
+              "proportions": 3,
+              "features": 3,
+              "surface": 3
+            },
+            "total": 12,
+            "score": 1,
+            "note": "Shape is right: a rounded rectangular bar with the same silhouettes. Proportions match the reference, including the 3:1 front view and the side depth. The prompt asks for rounded edges and corners and nothing else, and both images have exactly that. The surface is clean, with smooth, even rounding a"
+          }
+        }
+      },
+      "turns": 10,
+      "costUsd": 0.14150567999999997,
+      "inputTokens": 931780,
+      "outputTokens": 3683,
+      "wallSeconds": 57,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "chair",
+      "attempt": 1,
+      "pass": true,
+      "passed": 7,
+      "total": 7,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 5,
+      "toolErrors": 0,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_create": 1,
+        "mesh_inspect": 1,
+        "scene_look": 1,
+        "scene_export_recipe": 1,
+        "scene_dispose": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "box"
+        ],
+        "meshOperations": [],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 1,
+            "side": 1,
+            "three-quarter": 1
+          },
+          "mean": 1
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-11-01-01-25-haiku-look-before/look/1/chair-front.png",
+          "artifacts/agent-modeling/2026-11-01-01-25-haiku-look-before/look/1/chair-side.png",
+          "artifacts/agent-modeling/2026-11-01-01-25-haiku-look-before/look/1/chair-three-quarter.png"
+        ],
+        "judges": {
+          "sonnet-vision": {
+            "criteria": {
+              "shape": 3,
+              "proportions": 3,
+              "features": 3,
+              "surface": 3
+            },
+            "total": 12,
+            "score": 1,
+            "note": "The candidate chair matches the reference in all three views: same forms, proportions and feature count, with no gaps or floating parts. The only visible difference is a slightly bluer tint on the candidate."
+          }
+        }
+      },
+      "turns": 7,
+      "costUsd": 0.11606588000000001,
+      "inputTokens": 566329,
+      "outputTokens": 3499,
+      "wallSeconds": 58,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "gear",
+      "attempt": 1,
+      "pass": true,
+      "passed": 5,
+      "total": 5,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 5,
+      "toolErrors": 0,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_create": 1,
+        "scene_inspect": 1,
+        "mesh_inspect": 1,
+        "scene_export_recipe": 1,
+        "scene_dispose": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "extrude"
+        ],
+        "meshOperations": [],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 0.9868,
+            "side": 0.9868,
+            "three-quarter": 0.8688
+          },
+          "mean": 0.9475
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-11-01-01-25-haiku-look-before/look/1/gear-front.png",
+          "artifacts/agent-modeling/2026-11-01-01-25-haiku-look-before/look/1/gear-side.png",
+          "artifacts/agent-modeling/2026-11-01-01-25-haiku-look-before/look/1/gear-three-quarter.png"
+        ],
+        "judges": {
+          "sonnet-vision": {
+            "criteria": {
+              "shape": 2,
+              "proportions": 3,
+              "features": 1,
+              "surface": 3
+            },
+            "total": 9,
+            "score": 0.75,
+            "note": "The largest difference from the reference is the tooth form and count: pointed, star-like teeth (about 10) instead of 12 distinct rectangular teeth."
+          }
+        }
+      },
+      "turns": 7,
+      "costUsd": 0.11691673000000001,
+      "inputTokens": 563953,
+      "outputTokens": 4089,
+      "wallSeconds": 33,
+      "exitCode": 0,
+      "stopped": "success"
+    }
+  ]
+}

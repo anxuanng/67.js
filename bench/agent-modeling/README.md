@@ -187,6 +187,25 @@ What this does and does not show:
 The suite now finds tool friction and tracks cost, but does not measure how good an object looks. Tasks with free form,
 such as organic shapes or a look to match, would need a score for appearance before they could test more.
 
+## Default look on a cold run (2026-11-01, issue #53)
+
+`results/2026-11-01-01-25-haiku-look-before.json` and `results/2026-11-01-01-36-haiku-look-after.json`: Haiku, six tasks, one run each, no skill, judged by a Sonnet vision judge (`sonnet-vision`, 0 to 12, against references drawn under the same defaults). The only engine change between them is the default `effects.exposure`, 1 to 0.8. The look harness was also fixed first: it drew without the setup's environment map, so its images were darker than the MCP preview. Both runs were drawn with the fix.
+
+| Task | Judge before | Judge after | Silhouette before | Silhouette after |
+| --- | --- | --- | --- | --- |
+| crate | 12 | 10 | 1 | 1 |
+| mug | 10 | 11 | 0.7927 | 0.934 |
+| table | 11 | 10 | 0.5919 | 0.5784 |
+| soap | 12 | 12 | 1 | 1 |
+| chair | 12 | 12 | 1 | 1 |
+| gear | 9 | 11 | 0.9475 | 0.9724 |
+| Total | 66 | 66 | | |
+
+- **No lift shown.** The totals tie, and each task moved by one or two points either way, which is judge and agent noise at one run. The done condition of #53 (a cold recipe scoring above the current default) is not met by this measure.
+- **The judge cannot see a default change.** It scores shape and features against a reference drawn under the same defaults, and agents never set lights, environment, effects, shadow or bake (their tool calls set only a camera, in 4 of 6 runs, and `roughness` in one), so both sides always share the look. A look score that separates lighting needs a fixed reference drawn under the old default, or a judge question about shading.
+- **What a reader sees.** The images show an object floating on a flat grey backdrop with no contact shadow, and a pale top face at exposure 1. A default ground with a contact shadow is the larger fix and was not built: a floor in every recipe would change recipes that draw their own.
+- Cost: $0.75 and $0.83 for the agent runs, $0.21, $0.99 and $1.19 for the judge.
+
 ## Clip layers (2026-10-31)
 
 `robot-walk-wave` asks for a character that walks and waves at once through `motion.layers`. The check `assetWalkAndWave` reloads the exported recipe, plays each layer alone (keeping its own speed, offset and loop) and compares part matrices at two times: the legs must match Walking and move, the right arm must leave Walking, the left arm must keep walking. Cold Sonnet, no skill, `results/2026-10-31-11-40-sonnet-walk-wave-cold-fixed-grader.json`: 1 of 1, 7 tool calls (2 errors), $0.31. A first run, with a check that compared against Walking at speed 1 only, failed on a recipe the agent had correct (it set per-layer speeds); the check was fixed and that recipe grades as a pass. One run is not a rate.

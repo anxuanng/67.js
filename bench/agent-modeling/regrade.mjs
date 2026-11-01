@@ -11,17 +11,24 @@ const [runName] = process.argv.slice(2);
 const summaryPath = join(repository, 'bench', 'agent-modeling', 'results', `${runName}.json`);
 const summary = JSON.parse(await readFile(summaryPath, 'utf8'));
 for (const record of summary.records) {
+  // Runs with --runs name their files <task>-<attempt>; runs before that used the bare task name.
+  const attempt = record.attempt ?? 1;
+  const runDirectory = join(repository, 'artifacts', 'agent-modeling', runName);
   let recipe;
-  try {
-    recipe = JSON.parse(await readFile(join(repository, 'artifacts', 'agent-modeling', runName, `${record.task}.recipe.json`), 'utf8'));
-  } catch {
-    continue;
+  for (const fileStem of [`${record.task}-${attempt}`, record.task]) {
+    try {
+      recipe = JSON.parse(await readFile(join(runDirectory, `${fileStem}.recipe.json`), 'utf8'));
+      break;
+    } catch {
+      recipe = undefined;
+    }
   }
+  if (!recipe) continue;
   const grade = await gradeRecipe(taskById(record.task), recipe);
   record.features = recipeFeatures(recipe);
   // Keep a judge's score when the same recipe is scored again.
   const judges = record.look?.judges;
-  record.look = await scoreLookSafely(record.task, recipe, { imageDirectory: join(repository, 'artifacts', 'agent-modeling', runName, 'look') });
+  record.look = await scoreLookSafely(record.task, recipe, { imageDirectory: join(runDirectory, 'look', String(attempt)) });
   if (judges) record.look.judges = judges;
   record.pass = grade.pass;
   record.passed = grade.passed;

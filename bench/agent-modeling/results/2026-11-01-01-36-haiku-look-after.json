@@ -1,0 +1,470 @@
+{
+  "run": "2026-11-01-01-36-haiku-look-after",
+  "model": "claude-haiku-5-5",
+  "date": "2026-11-01T01:42:42.931Z",
+  "skill": false,
+  "runsPerTask": 1,
+  "passed": 6,
+  "tasks": 6,
+  "toolCalls": 41,
+  "costUsd": 0.83,
+  "byModel": {
+    "claude-haiku-5-5": {
+      "runs": 6,
+      "passed": 6,
+      "successRate": 1,
+      "toolCalls": 41,
+      "toolErrors": 7,
+      "inputTokens": 4484932,
+      "outputTokens": 37195,
+      "costUsd": 0.83,
+      "tasks": {
+        "crate": {
+          "runs": 1,
+          "passed": 1,
+          "successRate": 1,
+          "toolCalls": 6,
+          "toolErrors": 0,
+          "inputTokens": 573504,
+          "outputTokens": 5182,
+          "costUsd": 0.12
+        },
+        "mug": {
+          "runs": 1,
+          "passed": 1,
+          "successRate": 1,
+          "toolCalls": 8,
+          "toolErrors": 2,
+          "inputTokens": 962695,
+          "outputTokens": 9287,
+          "costUsd": 0.16
+        },
+        "table": {
+          "runs": 1,
+          "passed": 1,
+          "successRate": 1,
+          "toolCalls": 8,
+          "toolErrors": 2,
+          "inputTokens": 814038,
+          "outputTokens": 2814,
+          "costUsd": 0.13
+        },
+        "soap": {
+          "runs": 1,
+          "passed": 1,
+          "successRate": 1,
+          "toolCalls": 8,
+          "toolErrors": 1,
+          "inputTokens": 958140,
+          "outputTokens": 4628,
+          "costUsd": 0.15
+        },
+        "chair": {
+          "runs": 1,
+          "passed": 1,
+          "successRate": 1,
+          "toolCalls": 3,
+          "toolErrors": 0,
+          "inputTokens": 346498,
+          "outputTokens": 3142,
+          "costUsd": 0.1
+        },
+        "gear": {
+          "runs": 1,
+          "passed": 1,
+          "successRate": 1,
+          "toolCalls": 8,
+          "toolErrors": 2,
+          "inputTokens": 830057,
+          "outputTokens": 12142,
+          "costUsd": 0.16
+        }
+      }
+    }
+  },
+  "records": [
+    {
+      "task": "crate",
+      "attempt": 1,
+      "pass": true,
+      "passed": 8,
+      "total": 8,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 6,
+      "toolErrors": 0,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_create": 1,
+        "scene_inspect": 1,
+        "mesh_inspect": 1,
+        "scene_look": 1,
+        "scene_export_recipe": 1,
+        "scene_dispose": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "mesh"
+        ],
+        "meshOperations": [
+          "boolean"
+        ],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 1,
+            "side": 1,
+            "three-quarter": 1
+          },
+          "mean": 1
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-11-01-01-36-haiku-look-after/look/1/crate-front.png",
+          "artifacts/agent-modeling/2026-11-01-01-36-haiku-look-after/look/1/crate-side.png",
+          "artifacts/agent-modeling/2026-11-01-01-36-haiku-look-after/look/1/crate-three-quarter.png"
+        ],
+        "judges": {
+          "sonnet-vision": {
+            "criteria": {
+              "shape": 3,
+              "proportions": 3,
+              "features": 2,
+              "surface": 2
+            },
+            "total": 10,
+            "score": 0.8333,
+            "note": "The largest difference from the reference is that the recessed panel is weak or missing in the front and side views, and the lid top shows plank seams."
+          }
+        }
+      },
+      "turns": 8,
+      "costUsd": 0.12262348,
+      "inputTokens": 573504,
+      "outputTokens": 5182,
+      "wallSeconds": 50,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "mug",
+      "attempt": 1,
+      "pass": true,
+      "passed": 7,
+      "total": 7,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 8,
+      "toolErrors": 2,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_capabilities": 1,
+        "scene_create": 3,
+        "mesh_inspect": 1,
+        "scene_look": 1,
+        "scene_export_recipe": 1,
+        "scene_dispose": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "mesh"
+        ],
+        "meshOperations": [
+          "boolean"
+        ],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 0.8629,
+            "side": 1,
+            "three-quarter": 0.9392
+          },
+          "mean": 0.934
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-11-01-01-36-haiku-look-after/look/1/mug-front.png",
+          "artifacts/agent-modeling/2026-11-01-01-36-haiku-look-after/look/1/mug-side.png",
+          "artifacts/agent-modeling/2026-11-01-01-36-haiku-look-after/look/1/mug-three-quarter.png"
+        ],
+        "judges": {
+          "sonnet-vision": {
+            "criteria": {
+              "shape": 3,
+              "proportions": 2,
+              "features": 3,
+              "surface": 3
+            },
+            "total": 11,
+            "score": 0.9167,
+            "note": "The largest difference from the reference is the handle shape and size: tall and squared in the candidate, small and oval in the reference."
+          }
+        }
+      },
+      "turns": 10,
+      "costUsd": 0.16246012999999998,
+      "inputTokens": 962695,
+      "outputTokens": 9287,
+      "wallSeconds": 77,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "table",
+      "attempt": 1,
+      "pass": true,
+      "passed": 6,
+      "total": 6,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 8,
+      "toolErrors": 2,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_capabilities": 1,
+        "scene_create": 2,
+        "mesh_inspect": 2,
+        "scene_look": 1,
+        "scene_export_recipe": 1,
+        "scene_dispose": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "box"
+        ],
+        "meshOperations": [],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 1,
+            "side": 0.1582,
+            "three-quarter": 0.5769
+          },
+          "mean": 0.5784
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-11-01-01-36-haiku-look-after/look/1/table-front.png",
+          "artifacts/agent-modeling/2026-11-01-01-36-haiku-look-after/look/1/table-side.png",
+          "artifacts/agent-modeling/2026-11-01-01-36-haiku-look-after/look/1/table-three-quarter.png"
+        ],
+        "judges": {
+          "sonnet-vision": {
+            "criteria": {
+              "shape": 3,
+              "proportions": 2,
+              "features": 2,
+              "surface": 3
+            },
+            "total": 10,
+            "score": 0.8333,
+            "note": "The largest difference is that the legs are placed at the corners with no inset, so the top overhangs less than the reference in the three-quarter view."
+          }
+        }
+      },
+      "turns": 10,
+      "costUsd": 0.13271283,
+      "inputTokens": 814038,
+      "outputTokens": 2814,
+      "wallSeconds": 29,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "soap",
+      "attempt": 1,
+      "pass": true,
+      "passed": 7,
+      "total": 7,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 8,
+      "toolErrors": 1,
+      "toolsByName": {
+        "ToolSearch": 2,
+        "scene_capabilities": 1,
+        "scene_create": 2,
+        "mesh_inspect": 1,
+        "scene_inspect": 1,
+        "scene_look": 1,
+        "scene_export_recipe": 1,
+        "scene_dispose": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "mesh"
+        ],
+        "meshOperations": [
+          "set_position",
+          "bevel"
+        ],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 1,
+            "side": 1,
+            "three-quarter": 1
+          },
+          "mean": 1
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-11-01-01-36-haiku-look-after/look/1/soap-front.png",
+          "artifacts/agent-modeling/2026-11-01-01-36-haiku-look-after/look/1/soap-side.png",
+          "artifacts/agent-modeling/2026-11-01-01-36-haiku-look-after/look/1/soap-three-quarter.png"
+        ],
+        "judges": {
+          "sonnet-vision": {
+            "criteria": {
+              "shape": 3,
+              "proportions": 3,
+              "features": 3,
+              "surface": 3
+            },
+            "total": 12,
+            "score": 1,
+            "note": "The largest difference from the reference is that cooler tint and the slightly sharper corner shading."
+          }
+        }
+      },
+      "turns": 11,
+      "costUsd": 0.14826853,
+      "inputTokens": 958140,
+      "outputTokens": 4628,
+      "wallSeconds": 59,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "chair",
+      "attempt": 1,
+      "pass": true,
+      "passed": 7,
+      "total": 7,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 3,
+      "toolErrors": 0,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_create": 1,
+        "scene_export_recipe": 1,
+        "scene_dispose": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "box"
+        ],
+        "meshOperations": [],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 1,
+            "side": 1,
+            "three-quarter": 1
+          },
+          "mean": 1
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-11-01-01-36-haiku-look-after/look/1/chair-front.png",
+          "artifacts/agent-modeling/2026-11-01-01-36-haiku-look-after/look/1/chair-side.png",
+          "artifacts/agent-modeling/2026-11-01-01-36-haiku-look-after/look/1/chair-three-quarter.png"
+        ],
+        "judges": {
+          "sonnet-vision": {
+            "criteria": {
+              "shape": 3,
+              "proportions": 3,
+              "features": 3,
+              "surface": 3
+            },
+            "total": 12,
+            "score": 1,
+            "note": "Largest difference: the candidate renders with a slightly bluer, cooler tone than the reference, and the geometry is otherwise indistinguishable."
+          }
+        }
+      },
+      "turns": 5,
+      "costUsd": 0.10222628,
+      "inputTokens": 346498,
+      "outputTokens": 3142,
+      "wallSeconds": 29,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "gear",
+      "attempt": 1,
+      "pass": true,
+      "passed": 5,
+      "total": 5,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 8,
+      "toolErrors": 2,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_create": 2,
+        "mesh_inspect": 2,
+        "scene_inspect": 1,
+        "scene_look": 1,
+        "scene_export_recipe": 1,
+        "scene_dispose": 1
+      },
+      "features": {
+        "geometryTypes": [
+          "extrude"
+        ],
+        "meshOperations": [],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 0.9868,
+            "side": 0.9868,
+            "three-quarter": 0.9437
+          },
+          "mean": 0.9724
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-11-01-01-36-haiku-look-after/look/1/gear-front.png",
+          "artifacts/agent-modeling/2026-11-01-01-36-haiku-look-after/look/1/gear-side.png",
+          "artifacts/agent-modeling/2026-11-01-01-36-haiku-look-after/look/1/gear-three-quarter.png"
+        ],
+        "judges": {
+          "sonnet-vision": {
+            "criteria": {
+              "shape": 3,
+              "proportions": 3,
+              "features": 2,
+              "surface": 3
+            },
+            "total": 11,
+            "score": 0.9167,
+            "note": "The largest difference is tooth shape. The candidate's teeth are slightly narrower and more pointed than the reference's blocky teeth."
+          }
+        }
+      },
+      "turns": 10,
+      "costUsd": 0.15950458,
+      "inputTokens": 830057,
+      "outputTokens": 12142,
+      "wallSeconds": 65,
+      "exitCode": 0,
+      "stopped": "success"
+    }
+  ]
+}

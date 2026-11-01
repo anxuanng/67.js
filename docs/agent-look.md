@@ -136,6 +136,8 @@ Setting `setup` through `set-environment` resets `lightDirection`, `keyColor`, `
 Remote URLs and HDRI files are not accepted from tool input.
 This changes the look of every recipe that sets no lighting: before, the default had no environment map, a key color of `[5.2, 4.7, 4.1]` and a fill intensity of `1`.
 To get the earlier flat look, set `keyColor`, `fillIntensity` and `environmentIntensity: 0` yourself.
+The default `effects.exposure` is `0.8` (it was `1`); set `exposure: 1` to get the earlier brightness.
+There is no default ground: an object with no floor under it has no contact shadow, so add a ground node when the object should sit on something.
 
 ## Point lights
 
@@ -191,7 +193,7 @@ Ambient occlusion reads the depth texture, so it needs the HDR depth target that
 
 | Field | Default | Range |
 | --- | --- | --- |
-| `exposure` | `1` | `0.01` to `16` |
+| `exposure` | `0.8` | `0.01` to `16`. The default was `1` before the cold-run look check: a mid-grey surface clipped toward white under the daylight key |
 | `saturation` | `1` | `0` to `2` |
 | `contrast` | `1` | `0.1` to `2` |
 | `temperature` | `0` | `-1` to `1` |
