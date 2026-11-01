@@ -230,6 +230,23 @@ Same six cold recipes, drawn from the same fixed cameras, judged by `surface-jud
 
 Every note names the same gap: the three-quarter view shows a surface and a shadow, the front and side views (orthographic at floor height) show an edge-on floor and a flat grey backdrop. The cameras were not raised: the benchmark cameras are not what an agent sees in the preview, so raising them would not show that the floor reads to an agent. The gear's three-quarter view, opened by hand, shows the floor but only a faint shadow, and a floor colour close to the backdrop. Read the 0 to 6 to 7 as direction (inferred from one judge call per task), not as a measured lift of one point.
 
+### A judge that can see a default change: blind pairwise (2026-11-01, issue #53)
+
+`default-judge.mjs` draws the six stored cold recipes (`cold-recipes/`, copied from the Haiku run `2026-11-01-01-36-haiku-look-after`; the `environment`, `effects` and `shadow` fields are dropped because they hold only normalized defaults, so the engine's current defaults apply) under two defaults, from two cameras: the fixed three-quarter view and the recipe's own camera at 768 x 512, which is what `scene_look` draws (the preview calls `renderer.render` with `scene.camera`; the harness now does the same for a view with no camera of its own). One Sonnet call per task and repeat sees both views as "first" and "second" renders in a seeded order (repeat 0 random, repeat 1 swapped, repeat 2 random) and answers which looks more like a finished, believable render. Three repeats, 18 calls, exact two-sided binomial p against 0.5 on side B's wins. `results/2026-11-01-default-judge-*.json`.
+
+| Comparison (A against B) | Wins A | Wins B | p |
+| --- | --- | --- | --- |
+| no floor against current default (floor 0.6) | 0 | 18 | 0.0000076 |
+| current default against floor 0.38 | 5 | 13 | 0.096 |
+| current default against floor 0.22 | 0 | 18 | 0.0000076 |
+| control: no floor against itself | picked first 17, second 1 | | 0.00014 |
+
+- **#53's done condition, measured.** The current default beats the old one in 18 of 18 calls, 9 of 9 when shown first and 9 of 9 when shown second, so position cannot explain it. The cold recipes were not changed; only the engine default differs.
+- **The control shows a position bias on ties.** Shown the same image twice, the judge picks "first" 17 times in 18 and says in its notes that it is choosing arbitrarily. A tie therefore goes to "first". That does not touch the 18 of 18 above, which won from both positions, but a result close to 9 of 18 would not be informative, and 13 of 18 (the 0.38 floor) is not significant.
+- **What the judge complained of.** Notes name a darker, more contrasty ground, a stronger and better-defined cast shadow, and tonal separation between object, floor and backdrop. The floor was close to the backdrop in luminance, so the shadow had nothing to read against.
+- **Kept: floor colour 0.6, 0.6, 0.58 to 0.22, 0.22, 0.21** (`src/agent-ground.js`), a free default (no schema). A darker floor beats the current one 18 of 18. The other candidate, 0.38, did not clear significance. Not tried: a default-on soft occlusion (it changes every recipe, so it would move the `npm run reference` scenes that get no floor) and a lighting-level contact shadow (the floor is lit mostly by the environment map, which casts no shadow, so a stronger shadow needs a lighting change for every scene).
+- **Limits.** Six objects, one agent model (Haiku), one judge model and a judge that likes contrast; the pairwise verdict says the render looks more grounded, not that it is closer to a photograph. The judge spend was above the $4 plan: $4.50 (the default 25k token system prompt of a headless session was cached on about one call in four at $0.10 each; the 0.007 dollar calls are the cached ones).
+
 ## Clip layers (2026-10-31)
 
 `robot-walk-wave` asks for a character that walks and waves at once through `motion.layers`. The check `assetWalkAndWave` reloads the exported recipe, plays each layer alone (keeping its own speed, offset and loop) and compares part matrices at two times: the legs must match Walking and move, the right arm must leave Walking, the left arm must keep walking. Cold Sonnet, no skill, `results/2026-10-31-11-40-sonnet-walk-wave-cold-fixed-grader.json`: 1 of 1, 7 tool calls (2 errors), $0.31. A first run, with a check that compared against Walking at speed 1 only, failed on a recipe the agent had correct (it set per-layer speeds); the check was fixed and that recipe grades as a pass. One run is not a rate.
@@ -246,3 +263,14 @@ Every note names the same gap: the three-quarter view shows a surface and a shad
 | Sonnet | off | 3/3 | 3, 3, 3 | 0 | $0.88 | 0 |
 
 Result: agents ignored branches in all 12 runs. Sonnet wrote the right shade in its first `scene_apply` and exported (3 calls, with or without branches). Haiku varied from 3 to 7 calls either way, with no sign of an effect. Calls did not drop, so the issue's first done condition is not met. The task is too easy to need a comparison: the goal is arithmetic on sizes the prompt states. A task where the right variant can only be told from a render, or where a wrong pick costs a long repair, is the next try. Until then branches have no measured benefit on this suite.
+
+## A walk around two holes and a rock (2026-11-01, issue #64)
+
+`terrain-path-walk` builds 40 m of hills with two round openings (radius 3 m at the origin, 2.5 m at [9, 9]) and a 3 m by 2 m by 3 m `rock` at [-8, -8], then walks a `walker` node from [-15, -15] to [15, 15] in 10 s. The check on the exported recipe samples 41 times: the position stays within 1.5 m of the ground height, at least 0.3 m outside both openings and at least 0.3 m from the rock's footprint, and starts and ends within 0.75 m of the two points. The `through` check confirms both openings are cut clean through. The robot GLB cannot stand on a recipe terrain (asset scenes hold no recipe geometry), so the character is a box node, like `terrain-hole-walk`. The prompt does not mention the path query: agents find it in the `scene_inspect` schema (`path`) and in `scene_capabilities` `navigation`. `pathQueries` in each record counts `scene_inspect` calls that passed `path`.
+
+| Model | Runs | Pass | Calls | Errors | Cost | `path` queries |
+| --- | --- | --- | --- | --- | --- | --- |
+| Haiku | 2 | 2/2 | 12, 13 | 2, 2 | $0.15 | 2, 3 |
+| Sonnet | 1 | 1/1 | 9 | 0 | $0.40 | 3 |
+
+Result: all three agents used the query and wrote its keyframes into a `LINEAR` walker track (29 or 30 keys with the query's three-decimal values, not a hand-drawn polyline). The four Haiku errors were unrelated schema slips (`sessionId` on `scene_create`, motion keys at the recipe top level, a node with a geometry and no material), not path errors. Nothing here shows what the query saves: the task was not run with the query hidden, and an earlier task with one hole (`terrain-hole-walk`) was walked by hand 2 of 2 times by Haiku. Three runs is too few to separate Haiku from Sonnet. Total cost $0.55, one run each of the three.

@@ -173,3 +173,16 @@ test('the terrain walk needs the opening, the hills and a walk that goes around 
   for (const keyframe of hoveringWalker.motion.tracks[0].keyframes) keyframe.value[1] = 4;
   assert.deepEqual(failedKinds(await gradeRecipe(task, hoveringWalker)), ['walkPath']);
 });
+
+test('the path walk passes its reference and fails a walk through the second opening or the rock', async () => {
+  const task = taskById('terrain-path-walk');
+  assert.deepEqual(failedKinds(await gradeRecipe(task, structuredClone(REFERENCES['terrain-path-walk']))), []);
+
+  const throughSecondOpening = structuredClone(REFERENCES['terrain-path-walk']);
+  throughSecondOpening.motion.tracks[0].keyframes = [{ time: 0, value: [-15, 0.5, -15] }, { time: 4, value: [-4, 0.5, -5] }, { time: 5.5, value: [5, 0.5, -5] }, { time: 10, value: [15, 0.5, 15] }];
+  assert.deepEqual(failedKinds(await gradeRecipe(task, throughSecondOpening)), ['walkPath']);
+
+  const throughRock = structuredClone(REFERENCES['terrain-path-walk']);
+  throughRock.motion.tracks[0].keyframes = [{ time: 0, value: [-15, 0.5, -15] }, { time: 2, value: [-8, 0.5, -8] }, { time: 3, value: [-6, 0.5, -3] }, { time: 5.5, value: [5, 0.5, -5] }, { time: 7, value: [5, 0.5, 13] }, { time: 10, value: [15, 0.5, 15] }];
+  assert.deepEqual(failedKinds(await gradeRecipe(task, throughRock)), ['walkPath']);
+});

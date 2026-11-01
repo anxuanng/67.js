@@ -151,6 +151,7 @@ export const AGENT_SCENE_CAPABILITIES = Object.freeze({
   format: '67js.scene', schemaVersion: 1,
   geometryTypes: Object.freeze(['box', 'cylinder', 'sphere', 'torus', 'lathe', 'extrude', 'tube', 'curve', 'text', 'grid', 'terrain', 'mesh']),
   terrain: 'One mesh, x and z from -size/2 to size/2, hills about y = 0. size 40 m (1-2000), resolution 64 cells (2-256), seed 1, amplitude 1 m (0-200), holes up to 16 of {center:[x,z],radius} with no surface inside; radius a few cells or more.',
+  navigation: 'scene_inspect path:{ground,from:[x,z],to:[x,z]} returns a route over the ground node around its holes, steep slopes and the nodes in avoid:[ids] (box footprints), as keyframes [{time,value:[x,y,z]}] for a node translation track with interpolation LINEAR. radius 0.3 m is how far the walker position stays from holes and avoided nodes; maxSlope 40 degrees; cellSize defaults to radius; give seconds for the whole walk or speed (1.4 m/s); lift raises y, such as half the walker height. Ground and avoided nodes are read at their authored pose. Errors name an unwalkable start or goal, or one that cannot be reached.',
   meshEdits: Object.freeze({ operations: Object.freeze(Object.keys(MESH_EDIT_OPERATIONS)), maxEdits: MAX_MESH_EDITS }),
   meshStack: Object.freeze({ operations: STACK_OPERATIONS, maxNodes: MAX_STACK_NODES }),
   meshModifiers: MESH_MODIFIER_NOTES,

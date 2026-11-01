@@ -1,0 +1,178 @@
+{
+  "label": "control-nofloor",
+  "model": "sonnet",
+  "seed": 53,
+  "a": "nofloor",
+  "b": "nofloor (control)",
+  "summary": {
+    "trials": 18,
+    "costUsd": 0.6904,
+    "pickedFirst": 17,
+    "pickedSecond": 1,
+    "pBias": 0.0001449584960937499
+  },
+  "records": [
+    {
+      "task": "crate",
+      "repeat": 0,
+      "firstSide": "a",
+      "answer": "first",
+      "winnerSide": "a",
+      "costUsd": 0.10119,
+      "note": "The two renders look identical in both views, with the same flat lighting, no ground shadow and no contact grounding, so nothing separates them; I'm picking arbitrarily."
+    },
+    {
+      "task": "crate",
+      "repeat": 1,
+      "firstSide": "b",
+      "answer": "first",
+      "winnerSide": "b",
+      "costUsd": 0.0069356,
+      "note": "The two renders look identical in both views, with the same lighting, no ground shadow and the same floating look, so nothing separates them and the pick is arbitrary."
+    },
+    {
+      "task": "crate",
+      "repeat": 2,
+      "firstSide": "a",
+      "answer": "first",
+      "winnerSide": "a",
+      "costUsd": 0.0068896,
+      "note": "The two renderers' images look identical in both views, with the same flat lighting, no ground shadow, and no grounding, so nothing separates them."
+    },
+    {
+      "task": "mug",
+      "repeat": 0,
+      "firstSide": "b",
+      "answer": "first",
+      "winnerSide": "b",
+      "costUsd": 0.10115199999999999,
+      "note": "The two renders look identical in both views, with the same flat shading, no ground shadow, and a floating mug on a plain gray background, so neither is more believable than the other."
+    },
+    {
+      "task": "mug",
+      "repeat": 1,
+      "firstSide": "a",
+      "answer": "first",
+      "winnerSide": "a",
+      "costUsd": 0.0069476,
+      "note": "The two renders look identical in both views, with the same flat gradient shading, no cast shadow and no ground contact, so neither has an edge in grounding or lighting."
+    },
+    {
+      "task": "mug",
+      "repeat": 2,
+      "firstSide": "a",
+      "answer": "first",
+      "winnerSide": "a",
+      "costUsd": 0.006943599999999999,
+      "note": "The two renders look identical in both views, with the same flat shading, no ground shadow and no grounding, so nothing separates them and the pick is arbitrary."
+    },
+    {
+      "task": "table",
+      "repeat": 0,
+      "firstSide": "b",
+      "answer": "first",
+      "winnerSide": "b",
+      "costUsd": 0.101206,
+      "note": "The two renders look identical in both views, with the same flat shading, no shadows, no ground contact, and the same floating table. Nothing separates them, so the pick is arbitrary."
+    },
+    {
+      "task": "table",
+      "repeat": 1,
+      "firstSide": "a",
+      "answer": "second",
+      "winnerSide": "b",
+      "costUsd": 0.0071456,
+      "note": "The two renders look identical in both views: same flat shading, no shadows, no grounding, and the same lighting, so neither one is more believable than the other. With nothing to separate them, I'm picking the second one arbitrarily."
+    },
+    {
+      "task": "table",
+      "repeat": 2,
+      "firstSide": "b",
+      "answer": "first",
+      "winnerSide": "b",
+      "costUsd": 0.0069216,
+      "note": "The two renders look identical in both views, with the same flat shading, no cast shadows, no grounding and no depth cues, so neither is more believable than the other."
+    },
+    {
+      "task": "soap",
+      "repeat": 0,
+      "firstSide": "a",
+      "answer": "first",
+      "winnerSide": "a",
+      "costUsd": 0.101274,
+      "note": "The two renders look identical in both views, with the same floating object, the same faint contact edge and no distinguishable difference in shadows or lighting, so nothing separates them and the pick is arbitrary."
+    },
+    {
+      "task": "soap",
+      "repeat": 1,
+      "firstSide": "b",
+      "answer": "first",
+      "winnerSide": "b",
+      "costUsd": 0.0069996,
+      "note": "The two renders look identical in both views, with the same lighting, the same faint contact shadow, and the same floating-looking shading, so neither renderer is more believable than the other."
+    },
+    {
+      "task": "soap",
+      "repeat": 2,
+      "firstSide": "b",
+      "answer": "first",
+      "winnerSide": "b",
+      "costUsd": 0.0068996000000000005,
+      "note": "The two renders look identical in both views, with the same floating object, the same faint soft shading and no cast shadow or ground contact, so nothing separates them."
+    },
+    {
+      "task": "chair",
+      "repeat": 0,
+      "firstSide": "a",
+      "answer": "first",
+      "winnerSide": "a",
+      "costUsd": 0.101106,
+      "note": "Both renderers produce identical images in both views, with the same flat lighting, no shadows, no ground contact and a floating chair, so nothing separates them."
+    },
+    {
+      "task": "chair",
+      "repeat": 1,
+      "firstSide": "b",
+      "answer": "first",
+      "winnerSide": "b",
+      "costUsd": 0.0069056000000000005,
+      "note": "The two renderers look identical in both views, with the same flat lighting, no cast shadow, and no ground contact, so neither is more believable than the other."
+    },
+    {
+      "task": "chair",
+      "repeat": 2,
+      "firstSide": "b",
+      "answer": "first",
+      "winnerSide": "b",
+      "costUsd": 0.0069416,
+      "note": "Both renderers' images look identical in each view: the same flat shading, no ground shadow, and the chair floating on a plain gray background, so nothing separates them."
+    },
+    {
+      "task": "gear",
+      "repeat": 0,
+      "firstSide": "b",
+      "answer": "first",
+      "winnerSide": "b",
+      "costUsd": 0.10110000000000001,
+      "note": "The two renders look identical in both views, with the same flat shading, no cast shadow or grounding, and the same floating look, so nothing separates them."
+    },
+    {
+      "task": "gear",
+      "repeat": 1,
+      "firstSide": "a",
+      "answer": "first",
+      "winnerSide": "a",
+      "costUsd": 0.0069356,
+      "note": "The two renders look identical in both views, with the same flat lighting, no cast shadow, and no grounding, so nothing separates them and the pick is arbitrary."
+    },
+    {
+      "task": "gear",
+      "repeat": 2,
+      "firstSide": "a",
+      "answer": "first",
+      "winnerSide": "a",
+      "costUsd": 0.0069496,
+      "note": "The two renders look identical in both views, with the same flat lighting, no cast shadow and no grounding, so nothing separates them and the pick is arbitrary."
+    }
+  ]
+}
