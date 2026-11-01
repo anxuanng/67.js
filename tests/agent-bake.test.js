@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createAgentScene } from '../src/agent-scene.js';
-import { normalizeAgentBake } from '../src/agent-bake.js';
-import { BAKE_PRESETS, BAKE_PRESET_PATH_WORK, BAKE_EXPLICIT_PATH_WORK_LIMIT, BAKE_MAXIMUM_SECONDS } from '../src/agent-scene-capabilities.js';
+import { normalizeAgentBake, bakeSecondsLimit } from '../src/agent-bake.js';
+import { BAKE_PRESETS, BAKE_PRESET_PATH_WORK, BAKE_EXPLICIT_PATH_WORK_LIMIT, BAKE_MAXIMUM_SECONDS, BAKE_WORKER_MAXIMUM_SECONDS } from '../src/agent-scene-capabilities.js';
 
 function closedRoom(extra = {}) {
   const box = (id, translation, scale, material) => ({ id, geometry: 'box', material, translation, scale });
@@ -235,6 +235,16 @@ test('explicit settings far above the preset budget run when they fit the hard l
 test('an explicit bake that passes maxSeconds fails cleanly with a lower setting to try', () => {
   const slow = { samples: 256, bounces: 3, texelsPerUnit: 7 };
   assert.throws(() => createAgentScene(largeRoom(slow)), error => /maxSeconds/.test(error.message) && /Try samples 128/.test(error.message));
+});
+
+test('the bake kernel carries 20 s on the page thread and 90 s inside a worker', () => {
+  assert.equal(bakeSecondsLimit(), BAKE_MAXIMUM_SECONDS);
+  globalThis.WorkerGlobalScope = Object;
+  try {
+    assert.equal(bakeSecondsLimit(), BAKE_WORKER_MAXIMUM_SECONDS);
+  } finally {
+    delete globalThis.WorkerGlobalScope;
+  }
 });
 
 function clothRoom() {

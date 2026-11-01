@@ -6,7 +6,7 @@ import { dirname, isAbsolute, join } from 'node:path';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import packageMetadata from '../package.json' with { type: 'json' };
-import { AGENT_SCENE_CAPABILITIES, AGENT_SCENE_DEFAULT_LIMITS, RENDER_PASS_NAMES, RENDER_PASS_DEPTH_RANGE, VIDEO_ENCODERS, MAXIMUM_VIDEO_SECONDS, MAXIMUM_JOB_SIDE, MAXIMUM_JOB_PIXELS, MAXIMUM_MEMORY_MIB } from '../src/agent-scene-capabilities.js';
+import { AGENT_SCENE_CAPABILITIES, AGENT_SCENE_DEFAULT_LIMITS, RENDER_PASS_NAMES, RENDER_PASS_DEPTH_RANGE, VIDEO_ENCODERS, MAXIMUM_VIDEO_SECONDS, MAXIMUM_JOB_SIDE, MAXIMUM_JOB_PIXELS, MAXIMUM_MEMORY_MIB, BAKE_WORKER_MAXIMUM_SECONDS } from '../src/agent-scene-capabilities.js';
 import { PATH_TRACER_CAPABILITIES } from '../src/path-tracer-capabilities.js';
 import { createAgentAssetCatalog } from './agent-asset-catalog.mjs';
 import { createAgentRenderJobs, EXPORT_DIRECTORY_NAME } from './agent-render-jobs.mjs';
@@ -30,6 +30,12 @@ const MAXIMUM_QUEUED_CALLS = 16;
 const MAXIMUM_GLB_BYTES = 32 * 1024 * 1024;
 const MAXIMUM_KEPT_GLBS = 8;
 const EVALUATION_TIMEOUT_MS = 30000;
+/** A bake runs on a worker for up to its own limit, so a call that bakes gets that much more than a plain call. */
+const BAKE_EVALUATION_TIMEOUT_MS = EVALUATION_TIMEOUT_MS + BAKE_WORKER_MAXIMUM_SECONDS * 1000;
+
+function startsBake(operations) {
+  return Array.isArray(operations) && operations.some(operation => operation?.type === 'set-bake' && operation.bake !== null && operation.bake !== undefined);
+}
 // Decoded audio and video lengths of a finished file may differ by the encoder delay; more than this fails the job.
 const SYNC_TOLERANCE_SECONDS = 0.05;
 // The preview page imports engine chunks that sit beside the package entries, one folder above preview.js.
@@ -256,16 +262,16 @@ export function createAgentRuntime({ kernelWorkers = true, backend = 'gpu', brow
     }
   }
 
-  async function invoke(method, input) {
+  async function invoke(method, input, timeoutMs = EVALUATION_TIMEOUT_MS) {
     requireSession(input.sessionId);
     if (!browserInstance?.isConnected() || page.isClosed()) {
       phase = 'failed';
       throw new Error('The preview browser disconnected. The scene cannot be recovered from this runtime.');
     }
-    return evaluate(method, input);
+    return evaluate(method, input, page, timeoutMs);
   }
 
-  async function evaluate(method, input, target = page) {
+  async function evaluate(method, input, target = page, timeoutMs = EVALUATION_TIMEOUT_MS) {
     let timer;
     let timedOut = false;
     try {
@@ -276,9 +282,9 @@ export function createAgentRuntime({ kernelWorkers = true, backend = 'gpu', brow
             timedOut = true;
             if (target === page) phase = 'failed';
             reject(new Error(target === page
-              ? 'The preview operation exceeded 30 seconds. This runtime must be closed.'
-              : 'The private render operation exceeded 30 seconds.'));
-          }, EVALUATION_TIMEOUT_MS);
+              ? `The preview operation exceeded ${timeoutMs / 1000} seconds. This runtime must be closed.`
+              : `The private render operation exceeded ${timeoutMs / 1000} seconds.`));
+          }, timeoutMs);
         }),
       ]);
     } catch (error) {
@@ -505,7 +511,7 @@ export function createAgentRuntime({ kernelWorkers = true, backend = 'gpu', brow
         }
         await boot();
         const sessionId = randomUUID();
-        const result = await evaluate('create', { recipe, sessionId, memoryBudgetMiB: memory, backend });
+        const result = await evaluate('create', { recipe, sessionId, memoryBudgetMiB: memory, backend }, page, recipe?.bake ? BAKE_EVALUATION_TIMEOUT_MS : EVALUATION_TIMEOUT_MS);
         activeSessionId = sessionId;
         return result;
       });
@@ -549,7 +555,7 @@ export function createAgentRuntime({ kernelWorkers = true, backend = 'gpu', brow
           const { branch, ...rest } = input;
           return invoke('branchApply', { ...rest, name: validateBranchName(branch) });
         }
-        return invoke('apply', input);
+        return invoke('apply', input, startsBake(input.operations) ? BAKE_EVALUATION_TIMEOUT_MS : EVALUATION_TIMEOUT_MS);
       });
     },
     look(input) {

@@ -1,7 +1,7 @@
 import { planLightmaps, estimateBake, traceLightmaps } from './light-bake.js';
 import { runKernel } from './kernel-offload.js';
 import { knownKeys, finiteNumber } from './agent-recipe-checks.js';
-import { BAKE_PRESETS, BAKE_RANGES, BAKE_MAXIMUM_SECONDS, BAKE_PRESET_PATH_WORK, BAKE_EXPLICIT_PATH_WORK_LIMIT } from './agent-scene-capabilities.js';
+import { BAKE_PRESETS, BAKE_RANGES, BAKE_MAXIMUM_SECONDS, BAKE_WORKER_MAXIMUM_SECONDS, BAKE_PRESET_PATH_WORK, BAKE_EXPLICIT_PATH_WORK_LIMIT } from './agent-scene-capabilities.js';
 
 const PRESET_SAMPLES_FLOOR = 16;
 
@@ -124,6 +124,16 @@ function liveBakedMaterial(liveMaterial, bakedMaterial) {
   return Object.freeze(output);
 }
 
+// Inside a worker the bake blocks nothing, so it may run longer; on the page's own thread it must stay short.
+function runsOnWorker() {
+  return typeof WorkerGlobalScope !== 'undefined' && globalThis instanceof WorkerGlobalScope;
+}
+
+/** The seconds a bake may run here: 90 on a worker, 20 on the page's own thread. */
+export function bakeSecondsLimit() {
+  return runsOnWorker() ? BAKE_WORKER_MAXIMUM_SECONDS : BAKE_MAXIMUM_SECONDS;
+}
+
 function traceWithAdvice(plan, used) {
   try {
     return traceLightmaps(plan, used);
@@ -142,7 +152,7 @@ function traceWithAdvice(plan, used) {
  * the same RangeError here as it would inline, and the worker sends it back with its message.
  */
 export function bakeChangedParts(snapshots, lighting, settings) {
-  const plan = planLightmaps(snapshots, lighting, { ...settings, maxSeconds: BAKE_MAXIMUM_SECONDS });
+  const plan = planLightmaps(snapshots, lighting, { ...settings, maxSeconds: bakeSecondsLimit() });
   const { used, reduced } = fitSettingsToBudget(plan, settings);
   const { parts, report } = traceWithAdvice(plan, used);
   const changed = [];

@@ -55,7 +55,9 @@ try {
   assert.deepEqual(kernels.fallbacks, [], `No kernel may fall back to the main thread: ${JSON.stringify(kernels.fallbacks)}`);
   assert.doesNotMatch(diagnostics, /kernel fallback/);
   await client.callTool({ name: 'scene_dispose', arguments: { sessionId } }, { timeout: 60000 });
-  console.log(JSON.stringify({ backend, createMilliseconds, kernels }));
+  const { bake } = inspected.structuredContent;
+  const bakeSummary = bake ? { used: bake.used, reduced: bake.reduced, seconds: bake.seconds } : undefined;
+  console.log(JSON.stringify({ backend, createMilliseconds, bake: bakeSummary, kernels }));
 } finally {
   await client.close();
 }

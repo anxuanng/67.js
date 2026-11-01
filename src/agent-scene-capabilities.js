@@ -88,7 +88,7 @@ export const RENDER_PASS_NAMES = Object.freeze(['albedo', 'normal', 'emission', 
 // extension, no drive or protocol syntax.
 export const VIDEO_ENCODERS = Object.freeze(['cpu', 'nvenc']);
 export const MAXIMUM_VIDEO_SECONDS = 60;
-/** Recipe bake presets and ranges. A bake over 20 s fails the edit before the 30 s page deadline would close the runtime. */
+/** Recipe bake presets and ranges. A bake inline on the page fails the edit after 20 s, before the 30 s page deadline; on a worker it has 90 s. */
 export const BAKE_PRESETS = Object.freeze({
   draft: Object.freeze({ samples: 32, bounces: 1, texelsPerUnit: 3 }),
   standard: Object.freeze({ samples: 128, bounces: 2, texelsPerUnit: 6 }),
@@ -96,6 +96,8 @@ export const BAKE_PRESETS = Object.freeze({
 });
 export const BAKE_RANGES = Object.freeze({ samples: [1, 256], bounces: [1, 3], texelsPerUnit: [1, 12] });
 export const BAKE_MAXIMUM_SECONDS = 20;
+/** The limit when the bake runs on a worker, which does not block the page: a busy machine still finishes a preset. */
+export const BAKE_WORKER_MAXIMUM_SECONDS = 90;
 /**
  * Path steps (texels x samples x bounces) a preset is scaled down to. Measured at 1.8 to 3.1
  * microseconds per path step on a closed 56 part room and the 57 node demo room, so this is 9 to 16 s, under the 20 s limit. The two rooms cost
@@ -239,7 +241,7 @@ export const AGENT_SCENE_CAPABILITIES = Object.freeze({
     fields: 'preset, or samples (1-256), bounces (1-3), texelsPerUnit (1-12) over it. Same recipe, same bytes.',
     presets: BAKE_PRESETS,
     notes: 'Bounced light from point, spot, area and key lights. Reruns when parts, lights, materials or bake change. Skips alpha, skin, morph, hair, cloth (bake.skipped). A preset shrinks to fit (bake.used, bake.reduced); explicit settings fail over maxPathWork or past maxSeconds. No environment map or specular.',
-    limits: Object.freeze({ maxSeconds: BAKE_MAXIMUM_SECONDS, maxPathWork: BAKE_EXPLICIT_PATH_WORK_LIMIT, maxPointLights: 8 }),
+    limits: Object.freeze({ maxSeconds: BAKE_MAXIMUM_SECONDS, workerMaxSeconds: BAKE_WORKER_MAXIMUM_SECONDS, maxPathWork: BAKE_EXPLICIT_PATH_WORK_LIMIT, maxPointLights: 8 }),
   }),
   motionLimits: Object.freeze({ maxTracks: 128, maxKeyframesPerTrack: 64, maxKeyframes: 2048, maxDuration: 30 }),
 });
