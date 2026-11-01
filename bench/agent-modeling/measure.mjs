@@ -444,6 +444,10 @@ export async function measureRecipe(recipe) {
       const part = scene.parts.find(candidate => candidate.name === name);
       return part ? surfaceHeightAt(worldGeometry(part), pointX, pointZ) : null;
     },
+    nodePositions(name) {
+      const part = scene.parts.find(candidate => candidate.name === name);
+      return part ? worldGeometry(part).positions : null;
+    },
     nodeBounds(name) {
       const part = scene.parts.find(candidate => candidate.name === name);
       return part ? boundsOfPositions(worldGeometry(part).positions) : null;

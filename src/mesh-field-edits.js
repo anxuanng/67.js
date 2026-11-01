@@ -17,7 +17,7 @@ export function withPositions(mesh, positions) {
 }
 
 /** One flag per vertex: set when the vertex belongs to a face the rule selects. Without a rule, every vertex. */
-function selectedVertices(mesh, rule) {
+export function selectedVertices(mesh, rule) {
   const flags = new Uint8Array(mesh.vertexCount);
   if (!rule) {
     flags.fill(1);

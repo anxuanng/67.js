@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createAgentScene } from '../src/agent-scene.js';
 import { normalizeAgentBake } from '../src/agent-bake.js';
-import { BAKE_PRESETS } from '../src/agent-scene-capabilities.js';
+import { BAKE_PRESETS, BAKE_RAY_WORK_BUDGET, BAKE_MAXIMUM_SECONDS } from '../src/agent-scene-capabilities.js';
 
 function closedRoom(extra = {}) {
   const box = (id, translation, scale, material) => ({ id, geometry: 'box', material, translation, scale });
@@ -148,4 +148,103 @@ test('a node that hosts a hair system bakes without an error and is reported as 
   assert.match(skipped.reason, /hair|particle/);
   assert.ok(scene.parts.find(part => part.name === 'head').material.emissiveMap);
   assert.equal(scene.parts.find(part => part.name === 'fur').material.emissiveMap, undefined);
+});
+
+function roomLitBy(environment) {
+  return closedRoom({ environment: { ...environment, keyIntensity: 0, fillIntensity: 0 } });
+}
+
+function lightmapBytesOf(scene, name) {
+  return lightmapBytes(scene.parts.find(part => part.name === name));
+}
+
+test('a spot light that points at the floor bakes the light that bounces off it', () => {
+  const recipe = roomLitBy({ spotLights: [{ position: [0, 2.8, 0.5], direction: [0, -1, 0], angle: 0.6, intensity: 30 }] });
+  const scene = createAgentScene(recipe);
+  assert.ok(scene.parts.find(part => part.name === 'back').material.emissiveMap);
+  assert.deepEqual(lightmapBytesOf(createAgentScene(recipe), 'back'), lightmapBytesOf(scene, 'back'));
+  const withoutSpot = createAgentScene(roomLitBy({}));
+  assert.notDeepEqual(lightmapBytesOf(withoutSpot, 'back'), lightmapBytesOf(scene, 'back'));
+});
+
+test('an area light bakes bounced light on its front side only, and a changed spot or area light bakes again', () => {
+  const facingDown = roomLitBy({ areaLights: [{ position: [0, 2.9, 0], direction: [0, -1, 0], width: 1, height: 1, intensity: 20 }] });
+  const facingUp = roomLitBy({ areaLights: [{ position: [0, 2.9, 0], direction: [0, 1, 0], width: 1, height: 1, intensity: 20 }] });
+  const scene = createAgentScene(facingDown);
+  assert.ok(scene.parts.find(part => part.name === 'floor').material.emissiveMap);
+  assert.deepEqual(lightmapBytesOf(createAgentScene(facingDown), 'floor'), lightmapBytesOf(scene, 'floor'));
+  assert.notDeepEqual(lightmapBytesOf(createAgentScene(facingUp), 'floor'), lightmapBytesOf(scene, 'floor'));
+  scene.apply([{ type: 'set-environment', environment: { areaLights: [{ position: [0, 2.9, 0], direction: [0, -1, 0], width: 1, height: 1, intensity: 25 }] } }], { expectedRevision: 0 });
+  assert.equal(scene.inspect().bake.reused, false);
+});
+
+function largeRoom(bake) {
+  const recipe = closedRoom({ bake });
+  recipe.environment.spotLights = [{ position: [0, 2.8, 0], direction: [0, -1, 0], angle: 1, intensity: 20 }];
+  for (let index = 0; index < 48; index++) {
+    const column = index % 8;
+    const row = Math.floor(index / 8);
+    recipe.nodes.push({ id: `crate-${index}`, geometry: 'box', material: 'white', translation: [-1.75 + column * 0.5, 0.3, -1.7 + row * 0.6], scale: [0.4, 0.6, 0.4] });
+  }
+  return recipe;
+}
+
+test('a preset on a 56 part room shrinks to the ray work budget, finishes, and reports what it used', () => {
+  const scene = createAgentScene(largeRoom({ preset: 'standard' }));
+  const bake = scene.inspect().bake;
+  assert.equal(scene.parts.length, 56);
+  assert.equal(bake.reduced, true);
+  assert.ok(bake.used.samples < BAKE_PRESETS.standard.samples);
+  assert.ok(bake.used.texelsPerUnit < BAKE_PRESETS.standard.texelsPerUnit);
+  assert.equal(bake.used.bounces, BAKE_PRESETS.standard.bounces);
+  assert.ok(bake.rayWork <= BAKE_RAY_WORK_BUDGET);
+  assert.ok(bake.seconds < BAKE_MAXIMUM_SECONDS);
+  const again = createAgentScene(largeRoom({ preset: 'standard' }));
+  assert.deepEqual(again.inspect().bake.used, bake.used);
+  assert.deepEqual(lightmapBytesOf(again, 'floor'), lightmapBytesOf(scene, 'floor'));
+});
+
+test('a preset that already fits is not reduced', () => {
+  const bake = createAgentScene(closedRoom()).inspect().bake;
+  assert.equal(bake.reduced, false);
+  assert.deepEqual(bake.used, BAKE_PRESETS.draft);
+});
+
+test('explicit samples or texelsPerUnit over the budget fail with the number that fits, and that number works', () => {
+  const heavy = { preset: 'draft', samples: 256, bounces: 3, texelsPerUnit: 12 };
+  let message = '';
+  assert.throws(() => createAgentScene(closedRoom({ bake: heavy })), error => {
+    message = error.message;
+    return /ray work/.test(error.message);
+  });
+  const fittingSamples = Number(/samples (\d+) or fewer/.exec(message)?.[1]);
+  const fittingDensity = Number(/texelsPerUnit ([\d.]+) or less/.exec(message)?.[1]);
+  assert.ok(fittingSamples >= 1 && fittingSamples < 256, message);
+  assert.ok(fittingDensity >= 1 && fittingDensity < 12, message);
+  const withSamples = createAgentScene(closedRoom({ bake: { ...heavy, samples: fittingSamples } })).inspect().bake;
+  assert.equal(withSamples.reduced, false);
+  assert.equal(withSamples.used.samples, fittingSamples);
+  assert.ok(withSamples.rayWork <= BAKE_RAY_WORK_BUDGET);
+});
+
+function clothRoom() {
+  const recipe = closedRoom({ cloth: { duration: 2, sheets: [{ node: 'flag', pin: ['top'] }] } });
+  recipe.geometries.push({ id: 'sheet', type: 'grid', segments: 8 });
+  recipe.nodes.push({ id: 'flag', geometry: 'sheet', material: 'white', translation: [0.5, 2, 0], scale: [1, 1, 1] });
+  return recipe;
+}
+
+test('a cloth sheet is skipped by the bake and still has no lightmap after a seek past t=0', () => {
+  const scene = createAgentScene(clothRoom());
+  const skipped = scene.inspect().bake.skipped.find(entry => entry.name === 'flag');
+  assert.ok(skipped);
+  assert.match(skipped.reason, /cloth/);
+  scene.sampleMotion(1);
+  const flag = scene.parts.find(part => part.name === 'flag');
+  assert.equal(flag.material.lightMap, undefined);
+  assert.equal(flag.material.emissiveMap, undefined);
+  for (const part of scene.parts) {
+    assert.ok(!part.material.lightMap || part.geometry.lightUvs, `${part.name} has a light map without lightUvs`);
+  }
+  assert.ok(scene.parts.find(part => part.name === 'floor').material.emissiveMap);
 });

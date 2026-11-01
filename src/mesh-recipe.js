@@ -17,8 +17,12 @@ import { setPosition, displaceMesh, DISPLACE_DIRECTIONS } from './mesh-field-edi
 import { subdivideMesh, subdivisionSize, MAX_SUBDIVISION_LEVELS, MAX_CREASE_SHARPNESS } from './mesh-subdivide.js';
 import { decimateMesh } from './mesh-decimate.js';
 import { isModifierOperation, normalizeModifierEdit, runModifierEdit } from './mesh-modifiers.js';
+import { sculptMesh, checkSculptBudget } from './mesh-sculpt.js';
+import { shrinkwrapMesh } from './mesh-shrinkwrap.js';
 import { remeshMesh, remeshGridSize, MAX_REMESH_RESOLUTION } from './mesh-remesh.js';
-import { MESH_EDIT_OPERATIONS, MAX_MESH_EDITS, STACK_OPERATIONS, MAX_STACK_NODES } from './mesh-operations.js';
+import {
+  MESH_EDIT_OPERATIONS, MAX_MESH_EDITS, STACK_OPERATIONS, MAX_STACK_NODES, SCULPT_STROKE_TYPES, MAX_SCULPT_STROKES, SHRINKWRAP_MODES,
+} from './mesh-operations.js';
 export { MESH_EDIT_OPERATIONS, MAX_MESH_EDITS, STACK_OPERATIONS, MAX_STACK_NODES };
 
 // Replayable edit log for agent recipes. Each edit is plain JSON; names follow Blender's bmesh.ops where they match.
@@ -50,6 +54,45 @@ function checkedField(expression, index, label, kind) {
     throw editError(index, `${label}: ${error.message}`);
   }
   return expression;
+}
+
+/** translation, rotation (XYZW quaternion) and scale that place a primitive in the mesh's local space. */
+function normalizePlacement(edit, normalized, index) {
+  normalized.translation = edit.translation === undefined ? [0, 0, 0] : vector(edit.translation, index, 'translation');
+  normalized.scale = edit.scale === undefined ? [1, 1, 1] : vector(edit.scale, index, 'scale');
+  if (normalized.scale.some(value => value <= 0)) throw editError(index, 'scale components must be positive');
+  if (edit.rotation === undefined) {
+    normalized.rotation = [0, 0, 0, 1];
+    return;
+  }
+  if (!Array.isArray(edit.rotation) || edit.rotation.length !== 4) throw editError(index, 'rotation is an XYZW quaternion');
+  const rotation = edit.rotation.map(component => finiteNumber(component, index, 'rotation'));
+  const length = Math.hypot(...rotation);
+  if (length === 0) throw editError(index, 'rotation quaternion must be nonzero');
+  normalized.rotation = rotation.map(component => component / length);
+}
+
+function normalizeStroke(stroke, index, strokeIndex) {
+  const label = `strokes[${strokeIndex}]`;
+  if (!stroke || typeof stroke !== 'object' || Array.isArray(stroke)) throw editError(index, `${label} must be an object`);
+  for (const key of Object.keys(stroke)) {
+    if (!['type', 'center', 'radius', 'strength', 'direction'].includes(key)) throw editError(index, `${label} does not take ${key}; fields: type, center, radius, strength, direction`);
+  }
+  if (!SCULPT_STROKE_TYPES.includes(stroke.type)) throw editError(index, `${label}.type must be one of ${SCULPT_STROKE_TYPES.join(', ')}`);
+  const normalized = {
+    type: stroke.type,
+    center: vector(stroke.center, index, `${label}.center`),
+    radius: finiteNumber(stroke.radius, index, `${label}.radius`, { minimum: 0, exclusiveMinimum: true }),
+    strength: finiteNumber(stroke.strength, index, `${label}.strength`),
+  };
+  if (stroke.type === 'smooth' && (normalized.strength < 0 || normalized.strength > 1)) throw editError(index, `${label}.strength of a smooth stroke is from 0 to 1`);
+  if (stroke.type === 'displace') {
+    normalized.direction = vector(stroke.direction, index, `${label}.direction`);
+    if (normalized.direction.every(component => component === 0)) throw editError(index, `${label}.direction must be nonzero`);
+  } else if (stroke.direction !== undefined) {
+    throw editError(index, `${label}.direction applies only to a displace stroke`);
+  }
+  return normalized;
 }
 
 /** Validate an edit list without running it. Returns normalized copies with default names filled in. */
@@ -113,20 +156,34 @@ export function normalizeMeshEdits(edits) {
           throw editError(index, 'cutter must be a primitive record such as { "type": "cylinder", "segments": 32 }');
         }
         normalized.cutter = edit.cutter;
-        normalized.translation = edit.translation === undefined ? [0, 0, 0] : vector(edit.translation, index, 'translation');
-        normalized.scale = edit.scale === undefined ? [1, 1, 1] : vector(edit.scale, index, 'scale');
-        if (normalized.scale.some(value => value <= 0)) throw editError(index, 'scale components must be positive');
-        if (edit.rotation === undefined) {
-          normalized.rotation = [0, 0, 0, 1];
-        } else {
-          if (!Array.isArray(edit.rotation) || edit.rotation.length !== 4) throw editError(index, 'rotation is an XYZW quaternion');
-          const rotation = edit.rotation.map(component => finiteNumber(component, index, 'rotation'));
-          const length = Math.hypot(...rotation);
-          if (length === 0) throw editError(index, 'rotation quaternion must be nonzero');
-          normalized.rotation = rotation.map(component => component / length);
-        }
+        normalizePlacement(edit, normalized, index);
         break;
       }
+      case 'sculpt':
+        if (!Array.isArray(edit.strokes) || edit.strokes.length < 1 || edit.strokes.length > MAX_SCULPT_STROKES) {
+          throw editError(index, `strokes must be an array of 1 to ${MAX_SCULPT_STROKES} brush strokes`);
+        }
+        normalized.strokes = edit.strokes.map((stroke, strokeIndex) => normalizeStroke(stroke, index, strokeIndex));
+        break;
+      case 'shrinkwrap':
+        if (!edit.target || typeof edit.target !== 'object' || Array.isArray(edit.target) || typeof edit.target.type !== 'string') {
+          throw editError(index, 'target must be a primitive record such as { "type": "sphere", "radius": 0.5 }');
+        }
+        normalized.target = edit.target;
+        normalizePlacement(edit, normalized, index);
+        if (!SHRINKWRAP_MODES.includes(edit.mode ?? 'nearest')) throw editError(index, `mode must be one of ${SHRINKWRAP_MODES.join(', ')}`);
+        normalized.mode = edit.mode ?? 'nearest';
+        if (normalized.mode === 'project') {
+          normalized.direction = vector(edit.direction, index, 'direction');
+          if (normalized.direction.every(component => component === 0)) throw editError(index, 'direction must be nonzero');
+        } else if (edit.direction !== undefined) {
+          throw editError(index, 'direction applies only to mode project');
+        }
+        normalized.offset = edit.offset === undefined ? 0 : finiteNumber(edit.offset, index, 'offset', { minimum: 0 });
+        if (edit.maxDistance !== undefined) normalized.maxDistance = finiteNumber(edit.maxDistance, index, 'maxDistance', { minimum: 0 });
+        if (!['error', 'keep'].includes(edit.onMiss ?? 'error')) throw editError(index, 'onMiss must be error or keep');
+        normalized.onMiss = edit.onMiss ?? 'error';
+        break;
       case 'mirror':
         if (!['x', 'y', 'z'].includes(edit.axis ?? 'x')) throw editError(index, 'axis must be x, y or z');
         normalized.axis = edit.axis ?? 'x';
@@ -238,6 +295,14 @@ function checkSubdivideBudget(mesh, edit, limits, index) {
 
 function checkArrayBudget(mesh, edit, limits, index) {
   checkCutBudget(mesh, edit, limits, index);
+  if (edit.op === 'sculpt') {
+    try {
+      checkSculptBudget(mesh, edit.strokes.length);
+    } catch (error) {
+      throw new error.constructor(`Mesh edit ${index} (sculpt): ${error.message}`);
+    }
+    return;
+  }
   if (edit.op === 'subdivide') {
     checkSubdivideBudget(mesh, edit, limits, index);
     return;
@@ -284,6 +349,11 @@ export function transformMesh(mesh, { translation, rotation, scale }) {
     positions, faceOffsets: mesh.faceOffsets, cornerVertices: mesh.cornerVertices,
     edgeVertices: mesh.edgeVertices, cornerEdges: mesh.cornerEdges, attributes: mesh.attributes,
   });
+}
+
+function runShrinkwrap(current, edit, resolveCutter) {
+  if (!resolveCutter) throw new TypeError('shrinkwrap needs a target resolver; recipe meshes provide one.');
+  return shrinkwrapMesh(current, transformMesh(resolveCutter(edit.target), edit), edit);
 }
 
 /** Run one normalized edit on MeshData and describe what it did. */
@@ -371,6 +441,17 @@ function runEdit(current, edit, index, { resolveCutter, limits }) {
       throw new error.constructor(`Mesh edit ${index} (${edit.op}): ${error.message}`);
     }
     result.movedVertices = outcome.movedVertices;
+    return { mesh: outcome.mesh, result };
+  }
+  if (edit.op === 'sculpt' || edit.op === 'shrinkwrap') {
+    let outcome;
+    try {
+      outcome = edit.op === 'sculpt' ? sculptMesh(current, edit) : runShrinkwrap(current, edit, resolveCutter);
+    } catch (error) {
+      throw new error.constructor(`Mesh edit ${index} (${edit.op}): ${error.message}`);
+    }
+    result.movedVertices = outcome.movedVertices;
+    if (outcome.missedVertices) result.missedVertices = outcome.missedVertices;
     return { mesh: outcome.mesh, result };
   }
   if (edit.op === 'subdivide') {

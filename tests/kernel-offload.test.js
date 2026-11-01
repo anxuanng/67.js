@@ -4,7 +4,7 @@ import test from 'node:test';
 import { createAgentScene } from '../src/agent-scene.js';
 import { buildWithKernels, kernelKey, runKernel } from '../src/kernel-offload.js';
 import { answerKernelRequest } from '../src/kernel-registry.js';
-import { kernelRoom, sceneDigest } from './support/kernel-offload-fixture.mjs';
+import { createInProcessWorker, kernelRoom, sceneDigest } from './support/kernel-offload-fixture.mjs';
 
 const BUILD_SCRIPT = new URL('./support/kernel-offload-build.mjs', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1');
 const LOADER = new URL('./support/load-agent-scene-modules.mjs', import.meta.url).href;
@@ -70,6 +70,22 @@ test('an error a kernel raises on the worker comes back as the same class and me
     buildWithKernels(() => runKernel('lightBake', [[], {}, {}], () => 'inline'), { createWorker: () => raising, available: true }),
     error => error instanceof RangeError && error.message === 'Light bake passed maxSeconds (20).',
   );
+});
+
+test('an explicit bake setting over the budget fails on the worker with the message that names numbers that fit', async () => {
+  const heavyRoom = () => ({ ...kernelRoom(), bake: { preset: 'draft', samples: 256, bounces: 3, texelsPerUnit: 12 } });
+  let inlineMessage = '';
+  assert.throws(() => createAgentScene(heavyRoom()), error => {
+    inlineMessage = error.message;
+    return error instanceof RangeError;
+  });
+  assert.match(inlineMessage, /samples \d+ or fewer/);
+  const requestedKernels = [];
+  await assert.rejects(
+    buildWithKernels(() => createAgentScene(heavyRoom()), { createWorker: () => createInProcessWorker(requestedKernels), available: true }),
+    error => error instanceof RangeError && error.message === inlineMessage,
+  );
+  assert.ok(requestedKernels.includes('lightBake'), 'the budget check ran inside the worker kernel');
 });
 
 test('cancelling stops the build and ends the worker', async () => {

@@ -96,6 +96,11 @@ export const BAKE_PRESETS = Object.freeze({
 });
 export const BAKE_RANGES = Object.freeze({ samples: [1, 256], bounces: [1, 3], texelsPerUnit: [1, 12] });
 export const BAKE_MAXIMUM_SECONDS = 20;
+/**
+ * Ray work (texels x samples x bounces x rays per hit) a recipe bake may trace. Measured on a closed, 56 part room (every
+ * path bounces to the end) at about 1.3 million units per second, so this is about 8 s there, with room under the 20 s limit
+ * for a slower machine. A preset is scaled down to fit; explicit samples or texelsPerUnit that do not fit fail. */
+export const BAKE_RAY_WORK_BUDGET = 10_000_000;
 /** Render job output: each side up to 1920 and never more pixels than 1920x1080 (portrait 1080x1920 fits). */
 export const MAXIMUM_JOB_SIDE = 1920;
 export const MAXIMUM_JOB_PIXELS = 1920 * 1080;
@@ -118,6 +123,12 @@ export const MESH_MODIFIER_NOTES = Object.freeze({
   cast: 'sphere about the origin: factor 0 to 1 (0.5), size radius (0 = mean vertex distance).',
 });
 
+// Organic shaping edits. Details stay here so the tool schemas stay small.
+export const MESH_SCULPT_NOTES = Object.freeze({
+  sculpt: 'strokes run in order on the vertices of the selected faces; other vertices stay, so a tag confines them. A stroke has type inflate (along the vertex normal), displace (along direction, needed) or smooth (strength 0 to 1), center and radius, strength in mesh units (negative pushes in). Falloff is smooth to zero at the radius. For bulges, dents and softened forms.',
+  shrinkwrap: 'target is a primitive record placed by translation, rotation and scale. mode nearest (default) moves each selected vertex to the closest point; project moves it along direction (needed) to the first hit. offset (default 0) stands it off along the normal, on the side it came from. maxDistance limits the search; onMiss error (default) or keep. To lay a flat grid sheet onto a curved target as a decal, use enough cells to follow the curve, then solidify.',
+});
+
 export const AGENT_SCENE_CAPABILITIES = Object.freeze({
   format: '67js.scene', schemaVersion: 1,
   geometryTypes: Object.freeze(['box', 'cylinder', 'sphere', 'torus', 'lathe', 'extrude', 'tube', 'curve', 'text', 'grid', 'terrain', 'mesh']),
@@ -125,6 +136,7 @@ export const AGENT_SCENE_CAPABILITIES = Object.freeze({
   meshEdits: Object.freeze({ operations: Object.freeze(Object.keys(MESH_EDIT_OPERATIONS)), maxEdits: MAX_MESH_EDITS }),
   meshStack: Object.freeze({ operations: STACK_OPERATIONS, maxNodes: MAX_STACK_NODES }),
   meshModifiers: MESH_MODIFIER_NOTES,
+  meshSculpt: MESH_SCULPT_NOTES,
   fieldExpressions: Object.freeze({
     operators: FIELD_OPERATOR_NAMES, attributes: FIELD_ATTRIBUTES,
     maxNodes: MAX_FIELD_NODES, maxDepth: MAX_FIELD_DEPTH, maxElements: MAX_FIELD_ELEMENTS,
@@ -219,8 +231,8 @@ export const AGENT_SCENE_CAPABILITIES = Object.freeze({
   bake: Object.freeze({
     fields: 'preset, or samples (1-256), bounces (1-3), texelsPerUnit (1-12) over it. Same recipe, same bytes.',
     presets: BAKE_PRESETS,
-    notes: 'Bounced light from point lights and the key light, for closed rooms. Reruns only when parts, lights, materials or bake change. Patterns and textures keep their look. Skips alpha, skin, morph, hair hosts (bake.skipped, bake.seconds). Spot and area lights, environment map and specular are not baked. Over 20 s fails the edit.',
-    limits: Object.freeze({ maxSeconds: BAKE_MAXIMUM_SECONDS, maxPointLights: 8 }),
+    notes: 'Bounced light from point, spot, area and key lights. Reruns when parts, lights, materials or bake change. Skips alpha, skin, morph, hair, cloth (bake.skipped). A preset shrinks to fit maxRayWork (bake.used, bake.reduced); explicit samples or texelsPerUnit over it fail. No environment map or specular.',
+    limits: Object.freeze({ maxSeconds: BAKE_MAXIMUM_SECONDS, maxRayWork: BAKE_RAY_WORK_BUDGET, maxPointLights: 8 }),
   }),
   motionLimits: Object.freeze({ maxTracks: 128, maxKeyframesPerTrack: 64, maxKeyframes: 2048, maxDuration: 30 }),
 });

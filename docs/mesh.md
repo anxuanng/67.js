@@ -401,6 +401,39 @@ Blender comparison (`tests/fixtures/blender`): 4 decimate and 2 remesh cases on 
 compared with the Decimate (collapse) and Remesh (voxel) modifiers by face count, volume, area and the Hausdorff distance to
 the input, because face counts differ. `differences.json` lists the remesh face counts, which differ by 2% and 7%.
 
+### Sculpt and shrinkwrap
+
+Two edits shape a mesh organically. Both take `select` (default every face) and move only the vertices of the selected
+faces, so a tag confines them. Neither adds or removes faces, and the topology stays valid.
+
+- `sculpt` (`strokes`, 1 to 32) applies brush strokes in order. A stroke has a `type` (`inflate` along the vertex
+  normal, `displace` along its `direction`, `smooth` toward the mean of the neighbours, with a `strength` from 0 to 1),
+  a `center`, a `radius` and a `strength` in mesh units (negative pushes in). The falloff is quintic, zero first and
+  second derivatives at the rim. A stroke that crosses the edge of the selection leaves a step there. The stroke maths is
+  shared with `sculptGeometry` (`src/sculpt-strokes.js`). More than 5 million vertex visits (vertices times strokes) is
+  refused before it runs.
+- `shrinkwrap` (`target`, `translation`, `rotation`, `scale`, `mode`, `direction`, `offset`, `maxDistance`,
+  `onMiss`) moves each selected vertex onto the surface of a primitive, placed like a boolean cutter. `nearest` (the
+  default) takes the closest point; `project` casts a ray along `direction` and takes the first hit. `offset` stands the
+  vertex off along the face normal, on the side a projected vertex came from, as Blender does. A vertex with no hit
+  is an error (`onMiss` "error") or stays put (`keep`). The queries use the BVH of `src/mesh-query.js`, at most 20
+  million triangle tests per edit.
+
+A decal is a grid base shrunk onto a curved target and then solidified:
+
+```json
+{ "id": "badge", "type": "mesh", "base": { "type": "grid", "segments": 16 }, "edits": [
+  { "op": "set_position", "position": { "vec": [{ "mul": [{ "attr": "position", "component": "x" }, 0.8] }, { "mul": [{ "attr": "position", "component": "y" }, 0.8] }, 1.6] } },
+  { "op": "shrinkwrap", "target": { "type": "sphere" }, "mode": "project", "direction": [0, 0, -1], "offset": 0.02 },
+  { "op": "solidify", "thickness": 0.02, "offset": -1 }
+] }
+```
+
+The Blender comparison (`tests/blender-golden.test.js`) has two shrinkwrap cases against the Shrinkwrap modifier, one
+nearest and one projected with an offset, and two sculpt cases. Blender has no modifier for brush strokes that runs
+without a viewport, so the sculpt reference applies the same brush formula to Blender's mesh and vertex normals.
+The vertex positions agree within 0.001 in all four, with no accepted difference.
+
 ### UV unwrap
 
 `uv_unwrap` writes the corner attribute `uv` (and the edge attribute `seam`), as an edit or as a stack node. It

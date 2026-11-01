@@ -1,5 +1,5 @@
 {
- "archiveBytes": 801000,
+ "archiveBytes": 815000,
  "goals": {
   "lit-box": 50000,
   "gltf-box": 80000,
@@ -17,7 +17,7 @@
   "entry:sculpt": 2500,
   "entry:surface": 10100,
   "entry:mesh-query": 15900,
-  "entry:mesh": 75200,
+  "entry:mesh": 78100,
   "entry:shrinkwrap": 18300,
   "entry:surface-attachment": 11800,
   "entry:physics": 18000,
@@ -29,13 +29,13 @@
   "entry:terrain": 3400,
   "entry:grass": 4400,
   "entry:clutter": 5300,
-  "entry:light-bake": 25900,
+  "entry:light-bake": 27100,
   "entry:path-tracer": 13800,
   "entry:texture-set": 900,
-  "entry:agent-scene": 66500,
-  "entry:agent-scene+lazy": 226300,
-  "entry:agent-asset": 98800,
-  "entry:agent-asset+lazy": 238300,
+  "entry:agent-scene": 67100,
+  "entry:agent-scene+lazy": 231600,
+  "entry:agent-asset": 99400,
+  "entry:agent-asset+lazy": 243500,
   "entry:hdri": 3300,
   "entry:camera-effects": 8600,
   "entry:render-passes": 1700,
@@ -43,7 +43,7 @@
   "scene:lit-box": 61100,
   "scene:gltf-box": 81500,
   "scene:gltf-box+lazy": 83600,
-  "scene:agent-scene": 97900,
-  "scene:agent-scene+lazy": 257700
+  "scene:agent-scene": 98500,
+  "scene:agent-scene+lazy": 262900
  }
 }

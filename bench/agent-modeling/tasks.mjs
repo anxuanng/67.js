@@ -344,6 +344,21 @@ faces and no sharp edges, resting on the ground.`,
     ],
   },
   {
+    id: 'ball-badge',
+    prompt: `A ball with a badge on it, as two nodes. Node ball: a sphere of radius 0.5 m resting on the ground, centred on X = 0 and Z = 0.
+Node badge: a thin plate that was a flat square 0.4 m by 0.4 m (X by Y) and 0.01 m thick, bent so it follows the ball's curved
+surface over the front of the ball (+Z side) and centred on it, with its back face lying on the ball (within 5 mm) and its front
+face 0.01 m outside it. The plate must keep a smooth grid of at least 12 by 12 cells so the curve is round, and be one closed solid.`,
+    checks: [
+      { kind: 'lint' },
+      { kind: 'parts', max: 2 },
+      { kind: 'ground' },
+      { kind: 'size', expected: [1, 1, null] },
+      { kind: 'shell', node: 'badge', centre: [0, 0.5, 0], min: 0.495, max: 0.515, spread: [0.35, 0.35, 0.04] },
+      { kind: 'triangles', min: 500 },
+    ],
+  },
+  {
     id: 'crate-uv',
     prompt: `A wooden crate that will get a tiled wood texture. The body is a 0.6 m cube. Each of its four sides has a
 recessed panel: a frame about 0.04 m wide around a panel sunk about 0.02 m into the side. On top sits a raised lid,
