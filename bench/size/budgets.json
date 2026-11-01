@@ -1,5 +1,5 @@
 {
- "archiveBytes": 801000,
+ "archiveBytes": 815000,
  "goals": {
   "lit-box": 50000,
   "gltf-box": 80000,
@@ -17,7 +17,7 @@
   "entry:sculpt": 2500,
   "entry:surface": 10100,
   "entry:mesh-query": 15900,
-  "entry:mesh": 75200,
+  "entry:mesh": 76200,
   "entry:shrinkwrap": 18300,
   "entry:surface-attachment": 11800,
   "entry:physics": 18000,

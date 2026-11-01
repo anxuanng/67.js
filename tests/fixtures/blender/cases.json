@@ -142,7 +142,11 @@
     { "id": "cast-sphere-bumpy", "input": "sphere-bumpy", "edit": {"op":"cast","factor":0.5} },
     { "id": "decimate-bowl-half", "input": "bowl-open", "compare": "surface", "edit": {"op":"decimate","ratio":0.5} },
     { "id": "remesh-sphere", "input": "sphere-bumpy", "compare": "surface", "edit": {"op":"remesh","voxelSize":0.1} },
-    { "id": "remesh-torus", "input": "torus-fine", "compare": "surface", "edit": {"op":"remesh","voxelSize":0.08} }
+    { "id": "remesh-torus", "input": "torus-fine", "compare": "surface", "edit": {"op":"remesh","voxelSize":0.08} },
+    { "id": "sculpt-inflate-sphere", "input": "sphere-bumpy", "edit": {"op":"sculpt","strokes":[{"type":"inflate","center":[0.5,0,0.9],"radius":0.8,"strength":0.12}]} },
+    { "id": "sculpt-displace-smooth-grid", "input": "grid", "edit": {"op":"sculpt","strokes":[{"type":"displace","center":[1.5,1.5,0],"radius":2,"strength":0.6,"direction":[0,0,1]},{"type":"smooth","center":[1.5,1.5,0.3],"radius":1.8,"strength":0.7}]} },
+    { "id": "shrinkwrap-nearest-cylinder", "input": "grid", "edit": {"op":"shrinkwrap","target":{"type":"cylinder"},"translation":[1.5,1.5,-1.5]} },
+    { "id": "shrinkwrap-project-cap-offset", "input": "grid", "edit": {"op":"shrinkwrap","target":{"type":"cylinder"},"translation":[1.5,1.5,0],"mode":"project","direction":[0,0,-1],"offset":0.05,"onMiss":"keep"} }
   ],
  "curves": [
    {
