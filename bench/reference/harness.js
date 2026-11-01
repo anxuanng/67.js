@@ -4,6 +4,8 @@ import { REFERENCE_SCENES, KHRONOS_SCENES } from './scenes.js';
 import { skinnedGeometry } from '/src/path-tracer-scene.js';
 import { boxProjectedGeometry } from '/src/export-box-uv.js';
 import '/src/material-layer-shaders.js';
+import { createCascadedShadows } from '/src/cascaded-shadows.js';
+import { applyLightLinks } from '/src/light-linking.js';
 
 // ?set=khronos draws the Khronos sample assets (npm run reference -- --khronos) instead of the fixed scenes.
 const SCENES = new URLSearchParams(location.search).get('set') === 'khronos' ? KHRONOS_SCENES : REFERENCE_SCENES;
@@ -75,15 +77,20 @@ async function bakeScene(scene, bakeOptions) {
   return { parts: baked.parts, report: baked.report, seconds: (performance.now() - started) / 1000 };
 }
 
-async function renderReferenceScene(id, { describe, ambientOcclusion = 0, ambientOcclusionRadius = 0.5, bake = null, backgroundOnly = false }) {
+// The 67js renderer for a scene: light linking from the lights' affects lists, and cascaded sun shadows when asked for.
+function createSceneRenderer(parts, scene, cascades) {
+  return new Renderer67(document.querySelector('canvas'), applyLightLinks(parts, scene.environment), {
+    ground: false, hdr: true, depth: true, samples: 4, pixelRatio: 1, memoryBudgetMiB: 1024, world: true,
+    environment: scene.environment, shadowBounds: scene.shadow, shadowCascades: cascades ? createCascadedShadows({ count: cascades }) : null,
+  });
+}
+
+async function renderReferenceScene(id, { describe, ambientOcclusion = 0, ambientOcclusionRadius = 0.5, bake = null, cascades = 0, backgroundOnly = false }) {
   const scene = await SCENES[id]();
   const baked = bake ? await bakeScene(scene, bake) : null;
   const canvas = document.querySelector('canvas');
   // backgroundOnly draws the sky alone, so a score can be limited to the pixels the asset covers.
-  const renderer = new Renderer67(canvas, backgroundOnly ? [] : baked ? baked.parts : scene.parts, {
-    ground: false, hdr: true, depth: true, samples: 4, pixelRatio: 1, memoryBudgetMiB: 1024, world: true,
-    environment: scene.environment, shadowBounds: scene.shadow,
-  });
+  const renderer = createSceneRenderer(backgroundOnly ? [] : baked ? baked.parts : scene.parts, scene, cascades);
   renderer.resize();
   const frame = { ...scene.camera, environment: scene.environment, time: 0, exposure: 1, effects: { ambientOcclusion, ambientOcclusionRadius } };
   renderer.render(frame);
@@ -101,26 +108,25 @@ async function renderReferenceScene(id, { describe, ambientOcclusion = 0, ambien
 }
 
 // Frame time of one scene with and without the light bake: a bake only adds an emissive map to each part, so this shows what it costs to draw.
-async function measureReferenceFrameTime(id, { bake, warmupFrames = 20, measuredFrames = 200 }) {
+async function measureReferenceFrameTime(id, { bake, cascades = 0, orbit = false, warmupFrames = 20, measuredFrames = 200 }) {
   const scene = await REFERENCE_SCENES[id]();
   const baked = bake ? await bakeScene(scene, {}) : null;
-  const renderer = new Renderer67(document.querySelector('canvas'), baked ? baked.parts : scene.parts, {
-    ground: false, hdr: true, depth: true, samples: 4, pixelRatio: 1, memoryBudgetMiB: 1024, world: true,
-    environment: scene.environment, shadowBounds: scene.shadow,
-  });
+  const renderer = createSceneRenderer(baked ? baked.parts : scene.parts, scene, cascades);
   renderer.resize();
   const frame = { ...scene.camera, environment: scene.environment, time: 0, exposure: 1, effects: { ambientOcclusion: 0, ambientOcclusionRadius: 0.5 } };
+  // With orbit the camera moves a little every frame, so cascaded maps have to be redrawn each time, as in a camera move.
+  const orbitedEye = index => [scene.camera.eye[0] + Math.sin(index * 0.05) * 0.5, scene.camera.eye[1], scene.camera.eye[2]];
   // finish() returns before a hardware GPU is done, so reading one pixel back is what waits for the frame.
   const pixel = new Uint8Array(4);
   const finishDrawing = () => renderer.context.readPixels(0, 0, 1, 1, renderer.context.RGBA, renderer.context.UNSIGNED_BYTE, pixel);
   for (let index = 0; index < warmupFrames; index++) {
-    renderer.render(frame);
+    renderer.render(orbit ? { ...frame, eye: orbitedEye(index) } : frame);
     finishDrawing();
   }
   const frameMilliseconds = [];
   for (let index = 0; index < measuredFrames; index++) {
     const started = performance.now();
-    renderer.render(frame);
+    renderer.render(orbit ? { ...frame, eye: orbitedEye(index) } : frame);
     finishDrawing();
     frameMilliseconds.push(performance.now() - started);
   }

@@ -276,6 +276,62 @@ export const REFERENCE_SCENES = {
     };
   },
 
+  // A street 140 m long under the sun. A single shadow map has to cover the whole street, so its texels are about 8 cm wide;
+  // cascades give the cars and lamp posts near the camera 1 to 2 cm texels. harness.js draws it with one map by default and
+  // with cascades when run.mjs gets --cascades <count>.
+  async 'long-street'() {
+    const lighting = constantLighting(0.25);
+    const cube = box(0, 1);
+    const parts = [part('street-ground', cube, [0, -0.05, -10], [60, 0.1, 160], { color: [0.32, 0.32, 0.33], roughness: 0.9 })];
+    const facade = { color: [0.62, 0.55, 0.48], roughness: 0.85 };
+    for (let block = 0; block < 12; block++) {
+      const z = 55 - block * 12;
+      const height = 5 + ((block * 7) % 5) * 2;
+      parts.push(part(`building-west-${block}`, cube, [-10.5, height / 2, z], [6, height, 10], facade));
+      parts.push(part(`building-east-${block}`, cube, [10.5, (height + 3) / 2, z], [6, height + 3, 10], { color: [0.55, 0.58, 0.62], roughness: 0.85 }));
+    }
+    for (let post = 0; post < 14; post++) {
+      const z = 52 - post * 10;
+      parts.push(part(`lamp-post-${post}`, cube, [-4.6, 2.2, z], [0.16, 4.4, 0.16], { color: [0.15, 0.15, 0.16], roughness: 0.4, metallic: 0.8 }));
+      parts.push(part(`lamp-arm-${post}`, cube, [-4.1, 4.3, z], [1.1, 0.12, 0.12], { color: [0.15, 0.15, 0.16], roughness: 0.4, metallic: 0.8 }));
+    }
+    const carColors = [[0.7, 0.1, 0.1], [0.1, 0.25, 0.6], [0.85, 0.8, 0.7], [0.1, 0.4, 0.2]];
+    carColors.forEach((color, index) => {
+      parts.push(part(`car-body-${index}`, cube, [2.4, 0.55, 44 - index * 9], [1.8, 0.7, 4.2], { color, roughness: 0.35 }));
+      parts.push(part(`car-roof-${index}`, cube, [2.4, 1.15, 44.3 - index * 9], [1.5, 0.5, 2.2], { color: [0.12, 0.14, 0.17], roughness: 0.2 }));
+    });
+    return {
+      parts, blenderWorld: lighting.blenderWorld,
+      environment: environment(lighting, { keyColor: SUN_COLOR, lightDirection: [-0.7, 0.8, 0.35] }),
+      camera: { eye: [-1.5, 1.7, 56], target: [0, 2.2, -40], up: [0, 1, 0], fov: 50, near: 0.1, far: 200 },
+      shadow: { eye: [-58, 66, 30], target: [0, 0, -10], up: [0, 1, 0], extent: 85, near: 1, far: 260 },
+    };
+  },
+
+  // Three point lights that each light only some parts (light linking). Without linking the red light would tint the right
+  // sphere too. Blender gets the same lists as light-linking receiver collections.
+  async 'light-linking'() {
+    const lighting = constantLighting(0.01);
+    const cube = box(0, 1);
+    const parts = [
+      part('stage-floor', cube, [0, -0.05, 0], [10, 0.1, 10], { color: [0.6, 0.6, 0.6], roughness: 0.8 }),
+      part('stage-back', cube, [0, 1.5, -3.05], [10, 3.2, 0.1], { color: [0.7, 0.7, 0.7], roughness: 0.9 }),
+      part('sphere-left', sphere(48, 32), [-1.2, 0.6, -0.5], [0.6, 0.6, 0.6], { color: [0.8, 0.8, 0.8], roughness: 0.4 }),
+      part('sphere-right', sphere(48, 32), [1.2, 0.6, -0.5], [0.6, 0.6, 0.6], { color: [0.8, 0.8, 0.8], roughness: 0.4 }),
+      part('block-center', cube, [0, 0.4, -1.5], [0.8, 0.8, 0.8], { color: [0.8, 0.8, 0.8], roughness: 0.6 }),
+    ];
+    const pointLights = [
+      { position: [-1.8, 2.4, 1.2], color: [1, 0.35, 0.2], intensity: 14, radius: 0.1, affects: ['sphere-left', 'block-center'] },
+      { position: [1.8, 2.4, 1.2], color: [0.25, 0.45, 1], intensity: 14, radius: 0.1, affects: ['sphere-right'] },
+      { position: [0, 3, 2.5], color: [1, 1, 1], intensity: 6, radius: 0.1, affects: ['stage-floor', 'stage-back'] },
+    ];
+    return {
+      parts, blenderWorld: lighting.blenderWorld,
+      environment: environment(lighting, { pointLights }),
+      camera: { eye: [0, 1.6, 4.6], target: [0, 0.6, -0.8], up: [0, 1, 0], fov: 50, near: 0.05, far: 50 },
+    };
+  },
+
   async character() {
     const lighting = await skyLighting();
     const response = await fetch(`/${ROBOT_FILE}`);

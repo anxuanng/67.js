@@ -40,7 +40,7 @@ function levelsForScene(scene) {
   return levels;
 }
 
-export async function create67Adapter(canvas, scene, characters, { culling = true, lods = true } = {}) {
+export async function create67Adapter(canvas, scene, characters, { culling = true, lods = true, hdr = true, samples = 4 } = {}) {
   const environment = {
     world: true, fillIntensity: 0, ambientIntensity: 1, fogDensity: 0,
     lightDirection: scene.sun.direction, keyColor: scene.sun.color,
@@ -67,7 +67,7 @@ export async function create67Adapter(canvas, scene, characters, { culling = tru
     ? { eye: scene.sun.direction.map(value => value * 5), target: [0, 0, 0], up: [0, 1, 0], extent: scene.shadowExtent, near: 0.1, far: 150 }
     : {};
   const renderer = new Renderer67(canvas, parts, {
-    ground: false, hdr: true, depth: false, samples: 4, pixelRatio: 1, memoryBudgetMiB: 2048, world: true, environment, shadowBounds, culling,
+    ground: false, hdr, depth: false, samples, pixelRatio: 1, memoryBudgetMiB: 2048, world: true, environment, shadowBounds, culling,
   });
   renderer.resize();
   const frame = { eye: scene.camera.eye, target: scene.camera.target, up: [0, 1, 0], fov: scene.camera.fov, near: scene.camera.near, far: scene.camera.far, environment, time: 0, exposure: 1, effects: {} };
@@ -154,9 +154,9 @@ function addInstancedMesh(threeScene, scene) {
   threeScene.add(mesh);
 }
 
-export async function createThreeAdapter(canvas, scene, characters, { instanced = false } = {}) {
+export async function createThreeAdapter(canvas, scene, characters, { instanced = false, antialias = true } = {}) {
   installSharedToneCurve();
-  const renderer = new WebGLRenderer({ canvas, antialias: true });
+  const renderer = new WebGLRenderer({ canvas, antialias });
   renderer.setPixelRatio(1);
   renderer.setSize(canvas.clientWidth, canvas.clientHeight, false);
   renderer.toneMapping = CustomToneMapping;
