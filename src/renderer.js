@@ -2048,7 +2048,8 @@ export class Renderer67 {
     this.context.deleteProgram(this.program);
     this.context.deleteProgram(this.depthProgram);
     if (this.postProgram) this.context.deleteProgram(this.postProgram);
-    for (const variant of this.postVariants?.values() ?? []) this.context.deleteProgram(variant.program ?? variant.pending.program);
+    // A program still linking must finish first: deleting it mid-link leaves a GL error that the next renderer on this context sees.
+    for (const variant of this.postVariants?.values() ?? []) this.context.deleteProgram(variant.pending ? finishProgram(this.context, variant.pending) : variant.program);
     if (this.skyProgram) this.context.deleteProgram(this.skyProgram);
     if (this.bloomProgram) this.context.deleteProgram(this.bloomProgram);
     if (this.occlusionProgram) this.context.deleteProgram(this.occlusionProgram);
