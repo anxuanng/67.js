@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createAgentScene } from '../src/agent-scene.js';
 import { normalizeAgentBake } from '../src/agent-bake.js';
-import { BAKE_PRESETS, BAKE_RAY_WORK_BUDGET, BAKE_MAXIMUM_SECONDS } from '../src/agent-scene-capabilities.js';
+import { BAKE_PRESETS, BAKE_PRESET_PATH_WORK, BAKE_EXPLICIT_PATH_WORK_LIMIT, BAKE_MAXIMUM_SECONDS } from '../src/agent-scene-capabilities.js';
 
 function closedRoom(extra = {}) {
   const box = (id, translation, scale, material) => ({ id, geometry: 'box', material, translation, scale });
@@ -189,7 +189,7 @@ function largeRoom(bake) {
   return recipe;
 }
 
-test('a preset on a 56 part room shrinks to the ray work budget, finishes, and reports what it used', () => {
+test('a preset on a 56 part room shrinks to the path work budget, finishes, and reports what it used', () => {
   const scene = createAgentScene(largeRoom({ preset: 'standard' }));
   const bake = scene.inspect().bake;
   assert.equal(scene.parts.length, 56);
@@ -197,7 +197,7 @@ test('a preset on a 56 part room shrinks to the ray work budget, finishes, and r
   assert.ok(bake.used.samples < BAKE_PRESETS.standard.samples);
   assert.ok(bake.used.texelsPerUnit < BAKE_PRESETS.standard.texelsPerUnit);
   assert.equal(bake.used.bounces, BAKE_PRESETS.standard.bounces);
-  assert.ok(bake.rayWork <= BAKE_RAY_WORK_BUDGET);
+  assert.ok(bake.texels * bake.used.samples * bake.used.bounces <= BAKE_PRESET_PATH_WORK);
   assert.ok(bake.seconds < BAKE_MAXIMUM_SECONDS);
   const again = createAgentScene(largeRoom({ preset: 'standard' }));
   assert.deepEqual(again.inspect().bake.used, bake.used);
@@ -210,21 +210,31 @@ test('a preset that already fits is not reduced', () => {
   assert.deepEqual(bake.used, BAKE_PRESETS.draft);
 });
 
-test('explicit samples or texelsPerUnit over the budget fail with the number that fits, and that number works', () => {
+test('explicit settings over the hard limit fail up front with a lower setting to try', () => {
   const heavy = { preset: 'draft', samples: 256, bounces: 3, texelsPerUnit: 12 };
   let message = '';
-  assert.throws(() => createAgentScene(closedRoom({ bake: heavy })), error => {
+  assert.throws(() => createAgentScene(largeRoom(heavy)), error => {
     message = error.message;
-    return /ray work/.test(error.message);
+    return /path steps/.test(error.message) && message.includes(String(BAKE_EXPLICIT_PATH_WORK_LIMIT));
   });
   const fittingSamples = Number(/samples (\d+) or fewer/.exec(message)?.[1]);
   const fittingDensity = Number(/texelsPerUnit ([\d.]+) or less/.exec(message)?.[1]);
   assert.ok(fittingSamples >= 1 && fittingSamples < 256, message);
   assert.ok(fittingDensity >= 1 && fittingDensity < 12, message);
-  const withSamples = createAgentScene(closedRoom({ bake: { ...heavy, samples: fittingSamples } })).inspect().bake;
-  assert.equal(withSamples.reduced, false);
-  assert.equal(withSamples.used.samples, fittingSamples);
-  assert.ok(withSamples.rayWork <= BAKE_RAY_WORK_BUDGET);
+});
+
+test('explicit settings far above the preset budget run when they fit the hard limit, and are never reduced', () => {
+  const explicit = { samples: 160, bounces: 2, texelsPerUnit: 6 };
+  const bake = createAgentScene(largeRoom(explicit)).inspect().bake;
+  assert.equal(bake.reduced, false);
+  assert.deepEqual(bake.used, explicit);
+  assert.ok(bake.texels * explicit.samples * explicit.bounces > BAKE_PRESET_PATH_WORK);
+  assert.ok(bake.seconds < BAKE_MAXIMUM_SECONDS);
+});
+
+test('an explicit bake that passes maxSeconds fails cleanly with a lower setting to try', () => {
+  const slow = { samples: 256, bounces: 3, texelsPerUnit: 7 };
+  assert.throws(() => createAgentScene(largeRoom(slow)), error => /maxSeconds/.test(error.message) && /Try samples 128/.test(error.message));
 });
 
 function clothRoom() {
