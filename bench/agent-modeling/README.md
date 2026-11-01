@@ -206,6 +206,12 @@ such as organic shapes or a look to match, would need a score for appearance bef
 - **What a reader sees.** The images show an object floating on a flat grey backdrop with no contact shadow, and a pale top face at exposure 1. A default ground with a contact shadow is the larger fix and was not built: a floor in every recipe would change recipes that draw their own.
 - Cost: $0.75 and $0.83 for the agent runs, $0.21, $0.99 and $1.19 for the judge.
 
+### Exposure dropped, automatic floor added
+
+The exposure change above was reverted: on the six cold recipes no subject pixel reached 250 at exposure 1 or 0.8, and mean luma on the subject was 157, 187, 199, 194, 196 and 199 at 1 against 142, 173, 187, 182, 183 and 187 at 0.8 (crate, mug, table, soap, chair, gear), so 1 does not clip. The numbers in the table above came from the 0.8 run; treat its judge total as one more tie.
+
+`surface-judge.mjs` asks one reference-free question per task, "does the object sit on a surface, with a believable contact shadow", 0 to 3 over the three cameras (`results/2026-11-01-surface-judge.json`, Sonnet, same six cold recipes). Before the automatic floor: 0, 0, 0, 0, 0, 0. After: crate 1, mug 1, table 2, soap 1, chair 1, gear 0. The judge's notes say the same thing each time: the three-quarter view shows a floor and a shadow, and the front and side views do not, because those cameras sit at floor height and see a floor edge-on. Gear showed no floor in any view. The fixed cameras limit this score, so read it as a direction.
+
 ## Clip layers (2026-10-31)
 
 `robot-walk-wave` asks for a character that walks and waves at once through `motion.layers`. The check `assetWalkAndWave` reloads the exported recipe, plays each layer alone (keeping its own speed, offset and loop) and compares part matrices at two times: the legs must match Walking and move, the right arm must leave Walking, the left arm must keep walking. Cold Sonnet, no skill, `results/2026-10-31-11-40-sonnet-walk-wave-cold-fixed-grader.json`: 1 of 1, 7 tool calls (2 errors), $0.31. A first run, with a check that compared against Walking at speed 1 only, failed on a recipe the agent had correct (it set per-layer speeds); the check was fixed and that recipe grades as a pass. One run is not a rate.

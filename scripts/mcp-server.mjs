@@ -144,7 +144,8 @@ const volumeFog = z.strictObject({
 });
 const environment = z.strictObject({
   world: z.boolean().optional().describe('Draw the sky and apply surface fog.'),
-  setup: z.enum(LIGHTING_SETUP_NAMES).optional().describe('Named lighting: an image-based environment plus key light. Default daylight. Setting it resets the key light, fill and ambient fields to that setup; fields in the same call still win.'),
+  ground: z.boolean().optional().describe('false: no automatic floor.'),
+  setup: z.enum(LIGHTING_SETUP_NAMES).optional().describe('Named lighting. Default daylight. Resets key, fill and ambient fields; same-call fields win.'),
   environmentIntensity: bounded(0, 100).optional().describe('Scales the setup environment light and its reflections.'),
   environmentRotation: bounded(-100, 100).optional().describe('Turns the setup environment around the vertical axis, in radians.'),
   lightDirection: boundedVector(-1e6, 1e6).optional().describe('Nonzero direction toward the key light; shadows follow it.'),

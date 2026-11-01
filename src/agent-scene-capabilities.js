@@ -80,8 +80,6 @@ export const RECIPE_ALPHA_MODES = Object.freeze(['opaque', 'blend']);
 export const LIGHTING_SETUP_NAMES = Object.freeze(['daylight', 'overcast', 'sunset', 'studio']);
 export const DEFAULT_LIGHTING_SETUP = 'daylight';
 export const DEFAULT_AMBIENT_OCCLUSION = 0;
-// Under the daylight key and sky a mid-grey surface clips toward white at exposure 1 and loses the shading between faces.
-export const DEFAULT_EXPOSURE = 0.8;
 
 // Render passes a render job can write next to the lit image (see RENDER_PASS_MODES in renderer.js, which must list the same names).
 export const RENDER_PASS_NAMES = Object.freeze(['albedo', 'normal', 'emission', 'depth', 'objectId']);

@@ -72,7 +72,7 @@ Read [scene-contract.md](references/scene-contract.md) before creating parts or 
 7. Validate geometry, bounds and scene budgets with the existing Node tests.
 8. Capture actual rendered wide and narrow views. Inspect edges, highlights, overlap and the focal point.
 9. Exercise orbit, zoom, camera selection and the requested interaction through project dev tooling.
-10. In a recipe, start from the default look: `environment.setup` is `daylight` and `effects.ambientOcclusion` is `0` (off; set 0.4 to 0.8 to add contact darkening). Pick `studio` for products, `overcast` for soft even light, `sunset` for warm low light; Do not hand-tune key, fill and ambient first. The default `effects.exposure` is `0.8`. There is no default ground: add a floor node when an object should sit on something, or it floats with no contact shadow.
+10. In a recipe, start from the default look: `environment.setup` is `daylight` and `effects.ambientOcclusion` is `0` (off; set 0.4 to 0.8 to add contact darkening). Pick `studio` for products, `overcast` for soft even light, `sunset` for warm low light; Do not hand-tune key, fill and ambient first. The preview draws an automatic floor with a contact shadow under the lowest geometry unless a part already forms a floor; `environment.ground: false` removes it, so do not add a floor node only for the shadow.
 
 Do not treat an `antialias: true` context as proof that the final image looks smooth.
 Report measured geometry, draw counts and render size separately from visual judgments.

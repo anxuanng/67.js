@@ -106,6 +106,7 @@ Sky colors use display RGB, matching the renderer's existing environment contrac
 | Field | Default | Range or meaning |
 | --- | --- | --- |
 | `world` | `false` | Boolean world presentation flag. With `true` the setup environment is also the background |
+| `ground` | on | Absent unless set. `false` removes the preview's automatic floor and contact shadow |
 | `setup` | `daylight` | `daylight`, `overcast`, `sunset` or `studio`. See Lighting setups |
 | `environmentIntensity` | `1` | `0` to `100`. Scales the setup's environment light and reflections |
 | `environmentRotation` | `0` | `-100` to `100` radians around the vertical axis |
@@ -136,8 +137,7 @@ Setting `setup` through `set-environment` resets `lightDirection`, `keyColor`, `
 Remote URLs and HDRI files are not accepted from tool input.
 This changes the look of every recipe that sets no lighting: before, the default had no environment map, a key color of `[5.2, 4.7, 4.1]` and a fill intensity of `1`.
 To get the earlier flat look, set `keyColor`, `fillIntensity` and `environmentIntensity: 0` yourself.
-The default `effects.exposure` is `0.8` (it was `1`); set `exposure: 1` to get the earlier brightness.
-There is no default ground: an object with no floor under it has no contact shadow, so add a ground node when the object should sit on something.
+The MCP preview adds an automatic floor: a light grey disc under the scene's lowest geometry, at that height, which catches the key light's shadow. It is not a recipe node and is not exported. A part that already forms a floor (spans at least 90 percent of the scene's width and depth, is thinner than a quarter of its width and is the lowest geometry) switches it off, and `environment.ground: false` removes it. Code that builds its own `Renderer67` gets it by passing `createAgentGround(agentGroundPlacement(parts, environment))` as the `ground` option (`src/agent-ground.js`).
 
 ## Point lights
 
@@ -193,7 +193,7 @@ Ambient occlusion reads the depth texture, so it needs the HDR depth target that
 
 | Field | Default | Range |
 | --- | --- | --- |
-| `exposure` | `0.8` | `0.01` to `16`. The default was `1` before the cold-run look check: a mid-grey surface clipped toward white under the daylight key |
+| `exposure` | `1` | `0.01` to `16` |
 | `saturation` | `1` | `0` to `2` |
 | `contrast` | `1` | `0.1` to `2` |
 | `temperature` | `0` | `-1` to `1` |
