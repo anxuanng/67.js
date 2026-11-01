@@ -11,8 +11,8 @@
   "entry:nature": 13200,
   "entry:motion": 13600,
   "entry:canvas2d": 9400,
-  "entry:gltf": 52800,
-  "entry:gltf+lazy": 56150,
+  "entry:gltf": 52850,
+  "entry:gltf+lazy": 56200,
   "entry:modeling": 8700,
   "entry:sculpt": 2500,
   "entry:surface": 10100,
@@ -34,7 +34,7 @@
   "entry:path-tracer": 14400,
   "entry:texture-set": 900,
   "entry:agent-scene": 74900,
-  "entry:agent-scene+lazy": 253400,
+  "entry:agent-scene+lazy": 253450,
   "entry:agent-asset": 106300,
   "entry:agent-asset+lazy": 264850,
   "entry:hdri": 3300,
@@ -43,10 +43,10 @@
   "entry:material-layer-shaders": 20300,
   "entry:light-linking": 18650,
   "entry:cascaded-shadows": 27300,
-  "scene:lit-box": 61400,
+  "scene:lit-box": 61450,
   "scene:gltf-box": 82500,
-  "scene:gltf-box+lazy": 85700,
-  "scene:agent-scene": 101150,
+  "scene:gltf-box+lazy": 85800,
+  "scene:agent-scene": 101200,
   "scene:agent-scene+lazy": 279700
  }
 }

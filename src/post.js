@@ -136,10 +136,15 @@ vec3 volumeFog(vec3 background) {
     if (all(greaterThanEqual(shadow, vec3(0))) && all(lessThanEqual(shadow, vec3(1)))) {
       visibility = step(shadow.z - 0.0008, texture(volumeShadowMap, shadow.xy).r);
     }
-    vec3 scattering = volumeColor * (volumeAmbient + volumeLightColor * phase * visibility);
+    vec3 scattering = volumeColor * (volumeAmbient * mix(0.15, 1.0, visibility) + volumeLightColor * phase * visibility);
     accumulated += transmittance * opacity * scattering;
     transmittance *= 1.0 - opacity;
     if (transmittance < 0.001) break;
+  }
+  for (int tap = 0; tap < 24; tap++) {
+    float index = float(tap) + jitter;
+    vec2 offset = vec2(cos(index * 2.4) * resolution.y / resolution.x, sin(index * 2.4)) * (0.03 + 0.0002 * index * index);
+    accumulated += texture(frameTexture, textureCoordinate + offset).rgb * volumeColor * (0.009 * (1.0 - transmittance) / (1.0 + 0.04 * index));
   }
   return accumulated + background * transmittance;
 }
