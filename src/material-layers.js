@@ -3,6 +3,9 @@
 
 const UNIT = Object.freeze([0, 1]);
 
+// Bit 0 is the sun, bits 1 to 8 the point lights, 9 to 16 the spot lights and 17 to 20 the area lights (light-linking.js).
+export const ALL_LIGHTS_MASK = 0x1fffff;
+
 export const MATERIAL_LAYER_DEFAULTS = Object.freeze({
   clearcoat: 0,
   clearcoatRoughness: 0,
@@ -108,7 +111,7 @@ export function dielectricReflectance(material) {
 
 /**
  * Plain values the renderer batches by: dielectric F0 (3), coat (2), sheen (4), transmission (4), attenuation colour (3),
- * anisotropy strength and rotation (2), iridescence factor, film IOR and film thickness in nanometres (3).
+ * anisotropy strength and rotation (2), iridescence factor, film IOR and film thickness in nanometres (3), light mask (1).
  */
 export function materialLayerState(material) {
   validateMaterialLayers(material);
@@ -128,7 +131,8 @@ export function materialLayerState(material) {
     materialLayerValue(material, 'iridescence'),
     materialLayerValue(material, 'iridescenceIor'),
     materialLayerValue(material, 'iridescenceThickness'),
+    material.lightMask ?? ALL_LIGHTS_MASK,
   ];
 }
 
-export const MATERIAL_LAYER_STATE_LENGTH = 21;
+export const MATERIAL_LAYER_STATE_LENGTH = 22;
