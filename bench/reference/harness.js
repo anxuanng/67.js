@@ -91,7 +91,7 @@ function describeScene(id, scene) {
     return { name: part.name, geometry: geometries.get(geometry), matrix: [...part.matrix], material: materials.indexOf(part.material) };
   });
   return {
-    id, camera: scene.camera, environment, world: scene.blenderWorld, blenderCloth: scene.blenderCloth,
+    id, camera: scene.camera, environment, world: scene.blenderWorld, blenderCloth: scene.blenderCloth, brightRegion: scene.brightRegion,
     materials: materials.entries, images: materials.images,
     parts: describedParts,
     geometries: [...geometries.keys()].map(({ positions, normals, uvs, colors, indices }) => plainData({ positions, normals, uvs, colors, indices })),
@@ -130,8 +130,10 @@ async function probeScene(scene, id, drawnParts) {
   return { parts: placed.parts, report: placed.report, seconds: (performance.now() - started) / 1000 };
 }
 
-async function renderReferenceScene(id, { describe, ambientOcclusion = 0, ambientOcclusionRadius = 0.5, bake = null, cascades = 0, backgroundOnly = false, probes = false }) {
+async function renderReferenceScene(id, { describe, ambientOcclusion = 0, ambientOcclusionRadius = 0.5, bake = null, cascades = 0, backgroundOnly = false, probes = false, ambient = null }) {
   const scene = await SCENES[id]();
+  // A measurement switch: 0 removes the world's light from every surface, to show how much of a picture comes from it.
+  if (ambient !== null) scene.environment = { ...scene.environment, ambientIntensity: ambient };
   const baked = bake ? await bakeScene(scene, bake) : null;
   const probed = probes ? await probeScene(scene, id, baked ? baked.parts : scene.parts) : null;
   const canvas = document.querySelector('canvas');

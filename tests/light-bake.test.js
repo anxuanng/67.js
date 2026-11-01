@@ -68,6 +68,18 @@ test('light reaches a surface the lamp cannot see, and a dark scene bakes nothin
   dark.parts.forEach(part => assert.equal(part.material.emissiveMap, undefined));
 });
 
+test('a part that sees little of the sky gets a linear occlusion map, and a part that sees all of it gets none', () => {
+  const closed = bakeLightmaps(smallRoom(), lamp, fastOptions);
+  const closedFloor = closed.parts[0];
+  assert.equal(closedFloor.material.occlusionMap.colorSpace, 'linear');
+  assert.equal(closedFloor.material.occlusionStrength, 1);
+  assert.ok(Math.min(...closedFloor.material.occlusionMap.image.data.filter((value, index) => index % 4 === 0)) < 8);
+  assert.ok(closed.report.parts[0].skyVisibility < 0.5);
+  const open = bakeLightmaps([placed('floor', [0, -0.05, 0], [6, 0.1, 6])], lamp, fastOptions);
+  assert.equal(open.parts[0].material.occlusionMap, undefined);
+  assert.equal(open.report.parts[0].skyVisibility, 1);
+});
+
 test('parts that cannot take a lightmap are skipped with a reason and still block light', () => {
   const parts = smallRoom();
   parts.push(placed('glass', [1, 0.5, 1], [0.5, 1, 0.5], { alphaMode: 'blend', opacity: 0.4 }));

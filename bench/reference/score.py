@@ -1,5 +1,6 @@
 # Scores each 67js render against Cycles and EEVEE with FLIP, and saves side by side images.
 #   uv run --no-project --python 3.12 --with flip-evaluator --with pillow --with numpy python -I bench/reference/score.py <work directory> <output directory>
+# A scene that declares brightRegion (scenes.js) also gets region-* scores over the bright pixels of its Cycles image.
 # FLIP is 0 for identical images, and higher means a larger visible difference. EEVEE against Cycles is a yardstick:
 # it shows what a good rasterizer scores on the same scene.
 import json
@@ -33,6 +34,22 @@ COVERAGE_THRESHOLD = 0.03
 def asset_coverage_mask(background, asset_render):
     """The pixels the asset changes, so a score is not diluted by the sky that both sides draw the same way."""
     return np.abs(asset_render - background).max(axis=2) > COVERAGE_THRESHOLD
+
+
+def bright_region_mask(cycles, region):
+    """The pixels where the Cycles image is bright, grown by a few pixels, so a mostly black frame can not hide wrong shafts.
+    The Cycles image picks the region, so no renderer under test decides what is scored."""
+    luminance = cycles @ np.array([0.2126, 0.7152, 0.0722], dtype=np.float32)
+    bright = luminance > region["luminance"]
+    radius = int(region["dilation"])
+    height, width = bright.shape
+    padded = np.pad(bright, radius)
+    grown = np.zeros_like(bright)
+    for shift_y in range(-radius, radius + 1):
+        for shift_x in range(-radius, radius + 1):
+            if shift_y * shift_y + shift_x * shift_x <= radius * radius:
+                grown |= padded[radius + shift_y:radius + shift_y + height, radius + shift_x:radius + shift_x + width]
+    return grown
 
 
 def masked_flip_score(reference, test, mask):
@@ -115,6 +132,13 @@ def main():
             scores["asset-gpu-vs-cycles"] = masked_flip_score(cycles, gpu, mask)
             scores["asset-gpu-vs-eevee"] = masked_flip_score(eevee, gpu, mask)
             scores["asset-eevee-vs-cycles"] = masked_flip_score(cycles, eevee, mask)
+        region = json.loads((work_directory / "scenes" / f"{scene_id}.json").read_text(encoding="utf-8")).get("brightRegion")
+        if region and not set_name:
+            mask = bright_region_mask(cycles, region)
+            scores["region-pixels"] = round(float(mask.mean()), 4)
+            scores["region-gpu-vs-cycles"] = masked_flip_score(cycles, gpu, mask)
+            scores["region-gpu-vs-eevee"] = masked_flip_score(eevee, gpu, mask)
+            scores["region-eevee-vs-cycles"] = masked_flip_score(cycles, eevee, mask)
         results[scene_id] = scores
         image_name = f"{set_name}-{scene_id}" if set_name else scene_id
         side_by_side(cycles, eevee, gpu, scores).save(images_directory / f"{image_name}.jpg", quality=80)
@@ -129,6 +153,13 @@ def main():
     print("scene".ljust(20) + "".join(column.rjust(17) for column in columns))
     for scene_id, scores in results.items():
         print(scene_id.ljust(20) + "".join(f"{scores[column]:.4f}".rjust(17) for column in columns))
+    region_columns = ["region-pixels", "region-gpu-vs-cycles", "region-gpu-vs-eevee", "region-eevee-vs-cycles"]
+    region_results = {scene_id: scores for scene_id, scores in results.items() if "region-pixels" in scores}
+    if region_results:
+        print()
+        print("scene".ljust(20) + "".join(column.rjust(24) for column in region_columns))
+        for scene_id, scores in region_results.items():
+            print(scene_id.ljust(20) + "".join(f"{scores[column]:.4f}".rjust(24) for column in region_columns))
 
 
 main()

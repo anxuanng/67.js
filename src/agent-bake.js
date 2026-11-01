@@ -11,7 +11,7 @@ const PRESET_SAMPLES_FLOOR = 16;
 // without a bake never download the ray tracer.
 
 const BAKE_FIELDS = ['preset', 'samples', 'bounces', 'texelsPerUnit', 'probes'];
-const BAKED_MATERIAL_FIELDS = ['emission', 'emissiveColor', 'emissiveMap', 'lightMap', 'lightMapScale'];
+const BAKED_MATERIAL_FIELDS = ['emission', 'emissiveColor', 'emissiveMap', 'lightMap', 'lightMapScale', 'occlusionMap', 'occlusionStrength'];
 
 /** Validates a recipe bake section and returns the plain, resolved form stored in the recipe (null clears it). */
 export function normalizeAgentBake(input) {
