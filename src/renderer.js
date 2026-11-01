@@ -1,6 +1,6 @@
 import { mat4, mat3 } from 'gl-matrix';
-import { layerTextureSupport, vertexShader, createFragmentShader, liquidFragmentShader, depthVertexShader, depthFragmentShader, benchmarkVertexShader, benchmarkFragmentShader } from './shaders.js';
-import { postFragment, skyFragment, bloomFragment } from './post.js';
+import { layerTextureSupport, vertexShader, createVertexShader, createFragmentShader, liquidFragmentShader, depthVertexShader, depthFragmentShader, benchmarkVertexShader, benchmarkFragmentShader } from './shaders.js';
+import { postFragment, createPostFragment, POST_STEPS, skyFragment, bloomFragment } from './post.js';
 import { fullscreenVertex, startProgram, finishProgram, compileProgram } from './gl-program.js';
 import { ambientOcclusionFragment } from './ambient-occlusion.js';
 import { planRenderSize, estimateTextureBytes, estimateFrameBytes } from './budget.js';
@@ -12,7 +12,7 @@ import { resolveVolumeFog } from './volumetric.js';
 import { assertEnvironmentMap, createEnvironmentResources, environmentBackgroundFragment, environmentBrdfFragment, environmentPrefilterFragment, estimateEnvironmentBytes } from './environment.js';
 import { validateSkinGeometry, validateSkinPose, skinTextureLayout, packSkinInfluences } from './skinning.js';
 import { validateSplatMaterial, splatBatchState, splatTextureBytes, resolveSplatSize, packSplatParameters, buildSplatPixels } from './splat.js';
-import { materialLayerState } from './material-layers.js';
+import { materialLayerState, materialLayerValue } from './material-layers.js';
 import { InstanceSelection, extractFrustumPlanes, geometryBoundingSphere, selectInstances } from './render-culling.js';
 import { validateMorphGeometry, validateMorphPose, validateMorphTransform, packMorphTargets } from './morph.js';
 
@@ -36,6 +36,12 @@ const SWAYING_TAGS = new Set(['foliage', 'grass']);
 // Tags whose vertex shader moves vertices away from the instance matrix, so a bounding sphere would not hold.
 const DEFORMING_TAGS = new Set(['foliage', 'grass', 'water', 'fire', 'smoke']);
 
+const POST_UNIFORMS = ['transparent', 'frameTexture', 'bloomTexture', 'bloomStrength', 'hdrEnabled', 'grade', 'vignette', 'grainAmount', 'resolution', 'monochrome', 'fade', 'cinematic', 'time', 'volumeExplosion', 'explosionProgress', 'inverseViewProjection', 'eye', 'sceneDepth', 'volumeShadowMap', 'volumeLightProjection', 'volumeLightDirection', 'volumeLightColor', 'volumeDensity', 'volumeMinimum', 'volumeMaximum', 'volumeColor', 'volumeAmbient', 'volumeDrift', 'volumeSteps', 'volumeAnisotropy', 'volumeNoiseAmount', 'volumeNoiseScale', 'volumeMaxDistance', 'orthographic', 'occlusionTexture', 'occlusionStrength', 'occlusionTexel'];
+
+function postUniformLocations(context, program) {
+  return Object.fromEntries(POST_UNIFORMS.map(name => [name, context.getUniformLocation(program, name)]));
+}
+
 const MAP_SHADER_FEATURES = ['baseMap', 'normalMap', 'metallicRoughnessMap', 'occlusionMap', 'emissiveMap'];
 // Tags whose look the main fragment shader draws with code that other tags never reach.
 const TAG_SHADER_FEATURES = new Set(['floor', 'water', 'foliage', 'terrain', 'grass', 'fire', 'smoke', 'unlit']);
@@ -50,7 +56,9 @@ function shaderFeaturesOfLighting(lighting) {
 
 function shaderFeaturesOfParts(parts) {
   const features = new Set();
-  for (const { material } of parts) {
+  for (const { material, skin, morph } of parts) {
+    if (skin) features.add('skin');
+    if (morph) features.add('morph');
     MATERIAL_MAPS.forEach((field, index) => {
       if (material[field]) features.add(MAP_SHADER_FEATURES[index]);
     });
@@ -64,6 +72,8 @@ function shaderFeaturesOfParts(parts) {
     if (material.lightMask !== undefined) features.add('lightLinking');
     if (material.iridescence > 0) features.add('iridescence');
     if ((material.alphaMode ?? 'opaque') !== 'opaque') features.add('alphaMode');
+    if (materialLayerValue(material, 'clearcoat') > 0) features.add('clearcoat');
+    if (materialLayerValue(material, 'sheenColor').some(channel => channel !== 0)) features.add('sheen');
     if (TAG_SHADER_FEATURES.has(material.tag)) features.add(material.tag);
   }
   return features;
@@ -488,6 +498,7 @@ export class Renderer67 {
     this.lightProjection = mat4.create();
     this.inverseViewProjection = mat4.create();
     this.shaderFeatures = shaderFeaturesOfParts(groups.flat());
+    this.shaderFeatures.add(environment.map ? 'environmentMap' : 'studioLighting');
     shaderFeaturesOfLighting(this.lighting).forEach(feature => this.shaderFeatures.add(feature));
     if (shadowCascades) this.shaderFeatures.add(shadowCascades.shaderFeature);
     const pending = {
@@ -508,7 +519,8 @@ export class Renderer67 {
     if (!benchmark) {
       this.postProgram = finishProgram(this.context, pending.post);
       this.skyProgram = finishProgram(this.context, pending.sky);
-      this.postUniforms = Object.fromEntries(['transparent', 'frameTexture', 'bloomTexture', 'bloomStrength', 'hdrEnabled', 'grade', 'vignette', 'grainAmount', 'resolution', 'monochrome', 'fade', 'cinematic', 'time', 'volumeExplosion', 'explosionProgress', 'inverseViewProjection', 'eye', 'sceneDepth', 'volumeShadowMap', 'volumeLightProjection', 'volumeLightDirection', 'volumeLightColor', 'volumeDensity', 'volumeMinimum', 'volumeMaximum', 'volumeColor', 'volumeAmbient', 'volumeDrift', 'volumeSteps', 'volumeAnisotropy', 'volumeNoiseAmount', 'volumeNoiseScale', 'volumeMaxDistance', 'orthographic', 'occlusionTexture', 'occlusionStrength', 'occlusionTexel'].map((name) => [name, this.context.getUniformLocation(this.postProgram, name)]));
+      this.postUniforms = postUniformLocations(this.context, this.postProgram);
+      this.postVariants = new Map();
       this.bloomProgram = finishProgram(this.context, pending.bloom);
       this.bloomUniforms = Object.fromEntries(['sourceTexture', 'texelDirection', 'threshold', 'extract'].map(name => [name, this.context.getUniformLocation(this.bloomProgram, name)]));
       this.skyUniforms = Object.fromEntries(['skyTop', 'skyBottom', 'sunDirection', 'inverseViewProjection', 'eye', 'time', 'daylight', 'hdrEnabled'].map((name) => [name, this.context.getUniformLocation(this.skyProgram, name)]));
@@ -549,7 +561,7 @@ export class Renderer67 {
   startMainProgram() {
     const benchmark = this.benchmark;
     const fragmentSource = benchmark ? benchmarkFragmentShader : createFragmentShader(this.shaderFeatures);
-    return startProgram(this.context, benchmark ? benchmarkVertexShader : vertexShader, fragmentSource);
+    return startProgram(this.context, benchmark ? benchmarkVertexShader : createVertexShader(this.shaderFeatures), fragmentSource);
   }
 
   buildMainProgram() {
@@ -1519,6 +1531,41 @@ export class Renderer67 {
     context.drawArrays(context.TRIANGLES, 0, 3);
   }
 
+  // The post steps this frame uses. A step that is off costs nothing in a program that has it compiled out.
+  postStepsOf(frame, effects, volume, occluded) {
+    const steps = [];
+    if (this.transparent) steps.push('transparent');
+    if (occluded) steps.push('occlusion');
+    if (effects.bloom.strength > 0) steps.push('bloom');
+    if (volume.density > 0) steps.push('volume');
+    if (frame.volumeExplosion) steps.push('explosion');
+    const gradesColor = effects.saturation !== 1 || effects.contrast !== 1 || effects.temperature !== 0;
+    const finishes = gradesColor || (frame.monochrome ?? 0) !== 0 || Boolean(frame.cinematic) || effects.vignette !== 0 || effects.grain !== 0;
+    if (finishes) steps.push('finish');
+    return steps;
+  }
+
+  // Compiles a program for the steps of this frame the first time they occur. The program with every step stays in use
+  // until the driver has finished building the new one, so a step that appears later does not stall a frame.
+  selectPostProgram(steps) {
+    if (steps.length === POST_STEPS.length) return { program: this.postProgram, uniforms: this.postUniforms };
+    const key = steps.join(',');
+    let variant = this.postVariants.get(key);
+    if (!variant) {
+      variant = { pending: startProgram(this.context, fullscreenVertex, createPostFragment(steps)) };
+      this.postVariants.set(key, variant);
+    }
+    if (variant.pending) {
+      const parallelCompile = this.context.getExtension('KHR_parallel_shader_compile');
+      const building = parallelCompile && !this.context.getProgramParameter(variant.pending.program, parallelCompile.COMPLETION_STATUS_KHR);
+      if (building) return { program: this.postProgram, uniforms: this.postUniforms };
+      variant.program = finishProgram(this.context, variant.pending);
+      variant.uniforms = postUniformLocations(this.context, variant.program);
+      variant.pending = null;
+    }
+    return variant;
+  }
+
   resolveFrame(frame, effects, environment, volume) {
     const context = this.context;
     context.bindFramebuffer(context.READ_FRAMEBUFFER, this.multisampleFramebuffer);
@@ -1534,54 +1581,55 @@ export class Renderer67 {
     context.disable(context.DEPTH_TEST);
     context.disable(context.CULL_FACE);
     context.bindVertexArray(null);
-    context.useProgram(this.postProgram);
+    const post = this.selectPostProgram(this.postStepsOf(frame, effects, volume, occluded));
+    context.useProgram(post.program);
     context.activeTexture(context.TEXTURE0);
     context.bindTexture(context.TEXTURE_2D, sourceTexture);
-    context.uniform1i(this.postUniforms.frameTexture, 0);
+    context.uniform1i(post.uniforms.frameTexture, 0);
     context.activeTexture(context.TEXTURE1);
     context.bindTexture(context.TEXTURE_2D, this.depthTexture ?? this.whiteTexture);
-    context.uniform1i(this.postUniforms.sceneDepth, 1);
+    context.uniform1i(post.uniforms.sceneDepth, 1);
     context.activeTexture(context.TEXTURE3);
     context.bindTexture(context.TEXTURE_2D, this.shadowTexture);
-    context.uniform1i(this.postUniforms.volumeShadowMap, 3);
-    context.uniformMatrix4fv(this.postUniforms.volumeLightProjection, false, this.lightProjection);
-    context.uniform3fv(this.postUniforms.volumeLightDirection, environment.lightDirection);
-    context.uniform3fv(this.postUniforms.volumeLightColor, this.lighting.keyColor);
-    context.uniform1f(this.postUniforms.volumeDensity, volume.density);
-    context.uniform3fv(this.postUniforms.volumeMinimum, volume.minimum);
-    context.uniform3fv(this.postUniforms.volumeMaximum, volume.maximum);
-    context.uniform3fv(this.postUniforms.volumeColor, volume.color);
-    context.uniform3fv(this.postUniforms.volumeAmbient, volume.ambient);
-    context.uniform3fv(this.postUniforms.volumeDrift, volume.drift);
-    context.uniform1i(this.postUniforms.volumeSteps, volume.steps);
-    context.uniform1f(this.postUniforms.volumeAnisotropy, volume.anisotropy);
-    context.uniform1f(this.postUniforms.volumeNoiseAmount, volume.noiseAmount);
-    context.uniform1f(this.postUniforms.volumeNoiseScale, volume.noiseScale);
-    context.uniform1f(this.postUniforms.volumeMaxDistance, volume.maxDistance);
-    context.uniform1f(this.postUniforms.orthographic, frame.projection === 'orthographic' ? 1 : 0);
+    context.uniform1i(post.uniforms.volumeShadowMap, 3);
+    context.uniformMatrix4fv(post.uniforms.volumeLightProjection, false, this.lightProjection);
+    context.uniform3fv(post.uniforms.volumeLightDirection, environment.lightDirection);
+    context.uniform3fv(post.uniforms.volumeLightColor, this.lighting.keyColor);
+    context.uniform1f(post.uniforms.volumeDensity, volume.density);
+    context.uniform3fv(post.uniforms.volumeMinimum, volume.minimum);
+    context.uniform3fv(post.uniforms.volumeMaximum, volume.maximum);
+    context.uniform3fv(post.uniforms.volumeColor, volume.color);
+    context.uniform3fv(post.uniforms.volumeAmbient, volume.ambient);
+    context.uniform3fv(post.uniforms.volumeDrift, volume.drift);
+    context.uniform1i(post.uniforms.volumeSteps, volume.steps);
+    context.uniform1f(post.uniforms.volumeAnisotropy, volume.anisotropy);
+    context.uniform1f(post.uniforms.volumeNoiseAmount, volume.noiseAmount);
+    context.uniform1f(post.uniforms.volumeNoiseScale, volume.noiseScale);
+    context.uniform1f(post.uniforms.volumeMaxDistance, volume.maxDistance);
+    context.uniform1f(post.uniforms.orthographic, frame.projection === 'orthographic' ? 1 : 0);
     context.activeTexture(context.TEXTURE2);
     context.bindTexture(context.TEXTURE_2D, effects.bloom.strength > 0 ? this.bloomTargets[1].texture : this.whiteTexture);
-    context.uniform1i(this.postUniforms.bloomTexture, 2);
-    context.uniform1f(this.postUniforms.bloomStrength, effects.bloom.strength);
+    context.uniform1i(post.uniforms.bloomTexture, 2);
+    context.uniform1f(post.uniforms.bloomStrength, effects.bloom.strength);
     context.activeTexture(context.TEXTURE4);
     context.bindTexture(context.TEXTURE_2D, occluded ? this.occlusionTarget.texture : this.whiteTexture);
-    context.uniform1i(this.postUniforms.occlusionTexture, 4);
-    context.uniform1f(this.postUniforms.occlusionStrength, occluded ? effects.ambientOcclusion : 0);
-    context.uniform2f(this.postUniforms.occlusionTexel, 1 / Math.ceil(this.canvas.width / 2), 1 / Math.ceil(this.canvas.height / 2));
-    context.uniform1f(this.postUniforms.transparent, this.transparent ? 1 : 0);
-    context.uniform1f(this.postUniforms.hdrEnabled, this.hdr ? 1 : 0);
-    context.uniform3f(this.postUniforms.grade, effects.saturation, effects.contrast, effects.temperature);
-    context.uniform1f(this.postUniforms.vignette, effects.vignette);
-    context.uniform1f(this.postUniforms.grainAmount, effects.grain);
-    context.uniform2f(this.postUniforms.resolution, this.canvas.width, this.canvas.height);
-    context.uniform1f(this.postUniforms.monochrome, frame.monochrome ?? 0);
-    context.uniform1f(this.postUniforms.fade, frame.fade ?? 0);
-    context.uniform1f(this.postUniforms.cinematic, frame.cinematic ? 1 : 0);
-    context.uniform1f(this.postUniforms.time, frame.time ?? 0);
-    context.uniform1f(this.postUniforms.volumeExplosion, frame.volumeExplosion ? 1 : 0);
-    context.uniform1f(this.postUniforms.explosionProgress, frame.explosionProgress ?? 1);
-    context.uniformMatrix4fv(this.postUniforms.inverseViewProjection, false, this.inverseViewProjection);
-    context.uniform3fv(this.postUniforms.eye, frame.eye);
+    context.uniform1i(post.uniforms.occlusionTexture, 4);
+    context.uniform1f(post.uniforms.occlusionStrength, occluded ? effects.ambientOcclusion : 0);
+    context.uniform2f(post.uniforms.occlusionTexel, 1 / Math.ceil(this.canvas.width / 2), 1 / Math.ceil(this.canvas.height / 2));
+    context.uniform1f(post.uniforms.transparent, this.transparent ? 1 : 0);
+    context.uniform1f(post.uniforms.hdrEnabled, this.hdr ? 1 : 0);
+    context.uniform3f(post.uniforms.grade, effects.saturation, effects.contrast, effects.temperature);
+    context.uniform1f(post.uniforms.vignette, effects.vignette);
+    context.uniform1f(post.uniforms.grainAmount, effects.grain);
+    context.uniform2f(post.uniforms.resolution, this.canvas.width, this.canvas.height);
+    context.uniform1f(post.uniforms.monochrome, frame.monochrome ?? 0);
+    context.uniform1f(post.uniforms.fade, frame.fade ?? 0);
+    context.uniform1f(post.uniforms.cinematic, frame.cinematic ? 1 : 0);
+    context.uniform1f(post.uniforms.time, frame.time ?? 0);
+    context.uniform1f(post.uniforms.volumeExplosion, frame.volumeExplosion ? 1 : 0);
+    context.uniform1f(post.uniforms.explosionProgress, frame.explosionProgress ?? 1);
+    context.uniformMatrix4fv(post.uniforms.inverseViewProjection, false, this.inverseViewProjection);
+    context.uniform3fv(post.uniforms.eye, frame.eye);
     context.drawArrays(context.TRIANGLES, 0, 3);
   }
 
@@ -1863,6 +1911,7 @@ export class Renderer67 {
     }
     this.updateLocalShadows(casterChanged);
     const environmentMap = this.activateEnvironment(environment.map);
+    this.requireFeatureNames([environmentMap ? 'environmentMap' : 'studioLighting']);
     applyProjection(this.projection, frame, this.canvas.width / this.canvas.height, { world: this.world });
     mat4.lookAt(this.view, eye, target, frame.up ?? [0, 1, 0]);
     mat4.multiply(this.viewProjection, this.projection, this.view);
@@ -1879,7 +1928,9 @@ export class Renderer67 {
     } else {
       context.clearColor(0.145, 0.162, 0.177, 1);
     }
-    context.clear(context.COLOR_BUFFER_BIT | context.DEPTH_BUFFER_BIT);
+    // The environment background covers every pixel, so the colour clear before it would be overwritten.
+    const backgroundCoversFrame = !passMode && Boolean(environmentMap?.showBackground) && !this.transparent;
+    context.clear(backgroundCoversFrame ? context.DEPTH_BUFFER_BIT : context.COLOR_BUFFER_BIT | context.DEPTH_BUFFER_BIT);
     const environmentBackgroundDrawn = !passMode && this.drawEnvironmentBackground(environmentMap, frame, exposure);
     if (this.world && !this.benchmark && !passMode && !environmentBackgroundDrawn) this.drawSky(frame);
     context.enable(context.DEPTH_TEST);
@@ -1997,6 +2048,7 @@ export class Renderer67 {
     this.context.deleteProgram(this.program);
     this.context.deleteProgram(this.depthProgram);
     if (this.postProgram) this.context.deleteProgram(this.postProgram);
+    for (const variant of this.postVariants?.values() ?? []) this.context.deleteProgram(variant.program ?? variant.pending.program);
     if (this.skyProgram) this.context.deleteProgram(this.skyProgram);
     if (this.bloomProgram) this.context.deleteProgram(this.bloomProgram);
     if (this.occlusionProgram) this.context.deleteProgram(this.occlusionProgram);

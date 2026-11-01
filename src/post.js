@@ -1,6 +1,8 @@
 export { fullscreenVertex } from './gl-program.js';
 
-export const postFragment = `#version 300 es
+function postFragmentSource(definitions) {
+  return `#version 300 es
+${definitions}
 precision highp float;
 in vec2 textureCoordinate;
 uniform sampler2D frameTexture;
@@ -163,9 +165,9 @@ void main() {
   float secondLuma = luminance(second);
   vec3 color = secondLuma < minimumLuma || secondLuma > maximumLuma ? first : second;
   if (maximumLuma - minimumLuma < max(0.03, maximumLuma * 0.125)) color = center;
-  float coverage = texture(frameTexture, textureCoordinate).a;
-  if (transparent > 0.5) color = center / max(coverage, 0.00001);
-  if (occlusionStrength > 0.0) {
+  float coverage = POST_TRANSPARENT ? texture(frameTexture, textureCoordinate).a : 1.0;
+  if (POST_TRANSPARENT) color = center / max(coverage, 0.00001);
+  if (POST_OCCLUSION) {
     float visibility = 0.0;
     for (int row = -1; row <= 1; row++) {
       for (int column = -1; column <= 1; column++) {
@@ -176,13 +178,14 @@ void main() {
     float directShare = 1.0 / (1.0 + 0.4 * luminance(color));
     color *= mix(1.0, visibility / 9.0, occlusionStrength * directShare);
   }
-  if (bloomStrength > 0.0) color += texture(bloomTexture, textureCoordinate).rgb * bloomStrength;
-  if (volumeDensity > 0.0) color = volumeFog(color);
+  if (POST_BLOOM) color += texture(bloomTexture, textureCoordinate).rgb * bloomStrength;
+  if (POST_VOLUME) color = volumeFog(color);
   if (hdrEnabled > 0.5) {
     color = clamp((color * (2.51 * color + 0.03)) / (color * (2.43 * color + 0.59) + 0.14), 0.0, 1.0);
     color = pow(color, vec3(1.0 / 2.2));
   }
-  if (volumeExplosion > 0.5) color = explosion(color);
+  if (POST_EXPLOSION) color = explosion(color);
+  if (POST_FINISH) {
   color = mix(color, vec3(luminance(color)), monochrome);
   if (grade.x != 1.0) color = mix(vec3(luminance(color)), color, grade.x);
   if (grade.y != 1.0) color = (color - 0.5) * grade.y + 0.5;
@@ -191,9 +194,11 @@ void main() {
   color *= max(0.0, 1.0 - (cinematic * 0.20 + vignette) * dot(centered, centered));
   float grain = fract(sin(dot(gl_FragCoord.xy + floor(time * 24.0), vec2(12.9898, 78.233))) * 43758.5453) - 0.5;
   color += grain * (0.018 * cinematic + grainAmount);
-  float alpha = transparent > 0.5 ? coverage : 1.0;
+  }
+  float alpha = POST_TRANSPARENT ? coverage : 1.0;
   outputColor = vec4(color * (1.0 - fade) * alpha, alpha);
 }`;
+}
 
 export const skyFragment = `#version 300 es
 precision highp float;
@@ -249,3 +254,27 @@ void main() {
   color += sampleBloom(textureCoordinate - texelDirection * 3.230769) * 0.070270;
   outputColor = vec4(color, 1.0);
 }`;
+
+// Every optional step of the post pass, with the GLSL condition that turns it on. SwiftShader pays for a step that a
+// uniform switches off, so a frame that uses few steps draws with a program that has the others compiled out.
+const POST_STEP_CONDITIONS = {
+  transparent: ['POST_TRANSPARENT', 'transparent > 0.5'],
+  occlusion: ['POST_OCCLUSION', 'occlusionStrength > 0.0'],
+  bloom: ['POST_BLOOM', 'bloomStrength > 0.0'],
+  volume: ['POST_VOLUME', 'volumeDensity > 0.0'],
+  explosion: ['POST_EXPLOSION', 'volumeExplosion > 0.5'],
+  finish: ['POST_FINISH', 'true'],
+};
+
+export const POST_STEPS = Object.freeze(Object.keys(POST_STEP_CONDITIONS));
+
+/** The post pass with only the listed steps compiled in; every step is switched by its uniform, as before. */
+export function createPostFragment(steps = POST_STEPS) {
+  const enabled = new Set(steps);
+  const definitions = Object.entries(POST_STEP_CONDITIONS)
+    .map(([step, [macro, condition]]) => `#define ${macro} ${enabled.has(step) ? `(${condition})` : 'false'}`)
+    .join('\n');
+  return postFragmentSource(definitions);
+}
+
+export const postFragment = createPostFragment();
