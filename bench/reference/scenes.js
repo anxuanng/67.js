@@ -511,6 +511,34 @@ export const REFERENCE_SCENES = {
     };
   },
 
+  // The lit-interior room with a mirror sphere, a gold sphere and a glossy floor: what a reflection probe is for.
+  async 'metal-room'() {
+    const lighting = constantLighting(0.02);
+    const wall = { color: [0.7, 0.68, 0.62], roughness: 0.9 };
+    const cube = box(0, 1);
+    const parts = [
+      part('room-floor', cube, [0, -0.05, 0], [8, 0.1, 8], { color: [0.35, 0.3, 0.27], roughness: 0.25 }),
+      part('room-ceiling', cube, [0, 3.05, 0], [8, 0.1, 8], wall),
+      part('room-back', cube, [0, 1.5, -4.05], [8, 3.2, 0.1], wall),
+      part('room-left', cube, [-4.05, 1.5, 0], [0.1, 3.2, 8], { ...wall, color: [0.55, 0.25, 0.2] }),
+      part('room-right', cube, [4.05, 1.5, 0], [0.1, 3.2, 8], { ...wall, color: [0.2, 0.35, 0.5] }),
+      part('room-front', cube, [0, 1.5, 4.05], [8, 3.2, 0.1], wall),
+      part('table', cube, [0, 0.7, -1], [2.4, 0.1, 1.2], { color: [0.3, 0.18, 0.1], roughness: 0.4 }),
+      part('mirror', sphere(64, 40), [-0.6, 1.05, -1], [0.3, 0.3, 0.3], { color: [0.95, 0.95, 0.95], metallic: 1, roughness: 0.04 }),
+      part('gold', sphere(64, 40), [0.6, 1.05, -1], [0.3, 0.3, 0.3], { color: [1, 0.77, 0.34], metallic: 1, roughness: 0.25 }),
+    ];
+    const pointLights = [
+      { position: [0, 2.6, -0.5], color: [1, 0.9, 0.75], intensity: 8, radius: 0.05, castShadow: true },
+      { position: [-2.5, 1.5, 1.5], color: [1, 0.6, 0.4], intensity: 2, radius: 0.05, castShadow: true },
+      { position: [2.5, 1.5, 1.5], color: [0.5, 0.7, 1], intensity: 2, radius: 0.05, castShadow: true },
+    ];
+    return {
+      parts, blenderWorld: lighting.blenderWorld,
+      environment: environment(lighting, { pointLights }),
+      camera: { eye: [0, 1.5, 3.9], target: [0, 1, -1], up: [0, 1, 0], fov: 50, near: 0.05, far: 50 },
+    };
+  },
+
   // A closed room built from a recipe, with brick walls: the bake has to give a patterned wall bounced light and keep its bricks.
   async 'brick-room'() {
     const lighting = constantLighting(0.02);

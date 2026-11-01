@@ -1,12 +1,14 @@
 import { bakeChangedParts } from './agent-bake.js';
 import { bakeCloth } from './cloth.js';
 import { bakeMaterialPattern } from './material-patterns.js';
+import { traceProbes } from './probe-trace.js';
 import { unwrapUv } from './mesh-uv.js';
 
 // The kernels a worker can run, by the name the call sites give `runKernel`. Each is the same function the call site
 // computes inline with, so the worker and the inline path return identical data.
 const KERNELS = {
   lightBake: bakeChangedParts,
+  probeTrace: traceProbes,
   cloth: bakeCloth,
   pattern: bakeMaterialPattern,
   uvUnwrap: unwrapUv,
