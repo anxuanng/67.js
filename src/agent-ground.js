@@ -9,8 +9,6 @@ const DISC_SEGMENTS = 48;
 const FLOOR_SPAN_SHARE = 0.9;
 const FLOOR_THINNESS = 0.25;
 const FLOOR_LOWEST_TOLERANCE = 1e-3;
-// A floor is much wider than whatever stands on it. A lone flat object, such as a gear lying down, is not a floor.
-const FLOOR_OVERSIZE = 1.5;
 // The disc reaches this many scene half-widths past the scene, so its edge stays out of a framed shot.
 const DISC_REACH = 6;
 const MINIMUM_RADIUS = 2;
@@ -44,12 +42,7 @@ function sceneBounds(boundsList) {
   return { minimum, maximum };
 }
 
-function footprintExtent(boundsList) {
-  const { minimum, maximum } = sceneBounds(boundsList);
-  return Math.max(maximum[0] - minimum[0], maximum[2] - minimum[2]);
-}
-
-function formsFloor(bounds, scene, othersExtent) {
+function formsFloor(bounds, scene) {
   const widthX = scene.maximum[0] - scene.minimum[0];
   const widthZ = scene.maximum[2] - scene.minimum[2];
   const partX = bounds.maximum[0] - bounds.minimum[0];
@@ -58,8 +51,7 @@ function formsFloor(bounds, scene, othersExtent) {
   const isWide = partX >= FLOOR_SPAN_SHARE * widthX && partZ >= FLOOR_SPAN_SHARE * widthZ;
   const isThin = partHeight <= FLOOR_THINNESS * Math.max(partX, partZ);
   const isLowest = bounds.minimum[1] <= scene.minimum[1] + FLOOR_LOWEST_TOLERANCE;
-  const isOversized = Math.max(partX, partZ) >= FLOOR_OVERSIZE * othersExtent;
-  return isWide && isThin && isLowest && isOversized;
+  return isWide && isThin && isLowest;
 }
 
 /**
@@ -75,11 +67,9 @@ export function agentGroundPlacement(parts, environment) {
     return null;
   }
   const scene = sceneBounds(boundsList);
-  const formsFloorOverOthers = (bounds, index) => {
-    const others = boundsList.filter((_, otherIndex) => otherIndex !== index);
-    return others.length > 0 && formsFloor(bounds, scene, footprintExtent(others));
-  };
-  if (boundsList.some(formsFloorOverOthers)) {
+  // A floor holds something. A lone flat object, such as a gear lying down, is the subject.
+  const hasOtherParts = boundsList.length > 1;
+  if (hasOtherParts && boundsList.some(bounds => formsFloor(bounds, scene))) {
     return null;
   }
   const halfWidth = Math.max(scene.maximum[0] - scene.minimum[0], scene.maximum[2] - scene.minimum[2]) / 2;

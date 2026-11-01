@@ -31,6 +31,13 @@ test('a lone flat object, such as a gear lying down, still gets a floor', () => 
   assert.equal(agentGroundPlacement([gear], defaultEnvironment).height, 0);
 });
 
+test('a room floor counts as a floor although its walls are as wide', () => {
+  const floor = boxPart([0, -0.05, 0], [6, 0.1, 6]);
+  const backWall = boxPart([0, 1.5, -3], [6, 3, 0.2]);
+  const sideWall = boxPart([-3, 1.5, 0], [0.2, 3, 6]);
+  assert.equal(agentGroundPlacement([floor, backWall, sideWall], defaultEnvironment), null);
+});
+
 test('a raised tabletop, a tall wall and a small plate do not count as a floor', () => {
   const legs = boxPart([0, 0.35, 0], [1.2, 0.7, 0.7]);
   const top = boxPart([0, 0.75, 0], [1.2, 0.05, 0.7]);
