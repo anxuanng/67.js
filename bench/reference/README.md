@@ -1,6 +1,6 @@
 # Reference renders
 
-This suite scores how close a 67js render is to Blender on 19 fixed scenes. Later work uses these scores as its starting point.
+This suite scores how close a 67js render is to Blender on 20 fixed scenes. Later work uses these scores as its starting point.
 
 ## Run it
 
