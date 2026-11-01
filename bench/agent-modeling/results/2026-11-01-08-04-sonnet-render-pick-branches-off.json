@@ -1,0 +1,136 @@
+{
+  "run": "2026-11-01-08-04-sonnet-render-pick-branches-off",
+  "model": "claude-sonnet-5-5",
+  "date": "2026-11-01T08:06:50.799Z",
+  "skill": false,
+  "branches": "off",
+  "runsPerTask": 2,
+  "passed": 2,
+  "tasks": 2,
+  "toolCalls": 6,
+  "costUsd": 0.61,
+  "byModel": {
+    "claude-sonnet-5-5": {
+      "runs": 2,
+      "passed": 2,
+      "successRate": 1,
+      "toolCalls": 6,
+      "toolErrors": 0,
+      "inputTokens": 705391,
+      "outputTokens": 4067,
+      "costUsd": 0.61,
+      "tasks": {
+        "render-pick": {
+          "runs": 2,
+          "passed": 2,
+          "successRate": 1,
+          "toolCalls": 6,
+          "toolErrors": 0,
+          "inputTokens": 705391,
+          "outputTokens": 4067,
+          "costUsd": 0.61
+        }
+      }
+    }
+  },
+  "records": [
+    {
+      "task": "render-pick",
+      "attempt": 1,
+      "pass": true,
+      "passed": 5,
+      "total": 5,
+      "failed": [],
+      "model": "claude-sonnet-5-5",
+      "toolCalls": 3,
+      "toolErrors": 0,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_create": 1,
+        "scene_apply": 1,
+        "scene_export_recipe": 1
+      },
+      "branchCalls": 0,
+      "pathQueries": 0,
+      "features": {
+        "geometryTypes": [
+          "box"
+        ],
+        "meshOperations": [],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 1,
+            "side": 1,
+            "three-quarter": 1
+          },
+          "mean": 1
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-11-01-08-04-sonnet-render-pick-branches-off/look/1/render-pick-front.png",
+          "artifacts/agent-modeling/2026-11-01-08-04-sonnet-render-pick-branches-off/look/1/render-pick-side.png",
+          "artifacts/agent-modeling/2026-11-01-08-04-sonnet-render-pick-branches-off/look/1/render-pick-three-quarter.png"
+        ]
+      },
+      "turns": 5,
+      "costUsd": 0.304841,
+      "inputTokens": 352577,
+      "outputTokens": 1982,
+      "wallSeconds": 38,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "render-pick",
+      "attempt": 2,
+      "pass": true,
+      "passed": 5,
+      "total": 5,
+      "failed": [],
+      "model": "claude-sonnet-5-5",
+      "toolCalls": 3,
+      "toolErrors": 0,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_create": 1,
+        "scene_apply": 1,
+        "scene_export_recipe": 1
+      },
+      "branchCalls": 0,
+      "pathQueries": 0,
+      "features": {
+        "geometryTypes": [
+          "box"
+        ],
+        "meshOperations": [],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 1,
+            "side": 1,
+            "three-quarter": 1
+          },
+          "mean": 1
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-11-01-08-04-sonnet-render-pick-branches-off/look/2/render-pick-front.png",
+          "artifacts/agent-modeling/2026-11-01-08-04-sonnet-render-pick-branches-off/look/2/render-pick-side.png",
+          "artifacts/agent-modeling/2026-11-01-08-04-sonnet-render-pick-branches-off/look/2/render-pick-three-quarter.png"
+        ]
+      },
+      "turns": 5,
+      "costUsd": 0.3061872,
+      "inputTokens": 352814,
+      "outputTokens": 2085,
+      "wallSeconds": 52,
+      "exitCode": 0,
+      "stopped": "success"
+    }
+  ]
+}
