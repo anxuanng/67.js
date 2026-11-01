@@ -86,7 +86,10 @@ def main():
     if "--path-tracer" in sys.argv:
         score_path_tracer(Path(sys.argv[1]), Path(sys.argv[2]))
         return
-    khronos = "--khronos" in sys.argv
+    # Khronos assets and cloth sheets sit in front of a sky that both sides draw alike, so they also get a score over the
+    # pixels the scene covers.
+    set_name = "khronos" if "--khronos" in sys.argv else "cloth" if "--cloth" in sys.argv else None
+    khronos = set_name is not None
     work_directory = Path(sys.argv[1])
     output_directory = Path(sys.argv[2])
     images_directory = output_directory / "images"
@@ -113,12 +116,12 @@ def main():
             scores["asset-gpu-vs-eevee"] = masked_flip_score(eevee, gpu, mask)
             scores["asset-eevee-vs-cycles"] = masked_flip_score(cycles, eevee, mask)
         results[scene_id] = scores
-        image_name = f"khronos-{scene_id}" if khronos else scene_id
+        image_name = f"{set_name}-{scene_id}" if set_name else scene_id
         side_by_side(cycles, eevee, gpu, scores).save(images_directory / f"{image_name}.jpg", quality=80)
     timings = json.loads((work_directory / "blender-timings.json").read_text(encoding="utf-8"))
     graphics = json.loads((work_directory / "graphics.json").read_text(encoding="utf-8"))
     report = {"metric": "FLIP (LDR), mean error, lower is better", **timings, "graphics": graphics, "scores": results}
-    report_name = "khronos.json" if khronos else "baseline.json"
+    report_name = f"{set_name}.json" if set_name else "baseline.json"
     (output_directory / report_name).write_text(json.dumps(report, indent=1) + "\n", encoding="utf-8")
     columns = ["gpu-vs-cycles", "gpu-vs-eevee", "cpu-vs-cycles", "cpu-vs-eevee", "eevee-vs-cycles", "gpu-vs-cpu"]
     if khronos:

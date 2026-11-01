@@ -431,9 +431,16 @@ Blender comparison (`scripts/blender-cloth.py`, Blender 5.2.2, default stiffness
 | Case | Result |
 | --- | --- |
 | 2 x 1.5 m sheet pinned along its top, 2 s | Mean vertex distance 0.08 percent of the height, free edge 1.2485 m against 1.25 m. Both hang straight, so this is a weak test. |
-| 1.6 m sheet dropped on a 0.4 m ball, 2 s | Does not match: mean vertex distance 63 percent of the sheet size (lowest point -0.47 m in 67js, 0.35 m in Blender). This is a model and timing difference, not a stretch defect (numbers below). No parity is claimed for draping. |
+| 1.6 m sheet dropped on a 0.4 m ball, drag matched | Falls and lands alike: mean vertex distance 5.6 percent of the sheet size at 0.25 s and 4.9 percent at 0.5 s. Blender then drapes more slowly (17 percent at 1 s, 35 percent at 2 s). No parity is claimed for draping. |
 
-Drape measurements (same 13 x 13 grid, 1.6 m sheet at 1 m, ball radius 0.4 m at the origin, mass 0.2 kg/m2; Blender 5.2.2 default stiffness, quality 8, air damping 1; 67js defaults):
+Why the first drape comparison said 63 percent (found while comparing pictures, measured):
+
+- The comparison paired vertices in the wrong order. `scripts/blender-cloth.py` built the flat grid with row 0 on the near edge, while the 67js grid turned flat has row 0 on the far edge, so every vertex was compared with its mirror across the sheet. A flat sheet falling straight scores about 50 percent that way. Pairing the rows correctly takes the mean distance at 2 s from 53 to 7.5 percent for the same two bakes.
+- The drag was 180 times apart. Blender's air damping of 1 on a particle of 0.003 kg is a drag of about 54 per second: a falling sheet reaches a terminal speed of 0.18 m/s (measured in free fall, 1 to 2 s and 2 to 8 s both 0.17 to 0.18 m/s). 67js defaults to 0.3 per second, so one sheet landed in 0.4 s and the other took over 2 s. The earlier note tried damping 3 and 8; the matching value is about 54, so `damping` now accepts up to 100. Blender air damping 0.1 (5.4 per second) lands like 67js within 5 percent.
+- With air damping 0 Blender's sheet falls through the ball at 2 s (centre vertex at -1.1 m), so a lower drag in Blender is not free either.
+- What remains is a model difference, not a defect: matched, the mean distance is 17 percent at 1 s and 35 percent at 2 s, because Blender's sheet drapes slowly as a wrinkled bell (friction 5 on collision, tension 15, bending 0.5) and this one hangs smooth flat panels over the ball (pictures in `bench/reference/images/cloth-drape-*.jpg`). Nothing was tuned to close that gap.
+
+Earlier drape measurements (old pairing, Blender air damping 1, 67js defaults; same 13 x 13 grid, 1.6 m sheet at 1 m, ball radius 0.4 m, mass 0.2 kg/m2, Blender 5.2.2 default stiffness, quality 8). Only the stretch rows still say something:
 
 | | 67js | Blender |
 | --- | --- | --- |
@@ -446,9 +453,8 @@ Drape measurements (same 13 x 13 grid, 1.6 m sheet at 1 m, ball radius 0.4 m at 
 
 - Stretch is far inside 10 percent in both solvers, so stiffness or iteration count does not explain the gap; `tests/cloth-blender.test.js` pins the 67js drape to 10 percent per edge and 5 percent in area.
 - The setups match except collision margins, which differ by 17 mm and are too small to matter.
-- Blender had not settled at the compared frame (2 s, lowest point 0.35 m), nor at 8 s (lowest -0.83 m, still falling): the sheet falls slowly, reaching the ball near 2 s, where 67js lands within 0.4 s, and then slides off one side. At 8 s the distance is still 58 percent of the sheet size. Matching 67js `damping` to 3 or 8 only moves the 2 s distance from 63 to 60 or 61 percent, so air drag does not explain it either. The cause is a difference between the models (Blender's cloth is damped springs with its own collision response and falls slowly; this solver is position-based), and nothing was tuned to hide it.
 
-Solvers differ in kind, and a reviewer's by-eye comparison of a drape is still open.
+Picture comparison (`npm run reference -- --cloth`, scores in `bench/reference/cloth.json`, method and table in `bench/reference/README.md`): the banner scores at the EEVEE yardstick (FLIP 0.043 and 0.044 against Cycles, EEVEE 0.042) and the drape at about twice it (0.080 to 0.093 against 0.039 to 0.043). By eye, Blender's cloth wrinkles and bells over the ball, and this solver gives smooth flat panels. The solvers differ in kind, so these scores say how alike the motion is, not that one is right. Soft bodies are not built; see the ledger.
 
 Repeat recordings require identical inputs, creation order, timestep, solver options, and Rapier version.
 Rapier documents cross-platform determinism for its WASM solver under identical initial conditions.
