@@ -142,9 +142,10 @@ vec3 volumeFog(vec3 background) {
     if (transmittance < 0.001) break;
   }
   for (int tap = 0; tap < 24; tap++) {
-    float index = float(tap) + jitter;
-    vec2 offset = vec2(cos(index * 2.4) * resolution.y / resolution.x, sin(index * 2.4)) * (0.03 + 0.0002 * index * index);
-    accumulated += texture(frameTexture, textureCoordinate + offset).rgb * volumeColor * (0.009 * (1.0 - transmittance) / (1.0 + 0.04 * index));
+    float index = float(tap) + 0.5;
+    float radius = 0.03 + 0.0002 * index * index;
+    vec2 offset = vec2(cos(index * 2.4) * resolution.y / resolution.x, sin(index * 2.4)) * radius;
+    accumulated += textureLod(frameTexture, textureCoordinate + offset, log2(0.7 * radius * resolution.y)).rgb * volumeColor * (0.009 * (1.0 - transmittance) / (1.0 + 0.04 * index));
   }
   return accumulated + background * transmittance;
 }

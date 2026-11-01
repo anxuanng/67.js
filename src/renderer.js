@@ -1585,6 +1585,15 @@ export class Renderer67 {
     context.useProgram(post.program);
     context.activeTexture(context.TEXTURE0);
     context.bindTexture(context.TEXTURE_2D, sourceTexture);
+    // The fog's glow reads blurred copies of the frame from its mip chain, so a tap is smooth instead of one speckled pixel.
+    if (volume.density > 0) {
+      context.generateMipmap(context.TEXTURE_2D);
+      context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MIN_FILTER, context.LINEAR_MIPMAP_LINEAR);
+      this.mipmappedTexture = sourceTexture;
+    } else if (this.mipmappedTexture === sourceTexture) {
+      context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MIN_FILTER, context.LINEAR);
+      this.mipmappedTexture = null;
+    }
     context.uniform1i(post.uniforms.frameTexture, 0);
     context.activeTexture(context.TEXTURE1);
     context.bindTexture(context.TEXTURE_2D, this.depthTexture ?? this.whiteTexture);

@@ -239,7 +239,7 @@ test('explicit settings far above the preset budget run when they fit the hard l
 });
 
 test('an explicit bake that passes maxSeconds fails cleanly with a lower setting to try', () => {
-  const slow = { samples: 256, bounces: 3, texelsPerUnit: 7 };
+  const slow = { samples: 256, bounces: 3, texelsPerUnit: 4 };
   // A fast machine finishes this bake inside the real limit, so each clock read is made to cost a second.
   const realNow = performance.now;
   let clockReads = 0;

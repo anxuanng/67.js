@@ -74,7 +74,9 @@ test('a part that sees little of the sky gets a linear occlusion map, and a part
   assert.equal(closedFloor.material.occlusionMap.colorSpace, 'linear');
   assert.equal(closedFloor.material.occlusionStrength, 1);
   assert.ok(Math.min(...closedFloor.material.occlusionMap.image.data.filter((value, index) => index % 4 === 0)) < 8);
-  assert.ok(closed.report.parts[0].skyVisibility < 0.5);
+  // The mean is over texels, and a floor slab is half top face (sees the closed room) and half underside (sees outside), now that texels are spread by area.
+  assert.ok(Math.abs(closed.report.parts[0].skyVisibility - 0.5) < 0.05);
+  assert.ok(closed.report.parts[6].skyVisibility < 0.05);
   const open = bakeLightmaps([placed('floor', [0, -0.05, 0], [6, 0.1, 6])], lamp, fastOptions);
   assert.equal(open.parts[0].material.occlusionMap, undefined);
   assert.equal(open.report.parts[0].skyVisibility, 1);

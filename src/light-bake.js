@@ -33,6 +33,13 @@ const DEFAULT_SPOT_PENUMBRA = 0.15;
 
 const MAP_FIELDS = ['map', 'normalMap', 'metallicRoughnessMap', 'occlusionMap', 'emissiveMap'];
 const SURFACE_UTILIZATION_FLOOR = 0.05;
+const MINIMUM_AXIS_SCALE = 1e-6;
+// Smoothing of the gathered light over texels of one surface: two passes of a gaussian of sigma 1.5 texels over a 7 x 7 window.
+const SMOOTH_PASSES = 2;
+const SMOOTH_RADIUS_TEXELS = 3;
+const SMOOTH_SIGMA_TEXELS = 1.5;
+const SMOOTH_MINIMUM_FACING = 0.9;
+const SMOOTH_PLANE_TEXELS = 1;
 const DILATION_PASSES = 2;
 const AVERAGE_GRID = 16;
 const LIGHT_MAP_CLAMP_TO_EDGE = 33071;
@@ -514,27 +521,59 @@ function worldTriangleArea(part) {
   return area;
 }
 
+/** The length of each matrix column: how far the part stretches a unit step along its own x, y and z. */
+export function partAxisScale(matrix) {
+  const lengths = [0, 1, 2].map(column => Math.hypot(matrix[column * 4], matrix[column * 4 + 1], matrix[column * 4 + 2]));
+  return lengths.map(length => Math.max(length, MINIMUM_AXIS_SCALE));
+}
+
+function scaleKey(scale) {
+  return scale.map(length => length.toPrecision(6)).join(',');
+}
+
+/**
+ * The geometry as it is sized in the world, so the unwrap gives every metre the same share of the lightmap. A shared unit
+ * box scaled to 2 x 32 x 180 m would otherwise get one square per face and texels 90 times longer than wide, which draws
+ * as streaks along the long axis. Normals follow the inverse transpose of the scale.
+ */
+function scaledForUnwrap(geometry, scale) {
+  const positions = Float32Array.from(geometry.positions, (value, index) => value * scale[index % 3]);
+  const normals = Float32Array.from(geometry.normals, (value, index) => value / scale[index % 3]);
+  return { ...geometry, positions, normals };
+}
+
+/** Returns an unwrapped geometry to the part's own units: positions divided, normals multiplied by the scale and made unit length. */
+function unscaledAfterUnwrap(extracted, scale) {
+  const positions = Float32Array.from(extracted.positions, (value, index) => value / scale[index % 3]);
+  const normals = Float32Array.from(extracted.normals, (value, index) => value * scale[index % 3]);
+  for (let vertex = 0; vertex < normals.length / 3; vertex++) {
+    const length = Math.hypot(normals[vertex * 3], normals[vertex * 3 + 1], normals[vertex * 3 + 2]) || 1;
+    for (let axis = 0; axis < 3; axis++) normals[vertex * 3 + axis] /= length;
+  }
+  return { ...extracted, positions, normals };
+}
+
 /** Gives a geometry its lightmap UVs in channel 0, from the unwrap that `uv_unwrap` uses. */
-function unwrapForLightmap(geometry) {
-  const { positions, normals, indices } = geometry;
+function unwrapForLightmap(geometry, scale) {
+  const { positions, normals, indices } = scaledForUnwrap(geometry, scale);
   const mesh = meshFromGeometry({ positions, normals, indices }, { quads: false, tags: 'none' });
   const unwrapped = unwrapUv(mesh);
   const { geometry: unwrappedGeometry } = extractRender(unwrapped.mesh);
-  return { geometry: unwrappedGeometry, utilization: Math.max(unwrapped.utilization, SURFACE_UTILIZATION_FLOOR) };
+  return { geometry: unscaledAfterUnwrap(unwrappedGeometry, scale), utilization: Math.max(unwrapped.utilization, SURFACE_UTILIZATION_FLOOR) };
 }
 
 /**
  * Gives a geometry lightmap UVs in `lightUvs` and keeps its own `uvs` and `colors`. The unwrap splits vertices along its
  * seams, so each source vertex index rides through it as a corner colour and the attributes are gathered back from it.
  */
-function unwrapIntoSecondUvSet(geometry) {
-  const { positions, normals, indices } = geometry;
+function unwrapIntoSecondUvSet(geometry, scale) {
+  const { positions, normals, indices } = scaledForUnwrap(geometry, scale);
   const vertexCount = positions.length / 3;
   const sourceIndices = new Float32Array(vertexCount * 3);
   for (let vertex = 0; vertex < vertexCount; vertex++) sourceIndices[vertex * 3] = vertex;
   const mesh = meshFromGeometry({ positions, normals, indices, colors: sourceIndices }, { quads: false, tags: 'none' });
   const unwrapped = unwrapUv(mesh);
-  const { geometry: extracted } = extractRender(unwrapped.mesh);
+  const extracted = unscaledAfterUnwrap(extractRender(unwrapped.mesh).geometry, scale);
   const newCount = extracted.positions.length / 3;
   const result = { positions: extracted.positions, normals: extracted.normals, indices: extracted.indices, lightUvs: extracted.uvs };
   const uvs = geometry.uvs ? new Float32Array(newCount * 2) : null;
@@ -658,6 +697,54 @@ function dilate(radiance, covered, resolution) {
   }
 }
 
+/**
+ * Smooths the gathered values (each an array of three floats per texel) over neighbouring texels of the same surface.
+ * A texel has only `samples` rays, so its value is noisy, and the noise reads as grain on every wall. A neighbour counts only
+ * when it lies on the same plane (its normal agrees and its position is within a texel of this texel's plane), so a corner,
+ * a seam between charts and the gap between two parts never leak light into each other. Same input, same bytes.
+ */
+export function smoothTexels(arrays, covered, positions, normals, resolution, spacing) {
+  const radius = SMOOTH_RADIUS_TEXELS;
+  const sigmaSquared = SMOOTH_SIGMA_TEXELS * SMOOTH_SIGMA_TEXELS;
+  const planeTolerance = spacing * SMOOTH_PLANE_TEXELS;
+  let sources = arrays;
+  for (let pass = 0; pass < SMOOTH_PASSES; pass++) {
+    const results = sources.map(source => new Float32Array(source.length));
+    for (let row = 0; row < resolution; row++) {
+      for (let column = 0; column < resolution; column++) {
+        const center = row * resolution + column;
+        if (!covered[center]) continue;
+        const totals = sources.map(() => [0, 0, 0]);
+        let weightSum = 0;
+        for (let rowShift = -radius; rowShift <= radius; rowShift++) {
+          const neighbourRow = row + rowShift;
+          if (neighbourRow < 0 || neighbourRow >= resolution) continue;
+          for (let columnShift = -radius; columnShift <= radius; columnShift++) {
+            const neighbourColumn = column + columnShift;
+            if (neighbourColumn < 0 || neighbourColumn >= resolution) continue;
+            const neighbour = neighbourRow * resolution + neighbourColumn;
+            if (!covered[neighbour]) continue;
+            const facing = normals[center * 3] * normals[neighbour * 3] + normals[center * 3 + 1] * normals[neighbour * 3 + 1] + normals[center * 3 + 2] * normals[neighbour * 3 + 2];
+            if (facing < SMOOTH_MINIMUM_FACING) continue;
+            const offset = (positions[neighbour * 3] - positions[center * 3]) * normals[center * 3] + (positions[neighbour * 3 + 1] - positions[center * 3 + 1]) * normals[center * 3 + 1] + (positions[neighbour * 3 + 2] - positions[center * 3 + 2]) * normals[center * 3 + 2];
+            if (Math.abs(offset) > planeTolerance) continue;
+            const weight = Math.exp(-(rowShift * rowShift + columnShift * columnShift) / (2 * sigmaSquared));
+            weightSum += weight;
+            sources.forEach((source, which) => {
+              for (let channel = 0; channel < 3; channel++) totals[which][channel] += weight * source[neighbour * 3 + channel];
+            });
+          }
+        }
+        results.forEach((result, which) => {
+          for (let channel = 0; channel < 3; channel++) result[center * 3 + channel] = totals[which][channel] / weightSum;
+        });
+      }
+    }
+    sources = results;
+  }
+  return sources;
+}
+
 function lightmapDescriptor(bytes, resolution, colorSpace) {
   return { image: createImage(bytes, resolution, resolution), colorSpace, wrapS: LIGHT_MAP_CLAMP_TO_EDGE, wrapT: LIGHT_MAP_CLAMP_TO_EDGE, minFilter: LIGHT_MAP_LINEAR, magFilter: LIGHT_MAP_LINEAR };
 }
@@ -731,9 +818,13 @@ export function planLightmaps(parts, lighting, options = {}) {
       return;
     }
     const slot = usesLightMapSlot(part.material);
+    const scale = partAxisScale(part.matrix);
     const cache = slot ? secondSetCache : unwrapCache;
-    if (!cache.has(part.geometry)) cache.set(part.geometry, slot ? unwrapIntoSecondUvSet(part.geometry) : unwrapForLightmap(part.geometry));
-    entries.push({ part, index, unwrapped: cache.get(part.geometry), area: worldTriangleArea(part), slot });
+    if (!cache.has(part.geometry)) cache.set(part.geometry, new Map());
+    const unwraps = cache.get(part.geometry);
+    const key = scaleKey(scale);
+    if (!unwraps.has(key)) unwraps.set(key, slot ? unwrapIntoSecondUvSet(part.geometry, scale) : unwrapForLightmap(part.geometry, scale));
+    entries.push({ part, index, unwrapped: unwraps.get(key), area: worldTriangleArea(part), slot });
   });
   return { parts, lights, settings, started, entries, skipped };
 }
@@ -801,10 +892,13 @@ export function traceLightmaps(plan, tracedSettings) {
     const sealed = meanSkyVisibility < SKY_VISIBLE_ENOUGH && !part.material.occlusionMap;
     if (peak <= 0 && !sealed) continue;
     let bakedResult = part;
-    if (sealed) dilate(skyVisibility, covered.slice(), resolution);
-    dilate(radiance, covered, resolution);
-    if (peak > 0) bakedResult = (slot ? lightMappedPart : bakedPart)(part, unwrapped.geometry, lightmapTexture(radiance, resolution, peak), peak);
-    if (sealed) bakedResult = skyVisibilityPart(bakedResult, unwrapped.geometry, skyVisibilityTexture(skyVisibility, resolution), slot);
+    const spacing = Math.sqrt(area / Math.max(skyTexels, 1));
+    const [smoothRadiance, smoothSkyVisibility] = smoothTexels([radiance, skyVisibility], covered, positions, normals, resolution, spacing);
+    if (sealed) dilate(smoothSkyVisibility, covered.slice(), resolution);
+    dilate(smoothRadiance, covered, resolution);
+    const smoothPeak = smoothRadiance.reduce((largest, value) => Math.max(largest, value), 0);
+    if (smoothPeak > 0) bakedResult = (slot ? lightMappedPart : bakedPart)(part, unwrapped.geometry, lightmapTexture(smoothRadiance, resolution, smoothPeak), smoothPeak);
+    if (sealed) bakedResult = skyVisibilityPart(bakedResult, unwrapped.geometry, skyVisibilityTexture(smoothSkyVisibility, resolution), slot);
     baked[index] = bakedResult;
   }
   const report = { parts: partReports, skipped, texels: texelTotal, rayWork, seconds: (performance.now() - started) / 1000 };
