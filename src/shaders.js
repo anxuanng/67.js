@@ -487,7 +487,7 @@ float shadowVisibility(vec3 normal) {
   for (int row = -1; row <= 1; row++) {
     for (int column = -1; column <= 1; column++) {
       float comparison = filteredShadow(projected.xy + vec2(column, row) * texel * 2.5, projected.z - bias, dimensions);
-      visibility += mix(0.18, 1.0, comparison);
+      visibility += comparison;
     }
   }
   return visibility / 9.0;

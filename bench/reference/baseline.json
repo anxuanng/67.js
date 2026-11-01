@@ -85,18 +85,18 @@
  },
  "scores": {
   "brick-flat": {
-   "gpu-vs-cycles": 0.1273,
-   "gpu-vs-eevee": 0.0463,
+   "gpu-vs-cycles": 0.1272,
+   "gpu-vs-eevee": 0.0462,
    "cpu-vs-cycles": 0.1269,
-   "cpu-vs-eevee": 0.0459,
+   "cpu-vs-eevee": 0.0458,
    "eevee-vs-cycles": 0.1098,
    "gpu-vs-cpu": 0.0066
   },
   "brick-graph": {
-   "gpu-vs-cycles": 0.1604,
-   "gpu-vs-eevee": 0.0901,
-   "cpu-vs-cycles": 0.1605,
-   "cpu-vs-eevee": 0.0902,
+   "gpu-vs-cycles": 0.1602,
+   "gpu-vs-eevee": 0.0896,
+   "cpu-vs-cycles": 0.1602,
+   "cpu-vs-eevee": 0.0897,
    "eevee-vs-cycles": 0.1221,
    "gpu-vs-cpu": 0.0078
   },
@@ -109,52 +109,52 @@
    "gpu-vs-cpu": 0.0071
   },
   "brushed-film": {
-   "gpu-vs-cycles": 0.1172,
-   "gpu-vs-eevee": 0.1033,
-   "cpu-vs-cycles": 0.1169,
-   "cpu-vs-eevee": 0.1033,
+   "gpu-vs-cycles": 0.1149,
+   "gpu-vs-eevee": 0.1004,
+   "cpu-vs-cycles": 0.1146,
+   "cpu-vs-eevee": 0.1004,
    "eevee-vs-cycles": 0.0984,
-   "gpu-vs-cpu": 0.0062
+   "gpu-vs-cpu": 0.0061
   },
   "car-paint": {
-   "gpu-vs-cycles": 0.1084,
-   "gpu-vs-eevee": 0.0709,
-   "cpu-vs-cycles": 0.1081,
-   "cpu-vs-eevee": 0.0709,
+   "gpu-vs-cycles": 0.1059,
+   "gpu-vs-eevee": 0.0679,
+   "cpu-vs-cycles": 0.1056,
+   "cpu-vs-eevee": 0.0679,
    "eevee-vs-cycles": 0.0844,
    "gpu-vs-cpu": 0.0059
   },
   "character": {
-   "gpu-vs-cycles": 0.0823,
-   "gpu-vs-eevee": 0.0638,
-   "cpu-vs-cycles": 0.082,
-   "cpu-vs-eevee": 0.0637,
+   "gpu-vs-cycles": 0.0799,
+   "gpu-vs-eevee": 0.0553,
+   "cpu-vs-cycles": 0.0796,
+   "cpu-vs-eevee": 0.0552,
    "eevee-vs-cycles": 0.0622,
-   "gpu-vs-cpu": 0.0064
+   "gpu-vs-cpu": 0.0066
   },
   "fog": {
-   "gpu-vs-cycles": 0.2612,
-   "gpu-vs-eevee": 0.0542,
-   "cpu-vs-cycles": 0.2608,
-   "cpu-vs-eevee": 0.0542,
+   "gpu-vs-cycles": 0.2643,
+   "gpu-vs-eevee": 0.053,
+   "cpu-vs-cycles": 0.2639,
+   "cpu-vs-eevee": 0.053,
    "eevee-vs-cycles": 0.2662,
    "gpu-vs-cpu": 0.0085
   },
   "foliage": {
-   "gpu-vs-cycles": 0.1346,
-   "gpu-vs-eevee": 0.0956,
-   "cpu-vs-cycles": 0.1343,
-   "cpu-vs-eevee": 0.0953,
+   "gpu-vs-cycles": 0.129,
+   "gpu-vs-eevee": 0.091,
+   "cpu-vs-cycles": 0.1287,
+   "cpu-vs-eevee": 0.0906,
    "eevee-vs-cycles": 0.0864,
-   "gpu-vs-cpu": 0.0099
+   "gpu-vs-cpu": 0.01
   },
   "glass": {
-   "gpu-vs-cycles": 0.1033,
-   "gpu-vs-eevee": 0.1027,
-   "cpu-vs-cycles": 0.1033,
-   "cpu-vs-eevee": 0.1031,
+   "gpu-vs-cycles": 0.1034,
+   "gpu-vs-eevee": 0.0996,
+   "cpu-vs-cycles": 0.1034,
+   "cpu-vs-eevee": 0.1,
    "eevee-vs-cycles": 0.1009,
-   "gpu-vs-cpu": 0.0082
+   "gpu-vs-cpu": 0.0083
   },
   "light-linking": {
    "gpu-vs-cycles": 0.0998,
@@ -173,50 +173,50 @@
    "gpu-vs-cpu": 0.0062
   },
   "long-street": {
-   "gpu-vs-cycles": 0.1555,
-   "gpu-vs-eevee": 0.1396,
-   "cpu-vs-cycles": 0.1554,
-   "cpu-vs-eevee": 0.1396,
+   "gpu-vs-cycles": 0.1407,
+   "gpu-vs-eevee": 0.1252,
+   "cpu-vs-cycles": 0.1408,
+   "cpu-vs-eevee": 0.1254,
    "eevee-vs-cycles": 0.0976,
-   "gpu-vs-cpu": 0.0098
+   "gpu-vs-cpu": 0.0095
   },
   "material-spheres": {
-   "gpu-vs-cycles": 0.1337,
-   "gpu-vs-eevee": 0.0797,
-   "cpu-vs-cycles": 0.1335,
-   "cpu-vs-eevee": 0.0795,
+   "gpu-vs-cycles": 0.1312,
+   "gpu-vs-eevee": 0.0748,
+   "cpu-vs-cycles": 0.131,
+   "cpu-vs-eevee": 0.0745,
    "eevee-vs-cycles": 0.1053,
-   "gpu-vs-cpu": 0.0069
+   "gpu-vs-cpu": 0.007
   },
   "megacity-dusk": {
-   "gpu-vs-cycles": 0.1583,
-   "gpu-vs-eevee": 0.1173,
-   "cpu-vs-cycles": 0.1589,
-   "cpu-vs-eevee": 0.1211,
+   "gpu-vs-cycles": 0.1627,
+   "gpu-vs-eevee": 0.1022,
+   "cpu-vs-cycles": 0.162,
+   "cpu-vs-eevee": 0.1061,
    "eevee-vs-cycles": 0.1524,
-   "gpu-vs-cpu": 0.0277
+   "gpu-vs-cpu": 0.0281
   },
   "metal": {
-   "gpu-vs-cycles": 0.1309,
-   "gpu-vs-eevee": 0.0977,
-   "cpu-vs-cycles": 0.1306,
-   "cpu-vs-eevee": 0.0978,
+   "gpu-vs-cycles": 0.1294,
+   "gpu-vs-eevee": 0.0952,
+   "cpu-vs-cycles": 0.1291,
+   "cpu-vs-eevee": 0.0953,
    "eevee-vs-cycles": 0.0916,
    "gpu-vs-cpu": 0.0067
   },
   "mountain-valley": {
-   "gpu-vs-cycles": 0.3658,
-   "gpu-vs-eevee": 0.2698,
-   "cpu-vs-cycles": 0.3644,
-   "cpu-vs-eevee": 0.2683,
+   "gpu-vs-cycles": 0.3473,
+   "gpu-vs-eevee": 0.242,
+   "cpu-vs-cycles": 0.346,
+   "cpu-vs-eevee": 0.2406,
    "eevee-vs-cycles": 0.1828,
-   "gpu-vs-cpu": 0.0196
+   "gpu-vs-cpu": 0.02
   },
   "outdoor-hdri": {
-   "gpu-vs-cycles": 0.0466,
-   "gpu-vs-eevee": 0.0301,
-   "cpu-vs-cycles": 0.046,
-   "cpu-vs-eevee": 0.0298,
+   "gpu-vs-cycles": 0.0462,
+   "gpu-vs-eevee": 0.0296,
+   "cpu-vs-cycles": 0.0456,
+   "cpu-vs-eevee": 0.0293,
    "eevee-vs-cycles": 0.0403,
    "gpu-vs-cpu": 0.0065
   },
@@ -229,12 +229,12 @@
    "gpu-vs-cpu": 0.0032
   },
   "temple-hall": {
-   "gpu-vs-cycles": 0.5841,
-   "gpu-vs-eevee": 0.4789,
-   "cpu-vs-cycles": 0.5843,
-   "cpu-vs-eevee": 0.479,
+   "gpu-vs-cycles": 0.2126,
+   "gpu-vs-eevee": 0.0803,
+   "cpu-vs-cycles": 0.2128,
+   "cpu-vs-eevee": 0.0804,
    "eevee-vs-cycles": 0.2341,
-   "gpu-vs-cpu": 0.0051
+   "gpu-vs-cpu": 0.0025
   }
  }
 }
