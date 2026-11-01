@@ -18,7 +18,7 @@ export const PATH_TRACER_LIMITS = Object.freeze({
   bounces: Object.freeze({ minimum: 1, maximum: 16, fallback: 8 }),
   maxSeconds: Object.freeze({ minimum: 1, maximum: 1800, fallback: 300 }),
   fireflyClamp: Object.freeze({ minimum: 1, maximum: 1000, fallback: 20 }),
-  noiseThreshold: Object.freeze({ minimum: 0, maximum: 1, fallback: 0.03 }),
+  noiseThreshold: Object.freeze({ minimum: 0, maximum: 1, fallback: 0 }),
   seed: Object.freeze({ minimum: 0, maximum: 2 ** 31 - 1, fallback: 0 }),
   threads: Object.freeze({ minimum: 1, maximum: 8, fallback: 4 }),
 });

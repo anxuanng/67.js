@@ -7,7 +7,7 @@ import { renderPathTracedImage } from '67js/addons/path-tracer';
 
 const { rgba, linear, report } = await renderPathTracedImage(
   { parts, environment, camera },        // the same objects the rasterizer takes
-  { width: 960, height: 540, samples: 64, bounces: 8, seed: 0, denoise: true, threads: 4, maxSeconds: 300, noiseThreshold: 0.03 },
+  { width: 960, height: 540, samples: 64, bounces: 8, seed: 0, denoise: true, threads: 4, maxSeconds: 300, noiseThreshold: 0 },
 );
 ```
 
@@ -36,11 +36,11 @@ Unidirectional path tracing against the triangle BVH that the [light bake](light
 | Option | Default | Range | Meaning |
 | --- | --- | --- | --- |
 | `width`, `height` | 960, 540 | 16 to 4096 | Output size, at most 2,073,600 pixels. |
-| `samples` | 64 | 1 to 1024 | Most paths per pixel. A pixel stops earlier when it has converged (`noiseThreshold`). |
+| `samples` | 64 | 1 to 1024 | Paths per pixel. Every pixel draws all of them unless `noiseThreshold` is above 0. |
 | `bounces` | 8 | 1 to 16 | Reflections followed by each path. |
 | `seed` | 0 | 0 to 2147483647 | Changes the noise. |
 | `threads` | 4 | 1 to 8 | Module workers; the pixels are the same for any count. Without `Worker` it runs on one thread. |
-| `noiseThreshold` | 0.03 | 0 to 1 | A pixel stops once the standard error of its mean luminance, relative to that mean plus 0.05, is under this, checked from 16 samples on and after every 8 more. 0 draws every sample. It reads only the pixel's own samples, so the result is the same on any thread count and band split. `report.averageSamples` says how many paths a pixel took. |
+| `noiseThreshold` | 0 | 0 to 1 (render jobs: 0 to 0.1) | 0 draws every sample. Above 0, a pixel stops once the standard error of its mean luminance, relative to that mean plus 0.05, is under this, checked from 16 samples on and after every 8 more. It costs quality on some scenes (see the table below). It reads only the pixel's own samples, so the result is the same on any thread count and band split. `report.averageSamples` says how many paths a pixel took. |
 | `maxSeconds` | 300 | 1 to 1800 | Wall-clock limit. Passing it throws; there is never a partial image. |
 | `denoise` | true | boolean | Filters the light with normal, depth and noise guides. |
 | `fireflyClamp` | 20 | 1 to 1000 | Largest radiance one bounce may add to a sample. |
@@ -71,12 +71,24 @@ Adaptive sampling, a shadow-ray shortcut and the demo-room still (issue #129, se
 | Same, shadow rays skip the surface lookup unless the material is a cutout | 21.0 and 19.1 (1.23 to 1.36 times) | 64 | 4.38, pixels unchanged |
 | 24 samples, every pixel | 9.5 | 24 | 5.53 |
 | `noiseThreshold` 0.05 | 11.3 | 26.1 | 4.87 |
-| `noiseThreshold` 0.03 (the default) | 14.1 | 34.4 | 4.77 |
+| `noiseThreshold` 0.03 | 14.1 | 34.4 | 4.77 |
 | One light drawn at random at the first hit too | 12.9 | 64 | 7.26 |
 
-Adaptive sampling beats fewer samples at the same cost (4.87 at 11.3 s against 5.53 at 9.5 s) and keeps most of the quality of 64 (4.77 against 4.38 in about half the time, measured before the shadow-ray change). Drawing one light at the first hit halves the time but makes the image noisier than 24 samples cost, so it was not kept.
+Adaptive sampling beats fewer samples at the same cost on this room (4.87 at 11.3 s against 5.53 at 9.5 s), but it is off by default because it costs score against Cycles on other scenes, and quality is why the tracer exists. Score against Cycles (FLIP, lower is better), 64 samples at most, four threads, 960 by 540:
 
-The 1920 by 1080 still of `tests/fixtures/demo-room.recipe.json` at `samples: 64`, through an MCP image job with 8 threads: 246.4 s in the tracer (229.4 s tracing, the rest the filter), 30.7 samples per pixel on average, 257 s for the whole job (measured, once). That is 6 seconds over the old 240 s job limit, so the limit is now 600. The hair strands were not the cost by themselves: the time was per ray, and every ray was slow.
+| Scene | `noiseThreshold` | Score | Seconds |
+| --- | --- | --- | --- |
+| `spot-area` | 0 (default) | 0.0658 | 37.1 |
+| `spot-area` | 0.008 | 0.0748 | 31.3 |
+| `spot-area` | 0.015 | 0.0847 | 25.1 |
+| `spot-area` | 0.03 | 0.0900 | 21.3 |
+| `lit-interior` | 0.03 | 0.2214 | 106.7 |
+
+`lit-interior` scored 0.1993 at 32 samples before adaptive sampling; it was not re-run with every sample at 64. A render job passes the value as `settings.renderer.noiseThreshold`, 0 to 0.1.
+
+Fewer samples with the denoiser lose little on some scenes: 24 samples scored within 0.005 of 64 on `brick-graph` (0.1394 against 0.1370) and `character` (0.1164 against 0.1116), at about 45 percent of the time. Two scenes are not proof for all. Drawing one light at the first hit halves the time but makes the image noisier than 24 samples cost, so it was not kept.
+
+The 1920 by 1080 still of `tests/fixtures/demo-room.recipe.json` at `samples: 64`, through an MCP image job with 8 threads: 246.4 s in the tracer (229.4 s tracing, the rest the filter), 30.7 samples per pixel on average, 257 s for the whole job (measured, once, with `noiseThreshold` 0.03, the setting at that time). With the default of 0 every pixel draws all 64, so the same still takes about 8 to 9 minutes on 8 free threads (inferred from 246 s at 30.7 average samples: 246 times 64 / 30.7 is about 513 s), inside the 600 s limit but with little room: lower `samples` or pass a `noiseThreshold` for a larger room. That is 6 seconds over the old 240 s job limit, so the limit is now 600. The hair strands were not the cost by themselves: the time was per ray, and every ray was slow.
 
 ## Measured
 

@@ -360,3 +360,23 @@ test('asset digests bind immutable bytes and still/video settings produce only t
   }
   await controller.close();
 });
+
+test('a path tracer job draws every sample unless it passes a noise threshold, which stays within 0 to 0.1', async context => {
+  const root = await temporary(context);
+  const assetBytes = Buffer.from('bounded embedded GLB fixture');
+  const assetId = createHash('sha256').update(assetBytes).digest('hex');
+  const snapshot = { recipe: { format: '67js.asset', assetId }, assetBytes, clips: [{ duration: 5 }] };
+  const controller = await createAgentRenderJobs({ root, limits, async run({ directory }) {
+    await writeFile(join(directory, 'render.png.partial'), Buffer.alloc(32, 1));
+    return { artifacts: [{ temporary: 'render.png.partial', filename: 'render.png', mimeType: 'image/png' }], metrics: {} };
+  } });
+  const submitWith = renderer => controller.submit({ sourceRevision: 1, snapshot, settings: { kind: 'image', width: 64, height: 64, renderer: { type: 'pathTracer', ...renderer } } });
+  const defaulted = await submitWith({});
+  await terminal(controller, defaulted.jobId);
+  assert.equal(controller.status(defaulted.jobId).settings.renderer.noiseThreshold, 0);
+  const adaptive = await submitWith({ noiseThreshold: 0.03 });
+  await terminal(controller, adaptive.jobId);
+  assert.equal(controller.status(adaptive.jobId).settings.renderer.noiseThreshold, 0.03);
+  for (const noiseThreshold of [-0.01, 0.11, Number.NaN]) await assert.rejects(submitWith({ noiseThreshold }), /noiseThreshold/);
+  await controller.close();
+});

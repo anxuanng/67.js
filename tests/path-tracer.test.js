@@ -47,6 +47,8 @@ test('the job limits listed for agents match the limits the tracer enforces', ()
     assert.equal(PATH_TRACER_JOB_LIMITS[name].default, PATH_TRACER_LIMITS[name].fallback, name);
   }
   assert.ok(PATH_TRACER_JOB_LIMITS.maxSeconds.maximum <= PATH_TRACER_LIMITS.maxSeconds.maximum);
+  assert.ok(PATH_TRACER_JOB_LIMITS.noiseThreshold.maximum <= PATH_TRACER_LIMITS.noiseThreshold.maximum);
+  assert.equal(PATH_TRACER_JOB_LIMITS.noiseThreshold.default, PATH_TRACER_LIMITS.noiseThreshold.fallback);
 });
 
 test('options are validated with their bounds', () => {
@@ -270,7 +272,7 @@ test('a scene sent to a worker gets its ray query back from the arrays', () => {
 const NOISY_AND_QUIET = { width: 24, height: 18, samples: 48, bounces: 3, threads: 1, denoise: false };
 
 test('a threshold of zero draws every sample, and a threshold stops the pixels that have converged', async () => {
-  const fixed = await renderPathTracedImage(checkerScene(), { ...NOISY_AND_QUIET, noiseThreshold: 0 });
+  const fixed = await renderPathTracedImage(checkerScene(), NOISY_AND_QUIET);
   assert.equal(fixed.report.averageSamples, 48);
   const adaptive = await renderPathTracedImage(checkerScene(), { ...NOISY_AND_QUIET, noiseThreshold: 0.05 });
   assert.ok(adaptive.report.averageSamples < 48, `average ${adaptive.report.averageSamples}`);
