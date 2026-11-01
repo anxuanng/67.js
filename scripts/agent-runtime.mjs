@@ -33,8 +33,14 @@ const EVALUATION_TIMEOUT_MS = 30000;
 /** A bake runs on a worker for up to its own limit, so a call that bakes gets that much more than a plain call. */
 const BAKE_EVALUATION_TIMEOUT_MS = EVALUATION_TIMEOUT_MS + BAKE_WORKER_MAXIMUM_SECONDS * 1000;
 
-function startsBake(operations) {
-  return Array.isArray(operations) && operations.some(operation => operation?.type === 'set-bake' && operation.bake !== null && operation.bake !== undefined);
+/** The last set-bake among the operations decides: a bake object adds one, null clears it. Undefined when there is none. */
+function bakeAfterOperations(operations) {
+  const setBakes = Array.isArray(operations) ? operations.filter(operation => operation?.type === 'set-bake') : [];
+  if (setBakes.length === 0) {
+    return undefined;
+  }
+  const lastBake = setBakes[setBakes.length - 1].bake;
+  return lastBake !== null && lastBake !== undefined;
 }
 // Decoded audio and video lengths of a finished file may differ by the encoder delay; more than this fails the job.
 const SYNC_TOLERANCE_SECONDS = 0.05;
@@ -79,6 +85,8 @@ export function createAgentRuntime({ kernelWorkers = true, backend = 'gpu', brow
   let reviewPage;
   let cancelReview;
   let activeSessionId = null;
+  // Whether the active scene has a bake, so an edit that rebakes gets the longer deadline.
+  let activeSceneHasBake = false;
   let queuedCalls = 0;
   let queue = Promise.resolve();
   let closing;
@@ -513,6 +521,7 @@ export function createAgentRuntime({ kernelWorkers = true, backend = 'gpu', brow
         const sessionId = randomUUID();
         const result = await evaluate('create', { recipe, sessionId, memoryBudgetMiB: memory, backend }, page, recipe?.bake ? BAKE_EVALUATION_TIMEOUT_MS : EVALUATION_TIMEOUT_MS);
         activeSessionId = sessionId;
+        activeSceneHasBake = Boolean(recipe?.bake);
         return result;
       });
     },
@@ -555,7 +564,11 @@ export function createAgentRuntime({ kernelWorkers = true, backend = 'gpu', brow
           const { branch, ...rest } = input;
           return invoke('branchApply', { ...rest, name: validateBranchName(branch) });
         }
-        return invoke('apply', input, startsBake(input.operations) ? BAKE_EVALUATION_TIMEOUT_MS : EVALUATION_TIMEOUT_MS);
+        const bakeAfter = bakeAfterOperations(input.operations);
+        const rebakes = activeSceneHasBake || bakeAfter === true;
+        const applied = await invoke('apply', input, rebakes ? BAKE_EVALUATION_TIMEOUT_MS : EVALUATION_TIMEOUT_MS);
+        activeSceneHasBake = bakeAfter ?? activeSceneHasBake;
+        return applied;
       });
     },
     look(input) {

@@ -32,8 +32,9 @@ test('runtime reports real scene capabilities without launching a browser and cl
 });
 
 async function reviewRuntimeHarness({ failShot, blockShot = false, oversize = false, deadlineMs,
-  failDispose = false, heapSize = 1024, stallPrivatePage = false, resumeDelayMs = 0 } = {}) {
+  failDispose = false, heapSize = 1024, stallPrivatePage = false, resumeDelayMs = 0, sceneBake } = {}) {
   const events = [];
+  const deadlines = [];
   let privatePage;
   let sourceRevision = 0;
   let resolveShotStarted;
@@ -42,7 +43,7 @@ async function reviewRuntimeHarness({ failShot, blockShot = false, oversize = fa
   const acquisitionStarted = new Promise(resolve => { resolveAcquisitionStarted = resolve; });
   let resolvePrivatePage;
   const acquiredPage = new Promise(resolve => { resolvePrivatePage = () => resolve(privatePage = new FakePage(true)); });
-  const recipe = { format: '67js.scene', schemaVersion: 1, geometries: [], materials: [], nodes: [] };
+  const recipe = { format: '67js.scene', schemaVersion: 1, geometries: [], materials: [], nodes: [], ...(sceneBake ? { bake: sceneBake } : {}) };
   class FakePage {
     constructor(privateTarget) { this.privateTarget = privateTarget; this.closed = false; }
     route() {}
@@ -102,12 +103,13 @@ async function reviewRuntimeHarness({ failShot, blockShot = false, oversize = fa
     createRequire: () => ({ resolve: () => { throw new Error('no peer in tests'); } }),
     AGENT_SCENE_CAPABILITIES, AGENT_SCENE_DEFAULT_LIMITS, RENDER_PASS_NAMES, RENDER_PASS_DEPTH_RANGE, VIDEO_ENCODERS, MAXIMUM_VIDEO_SECONDS, MAXIMUM_JOB_SIDE, MAXIMUM_JOB_PIXELS, MAXIMUM_MEMORY_MIB, BAKE_WORKER_MAXIMUM_SECONDS, PATH_TRACER_CAPABILITIES,
     audioInputArguments, createAudioLibrary, measureStreamSeconds, filmTimelineDuration, filmTimelineShotStarts, sampleFilmTimeline, normalizeReview, REVIEW_LIMITS, isPreviewHost, BRANCH_LIMITS, validateBranchName,
-    chromium: { launch: async () => browser }, URL, Buffer, process, performance, setTimeout, clearTimeout,
+    chromium: { launch: async () => browser }, URL, Buffer, process, performance, clearTimeout,
+    setTimeout: (callback, delay) => { deadlines.push(delay); return setTimeout(callback, delay); },
   });
   new Script(`${source}\nglobalThis.runtime = createAgentRuntime({ backend: 'cpu' });`).runInContext(context);
   const runtime = context.runtime;
   const created = await runtime.create({ recipe });
-  return { runtime, sessionId: created.sessionId, events, shotStarted, acquisitionStarted, resolvePrivatePage };
+  return { runtime, sessionId: created.sessionId, deadlines, events, shotStarted, acquisitionStarted, resolvePrivatePage };
 }
 
 function boundedResult(promise) {
@@ -116,6 +118,23 @@ function boundedResult(promise) {
     new Promise(resolve => { timer = setTimeout(() => resolve('stalled'), 150); }),
   ]).finally(() => clearTimeout(timer));
 }
+
+test('an edit of a scene with a bake, or one that adds a bake, gets the bake deadline; a plain edit keeps 30 s', async () => {
+  const plain = await reviewRuntimeHarness();
+  await plain.runtime.apply({ sessionId: plain.sessionId, operations: [{ type: 'set-camera', camera: {} }] });
+  await plain.runtime.apply({ sessionId: plain.sessionId, operations: [{ type: 'set-bake', bake: { preset: 'draft' } }] });
+  await plain.runtime.apply({ sessionId: plain.sessionId, operations: [{ type: 'set-camera', camera: {} }] });
+  await plain.runtime.apply({ sessionId: plain.sessionId, operations: [{ type: 'set-bake', bake: null }] });
+  await plain.runtime.apply({ sessionId: plain.sessionId, operations: [{ type: 'set-camera', camera: {} }] });
+  const applyDeadlines = plain.deadlines.slice(-5);
+  assert.deepEqual(applyDeadlines, [30000, 120000, 120000, 120000, 30000]);
+  await plain.runtime.close();
+  const baked = await reviewRuntimeHarness({ sceneBake: { preset: 'draft' } });
+  assert.equal(baked.deadlines.at(-1), 120000, 'creating a scene with a bake gets the bake deadline');
+  await baked.runtime.apply({ sessionId: baked.sessionId, operations: [{ type: 'set-node', id: 'a' }] });
+  assert.equal(baked.deadlines.at(-1), 120000, 'moving a part in a baked scene gets the bake deadline');
+  await baked.runtime.close();
+});
 
 test('review deadline rejects stalled page acquisition and disposes a late page', async () => {
   const { runtime, sessionId, events, acquisitionStarted, resolvePrivatePage } = await reviewRuntimeHarness({
