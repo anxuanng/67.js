@@ -116,9 +116,55 @@ test('KHR_texture_transform bakes one shared offset, rotation and scale into the
 test('KHR_texture_transform rejects different transforms and texCoord overrides on one material', async context => {
   mockImageBitmap(context);
   const moved = { offset: [0.5, 0] };
-  await assert.rejects(parseGltf(triangleDocument({ edit: document => addTexturedMaterial(document, [moved, undefined]) })), /same KHR_texture_transform/);
-  await assert.rejects(parseGltf(triangleDocument({ edit: document => addTexturedMaterial(document, [moved, { offset: [0, 0.5] }]) })), /same KHR_texture_transform/);
+  const metallicRoughnessMoved = document => {
+    addTexturedMaterial(document, [moved, moved]);
+    document.materials[0].pbrMetallicRoughness.metallicRoughnessTexture = { index: 0, extensions: { KHR_texture_transform: { offset: [0, 0.5] } } };
+  };
+  await assert.rejects(parseGltf(triangleDocument({ edit: metallicRoughnessMoved })), /same KHR_texture_transform/);
   await assert.rejects(parseGltf(triangleDocument({ edit: document => addTexturedMaterial(document, [{ texCoord: 1 }, { texCoord: 1 }]) })), /texCoord/);
+});
+
+test('a normal map may differ from the other maps by scale and offset, which the shader applies', async context => {
+  mockImageBitmap(context);
+  const base = { offset: [-3, 3], scale: [7, 7] };
+  const normal = { offset: [-0.5, 0.5], scale: [2, 2] };
+  const asset = await parseGltf(triangleDocument({ edit: document => addTexturedMaterial(document, [base, normal]) }));
+  assertClose(asset.parts[0].geometry.uvs, [-3, 3, 4, 3, -3, 10]);
+  const [scaleU, scaleV, offsetU, offsetV] = asset.parts[0].material.normalMap.uvTransform;
+  assertClose([scaleU, scaleV, offsetU, offsetV], [2 / 7, 2 / 7, -0.5 + 6 / 7, 0.5 - 6 / 7]);
+  assert.notEqual(asset.parts[0].material.normalMap, asset.parts[0].material.baseColorMap);
+  const firstVertexNormalUv = [-3 * scaleU + offsetU, 3 * scaleV + offsetV];
+  assertClose(firstVertexNormalUv, [-0.5, 0.5]);
+});
+
+test('a texture transform that only repeats the texture own texCoord changes nothing', async context => {
+  mockImageBitmap(context);
+  const edit = document => {
+    addTexturedMaterial(document, [undefined, undefined]);
+    document.meshes[0].primitives[0].attributes.TEXCOORD_1 = 1;
+    document.materials[0].occlusionTexture = { index: 0, texCoord: 1, extensions: { KHR_texture_transform: { texCoord: 1 } } };
+  };
+  const asset = await parseGltf(triangleDocument({ edit }));
+  assert.equal(asset.parts[0].material.occlusionMap.uvChannel, 1);
+  assertClose(asset.parts[0].geometry.uvs, TRIANGLE_UVS);
+});
+
+test('a normal map with the same transform as its material keeps no extra transform', async context => {
+  mockImageBitmap(context);
+  const shared = { offset: [0.25, 0.5], scale: [2, 4] };
+  const asset = await parseGltf(triangleDocument({ edit: document => addTexturedMaterial(document, [shared, shared]) }));
+  assert.equal(asset.parts[0].material.normalMap.uvTransform, undefined);
+  assertClose(asset.parts[0].geometry.uvs, [0.25, 0.5, 2.25, 0.5, 0.25, 4.5]);
+  const plainBase = await parseGltf(triangleDocument({ edit: document => addTexturedMaterial(document, [undefined, undefined]) }));
+  assert.equal(plainBase.parts[0].material.normalMap.uvTransform, undefined);
+  assertClose(plainBase.parts[0].geometry.uvs, TRIANGLE_UVS);
+});
+
+test('a normal map transform that needs a different rotation is rejected', async context => {
+  mockImageBitmap(context);
+  const base = { scale: [2, 2] };
+  const rotated = { scale: [2, 2], rotation: 0.5 };
+  await assert.rejects(parseGltf(triangleDocument({ edit: document => addTexturedMaterial(document, [base, rotated]) })), /offset and a positive scale/);
 });
 
 function instancingDocument(translations, edit = () => {}) {

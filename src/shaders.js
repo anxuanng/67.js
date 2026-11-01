@@ -624,7 +624,7 @@ vec3 mappedNormal(vec3 normal) {
   tangent = normalize(tangent);
   float handedness = dot(cross(normal, tangent), bitangent) < 0.0 ? -1.0 : 1.0;
   bitangent = normalize(cross(normal, tangent)) * handedness;
-  vec3 sampled = texture(normalMap, textureUV).xyz * 2.0 - 1.0;
+  vec3 sampled = texture(normalMap, textureUV${featureCode("normalUv")}).xyz * 2.0 - 1.0;
   sampled.xy *= normalScale;
   vec3 mapped = mat3(tangent, bitangent, normal) * sampled;
   return dot(mapped, mapped) > 1e-12 ? normalize(mapped) : normal;
@@ -959,7 +959,8 @@ const SHADER_FEATURE_CONDITIONS = {
 
 // A feature that is not in the list above has its GLSL in another module, so a scene that never uses it does not carry
 // it. That module calls registerShaderFeatureCode on import, with blocks of GLSL that createFragmentShader splices in:
-// declarations, illuminateReflectance, illuminateSpecular, coatReset and mainSetup, each ending in a newline, and the
+// declarations, illuminateReflectance, illuminateSpecular, coatReset and mainSetup, each ending in a newline, normalUv
+// (a suffix on the normal map's UV, as in `textureUV * scale + offset`), and the
 // one-line linkSun (a factor on the sun) with linkPoint, linkSpot and linkArea (statements that skip a light for a part).
 // A feature that replaces the sun shadow defines shadowVisibility as a macro in its declarations.
 const registeredFeatureCode = new Map();

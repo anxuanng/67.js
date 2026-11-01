@@ -67,7 +67,9 @@ export function agentGroundPlacement(parts, environment) {
     return null;
   }
   const scene = sceneBounds(boundsList);
-  if (boundsList.some(bounds => formsFloor(bounds, scene))) {
+  // A floor holds something. A lone flat object, such as a gear lying down, is the subject.
+  const hasOtherParts = boundsList.length > 1;
+  if (hasOtherParts && boundsList.some(bounds => formsFloor(bounds, scene))) {
     return null;
   }
   const halfWidth = Math.max(scene.maximum[0] - scene.minimum[0], scene.maximum[2] - scene.minimum[2]) / 2;

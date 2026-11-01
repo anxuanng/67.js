@@ -9,17 +9,17 @@ import { MAX_MORPH_TARGETS, createMorphPose, validateMorphGeometry, validateMorp
 
 export const GLTF_CAPABILITIES = Object.freeze({
   formats: ['glb', 'gltf'],
-  supported: ['triangle meshes', 'world transforms', 'rigid node animations', 'four-influence skeletal skinning', 'joint node animations', 'relative POSITION/NORMAL morph targets', 'morph weight animations', 'PNG/JPEG base color textures', 'normal/occlusion/emissive/metallic-roughness textures', 'TEXCOORD_0', 'TEXCOORD_1 for occlusion, emissive and metallic-roughness textures', 'clearcoat, clearcoat roughness, clearcoat normal, anisotropy, sheen color and sheen roughness textures', 'linear RGB vertex colors', 'metallic roughness factors', 'emissive factors', 'alpha mask and blend modes', 'double-sided materials', 'KHR_mesh_quantization', 'KHR_materials_emissive_strength', 'KHR_materials_clearcoat, transmission, volume, ior, specular, sheen, anisotropy and iridescence factors', 'KHR_texture_transform baked into UVs', 'EXT_mesh_gpu_instancing expanded into parts', 'KHR_draco_mesh_compression with options.decoders.draco', 'EXT_meshopt_compression with options.decoders.meshopt', 'KHR_texture_basisu with options.decoders.ktx2'],
+  supported: ['triangle meshes', 'world transforms', 'rigid node animations', 'four-influence skeletal skinning', 'joint node animations', 'relative POSITION/NORMAL morph targets', 'morph weight animations', 'PNG/JPEG base color textures', 'normal/occlusion/emissive/metallic-roughness textures', 'TEXCOORD_0', 'TEXCOORD_1 for occlusion, emissive and metallic-roughness textures', 'clearcoat, clearcoat roughness, clearcoat normal, anisotropy, sheen color and sheen roughness textures', 'linear RGB vertex colors', 'metallic roughness factors', 'emissive factors', 'alpha mask and blend modes', 'double-sided materials', 'KHR_mesh_quantization', 'KHR_materials_emissive_strength', 'KHR_materials_clearcoat, transmission, volume, ior, specular, sheen, anisotropy and iridescence factors', 'KHR_texture_transform baked into UVs, with a normal map that differs by scale and offset applied in the shader', 'EXT_mesh_gpu_instancing expanded into parts', 'KHR_draco_mesh_compression with options.decoders.draco', 'EXT_meshopt_compression with options.decoders.meshopt', 'KHR_texture_basisu with options.decoders.ktx2'],
   // The primitive's own material is drawn; the other variants are not selectable.
   ignoredExtensions: ['KHR_materials_variants'],
-  unsupported: ['more than four skin influences', 'singular weighted skin transforms', 'reflected skin transforms', 'TANGENT morph targets', 'morph targets without authored base normals', 'vertex alpha below one', 'different texture transforms on one material', 'skinned or morphed GPU instancing', 'transmission, iridescence and specular textures (their factors are used)', 'texture transforms on TEXCOORD_1'],
+  unsupported: ['more than four skin influences', 'singular weighted skin transforms', 'reflected skin transforms', 'TANGENT morph targets', 'morph targets without authored base normals', 'vertex alpha below one', 'different texture transforms on one material, except a normal map that differs by scale and offset', 'skinned or morphed GPU instancing', 'transmission, iridescence and specular textures (their factors are used)', 'texture transforms on TEXCOORD_1'],
 });
 
 const LAYER_SHADER_EXTENSIONS = Object.freeze(['KHR_materials_anisotropy', 'KHR_materials_iridescence']);
 
 // The shader code for anisotropy and iridescence is not in the core bundle; a file that uses either brings it in.
 async function loadLayerShadersFor(document) {
-  const usesLayerShaders = (document.materials ?? []).some(material => LAYER_SHADER_EXTENSIONS.some(extension => material?.extensions?.[extension]) || layerTextureReferences(material).length > 0);
+  const usesLayerShaders = (document.materials ?? []).some(material => LAYER_SHADER_EXTENSIONS.some(extension => material?.extensions?.[extension]) || layerTextureReferences(material).length > 0 || materialUvTransforms(material ?? {}).normalRelative);
   if (usesLayerShaders) await import('./material-layer-shaders.js');
 }
 
@@ -35,6 +35,7 @@ const DECODER_BY_EXTENSION = { KHR_draco_mesh_compression: 'draco', EXT_meshopt_
 // Accepted when optional, because 67js does not render them. Rejected when listed in extensionsRequired.
 const IGNORED_EXTENSIONS = new Set(GLTF_CAPABILITIES.ignoredExtensions);
 const IDENTITY_UV_TRANSFORM = Object.freeze({ offset: [0, 0], rotation: 0, scale: [1, 1] });
+const IDENTITY_UV_TRANSFORM_KEY = JSON.stringify([IDENTITY_UV_TRANSFORM.offset, IDENTITY_UV_TRANSFORM.rotation, IDENTITY_UV_TRANSFORM.scale]);
 const MATERIAL_TEXTURES = [
   ['map', 'baseColorTexture', 'srgb'],
   ['normalMap', 'normalTexture', 'linear'],
@@ -200,29 +201,56 @@ function textureUvTransform(texture) {
   const rotation = extension.rotation ?? 0;
   const vectorsAreFinite = [offset, scale].every(vector => Array.isArray(vector) && vector.length === 2 && vector.every(Number.isFinite));
   if (!vectorsAreFinite || !Number.isFinite(rotation)) throw new Error('KHR_texture_transform requires finite offset, rotation and scale.');
-  if ((extension.texCoord ?? 0) !== 0) throw new Error('KHR_texture_transform texCoord overrides are unsupported.');
+  if ((extension.texCoord ?? uvChannelOf(texture)) !== uvChannelOf(texture)) throw new Error('KHR_texture_transform texCoord overrides are unsupported.');
   return { offset, rotation, scale };
 }
 
 function uvTransformKey(transform) {
-  return transform === IDENTITY_UV_TRANSFORM ? '' : JSON.stringify([transform.offset, transform.rotation, transform.scale]);
+  const key = JSON.stringify([transform.offset, transform.rotation, transform.scale]);
+  return key === IDENTITY_UV_TRANSFORM_KEY ? '' : key;
 }
 
-/** All maps on TEXCOORD_0 of a material share one UV set, so one shared transform can be baked into it. */
-function materialUvTransform(material) {
-  let found = null;
+/**
+ * The scale and offset that turn UVs already baked with `shared` into the UVs of `own`: [scaleU, scaleV, offsetU, offsetV].
+ * The normal map's tangent frame comes from the baked UVs, so the two must have the same rotation and a positive scale
+ * ratio, equal on both axes unless there is no rotation.
+ */
+function relativeUvTransform(shared, own) {
+  const ratios = own.scale.map((scale, axis) => scale / shared.scale[axis]);
+  const sameRotation = own.rotation === shared.rotation;
+  const keepsAxes = shared.rotation === 0 || ratios[0] === ratios[1];
+  if (!sameRotation || !keepsAxes || !ratios.every(ratio => ratio > 0 && Number.isFinite(ratio))) {
+    throw new Error('The normal texture transform may differ from the other maps only by an offset and a positive scale, with the same rotation.');
+  }
+  return [...ratios, own.offset[0] - ratios[0] * shared.offset[0], own.offset[1] - ratios[1] * shared.offset[1]];
+}
+
+/**
+ * The maps on TEXCOORD_0 of a material share one UV set, so one transform is baked into it: the one every map but the
+ * normal map has. A normal map with another transform keeps it as `normalRelative`, which the shader applies on top.
+ */
+function materialUvTransforms(material) {
+  let shared = null;
+  let normalTransform = null;
   for (const [name, texture] of materialTextureReferences(material)) {
     const transform = textureUvTransform(texture);
     if (uvChannelOf(texture) !== 0) {
       if (uvTransformKey(transform) !== '') throw new Error(`${name} reads TEXCOORD_1, where KHR_texture_transform is unsupported. Bake the transform into the UVs.`);
       continue;
     }
-    if (found && uvTransformKey(found) !== uvTransformKey(transform)) {
-      throw new Error('Maps of one material must share the same KHR_texture_transform. Different transforms per map are unsupported.');
+    if (name === 'normalTexture') {
+      normalTransform = transform;
+      continue;
     }
-    found = transform;
+    if (shared && uvTransformKey(shared) !== uvTransformKey(transform)) {
+      throw new Error('Maps of one material must share the same KHR_texture_transform, except the normal map. Different transforms per map are unsupported.');
+    }
+    shared = transform;
   }
-  return found ?? IDENTITY_UV_TRANSFORM;
+  if (!normalTransform) return { shared: shared ?? IDENTITY_UV_TRANSFORM, normalRelative: null };
+  if (!shared) return { shared: normalTransform, normalRelative: null };
+  if (uvTransformKey(shared) === uvTransformKey(normalTransform)) return { shared, normalRelative: null };
+  return { shared, normalRelative: relativeUvTransform(shared, normalTransform) };
 }
 
 function bakeUvTransform(uvs, transform) {
@@ -239,7 +267,7 @@ function bakeUvTransform(uvs, transform) {
 }
 
 function validateMaterialExtensions(material) {
-  materialUvTransform(material);
+  materialUvTransforms(material);
   materialLayersFromGltf(material);
 }
 
@@ -752,10 +780,10 @@ function decodedTextureImage(texture, field) {
   return typeof ImageData === 'function' ? new ImageData(pixels, width, height) : { width, height, data: pixels };
 }
 
-function textureDescriptorFor(texture, field, { colorSpace, uvChannel }, limits, maps) {
+function textureDescriptorFor(texture, field, { colorSpace, uvChannel, uvTransform = null }, limits, maps) {
   if (!maps.has(texture)) maps.set(texture, new Map());
   const descriptors = maps.get(texture);
-  const key = `${colorSpace}:${uvChannel}`;
+  const key = `${colorSpace}:${uvChannel}:${uvTransform ?? ''}`;
   if (!descriptors.has(key)) {
     const image = decodedTextureImage(texture, field);
     if (!image || image.width * image.height > limits.maxTexturePixels) throw new Error(`${field} image is missing or exceeds maxTexturePixels.`);
@@ -769,6 +797,7 @@ function textureDescriptorFor(texture, field, { colorSpace, uvChannel }, limits,
       flipY: false,
       colorSpace,
     };
+    if (uvTransform) descriptor.uvTransform = uvTransform;
     textureDescriptorInfo(descriptor);
     descriptors.set(key, descriptor);
   }
@@ -797,7 +826,8 @@ function convertMaterial(source, limits, maps, definition = {}) {
     const texture = source[field === 'metallicRoughnessMap' ? 'metalnessMap' : field === 'occlusionMap' ? 'aoMap' : field];
     if (!texture) continue;
     const uvChannel = uvChannelOf(materialTexture(definition, property));
-    material[field] = textureDescriptorFor(texture, field, { colorSpace, uvChannel }, limits, maps);
+    const uvTransform = field === 'normalMap' ? materialUvTransforms(definition).normalRelative : null;
+    material[field] = textureDescriptorFor(texture, field, { colorSpace, uvChannel, uvTransform }, limits, maps);
   }
   for (const [name, reference, colorSpace] of layerTextureReferences(definition)) {
     const texture = source.layerTextures?.[name];
@@ -841,7 +871,7 @@ export async function parseGltf(data, options = {}) {
       if (!primitive) throw new Error('Decoded mesh requires a valid original primitive association.');
       if (Array.isArray(node.material)) throw new Error('Multiple materials on one decoded primitive are unsupported.');
       const materialIndex = node.material.materialIndex;
-      const uvTransform = materialUvTransform(document.materials?.[materialIndex] ?? {});
+      const uvTransform = materialUvTransforms(document.materials?.[materialIndex] ?? {}).shared;
       const uvKey = uvTransformKey(uvTransform);
       const secondUvSet = usesSecondUvSet(document.materials?.[materialIndex]);
       if (!materials.has(node.material)) materials.set(node.material, convertMaterial(node.material, limits, maps, document.materials?.[materialIndex]));
