@@ -149,6 +149,8 @@
     { "id": "wireframe-cube", "input": "cube", "edit": {"op":"wireframe","thickness":0.1} },
     { "id": "wireframe-cube-outside-keep", "input": "cube", "edit": {"op":"wireframe","thickness":0.1,"offset":-1,"replace":false} },
     { "id": "wireframe-quad-open", "input": "profile-quad", "edit": {"op":"wireframe","thickness":0.1} },
+    { "id": "wave-grid-ring", "input": "grid", "edit": {"op":"wave","start":[1.5,1.5],"time":2} },
+    { "id": "wave-grid-x-once", "input": "grid", "edit": {"op":"wave","axes":"x","cyclic":false,"time":4,"speed":0.5,"height":0.3,"width":1,"narrowness":2} },
     { "id": "decimate-bowl-half", "input": "bowl-open", "compare": "surface", "edit": {"op":"decimate","ratio":0.5} },
     { "id": "remesh-sphere", "input": "sphere-bumpy", "compare": "surface", "edit": {"op":"remesh","voxelSize":0.1} },
     { "id": "remesh-torus", "input": "torus-fine", "compare": "surface", "edit": {"op":"remesh","voxelSize":0.08} },

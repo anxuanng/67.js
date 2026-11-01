@@ -133,6 +133,10 @@ export const MESH_MODIFIER_NOTES = Object.freeze({
   screw: 'revolves every edge of the mesh (the profile; its faces are dropped) about the x, y or z axis (z) through the origin: angle 360 degrees per iteration, steps 16 (1 to 256) per iteration, iterations 1 to 64, lift 0 rise per iteration along the axis. A whole number of turns with no lift closes the ring. Vertices stay in step-major order.',
   wireframe: 'keeps a rim of width thickness (0.02) on every face, as Blender Wireframe: offset -1 to 1 (0) moves the strut from inside to outside the surface, evenOffset true makes struts as wide as the thickness, replace true drops the original faces. Open edges get no extra strut.',
   skin: 'a square tube along every edge, radius 0.1 or a scalar field per vertex (above zero), closed by end caps. Simple version: tubes that meet overlap and there is no branch solver, so it is partial against Blender.',
+  lattice: 'a grid of divisions [2,2,2] control points (2 to 8 each) spanning the mesh bounds; moves is up to 64 of {point:[i,j,k], offset:[x,y,z]} that shift one control point, and vertices follow the trilinear blend. Blender blends with a B-spline.',
+  curve: 'bends the mesh along path, 2 to 64 points [x,y,z] through a Catmull-Rom spline. The coordinate along axis (x) is the distance from the path start, the other two become offsets in a twist-free frame; past the ends the mesh continues straight. Model the mesh along the axis starting at 0.',
+  hook: 'pulls the vertices within radius (1) of center [0,0,0] by translation [0,0,0] times strength 0 to 1 (1); falloff smooth (default), linear or constant.',
+  wave: 'a gaussian ripple of height 0.5 along z (normal true: along the vertex normal) that travels from start [0,0] over axes xy (default), x or y; width 1.5, narrowness 0 to 50 (1.5), speed 0.25 per frame, time 0 (a frame number), timeOffset 0, cyclic true repeats it. Matches Blender Wave at the same frame.',
 });
 
 // Organic shaping edits. Details stay here so the tool schemas stay small.
