@@ -57,6 +57,21 @@ Skipped, with the reason in `report.skipped`: transparent parts, a material tag 
 
 GLB export writes `lightUvs` as `TEXCOORD_1` and the light map as the emissive texture on `texCoord` 1, with the base colour factor as `emissiveFactor`. glTF has no light map slot, so a base colour texture does not tint it there: the export is an approximation for viewers, not for reference renders. The path tracer ignores `lightMap` and `emissiveMap` on purpose: it traces indirect light itself, so reading a baked map would count the same light twice.
 
+## Reflection probes
+
+A probe is the room around a point, traced once and prefiltered like an environment map (`createEnvironmentResources`), so a glossy part reflects the room and not only the sky. `src/reflection-probes.js` holds placement and the renderer link; `src/probe-trace.js` traces on the CPU with the bake's ray tracer (direct light, bounced light, emission; a ray that leaves the scene reads the environment map or the sky colours), 64 by 32 texels, 32 samples and 2 bounces, deterministic, about 0.2 to 0.3 s per probe. A part takes the nearest probe whose `radius` reaches the middle of its bounds, else the environment. A probe lights the specular term only: diffuse stays with the environment and the bake. No parallax correction (not built: a probe at the centre of a room is wrong near the walls).
+
+```js
+import { applyReflectionProbes } from '67js/addons/reflection-probes';
+const { parts: probedParts } = applyReflectionProbes(parts, lighting, [{ position: [0, 1.5, 0], radius: 6 }], { environment, environmentMap: environment.map, rotation: environment.map.rotation });
+```
+
+In a recipe, `bake.probes` is `'room'` (one probe in the middle of the parts' bounds, kept only when at least 90 percent of its rays hit a part, so an open scene gets none) or a list of up to 4 `{ position, radius? }`; absent or `false` means none. It is off by default because the measurement below does not show it helping a baked room. The report has `bake.probes` (placed probes, `partsWithProbe`, `skipped`, `glb`). A probe is not written to GLB: glTF has no standard for it.
+
+Cost: a scene without a probe loads none of this and its fragment shader is unchanged (the renderer links through the material field `environmentProbe`, which batches parts by probe, and one shader slot that only a probe scene fills). With a probe the prefilter runs once when the first batch that uses it draws, and nothing after.
+
+Measured against Cycles (FLIP, GPU; `npm run reference -- --skip-blender --probes ...`, 2026-11-01): `lit-interior` 0.5055 to 0.4791, `brick-room` 0.5102 to 0.4828, `metal-room` 0.5128 to 0.4520. Open scenes get worse with a hand placed probe: `material-spheres` 0.1598 to 0.1740, `metal` 0.1868 to 0.2246 (the probe sits among the objects and each sphere reflects itself where it should reflect the others). With the bake on, the picture was byte identical with and without probes in all three rooms (0.1444, 0.1515, 0.1754): the reason is not found, so the combination is unproven.
+
 ## Limits
 
 | Option | Default | Range | Meaning |

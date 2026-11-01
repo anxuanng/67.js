@@ -1,4 +1,5 @@
-// Frame time of a reference scene with and without the light bake: node bench/reference/frame-time.mjs [scene-id] [gpu|cpu]
+// Frame time of a reference scene: plain, with the light bake, with reflection probes, and with both.
+// node bench/reference/frame-time.mjs [scene-id] [gpu|cpu]
 import { constants, setPriority } from 'node:os';
 import { chromium } from 'playwright';
 import { createServer } from 'vite';
@@ -25,7 +26,7 @@ try {
   // cascades, each with a still camera and with a camera that moves every frame.
   const variants = process.argv.includes('--cascades')
     ? [0, 3, 0, 3].flatMap(cascades => [false, true].map(orbit => ({ bake: false, cascades, orbit })))
-    : [false, true, false, true].map(bake => ({ bake }));
+    : [[false, false], [true, false], [true, true], [false, true], [false, false], [true, false], [true, true], [false, true]].map(([bake, probes]) => ({ bake, probes }));
   for (const variant of variants) {
     results.push({ ...variant, ...(await page.evaluate(([id, options]) => window.measureReferenceFrameTime(id, options), [sceneId, variant])) });
   }

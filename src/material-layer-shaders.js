@@ -319,7 +319,10 @@ const IDENTITY_NORMAL_MAP_TRANSFORM = [1, 1, 0, 0];
 const MAP_STATE_NORMAL_MAP = 1;
 const MAP_STATE_LAYER_MAPS = 18;
 
+// Other optional features (reflection probes) also bind per batch, so this keeps whatever was registered first.
+const previousBind = layerTextureSupport.bind;
 layerTextureSupport.bind = (renderer, mapState) => {
+  previousBind?.(renderer, mapState);
   if (!renderer.shaderFeatures) return;
   const context = renderer.context;
   const layerMaps = mapState[MAP_STATE_LAYER_MAPS];

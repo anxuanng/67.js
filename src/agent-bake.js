@@ -1,5 +1,7 @@
 import { planLightmaps, estimateBake, traceLightmaps } from './light-bake.js';
 import { runKernel } from './kernel-offload.js';
+import { normalizeProbeList, traceProbes } from './probe-trace.js';
+import { placeProbes } from './reflection-probes.js';
 import { knownKeys, finiteNumber } from './agent-recipe-checks.js';
 import { BAKE_PRESETS, BAKE_RANGES, BAKE_MAXIMUM_SECONDS, BAKE_WORKER_MAXIMUM_SECONDS, BAKE_PRESET_PATH_WORK, BAKE_EXPLICIT_PATH_WORK_LIMIT } from './agent-scene-capabilities.js';
 
@@ -8,7 +10,7 @@ const PRESET_SAMPLES_FLOOR = 16;
 // Recipe `bake`: bounced light written into lightmaps when the scene builds. This module loads on demand, so scenes
 // without a bake never download the ray tracer.
 
-const BAKE_FIELDS = ['preset', 'samples', 'bounces', 'texelsPerUnit'];
+const BAKE_FIELDS = ['preset', 'samples', 'bounces', 'texelsPerUnit', 'probes'];
 const BAKED_MATERIAL_FIELDS = ['emission', 'emissiveColor', 'emissiveMap', 'lightMap', 'lightMapScale'];
 
 /** Validates a recipe bake section and returns the plain, resolved form stored in the recipe (null clears it). */
@@ -26,6 +28,10 @@ export function normalizeAgentBake(input) {
       continue;
     }
     resolved[field] = finiteNumber(input[field], `Bake ${field}`, minimum, maximum);
+  }
+  // Absent or false: no probes. 'room' puts one in the middle of an enclosed room; a list places them.
+  if (input.probes !== undefined) {
+    resolved.probes = input.probes === false || input.probes === 'room' ? input.probes : normalizeProbeList(input.probes);
   }
   for (const field of ['samples', 'bounces']) {
     if (!Number.isInteger(resolved[field])) {
@@ -176,6 +182,8 @@ export function bakeAgentParts(parts, worldMatrices, environment, settings, gene
     spotLights: environment.spotLights,
     areaLights: environment.areaLights,
     keyColor: Array.from(environment.keyColor, channel => channel * sunScale),
+    skyTop: environment.skyTop,
+    skyBottom: environment.skyBottom,
     lightDirection: environment.lightDirection,
   };
   // A hair, particle or cloth node is drawn from geometry built every frame, which has no lightmap UVs.
@@ -186,6 +194,9 @@ export function bakeAgentParts(parts, worldMatrices, environment, settings, gene
     generatesGeometry: generatedGeometryGenerators.get(part.name) ?? false,
   }));
   const { changed, report, used, reduced } = runKernel('lightBake', [snapshots, lighting, settings], bakeChangedParts);
+  // Probes see the unbaked parts, as the bake does, and are traced as a kernel of their own so a worker can take them too.
+  const probeTrace = !settings.probes ? null
+    : runKernel('probeTrace', [snapshots, lighting, settings.probes, { environment: lighting, maxSeconds: bakeSecondsLimit() }], traceProbes);
   const bakedSnapshots = snapshots.slice();
   for (const [index, part] of changed) {
     bakedSnapshots[index] = part;
@@ -197,6 +208,8 @@ export function bakeAgentParts(parts, worldMatrices, environment, settings, gene
     const { geometry, material } = bakedSnapshots[index];
     return Object.freeze({ ...part, geometry, material: liveBakedMaterial(part.material, material) });
   });
-  return { parts: Object.freeze(bakedParts), report: { ...settings, used, reduced, texels: report.texels, rayWork: report.rayWork, seconds: report.seconds,
+  // Probes are placed here, on the page, because they build maps and materials; their trace ran above.
+  const placed = probeTrace ? placeProbes(bakedParts, probeTrace) : null;
+  return { parts: Object.freeze(placed ? placed.parts : bakedParts), report: { ...(placed ? { probes: placed.report } : {}), ...settings, used, reduced, texels: report.texels, rayWork: report.rayWork, seconds: report.seconds,
     bakedParts: report.parts.length, skipped: report.skipped } };
 }
