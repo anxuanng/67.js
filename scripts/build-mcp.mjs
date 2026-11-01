@@ -181,7 +181,11 @@ export async function buildMcp({ outDir = join(root, 'build', 'mcp') } = {}) {
   const previewChunks = await reachablePreviewChunks(build, join(root, 'build'));
   const server = singleModule(await build({
     ...configuration,
-    resolve: { conditions: ['node', 'import', 'default'], mainFields: ['main', 'module'] },
+    resolve: {
+      conditions: ['node', 'import', 'default'],
+      mainFields: ['main', 'module'],
+      alias: { '@modelcontextprotocol/server/_shims': join(root, 'scripts', 'mcp-sdk-shims.mjs') },
+    },
     build: {
       ...configuration.build,
       target: 'node20',

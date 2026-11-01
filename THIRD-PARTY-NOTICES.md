@@ -54,6 +54,10 @@ CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
 OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+## Built files
+
+Each file in `build/` starts with a one-line notice that points here and to `LICENSE`. The complete texts are kept once, in those two files.
+
 ## MCP command and browser preview
 
 The packaged `build/mcp/server.mjs` and `build/mcp/preview.js` bundle the MCP SDK,
