@@ -210,7 +210,8 @@ test('texture descriptor preflight validates dimensions, channel, samplers and m
   assert.equal(info.mipmaps, true);
   assert.equal(textureDescriptorInfo({ image: { width: 4, height: 4 }, minFilter: 9729 }, 16).bytes, 64);
   assert.throws(() => textureDescriptorInfo({ image: { width: 32, height: 32 } }, 16), /MAX_TEXTURE_SIZE/);
-  assert.throws(() => textureDescriptorInfo({ image: { width: 4, height: 4 }, uvChannel: 1 }), /channel 0/);
+  assert.equal(textureDescriptorInfo({ image: { width: 4, height: 4 }, uvChannel: 1 }).bytes, 84);
+  assert.throws(() => textureDescriptorInfo({ image: { width: 4, height: 4 }, uvChannel: 2 }), /channels 0 and 1/);
   assert.throws(() => textureDescriptorInfo({ image: { width: 4, height: 4 }, minFilter: 4 }), /filtering/);
 });
 

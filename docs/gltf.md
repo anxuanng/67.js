@@ -140,7 +140,7 @@ Line and point primitives are unsupported.
 | `KHR_draco_mesh_compression` | Needs `options.decoders.draco`. |
 | `EXT_meshopt_compression` | Needs `options.decoders.meshopt`. |
 | `KHR_texture_basisu` | Needs `options.decoders.ktx2`. |
-| `KHR_materials_clearcoat`, `_transmission`, `_ior`, `_specular`, `_sheen`, `_volume`, `_anisotropy`, `_iridescence` | Read as factors and rendered as material layers, see `docs/material-maps.md`. Their textures are ignored, and an iridescent film takes the thickness maximum. Export writes them back. |
+| `KHR_materials_clearcoat`, `_transmission`, `_ior`, `_specular`, `_sheen`, `_volume`, `_anisotropy`, `_iridescence` | Read as factors and rendered as material layers, see `docs/material-maps.md`. The textures `clearcoatTexture`, `clearcoatRoughnessTexture`, `clearcoatNormalTexture`, `anisotropyTexture`, `sheenColorTexture` and `sheenRoughnessTexture` are read too, into `material.layerMaps` (their GLSL loads with `material-layer-shaders`); a renderer draws at most three different ones, and none beside splat layers. The transmission, iridescence and specular textures are not read: their factors are used. `occlusionTexture`, `emissiveTexture` and `metallicRoughnessTexture` may use TEXCOORD_1 (the mesh's `lightUvs`, which a light bake also uses); base color and normal textures must use TEXCOORD_0, and a texture on TEXCOORD_1 cannot carry `KHR_texture_transform`. Their textures are ignored, and an iridescent film takes the thickness maximum. Export writes them back. |
 
 `KHR_materials_transmission` with a factor above zero sets `material.transmission` to that factor.
 It is a hint only: the renderer does not draw transmission yet.

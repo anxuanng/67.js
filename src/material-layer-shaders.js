@@ -1,4 +1,4 @@
-import { registerShaderFeatureCode } from './shaders.js';
+import { layerTextureSupport, registerShaderFeatureCode } from './shaders.js';
 
 // Shader code for the anisotropy and iridescence material layers. It lives outside shaders.js so that a scene that
 // uses neither layer never downloads it: the renderer asks for it only when a part uses a layer, and importing this
@@ -14,10 +14,14 @@ import { registerShaderFeatureCode } from './shaders.js';
 //   KHR_materials_iridescence; filmReflectanceAtNormal turns the film's Fresnel at this view angle back into the
 //   reflectance at normal incidence that a Schlick curve needs.
 
-const ANISOTROPY_DECLARATIONS = `uniform vec2 materialAnisotropy;
+const ANISOTROPY_DECLARATIONS = `#ifndef ANISOTROPY_DECLARED
+#define ANISOTROPY_DECLARED
+uniform vec2 materialAnisotropy;
 float anisotropyStrength = 0.0;
 vec3 anisotropyTangent = vec3(1.0, 0.0, 0.0);
 vec3 anisotropyBitangent = vec3(0.0, 0.0, 1.0);
+vec3 anisotropyFrameTangent = vec3(1.0, 0.0, 0.0);
+vec3 anisotropyFrameBitangent = vec3(0.0, 0.0, 1.0);
 float anisotropicSpecular(vec3 normal, vec3 viewDirection, vec3 lightDirection, vec3 halfway, float alpha) {
   float alphaTangent = mix(alpha, 1.0, anisotropyStrength * anisotropyStrength);
   float alphaBitangent = alpha;
@@ -54,9 +58,12 @@ void setAnisotropyFrame(vec3 normal) {
   }
   tangent = normalize(tangent / tangentScale);
   vec3 bitangent = cross(normal, tangent);
+  anisotropyFrameTangent = tangent;
+  anisotropyFrameBitangent = bitangent;
   anisotropyTangent = tangent * cos(materialAnisotropy.y) + bitangent * sin(materialAnisotropy.y);
   anisotropyBitangent = cross(normal, anisotropyTangent);
 }
+#endif
 
 `;
 
@@ -69,6 +76,9 @@ const ANISOTROPY_COAT_RESET = `  anisotropyStrength = 0.0;
 const ANISOTROPY_MAIN_SETUP = `  if (materialAnisotropy.x > 0.0) {
     anisotropyStrength = materialAnisotropy.x;
     setAnisotropyFrame(normal);
+#ifdef ANISOTROPY_TEXTURE
+    if (anisotropyTextureOn > 0.5) applyAnisotropyTexture(normal);
+#endif
     vec3 grainSide = cross(anisotropyBitangent, viewDirection);
     vec3 grainNormal = cross(grainSide, anisotropyBitangent);
     specularNormal = normalize(mix(normal, grainNormal, anisotropyStrength * clamp(5.0 * roughness, 0.0, 1.0)));
@@ -155,3 +165,156 @@ registerShaderFeatureCode('iridescence', Object.freeze({
   coatReset: IRIDESCENCE_COAT_RESET,
   mainSetup: IRIDESCENCE_MAIN_SETUP,
 }));
+
+// Layer textures. The renderer adds the feature named as the glTF property (clearcoatTexture and so on) when a material
+// has that texture in material.layerMaps, binds the sampler, and sets the NameOn flag to 1 for batches that own it.
+// A feature may be spliced beside another that shares state, so shared GLSL sits in blocks guarded with #ifndef.
+// - The clear coat and sheen read their strength from the uniforms materialCoat and materialSheen. Their state blocks
+//   rename those to coatState and sheenState, which main sets per pixel from the uniform times the texture, so the core
+//   shader needs no texture code. coatUniform and sheenUniform are declared first, while the name still means the uniform.
+// - A coat normal texture replaces the coat's normal, built from the geometric normal as the base normal map is.
+// - An anisotropy texture holds the grain direction in red and green and a strength factor in blue (KHR_materials_anisotropy).
+//   Only the anisotropy feature reads it, from its own main setup, so the order the features are spliced in does not matter.
+
+const COAT_STATE_DECLARATIONS = `#ifndef COAT_STATE
+#define COAT_STATE
+vec2 coatState = vec2(0.0);
+vec2 coatUniform() {
+  return materialCoat;
+}
+#define materialCoat coatState
+#endif
+`;
+
+const COAT_STATE_SETUP = `#ifndef COAT_STATE_SET
+#define COAT_STATE_SET
+  coatState = coatUniform();
+#endif
+`;
+
+const SHEEN_STATE_DECLARATIONS = `#ifndef SHEEN_STATE
+#define SHEEN_STATE
+vec4 sheenState = vec4(0.0);
+vec4 sheenUniform() {
+  return materialSheen;
+}
+#define materialSheen sheenState
+#endif
+`;
+
+const SHEEN_STATE_SETUP = `#ifndef SHEEN_STATE_SET
+#define SHEEN_STATE_SET
+  sheenState = sheenUniform();
+#endif
+`;
+
+function textureUniforms(name) {
+  return `uniform sampler2D ${name};
+uniform float ${name}On;
+`;
+}
+
+registerShaderFeatureCode('clearcoatTexture', Object.freeze({
+  declarations: textureUniforms('clearcoatTexture') + COAT_STATE_DECLARATIONS,
+  mainSetup: COAT_STATE_SETUP + `  if (clearcoatTextureOn > 0.5) coatState.x *= texture(clearcoatTexture, textureUV).r;
+`,
+}));
+
+registerShaderFeatureCode('clearcoatRoughnessTexture', Object.freeze({
+  declarations: textureUniforms('clearcoatRoughnessTexture') + COAT_STATE_DECLARATIONS,
+  mainSetup: COAT_STATE_SETUP + `  if (clearcoatRoughnessTextureOn > 0.5) coatState.y *= texture(clearcoatRoughnessTexture, textureUV).g;
+`,
+}));
+
+registerShaderFeatureCode('clearcoatNormalTexture', Object.freeze({
+  declarations: textureUniforms('clearcoatNormalTexture') + `vec3 coatMappedNormal() {
+  vec3 normal = normalize(worldNormal);
+  if (doubleSided > 0.5 && !gl_FrontFacing) normal = -normal;
+  vec3 positionX = dFdx(worldPosition);
+  vec3 positionY = dFdy(worldPosition);
+  vec2 uvX = dFdx(textureUV);
+  vec2 uvY = dFdy(textureUV);
+  float uvScale = max(max(abs(uvX.x), abs(uvX.y)), max(abs(uvY.x), abs(uvY.y)));
+  if (uvScale == 0.0) return normal;
+  uvX /= uvScale;
+  uvY /= uvScale;
+  float determinant = uvX.x * uvY.y - uvX.y * uvY.x;
+  if (abs(determinant) < 1e-7) return normal;
+  vec3 tangent = (positionX * uvY.y - positionY * uvX.y) / determinant;
+  vec3 bitangent = (positionY * uvX.x - positionX * uvY.x) / determinant;
+  tangent -= normal * dot(normal, tangent);
+  float tangentScale = max(max(abs(tangent.x), abs(tangent.y)), abs(tangent.z));
+  if (tangentScale == 0.0) return normal;
+  tangent = normalize(tangent / tangentScale);
+  float handedness = dot(cross(normal, tangent), bitangent) < 0.0 ? -1.0 : 1.0;
+  bitangent = normalize(cross(normal, tangent)) * handedness;
+  vec3 mapped = mat3(tangent, bitangent, normal) * (texture(clearcoatNormalTexture, textureUV).xyz * 2.0 - 1.0);
+  return dot(mapped, mapped) > 1e-12 ? normalize(mapped) : normal;
+}
+`,
+  coatReset: `  if (clearcoatNormalTextureOn > 0.5) normal = coatMappedNormal();
+`,
+}));
+
+registerShaderFeatureCode('sheenColorTexture', Object.freeze({
+  declarations: textureUniforms('sheenColorTexture') + SHEEN_STATE_DECLARATIONS,
+  mainSetup: SHEEN_STATE_SETUP + `  if (sheenColorTextureOn > 0.5) sheenState.rgb *= texture(sheenColorTexture, textureUV).rgb;
+`,
+}));
+
+registerShaderFeatureCode('sheenRoughnessTexture', Object.freeze({
+  declarations: textureUniforms('sheenRoughnessTexture') + SHEEN_STATE_DECLARATIONS,
+  mainSetup: SHEEN_STATE_SETUP + `  if (sheenRoughnessTextureOn > 0.5) sheenState.w *= texture(sheenRoughnessTexture, textureUV).a;
+`,
+}));
+
+registerShaderFeatureCode('anisotropyTexture', Object.freeze({
+  declarations: ANISOTROPY_DECLARATIONS + textureUniforms('anisotropyTexture') + `#define ANISOTROPY_TEXTURE
+void applyAnisotropyTexture(vec3 normal) {
+  vec3 sampled = texture(anisotropyTexture, textureUV).rgb;
+  vec2 direction = sampled.rg * 2.0 - 1.0;
+  float cosine = cos(materialAnisotropy.y);
+  float sine = sin(materialAnisotropy.y);
+  vec2 rotated = vec2(cosine * direction.x - sine * direction.y, sine * direction.x + cosine * direction.y);
+  anisotropyStrength = materialAnisotropy.x * sampled.b;
+  if (dot(rotated, rotated) > 1e-8) {
+    anisotropyTangent = normalize(anisotropyFrameTangent * rotated.x + anisotropyFrameBitangent * rotated.y);
+    anisotropyBitangent = cross(normal, anisotropyTangent);
+  }
+}
+`,
+}));
+
+// Layer textures share the units 11 to 13 with the splat arrays, so one renderer draws at most three different ones and
+// none beside splat layers. A batch without a texture gets the white texture and a NameOn flag of 0.
+const LAYER_TEXTURE_UNIT = 11;
+const MAX_LAYER_TEXTURES = 3;
+
+function layerTextureNamesOf(renderer) {
+  if (renderer.layerTextureNamesFor?.size !== renderer.shaderFeatures.size) {
+    const names = [...renderer.shaderFeatures].filter(feature => feature.endsWith('Texture'));
+    if (names.length > MAX_LAYER_TEXTURES || renderer.shaderFeatures.has('splat')) {
+      throw new Error(`A renderer draws at most ${MAX_LAYER_TEXTURES} layer textures and none beside splat layers, got ${names.join(', ')}.`);
+    }
+    renderer.layerTextureNames = names;
+    renderer.layerTextureNamesFor = { size: renderer.shaderFeatures.size };
+  }
+  return renderer.layerTextureNames;
+}
+
+function uniformOf(renderer, name) {
+  renderer.uniforms[name] ??= renderer.context.getUniformLocation(renderer.program, name);
+  return renderer.uniforms[name];
+}
+
+layerTextureSupport.bind = (renderer, layerMaps) => {
+  if (!renderer.shaderFeatures) return;
+  const context = renderer.context;
+  layerTextureNamesOf(renderer).forEach((name, index) => {
+    const descriptor = layerMaps?.[name];
+    context.activeTexture(context.TEXTURE0 + LAYER_TEXTURE_UNIT + index);
+    context.bindTexture(context.TEXTURE_2D, descriptor ? renderer.createTexture(descriptor) : renderer.whiteTexture);
+    context.uniform1i(uniformOf(renderer, name), LAYER_TEXTURE_UNIT + index);
+    context.uniform1f(uniformOf(renderer, `${name}On`), descriptor ? 1 : 0);
+  });
+};
