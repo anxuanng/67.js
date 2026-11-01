@@ -60,14 +60,15 @@ export async function scoreSilhouette(taskId, recipe) {
   return { views: overlap, mean: roundScore(values.reduce((sum, value) => sum + value, 0) / values.length) };
 }
 
-async function withLookPage(callback) {
+/** Opens the look harness in headless Chrome. The viewport is the size of every image drawn in the callback. */
+export async function withLookPage(callback, viewport = { width: IMAGE_SIZE, height: IMAGE_SIZE }) {
   const { chromium } = await import('playwright');
   const { createServer } = await import('vite');
   const server = await createServer({ root: repository, server: { host: '127.0.0.1', port: 0 }, logLevel: 'silent' });
   await server.listen();
   const browser = await chromium.launch({ executablePath: CHROME, headless: true, args: SWIFTSHADER_ARGUMENTS });
   try {
-    const page = await browser.newPage({ viewport: { width: IMAGE_SIZE, height: IMAGE_SIZE } });
+    const page = await browser.newPage({ viewport });
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
     await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/bench/agent-modeling/look-harness.html`);

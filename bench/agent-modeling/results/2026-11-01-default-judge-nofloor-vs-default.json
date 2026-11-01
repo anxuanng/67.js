@@ -1,0 +1,178 @@
+{
+  "label": "nofloor-vs-default",
+  "model": "sonnet",
+  "seed": 53,
+  "a": "nofloor",
+  "b": "default",
+  "summary": {
+    "trials": 18,
+    "costUsd": 1.2825,
+    "winsA": 0,
+    "winsB": 18,
+    "pValue": 0.000007629394531250002
+  },
+  "records": [
+    {
+      "task": "crate",
+      "repeat": 0,
+      "firstSide": "a",
+      "answer": "second",
+      "winnerSide": "b",
+      "costUsd": 0.1087169,
+      "note": "The second renderer wins because it grounds the crate with a visible floor and a cast shadow, while the first leaves it floating on a flat backdrop."
+    },
+    {
+      "task": "crate",
+      "repeat": 1,
+      "firstSide": "b",
+      "answer": "first",
+      "winnerSide": "b",
+      "costUsd": 0.1026716,
+      "note": "The first renderer wins because its crate sits on a ground plane with a visible cast shadow, which grounds it, while the second shows the crate floating on a flat grey background with no shadow or floor."
+    },
+    {
+      "task": "crate",
+      "repeat": 2,
+      "firstSide": "a",
+      "answer": "second",
+      "winnerSide": "b",
+      "costUsd": 0.007241,
+      "note": "The second renderer wins because the crate sits on a ground plane and casts a soft shadow, which grounds it in the scene, while the first leaves it floating against a flat backdrop."
+    },
+    {
+      "task": "mug",
+      "repeat": 0,
+      "firstSide": "b",
+      "answer": "first",
+      "winnerSide": "b",
+      "costUsd": 0.10264960000000001,
+      "note": "The first renderer wins because it shows a soft cast shadow on a ground plane that grounds the mug, while the second leaves the mug floating on a flat grey background with no shadow or floor."
+    },
+    {
+      "task": "mug",
+      "repeat": 1,
+      "firstSide": "a",
+      "answer": "second",
+      "winnerSide": "b",
+      "costUsd": 0.1025876,
+      "note": "The second renderer wins because the mug casts a soft contact shadow onto a ground plane with a horizon, so it sits on a surface instead of floating in a flat void."
+    },
+    {
+      "task": "mug",
+      "repeat": 2,
+      "firstSide": "a",
+      "answer": "second",
+      "winnerSide": "b",
+      "costUsd": 0.0072510000000000005,
+      "note": "The second renderer wins because it grounds the mug with a visible cast shadow and a ground plane with a horizon, while the first leaves it floating on a flat gray backdrop."
+    },
+    {
+      "task": "table",
+      "repeat": 0,
+      "firstSide": "b",
+      "answer": "first",
+      "winnerSide": "b",
+      "costUsd": 0.1025836,
+      "note": "The first renderer wins because it has a ground plane with a cast shadow that grounds the table, while the second shows the table floating in a flat gray void with no shadow."
+    },
+    {
+      "task": "table",
+      "repeat": 1,
+      "firstSide": "a",
+      "answer": "second",
+      "winnerSide": "b",
+      "costUsd": 0.1026296,
+      "note": "The second renderer wins because the table casts a soft ground shadow and sits on a lit floor, which grounds it, while the first has no shadow and floats on a flat backdrop."
+    },
+    {
+      "task": "table",
+      "repeat": 2,
+      "firstSide": "b",
+      "answer": "first",
+      "winnerSide": "b",
+      "costUsd": 0.007254999999999999,
+      "note": "The first renderer wins because it has a ground plane with a cast shadow that anchors the table, while the second leaves the table floating on a flat backdrop with no shadow or floor."
+    },
+    {
+      "task": "soap",
+      "repeat": 0,
+      "firstSide": "a",
+      "answer": "second",
+      "winnerSide": "b",
+      "costUsd": 0.1028176,
+      "note": "The second renderer wins because it shows a soft contact shadow and ambient occlusion under the object plus a gradient floor, so the box sits on a surface, while the first leaves it floating on a flat grey backdrop with no cast shadow."
+    },
+    {
+      "task": "soap",
+      "repeat": 1,
+      "firstSide": "b",
+      "answer": "first",
+      "winnerSide": "b",
+      "costUsd": 0.1027396,
+      "note": "The first render has a soft contact shadow and a bluish ambient bounce under the object that make it sit on a ground plane, while the second has only a faint dark edge on a flat backdrop, so the object seems to float."
+    },
+    {
+      "task": "soap",
+      "repeat": 2,
+      "firstSide": "b",
+      "answer": "first",
+      "winnerSide": "b",
+      "costUsd": 0.0073690000000000005,
+      "note": "The first renderer wins: its soft contact shadow and ambient bounce on a floor that blends into the background ground the object, while the second looks like a floating object on a flat gray backdrop with only a faint edge line."
+    },
+    {
+      "task": "chair",
+      "repeat": 0,
+      "firstSide": "a",
+      "answer": "second",
+      "winnerSide": "b",
+      "costUsd": 0.1026576,
+      "note": "The second renderer looks more finished because the chair sits on a ground plane with a cast shadow, so it is grounded, whereas the first shows a chair floating on a flat background with no shadow."
+    },
+    {
+      "task": "chair",
+      "repeat": 1,
+      "firstSide": "b",
+      "answer": "first",
+      "winnerSide": "b",
+      "costUsd": 0.1025916,
+      "note": "The first renderer wins because it adds a ground plane with a cast shadow under the chair, so the chair is grounded in a space instead of floating on a flat backdrop."
+    },
+    {
+      "task": "chair",
+      "repeat": 2,
+      "firstSide": "b",
+      "answer": "first",
+      "winnerSide": "b",
+      "costUsd": 0.007294999999999999,
+      "note": "The first renderer wins because the chair sits on a ground disc and casts a soft shadow, so it is grounded, while the second shows the chair floating on a flat background with no shadow or floor."
+    },
+    {
+      "task": "gear",
+      "repeat": 0,
+      "firstSide": "b",
+      "answer": "first",
+      "winnerSide": "b",
+      "costUsd": 0.1032056,
+      "note": "The first renderer wins: its pale, softly graded background and a faint contact shadow beside the gear's edge ground the object, while the second shows a flat gray void with no shadow, so the gear looks like it floats."
+    },
+    {
+      "task": "gear",
+      "repeat": 1,
+      "firstSide": "a",
+      "answer": "second",
+      "winnerSide": "b",
+      "costUsd": 0.10273560000000001,
+      "note": "The second renderer wins: its pale background with a soft contact shadow and a ground plane that shows in the preview view grounds the gear, while the first renderer leaves it floating on a flat grey void with no shadow."
+    },
+    {
+      "task": "gear",
+      "repeat": 2,
+      "firstSide": "a",
+      "answer": "second",
+      "winnerSide": "b",
+      "costUsd": 0.007493,
+      "note": "The second renderer looks more grounded: it has a soft contact shadow, a visible ground plane that fills the preview view, and a lighter, ambient-lit backdrop, while the first leaves the gear floating on a flat gray background with no shadow."
+    }
+  ]
+}
