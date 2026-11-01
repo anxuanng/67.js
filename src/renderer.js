@@ -63,6 +63,7 @@ function shaderFeaturesOfParts(parts) {
       if (material[field]) features.add(MAP_SHADER_FEATURES[index]);
     });
     if (material.lightMap) features.add('lightMap');
+    if (material.environmentProbe) features.add('probe');
     if (material.normalMap?.uvTransform) features.add('normalMapTransform');
     Object.keys(material.layerMaps ?? {}).forEach(name => features.add(name));
     if (material.layers) features.add('splat');
@@ -159,7 +160,7 @@ function materialMapState(material) {
   const occlusionStrength = material.occlusionStrength ?? 1;
   validateSplatMaterial(material);
   if (material.layers && PROCEDURAL_MATERIAL_TAGS.has(material.tag)) throw new Error('Splat layers require a standard PBR material tag.');
-  return [...MATERIAL_MAPS.map(field => material[field] ?? null), normalScale[0], normalScale[1], occlusionStrength, ...mossState(material), material.boxMapScale ?? 0, material.boxMapAxis ?? 1, ...lightMapState(material), ...splatBatchState(material), material.layerMaps ?? null];
+  return [...MATERIAL_MAPS.map(field => material[field] ?? null), normalScale[0], normalScale[1], occlusionStrength, ...mossState(material), material.boxMapScale ?? 0, material.boxMapAxis ?? 1, ...lightMapState(material), ...splatBatchState(material), material.layerMaps ?? null, material.environmentProbe ?? null];
 }
 
 // A baked light map reads the second UV set, so it is only drawn for parts that cannot be skinned or morphed.
@@ -1465,6 +1466,7 @@ export class Renderer67 {
 
   // Binds the prefiltered textures for this frame and returns the active map, or null for the built-in studio lighting.
   activateEnvironment(map) {
+    this.activeMap = this.benchmark ? null : map;
     if (this.benchmark || !map) {
       this.bindEnvironmentTextures(this.whiteTexture, this.whiteTexture);
       return null;
@@ -1632,6 +1634,7 @@ export class Renderer67 {
   }
 
   drawTranslucent(frame, environment, assemblyAmount, environmentMap) {
+    this.activateEnvironment(environmentMap);
     const liquids = this.batches.filter(batch => batchPass(batch) === 'liquid');
     const foams = this.batches.filter(batch => batchPass(batch) === 'foam');
     if (liquids.length === 0 && foams.length === 0) return;

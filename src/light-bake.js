@@ -122,7 +122,7 @@ function withAffects(normalizedLights, sourceLights) {
  * A light limited by `affects` adds nothing at a surface of a part it skips, as in the renderer, so a part that a
  * light does not reach is not lit by it even as the bounce of another part.
  */
-function withReach(lights, parts) {
+export function withReach(lights, parts) {
   const reachOf = (light) => {
     if (light.affects === null) return null;
     const names = new Set(light.affects);
@@ -136,7 +136,7 @@ function lightReaches(light, owner) {
   return light.reach === null || light.reach[owner] === 1;
 }
 
-function normalizeLights(lighting) {
+export function normalizeLights(lighting) {
   if (lighting === null || typeof lighting !== 'object') throw new TypeError('Light bake needs a lighting object.');
   const pointLights = lighting.pointLights ?? [];
   if (!Array.isArray(pointLights) || pointLights.length > MAX_BAKE_POINT_LIGHTS) throw new RangeError(`Light bake takes at most ${MAX_BAKE_POINT_LIGHTS} point lights.`);
@@ -162,7 +162,7 @@ function normalizeLights(lighting) {
   return { pointLights: withAffects(normalizedPoints, pointLights), spotLights, areaLights, sun: hasSun ? { color: Array.from(keyColor), direction: sunDirection, affects: lighting.keyAffects ?? null } : null };
 }
 
-function validatePart(part, index) {
+export function validatePart(part, index) {
   const { geometry, matrix } = part ?? {};
   const label = `Light bake part ${index}`;
   if (!geometry || !(geometry.positions instanceof Float32Array) || geometry.positions.length === 0 || geometry.positions.length % 3 !== 0) throw new TypeError(`${label} needs Float32 positions.`);
@@ -205,7 +205,7 @@ function srgbToLinear(byte) {
 }
 
 /** Mean linear colour of a base color map on a fixed grid of samples, or white when the image bytes are not readable. */
-function averageMapColor(map) {
+export function averageMapColor(map) {
   const image = map?.image;
   if (!image?.data || !(image.width > 0) || !(image.height > 0)) return [1, 1, 1];
   const sum = [0, 0, 0];
@@ -225,14 +225,14 @@ function diffuseAlbedo(material) {
   return material.color.map((channel, index) => Math.max(channel, 0) * keep * mapAverage[index]);
 }
 
-function emittedRadiance(material) {
+export function emittedRadiance(material) {
   const strength = material.emission ?? 0;
   if (strength <= 0) return [0, 0, 0];
   return (material.emissiveColor ?? material.color).map(channel => channel * strength);
 }
 
 /** All parts in world space as one triangle soup: positions, indices, and the part each triangle belongs to. */
-function buildWorld(parts) {
+export function buildWorld(parts) {
   let vertexTotal = 0;
   let indexTotal = 0;
   for (const part of parts) {
@@ -265,7 +265,7 @@ function buildWorld(parts) {
   return { positions, indices, triangleOwner, bvh: buildTriangleBvh(positions, indices) };
 }
 
-function sceneScale(positions) {
+export function sceneScale(positions) {
   let largest = 0;
   for (let index = 0; index < positions.length; index++) largest = Math.max(largest, Math.abs(positions[index]));
   return Math.max(largest, 1e-3);
@@ -319,7 +319,7 @@ function cosineDirection(normal, firstUnit, secondUnit, out) {
  * Builds the function that returns the irradiance (light power per area, before the albedo and 1/pi of a diffuse
  * surface) of the direct lights at a point, with shadow rays against the world.
  */
-function createDirectIrradiance(tracer, lights, offset, scale) {
+export function createDirectIrradiance(tracer, lights, offset, scale) {
   const result = [0, 0, 0];
   const shadowReach = scale * 1e6;
   function addLight(point, normal, toLight, distance, power) {
@@ -409,7 +409,7 @@ function createDirectIrradiance(tracer, lights, offset, scale) {
   };
 }
 
-function hitNormal(world, triangleId, direction, out) {
+export function hitNormal(world, triangleId, direction, out) {
   readTriangle(world.positions, world.indices, triangleId, SCRATCH_TRIANGLE);
   const firstX = SCRATCH_TRIANGLE[3] - SCRATCH_TRIANGLE[0];
   const firstY = SCRATCH_TRIANGLE[4] - SCRATCH_TRIANGLE[1];
@@ -435,7 +435,7 @@ const SCRATCH_TRIANGLE = new Float64Array(9);
  * The mean radiance arriving at one texel from other surfaces: cosine-weighted paths of up to `bounces` reflections,
  * each hit adding its own emission and its direct light. The caller multiplies by the texel's albedo.
  */
-function createGatherer({ world, tracer, albedoOfPart, emissionOfPart, directIrradiance, offset, samples, bounces }) {
+export function createGatherer({ world, tracer, albedoOfPart, emissionOfPart, directIrradiance, offset, samples, bounces }) {
   const direction = [0, 0, 0];
   const origin = [0, 0, 0];
   const normal = [0, 0, 0];

@@ -40,9 +40,9 @@ function lightmapBytes(part) {
 }
 
 test('bake presets and fields resolve to plain numbers within their ranges', () => {
-  assert.deepEqual(normalizeAgentBake({ preset: 'fine' }), BAKE_PRESETS.fine);
-  assert.deepEqual(normalizeAgentBake({}), BAKE_PRESETS.standard);
-  assert.deepEqual(normalizeAgentBake({ preset: 'draft', samples: 48 }), { ...BAKE_PRESETS.draft, samples: 48 });
+  assert.deepEqual(normalizeAgentBake({ preset: 'fine' }), { ...BAKE_PRESETS.fine, probes: 'room' });
+  assert.deepEqual(normalizeAgentBake({}), { ...BAKE_PRESETS.standard, probes: 'room' });
+  assert.deepEqual(normalizeAgentBake({ preset: 'draft', samples: 48 }), { ...BAKE_PRESETS.draft, samples: 48, probes: 'room' });
   assert.equal(normalizeAgentBake(null), null);
 });
 
@@ -207,7 +207,7 @@ test('a preset on a 56 part room shrinks to the path work budget, finishes, and 
 test('a preset that already fits is not reduced', () => {
   const bake = createAgentScene(closedRoom()).inspect().bake;
   assert.equal(bake.reduced, false);
-  assert.deepEqual(bake.used, BAKE_PRESETS.draft);
+  assert.deepEqual(bake.used, { ...BAKE_PRESETS.draft, probes: 'room' });
 });
 
 test('explicit settings over the hard limit fail up front with a lower setting to try', () => {
@@ -231,7 +231,7 @@ test('explicit settings far above the preset budget run when they fit the hard l
   try {
     const bake = createAgentScene(largeRoom(explicit)).inspect().bake;
     assert.equal(bake.reduced, false);
-    assert.deepEqual(bake.used, explicit);
+    assert.deepEqual(bake.used, { ...explicit, probes: 'room' });
     assert.ok(bake.texels * explicit.samples * explicit.bounces > BAKE_PRESET_PATH_WORK);
   } finally {
     performance.now = realNow;
@@ -284,4 +284,11 @@ test('a cloth sheet is skipped by the bake and still has no lightmap after a see
     assert.ok(!part.material.lightMap || part.geometry.lightUvs, `${part.name} has a light map without lightUvs`);
   }
   assert.ok(scene.parts.find(part => part.name === 'floor').material.emissiveMap);
+});
+
+test('a bake places a room probe unless bake.probes is false', () => {
+  const withProbe = createAgentScene(closedRoom()).inspect().bake;
+  assert.equal(withProbe.probes.placed.length, 1);
+  const optedOut = createAgentScene(closedRoom({ bake: { preset: 'draft', probes: false } })).inspect().bake;
+  assert.equal(optedOut.probes, false);
 });
