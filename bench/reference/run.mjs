@@ -37,6 +37,8 @@ const ambientOcclusionRadius = radiusFlag >= 0 ? Number(argumentsGiven[radiusFla
 const bakeFlag = argumentsGiven.indexOf('--bake');
 const bakeValue = bakeFlag >= 0 ? argumentsGiven[bakeFlag + 1] : undefined;
 const bakedSceneIds = bakeFlag >= 0 && bakeValue && !bakeValue.startsWith('--') ? bakeValue.split(',') : null;
+const cascadesFlag = argumentsGiven.indexOf('--cascades');
+const cascades = cascadesFlag >= 0 ? Number(argumentsGiven[cascadesFlag + 1]) : 0;
 const pathTracerFlag = argumentsGiven.includes('--path-tracer');
 const samplesFlag = argumentsGiven.indexOf('--samples');
 const pathTracerSamples = samplesFlag >= 0 ? Number(argumentsGiven[samplesFlag + 1]) : 64;
@@ -48,6 +50,7 @@ async function renderBackend(backend, serverUrl, graphics) {
     const page = await browser.newPage({ viewport: { width: WIDTH, height: HEIGHT } });
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
+    page.on('console', message => message.text().includes('GL_') && console.log('PAGE', message.text().slice(0, 200)));
     await page.goto(`${serverUrl}/bench/reference/harness.html`, { timeout: PAGE_LOAD_TIMEOUT });
     await page.waitForFunction(() => window.renderReferenceScene, null, { timeout: PAGE_LOAD_TIMEOUT });
     const sceneIds = await page.evaluate(() => window.referenceSceneIds);
@@ -56,7 +59,7 @@ async function renderBackend(backend, serverUrl, graphics) {
       const started = performance.now();
       const describe = backend === 'gpu';
       const bake = bakeFlag >= 0 && (bakedSceneIds === null || bakedSceneIds.includes(id)) ? {} : null;
-      const result = await page.evaluate(([sceneId, shouldDescribe, ambientOcclusion, ambientOcclusionRadius, bakeOptions]) => window.renderReferenceScene(sceneId, { describe: shouldDescribe, ambientOcclusion, ambientOcclusionRadius, bake: bakeOptions }), [id, describe, ambientOcclusion, ambientOcclusionRadius, bake]);
+      const result = await page.evaluate(([sceneId, shouldDescribe, ambientOcclusion, ambientOcclusionRadius, bakeOptions, cascadeCount]) => window.renderReferenceScene(sceneId, { describe: shouldDescribe, ambientOcclusion, ambientOcclusionRadius, bake: bakeOptions, cascades: cascadeCount }), [id, describe, ambientOcclusion, ambientOcclusionRadius, bake, cascades]);
       if (result.glError !== 0) throw new Error(`${id} on ${backend} gave WebGL error ${result.glError}.`);
       graphics[backend] = result.graphics;
       await writeFile(`${WORK_DIRECTORY}/${id}-${backend}.png`, Buffer.from(result.image, 'base64'));

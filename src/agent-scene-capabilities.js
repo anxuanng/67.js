@@ -181,7 +181,7 @@ export const AGENT_SCENE_CAPABILITIES = Object.freeze({
   lightingSetups: LIGHTING_SETUP_NAMES, defaultLightingSetup: DEFAULT_LIGHTING_SETUP,
   ambientOcclusion: Object.freeze({ default: DEFAULT_AMBIENT_OCCLUSION, defaultRadius: 0.5, off: 0 }),
   // Local lights: spot and rectangular area lights. Shadows share one 2048 x 3072 depth atlas of 24 tiles; a shadowed
-  // point light uses 6 tiles and a shadowed spot light 1. Area lights cast no shadow. Light linking is not supported.
+  // point light uses 6 tiles and a shadowed spot light 1. Area lights cast no shadow. Light linking (addons/light-linking) and cascaded sun shadows (addons/cascaded-shadows) are engine options that recipes do not reach; lightLinking stays false here.
   maxSpotLights: 8, maxAreaLights: 4,
   localShadows: Object.freeze({ lights: Object.freeze(['pointLights', 'spotLights']), atlasTiles: 24, pointLightTiles: 6, spotLightTiles: 1, tileSize: 512 }),
   lightLinking: false,

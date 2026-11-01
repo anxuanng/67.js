@@ -69,7 +69,7 @@ Local `environment.pointLights` support eight world-space sources with inverse-s
 Each light provides `position` and optional `color`, `intensity`, `radius`, `range` and `castShadow`.
 `environment.spotLights` (eight) take `position`, `direction`, and optional `angle` (outer half angle in radians, default 0.785), `penumbra` (0 to 1, default 0.15), `color`, `intensity`, `radius`, `range` and `castShadow`. Intensity is candela, the same unit as a point light.
 `environment.areaLights` (four) are rectangles with `position`, `direction` (the side that emits), `width`, `height`, optional `up`, `color` and `intensity` (candela seen head on). They cast no shadow.
-`castShadow: true` on a point light uses 6 of the 24 shadow tiles, on a spot light 1. Past 24 the edit is rejected. Shadows reach `range`, or 30 units when `range` is 0. Set `castShadow` on the few lights that show a visible shadow, because each one adds a depth pass.
+`castShadow: true` on a point light uses 6 of the 24 shadow tiles, on a spot light 1. Past 24 the edit is rejected. Shadows reach `range`, or 30 units when `range` is 0. Set `castShadow` on the few lights that show a visible shadow, because each one adds a depth pass. Recipes cannot link a light to some parts or cascade the sun shadow (`lightLinking` is false in `scene_capabilities`); those are engine options for code that builds its own `Renderer67` (`addons/light-linking`, `addons/cascaded-shadows`; see docs/lighting.md).
 `keyIntensity`, `fillIntensity` and `ambientIntensity` independently scale existing lighting.
 Read the checkout's `docs/lighting.md` for defaults, numeric limits and frame overrides.
 Point lights currently cast no local shadows. Radius limits attenuation without creating an area emitter.
