@@ -1,7 +1,7 @@
 // The reference scenes, built in the browser with the engine's own code so every engine feature can be reached.
 // Each builder returns parts, a camera and lighting. render-blender.py builds the same scene from a dump of this data.
 import { box, cylinder, sphere, torus } from '/src/geometry.js';
-import { createEnvironmentMap, loadHdri } from '/src/hdri.js';
+import { createEnvironmentMap, parseRadianceHdr } from '/src/hdri.js';
 import { parseGltf } from '/src/gltf.js';
 import { createTree, vegetationParts } from '/src/vegetation.js';
 import { createAgentScene, loadAgentSceneModules } from '/src/agent-scene.js';
@@ -9,6 +9,10 @@ import { materialPatternTextures, normalizeMaterialPattern } from '/src/material
 
 const HDRI_FILE = 'public/hdri/kloofendal_48d_partly_cloudy_puresky_1k.hdr';
 const HDRI_URL = '/hdri/kloofendal_48d_partly_cloudy_puresky_1k.hdr';
+// The HDRI holds its own sun: 6 pixels carry 48 percent of the sky light. Scenes add a sun light of their own, so Cycles and
+// EEVEE drew two shadows of each object while 67js, whose environment casts no shadow, drew one. Both sides cap the image
+// at this radiance, which removes the sun and its halo (208 of 524,288 pixels) and keeps the clouds.
+const HDRI_RADIANCE_LIMIT = 16;
 const ROBOT_FILE = 'tests/fixtures/RobotExpressive.glb';
 const IDENTITY_ROTATION_MATRIX = [1, 0, 0, 0, 1, 0, 0, 0, 1];
 
@@ -31,8 +35,11 @@ function floor(color = [0.5, 0.5, 0.5]) {
 }
 
 async function skyLighting(intensity = 1) {
-  const map = await loadHdri(HDRI_URL, { intensity, showBackground: true });
-  return { map, blenderWorld: { type: 'hdri', file: HDRI_FILE, intensity } };
+  const response = await fetch(HDRI_URL);
+  const parsed = parseRadianceHdr(await response.arrayBuffer());
+  const data = parsed.data.map((radiance) => Math.min(radiance, HDRI_RADIANCE_LIMIT));
+  const map = createEnvironmentMap({ ...parsed, data, intensity, showBackground: true });
+  return { map, blenderWorld: { type: 'hdri', file: HDRI_FILE, intensity, radianceLimit: HDRI_RADIANCE_LIMIT } };
 }
 
 function constantLighting(value) {
