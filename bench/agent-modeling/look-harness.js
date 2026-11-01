@@ -1,6 +1,7 @@
 // Runs in the page: draws a recipe from each fixed camera, the way the MCP preview draws a scene.
 import { createAgentScene, loadAllAgentSceneModules, loadMeshBooleans, needsMeshBooleans } from '/src/agent-scene.js';
-import { resolveAgentShadow } from '/src/agent-look.js';
+import { agentEnvironmentMap, resolveAgentShadow } from '/src/agent-look.js';
+import { agentGroundPlacement, createAgentGround } from '/src/agent-ground.js';
 import { Renderer67 } from '/src/renderer.js';
 
 async function renderLookViews(recipe, views) {
@@ -9,10 +10,12 @@ async function renderLookViews(recipe, views) {
   const scene = createAgentScene(recipe);
   if (recipe.motion) scene.sampleMotion(0);
   const canvas = document.querySelector('canvas');
-  const environment = scene.environment;
+  // The MCP preview lights a recipe with the setup's environment map; without it the images would show a darker scene than agents get.
+  const environment = { ...scene.environment, map: agentEnvironmentMap(scene.environment) };
   const effects = scene.effects;
+  const placement = agentGroundPlacement(scene.parts, scene.environment);
   const renderer = new Renderer67(canvas, scene.parts, {
-    ground: false, hdr: true, depth: true, samples: 1, pixelRatio: 1, memoryBudgetMiB: 512,
+    ground: placement ? createAgentGround(placement) : false, hdr: true, depth: true, samples: 1, pixelRatio: 1, memoryBudgetMiB: 512,
     world: environment.world, environment,
     shadowBounds: resolveAgentShadow(scene.shadow, environment.lightDirection),
   });

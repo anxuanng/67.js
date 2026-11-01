@@ -106,6 +106,7 @@ Sky colors use display RGB, matching the renderer's existing environment contrac
 | Field | Default | Range or meaning |
 | --- | --- | --- |
 | `world` | `false` | Boolean world presentation flag. With `true` the setup environment is also the background |
+| `ground` | on | Absent unless set. `false` removes the preview's automatic floor and contact shadow |
 | `setup` | `daylight` | `daylight`, `overcast`, `sunset` or `studio`. See Lighting setups |
 | `environmentIntensity` | `1` | `0` to `100`. Scales the setup's environment light and reflections |
 | `environmentRotation` | `0` | `-100` to `100` radians around the vertical axis |
@@ -136,6 +137,7 @@ Setting `setup` through `set-environment` resets `lightDirection`, `keyColor`, `
 Remote URLs and HDRI files are not accepted from tool input.
 This changes the look of every recipe that sets no lighting: before, the default had no environment map, a key color of `[5.2, 4.7, 4.1]` and a fill intensity of `1`.
 To get the earlier flat look, set `keyColor`, `fillIntensity` and `environmentIntensity: 0` yourself.
+The MCP preview adds an automatic floor: a light grey disc under the scene's lowest geometry, at that height, which catches the key light's shadow. It is not a recipe node and is not exported. A part that already forms a floor (spans at least 90 percent of the scene's width and depth, is thinner than a quarter of its width and is the lowest geometry) switches it off, and `environment.ground: false` removes it. Code that builds its own `Renderer67` gets it by passing `createAgentGround(agentGroundPlacement(parts, environment))` as the `ground` option (`src/agent-ground.js`).
 
 ## Point lights
 

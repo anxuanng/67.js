@@ -113,6 +113,29 @@ function normalizeAreaLights(areaLights) {
   });
 }
 
+function withAffects(normalizedLights, sourceLights) {
+  return normalizedLights.map((light, index) => ({ ...light, affects: sourceLights[index].affects ?? null }));
+}
+
+/**
+ * Each light gets `reach`, one byte per part: 1 when the light lights that part, or null when it lights every part.
+ * A light limited by `affects` adds nothing at a surface of a part it skips, as in the renderer, so a part that a
+ * light does not reach is not lit by it even as the bounce of another part.
+ */
+function withReach(lights, parts) {
+  const reachOf = (light) => {
+    if (light.affects === null) return null;
+    const names = new Set(light.affects);
+    return Uint8Array.from(parts, part => (names.has(part.name) ? 1 : 0));
+  };
+  const linked = light => ({ ...light, reach: reachOf(light) });
+  return { pointLights: lights.pointLights.map(linked), spotLights: lights.spotLights.map(linked), areaLights: lights.areaLights.map(linked), sun: lights.sun && linked(lights.sun) };
+}
+
+function lightReaches(light, owner) {
+  return light.reach === null || light.reach[owner] === 1;
+}
+
 function normalizeLights(lighting) {
   if (lighting === null || typeof lighting !== 'object') throw new TypeError('Light bake needs a lighting object.');
   const pointLights = lighting.pointLights ?? [];
@@ -126,15 +149,17 @@ function normalizeLights(lighting) {
     if (!Number.isFinite(range) || range < 0 || !Number.isFinite(radius) || radius < 0) throw new RangeError(`Light bake point light ${index} has an invalid range or radius.`);
     return { position: Array.from(light.position), color: Array.from(light.color ?? [1, 1, 1]), intensity: light.intensity, range, radius };
   });
-  const spotLights = normalizeSpotLights(lighting.spotLights ?? []);
-  const areaLights = normalizeAreaLights(lighting.areaLights ?? []);
+  const spotSources = lighting.spotLights ?? [];
+  const areaSources = lighting.areaLights ?? [];
+  const spotLights = withAffects(normalizeSpotLights(spotSources), spotSources);
+  const areaLights = withAffects(normalizeAreaLights(areaSources), areaSources);
   const keyColor = lighting.keyColor ?? [0, 0, 0];
   const lightDirection = lighting.lightDirection ?? [0, 1, 0];
   if (!finiteVector(keyColor, 3) || keyColor.some(channel => channel < 0) || !finiteVector(lightDirection, 3)) throw new RangeError('Light bake keyColor and lightDirection must be finite vectors.');
   const directionLength = Math.hypot(...lightDirection);
   const hasSun = keyColor.some(channel => channel > 0) && directionLength > 0;
   const sunDirection = hasSun ? lightDirection.map(component => component / directionLength) : [0, 1, 0];
-  return { pointLights: normalizedPoints, spotLights, areaLights, sun: hasSun ? { color: Array.from(keyColor), direction: sunDirection } : null };
+  return { pointLights: withAffects(normalizedPoints, pointLights), spotLights, areaLights, sun: hasSun ? { color: Array.from(keyColor), direction: sunDirection, affects: lighting.keyAffects ?? null } : null };
 }
 
 function validatePart(part, index) {
@@ -354,11 +379,12 @@ function createDirectIrradiance(tracer, lights, offset, scale) {
     for (let channel = 0; channel < 3; channel++) power[channel] = light.color[channel] * strength;
     addLight(point, normal, toLight, distance - offset, power);
   }
-  return function directIrradiance(point, normal) {
+  return function directIrradiance(point, normal, owner) {
     result[0] = 0;
     result[1] = 0;
     result[2] = 0;
     for (const light of lights.pointLights) {
+      if (!lightReaches(light, owner)) continue;
       const deltaX = light.position[0] - point[0];
       const deltaY = light.position[1] - point[1];
       const deltaZ = light.position[2] - point[2];
@@ -372,9 +398,13 @@ function createDirectIrradiance(tracer, lights, offset, scale) {
       for (let channel = 0; channel < 3; channel++) power[channel] = light.color[channel] * strength;
       addLight(point, normal, toLight, distance - offset, power);
     }
-    for (const light of lights.spotLights) addSpotLight(point, normal, light);
-    for (let index = 0; index < lights.areaLights.length; index++) addAreaLight(point, normal, lights.areaLights[index], index);
-    if (lights.sun) addLight(point, normal, lights.sun.direction, shadowReach, lights.sun.color);
+    for (const light of lights.spotLights) {
+      if (lightReaches(light, owner)) addSpotLight(point, normal, light);
+    }
+    for (let index = 0; index < lights.areaLights.length; index++) {
+      if (lightReaches(lights.areaLights[index], owner)) addAreaLight(point, normal, lights.areaLights[index], index);
+    }
+    if (lights.sun && lightReaches(lights.sun, owner)) addLight(point, normal, lights.sun.direction, shadowReach, lights.sun.color);
     return result;
   };
 }
@@ -434,7 +464,7 @@ function createGatherer({ world, tracer, albedoOfPart, emissionOfPart, directIrr
         const owner = world.triangleOwner[hit.nearestTriangle];
         const albedo = albedoOfPart[owner];
         const emission = emissionOfPart[owner];
-        const irradiance = directIrradiance(hitPoint, normal);
+        const irradiance = directIrradiance(hitPoint, normal, owner);
         for (let channel = 0; channel < 3; channel++) {
           sum[channel] += throughput[channel] * (emission[channel] + albedo[channel] * irradiance[channel] / Math.PI);
           throughput[channel] *= albedo[channel];
@@ -703,7 +733,7 @@ export function traceLightmaps(plan, tracedSettings) {
   const scale = sceneScale(world.positions);
   const offset = scale * 1e-4;
   const tracer = createTracer(world);
-  const directIrradiance = createDirectIrradiance(tracer, lights, offset, scale);
+  const directIrradiance = createDirectIrradiance(tracer, withReach(lights, parts), offset, scale);
   const albedoOfPart = parts.map(part => diffuseAlbedo(part.material));
   const emissionOfPart = parts.map(part => emittedRadiance(part.material));
   const gather = createGatherer({ world, tracer, albedoOfPart, emissionOfPart, directIrradiance, offset, samples: settings.samples, bounces: settings.bounces });

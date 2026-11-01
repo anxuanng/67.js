@@ -7,64 +7,64 @@
    "eevee": 6.4
   },
   "brick-graph": {
-   "cycles": 16.4,
-   "eevee": 8.5
+   "cycles": 25.9,
+   "eevee": 29.8
   },
   "brick-room": {
-   "cycles": 29.1,
-   "eevee": 2.2
+   "cycles": 122.6,
+   "eevee": 2.9
   },
   "brushed-film": {
-   "cycles": 15.9,
-   "eevee": 2.0
+   "cycles": 28.7,
+   "eevee": 0.6
   },
   "car-paint": {
-   "cycles": 13.8,
-   "eevee": 3.4
+   "cycles": 46.9,
+   "eevee": 2.3
   },
   "character": {
-   "cycles": 17.6,
-   "eevee": 3.8
+   "cycles": 27.8,
+   "eevee": 1.7
   },
   "fog": {
-   "cycles": 40.9,
-   "eevee": 3.9
+   "cycles": 186.7,
+   "eevee": 1.3
   },
   "foliage": {
-   "cycles": 28.1,
-   "eevee": 9.9
+   "cycles": 44.8,
+   "eevee": 0.6
   },
   "glass": {
-   "cycles": 22.2,
-   "eevee": 16.7
+   "cycles": 15.1,
+   "eevee": 0.5
   },
   "light-linking": {
-   "cycles": 12.1,
-   "eevee": 4.0
+   "cycles": 21.3,
+   "eevee": 1.0
   },
   "lit-interior": {
-   "cycles": 21.8,
-   "eevee": 4.7
+   "cycles": 64.2,
+   "eevee": 12.1
   },
   "long-street": {
-   "cycles": 12.8,
-   "eevee": 4.8
+   "cycles": 50.7,
+   "eevee": 0.6
   },
   "material-spheres": {
-   "cycles": 18.4,
-   "eevee": 4.4
+   "cycles": 15.2,
+   "eevee": 0.7
   },
   "metal": {
-   "cycles": 32.5,
-   "eevee": 4.6
+   "cycles": 52.5,
+   "eevee": 1.0
   },
   "outdoor-hdri": {
-   "cycles": 9.4,
-   "eevee": 5.0
+   "cycles": 11.5,
+   "eevee": 0.8
   },
   "spot-area": {
-   "cycles": 12.0,
-   "eevee": 2.2
+   "cycles": 18.4,
+   "eevee": 0.7
   }
  },
  "graphics": {
@@ -98,7 +98,7 @@
   },
   "brushed-film": {
    "gpu-vs-cycles": 0.1613,
-   "gpu-vs-eevee": 0.1601,
+   "gpu-vs-eevee": 0.1602,
    "cpu-vs-cycles": 0.1613,
    "cpu-vs-eevee": 0.1601,
    "eevee-vs-cycles": 0.0939,
@@ -106,9 +106,9 @@
   },
   "car-paint": {
    "gpu-vs-cycles": 0.1521,
-   "gpu-vs-eevee": 0.1324,
+   "gpu-vs-eevee": 0.1323,
    "cpu-vs-cycles": 0.152,
-   "cpu-vs-eevee": 0.1324,
+   "cpu-vs-eevee": 0.1323,
    "eevee-vs-cycles": 0.082,
    "gpu-vs-cpu": 0.0055
   },
@@ -125,12 +125,12 @@
    "gpu-vs-eevee": 0.0542,
    "cpu-vs-cycles": 0.2608,
    "cpu-vs-eevee": 0.0542,
-   "eevee-vs-cycles": 0.2662,
+   "eevee-vs-cycles": 0.2661,
    "gpu-vs-cpu": 0.0085
   },
   "foliage": {
    "gpu-vs-cycles": 0.1594,
-   "gpu-vs-eevee": 0.1386,
+   "gpu-vs-eevee": 0.1387,
    "cpu-vs-cycles": 0.159,
    "cpu-vs-eevee": 0.1384,
    "eevee-vs-cycles": 0.0783,

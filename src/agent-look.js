@@ -7,20 +7,48 @@ import { createLightingSetupMap, lightingSetupFields } from './lighting-setups.j
 import { DEFAULT_LIGHTING_SETUP, LIGHTING_SETUP_NAMES, DEFAULT_AMBIENT_OCCLUSION } from './agent-scene-capabilities.js';
 
 const ENVIRONMENT_FIELDS = [
-  'world', 'setup', 'environmentIntensity', 'environmentRotation', 'lightDirection', 'keyColor', 'keyIntensity', 'fillIntensity', 'ambientIntensity',
-  'daylight', 'pointLights', 'spotLights', 'areaLights', 'skyTop', 'skyBottom', 'fogColor', 'fogDensity', 'volumeFog', 'liquid',
+  'world', 'ground', 'setup', 'environmentIntensity', 'environmentRotation', 'lightDirection', 'keyColor', 'keyIntensity', 'fillIntensity', 'ambientIntensity',
+  'daylight', 'pointLights', 'spotLights', 'areaLights', 'skyTop', 'skyBottom', 'fogColor', 'fogDensity', 'volumeFog', 'liquid', 'shadowCascades', 'keyAffects',
 ];
 const LIQUID_FIELDS = ['thickness', 'ior', 'refraction', 'scattering', 'foamOpacity', 'foamSoftness'];
 const EFFECT_FIELDS = ['exposure', 'saturation', 'contrast', 'temperature', 'vignette', 'grain', 'ambientOcclusion', 'ambientOcclusionRadius', 'bloom', 'depthOfField', 'motionBlur'];
 const SHADOW_FIELDS = ['target', 'extent', 'distance', 'near', 'far'];
-const POINT_LIGHT_FIELDS = ['position', 'color', 'intensity', 'radius', 'range', 'castShadow'];
-const SPOT_LIGHT_FIELDS = ['position', 'direction', 'angle', 'penumbra', 'color', 'intensity', 'radius', 'range', 'castShadow'];
-const AREA_LIGHT_FIELDS = ['position', 'direction', 'up', 'width', 'height', 'color', 'intensity'];
+const POINT_LIGHT_FIELDS = ['position', 'color', 'intensity', 'radius', 'range', 'castShadow', 'affects'];
+const SPOT_LIGHT_FIELDS = ['position', 'direction', 'angle', 'penumbra', 'color', 'intensity', 'radius', 'range', 'castShadow', 'affects'];
+const AREA_LIGHT_FIELDS = ['position', 'direction', 'up', 'width', 'height', 'color', 'intensity', 'affects'];
 const VOLUME_VECTOR_FIELDS = ['minimum', 'maximum', 'color', 'ambient', 'drift'];
 const VOLUME_NUMBER_FIELDS = ['density', 'steps', 'anisotropy', 'noiseAmount', 'noiseScale', 'maxDistance'];
 const BLOOM_FIELDS = ['strength', 'threshold', 'radius'];
 const DEPTH_OF_FIELD_FIELDS = ['blur', 'focusDistance'];
 const MOTION_BLUR_FIELDS = ['shutter'];
+const MAXIMUM_SHADOW_CASCADES = 4;
+const MAXIMUM_AFFECTED_NODES = 1024;
+
+// Only a light that is linked carries the field, so recipes without links keep their exported shape.
+function affectsFrom(light, label) {
+  if (light.affects === undefined) {
+    return {};
+  }
+  const names = light.affects;
+  if (!Array.isArray(names) || names.length > MAXIMUM_AFFECTED_NODES || names.some(name => typeof name !== 'string' || name.length < 1 || name.length > 128)) {
+    throw new TypeError(`${label} affects must be a list of at most ${MAXIMUM_AFFECTED_NODES} node IDs.`);
+  }
+  return { affects: [...names] };
+}
+
+function shadowCascadesFrom(value) {
+  if (!Number.isInteger(value) || value < 0 || value > MAXIMUM_SHADOW_CASCADES) {
+    throw new RangeError(`environment.shadowCascades must be an integer from 1 to ${MAXIMUM_SHADOW_CASCADES}, or 0 for the single shadow map.`);
+  }
+  return value;
+}
+
+/** Whether any light of the environment is limited to a list of nodes. */
+export function environmentLinksLights(environment) {
+  const lights = [...(environment.pointLights ?? []), ...(environment.spotLights ?? []), ...(environment.areaLights ?? [])];
+  return environment.keyAffects !== undefined || lights.some(light => light.affects !== undefined);
+}
+
 
 function plainObject(value, label) {
   if (!value || typeof value !== 'object' || Array.isArray(value) ||
@@ -149,6 +177,7 @@ function pointLightFrom(light) {
     radius: numberInRange(fallback(light.radius, 0.05), 0.001, 1e6, 'point light radius'),
     range: rangeFrom(light, 'point light'),
     ...shadowFieldFrom(light, 'point light'),
+    ...affectsFrom(light, 'point light'),
   };
 }
 
@@ -164,6 +193,7 @@ function spotLightFrom(light) {
     radius: numberInRange(fallback(light.radius, 0.05), 0.001, 1e6, 'spot light radius'),
     range: rangeFrom(light, 'spot light'),
     ...shadowFieldFrom(light, 'spot light'),
+    ...affectsFrom(light, 'spot light'),
   };
 }
 
@@ -178,7 +208,7 @@ function areaLightFrom(light) {
     intensity: numberInRange(fallback(light.intensity, 1), 0, 1e5, 'area light intensity'),
   };
   if (light.up !== undefined) resolved.up = directionFrom(light.up, 'area light up').direction;
-  return resolved;
+  return { ...resolved, ...affectsFrom(light, 'area light') };
 }
 
 function volumeFogFrom(input = {}) {
@@ -225,12 +255,24 @@ function environmentFrom(input = {}) {
     fogDensity: numberInRange(fallback(input.fogDensity, 0.006), 0, 10, 'fogDensity'),
     volumeFog: volumeFogFrom(input.volumeFog),
   };
-  // Optional so recipes without these lights or liquids keep their exported shape.
+  // Optional so recipes without these fields keep their exported shape.
+  if (input.ground !== undefined) {
+    if (typeof input.ground !== 'boolean') {
+      throw new TypeError('environment.ground must be a boolean.');
+    }
+    environment.ground = input.ground;
+  }
   if (input.spotLights !== undefined) {
     environment.spotLights = lightListFrom(input.spotLights, MAX_SPOT_LIGHTS, 'spotLights').map(spotLightFrom);
   }
   if (input.areaLights !== undefined) {
     environment.areaLights = lightListFrom(input.areaLights, MAX_AREA_LIGHTS, 'areaLights').map(areaLightFrom);
+  }
+  if (input.shadowCascades !== undefined) {
+    environment.shadowCascades = shadowCascadesFrom(input.shadowCascades);
+  }
+  if (input.keyAffects !== undefined) {
+    environment.keyAffects = affectsFrom({ affects: input.keyAffects }, 'environment keyAffects').affects;
   }
   if (input.liquid !== undefined) {
     knownKeys(input.liquid, LIQUID_FIELDS, 'liquid');

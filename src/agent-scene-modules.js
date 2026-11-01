@@ -1,5 +1,5 @@
 // Code that most recipes never run loads on demand, so the agent scene entry stays small. A recipe that uses mesh
-// editing, procedural modeling, motion, material patterns, terrain or the anisotropy and iridescence layers needs its module loaded before createAgentScene runs:
+// editing, procedural modeling, motion, material patterns, terrain, light linking, cascaded shadows or the anisotropy and iridescence layers needs its module loaded before createAgentScene runs:
 // call `await loadAgentSceneModules(recipe)` (or `loadAllAgentSceneModules()` in a host that does not mind the
 // size). createAgentScene is still synchronous; when a needed module is missing it says which call to make.
 
@@ -17,6 +17,8 @@ const MODULE_LOADERS = {
   timeline: () => import('./film-timeline.js'),
   layerShaders: () => import('./material-layer-shaders.js'),
   terrain: () => import('./agent-terrain.js'),
+  lightLinking: () => import('./light-linking.js'),
+  cascades: () => import('./cascaded-shadows.js'),
 };
 
 const loadedModules = {};
@@ -39,6 +41,8 @@ const MODULE_MARKERS = {
   timeline: ['"timeline":{'],
   layerShaders: ['"anisotropy"', '"iridescence"'],
   terrain: ['"type":"terrain"'],
+  lightLinking: ['"affects"', '"keyAffects"'],
+  cascades: ['"shadowCascades"'],
 };
 
 /** Whether a recipe, operation list or edit list contains a boolean edit, which needs loadMeshBooleans() first. */

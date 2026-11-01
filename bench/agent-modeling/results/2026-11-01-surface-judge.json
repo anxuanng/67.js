@@ -1,0 +1,82 @@
+{
+  "question": "does the object sit on a surface, with a believable contact shadow",
+  "model": "sonnet",
+  "scale": "0 to 3 over the front, side and three-quarter cameras",
+  "recipes": "the six cold Haiku recipes of results/2026-11-01-01-25-haiku-look-before.json",
+  "before": [
+    {
+      "task": "crate",
+      "score": 0,
+      "costUsd": 0.18624000000000002,
+      "note": "The crate sits against a flat grey background with no visible ground plane and no contact shadow under it in any of the three views, so it floats in empty space."
+    },
+    {
+      "task": "mug",
+      "score": 0,
+      "costUsd": 0.1860881,
+      "note": "The mug floats against a flat grey background in all three views, with no ground plane and no shadow beneath it."
+    },
+    {
+      "task": "table",
+      "score": 0,
+      "costUsd": 0.1860479,
+      "note": "The table floats on a flat grey background in all three views, with no visible floor plane and no shadow under the legs."
+    },
+    {
+      "task": "soap",
+      "score": 0,
+      "costUsd": 0.22243210000000002,
+      "note": "The object floats against a flat grey background in all three views, with no visible ground plane and no contact shadow."
+    },
+    {
+      "task": "chair",
+      "score": 0,
+      "costUsd": 0.1882717,
+      "note": "The chair sits on a flat grey background with no visible ground plane or shadow in any of the three views, so it looks like it's floating in empty space."
+    },
+    {
+      "task": "gear",
+      "score": 0,
+      "costUsd": 0.1882503,
+      "note": "The gear floats on a flat, uniformly grey background with no visible ground plane and no shadow beneath it in any of the three views."
+    }
+  ],
+  "after": [
+    {
+      "task": "crate",
+      "score": 1,
+      "costUsd": 0.1850786,
+      "note": "The three-quarter view shows a ground plane and a believable cast shadow, but the front and side views show only a flat grey backdrop with no ground or shadow, so the crate looks like it floats there."
+    },
+    {
+      "task": "mug",
+      "score": 1,
+      "costUsd": 0.18475550000000002,
+      "note": "The front and side views show the mug against a flat grey background with no visible surface or shadow, and only the three-quarter view shows a ground plane with a soft cast shadow, so the contact is missing in two of the three views."
+    },
+    {
+      "task": "table",
+      "score": 2,
+      "costUsd": 0.1846431,
+      "note": "The three-quarter view shows the table on a ground plane with a believable cast shadow, but the front and side views are flat grey with no visible surface or shadow, so the table looks like it floats there."
+    },
+    {
+      "task": "soap",
+      "score": 1,
+      "costUsd": 0.1846613,
+      "note": "The front and side views show a flat grey backdrop with no visible surface or shadow, so the object floats there, and only the three-quarter view hints at a ground plane with a faint soft shadow."
+    },
+    {
+      "task": "chair",
+      "score": 1,
+      "costUsd": 0.1828813,
+      "note": "The three-quarter view shows the chair on a ground plane with a believable cast shadow, but the front and side views show only a flat grey background with no surface or shadow, so it looks like it floats there."
+    },
+    {
+      "task": "gear",
+      "score": 0,
+      "costUsd": 0.1845755,
+      "note": "The gear sits on a flat, uniform grey background with no visible ground plane, horizon or shadow in any of the three views, so it looks like it's floating."
+    }
+  ]
+}
