@@ -398,6 +398,26 @@ export const REFERENCES = {
       }],
     },
   },
+  'terrain-path-walk': {
+    format: '67js.scene', schemaVersion: 1,
+    geometries: [
+      { id: 'hills', type: 'terrain', size: 40, resolution: 64, seed: 3, amplitude: 1, holes: [{ center: [0, 0], radius: 3 }, { center: [9, 9], radius: 2.5 }] },
+      { id: 'body', type: 'box', bevel: 0 },
+    ],
+    materials: [{ id: 'grass', color: [0.3, 0.55, 0.2] }, { id: 'coat', color: [0.8, 0.3, 0.2] }],
+    nodes: [
+      { id: 'ground', geometry: 'hills', material: 'grass' },
+      { id: 'rock', geometry: 'body', material: 'coat', translation: [-8, 1, -8], scale: [3, 2, 3] },
+      { id: 'walker', geometry: 'body', material: 'coat', translation: [-15, 0.5, -15], scale: [0.4, 1, 0.4] },
+    ],
+    motion: {
+      duration: 10,
+      tracks: [{
+        kind: 'node', id: 'walker', property: 'translation', interpolation: 'LINEAR',
+        keyframes: [[0, [-15, 0.5, -15]], [2.5, [-4, 0.5, -12]], [4, [-4, 0.5, -5]], [5.5, [5, 0.5, -5]], [7, [5, 0.5, 13]], [10, [15, 0.5, 15]]].map(([time, value]) => ({ time, value })),
+      }],
+    },
+  },
   'pillar-court': scene(
     [{ id: 'pillar', type: 'box', bevel: 0 }],
     [{

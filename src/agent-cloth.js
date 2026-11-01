@@ -28,7 +28,7 @@ function normalizeSheet(input, context) {
     }
     sheet.pin = [...new Set(edges)];
   }
-  const ranges = { stiffness: [0.01, 1], bend: [0, 1], density: [0.01, 10], damping: [0, 20], friction: [0, 1], thickness: [0, 0.5] };
+  const ranges = { stiffness: [0.01, 1], bend: [0, 1], density: [0.01, 10], damping: [0, 100], friction: [0, 1], thickness: [0, 0.5] };
   for (const [field, [minimum, maximum]] of Object.entries(ranges)) {
     if (input[field] !== undefined) sheet[field] = finiteNumber(input[field], `Cloth ${field}`, minimum, maximum);
   }

@@ -27,6 +27,7 @@
   "entry:vehicle": 14700,
   "entry:vegetation": 17900,
   "entry:terrain": 3400,
+  "entry:navmesh": 3300,
   "entry:grass": 4400,
   "entry:clutter": 5300,
   "entry:light-bake": 27400,

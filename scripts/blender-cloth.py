@@ -41,7 +41,8 @@ def grid_object(name, center, width, height, plane):
             if plane == "vertical":
                 vertices.append(builder.verts.new((center[0] + across, 0.0, center[1] + down)))
             else:
-                vertices.append(builder.verts.new((center[0] + across, -(center[2] + down), center[1])))
+                # Row 0 is the far edge (negative z in 67js axes), as in the 67js grid turned flat.
+                vertices.append(builder.verts.new((center[0] + across, -(center[2] - down), center[1])))
     for row in range(SEGMENTS):
         for column in range(SEGMENTS):
             first = row * (SEGMENTS + 1) + column
@@ -54,6 +55,12 @@ def grid_object(name, center, width, height, plane):
     return obj
 
 
+# Blender's default air damping of 1 is a drag of about 54 per second on a sheet this light (terminal speed 0.18 m/s,
+# measured in free fall), against 0.3 per second in 67js. 0.1 gives 5.4 per second on both sides.
+AIR_DAMPING = 0.1
+EQUIVALENT_67JS_DAMPING = 5.4
+
+
 def add_cloth(obj, pinned_indices, vertex_mass):
     if pinned_indices:
         group = obj.vertex_groups.new(name="pin")
@@ -62,7 +69,7 @@ def add_cloth(obj, pinned_indices, vertex_mass):
     settings = modifier.settings
     settings.quality = 8
     settings.mass = vertex_mass
-    settings.air_damping = 1.0
+    settings.air_damping = AIR_DAMPING
     if pinned_indices:
         settings.vertex_group_mass = "pin"
     modifier.collision_settings.use_self_collision = False
@@ -72,7 +79,7 @@ def add_cloth(obj, pinned_indices, vertex_mass):
     return modifier
 
 
-HISTORY_FRAMES = (61, 91, 121, 181, 241, 361, 481)
+HISTORY_FRAMES = (16, 31, 61, 91, 121, 181, 241, 361, 481)
 
 
 def vertex_positions(obj):

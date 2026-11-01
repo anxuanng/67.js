@@ -15,8 +15,12 @@ import { createServer } from 'vite';
 
 // --khronos draws the Khronos sample assets in artifacts/khronos (Blender imports the same files) into their own work
 // directory, and scores them into khronos.json. Nothing in baseline.json or images/<scene>.jpg changes.
+// --cloth draws the cloth scenes (a pinned banner in wind, a sheet dropped on a ball) with 67js's solver and with a Blender
+// cloth bake, and scores them into cloth.json the same way (the pixels the scene covers, with the sky left out).
 const khronos = process.argv.includes('--khronos');
-const WORK_DIRECTORY = resolve(khronos ? 'artifacts/reference-khronos' : 'artifacts/reference');
+const cloth = process.argv.includes('--cloth');
+const sceneSet = khronos ? 'khronos' : cloth ? 'cloth' : null;
+const WORK_DIRECTORY = resolve(sceneSet ? `artifacts/reference-${sceneSet}` : 'artifacts/reference');
 const OUTPUT_DIRECTORY = resolve('bench/reference');
 const CHROME = process.env.CHROME_PATH ?? 'C:/Program Files/Google/Chrome/Application/chrome.exe';
 const BLENDER = process.env.BLENDER_PATH ?? 'C:/Program Files/Blender Foundation/Blender 5.2/blender.exe';
@@ -60,7 +64,7 @@ async function renderBackend(backend, serverUrl, graphics) {
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
     page.on('console', message => message.text().includes('GL_') && console.log('PAGE', message.text().slice(0, 200)));
-    await page.goto(`${serverUrl}/bench/reference/harness.html${khronos ? '?set=khronos' : ''}`, { timeout: PAGE_LOAD_TIMEOUT });
+    await page.goto(`${serverUrl}/bench/reference/harness.html${sceneSet ? `?set=${sceneSet}` : ''}`, { timeout: PAGE_LOAD_TIMEOUT });
     await page.waitForFunction(() => window.renderReferenceScene, null, { timeout: PAGE_LOAD_TIMEOUT });
     const sceneIds = await page.evaluate(() => window.referenceSceneIds);
     for (const id of sceneIds) {
@@ -74,7 +78,7 @@ async function renderBackend(backend, serverUrl, graphics) {
       graphics[backend] = result.graphics;
       await writeFile(`${WORK_DIRECTORY}/${id}-${backend}.png`, Buffer.from(result.image, 'base64'));
       if (describe) await writeFile(`${WORK_DIRECTORY}/scenes/${id}.json`, JSON.stringify(result.description));
-      if (khronos && describe) {
+      if (sceneSet && describe) {
         const background = await page.evaluate(sceneId => window.renderReferenceScene(sceneId, { describe: false, backgroundOnly: true }), id);
         await writeFile(`${WORK_DIRECTORY}/${id}-background.png`, Buffer.from(background.image, 'base64'));
       }
@@ -152,6 +156,6 @@ if (!scoreOnly && !pathTracerFlag) {
 if (!onlyScene || pathTracerFlag) {
   runChecked('uv', [
     'run', '--no-project', '--python', '3.12', '--with', 'flip-evaluator', '--with', 'pillow', '--with', 'numpy',
-    'python', '-I', 'bench/reference/score.py', WORK_DIRECTORY, OUTPUT_DIRECTORY, ...(pathTracerFlag ? ['--path-tracer'] : []), ...(khronos ? ['--khronos'] : []),
+    'python', '-I', 'bench/reference/score.py', WORK_DIRECTORY, OUTPUT_DIRECTORY, ...(pathTracerFlag ? ['--path-tracer'] : []), ...(sceneSet ? [`--${sceneSet}`] : []),
   ]);
 }

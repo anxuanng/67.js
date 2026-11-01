@@ -102,7 +102,7 @@ function textOf(content) {
 
 /** Tool calls, errors, the model, usage and the last exported recipe from a stream-json transcript. */
 function readTranscript(output) {
-  const summary = { model: null, toolCalls: 0, toolErrors: 0, toolsByName: {}, branchCalls: 0, recipe: null, result: null };
+  const summary = { model: null, toolCalls: 0, toolErrors: 0, toolsByName: {}, branchCalls: 0, pathQueries: 0, recipe: null, result: null };
   const exportCalls = new Set();
   for (const line of output.split('\n')) {
     if (!line.trim().startsWith('{')) continue;
@@ -121,6 +121,7 @@ function readTranscript(output) {
         if (block.name !== 'ToolSearch') summary.toolCalls++;
         summary.toolsByName[name] = (summary.toolsByName[name] ?? 0) + 1;
         if (block.input?.branch !== undefined || block.input?.shots?.some(shot => shot.branch !== undefined)) summary.branchCalls++;
+        if (name.endsWith('scene_inspect') && block.input?.path !== undefined) summary.pathQueries++;
         if (block.name === EXPORT_TOOL) exportCalls.add(block.id);
       }
     }
@@ -186,6 +187,7 @@ async function runTask(task, attempt, systemPromptAddition) {
       toolErrors: transcript.toolErrors,
       toolsByName: transcript.toolsByName,
       branchCalls: transcript.branchCalls,
+      pathQueries: transcript.pathQueries,
       features: transcript.recipe ? recipeFeatures(transcript.recipe) : null,
       look: transcript.recipe ? await scoreLookSafely(task.id, transcript.recipe, { imageDirectory: join(rawDirectory, 'look', String(attempt)) }) : null,
       turns: transcript.result?.num_turns ?? null,

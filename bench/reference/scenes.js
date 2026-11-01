@@ -491,3 +491,72 @@ export const REFERENCE_SCENES = {
     };
   },
 };
+
+// Cloth against a Blender cloth bake (npm run reference -- --cloth). 67js bakes the sheet with its own solver and Blender
+// bakes the same sheet with its cloth modifier from rest to the same time; both are drawn in the same lit scene.
+// Blender's air damping of 1 acts on a 0.003 kg particle as a drag of about 54 per second (the terminal speed of a
+// falling sheet is 0.18 m/s), so both sides use a drag of 0.1 Blender units, which is 5.4 per second here.
+const BLENDER_AIR_DAMPING = 0.1;
+const DAMPING_PER_BLENDER_AIR_UNIT = 54;
+const CLOTH_SEGMENTS = 12;
+const CLOTH_DENSITY = 0.2;
+// Blender's wind field and this solver's wind speed differ in kind (linear against quadratic drag). The two are matched
+// by the steady swing of the banner: field strength 2 and 1.5 m/s both hold the free edge about 0.6 m out at 3 s.
+const BANNER_WIND_SPEED = 1.5;
+const BANNER_BLENDER_WIND_STRENGTH = 2;
+
+async function clothScene({ kind, seconds }) {
+  const lighting = await skyLighting();
+  const isBanner = kind === 'banner';
+  const sheetNode = isBanner
+    ? { id: 'cloth', geometry: 'sheet', material: 'cloth', translation: [0, 2.5, 0], scale: [2, 1.2, 1] }
+    : { id: 'cloth', geometry: 'sheet', material: 'cloth', translation: [0, 1.4, 0], rotation: [-0.7071068, 0, 0, 0.7071068], scale: [1.6, 1.6, 1] };
+  const recipe = {
+    format: '67js.scene', schemaVersion: 1,
+    geometries: [{ id: 'sheet', type: 'grid', segments: CLOTH_SEGMENTS }, { id: 'ball', type: 'sphere', segments: 48, rings: 32 }, { id: 'box', type: 'box' }],
+    materials: [{ id: 'cloth', color: [0.8, 0.25, 0.2], roughness: 0.7 }, { id: 'ball', color: [0.25, 0.4, 0.7], roughness: 0.4 }, { id: 'ground', color: [0.5, 0.5, 0.5], roughness: 0.8 }],
+    nodes: [
+      sheetNode,
+      { id: 'floor', geometry: 'box', material: 'ground', translation: [0, -0.05, 0], scale: [40, 0.1, 40] },
+      ...(isBanner ? [] : [{ id: 'ball', geometry: 'ball', material: 'ball', translation: [0, 0.4, 0], scale: [0.4, 0.4, 0.4] }]),
+    ],
+    cloth: {
+      duration: seconds,
+      ...(isBanner ? { wind: [0, 0, BANNER_WIND_SPEED] } : {}),
+      sheets: [{ node: 'cloth', density: CLOTH_DENSITY, damping: BLENDER_AIR_DAMPING * DAMPING_PER_BLENDER_AIR_UNIT, ...(isBanner ? { pin: ['top'] } : {}) }],
+      colliders: isBanner ? [] : [{ node: 'ball', shape: 'ball' }, { node: 'floor' }],
+    },
+  };
+  await loadAgentSceneModules(recipe);
+  const scene = createAgentScene(recipe);
+  scene.sampleMotion(0);
+  const restMatrix = [...scene.parts.find(entry => entry.name === 'cloth').matrix];
+  scene.sampleMotion(seconds);
+  const sheetArea = Math.hypot(restMatrix[0], restMatrix[1], restMatrix[2]) * Math.hypot(restMatrix[4], restMatrix[5], restMatrix[6]);
+  return {
+    parts: scene.parts, blenderWorld: lighting.blenderWorld,
+    environment: environment(lighting, { keyColor: SUN_COLOR }),
+    camera: isBanner
+      ? { eye: [1.2, 2.2, 6.5], target: [0.1, 1.9, 0.3], up: [0, 1, 0], fov: 35, near: 0.1, far: 200 }
+      : { eye: [2.6, 1.5, 3.6], target: [0, 0.5, 0], up: [0, 1, 0], fov: 35, near: 0.1, far: 200 },
+    shadow: { eye: [-6, 12, 8], target: [0, 0, 0], up: [0, 1, 0], extent: 8, near: 0.1, far: 40 },
+    blenderCloth: {
+      part: 'cloth', segments: CLOTH_SEGMENTS, restMatrix, seconds, framesPerSecond: 60,
+      vertexMass: CLOTH_DENSITY * sheetArea / ((CLOTH_SEGMENTS + 1) ** 2),
+      airDamping: BLENDER_AIR_DAMPING,
+      pinTopRow: isBanner,
+      windStrength: isBanner ? BANNER_BLENDER_WIND_STRENGTH : 0,
+      // The wind pushes along the sheet's facing, +Z in 67js axes.
+      windDirection: [0, 0, 1],
+      colliders: isBanner ? [] : ['ball', 'floor'],
+    },
+  };
+}
+
+export const CLOTH_SCENES = {
+  'banner-1s': () => clothScene({ kind: 'banner', seconds: 1 }),
+  'banner-2s': () => clothScene({ kind: 'banner', seconds: 2 }),
+  'drape-0.5s': () => clothScene({ kind: 'drape', seconds: 0.5 }),
+  'drape-1s': () => clothScene({ kind: 'drape', seconds: 1 }),
+  'drape-2s': () => clothScene({ kind: 'drape', seconds: 2 }),
+};

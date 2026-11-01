@@ -90,6 +90,24 @@ Memory: three `TEXTURE_2D_ARRAY`s on units 11 to 13 (sRGB colour, normal, roughn
 
 In a recipe, the same ground is the `terrain` geometry (`size`, `resolution`, `seed`, `amplitude`, `holes`): see [agent-scene](agent-scene.md).
 
+## Navigation
+
+`addons/navmesh` finds walking routes over any triangle ground, so a character can go around holes, steep slopes and obstacles. It is pure JavaScript and gives the same path for the same input.
+
+```js
+import { createNavmesh } from '67js/addons/navmesh';
+const { positions, indices } = terrain.parts[0].geometry; // world space, Y up
+const navmesh = createNavmesh({ positions, indices, agentRadius: 0.3, maxSlopeDegrees: 40, obstacles: [{ min: [4, 4], max: [6, 6] }] });
+const { points, length, searchNodes } = navmesh.findPath([-15, -15], [15, 15], { spacing: 1.5 });
+```
+
+- **Grid:** one cell per `cellSize` metres (default the agent radius, at least 0.05 m). Each cell takes the height of the highest triangle over its centre. A cell with no triangle (a hole) or inside an `obstacles` footprint is blocked, and every blocked cell blocks the cells within `agentRadius`, so the path keeps that distance from holes and obstacles. A step to a neighbour that climbs faster than `maxSlopeDegrees` is not allowed. Features thinner than a cell can be missed, so keep `cellSize` under the thinnest wall that matters.
+- **Search:** A* over eight neighbours without corner cutting, then line-of-sight string pulling, so the route is a few straight legs rather than a staircase. `points` are `[x, y, z]`, resampled every `spacing` metres (at most 200 points) with y read from the surface.
+- **Budgets:** `maxCells` (250,000) and `maxSearchNodes` (200,000) throw a `RangeError` that says what to raise. A start or goal in a hole, outside the ground or too near an obstacle, and a goal cut off by holes, throw with the reason.
+- **Measured** (40 m rolling ground at 64 cells, one 3 m hole, agent radius 0.3, corner to corner, Node on the Windows PC): 17,956 cells built in 13 ms, a path of 43.04 m (straight line 42.43 m) in 35 ms with 4,245 search nodes and 30 points.
+
+In an agent scene, `scene_inspect` takes `path: { ground, from: [x, z], to: [x, z], avoid, radius, maxSlope, cellSize, seconds, speed, lift, spacing }` and returns keyframes for a node translation track (`LINEAR`). `ground` is a node ID, `avoid` lists node IDs whose box footprints block. It reads the authored pose and changes nothing. Details are in `scene_capabilities` under `navigation`.
+
 ## Measured
 
 Windows, RTX 3060, headless Chrome, 1600x900, 4x MSAA, HDRI, shadows, bloom, 600 m terrain with 10x10 chunks at resolution 32 and about 1,000 to 1,750 trees:
@@ -103,8 +121,8 @@ Splat textures take 68 MiB of 74 MiB texture memory at 1K per layer.
 
 ## Limits
 
-- Up to four layers; one splat material per draw (chunks share one). More layers need a shader change and are not built.
-- No navmesh or path query yet.
+- Up to four layers; one splat material per draw (chunks share one). More layers are not built: the splat shader has 16 four-wide arrays and loops, the weight texture has four channels, and eight 1K layers would take about 136 MiB against the 74 MiB of texture memory above.
+- Routes come from a grid, not a mesh of walkable polygons: no stairs or bridges over one another (the highest surface wins), and no moving obstacles.
 - Overhangs are not represented: the terrain is a heightfield.
 - Changing `layers` or `splat` after the renderer exists needs a new renderer.
 - The weight texture follows its descriptor's filtering (mipmapped by default); 1024 square over 600 m gives 0.6 m texels.
