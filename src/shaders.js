@@ -599,6 +599,10 @@ vec3 boxMappedNormal(vec3 normal) {
   return dot(world, normal) < 0.0 ? -world : world;
 }
 
+vec2 mapUV(float flag) {
+  return flag > 1.5 ? lightmapUV : textureUV;
+}
+
 vec3 mappedNormal(vec3 normal) {
   vec3 positionX = dFdx(worldPosition);
   vec3 positionY = dFdy(worldPosition);
@@ -724,7 +728,7 @@ void main() {
   }
   float alpha = surfaceAlpha(textureAlpha);
   vec3 emission = emissionColor * surface.z;
-  if (USES_EMISSIVE_MAP) emission *= (boxMapScale > 0.0 ? sampleBox(emissiveMap) : texture(emissiveMap, textureUV)).rgb;
+  if (USES_EMISSIVE_MAP) emission *= (boxMapScale > 0.0 ? sampleBox(emissiveMap) : texture(emissiveMap, mapUV(hasEmissiveMap))).rgb;
   if (USES_RENDER_PASS) {
     outputColor = vec4(renderPassValue(color, normal, emission), 1.0);
     return;
@@ -741,7 +745,7 @@ void main() {
     roughness = armorSurface.y;
   }
   if (USES_METALLIC_ROUGHNESS_MAP) {
-    vec4 sampled = boxMapScale > 0.0 ? sampleBox(metallicRoughnessMap) : texture(metallicRoughnessMap, textureUV);
+    vec4 sampled = boxMapScale > 0.0 ? sampleBox(metallicRoughnessMap) : texture(metallicRoughnessMap, mapUV(hasMetallicRoughnessMap));
     metallic *= sampled.b;
     roughness *= sampled.g;
   }
@@ -859,7 +863,7 @@ ${featureCode("linkArea")}      vec3 lightNormal = areaLightNormals[index].xyz;
   }
   vec3 reflectance = fresnel(max(dot(normal, viewDirection), 0.0), baseReflectance);
   float occlusion = 1.0;
-  if (USES_OCCLUSION_MAP) occlusion = mix(1.0, texture(occlusionMap, textureUV).r, occlusionStrength);
+  if (USES_OCCLUSION_MAP) occlusion = mix(1.0, texture(occlusionMap, mapUV(hasOcclusionMap)).r, occlusionStrength);
   occlusion *= splatCavity;
   // Leaf and grass cards keep a faint sheen; full sky reflection washed grazing cards grey-blue.
   float skyReflection = canopyShaded ? 0.3 : 1.0;
@@ -959,6 +963,9 @@ const SHADER_FEATURE_CONDITIONS = {
 // one-line linkSun (a factor on the sun) with linkPoint, linkSpot and linkArea (statements that skip a light for a part).
 // A feature that replaces the sun shadow defines shadowVisibility as a macro in its declarations.
 const registeredFeatureCode = new Map();
+
+// material-layer-shaders.js sets bind(renderer, layerMaps): it binds the textures of material.layerMaps for one batch.
+export const layerTextureSupport = {};
 
 /** Register the GLSL of an optional feature. Called by the module that holds it, on import. */
 export function registerShaderFeatureCode(feature, slots) {

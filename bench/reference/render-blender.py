@@ -583,10 +583,18 @@ def render_to_numpy(scene, work_directory, name):
     return seconds
 
 
+def import_glb(root, glb_file):
+    """A Khronos sample asset goes through Blender's own glTF importer, so Cycles shades the file as its authors meant."""
+    bpy.ops.import_scene.gltf(filepath=os.path.join(root, glb_file))
+
+
 def build_scene(description, root):
     clear_scene()
     scene = bpy.context.scene
-    build_parts(scene, description)
+    if "glb" in description:
+        import_glb(root, description["glb"])
+    else:
+        build_parts(scene, description)
     build_world(scene, description["world"], root)
     build_lights(scene, description["environment"])
     if "volumeFog" in description["environment"]:

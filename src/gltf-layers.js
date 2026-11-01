@@ -1,5 +1,4 @@
 // Reads and writes the glTF material extensions that map onto the material layers of material-layers.js.
-// Texture slots inside these extensions (clearcoatTexture, transmissionTexture and so on) are not read: a factor is used.
 import { MATERIAL_LAYER_DEFAULTS, validateMaterialLayers } from './material-layers.js';
 
 export const GLTF_LAYER_EXTENSIONS = Object.freeze([
@@ -25,6 +24,28 @@ const IMPORT_RULES = Object.freeze([
   // Without a thickness texture the film is as thick as the maximum, so the minimum is not kept.
   ['KHR_materials_iridescence', { iridescence: 'iridescenceFactor', iridescenceIor: 'iridescenceIor', iridescenceThickness: 'iridescenceThicknessMaximum' }],
 ]);
+
+// Texture slots inside the layer extensions. Each row: the extension, the glTF property and the texture's colour space.
+// The property is also the key under material.layerMaps, the GLSL sampler and the shader feature (material-layer-shaders.js).
+// Slots without shader code (transmissionTexture, the iridescence and specular textures) are not read: a factor is used.
+export const LAYER_TEXTURE_SLOTS = Object.freeze([
+  ['KHR_materials_clearcoat', 'clearcoatTexture', 'linear'],
+  ['KHR_materials_clearcoat', 'clearcoatRoughnessTexture', 'linear'],
+  ['KHR_materials_clearcoat', 'clearcoatNormalTexture', 'linear'],
+  ['KHR_materials_anisotropy', 'anisotropyTexture', 'linear'],
+  ['KHR_materials_sheen', 'sheenColorTexture', 'srgb'],
+  ['KHR_materials_sheen', 'sheenRoughnessTexture', 'linear'],
+]);
+
+/** The texture references a material definition makes inside its layer extensions: [glTF property, reference, colour space]. */
+export function layerTextureReferences(definition) {
+  const references = [];
+  for (const [extensionName, property, colorSpace] of LAYER_TEXTURE_SLOTS) {
+    const reference = definition?.extensions?.[extensionName]?.[property];
+    if (reference) references.push([property, reference, colorSpace]);
+  }
+  return references;
+}
 
 /** Layer fields of one glTF material definition, validated, as a plain object to spread onto a material. */
 export function materialLayersFromGltf(definition) {

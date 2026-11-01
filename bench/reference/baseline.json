@@ -2,6 +2,10 @@
  "metric": "FLIP (LDR), mean error, lower is better",
  "blenderVersion": "5.2.2 LTS",
  "seconds": {
+  "brick-flat": {
+   "cycles": 24.4,
+   "eevee": 6.4
+  },
   "brick-graph": {
    "cycles": 25.9,
    "eevee": 29.8
@@ -68,6 +72,14 @@
   "cpu": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)"
  },
  "scores": {
+  "brick-flat": {
+   "gpu-vs-cycles": 0.1999,
+   "gpu-vs-eevee": 0.1119,
+   "cpu-vs-cycles": 0.1996,
+   "cpu-vs-eevee": 0.1116,
+   "eevee-vs-cycles": 0.1351,
+   "gpu-vs-cpu": 0.0061
+  },
   "brick-graph": {
    "gpu-vs-cycles": 0.2269,
    "gpu-vs-eevee": 0.148,

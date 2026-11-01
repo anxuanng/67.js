@@ -1,5 +1,5 @@
 import { validateMorphGeometry, validateMorphPose } from './morph.js';
-import { gltfExtensionsFromLayers } from './gltf-layers.js';
+import { gltfExtensionsFromLayers, LAYER_TEXTURE_SLOTS } from './gltf-layers.js';
 import { validateSkinGeometry } from './skinning.js';
 import { boxProjectedGeometry } from './export-box-uv.js';
 import { createTextureWriter } from './export-textures.js';
@@ -139,9 +139,29 @@ function createIdentityTracker() {
 
 function materialKeyOf(material, identify) {
   const textures = [...TEXTURE_CHANNELS, 'lightMap'].map(channel => material[channel] ? identify(material[channel]) : null);
+  const layerTextures = Object.entries(material.layerMaps ?? {}).map(([name, descriptor]) => [name, identify(descriptor)]);
   const fields = { ...material };
-  for (const channel of [...TEXTURE_CHANNELS, 'lightMap', 'pattern', 'boxMapScale', 'boxMapAxis']) delete fields[channel];
-  return JSON.stringify([fields, textures, material.boxMapScale ?? 0, material.boxMapAxis ?? 1]);
+  for (const channel of [...TEXTURE_CHANNELS, 'lightMap', 'layerMaps', 'pattern', 'boxMapScale', 'boxMapAxis']) delete fields[channel];
+  return JSON.stringify([fields, textures, layerTextures, material.boxMapScale ?? 0, material.boxMapAxis ?? 1]);
+}
+
+/** Adds the layer textures to the KHR_materials_* objects, creating an extension that only has textures to carry. */
+function writeLayerTextures(writer, textureWriter, material, layerExtensions) {
+  for (const [extensionName, property] of LAYER_TEXTURE_SLOTS) {
+    const descriptor = material.layerMaps?.[property];
+    if (!descriptor) continue;
+    if (!layerExtensions[extensionName]) {
+      layerExtensions[extensionName] = {};
+      writer.addExtension(extensionName);
+    }
+    layerExtensions[extensionName][property] = textureReference(textureWriter, descriptor, property);
+  }
+}
+
+function textureReference(textureWriter, descriptor, channel) {
+  const reference = { index: textureWriter.textureIndex(descriptor, channel) };
+  if (descriptor.uvChannel === 1) reference.texCoord = 1;
+  return reference;
 }
 
 /**
@@ -168,16 +188,15 @@ function writeMaterial(writer, textureWriter, material) {
   };
   writeAlphaFields(gltfMaterial, material);
   const layerExtensions = gltfExtensionsFromLayers(material);
-  if (Object.keys(layerExtensions).length > 0) {
-    gltfMaterial.extensions = layerExtensions;
-    for (const extensionName of Object.keys(layerExtensions)) writer.addExtension(extensionName);
-  }
+  for (const extensionName of Object.keys(layerExtensions)) writer.addExtension(extensionName);
+  writeLayerTextures(writer, textureWriter, material, layerExtensions);
+  if (Object.keys(layerExtensions).length > 0) gltfMaterial.extensions = layerExtensions;
   const strength = material.emission ?? 0;
   if (strength !== 0 && strength !== 1) {
     gltfMaterial.extensions = { ...gltfMaterial.extensions, [EMISSIVE_STRENGTH]: { emissiveStrength: strength } };
     writer.addExtension(EMISSIVE_STRENGTH, { required: true });
   }
-  const textureOf = channel => ({ index: textureWriter.textureIndex(material[channel], channel) });
+  const textureOf = channel => textureReference(textureWriter, material[channel], channel);
   if (material.map) pbr.baseColorTexture = textureOf('map');
   if (material.metallicRoughnessMap) pbr.metallicRoughnessTexture = textureOf('metallicRoughnessMap');
   if (material.normalMap) gltfMaterial.normalTexture = { ...textureOf('normalMap'), scale: material.normalScale?.[0] ?? 1 };

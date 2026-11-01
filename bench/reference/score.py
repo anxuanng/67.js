@@ -27,6 +27,19 @@ def load_png(path):
     return np.asarray(Image.open(path).convert("RGB"), dtype=np.float32) / 255
 
 
+COVERAGE_THRESHOLD = 0.03
+
+
+def asset_coverage_mask(background, asset_render):
+    """The pixels the asset changes, so a score is not diluted by the sky that both sides draw the same way."""
+    return np.abs(asset_render - background).max(axis=2) > COVERAGE_THRESHOLD
+
+
+def masked_flip_score(reference, test, mask):
+    error_map, _, _ = flip_evaluator.evaluate(reference.astype(np.float32), test.astype(np.float32), "LDR", inputsRGB=True)
+    return round(float(error_map[mask].mean()), 4)
+
+
 def flip_score(reference, test):
     _, mean_error, _ = flip_evaluator.evaluate(reference.astype(np.float32), test.astype(np.float32), "LDR", inputsRGB=True)
     return round(float(mean_error), 4)
@@ -73,6 +86,7 @@ def main():
     if "--path-tracer" in sys.argv:
         score_path_tracer(Path(sys.argv[1]), Path(sys.argv[2]))
         return
+    khronos = "--khronos" in sys.argv
     work_directory = Path(sys.argv[1])
     output_directory = Path(sys.argv[2])
     images_directory = output_directory / "images"
@@ -92,13 +106,23 @@ def main():
             "eevee-vs-cycles": flip_score(cycles, eevee),
             "gpu-vs-cpu": flip_score(cpu, gpu),
         }
+        if khronos:
+            mask = asset_coverage_mask(load_png(work_directory / f"{scene_id}-background.png"), gpu)
+            scores["asset-pixels"] = round(float(mask.mean()), 4)
+            scores["asset-gpu-vs-cycles"] = masked_flip_score(cycles, gpu, mask)
+            scores["asset-gpu-vs-eevee"] = masked_flip_score(eevee, gpu, mask)
+            scores["asset-eevee-vs-cycles"] = masked_flip_score(cycles, eevee, mask)
         results[scene_id] = scores
-        side_by_side(cycles, eevee, gpu, scores).save(images_directory / f"{scene_id}.jpg", quality=80)
+        image_name = f"khronos-{scene_id}" if khronos else scene_id
+        side_by_side(cycles, eevee, gpu, scores).save(images_directory / f"{image_name}.jpg", quality=80)
     timings = json.loads((work_directory / "blender-timings.json").read_text(encoding="utf-8"))
     graphics = json.loads((work_directory / "graphics.json").read_text(encoding="utf-8"))
     report = {"metric": "FLIP (LDR), mean error, lower is better", **timings, "graphics": graphics, "scores": results}
-    (output_directory / "baseline.json").write_text(json.dumps(report, indent=1) + "\n", encoding="utf-8")
+    report_name = "khronos.json" if khronos else "baseline.json"
+    (output_directory / report_name).write_text(json.dumps(report, indent=1) + "\n", encoding="utf-8")
     columns = ["gpu-vs-cycles", "gpu-vs-eevee", "cpu-vs-cycles", "cpu-vs-eevee", "eevee-vs-cycles", "gpu-vs-cpu"]
+    if khronos:
+        columns += ["asset-pixels", "asset-gpu-vs-cycles", "asset-gpu-vs-eevee", "asset-eevee-vs-cycles"]
     print("scene".ljust(20) + "".join(column.rjust(17) for column in columns))
     for scene_id, scores in results.items():
         print(scene_id.ljust(20) + "".join(f"{scores[column]:.4f}".rjust(17) for column in columns))

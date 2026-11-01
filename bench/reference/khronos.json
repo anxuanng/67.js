@@ -1,0 +1,76 @@
+{
+ "metric": "FLIP (LDR), mean error, lower is better",
+ "blenderVersion": "5.2.2 LTS",
+ "seconds": {
+  "AnisotropyBarnLamp": {
+   "cycles": 7.7,
+   "eevee": 3.9
+  },
+  "AnisotropyDiscTest": {
+   "cycles": 4.7,
+   "eevee": 1.3
+  },
+  "ClearCoatTest": {
+   "cycles": 6.9,
+   "eevee": 9.9
+  },
+  "TransmissionTest": {
+   "cycles": 7.2,
+   "eevee": 6.5
+  }
+ },
+ "graphics": {
+  "gpu": "ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 (0x00002487) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+  "cpu": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)"
+ },
+ "scores": {
+  "AnisotropyBarnLamp": {
+   "gpu-vs-cycles": 0.041,
+   "gpu-vs-eevee": 0.0462,
+   "cpu-vs-cycles": 0.0408,
+   "cpu-vs-eevee": 0.0458,
+   "eevee-vs-cycles": 0.0398,
+   "gpu-vs-cpu": 0.0065,
+   "asset-pixels": 0.0733,
+   "asset-gpu-vs-cycles": 0.3584,
+   "asset-gpu-vs-eevee": 0.4318,
+   "asset-eevee-vs-cycles": 0.3765
+  },
+  "AnisotropyDiscTest": {
+   "gpu-vs-cycles": 0.0445,
+   "gpu-vs-eevee": 0.0419,
+   "cpu-vs-cycles": 0.0443,
+   "cpu-vs-eevee": 0.0417,
+   "eevee-vs-cycles": 0.024,
+   "gpu-vs-cpu": 0.0062,
+   "asset-pixels": 0.1074,
+   "asset-gpu-vs-cycles": 0.2808,
+   "asset-gpu-vs-eevee": 0.2772,
+   "asset-eevee-vs-cycles": 0.1534
+  },
+  "ClearCoatTest": {
+   "gpu-vs-cycles": 0.0448,
+   "gpu-vs-eevee": 0.0333,
+   "cpu-vs-cycles": 0.0445,
+   "cpu-vs-eevee": 0.0329,
+   "eevee-vs-cycles": 0.0271,
+   "gpu-vs-cpu": 0.0076,
+   "asset-pixels": 0.1353,
+   "asset-gpu-vs-cycles": 0.2306,
+   "asset-gpu-vs-eevee": 0.1808,
+   "asset-eevee-vs-cycles": 0.1335
+  },
+  "TransmissionTest": {
+   "gpu-vs-cycles": 0.0485,
+   "gpu-vs-eevee": 0.042,
+   "cpu-vs-cycles": 0.0483,
+   "cpu-vs-eevee": 0.0417,
+   "eevee-vs-cycles": 0.0286,
+   "gpu-vs-cpu": 0.0063,
+   "asset-pixels": 0.1356,
+   "asset-gpu-vs-cycles": 0.2708,
+   "asset-gpu-vs-eevee": 0.2371,
+   "asset-eevee-vs-cycles": 0.1656
+  }
+ }
+}

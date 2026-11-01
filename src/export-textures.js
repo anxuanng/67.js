@@ -72,7 +72,7 @@ export function createTextureWriter(writer, maxTextureSize = DEFAULT_MAX_TEXTURE
   return {
     /** Index of the glTF texture for a renderer texture descriptor `{ image, wrapS, ... }`. */
     textureIndex(descriptor, channel) {
-      if ((descriptor.uvChannel ?? 0) !== 0) throw new RangeError(`GLB ${channel} uses UV channel ${descriptor.uvChannel}; only channel 0 is supported.`);
+      if (![0, 1].includes(descriptor.uvChannel ?? 0)) throw new RangeError(`GLB ${channel} uses UV channel ${descriptor.uvChannel}; only channels 0 and 1 are supported.`);
       const source = imageIndex(descriptor, channel);
       const sampler = samplerIndex(descriptor);
       const key = `${source}:${sampler}`;

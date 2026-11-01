@@ -1,6 +1,7 @@
 import { mat4 } from 'gl-matrix';
 import { COMPONENT_TYPES, attributeFloats, createAccessorReader } from './gltf-accessors.js';
 import { createClips } from './gltf-animation.js';
+import { layerTextureReferences } from './gltf-layers.js';
 import { Matrix4, SceneNode } from './gltf-nodes.js';
 import { createSkinPose, validateSkinGeometry } from './skinning.js';
 
@@ -9,6 +10,7 @@ const GEOMETRY_ATTRIBUTE_NAMES = {
   NORMAL: 'normal',
   COLOR_0: 'color',
   TEXCOORD_0: 'uv',
+  TEXCOORD_1: 'uv1',
   JOINTS_0: 'skinIndex',
   WEIGHTS_0: 'skinWeight',
 };
@@ -183,6 +185,15 @@ export async function decodeGltf({ document, glbBinary, resourceBytes, decoders,
         throw new Error(`${sourceField} failed to decode. Use a valid PNG or JPEG image. ${error.message}`);
       }
     }
+    const layerTextures = {};
+    for (const [name, reference] of layerTextureReferences(definition)) {
+      try {
+        layerTextures[name] = await loadTexture(reference.index);
+      } catch (error) {
+        throw new Error(`${name} failed to decode. Use a valid PNG or JPEG image. ${error.message}`);
+      }
+    }
+    if (Object.keys(layerTextures).length > 0) material.layerTextures = layerTextures;
     materials.set(materialIndex, material);
     return material;
   }

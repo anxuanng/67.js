@@ -12,7 +12,10 @@ import { resolve } from 'node:path';
 import { chromium } from 'playwright';
 import { createServer } from 'vite';
 
-const WORK_DIRECTORY = resolve('artifacts/reference');
+// --khronos draws the Khronos sample assets in artifacts/khronos (Blender imports the same files) into their own work
+// directory, and scores them into khronos.json. Nothing in baseline.json or images/<scene>.jpg changes.
+const khronos = process.argv.includes('--khronos');
+const WORK_DIRECTORY = resolve(khronos ? 'artifacts/reference-khronos' : 'artifacts/reference');
 const OUTPUT_DIRECTORY = resolve('bench/reference');
 const CHROME = process.env.CHROME_PATH ?? 'C:/Program Files/Google/Chrome/Application/chrome.exe';
 const BLENDER = process.env.BLENDER_PATH ?? 'C:/Program Files/Blender Foundation/Blender 5.2/blender.exe';
@@ -51,7 +54,7 @@ async function renderBackend(backend, serverUrl, graphics) {
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
     page.on('console', message => message.text().includes('GL_') && console.log('PAGE', message.text().slice(0, 200)));
-    await page.goto(`${serverUrl}/bench/reference/harness.html`, { timeout: PAGE_LOAD_TIMEOUT });
+    await page.goto(`${serverUrl}/bench/reference/harness.html${khronos ? '?set=khronos' : ''}`, { timeout: PAGE_LOAD_TIMEOUT });
     await page.waitForFunction(() => window.renderReferenceScene, null, { timeout: PAGE_LOAD_TIMEOUT });
     const sceneIds = await page.evaluate(() => window.referenceSceneIds);
     for (const id of sceneIds) {
@@ -64,6 +67,10 @@ async function renderBackend(backend, serverUrl, graphics) {
       graphics[backend] = result.graphics;
       await writeFile(`${WORK_DIRECTORY}/${id}-${backend}.png`, Buffer.from(result.image, 'base64'));
       if (describe) await writeFile(`${WORK_DIRECTORY}/scenes/${id}.json`, JSON.stringify(result.description));
+      if (khronos && describe) {
+        const background = await page.evaluate(sceneId => window.renderReferenceScene(sceneId, { describe: false, backgroundOnly: true }), id);
+        await writeFile(`${WORK_DIRECTORY}/${id}-background.png`, Buffer.from(background.image, 'base64'));
+      }
       const bakeNote = result.bake ? `, bake ${result.bake.seconds.toFixed(1)} s, ${result.bake.report.texels} texels` : '';
       console.log(`${id} on ${backend}: ${Math.round(performance.now() - started)} ms${bakeNote}`);
     }
@@ -137,6 +144,6 @@ if (!scoreOnly && !pathTracerFlag) {
 if (!onlyScene || pathTracerFlag) {
   runChecked('uv', [
     'run', '--no-project', '--python', '3.12', '--with', 'flip-evaluator', '--with', 'pillow', '--with', 'numpy',
-    'python', '-I', 'bench/reference/score.py', WORK_DIRECTORY, OUTPUT_DIRECTORY, ...(pathTracerFlag ? ['--path-tracer'] : []),
+    'python', '-I', 'bench/reference/score.py', WORK_DIRECTORY, OUTPUT_DIRECTORY, ...(pathTracerFlag ? ['--path-tracer'] : []), ...(khronos ? ['--khronos'] : []),
   ]);
 }

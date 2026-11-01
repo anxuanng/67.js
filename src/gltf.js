@@ -1,5 +1,5 @@
 import { applyClip } from './gltf-animation.js';
-import { GLTF_LAYER_EXTENSIONS, materialLayersFromGltf } from './gltf-layers.js';
+import { GLTF_LAYER_EXTENSIONS, layerTextureReferences, materialLayersFromGltf } from './gltf-layers.js';
 import { attributeFloats } from './gltf-accessors.js';
 import { decodeGltf, textureSourceIndex } from './gltf-decode.js';
 import { Matrix4 } from './gltf-nodes.js';
@@ -9,16 +9,17 @@ import { MAX_MORPH_TARGETS, createMorphPose, validateMorphGeometry, validateMorp
 
 export const GLTF_CAPABILITIES = Object.freeze({
   formats: ['glb', 'gltf'],
-  supported: ['triangle meshes', 'world transforms', 'rigid node animations', 'four-influence skeletal skinning', 'joint node animations', 'relative POSITION/NORMAL morph targets', 'morph weight animations', 'PNG/JPEG base color textures', 'normal/occlusion/emissive/metallic-roughness textures', 'TEXCOORD_0', 'linear RGB vertex colors', 'metallic roughness factors', 'emissive factors', 'alpha mask and blend modes', 'double-sided materials', 'KHR_mesh_quantization', 'KHR_materials_emissive_strength', 'KHR_materials_clearcoat, transmission, volume, ior, specular, sheen, anisotropy and iridescence factors', 'KHR_texture_transform baked into UVs', 'EXT_mesh_gpu_instancing expanded into parts', 'KHR_draco_mesh_compression with options.decoders.draco', 'EXT_meshopt_compression with options.decoders.meshopt', 'KHR_texture_basisu with options.decoders.ktx2'],
-  ignoredExtensions: [],
-  unsupported: ['more than four skin influences', 'singular weighted skin transforms', 'reflected skin transforms', 'TANGENT morph targets', 'morph targets without authored base normals', 'vertex alpha below one', 'different texture transforms on one material', 'skinned or morphed GPU instancing', 'textures inside material layer extensions (factors only)'],
+  supported: ['triangle meshes', 'world transforms', 'rigid node animations', 'four-influence skeletal skinning', 'joint node animations', 'relative POSITION/NORMAL morph targets', 'morph weight animations', 'PNG/JPEG base color textures', 'normal/occlusion/emissive/metallic-roughness textures', 'TEXCOORD_0', 'TEXCOORD_1 for occlusion, emissive and metallic-roughness textures', 'clearcoat, clearcoat roughness, clearcoat normal, anisotropy, sheen color and sheen roughness textures', 'linear RGB vertex colors', 'metallic roughness factors', 'emissive factors', 'alpha mask and blend modes', 'double-sided materials', 'KHR_mesh_quantization', 'KHR_materials_emissive_strength', 'KHR_materials_clearcoat, transmission, volume, ior, specular, sheen, anisotropy and iridescence factors', 'KHR_texture_transform baked into UVs', 'EXT_mesh_gpu_instancing expanded into parts', 'KHR_draco_mesh_compression with options.decoders.draco', 'EXT_meshopt_compression with options.decoders.meshopt', 'KHR_texture_basisu with options.decoders.ktx2'],
+  // The primitive's own material is drawn; the other variants are not selectable.
+  ignoredExtensions: ['KHR_materials_variants'],
+  unsupported: ['more than four skin influences', 'singular weighted skin transforms', 'reflected skin transforms', 'TANGENT morph targets', 'morph targets without authored base normals', 'vertex alpha below one', 'different texture transforms on one material', 'skinned or morphed GPU instancing', 'transmission, iridescence and specular textures (their factors are used)', 'texture transforms on TEXCOORD_1'],
 });
 
 const LAYER_SHADER_EXTENSIONS = Object.freeze(['KHR_materials_anisotropy', 'KHR_materials_iridescence']);
 
 // The shader code for anisotropy and iridescence is not in the core bundle; a file that uses either brings it in.
 async function loadLayerShadersFor(document) {
-  const usesLayerShaders = (document.materials ?? []).some(material => LAYER_SHADER_EXTENSIONS.some(extension => material?.extensions?.[extension]));
+  const usesLayerShaders = (document.materials ?? []).some(material => LAYER_SHADER_EXTENSIONS.some(extension => material?.extensions?.[extension]) || layerTextureReferences(material).length > 0);
   if (usesLayerShaders) await import('./material-layer-shaders.js');
 }
 
@@ -26,7 +27,10 @@ const DEFAULT_MAX_BYTES = 32 * 1024 * 1024;
 const DEFAULT_MAX_VERTICES = 2_000_000;
 const GLTF_ALPHA_MODES = { OPAQUE: 'opaque', MASK: 'mask', BLEND: 'blend' };
 const DEFAULT_MAX_INSTANCES = 4096;
-const ALLOWED_EXTENSIONS = new Set(['KHR_mesh_quantization', 'KHR_materials_emissive_strength', 'KHR_texture_transform', 'EXT_mesh_gpu_instancing', ...GLTF_LAYER_EXTENSIONS]);
+// KHR_xmp_json_ld and its earlier name KHR_xmp only carry metadata (authors, licences) and change nothing drawn: the
+// Khronos sample assets list them, and a file must not be refused for them.
+const METADATA_EXTENSIONS = ['KHR_xmp_json_ld', 'KHR_xmp'];
+const ALLOWED_EXTENSIONS = new Set(['KHR_mesh_quantization', 'KHR_materials_emissive_strength', 'KHR_texture_transform', 'EXT_mesh_gpu_instancing', ...METADATA_EXTENSIONS, ...GLTF_LAYER_EXTENSIONS]);
 const DECODER_BY_EXTENSION = { KHR_draco_mesh_compression: 'draco', EXT_meshopt_compression: 'meshopt', KHR_texture_basisu: 'ktx2' };
 // Accepted when optional, because 67js does not render them. Rejected when listed in extensionsRequired.
 const IGNORED_EXTENSIONS = new Set(GLTF_CAPABILITIES.ignoredExtensions);
@@ -39,8 +43,31 @@ const MATERIAL_TEXTURES = [
   ['emissiveMap', 'emissiveTexture', 'srgb'],
 ];
 
+// Only these textures may read the second UV set, because the shader samples them with lightmapUV. The base color map is
+// sampled in the depth pass and by box mapping, and the normal map builds its tangent frame from the first set.
+const SECOND_UV_TEXTURES = ['metallicRoughnessTexture', 'occlusionTexture', 'emissiveTexture'];
+
 function materialTexture(material, field) {
   return ['baseColorTexture', 'metallicRoughnessTexture'].includes(field) ? material.pbrMetallicRoughness?.[field] : material[field];
+}
+
+function uvChannelOf(reference) {
+  return reference.texCoord ?? 0;
+}
+
+/** Every texture a material definition references, as [name, reference]: the five material maps, then the layer maps. */
+function materialTextureReferences(material) {
+  const references = [];
+  for (const [, property] of MATERIAL_TEXTURES) {
+    const reference = materialTexture(material, property);
+    if (reference) references.push([property, reference]);
+  }
+  for (const [name, reference] of layerTextureReferences(material)) references.push([name, reference]);
+  return references;
+}
+
+function usesSecondUvSet(material) {
+  return materialTextureReferences(material ?? {}).some(([, reference]) => uvChannelOf(reference) === 1);
 }
 
 function limitsFor(options) {
@@ -181,13 +208,15 @@ function uvTransformKey(transform) {
   return transform === IDENTITY_UV_TRANSFORM ? '' : JSON.stringify([transform.offset, transform.rotation, transform.scale]);
 }
 
-/** All maps of a material read one UV set, so one shared transform can be baked into it. */
+/** All maps on TEXCOORD_0 of a material share one UV set, so one shared transform can be baked into it. */
 function materialUvTransform(material) {
   let found = null;
-  for (const [, field] of MATERIAL_TEXTURES) {
-    const texture = materialTexture(material, field);
-    if (!texture) continue;
+  for (const [name, texture] of materialTextureReferences(material)) {
     const transform = textureUvTransform(texture);
+    if (uvChannelOf(texture) !== 0) {
+      if (uvTransformKey(transform) !== '') throw new Error(`${name} reads TEXCOORD_1, where KHR_texture_transform is unsupported. Bake the transform into the UVs.`);
+      continue;
+    }
     if (found && uvTransformKey(found) !== uvTransformKey(transform)) {
       throw new Error('Maps of one material must share the same KHR_texture_transform. Different transforms per map are unsupported.');
     }
@@ -357,10 +386,9 @@ function validateDocument(document, limits, allowedExtensions) {
     const alphaCutoff = material.alphaCutoff ?? 0.5;
     if (!Number.isFinite(alphaCutoff) || alphaCutoff < 0 || alphaCutoff > 1) throw new Error('Invalid glTF alphaCutoff.');
     if (material.doubleSided !== undefined && typeof material.doubleSided !== 'boolean') throw new Error('glTF doubleSided must be a boolean.');
-    for (const [, field] of MATERIAL_TEXTURES) {
-      const texture = materialTexture(material, field);
-      if (!texture) continue;
-      if ((texture.texCoord ?? 0) !== 0 || Object.keys(texture.extensions ?? {}).some(name => name !== 'KHR_texture_transform')) throw new Error(`${field} requires TEXCOORD_0 and no texture extensions besides KHR_texture_transform.`);
+    for (const [field, texture] of materialTextureReferences(material)) {
+      const allowedChannels = SECOND_UV_TEXTURES.includes(field) ? [0, 1] : [0];
+      if (!allowedChannels.includes(uvChannelOf(texture)) || Object.keys(texture.extensions ?? {}).some(name => name !== 'KHR_texture_transform')) throw new Error(`${field} requires ${SECOND_UV_TEXTURES.includes(field) ? 'TEXCOORD_0 or TEXCOORD_1' : 'TEXCOORD_0'} and no texture extensions besides KHR_texture_transform.`);
       if (!Number.isInteger(texture.index) || !document.textures?.[texture.index]) throw new Error(`Invalid ${field} texture index.`);
       if (field === 'normalTexture' && (!Number.isFinite(texture.scale ?? 1) || !Number.isFinite(Math.fround(texture.scale ?? 1)))) throw new Error('Normal texture scale must be a finite float.');
       if (field === 'occlusionTexture' && (!Number.isFinite(texture.strength ?? 1) || (texture.strength ?? 1) < 0 || (texture.strength ?? 1) > 1)) throw new Error('Occlusion texture strength must be within zero and one.');
@@ -377,7 +405,10 @@ function validateDocument(document, limits, allowedExtensions) {
   for (const mesh of document.meshes ?? []) {
     for (const primitive of mesh.primitives ?? []) {
       const material = document.materials?.[primitive.material];
-      if (material && MATERIAL_TEXTURES.some(([, field]) => materialTexture(material, field)) && primitive.attributes?.TEXCOORD_0 === undefined) throw new Error('Material textures require TEXCOORD_0.');
+      for (const [, reference] of materialTextureReferences(material ?? {})) {
+        const attribute = `TEXCOORD_${uvChannelOf(reference)}`;
+        if (primitive.attributes?.[attribute] === undefined) throw new Error(`Material textures require ${attribute}.`);
+      }
     }
   }
   let decodedBytes = morphBytes;
@@ -573,8 +604,8 @@ function computeVertexNormals(positions, indices) {
   return normals;
 }
 
-function convertGeometry(source, mirrored, primitive) {
-  const { position, normal, uv, color, skinIndex, skinWeight } = source.attributes;
+function convertGeometry(source, mirrored, primitive, secondUvSet) {
+  const { position, normal, uv, uv1, color, skinIndex, skinWeight } = source.attributes;
   const positions = copyAttribute(position, 3);
   const indices = new Uint32Array(source.index?.count ?? position.count);
   for (let index = 0; index < indices.length; index++) {
@@ -599,6 +630,11 @@ function convertGeometry(source, mirrored, primitive) {
   }
   if (uv && uv.count !== position.count) throw new Error('TEXCOORD_0 and POSITION counts must match.');
   if (uv) geometry.uvs = copyAttribute(uv, 2);
+  // The renderer's second UV set is geometry.lightUvs, the one light maps use.
+  if (secondUvSet) {
+    if (!uv1 || uv1.count !== position.count) throw new Error('TEXCOORD_1 and POSITION counts must match.');
+    geometry.lightUvs = copyAttribute(uv1, 2);
+  }
   if (color) geometry.colors = convertVertexColors(color, position.count);
   if (skinIndex) geometry.skinIndices = new Uint16Array(copyAttribute(skinIndex, 4));
   if (skinWeight) geometry.skinWeights = copyAttribute(skinWeight, 4);
@@ -716,6 +752,29 @@ function decodedTextureImage(texture, field) {
   return typeof ImageData === 'function' ? new ImageData(pixels, width, height) : { width, height, data: pixels };
 }
 
+function textureDescriptorFor(texture, field, { colorSpace, uvChannel }, limits, maps) {
+  if (!maps.has(texture)) maps.set(texture, new Map());
+  const descriptors = maps.get(texture);
+  const key = `${colorSpace}:${uvChannel}`;
+  if (!descriptors.has(key)) {
+    const image = decodedTextureImage(texture, field);
+    if (!image || image.width * image.height > limits.maxTexturePixels) throw new Error(`${field} image is missing or exceeds maxTexturePixels.`);
+    const descriptor = {
+      image,
+      uvChannel,
+      wrapS: texture.wrapS,
+      wrapT: texture.wrapT,
+      minFilter: texture.minFilter,
+      magFilter: texture.magFilter,
+      flipY: false,
+      colorSpace,
+    };
+    textureDescriptorInfo(descriptor);
+    descriptors.set(key, descriptor);
+  }
+  return descriptors.get(key);
+}
+
 function convertMaterial(source, limits, maps, definition = {}) {
   const material = {
     tag: 'gltf',
@@ -734,28 +793,17 @@ function convertMaterial(source, limits, maps, definition = {}) {
   Object.assign(material, materialLayersFromGltf(definition));
   if (!material.emissiveColor.some(value => value > 0)) material.emission = 0;
   if (!Number.isFinite(Math.fround(material.emission)) || material.emission < 0) throw new Error('Emissive intensity must be a finite nonnegative float.');
-  for (const [field, , colorSpace] of MATERIAL_TEXTURES) {
+  for (const [field, property, colorSpace] of MATERIAL_TEXTURES) {
     const texture = source[field === 'metallicRoughnessMap' ? 'metalnessMap' : field === 'occlusionMap' ? 'aoMap' : field];
     if (!texture) continue;
-    if (!maps.has(texture)) maps.set(texture, new Map());
-    const descriptors = maps.get(texture);
-    if (!descriptors.has(colorSpace)) {
-      const image = decodedTextureImage(texture, field);
-      if (!image || image.width * image.height > limits.maxTexturePixels) throw new Error(`${field} image is missing or exceeds maxTexturePixels.`);
-      const descriptor = {
-        image,
-        uvChannel: 0,
-        wrapS: texture.wrapS,
-        wrapT: texture.wrapT,
-        minFilter: texture.minFilter,
-        magFilter: texture.magFilter,
-        flipY: false,
-        colorSpace,
-      };
-      textureDescriptorInfo(descriptor);
-      descriptors.set(colorSpace, descriptor);
-    }
-    material[field] = descriptors.get(colorSpace);
+    const uvChannel = uvChannelOf(materialTexture(definition, property));
+    material[field] = textureDescriptorFor(texture, field, { colorSpace, uvChannel }, limits, maps);
+  }
+  for (const [name, reference, colorSpace] of layerTextureReferences(definition)) {
+    const texture = source.layerTextures?.[name];
+    if (!texture) continue;
+    material.layerMaps ??= {};
+    material.layerMaps[name] = textureDescriptorFor(texture, name, { colorSpace, uvChannel: uvChannelOf(reference) }, limits, maps);
   }
   return material;
 }
@@ -795,6 +843,7 @@ export async function parseGltf(data, options = {}) {
       const materialIndex = node.material.materialIndex;
       const uvTransform = materialUvTransform(document.materials?.[materialIndex] ?? {});
       const uvKey = uvTransformKey(uvTransform);
+      const secondUvSet = usesSecondUvSet(document.materials?.[materialIndex]);
       if (!materials.has(node.material)) materials.set(node.material, convertMaterial(node.material, limits, maps, document.materials?.[materialIndex]));
       const material = materials.get(node.material);
       for (const instanceMatrix of instanceMatricesOf(node, limits.maxInstances)) {
@@ -802,16 +851,17 @@ export async function parseGltf(data, options = {}) {
         if (!Number.isFinite(determinant) || Math.abs(determinant) < 1e-12) throw new Error('Mesh world transform is singular or non-finite.');
         const mirrored = determinant < 0;
         const geometryMirrored = node.isSkinnedMesh ? false : mirrored;
-        const geometryKey = `${node.geometry.uuid}:${geometryMirrored}:${uvKey}`;
+        const geometryKey = `${node.geometry.uuid}:${geometryMirrored}:${uvKey}:${secondUvSet}`;
         if (!geometries.has(geometryKey)) {
           actualVertices += node.geometry.attributes.position.count * (1 + (primitive.targets?.length ?? 0));
           if (actualVertices > limits.maxVertices) throw new Error('Decoded geometry exceeds maxVertices.');
-          const converted = convertGeometry(node.geometry, geometryMirrored, primitive);
+          const converted = convertGeometry(node.geometry, geometryMirrored, primitive, secondUvSet);
           if (converted.uvs) bakeUvTransform(converted.uvs, uvTransform);
           geometries.set(geometryKey, converted);
         }
         const geometry = geometries.get(geometryKey);
-        if (MATERIAL_TEXTURES.some(([field]) => material[field]) && !geometry.uvs) throw new Error('Material textures require TEXCOORD_0.');
+        const firstSetMaps = [...MATERIAL_TEXTURES.map(([field]) => material[field]), ...Object.values(material.layerMaps ?? {})];
+        if (firstSetMaps.some(map => map && map.uvChannel === 0) && !geometry.uvs) throw new Error('Material textures require TEXCOORD_0.');
         const part = { name: node.name || `glTF mesh ${parts.length + 1}`, geometry, matrix: new Float32Array(worldMatrixOf(node, instanceMatrix, pendingTransform).elements), material };
         const transformBinding = { node, instanceMatrix, part, mirrored, matrix: part.matrix, pendingMatrix: new Float32Array(16) };
         let pendingSkin;

@@ -209,6 +209,18 @@ test('anisotropy and iridescence import as material layers without a warning', a
   assert.deepEqual(asset.warnings, []);
 });
 
+test('metadata extensions such as KHR_xmp_json_ld and the earlier KHR_xmp do not stop an import', async () => {
+  const asset = await parseGltf(triangleDocument({
+    edit: document => {
+      document.extensionsUsed = ['KHR_xmp', 'KHR_xmp_json_ld'];
+      document.extensions = { KHR_xmp_json_ld: { packets: [] } };
+      document.asset.extensions = { KHR_xmp: { packet: 0 } };
+    },
+  }));
+  assert.equal(asset.parts.length, 1);
+  assert.deepEqual(asset.warnings, []);
+});
+
 test('required material extensions, bad layer values and missing decoders are rejected', async () => {
   const required = triangleDocument({ edit: document => { document.extensionsRequired = ['KHR_materials_unlit']; } });
   await assert.rejects(parseGltf(required), /Unsupported glTF extension: KHR_materials_unlit/);

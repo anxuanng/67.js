@@ -76,20 +76,98 @@ function wallQuad(width, height) {
   };
 }
 
-export const REFERENCE_SCENES = {
-  async 'brick-graph'() {
-    const lighting = await skyLighting();
-    const pattern = normalizeMaterialPattern({ type: 'graph', graph: brickGraph(), mapping: 'uv', bump: 1, resolution: 512 });
-    const { map, normalMap, boxMapScale, boxMapAxis } = materialPatternTextures(pattern);
-    const wall = part('wall', wallQuad(6, 4), [0, 0, 0], [1, 1, 1], { color: [1, 1, 1], roughness: 0.85, map, normalMap, boxMapScale, boxMapAxis });
+function srgbToLinear(value) {
+  return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+}
+
+function averageLinearColor(colorImage) {
+  const sums = [0, 0, 0];
+  const pixelCount = colorImage.width * colorImage.height;
+  for (let pixel = 0; pixel < pixelCount; pixel++) {
+    for (let channel = 0; channel < 3; channel++) {
+      sums[channel] += srgbToLinear(colorImage.data[pixel * 4 + channel] / 255);
+    }
+  }
+  return sums.map(sum => sum / pixelCount);
+}
+
+async function brickWallScene({ withGraph }) {
+  const lighting = await skyLighting();
+  const pattern = normalizeMaterialPattern({ type: 'graph', graph: brickGraph(), mapping: 'uv', bump: 1, resolution: 512 });
+  const { map, normalMap, boxMapScale, boxMapAxis } = materialPatternTextures(pattern);
+  const wall = withGraph
+    ? part('wall', wallQuad(6, 4), [0, 0, 0], [1, 1, 1], { color: [1, 1, 1], roughness: 0.85, map, normalMap, boxMapScale, boxMapAxis })
+    : part('wall', wallQuad(6, 4), [0, 0, 0], [1, 1, 1], { color: averageLinearColor(map.image), roughness: 0.85 });
+  if (withGraph) {
     wall.material.graph = pattern.graph;
     wall.material.graphBump = pattern.bump;
-    return {
-      parts: [floor([0.4, 0.38, 0.32]), wall], blenderWorld: lighting.blenderWorld,
-      environment: environment(lighting, { keyColor: SUN_COLOR }),
-      camera: { eye: [0, 2, 8.5], target: [0, 2, 0], up: [0, 1, 0], fov: 40, near: 0.1, far: 100 },
-      shadow: { eye: [-6, 10, 8], target: [0, 1, 0], up: [0, 1, 0], extent: 8, near: 0.1, far: 40 },
-    };
+  }
+  return {
+    parts: [floor([0.4, 0.38, 0.32]), wall], blenderWorld: lighting.blenderWorld,
+    environment: environment(lighting, { keyColor: SUN_COLOR }),
+    camera: { eye: [0, 2, 8.5], target: [0, 2, 0], up: [0, 1, 0], fov: 40, near: 0.1, far: 100 },
+    shadow: { eye: [-6, 10, 8], target: [0, 1, 0], up: [0, 1, 0], extent: 8, near: 0.1, far: 40 },
+  };
+}
+
+// Khronos glTF sample assets (issue #51), downloaded by hand into artifacts/khronos/<name>/<name>.glb. Blender imports
+// the same file with its own importer, so the reference is Cycles reading the asset, not our reading of it.
+// SheenChair is still left out: its occlusion texture on TEXCOORD_1 now loads, but its fabric gives the base color and normal
+// textures different KHR_texture_transform values, which parseGltf refuses (one UV transform is baked per material).
+const KHRONOS_ASSET_NAMES = ['ClearCoatTest', 'TransmissionTest', 'AnisotropyBarnLamp', 'AnisotropyDiscTest'];
+const KHRONOS_VIEW_DIRECTION = [0.35, 0.25, 1];
+const KHRONOS_FIELD_OF_VIEW = 35;
+
+function worldBounds(parts) {
+  const minimum = [Infinity, Infinity, Infinity];
+  const maximum = [-Infinity, -Infinity, -Infinity];
+  for (const { geometry, matrix } of parts) {
+    for (let index = 0; index < geometry.positions.length; index += 3) {
+      const [x, y, z] = [geometry.positions[index], geometry.positions[index + 1], geometry.positions[index + 2]];
+      for (let axis = 0; axis < 3; axis++) {
+        const coordinate = matrix[axis] * x + matrix[4 + axis] * y + matrix[8 + axis] * z + matrix[12 + axis];
+        minimum[axis] = Math.min(minimum[axis], coordinate);
+        maximum[axis] = Math.max(maximum[axis], coordinate);
+      }
+    }
+  }
+  return { minimum, maximum };
+}
+
+function cameraAroundBounds({ minimum, maximum }) {
+  const center = minimum.map((low, axis) => (low + maximum[axis]) / 2);
+  const radius = Math.hypot(...minimum.map((low, axis) => maximum[axis] - low)) / 2;
+  const distance = (radius / Math.sin((KHRONOS_FIELD_OF_VIEW / 2) * Math.PI / 180)) * 1.05;
+  const length = Math.hypot(...KHRONOS_VIEW_DIRECTION);
+  const eye = center.map((value, axis) => value + (KHRONOS_VIEW_DIRECTION[axis] / length) * distance);
+  return { center, radius, camera: { eye, target: center, up: [0, 1, 0], fov: KHRONOS_FIELD_OF_VIEW, near: distance / 100, far: distance * 10 } };
+}
+
+async function khronosAssetScene(name) {
+  const lighting = await skyLighting();
+  const file = `artifacts/khronos/${name}/${name}.glb`;
+  const response = await fetch(`/${file}`);
+  const asset = await parseGltf(await response.arrayBuffer());
+  const { center, radius, camera } = cameraAroundBounds(worldBounds(asset.parts));
+  return {
+    parts: asset.parts, glb: file, blenderWorld: lighting.blenderWorld,
+    environment: environment(lighting, { keyColor: SUN_COLOR }),
+    camera,
+    shadow: { eye: [center[0] - radius, center[1] + radius * 2, center[2] + radius], target: center, up: [0, 1, 0], extent: radius * 1.5, near: radius * 0.1, far: radius * 8 },
+  };
+}
+
+export const KHRONOS_SCENES = Object.fromEntries(KHRONOS_ASSET_NAMES.map(name => [name, () => khronosAssetScene(name)]));
+
+export const REFERENCE_SCENES = {
+  async 'brick-graph'() {
+    return brickWallScene({ withGraph: true });
+  },
+
+  // The control for brick-graph: the same wall in the colour the graph averages to, with no maps, which is all a
+  // material without a graph could say. brick-graph must score better than this against Cycles (issue #50).
+  async 'brick-flat'() {
+    return brickWallScene({ withGraph: false });
   },
 
   async 'material-spheres'() {

@@ -1,5 +1,5 @@
 import { mat4, mat3 } from 'gl-matrix';
-import { vertexShader, createFragmentShader, liquidFragmentShader, depthVertexShader, depthFragmentShader, benchmarkVertexShader, benchmarkFragmentShader } from './shaders.js';
+import { layerTextureSupport, vertexShader, createFragmentShader, liquidFragmentShader, depthVertexShader, depthFragmentShader, benchmarkVertexShader, benchmarkFragmentShader } from './shaders.js';
 import { postFragment, skyFragment, bloomFragment } from './post.js';
 import { fullscreenVertex, startProgram, finishProgram, compileProgram } from './gl-program.js';
 import { ambientOcclusionFragment } from './ambient-occlusion.js';
@@ -55,6 +55,7 @@ function shaderFeaturesOfParts(parts) {
       if (material[field]) features.add(MAP_SHADER_FEATURES[index]);
     });
     if (material.lightMap) features.add('lightMap');
+    Object.keys(material.layerMaps ?? {}).forEach(name => features.add(name));
     if (material.layers) features.add('splat');
     if (material.moss > 0) features.add('moss');
     if (material.anisotropy > 0) features.add('anisotropy');
@@ -147,7 +148,7 @@ function materialMapState(material) {
   const occlusionStrength = material.occlusionStrength ?? 1;
   validateSplatMaterial(material);
   if (material.layers && PROCEDURAL_MATERIAL_TAGS.has(material.tag)) throw new Error('Splat layers require a standard PBR material tag.');
-  return [...MATERIAL_MAPS.map(field => material[field] ?? null), normalScale[0], normalScale[1], occlusionStrength, ...mossState(material), material.boxMapScale ?? 0, material.boxMapAxis ?? 1, ...lightMapState(material), ...splatBatchState(material)];
+  return [...MATERIAL_MAPS.map(field => material[field] ?? null), normalScale[0], normalScale[1], occlusionStrength, ...mossState(material), material.boxMapScale ?? 0, material.boxMapAxis ?? 1, ...lightMapState(material), ...splatBatchState(material), material.layerMaps ?? null];
 }
 
 // A baked light map reads the second UV set, so it is only drawn for parts that cannot be skinned or morphed.
@@ -292,7 +293,7 @@ export function textureDescriptorInfo(map, maximumSize = Infinity) {
   const width = map.image?.naturalWidth ?? map.image?.width;
   const height = map.image?.naturalHeight ?? map.image?.height;
   if (!Number.isInteger(width) || !Number.isInteger(height) || width <= 0 || height <= 0 || width > maximumSize || height > maximumSize) throw new Error('Texture image dimensions are invalid or exceed MAX_TEXTURE_SIZE.');
-  if ((map.uvChannel ?? 0) !== 0) throw new Error('Only texture UV channel 0 is supported.');
+  if (![0, 1].includes(map.uvChannel ?? 0)) throw new Error('Only texture UV channels 0 and 1 are supported.');
   if (map.transform || map.offset || map.repeat || map.rotation !== undefined || map.extensions && Object.keys(map.extensions).length) throw new Error('Texture transforms and extensions are unsupported. Bake them into UV channel 0.');
   if (map.colorSpace && !['srgb', 'linear'].includes(map.colorSpace)) throw new Error('Texture color space must be srgb or linear.');
   const wrapS = map.wrapS ?? 10497;
@@ -444,8 +445,8 @@ export class Renderer67 {
     }
     const maps = new Set();
     for (const group of groups) {
-      for (const field of [...MATERIAL_MAPS, 'lightMap']) {
-        const map = group[0].material[field];
+      const material = group[0].material;
+      for (const [field, map] of [...MATERIAL_MAPS, 'lightMap'].map(name => [name, material[name]]).concat(Object.entries(material.layerMaps ?? {}))) {
         if (!map) continue;
         const info = textureDescriptorInfo(map, textureLimit);
         if (['normalMap', 'metallicRoughnessMap', 'occlusionMap'].includes(field) && map.colorSpace !== 'linear') throw new Error(`${field} requires a linear texture descriptor.`);
@@ -471,7 +472,7 @@ export class Renderer67 {
     for (const group of groups) {
       const geometry = group[0].geometry;
       if (geometry.uvs && geometry.uvs.length !== geometry.positions.length / 3 * 2) throw new Error('Geometry UV count must match the vertex count.');
-      if (hasMaterialMap(group[0].material) && !geometry.uvs && !group[0].material.boxMapScale) throw new Error('Textured geometry requires UV channel 0.');
+      if (hasMaterialMap(group[0].material) && !geometry.uvs && !geometry.lightUvs && !group[0].material.boxMapScale) throw new Error('Textured geometry requires UV channel 0.');
       for (const coordinate of geometry.uvs ?? []) {
         if (!Number.isFinite(coordinate)) throw new Error('Geometry UVs must be finite.');
       }
@@ -1095,7 +1096,7 @@ export class Renderer67 {
         if ((part.material[MATERIAL_MAPS[index]] ?? null) !== mapState[index]) throw new Error(`Material map or scale changes require a new renderer: ${part.name}`);
       }
       const [lightMapDescriptor, lightMapScale] = lightMapState(part.material);
-      if (lightMapDescriptor !== (mapState[14] ?? null) || lightMapScale !== (mapState[15] ?? 0)) throw new Error(`Light map changes require a new renderer: ${part.name}`);
+      if (lightMapDescriptor !== (mapState[14] ?? null) || lightMapScale !== (mapState[15] ?? 0) || (part.material.layerMaps ?? null) !== (mapState[18] ?? null)) throw new Error(`Light map and layer texture changes require a new renderer: ${part.name}`);
       if (normalScale[0] !== mapState[5] || normalScale[1] !== mapState[6] || (part.material.occlusionStrength ?? 1) !== mapState[7] || mossState(part.material).some((value, index) => value !== mapState[8 + index]) || materialLayerState(part.material).some((value, index) => value !== location.layerState[index])) throw new Error(`Material map or scale changes require a new renderer: ${part.name}`);
       validateTransform(part, location.normalMatrix);
     }
@@ -1790,7 +1791,7 @@ export class Renderer67 {
         this.context.activeTexture(this.context.TEXTURE0 + index + 1);
         this.context.bindTexture(this.context.TEXTURE_2D, batch.textures[index]);
         this.context.uniform1i(this.uniforms[MAP_UNIFORMS[index]], index + 1);
-        this.context.uniform1f(this.uniforms[MAP_FLAGS[index]], batch.mapState[index] ? 1 : 0);
+        this.context.uniform1f(this.uniforms[MAP_FLAGS[index]], batch.mapState[index] ? 1 + (batch.mapState[index].uvChannel ?? 0) : 0);
       }
       this.context.uniform2f(this.uniforms.normalScale, batch.mapState[5], batch.mapState[6]);
       this.context.uniform1f(this.uniforms.occlusionStrength, batch.mapState[7]);
@@ -1805,6 +1806,7 @@ export class Renderer67 {
       this.context.uniform1f(this.uniforms.boxMapScale, batch.mapState[12]);
       this.context.uniform1i(this.uniforms.boxMapAxis, batch.mapState[13]);
       this.bindSplat(batch.splat);
+      layerTextureSupport.bind?.(this, batch.mapState[18]);
       this.context.uniform1f(this.uniforms.hasLightMap, batch.lightMapTexture ? 1 : 0);
       if (batch.lightMapTexture) {
         this.context.activeTexture(this.context.TEXTURE0 + LIGHT_MAP_UNIT);
