@@ -1,12 +1,15 @@
-import { readFileSync } from 'node:fs';
 import { defineConfig } from 'vite';
+
+// The full texts sit once in LICENSE and THIRD-PARTY-NOTICES.md at the package root. Repeating them in each of the
+// 80 built files cost about 4 KB of archive space per file.
+const legalBanner = '/*! 67js, MIT License, Copyright (c) 2026 CodePawl. Bundled gl-matrix: Copyright (c) 2015-2025, Brandon Jones, Colin MacKenzie IV, MIT License. Complete license texts and third-party notices: LICENSE and THIRD-PARTY-NOTICES.md at the package root. */';
 
 export default defineConfig({
   build: {
     copyPublicDir: false,
     rolldownOptions: {
       external: ['@dimforge/rapier3d-compat', 'manifold-3d'],
-      output: { banner: `/*! ${readFileSync('LICENSE', 'utf8')}\nThird-party notices: ${readFileSync('THIRD-PARTY-NOTICES.md', 'utf8')} */` },
+      output: { banner: legalBanner },
     },
     outDir: 'build',
     lib: {

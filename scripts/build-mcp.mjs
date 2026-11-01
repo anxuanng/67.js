@@ -33,6 +33,7 @@ async function dependencyFor(moduleId) {
 
 async function collectLicenses(chunks) {
   const dependencies = new Map();
+  const embedded = new Map();
   const rootsByModule = new Map();
   for (const chunk of chunks) {
     for (const [moduleId, information] of Object.entries(chunk.modules)) {
@@ -45,9 +46,39 @@ async function collectLicenses(chunks) {
       if (!dependency) continue;
       const key = `${dependency.metadata.name}@${dependency.metadata.version}`;
       dependencies.set(key, dependency);
+      // The SDK ships prebundled dependencies whose module roots are invisible to Rolldown.
+      if (!dependency.metadata.name.startsWith('@modelcontextprotocol/')) continue;
+      const source = await readFile(moduleId.split('?')[0], 'utf8');
+      for (const match of source.matchAll(/\/\/#[rR]egion [^\n]*\/\.pnpm\/([^/]+)\/node_modules\/(?:@[^/]+\/)?[^/]+\//g)) {
+        const encoded = match[1].split('_')[0];
+        const versionOffset = encoded.lastIndexOf('@');
+        if (versionOffset < 1) continue;
+        const name = encoded.slice(0, versionOffset).replace('+', '/');
+        const version = encoded.slice(versionOffset + 1);
+        if (!/^\d+\.\d+\.\d+/.test(version)) continue;
+        embedded.set(`${name}@${version}`, { name, version, bundledBy: key });
+      }
     }
   }
   const gaps = [];
+  const embeddedNotices = [];
+  for (const [key, dependency] of embedded) {
+    if (dependencies.has(key)) continue;
+    const installed = await packageAt(join(root, 'node_modules', dependency.name));
+    if (installed?.metadata.version === dependency.version) {
+      dependencies.set(key, installed);
+    } else {
+      const filename = join(root, 'licenses', 'mcp', `${dependency.name.replaceAll('/', '_')}-${dependency.version}.txt`);
+      if (existsSync(filename)) {
+        const contents = await readFile(filename, 'utf8');
+        embeddedNotices.push(`## ${key}\n\n${contents}`);
+        dependency.licenseFile = relative(root, filename).replaceAll('\\', '/');
+        dependency.licenseSha256 = digest(Buffer.from(contents));
+      } else {
+        gaps.push({ ...dependency, reason: 'Exact prebundled dependency license is unavailable in installed package roots or licenses/mcp.' });
+      }
+    }
+  }
   const projectLicense = await readFile(join(root, 'LICENSE'), 'utf8');
   const notices = [`# MCP bundle licenses\n\n## ${JSON.parse(await readFile(join(root, 'package.json'), 'utf8')).name}\n\n${projectLicense}`];
   const records = [];
@@ -61,14 +92,7 @@ async function collectLicenses(chunks) {
       notices.push(`## ${key}: ${filename}\n\n${await readFile(join(dependency.directory, filename), 'utf8')}`);
     }
   }
-  return { text: `${notices.join('\n\n')}\n`, dependencies: records, licenseGaps: gaps };
-}
-
-// Installed next to the package by npm, so the server bundle imports them instead of carrying a copy.
-const INSTALLED_DEPENDENCY_PREFIXES = ['playwright-core', '@modelcontextprotocol/', 'zod'];
-
-function isInstalledDependency(specifier) {
-  return INSTALLED_DEPENDENCY_PREFIXES.some(prefix => specifier === prefix || specifier.startsWith(prefix.endsWith('/') ? prefix : `${prefix}/`));
+  return { text: `${[...notices, ...embeddedNotices].join('\n\n')}\n`, dependencies: records, embeddedDependencies: [...embedded.values()], licenseGaps: gaps };
 }
 
 function singleModule(result, filename) {
@@ -78,7 +102,7 @@ function singleModule(result, filename) {
   }
   const chunk = outputs[0];
   for (const specifier of chunk.imports) {
-    if (!isBuiltin(specifier) && !isInstalledDependency(specifier)) {
+    if (!isBuiltin(specifier) && specifier !== 'playwright-core') {
       throw new Error(`${filename} has an unexpected external import: ${specifier}.`);
     }
   }
@@ -90,15 +114,6 @@ function singleModule(result, filename) {
     }
   }
   return chunk;
-}
-
-async function installedDependencyRecords(names) {
-  const records = [];
-  for (const name of names) {
-    const installed = await packageAt(join(root, 'node_modules', name));
-    records.push({ name, version: installed.metadata.version, license: installed.metadata.license ?? null });
-  }
-  return records;
 }
 
 const PREVIEW_ENTRY_FILE = 'mcp/preview.js';
@@ -166,14 +181,18 @@ export async function buildMcp({ outDir = join(root, 'build', 'mcp') } = {}) {
   const previewChunks = await reachablePreviewChunks(build, join(root, 'build'));
   const server = singleModule(await build({
     ...configuration,
-    resolve: { conditions: ['node', 'import', 'default'], mainFields: ['main', 'module'] },
+    resolve: {
+      conditions: ['node', 'import', 'default'],
+      mainFields: ['main', 'module'],
+      alias: { '@modelcontextprotocol/server/_shims': join(root, 'scripts', 'mcp-sdk-shims.mjs') },
+    },
     build: {
       ...configuration.build,
       target: 'node20',
       lib: { entry: join(root, 'scripts', 'mcp-server.mjs'), formats: ['es'], fileName: () => 'server.mjs' },
       rolldownOptions: {
         platform: 'node',
-        external: specifier => isBuiltin(specifier) || isInstalledDependency(specifier) || specifier === 'manifold-3d' || specifier === '@dimforge/rapier3d-compat',
+        external: specifier => isBuiltin(specifier) || specifier === 'playwright-core' || specifier === 'manifold-3d' || specifier === '@dimforge/rapier3d-compat',
         output: { codeSplitting: false, comments: { legal: true }, banner: legalBanner },
       },
     },
@@ -203,8 +222,9 @@ export async function buildMcp({ outDir = join(root, 'build', 'mcp') } = {}) {
     sourceDirty: Boolean(status.stdout.trim()),
     nodeTarget: 'node20',
     buildTool: { name: 'vite', version: (await packageAt(join(root, 'node_modules', 'vite'))).metadata.version },
-    externalDependencies: await installedDependencyRecords(['playwright-core', '@modelcontextprotocol/server', 'zod']),
+    externalDependencies: [{ name: 'playwright-core', version: (await packageAt(join(root, 'node_modules', 'playwright-core'))).metadata.version }],
     dependencies: licenses.dependencies,
+    embeddedDependencies: licenses.embeddedDependencies,
     licenseGaps: licenses.licenseGaps,
     outputs,
     previewChunks: previewChunks

@@ -7,9 +7,8 @@ Source checks used Windows Node.js, installed Chrome and CPU SwiftShader. Regist
 
 | Check | Measured result |
 | --- | --- |
-| Archive | 802,581 bytes before, 677,563 after (the MCP SDK and zod are installed dependencies, not bundled), so 370,000 bytes are free under 1 MiB. Install size grows by about 14.5 MB. |
+| Archive | 802,581 bytes before, 695,041 after (one-line notices in built files, no Ajv in the MCP server), so 353,535 bytes are free under 1 MiB. Install size is unchanged. |
 | Every export | `npm run smoke:package` loads each `exports` entry in a clean consumer. |
-| Audit | `npm audit --audit-level=high` found 0 vulnerabilities with the new dependencies. |
 | Node tests | 1359 tests passed. |
 | Clean source archive | `npm run smoke:package` passed. |
 | Installed MCP CLI | `npm run smoke:mcp-package` (not protocol only) passed with a modern and a legacy client, and checked every `previewChunks` hash. |

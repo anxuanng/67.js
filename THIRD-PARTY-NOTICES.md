@@ -54,14 +54,18 @@ CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
 OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+## Built files
+
+Each file in `build/` starts with a one-line notice that points here and to `LICENSE`. The complete texts are kept once, in those two files.
+
 ## MCP command and browser preview
 
-The packaged `build/mcp/preview.js` and its engine chunks bundle rendering dependencies, and
-`build/mcp/LICENSES.md` contains their complete license and notice texts.
+The packaged `build/mcp/server.mjs` and `build/mcp/preview.js` bundle the MCP SDK,
+schema validation and rendering dependencies. `build/mcp/LICENSES.md` contains
+their complete license and notice texts, including dependencies embedded in the SDK.
 `build/mcp/manifest.json` records dependency versions, license provenance and output SHA-256 hashes.
-The MCP SDK (`@modelcontextprotocol/server`, Apache-2.0), `zod` (MIT) and the `playwright-core`
-browser driver are normal dependencies that npm installs next to the package. Each carries its own
-license and notices, including the dependencies prebundled inside the SDK.
+Pinned upstream license copies for embedded dependencies are retained in `licenses/mcp/` in the source repository.
+The external `playwright-core` browser driver includes its own license and notices in its dependency package.
 
 ## RobotExpressive (test fixture, not in the npm package)
 
