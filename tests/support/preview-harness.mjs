@@ -4,6 +4,7 @@ import { mat4 } from 'gl-matrix';
 import { createAgentScene, needsMeshBooleans, loadMeshBooleans, meshBooleansLoaded, needsPhysics, loadPhysicsEngine, physicsEngineLoaded, loadAllAgentSceneModules, allAgentSceneModulesLoaded } from '../../src/agent-scene.js';
 import { applyProjection } from '../../src/camera.js';
 import { resolveAgentShadow, agentEnvironmentMap } from '../../src/agent-look.js';
+import { agentSceneModule } from '../../src/agent-scene-modules.js';
 import { createAgentAssetScene } from '../../src/agent-asset.js';
 import { parseGltf } from '../../src/gltf.js';
 import { BRANCH_LIMITS, createBranchStore, printableLabel } from '../../src/agent-branches.js';
@@ -29,7 +30,7 @@ export function previewHarness() {
   class FaultInjectedRenderer {
     memoryPlan = { estimatedBytes: 1024 };
     capabilities = { hdr: true, samples: 4 };
-    constructor() { currentRenderer = this; }
+    constructor(canvasElement, parts, options = {}) { currentRenderer = this; this.shadowCascades = options.shadowCascades ?? null; }
     context = {
       isContextLost: () => lost,
       getError: () => renderError,
@@ -73,7 +74,7 @@ export function previewHarness() {
     setManifoldModuleLoader: () => {},
     needsPhysics, loadPhysicsEngine, physicsEngineLoaded, setPhysicsModuleLoader: () => {},
     parseGltf, Uint8Array, atob, sessionProblem,
-    applyProjection, mat4, resolveAgentShadow, agentEnvironmentMap, BRANCH_LIMITS, createBranchStore, printableLabel,
+    applyProjection, mat4, resolveAgentShadow, agentEnvironmentMap, agentSceneModule, BRANCH_LIMITS, createBranchStore, printableLabel,
     Renderer67: FaultInjectedRenderer,
     // The fault-injected renderer has no floor part; the automatic floor is covered by agent-ground.test.js and the live smokes.
     agentGroundPlacement: () => null, createAgentGround: () => null, placeAgentGround: () => {},

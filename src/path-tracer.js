@@ -670,6 +670,7 @@ export function describeIgnoredFeatures(parts, environment) {
     }
     if (material.tag && material.tag !== 'surface') notes.add(`${material.tag} materials are traced as plain surfaces.`);
     if (material.alphaMode === 'blend') notes.add('Blended transparency is traced as opaque.');
+    if (material.lightMask !== undefined) notes.add('Light linking (affects) is not traced: every light lights every part.');
   }
   return [...notes];
 }

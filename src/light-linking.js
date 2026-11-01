@@ -6,7 +6,7 @@ import { ALL_LIGHTS_MASK } from './material-layers.js';
 // renderer, so a scene without linking never downloads it and its shader has no mask test.
 // Bit 0 is the sun (the key light), bits 1 to 8 the point lights, 9 to 16 the spot lights and 17 to 20 the area lights,
 // in the order of the environment lists. Linking changes what a light adds, not what it shadows: a part that a light
-// does not reach still blocks that light for the others. The path tracer and the light bake ignore linking.
+// does not reach still blocks that light for the others. The path tracer ignores linking and says so in its report; the light bake honours it.
 // The GLSL has no comments, because comments ship to every page.
 
 export const SUN_BIT = 0;
@@ -54,15 +54,35 @@ function collectLinks(environment) {
 }
 
 /**
- * Parts with the light masks that the lights' `affects` lists ask for: a light with `affects: ['name', ...]` lights only
- * those parts, a light without it lights every part. `environment.keyAffects` does the same for the sun. A part that
- * every light reaches is returned unchanged, so a scene without links keeps its batches.
+ * The light mask of each part, in order, or null when no light is limited (every part keeps all lights). A light with
+ * `affects: ['name', ...]` lights only those parts, a light without it lights every part; `environment.keyAffects` does
+ * the same for the sun.
+ */
+export function lightMasksFor(parts, environment) {
+  const links = collectLinks(environment);
+  if (links.every(([, names]) => names === null)) return null;
+  return parts.map(part => lightMaskFor(part.name, links));
+}
+
+/**
+ * Parts with the light masks that the lights' `affects` lists ask for. A part that every light reaches is returned
+ * unchanged, so a scene without links keeps its batches.
  */
 export function applyLightLinks(parts, environment) {
-  const links = collectLinks(environment);
-  if (links.every(([, names]) => names === null)) return parts;
-  return parts.map((part) => {
-    const mask = lightMaskFor(part.name, links);
-    return mask === ALL_LIGHTS_MASK ? part : { ...part, material: { ...part.material, lightMask: mask } };
-  });
+  const masks = lightMasksFor(parts, environment);
+  if (masks === null) return parts;
+  return parts.map((part, index) => (masks[index] === ALL_LIGHTS_MASK ? part : { ...part, material: { ...part.material, lightMask: masks[index] } }));
+}
+
+/**
+ * Names in a light's `affects` list that are not nodes of the recipe, as "where: name" strings. A linked light lights
+ * only those nodes, so a misspelled name would silently darken a part; the caller fails with the next action instead.
+ */
+export function unknownLightLinkNames(environment, nodes) {
+  const known = new Set(nodes.map(node => node.id));
+  const lists = [['environment.keyAffects', environment.keyAffects]];
+  for (const field of ['pointLights', 'spotLights', 'areaLights']) {
+    (environment[field] ?? []).forEach((light, index) => lists.push([`${field}[${index}].affects`, light.affects]));
+  }
+  return lists.flatMap(([where, names]) => (names ?? []).filter(name => !known.has(name)).map(name => `${where}: ${name}`));
 }

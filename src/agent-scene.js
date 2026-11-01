@@ -2,10 +2,10 @@ import { mat4, mat3 } from 'gl-matrix';
 import { box, cylinder, grid, sphere, torus } from './geometry.js';
 import { createSceneGraph } from './scene-graph.js';
 import { applyProjection } from './camera.js';
-import { normalizeAgentLook, environmentPatchWithSetup } from './agent-look.js';
+import { normalizeAgentLook, environmentPatchWithSetup, environmentLinksLights } from './agent-look.js';
 import { agentSceneModule } from './agent-scene-modules.js';
 import { MESH_SMOOTH_ANGLE_DEFAULT, CURVE_TEXT_LIMITS, AGENT_SCENE_CAPABILITIES, AGENT_SCENE_DEFAULT_LIMITS, MAX_MATERIAL_PATTERNS, RECIPE_ALPHA_MODES } from './agent-scene-capabilities.js';
-import { MATERIAL_LAYER_FIELDS, validateMaterialLayers } from './material-layers.js';
+import { ALL_LIGHTS_MASK, MATERIAL_LAYER_FIELDS, validateMaterialLayers } from './material-layers.js';
 import { recipeDiagnostics } from './agent-diagnostics.js';
 import { armatureNodes, bakeRigExport, bindSkins, createSkinStages, normalizeArmatures, publishSkinPoses, restWorldMatrix, rigReport, stageSkinPoses, transformedBounds, withoutArmatureNodes } from './rig.js';
 export { AGENT_SCENE_CAPABILITIES, AGENT_SCENE_DEFAULT_LIMITS };
@@ -603,6 +603,39 @@ function withDefaultMaterial(recipe) {
   return alreadyDefined ? materials : [...materials, { id: DEFAULT_MATERIAL_ID }];
 }
 
+// A name that matches no node would leave the light lighting nothing without a sign, so it fails and says what to do.
+function checkLightLinkNames(recipe) {
+  if (!environmentLinksLights(recipe.environment)) {
+    return;
+  }
+  const unknown = agentSceneModule('lightLinking').unknownLightLinkNames(recipe.environment, recipe.nodes);
+  if (unknown.length > 0) {
+    throw new RangeError(`Light links name nodes that do not exist (${unknown.slice(0, 4).join('; ')}). List node IDs with scene_inspect, then fix the affects list or add the node.`);
+  }
+}
+
+// Every light's affects list in light order: the mask of a part depends on these lists and nothing else of the environment.
+function lightLinksKey(environment) {
+  const lights = [...environment.pointLights, ...(environment.spotLights ?? []), ...(environment.areaLights ?? [])];
+  return JSON.stringify([environment.keyAffects ?? null, ...lights.map(light => light.affects ?? null)]);
+}
+
+// A part that a light skips needs its own material object with the light mask, but it must still read every other
+// field from the live material, so motion tracks keep driving it. One wrapper per material and mask keeps batches.
+function linkedMaterial(liveMaterial, lightMask, wrappers) {
+  const byMask = wrappers.get(liveMaterial) ?? new Map();
+  wrappers.set(liveMaterial, byMask);
+  if (!byMask.has(lightMask)) {
+    const wrapper = {};
+    for (const field of Object.keys(liveMaterial)) {
+      Object.defineProperty(wrapper, field, { enumerable: true, get: () => liveMaterial[field] });
+    }
+    Object.defineProperty(wrapper, 'lightMask', { enumerable: true, value: lightMask });
+    byMask.set(lightMask, Object.freeze(wrapper));
+  }
+  return byMask.get(lightMask);
+}
+
 function normalizeRecipe(input, limits) {
   let recipe = copiedJson(input, limits.maxRecipeBytes);
   knownKeys(recipe, ['format', 'schemaVersion', 'geometries', 'materials', 'nodes', 'armatures', 'camera', 'environment', 'effects', 'shadow', 'motion', 'physics', 'cloth', 'timeline', 'particles', 'bake'], 'recipe');
@@ -649,6 +682,7 @@ function normalizeRecipe(input, limits) {
     }
   }
   Object.assign(recipe, normalizeAgentLook(look));
+  checkLightLinkNames(recipe);
   if (Object.hasOwn(recipe, 'motion')) {
     recipe.motion = recipe.motion === null || recipe.motion === undefined ? null : agentSceneModule('motion').normalizeAgentMotion(recipe.motion, recipe);
   }
@@ -882,6 +916,7 @@ export function createAgentScene(input, inputLimits = {}) {
   let clothBake = null;
   let particleBake = null;
   let lightBake = null;
+  let lightLinkCache = null;
   const skinCache = new Map();
   const checkpoints = new Map();
 
@@ -994,7 +1029,7 @@ export function createAgentScene(input, inputLimits = {}) {
       state.sourceRestParts.every((part, index) => part === nextParts[index]);
     const sourceRestParts = sameParts ? state.sourceRestParts : Object.freeze(nextParts);
     const lightBakeResult = stageLightBake(recipe, sourceRestParts, graph);
-    const restParts = lightBakeResult ? lightBakeResult.parts : sourceRestParts;
+    const restParts = stageLightLinks(recipe, lightBakeResult ? lightBakeResult.parts : sourceRestParts);
     const stagedState = {
       recipe, geometryRecords, geometries, graph, materialHandles,
       // Part identity decides what the next stage reuses, so it compares the parts as built, before any bake.
@@ -1018,6 +1053,26 @@ export function createAgentScene(input, inputLimits = {}) {
     return stagedState;
   }
 
+  // Parts a linked light skips carry a light mask in their material. The same parts and links give the same objects, so
+  // an edit that changes neither is not a topology change for the renderer.
+  function stageLightLinks(recipe, parts) {
+    if (!environmentLinksLights(recipe.environment)) {
+      return parts;
+    }
+    const { environment } = recipe;
+    const linksKey = lightLinksKey(environment);
+    if (lightLinkCache?.parts === parts && lightLinkCache.linksKey === linksKey) {
+      return lightLinkCache.linked;
+    }
+    const linking = agentSceneModule('lightLinking');
+    const masks = linking.lightMasksFor(parts, environment);
+    const wrappers = new Map();
+    const linked = Object.freeze(parts.map((part, index) => (masks[index] === ALL_LIGHTS_MASK ? part
+      : Object.freeze({ ...part, material: linkedMaterial(part.material, masks[index], wrappers) }))));
+    lightLinkCache = { parts, linksKey, linked };
+    return linked;
+  }
+
   // A light bake costs seconds of ray tracing: it runs when the parts, the lights, the materials or the bake fields
   // change, and every other edit, seek or camera move reuses the last result.
   function stageLightBake(recipe, sourceRestParts, graph) {
@@ -1034,7 +1089,7 @@ export function createAgentScene(input, inputLimits = {}) {
       generatedGeometryGenerators.set(sheet.node, 'a cloth simulation');
     }
     const { spotLights, areaLights } = recipe.environment;
-    const key = JSON.stringify([recipe.bake, [...generatedGeometryGenerators], pointLights, spotLights, areaLights, keyColor, keyIntensity, lightDirection, recipe.materials,
+    const key = JSON.stringify([recipe.bake, [...generatedGeometryGenerators], pointLights, spotLights, areaLights, keyColor, keyIntensity, lightDirection, recipe.environment.keyAffects, recipe.materials,
       [...worldMatrices].map(([name, matrix]) => [name, Array.from(matrix)])]);
     if (lightBake?.key === key && lightBake.sourceRestParts === sourceRestParts) {
       return { ...lightBake, reused: true };
@@ -1231,8 +1286,8 @@ export function createAgentScene(input, inputLimits = {}) {
         if (lookField) {
           knownKeys(operation, ['type', lookField], 'operation');
           const patch = operation[lookField];
-          // Spot and area lights are absent from a recipe until it sets them.
-          const optionalFields = lookField === 'environment' ? ['spotLights', 'areaLights'] : [];
+          // Spot and area lights, cascades and sun links are absent from a recipe until it sets them.
+          const optionalFields = lookField === 'environment' ? ['spotLights', 'areaLights', 'shadowCascades', 'keyAffects'] : [];
           knownKeys(patch, [...Object.keys(candidate[lookField]), ...optionalFields], lookField);
           const nestedField = lookField === 'environment' ? 'volumeFog' : lookField === 'effects' ? 'bloom' : null;
           const merged = { ...candidate[lookField], ...(lookField === 'environment' ? environmentPatchWithSetup(patch) : patch) };
