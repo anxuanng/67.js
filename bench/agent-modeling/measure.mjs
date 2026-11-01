@@ -420,6 +420,7 @@ export async function measureRecipe(recipe) {
     nodes: geometries.length,
     physics,
     physicsSeekStable,
+    spotLights: recipe.environment?.spotLights ?? [],
     rig: recipe.armatures ? measureRig(scene, recipe.motion?.duration ?? 0) : null,
     patternTypes: scene.exportRecipe().materials.filter(material => material.pattern).map(material => material.pattern.type),
     patternMappings: scene.exportRecipe().materials.filter(material => material.pattern).map(material => material.pattern.mapping ?? 'box'),
