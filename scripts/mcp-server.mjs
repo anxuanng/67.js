@@ -346,15 +346,12 @@ const stackNodes = [
     voxelSize: z.number().positive().optional().describe('Edge of one grid cell. Give this or resolution.'),
     resolution: z.number().int().min(4).max(192).optional().describe('Cells along the longest side. Give this or voxelSize.'),
   }).describe('Voxel remesh like Blender Remesh: a closed quad surface of even cells. The mesh must be closed (fill_holes first); tags and attributes are dropped. Over 192 cells per side is refused.'),
-  z.strictObject({
-    op: z.enum(Object.keys(MODIFIER_OPERATIONS)),
-    distance: z.number().optional(), minVertices: z.number().int().optional(), angle: z.number().optional(),
-    factor: z.number().optional(), iterations: z.number().int().optional(), size: z.number().optional(),
-    mode: z.string().optional(), axis: z.string().optional(),
-  }),
 ];
-const meshStack = z.array(z.discriminatedUnion('op', stackNodes)).max(16);
-const meshEdits = z.array(z.discriminatedUnion('op', [...meshEdit.options, ...stackNodes])).max(64);
+// A whole-mesh modifier is a free record { op, ...fields }: its ops and fields live in scene_capabilities meshModifiers, so
+// the schema does not grow with each modifier, and the backend validates every field.
+const modifierRecord = z.record(z.string(), z.unknown()).describe(`Whole-mesh modifier { op, ...fields }, op one of: ${Object.keys(MODIFIER_OPERATIONS).join(', ')}.`);
+const meshStack = z.array(z.union([z.discriminatedUnion('op', stackNodes), modifierRecord])).max(16);
+const meshEdits = z.array(z.union([z.discriminatedUnion('op', [...meshEdit.options, ...stackNodes]), modifierRecord])).max(64);
 // The full edit and stack schemas live in mesh_edit and mesh_stack. Repeating them in every recipe cost about 45 KB
 // per tool; the backend still validates each item and names the valid ops when one is wrong.
 const recipeMeshEdits = z.array(z.record(z.string(), z.unknown())).max(64);
