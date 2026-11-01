@@ -3,6 +3,7 @@ import { mergeByDistance } from './mesh-ops.js';
 import { triangulateFaces, splitSharpEdges } from './mesh-restructure.js';
 import { MODIFIER_OPERATIONS } from './mesh-operations.js';
 import { normalizeGeneratorEdit, GENERATOR_RUNNERS } from './mesh-generator-modifiers.js';
+import { normalizeNormalEdit, NORMAL_RUNNERS } from './mesh-normal-modifiers.js';
 import { isDeformModifier, normalizeDeformEdit, runDeformEdit } from './mesh-deform-modifiers.js';
 
 // The whole-mesh modifiers as recipe operations: validation of their fields and running them on MeshData. Smooth, cast and
@@ -48,6 +49,10 @@ function normalizeSimpleDeform(edit, normalized, index, finiteNumber) {
 export function normalizeModifierEdit(edit, normalized, index, { finiteNumber, checkedField }) {
   if (Object.hasOwn(GENERATOR_RUNNERS, edit.op)) {
     normalizeGeneratorEdit(edit, normalized, index, { finiteNumber, integerInRange, checkedField });
+    return;
+  }
+  if (Object.hasOwn(NORMAL_RUNNERS, edit.op)) {
+    normalizeNormalEdit(edit, normalized, index, { finiteNumber });
     return;
   }
   if (isDeformModifier(edit.op)) {
@@ -181,6 +186,7 @@ function simpleDeformPositions(mesh, { mode, axis, angle, factor }) {
 /** Run a modifier edit. Returns { mesh, result } where result holds the counts to report. */
 export function runModifierEdit(mesh, edit, { maxVertices, maxFaces }) {
   if (Object.hasOwn(GENERATOR_RUNNERS, edit.op)) return GENERATOR_RUNNERS[edit.op](mesh, edit, { maxVertices, maxFaces });
+  if (Object.hasOwn(NORMAL_RUNNERS, edit.op)) return { mesh: NORMAL_RUNNERS[edit.op](mesh, edit), result: {} };
   if (isDeformModifier(edit.op)) return runDeformEdit(mesh, edit);
   switch (edit.op) {
     case 'weld': {

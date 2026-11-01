@@ -137,6 +137,8 @@ export const MESH_MODIFIER_NOTES = Object.freeze({
   curve: 'bends the mesh along path, 2 to 64 points [x,y,z] through a Catmull-Rom spline. The coordinate along axis (x) is the distance from the path start, the other two become offsets in a twist-free frame; past the ends the mesh continues straight. Model the mesh along the axis starting at 0.',
   hook: 'pulls the vertices within radius (1) of center [0,0,0] by translation [0,0,0] times strength 0 to 1 (1); falloff smooth (default), linear or constant.',
   wave: 'a gaussian ripple of height 0.5 along z (normal true: along the vertex normal) that travels from start [0,0] over axes xy (default), x or y; width 1.5, narrowness 0 to 50 (1.5), speed 0.25 per frame, time 0 (a frame number), timeOffset 0, cyclic true repeats it. Matches Blender Wave at the same frame.',
+  weighted_normal: 'shading normals per corner: faces around a vertex share one normal unless the edge is sharp or bends more than angle (30) degrees, each face counting by its area to the power weight / 50 (weight 1 to 100, 50). Put it last in the stack: a later edit that changes the faces leaves the values stale.',
+  smooth_by_angle: 'marks edges bending more than angle (30, 0 to 180) degrees sharp and every other edge smooth, whatever the geometry smoothAngle says; ignoreSharp true also drops sharp marks made by hand (default false keeps them).',
 });
 
 // Organic shaping edits. Details stay here so the tool schemas stay small.

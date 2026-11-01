@@ -19,6 +19,8 @@ export const MODIFIER_OPERATIONS = Object.freeze({
   curve: { fields: ['path', 'axis'], tags: [] },
   hook: { fields: ['center', 'radius', 'translation', 'strength', 'falloff'], tags: [] },
   wave: { fields: ['height', 'width', 'narrowness', 'speed', 'time', 'timeOffset', 'start', 'cyclic', 'axes', 'normal'], tags: [] },
+  weighted_normal: { fields: ['angle', 'weight'], tags: [] },
+  smooth_by_angle: { fields: ['angle', 'ignoreSharp'], tags: [] },
 });
 
 export const MESH_EDIT_OPERATIONS = Object.freeze({

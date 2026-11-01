@@ -3,7 +3,7 @@
 This ledger compares 67js with each feature in the [Blender 5.2 manual](https://docs.blender.org/manual/en/latest/).
 It is the record for the goal in issue #23. Use `npm run parity` to print the coverage of each section.
 
-Modifier coverage (rows under `Modeling > Modifiers`, from `npm run parity`): 11 done, 25 partial, 24 missing and 1 out of scope, 8 of the done rows compared with Blender, 18% of the in-scope rows done.
+Modifier coverage (rows under `Modeling > Modifiers`, from `npm run parity`): 12 done, 25 partial, 23 missing and 1 out of scope, 8 of the done rows compared with Blender, 20% of the in-scope rows done.
 
 ## How to read it
 
@@ -108,8 +108,8 @@ To move to a new Blender release, run `node scripts/parity-manual-snapshot.mjs`.
 | Modeling > Modifiers > Deform > Warp Modifier | missing | No equivalent. | | |
 | Modeling > Modifiers > Deform > Wave Modifier | partial | `wave` edit and stack node: height, width, narrowness, speed, frame `time`, offset, start, cyclic, x and y axes and along the normal. Positions match Blender at the same frame on 2 cases. No falloff, lifetime or damping, no texture and no vertex groups. | [mesh-deform-modifiers](../tests/mesh-deform-modifiers.test.js), [Blender results](../tests/fixtures/blender/golden.json) | #42 |
 | Modeling > Modifiers > Normals > Normal Edit Modifier | missing | No equivalent. | | |
-| Modeling > Modifiers > Normals > Weighted Normal Modifier | missing | No equivalent. Not in the first slice of #42, which took the modifiers agents use most. | | #42 |
-| Modeling > Modifiers > Normals > Smooth By Angle Modifier | partial | `smoothAngle` is a geometry setting. It is not a stack node. Not in the first slice of #42, which took the modifiers agents use most. | | #42 |
+| Modeling > Modifiers > Normals > Weighted Normal Modifier | partial | `weighted_normal` edit and stack node: face area weighting with a `weight` from 1 to 100 (power weight / 50) inside smooth groups bounded by sharp edges and an `angle`, stored as one normal per corner that the render uses. No corner angle or face influence modes, no keep-sharp switch, no vertex groups and no Blender comparison of normals. | [mesh-normal-modifiers](../tests/mesh-normal-modifiers.test.js) | #42 |
+| Modeling > Modifiers > Normals > Smooth By Angle Modifier | done | `smooth_by_angle` edit and stack node with `angle` and `ignoreSharp`: edges bending more than the angle become sharp, the rest smooth, over the geometry `smoothAngle`. Hand-marked sharp edges stay unless ignored, as in Blender. No vertex groups and no Blender comparison of normals. | [mesh-normal-modifiers](../tests/mesh-normal-modifiers.test.js) | |
 | Modeling > Modifiers > Physics > Cloth Modifier | partial | Recipe `cloth`: a position-based sheet solver with pinned edges, steady wind, gravity and fixed ball or box colliders, recorded at 60 frames a second so a seek repeats exactly. No self collision, no per-vertex stiffness or pin weights. A hanging sheet matches a Blender bake to 0.08 percent of its height; a sheet dropped on a ball does not match (mean vertex distance 63 percent of the sheet size at 2 s, 58 percent at 8 s). It is not stretch (longest edge 1.02 against 1.05, area 1.003 against 1.013); Blender's bake had not settled even at 8 s. See docs/physics.md. | [cloth](../tests/cloth.test.js), [cloth-blender](../tests/cloth-blender.test.js) | #62 |
 | Modeling > Modifiers > Physics > Collision Modifier | partial | Rapier colliders fitted to recipe geometry as box, ball, capsule, convex hull or trimesh, so a body rests on an authored mesh. | [agent-physics](../tests/agent-physics.test.js) | #61 |
 | Modeling > Modifiers > Physics > Dynamic Paint Modifier | missing | No equivalent. | | |
