@@ -88,7 +88,7 @@ export const RENDER_PASS_NAMES = Object.freeze(['albedo', 'normal', 'emission', 
 // extension, no drive or protocol syntax.
 export const VIDEO_ENCODERS = Object.freeze(['cpu', 'nvenc']);
 export const MAXIMUM_VIDEO_SECONDS = 60;
-/** Recipe bake presets and ranges. A bake over 20 s fails the edit before the 30 s page deadline would close the runtime. */
+/** Recipe bake presets and ranges. A bake inline on the page fails the edit after 20 s, before the 30 s page deadline; on a worker it has 90 s. */
 export const BAKE_PRESETS = Object.freeze({
   draft: Object.freeze({ samples: 32, bounces: 1, texelsPerUnit: 3 }),
   standard: Object.freeze({ samples: 128, bounces: 2, texelsPerUnit: 6 }),
@@ -96,11 +96,20 @@ export const BAKE_PRESETS = Object.freeze({
 });
 export const BAKE_RANGES = Object.freeze({ samples: [1, 256], bounces: [1, 3], texelsPerUnit: [1, 12] });
 export const BAKE_MAXIMUM_SECONDS = 20;
+/** The limit when the bake runs on a worker, which does not block the page: a busy machine still finishes a preset. */
+export const BAKE_WORKER_MAXIMUM_SECONDS = 90;
 /**
- * Ray work (texels x samples x bounces x rays per hit) a recipe bake may trace. Measured on a closed, 56 part room (every
- * path bounces to the end) at about 1.3 million units per second, so this is about 8 s there, with room under the 20 s limit
- * for a slower machine. A preset is scaled down to fit; explicit samples or texelsPerUnit that do not fit fail. */
-export const BAKE_RAY_WORK_BUDGET = 10_000_000;
+ * Path steps (texels x samples x bounces) a preset is scaled down to. Measured at 1.8 to 3.1
+ * microseconds per path step on a closed 56 part room and the 57 node demo room, so this is 9 to 16 s, under the 20 s limit. The two rooms cost
+ * the same per path step, so the budget does not depend on the number of lights.
+ */
+export const BAKE_PRESET_PATH_WORK = 5_000_000;
+/**
+ * The hard upper bound on path steps for explicit samples, bounces and texelsPerUnit: about 5 times the demo room at 96
+ * samples, 2 bounces, texelsPerUnit 3. Below it the bake runs until BAKE_MAXIMUM_SECONDS, which fails cleanly and leaves
+ * the scene unchanged.
+ */
+export const BAKE_EXPLICIT_PATH_WORK_LIMIT = 24_000_000;
 /** Render job output: each side up to 1920 and never more pixels than 1920x1080 (portrait 1080x1920 fits). */
 export const MAXIMUM_JOB_SIDE = 1920;
 export const MAXIMUM_JOB_PIXELS = 1920 * 1080;
@@ -181,7 +190,7 @@ export const AGENT_SCENE_CAPABILITIES = Object.freeze({
   lightingSetups: LIGHTING_SETUP_NAMES, defaultLightingSetup: DEFAULT_LIGHTING_SETUP,
   ambientOcclusion: Object.freeze({ default: DEFAULT_AMBIENT_OCCLUSION, defaultRadius: 0.5, off: 0 }),
   // Local lights: spot and rectangular area lights. Shadows share one 2048 x 3072 depth atlas of 24 tiles; a shadowed
-  // point light uses 6 tiles and a shadowed spot light 1. Area lights cast no shadow. Light linking is not supported.
+  // point light uses 6 tiles and a shadowed spot light 1. Area lights cast no shadow. Light linking (addons/light-linking) and cascaded sun shadows (addons/cascaded-shadows) are engine options that recipes do not reach; lightLinking stays false here.
   maxSpotLights: 8, maxAreaLights: 4,
   localShadows: Object.freeze({ lights: Object.freeze(['pointLights', 'spotLights']), atlasTiles: 24, pointLightTiles: 6, spotLightTiles: 1, tileSize: 512 }),
   lightLinking: false,
@@ -231,8 +240,8 @@ export const AGENT_SCENE_CAPABILITIES = Object.freeze({
   bake: Object.freeze({
     fields: 'preset, or samples (1-256), bounces (1-3), texelsPerUnit (1-12) over it. Same recipe, same bytes.',
     presets: BAKE_PRESETS,
-    notes: 'Bounced light from point, spot, area and key lights. Reruns when parts, lights, materials or bake change. Skips alpha, skin, morph, hair, cloth (bake.skipped). A preset shrinks to fit maxRayWork (bake.used, bake.reduced); explicit samples or texelsPerUnit over it fail. No environment map or specular.',
-    limits: Object.freeze({ maxSeconds: BAKE_MAXIMUM_SECONDS, maxRayWork: BAKE_RAY_WORK_BUDGET, maxPointLights: 8 }),
+    notes: 'Bounced light from point, spot, area and key lights. Reruns when parts, lights, materials or bake change. Skips alpha, skin, morph, hair, cloth (bake.skipped). A preset shrinks to fit (bake.used, bake.reduced); explicit settings fail over maxPathWork or past maxSeconds. No environment map or specular.',
+    limits: Object.freeze({ maxSeconds: BAKE_MAXIMUM_SECONDS, workerMaxSeconds: BAKE_WORKER_MAXIMUM_SECONDS, maxPathWork: BAKE_EXPLICIT_PATH_WORK_LIMIT, maxPointLights: 8 }),
   }),
   motionLimits: Object.freeze({ maxTracks: 128, maxKeyframesPerTrack: 64, maxKeyframes: 2048, maxDuration: 30 }),
 });

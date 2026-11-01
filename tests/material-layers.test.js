@@ -98,9 +98,9 @@ test('a plain export declares no layer extension and an invalid layer is rejecte
 test('anisotropy and iridescence reach the renderer state and default to off', () => {
   const plain = materialLayerState({});
   assert.equal(plain.length, MATERIAL_LAYER_STATE_LENGTH);
-  assert.deepEqual(plain.slice(16), [0, 0, 0, 1.3, 400], 'anisotropy, rotation, iridescence, film IOR and thickness');
+  assert.deepEqual(plain.slice(16, 21), [0, 0, 0, 1.3, 400], 'anisotropy, rotation, iridescence, film IOR and thickness');
   const brushed = materialLayerState({ anisotropy: 0.7, anisotropyRotation: 1, iridescence: 0.9, iridescenceIor: 1.8, iridescenceThickness: 250 });
-  assert.deepEqual(brushed.slice(16), [0.7, 1, 0.9, 1.8, 250]);
+  assert.deepEqual(brushed.slice(16, 21), [0.7, 1, 0.9, 1.8, 250]);
 });
 
 test('recipes accept anisotropy and iridescence and export them', () => {

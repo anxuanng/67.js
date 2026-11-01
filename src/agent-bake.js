@@ -1,7 +1,7 @@
 import { planLightmaps, estimateBake, traceLightmaps } from './light-bake.js';
 import { runKernel } from './kernel-offload.js';
 import { knownKeys, finiteNumber } from './agent-recipe-checks.js';
-import { BAKE_PRESETS, BAKE_RANGES, BAKE_MAXIMUM_SECONDS, BAKE_RAY_WORK_BUDGET } from './agent-scene-capabilities.js';
+import { BAKE_PRESETS, BAKE_RANGES, BAKE_MAXIMUM_SECONDS, BAKE_WORKER_MAXIMUM_SECONDS, BAKE_PRESET_PATH_WORK, BAKE_EXPLICIT_PATH_WORK_LIMIT } from './agent-scene-capabilities.js';
 
 const PRESET_SAMPLES_FLOOR = 16;
 
@@ -39,11 +39,13 @@ function isPreset(settings) {
   return Object.values(BAKE_PRESETS).some(preset => Object.keys(preset).every(field => preset[field] === settings[field]));
 }
 
-function fits(plan, settings) {
-  return estimateBake(plan, settings).rayWork <= BAKE_RAY_WORK_BUDGET;
+// Path steps in total: texels x samples x bounces. Measured, a path costs about the same in a closed room and in an
+// open one whatever the number of lights, so this tracks the time of a bake better than a count of rays does.
+function pathWorkOf(plan, settings) {
+  return estimateBake(plan, settings).texels * settings.samples * settings.bounces;
 }
 
-// The densest texelsPerUnit, to two decimals, that still fits the budget at the given samples and bounces (0 when none does).
+// The densest texelsPerUnit, to two decimals, that still fits the explicit limit at the given samples and bounces (0 when none does).
 function largestFittingTexelsPerUnit(plan, settings) {
   let fitting = 0;
   let tooMuch = settings.texelsPerUnit;
@@ -52,7 +54,7 @@ function largestFittingTexelsPerUnit(plan, settings) {
     if (middle <= fitting) {
       break;
     }
-    if (fits(plan, { ...settings, texelsPerUnit: middle })) {
+    if (pathWorkOf(plan, { ...settings, texelsPerUnit: middle }) <= BAKE_EXPLICIT_PATH_WORK_LIMIT) {
       fitting = middle;
     } else {
       tooMuch = middle;
@@ -61,8 +63,8 @@ function largestFittingTexelsPerUnit(plan, settings) {
   return fitting >= BAKE_RANGES.texelsPerUnit[0] ? fitting : 0;
 }
 
-function overBudgetMessage(plan, settings, rayWork) {
-  const fittingSamples = Math.floor(BAKE_RAY_WORK_BUDGET * settings.samples / rayWork);
+function overLimitMessage(plan, settings, pathWork) {
+  const fittingSamples = Math.floor(BAKE_EXPLICIT_PATH_WORK_LIMIT * settings.samples / pathWork);
   const fittingTexelsPerUnit = largestFittingTexelsPerUnit(plan, settings);
   const choices = [];
   if (fittingSamples >= BAKE_RANGES.samples[0]) {
@@ -72,34 +74,44 @@ function overBudgetMessage(plan, settings, rayWork) {
     choices.push(`texelsPerUnit ${fittingTexelsPerUnit} or less with samples ${settings.samples}`);
   }
   const advice = choices.length > 0 ? `At bounces ${settings.bounces} this scene fits ${choices.join(', or ')}.` : 'Remove parts or lights, or lower bounces.';
-  return `The bake would need ${rayWork} units of ray work (texels x samples x bounces x rays per hit); the limit is ${BAKE_RAY_WORK_BUDGET}. ${advice}`;
+  return `The bake would follow ${pathWork} path steps (texels x samples x bounces); the limit for explicit settings is ${BAKE_EXPLICIT_PATH_WORK_LIMIT}. ${advice}`;
+}
+
+function scalePresetDown(settings) {
+  return {
+    ...settings,
+    samples: Math.max(PRESET_SAMPLES_FLOOR, Math.floor(settings.samples * 0.8)),
+    texelsPerUnit: Math.max(BAKE_RANGES.texelsPerUnit[0], Math.round(settings.texelsPerUnit * 0.9 * 100) / 100),
+  };
 }
 
 /**
- * Keeps a bake inside the ray work budget before any ray is traced. The estimate counts texels, samples, bounces and lights,
- * and reads no clock, so the same recipe always resolves to the same settings. A preset is scaled down (samples first by a
- * fifth, texel density by a tenth, repeatedly); explicit samples or texelsPerUnit are never changed and fail instead.
+ * Keeps a bake inside its work limits before any ray is traced. The estimate counts texels, samples and bounces and reads
+ * no clock, so the same recipe always resolves to the same settings. Explicit samples or texelsPerUnit are never changed:
+ * they fail up front only over the hard limit, and otherwise run until the real maxSeconds limit. A preset is scaled down
+ * (samples by a fifth, texel density by a tenth, repeatedly) until it fits BAKE_PRESET_PATH_WORK.
  */
 function fitSettingsToBudget(plan, settings) {
-  const { rayWork } = estimateBake(plan, settings);
-  if (rayWork <= BAKE_RAY_WORK_BUDGET) {
+  if (!isPreset(settings)) {
+    const pathWork = pathWorkOf(plan, settings);
+    if (pathWork > BAKE_EXPLICIT_PATH_WORK_LIMIT) {
+      throw new RangeError(overLimitMessage(plan, settings, pathWork));
+    }
     return { used: settings, reduced: false };
   }
-  if (!isPreset(settings)) {
-    throw new RangeError(overBudgetMessage(plan, settings, rayWork));
-  }
   let used = settings;
-  while (!fits(plan, used)) {
+  while (pathWorkOf(plan, used) > BAKE_PRESET_PATH_WORK) {
     if (used.samples <= PRESET_SAMPLES_FLOOR && used.texelsPerUnit <= BAKE_RANGES.texelsPerUnit[0]) {
-      throw new RangeError(`Even ${PRESET_SAMPLES_FLOOR} samples at texelsPerUnit ${BAKE_RANGES.texelsPerUnit[0]} is over the ray work limit of ${BAKE_RAY_WORK_BUDGET} for this scene. Remove parts or lights, or lower bounces.`);
+      throw new RangeError(`Even ${PRESET_SAMPLES_FLOOR} samples at texelsPerUnit ${BAKE_RANGES.texelsPerUnit[0]} is over the preset budget of ${BAKE_PRESET_PATH_WORK} path steps for this scene. Remove parts or lights, or lower bounces.`);
     }
-    used = {
-      ...used,
-      samples: Math.max(PRESET_SAMPLES_FLOOR, Math.floor(used.samples * 0.8)),
-      texelsPerUnit: Math.max(BAKE_RANGES.texelsPerUnit[0], Math.round(used.texelsPerUnit * 0.9 * 100) / 100),
-    };
+    used = scalePresetDown(used);
   }
-  return { used, reduced: true };
+  return { used, reduced: used !== settings };
+}
+
+function timeLimitMessage(error, settings) {
+  const lowerSamples = Math.max(BAKE_RANGES.samples[0], Math.floor(settings.samples / 2));
+  return `${error.message} The scene is unchanged. Try samples ${lowerSamples}, or texelsPerUnit ${Math.max(BAKE_RANGES.texelsPerUnit[0], Math.round(settings.texelsPerUnit / 2 * 100) / 100)}.`;
 }
 
 // The baked part keeps reading every other material field from the live material, so motion tracks still drive it.
@@ -112,6 +124,27 @@ function liveBakedMaterial(liveMaterial, bakedMaterial) {
   return Object.freeze(output);
 }
 
+// Inside a worker the bake blocks nothing, so it may run longer; on the page's own thread it must stay short.
+function runsOnWorker() {
+  return typeof WorkerGlobalScope !== 'undefined' && globalThis instanceof WorkerGlobalScope;
+}
+
+/** The seconds a bake may run here: 90 on a worker, 20 on the page's own thread. */
+export function bakeSecondsLimit() {
+  return runsOnWorker() ? BAKE_WORKER_MAXIMUM_SECONDS : BAKE_MAXIMUM_SECONDS;
+}
+
+function traceWithAdvice(plan, used) {
+  try {
+    return traceLightmaps(plan, used);
+  } catch (error) {
+    if (/passed maxSeconds/.test(error.message)) {
+      throw new Error(timeLimitMessage(error, used));
+    }
+    throw error;
+  }
+}
+
 /**
  * The light bake as a worker kernel: unwrap, budget fit and trace all run in the same place, because unwrapping and
  * tracing are both the heavy parts. Only the parts the bake changed travel back, as [index, part] pairs, because a part
@@ -119,9 +152,9 @@ function liveBakedMaterial(liveMaterial, bakedMaterial) {
  * the same RangeError here as it would inline, and the worker sends it back with its message.
  */
 export function bakeChangedParts(snapshots, lighting, settings) {
-  const plan = planLightmaps(snapshots, lighting, { ...settings, maxSeconds: BAKE_MAXIMUM_SECONDS });
+  const plan = planLightmaps(snapshots, lighting, { ...settings, maxSeconds: bakeSecondsLimit() });
   const { used, reduced } = fitSettingsToBudget(plan, settings);
-  const { parts, report } = traceLightmaps(plan, used);
+  const { parts, report } = traceWithAdvice(plan, used);
   const changed = [];
   parts.forEach((part, index) => {
     if (part !== snapshots[index]) {

@@ -79,6 +79,8 @@
     "./addons/camera-effects": "./build/camera-effects.js",
     "./addons/render-passes": "./build/render-passes.js",
     "./addons/material-layer-shaders": "./build/material-layer-shaders.js",
+    "./addons/light-linking": "./build/light-linking.js",
+    "./addons/cascaded-shadows": "./build/cascaded-shadows.js",
     "./package.json": "./package.json"
   },
   "scripts": {

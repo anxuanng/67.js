@@ -413,6 +413,17 @@ def build_world(scene, world_description, root):
     background.inputs[1].default_value = world_description["intensity"]
 
 
+def link_receivers(light_object, names):
+    # Light linking: a light with an affects list lights only those parts, as a receiver collection does. Shadows still
+    # come from every part, which is also what 67js does.
+    if names is None:
+        return
+    receivers = bpy.data.collections.new(f"{light_object.name}-receivers")
+    for name in names:
+        receivers.objects.link(bpy.data.objects[name])
+    light_object.light_linking.receiver_collection = receivers
+
+
 def build_lights(scene, environment):
     key = environment["keyColor"]
     if max(key) > 0:
@@ -426,6 +437,7 @@ def build_lights(scene, environment):
         sun.rotation_mode = "QUATERNION"
         sun.rotation_quaternion = toward_light.to_track_quat("Z", "Y")
         scene.collection.objects.link(sun)
+        link_receivers(sun, environment.get("keyAffects"))
     for index, point in enumerate(environment["pointLights"]):
         light = bpy.data.lights.new(f"Point-{index}", "POINT")
         light.energy = point["intensity"] * WATTS_PER_INTENSITY
@@ -434,6 +446,7 @@ def build_lights(scene, environment):
         point_object = bpy.data.objects.new(f"Point-{index}", light)
         point_object.location = to_blender(point["position"])
         scene.collection.objects.link(point_object)
+        link_receivers(point_object, point.get("affects"))
     for index, spot in enumerate(environment.get("spotLights", [])):
         build_spot_light(scene, index, spot)
     for index, area in enumerate(environment.get("areaLights", [])):
@@ -455,6 +468,7 @@ def build_spot_light(scene, index, spot):
     direction = Vector(to_blender(spot["direction"])).normalized()
     spot_object.rotation_quaternion = direction.to_track_quat("-Z", "Y")
     scene.collection.objects.link(spot_object)
+    link_receivers(spot_object, spot.get("affects"))
 
 
 def build_area_light(scene, index, area):

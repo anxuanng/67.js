@@ -93,7 +93,35 @@ Method: representative point, not a light-transform lookup table. The closest po
 
 Shadows reach `range`, or 30 units when `range` is zero; farther surfaces are lit. Filtering is one bilinear 2 x 2 comparison, and the receiver is moved off its surface by about two texels, so edges are slightly hard and a very thin wall can leak. The atlas is drawn again only when a light moves, a shadow-casting part changes or sways, so a static scene pays the depth passes once. A scene with no shadow casting lights allocates nothing and compiles none of this code.
 
-Cascaded directional shadows are not part of this work: the directional light still uses one 2048 x 2048 map.
+## Cascaded sun shadows
+
+The directional light uses one 2048 x 2048 map over the box that `shadowBounds` gives. In a scene as long as a street that box is 100 m or more across, so a texel is 6 to 8 cm and a lamp post near the camera is two texels wide. Cascades cut the camera's view into up to four slices by depth and fit one map to each, so the slice near the camera has texels of about 1 cm.
+
+```js
+import { Renderer67 } from '@codepawlhq/67js';
+import { createCascadedShadows } from '@codepawlhq/67js/addons/cascaded-shadows';
+
+const renderer = new Renderer67(canvas, parts, {
+  world: true,
+  shadowBounds, // still gives the light direction (eye minus target)
+  shadowCascades: createCascadedShadows({ count: 3 }),
+});
+```
+
+Options: `count` (1 to 4, default 3), `resolution` (256 to 4096, default 2048), `maximumDistance` (default 150 m; farther surfaces are lit), `splitLambda` (0 uniform to 1 logarithmic, default 0.7) and `casterReach` (how far toward the light a caster may stand, default 200 m). Each slice is a bounding sphere, so turning the camera does not change its size, and its centre snaps to whole texels, so edges do not crawl. The last tenth of a slice blends into the next. The slice maps are drawn again when the camera, the light or a caster moves, so a still camera pays the depth passes once and a moving one pays `count` passes per frame; the measured cost is in `bench/reference/README.md`. Three slices of 2048 x 2048 are a 48 MiB depth array. The single map is still drawn for volume fog and water, which do not read the cascades. A scene without cascades compiles none of this code, and recipes do not reach it yet.
+
+## Light linking
+
+A light can be limited to some parts, as Blender's receiver collection does. Give a light an `affects` list of part names (and `environment.keyAffects` for the sun) and pass the parts through `applyLightLinks`:
+
+```js
+import { applyLightLinks } from '@codepawlhq/67js/addons/light-linking';
+
+const environment = { pointLights: [{ position: [-1.8, 2.4, 1.2], intensity: 14, affects: ['sphere-left'] }], keyAffects: ['floor'] };
+const renderer = new Renderer67(canvas, applyLightLinks(parts, environment), { environment });
+```
+
+A part gets a bit mask in `material.lightMask` (bit 0 the sun, bits 1 to 8 the point lights, 9 to 16 the spot lights, 17 to 20 the area lights, in list order); the shader skips a light whose bit is clear. Linking changes what a light adds, not what it shadows: a part a light does not reach still blocks that light for the others, and in Blender too. Parts with different masks are different batches. The path tracer and the light bake ignore linking, and recipes do not reach it yet (`lightLinking: false` in `scene_capabilities`). A scene without links compiles none of this code. The reference scene `light-linking` is the measured case.
 
 ## Animation and resources
 
