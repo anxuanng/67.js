@@ -29,7 +29,7 @@
   "entry:terrain": 3400,
   "entry:grass": 4400,
   "entry:clutter": 5300,
-  "entry:light-bake": 25900,
+  "entry:light-bake": 26900,
   "entry:path-tracer": 13800,
   "entry:texture-set": 900,
   "entry:agent-scene": 66500,

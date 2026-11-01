@@ -224,7 +224,7 @@ export const AGENT_SCENE_CAPABILITIES = Object.freeze({
   bake: Object.freeze({
     fields: 'preset, or samples (1-256), bounces (1-3), texelsPerUnit (1-12) over it. Same recipe, same bytes.',
     presets: BAKE_PRESETS,
-    notes: 'Bounced light from point, spot, area and key lights, for closed rooms. Reruns only when parts, lights, materials or bake change. Patterns and textures keep their look. Skips alpha, skin, morph, hair and cloth nodes (bake.skipped, bake.seconds). A preset shrinks to fit the ray work limit (bake.used, bake.reduced); explicit samples or texelsPerUnit over it fail. Environment map and specular are not baked.',
+    notes: 'Bounced light from point, spot, area and key lights. Reruns when parts, lights, materials or bake change. Skips alpha, skin, morph, hair, cloth (bake.skipped). A preset shrinks to fit maxRayWork (bake.used, bake.reduced); explicit samples or texelsPerUnit over it fail. No environment map or specular.',
     limits: Object.freeze({ maxSeconds: BAKE_MAXIMUM_SECONDS, maxRayWork: BAKE_RAY_WORK_BUDGET, maxPointLights: 8 }),
   }),
   motionLimits: Object.freeze({ maxTracks: 128, maxKeyframesPerTrack: 64, maxKeyframes: 2048, maxDuration: 30 }),
