@@ -798,7 +798,7 @@ void main() {
   vec3 specularNormal = normal;
   vec3 baseReflectance = mix(materialDielectric, color, metallic);
 ${featureCode("mainSetup")}  float visibility = shadowVisibility(normal);
-  vec3 radiance = illuminate(normal, viewDirection, normalize(lightDirection), keyColor * visibility, color, metallic, roughness);
+  vec3 radiance = illuminate(normal, viewDirection, normalize(lightDirection), keyColor * visibility${featureCode("linkSun")}, color, metallic, roughness);
   radiance += illuminate(normal, viewDirection, normalize(vec3(4.0, 2.0, -3.0)), mix(vec3(0.8, 2.0, 1.8), vec3(0.12, 0.17, 0.20) * daylight, worldMode) * fillIntensity, color, metallic, roughness);
   radiance += illuminate(normal, viewDirection, normalize(vec3(1.0, 2.0, 5.0)), vec3(0.6, 0.7, 0.8) * mix(1.0, 0.25 * daylight, worldMode) * fillIntensity, color, metallic, roughness);
   for (int index = 0; index < 8; index++) {
@@ -808,7 +808,7 @@ ${featureCode("mainSetup")}  float visibility = shadowVisibility(normal);
     if (distanceSquared < 1e-12 || pointLightColors[index].w == 0.0) continue;
     float attenuation = localAttenuation(distanceSquared, pointLightPositions[index].w, pointLightRadii[index]);
     if (attenuation == 0.0) continue;
-    vec3 lightRadiance = pointLightColors[index].rgb * pointLightColors[index].w * attenuation;
+${featureCode("linkPoint")}    vec3 lightRadiance = pointLightColors[index].rgb * pointLightColors[index].w * attenuation;
     if (USES_LOCAL_SHADOWS && pointLightShadowTiles[index] >= 0.0) {
       float tile = pointLightShadowTiles[index] + pointShadowFace(-offset);
       lightRadiance *= localShadowVisibility(tile, worldPosition, normal, sqrt(distanceSquared));
@@ -827,7 +827,7 @@ ${featureCode("mainSetup")}  float visibility = shadowVisibility(normal);
       float cone = smoothstep(spotLightDirections[index].w, spotLightParameters[index].y, coneCosine);
       float attenuation = localAttenuation(distanceSquared, spotLightPositions[index].w, spotLightParameters[index].x) * cone;
       if (attenuation == 0.0) continue;
-      vec3 lightRadiance = spotLightColors[index].rgb * spotLightColors[index].w * attenuation;
+${featureCode("linkSpot")}      vec3 lightRadiance = spotLightColors[index].rgb * spotLightColors[index].w * attenuation;
       if (USES_LOCAL_SHADOWS && spotLightParameters[index].z >= 0.0) {
         lightRadiance *= localShadowVisibility(spotLightParameters[index].z, worldPosition, normal, sqrt(distanceSquared));
       }
@@ -837,7 +837,7 @@ ${featureCode("mainSetup")}  float visibility = shadowVisibility(normal);
   if (USES_AREA_LIGHTS) {
     for (int index = 0; index < 4; index++) {
       if (index >= areaLightCount) break;
-      vec3 lightNormal = areaLightNormals[index].xyz;
+${featureCode("linkArea")}      vec3 lightNormal = areaLightNormals[index].xyz;
       vec3 widthAxis = areaLightTangents[index].xyz;
       vec3 heightAxis = cross(lightNormal, widthAxis);
       vec2 halfSize = vec2(areaLightNormals[index].w, areaLightTangents[index].w) * 0.5;
@@ -955,7 +955,9 @@ const SHADER_FEATURE_CONDITIONS = {
 
 // A feature that is not in the list above has its GLSL in another module, so a scene that never uses it does not carry
 // it. That module calls registerShaderFeatureCode on import, with blocks of GLSL that createFragmentShader splices in:
-// declarations, illuminateReflectance, illuminateSpecular, coatReset and mainSetup, each ending in a newline.
+// declarations, illuminateReflectance, illuminateSpecular, coatReset and mainSetup, each ending in a newline, and the
+// one-line linkSun (a factor on the sun) with linkPoint, linkSpot and linkArea (statements that skip a light for a part).
+// A feature that replaces the sun shadow defines shadowVisibility as a macro in its declarations.
 const registeredFeatureCode = new Map();
 
 /** Register the GLSL of an optional feature. Called by the module that holds it, on import. */

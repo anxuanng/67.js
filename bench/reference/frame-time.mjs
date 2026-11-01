@@ -21,9 +21,13 @@ try {
   await page.goto(`${serverUrl}/bench/reference/harness.html`, { timeout: PAGE_LOAD_TIMEOUT });
   await page.waitForFunction(() => window.measureReferenceFrameTime, null, { timeout: PAGE_LOAD_TIMEOUT });
   const results = [];
-  // Alternate the order so a drifting machine load does not favor one side.
-  for (const bake of [false, true, false, true]) {
-    results.push(await page.evaluate(([id, shouldBake]) => window.measureReferenceFrameTime(id, { bake: shouldBake }), [sceneId, bake]));
+  // Alternate the order so a drifting machine load does not favor one side. --cascades measures one map and three
+  // cascades, each with a still camera and with a camera that moves every frame.
+  const variants = process.argv.includes('--cascades')
+    ? [0, 3, 0, 3].flatMap(cascades => [false, true].map(orbit => ({ bake: false, cascades, orbit })))
+    : [false, true, false, true].map(bake => ({ bake }));
+  for (const variant of variants) {
+    results.push({ ...variant, ...(await page.evaluate(([id, options]) => window.measureReferenceFrameTime(id, options), [sceneId, variant])) });
   }
   console.log(JSON.stringify({ sceneId, backend, results }, null, 1));
 } finally {

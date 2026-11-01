@@ -58,6 +58,7 @@ function shaderFeaturesOfParts(parts) {
     if (material.layers) features.add('splat');
     if (material.moss > 0) features.add('moss');
     if (material.anisotropy > 0) features.add('anisotropy');
+    if (material.lightMask !== undefined) features.add('lightLinking');
     if (material.iridescence > 0) features.add('iridescence');
     if ((material.alphaMode ?? 'opaque') !== 'opaque') features.add('alphaMode');
     if (TAG_SHADER_FEATURES.has(material.tag)) features.add(material.tag);
@@ -364,7 +365,7 @@ function allFinite(values) {
 }
 
 export class Renderer67 {
-  constructor(canvas, parts, { batching = true, pixelRatio = 1.5, benchmark = false, world = false, ground = true, transparent = false, samples = 4, hdr = false, depth = false, memoryBudgetMiB = 256, environment = {}, shadowBounds = {}, culling = true, lodPixelError = 1, createGpuTimer = null } = {}) {
+  constructor(canvas, parts, { batching = true, pixelRatio = 1.5, benchmark = false, world = false, ground = true, transparent = false, samples = 4, hdr = false, depth = false, memoryBudgetMiB = 256, environment = {}, shadowBounds = {}, shadowCascades = null, culling = true, lodPixelError = 1, createGpuTimer = null } = {}) {
     this.canvas = canvas;
     // `createGpuTimer` from adaptive-quality.js is passed in, which keeps the timer code out of scenes that do not time frames.
     this.createGpuTimer = createGpuTimer;
@@ -389,6 +390,7 @@ export class Renderer67 {
     this.world = world;
     this.environment = environment;
     this.shadowBounds = shadowBounds;
+    this.shadowCascades = shadowCascades;
     this.memoryBudgetMiB = memoryBudgetMiB;
     this.hdr = Boolean(hdr && !benchmark && this.context.getExtension('EXT_color_buffer_float'));
     if (volume.density > 0 && !this.hdr) throw new Error('Volume fog requires EXT_color_buffer_float for HDR rendering');
@@ -484,6 +486,7 @@ export class Renderer67 {
     this.inverseViewProjection = mat4.create();
     this.shaderFeatures = shaderFeaturesOfParts(groups.flat());
     shaderFeaturesOfLighting(this.lighting).forEach(feature => this.shaderFeatures.add(feature));
+    if (shadowCascades) this.shaderFeatures.add(shadowCascades.shaderFeature);
     const pending = {
       main: this.startMainProgram(),
       depth: startProgram(this.context, depthVertexShader, depthFragmentShader),
@@ -552,7 +555,7 @@ export class Renderer67 {
 
   finishMainProgram(pendingProgram) {
     this.program = finishProgram(this.context, pendingProgram);
-    this.uniforms = Object.fromEntries(['materialDielectric', 'materialCoat', 'materialSheen', 'materialAnisotropy', 'materialIridescence', 'boxMapScale', 'boxMapAxis', 'lightMap', 'lightMapScale', 'hasLightMap', 'viewProjection', 'lightProjection', 'eye', 'armorColor', 'armorSurface', 'exposure', 'inspection', 'shadowMap', ...MAP_UNIFORMS, ...MAP_FLAGS, ...SKIN_UNIFORMS, ...MORPH_UNIFORMS, 'normalScale', 'occlusionStrength', 'materialMoss', ...SPLAT_UNIFORMS, 'hdrEnabled', 'time', 'wind', 'worldMode', 'daylight', 'fogColor', 'lightDirection', 'fogDensity', 'waterRipple', 'rippleTime', 'explosionProgress', 'explosionCenter', 'assemblyAmount', 'renderPassMode', 'renderPassDepthRange', 'renderPassObjectBase', ...ALPHA_UNIFORMS].map((name) => [name, this.context.getUniformLocation(this.program, name)]));
+    this.uniforms = Object.fromEntries(['materialDielectric', 'materialCoat', 'materialSheen', 'materialAnisotropy', 'materialIridescence', 'lightLinkMask', 'boxMapScale', 'boxMapAxis', 'lightMap', 'lightMapScale', 'hasLightMap', 'viewProjection', 'lightProjection', 'eye', 'armorColor', 'armorSurface', 'exposure', 'inspection', 'shadowMap', ...MAP_UNIFORMS, ...MAP_FLAGS, ...SKIN_UNIFORMS, ...MORPH_UNIFORMS, 'normalScale', 'occlusionStrength', 'materialMoss', ...SPLAT_UNIFORMS, 'hdrEnabled', 'time', 'wind', 'worldMode', 'daylight', 'fogColor', 'lightDirection', 'fogDensity', 'waterRipple', 'rippleTime', 'explosionProgress', 'explosionCenter', 'assemblyAmount', 'renderPassMode', 'renderPassDepthRange', 'renderPassObjectBase', ...ALPHA_UNIFORMS].map((name) => [name, this.context.getUniformLocation(this.program, name)]));
     for (const name of LIGHT_UNIFORMS) {
       this.uniforms[name] = this.context.getUniformLocation(this.program, name);
     }
@@ -1798,6 +1801,7 @@ export class Renderer67 {
       this.context.uniform4f(this.uniforms.materialSheen, layers[5], layers[6], layers[7], layers[8]);
       this.context.uniform2f(this.uniforms.materialAnisotropy, layers[16], layers[17]);
       this.context.uniform3f(this.uniforms.materialIridescence, layers[18], layers[19], layers[20]);
+      this.context.uniform1i(this.uniforms.lightLinkMask, layers[21]);
       this.context.uniform1f(this.uniforms.boxMapScale, batch.mapState[12]);
       this.context.uniform1i(this.uniforms.boxMapAxis, batch.mapState[13]);
       this.bindSplat(batch.splat);
@@ -1859,6 +1863,7 @@ export class Renderer67 {
     mat4.invert(this.inverseViewProjection, this.viewProjection);
     extractFrustumPlanes(this.viewProjection, this.frustumPlanes);
     this.viewForward = [-this.view[2], -this.view[6], -this.view[10]];
+    this.shadowCascades?.update(this, casterChanged);
     context.bindFramebuffer(context.FRAMEBUFFER, passMode ? this.passSupport.framebuffer : this.benchmark ? null : this.multisampleFramebuffer);
     context.viewport(0, 0, this.canvas.width, this.canvas.height);
     if (passMode) {
@@ -1877,6 +1882,7 @@ export class Renderer67 {
     context.uniformMatrix4fv(this.uniforms.viewProjection, false, this.viewProjection);
     context.uniformMatrix4fv(this.uniforms.lightProjection, false, this.lightProjection);
     context.uniform3fv(this.uniforms.eye, eye);
+    this.shadowCascades?.bindUniforms(this);
     context.uniform3fv(this.uniforms.armorColor, armorColor);
     context.uniform2fv(this.uniforms.armorSurface, armorSurface);
     context.uniform1f(this.uniforms.exposure, exposure);
@@ -1971,6 +1977,7 @@ export class Renderer67 {
 
   dispose() {
     this.releaseFrameTargets();
+    this.shadowCascades?.dispose(this.context);
     if (this.localShadowTexture) this.context.deleteTexture(this.localShadowTexture);
     if (this.localShadowFramebuffer) this.context.deleteFramebuffer(this.localShadowFramebuffer);
     this.batches.forEach((batch) => {
