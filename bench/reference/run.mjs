@@ -2,7 +2,7 @@
 // --ambient-occlusion <strength> [--ambient-occlusion-radius <units>] turns occlusion on (off by default).
 // --bake [<id>,<id>] bakes bounced light into the named scenes (every scene when no ids follow) before 67js draws them;
 // Blender still gets the plain scene.
-// --path-tracer [--samples <n>] draws the scenes with the offline path tracer (src/path-tracer.js) instead, keeps the
+// --path-tracer [--samples <n>] [--noise-threshold <n>] [--scene <id>] draws the scenes with the offline path tracer (src/path-tracer.js) instead, keeps the
 // Cycles renders of an earlier run, and scores them into path-tracer.json. Nothing in baseline.json or images/ changes.
 // Use --score-only to score existing renders, --skip-blender to keep them, and --scene <id> for one scene.
 import { spawnSync } from 'node:child_process';
@@ -45,6 +45,8 @@ const cascades = cascadesFlag >= 0 ? Number(argumentsGiven[cascadesFlag + 1]) : 
 const pathTracerFlag = argumentsGiven.includes('--path-tracer');
 const samplesFlag = argumentsGiven.indexOf('--samples');
 const pathTracerSamples = samplesFlag >= 0 ? Number(argumentsGiven[samplesFlag + 1]) : 64;
+const noiseThresholdFlag = argumentsGiven.indexOf('--noise-threshold');
+const pathTracerNoiseThreshold = noiseThresholdFlag >= 0 ? Number(argumentsGiven[noiseThresholdFlag + 1]) : undefined;
 const onlyScene = sceneFlag >= 0 ? argumentsGiven[sceneFlag + 1] : null;
 
 async function renderBackend(backend, serverUrl, graphics) {
@@ -91,10 +93,10 @@ async function renderPathTracerScenes(serverUrl) {
     const sceneIds = await page.evaluate(() => window.referenceSceneIds);
     for (const id of sceneIds) {
       if (onlyScene && id !== onlyScene) continue;
-      const options = { width: WIDTH, height: HEIGHT, samples: pathTracerSamples, maxSeconds: 1800 };
+      const options = { width: WIDTH, height: HEIGHT, samples: pathTracerSamples, maxSeconds: 1800, ...(pathTracerNoiseThreshold === undefined ? {} : { noiseThreshold: pathTracerNoiseThreshold }) };
       const result = await page.evaluate(([sceneId, tracerOptions]) => window.renderReferencePathTraced(sceneId, tracerOptions), [id, options]);
       await writeFile(`${WORK_DIRECTORY}/${id}-pathtracer.png`, Buffer.from(result.image, 'base64'));
-      timings[id] = { seconds: Number(result.report.seconds.toFixed(1)), samples: result.report.samples, ignored: result.report.ignored };
+      timings[id] = { seconds: Number(result.report.seconds.toFixed(1)), samples: result.report.samples, averageSamples: Number(result.report.averageSamples.toFixed(1)), ignored: result.report.ignored };
       console.log(`${id} path traced: ${timings[id].seconds} s at ${timings[id].samples} samples`);
     }
   } finally {

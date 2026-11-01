@@ -139,8 +139,10 @@ function settingsFrom(input, clips, recipe) {
   return result;
 }
 
+const FRACTIONAL_RENDERER_FIELDS = new Set(['maxSeconds', 'noiseThreshold']);
+
 function rendererFrom(renderer, kind, passes) {
-  objectKeys(renderer, ['type', 'samples', 'bounces', 'denoise', 'seed', 'maxSeconds'], 'renderer');
+  objectKeys(renderer, ['type', 'samples', 'bounces', 'denoise', 'seed', 'maxSeconds', 'noiseThreshold'], 'renderer');
   if (renderer.type !== 'pathTracer') throw new TypeError('renderer.type must be pathTracer.');
   if (kind !== 'image') throw new RangeError('The path tracer renders one image: use kind image.');
   if (passes !== undefined) throw new RangeError('The path tracer writes the lit image only: leave passes out.');
@@ -148,7 +150,7 @@ function rendererFrom(renderer, kind, passes) {
   const result = { type: 'pathTracer', denoise: renderer.denoise ?? true };
   for (const name of Object.keys(PATH_TRACER_JOB_LIMITS)) {
     const { minimum, maximum, default: fallback } = PATH_TRACER_JOB_LIMITS[name];
-    result[name] = boundedNumber(renderer[name] ?? fallback, minimum, maximum, `renderer ${name}`, name !== 'maxSeconds');
+    result[name] = boundedNumber(renderer[name] ?? fallback, minimum, maximum, `renderer ${name}`, !FRACTIONAL_RENDERER_FIELDS.has(name));
   }
   return result;
 }

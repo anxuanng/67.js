@@ -7,7 +7,7 @@ import { renderPathTracedImage } from '67js/addons/path-tracer';
 
 const { rgba, linear, report } = await renderPathTracedImage(
   { parts, environment, camera },        // the same objects the rasterizer takes
-  { width: 960, height: 540, samples: 64, bounces: 8, seed: 0, denoise: true, threads: 4, maxSeconds: 300 },
+  { width: 960, height: 540, samples: 64, bounces: 8, seed: 0, denoise: true, threads: 4, maxSeconds: 300, noiseThreshold: 0 },
 );
 ```
 
@@ -17,7 +17,7 @@ From an agent, submit an `image` render job with `settings.renderer` (see [rende
 
 Unidirectional path tracing against the triangle BVH that the [light bake](light-bake.md) uses, with next-event estimation and the environment map drawn by importance, then a wavelet denoiser. The first hit of every path samples every light. Later hits draw one light at random and divide by its chance, so the average is the same and a scene with eleven lights costs one shadow ray per bounce instead of eleven.
 
-- Surfaces: diffuse, GGX specular with metals, clear coat, glass (`transmission`, `ior`, rough glass), emission, image maps (`map`, with `alphaMode: "mask"` cutouts, `normalMap` with `normalScale`, and `metallicRoughnessMap`, whose green channel scales roughness and blue scales metallic as in the rasterizer) and vertex colour. Skinned parts are drawn at their current pose.
+- Surfaces: diffuse, GGX specular with metals, clear coat, glass (`transmission`, `ior`, rough glass), emission, image maps (`map`, with `alphaMode: "mask"` cutouts, `normalMap` with `normalScale`, and `metallicRoughnessMap`, whose green channel scales roughness and blue scales metallic as in the rasterizer; box-projected materials read all of them through the UVs of their projection, the same ones the glTF export writes) and vertex colour. Skinned parts are drawn at their current pose.
 - Lights: the sun (`keyColor`, `lightDirection`, as a 1 degree disk), point lights with a radius, spot lights with a soft cone, rectangular area lights, and the environment map with its rotation. All of them cast soft shadows, whatever their `castShadow` says, as in Cycles.
 - Light that bounces between surfaces, and the sky seen in mirrors and through glass.
 
@@ -26,7 +26,7 @@ Unidirectional path tracing against the triangle BVH that the [light bake](light
 `report.ignored` lists the ones this scene asks for.
 
 - Volume fog (`volumeFog`), and the procedural sky when there is no environment map (the sky is black).
-- Occlusion maps and emissive maps, and normal and metallic-roughness maps on box-projected materials (`boxMapScale`, which has no UVs to read them with). Normal maps and metallic-roughness maps on UV-mapped materials are drawn. Material graphs and patterns are drawn through the colour map they bake.
+- Occlusion maps and emissive maps. Normal and metallic-roughness maps are drawn on UV-mapped and on box-projected materials. Material graphs and patterns are drawn through the colour map they bake.
 - Translucent leaves (foliage looks darker than in the rasterizer), liquids, foam and blended transparency (traced as plain or opaque surfaces).
 - Lights seen in mirrors (area lights and spot lights are lit but not visible), caustics, subsurface scattering, motion blur, depth of field, bloom and colour grade.
 - Multiple-scattering GGX: rough metal is a little darker than in Blender.
@@ -36,15 +36,16 @@ Unidirectional path tracing against the triangle BVH that the [light bake](light
 | Option | Default | Range | Meaning |
 | --- | --- | --- | --- |
 | `width`, `height` | 960, 540 | 16 to 4096 | Output size, at most 2,073,600 pixels. |
-| `samples` | 64 | 1 to 1024 | Paths per pixel. |
+| `samples` | 64 | 1 to 1024 | Paths per pixel. Every pixel draws all of them unless `noiseThreshold` is above 0. |
 | `bounces` | 8 | 1 to 16 | Reflections followed by each path. |
 | `seed` | 0 | 0 to 2147483647 | Changes the noise. |
 | `threads` | 4 | 1 to 8 | Module workers; the pixels are the same for any count. Without `Worker` it runs on one thread. |
+| `noiseThreshold` | 0 | 0 to 1 (render jobs: 0 to 0.1) | 0 draws every sample. Above 0, a pixel stops once the standard error of its mean luminance, relative to that mean plus 0.05, is under this, checked from 16 samples on and after every 8 more. It costs quality on some scenes (see the table below). It reads only the pixel's own samples, so the result is the same on any thread count and band split. `report.averageSamples` says how many paths a pixel took. |
 | `maxSeconds` | 300 | 1 to 1800 | Wall-clock limit. Passing it throws; there is never a partial image. |
 | `denoise` | true | boolean | Filters the light with normal, depth and noise guides. |
 | `fireflyClamp` | 20 | 1 to 1000 | Largest radiance one bounce may add to a sample. |
 
-Also checked before any ray is traced: samples times pixels times bounces at most 4 billion, 400,000 triangles, 1,024 parts, 32 lights, and finite numbers and in-range indices in every part. A render job limits `maxSeconds` to 240 so that it ends before the job deadline.
+Also checked before any ray is traced: samples times pixels times bounces at most 4 billion, 400,000 triangles, 1,024 parts, 32 lights, and finite numbers and in-range indices in every part. A render job limits `maxSeconds` to 600: the job runs on workers without blocking the page, and its deadline is `maxSeconds` plus 60 seconds for the page and the PNG, so a trace that reaches its limit still ends before the job does.
 
 The same scene and options give the same bytes. Random numbers come from a hash of the pixel, the sample and the seed, never from `Math.random` or the clock, and a pixel does not depend on which thread drew it.
 
@@ -62,7 +63,32 @@ Where the time went on the 181,708 triangle demo room (issue #129; one thread, C
 | Typed-stack ray query, same pixels bit for bit | 9,756 (1.2 times) |
 | One light drawn at random past the first hit (11 light sources) | 23,300 (2.4 times more, 2.8 in all) |
 
-At 23,300 paths a second, a 1920 by 1080 still at 64 samples is 133 million paths: about 5,700 thread-seconds, or roughly 12 minutes on eight threads that have the machine to themselves (inferred, not measured end to end). That is above the 240 s limit of a render job, so such a still needs about 16 samples inside the limit, or a longer `maxSeconds` on a call that is not a job. The hair strands were not the cost by themselves: the time was per ray, and every ray was slow. Ideas not done: adaptive sampling that stops converged pixels, and a lighter BVH for hair tubes.
+Adaptive sampling, a shadow-ray shortcut and the demo-room still (issue #129, second pass; same 181,708 triangle room, one thread, 160 by 90, seed 7, error is the RMSE of the 8-bit image against a 256 sample render of seed 0, on an idle machine):
+
+| Step | Seconds | Average samples | Error |
+| --- | --- | --- | --- |
+| 64 samples, every pixel | 25.9 | 64 | 4.38 |
+| Same, shadow rays skip the surface lookup unless the material is a cutout | 21.0 and 19.1 (1.23 to 1.36 times) | 64 | 4.38, pixels unchanged |
+| 24 samples, every pixel | 9.5 | 24 | 5.53 |
+| `noiseThreshold` 0.05 | 11.3 | 26.1 | 4.87 |
+| `noiseThreshold` 0.03 | 14.1 | 34.4 | 4.77 |
+| One light drawn at random at the first hit too | 12.9 | 64 | 7.26 |
+
+Adaptive sampling beats fewer samples at the same cost on this room (4.87 at 11.3 s against 5.53 at 9.5 s), but it is off by default because it costs score against Cycles on other scenes, and quality is why the tracer exists. Score against Cycles (FLIP, lower is better), 64 samples at most, four threads, 960 by 540:
+
+| Scene | `noiseThreshold` | Score | Seconds |
+| --- | --- | --- | --- |
+| `spot-area` | 0 (default) | 0.0658 | 37.1 |
+| `spot-area` | 0.008 | 0.0748 | 31.3 |
+| `spot-area` | 0.015 | 0.0847 | 25.1 |
+| `spot-area` | 0.03 | 0.0900 | 21.3 |
+| `lit-interior` | 0.03 | 0.2214 | 106.7 |
+
+`lit-interior` scored 0.1993 at 32 samples before adaptive sampling; it was not re-run with every sample at 64. A render job passes the value as `settings.renderer.noiseThreshold`, 0 to 0.1.
+
+Fewer samples with the denoiser lose little on some scenes: 24 samples scored within 0.005 of 64 on `brick-graph` (0.1394 against 0.1370) and `character` (0.1164 against 0.1116), at about 45 percent of the time. Two scenes are not proof for all. Drawing one light at the first hit halves the time but makes the image noisier than 24 samples cost, so it was not kept.
+
+The 1920 by 1080 still of `tests/fixtures/demo-room.recipe.json` at `samples: 64`, through an MCP image job with 8 threads: 246.4 s in the tracer (229.4 s tracing, the rest the filter), 30.7 samples per pixel on average, 257 s for the whole job (measured, once, with `noiseThreshold` 0.03, the setting at that time). With the default of 0 every pixel draws all 64, so the same still takes about 8 to 9 minutes on 8 free threads (inferred from 246 s at 30.7 average samples: 246 times 64 / 30.7 is about 513 s), inside the 600 s limit but with little room: lower `samples` or pass a `noiseThreshold` for a larger room. That is 6 seconds over the old 240 s job limit, so the limit is now 600. The hair strands were not the cost by themselves: the time was per ray, and every ray was slow.
 
 ## Measured
 
