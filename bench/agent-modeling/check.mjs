@@ -56,8 +56,18 @@ function checkWalkPath(check, measures) {
     if (!position) return { pass: false, detail: `no drawn node ${check.node}` };
     if (sample === 0 && planarDistance(position, check.from) > 0.75) problems.push(`starts ${round(planarDistance(position, check.from))} m from the start point`);
     if (sample === WALK_SAMPLES - 1 && planarDistance(position, check.to) > 0.75) problems.push(`ends ${round(planarDistance(position, check.to))} m from the end point`);
-    const fromOpening = planarDistance(position, check.avoid.center) - check.avoid.radius;
-    if (fromOpening < check.margin) problems.push(`${round(fromOpening)} m from the opening edge at t=${round(time)}`);
+    for (const opening of [].concat(check.avoid)) {
+      const fromOpening = planarDistance(position, opening.center) - opening.radius;
+      if (fromOpening < check.margin) problems.push(`${round(fromOpening)} m from the opening edge at t=${round(time)}`);
+    }
+    for (const nodeName of check.avoidNodes ?? []) {
+      const bounds = measures.nodeBounds(nodeName);
+      if (!bounds) return { pass: false, detail: `no drawn node ${nodeName}` };
+      const outsideX = Math.max(bounds.min[0] - position[0], 0, position[0] - bounds.max[0]);
+      const outsideZ = Math.max(bounds.min[2] - position[2], 0, position[2] - bounds.max[2]);
+      const fromNode = Math.hypot(outsideX, outsideZ);
+      if (fromNode < check.margin) problems.push(`${round(fromNode)} m from ${nodeName} at t=${round(time)}`);
+    }
     const groundHeight = measures.surfaceHeight(check.ground, position[0], position[2]);
     if (groundHeight === null) problems.push(`no ground under it at t=${round(time)}`);
     else if (Math.abs(position[1] - groundHeight) > check.heightTolerance) problems.push(`${round(position[1] - groundHeight)} m off the ground at t=${round(time)}`);

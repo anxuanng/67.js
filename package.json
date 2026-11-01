@@ -68,6 +68,7 @@
     "./addons/vehicle": "./build/vehicle.js",
     "./addons/vegetation": "./build/vegetation.js",
     "./addons/terrain": "./build/terrain.js",
+    "./addons/navmesh": "./build/navmesh.js",
     "./addons/grass": "./build/grass.js",
     "./addons/clutter": "./build/clutter.js",
     "./addons/light-bake": "./build/light-bake.js",

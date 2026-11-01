@@ -35,6 +35,7 @@ export default defineConfig({
         vehicle: 'src/vehicle.js',
         vegetation: 'src/vegetation.js',
         terrain: 'src/terrain.js',
+        navmesh: 'src/navmesh.js',
         grass: 'src/grass.js',
         clutter: 'src/clutter.js',
         'light-bake': 'src/light-bake.js',
