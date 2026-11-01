@@ -35,3 +35,13 @@ test('importing the layer shader module registers the code for the shader that a
   assert.doesNotMatch(createFragmentShader(['anisotropy']), /filmReflectance/);
   assert.doesNotMatch(createFragmentShader(['iridescence']), /anisotropicSpecular/);
 });
+
+test('the normal map transform is applied only when its feature is on', async () => {
+  await import('../src/material-layer-shaders.js');
+  const { createFragmentShader } = await import('../src/shaders.js');
+  const plain = createFragmentShader(['normalMap']);
+  const transformed = createFragmentShader(['normalMap', 'normalMapTransform']);
+  assert.match(transformed, /texture\(normalMap, textureUV \* normalMapTransform\.xy \+ normalMapTransform\.zw\)/);
+  assert.match(plain, /texture\(normalMap, textureUV\)/);
+  assert.doesNotMatch(plain, /normalMapTransform/);
+});
