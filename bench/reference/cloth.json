@@ -1,0 +1,92 @@
+{
+ "metric": "FLIP (LDR), mean error, lower is better",
+ "blenderVersion": "5.2.2 LTS",
+ "seconds": {
+  "banner-1s": {
+   "cycles": 15.0,
+   "eevee": 92.1
+  },
+  "banner-2s": {
+   "cycles": 45.8,
+   "eevee": 5.8
+  },
+  "drape-0.5s": {
+   "cycles": 24.7,
+   "eevee": 27.0
+  },
+  "drape-1s": {
+   "cycles": 11.3,
+   "eevee": 20.5
+  },
+  "drape-2s": {
+   "cycles": 19.8,
+   "eevee": 1.7
+  }
+ },
+ "graphics": {
+  "gpu": "ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 (0x00002487) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+  "cpu": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)"
+ },
+ "scores": {
+  "banner-1s": {
+   "gpu-vs-cycles": 0.0428,
+   "gpu-vs-eevee": 0.0563,
+   "cpu-vs-cycles": 0.0424,
+   "cpu-vs-eevee": 0.0559,
+   "eevee-vs-cycles": 0.0418,
+   "gpu-vs-cpu": 0.0061,
+   "asset-pixels": 0.5221,
+   "asset-gpu-vs-cycles": 0.0713,
+   "asset-gpu-vs-eevee": 0.0957,
+   "asset-eevee-vs-cycles": 0.0729
+  },
+  "banner-2s": {
+   "gpu-vs-cycles": 0.044,
+   "gpu-vs-eevee": 0.0657,
+   "cpu-vs-cycles": 0.0436,
+   "cpu-vs-eevee": 0.0654,
+   "eevee-vs-cycles": 0.0426,
+   "gpu-vs-cpu": 0.0061,
+   "asset-pixels": 0.5183,
+   "asset-gpu-vs-cycles": 0.0689,
+   "asset-gpu-vs-eevee": 0.1055,
+   "asset-eevee-vs-cycles": 0.0709
+  },
+  "drape-0.5s": {
+   "gpu-vs-cycles": 0.0804,
+   "gpu-vs-eevee": 0.0787,
+   "cpu-vs-cycles": 0.0799,
+   "cpu-vs-eevee": 0.0782,
+   "eevee-vs-cycles": 0.0433,
+   "gpu-vs-cpu": 0.005,
+   "asset-pixels": 0.7609,
+   "asset-gpu-vs-cycles": 0.1012,
+   "asset-gpu-vs-eevee": 0.1022,
+   "asset-eevee-vs-cycles": 0.057
+  },
+  "drape-1s": {
+   "gpu-vs-cycles": 0.0932,
+   "gpu-vs-eevee": 0.0951,
+   "cpu-vs-cycles": 0.0926,
+   "cpu-vs-eevee": 0.0946,
+   "eevee-vs-cycles": 0.0394,
+   "gpu-vs-cpu": 0.005,
+   "asset-pixels": 0.761,
+   "asset-gpu-vs-cycles": 0.1157,
+   "asset-gpu-vs-eevee": 0.1207,
+   "asset-eevee-vs-cycles": 0.0514
+  },
+  "drape-2s": {
+   "gpu-vs-cycles": 0.0909,
+   "gpu-vs-eevee": 0.0965,
+   "cpu-vs-cycles": 0.0904,
+   "cpu-vs-eevee": 0.096,
+   "eevee-vs-cycles": 0.0428,
+   "gpu-vs-cpu": 0.005,
+   "asset-pixels": 0.761,
+   "asset-gpu-vs-cycles": 0.1114,
+   "asset-gpu-vs-eevee": 0.1208,
+   "asset-eevee-vs-cycles": 0.0555
+  }
+ }
+}
