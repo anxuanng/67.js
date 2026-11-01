@@ -85,8 +85,9 @@ test('probe lists are validated', () => {
   assert.deepEqual(roomCentreProbe(closedRoom()).position.map(Math.round), [0, 2, 0]);
 });
 
-test('bake.probes accepts false, room, a list or nothing', () => {
-  assert.equal(normalizeAgentBake({}).probes, undefined);
+test('bake.probes defaults to room, and false opts out', () => {
+  assert.equal(normalizeAgentBake({}).probes, 'room');
+  assert.equal(normalizeAgentBake({ preset: 'draft' }).probes, 'room');
   assert.equal(normalizeAgentBake({ probes: false }).probes, false);
   assert.equal(normalizeAgentBake({ probes: 'room' }).probes, 'room');
   assert.deepEqual(normalizeAgentBake({ probes: [{ position: [0, 1, 0] }] }).probes, [{ position: [0, 1, 0] }]);
@@ -95,4 +96,15 @@ test('bake.probes accepts false, room, a list or nothing', () => {
 test('the probe shader code compiles in only when asked for', () => {
   assert.doesNotMatch(createFragmentShader(), /probeEnabled/);
   assert.match(createFragmentShader(['probe']), /probeEnabled > 0.5\) surroundings/);
+});
+
+test('a probe on a light-mapped part keeps its light map fields and still reads live colour', () => {
+  const lightMap = { width: 2, height: 2, data: new Uint8Array(16) };
+  const lightMapped = placed('mirror', ball, [0, 1, 0], [0.5, 0.5, 0.5], { metallic: 1, roughness: 0.05, lightMap, lightMapScale: 2, emission: 0.5 });
+  const [probed] = applyReflectionProbes([lightMapped], lamp, [{ position: [0, 1, 0], radius: 5 }], {}).parts;
+  assert.ok(probed.material.environmentProbe);
+  assert.equal(probed.material.lightMap, lightMap);
+  assert.equal(probed.material.lightMapScale, 2);
+  lightMapped.material.color = [0.2, 0.3, 0.4];
+  assert.deepEqual(probed.material.color, [0.2, 0.3, 0.4]);
 });

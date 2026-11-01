@@ -29,8 +29,11 @@ export function normalizeAgentBake(input) {
     }
     resolved[field] = finiteNumber(input[field], `Bake ${field}`, minimum, maximum);
   }
-  // Absent or false: no probes. 'room' puts one in the middle of an enclosed room; a list places them.
-  if (input.probes !== undefined) {
+  // Absent means 'room', one probe in the middle of an enclosed room (an open scene gets none). false opts out; a list places them.
+  // Measured against Cycles, a probe lowered the FLIP score of every baked room, so a bake brings one along.
+  if (input.probes === undefined) {
+    resolved.probes = 'room';
+  } else {
     resolved.probes = input.probes === false || input.probes === 'room' ? input.probes : normalizeProbeList(input.probes);
   }
   for (const field of ['samples', 'bounces']) {
@@ -210,6 +213,6 @@ export function bakeAgentParts(parts, worldMatrices, environment, settings, gene
   });
   // Probes are placed here, on the page, because they build maps and materials; their trace ran above.
   const placed = probeTrace ? placeProbes(bakedParts, probeTrace) : null;
-  return { parts: Object.freeze(placed ? placed.parts : bakedParts), report: { ...(placed ? { probes: placed.report } : {}), ...settings, used, reduced, texels: report.texels, rayWork: report.rayWork, seconds: report.seconds,
+  return { parts: Object.freeze(placed ? placed.parts : bakedParts), report: { ...settings, ...(placed ? { probes: placed.report } : {}), used, reduced, texels: report.texels, rayWork: report.rayWork, seconds: report.seconds,
     bakedParts: report.parts.length, skipped: report.skipped } };
 }

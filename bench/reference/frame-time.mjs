@@ -26,11 +26,18 @@ try {
   // cascades, each with a still camera and with a camera that moves every frame.
   const variants = process.argv.includes('--cascades')
     ? [0, 3, 0, 3].flatMap(cascades => [false, true].map(orbit => ({ bake: false, cascades, orbit })))
-    : [[false, false], [true, false], [true, true], [false, true], [false, false], [true, false], [true, true], [false, true]].map(([bake, probes]) => ({ bake, probes }));
+    : [1, 2, 3].flatMap(round => (round % 2 ? [[false, false], [true, false], [true, true], [false, true]] : [[false, true], [true, true], [true, false], [false, false]]).map(([bake, probes]) => ({ bake, probes })));
   for (const variant of variants) {
     results.push({ ...variant, ...(await page.evaluate(([id, options]) => window.measureReferenceFrameTime(id, options), [sceneId, variant])) });
   }
-  console.log(JSON.stringify({ sceneId, backend, results }, null, 1));
+  const medianOf = values => values.sort((first, second) => first - second)[Math.floor(values.length / 2)];
+  const summary = {};
+  for (const result of results) {
+    const key = result.baked ? (result.probes ? 'bake+probes' : 'bake') : (result.probes ? 'probes' : 'plain');
+    (summary[key] ??= []).push(result.medianMilliseconds);
+  }
+  const medianByVariant = Object.fromEntries(Object.entries(summary).map(([key, values]) => [key, Number(medianOf(values).toFixed(3))]));
+  console.log(JSON.stringify({ sceneId, backend, medianMillisecondsByVariant: medianByVariant, results }, null, 1));
 } finally {
   await browser.close();
   await server.close();

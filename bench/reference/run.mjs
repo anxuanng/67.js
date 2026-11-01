@@ -159,3 +159,7 @@ if (!onlyScene || pathTracerFlag) {
     'python', '-I', 'bench/reference/score.py', WORK_DIRECTORY, OUTPUT_DIRECTORY, ...(pathTracerFlag ? ['--path-tracer'] : []), ...(sceneSet ? [`--${sceneSet}`] : []),
   ]);
 }
+else {
+  // Scoring reads every scene in the work directory, so a run of one scene would mix new and old renders; it leaves the scores as they were.
+  console.log('--scene renders one scene and does not score it. Run without --scene to rescore; the numbers in baseline.json are unchanged.');
+}
