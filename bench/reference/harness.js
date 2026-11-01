@@ -22,18 +22,44 @@ function encodeBytes(typedArray) {
   return btoa(text);
 }
 
-function plainData(value) {
+// With an image table, each ImageData is written once into the table and its place holds { imageId }, so a scene with
+// thousands of parts that share a leaf texture does not repeat the pixels in every material.
+function plainData(value, imageTable = null) {
   if (ArrayBuffer.isView(value)) return { type: value.constructor.name, base64: encodeBytes(value) };
-  if (value instanceof ImageData) return { width: value.width, height: value.height, data: plainData(value.data) };
-  if (Array.isArray(value)) return value.map(plainData);
+  if (value instanceof ImageData) {
+    if (!imageTable) return { width: value.width, height: value.height, data: plainData(value.data) };
+    if (!imageTable.ids.has(value)) {
+      imageTable.ids.set(value, imageTable.images.length);
+      imageTable.images.push({ width: value.width, height: value.height, data: plainData(value.data) });
+    }
+    return { imageId: imageTable.ids.get(value) };
+  }
+  if (Array.isArray(value)) return value.map(entry => plainData(entry, imageTable));
   if (value && typeof value === 'object') {
     const result = {};
     for (const [key, entry] of Object.entries(value)) {
-      if (typeof entry !== 'function') result[key] = plainData(entry);
+      if (typeof entry !== 'function') result[key] = plainData(entry, imageTable);
     }
     return result;
   }
   return value;
+}
+
+// Parts that look the same share one entry of the scene's material list.
+function materialTable() {
+  const imageTable = { ids: new Map(), images: [] };
+  const entries = [];
+  const indexByText = new Map();
+  function indexOf(material) {
+    const described = plainData(material, imageTable);
+    const text = JSON.stringify(described);
+    if (!indexByText.has(text)) {
+      indexByText.set(text, entries.length);
+      entries.push(described);
+    }
+    return indexByText.get(text);
+  }
+  return { indexOf, entries, images: imageTable.images };
 }
 
 // A pattern material is box projected in the shader and has no UVs. Blender gets the same projection written as UVs,
@@ -58,13 +84,15 @@ function describeScene(id, scene) {
   if (scene.glb) return { id, camera: scene.camera, environment, world: scene.blenderWorld, glb: scene.glb, parts: [], geometries: [] };
   const geometries = new Map();
   const boxProjected = new Map();
+  const materials = materialTable();
   const describedParts = scene.parts.map(part => {
     const geometry = part.skin ? skinnedGeometry(part) : boxProjectedFor(part, boxProjected);
     if (!geometries.has(geometry)) geometries.set(geometry, geometries.size);
-    return { name: part.name, geometry: geometries.get(geometry), matrix: [...part.matrix], material: plainData(part.material) };
+    return { name: part.name, geometry: geometries.get(geometry), matrix: [...part.matrix], material: materials.indexOf(part.material) };
   });
   return {
     id, camera: scene.camera, environment, world: scene.blenderWorld, blenderCloth: scene.blenderCloth,
+    materials: materials.entries, images: materials.images,
     parts: describedParts,
     geometries: [...geometries.keys()].map(({ positions, normals, uvs, colors, indices }) => plainData({ positions, normals, uvs, colors, indices })),
   };
@@ -75,7 +103,8 @@ async function bakeScene(scene, bakeOptions) {
   const { bakeLightmaps } = await import('/src/light-bake.js');
   const { pointLights, keyColor, lightDirection } = scene.environment;
   const started = performance.now();
-  const baked = bakeLightmaps(scene.parts, { pointLights, keyColor, lightDirection }, bakeOptions);
+  // A scene as large as a hall can need its own texel density to stay under the bake's texel limit.
+  const baked = bakeLightmaps(scene.parts, { pointLights, keyColor, lightDirection }, { ...scene.bakeOptions, ...bakeOptions });
   return { parts: baked.parts, report: baked.report, seconds: (performance.now() - started) / 1000 };
 }
 

@@ -32,6 +32,9 @@ NUMPY_TYPES = {
     "Uint8Array": np.uint8,
     "Uint8ClampedArray": np.uint8,
 }
+# Set for each scene: the pixels its materials share, and the images already built from them.
+scene_images = []
+built_images = {}
 
 
 def decode(entry):
@@ -78,7 +81,11 @@ def build_mesh(name, geometry):
 
 
 def build_image(name, descriptor):
-    source = descriptor["image"]
+    # The scene's pixels sit once in its image table; a material only names the entry.
+    image_id = descriptor["image"]["imageId"]
+    if image_id in built_images:
+        return built_images[image_id]
+    source = scene_images[image_id]
     data = decode(source["data"])
     width = source["width"]
     height = source["height"]
@@ -86,6 +93,7 @@ def build_image(name, descriptor):
     pixels = data.reshape(height, width, 4)[::-1].astype(np.float32) / 255
     image.pixels.foreach_set(pixels.reshape(-1))
     image.pack()
+    built_images[image_id] = image
     return image
 
 
@@ -366,6 +374,11 @@ def build_material(name, description, has_vertex_colors):
         principled.inputs["Transmission Weight"].default_value = 1
         principled.inputs["IOR"].default_value = description["liquid"]["ior"]
     add_material_layers(material, principled, description)
+    if description.get("emission", 0) > 0 and "graph" not in description:
+        # 67js adds emissiveColor (the base colour when none is given) times emission to the pixel.
+        emission_color = description.get("emissiveColor", description["color"])
+        set_linear_color(principled.inputs["Emission Color"], emission_color)
+        principled.inputs["Emission Strength"].default_value = description["emission"]
     if "graph" in description:
         add_graph(material, principled, description)
     elif "map" in description:
@@ -376,7 +389,10 @@ def build_material(name, description, has_vertex_colors):
 
 
 def build_parts(scene, description):
+    # Parts that share a geometry share one mesh, and each object carries its own material, so thousands of trees or towers
+    # cost one copy of their vertices. A material is built once for every part that names it.
     meshes = {}
+    materials = {}
     cloth_part_name = (description.get("blenderCloth") or {}).get("part")
     for index, part in enumerate(description["parts"]):
         # The sheet is drawn from Blender's own cloth bake (build_cloth), not from the 67js frame.
@@ -384,11 +400,16 @@ def build_parts(scene, description):
             continue
         geometry_index = part["geometry"]
         geometry = description["geometries"][geometry_index]
+        has_vertex_colors = geometry.get("colors") is not None
         if geometry_index not in meshes:
             meshes[geometry_index] = build_mesh(f"geometry-{geometry_index}", geometry)
-        mesh = meshes[geometry_index].copy()
-        mesh.materials.append(build_material(f"{part['name']}-{index}", part["material"], geometry.get("colors") is not None))
-        mesh_object = bpy.data.objects.new(part["name"], mesh)
+            meshes[geometry_index].materials.append(None)
+        material_key = (part["material"], has_vertex_colors)
+        if material_key not in materials:
+            materials[material_key] = build_material(f"material-{part['material']}", description["materials"][part["material"]], has_vertex_colors)
+        mesh_object = bpy.data.objects.new(part["name"], meshes[geometry_index])
+        mesh_object.material_slots[0].link = "OBJECT"
+        mesh_object.material_slots[0].material = materials[material_key]
         column_major = part["matrix"]
         local = Matrix([[column_major[column * 4 + row] for column in range(4)] for row in range(4)])
         mesh_object.matrix_world = Y_UP_TO_Z_UP @ local
@@ -466,7 +487,7 @@ def build_cloth(scene, description):
     evaluated = cloth_object.evaluated_get(bpy.context.evaluated_depsgraph_get())
     baked_mesh = bpy.data.meshes.new_from_object(evaluated)
     baked_mesh.shade_smooth()
-    baked_mesh.materials.append(build_material("cloth", part["material"], False))
+    baked_mesh.materials.append(build_material("cloth", description["materials"][part["material"]], False))
     bpy.data.objects.remove(cloth_object)
     scene.collection.objects.link(bpy.data.objects.new("cloth", baked_mesh))
 
@@ -676,6 +697,8 @@ def import_glb(root, glb_file):
 
 def build_scene(description, root):
     clear_scene()
+    scene_images[:] = description.get("images", [])
+    built_images.clear()
     scene = bpy.context.scene
     if "glb" in description:
         import_glb(root, description["glb"])

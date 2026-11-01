@@ -3,7 +3,8 @@
 import { box, cylinder, sphere, torus } from '/src/geometry.js';
 import { createEnvironmentMap, parseRadianceHdr } from '/src/hdri.js';
 import { parseGltf } from '/src/gltf.js';
-import { createTree, vegetationParts } from '/src/vegetation.js';
+import { createTree, scatterVegetation, selectLevels, vegetationParts } from '/src/vegetation.js';
+import { createNoiseHeight, createTerrain } from '/src/terrain.js';
 import { createAgentScene, loadAgentSceneModules } from '/src/agent-scene.js';
 import { materialPatternTextures, normalizeMaterialPattern } from '/src/material-patterns.js';
 
@@ -166,7 +167,296 @@ async function khronosAssetScene(name) {
 
 export const KHRONOS_SCENES = Object.fromEntries(KHRONOS_ASSET_NAMES.map(name => [name, () => khronosAssetScene(name)]));
 
+// Grand scenes: the scale people actually want to draw, built from the engine's terrain, vegetation and plain boxes.
+// Only what Blender can draw too is used: the terrain colours are vertex colours, the emissive windows are Emission, the
+// fog is a volume box. The built-in leaf translucency of 67js has no Blender counterpart (see the README).
+function seededRandom(seed) {
+  let state = seed >>> 0;
+  return () => {
+    state = (state + 0x6d2b79f5) >>> 0;
+    let mixed = Math.imul(state ^ (state >>> 15), 1 | state);
+    mixed = (mixed + Math.imul(mixed ^ (mixed >>> 7), 61 | mixed)) ^ mixed;
+    return ((mixed ^ (mixed >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function clamp01(value) {
+  return Math.min(1, Math.max(0, value));
+}
+
+function smoothBetween(low, high, value) {
+  const fraction = clamp01((value - low) / (high - low));
+  return fraction * fraction * (3 - 2 * fraction);
+}
+
+function mixColors(first, second, amount) {
+  return first.map((channel, index) => channel + (second[index] - channel) * amount);
+}
+
+function normalized(vector) {
+  const length = Math.hypot(...vector);
+  return vector.map(component => component / length);
+}
+
+// A shadow map that looks along the sun from `depth` metres away and covers a square of half-width `extent`.
+function sunShadow(towardLight, target, extent, depth) {
+  const direction = normalized(towardLight);
+  return { eye: target.map((value, axis) => value + direction[axis] * depth), target, up: [0, 1, 0], extent, near: 1, far: depth * 2 };
+}
+
+// Mountain valley: a bowl about 2 km across whose rim rises into ridged peaks, a conifer forest on the lower slopes.
+const VALLEY_TERRAIN = { size: 5120, chunks: 20, resolution: 64, levels: 4 };
+const VALLEY_FLOOR_RADIUS = 520;
+const VALLEY_RIM_RADIUS = 1500;
+const VALLEY_SNOW_LINE = 520;
+const VALLEY_TREE_LINE = 420;
+const VALLEY_EYE = [20, 0, 560];
+const VALLEY_SUN_DIRECTION = [0.85, 0.2, -0.25];
+
+function valleyHeightFunction() {
+  const floorHills = createNoiseHeight({ amplitude: 14, featureSize: 260, mountainMask: () => 0 }, 3);
+  const peaks = createNoiseHeight({ amplitude: 0, mountainAmplitude: 1100, featureSize: 800, octaves: 7, warp: 260, warpFeatureSize: 700, mountainMask: () => 1 }, 11);
+  return (x, z) => {
+    const radius = Math.hypot(x, z * 0.75);
+    const rise = smoothBetween(VALLEY_FLOOR_RADIUS, VALLEY_RIM_RADIUS, radius);
+    const farWall = smoothBetween(2000, 2600, radius) * 600;
+    return floorHills(x, z) + rise * (peaks(x, z) * 1.5 + 90) + farWall;
+  };
+}
+
+// Grass in the valley, bare soil and rock on steep ground, snow on high ground that is not steep.
+function paintValleyTerrain(terrain) {
+  const grass = [0.14, 0.22, 0.07];
+  const alpine = [0.2, 0.19, 0.12];
+  const rock = [0.27, 0.25, 0.23];
+  const snow = [0.85, 0.87, 0.9];
+  for (const terrainPart of terrain.parts) {
+    const { positions, normals } = terrainPart.geometry;
+    const colors = new Float32Array(positions.length);
+    for (let vertex = 0; vertex < positions.length; vertex += 3) {
+      const height = positions[vertex + 1];
+      const flatness = normals[vertex + 1];
+      let color = mixColors(grass, alpine, smoothBetween(VALLEY_TREE_LINE * 0.7, VALLEY_TREE_LINE * 1.5, height));
+      color = mixColors(color, rock, smoothBetween(0.9, 0.7, flatness));
+      color = mixColors(color, snow, smoothBetween(VALLEY_SNOW_LINE, VALLEY_SNOW_LINE + 120, height) * smoothBetween(0.55, 0.8, flatness));
+      colors.set(color, vertex);
+    }
+    terrainPart.geometry.colors = colors;
+  }
+}
+
+async function mountainValleyScene() {
+  const lighting = await skyLighting(0.8);
+  const terrain = createTerrain({ ...VALLEY_TERRAIN, height: valleyHeightFunction(), eye: [VALLEY_EYE[0], 100, VALLEY_EYE[2]], material: { color: [1, 1, 1], metallic: 0, roughness: 0.95, emission: 0 } });
+  paintValleyTerrain(terrain);
+  const eye = [VALLEY_EYE[0], terrain.heightAt(VALLEY_EYE[0], VALLEY_EYE[2]) + 22, VALLEY_EYE[2]];
+  const forest = scatterVegetation({
+    area: { minX: -1500, maxX: 1500, minZ: -1700, maxZ: 1100 }, density: 0.0016, terrainHeight: terrain.heightAt, slopeLimit: 26,
+    exclusion: (x, z) => terrain.heightAt(x, z) > VALLEY_TREE_LINE || Math.hypot(x - eye[0], z - eye[2]) < 110,
+    mix: { conifer: 1 }, variants: 3, scale: [0.8, 1.3], seed: 5,
+  });
+  const visibleForest = selectLevels(forest.instances, eye, { cullDistance: 1800, distanceScale: 3 });
+  return {
+    parts: [...terrain.parts, ...visibleForest.parts], blenderWorld: lighting.blenderWorld,
+    environment: environment(lighting, { keyColor: [4.4, 3, 1.8], lightDirection: normalized(VALLEY_SUN_DIRECTION) }),
+    camera: { eye, target: [0, 330, -1800], up: [0, 1, 0], fov: 50, near: 0.5, far: 8000 },
+    shadow: sunShadow(VALLEY_SUN_DIRECTION, [0, 150, -400], 2300, 3500),
+  };
+}
+
+// Temple hall: a nave 140 m long between four rows of columns 30 m tall, a roof with square openings that let the sun
+// fall through fog, a bright window at the far end and a few small figures near the camera for scale.
+const HALL_BLOCK = box(0, 1);
+const HALL = { halfWidth: 33, front: 50, back: -130, columnHeight: 30, columnRadius: 1.6, roofHeight: 31.5 };
+const HALL_COLUMN_ROWS = [-22, -11, 11, 22];
+const HALL_COLUMN_PITCH = 12;
+const HALL_COLUMN_COUNT = 11;
+const HALL_SUN_DIRECTION = [0.4, 0.82, 0.25];
+const HALL_OPENING_PITCH = 20;
+const HALL_OPENING_COUNT = 6;
+const HALL_OPENING_FIRST_Z = -5;
+const HALL_OPENING_SIZE = [10, 7];
+
+function hallRoofParts(parts, stone) {
+  const roofThickness = 2;
+  const length = HALL.front - HALL.back;
+  const middleZ = (HALL.front + HALL.back) / 2;
+  parts.push(part('roof-left', HALL_BLOCK, [-19, HALL.roofHeight, middleZ], [28, roofThickness, length], stone));
+  parts.push(part('roof-right', HALL_BLOCK, [19, HALL.roofHeight, middleZ], [28, roofThickness, length], stone));
+  let slabStart = HALL.front;
+  for (let opening = 0; opening <= HALL_OPENING_COUNT; opening++) {
+    const openingCenter = HALL_OPENING_FIRST_Z - opening * HALL_OPENING_PITCH;
+    const slabEnd = opening < HALL_OPENING_COUNT ? openingCenter + HALL_OPENING_SIZE[1] / 2 : HALL.back;
+    if (slabStart - slabEnd > 0.5) {
+      parts.push(part(`roof-center-${opening}`, HALL_BLOCK, [0, HALL.roofHeight, (slabStart + slabEnd) / 2], [HALL_OPENING_SIZE[0], roofThickness, slabStart - slabEnd], stone));
+    }
+    slabStart = openingCenter - HALL_OPENING_SIZE[1] / 2;
+  }
+}
+
+function hallColumnParts(parts, stone) {
+  const column = cylinder(48, 0, 1);
+  for (const [rowIndex, x] of HALL_COLUMN_ROWS.entries()) {
+    for (let index = 0; index < HALL_COLUMN_COUNT; index++) {
+      const z = -index * HALL_COLUMN_PITCH;
+      const label = `${rowIndex}-${index}`;
+      parts.push(part(`column-${label}`, column, [x, HALL.columnHeight / 2, z], [HALL.columnRadius, HALL.columnHeight, HALL.columnRadius], stone));
+      parts.push(part(`column-base-${label}`, HALL_BLOCK, [x, 0.6, z], [4.2, 1.2, 4.2], stone));
+      parts.push(part(`column-capital-${label}`, HALL_BLOCK, [x, HALL.columnHeight + 0.7, z], [4.2, 1.4, 4.2], stone));
+    }
+    parts.push(part(`architrave-${rowIndex}`, HALL_BLOCK, [x, HALL.columnHeight + 2, (HALL.front + HALL.back) / 2], [2.6, 1.2, HALL.front - HALL.back], stone));
+  }
+}
+
+function hallFigureParts(parts) {
+  const body = cylinder(16, 0, 1);
+  const head = sphere(16, 10);
+  const robes = [[0.5, 0.1, 0.08], [0.1, 0.2, 0.45], [0.55, 0.45, 0.15], [0.15, 0.3, 0.18], [0.4, 0.4, 0.42]];
+  const standing = [[-3.5, 33], [-1.5, 30.5], [2.5, 32], [4.5, 27.5], [-5.5, 26], [0.8, 23.5]];
+  standing.forEach(([x, z], index) => {
+    const height = 1.5 + (index % 3) * 0.12;
+    parts.push(part(`figure-body-${index}`, body, [x, height / 2, z], [0.2, height, 0.2], { color: robes[index % robes.length], roughness: 0.8 }));
+    parts.push(part(`figure-head-${index}`, head, [x, height + 0.13, z], [0.13, 0.13, 0.13], { color: [0.75, 0.55, 0.42], roughness: 0.7 }));
+  });
+}
+
+async function templeHallScene() {
+  const lighting = constantLighting(0.03);
+  const stone = { color: [0.52, 0.45, 0.36], roughness: 0.85 };
+  const floorStone = { color: [0.36, 0.32, 0.27], roughness: 0.6 };
+  const length = HALL.front - HALL.back;
+  const middleZ = (HALL.front + HALL.back) / 2;
+  const parts = [
+    part('hall-floor', HALL_BLOCK, [0, -0.5, middleZ], [HALL.halfWidth * 2, 1, length], floorStone),
+    part('hall-carpet', HALL_BLOCK, [0, 0.03, middleZ], [5, 0.06, length - 8], { color: [0.45, 0.06, 0.05], roughness: 0.9 }),
+    part('wall-left', HALL_BLOCK, [-HALL.halfWidth - 1, HALL.roofHeight / 2, middleZ], [2, HALL.roofHeight + 1, length], stone),
+    part('wall-right', HALL_BLOCK, [HALL.halfWidth + 1, HALL.roofHeight / 2, middleZ], [2, HALL.roofHeight + 1, length], stone),
+    part('wall-front', HALL_BLOCK, [0, HALL.roofHeight / 2, HALL.front + 1], [HALL.halfWidth * 2 + 4, HALL.roofHeight + 1, 2], stone),
+    part('wall-far', HALL_BLOCK, [0, HALL.roofHeight / 2, HALL.back - 1], [HALL.halfWidth * 2 + 4, HALL.roofHeight + 1, 2], stone),
+    part('far-window', HALL_BLOCK, [0, 15, HALL.back + 0.05], [12, 22, 0.1], { color: [1, 0.78, 0.5], roughness: 1, emission: 5 }),
+    part('altar-steps-low', HALL_BLOCK, [0, 0.4, HALL.back + 9], [26, 0.8, 18], stone),
+    part('altar-steps-high', HALL_BLOCK, [0, 1.2, HALL.back + 6], [16, 0.8, 11], stone),
+    part('altar', HALL_BLOCK, [0, 2.8, HALL.back + 6], [4, 2.4, 3], floorStone),
+  ];
+  hallColumnParts(parts, stone);
+  hallRoofParts(parts, stone);
+  hallFigureParts(parts);
+  const volumeFog = {
+    density: 0.012, minimum: [-HALL.halfWidth, 0, HALL.back], maximum: [HALL.halfWidth, HALL.roofHeight - 1, HALL.front + 2],
+    color: [1, 0.95, 0.85], ambient: [0.02, 0.02, 0.02], anisotropy: 0.6, noiseAmount: 0, steps: 48, maxDistance: 190,
+  };
+  const pointLights = [
+    { position: [-6, 4.5, HALL.back + 8], color: [1, 0.55, 0.2], intensity: 120, radius: 0.3 },
+    { position: [6, 4.5, HALL.back + 8], color: [1, 0.55, 0.2], intensity: 120, radius: 0.3 },
+  ];
+  return {
+    parts, blenderWorld: lighting.blenderWorld,
+    environment: environment(lighting, { keyColor: [8, 6.9, 5.4], lightDirection: normalized(HALL_SUN_DIRECTION), pointLights, volumeFog }),
+    camera: { eye: [-2, 1.7, HALL.front - 3], target: [0, 12, -80], up: [0, 1, 0], fov: 62, near: 0.1, far: 300 },
+    shadow: sunShadow(HALL_SUN_DIRECTION, [0, 15, middleZ], 105, 200),
+    // The default of 6 texels per metre needs 1.4 million texels for this hall, and the bake allows 1 million; at 2 texels, 128 samples would pass the 400 million ray limit.
+    bakeOptions: { texelsPerUnit: 2, samples: 48, maxSeconds: 300 },
+  };
+}
+
+// Megacity at dusk: hundreds of towers of stepped boxes on both sides of a broad avenue, windows as emissive bands, a low
+// sun from the left behind the city, seen from a high camera. Every tower shares one box geometry.
+const CITY_AVENUE_HALF_WIDTH = 40;
+const CITY_COLUMNS_PER_SIDE = 8;
+const CITY_COLUMN_PITCH = 62;
+const CITY_ROW_PITCH = 46;
+const CITY_ROW_FIRST_Z = 260;
+const CITY_ROW_COUNT = 29;
+const CITY_CENTER_Z = -430;
+const CITY_SUN_DIRECTION = [-0.7, 0.14, -0.35];
+const WINDOW_PITCH = 6.5;
+const FACADE_STYLES = [
+  { color: [0.07, 0.09, 0.13], metallic: 0.3, roughness: 0.25 },
+  { color: [0.3, 0.3, 0.32], metallic: 0, roughness: 0.8 },
+  { color: [0.38, 0.31, 0.25], metallic: 0, roughness: 0.75 },
+  { color: [0.14, 0.16, 0.2], metallic: 0.5, roughness: 0.3 },
+];
+const WINDOW_STYLES = [
+  { color: [1, 0.7, 0.35], emission: 1.1 },
+  { color: [1, 0.8, 0.55], emission: 1 },
+  { color: [0.6, 0.78, 1], emission: 0.9 },
+];
+
+function towerHeight(x, z, random) {
+  const downtown = Math.exp(-(((z - CITY_CENTER_Z) / 330) ** 2)) * Math.exp(-((x / 330) ** 2));
+  const ridge = 28 + downtown * 420 * (0.3 + random() * 0.95);
+  return random() < 0.04 ? ridge * 1.5 : ridge;
+}
+
+function cityTowerParts(parts, towerBox, x, z, random, towerIndex) {
+  const width = 24 + random() * 16;
+  const depth = 24 + random() * 16;
+  const facade = FACADE_STYLES[Math.floor(random() * FACADE_STYLES.length)];
+  const windows = WINDOW_STYLES[Math.floor(random() * WINDOW_STYLES.length)];
+  const totalHeight = towerHeight(x, z, random);
+  const tierCount = totalHeight > 90 ? 1 + Math.floor(random() * 3) : 1;
+  let baseY = 0;
+  for (let tier = 0; tier < tierCount; tier++) {
+    const shrink = 0.78 ** tier;
+    const tierHeight = tier === tierCount - 1 ? totalHeight - baseY : (totalHeight - baseY) * (0.4 + random() * 0.2);
+    const tierWidth = width * shrink;
+    const tierDepth = depth * shrink;
+    const label = `${towerIndex}-${tier}`;
+    parts.push(part(`tower-${label}`, towerBox, [x, baseY + tierHeight / 2, z], [tierWidth, tierHeight, tierDepth], facade));
+    for (let bandY = baseY + 5; bandY < baseY + tierHeight - 3; bandY += WINDOW_PITCH) {
+      if (random() < 0.28) continue;
+      parts.push(part(`windows-${label}-${Math.round(bandY)}`, towerBox, [x, bandY, z], [tierWidth + 0.3, 2.1, tierDepth + 0.3], { ...windows, roughness: 0.6 }));
+    }
+    baseY += tierHeight;
+  }
+  if (totalHeight > 160 && random() < 0.5) {
+    parts.push(part(`spire-${towerIndex}`, towerBox, [x, totalHeight + 22, z], [1.6, 44, 1.6], { color: [0.2, 0.2, 0.22], roughness: 0.4, metallic: 0.8 }));
+    parts.push(part(`spire-light-${towerIndex}`, towerBox, [x, totalHeight + 46, z], [2.4, 2.4, 2.4], { color: [1, 0.15, 0.1], roughness: 1, emission: 12 }));
+  }
+}
+
+function cityAvenueParts(parts, towerBox) {
+  parts.push(part('city-ground', towerBox, [0, -1, -400], [9000, 2, 9000], { color: [0.1, 0.1, 0.11], roughness: 0.95 }));
+  parts.push(part('avenue', towerBox, [0, 0.05, -400], [CITY_AVENUE_HALF_WIDTH * 2 - 12, 0.1, 2400], { color: [0.16, 0.16, 0.17], roughness: 0.6 }));
+  for (let lamp = 0; lamp < 36; lamp++) {
+    const z = CITY_ROW_FIRST_Z + 40 - lamp * 34;
+    for (const side of [-1, 1]) {
+      parts.push(part(`lamp-post-${lamp}-${side}`, towerBox, [side * 31, 5, z], [0.5, 10, 0.5], { color: [0.15, 0.15, 0.16], roughness: 0.5, metallic: 0.8 }));
+      parts.push(part(`lamp-head-${lamp}-${side}`, towerBox, [side * 30, 10.2, z], [1.8, 0.5, 1.2], { color: [1, 0.75, 0.4], roughness: 1, emission: 14 }));
+    }
+  }
+}
+
+async function megacityDuskScene() {
+  const lighting = await skyLighting(0.45);
+  const towerBox = box(0, 1);
+  const random = seededRandom(67);
+  const parts = [];
+  cityAvenueParts(parts, towerBox);
+  let towerIndex = 0;
+  for (let row = 0; row < CITY_ROW_COUNT; row++) {
+    for (let column = 0; column < CITY_COLUMNS_PER_SIDE; column++) {
+      for (const side of [-1, 1]) {
+        if (random() < 0.15) continue;
+        const x = side * (CITY_AVENUE_HALF_WIDTH + 18 + column * CITY_COLUMN_PITCH + (random() - 0.5) * 8);
+        const z = CITY_ROW_FIRST_Z - row * CITY_ROW_PITCH + (random() - 0.5) * 8;
+        cityTowerParts(parts, towerBox, x, z, random, towerIndex++);
+      }
+    }
+  }
+  return {
+    parts, blenderWorld: lighting.blenderWorld,
+    environment: environment(lighting, { keyColor: [5, 2.9, 1.5], lightDirection: normalized(CITY_SUN_DIRECTION) }),
+    camera: { eye: [45, 230, 620], target: [0, 80, -500], up: [0, 1, 0], fov: 48, near: 1, far: 4000 },
+    shadow: sunShadow(CITY_SUN_DIRECTION, [0, 0, -420], 900, 2500),
+  };
+}
+
 export const REFERENCE_SCENES = {
+  'mountain-valley': mountainValleyScene,
+  'temple-hall': templeHallScene,
+  'megacity-dusk': megacityDuskScene,
+
   async 'brick-graph'() {
     return brickWallScene({ withGraph: true });
   },
