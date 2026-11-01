@@ -1,0 +1,182 @@
+{
+  "run": "2026-11-01-03-29-sonnet-best-of-three-branches-off",
+  "model": "claude-sonnet-5-5",
+  "date": "2026-11-01T03:30:54.646Z",
+  "skill": false,
+  "branches": "off",
+  "runsPerTask": 3,
+  "passed": 3,
+  "tasks": 3,
+  "toolCalls": 9,
+  "costUsd": 0.88,
+  "byModel": {
+    "claude-sonnet-5-5": {
+      "runs": 3,
+      "passed": 3,
+      "successRate": 1,
+      "toolCalls": 9,
+      "toolErrors": 0,
+      "inputTokens": 1054320,
+      "outputTokens": 3660,
+      "costUsd": 0.88,
+      "tasks": {
+        "best-of-three": {
+          "runs": 3,
+          "passed": 3,
+          "successRate": 1,
+          "toolCalls": 9,
+          "toolErrors": 0,
+          "inputTokens": 1054320,
+          "outputTokens": 3660,
+          "costUsd": 0.88
+        }
+      }
+    }
+  },
+  "records": [
+    {
+      "task": "best-of-three",
+      "attempt": 1,
+      "pass": true,
+      "passed": 5,
+      "total": 5,
+      "failed": [],
+      "model": "claude-sonnet-5-5",
+      "toolCalls": 3,
+      "toolErrors": 0,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_create": 1,
+        "scene_apply": 1,
+        "scene_export_recipe": 1
+      },
+      "branchCalls": 0,
+      "features": {
+        "geometryTypes": [
+          "box"
+        ],
+        "meshOperations": [],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 1,
+            "side": 1,
+            "three-quarter": 1
+          },
+          "mean": 1
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-11-01-03-29-sonnet-best-of-three-branches-off/look/1/best-of-three-front.png",
+          "artifacts/agent-modeling/2026-11-01-03-29-sonnet-best-of-three-branches-off/look/1/best-of-three-side.png",
+          "artifacts/agent-modeling/2026-11-01-03-29-sonnet-best-of-three-branches-off/look/1/best-of-three-three-quarter.png"
+        ]
+      },
+      "turns": 5,
+      "costUsd": 0.29567010000000005,
+      "inputTokens": 351689,
+      "outputTokens": 1245,
+      "wallSeconds": 21,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "best-of-three",
+      "attempt": 2,
+      "pass": true,
+      "passed": 5,
+      "total": 5,
+      "failed": [],
+      "model": "claude-sonnet-5-5",
+      "toolCalls": 3,
+      "toolErrors": 0,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_create": 1,
+        "scene_apply": 1,
+        "scene_export_recipe": 1
+      },
+      "branchCalls": 0,
+      "features": {
+        "geometryTypes": [
+          "box"
+        ],
+        "meshOperations": [],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 1,
+            "side": 1,
+            "three-quarter": 1
+          },
+          "mean": 1
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-11-01-03-29-sonnet-best-of-three-branches-off/look/2/best-of-three-front.png",
+          "artifacts/agent-modeling/2026-11-01-03-29-sonnet-best-of-three-branches-off/look/2/best-of-three-side.png",
+          "artifacts/agent-modeling/2026-11-01-03-29-sonnet-best-of-three-branches-off/look/2/best-of-three-three-quarter.png"
+        ]
+      },
+      "turns": 5,
+      "costUsd": 0.2934764999999999,
+      "inputTokens": 350699,
+      "outputTokens": 1158,
+      "wallSeconds": 20,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "best-of-three",
+      "attempt": 3,
+      "pass": true,
+      "passed": 5,
+      "total": 5,
+      "failed": [],
+      "model": "claude-sonnet-5-5",
+      "toolCalls": 3,
+      "toolErrors": 0,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_create": 1,
+        "scene_apply": 1,
+        "scene_export_recipe": 1
+      },
+      "branchCalls": 0,
+      "features": {
+        "geometryTypes": [
+          "box"
+        ],
+        "meshOperations": [],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 1,
+            "side": 1,
+            "three-quarter": 1
+          },
+          "mean": 1
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-11-01-03-29-sonnet-best-of-three-branches-off/look/3/best-of-three-front.png",
+          "artifacts/agent-modeling/2026-11-01-03-29-sonnet-best-of-three-branches-off/look/3/best-of-three-side.png",
+          "artifacts/agent-modeling/2026-11-01-03-29-sonnet-best-of-three-branches-off/look/3/best-of-three-three-quarter.png"
+        ]
+      },
+      "turns": 5,
+      "costUsd": 0.2958339,
+      "inputTokens": 351932,
+      "outputTokens": 1257,
+      "wallSeconds": 21,
+      "exitCode": 0,
+      "stopped": "success"
+    }
+  ]
+}

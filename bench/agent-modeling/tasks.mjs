@@ -4,6 +4,7 @@
 import { REFERENCES } from './references.mjs';
 import { KETTLE_START, KETTLE_START_PLAIN } from './kettle.mjs';
 import { DESK_START, DESK_START_PLAIN, DESK_CHECKS } from './desk.mjs';
+import { LAMP_START, LAMP_PROMPT, LAMP_CHECKS } from './lamp.mjs';
 import { TERRAIN_TASKS } from './terrain.mjs';
 
 export const PROMPT_PREAMBLE = `You are modeling with the 67js MCP tools. Build the object described below as a procedural recipe scene:
@@ -547,6 +548,7 @@ exported recipe is what gets graded.`,
       { kind: 'assetRagdoll', minimumDrop: 1.5, minimumDuration: 3, floorTolerance: 0.3, maximumHeight: 1.6 },
     ],
   },
+  { id: 'best-of-three', startRecipe: LAMP_START, prompt: LAMP_PROMPT, checks: LAMP_CHECKS },
   ...KETTLE_TASKS,
   ...DESK_TASKS,
   {

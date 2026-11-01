@@ -1,0 +1,187 @@
+{
+  "run": "2026-11-01-03-25-haiku-best-of-three-branches-on",
+  "model": "claude-haiku-5-5",
+  "date": "2026-11-01T03:26:57.231Z",
+  "skill": false,
+  "branches": "on",
+  "runsPerTask": 3,
+  "passed": 3,
+  "tasks": 3,
+  "toolCalls": 15,
+  "costUsd": 0.17,
+  "byModel": {
+    "claude-haiku-5-5": {
+      "runs": 3,
+      "passed": 3,
+      "successRate": 1,
+      "toolCalls": 15,
+      "toolErrors": 1,
+      "inputTokens": 1676912,
+      "outputTokens": 6948,
+      "costUsd": 0.17,
+      "tasks": {
+        "best-of-three": {
+          "runs": 3,
+          "passed": 3,
+          "successRate": 1,
+          "toolCalls": 15,
+          "toolErrors": 1,
+          "inputTokens": 1676912,
+          "outputTokens": 6948,
+          "costUsd": 0.17
+        }
+      }
+    }
+  },
+  "records": [
+    {
+      "task": "best-of-three",
+      "attempt": 1,
+      "pass": true,
+      "passed": 5,
+      "total": 5,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 7,
+      "toolErrors": 1,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_create": 1,
+        "scene_capabilities": 1,
+        "scene_apply": 2,
+        "scene_inspect": 1,
+        "scene_export_recipe": 1,
+        "scene_dispose": 1
+      },
+      "branchCalls": 0,
+      "features": {
+        "geometryTypes": [
+          "box"
+        ],
+        "meshOperations": [],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 1,
+            "side": 1,
+            "three-quarter": 1
+          },
+          "mean": 1
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-11-01-03-25-haiku-best-of-three-branches-on/look/1/best-of-three-front.png",
+          "artifacts/agent-modeling/2026-11-01-03-25-haiku-best-of-three-branches-on/look/1/best-of-three-side.png",
+          "artifacts/agent-modeling/2026-11-01-03-25-haiku-best-of-three-branches-on/look/1/best-of-three-three-quarter.png"
+        ]
+      },
+      "turns": 9,
+      "costUsd": 0.13405773,
+      "inputTokens": 826606,
+      "outputTokens": 2825,
+      "wallSeconds": 30,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "best-of-three",
+      "attempt": 2,
+      "pass": true,
+      "passed": 5,
+      "total": 5,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 5,
+      "toolErrors": 0,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_capabilities": 1,
+        "scene_create": 1,
+        "scene_apply": 1,
+        "scene_export_recipe": 1,
+        "scene_dispose": 1
+      },
+      "branchCalls": 0,
+      "features": {
+        "geometryTypes": [
+          "box"
+        ],
+        "meshOperations": [],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 1,
+            "side": 1,
+            "three-quarter": 1
+          },
+          "mean": 1
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-11-01-03-25-haiku-best-of-three-branches-on/look/2/best-of-three-front.png",
+          "artifacts/agent-modeling/2026-11-01-03-25-haiku-best-of-three-branches-on/look/2/best-of-three-side.png",
+          "artifacts/agent-modeling/2026-11-01-03-25-haiku-best-of-three-branches-on/look/2/best-of-three-three-quarter.png"
+        ]
+      },
+      "turns": 7,
+      "costUsd": 0.020072330000000003,
+      "inputTokens": 487331,
+      "outputTokens": 2209,
+      "wallSeconds": 23,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "best-of-three",
+      "attempt": 3,
+      "pass": true,
+      "passed": 5,
+      "total": 5,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 3,
+      "toolErrors": 0,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_create": 1,
+        "scene_apply": 1,
+        "scene_export_recipe": 1
+      },
+      "branchCalls": 0,
+      "features": {
+        "geometryTypes": [
+          "box"
+        ],
+        "meshOperations": [],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 1,
+            "side": 1,
+            "three-quarter": 1
+          },
+          "mean": 1
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-11-01-03-25-haiku-best-of-three-branches-on/look/3/best-of-three-front.png",
+          "artifacts/agent-modeling/2026-11-01-03-25-haiku-best-of-three-branches-on/look/3/best-of-three-side.png",
+          "artifacts/agent-modeling/2026-11-01-03-25-haiku-best-of-three-branches-on/look/3/best-of-three-three-quarter.png"
+        ]
+      },
+      "turns": 5,
+      "costUsd": 0.017174770000000002,
+      "inputTokens": 362975,
+      "outputTokens": 1914,
+      "wallSeconds": 23,
+      "exitCode": 0,
+      "stopped": "success"
+    }
+  ]
+}
