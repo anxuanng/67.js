@@ -1,0 +1,44 @@
+{
+  "question": "does the object sit on a surface, with a believable contact shadow",
+  "model": "sonnet",
+  "scale": "0 to 3 over the front, side and three-quarter cameras",
+  "recipes": "the six cold Haiku recipes of results/2026-11-01-01-36-haiku-look-after.json, drawn after the lone-flat-object floor fix",
+  "records": [
+    {
+      "task": "crate",
+      "score": 2,
+      "costUsd": 0.1926678,
+      "note": "The three-quarter view shows the crate on a ground disc with a believable cast shadow, but the front and side views are flat-on with no ground plane or shadow, so the crate looks like it floats there."
+    },
+    {
+      "task": "mug",
+      "score": 1,
+      "costUsd": 0.1926159,
+      "note": "The three-quarter view shows a ground plane with a soft cast shadow, but the front and side views are flat grey with no visible surface or shadow, so the mug looks detached in those two."
+    },
+    {
+      "task": "table",
+      "score": 1,
+      "costUsd": 0.1856988,
+      "note": "The three-quarter view shows the table standing on a ground plane with a believable cast shadow, but the front and side views are flat grey with no visible surface or shadow, so the table looks like it floats in those two."
+    },
+    {
+      "task": "soap",
+      "score": 1,
+      "costUsd": 0.1858154,
+      "note": "The three-quarter view shows a ground plane and a soft contact shadow, but the front and side views are flat horizon-level shots with a uniform grey background, no visible surface and no shadow, so the object looks detached there."
+    },
+    {
+      "task": "chair",
+      "score": 1,
+      "costUsd": 0.1856913,
+      "note": "The three-quarter view shows the chair on a ground plane with a believable cast shadow, but the front and side views show no ground or shadow at all, so the chair looks like it floats there."
+    },
+    {
+      "task": "gear",
+      "score": 1,
+      "costUsd": 0.1858949,
+      "note": "The three-quarter view shows a pale ground plane with a faint soft shadow at the gear's right edge, but the front and side views are a flat grey backdrop with no visible surface or shadow under the thin slab, so it looks detached in two of three views."
+    }
+  ]
+}

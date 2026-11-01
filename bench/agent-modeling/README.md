@@ -212,6 +212,24 @@ The exposure change above was reverted: on the six cold recipes no subject pixel
 
 `surface-judge.mjs` asks one reference-free question per task, "does the object sit on a surface, with a believable contact shadow", 0 to 3 over the three cameras (`results/2026-11-01-surface-judge.json`, Sonnet, same six cold recipes). Before the automatic floor: 0, 0, 0, 0, 0, 0. After: crate 1, mug 1, table 2, soap 1, chair 1, gear 0. The judge's notes say the same thing each time: the three-quarter view shows a floor and a shadow, and the front and side views do not, because those cameras sit at floor height and see a floor edge-on. Gear showed no floor in any view. The fixed cameras limit this score, so read it as a direction.
 
+### Gear sees no floor: the floor rule misread it (2026-11-01, issue #53)
+
+Cause, measured by calling `agentGroundPlacement` on the six stored cold recipes: for `gear` it returned null. The gear is one thin part that spans its whole scene and is the lowest geometry, so the rule "a part that spans 90 percent of the scene, is thin and lowest is the recipe's own floor" took the gear for a floor, and no floor was added. The other five returned a placement at height 0. This was an engine fault, not a camera limit. Fix in `src/agent-ground.js`: a floor part must also be at least 1.5 times wider than everything else in the scene, so a lone flat object (or one with nothing else) gets a floor. The limit that remains: a flat object with a small hub or shaft on it still reads as a plate with something on it, and gets no floor. `tests/agent-ground.test.js` covers the lone gear.
+
+Same six cold recipes, drawn from the same fixed cameras, judged by `surface-judge.mjs` (Sonnet, `results/2026-11-01-surface-judge-gear-fix.json`, $1.12; one judge call per task, so one point is inside the noise):
+
+| Task | No floor | Floor, first rule | Floor, gear fix |
+| --- | --- | --- | --- |
+| crate | 0 | 1 | 2 |
+| mug | 0 | 1 | 1 |
+| table | 0 | 2 | 1 |
+| soap | 0 | 1 | 1 |
+| chair | 0 | 1 | 1 |
+| gear | 0 | 0 | 1 |
+| Total | 0 | 6 | 7 |
+
+Every note names the same gap: the three-quarter view shows a surface and a shadow, the front and side views (orthographic at floor height) show an edge-on floor and a flat grey backdrop. The cameras were not raised: the benchmark cameras are not what an agent sees in the preview, so raising them would not show that the floor reads to an agent. The gear's three-quarter view, opened by hand, shows the floor but only a faint shadow, and a floor colour close to the backdrop. Read the 0 to 6 to 7 as direction (inferred from one judge call per task), not as a measured lift of one point.
+
 ## Clip layers (2026-10-31)
 
 `robot-walk-wave` asks for a character that walks and waves at once through `motion.layers`. The check `assetWalkAndWave` reloads the exported recipe, plays each layer alone (keeping its own speed, offset and loop) and compares part matrices at two times: the legs must match Walking and move, the right arm must leave Walking, the left arm must keep walking. Cold Sonnet, no skill, `results/2026-10-31-11-40-sonnet-walk-wave-cold-fixed-grader.json`: 1 of 1, 7 tool calls (2 errors), $0.31. A first run, with a check that compared against Walking at speed 1 only, failed on a recipe the agent had correct (it set per-layer speeds); the check was fixed and that recipe grades as a pass. One run is not a rate.
