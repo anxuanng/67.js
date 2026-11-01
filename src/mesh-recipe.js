@@ -280,7 +280,7 @@ export function normalizeMeshEdits(edits) {
         break;
     }
     if (CUT_OPERATIONS.includes(edit.op)) normalizeCutEdit(edit, normalized, index, { finiteNumber, vector });
-    if (isModifierOperation(edit.op)) normalizeModifierEdit(edit, normalized, index, { finiteNumber });
+    if (isModifierOperation(edit.op)) normalizeModifierEdit(edit, normalized, index, { finiteNumber, checkedField });
     return normalized;
   });
 }

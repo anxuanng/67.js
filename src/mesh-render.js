@@ -161,7 +161,8 @@ export function extractRender(mesh, { sharpAngle = Infinity } = {}) {
   const { groupNormals, groupOfCorner, groupCount, groupFirstCorner, faceNormals } = cornerNormals(mesh, { sharpAngle });
   const uvAttribute = mesh.attributes.corner.uv?.size === 2 ? mesh.attributes.corner.uv : undefined;
   const colorAttribute = mesh.attributes.corner.color?.size === 3 ? mesh.attributes.corner.color : undefined;
-  const splitAttributes = [uvAttribute, colorAttribute].filter(Boolean);
+  const normalAttribute = mesh.attributes.corner.normal?.size === 3 ? mesh.attributes.corner.normal : undefined;
+  const splitAttributes = [uvAttribute, colorAttribute, normalAttribute].filter(Boolean);
   let cornerRenderVertex = groupOfCorner;
   let renderVertexCorner = groupFirstCorner;
   let renderVertexCount = groupCount;
@@ -207,9 +208,11 @@ export function extractRender(mesh, { sharpAngle = Infinity } = {}) {
     positions[renderVertex * 3] = mesh.positions[vertex * 3];
     positions[renderVertex * 3 + 1] = mesh.positions[vertex * 3 + 1];
     positions[renderVertex * 3 + 2] = mesh.positions[vertex * 3 + 2];
-    normals[renderVertex * 3] = groupNormals[group * 3];
-    normals[renderVertex * 3 + 1] = groupNormals[group * 3 + 1];
-    normals[renderVertex * 3 + 2] = groupNormals[group * 3 + 2];
+    const normalSource = normalAttribute ? normalAttribute.data : groupNormals;
+    const normalIndex = normalAttribute ? corner : group;
+    normals[renderVertex * 3] = normalSource[normalIndex * 3];
+    normals[renderVertex * 3 + 1] = normalSource[normalIndex * 3 + 1];
+    normals[renderVertex * 3 + 2] = normalSource[normalIndex * 3 + 2];
     if (uvs) {
       uvs[renderVertex * 2] = uvAttribute.data[corner * 2];
       uvs[renderVertex * 2 + 1] = uvAttribute.data[corner * 2 + 1];
