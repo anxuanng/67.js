@@ -1,0 +1,178 @@
+{
+  "label": "default-vs-dark",
+  "model": "sonnet",
+  "seed": 53,
+  "a": "default",
+  "b": "dark",
+  "summary": {
+    "trials": 18,
+    "costUsd": 1.2621,
+    "winsA": 0,
+    "winsB": 18,
+    "pValue": 0.000007629394531250002
+  },
+  "records": [
+    {
+      "task": "crate",
+      "repeat": 0,
+      "firstSide": "a",
+      "answer": "second",
+      "winnerSide": "b",
+      "costUsd": 0.101326,
+      "note": "The second renderer reads as more grounded: its darker, bluer-grey floor and deeper shadow contrast sit the crate in the scene, while the first looks washed out, with a pale floor and a faint shadow."
+    },
+    {
+      "task": "crate",
+      "repeat": 1,
+      "firstSide": "b",
+      "answer": "first",
+      "winnerSide": "b",
+      "costUsd": 0.102548,
+      "note": "The first render's darker ground and stronger, more defined shadow ground the crate better, while the second looks washed out with a faint shadow."
+    },
+    {
+      "task": "crate",
+      "repeat": 2,
+      "firstSide": "a",
+      "answer": "second",
+      "winnerSide": "b",
+      "costUsd": 0.007097600000000001,
+      "note": "The second render's darker, bluer shadow and slightly deeper-toned ground give the crate stronger contrast and a better sense of grounding, while the first looks washed out with a pale ground and faint shadow."
+    },
+    {
+      "task": "mug",
+      "repeat": 0,
+      "firstSide": "b",
+      "answer": "first",
+      "winnerSide": "b",
+      "costUsd": 0.10117799999999999,
+      "note": "The first render has a darker, more contrasty ground and a stronger, better-defined cast shadow that grounds the mug, while the second looks washed out with a faint shadow."
+    },
+    {
+      "task": "mug",
+      "repeat": 1,
+      "firstSide": "a",
+      "answer": "second",
+      "winnerSide": "b",
+      "costUsd": 0.101236,
+      "note": "The second renderer wins because its darker, more saturated ground and stronger, deeper contact shadow ground the mug better, while the first looks washed out with the mug blending into the pale floor."
+    },
+    {
+      "task": "mug",
+      "repeat": 2,
+      "firstSide": "a",
+      "answer": "second",
+      "winnerSide": "b",
+      "costUsd": 0.007125600000000001,
+      "note": "The second render has a darker, more contrasty ground and a stronger, better-defined cast shadow, so the mug looks grounded on a surface, while the first is washed out with a faint shadow that blends into the pale background."
+    },
+    {
+      "task": "table",
+      "repeat": 0,
+      "firstSide": "b",
+      "answer": "first",
+      "winnerSide": "b",
+      "costUsd": 0.101354,
+      "note": "The first renderer wins: its darker, more saturated ground and deep blue-grey shadows ground the table and give it more contrast and depth, while the second's washed-out pale floor and faint shadows make the table look like it is floating."
+    },
+    {
+      "task": "table",
+      "repeat": 1,
+      "firstSide": "a",
+      "answer": "second",
+      "winnerSide": "b",
+      "costUsd": 0.101614,
+      "note": "The two renderers produce identical geometry, shadows and framing, so the deciding factor is the ground and background tone. The second render's darker, more saturated blue-grey ground gives stronger contrast with the tan table and makes the shadow read as grounded on a surface, while the first looks washed out and flat."
+    },
+    {
+      "task": "table",
+      "repeat": 2,
+      "firstSide": "b",
+      "answer": "first",
+      "winnerSide": "b",
+      "costUsd": 0.007085600000000001,
+      "note": "The first renderer wins because its darker, bluer-grey ground and deeper shadows ground the table better, while the second's washed-out pale floor and faint shadows leave it looking more like floating geometry."
+    },
+    {
+      "task": "soap",
+      "repeat": 0,
+      "firstSide": "a",
+      "answer": "second",
+      "winnerSide": "b",
+      "costUsd": 0.101384,
+      "note": "The second renderer looks more grounded: it has a darker, more defined contact shadow, stronger light-to-shade contrast on the object's faces, and a clearer bluish cast shadow, while the first looks washed out and flat against its background."
+    },
+    {
+      "task": "soap",
+      "repeat": 1,
+      "firstSide": "b",
+      "answer": "first",
+      "winnerSide": "b",
+      "costUsd": 0.10133,
+      "note": "The first renderer looks more grounded: it has a clearer, darker contact shadow and stronger tonal contrast that anchors the object to the floor, whereas the second looks washed out and flat with a faint shadow."
+    },
+    {
+      "task": "soap",
+      "repeat": 2,
+      "firstSide": "b",
+      "answer": "first",
+      "winnerSide": "b",
+      "costUsd": 0.007115600000000001,
+      "note": "The first renderer gives a darker background, a more defined contact shadow beneath the object, and stronger shading contrast, which grounds it on the surface, while the second looks washed out with a faint shadow and flat lighting."
+    },
+    {
+      "task": "chair",
+      "repeat": 0,
+      "firstSide": "a",
+      "answer": "second",
+      "winnerSide": "b",
+      "costUsd": 0.101296,
+      "note": "The second render grounds the chair better: its darker, more contrasty ground and shadow make the chair read as sitting on a surface, while the first has a washed-out ground that nearly matches the chair and shadow."
+    },
+    {
+      "task": "chair",
+      "repeat": 1,
+      "firstSide": "b",
+      "answer": "first",
+      "winnerSide": "b",
+      "costUsd": 0.10124,
+      "note": "The first render has stronger grounding: darker, more defined contact shadows, a more shaded floor with a gradient, and clearer face shading on the chair, while the second looks flatter and washed out."
+    },
+    {
+      "task": "chair",
+      "repeat": 2,
+      "firstSide": "b",
+      "answer": "first",
+      "winnerSide": "b",
+      "costUsd": 0.008431600000000001,
+      "note": "The first renderer looks more believable: its ground has a tonal falloff and darker, more contrasty shadows, so the chair reads as sitting on the surface, while the second is washed out, flat and low in contrast against the chair."
+    },
+    {
+      "task": "gear",
+      "repeat": 0,
+      "firstSide": "b",
+      "answer": "first",
+      "winnerSide": "b",
+      "costUsd": 0.10237600000000001,
+      "note": "The first renderer looks more grounded: it shows a soft contact shadow beside the gear and slight shading on the ground, while the second is flatter with almost no shadow."
+    },
+    {
+      "task": "gear",
+      "repeat": 1,
+      "firstSide": "a",
+      "answer": "second",
+      "winnerSide": "b",
+      "costUsd": 0.101302,
+      "note": "The second renderer looks more grounded: its darker backdrop gives the gear more contrast and a visible soft contact shadow at the right edge, while the first looks flatter and washed out with the object blending into the background."
+    },
+    {
+      "task": "gear",
+      "repeat": 2,
+      "firstSide": "a",
+      "answer": "second",
+      "winnerSide": "b",
+      "costUsd": 0.0070756000000000005,
+      "note": "The second renderer wins: its darker backdrop gives the gear more contrast, and it shows a soft contact shadow under and beside the object that grounds it, while the first looks flatter and washed out against its background."
+    }
+  ]
+}

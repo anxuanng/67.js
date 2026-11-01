@@ -1,0 +1,327 @@
+{
+  "format": "67js.scene",
+  "schemaVersion": 1,
+  "geometries": [
+    {
+      "id": "crateBody",
+      "type": "mesh",
+      "base": {
+        "type": "box",
+        "bevel": 0
+      },
+      "edits": [
+        {
+          "op": "boolean",
+          "operation": "difference",
+          "name": "panelPosZ",
+          "cutter": {
+            "type": "box",
+            "bevel": 0
+          },
+          "translation": [
+            0,
+            0,
+            0.5
+          ],
+          "scale": [
+            0.8667,
+            0.8667,
+            0.0667
+          ]
+        },
+        {
+          "op": "boolean",
+          "operation": "difference",
+          "name": "panelNegZ",
+          "cutter": {
+            "type": "box",
+            "bevel": 0
+          },
+          "translation": [
+            0,
+            0,
+            -0.5
+          ],
+          "scale": [
+            0.8667,
+            0.8667,
+            0.0667
+          ]
+        },
+        {
+          "op": "boolean",
+          "operation": "difference",
+          "name": "panelPosX",
+          "cutter": {
+            "type": "box",
+            "bevel": 0
+          },
+          "translation": [
+            0.5,
+            0,
+            0
+          ],
+          "scale": [
+            0.0667,
+            0.8667,
+            0.8667
+          ]
+        },
+        {
+          "op": "boolean",
+          "operation": "difference",
+          "name": "panelNegX",
+          "cutter": {
+            "type": "box",
+            "bevel": 0
+          },
+          "translation": [
+            -0.5,
+            0,
+            0
+          ],
+          "scale": [
+            0.0667,
+            0.8667,
+            0.8667
+          ]
+        }
+      ]
+    },
+    {
+      "id": "crateLid",
+      "type": "mesh",
+      "base": {
+        "type": "box",
+        "bevel": 0
+      }
+    }
+  ],
+  "materials": [
+    {
+      "id": "wood",
+      "tag": "surface",
+      "color": [
+        0.45,
+        0.28,
+        0.14
+      ],
+      "metallic": 0,
+      "roughness": 0.8,
+      "emission": 0,
+      "pattern": {
+        "type": "wood",
+        "colors": [
+          [
+            0.3,
+            0.18,
+            0.08
+          ],
+          [
+            0.55,
+            0.36,
+            0.2
+          ]
+        ],
+        "size": 0.6,
+        "count": 12,
+        "bump": 0.4,
+        "seed": 1,
+        "axis": "y",
+        "resolution": 512
+      },
+      "opacity": 1,
+      "alphaMode": "opaque",
+      "doubleSided": false
+    }
+  ],
+  "nodes": [
+    {
+      "id": "crate",
+      "translation": [
+        0,
+        0.3,
+        0
+      ],
+      "parent": null,
+      "rotation": [
+        0,
+        0,
+        0,
+        1
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "id": "body",
+      "geometry": "crateBody",
+      "material": "wood",
+      "parent": "crate",
+      "scale": [
+        0.6,
+        0.6,
+        0.6
+      ],
+      "translation": [
+        0,
+        0,
+        0
+      ],
+      "rotation": [
+        0,
+        0,
+        0,
+        1
+      ]
+    },
+    {
+      "id": "lid",
+      "geometry": "crateLid",
+      "material": "wood",
+      "parent": "crate",
+      "translation": [
+        0,
+        0.315,
+        0
+      ],
+      "scale": [
+        0.5,
+        0.03,
+        0.5
+      ],
+      "rotation": [
+        0,
+        0,
+        0,
+        1
+      ]
+    }
+  ],
+  "camera": {
+    "eye": [
+      1.4,
+      1,
+      1.6
+    ],
+    "target": [
+      0,
+      0.3,
+      0
+    ],
+    "up": [
+      0,
+      1,
+      0
+    ],
+    "fov": 40,
+    "near": 0.1,
+    "far": 1000
+  },
+  "environment": {
+    "world": false,
+    "setup": "daylight",
+    "environmentIntensity": 1,
+    "environmentRotation": 0,
+    "lightDirection": [
+      -3,
+      6,
+      4
+    ],
+    "keyColor": [
+      3,
+      2.8,
+      2.5
+    ],
+    "keyIntensity": 1,
+    "fillIntensity": 0,
+    "ambientIntensity": 1,
+    "daylight": 1,
+    "pointLights": [],
+    "skyTop": [
+      0.2,
+      0.38,
+      0.52
+    ],
+    "skyBottom": [
+      0.62,
+      0.7,
+      0.67
+    ],
+    "fogColor": [
+      0.35,
+      0.43,
+      0.43
+    ],
+    "fogDensity": 0.006,
+    "volumeFog": {
+      "density": 0,
+      "minimum": [
+        -100,
+        0,
+        -100
+      ],
+      "maximum": [
+        100,
+        20,
+        100
+      ],
+      "color": [
+        0.8,
+        0.85,
+        0.9
+      ],
+      "ambient": [
+        0.03,
+        0.035,
+        0.04
+      ],
+      "drift": [
+        0.03,
+        0,
+        0
+      ],
+      "steps": 16,
+      "anisotropy": 0.3,
+      "noiseAmount": 0.5,
+      "noiseScale": 0.3,
+      "maxDistance": 100
+    }
+  },
+  "effects": {
+    "depthOfField": {
+      "blur": 0,
+      "focusDistance": 5
+    },
+    "motionBlur": {
+      "shutter": 0
+    },
+    "saturation": 1,
+    "contrast": 1,
+    "temperature": 0,
+    "vignette": 0,
+    "grain": 0,
+    "ambientOcclusion": 0,
+    "ambientOcclusionRadius": 0.5,
+    "bloom": {
+      "strength": 0.12,
+      "threshold": 1,
+      "radius": 1
+    },
+    "exposure": 0.8
+  },
+  "shadow": {
+    "target": [
+      0,
+      1,
+      0
+    ],
+    "extent": 3.5,
+    "distance": 8,
+    "near": 0.1,
+    "far": 15
+  }
+}
