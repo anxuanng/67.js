@@ -9,6 +9,7 @@ import os
 import sys
 import time
 
+import bmesh
 import bpy
 import numpy as np
 from mathutils import Matrix, Vector
@@ -376,7 +377,11 @@ def build_material(name, description, has_vertex_colors):
 
 def build_parts(scene, description):
     meshes = {}
+    cloth_part_name = (description.get("blenderCloth") or {}).get("part")
     for index, part in enumerate(description["parts"]):
+        # The sheet is drawn from Blender's own cloth bake (build_cloth), not from the 67js frame.
+        if part["name"] == cloth_part_name:
+            continue
         geometry_index = part["geometry"]
         geometry = description["geometries"][geometry_index]
         if geometry_index not in meshes:
@@ -388,6 +393,82 @@ def build_parts(scene, description):
         local = Matrix([[column_major[column * 4 + row] for column in range(4)] for row in range(4)])
         mesh_object.matrix_world = Y_UP_TO_Z_UP @ local
         scene.collection.objects.link(mesh_object)
+
+
+def cloth_grid_object(settings):
+    """The 67js grid (rows from the top down, columns left to right) at the sheet's rest placement, in world space."""
+    segments = settings["segments"]
+    column_major = settings["restMatrix"]
+    placement = Y_UP_TO_Z_UP @ Matrix([[column_major[column * 4 + row] for column in range(4)] for row in range(4)])
+    builder = bmesh.new()
+    vertices = []
+    for row in range(segments + 1):
+        for column in range(segments + 1):
+            local = Vector((column / segments - 0.5, 0.5 - row / segments, 0.0))
+            vertices.append(builder.verts.new(placement @ local))
+    for row in range(segments):
+        for column in range(segments):
+            first = row * (segments + 1) + column
+            below = first + segments + 1
+            builder.faces.new((vertices[first], vertices[below], vertices[below + 1], vertices[first + 1]))
+    mesh = bpy.data.meshes.new("cloth-sim")
+    builder.to_mesh(mesh)
+    builder.free()
+    return bpy.data.objects.new("cloth-sim", mesh)
+
+
+def add_cloth_physics(scene, cloth_object, settings):
+    modifier = cloth_object.modifiers.new("Cloth", "CLOTH")
+    cloth = modifier.settings
+    cloth.quality = 8
+    cloth.mass = settings["vertexMass"]
+    cloth.air_damping = settings["airDamping"]
+    modifier.collision_settings.use_self_collision = False
+    modifier.collision_settings.distance_min = 0.01
+    modifier.point_cache.frame_start = 1
+    modifier.point_cache.frame_end = scene.frame_end
+    if settings["pinTopRow"]:
+        group = cloth_object.vertex_groups.new(name="pin")
+        group.add(list(range(settings["segments"] + 1)), 1.0, "REPLACE")
+        cloth.vertex_group_mass = "pin"
+
+
+def add_cloth_wind(settings):
+    direction = Vector(to_blender(settings["windDirection"]))
+    bpy.ops.object.effector_add(type="WIND", location=(0, 0, 0))
+    wind = bpy.context.active_object
+    wind.rotation_euler = direction.normalized().to_track_quat("Z", "X").to_euler()
+    wind.field.strength = settings["windStrength"]
+
+
+def build_cloth(scene, description):
+    """Bake the sheet with Blender's cloth solver from rest to the scene's time, then keep that frame as a plain mesh.
+
+    Each frame is stepped in order because the cloth cache needs that."""
+    settings = description["blenderCloth"]
+    part = next(entry for entry in description["parts"] if entry["name"] == settings["part"])
+    scene.render.fps = settings["framesPerSecond"]
+    scene.gravity = (0.0, 0.0, -9.81)
+    target_frame = 1 + round(settings["seconds"] * settings["framesPerSecond"])
+    scene.frame_start = 1
+    scene.frame_end = target_frame
+    for name in settings["colliders"]:
+        collider = bpy.data.objects[name]
+        collider.modifiers.new("Collision", "COLLISION")
+        collider.collision.thickness_outer = 0.01
+    cloth_object = cloth_grid_object(settings)
+    scene.collection.objects.link(cloth_object)
+    add_cloth_physics(scene, cloth_object, settings)
+    if settings["windStrength"] > 0:
+        add_cloth_wind(settings)
+    for frame in range(1, target_frame + 1):
+        scene.frame_set(frame)
+    evaluated = cloth_object.evaluated_get(bpy.context.evaluated_depsgraph_get())
+    baked_mesh = bpy.data.meshes.new_from_object(evaluated)
+    baked_mesh.shade_smooth()
+    baked_mesh.materials.append(build_material("cloth", part["material"], False))
+    bpy.data.objects.remove(cloth_object)
+    scene.collection.objects.link(bpy.data.objects.new("cloth", baked_mesh))
 
 
 def build_world(scene, world_description, root):
@@ -595,6 +676,8 @@ def build_scene(description, root):
         import_glb(root, description["glb"])
     else:
         build_parts(scene, description)
+        if description.get("blenderCloth"):
+            build_cloth(scene, description)
     build_world(scene, description["world"], root)
     build_lights(scene, description["environment"])
     if "volumeFog" in description["environment"]:
