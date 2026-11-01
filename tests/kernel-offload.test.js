@@ -73,7 +73,12 @@ test('an error a kernel raises on the worker comes back as the same class and me
 });
 
 test('an explicit bake setting over the budget fails on the worker with the message that names numbers that fit', async () => {
-  const heavyRoom = () => ({ ...kernelRoom(), bake: { preset: 'draft', samples: 256, bounces: 3, texelsPerUnit: 12 } });
+  // Surfaces four times as wide, so the explicit settings are over the hard path work limit in this small room too.
+  const heavyRoom = () => {
+    const room = kernelRoom();
+    const nodes = room.nodes.map(node => (node.scale ? { ...node, scale: node.scale.map(side => side * 4) } : node));
+    return { ...room, nodes, bake: { preset: 'draft', samples: 256, bounces: 3, texelsPerUnit: 12 } };
+  };
   let inlineMessage = '';
   assert.throws(() => createAgentScene(heavyRoom()), error => {
     inlineMessage = error.message;
