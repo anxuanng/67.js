@@ -1,9 +1,12 @@
 // Runs in the page: draws one reference scene, and describes it as plain data for Blender.
 import { Renderer67 } from '/src/renderer.js';
-import { REFERENCE_SCENES } from './scenes.js';
+import { REFERENCE_SCENES, KHRONOS_SCENES } from './scenes.js';
 import { skinnedGeometry } from '/src/path-tracer-scene.js';
 import { boxProjectedGeometry } from '/src/export-box-uv.js';
 import '/src/material-layer-shaders.js';
+
+// ?set=khronos draws the Khronos sample assets (npm run reference -- --khronos) instead of the fixed scenes.
+const SCENES = new URLSearchParams(location.search).get('set') === 'khronos' ? KHRONOS_SCENES : REFERENCE_SCENES;
 
 function encodeBytes(typedArray) {
   const bytes = new Uint8Array(typedArray.buffer, typedArray.byteOffset, typedArray.byteLength);
@@ -47,6 +50,8 @@ function boxProjectedFor(part, cache) {
 // skinned result as plain geometry. A score then measures shading, and not an importer's pose.
 function describeScene(id, scene) {
   const { map: _map, ...environment } = scene.environment;
+  // A sample asset reaches Blender as its own file, not as parts.
+  if (scene.glb) return { id, camera: scene.camera, environment, world: scene.blenderWorld, glb: scene.glb, parts: [], geometries: [] };
   const geometries = new Map();
   const boxProjected = new Map();
   const describedParts = scene.parts.map(part => {
@@ -70,11 +75,12 @@ async function bakeScene(scene, bakeOptions) {
   return { parts: baked.parts, report: baked.report, seconds: (performance.now() - started) / 1000 };
 }
 
-async function renderReferenceScene(id, { describe, ambientOcclusion = 0, ambientOcclusionRadius = 0.5, bake = null }) {
-  const scene = await REFERENCE_SCENES[id]();
+async function renderReferenceScene(id, { describe, ambientOcclusion = 0, ambientOcclusionRadius = 0.5, bake = null, backgroundOnly = false }) {
+  const scene = await SCENES[id]();
   const baked = bake ? await bakeScene(scene, bake) : null;
   const canvas = document.querySelector('canvas');
-  const renderer = new Renderer67(canvas, baked ? baked.parts : scene.parts, {
+  // backgroundOnly draws the sky alone, so a score can be limited to the pixels the asset covers.
+  const renderer = new Renderer67(canvas, backgroundOnly ? [] : baked ? baked.parts : scene.parts, {
     ground: false, hdr: true, depth: true, samples: 4, pixelRatio: 1, memoryBudgetMiB: 1024, world: true,
     environment: scene.environment, shadowBounds: scene.shadow,
   });
@@ -140,4 +146,4 @@ async function renderReferencePathTraced(id, options) {
 
 window.renderReferenceScene = renderReferenceScene;
 window.renderReferencePathTraced = renderReferencePathTraced;
-window.referenceSceneIds = Object.keys(REFERENCE_SCENES);
+window.referenceSceneIds = Object.keys(SCENES);

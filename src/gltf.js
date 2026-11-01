@@ -10,7 +10,8 @@ import { MAX_MORPH_TARGETS, createMorphPose, validateMorphGeometry, validateMorp
 export const GLTF_CAPABILITIES = Object.freeze({
   formats: ['glb', 'gltf'],
   supported: ['triangle meshes', 'world transforms', 'rigid node animations', 'four-influence skeletal skinning', 'joint node animations', 'relative POSITION/NORMAL morph targets', 'morph weight animations', 'PNG/JPEG base color textures', 'normal/occlusion/emissive/metallic-roughness textures', 'TEXCOORD_0', 'linear RGB vertex colors', 'metallic roughness factors', 'emissive factors', 'alpha mask and blend modes', 'double-sided materials', 'KHR_mesh_quantization', 'KHR_materials_emissive_strength', 'KHR_materials_clearcoat, transmission, volume, ior, specular, sheen, anisotropy and iridescence factors', 'KHR_texture_transform baked into UVs', 'EXT_mesh_gpu_instancing expanded into parts', 'KHR_draco_mesh_compression with options.decoders.draco', 'EXT_meshopt_compression with options.decoders.meshopt', 'KHR_texture_basisu with options.decoders.ktx2'],
-  ignoredExtensions: [],
+  // The primitive's own material is drawn; the other variants are not selectable.
+  ignoredExtensions: ['KHR_materials_variants'],
   unsupported: ['more than four skin influences', 'singular weighted skin transforms', 'reflected skin transforms', 'TANGENT morph targets', 'morph targets without authored base normals', 'vertex alpha below one', 'different texture transforms on one material', 'skinned or morphed GPU instancing', 'textures inside material layer extensions (factors only)'],
 });
 
@@ -26,7 +27,10 @@ const DEFAULT_MAX_BYTES = 32 * 1024 * 1024;
 const DEFAULT_MAX_VERTICES = 2_000_000;
 const GLTF_ALPHA_MODES = { OPAQUE: 'opaque', MASK: 'mask', BLEND: 'blend' };
 const DEFAULT_MAX_INSTANCES = 4096;
-const ALLOWED_EXTENSIONS = new Set(['KHR_mesh_quantization', 'KHR_materials_emissive_strength', 'KHR_texture_transform', 'EXT_mesh_gpu_instancing', ...GLTF_LAYER_EXTENSIONS]);
+// KHR_xmp_json_ld and its earlier name KHR_xmp only carry metadata (authors, licences) and change nothing drawn: the
+// Khronos sample assets list them, and a file must not be refused for them.
+const METADATA_EXTENSIONS = ['KHR_xmp_json_ld', 'KHR_xmp'];
+const ALLOWED_EXTENSIONS = new Set(['KHR_mesh_quantization', 'KHR_materials_emissive_strength', 'KHR_texture_transform', 'EXT_mesh_gpu_instancing', ...METADATA_EXTENSIONS, ...GLTF_LAYER_EXTENSIONS]);
 const DECODER_BY_EXTENSION = { KHR_draco_mesh_compression: 'draco', EXT_meshopt_compression: 'meshopt', KHR_texture_basisu: 'ktx2' };
 // Accepted when optional, because 67js does not render them. Rejected when listed in extensionsRequired.
 const IGNORED_EXTENSIONS = new Set(GLTF_CAPABILITIES.ignoredExtensions);
