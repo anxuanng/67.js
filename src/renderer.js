@@ -1,5 +1,5 @@
 import { mat4, mat3 } from 'gl-matrix';
-import { layerTextureSupport, vertexShader, createFragmentShader, liquidFragmentShader, depthVertexShader, depthFragmentShader, benchmarkVertexShader, benchmarkFragmentShader } from './shaders.js';
+import { layerTextureSupport, vertexShader, createVertexShader, createFragmentShader, liquidFragmentShader, depthVertexShader, depthFragmentShader, benchmarkVertexShader, benchmarkFragmentShader } from './shaders.js';
 import { postFragment, createPostFragment, POST_STEPS, skyFragment, bloomFragment } from './post.js';
 import { fullscreenVertex, startProgram, finishProgram, compileProgram } from './gl-program.js';
 import { ambientOcclusionFragment } from './ambient-occlusion.js';
@@ -56,7 +56,9 @@ function shaderFeaturesOfLighting(lighting) {
 
 function shaderFeaturesOfParts(parts) {
   const features = new Set();
-  for (const { material } of parts) {
+  for (const { material, skin, morph } of parts) {
+    if (skin) features.add('skin');
+    if (morph) features.add('morph');
     MATERIAL_MAPS.forEach((field, index) => {
       if (material[field]) features.add(MAP_SHADER_FEATURES[index]);
     });
@@ -557,7 +559,7 @@ export class Renderer67 {
   startMainProgram() {
     const benchmark = this.benchmark;
     const fragmentSource = benchmark ? benchmarkFragmentShader : createFragmentShader(this.shaderFeatures);
-    return startProgram(this.context, benchmark ? benchmarkVertexShader : vertexShader, fragmentSource);
+    return startProgram(this.context, benchmark ? benchmarkVertexShader : createVertexShader(this.shaderFeatures), fragmentSource);
   }
 
   buildMainProgram() {
@@ -1922,7 +1924,9 @@ export class Renderer67 {
     } else {
       context.clearColor(0.145, 0.162, 0.177, 1);
     }
-    context.clear(context.COLOR_BUFFER_BIT | context.DEPTH_BUFFER_BIT);
+    // The environment background covers every pixel, so the colour clear before it would be overwritten.
+    const backgroundCoversFrame = !passMode && Boolean(environmentMap?.showBackground) && !this.transparent;
+    context.clear(backgroundCoversFrame ? context.DEPTH_BUFFER_BIT : context.COLOR_BUFFER_BIT | context.DEPTH_BUFFER_BIT);
     const environmentBackgroundDrawn = !passMode && this.drawEnvironmentBackground(environmentMap, frame, exposure);
     if (this.world && !this.benchmark && !passMode && !environmentBackgroundDrawn) this.drawSky(frame);
     context.enable(context.DEPTH_TEST);
