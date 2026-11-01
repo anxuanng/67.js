@@ -346,12 +346,7 @@ const stackNodes = [
     voxelSize: z.number().positive().optional().describe('Edge of one grid cell. Give this or resolution.'),
     resolution: z.number().int().min(4).max(192).optional().describe('Cells along the longest side. Give this or voxelSize.'),
   }).describe('Voxel remesh like Blender Remesh: a closed quad surface of even cells. The mesh must be closed (fill_holes first); tags and attributes are dropped. Over 192 cells per side is refused.'),
-  z.strictObject({
-    op: z.enum(Object.keys(MODIFIER_OPERATIONS)),
-    distance: z.number().optional(), minVertices: z.number().int().optional(), angle: z.number().optional(),
-    factor: z.number().optional(), iterations: z.number().int().optional(), size: z.number().optional(),
-    mode: z.string().optional(), axis: z.string().optional(),
-  }),
+  z.looseObject({ op: z.enum(Object.keys(MODIFIER_OPERATIONS)) }),
 ];
 const meshStack = z.array(z.discriminatedUnion('op', stackNodes)).max(16);
 const meshEdits = z.array(z.discriminatedUnion('op', [...meshEdit.options, ...stackNodes])).max(64);

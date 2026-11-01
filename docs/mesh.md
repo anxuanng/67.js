@@ -197,7 +197,7 @@ These three (and `bevel`, below) work as edits and as stack nodes:
 
 ### Modifier stack
 
-A recipe mesh may carry `stack`, a list of `mirror`, `array`, `solidify`, `bevel`, `subdivide`, `uv_unwrap`, `set_position`, `displace`, `decimate`, `remesh`, `weld`, `triangulate`, `edge_split`, `smooth`, `simple_deform` and `cast` nodes (up to 16) evaluated after the
+A recipe mesh may carry `stack`, a list of `mirror`, `array`, `solidify`, `bevel`, `subdivide`, `uv_unwrap`, `set_position`, `displace`, `decimate`, `remesh`, `weld`, `triangulate`, `edge_split`, `smooth`, `simple_deform`, `cast`, `screw`, `wireframe` and `skin` nodes (up to 16) evaluated after the
 edits without changing them, as Blender's modifier stack. Every prefix (the edit result, then each node) is cached
 by its recipe text in a least-recently-used cache bounded at 64 entries and 64 MiB, so changing a late node reuses
 the earlier work. Results list one entry per node with `cached: true` when reused. `meshCacheStats()` reports hits
@@ -208,7 +208,7 @@ as Blender's Apply modifier, which leaves the result unchanged.
 
 ### Whole-mesh modifiers
 
-`weld`, `triangulate`, `edge_split`, `smooth`, `simple_deform` and `cast` take no selection and no name, and work as edits or stack nodes. Their fields and defaults are plain data in `MESH_MODIFIER_NOTES` (`src/agent-scene-capabilities.js`), which `scene_capabilities` returns as `meshModifiers`; the code is in `src/mesh-modifiers.js` and `src/mesh-restructure.js`.
+`weld`, `triangulate`, `edge_split`, `smooth`, `simple_deform`, `cast`, `screw`, `wireframe` and `skin` take no selection and no name, and work as edits or stack nodes. Their fields and defaults are plain data in `MESH_MODIFIER_NOTES` (`src/agent-scene-capabilities.js`), which `scene_capabilities` returns as `meshModifiers`; the code is in `src/mesh-modifiers.js` and `src/mesh-restructure.js`.
 
 | op | fields | does |
 | --- | --- | --- |
@@ -218,8 +218,11 @@ as Blender's Apply modifier, which leaves the result unchanged.
 | `smooth` | `factor` (0.5), `iterations` (1, up to 64) | Moves each vertex `factor / 2` toward the mean of its edge neighbours. |
 | `simple_deform` | `mode`, `axis` (z), `angle` (45) or `factor` (0.5) | Twist and bend take `angle` degrees, taper and stretch take `factor`, both measured over the mesh extent along the axis. A mesh with no extent along it stays as it is. |
 | `cast` | `factor` (0.5), `size` (0) | Blends vertices toward a sphere about the local origin; size 0 uses the mean vertex distance. |
+| `screw` | `axis` (z), `angle` (360), `steps` (16, up to 256), `iterations` (1, up to 64), `lift` (0) | Revolves every edge of the mesh about the axis through the origin, as Blender Screw; the faces of the input are dropped. A whole number of turns with no lift closes the ring. |
+| `wireframe` | `thickness` (0.02), `offset` (0), `evenOffset` (true), `replace` (true) | Leaves a rim of that width on every face, as Blender Wireframe; `offset` -1 to 1 moves the strut from inside to outside the surface. |
+| `skin` | `radius` (0.1, a number or a scalar field per vertex) | A closed square tube on every edge. A simple version: tubes that meet overlap, and there is no branch solver. |
 
-`triangulate` and `edge_split` check their output size before building it, against the same vertex and face limits as the other edits. Each op has cases in `tests/fixtures/blender/cases.json` and matches Blender 5.2 with no listed difference. Not yet: `screw`, `skin`, `wireframe`, `lattice`, `curve`, `hook`, `wave`, `shrinkwrap`, `weighted_normal`, `smooth_by_angle` and `scatter_on_surface` as stack nodes (`instances` already scatters), and cast shapes other than the sphere.
+`triangulate` and `edge_split` check their output size before building it, against the same vertex and face limits as the other edits. Each op has cases in `tests/fixtures/blender/cases.json` and matches Blender 5.2 with no listed difference. `screw` and `wireframe` have cases in the same fixtures (the volume of the open screw strips differs by winding, listed in `differences.json`); `skin` is not compared with Blender. Not yet: `lattice`, `curve`, `hook`, `wave`, `shrinkwrap`, `weighted_normal`, `smooth_by_angle` and `scatter_on_surface` as stack nodes (`instances` already scatters), and cast shapes other than the sphere.
 
 ### Field expressions
 

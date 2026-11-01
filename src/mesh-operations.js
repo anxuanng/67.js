@@ -12,6 +12,9 @@ export const MODIFIER_OPERATIONS = Object.freeze({
   smooth: { fields: ['factor', 'iterations'], tags: [] },
   simple_deform: { fields: ['mode', 'axis', 'angle', 'factor'], tags: [] },
   cast: { fields: ['factor', 'size'], tags: [] },
+  screw: { fields: ['axis', 'angle', 'steps', 'iterations', 'lift'], tags: [] },
+  wireframe: { fields: ['thickness', 'offset', 'evenOffset', 'replace'], tags: [] },
+  skin: { fields: ['radius'], tags: [] },
 });
 
 export const MESH_EDIT_OPERATIONS = Object.freeze({

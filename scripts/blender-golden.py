@@ -521,7 +521,29 @@ def add_cast(mesh_object, edit, _inputs):
     modifier.use_radius_as_size = False
 
 
+def add_screw(mesh_object, edit, _inputs):
+    modifier = mesh_object.modifiers.new("Screw", "SCREW")
+    modifier.axis = edit.get("axis", "z").upper()
+    modifier.angle = radians(edit.get("angle", 360))
+    modifier.steps = edit.get("steps", 16)
+    modifier.render_steps = modifier.steps
+    modifier.iterations = edit.get("iterations", 1)
+    modifier.screw_offset = edit.get("lift", 0)
+    modifier.use_merge_vertices = False
+
+
+def add_wireframe(mesh_object, edit, _inputs):
+    modifier = mesh_object.modifiers.new("Wireframe", "WIREFRAME")
+    modifier.thickness = edit.get("thickness", 0.02)
+    modifier.offset = edit.get("offset", 0)
+    modifier.use_even_offset = edit.get("evenOffset", True)
+    modifier.use_replace = edit.get("replace", True)
+    modifier.use_boundary = False
+
+
 MODIFIERS = {
+    "screw": add_screw,
+    "wireframe": add_wireframe,
     "weld": add_weld,
     "triangulate": add_triangulate,
     "edge_split": add_edge_split,

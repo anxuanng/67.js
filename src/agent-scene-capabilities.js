@@ -130,6 +130,9 @@ export const MESH_MODIFIER_NOTES = Object.freeze({
   smooth: 'factor 0.5 (-2 to 2) steps toward the neighbour mean; iterations 1 to 64.',
   simple_deform: 'mode twist or bend use angle (45 degrees), taper or stretch use factor (0.5); axis x, y or z (z).',
   cast: 'sphere about the origin: factor 0 to 1 (0.5), size radius (0 = mean vertex distance).',
+  screw: 'revolves every edge of the mesh (the profile; its faces are dropped) about the x, y or z axis (z) through the origin: angle 360 degrees per iteration, steps 16 (1 to 256) per iteration, iterations 1 to 64, lift 0 rise per iteration along the axis. A whole number of turns with no lift closes the ring. Vertices stay in step-major order.',
+  wireframe: 'keeps a rim of width thickness (0.02) on every face, as Blender Wireframe: offset -1 to 1 (0) moves the strut from inside to outside the surface, evenOffset true makes struts as wide as the thickness, replace true drops the original faces. Open edges get no extra strut.',
+  skin: 'a square tube along every edge, radius 0.1 or a scalar field per vertex (above zero), closed by end caps. Simple version: tubes that meet overlap and there is no branch solver, so it is partial against Blender.',
 });
 
 // Organic shaping edits. Details stay here so the tool schemas stay small.
