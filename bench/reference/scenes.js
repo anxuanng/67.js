@@ -356,6 +356,65 @@ async function templeHallScene() {
     shadow: sunShadow(HALL_SUN_DIRECTION, [0, 15, middleZ], 105, 200),
     // The default of 6 texels per metre needs 1.4 million texels for this hall, and the bake allows 1 million; at 2 texels, 128 samples would pass the 400 million ray limit.
     bakeOptions: { texelsPerUnit: 2, samples: 48, maxSeconds: 300 },
+    brightRegion: { luminance: 0.1, dilation: 4 },
+  };
+}
+
+// Dark shaft: a closed stone room with one small opening in the roof. The sun comes through it as a shaft in fog and lands
+// as a bright patch on the floor, and the rest of the room is dark. The world is 0.03, as in the temple hall.
+const SHAFT_ROOM = { halfWidth: 5.5, front: 5, back: -10, height: 6.5, wall: 1 };
+const SHAFT_SUN_DIRECTION = [0.35, 0.9, 0.25];
+const SHAFT_OPENING = { center: [1.8, -1.2], size: 2.2 };
+
+function shaftRoomParts(stone, floorStone) {
+  const { halfWidth, front, back, height, wall } = SHAFT_ROOM;
+  const length = front - back;
+  const middleZ = (front + back) / 2;
+  const outerWidth = halfWidth * 2 + wall * 2;
+  const [openingX, openingZ] = SHAFT_OPENING.center;
+  const half = SHAFT_OPENING.size / 2;
+  const roofY = height + wall / 2;
+  return [
+    part('room-floor', HALL_BLOCK, [0, -0.5, middleZ], [outerWidth, 1, length + wall * 2], floorStone),
+    part('room-wall-left', HALL_BLOCK, [-halfWidth - wall / 2, height / 2, middleZ], [wall, height, length], stone),
+    part('room-wall-right', HALL_BLOCK, [halfWidth + wall / 2, height / 2, middleZ], [wall, height, length], stone),
+    part('room-wall-front', HALL_BLOCK, [0, height / 2, front + wall / 2], [outerWidth, height, wall], stone),
+    part('room-wall-back', HALL_BLOCK, [0, height / 2, back - wall / 2], [outerWidth, height, wall], stone),
+    // Four slabs leave a square opening.
+    part('roof-near', HALL_BLOCK, [0, roofY, (front + openingZ + half) / 2], [outerWidth, wall, front - openingZ - half], stone),
+    part('roof-far', HALL_BLOCK, [0, roofY, (back + openingZ - half) / 2], [outerWidth, wall, openingZ - half - back], stone),
+    part('roof-left', HALL_BLOCK, [(-halfWidth + openingX - half) / 2, roofY, openingZ], [openingX - half + halfWidth, wall, half * 2], stone),
+    part('roof-right', HALL_BLOCK, [(halfWidth + openingX + half) / 2, roofY, openingZ], [halfWidth - openingX - half, wall, half * 2], stone),
+  ];
+}
+
+function shaftPropParts(stone, floorStone) {
+  return [
+    part('plinth', HALL_BLOCK, [-0.9, 0.4, -3.3], [1.1, 0.8, 1.1], floorStone),
+    part('urn', sphere(24, 16), [-0.9, 1.25, -3.3], [0.42, 0.42, 0.42], { color: [0.55, 0.3, 0.2], roughness: 0.4 }),
+    part('slab-left', HALL_BLOCK, [-3.8, 0.5, -8], [2.2, 1, 3], stone),
+    part('slab-right', HALL_BLOCK, [2.6, 0.35, -4.6], [1.6, 0.7, 2.4], stone),
+    part('pillar', cylinder(32, 0, 1), [-4.4, 3.25, -0.5], [0.7, 6.5, 0.7], stone),
+    part('pillar-far', cylinder(32, 0, 1), [4.4, 3.25, -6.5], [0.7, 6.5, 0.7], stone),
+  ];
+}
+
+async function darkShaftScene() {
+  const lighting = constantLighting(0.03);
+  const stone = { color: [0.62, 0.55, 0.45], roughness: 0.85 };
+  const floorStone = { color: [0.5, 0.45, 0.38], roughness: 0.6 };
+  const { halfWidth, front, back, height } = SHAFT_ROOM;
+  const volumeFog = {
+    density: 0.07, minimum: [-halfWidth, 0, back], maximum: [halfWidth, height, front],
+    color: [1, 0.95, 0.85], ambient: [0.02, 0.02, 0.02], anisotropy: 0.6, noiseAmount: 0, steps: 48, maxDistance: 40,
+  };
+  return {
+    parts: [...shaftRoomParts(stone, floorStone), ...shaftPropParts(stone, floorStone)], blenderWorld: lighting.blenderWorld,
+    environment: environment(lighting, { keyColor: [8, 6.9, 5.4], lightDirection: normalized(SHAFT_SUN_DIRECTION), volumeFog }),
+    camera: { eye: [3.4, 1.6, 4.2], target: [-0.6, 1.2, -5], up: [0, 1, 0], fov: 62, near: 0.1, far: 60 },
+    shadow: sunShadow(SHAFT_SUN_DIRECTION, [0, 3, -3], 14, 30),
+    // The bright pixels of the Cycles image, grown by a few pixels, are scored on their own (score.py).
+    brightRegion: { luminance: 0.1, dilation: 4 },
   };
 }
 
@@ -455,6 +514,7 @@ async function megacityDuskScene() {
 export const REFERENCE_SCENES = {
   'mountain-valley': mountainValleyScene,
   'temple-hall': templeHallScene,
+  'dark-shaft': darkShaftScene,
   'megacity-dusk': megacityDuskScene,
 
   async 'brick-graph'() {

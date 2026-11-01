@@ -3,6 +3,7 @@
 // --bake [<id>,<id>] bakes bounced light into the named scenes (every scene when no ids follow) before 67js draws them;
 // Blender still gets the plain scene.
 // --probes [<id>,<id>] adds reflection probes (src/reflection-probes.js) to the named scenes, on top of --bake when both are given.
+// --ambient <scale> multiplies the light the world gives every surface (0 removes it); with --skip-blender it measures what the world adds.
 // --path-tracer [--samples <n>] [--noise-threshold <n>] [--scene <id>] draws the scenes with the offline path tracer (src/path-tracer.js) instead, keeps the
 // Cycles renders of an earlier run, and scores them into path-tracer.json. Nothing in baseline.json or images/ changes.
 // Use --score-only to score existing renders, --skip-blender to keep them, and --scene <id> for one scene.
@@ -50,6 +51,8 @@ const probesValue = probesFlag >= 0 ? argumentsGiven[probesFlag + 1] : undefined
 const probedSceneIds = probesFlag >= 0 && probesValue && !probesValue.startsWith('--') ? probesValue.split(',') : null;
 const cascadesFlag = argumentsGiven.indexOf('--cascades');
 const cascades = cascadesFlag >= 0 ? Number(argumentsGiven[cascadesFlag + 1]) : 0;
+const ambientFlag = argumentsGiven.indexOf('--ambient');
+const ambient = ambientFlag >= 0 ? Number(argumentsGiven[ambientFlag + 1]) : null;
 const pathTracerFlag = argumentsGiven.includes('--path-tracer');
 const samplesFlag = argumentsGiven.indexOf('--samples');
 const pathTracerSamples = samplesFlag >= 0 ? Number(argumentsGiven[samplesFlag + 1]) : 64;
@@ -78,7 +81,7 @@ async function renderBackend(backend, serverUrl, graphics) {
       const describe = backend === 'gpu';
       const probes = probesFlag >= 0 && (probedSceneIds === null || probedSceneIds.includes(id));
       const bake = bakeFlag >= 0 && (bakedSceneIds === null || bakedSceneIds.includes(id)) ? {} : null;
-      const result = await page.evaluate(([sceneId, shouldDescribe, ambientOcclusion, ambientOcclusionRadius, bakeOptions, cascadeCount, withProbes]) => window.renderReferenceScene(sceneId, { describe: shouldDescribe, ambientOcclusion, ambientOcclusionRadius, bake: bakeOptions, cascades: cascadeCount, probes: withProbes }), [id, describe, ambientOcclusion, ambientOcclusionRadius, bake, cascades, probes]);
+      const result = await page.evaluate(([sceneId, shouldDescribe, ambientOcclusion, ambientOcclusionRadius, bakeOptions, cascadeCount, withProbes, ambientScale]) => window.renderReferenceScene(sceneId, { describe: shouldDescribe, ambientOcclusion, ambientOcclusionRadius, bake: bakeOptions, cascades: cascadeCount, probes: withProbes, ambient: ambientScale }), [id, describe, ambientOcclusion, ambientOcclusionRadius, bake, cascades, probes, ambient]);
       if (result.glError !== 0) throw new Error(`${id} on ${backend} gave WebGL error ${result.glError}.`);
       graphics[backend] = result.graphics;
       await writeFile(`${WORK_DIRECTORY}/${id}-${backend}.png`, Buffer.from(result.image, 'base64'));

@@ -26,6 +26,8 @@ export const MAX_BAKE_PARTS = 256;
 export const MAX_BAKE_POINT_LIGHTS = 8;
 export const MAX_BAKE_SPOT_LIGHTS = 8;
 export const MAX_BAKE_AREA_LIGHTS = 4;
+// A part that sees at least this share of the sky keeps its live sky light as it is.
+const SKY_VISIBLE_ENOUGH = 0.98;
 // The renderer's own soft edge for a spot light that gives none.
 const DEFAULT_SPOT_PENUMBRA = 0.15;
 
@@ -446,6 +448,8 @@ export function createGatherer({ world, tracer, albedoOfPart, emissionOfPart, di
     sum[1] = 0;
     sum[2] = 0;
     const rotation = hashUnit(texelIndex, 1, 7);
+    // Rays that leave the scene on their first leg see the sky, so the share of them is how much sky this point sees.
+    let escaped = 0;
     for (let sample = 0; sample < samples; sample++) {
       const firstUnit = (sample + 0.5) / samples;
       const secondUnit = (radicalInverse(sample) + rotation) % 1;
@@ -458,7 +462,10 @@ export function createGatherer({ world, tracer, albedoOfPart, emissionOfPart, di
       throughput[2] = 1;
       for (let bounce = 0; bounce < bounces; bounce++) {
         const hit = tracer.trace(origin[0], origin[1], origin[2], direction[0], direction[1], direction[2], Infinity, false);
-        if (hit.nearestTriangle < 0) break;
+        if (hit.nearestTriangle < 0) {
+          if (bounce === 0) escaped++;
+          break;
+        }
         for (let axis = 0; axis < 3; axis++) hitPoint[axis] = origin[axis] + direction[axis] * hit.nearestDistance;
         hitNormal(world, hit.nearestTriangle, direction, normal);
         const owner = world.triangleOwner[hit.nearestTriangle];
@@ -477,6 +484,7 @@ export function createGatherer({ world, tracer, albedoOfPart, emissionOfPart, di
       }
     }
     for (let channel = 0; channel < 3; channel++) sum[channel] /= samples;
+    return escaped / samples;
   };
 }
 
@@ -650,13 +658,26 @@ function dilate(radiance, covered, resolution) {
   }
 }
 
+function lightmapDescriptor(bytes, resolution, colorSpace) {
+  return { image: createImage(bytes, resolution, resolution), colorSpace, wrapS: LIGHT_MAP_CLAMP_TO_EDGE, wrapT: LIGHT_MAP_CLAMP_TO_EDGE, minFilter: LIGHT_MAP_LINEAR, magFilter: LIGHT_MAP_LINEAR };
+}
+
+// Sky visibility is a plain fraction, so it is stored linear and read back through the part's occlusion map.
+function skyVisibilityTexture(visibility, resolution) {
+  const bytes = new Uint8ClampedArray(resolution * resolution * 4).fill(255);
+  for (let texel = 0; texel < resolution * resolution; texel++) {
+    bytes.fill(Math.round(visibility[texel * 3] * 255), texel * 4, texel * 4 + 3);
+  }
+  return lightmapDescriptor(bytes, resolution, 'linear');
+}
+
 function lightmapTexture(radiance, resolution, peak) {
   const bytes = new Uint8ClampedArray(resolution * resolution * 4);
   for (let texel = 0; texel < resolution * resolution; texel++) {
     for (let channel = 0; channel < 3; channel++) bytes[texel * 4 + channel] = linearToSrgbByte(radiance[texel * 3 + channel] / peak);
     bytes[texel * 4 + 3] = 255;
   }
-  return { image: createImage(bytes, resolution, resolution), colorSpace: 'srgb', wrapS: LIGHT_MAP_CLAMP_TO_EDGE, wrapT: LIGHT_MAP_CLAMP_TO_EDGE, minFilter: LIGHT_MAP_LINEAR, magFilter: LIGHT_MAP_LINEAR };
+  return lightmapDescriptor(bytes, resolution, 'srgb');
 }
 
 function bakedPart(part, geometry, texture, peak) {
@@ -665,6 +686,13 @@ function bakedPart(part, geometry, texture, peak) {
 
 function lightMappedPart(part, geometry, texture, peak) {
   return { ...part, geometry, material: { ...part.material, lightMap: texture, lightMapScale: peak } };
+}
+
+// The sky and world light reach a surface only through what it can see of them, so a part that sees little of the sky
+// (a room with a small opening) takes its sky light and reflections through this map. The renderer already multiplies
+// them by an occlusion map, so a bake adds no shader work for a part that sees the whole sky.
+function skyVisibilityPart(part, geometry, texture, slot) {
+  return { ...part, geometry, material: { ...part.material, occlusionMap: slot ? { ...texture, uvChannel: 1 } : texture, occlusionStrength: 1 } };
 }
 
 /**
@@ -744,6 +772,9 @@ export function traceLightmaps(plan, tracedSettings) {
     const resolution = lightmapResolution(area, unwrapped.utilization, settings);
     const { positions, normals, covered } = rasterizeTexels(unwrapped.geometry, part.matrix, resolution);
     const radiance = new Float32Array(resolution * resolution * 3);
+    const skyVisibility = new Float32Array(resolution * resolution * 3);
+    let skySum = 0;
+    let skyTexels = 0;
     const albedo = albedoOfPart[index];
     const point = [0, 0, 0];
     const normal = [0, 0, 0];
@@ -755,18 +786,26 @@ export function traceLightmaps(plan, tracedSettings) {
         point[axis] = positions[texel * 3 + axis];
         normal[axis] = normals[texel * 3 + axis];
       }
-      gather(point, normal, index * 1_000_003 + texel, sum);
+      const visible = gather(point, normal, index * 1_000_003 + texel, sum);
+      skyVisibility.fill(visible, texel * 3, texel * 3 + 3);
+      skySum += visible;
+      skyTexels++;
       for (let channel = 0; channel < 3; channel++) {
         // The lightMap slot stores the light that arrives; the shader multiplies it by the live surface colour.
         radiance[texel * 3 + channel] = slot ? sum[channel] : sum[channel] * albedo[channel];
         peak = Math.max(peak, radiance[texel * 3 + channel]);
       }
     }
-    partReports.push({ name: part.name, resolution, peak });
-    if (peak <= 0) continue;
+    const meanSkyVisibility = skyTexels > 0 ? skySum / skyTexels : 1;
+    partReports.push({ name: part.name, resolution, peak, skyVisibility: meanSkyVisibility });
+    const sealed = meanSkyVisibility < SKY_VISIBLE_ENOUGH && !part.material.occlusionMap;
+    if (peak <= 0 && !sealed) continue;
+    let bakedResult = part;
+    if (sealed) dilate(skyVisibility, covered.slice(), resolution);
     dilate(radiance, covered, resolution);
-    const texture = lightmapTexture(radiance, resolution, peak);
-    baked[index] = (slot ? lightMappedPart : bakedPart)(part, unwrapped.geometry, texture, peak);
+    if (peak > 0) bakedResult = (slot ? lightMappedPart : bakedPart)(part, unwrapped.geometry, lightmapTexture(radiance, resolution, peak), peak);
+    if (sealed) bakedResult = skyVisibilityPart(bakedResult, unwrapped.geometry, skyVisibilityTexture(skyVisibility, resolution), slot);
+    baked[index] = bakedResult;
   }
   const report = { parts: partReports, skipped, texels: texelTotal, rayWork, seconds: (performance.now() - started) / 1000 };
   return { parts: baked, report };
