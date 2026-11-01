@@ -6,6 +6,7 @@ import { installRenderPasses } from '../src/render-passes.js';
 import { applyProjection } from '../src/camera.js';
 import { mat4 } from 'gl-matrix';
 import { resolveAgentShadow, agentEnvironmentMap } from '../src/agent-look.js';
+import { agentSceneModule } from '../src/agent-scene-modules.js';
 import { agentGroundPlacement, createAgentGround, placeAgentGround } from '../src/agent-ground.js';
 import { createAgentAssetScene } from '../src/agent-asset.js';
 import { parseGltf } from '../src/gltf.js';
@@ -98,6 +99,15 @@ function syncAutomaticGround(record) {
   }
 }
 
+// A renderer takes its cascades at construction, so a change of the count (or of the extent that picks it) rebuilds.
+function syncShadowCascades(record) {
+  const count = cascadeCountFor(record.scene);
+  if (count !== (record.renderer.shadowCascades?.count ?? 0)) {
+    rebuildRenderer(record);
+    record.renderer.resize();
+  }
+}
+
 function draw(record, time = 0, camera = record.scene.camera, frameOptions = {}) {
   if (!record.renderer) throw new Error('The scene renderer is leased to a render job.');
   if (record.renderer.context.isContextLost()) {
@@ -120,6 +130,7 @@ function draw(record, time = 0, camera = record.scene.camera, frameOptions = {})
     record.renderer.updateParts(record.scene.parts);
   }
   syncAutomaticGround(record);
+  syncShadowCascades(record);
   const environment = record.scene.environment;
   const effects = record.scene.effects;
   const shadow = record.scene.shadow;
@@ -185,6 +196,16 @@ function resetCanvas() {
   canvas = replacement;
 }
 
+// The cascade code is a loaded module, so a scene with one shadow map never runs it.
+function cascadeCountFor(scene) {
+  return agentSceneModule('cascades').effectiveShadowCascades(scene.environment, scene.shadow);
+}
+
+function cascadesFor(scene) {
+  const count = cascadeCountFor(scene);
+  return count > 0 ? agentSceneModule('cascades').createCascadedShadows({ count }) : null;
+}
+
 function initializeRenderer(scene, { memoryBudgetMiB, backend }) {
   const placement = agentGroundPlacement(scene.parts, scene.environment);
   return installRenderPasses(installCameraEffects(new Renderer67(canvas, scene.parts, {
@@ -194,6 +215,7 @@ function initializeRenderer(scene, { memoryBudgetMiB, backend }) {
     world: scene.environment.world,
     environment: { ...scene.environment, map: agentEnvironmentMap(scene.environment) },
     shadowBounds: resolveAgentShadow(scene.shadow, scene.environment.lightDirection),
+    shadowCascades: cascadesFor(scene),
     pixelRatio: 1,
     samples: backend === 'cpu' ? 1 : 4,
     memoryBudgetMiB,
