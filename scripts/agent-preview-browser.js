@@ -1,4 +1,4 @@
-import { buildWithKernels, kernelWorkersAvailable } from '../src/kernel-offload.js';
+import { buildWithKernels, kernelWorkersAvailable, kernelStats, resetKernelStats } from '../src/kernel-offload.js';
 import { createAgentScene, loadAllAgentSceneModules, allAgentSceneModulesLoaded, needsMeshBooleans, loadMeshBooleans, meshBooleansLoaded, setManifoldModuleLoader, needsPhysics, loadPhysicsEngine, physicsEngineLoaded, setPhysicsModuleLoader } from '../src/agent-scene.js';
 import { Renderer67 } from '../src/renderer.js';
 import { installCameraEffects } from '../src/camera-effects.js';
@@ -244,6 +244,53 @@ function afterMeshBooleans(value, run) {
 // Heavy kernels (light bake, cloth, uv_unwrap, pattern textures) compute on a worker while the page stays responsive;
 // the scene is built from the same bytes as on one thread. Reading each part's maps here makes pattern bakes run in the
 // same pass, so the renderer later finds them baked.
+// Where the work ran, for scene_inspect: kernels served by the worker and run inline (with the reason for any
+// fallback), the time of the last scene build, and the longest main-thread task the browser reported since then.
+// Long tasks are those over 50 ms, so 0 means none that long.
+const longTaskObserver = typeof PerformanceObserver === 'function' && PerformanceObserver.supportedEntryTypes?.includes('longtask')
+  ? new PerformanceObserver(() => {})
+  : null;
+longTaskObserver?.observe({ type: 'longtask' });
+const buildReport = { buildMilliseconds: 0, longestBlockMilliseconds: 0, longestLongTaskMilliseconds: 0, longTasks: 0 };
+
+// The long task API skips work run by a remote-debugging call, so a timer also measures how long the page stayed
+// unresponsive: the longest delay of a 20 ms tick is the longest stretch the main thread was busy.
+const HEARTBEAT_MILLISECONDS = 20;
+let lastHeartbeat = performance.now();
+setInterval(() => {
+  const now = performance.now();
+  buildReport.longestBlockMilliseconds = Math.max(buildReport.longestBlockMilliseconds, Math.round(now - lastHeartbeat - HEARTBEAT_MILLISECONDS));
+  lastHeartbeat = now;
+}, HEARTBEAT_MILLISECONDS);
+
+function drainLongTasks() {
+  for (const entry of longTaskObserver?.takeRecords() ?? []) {
+    buildReport.longTasks++;
+    buildReport.longestLongTaskMilliseconds = Math.max(buildReport.longestLongTaskMilliseconds, Math.round(entry.duration));
+  }
+}
+
+function startBuildReport() {
+  drainLongTasks();
+  Object.assign(buildReport, { buildMilliseconds: 0, longestBlockMilliseconds: 0, longestLongTaskMilliseconds: 0, longTasks: 0 });
+  lastHeartbeat = performance.now();
+  resetKernelStats();
+}
+
+function finishBuildReport(startedAt) {
+  buildReport.buildMilliseconds = Math.round(performance.now() - startedAt);
+}
+
+function kernelReport() {
+  drainLongTasks();
+  return { ...kernelStats(), ...buildReport };
+}
+
+// The runtime can switch workers off (createAgentRuntime kernelWorkers: false) to measure what they buy.
+function useKernelWorkers() {
+  return kernelWorkersAvailable() && globalThis.__67jsKernelWorkers !== 'off';
+}
+
 function buildSceneOffMainThread(recipe) {
   return buildWithKernels(() => {
     const scene = createAgentScene(recipe);
@@ -501,10 +548,17 @@ window.__agentPreview = {
   create(input) {
     if (active) throw new Error('Dispose the current scene before creating another.');
     return afterMeshBooleans(input.recipe, () => {
-      if (!kernelWorkersAvailable()) {
-        return createPreview(createAgentScene(input.recipe), input);
+      startBuildReport();
+      const startedAt = performance.now();
+      if (!useKernelWorkers()) {
+        const scene = createAgentScene(input.recipe);
+        finishBuildReport(startedAt);
+        return createPreview(scene, input);
       }
-      return buildSceneOffMainThread(input.recipe).then(scene => createPreview(scene, input));
+      return buildSceneOffMainThread(input.recipe).then(scene => {
+        finishBuildReport(startedAt);
+        return createPreview(scene, input);
+      });
     });
   },
   async createAsset(input) {
@@ -529,7 +583,7 @@ window.__agentPreview = {
     }
   },
   inspect({ sessionId, ...options }) {
-    return { sessionId, ...requireSession(sessionId).scene.inspect(options) };
+    return { sessionId, ...requireSession(sessionId).scene.inspect(options), kernels: kernelReport() };
   },
   inspectMeshes({ sessionId, ...options }) {
     const scene = requireSession(sessionId).scene;

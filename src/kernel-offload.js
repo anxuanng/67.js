@@ -18,6 +18,37 @@ const RECONSTRUCTED_ERRORS = { RangeError, TypeError, SyntaxError, ReferenceErro
 const MAXIMUM_DEFERRALS = 256;
 
 let activeSession = null;
+let workerStartFailure = null;
+
+// What ran where, since the last reset: a kernel served by a worker, a kernel computed inline, and why a kernel that
+// should have gone to a worker did not. A silent fallback would otherwise look the same as success.
+const MAXIMUM_RECORDED_FALLBACKS = 16;
+const statistics = { worker: 0, inline: 0, fallbacks: [] };
+
+/** Counts of kernels served by a worker and run inline, with the reason for each fallback. */
+export function kernelStats() {
+  return { worker: statistics.worker, inline: statistics.inline, fallbacks: statistics.fallbacks.map(fallback => ({ ...fallback })) };
+}
+
+export function resetKernelStats() {
+  statistics.worker = 0;
+  statistics.inline = 0;
+  statistics.fallbacks = [];
+}
+
+function recordFallback(kernel, reason) {
+  if (statistics.fallbacks.length < MAXIMUM_RECORDED_FALLBACKS) {
+    statistics.fallbacks.push({ kernel, reason });
+  }
+  if (kernelWorkersAvailable()) {
+    console.warn(`67js kernel fallback: ${kernel} ran inline (${reason}).`);
+  }
+}
+
+function computeInline(compute, args) {
+  statistics.inline++;
+  return compute(...args);
+}
 
 /** Thrown by `runKernel` inside a session when a kernel's result has to be computed on the worker first. */
 export class KernelDeferred {
@@ -68,6 +99,11 @@ function mixValue(hasher, value) {
     mixBytes(hasher, new Uint8Array(value.buffer, value.byteOffset, value.byteLength));
     return true;
   }
+  // Browsers hold pattern textures as ImageData, which a worker clones as it is.
+  if (typeof ImageData === 'function' && value instanceof ImageData) {
+    mixText(hasher, `ImageData:${value.width}x${value.height}:${value.colorSpace};`);
+    return mixValue(hasher, value.data);
+  }
   if (Array.isArray(value)) {
     mixText(hasher, `[${value.length}:`);
     return value.every(item => mixValue(hasher, item));
@@ -97,11 +133,15 @@ export function kernelKey(name, args) {
  */
 export function runKernel(name, args, compute) {
   if (!activeSession) {
-    return compute(...args);
+    return computeInline(compute, args);
   }
   const key = kernelKey(name, args);
-  if (key === null || activeSession.inlineAll || activeSession.inlineKeys.has(key)) {
-    return compute(...args);
+  if (key === null) {
+    recordFallback(name, 'its input is not plain data');
+    return computeInline(compute, args);
+  }
+  if (activeSession.inlineAll || activeSession.inlineKeys.has(key)) {
+    return computeInline(compute, args);
   }
   if (activeSession.results.has(key)) {
     const entry = activeSession.results.get(key);
@@ -183,7 +223,10 @@ export async function buildWithKernels(build, { createWorker = defaultWorkerFact
         activeSession = null;
         session.deferrals++;
         // A build whose inputs change on every run would never find its cached result; computing inline ends the loop.
-        session.inlineAll = session.deferrals > MAXIMUM_DEFERRALS;
+        if (session.deferrals > MAXIMUM_DEFERRALS && !session.inlineAll) {
+          session.inlineAll = true;
+          recordFallback(error.job.name, 'the build asked for more kernels than any scene holds');
+        }
         worker ??= createWorkerOrNull(createWorker);
         await computeOnWorker(session, worker, error.job, signal);
       } finally {
@@ -198,7 +241,8 @@ export async function buildWithKernels(build, { createWorker = defaultWorkerFact
 function createWorkerOrNull(createWorker) {
   try {
     return createWorker();
-  } catch {
+  } catch (error) {
+    workerStartFailure = error.message;
     return null;
   }
 }
@@ -208,6 +252,7 @@ function createWorkerOrNull(createWorker) {
 async function computeOnWorker(session, worker, job, signal) {
   if (!worker) {
     session.inlineKeys.add(job.key);
+    recordFallback(job.name, `the worker could not start: ${workerStartFailure}`);
     return;
   }
   let answer;
@@ -218,7 +263,9 @@ async function computeOnWorker(session, worker, job, signal) {
       throw error;
     }
     session.inlineKeys.add(job.key);
+    recordFallback(job.name, `the worker failed: ${error.message}`);
     return;
   }
+  statistics.worker++;
   session.results.set(job.key, answer.error ? { thrown: rebuildError(answer.error) } : { value: answer.value });
 }

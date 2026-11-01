@@ -44,7 +44,7 @@ const VENDOR_FILES = Object.freeze({
   '/vendor/rapier.js': { resolve: require => join(dirname(require.resolve('@dimforge/rapier3d-compat')), 'rapier.mjs'), type: 'application/javascript; charset=utf-8' },
 });
 
-export function createAgentRuntime({ backend = 'gpu', browser: browserPath, memory = 192, assets: assetRoot,
+export function createAgentRuntime({ kernelWorkers = true, backend = 'gpu', browser: browserPath, memory = 192, assets: assetRoot,
   jobs: jobRoot, ffmpeg = 'ffmpeg', audio: audioRoot,
   previewUrl = new URL(/* @vite-ignore */ '../build/mcp/preview.js', import.meta.url) } = {}) {
   if (!['gpu', 'cpu'].includes(backend)) {
@@ -233,6 +233,13 @@ export function createAgentRuntime({ backend = 'gpu', browser: browserPath, memo
         return url.origin === origin ? route.continue() : route.abort();
       });
       page.setDefaultTimeout(15000);
+      if (!kernelWorkers) {
+        await page.addInitScript(() => { globalThis.__67jsKernelWorkers = 'off'; });
+      }
+      // A kernel that fell back to the main thread says so on the page console; keep that note in the server's stderr.
+      page.on?.('console', message => {
+        if (message.text().startsWith('67js kernel fallback')) console.error(message.text());
+      });
       await page.goto(origin);
       await page.waitForFunction(() => Boolean(window.__agentPreview));
       phase = 'ready';
