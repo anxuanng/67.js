@@ -132,6 +132,23 @@ test('options are validated with their bounds', () => {
   for (const bad of [null, [], 'fast', 3]) assert.throws(() => normalizeBakeOptions(bad), TypeError);
 });
 
+test('hostile spot and area lights are refused before any ray is traced', () => {
+  const spot = { position: [0, 2, 0], direction: [0, -1, 0], intensity: 5 };
+  const area = { position: [0, 2, 0], direction: [0, -1, 0], width: 1, height: 1, intensity: 5 };
+  const refused = [
+    [{ spotLights: [{ ...spot, direction: [0, 0, 0] }] }, /spot light 0.*direction/],
+    [{ spotLights: [{ ...spot, position: [0, Number.NaN, 0] }] }, /spot light 0/],
+    [{ spotLights: [{ ...spot, angle: 4 }] }, /spot light 0.*angle/],
+    [{ spotLights: Array(9).fill(spot) }, /at most 8 spot lights/],
+    [{ areaLights: [{ ...area, width: -1 }] }, /area light 0.*width/],
+    [{ areaLights: [{ ...area, intensity: Infinity }] }, /area light 0/],
+    [{ areaLights: Array(5).fill(area) }, /at most 4 area lights/],
+  ];
+  for (const [lights, message] of refused) {
+    assert.throws(() => bakeLightmaps(smallRoom(), { ...lamp, ...lights }, fastOptions), message);
+  }
+});
+
 test('hostile parts and lights are refused before any ray is traced', () => {
   const withPosition = value => {
     const parts = smallRoom();
