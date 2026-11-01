@@ -43,6 +43,8 @@ if (published) {
   assert.equal(installedLock.packages['node_modules/67js'].integrity, release.integrity, 'Installed npm package differs from release integrity.');
 }
 const example = `import assert from 'node:assert/strict';
+import { existsSync, readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { VERSION, Renderer67, box, assemblyOffset, cameraView, fitPerspectiveDistance, createAnimationClip, sampleAnimationClip, EFFECT_PRESETS, createMorphPose, MAX_MORPH_TARGETS, exportGlb } from '67js';
 import { createModel } from '67js/addons/model';
 import * as nature from '67js/addons/nature';
@@ -205,6 +207,17 @@ assert.equal(parts.length, 574);
 assert.ok(parts.every(part => assemblyOffset(part, 1).some(value => value !== 0)));
 assert.ok(Object.keys(nature).length > 0);
 await assert.rejects(() => import('67js/addons/film'), { code: 'ERR_PACKAGE_PATH_NOT_EXPORTED' });
+const installedMetadata = JSON.parse(readFileSync(new URL('./node_modules/67js/package.json', import.meta.url), 'utf8'));
+const exportedEntries = Object.keys(installedMetadata.exports);
+assert.ok(exportedEntries.length > 30, 'The installed package must publish its export map.');
+for (const entry of exportedEntries) {
+  const specifier = entry === '.' ? '67js' : '67js/' + entry.slice(2);
+  const resolvedPath = fileURLToPath(import.meta.resolve(specifier));
+  assert.ok(existsSync(resolvedPath), 'Export ' + entry + ' resolves to a file that is missing from the package.');
+  if (entry === './package.json') continue;
+  // An entry may register itself on import and export nothing, so loading without an error is the check.
+  await import(specifier);
+}
 assert.equal(cameraView('top').projection, 'orthographic');
 const fitBounds = { minimum: [-1, -1, -1], maximum: [1, 1, 1] };
 const fitView = { eye: [0, 0, 5], target: [0, 0, 0], fov: 45, far: 100 };
