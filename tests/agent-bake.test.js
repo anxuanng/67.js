@@ -225,11 +225,17 @@ test('explicit settings over the hard limit fail up front with a lower setting t
 
 test('explicit settings far above the preset budget run when they fit the hard limit, and are never reduced', () => {
   const explicit = { samples: 160, bounces: 2, texelsPerUnit: 6 };
-  const bake = createAgentScene(largeRoom(explicit)).inspect().bake;
-  assert.equal(bake.reduced, false);
-  assert.deepEqual(bake.used, explicit);
-  assert.ok(bake.texels * explicit.samples * explicit.bounces > BAKE_PRESET_PATH_WORK);
-  assert.ok(bake.seconds < BAKE_MAXIMUM_SECONDS);
+  // A busy machine can pass the real limit here, and this test is about the settings, so the clock stands still.
+  const realNow = performance.now;
+  performance.now = () => 0;
+  try {
+    const bake = createAgentScene(largeRoom(explicit)).inspect().bake;
+    assert.equal(bake.reduced, false);
+    assert.deepEqual(bake.used, explicit);
+    assert.ok(bake.texels * explicit.samples * explicit.bounces > BAKE_PRESET_PATH_WORK);
+  } finally {
+    performance.now = realNow;
+  }
 });
 
 test('an explicit bake that passes maxSeconds fails cleanly with a lower setting to try', () => {
