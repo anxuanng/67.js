@@ -1,0 +1,146 @@
+{
+  "run": "2026-11-01-07-13-haiku-haiku-path-walk-cold",
+  "model": "claude-haiku-5-5",
+  "date": "2026-11-01T07:16:57.767Z",
+  "skill": false,
+  "branches": "on",
+  "runsPerTask": 2,
+  "passed": 2,
+  "tasks": 2,
+  "toolCalls": 25,
+  "costUsd": 0.15,
+  "byModel": {
+    "claude-haiku-5-5": {
+      "runs": 2,
+      "passed": 2,
+      "successRate": 1,
+      "toolCalls": 25,
+      "toolErrors": 4,
+      "inputTokens": 2611760,
+      "outputTokens": 19926,
+      "costUsd": 0.15,
+      "tasks": {
+        "terrain-path-walk": {
+          "runs": 2,
+          "passed": 2,
+          "successRate": 1,
+          "toolCalls": 25,
+          "toolErrors": 4,
+          "inputTokens": 2611760,
+          "outputTokens": 19926,
+          "costUsd": 0.15
+        }
+      }
+    }
+  },
+  "records": [
+    {
+      "task": "terrain-path-walk",
+      "attempt": 1,
+      "pass": true,
+      "passed": 3,
+      "total": 3,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 12,
+      "toolErrors": 2,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_capabilities": 1,
+        "scene_create": 3,
+        "scene_inspect": 3,
+        "scene_dispose": 1,
+        "scene_apply": 3,
+        "scene_export_recipe": 1
+      },
+      "branchCalls": 0,
+      "pathQueries": 2,
+      "features": {
+        "geometryTypes": [
+          "terrain",
+          "box"
+        ],
+        "meshOperations": [],
+        "motionIk": [],
+        "motionTracks": 1
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 0.5679,
+            "side": 0.6711,
+            "three-quarter": 0.9577
+          },
+          "mean": 0.7322
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-11-01-07-13-haiku-haiku-path-walk-cold/look/1/terrain-path-walk-front.png",
+          "artifacts/agent-modeling/2026-11-01-07-13-haiku-haiku-path-walk-cold/look/1/terrain-path-walk-side.png",
+          "artifacts/agent-modeling/2026-11-01-07-13-haiku-haiku-path-walk-cold/look/1/terrain-path-walk-three-quarter.png"
+        ]
+      },
+      "turns": 14,
+      "costUsd": 0.05969754,
+      "inputTokens": 1182557,
+      "outputTokens": 8612,
+      "wallSeconds": 78,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "terrain-path-walk",
+      "attempt": 2,
+      "pass": true,
+      "passed": 3,
+      "total": 3,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 13,
+      "toolErrors": 2,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_capabilities": 1,
+        "scene_create": 2,
+        "scene_inspect": 4,
+        "scene_apply": 2,
+        "scene_look": 1,
+        "scene_review": 1,
+        "scene_export_recipe": 1,
+        "scene_dispose": 1
+      },
+      "branchCalls": 0,
+      "pathQueries": 3,
+      "features": {
+        "geometryTypes": [
+          "terrain",
+          "box"
+        ],
+        "meshOperations": [],
+        "motionIk": [],
+        "motionTracks": 1
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 0.5712,
+            "side": 0.6692,
+            "three-quarter": 0.9587
+          },
+          "mean": 0.733
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-11-01-07-13-haiku-haiku-path-walk-cold/look/2/terrain-path-walk-front.png",
+          "artifacts/agent-modeling/2026-11-01-07-13-haiku-haiku-path-walk-cold/look/2/terrain-path-walk-side.png",
+          "artifacts/agent-modeling/2026-11-01-07-13-haiku-haiku-path-walk-cold/look/2/terrain-path-walk-three-quarter.png"
+        ]
+      },
+      "turns": 15,
+      "costUsd": 0.08857357,
+      "inputTokens": 1429203,
+      "outputTokens": 11314,
+      "wallSeconds": 127,
+      "exitCode": 0,
+      "stopped": "success"
+    }
+  ]
+}
