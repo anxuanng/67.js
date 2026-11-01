@@ -1,0 +1,90 @@
+{
+  "run": "2026-11-01-07-16-sonnet-sonnet-path-walk-cold",
+  "model": "claude-sonnet-5-5",
+  "date": "2026-11-01T07:18:23.344Z",
+  "skill": false,
+  "branches": "on",
+  "runsPerTask": 1,
+  "passed": 1,
+  "tasks": 1,
+  "toolCalls": 9,
+  "costUsd": 0.4,
+  "byModel": {
+    "claude-sonnet-5-5": {
+      "runs": 1,
+      "passed": 1,
+      "successRate": 1,
+      "toolCalls": 9,
+      "toolErrors": 0,
+      "inputTokens": 658033,
+      "outputTokens": 3121,
+      "costUsd": 0.4,
+      "tasks": {
+        "terrain-path-walk": {
+          "runs": 1,
+          "passed": 1,
+          "successRate": 1,
+          "toolCalls": 9,
+          "toolErrors": 0,
+          "inputTokens": 658033,
+          "outputTokens": 3121,
+          "costUsd": 0.4
+        }
+      }
+    }
+  },
+  "records": [
+    {
+      "task": "terrain-path-walk",
+      "attempt": 1,
+      "pass": true,
+      "passed": 3,
+      "total": 3,
+      "failed": [],
+      "model": "claude-sonnet-5-5",
+      "toolCalls": 9,
+      "toolErrors": 0,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_capabilities": 1,
+        "scene_create": 1,
+        "scene_inspect": 4,
+        "scene_apply": 2,
+        "scene_export_recipe": 1
+      },
+      "branchCalls": 0,
+      "pathQueries": 3,
+      "features": {
+        "geometryTypes": [
+          "terrain",
+          "box"
+        ],
+        "meshOperations": [],
+        "motionIk": [],
+        "motionTracks": 1
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 0.5687,
+            "side": 0.6786,
+            "three-quarter": 0.9573
+          },
+          "mean": 0.7349
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-11-01-07-16-sonnet-sonnet-path-walk-cold/look/1/terrain-path-walk-front.png",
+          "artifacts/agent-modeling/2026-11-01-07-16-sonnet-sonnet-path-walk-cold/look/1/terrain-path-walk-side.png",
+          "artifacts/agent-modeling/2026-11-01-07-16-sonnet-sonnet-path-walk-cold/look/1/terrain-path-walk-three-quarter.png"
+        ]
+      },
+      "turns": 11,
+      "costUsd": 0.40017120000000006,
+      "inputTokens": 658033,
+      "outputTokens": 3121,
+      "wallSeconds": 56,
+      "exitCode": 0,
+      "stopped": "success"
+    }
+  ]
+}

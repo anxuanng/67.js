@@ -246,3 +246,14 @@ Every note names the same gap: the three-quarter view shows a surface and a shad
 | Sonnet | off | 3/3 | 3, 3, 3 | 0 | $0.88 | 0 |
 
 Result: agents ignored branches in all 12 runs. Sonnet wrote the right shade in its first `scene_apply` and exported (3 calls, with or without branches). Haiku varied from 3 to 7 calls either way, with no sign of an effect. Calls did not drop, so the issue's first done condition is not met. The task is too easy to need a comparison: the goal is arithmetic on sizes the prompt states. A task where the right variant can only be told from a render, or where a wrong pick costs a long repair, is the next try. Until then branches have no measured benefit on this suite.
+
+## A walk around two holes and a rock (2026-11-01, issue #64)
+
+`terrain-path-walk` builds 40 m of hills with two round openings (radius 3 m at the origin, 2.5 m at [9, 9]) and a 3 m by 2 m by 3 m `rock` at [-8, -8], then walks a `walker` node from [-15, -15] to [15, 15] in 10 s. The check on the exported recipe samples 41 times: the position stays within 1.5 m of the ground height, at least 0.3 m outside both openings and at least 0.3 m from the rock's footprint, and starts and ends within 0.75 m of the two points. The `through` check confirms both openings are cut clean through. The robot GLB cannot stand on a recipe terrain (asset scenes hold no recipe geometry), so the character is a box node, like `terrain-hole-walk`. The prompt does not mention the path query: agents find it in the `scene_inspect` schema (`path`) and in `scene_capabilities` `navigation`. `pathQueries` in each record counts `scene_inspect` calls that passed `path`.
+
+| Model | Runs | Pass | Calls | Errors | Cost | `path` queries |
+| --- | --- | --- | --- | --- | --- | --- |
+| Haiku | 2 | 2/2 | 12, 13 | 2, 2 | $0.15 | 2, 3 |
+| Sonnet | 1 | 1/1 | 9 | 0 | $0.40 | 3 |
+
+Result: all three agents used the query and wrote its keyframes into a `LINEAR` walker track (29 or 30 keys with the query's three-decimal values, not a hand-drawn polyline). The four Haiku errors were unrelated schema slips (`sessionId` on `scene_create`, motion keys at the recipe top level, a node with a geometry and no material), not path errors. Nothing here shows what the query saves: the task was not run with the query hidden, and an earlier task with one hole (`terrain-hole-walk`) was walked by hand 2 of 2 times by Haiku. Three runs is too few to separate Haiku from Sonnet. Total cost $0.55, one run each of the three.
