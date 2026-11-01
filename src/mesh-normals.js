@@ -59,6 +59,7 @@ export function cornerNormals(mesh, { sharpAngle = Infinity } = {}) {
   const facesOfCorners = cornerFaces(mesh);
   const table = edgeCornerTable(mesh);
   const sharp = mesh.attributes.edge.sharp?.data;
+  const smooth = mesh.attributes.edge.smooth?.data;
   const cosineLimit = Number.isFinite(sharpAngle) ? Math.cos(sharpAngle) : -2;
   const groups = new UnionFind(mesh.cornerCount);
   for (let edge = 0; edge < mesh.edgeCount; edge++) {
@@ -73,7 +74,7 @@ export function cornerNormals(mesh, { sharpAngle = Infinity } = {}) {
     const cosine = faceNormal[firstFace * 3] * faceNormal[secondFace * 3] +
       faceNormal[firstFace * 3 + 1] * faceNormal[secondFace * 3 + 1] +
       faceNormal[firstFace * 3 + 2] * faceNormal[secondFace * 3 + 2];
-    if (cosine < cosineLimit) continue;
+    if (cosine < cosineLimit && !(smooth && smooth[edge])) continue;
     // first runs a->b and second runs b->a, so the corners at a are first and next(second), at b next(first) and second.
     groups.union(first, nextCorner[second]);
     groups.union(nextCorner[first], second);

@@ -2,6 +2,9 @@ import { withPositions } from './mesh-field-edits.js';
 import { mergeByDistance } from './mesh-ops.js';
 import { triangulateFaces, splitSharpEdges } from './mesh-restructure.js';
 import { MODIFIER_OPERATIONS } from './mesh-operations.js';
+import { normalizeGeneratorEdit, GENERATOR_RUNNERS } from './mesh-generator-modifiers.js';
+import { normalizeNormalEdit, NORMAL_RUNNERS } from './mesh-normal-modifiers.js';
+import { isDeformModifier, normalizeDeformEdit, runDeformEdit } from './mesh-deform-modifiers.js';
 
 // The whole-mesh modifiers as recipe operations: validation of their fields and running them on MeshData. Smooth, cast and
 // simple_deform only move vertices; weld, triangulate and edge_split change the faces (see mesh-restructure.js).
@@ -43,7 +46,19 @@ function normalizeSimpleDeform(edit, normalized, index, finiteNumber) {
 }
 
 /** Fill in `normalized` for a modifier edit, throwing a TypeError that names the edit when a field is wrong. */
-export function normalizeModifierEdit(edit, normalized, index, { finiteNumber }) {
+export function normalizeModifierEdit(edit, normalized, index, { finiteNumber, checkedField }) {
+  if (Object.hasOwn(GENERATOR_RUNNERS, edit.op)) {
+    normalizeGeneratorEdit(edit, normalized, index, { finiteNumber, integerInRange, checkedField });
+    return;
+  }
+  if (Object.hasOwn(NORMAL_RUNNERS, edit.op)) {
+    normalizeNormalEdit(edit, normalized, index, { finiteNumber });
+    return;
+  }
+  if (isDeformModifier(edit.op)) {
+    normalizeDeformEdit(edit, normalized, index, { finiteNumber, integerInRange });
+    return;
+  }
   switch (edit.op) {
     case 'weld':
       normalized.distance = edit.distance === undefined ? 0.001 : finiteNumber(edit.distance, index, 'distance', { minimum: 0, maximum: 1e3, exclusiveMinimum: true });
@@ -170,6 +185,9 @@ function simpleDeformPositions(mesh, { mode, axis, angle, factor }) {
 
 /** Run a modifier edit. Returns { mesh, result } where result holds the counts to report. */
 export function runModifierEdit(mesh, edit, { maxVertices, maxFaces }) {
+  if (Object.hasOwn(GENERATOR_RUNNERS, edit.op)) return GENERATOR_RUNNERS[edit.op](mesh, edit, { maxVertices, maxFaces });
+  if (Object.hasOwn(NORMAL_RUNNERS, edit.op)) return { mesh: NORMAL_RUNNERS[edit.op](mesh, edit), result: {} };
+  if (isDeformModifier(edit.op)) return runDeformEdit(mesh, edit);
   switch (edit.op) {
     case 'weld': {
       const merged = mergeByDistance(mesh, edit.distance);

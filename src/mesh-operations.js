@@ -12,6 +12,15 @@ export const MODIFIER_OPERATIONS = Object.freeze({
   smooth: { fields: ['factor', 'iterations'], tags: [] },
   simple_deform: { fields: ['mode', 'axis', 'angle', 'factor'], tags: [] },
   cast: { fields: ['factor', 'size'], tags: [] },
+  screw: { fields: ['axis', 'angle', 'steps', 'iterations', 'lift'], tags: [] },
+  wireframe: { fields: ['thickness', 'offset', 'evenOffset', 'replace'], tags: [] },
+  skin: { fields: ['radius'], tags: [] },
+  lattice: { fields: ['divisions', 'moves'], tags: [] },
+  curve: { fields: ['path', 'axis'], tags: [] },
+  hook: { fields: ['center', 'radius', 'translation', 'strength', 'falloff'], tags: [] },
+  wave: { fields: ['height', 'width', 'narrowness', 'speed', 'time', 'timeOffset', 'start', 'cyclic', 'axes', 'normal'], tags: [] },
+  weighted_normal: { fields: ['angle', 'weight'], tags: [] },
+  smooth_by_angle: { fields: ['angle', 'ignoreSharp'], tags: [] },
 });
 
 export const MESH_EDIT_OPERATIONS = Object.freeze({
