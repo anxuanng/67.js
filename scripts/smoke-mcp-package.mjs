@@ -36,8 +36,11 @@ const installed = JSON.parse(await readFile(join(installedRoot, 'package.json'),
 assert.equal(installed.version, metadata.version);
 assert.equal(installed.bin['67js-mcp'], './bin/67js-mcp.mjs');
 const sourceManifest = JSON.parse(await readFile('package.json', 'utf8'));
-assert.deepEqual(installed.dependencies, { 'playwright-core': sourceManifest.dependencies['playwright-core'] });
-for (const dependency of ['vite', 'zod', 'three', 'gl-matrix', '@modelcontextprotocol/server', '@modelcontextprotocol/client', 'playwright']) {
+assert.deepEqual(installed.dependencies, sourceManifest.dependencies);
+for (const dependency of ['@modelcontextprotocol/server', 'playwright-core', 'zod']) {
+  assert.equal(existsSync(join(consumer, 'node_modules', dependency)), true, `The installed package must bring its runtime dependency ${dependency}.`);
+}
+for (const dependency of ['vite', 'three', 'gl-matrix', '@modelcontextprotocol/client', 'playwright']) {
   assert.equal(existsSync(join(consumer, 'node_modules', dependency)), false, `Runtime must not depend on a checkout or ${dependency}.`);
 }
 assert.equal(existsSync(join(installedRoot, 'src')), false);

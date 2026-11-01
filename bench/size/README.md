@@ -39,7 +39,9 @@ Use `--set-budgets` to reset every budget to 2% over the current size. Use it af
 
 ## Package archive
 
-`archiveBytes` in `budgets.json` caps the npm archive that `npm pack` makes. `npm run smoke:package` checks it, after `npm run prepare:release`. The archive was 904,975 bytes before the MCP preview shared the package's engine chunks and 666,214 after, so lower `archiveBytes` when work shrinks it.
+`archiveBytes` in `budgets.json` caps the npm archive that `npm pack` makes. `npm run smoke:package` checks it, after `npm run prepare:release`. The archive was 904,975 bytes before the MCP preview shared the package's engine chunks and 666,214 after; features then grew it to 802,581, and making `@modelcontextprotocol/server` and `zod` installed dependencies instead of bundled code brought it to 677,563 (the budget is that plus 1.5 percent). Lower `archiveBytes` when work shrinks it.
+
+Before adding a dependency to save archive bytes, weigh it: the archive number falls, and the consumer's install size and first-run download rise. The two packages above save about 125 KB of archive for about 14.5 MB on disk.
 
 ## Limits
 
