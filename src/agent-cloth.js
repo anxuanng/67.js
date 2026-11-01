@@ -1,4 +1,5 @@
 import { mat4 } from 'gl-matrix';
+import { runKernel } from './kernel-offload.js';
 import { bakeCloth, sampleClothFrames, weldVertices } from './cloth.js';
 import { recomputeNormals } from './geometry-normals.js';
 import { bakingContext, boundedArray, finiteNumber, knownKeys, rootNodeWithGeometry, vectorOfThree } from './agent-recipe-checks.js';
@@ -133,12 +134,12 @@ function bakeSheet(sheet, cloth, node, geometry, colliders, frameCount) {
     }
     worldPositions.set(world, particle * 3);
   });
-  const recording = bakeCloth(worldPositions, welded.triangles, {
+  const recording = Object.freeze({ ...runKernel('cloth', [worldPositions, welded.triangles, {
     pinned: pinnedParticles(geometry.positions, welded.representatives, sheet.pin),
     gravity: cloth.gravity, wind: cloth.wind, stiffness: sheet.stiffness, bend: sheet.bend,
     density: sheet.density, damping: sheet.damping, friction: sheet.friction, thickness: sheet.thickness,
     colliders, frameCount, framesPerSecond: FRAMES_PER_SECOND,
-  });
+  }], bakeCloth) });
   return { recording, welded, inverse: mat4.invert(mat4.create(), matrix), geometry, particleScratch: new Float32Array(recording.particleCount * 3) };
 }
 
