@@ -1,14 +1,56 @@
 # Reference renders
 
-This suite scores how close a 67js render is to Blender on 15 fixed scenes. Later work uses these scores as its starting point.
+This suite scores how close a 67js render is to Blender on 20 fixed scenes. Later work uses these scores as its starting point.
 
 ## Run it
 
 Run `npm run reference`. It prints one row for each scene, and it rewrites `baseline.json` and `images/`.
 
-The run needs Chrome, Blender 5.2, `uv` and an NVIDIA GPU, and it takes about 2 minutes on an RTX 3060. Use `CHROME_PATH` and `BLENDER_PATH` to change the program paths.
+The run needs Chrome, Blender 5.2, `uv` and an NVIDIA GPU, and it took 751 s on an RTX 3060 with other jobs on the machine (2026-11-01). Use `--scene <id>` to render one scene, then `--score-only` to score the scenes in the work directory; that also rewrites `baseline.json` with only those scenes. Use `CHROME_PATH` and `BLENDER_PATH` to change the program paths.
 
 CI does not run this suite. `tests/reference-baseline.test.js` checks only that the committed baseline is complete.
+
+## One sun (2026-11-01)
+
+The HDRI holds its own sun: 6 of its 524,288 pixels carry 48.1 percent of the sky light, at 48 degrees of elevation. Most scenes also add a sun light. Cycles and EEVEE therefore drew two shadows of each object, and 67js drew one because its environment casts no shadow. `scenes.js` and `render-blender.py` now cap the image at radiance 16 on both sides, which removes the sun and its halo and keeps the clouds. The sky keeps 49.2 percent of its light. A scene with a sky now has only its own sun light.
+
+`baseline.json` and `images/` use the cap. Scores measured before this date, including the tables and notes below, `khronos.json` and `path-tracer.json`, use the sky with two suns. Scenes with a constant world did not move when the cap went in.
+
+## No shadow floor (2026-11-01)
+
+A key shadow in 67js kept 18 percent of the sun (`src/shaders.js`, `src/cascaded-shadows.js`). A sealed hall was evenly lit, and every shadow was too light. A key shadow now blocks the sun fully. `fog` (+0.0031) and `megacity-dusk` (+0.0044) got worse, and all other scenes stayed level or improved.
+
+Scores against Cycles, with each change in turn:
+
+| Scene | Two suns, floor | One sun, floor | One sun, no floor (now) | EEVEE now |
+| --- | --- | --- | --- | --- |
+| `outdoor-hdri` | 0.0676 | 0.0466 | 0.0462 | 0.0403 |
+| `character` | 0.0995 | 0.0823 | 0.0799 | 0.0622 |
+| `glass` | 0.1326 | 0.1033 | 0.1034 | 0.1009 |
+| `car-paint` | 0.1521 | 0.1084 | 0.1059 | 0.0844 |
+| `brushed-film` | 0.1613 | 0.1172 | 0.1149 | 0.0984 |
+| `metal` | 0.1868 | 0.1309 | 0.1294 | 0.0916 |
+| `material-spheres` | 0.1598 | 0.1337 | 0.1312 | 0.1053 |
+| `foliage` | 0.1594 | 0.1346 | 0.1290 | 0.0864 |
+| `brick-flat` | 0.1999 | 0.1273 | 0.1272 | 0.1098 |
+| `brick-graph` | 0.2269 | 0.1604 | 0.1602 | 0.1221 |
+| `long-street` | 0.1555 | 0.1555 | 0.1407 | 0.0976 |
+
+The mean over the 16 older scenes went from 0.2001 to 0.1751 to 0.1732. EEVEE is at 0.1645.
+
+## Grand scenes (2026-11-01)
+
+Three scenes test what people want to make, not one feature. Each one is built with engine code, and Blender gets the same geometry.
+
+| Scene | Parts | Triangles drawn | 67js against Cycles | EEVEE against Cycles | Largest visible gap |
+| --- | --- | --- | --- | --- | --- |
+| `megacity-dusk` | 4,300 | 51.6 thousand | 0.1627 | 0.1524 | Window bands are sharper, and facades get no light from the windows |
+| `mountain-valley` | 7,698 | 9.72 million | 0.3473 | 0.1828 | Trees are lighter from leaf translucency, and shadowed rock is brighter |
+| `temple-hall` | 155 | 11 thousand | 0.2126 | 0.2341 | The fog shafts are stronger in 67js, and the floor gets no bounce light |
+
+With the shadow floor `temple-hall` scored 0.5841, `mountain-valley` 0.3658 and `megacity-dusk` 0.1583.
+
+`temple-hall` sets its own `bakeOptions`. The defaults need 1.4 million texels, and the bake allows 1 million. With the options the bake scores 0.2239, against 0.2126 without it.
 
 ## Baseline
 

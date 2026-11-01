@@ -64,11 +64,16 @@ async function renderBackend(backend, serverUrl, graphics) {
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
     page.on('console', message => message.text().includes('GL_') && console.log('PAGE', message.text().slice(0, 200)));
-    await page.goto(`${serverUrl}/bench/reference/harness.html${sceneSet ? `?set=${sceneSet}` : ''}`, { timeout: PAGE_LOAD_TIMEOUT });
-    await page.waitForFunction(() => window.renderReferenceScene, null, { timeout: PAGE_LOAD_TIMEOUT });
+    // Each scene gets a fresh page, so a large scene leaves no GL state or memory behind for the next one.
+    const openHarness = async () => {
+      await page.goto(`${serverUrl}/bench/reference/harness.html${sceneSet ? `?set=${sceneSet}` : ''}`, { timeout: PAGE_LOAD_TIMEOUT });
+      await page.waitForFunction(() => window.renderReferenceScene, null, { timeout: PAGE_LOAD_TIMEOUT });
+    };
+    await openHarness();
     const sceneIds = await page.evaluate(() => window.referenceSceneIds);
     for (const id of sceneIds) {
       if (onlyScene && id !== onlyScene) continue;
+      await openHarness();
       const started = performance.now();
       const describe = backend === 'gpu';
       const probes = probesFlag >= 0 && (probedSceneIds === null || probedSceneIds.includes(id));

@@ -54,7 +54,7 @@ float cascadeLayerVisibility(int layer, vec3 normal) {
   float visibility = 0.0;
   for (int row = -1; row <= 1; row++) {
     for (int column = -1; column <= 1; column++) {
-      visibility += mix(0.18, 1.0, cascadeTap(layer, projected.xy + vec2(column, row) * texel * 2.5, projected.z - bias, dimensions));
+      visibility += cascadeTap(layer, projected.xy + vec2(column, row) * texel * 2.5, projected.z - bias, dimensions);
     }
   }
   return visibility / 9.0;
