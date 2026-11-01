@@ -112,9 +112,9 @@ async function brickWallScene({ withGraph }) {
 
 // Khronos glTF sample assets (issue #51), downloaded by hand into artifacts/khronos/<name>/<name>.glb. Blender imports
 // the same file with its own importer, so the reference is Cycles reading the asset, not our reading of it.
-// SheenChair is still left out: its occlusion texture on TEXCOORD_1 now loads, but its fabric gives the base color and normal
-// textures different KHR_texture_transform values, which parseGltf refuses (one UV transform is baked per material).
-const KHRONOS_ASSET_NAMES = ['ClearCoatTest', 'TransmissionTest', 'AnisotropyBarnLamp', 'AnisotropyDiscTest'];
+// SheenChair's fabric gives the base color and normal textures different KHR_texture_transform values: the importer bakes
+// the shared one into the UVs and the shader applies the normal map's remainder.
+const KHRONOS_ASSET_NAMES = ['ClearCoatTest', 'TransmissionTest', 'AnisotropyBarnLamp', 'AnisotropyDiscTest', 'SheenChair'];
 const KHRONOS_VIEW_DIRECTION = [0.35, 0.25, 1];
 const KHRONOS_FIELD_OF_VIEW = 35;
 
