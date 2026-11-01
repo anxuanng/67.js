@@ -920,6 +920,35 @@ export function createAgentScene(input, inputLimits = {}) {
   const skinCache = new Map();
   const checkpoints = new Map();
 
+  function drawnNodeGeometry(id, label) {
+    identifier(id);
+    const node = state.recipe.nodes.find(value => value.id === id);
+    const geometry = node && state.geometries.get(node.geometry);
+    if (!geometry) throw new RangeError(`path ${label} ${id} is not a node with a drawn geometry. List node IDs with scene_inspect.`);
+    return { geometry, worldMatrix: state.graph.getNode(id).worldMatrix };
+  }
+
+  // The route is computed over the authored pose of the ground and of the nodes to avoid, like the bounds in scene_inspect.
+  function pathQuery(query) {
+    if (query === null || typeof query !== 'object' || Array.isArray(query)) throw new TypeError('path must be an object.');
+    const navigation = agentSceneModule('navigation');
+    knownKeys(query, navigation.NAVIGATION_FIELDS, 'path');
+    if (query.avoid !== undefined && (!Array.isArray(query.avoid) || query.avoid.length > 64)) throw new RangeError('path avoid must list at most 64 node IDs.');
+    const { geometry, worldMatrix } = drawnNodeGeometry(query.ground, 'ground');
+    const positions = new Float32Array(geometry.positions.length);
+    for (let offset = 0; offset < positions.length; offset += 3) {
+      for (let axis = 0; axis < 3; axis++) {
+        positions[offset + axis] = worldMatrix[axis] * geometry.positions[offset] + worldMatrix[4 + axis] * geometry.positions[offset + 1]
+          + worldMatrix[8 + axis] * geometry.positions[offset + 2] + worldMatrix[12 + axis];
+      }
+    }
+    const avoidBounds = (query.avoid ?? []).map(id => {
+      const avoided = drawnNodeGeometry(id, 'avoid');
+      return boundsFor(avoided.geometry, avoided.worldMatrix);
+    });
+    return navigation.queryAgentPath(query, { positions, indices: geometry.indices }, avoidBounds);
+  }
+
   function ownedGeometryRecords() {
     const records = new Set(state?.geometryRecords.values() ?? []);
     for (const checkpoint of checkpoints.values()) {
@@ -1406,7 +1435,7 @@ export function createAgentScene(input, inputLimits = {}) {
       return commit(stage(candidate, null, removedNodes, removedMaterials), true);
     },
     inspect(options = {}) {
-      knownKeys(options, ['ids', 'limit', 'includeBounds'], 'inspection');
+      knownKeys(options, ['ids', 'limit', 'includeBounds', 'path'], 'inspection');
       const maximum = integer(options.limit ?? Math.min(64, limits.maxNodes), 1, limits.maxNodes, 'inspection limit');
       if (options.includeBounds !== undefined && typeof options.includeBounds !== 'boolean') {
         throw new TypeError('includeBounds must be boolean.');
@@ -1466,6 +1495,7 @@ export function createAgentScene(input, inputLimits = {}) {
           exposure: state.recipe.effects.exposure,
         },
         nodes, truncated: selected.length > nodes.length,
+        ...(options.path === undefined ? {} : { path: pathQuery(options.path) }),
       };
     },
     /** Polygon counts, parts, face tags and lint problems for recipe geometries (all, or the given IDs). */

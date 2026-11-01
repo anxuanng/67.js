@@ -307,9 +307,26 @@ function uniformOf(renderer, name) {
   return renderer.uniforms[name];
 }
 
-layerTextureSupport.bind = (renderer, layerMaps) => {
+// A normal map whose KHR_texture_transform differs from the other maps of its material: the importer bakes the shared
+// transform into the UVs and leaves the normal map's remainder (scale and offset) in descriptor.uvTransform.
+registerShaderFeatureCode('normalMapTransform', Object.freeze({
+  declarations: `uniform vec4 normalMapTransform;
+`,
+  normalUv: ' * normalMapTransform.xy + normalMapTransform.zw',
+}));
+
+const IDENTITY_NORMAL_MAP_TRANSFORM = [1, 1, 0, 0];
+const MAP_STATE_NORMAL_MAP = 1;
+const MAP_STATE_LAYER_MAPS = 18;
+
+layerTextureSupport.bind = (renderer, mapState) => {
   if (!renderer.shaderFeatures) return;
   const context = renderer.context;
+  const layerMaps = mapState[MAP_STATE_LAYER_MAPS];
+  if (renderer.shaderFeatures.has('normalMapTransform')) {
+    const transform = mapState[MAP_STATE_NORMAL_MAP]?.uvTransform ?? IDENTITY_NORMAL_MAP_TRANSFORM;
+    context.uniform4f(uniformOf(renderer, 'normalMapTransform'), ...transform);
+  }
   layerTextureNamesOf(renderer).forEach((name, index) => {
     const descriptor = layerMaps?.[name];
     context.activeTexture(context.TEXTURE0 + LAYER_TEXTURE_UNIT + index);

@@ -3,20 +3,24 @@
  "blenderVersion": "5.2.2 LTS",
  "seconds": {
   "AnisotropyBarnLamp": {
-   "cycles": 7.7,
-   "eevee": 3.9
+   "cycles": 23.4,
+   "eevee": 29.1
   },
   "AnisotropyDiscTest": {
-   "cycles": 4.7,
-   "eevee": 1.3
+   "cycles": 24.1,
+   "eevee": 3.7
   },
   "ClearCoatTest": {
-   "cycles": 6.9,
-   "eevee": 9.9
+   "cycles": 13.7,
+   "eevee": 10.2
+  },
+  "SheenChair": {
+   "cycles": 13.4,
+   "eevee": 36.2
   },
   "TransmissionTest": {
-   "cycles": 7.2,
-   "eevee": 6.5
+   "cycles": 22.2,
+   "eevee": 10.0
   }
  },
  "graphics": {
@@ -59,6 +63,18 @@
    "asset-gpu-vs-cycles": 0.2306,
    "asset-gpu-vs-eevee": 0.1808,
    "asset-eevee-vs-cycles": 0.1335
+  },
+  "SheenChair": {
+   "gpu-vs-cycles": 0.051,
+   "gpu-vs-eevee": 0.0438,
+   "cpu-vs-cycles": 0.0507,
+   "cpu-vs-eevee": 0.0435,
+   "eevee-vs-cycles": 0.0309,
+   "gpu-vs-cpu": 0.0065,
+   "asset-pixels": 0.1007,
+   "asset-gpu-vs-cycles": 0.3745,
+   "asset-gpu-vs-eevee": 0.3374,
+   "asset-eevee-vs-cycles": 0.2384
   },
   "TransmissionTest": {
    "gpu-vs-cycles": 0.0485,

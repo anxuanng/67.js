@@ -21,7 +21,9 @@ async function renderLookViews(recipe, views) {
   });
   const images = [];
   try {
-    for (const { name, camera } of views) {
+    for (const { name, camera: viewCamera } of views) {
+      // A view with no camera of its own is drawn from the recipe camera, the one the MCP preview uses.
+      const camera = viewCamera ?? scene.camera;
       renderer.resize();
       renderer.updateParts(scene.parts);
       renderer.render({ ...camera, environment, effects, exposure: effects.exposure, time: 0 });

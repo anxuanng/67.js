@@ -521,7 +521,48 @@ def add_cast(mesh_object, edit, _inputs):
     modifier.use_radius_as_size = False
 
 
+def add_screw(mesh_object, edit, _inputs):
+    modifier = mesh_object.modifiers.new("Screw", "SCREW")
+    modifier.axis = edit.get("axis", "z").upper()
+    modifier.angle = radians(edit.get("angle", 360))
+    modifier.steps = edit.get("steps", 16)
+    modifier.render_steps = modifier.steps
+    modifier.iterations = edit.get("iterations", 1)
+    modifier.screw_offset = edit.get("lift", 0)
+    modifier.use_merge_vertices = False
+
+
+def add_wireframe(mesh_object, edit, _inputs):
+    modifier = mesh_object.modifiers.new("Wireframe", "WIREFRAME")
+    modifier.thickness = edit.get("thickness", 0.02)
+    modifier.offset = edit.get("offset", 0)
+    modifier.use_even_offset = edit.get("evenOffset", True)
+    modifier.use_replace = edit.get("replace", True)
+    modifier.use_boundary = False
+
+
+# Blender reads the frame number as the time of the wave.
+def add_wave(mesh_object, edit, _inputs):
+    modifier = mesh_object.modifiers.new("Wave", "WAVE")
+    modifier.height = edit.get("height", 0.5)
+    modifier.width = edit.get("width", 1.5)
+    modifier.narrowness = edit.get("narrowness", 1.5)
+    modifier.speed = edit.get("speed", 0.25)
+    modifier.time_offset = edit.get("timeOffset", 0)
+    start = edit.get("start", [0, 0])
+    modifier.start_position_x = start[0]
+    modifier.start_position_y = start[1]
+    modifier.use_cyclic = edit.get("cyclic", True)
+    modifier.use_normal = edit.get("normal", False)
+    modifier.use_x = edit.get("axes", "xy") in ("xy", "x")
+    modifier.use_y = edit.get("axes", "xy") in ("xy", "y")
+    bpy.context.scene.frame_set(int(edit.get("time", 0)))
+
+
 MODIFIERS = {
+    "wave": add_wave,
+    "screw": add_screw,
+    "wireframe": add_wireframe,
     "weld": add_weld,
     "triangulate": add_triangulate,
     "edge_split": add_edge_split,

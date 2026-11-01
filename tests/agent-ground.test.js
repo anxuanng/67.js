@@ -64,3 +64,10 @@ test('the placement is deterministic and moves the floor part in place', () => {
   assert.equal(floor.matrix[13], 4);
   assert.equal(floor.material.tag, 'surface');
 });
+
+test('the automatic floor is a mid-dark tone, so a pale object and its contact shadow stand out from it', () => {
+  const placement = agentGroundPlacement([boxPart([0, 0.5, 0], [1, 1, 1])], defaultEnvironment);
+  const floorColor = createAgentGround(placement).material.color;
+  const luminance = 0.2126 * floorColor[0] + 0.7152 * floorColor[1] + 0.0722 * floorColor[2];
+  assert.ok(luminance < 0.3, `floor luminance ${luminance} is too close to the backdrop`);
+});

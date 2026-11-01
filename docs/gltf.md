@@ -135,7 +135,7 @@ Line and point primitives are unsupported.
 | Extension | Behavior |
 | --- | --- |
 | `KHR_mesh_quantization`, `KHR_materials_emissive_strength` | Supported. |
-| `KHR_texture_transform` | Offset, rotation and scale are baked into `geometry.uvs`. All maps of one material must share one transform, otherwise the import fails. `texCoord` overrides are rejected. |
+| `KHR_texture_transform` | Offset, rotation and scale are baked into `geometry.uvs`. All maps of one material must share one transform, except the normal map: it may differ by an offset and a positive scale (same rotation), which the shader applies on top of the baked UVs (`normalMapTransform` in `material-layer-shaders`). Any other difference fails the import. `texCoord` overrides are rejected. |
 | `EXT_mesh_gpu_instancing` | The node expands into one part per instance and primitive. Parts of one primitive share one geometry object, so the renderer batches them. Skinned or morphed instancing is rejected. |
 | `KHR_draco_mesh_compression` | Needs `options.decoders.draco`. |
 | `EXT_meshopt_compression` | Needs `options.decoders.meshopt`. |
