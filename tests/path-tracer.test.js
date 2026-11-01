@@ -211,11 +211,18 @@ test('a metallic-roughness map scales the metallic and roughness of the material
   assert.notEqual(smoothed, plain, 'green channel 0 makes the surface smooth');
 });
 
-test('maps on box-projected materials are named as ignored, the others are drawn', () => {
-  const notes = describeIgnoredFeatures([{ material: { normalMap: {}, metallicRoughnessMap: {} } }], {});
-  assert.ok(!notes.some(note => note.includes('normalMap')));
-  const boxed = describeIgnoredFeatures([{ material: { normalMap: {}, boxMapScale: 2 } }], {});
-  assert.ok(boxed.some(note => note.includes('normalMap') && note.includes('box-projected')));
+test('normal and roughness maps on box-projected materials are drawn through the projection UVs', async () => {
+  const notes = describeIgnoredFeatures([{ material: { normalMap: {}, metallicRoughnessMap: {}, boxMapScale: 2 } }], {});
+  assert.ok(!notes.some(note => note.includes('normalMap') || note.includes('metallicRoughnessMap')), notes.join(' '));
+  const boxed = { boxMapScale: 2, boxMapAxis: 1 };
+  const flat = await renderMappedFloor({ ...boxed });
+  const towardSun = await renderMappedFloor({ ...boxed, normalMap: singleTexel(204, 128, 230) });
+  const awayFromSun = await renderMappedFloor({ ...boxed, normalMap: singleTexel(51, 128, 230) });
+  assert.ok(towardSun > flat * 1.2, `tilted toward the sun ${towardSun} against flat ${flat}`);
+  assert.ok(awayFromSun < flat * 0.5, `tilted away ${awayFromSun} against flat ${flat}`);
+  const plain = await renderMappedFloor({ ...boxed, metallic: 0 });
+  const metalMasked = await renderMappedFloor({ ...boxed, metallic: 1, metallicRoughnessMap: singleTexel(0, 255, 0) });
+  assert.equal(metalMasked, plain, 'blue channel 0 removes the metal on a box-projected material');
 });
 
 test('drawing one light at random past the first hit keeps the average', async () => {
@@ -256,4 +263,37 @@ test('a scene sent to a worker gets its ray query back from the arrays', () => {
   const revived = attachTracer(structuredClone(sent));
   const hit = revived.tracer.trace(0, 5, 0, 0, -1, 0, 100, false);
   assert.ok(hit.nearestTriangle >= 0);
+});
+
+// ---- Adaptive sampling (issue #129) ----
+
+const NOISY_AND_QUIET = { width: 24, height: 18, samples: 48, bounces: 3, threads: 1, denoise: false };
+
+test('a threshold of zero draws every sample, and a threshold stops the pixels that have converged', async () => {
+  const fixed = await renderPathTracedImage(checkerScene(), { ...NOISY_AND_QUIET, noiseThreshold: 0 });
+  assert.equal(fixed.report.averageSamples, 48);
+  const adaptive = await renderPathTracedImage(checkerScene(), { ...NOISY_AND_QUIET, noiseThreshold: 0.05 });
+  assert.ok(adaptive.report.averageSamples < 48, `average ${adaptive.report.averageSamples}`);
+  assert.ok(adaptive.report.averageSamples >= 16, 'no pixel stops before its minimum');
+  const mean = image => image.linear.reduce((sum, value) => sum + value, 0) / image.linear.length;
+  assert.ok(Math.abs(mean(adaptive) - mean(fixed)) / mean(fixed) < 0.05, `mean ${mean(adaptive)} against ${mean(fixed)}`);
+});
+
+test('adaptive bands split anywhere give the pixels of the whole image', () => {
+  const { parts, environment, camera } = checkerScene();
+  const options = normalizePathTracerOptions({ ...NOISY_AND_QUIET, noiseThreshold: 0.05 });
+  const scene = buildTraceScene(parts, environment);
+  const view = createCamera(camera, options.width, options.height);
+  const whole = renderBand(scene, view, options, 0, options.height);
+  assert.ok(new Set(whole.samplesTaken).size > 1, 'the pixels stop at different sample counts');
+  const rowFloats = options.width * 3;
+  for (const [start, end] of [[7, 18], [0, 9]]) {
+    const band = renderBand(scene, view, options, start, end);
+    assert.deepEqual(band.color, whole.color.slice(start * rowFloats, end * rowFloats), `rows ${start} to ${end}`);
+    assert.deepEqual(band.samplesTaken, whole.samplesTaken.slice(start * options.width, end * options.width));
+  }
+});
+
+test('the noise threshold is validated', () => {
+  for (const noiseThreshold of [-0.1, 1.5, Number.NaN, '0.1']) assert.throws(() => normalizePathTracerOptions({ noiseThreshold }), /noiseThreshold/);
 });

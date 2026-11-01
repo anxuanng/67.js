@@ -2,6 +2,11 @@
 // TEXCOORD_0: every triangle takes the object axis its normal is closest to, as the shader's blend weights do on a
 // face, and vertices are split only where neighbouring triangles pick different axes.
 
+/** The lengths of a part matrix's three columns: the shader projects scaled object positions. */
+export function columnLengths(matrix) {
+  return [0, 4, 8].map(offset => Math.hypot(matrix[offset], matrix[offset + 1], matrix[offset + 2]));
+}
+
 function swapAxes(values, boxMapAxis) {
   if (boxMapAxis === 0) return [values[1], values[0], values[2]];
   if (boxMapAxis === 2) return [values[0], values[2], values[1]];

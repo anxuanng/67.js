@@ -1,5 +1,6 @@
 import { buildTriangleBvh } from './triangle-bvh.js';
 import { createTracer } from './ray-query.js';
+import { boxProjectedGeometry, columnLengths } from './export-box-uv.js';
 
 // The scene a path trace reads: every part flattened into one world-space triangle soup with per-vertex normals, UVs
 // and colours, one resolved material per part, the lights in plain arrays, and the environment map as a sampling table.
@@ -90,10 +91,9 @@ function resolveMaterial(material) {
     transmission: material.transmission ?? 0,
     ior: material.ior ?? 1.5,
     texture: resolveTexture(material.map),
-    // Box-projected materials (boxMapScale) have no UVs to read these maps with; describeIgnoredFeatures says so.
-    normalTexture: material.boxMapScale > 0 ? null : resolveTexture(material.normalMap),
+    normalTexture: resolveTexture(material.normalMap),
     normalScale: material.normalScale ?? [1, 1],
-    surfaceTexture: material.boxMapScale > 0 ? null : resolveTexture(material.metallicRoughnessMap),
+    surfaceTexture: resolveTexture(material.metallicRoughnessMap),
     alphaCutoff: material.alphaMode === 'mask' ? material.alphaCutoff ?? 0.5 : 0,
   };
 }
@@ -120,10 +120,21 @@ function validatePart(part, geometry) {
   if (geometry.colors && geometry.colors.length !== vertexCount * 3) throw new RangeError(`${label} needs one colour for every position.`);
 }
 
+/**
+ * The geometry a part is traced with. A box-projected material has no UVs, so it gets the UVs of its projection (the
+ * ones the glTF export writes), and every map then reads them like those of an authored material.
+ */
+function traceGeometry(part) {
+  const geometry = part.skin ? skinnedGeometry(part) : part.geometry;
+  const { boxMapScale = 0, boxMapAxis = 1 } = part.material ?? {};
+  if (!(boxMapScale > 0)) return geometry;
+  return boxProjectedGeometry(geometry, columnLengths(part.matrix ?? IDENTITY_MATRIX), boxMapScale, boxMapAxis);
+}
+
 function flattenParts(parts) {
   let vertexTotal = 0;
   let indexTotal = 0;
-  const geometries = parts.map(part => (part.skin ? skinnedGeometry(part) : part.geometry));
+  const geometries = parts.map(traceGeometry);
   parts.forEach((part, index) => validatePart(part, geometries[index]));
   for (const geometry of geometries) {
     vertexTotal += geometry.positions.length / 3;

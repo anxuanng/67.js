@@ -1,7 +1,7 @@
 import { validateMorphGeometry, validateMorphPose } from './morph.js';
 import { gltfExtensionsFromLayers, LAYER_TEXTURE_SLOTS } from './gltf-layers.js';
 import { validateSkinGeometry } from './skinning.js';
-import { boxProjectedGeometry } from './export-box-uv.js';
+import { boxProjectedGeometry, columnLengths } from './export-box-uv.js';
 import { createTextureWriter } from './export-textures.js';
 import { createGlbWriter } from './export-writer.js';
 import { buildHierarchy, decomposeMatrix, hierarchyNodeFields, hostOfPart, normalizedWeights, relativeMatrix, writeAnimations, writeSkin } from './export-skeleton.js';
@@ -122,10 +122,6 @@ function validateOptions(options) {
 
 function validateSkinnedPart(part) {
   validateSkinGeometry(part.geometry, part.skin);
-}
-
-function columnLengths(matrix) {
-  return [0, 4, 8].map(offset => Math.hypot(matrix[offset], matrix[offset + 1], matrix[offset + 2]));
 }
 
 function createIdentityTracker() {

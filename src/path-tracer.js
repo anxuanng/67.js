@@ -18,6 +18,7 @@ export const PATH_TRACER_LIMITS = Object.freeze({
   bounces: Object.freeze({ minimum: 1, maximum: 16, fallback: 8 }),
   maxSeconds: Object.freeze({ minimum: 1, maximum: 1800, fallback: 300 }),
   fireflyClamp: Object.freeze({ minimum: 1, maximum: 1000, fallback: 20 }),
+  noiseThreshold: Object.freeze({ minimum: 0, maximum: 1, fallback: 0.03 }),
   seed: Object.freeze({ minimum: 0, maximum: 2 ** 31 - 1, fallback: 0 }),
   threads: Object.freeze({ minimum: 1, maximum: 8, fallback: 4 }),
 });
@@ -28,8 +29,12 @@ const WORKER_BAND_ROWS = 8;
 // Held in a constant so the bundler leaves the URL alone: the worker is its own package entry, built beside this file.
 const WORKER_FILE = './path-tracer-worker.js';
 const RUSSIAN_ROULETTE_START = 3;
+// A pixel is checked for convergence from this many samples on, then after every batch of samples.
+const ADAPTIVE_MINIMUM_SAMPLES = 16;
+const ADAPTIVE_BATCH_SAMPLES = 8;
+// Mean luminance added to the standard error's reference, so very dark pixels are not held to a relative error.
+const CONVERGENCE_LUMINANCE_FLOOR = 0.05;
 const IGNORED_MAP_FIELDS = ['occlusionMap', 'emissiveMap'];
-const UV_ONLY_MAP_FIELDS = ['normalMap', 'metallicRoughnessMap'];
 
 function boundedInteger(options, name) {
   const limit = PATH_TRACER_LIMITS[name];
@@ -60,6 +65,7 @@ export function normalizePathTracerOptions(options = {}) {
     threads: boundedInteger(options, 'threads'),
     maxSeconds: boundedNumber(options, 'maxSeconds'),
     fireflyClamp: boundedNumber(options, 'fireflyClamp'),
+    noiseThreshold: boundedNumber(options, 'noiseThreshold'),
     denoise: options.denoise ?? true,
   };
   if (typeof result.denoise !== 'boolean') throw new TypeError('Path tracer denoise must be a boolean.');
@@ -339,8 +345,10 @@ function occluded(scene, originX, originY, originZ, directionX, directionY, dire
   for (let attempt = 0; attempt < ALPHA_STEP_LIMIT; attempt++) {
     const found = scene.tracer.trace(startX, startY, startZ, directionX, directionY, directionZ, remaining, true);
     if (found.nearestTriangle < 0) return false;
+    // Only a cutout material needs its texture read to know whether the ray passes through: skip the interpolation for the rest.
+    if (scene.materials[scene.triangleMaterial[found.nearestTriangle]].alphaCutoff === 0) return true;
     const alpha = fillHit(scene, found.nearestTriangle, startX, startY, startZ, directionX, directionY, directionZ, found.nearestDistance, hit);
-    if (hit.material.alphaCutoff === 0 || alpha >= hit.material.alphaCutoff) return true;
+    if (alpha >= hit.material.alphaCutoff) return true;
     const advance = found.nearestDistance + scene.surfaceOffset;
     remaining -= advance;
     if (remaining <= 0) return false;
@@ -665,9 +673,6 @@ export function describeIgnoredFeatures(parts, environment) {
   for (const part of parts) {
     const material = part.material ?? {};
     for (const field of IGNORED_MAP_FIELDS) if (material[field]) notes.add(`${field} is ignored.`);
-    if (material.boxMapScale > 0) {
-      for (const field of UV_ONLY_MAP_FIELDS) if (material[field]) notes.add(`${field} is ignored on box-projected materials.`);
-    }
     if (material.tag && material.tag !== 'surface') notes.add(`${material.tag} materials are traced as plain surfaces.`);
     if (material.alphaMode === 'blend') notes.add('Blended transparency is traced as opaque.');
     if (material.lightMask !== undefined) notes.add('Light linking (affects) is not traced: every light lights every part.');
@@ -680,6 +685,24 @@ export function describeIgnoredFeatures(parts, environment) {
  * major from the band's first row. A pixel's random numbers depend only on its place in the whole image, so bands
  * can be drawn in any order, on any thread, and give the same pixels.
  */
+/**
+ * True when the mean luminance of a pixel is known well enough: its standard error, relative to the mean plus a small
+ * floor so that near-black pixels do not ask for endless samples, is under `threshold`. It reads only the pixel's own
+ * samples, so the decision is the same on any thread and in any band split.
+ */
+function hasConverged(sumLuminance, sumLuminanceSquares, sampleCount, threshold) {
+  const mean = sumLuminance / sampleCount;
+  const sampleVariance = Math.max(0, sumLuminanceSquares / sampleCount - mean * mean) * sampleCount / (sampleCount - 1);
+  const standardError = Math.sqrt(sampleVariance / sampleCount);
+  return standardError < threshold * (mean + CONVERGENCE_LUMINANCE_FLOOR);
+}
+
+function isConvergenceCheckDue(sampleCount, options) {
+  if (!(options.noiseThreshold > 0)) return false;
+  if (sampleCount < ADAPTIVE_MINIMUM_SAMPLES) return false;
+  return (sampleCount - ADAPTIVE_MINIMUM_SAMPLES) % ADAPTIVE_BATCH_SAMPLES === 0;
+}
+
 export function renderBand(scene, camera, options, rowStart, rowEnd, shouldStop = () => {}) {
   const tracer = createPathTracer(scene, options);
   const { width, height, samples } = options;
@@ -689,6 +712,7 @@ export function renderBand(scene, camera, options, rowStart, rowEnd, shouldStop 
   const normal = new Float32Array(pixelCount * 3);
   const depth = new Float32Array(pixelCount);
   const variance = new Float32Array(pixelCount);
+  const samplesTaken = new Uint16Array(pixelCount);
   for (let row = rowStart; row < rowEnd; row++) {
     shouldStop();
     for (let column = 0; column < width; column++) {
@@ -696,7 +720,9 @@ export function renderBand(scene, camera, options, rowStart, rowEnd, shouldStop 
       const slot = (row - rowStart) * width + column;
       let sumLuminance = 0;
       let sumLuminanceSquares = 0;
-      for (let sample = 0; sample < samples; sample++) {
+      let taken = 0;
+      while (taken < samples) {
+        const sample = taken;
         const jitterX = hashJitter(pixel, sample, options.seed, 1);
         const jitterY = hashJitter(pixel, sample, options.seed, 2);
         const screenX = ((column + jitterX) / width * 2 - 1) * camera.halfWidth;
@@ -716,18 +742,21 @@ export function renderBand(scene, camera, options, rowStart, rowEnd, shouldStop 
           normal[slot * 3 + channel] += features.normal[channel];
         }
         depth[slot] += features.depth;
+        taken++;
+        if (isConvergenceCheckDue(taken, options) && hasConverged(sumLuminance, sumLuminanceSquares, taken, options.noiseThreshold)) break;
       }
       for (let channel = 0; channel < 3; channel++) {
-        color[slot * 3 + channel] /= samples;
-        albedo[slot * 3 + channel] /= samples;
-        normal[slot * 3 + channel] /= samples;
+        color[slot * 3 + channel] /= taken;
+        albedo[slot * 3 + channel] /= taken;
+        normal[slot * 3 + channel] /= taken;
       }
-      depth[slot] /= samples;
-      const meanLuminance = sumLuminance / samples;
-      variance[slot] = Math.max(0, sumLuminanceSquares / samples - meanLuminance * meanLuminance) / Math.max(samples - 1, 1);
+      depth[slot] /= taken;
+      const meanLuminance = sumLuminance / taken;
+      variance[slot] = Math.max(0, sumLuminanceSquares / taken - meanLuminance * meanLuminance) / Math.max(taken - 1, 1);
+      samplesTaken[slot] = taken;
     }
   }
-  return { color, albedo, normal, depth, variance };
+  return { color, albedo, normal, depth, variance, samplesTaken };
 }
 
 function hashJitter(pixel, sample, seed, dimension) {
@@ -736,6 +765,12 @@ function hashJitter(pixel, sample, seed, dimension) {
   mixed = Math.imul(mixed ^ (mixed >>> 15), 0x846ca68b);
   mixed ^= mixed >>> 16;
   return (mixed >>> 0) / 4294967296;
+}
+
+function totalSamples(samplesTaken) {
+  let total = 0;
+  for (let pixel = 0; pixel < samplesTaken.length; pixel++) total += samplesTaken[pixel];
+  return total;
 }
 
 function normalizeNormals(normal, pixelCount) {
@@ -749,7 +784,7 @@ function normalizeNormals(normal, pixelCount) {
 function copyBand(buffers, band, rowStart, width) {
   const pixelOffset = rowStart * width;
   for (const name of ['color', 'albedo', 'normal']) buffers[name].set(band[name], pixelOffset * 3);
-  for (const name of ['depth', 'variance']) buffers[name].set(band[name], pixelOffset);
+  for (const name of ['depth', 'variance', 'samplesTaken']) buffers[name].set(band[name], pixelOffset);
 }
 
 /** Draws bands on a pool of module workers, handing the next band to whichever worker finishes first. */
@@ -819,7 +854,7 @@ export async function renderPathTracedImage({ parts, environment = {}, camera },
   const pixelCount = width * height;
   const buffers = {
     color: new Float32Array(pixelCount * 3), albedo: new Float32Array(pixelCount * 3), normal: new Float32Array(pixelCount * 3),
-    depth: new Float32Array(pixelCount), variance: new Float32Array(pixelCount),
+    depth: new Float32Array(pixelCount), variance: new Float32Array(pixelCount), samplesTaken: new Uint16Array(pixelCount),
   };
   const threads = typeof Worker === 'function' ? options.threads : 1;
   if (threads > 1) {
@@ -830,11 +865,13 @@ export async function renderPathTracedImage({ parts, environment = {}, camera },
   shouldStop();
   const tracedSeconds = (performance.now() - started) / 1000;
   normalizeNormals(buffers.normal, pixelCount);
-  const linear = options.denoise ? denoiseRadiance({ width, height, ...buffers }) : buffers.color;
+  const { samplesTaken, ...denoiseInputs } = buffers;
+  const linear = options.denoise ? denoiseRadiance({ width, height, ...denoiseInputs }) : buffers.color;
   return {
     width, height, linear, rgba: toneMapToRgba8(linear, width, height),
     report: {
       width, height, samples: options.samples, bounces: options.bounces, seed: options.seed, denoised: options.denoise, threads,
+      averageSamples: totalSamples(samplesTaken) / pixelCount, noiseThreshold: options.noiseThreshold,
       triangles: scene.indices.length / 3, tracedSeconds, seconds: (performance.now() - started) / 1000,
       ignored: describeIgnoredFeatures(parts, environment),
     },
