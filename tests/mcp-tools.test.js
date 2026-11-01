@@ -420,6 +420,26 @@ test('SDK stdio EOF closes the runtime without launching a scene', async () => {
   output.destroy();
 });
 
+test('branches off leaves the branch field and the variants advice out of the schemas', async context => {
+  const server = createAgentMcpServer({ async close() {}, activeSessionId() { return null; } }, { branches: false });
+  const client = new Client({ name: '67js-branches-off-test', version: '1' });
+  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+  await server.connect(serverTransport);
+  await client.connect(clientTransport);
+  context.after(async () => {
+    await client.close();
+    await server.close();
+  });
+  const { tools } = await client.listTools();
+  for (const toolName of ['scene_apply', 'scene_restore', 'scene_review']) {
+    const tool = tools.find(candidate => candidate.name === toolName);
+    assert.ok(!JSON.stringify(tool.inputSchema).includes('"branch"'), `${toolName} must not offer a branch`);
+  }
+  const restore = tools.find(candidate => candidate.name === 'scene_restore');
+  assert.ok(restore.inputSchema.required.includes('checkpointId'));
+  assert.ok(!client.getInstructions().includes('branch'));
+});
+
 test('SDK dynamic batches create resources, reject dangling edits, and restore scene membership', async context => {
   const { client, sessionId } = await connect(context);
   const call = (name, argumentsValue) => client.callTool({ name, arguments: argumentsValue });
