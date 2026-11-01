@@ -409,7 +409,12 @@ def build_world(scene, world_description, root):
     texture.image = bpy.data.images.load(os.path.join(root, world_description["file"]))
     links.new(coordinates.outputs["Generated"], mapping.inputs["Vector"])
     links.new(mapping.outputs["Vector"], texture.inputs["Vector"])
-    links.new(texture.outputs["Color"], background.inputs[0])
+    radiance_cap = nodes.new("ShaderNodeVectorMath")
+    radiance_cap.operation = "MINIMUM"
+    limit = world_description["radianceLimit"]
+    radiance_cap.inputs[1].default_value = (limit, limit, limit)
+    links.new(texture.outputs["Color"], radiance_cap.inputs[0])
+    links.new(radiance_cap.outputs["Vector"], background.inputs[0])
     background.inputs[1].default_value = world_description["intensity"]
 
 
