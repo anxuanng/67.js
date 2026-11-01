@@ -61,6 +61,52 @@ Same scenes, `node bench/runtime/run.mjs --scene <id> --engine <name> --frames 8
 | `many-materials` | 3,704 to 826 | 2,465 to 1,058 | 235 | 10.5 to 4.5 |
 | `large-mesh` | 4,384 to 975 | 2,336 to 1,189 | 231 | 10.1 to 5.1 |
 
+## Equal feature set, and where the frame goes (2026-11-01, no engine change)
+
+Measured on `perf/frame-cost-equal-features`, 960 by 540, Chrome headless. Four new engines in `bench/runtime` turn one feature off at a time and need `--engine <name>`: `67js-ldr` (no HDR target), `67js-one-sample` (no MSAA), `67js-ldr-one-sample` (both), `three-one-sample` (three.js without MSAA). `--cpu-only` runs only SwiftShader.
+
+**SwiftShader, frame in ms, 6 frames each, one run per row** (`base-cpu`, `base-cpu-three-one-sample`):
+
+| Engine | `large-mesh` | `many-materials` | `instanced-objects` |
+| --- | --- | --- | --- |
+| three.js (4 samples) | 215 | 231 | 48 |
+| 67js (HDR, 4 samples) | 1,684 | 1,219 | 376 |
+| `67js-ldr` | 1,183 | 1,082 | 292 |
+| `67js-one-sample` | 556 | 522 | 227 |
+| `67js-ldr-one-sample` | 533 | 490 | 194 |
+| three.js (one sample) | 94 | 86 | 37 |
+
+Fair comparison: MSAA costs three.js 2.3, 2.7 and 1.3 times and costs 67js 3.0, 2.3 and 1.7 times, so it is not what separates them. With the same feature set (no MSAA, and no HDR target for 67js) 67js is 5.7, 5.7 and 5.2 times three.js, against 7.8, 5.3 and 7.8 for the defaults. 67js still draws an environment background and a post pass that three.js does not, and those are about 45 ms each on `instanced-objects` (measured above). The equal-feature gap is therefore the cost of the lit shader itself, which agrees with the profile above.
+
+**RTX 3060, frame in ms, 60 frames, one run per row** (`gpu-matrix`, GPU 5 to 40 percent busy):
+
+| Engine | `large-mesh` | `many-materials` | `instanced-objects` |
+| --- | --- | --- | --- |
+| three.js | 0.56 | 5.67 | 7.25 |
+| 67js | 3.82 | 3.48 | 2.06 |
+| `67js-ldr-one-sample` | 3.24 | 3.17 | 2.08 |
+| three.js (one sample) | 0.56 | 6.89 | 9.91 |
+
+Repeated `large-mesh` 67js runs gave 3.41, 3.58, 3.63, 3.82 and 3.11 to 3.98 across sessions, and three.js 0.61 to 0.63. On the GPU 67js wins `many-materials` and `instanced-objects` in this run (three.js draws 965 and 4,154 objects one by one) and loses `large-mesh` by 6.8 times. `instanced-objects` has no `three-instanced` row here, which beat 67js in the earlier report.
+
+**Why `large-mesh` costs 3.6 ms against 0.6 ms on the GPU.** It is one sphere with 1,046,528 triangles, and 67js draws it in 3 passes (environment background, the mesh, post), which is also true of the RTX run above. Splitting the frame by wrapping the WebGL draw calls (script not kept in the repository):
+
+| What | Frame (ms) |
+| --- | --- |
+| Whole frame | 3.1 to 3.9 |
+| Mesh draw replaced by one triangle (fixed cost of the passes) | 1.3 |
+| Mesh drawn with a minimal vertex and fragment shader on the same vertex array and targets | 2.1 |
+| Mesh draw with `RASTERIZER_DISCARD` (vertex stage only) | 2.4 to 2.5 |
+| Both full-screen passes skipped | 3.2 |
+| `hdr` off, `samples` 1, or both | 3.2 to 3.3 (2.7 with HDR off alone) |
+| Only 5 of the 15 vertex attributes enabled, or a non-instanced `drawElements` | 3.8 to 3.9 (no change) |
+| Vertex shader cut to `gl_Position` only | 2.4 (no change) |
+| Same page on ANGLE Vulkan instead of D3D11 | 67js 1.20, three.js 0.52 |
+
+So: the passes around the mesh cost 1.3 ms, three.js's whole frame is 0.6, and about 2 ms is the mesh itself, split between getting 1 million tiny triangles through the pipeline (about 0.8 ms even with trivial shaders) and shading them (about 1.5 ms). Neither HDR nor MSAA nor the vertex shader's contents nor the number of attributes moves it. On Vulkan the ratio falls from 5.8 to 2.3, so more than half of the gap is specific to ANGLE's D3D11 path, and the cause inside it was not found. Almost every one of the 1 million triangles covers less than a pixel, so the lit shader runs on a 2 by 2 quad per triangle; that fits the shading share but was not isolated.
+
+**One change tried and reverted.** Skipping the two fill-light `illuminate` calls when `fillIntensity` is 0 (the benchmark's value). SwiftShader frame, one run each: `large-mesh` 1,684 to 1,338 (this scene swings by 20 percent between runs), `many-materials` 1,219 to 1,233, `instanced-objects` 376 to 383. Inside the noise on two of three scenes, so it was not kept.
+
 ## Left
 
 - A SwiftShader frame is still 4.5 to 7 times three.js, not 3. What remains is the per-pixel cost of the lit shader with 4 MSAA samples and an HDR target. Ideas that change the cost without changing the picture: a cheaper path for parts that are flat colour with no maps, and sharing one shadow comparison across the 3 by 3 filter. Both need the pictures checked again.

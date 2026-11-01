@@ -1,5 +1,5 @@
 // Compares 67js and three.js on matching scenes: npm run benchmark:runtime
-// Use --gpu-only to skip SwiftShader. --scene <id>, --engine <name> and --frames <count> run a part, and do not rewrite
+// Use --gpu-only to skip SwiftShader, or --cpu-only to run only SwiftShader. --scene <id>, --engine <name> and --frames <count> run a part, and do not rewrite
 // the report.
 import { spawnSync } from 'node:child_process';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
@@ -16,7 +16,9 @@ const BACKENDS = {
   gpu: { arguments: SHARED_ARGUMENTS, frames: 120 },
   cpu: { arguments: [...SHARED_ARGUMENTS, '--use-angle=swiftshader', '--enable-unsafe-swiftshader'], frames: 15 },
 };
-const ENGINES = ['67js', 'three', 'three-instanced', '67js-no-lod', '67js-no-culling'];
+const ENGINES = ['67js', 'three', 'three-instanced', '67js-no-lod', '67js-no-culling', '67js-ldr', '67js-one-sample', '67js-ldr-one-sample', 'three-one-sample'];
+// Ablations of the HDR target and MSAA, which cost something in every scene. They run only when named with --engine.
+const FEATURE_ENGINES = new Set(['67js-ldr', '67js-one-sample', '67js-ldr-one-sample', 'three-one-sample']);
 const INSTANCED_SCENES = new Set(['instanced-objects']);
 // Ablations of this renderer's own culling and level selection, which only a scene that has them can show.
 const ABLATION_SCENES = new Set(['large-outdoor']);
@@ -24,6 +26,7 @@ const ABLATION_ENGINES = new Set(['67js-no-lod', '67js-no-culling']);
 
 const flags = process.argv.slice(2);
 const gpuOnly = flags.includes('--gpu-only');
+const cpuOnly = flags.includes('--cpu-only');
 const sceneFlag = flags.indexOf('--scene');
 const onlyScene = sceneFlag >= 0 ? flags[sceneFlag + 1] : null;
 const engineFlag = flags.indexOf('--engine');
@@ -35,6 +38,7 @@ const isPartialRun = Boolean(onlyScene || onlyEngine || framesOverride);
 function enginesFor(sceneId) {
   return ENGINES.filter(engine => {
     if (onlyEngine) return engine === onlyEngine;
+    if (FEATURE_ENGINES.has(engine)) return false;
     if (ABLATION_ENGINES.has(engine)) return ABLATION_SCENES.has(sceneId);
     return engine !== 'three-instanced' || INSTANCED_SCENES.has(sceneId);
   });
@@ -138,7 +142,7 @@ await server.listen();
 const report = { resolution: [960, 540], msaaSamples: 4, graphics: {}, results: { gpu: {}, cpu: {} }, scenes: {} };
 try {
   const serverUrl = `http://127.0.0.1:${server.httpServer.address().port}`;
-  await runBackend('gpu', serverUrl, report);
+  if (!cpuOnly) await runBackend('gpu', serverUrl, report);
   if (!gpuOnly) await runBackend('cpu', serverUrl, report);
 } finally {
   await server.close();
