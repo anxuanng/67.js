@@ -221,3 +221,26 @@ test('a bake that runs out of time throws instead of returning a partial result'
   const slow = { samples: 256, bounces: 4, texelsPerUnit: 8, maxResolution: 128, maxSeconds: 1 };
   assert.throws(() => bakeLightmaps(smallRoom(), lamp, slow), /maxSeconds/);
 });
+
+// The mean light a baked part stores, in linear units: the texture is sRGB and is scaled back by the part's emission.
+function meanStoredLight(part) {
+  const bytes = lightmapBytes(part);
+  let total = 0;
+  let count = 0;
+  for (let index = 0; index < bytes.length; index += 4) {
+    total += (bytes[index] / 255) ** 2.2;
+    count++;
+  }
+  return (total / count) * part.material.emission;
+}
+
+test('the default bounces follow most of the light that a closed room keeps, which two bounces cut off', () => {
+  const { bounces, ...withoutBounces } = fastOptions;
+  const meanFloorLight = options => meanStoredLight(bakeLightmaps(smallRoom(), lamp, { ...withoutBounces, samples: 48, ...options }).parts[0]);
+  const byDefault = meanFloorLight({});
+  const two = meanFloorLight({ bounces: 2 });
+  const four = meanFloorLight({ bounces: 4 });
+  assert.ok(two < byDefault && byDefault < four, `2 bounces ${two}, default ${byDefault}, 4 bounces ${four}`);
+  assert.ok(byDefault > two * 1.05, `default ${byDefault} adds too little over 2 bounces ${two}`);
+  assert.equal(BAKE_LIMITS.bounces.fallback, 3);
+});
