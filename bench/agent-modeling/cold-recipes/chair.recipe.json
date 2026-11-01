@@ -1,0 +1,329 @@
+{
+  "format": "67js.scene",
+  "schemaVersion": 1,
+  "geometries": [
+    {
+      "id": "cube",
+      "type": "box",
+      "bevel": 0
+    }
+  ],
+  "nodes": [
+    {
+      "id": "seat",
+      "geometry": "cube",
+      "translation": [
+        0,
+        0.435,
+        0
+      ],
+      "scale": [
+        0.45,
+        0.03,
+        0.45
+      ],
+      "material": "default",
+      "parent": null,
+      "rotation": [
+        0,
+        0,
+        0,
+        1
+      ]
+    },
+    {
+      "id": "leg-front-left",
+      "geometry": "cube",
+      "translation": [
+        -0.205,
+        0.21,
+        0.205
+      ],
+      "scale": [
+        0.04,
+        0.42,
+        0.04
+      ],
+      "material": "default",
+      "parent": null,
+      "rotation": [
+        0,
+        0,
+        0,
+        1
+      ]
+    },
+    {
+      "id": "leg-front-right",
+      "geometry": "cube",
+      "translation": [
+        0.205,
+        0.21,
+        0.205
+      ],
+      "scale": [
+        0.04,
+        0.42,
+        0.04
+      ],
+      "material": "default",
+      "parent": null,
+      "rotation": [
+        0,
+        0,
+        0,
+        1
+      ]
+    },
+    {
+      "id": "post-rear-left",
+      "geometry": "cube",
+      "translation": [
+        -0.205,
+        0.45,
+        -0.205
+      ],
+      "scale": [
+        0.04,
+        0.9,
+        0.04
+      ],
+      "material": "default",
+      "parent": null,
+      "rotation": [
+        0,
+        0,
+        0,
+        1
+      ]
+    },
+    {
+      "id": "post-rear-right",
+      "geometry": "cube",
+      "translation": [
+        0.205,
+        0.45,
+        -0.205
+      ],
+      "scale": [
+        0.04,
+        0.9,
+        0.04
+      ],
+      "material": "default",
+      "parent": null,
+      "rotation": [
+        0,
+        0,
+        0,
+        1
+      ]
+    },
+    {
+      "id": "slat-low",
+      "geometry": "cube",
+      "translation": [
+        0,
+        0.6,
+        -0.205
+      ],
+      "scale": [
+        0.37,
+        0.06,
+        0.02
+      ],
+      "material": "default",
+      "parent": null,
+      "rotation": [
+        0,
+        0,
+        0,
+        1
+      ]
+    },
+    {
+      "id": "slat-mid",
+      "geometry": "cube",
+      "translation": [
+        0,
+        0.7,
+        -0.205
+      ],
+      "scale": [
+        0.37,
+        0.06,
+        0.02
+      ],
+      "material": "default",
+      "parent": null,
+      "rotation": [
+        0,
+        0,
+        0,
+        1
+      ]
+    },
+    {
+      "id": "slat-high",
+      "geometry": "cube",
+      "translation": [
+        0,
+        0.8,
+        -0.205
+      ],
+      "scale": [
+        0.37,
+        0.06,
+        0.02
+      ],
+      "material": "default",
+      "parent": null,
+      "rotation": [
+        0,
+        0,
+        0,
+        1
+      ]
+    }
+  ],
+  "materials": [
+    {
+      "id": "default",
+      "tag": "surface",
+      "color": [
+        0.5,
+        0.5,
+        0.5
+      ],
+      "metallic": 0,
+      "roughness": 0.5,
+      "emission": 0,
+      "opacity": 1,
+      "alphaMode": "opaque",
+      "doubleSided": false
+    }
+  ],
+  "camera": {
+    "eye": [
+      4,
+      3,
+      5
+    ],
+    "target": [
+      0,
+      0,
+      0
+    ],
+    "up": [
+      0,
+      1,
+      0
+    ],
+    "fov": 45,
+    "near": 0.1,
+    "far": 1000
+  },
+  "environment": {
+    "world": false,
+    "setup": "daylight",
+    "environmentIntensity": 1,
+    "environmentRotation": 0,
+    "lightDirection": [
+      -3,
+      6,
+      4
+    ],
+    "keyColor": [
+      3,
+      2.8,
+      2.5
+    ],
+    "keyIntensity": 1,
+    "fillIntensity": 0,
+    "ambientIntensity": 1,
+    "daylight": 1,
+    "pointLights": [],
+    "skyTop": [
+      0.2,
+      0.38,
+      0.52
+    ],
+    "skyBottom": [
+      0.62,
+      0.7,
+      0.67
+    ],
+    "fogColor": [
+      0.35,
+      0.43,
+      0.43
+    ],
+    "fogDensity": 0.006,
+    "volumeFog": {
+      "density": 0,
+      "minimum": [
+        -100,
+        0,
+        -100
+      ],
+      "maximum": [
+        100,
+        20,
+        100
+      ],
+      "color": [
+        0.8,
+        0.85,
+        0.9
+      ],
+      "ambient": [
+        0.03,
+        0.035,
+        0.04
+      ],
+      "drift": [
+        0.03,
+        0,
+        0
+      ],
+      "steps": 16,
+      "anisotropy": 0.3,
+      "noiseAmount": 0.5,
+      "noiseScale": 0.3,
+      "maxDistance": 100
+    }
+  },
+  "effects": {
+    "depthOfField": {
+      "blur": 0,
+      "focusDistance": 5
+    },
+    "motionBlur": {
+      "shutter": 0
+    },
+    "saturation": 1,
+    "contrast": 1,
+    "temperature": 0,
+    "vignette": 0,
+    "grain": 0,
+    "ambientOcclusion": 0,
+    "ambientOcclusionRadius": 0.5,
+    "bloom": {
+      "strength": 0.12,
+      "threshold": 1,
+      "radius": 1
+    },
+    "exposure": 0.8
+  },
+  "shadow": {
+    "target": [
+      0,
+      1,
+      0
+    ],
+    "extent": 3.5,
+    "distance": 8,
+    "near": 0.1,
+    "far": 15
+  }
+}
