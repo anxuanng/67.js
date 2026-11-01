@@ -12,7 +12,7 @@ import { resolveVolumeFog } from './volumetric.js';
 import { assertEnvironmentMap, createEnvironmentResources, environmentBackgroundFragment, environmentBrdfFragment, environmentPrefilterFragment, estimateEnvironmentBytes } from './environment.js';
 import { validateSkinGeometry, validateSkinPose, skinTextureLayout, packSkinInfluences } from './skinning.js';
 import { validateSplatMaterial, splatBatchState, splatTextureBytes, resolveSplatSize, packSplatParameters, buildSplatPixels } from './splat.js';
-import { materialLayerState } from './material-layers.js';
+import { materialLayerState, materialLayerValue } from './material-layers.js';
 import { InstanceSelection, extractFrustumPlanes, geometryBoundingSphere, selectInstances } from './render-culling.js';
 import { validateMorphGeometry, validateMorphPose, validateMorphTransform, packMorphTargets } from './morph.js';
 
@@ -62,6 +62,8 @@ function shaderFeaturesOfParts(parts) {
     if (material.lightMask !== undefined) features.add('lightLinking');
     if (material.iridescence > 0) features.add('iridescence');
     if ((material.alphaMode ?? 'opaque') !== 'opaque') features.add('alphaMode');
+    if (materialLayerValue(material, 'clearcoat') > 0) features.add('clearcoat');
+    if (materialLayerValue(material, 'sheenColor').some(channel => channel !== 0)) features.add('sheen');
     if (TAG_SHADER_FEATURES.has(material.tag)) features.add(material.tag);
   }
   return features;
@@ -486,6 +488,7 @@ export class Renderer67 {
     this.lightProjection = mat4.create();
     this.inverseViewProjection = mat4.create();
     this.shaderFeatures = shaderFeaturesOfParts(groups.flat());
+    this.shaderFeatures.add(environment.map ? 'environmentMap' : 'studioLighting');
     shaderFeaturesOfLighting(this.lighting).forEach(feature => this.shaderFeatures.add(feature));
     if (shadowCascades) this.shaderFeatures.add(shadowCascades.shaderFeature);
     const pending = {
@@ -1859,6 +1862,7 @@ export class Renderer67 {
     }
     this.updateLocalShadows(casterChanged);
     const environmentMap = this.activateEnvironment(environment.map);
+    this.requireFeatureNames([environmentMap ? 'environmentMap' : 'studioLighting']);
     applyProjection(this.projection, frame, this.canvas.width / this.canvas.height, { world: this.world });
     mat4.lookAt(this.view, eye, target, frame.up ?? [0, 1, 0]);
     mat4.multiply(this.viewProjection, this.projection, this.view);

@@ -660,7 +660,7 @@ float surfaceAlpha(float textureAlpha) {
 }
 
 vec3 surroundingsColor(vec3 direction, float roughness) {
-  if (environmentEnabled > 0.5) return environmentRadiance(direction, roughness * environmentLevelMax);
+  if (ENVIRONMENT_ENABLED) return environmentRadiance(direction, roughness * environmentLevelMax);
   if (worldMode > 0.5) return mix(fogColor * 0.8, vec3(0.20, 0.38, 0.52) * 1.6, smoothstep(-0.15, 0.7, direction.y)) * 0.5 * daylight;
   return studio(direction, roughness);
 }
@@ -687,7 +687,7 @@ vec3 sheenLayer(vec3 baseRadiance, vec3 normal, vec3 viewDirection, float visibi
   float distribution = (2.0 + inverseAlpha) * pow(sine, inverseAlpha) / (2.0 * PI);
   float visibilityTerm = 1.0 / (4.0 * (normalLight + normalView - normalLight * normalView));
   vec3 keyTerm = materialSheen.rgb * distribution * visibilityTerm * normalLight * keyColor * visibility;
-  vec3 ambientTerm = environmentEnabled > 0.5 ? environmentDiffuse(normal) : mix(vec3(0.16, 0.20, 0.22), vec3(0.19, 0.25, 0.30) * max(daylight, 0.08), worldMode);
+  vec3 ambientTerm = ENVIRONMENT_ENABLED ? environmentDiffuse(normal) : mix(vec3(0.16, 0.20, 0.22), vec3(0.19, 0.25, 0.30) * max(daylight, 0.08), worldMode);
   vec3 rimTerm = materialSheen.rgb * ambientTerm * pow(1.0 - normalView, 3.0) * ambientIntensity;
   float shadowedBase = 1.0 - 0.2 * max(materialSheen.r, max(materialSheen.g, materialSheen.b));
   return baseRadiance * shadowedBase + keyTerm + rimTerm;
@@ -867,7 +867,7 @@ ${featureCode("linkArea")}      vec3 lightNormal = areaLightNormals[index].xyz;
   occlusion *= splatCavity;
   // Leaf and grass cards keep a faint sheen; full sky reflection washed grazing cards grey-blue.
   float skyReflection = canopyShaded ? 0.3 : 1.0;
-  if (environmentEnabled > 0.5) {
+  if (ENVIRONMENT_ENABLED) {
     radiance += environmentLighting(normal, specularNormal, baseReflectance, viewDirection, color, metallic, roughness, occlusion, ambientIntensity, skyReflection);
   } else {
     // Outdoors the surroundings are sky and haze; reflecting the studio softboxes there lit grazing leaves white and cyan.
@@ -893,8 +893,8 @@ ${featureCode("linkArea")}      vec3 lightNormal = areaLightNormals[index].xyz;
     float thinness = textureUV.x > -0.5 ? 1.0 - textureUV.y * 0.8 : 0.6;
     radiance += color * vec3(1.1, 1.25, 0.55) * towardSun * thinness * 1.4 * keyResponse * visibility;
   }
-  if (materialSheen.rgb != vec3(0.0)) radiance = sheenLayer(radiance, normal, viewDirection, visibility);
-  if (materialCoat.x > 0.0) radiance = clearCoatLayer(radiance, normal, viewDirection, visibility);
+  if (USES_SHEEN) radiance = sheenLayer(radiance, normal, viewDirection, visibility);
+  if (USES_CLEARCOAT) radiance = clearCoatLayer(radiance, normal, viewDirection, visibility);
   radiance += emission;
   if (TAG_WATER) {
     float reflectivity = 0.20 + 0.65 * pow(1.0 - max(dot(normal, viewDirection), 0.0), 3.0);
@@ -955,7 +955,22 @@ const SHADER_FEATURE_CONDITIONS = {
   areaLights: ['USES_AREA_LIGHTS', 'areaLightCount > 0'],
   localShadows: ['USES_LOCAL_SHADOWS', 'true'],
   renderPass: ['USES_RENDER_PASS', 'renderPassMode > 0.5'],
+  sheen: ['USES_SHEEN', 'materialSheen.rgb != vec3(0.0)'],
+  clearcoat: ['USES_CLEARCOAT', 'materialCoat.x > 0.0'],
 };
+
+// Lighting from an environment map and the built-in studio lighting are two code paths, and a frame takes one of them.
+// SwiftShader runs both sides of a choice between them for every pixel, so a renderer that only ever draws one of the two
+// compiles the other out: ENVIRONMENT_ENABLED is true, false, or the uniform when both are listed.
+export const ENVIRONMENT_FEATURES = Object.freeze(['environmentMap', 'studioLighting']);
+
+function environmentCondition(enabled) {
+  const hasMap = enabled.has('environmentMap');
+  const hasStudio = enabled.has('studioLighting');
+  if (hasMap && !hasStudio) return 'true';
+  if (hasStudio && !hasMap) return 'false';
+  return '(environmentEnabled > 0.5)';
+}
 
 // A feature that is not in the list above has its GLSL in another module, so a scene that never uses it does not carry
 // it. That module calls registerShaderFeatureCode on import, with blocks of GLSL that createFragmentShader splices in:
@@ -981,17 +996,18 @@ function requireFeatureCode(feature) {
 }
 
 function featureCodeSplicer(features) {
-  const codes = features.filter(feature => !(feature in SHADER_FEATURE_CONDITIONS)).map(requireFeatureCode);
+  const codes = features.filter(feature => !(feature in SHADER_FEATURE_CONDITIONS) && !ENVIRONMENT_FEATURES.includes(feature)).map(requireFeatureCode);
   return slot => codes.map(code => code[slot] ?? '').join('');
 }
 
-export const SHADER_FEATURES = Object.freeze(Object.keys(SHADER_FEATURE_CONDITIONS));
+export const SHADER_FEATURES = Object.freeze([...Object.keys(SHADER_FEATURE_CONDITIONS), ...ENVIRONMENT_FEATURES]);
 
 /** The fragment shader for a set of features. A feature with separate code throws until its module is imported. */
 export function createFragmentShader(features = SHADER_FEATURES) {
   const enabled = new Set(features);
   const lines = Object.entries(SHADER_FEATURE_CONDITIONS).map(([feature, [macro, condition]]) => `#define ${macro} ${enabled.has(feature) ? `(${condition})` : 'false'}`);
   lines.push('#define CANOPY_TAG (TAG_FOLIAGE || TAG_GRASS)');
+  lines.push(`#define ENVIRONMENT_ENABLED ${environmentCondition(enabled)}`);
   return buildFragmentShader(lines.join('\n'), featureCodeSplicer([...enabled]));
 }
 
