@@ -51,7 +51,7 @@ export const CURVE_TEXT_LIMITS = Object.freeze({
   verticesPerCharacterSegment: 640, verticesPerCustomCharacterSegment: 2400, maxPointsPerGlyph: 128,
 });
 export const CURVE_TEXT_DETAILS = Object.freeze({
-  curve: 'Cubic Bezier sweep. points: [x,y,z] or {position, handleIn?, handleOut?}. radius (0.05), taper, profile ([[x,y]...]), radialSegments, resolution, closed. See docs/modeling.md.',
+  curve: 'bends along path, 2-64 points [x,y,z] (Catmull-Rom); the coordinate along axis (x) is the distance from the path start, so model from 0.',
   text: 'Extruded text, baseline y=0 along +X, facing +Z. text (\n for lines), size (1), depth (0.2), align left|center|right, curveSegments, font. See docs/modeling.md.',
 });
 export const MATERIAL_MAPPINGS = Object.freeze(['box', 'uv']);
@@ -61,7 +61,7 @@ export const MATERIAL_GRAPH_NODES = Object.freeze({
   textures: Object.freeze({
     noise: '{"noise":{"scale":8,"seed":1,"octaves":4}}',
     voronoi: '{"voronoi":{"scale":6,"output":"distance"|"edge"|"cell"}}',
-    wave: '{"wave":{"frequency":4,"direction":"u"|"v"|"diagonal","shape":"sine"|"saw"|"triangle"}}',
+    wave: 'ripple along z (normal true: along normals) from start [0,0] over axes xy, x or y: height 0.5, width 1.5, narrowness 0-50 (1.5), speed 0.25 per frame, time 0 (frame), timeOffset 0, cyclic true.',
     checker: '{"checker":{"count":8}} (even count)',
     gradient: '{"gradient":{"type":"u"|"v"|"radial"}}',
     note: 'Each takes "at", a vector such as {"uv":"both"}, to warp it. Scales are whole numbers 1 to 64 so it tiles.',
@@ -130,15 +130,15 @@ export const MESH_MODIFIER_NOTES = Object.freeze({
   smooth: 'factor 0.5 (-2 to 2) steps toward the neighbour mean; iterations 1 to 64.',
   simple_deform: 'mode twist or bend use angle (45 degrees), taper or stretch use factor (0.5); axis x, y or z (z).',
   cast: 'sphere about the origin: factor 0 to 1 (0.5), size radius (0 = mean vertex distance).',
-  screw: 'revolves every edge of the mesh (the profile; its faces are dropped) about the x, y or z axis (z) through the origin: angle 360 degrees per iteration, steps 16 (1 to 256) per iteration, iterations 1 to 64, lift 0 rise per iteration along the axis. A whole number of turns with no lift closes the ring. Vertices stay in step-major order.',
-  wireframe: 'keeps a rim of width thickness (0.02) on every face, as Blender Wireframe: offset -1 to 1 (0) moves the strut from inside to outside the surface, evenOffset true makes struts as wide as the thickness, replace true drops the original faces. Open edges get no extra strut.',
-  skin: 'a square tube along every edge, radius 0.1 or a scalar field per vertex (above zero), closed by end caps. Simple version: tubes that meet overlap and there is no branch solver, so it is partial against Blender.',
-  lattice: 'a grid of divisions [2,2,2] control points (2 to 8 each) spanning the mesh bounds; moves is up to 64 of {point:[i,j,k], offset:[x,y,z]} that shift one control point, and vertices follow the trilinear blend. Blender blends with a B-spline.',
+  screw: 'revolves every edge about axis x, y or z (z) through the origin, dropping faces: angle 360, steps 16 (1-256) and iterations 1-64, lift 0 per iteration. A whole number of turns with no lift closes the ring.',
+  wireframe: 'rim of thickness 0.02 on each face: offset -1..1 (0) moves the strut inside..outside, evenOffset true, replace true drops the faces.',
+  skin: 'closed square tube per edge: radius 0.1 or a scalar field per vertex (above 0). Simple: tubes overlap, no branch solver.',
+  lattice: 'divisions [2,2,2] (2-8) control points over the mesh bounds; moves up to 64 of {point:[i,j,k], offset:[x,y,z]}; trilinear blend.',
   curve: 'bends the mesh along path, 2 to 64 points [x,y,z] through a Catmull-Rom spline. The coordinate along axis (x) is the distance from the path start, the other two become offsets in a twist-free frame; past the ends the mesh continues straight. Model the mesh along the axis starting at 0.',
-  hook: 'pulls the vertices within radius (1) of center [0,0,0] by translation [0,0,0] times strength 0 to 1 (1); falloff smooth (default), linear or constant.',
+  hook: 'vertices within radius 1 of center [0,0,0] move by translation [0,0,0] times strength 0-1 (1); falloff smooth, linear or constant.',
   wave: 'a gaussian ripple of height 0.5 along z (normal true: along the vertex normal) that travels from start [0,0] over axes xy (default), x or y; width 1.5, narrowness 0 to 50 (1.5), speed 0.25 per frame, time 0 (a frame number), timeOffset 0, cyclic true repeats it. Matches Blender Wave at the same frame.',
-  weighted_normal: 'shading normals per corner: faces around a vertex share one normal unless the edge is sharp or bends more than angle (30) degrees, each face counting by its area to the power weight / 50 (weight 1 to 100, 50). Put it last in the stack: a later edit that changes the faces leaves the values stale.',
-  smooth_by_angle: 'marks edges bending more than angle (30, 0 to 180) degrees sharp and every other edge smooth, whatever the geometry smoothAngle says; ignoreSharp true also drops sharp marks made by hand (default false keeps them).',
+  weighted_normal: 'corner normals weighted by face area ^ (weight/50), weight 1-100 (50), smoothed across edges under angle 30 that are not sharp. Put it last in the stack.',
+  smooth_by_angle: 'edges bending over angle 30 (0-180) become sharp, others smooth, over smoothAngle; ignoreSharp true also clears hand-made sharp edges.',
 });
 
 // Organic shaping edits. Details stay here so the tool schemas stay small.

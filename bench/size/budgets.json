@@ -17,7 +17,7 @@
   "entry:sculpt": 2500,
   "entry:surface": 10100,
   "entry:mesh-query": 15900,
-  "entry:mesh": 78100,
+  "entry:mesh": 81500,
   "entry:shrinkwrap": 18300,
   "entry:surface-attachment": 11800,
   "entry:physics": 18000,
@@ -33,9 +33,9 @@
   "entry:path-tracer": 14400,
   "entry:texture-set": 900,
   "entry:agent-scene": 68300,
-  "entry:agent-scene+lazy": 238500,
+  "entry:agent-scene+lazy": 239800,
   "entry:agent-asset": 100600,
-  "entry:agent-asset+lazy": 250400,
+  "entry:agent-asset+lazy": 251500,
   "entry:hdri": 3300,
   "entry:camera-effects": 8600,
   "entry:render-passes": 1700,
@@ -46,6 +46,6 @@
   "scene:gltf-box": 82500,
   "scene:gltf-box+lazy": 85700,
   "scene:agent-scene": 99900,
-  "scene:agent-scene+lazy": 270000
+  "scene:agent-scene+lazy": 270700
  }
 }
