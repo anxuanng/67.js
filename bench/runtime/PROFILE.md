@@ -107,6 +107,27 @@ So: the passes around the mesh cost 1.3 ms, three.js's whole frame is 0.6, and a
 
 **One change tried and reverted.** Skipping the two fill-light `illuminate` calls when `fillIntensity` is 0 (the benchmark's value). SwiftShader frame, one run each: `large-mesh` 1,684 to 1,338 (this scene swings by 20 percent between runs), `many-materials` 1,219 to 1,233, `instanced-objects` 376 to 383. Inside the noise on two of three scenes, so it was not kept.
 
+## Two more changes tried, neither kept (2026-11-01, branch `perf/swiftshader-frame`)
+
+Method: the changed file and the unchanged file were swapped in `src/` between runs, A then B, three pairs, `--cpu-only --frames 6`, median of the three. The machine was shared with other sessions (the RTX 3060 was 78 percent busy before the first run; SwiftShader runs on the CPU, whose load was not measured), so a difference under about 5 percent is noise here.
+
+| Change (all would give identical pictures) | Scene | Before (ms, 3 runs) | After (ms, 3 runs) | Kept |
+| --- | --- | --- | --- | --- |
+| Draw the environment background after the opaque pass, on the far plane, with the depth test on, so covered pixels skip its shader | `instanced-objects` | 381, 379, 376 | 375, 377, 383 | No |
+| Post pass: fetch the four extra FXAA taps only where an edge is found (the other pixels used `center` anyway), reuse the centre sample's alpha | `instanced-objects` | 386, 388, 402 | 552 (load spike), 375, 386 | No |
+
+Both medians are inside the noise, so neither was committed and the reference images were not needed again (the engine is unchanged; the 16 baseline renders were taken first and no code differs from them).
+
+**Current numbers, SwiftShader frame in ms, 3 runs each, 67js and three.js alternated** (a loop over `--scene` and `--engine`, script not kept in the repository):
+
+| Scene | 67js | three.js | Ratio (medians) |
+| --- | --- | --- | --- |
+| `large-mesh` | 1,327, 1,336, 1,431 | 219, 221, 232 | 6.0 |
+| `many-materials` | 1,216, 1,227, 1,254 | 238, 246, 256 | 5.0 |
+| `instanced-objects` | 376, 386, 390 | 54, 55, 55 | 7.0 |
+
+**Why 3 times is not reachable without changing the picture.** Three facts measured earlier in this file set the floor. A fragment shader that returns the base colour still takes 195 ms on `instanced-objects` (frame 620 ms then), which is 3.5 to 4 times three.js's 48 to 55 ms before any lighting is paid for; that floor is the 4 sample HDR target, the 49,850 triangles, the clear and the resolve. With one sample and no HDR target the whole frame is 194 ms (5.2 times three.js with one sample). The two passes that three.js does not draw, the environment background and the post pass, cost about 45 ms each when drawn alone, but the two experiments above show that trimming them does not move the frame beyond the noise. What is left in the lit shader (shadow filter, environment lookup, three lights) is 5 to 8 percent per block (profile above), so removing one block cannot close a gap of 2.3 times. The remaining routes all change the picture or the frame format: no MSAA (about 40 percent), LDR target (about 20 percent), fewer shadow taps (visible penumbra), or a quarter-resolution sky.
+
 ## Left
 
 - A SwiftShader frame is still 4.5 to 7 times three.js, not 3. What remains is the per-pixel cost of the lit shader with 4 MSAA samples and an HDR target. Ideas that change the cost without changing the picture: a cheaper path for parts that are flat colour with no maps, and sharing one shadow comparison across the 3 by 3 filter. Both need the pictures checked again.
