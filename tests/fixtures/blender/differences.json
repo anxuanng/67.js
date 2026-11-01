@@ -1,4 +1,10 @@
 {
+  "screw-quad-full-turn": {
+    "volume": "The swept strips are an open surface, so its volume depends only on which way each strip is wound. 67js winds every strip from the lower to the higher vertex index of its edge. Counts, area and positions match."
+  },
+  "screw-quad-lift": {
+    "volume": "The swept strips are an open surface, so its volume depends only on which way each strip is wound. 67js winds every strip from the lower to the higher vertex index of its edge. Counts, area and positions match."
+  },
   "bevel-cube-all-round": {
     "vertexCount": "Where three rounded edges meet, 67js fills the corner with a triangular patch and Blender uses a quad grid with one centre triangle per corner.",
     "faceCount": "The triangular corner patch of 67js has more faces than the quad grid of Blender.",

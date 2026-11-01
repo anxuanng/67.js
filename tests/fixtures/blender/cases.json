@@ -17,6 +17,10 @@
       "vertices": [[1,-0.5,-0.5],[2,-0.5,-0.5],[2,0.5,-0.5],[1,0.5,-0.5],[1,-0.5,0.5],[2,-0.5,0.5],[2,0.5,0.5],[1,0.5,0.5]],
       "faces": [[0,3,2,1],[4,5,6,7],[0,1,5,4],[1,2,6,5],[2,3,7,6],[3,0,4,7]]
     },
+    "profile-quad": {
+      "vertices": [[1,0,0],[2,0,0],[2,0,1],[1,0,1]],
+      "faces": [[0,1,2,3]]
+    },
     "grid": {
       "vertices": [[0,0,0],[1,0,0],[2,0,0],[3,0,0],[0,1,0],[1,1,0],[2,1,0],[3,1,0],[0,2,0],[1,2,0],[2,2,0],[3,2,0],[0,3,0],[1,3,0],[2,3,0],[3,3,0]],
       "faces": [[0,1,5,4],[1,2,6,5],[2,3,7,6],[4,5,9,8],[5,6,10,9],[6,7,11,10],[8,9,13,12],[9,10,14,13],[10,11,15,14]]
@@ -140,6 +144,13 @@
     { "id": "cast-cube-mean", "input": "cube", "edit": {"op":"cast","factor":1} },
     { "id": "cast-cylinder-size", "input": "cylinder", "edit": {"op":"cast","factor":0.6,"size":1.5} },
     { "id": "cast-sphere-bumpy", "input": "sphere-bumpy", "edit": {"op":"cast","factor":0.5} },
+    { "id": "screw-quad-full-turn", "input": "profile-quad", "edit": {"op":"screw","axis":"z","angle":360,"steps":8} },
+    { "id": "screw-quad-lift", "input": "profile-quad", "edit": {"op":"screw","axis":"z","angle":90,"steps":4,"iterations":2,"lift":2} },
+    { "id": "wireframe-cube", "input": "cube", "edit": {"op":"wireframe","thickness":0.1} },
+    { "id": "wireframe-cube-outside-keep", "input": "cube", "edit": {"op":"wireframe","thickness":0.1,"offset":-1,"replace":false} },
+    { "id": "wireframe-quad-open", "input": "profile-quad", "edit": {"op":"wireframe","thickness":0.1} },
+    { "id": "wave-grid-ring", "input": "grid", "edit": {"op":"wave","start":[1.5,1.5],"time":2} },
+    { "id": "wave-grid-x-once", "input": "grid", "edit": {"op":"wave","axes":"x","cyclic":false,"time":4,"speed":0.5,"height":0.3,"width":1,"narrowness":2} },
     { "id": "decimate-bowl-half", "input": "bowl-open", "compare": "surface", "edit": {"op":"decimate","ratio":0.5} },
     { "id": "remesh-sphere", "input": "sphere-bumpy", "compare": "surface", "edit": {"op":"remesh","voxelSize":0.1} },
     { "id": "remesh-torus", "input": "torus-fine", "compare": "surface", "edit": {"op":"remesh","voxelSize":0.08} },

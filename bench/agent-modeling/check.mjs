@@ -101,6 +101,71 @@ function checkShell(check, measures) {
   return { pass: problems.length === 0, detail: problems.join('; ') || `${check.node} between ${round(nearest)} and ${round(farthest)} m of the centre` };
 }
 
+const PAINTING_SAMPLES_ACROSS = 5;
+const PAINTING_SAMPLES_UP = 3;
+const AIM_TOLERANCE = 0.05;
+const POSITION_TOLERANCE = 0.05;
+
+/** Whether the straight segment between two points passes through an axis-aligned box (slab test). */
+function segmentHitsBox(from, to, boxMin, boxMax) {
+  let enter = 0;
+  let leave = 1;
+  for (let axis = 0; axis < 3; axis++) {
+    const travel = to[axis] - from[axis];
+    if (Math.abs(travel) < 1e-9) {
+      if (from[axis] < boxMin[axis] || from[axis] > boxMax[axis]) return false;
+      continue;
+    }
+    const near = (boxMin[axis] - from[axis]) / travel;
+    const far = (boxMax[axis] - from[axis]) / travel;
+    enter = Math.max(enter, Math.min(near, far));
+    leave = Math.min(leave, Math.max(near, far));
+    if (enter > leave) return false;
+  }
+  return true;
+}
+
+const angleBetween = (first, second) => {
+  const dot = first.reduce((total, value, axis) => total + value * second[axis], 0);
+  return Math.acos(Math.min(1, dot / (Math.hypot(...first) * Math.hypot(...second))));
+};
+
+// The one spotlight must sit at an offered place, aim at the painting with a cone that reaches all of it and cast
+// shadows, and no ray from it to the front face of the painting may meet the blocker.
+function checkLitPainting(check, measures) {
+  const painting = measures.nodeBounds(check.painting);
+  const blocker = measures.nodeBounds(check.blocker);
+  if (!painting || !blocker) return { pass: false, detail: `no drawn node ${check.painting} or ${check.blocker}` };
+  const lights = measures.spotLights;
+  if (lights.length !== 1) return { pass: false, detail: `${lights.length} spot lights, need exactly 1` };
+  const [light] = lights;
+  const placeIndex = check.positions.findIndex(place => Math.hypot(...place.map((value, axis) => value - light.position[axis])) <= POSITION_TOLERANCE);
+  if (placeIndex < 0) return { pass: false, detail: `light at ${light.position.map(round).join(', ')} is not an offered place` };
+  const frontZ = painting.max[2];
+  const centre = [(painting.min[0] + painting.max[0]) / 2, (painting.min[1] + painting.max[1]) / 2, frontZ];
+  const towardCentre = centre.map((value, axis) => value - light.position[axis]);
+  const aimError = angleBetween(light.direction, towardCentre);
+  const corners = [painting.min, painting.max].flatMap(low => [painting.min, painting.max].map(high => [low[0], high[1], frontZ]));
+  const reach = Math.max(...corners.map(corner => angleBetween(towardCentre, corner.map((value, axis) => value - light.position[axis]))));
+  const problems = [];
+  if (aimError > AIM_TOLERANCE) problems.push(`aimed ${round(aimError)} rad off the centre`);
+  if (light.angle < reach || light.angle > check.maxAngle) problems.push(`cone ${round(light.angle)} rad, needs ${round(reach)} to ${check.maxAngle}`);
+  if (light.castShadow !== true) problems.push('shadows are off');
+  let shadowed = 0;
+  for (let across = 0; across < PAINTING_SAMPLES_ACROSS; across++) {
+    for (let up = 0; up < PAINTING_SAMPLES_UP; up++) {
+      const point = [
+        painting.min[0] + (painting.max[0] - painting.min[0]) * across / (PAINTING_SAMPLES_ACROSS - 1),
+        painting.min[1] + (painting.max[1] - painting.min[1]) * up / (PAINTING_SAMPLES_UP - 1),
+        frontZ,
+      ];
+      if (segmentHitsBox(light.position, point, blocker.min, blocker.max)) shadowed++;
+    }
+  }
+  if (shadowed > 0) problems.push(`${shadowed} of ${PAINTING_SAMPLES_ACROSS * PAINTING_SAMPLES_UP} painting points are in shadow`);
+  return { pass: problems.length === 0, detail: problems.join('; ') || `place ${placeIndex + 1}, no shadow on the painting` };
+}
+
 function checkOne(check, measures) {
   switch (check.kind) {
     case 'lint':
@@ -190,6 +255,8 @@ function checkOne(check, measures) {
     }
     case 'walkPath':
       return checkWalkPath(check, measures);
+    case 'litPainting':
+      return checkLitPainting(check, measures);
     case 'shell':
       return checkShell(check, measures);
     case 'bendsToward': {

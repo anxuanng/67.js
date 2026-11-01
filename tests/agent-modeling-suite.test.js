@@ -3,6 +3,7 @@ import test from 'node:test';
 import { gradeRecipe } from '../bench/agent-modeling/check.mjs';
 import { TASKS, taskById, taskPrompt } from '../bench/agent-modeling/tasks.mjs';
 import { REFERENCES } from '../bench/agent-modeling/references.mjs';
+import { GALLERY_LIGHT_POSITIONS } from '../bench/agent-modeling/gallery.mjs';
 
 const failedKinds = grade => grade.results.filter(result => !result.pass).map(result => result.label ?? result.kind);
 
@@ -185,4 +186,37 @@ test('the path walk passes its reference and fails a walk through the second ope
   const throughRock = structuredClone(REFERENCES['terrain-path-walk']);
   throughRock.motion.tracks[0].keyframes = [{ time: 0, value: [-15, 0.5, -15] }, { time: 2, value: [-8, 0.5, -8] }, { time: 3, value: [-6, 0.5, -3] }, { time: 5.5, value: [5, 0.5, -5] }, { time: 7, value: [5, 0.5, 13] }, { time: 10, value: [15, 0.5, 15] }];
   assert.deepEqual(failedKinds(await gradeRecipe(task, throughRock)), ['walkPath']);
+});
+
+test('the render pick passes the unshadowed light and fails the two shadowed places and shortcuts', async () => {
+  const task = taskById('render-pick');
+  assert.deepEqual(failedKinds(await gradeRecipe(task, structuredClone(REFERENCES['render-pick']))), []);
+
+  for (const place of GALLERY_LIGHT_POSITIONS.slice(0, 2)) {
+    const shadowed = structuredClone(REFERENCES['render-pick']);
+    const [light] = shadowed.environment.spotLights;
+    light.position = place;
+    const toCentre = [0 - place[0], 1.5 - place[1], -1.96 - place[2]];
+    const length = Math.hypot(...toCentre);
+    light.direction = toCentre.map(value => value / length);
+    const grade = await gradeRecipe(task, shadowed);
+    assert.deepEqual(failedKinds(grade), ['litPainting']);
+    assert.match(grade.results.at(-1).detail, /in shadow/);
+  }
+
+  const shadowsOff = structuredClone(REFERENCES['render-pick']);
+  shadowsOff.environment.spotLights[0].castShadow = false;
+  assert.deepEqual(failedKinds(await gradeRecipe(task, shadowsOff)), ['litPainting']);
+
+  const offeredPlaceMissed = structuredClone(REFERENCES['render-pick']);
+  offeredPlaceMissed.environment.spotLights[0].position = [2.5, 2.4, 1.5];
+  assert.deepEqual(failedKinds(await gradeRecipe(task, offeredPlaceMissed)), ['litPainting']);
+
+  const twoLights = structuredClone(REFERENCES['render-pick']);
+  twoLights.environment.spotLights.push(structuredClone(twoLights.environment.spotLights[0]));
+  assert.deepEqual(failedKinds(await gradeRecipe(task, twoLights)), ['litPainting']);
+
+  const movedPillar = structuredClone(REFERENCES['render-pick']);
+  movedPillar.nodes.find(node => node.id === 'pillar').translation = [3, 1.3, -0.5];
+  assert.ok(failedKinds(await gradeRecipe(task, movedPillar)).includes('centreAt'));
 });

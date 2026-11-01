@@ -107,7 +107,72 @@ So: the passes around the mesh cost 1.3 ms, three.js's whole frame is 0.6, and a
 
 **One change tried and reverted.** Skipping the two fill-light `illuminate` calls when `fillIntensity` is 0 (the benchmark's value). SwiftShader frame, one run each: `large-mesh` 1,684 to 1,338 (this scene swings by 20 percent between runs), `many-materials` 1,219 to 1,233, `instanced-objects` 376 to 383. Inside the noise on two of three scenes, so it was not kept.
 
+## Two more changes tried, neither kept (2026-11-01, branch `perf/swiftshader-frame`)
+
+Method: the changed file and the unchanged file were swapped in `src/` between runs, A then B, three pairs, `--cpu-only --frames 6`, median of the three. The machine was shared with other sessions (the RTX 3060 was 78 percent busy before the first run; SwiftShader runs on the CPU, whose load was not measured), so a difference under about 5 percent is noise here.
+
+| Change (all would give identical pictures) | Scene | Before (ms, 3 runs) | After (ms, 3 runs) | Kept |
+| --- | --- | --- | --- | --- |
+| Draw the environment background after the opaque pass, on the far plane, with the depth test on, so covered pixels skip its shader | `instanced-objects` | 381, 379, 376 | 375, 377, 383 | No |
+| Post pass: fetch the four extra FXAA taps only where an edge is found (the other pixels used `center` anyway), reuse the centre sample's alpha | `instanced-objects` | 386, 388, 402 | 552 (load spike), 375, 386 | No |
+
+Both medians are inside the noise, so neither was committed and the reference images were not needed again (the engine is unchanged; the 16 baseline renders were taken first and no code differs from them).
+
+**Current numbers, SwiftShader frame in ms, 3 runs each, 67js and three.js alternated** (a loop over `--scene` and `--engine`, script not kept in the repository):
+
+| Scene | 67js | three.js | Ratio (medians) |
+| --- | --- | --- | --- |
+| `large-mesh` | 1,327, 1,336, 1,431 | 219, 221, 232 | 6.0 |
+| `many-materials` | 1,216, 1,227, 1,254 | 238, 246, 256 | 5.0 |
+| `instanced-objects` | 376, 386, 390 | 54, 55, 55 | 7.0 |
+
+**Why 3 times is not reachable without changing the picture.** Three facts measured earlier in this file set the floor. A fragment shader that returns the base colour still takes 195 ms on `instanced-objects` (frame 620 ms then), which is 3.5 to 4 times three.js's 48 to 55 ms before any lighting is paid for; that floor is the 4 sample HDR target, the 49,850 triangles, the clear and the resolve. With one sample and no HDR target the whole frame is 194 ms (5.2 times three.js with one sample). The two passes that three.js does not draw, the environment background and the post pass, cost about 45 ms each when drawn alone, but the two experiments above show that trimming them does not move the frame beyond the noise. What is left in the lit shader (shadow filter, environment lookup, three lights) is 5 to 8 percent per block (profile above), so removing one block cannot close a gap of 2.3 times. The remaining routes all change the picture or the frame format: no MSAA (about 40 percent), LDR target (about 20 percent), fewer shadow taps (visible penumbra), or a quarter-resolution sky.
+
 ## Left
 
 - A SwiftShader frame is still 4.5 to 7 times three.js, not 3. What remains is the per-pixel cost of the lit shader with 4 MSAA samples and an HDR target. Ideas that change the cost without changing the picture: a cheaper path for parts that are flat colour with no maps, and sharing one shadow comparison across the 3 by 3 filter. Both need the pictures checked again.
 - The environment BRDF lookup table is the same for every map. It could be computed once per page, or on the CPU, which removes one program and one pass.
+
+## Where the 130 ms went, and what was compiled out (2026-11-01, branch `perf/swiftshader-floor`)
+
+Method: a wrapped WebGL context in a Playwright script (not kept in the repository) rewrote shader sources and skipped draw calls, `instanced-objects` on SwiftShader, 6 frames, medians of 2 to 3 rounds, below normal priority, other sessions on the machine (the RTX 3060 was 78 to 92 percent busy before runs; CPU load not measured).
+
+**The split** (before any change, frame 380 ms; each row is the frame with that part removed or replaced):
+
+| Part | Frame (ms) | So it costs |
+| --- | --- | --- |
+| Mesh draw skipped (clear, background, resolve, post remain) | 141 | mesh 240, rest 141 |
+| Mesh drawn with `RASTERIZER_DISCARD` (vertex stage only) | 153 | vertex stage 12 |
+| Mesh with a fragment shader that writes a constant | 175 | trivial shading 35, lit shading 205 |
+| Post pass skipped | 317 | post 63 |
+| Post fragment shader replaced by one texture copy | 322 | the shader, not the pass: 60 of the 63 |
+| MSAA resolve skipped | 348 | resolve 32 |
+| Environment background skipped | 363 to 373 | 10 to 20 |
+
+So the roughly 130 ms was the fixed part around the mesh (post 63, resolve 32, background 10 to 25, rest) plus a lit shader that costs 205 ms with 4 samples against three.js's whole frame of about 50. Hypotheses: (1) no `discard` or `gl_FragDepth` executes (`USES_ALPHA_MODE` is the constant `false`); (2) the opaque pass is not sorted but `instanced-objects` is one batch, and the trivial-shader row (35 ms) shows overdraw is not the cost; (3) varyings were not changed, the vertex stage is 12 ms here; (4) blend stayed off in every opaque draw (counted) and there is one colour attachment; backbuffer `antialias:false` changed nothing (377 against 380); (5) vertex stage is small on this scene but large on the other two, below; (6) R11F_G11F_B10F, see the last paragraph; (7) nothing is re-created per frame.
+
+**What it is.** SwiftShader pays for code that a uniform switches off, and for both sides of `cond ? a : b`. Replacing the uniform with a constant, one at a time (frame 384 ms): `materialSheen` and `materialCoat` tests 337 to 345, `environmentEnabled` 340, all frame constants together 294 to 315; the point-light count, fog, fill and world mode each moved it by under 3 percent. The post pass behaves the same way: removing the volume step saves 15, FXAA 12, explosion 5, with the rest of its code unused.
+
+**Kept changes** (each pictures identical, 8 scenes, SwiftShader, compared pixel by pixel against renders of the merge base: max difference 0). Alternated A, B, three pairs, medians:
+
+| Change | Scene | Before (ms) | After (ms) |
+| --- | --- | --- | --- |
+| Environment path, sheen and clear coat compiled out of the main fragment program unless a part or the map needs them | `instanced-objects` | 384, 385, 384 | 325, 341, 335 |
+| Post program per set of steps in use (full program draws until the variant is built) | `instanced-objects` | 324, 334, 332 | 295, 301, 279 |
+| Vertex program without skin, morph, wind, waves, explosion unless a part needs them, and no colour clear under an environment background | `large-mesh` | 1,119, 1,139, 1,159 | 922, 887 (one run lost) |
+| same | `many-materials` | 983, 981, 1,007 | 892, 874, 880 |
+| same | `instanced-objects` | 290, 289, 291 | 268, 280, 267 |
+
+The vertex split on `large-mesh` (1,070 ms; the vertex stage alone is 360 ms there): skin and morph calls cost 100, box position 25, water and explosion branches 25, wind and the inverse-transpose normal matrix under 5 each, everything together 170.
+
+**Ratio now** (SwiftShader frame, 67js and three.js alternated, 3 runs; `instanced-objects` lost one run each, so 2):
+
+| Scene | 67js (ms) | three.js (ms) | Ratio (medians) | Was |
+| --- | --- | --- | --- | --- |
+| `large-mesh` | 901, 888, 909 | 225, 234, 239 | 3.85 | 6.0 |
+| `many-materials` | 1,290 (load spike), 898, 899 | 231, 243, 331 | 3.69 | 5.0 |
+| `instanced-objects` | 260, 263 | 90 (load spike), 51 | 5.1 | 7.0 |
+
+**3 times is not met.** What is left, by size, on `instanced-objects` (frame about 265): the lit shader about 160 over a constant shader (shadow filter, environment lookups, three lights, runtime-uniform fill and fog), the resolve 35, the background 25, the post pass 30. Items that need a picture or format decision by An: (a) `R11F_G11F_B10F` for the 4 sample target and the frame texture, without alpha, only for an opaque canvas. Measured: `instanced-objects` 338 to 271 (20 percent), but the pictures are not identical: mean absolute difference 0.13 to 0.59 levels per scene, maximum 6 to 53 levels, and the `transparency` scene has 32,689 pixels more than 2 levels away. It was not kept; `npm run reference` was not run on it. (b) Fewer shadow taps, or no MSAA (about 40 percent), or an LDR target (about 20 percent), as before. Cheap exact ones left: `boxPosition` only when a box-mapped material exists (about 25 ms on `large-mesh`), starting the environment background program with the others.
+
+Tests: `npm test` 1,292 tests, 1,283 pass; the 8 failures all need the optional `manifold-3d`, which this checkout does not have (mesh boolean, bracket recipe, blender-golden, other-clients, agent-asset-mesh, two suite reference tests). `npm run size` passes after `--update-baseline` and `--set-budgets`, because the program variants add about 2.4 to 2.8 KB gzip to the entries that include the renderer.
