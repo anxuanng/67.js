@@ -92,14 +92,25 @@ test('the draped sheet stays within 10 percent of its rest edge lengths and 5 pe
   }
 });
 
-test('the Blender drape bake had not settled at the compared frame, nor at 8 seconds, so the gap is a timing and model difference', () => {
+// Blender's air damping of 0.1 on this 3 g particle is a drag of 5.4 per second (1.0 would be 54, measured from the
+// terminal speed of a falling sheet), so the sheet takes that damping here; the defaults differ by a factor of 180.
+const MATCHED_DAMPING = 5.4;
+
+test('with the drag matched, the sheet falls and lands like the Blender bake, then drapes more slowly in Blender', () => {
   const bake = golden.cases['drape-over-ball'];
-  const motion = (first, second) => meanDistance(bake.history[first], bake.history[second]);
   assert.equal(bake.framesSimulated, 481);
-  assert.ok(motion('121', '181') > 0.1, 'still moving between 2 and 3 seconds');
-  assert.ok(motion('361', '481') > 0.2, 'still moving between 6 and 8 seconds');
+  const scene = createAgentScene(recipe(
+    [{ id: 'sheet', geometry: 'sheet', material: 'paint', translation: [0, 1, 0], rotation: [-0.7071068, 0, 0, 0.7071068], scale: [SHEET_SIZE, SHEET_SIZE, 1] },
+      { id: 'ball', geometry: 'ball', material: 'paint', scale: [BALL_RADIUS, BALL_RADIUS, BALL_RADIUS] }],
+    { duration: 2, sheets: [{ node: 'sheet', damping: MATCHED_DAMPING }], colliders: [{ node: 'ball', shape: 'ball' }] },
+  ));
+  for (const [time, frame] of [[0.25, '16'], [0.5, '31']]) {
+    scene.sampleMotion(time);
+    const distance = meanDistance(worldPositions(scene), bake.history[frame]) / SHEET_SIZE;
+    assert.ok(distance < 0.1, `at ${time} s the mean vertex distance is ${distance} of the sheet size`);
+  }
   const blender = stretchAndArea(bake.positions, SHEET_SIZE / SEGMENTS);
-  assert.ok(blender.longest < 1.1, 'Blender stretches little too, so stiffness does not explain the gap');
+  assert.ok(blender.longest < 1.1, 'Blender stretches little too, so stiffness is not the difference');
 });
 
 test('a sheet dropped on a ball stays outside it in 67js and in Blender, though the drape shapes differ', () => {
