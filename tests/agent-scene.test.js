@@ -1,3 +1,4 @@
+import './support/load-agent-scene-modules.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Matrix4, Quaternion, Vector3 } from 'three';

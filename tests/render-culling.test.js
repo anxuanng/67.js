@@ -151,3 +151,36 @@ test('culling is off for deforming, skinned and alpha-blended batches, and lods 
   assert.equal(renderer.createCullingState([glass]).cullable, false);
   assert.throws(() => renderer.createCullingState([rigidPart('bad', geometry, [0, 0, 0], { lods: [lods[1], lods[0]] })]), /lods must list level 0/);
 });
+
+function lightMatrix(extent) {
+  const projection = mat4.ortho(mat4.create(), -extent, extent, -extent, extent, 1, 100);
+  const view = mat4.lookAt(mat4.create(), [0, 50, 0], [0, 0, 0], [0, 0, -1]);
+  return mat4.multiply(mat4.create(), projection, view);
+}
+
+test('the shadow pass skips instances outside the light and picks the shadow level from the texel size', () => {
+  const geometry = sphere(24, 12);
+  const trunk = box(0, 1);
+  const shadowLods = [{ geometry, error: 0 }, { geometry: trunk, error: 0.5 }];
+  const positions = [[0, 0, 0], [3, 0, 0], [900, 0, 0]];
+  const parts = positions.map((position, index) => rigidPart(`p${index}`, geometry, position, { shadowLods }));
+  const { renderer, batch } = drawingRenderer(parts);
+  assert.equal(batch.shadowLevels.levelGeometries[1], trunk);
+  const coarse = renderer.selectShadowInstances(batch, batch.shadowLevels, lightMatrix(40), 64);
+  assert.equal(coarse.visibleCount, 2, 'the instance 900 units away is outside the light frustum');
+  assert.deepEqual([...coarse.counts], [0, 2], 'a texel of 1.25 units is wider than the error of 0.5 units');
+  const fine = renderer.selectShadowInstances(batch, batch.shadowLevels, lightMatrix(40), 4096);
+  assert.deepEqual([...fine.counts], [2, 0], 'a texel of 0.02 units shows the error, so the own geometry draws');
+  const perspective = mat4.multiply(mat4.create(), mat4.perspective(mat4.create(), Math.PI / 2, 1, 1, 100), mat4.lookAt(mat4.create(), [0, 50, 0], [0, 0, 0], [0, 0, -1]));
+  assert.deepEqual([...renderer.selectShadowInstances(batch, batch.shadowLevels, perspective, 64).counts], [2, 0], 'a perspective light has no single texel size, so it keeps the own geometry');
+});
+
+test('a batch without shadow levels uses its camera levels in the shadow pass, and shadow levels are refused on deforming parts', () => {
+  const geometry = box(0, 1);
+  const { renderer } = drawingRenderer([rigidPart('tree', geometry, [0, 0, 0])]);
+  const swaying = rigidPart('grass', geometry, [0, 0, 0], { shadowLods: [{ geometry, error: 0 }, { geometry: box(0, 1), error: 0.1 }] });
+  swaying.material.tag = 'grass';
+  assert.throws(() => renderer.createCullingState([swaying]), /shadowLods need rigid, opaque parts/);
+  const plain = renderer.createCullingState([rigidPart('plain', geometry, [0, 0, 0])]);
+  assert.equal(plain.shadowLevels, null);
+});

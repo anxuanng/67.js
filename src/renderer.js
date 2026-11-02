@@ -16,6 +16,7 @@ import { materialLayerState, materialLayerValue } from './material-layers.js';
 import { InstanceSelection, extractFrustumPlanes, geometryBoundingSphere, selectInstances } from './render-culling.js';
 import { validateMorphGeometry, validateMorphPose, validateMorphTransform, packMorphTargets } from './morph.js';
 
+const SHADOW_MAP_SIZE = 2048;
 const MATERIAL_TAGS = { armor: 1, floor: 2, water: 3, foliage: 4, terrain: 5, grass: 7, fire: 8, smoke: 9, unlit: 10, liquid: 11, foam: 12 };
 // Liquid and foam see the resolved opaque scene, so they draw in their own pass after it.
 const TRANSLUCENT_TAGS = new Set(['liquid', 'foam']);
@@ -257,6 +258,16 @@ function validateLods(part, levels) {
   });
 }
 
+/** Every geometry a part can draw: its own, the levels of `lods` and the levels of `shadowLods`. */
+function partGeometries(part) {
+  return [part.geometry, ...(part.lods ?? []).map(level => level.geometry), ...(part.shadowLods ?? []).map(level => level.geometry)];
+}
+
+/** The state of one list of levels: errors, geometries, the draw of each level once it is first needed, and a selection. */
+function createLevelSet(levels, instanceCount) {
+  return { levelErrors: levels.map(level => level.error), levelGeometries: levels.map(level => level.geometry), levelDraws: [], selection: new InstanceSelection(instanceCount, levels.length) };
+}
+
 function groundPart() {
   return {
     name: 'Studio floor',
@@ -287,7 +298,7 @@ export function groupParts(parts, batching = true) {
     const key = batching ? part.geometry : part;
     if (!groups.has(key)) groups.set(key, new Map());
     let maps = groups.get(key);
-    for (const value of [...materialMapState(part.material), ...materialLayerState(part.material), part.skin ?? null, part.morph ?? null, castsShadow(part), renderPass(part.material), part.lods ?? null, ...materialAlphaState(part.material)]) {
+    for (const value of [...materialMapState(part.material), ...materialLayerState(part.material), part.skin ?? null, part.morph ?? null, castsShadow(part), renderPass(part.material), part.lods ?? null, part.shadowLods ?? null, ...materialAlphaState(part.material)]) {
       if (!maps.has(value)) maps.set(value, new Map());
       maps = maps.get(value);
     }
@@ -819,18 +830,22 @@ export class Renderer67 {
       validateLods(first, first.lods);
       if (!cullable) throw new RangeError(`lods need rigid, opaque parts without assembly motion: ${first.name}`);
     }
+    if (first.shadowLods) {
+      validateLods(first, first.shadowLods);
+      if (!cullable) throw new RangeError(`shadowLods need rigid, opaque parts without assembly motion: ${first.name}`);
+    }
     const levels = first.lods ?? [{ geometry: first.geometry, error: 0 }];
-    const levelErrors = levels.map(level => level.error);
     const sphere = geometryBoundingSphere(first.geometry);
-    const bounds = { center: sphere.center, radius: sphere.radius + Math.max(...levelErrors) };
-    return { cullable, bounds, levelErrors, levelGeometries: levels.map(level => level.geometry), levelDraws: [], selection: new InstanceSelection(parts.length, levels.length) };
+    const bounds = { center: sphere.center, radius: sphere.radius + Math.max(...levels.map(level => level.error)) };
+    const shadowLevels = first.shadowLods ? createLevelSet(first.shadowLods, parts.length) : null;
+    return { cullable, bounds, ...createLevelSet(levels, parts.length), shadowLevels };
   }
 
-  /** The vertex array and instance buffer that draw one level of a batch from the instances selected for it. */
-  levelDraw(batch, level) {
-    if (batch.levelDraws[level]) return batch.levelDraws[level];
+  /** The vertex array and instance buffer that draw one level of a batch (or of its `shadowLevels`) from the instances selected for it. */
+  levelDraw(batch, level, levelSet = batch) {
+    if (levelSet.levelDraws[level]) return levelSet.levelDraws[level];
     const context = this.context;
-    const geometry = batch.levelGeometries[level];
+    const geometry = levelSet.levelGeometries[level];
     const vertexArray = context.createVertexArray();
     context.bindVertexArray(vertexArray);
     this.bindGeometryAttributes(geometry, batch.parts[0].material);
@@ -840,17 +855,20 @@ export class Renderer67 {
     context.bufferData(context.ARRAY_BUFFER, batch.instanceData.byteLength, context.DYNAMIC_DRAW);
     this.pointInstanceAttributes();
     context.bindVertexArray(null);
-    batch.levelDraws[level] = { vertexArray, instanceBuffer, indexCount: geometry.indices.length };
-    return batch.levelDraws[level];
+    levelSet.levelDraws[level] = { vertexArray, instanceBuffer, indexCount: geometry.indices.length };
+    return levelSet.levelDraws[level];
   }
 
   releaseLevelDraws(batch, releasedBuffers) {
-    for (const draw of batch.levelDraws) {
-      if (!draw) continue;
-      this.context.deleteVertexArray(draw.vertexArray);
-      releasedBuffers?.add(draw.instanceBuffer);
+    for (const levelSet of [batch, batch.shadowLevels]) {
+      if (!levelSet) continue;
+      for (const draw of levelSet.levelDraws) {
+        if (!draw) continue;
+        this.context.deleteVertexArray(draw.vertexArray);
+        releasedBuffers?.add(draw.instanceBuffer);
+      }
+      levelSet.levelDraws = [];
     }
-    batch.levelDraws = [];
   }
 
   /** The instances of a batch that the camera can see, split by level; null when the whole batch draws as it is. */
@@ -863,13 +881,13 @@ export class Renderer67 {
     });
   }
 
-  drawSelectedLevels(batch, selection) {
+  drawSelectedLevels(batch, selection, levelSet = batch) {
     const context = this.context;
     const stride = INSTANCE_STRIDE;
     for (let level = 0; level < selection.counts.length; level++) {
       const count = selection.counts[level];
       if (count === 0) continue;
-      const draw = this.levelDraw(batch, level);
+      const draw = this.levelDraw(batch, level, levelSet);
       if (!(this.selectionScratch?.length >= count * stride)) this.selectionScratch = new Float32Array(count * stride);
       for (let slot = 0; slot < count; slot++) {
         const instance = selection.indices[level][slot];
@@ -914,6 +932,7 @@ export class Renderer67 {
     const culling = this.createCullingState(parts);
     const batch = { ...culling, alphaMode, alphaCutoff, opacity, doubleSided, layerState, parts: [...parts], vertexArray, instanceBuffer, instanceData, textures, mapState, splat, lightMapTexture, texture: textures[0], map, skin, skinTexture, influenceTexture, morph, morphTexture, morphWeights, indexCount: geometry.indices.length, instanceCount: parts.length, floor: parts[0].material.tag === 'floor', castShadow: castsShadow(parts[0]), pass: renderPass(parts[0].material) };
     if (parts[0].lods) culling.levelGeometries.forEach((geometryOfLevel, level) => this.levelDraw(batch, level));
+    culling.shadowLevels?.levelGeometries.forEach((geometryOfLevel, level) => this.levelDraw(batch, level, batch.shadowLevels));
     parts.forEach((part, index) => this.partLocations.set(part, { batch, index, geometry: part.geometry, map, mapState, layerState, skin, jointMatrices: skin?.jointMatrices, skinIndices: geometry.skinIndices, skinWeights: geometry.skinWeights, morph, morphWeights: morph?.weights, morphTargets: geometry.morphTargets, normalMatrix: mat3.create(), committedMatrix: batch.instanceData.subarray(index * INSTANCE_STRIDE, index * INSTANCE_STRIDE + 16) }));
     return batch;
   }
@@ -925,7 +944,7 @@ export class Renderer67 {
     }
     const renderParts = this.groundPart ? [...parts, this.groundPart] : parts;
     const groups = groupParts(renderParts, this.batching);
-    const geometries = new Set(renderParts.flatMap(part => part.lods ? part.lods.map(level => level.geometry) : [part.geometry]));
+    const geometries = new Set(renderParts.flatMap(partGeometries));
     // Uploaded geometry was validated when it arrived; rechecking a large static scene every frame dominated streamed playback.
     for (const geometry of geometries) {
       if (!this.geometryBuffers.has(geometry)) validateReplacementGeometry(geometry);
@@ -1169,7 +1188,7 @@ export class Renderer67 {
     if (allocateShadow) this.shadowTexture = context.createTexture();
     context.activeTexture(context.TEXTURE0);
     context.bindTexture(context.TEXTURE_2D, this.shadowTexture);
-    if (allocateShadow) context.texImage2D(context.TEXTURE_2D, 0, context.DEPTH_COMPONENT24, 2048, 2048, 0, context.DEPTH_COMPONENT, context.UNSIGNED_INT, null);
+    if (allocateShadow) context.texImage2D(context.TEXTURE_2D, 0, context.DEPTH_COMPONENT24, SHADOW_MAP_SIZE, SHADOW_MAP_SIZE, 0, context.DEPTH_COMPONENT, context.UNSIGNED_INT, null);
     context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MIN_FILTER, context.NEAREST);
     context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MAG_FILTER, context.NEAREST);
     context.texParameteri(context.TEXTURE_2D, context.TEXTURE_WRAP_S, context.CLAMP_TO_EDGE);
@@ -1185,17 +1204,36 @@ export class Renderer67 {
     const lightView = mat4.lookAt(mat4.create(), light.eye, light.target, light.up ?? [0, 1, 0]);
     mat4.ortho(this.lightProjection, -light.extent, light.extent, -light.extent, light.extent, light.near, light.far);
     mat4.multiply(this.lightProjection, this.lightProjection, lightView);
-    context.viewport(0, 0, 2048, 2048);
+    context.viewport(0, 0, SHADOW_MAP_SIZE, SHADOW_MAP_SIZE);
     context.enable(context.DEPTH_TEST);
     context.enable(context.CULL_FACE);
     context.clear(context.DEPTH_BUFFER_BIT);
-    this.drawShadowCasters();
+    this.drawShadowCasters(this.lightProjection, SHADOW_MAP_SIZE);
     context.bindFramebuffer(context.FRAMEBUFFER, null);
     this.shadowsDirty = false;
   }
 
-  // Draws every shadow-casting batch into the bound depth target with this.lightProjection.
-  drawShadowCasters(lightMatrix = this.lightProjection) {
+  /**
+   * The instances of a batch that can land in a shadow map, split by level. An instance outside the light's frustum
+   * writes nothing. With an orthographic light and a known map size, the level follows the world size of one texel,
+   * so a tree far smaller than a texel uses its coarsest level. Null when the whole batch draws as it is.
+   */
+  selectShadowInstances(batch, levelSet, lightMatrix, resolution) {
+    if (!this.culling || !batch.cullable) return null;
+    const planes = extractFrustumPlanes(lightMatrix, this.shadowFrustumPlanes ??= new Float32Array(24));
+    const isOrthographic = lightMatrix[3] === 0 && lightMatrix[7] === 0 && lightMatrix[11] === 0 && lightMatrix[15] === 1;
+    const selectsLevels = Boolean(resolution) && isOrthographic && levelSet.levelErrors.length > 1;
+    // Texels per world unit along the map's x axis; an orthographic matrix has depth 1 everywhere.
+    const texelsPerUnit = selectsLevels ? Math.hypot(lightMatrix[0], lightMatrix[4], lightMatrix[8]) * resolution / 2 : 0;
+    return selectInstances(levelSet.selection, {
+      instanceData: batch.instanceData, instanceCount: batch.instanceCount, stride: INSTANCE_STRIDE, bounds: batch.bounds,
+      levelErrors: selectsLevels ? levelSet.levelErrors : [0], planes, viewProjection: lightMatrix,
+      pixelsPerUnit: texelsPerUnit, pixelError: this.lodPixelError,
+    });
+  }
+
+  // Draws every shadow-casting batch into the bound depth target. `resolution` is the width of the map in texels.
+  drawShadowCasters(lightMatrix = this.lightProjection, resolution = null) {
     const context = this.context;
     context.useProgram(this.depthProgram);
     context.uniformMatrix4fv(this.depthUniform, false, lightMatrix);
@@ -1206,7 +1244,14 @@ export class Renderer67 {
     context.uniform1i(this.depthAlphaUniforms.baseMap, 1);
     context.enable(context.POLYGON_OFFSET_FILL);
     context.polygonOffset(1, 1);
-    for (const batch of this.batches) if (!batch.floor && batch.castShadow) this.drawAlphaBatch(batch, false);
+    for (const batch of this.batches) {
+      if (batch.floor || !batch.castShadow) continue;
+      const levelSet = batch.shadowLevels ?? batch;
+      const selection = this.selectShadowInstances(batch, levelSet, lightMatrix, resolution);
+      if (selection?.visibleCount === 0) continue;
+      this.applyAlphaState(batch, false);
+      this.drawBatch(batch, false, selection, levelSet);
+    }
     context.disable(context.POLYGON_OFFSET_FILL);
     context.enable(context.CULL_FACE);
   }
@@ -1825,7 +1870,7 @@ export class Renderer67 {
     this.drawBatch(batch, textured, selection);
   }
 
-  drawBatch(batch, textured = false, selection = null) {
+  drawBatch(batch, textured = false, selection = null, levelSet = batch) {
     if (this.hasMorphs) {
       const uniforms = textured ? this.uniforms : this.depthMorphUniforms;
       this.context.uniform1f(uniforms.morphEnabled, batch.morph ? 1 : 0);
@@ -1879,7 +1924,7 @@ export class Renderer67 {
       }
     }
     if (selection && !selection.isEverything) {
-      this.drawSelectedLevels(batch, selection);
+      this.drawSelectedLevels(batch, selection, levelSet);
       return;
     }
     this.context.bindVertexArray(batch.vertexArray);

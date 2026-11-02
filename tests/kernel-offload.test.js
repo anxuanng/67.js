@@ -5,6 +5,7 @@ import { createAgentScene } from '../src/agent-scene.js';
 import { buildWithKernels, kernelKey, runKernel } from '../src/kernel-offload.js';
 import { answerKernelRequest } from '../src/kernel-registry.js';
 import { createInProcessWorker, kernelRoom, sceneDigest } from './support/kernel-offload-fixture.mjs';
+import './support/load-agent-scene-modules.mjs';
 
 const BUILD_SCRIPT = new URL('./support/kernel-offload-build.mjs', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1');
 const LOADER = new URL('./support/load-agent-scene-modules.mjs', import.meta.url).href;
