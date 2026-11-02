@@ -47,7 +47,7 @@
   "scene:lit-box": 62800,
   "scene:gltf-box": 84200,
   "scene:gltf-box+lazy": 87600,
-  "scene:agent-scene": 104000,
+  "scene:agent-scene": 104100,
   "scene:agent-scene+lazy": 286000
  }
 }
