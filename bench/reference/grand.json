@@ -1,0 +1,120 @@
+{
+ "metric": "FLIP (LDR), mean error, lower is better",
+ "blenderVersion": "5.2.2 LTS",
+ "seconds": {
+  "megacity-dusk-a": {
+   "cycles": 28.9,
+   "eevee": 42.4
+  },
+  "megacity-dusk-b": {
+   "cycles": 33.2,
+   "eevee": 27.7
+  },
+  "megacity-dusk-c": {
+   "cycles": 35.9,
+   "eevee": 26.7
+  },
+  "mountain-valley-b": {
+   "cycles": 24.5,
+   "eevee": 5.8
+  },
+  "mountain-valley-c": {
+   "cycles": 52.7,
+   "eevee": 24.7
+  },
+  "temple-hall-a": {
+   "cycles": 21.7,
+   "eevee": 2.7
+  },
+  "temple-hall-b": {
+   "cycles": 25.4,
+   "eevee": 1.6
+  },
+  "temple-hall-c": {
+   "cycles": 23.4,
+   "eevee": 2.2
+  },
+  "mountain-valley-a": {
+   "cycles": 26.3,
+   "eevee": 20.0
+  }
+ },
+ "graphics": {
+  "gpu": "ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 (0x00002487) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+  "cpu": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)"
+ },
+ "scores": {
+  "megacity-dusk-a": {
+   "gpu-vs-cycles": 0.1978,
+   "gpu-vs-eevee": 0.1556,
+   "cpu-vs-cycles": 0.1972,
+   "cpu-vs-eevee": 0.1571,
+   "eevee-vs-cycles": 0.1404,
+   "gpu-vs-cpu": 0.0154
+  },
+  "megacity-dusk-b": {
+   "gpu-vs-cycles": 0.1575,
+   "gpu-vs-eevee": 0.1476,
+   "cpu-vs-cycles": 0.1584,
+   "cpu-vs-eevee": 0.1487,
+   "eevee-vs-cycles": 0.1041,
+   "gpu-vs-cpu": 0.0252
+  },
+  "megacity-dusk-c": {
+   "gpu-vs-cycles": 0.1149,
+   "gpu-vs-eevee": 0.0647,
+   "cpu-vs-cycles": 0.1087,
+   "cpu-vs-eevee": 0.0657,
+   "eevee-vs-cycles": 0.098,
+   "gpu-vs-cpu": 0.0419
+  },
+  "mountain-valley-a": {
+   "gpu-vs-cycles": 0.353,
+   "gpu-vs-eevee": 0.2928,
+   "cpu-vs-cycles": 0.3539,
+   "cpu-vs-eevee": 0.2933,
+   "eevee-vs-cycles": 0.1756,
+   "gpu-vs-cpu": 0.0106
+  },
+  "mountain-valley-b": {
+   "gpu-vs-cycles": 0.1839,
+   "gpu-vs-eevee": 0.1472,
+   "cpu-vs-cycles": 0.184,
+   "cpu-vs-eevee": 0.1467,
+   "eevee-vs-cycles": 0.13,
+   "gpu-vs-cpu": 0.0157
+  },
+  "mountain-valley-c": {
+   "gpu-vs-cycles": 0.2282,
+   "gpu-vs-eevee": 0.163,
+   "cpu-vs-cycles": 0.2273,
+   "cpu-vs-eevee": 0.1619,
+   "eevee-vs-cycles": 0.1504,
+   "gpu-vs-cpu": 0.017
+  },
+  "temple-hall-a": {
+   "gpu-vs-cycles": 0.253,
+   "gpu-vs-eevee": 0.4215,
+   "cpu-vs-cycles": 0.2533,
+   "cpu-vs-eevee": 0.4211,
+   "eevee-vs-cycles": 0.4986,
+   "gpu-vs-cpu": 0.0064
+  },
+  "temple-hall-b": {
+   "gpu-vs-cycles": 0.3642,
+   "gpu-vs-eevee": 0.234,
+   "cpu-vs-cycles": 0.3644,
+   "cpu-vs-eevee": 0.2335,
+   "eevee-vs-cycles": 0.4743,
+   "gpu-vs-cpu": 0.0054
+  },
+  "temple-hall-c": {
+   "gpu-vs-cycles": 0.2746,
+   "gpu-vs-eevee": 0.2216,
+   "cpu-vs-cycles": 0.2749,
+   "cpu-vs-eevee": 0.2213,
+   "eevee-vs-cycles": 0.3989,
+   "gpu-vs-cpu": 0.0028
+  }
+ }
+}
