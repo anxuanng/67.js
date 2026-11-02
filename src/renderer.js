@@ -36,6 +36,10 @@ const PROCEDURAL_MATERIAL_TAGS = new Set(['water', 'foliage', 'grass', 'terrain'
 const SWAYING_TAGS = new Set(['foliage', 'grass']);
 // Tags whose vertex shader moves vertices away from the instance matrix, so a bounding sphere would not hold.
 const DEFORMING_TAGS = new Set(['foliage', 'grass', 'water', 'fire', 'smoke']);
+// The farthest a vertex of a swaying tag moves in the world, per unit of wind strength (windOffset in shaders.js): foliage
+// reaches 0.1 * 2.5 * 1.9 + 0.08 = 0.555 and grass 0.42 + 0.05 + 0.04 = 0.51. Their bounds grow by this much times the
+// strength, so they can be culled and given levels like rigid parts.
+const SWAY_REACH_PER_STRENGTH = 0.56;
 
 const POST_UNIFORMS = ['transparent', 'frameTexture', 'bloomTexture', 'bloomStrength', 'hdrEnabled', 'grade', 'vignette', 'grainAmount', 'resolution', 'monochrome', 'fade', 'cinematic', 'time', 'volumeExplosion', 'explosionProgress', 'inverseViewProjection', 'eye', 'sceneDepth', 'volumeShadowMap', 'volumeLightProjection', 'volumeLightDirection', 'volumeLightColor', 'volumeDensity', 'volumeMinimum', 'volumeMaximum', 'volumeColor', 'volumeAmbient', 'volumeDrift', 'volumeSteps', 'volumeAnisotropy', 'volumeNoiseAmount', 'volumeNoiseScale', 'volumeMaxDistance', 'orthographic', 'occlusionTexture', 'occlusionStrength', 'occlusionTexel'];
 
@@ -242,7 +246,8 @@ const OBJECT_ID_PASS_MODE = 5;
 
 function isCullable(parts) {
   const first = parts[0];
-  if (first.skin || first.morph || DEFORMING_TAGS.has(first.material.tag)) return false;
+  if (first.skin || first.morph) return false;
+  if (DEFORMING_TAGS.has(first.material.tag) && !SWAYING_TAGS.has(first.material.tag)) return false;
   if (renderPass(first.material) !== 'opaque' || materialAlphaState(first.material)[0] === 'blend') return false;
   return parts.every(part => !part.assembly);
 }
@@ -846,17 +851,18 @@ export class Renderer67 {
     const cullable = isCullable(parts);
     if (first.lods) {
       validateLods(first, first.lods);
-      if (!cullable) throw new RangeError(`lods need rigid, opaque parts without assembly motion: ${first.name}`);
+      if (!cullable) throw new RangeError(`lods need rigid or swaying, opaque parts without assembly motion: ${first.name}`);
     }
     if (first.shadowLods) {
       validateLods(first, first.shadowLods);
-      if (!cullable) throw new RangeError(`shadowLods need rigid, opaque parts without assembly motion: ${first.name}`);
+      if (!cullable) throw new RangeError(`shadowLods need rigid or swaying, opaque parts without assembly motion: ${first.name}`);
     }
     const levels = first.lods ?? [{ geometry: first.geometry, error: 0 }];
     const sphere = geometryBoundingSphere(first.geometry);
     const bounds = { center: sphere.center, radius: sphere.radius + Math.max(...levels.map(level => level.error)) };
     const shadowLevels = first.shadowLods ? createLevelSet(first.shadowLods, parts.length) : null;
-    return { cullable, bounds, ...createLevelSet(levels, parts.length), shadowLevels };
+    const swayReach = SWAYING_TAGS.has(first.material.tag) ? SWAY_REACH_PER_STRENGTH : 0;
+    return { cullable, bounds, swayReach, ...createLevelSet(levels, parts.length), shadowLevels };
   }
 
   /** The vertex array and instance buffer that draw one level of a batch (or of its `shadowLevels`) from the instances selected for it. */
@@ -893,7 +899,7 @@ export class Renderer67 {
   selectBatchInstances(batch) {
     if (!this.culling || !batch.cullable) return null;
     return selectInstances(batch.selection, {
-      instanceData: batch.instanceData, instanceCount: batch.instanceCount, stride: INSTANCE_STRIDE, bounds: batch.bounds,
+      instanceData: batch.instanceData, instanceCount: batch.instanceCount, stride: INSTANCE_STRIDE, bounds: batch.bounds, margin: batch.swayReach * Math.abs(this.windState.strength),
       levelErrors: batch.levelErrors, planes: this.frustumPlanes, viewProjection: this.viewProjection,
       pixelsPerUnit: this.canvas.height / 2 * this.projection[5], pixelError: this.lodPixelError,
     });
@@ -1244,7 +1250,7 @@ export class Renderer67 {
     // Texels per world unit along the map's x axis; an orthographic matrix has depth 1 everywhere.
     const texelsPerUnit = selectsLevels ? Math.hypot(lightMatrix[0], lightMatrix[4], lightMatrix[8]) * resolution / 2 : 0;
     return selectInstances(levelSet.selection, {
-      instanceData: batch.instanceData, instanceCount: batch.instanceCount, stride: INSTANCE_STRIDE, bounds: batch.bounds,
+      instanceData: batch.instanceData, instanceCount: batch.instanceCount, stride: INSTANCE_STRIDE, bounds: batch.bounds, margin: batch.swayReach * Math.abs(this.windState.strength),
       levelErrors: selectsLevels ? levelSet.levelErrors : [0], planes, viewProjection: lightMatrix,
       pixelsPerUnit: texelsPerUnit, pixelError: this.lodPixelError,
     });

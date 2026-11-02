@@ -97,9 +97,10 @@ export class InstanceSelection {
 /**
  * Splits a batch's instances into the ones that touch the frustum, by level. `bounds` is the geometry's bounding
  * sphere, `levelErrors` the error of each level in geometry units (level 0 is 0), and `pixelsPerUnit` the pixels
- * that one world unit covers at depth 1 (half the canvas height times projection[5]).
+ * that one world unit covers at depth 1 (half the canvas height times projection[5]). `margin` widens every sphere by that many
+ * world units, for vertices that move away from their geometry (wind sway).
  */
-export function selectInstances(selection, { instanceData, instanceCount, stride, bounds, levelErrors, planes, viewProjection, pixelsPerUnit, pixelError = DEFAULT_LOD_PIXEL_ERROR }) {
+export function selectInstances(selection, { instanceData, instanceCount, stride, bounds, margin = 0, levelErrors, planes, viewProjection, pixelsPerUnit, pixelError = DEFAULT_LOD_PIXEL_ERROR }) {
   selection.counts.fill(0);
   selection.visibleCount = 0;
   const hasLevels = levelErrors.length > 1;
@@ -110,7 +111,7 @@ export function selectInstances(selection, { instanceData, instanceCount, stride
     const y = instanceData[offset + 1] * centerX + instanceData[offset + 5] * centerY + instanceData[offset + 9] * centerZ + instanceData[offset + 13];
     const z = instanceData[offset + 2] * centerX + instanceData[offset + 6] * centerY + instanceData[offset + 10] * centerZ + instanceData[offset + 14];
     const worldScale = largestColumnLength(instanceData, offset);
-    if (isOutsideFrustum(planes, x, y, z, bounds.radius * worldScale)) continue;
+    if (isOutsideFrustum(planes, x, y, z, bounds.radius * worldScale + margin)) continue;
     let level = 0;
     if (hasLevels) {
       const depth = viewProjection[3] * x + viewProjection[7] * y + viewProjection[11] * z + viewProjection[15];

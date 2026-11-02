@@ -32,7 +32,7 @@ test('every species and leaf mode yields valid geometry on all levels', () => {
   for (const species of SPECIES_NAMES) {
     for (const leaves of ['cards', 'mesh']) {
       const tree = createTree({ species, leaves }, 3);
-      assert.equal(tree.levels.length, 3);
+      assert.equal(tree.levels.length, 4);
       for (const level of tree.levels) {
         for (const part of level.parts) assertValidGeometry(part.geometry);
       }
@@ -70,15 +70,26 @@ test('invalid inputs are rejected', () => {
 });
 
 test('triangle budgets fall with each level of detail', () => {
-  const budgets = { broadleaf: [60000, 12000, 2500], birch: [60000, 12000, 2500], conifer: [60000, 12000, 2500], palm: [30000, 8000, 3000], bush: [20000, 5000, 2500] };
+  const budgets = { broadleaf: [60000, 12000, 2500, 2500], birch: [60000, 12000, 2500, 2500], conifer: [60000, 12000, 2500, 1200], palm: [30000, 8000, 3000, 3000], bush: [20000, 5000, 2500, 2500] };
   for (const species of SPECIES_NAMES) {
     for (const leaves of ['cards', 'mesh']) {
       const triangles = createTree({ species, leaves }, 4).levels.map(level => level.triangles);
-      assert.ok(triangles[0] > triangles[1] && triangles[1] > triangles[2], `${species} ${leaves} ${triangles}`);
+      assert.ok(triangles[0] > triangles[1] && triangles[1] > triangles[2] && triangles[2] >= triangles[3], `${species} ${leaves} ${triangles}`);
       const scale = leaves === 'mesh' ? 2 : 1;
       triangles.forEach((count, level) => assert.ok(count <= budgets[species][level] * scale, `${species} ${leaves} level ${level}: ${count}`));
     }
   }
+});
+
+test('foliage carries thinner shadow layers, and the far conifer level costs under half the level before it', () => {
+  const tree = createTree('conifer', 4);
+  const [full, sparse, sparsest] = tree.levels[0].parts[1].shadowLods;
+  assert.equal(full.error, 0);
+  assert.ok(full.geometry.indices.length > sparse.geometry.indices.length && sparse.geometry.indices.length > sparsest.geometry.indices.length);
+  assert.ok(sparse.error > 0 && sparsest.error > sparse.error, 'errors grow as the layers thin out');
+  assert.equal(tree.levels[1].parts[1].shadowLods.length, 2, 'level 1 already is the first thinner layer');
+  assert.equal(tree.levels[2].parts[1].shadowLods, undefined, 'the crown clumps are thin enough');
+  assert.ok(tree.levels[3].triangles < tree.levels[2].triangles / 2);
 });
 
 test('wind sway comes from leaves on the foliage tag while bark stays static', () => {

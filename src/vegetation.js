@@ -151,6 +151,12 @@ function describeCrown(leafSites) {
   return { center, radius };
 }
 
+/** Every `stride`-th ring of a branch, and always its tip. */
+function thinnedRings(points, radii, stride) {
+  const kept = points.map((point, index) => index).filter(index => index % stride === 0 || index === points.length - 1);
+  return { points: kept.map(index => points[index]), radii: kept.map(index => radii[index]) };
+}
+
 function buildBark(skeleton, preset, setting, bark) {
   const lastLevel = preset.levels.length - 1;
   const maximumLevel = setting.maximumBranchLevel < 0 ? lastLevel + setting.maximumBranchLevel : setting.maximumBranchLevel;
@@ -160,6 +166,7 @@ function buildBark(skeleton, preset, setting, bark) {
     const baseSides = preset.sides[Math.min(branch.level, preset.sides.length - 1)];
     const sides = Math.max(3, Math.round(baseSides * setting.sideScale));
     let { points, radii } = branch;
+    if (setting.pointStride > 1) ({ points, radii } = thinnedRings(points, radii, setting.pointStride));
     if (branch.level === 0) {
       const direction = normalized(subtractVectors(points[1], points[0]));
       points = [addScaled(points[0], direction, -0.3), ...points];
@@ -180,6 +187,14 @@ function buildShadowTrunk(skeleton, preset, bark) {
   const thickestBranchRadius = Math.max(0, ...skeleton.branches.filter(branch => branch.level > 0).map(branch => branch.radii[0]));
   const trunkRadius = skeleton.branches[0].radii[0] * preset.rootFlare;
   return { geometry: buildBark(skeleton, preset, trunkOnly, bark), error: 2 * thickestBranchRadius + 0.15 * trunkRadius };
+}
+
+// The trunk of the shadow level again with a third of its rings, which cuts a bend of the trunk by at most this many meters.
+const THINNED_TRUNK_ERROR = 0.3;
+
+function buildThinnedShadowTrunk(skeleton, preset, bark, trunk) {
+  const thinned = { sideScale: 0.25, maximumBranchLevel: 0, pointStride: 3 };
+  return { geometry: buildBark(skeleton, preset, thinned, bark), error: trunk.error + THINNED_TRUNK_ERROR };
 }
 
 function isTextureDescriptor(value) {
@@ -296,7 +311,7 @@ function addBlob(builder, center, radius, shading) {
   }
 }
 
-function addCrownClumps(builder, skeleton, spec, mode, random) {
+function addCrownClumps(builder, skeleton, spec, mode, random, widthScale = 1) {
   const cellSize = skeleton.crown.radius / 2.1;
   const cells = new Map();
   for (const site of skeleton.leafSites) {
@@ -307,7 +322,7 @@ function addCrownClumps(builder, skeleton, spec, mode, random) {
   for (const sites of cells.values()) {
     const center = scaleVector(sites.reduce((sum, site) => addVectors(sum, site.position), [0, 0, 0]), 1 / sites.length);
     const shading = crownShading(skeleton, center);
-    const radius = cellSize * (0.55 + 0.1 * Math.min(sites.length, 5));
+    const radius = cellSize * (0.55 + 0.1 * Math.min(sites.length, 5)) * widthScale;
     if (mode === 'mesh') {
       addBlob(builder, center, radius, shading);
       continue;
@@ -331,11 +346,10 @@ function addCrownClumps(builder, skeleton, spec, mode, random) {
   }
 }
 
-function buildFoliage(skeleton, preset, mode, levelIndex, random) {
-  const setting = LEVEL_SETTINGS[levelIndex];
+function buildFoliage(skeleton, preset, mode, setting, random) {
   const builder = createMeshBuilder({ withColors: true });
   if (setting.leafKeep === 0) {
-    addCrownClumps(builder, skeleton, preset.leaf, mode, random);
+    addCrownClumps(builder, skeleton, preset.leaf, mode, random, setting.crownScale);
     return builder.build();
   }
   const stride = Math.round(1 / setting.leafKeep);
@@ -355,6 +369,21 @@ function createBarkMaterial(preset, scannedTextures) {
   if (scannedTextures.normal) material.normalMap = scannedTextures.normal;
   if (scannedTextures.roughness) material.metallicRoughnessMap = scannedTextures.roughness;
   return material;
+}
+
+// Thinner leaf layers for a shadow map whose texels are wider than a leaf. Each keeps the covered area of the layer above it
+// (fewer leaves, each larger), draws with the same material as the tree, and `error` is how far a leaf may sit from where
+// the full layer has one: about the spacing of the leaves it replaces.
+const SHADOW_FOLIAGE_SETTINGS = [
+  { leafKeep: 0.34, leafScale: 1.7, error: 1 },
+  { leafKeep: 0.125, leafScale: 2.8, error: 2 },
+];
+
+function buildShadowFoliage(skeleton, preset, mode, seed, firstSetting) {
+  return SHADOW_FOLIAGE_SETTINGS.slice(firstSetting).map((setting, index) => ({
+    geometry: buildFoliage(skeleton, preset, mode, setting, createRandom(seed * 104729 + 50 + firstSetting + index)),
+    error: setting.error,
+  }));
 }
 
 function createMaterials(preset, mode, scannedBark, scannedLeaves) {
@@ -439,13 +468,20 @@ export function createTree(speciesOrOptions = 'broadleaf', seed = 1) {
   const scannedLeaves = leaves === 'cards' ? resolveLeafTextures(options.leafTextures, options.species) : null;
   const materials = createMaterials(preset, leaves, scannedBark, scannedLeaves);
   const shadowTrunk = buildShadowTrunk(skeleton, preset, bark);
+  const thinnedShadowTrunk = buildThinnedShadowTrunk(skeleton, preset, bark, shadowTrunk);
   const levels = LEVEL_SETTINGS.map((setting, levelIndex) => {
     const levelRandom = createRandom(seed * 104729 + levelIndex);
     const foliageMaterial = setting.leafKeep === 0 ? materials.crown : materials.foliage;
     const barkGeometry = buildBark(skeleton, preset, setting, bark);
+    const foliageGeometry = buildFoliage(skeleton, preset, leaves, setting, levelRandom);
+    // Level 0 can drop to either thinner layer and level 1 to the second; the crown clumps of level 2 are thin enough.
+    const shadowFoliage = setting.leafKeep === 0 ? [] : buildShadowFoliage(skeleton, preset, leaves, seed, levelIndex);
     return describeLevel([
-      { role: 'bark', geometry: barkGeometry, material: materials.bark, tintable: false, shadowLods: [{ geometry: barkGeometry, error: 0 }, shadowTrunk] },
-      { role: 'foliage', geometry: buildFoliage(skeleton, preset, leaves, levelIndex, levelRandom), material: foliageMaterial, tintable: true },
+      { role: 'bark', geometry: barkGeometry, material: materials.bark, tintable: false, shadowLods: [{ geometry: barkGeometry, error: 0 }, shadowTrunk, thinnedShadowTrunk] },
+      {
+        role: 'foliage', geometry: foliageGeometry, material: foliageMaterial, tintable: true,
+        ...(shadowFoliage.length ? { shadowLods: [{ geometry: foliageGeometry, error: 0 }, ...shadowFoliage] } : {}),
+      },
     ]);
   });
   bakeCrownSkyVisibility(levels);

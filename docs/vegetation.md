@@ -32,23 +32,26 @@ Branches are swept tubes with parallel-transported rings, a taper, a root flare 
 Leaves sit on terminal twigs, face outward and up with jitter, and carry vertex colors that darken toward the crown center, so the canopy has depth.
 Shading normals blend toward the crown, so a flat card lights like part of a rounded crown.
 
-The tree has three levels of detail, each listing parts with a `role`, `geometry`, `material` and `tintable` flag:
+The tree has four levels of detail, each listing parts with a `role`, `geometry`, `material` and `tintable` flag:
 
 | Level | Content | Default switch distance |
 | --- | --- | --- |
 | 0 | Full skeleton, every leaf site | up to 38 m |
 | 1 | Twigs dropped, fewer sides, one third of the leaves 1.7 times larger | 38 to 95 m |
-| 2 | Trunk and main limbs, crown as merged clumps (low-poly blobs or crossed cards) | beyond 95 m |
+| 2 | Trunk and main limbs, crown as merged clumps (low-poly blobs or crossed cards) | 95 to 150 m |
+| 3 | The same with a third of the rings on each limb, three or four sides and crown clumps 1.5 times wider | beyond 150 m |
 
-Measured triangle counts for seed 4 (level 0 / 1 / 2):
+Measured triangle counts for seed 4 (level 0 / 1 / 2 / 3):
 
 | Species | `cards` | `mesh` |
 | --- | --- | --- |
-| broadleaf | 5.8k / 1.8k / 0.5k | 16.0k / 5.3k / 3.0k |
-| birch | 7.9k / 2.3k / 0.6k | 21.9k / 7.0k / 2.8k |
-| conifer | 18.5k / 4.7k / 2.2k | 63.9k / 19.8k / 3.4k |
-| palm | 3.8k / 1.0k / 0.9k | 11.8k / 3.7k / 2.9k |
-| bush | 3.1k / 1.1k / 0.4k | 10.9k / 3.7k / 1.9k |
+| broadleaf | 5.8k / 1.8k / 0.5k / 0.3k | 24.0k / 7.9k / 3.2k / 3.0k |
+| birch | 7.9k / 2.3k / 0.6k / 0.4k | 21.9k / 7.0k / 2.8k / 2.6k |
+| conifer | 18.5k / 4.7k / 2.2k / 0.9k | 63.9k / 19.8k / 3.4k / 2.2k |
+| palm | 3.8k / 1.0k / 0.9k / 0.4k | 11.8k / 3.7k / 2.9k / 2.4k |
+| bush | 3.1k / 1.1k / 0.4k / 0.2k | 10.9k / 3.7k / 1.8k / 1.8k |
+
+In the shadow map, foliage has its own thinner layers (`shadowLods` on the foliage part: a third of the leaves 1.7 times larger, then an eighth 2.8 times larger), and the bark has a trunk with half the sides and one with a third of the rings. The renderer picks one by the size of a shadow texel.
 
 Cards are single-sided now that the renderer honors `doubleSided`; the old duplicated back faces cost 22 to 41 percent of level 0 (broadleaf 7.4k to 5.8k, birch 10.7k to 7.9k, conifer 26.1k to 18.5k, palm 6.4k to 3.8k, bush 4.7k to 3.1k).
 
