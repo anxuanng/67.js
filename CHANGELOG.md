@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Fix links in the npm package that pointed at docs it does not ship (issue #178). `docs/guide.md`, `docs/material-maps.md`, `README.md` and `ROADMAP.md` now link the 20 unshipped docs, `CONTRIBUTING.md`, the texture credits and the changelog by absolute GitHub URL; shipping those docs would add 64 KB gzip. `npm run check:links:package` packs the archive, unpacks it and checks every link inside (26 files, 0 broken), and the `Test` workflow runs it.
 - Take 34 KB of headroom under the npm archive budget without raising it (issue #177). `CHANGELOG.md` no longer ships in the package, because GitHub serves it; the archive went from 740,972 to 705,961 bytes against the 740,000 budget. `bench/size/README.md` now says how the budget is set and what it protects.
 - Add a test that fails when the MCP tool count in `docs/guide.md`, `docs/mcp.md`, `index.html` or `scripts/smoke-mcp.mjs` differs from the `tools/list` result (issue #180). The server registers 22 tools; the 23rd `register(` in the file is the function definition, so the documented count was right.
 - A renderer no longer draws its shadow map a second time on the first frame when the frame has no assembly; the constructor already drew it. On `mountain-valley` that removes 9.72 million shadow triangles from the first frame, with identical pictures (issue #171). `node bench/reference/profile-scene.mjs <scene>` prints where a scene's time goes, and `frame-time.mjs --plain` measures scenes that are too large for the light bake.
