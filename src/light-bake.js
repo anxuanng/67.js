@@ -41,6 +41,8 @@ const SMOOTH_SIGMA_TEXELS = 1.5;
 const SMOOTH_MINIMUM_FACING = 0.9;
 const SMOOTH_PLANE_TEXELS = 1;
 const DILATION_PASSES = 2;
+// How far outside a chart (in texels, centre to edge) a texel still takes the chart's own surface instead of a neighbour's light.
+const GUTTER_TEXELS = 0.75;
 const AVERAGE_GRID = 16;
 const LIGHT_MAP_CLAMP_TO_EDGE = 33071;
 const LIGHT_MAP_LINEAR = 9729;
@@ -605,6 +607,7 @@ function rasterizeTexels(geometry, matrix, resolution) {
   const positions = new Float64Array(texelCount * 3);
   const normals = new Float64Array(texelCount * 3);
   const covered = new Uint8Array(texelCount);
+  const nearestDistance = new Float64Array(texelCount).fill(Infinity);
   const { positions: vertexPositions, normals: vertexNormals, indices } = geometry;
   const uvs = geometry.lightUvs ?? geometry.uvs;
   const worldCorner = [0, 0, 0, 0, 0, 0, 0, 0, 0];
@@ -623,29 +626,54 @@ function rasterizeTexels(geometry, matrix, resolution) {
     const [firstTexel, secondTexel, thirdTexel] = texels;
     const determinant = (secondTexel[1] - thirdTexel[1]) * (firstTexel[0] - thirdTexel[0]) + (thirdTexel[0] - secondTexel[0]) * (firstTexel[1] - thirdTexel[1]);
     if (Math.abs(determinant) < 1e-12) continue;
-    const minimumColumn = Math.max(Math.floor(Math.min(firstTexel[0], secondTexel[0], thirdTexel[0])), 0);
-    const maximumColumn = Math.min(Math.ceil(Math.max(firstTexel[0], secondTexel[0], thirdTexel[0])), resolution - 1);
-    const minimumRow = Math.max(Math.floor(Math.min(firstTexel[1], secondTexel[1], thirdTexel[1])), 0);
-    const maximumRow = Math.min(Math.ceil(Math.max(firstTexel[1], secondTexel[1], thirdTexel[1])), resolution - 1);
+    const minimumColumn = Math.max(Math.floor(Math.min(firstTexel[0], secondTexel[0], thirdTexel[0])) - 1, 0);
+    const maximumColumn = Math.min(Math.ceil(Math.max(firstTexel[0], secondTexel[0], thirdTexel[0])) + 1, resolution - 1);
+    const minimumRow = Math.max(Math.floor(Math.min(firstTexel[1], secondTexel[1], thirdTexel[1])) - 1, 0);
+    const maximumRow = Math.min(Math.ceil(Math.max(firstTexel[1], secondTexel[1], thirdTexel[1])) + 1, resolution - 1);
     for (let row = minimumRow; row <= maximumRow; row++) {
       for (let column = minimumColumn; column <= maximumColumn; column++) {
         const index = row * resolution + column;
-        if (covered[index]) continue;
         const centerX = column + 0.5;
         const centerY = row + 0.5;
-        const firstWeight = ((secondTexel[1] - thirdTexel[1]) * (centerX - thirdTexel[0]) + (thirdTexel[0] - secondTexel[0]) * (centerY - thirdTexel[1])) / determinant;
-        const secondWeight = ((thirdTexel[1] - firstTexel[1]) * (centerX - thirdTexel[0]) + (firstTexel[0] - thirdTexel[0]) * (centerY - thirdTexel[1])) / determinant;
-        const thirdWeight = 1 - firstWeight - secondWeight;
-        if (firstWeight < -1e-9 || secondWeight < -1e-9 || thirdWeight < -1e-9) continue;
+        const { weights, distance } = nearestTriangleWeights(centerX, centerY, texels, determinant);
+        // A texel whose centre is inside a triangle is covered by it. A texel just outside belongs to the nearest triangle, at
+        // the nearest point on its edge, so a chart edge is sampled at its own surface and never at its neighbour's.
+        if (distance > GUTTER_TEXELS || distance >= nearestDistance[index]) continue;
+        nearestDistance[index] = distance;
         for (let axis = 0; axis < 3; axis++) {
-          positions[index * 3 + axis] = firstWeight * worldCorner[axis] + secondWeight * worldCorner[3 + axis] + thirdWeight * worldCorner[6 + axis];
+          positions[index * 3 + axis] = weights[0] * worldCorner[axis] + weights[1] * worldCorner[3 + axis] + weights[2] * worldCorner[6 + axis];
           normals[index * 3 + axis] = faceNormal[axis];
         }
         covered[index] = 1;
       }
     }
   }
-  return { positions, normals, covered };
+  return { positions, normals, covered, nearestDistance };
+}
+
+/** The barycentric weights of the point of a triangle (in texel space) nearest a texel centre, and how far that point is, in texels. */
+function nearestTriangleWeights(centerX, centerY, texels, determinant) {
+  const [first, second, third] = texels;
+  const firstWeight = ((second[1] - third[1]) * (centerX - third[0]) + (third[0] - second[0]) * (centerY - third[1])) / determinant;
+  const secondWeight = ((third[1] - first[1]) * (centerX - third[0]) + (first[0] - third[0]) * (centerY - third[1])) / determinant;
+  const thirdWeight = 1 - firstWeight - secondWeight;
+  if (firstWeight >= -1e-9 && secondWeight >= -1e-9 && thirdWeight >= -1e-9) return { weights: [firstWeight, secondWeight, thirdWeight], distance: 0 };
+  let nearest = { weights: [1, 0, 0], distance: Infinity };
+  for (let edge = 0; edge < 3; edge++) {
+    const start = texels[edge];
+    const end = texels[(edge + 1) % 3];
+    const edgeX = end[0] - start[0];
+    const edgeY = end[1] - start[1];
+    const along = Math.min(Math.max(((centerX - start[0]) * edgeX + (centerY - start[1]) * edgeY) / (edgeX * edgeX + edgeY * edgeY || 1), 0), 1);
+    const distance = Math.hypot(centerX - start[0] - along * edgeX, centerY - start[1] - along * edgeY);
+    if (distance < nearest.distance) {
+      const weights = [0, 0, 0];
+      weights[edge] = 1 - along;
+      weights[(edge + 1) % 3] = along;
+      nearest = { weights, distance };
+    }
+  }
+  return nearest;
 }
 
 function worldFaceNormal(worldCorner, vertexNormals, firstVertex, matrix) {
@@ -893,7 +921,7 @@ export function traceLightmaps(plan, tracedSettings) {
   const sum = [0, 0, 0];
   for (const { part, index, unwrapped, area, slot } of plan.entries) {
     const resolution = lightmapResolution(area, unwrapped.utilization, settings);
-    const { positions, normals, covered } = rasterizeTexels(unwrapped.geometry, part.matrix, resolution);
+    const { positions, normals, covered, nearestDistance } = rasterizeTexels(unwrapped.geometry, part.matrix, resolution);
     const radiance = new Float32Array(resolution * resolution * 3);
     const skyVisibility = new Float32Array(resolution * resolution * 3);
     let skySum = 0;
@@ -911,8 +939,11 @@ export function traceLightmaps(plan, tracedSettings) {
       }
       const visible = gather(point, normal, index * 1_000_003 + texel, sum);
       skyVisibility.fill(visible, texel * 3, texel * 3 + 3);
-      skySum += visible;
-      skyTexels++;
+      // Only texels inside a chart count toward the mean, so the gutter around a chart does not change what the part sees on average.
+      if (nearestDistance[texel] === 0) {
+        skySum += visible;
+        skyTexels++;
+      }
       for (let channel = 0; channel < 3; channel++) {
         // The lightMap slot stores the light that arrives; the shader multiplies it by the live surface colour.
         radiance[texel * 3 + channel] = slot ? sum[channel] : sum[channel] * albedo[channel];

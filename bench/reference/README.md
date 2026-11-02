@@ -1,6 +1,6 @@
 # Reference renders
 
-This suite scores how close a 67js render is to Blender on 21 fixed scenes. Later work uses these scores as its starting point.
+This suite scores how close a 67js render is to Blender on 23 fixed scenes. Later work uses these scores as its starting point.
 
 ## Run it
 
@@ -225,6 +225,34 @@ A probe at the middle of the object and traced without it is the only option the
 | `metal-room` | 0.5128 | 0.5076 | 0.5262 |
 
 Every other scene scored the same to four digits, GPU and CPU. `car-paint` has one reflective part, so it gains little: the clearcoat sphere reflects the floor and nothing else. The issue's second box holds (no frame cost without a reflective part); its first box does not (`metal` is 0.012 above EEVEE).
+
+## Fog on two more scenes, and a seam in baked rooms (2026-11-02, issues #164 and #165)
+
+**New scenes.** `fog-valley` is open ground under the HDRI sky with a low sun ahead of the camera, 48 blocks from 25 m to 400 m away and `volumeFog` density 0.005 over the whole field. `fog-room` is a 5 m square room with a window, density 0.2, a constant 0.05 world and the sun coming through the window as a shaft; it declares a `brightRegion` (24.3 percent of the frame). Both are built from engine code, so Blender gets the same geometry. Scores against Cycles on 2026-11-02 (RTX 3060):
+
+| Scene | 67js whole frame | EEVEE whole frame | 67js region | EEVEE region |
+| --- | --- | --- | --- | --- |
+| `fog-room` | 0.1953 | 0.3730 | 0.1682 | 0.3146 |
+| `fog-valley` | 0.1967 | 0.1952 | | |
+
+`fog-room` beats EEVEE by a wide margin with the constants of #161 unchanged. `fog-valley` is 0.0015 behind EEVEE, which is inside the CPU and GPU spread of that scene (`gpu-vs-cpu` 0.0122), so the constants hold on a scene they were not fitted to. Every other scene keeps its score to four digits.
+
+**Constants derived from the scene (tried, not kept).** The ambient floor of 15 percent in shadow is the constant most likely to be wrong in an open scene, so I measured the share of the sky that the fog's air sees: a grid of 512 points in the volume, 48 rays each, and the sun's shadow of each point. The ambient is scaled by the share the sunlit points see, and the shadowed fog keeps the ratio of the two shares. Results against Cycles, region in brackets:
+
+| Scene | Constants of #161 | Ambient times sunlit share | Same, with the shadow ratio |
+| --- | --- | --- | --- |
+| `temple-hall` no bake | 0.1436 (0.2305) | 0.1334 (0.2513) | 0.1329 (0.2519) |
+| `temple-hall` baked | 0.0559 (0.2523) | 0.0741 (0.2702) | 0.0751 (0.2708) |
+| `dark-shaft` no bake | 0.1430 (0.1273) | 0.1230 (0.1080) | 0.1226 (0.1080) |
+| `dark-shaft` baked | 0.0607 (0.1769) | 0.0792 (0.2259) | 0.0798 (0.2259) |
+| `fog-valley` no bake | 0.1967 | | 0.1998 |
+| `fog-room` no bake | 0.1953 (0.1682) | | 0.1512 (0.1820) |
+
+It improves the whole frame of three plain scenes and the region of `dark-shaft`, and worsens both baked rows, the region of `temple-hall`, `fog-valley` and the region of `fog-room`. The region of `temple-hall` is the pixels that Cycles shows bright, and there the fog wants more ambient, not less: a mean share per volume takes light from points that see the sky through the roof slots. A per-point share needs a 3D texture in the post shader, which is more than the 150 byte limit of the core entry, and I did not build it. The change was reverted, so `src/post.js` is as before and #164 is not fixed.
+
+**The corner line in baked `dark-shaft` (#165).** Measured with a ridge detector on the dark pixels (a pixel brighter than the pixels 3 to 4 px away on both sides): the plain frame has none above 0.03 display luminance, and the baked frame had a 56 px diagonal ridge at the right wall and floor corner (x 767 to 797, y 316 to 337) plus thin lines along the tops of the slabs. It is a bake seam leak. The unwrap packs charts one texel apart, so the texel just outside a chart's edge is the gutter, and `dilate` filled it with the average of every covered neighbour, including the neighbouring chart. The wall's inner face sits next to the outer face, which sees the whole sky: its sky visibility texel read 128 of 255 where the interior reads 1 or 2, and the bilinear read at the wall's bottom edge took about 20 percent of it. `rasterizeTexels` now gives a texel within 0.75 texel of a chart to the nearest triangle, at the nearest point on its edge, so a chart edge is sampled at its own surface; the sky visibility mean counts only texels inside a chart, so the area weighting of `skyVisibility` is unchanged. After the change the edge texel reads 1 against 1 in the row above, and the ridges are gone. The baked rows moved as a side effect: `dark-shaft` 0.0653 (0.1847) to 0.0607 (0.1769) and `temple-hall` 0.0578 (0.2550) to 0.0559 (0.2523).
+
+Region scores, before and after this change, against Cycles (EEVEE in brackets): `temple-hall` 0.2305 and 0.2523 baked (0.2455), `dark-shaft` 0.1273 and 0.1769 baked (0.2643). Only the baked rows moved, and they moved down.
 
 ## Baseline
 

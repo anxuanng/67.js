@@ -2,6 +2,10 @@
  "metric": "FLIP (LDR), mean error, lower is better",
  "blenderVersion": "5.2.2 LTS",
  "seconds": {
+  "fog-room": {
+   "cycles": 29.4,
+   "eevee": 2.7
+  },
   "brick-flat": {
    "cycles": 10.8,
    "eevee": 1.6
@@ -160,12 +164,32 @@
    "eevee-vs-cycles": 0.2662,
    "gpu-vs-cpu": 0.0089
   },
+  "fog-room": {
+   "gpu-vs-cycles": 0.1953,
+   "gpu-vs-eevee": 0.2768,
+   "cpu-vs-cycles": 0.1958,
+   "cpu-vs-eevee": 0.2764,
+   "eevee-vs-cycles": 0.373,
+   "gpu-vs-cpu": 0.0059,
+   "region-pixels": 0.243,
+   "region-gpu-vs-cycles": 0.1682,
+   "region-gpu-vs-eevee": 0.3032,
+   "region-eevee-vs-cycles": 0.3146
+  },
+  "fog-valley": {
+   "gpu-vs-cycles": 0.1967,
+   "gpu-vs-eevee": 0.1098,
+   "cpu-vs-cycles": 0.1965,
+   "cpu-vs-eevee": 0.1095,
+   "eevee-vs-cycles": 0.1952,
+   "gpu-vs-cpu": 0.0122
+  },
   "foliage": {
-   "gpu-vs-cycles": 0.129,
-   "gpu-vs-eevee": 0.091,
-   "cpu-vs-cycles": 0.1287,
-   "cpu-vs-eevee": 0.0906,
-   "eevee-vs-cycles": 0.0864,
+   "gpu-vs-cycles": 0.1181,
+   "gpu-vs-eevee": 0.0846,
+   "cpu-vs-cycles": 0.1178,
+   "cpu-vs-eevee": 0.0843,
+   "eevee-vs-cycles": 0.0888,
    "gpu-vs-cpu": 0.01
   },
   "glass": {
@@ -233,11 +257,11 @@
    "gpu-vs-cpu": 0.0061
   },
   "mountain-valley": {
-   "gpu-vs-cycles": 0.3478,
-   "gpu-vs-eevee": 0.2426,
-   "cpu-vs-cycles": 0.3466,
-   "cpu-vs-eevee": 0.2412,
-   "eevee-vs-cycles": 0.1828,
+   "gpu-vs-cycles": 0.349,
+   "gpu-vs-eevee": 0.2391,
+   "cpu-vs-cycles": 0.3478,
+   "cpu-vs-eevee": 0.2378,
+   "eevee-vs-cycles": 0.1879,
    "gpu-vs-cpu": 0.0193
   },
   "outdoor-hdri": {
