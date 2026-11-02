@@ -99,3 +99,32 @@ export function closedRoomShare(parts, worldMatrices) {
   }
   return hits / CLOSED_ROOM_RAYS;
 }
+
+export const SKY_OPENNESS_RAYS = 32;
+
+/**
+ * The share of upward rays from `point` that leave the parts without hitting a part's underside, or null when the scene is
+ * empty or too large to test. 1 is open ground under the sky, 0 is a closed room. Pass it to `Renderer67` as the
+ * `skyOpenness` option and an unset `volumeFog.shadowAmbient` follows it. The rays are the upper half of the same fixed
+ * spiral, so the same scene gives the same share.
+ */
+export function skyOpenness(parts, point) {
+  const worldMatrices = new Map(parts.map(part => [part.name, part.matrix]));
+  const triangles = worldTriangles(parts.filter(part => part.material?.alphaMode !== 'blend'), worldMatrices);
+  if (!triangles) {
+    return null;
+  }
+  const direction = [0, 0, 0];
+  let escaped = 0;
+  for (let ray = 0; ray < SKY_OPENNESS_RAYS; ray++) {
+    fibonacciDirection(ray, SKY_OPENNESS_RAYS * 2, direction);
+    let blocked = false;
+    for (let triangle = 0; triangle < triangles.triangleCount && !blocked; triangle++) {
+      blocked = hitsFrontFace(triangles.corners, triangle * 9, point, direction);
+    }
+    if (!blocked) {
+      escaped++;
+    }
+  }
+  return escaped / SKY_OPENNESS_RAYS;
+}

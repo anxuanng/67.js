@@ -41,7 +41,7 @@ renderer.render({ eye: [0, 2, 5], target: [0, 1, 0], time: 0 });
 | `noiseScale` | `0.3` | `0.001…100`, inverse scene units |
 | `drift` | `[0.03, 0, 0]` | Three components within ±100, scene units per second |
 | `maxDistance` | `100` | `0.01…10,000`, ray distance in scene units |
-| `shadowAmbient` | `0.15` | `0…1`; the share of `ambient` the fog keeps where the sun's shadow covers it. A closed room sees little sky (0.15); open ground under a sky sees all of it (1) |
+| `shadowAmbient` | derived | `0…1`; the share of `ambient` the fog keeps where the sun's shadow covers it. Left unset, 32 upward rays from the middle of the fog box decide: a closed room keeps 0.15, open ground under a sky keeps 1, and a partly covered scene lands between. Set it to override |
 
 Values must be finite numbers. Active volume fog accepts finite frame time within ±1,000,000 seconds and a nonzero light direction with components within ±1,000,000. Noise samples absolute time, so backward seeks reproduce earlier density.
 

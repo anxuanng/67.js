@@ -8,7 +8,7 @@ import { applyProjection } from './camera.js';
 import { resolveEffects } from './effects.js';
 import { createLightingState, updateLightingState } from './lighting.js';
 import { SHADOW_ATLAS_WIDTH, SHADOW_ATLAS_HEIGHT, tileViewport, writeShadowTile } from './local-shadows.js';
-import { resolveVolumeFog } from './volumetric.js';
+import { resolveVolumeFog, volumeShadowAmbient } from './volumetric.js';
 import { assertEnvironmentMap, createEnvironmentResources, environmentBackgroundFragment, environmentBrdfFragment, environmentPrefilterFragment, estimateEnvironmentBytes } from './environment.js';
 import { validateSkinGeometry, validateSkinPose, skinTextureLayout, packSkinInfluences } from './skinning.js';
 import { validateSplatMaterial, splatBatchState, splatTextureBytes, resolveSplatSize, packSplatParameters, buildSplatPixels } from './splat.js';
@@ -410,8 +410,11 @@ function allFinite(values) {
 }
 
 export class Renderer67 {
-  constructor(canvas, parts, { batching = true, pixelRatio = 1.5, benchmark = false, world = false, ground = true, transparent = false, samples = 4, hdr = false, depth = false, memoryBudgetMiB = 256, environment = {}, shadowBounds = {}, shadowCascades = null, culling = true, lodPixelError = 1, createGpuTimer = null } = {}) {
+  constructor(canvas, parts, { batching = true, pixelRatio = 1.5, benchmark = false, world = false, ground = true, transparent = false, samples = 4, hdr = false, depth = false, memoryBudgetMiB = 256, environment = {}, shadowBounds = {}, shadowCascades = null, culling = true, lodPixelError = 1, createGpuTimer = null, skyOpenness = null } = {}) {
     this.canvas = canvas;
+    this.sceneParts = parts;
+    // `skyOpenness` from closed-room.js is passed in, which keeps the ray code out of scenes without volume fog.
+    this.skyOpenness = skyOpenness;
     // `createGpuTimer` from adaptive-quality.js is passed in, which keeps the timer code out of scenes that do not time frames.
     this.createGpuTimer = createGpuTimer;
     this.gpuTimer = undefined;
@@ -1683,7 +1686,7 @@ export class Renderer67 {
     context.uniform3fv(post.uniforms.volumeDrift, volume.drift);
     context.uniform1i(post.uniforms.volumeSteps, volume.steps);
     context.uniform1f(post.uniforms.volumeAnisotropy, volume.anisotropy);
-    context.uniform1f(post.uniforms.volumeShadowAmbient, volume.shadowAmbient);
+    context.uniform1f(post.uniforms.volumeShadowAmbient, volumeShadowAmbient(volume, this.sceneParts, this.skyOpenness));
     context.uniform1f(post.uniforms.volumeNoiseAmount, volume.noiseAmount);
     context.uniform1f(post.uniforms.volumeNoiseScale, volume.noiseScale);
     context.uniform1f(post.uniforms.volumeMaxDistance, volume.maxDistance);
