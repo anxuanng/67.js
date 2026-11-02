@@ -139,13 +139,14 @@ function createSceneRenderer(parts, scene, cascades) {
 // no automatic probe, so these name one by hand.
 const PROBE_SPECIFICATIONS = { 'material-spheres': [{ position: [0, 1.6, 0] }], metal: [{ position: [0.2, 1, 0.9] }] };
 
-async function probeScene(scene, id, drawnParts) {
-  const { placeProbes, traceProbes } = await import('/src/reflection-probes.js');
+async function probeScene(scene, id, drawnParts, mode) {
+  const { placeProbes, traceObjectProbes, traceProbes } = await import('/src/reflection-probes.js');
   const { pointLights, keyColor, lightDirection, map } = scene.environment;
   const started = performance.now();
   const lighting = { pointLights, keyColor, lightDirection };
-  const trace = traceProbes(scene.parts, lighting, PROBE_SPECIFICATIONS[id] ?? 'room', { environment: scene.environment, environmentMap: map, rotation: map.rotation });
-  const placed = placeProbes(drawnParts, trace, { rotation: map.rotation });
+  const options = { environment: scene.environment, environmentMap: map, rotation: map?.rotation ?? 0 };
+  const trace = mode === 'objects' ? traceObjectProbes(scene.parts, lighting, options) : traceProbes(scene.parts, lighting, PROBE_SPECIFICATIONS[id] ?? 'room', options);
+  const placed = placeProbes(drawnParts, trace, { rotation: map?.rotation ?? 0 });
   return { parts: placed.parts, report: placed.report, seconds: (performance.now() - started) / 1000 };
 }
 
@@ -154,7 +155,7 @@ async function renderReferenceScene(id, { describe, ambientOcclusion = 0, ambien
   // A measurement switch: 0 removes the world's light from every surface, to show how much of a picture comes from it.
   if (ambient !== null) scene.environment = { ...scene.environment, ambientIntensity: ambient };
   const baked = bake ? await bakeScene(scene, bake) : null;
-  const probed = probes ? await probeScene(scene, id, baked ? baked.parts : scene.parts) : null;
+  const probed = probes ? await probeScene(scene, id, baked ? baked.parts : scene.parts, probes) : null;
   const canvas = document.querySelector('canvas');
   // backgroundOnly draws the sky alone, so a score can be limited to the pixels the asset covers.
   const renderer = createSceneRenderer(backgroundOnly ? [] : probed ? probed.parts : baked ? baked.parts : scene.parts, scene, cascades);
@@ -179,7 +180,7 @@ async function renderReferenceScene(id, { describe, ambientOcclusion = 0, ambien
 async function measureReferenceFrameTime(id, { bake, probes = false, cascades = 0, orbit = false, warmupFrames = 20, measuredFrames = 200 }) {
   const scene = await REFERENCE_SCENES[id]();
   const baked = bake ? await bakeScene(scene, {}) : null;
-  const probed = probes ? await probeScene(scene, id, baked ? baked.parts : scene.parts) : null;
+  const probed = probes ? await probeScene(scene, id, baked ? baked.parts : scene.parts, probes) : null;
   const renderer = createSceneRenderer(probed ? probed.parts : baked ? baked.parts : scene.parts, scene, cascades);
   renderer.resize();
   const frame = { ...scene.camera, environment: scene.environment, time: 0, exposure: 1, effects: { ambientOcclusion: 0, ambientOcclusionRadius: 0.5 } };

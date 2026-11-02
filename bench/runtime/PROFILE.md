@@ -203,3 +203,20 @@ Kept: the constructor draws the shadow map, and the first `render` drew it again
 Tried and reverted: a fourth tree level of detail beyond 260 m (trunk only, crown clumps 2.6 times wider, 152 triangles for a conifer). The unculled count fell, but the score against Cycles moved from 0.3473 to 0.3427 (SwiftShader 0.3460 to 0.3413), outside the 0.002 limit, and the other 20 scenes kept their scores. Distant trees are not invisible in this picture: the forest is a wide band across the valley and its coverage changes the mean. A gentler far level (keep the branches, widen the clumps less) was not tried because one rescore takes about 50 minutes on a loaded machine.
 
 Next ideas, by expected size: a far level that keeps the picture (try the clump width at 1.5 times and the trunk with its first branches); shadow level selection from the shadow texel size (2.2 m here, so level 3 geometry is enough for every tree in the map); a light frustum test per instance in the shadow pass; scene build at 1.7 s, of which scatter is 0.55 s and the rest is terrain and painting.
+
+### Shadow pass: level of detail and light frustum (issue #171, 2026-11-02)
+
+`drawShadowCasters` now selects instances per batch with `selectInstances`, as the main pass does. Two changes, measured one at a time on `mountain-valley` with `profile-scene.mjs`. The shadow pass is the first frame minus the later frame.
+
+| Step | Shadow triangles | Shadow calls | RTX 3060 first frame (ms) | SwiftShader first frame (s) |
+| --- | --- | --- | --- | --- |
+| Before | 9,721,668 | 418 | 32 to 79 | 8.9 to 9.5 |
+| Light frustum test only | 9,717,316 | 390 | not separated | not separated |
+| Shadow level only | 2,346,178 | 418 | 28 to 67 | 8.4 to 8.8 |
+| Both, as kept | 2,341,826 | 390 | 29 to 70 | 8.5 to 8.6 |
+
+- Frustum test: nearly nothing here. The shadow box (half-width 2,300 m) holds the whole forest, so only 4,352 triangles and 28 calls fall outside it. It stays because it is exact (an instance outside the box writes no texel) and it costs one pass over the instances that the level step needs anyway; a scene with a tight shadow box gains from it.
+- Shadow level: a tree trunk had 2,050 triangles at every camera level. Each bark part now carries `shadowLods`: its own geometry (error 0) and a trunk with half the sides and no branches. `error` is the width of the thickest branch it drops plus the trunk corners it cuts (0.4 to 1 m for a conifer). The level is the coarsest whose error stays within one texel, `error * scale * texelsPerUnit <= lodPixelError`, with the texel size read from the orthographic light matrix and the map size (2.2 m here). A perspective light (spot tiles) has no single texel and keeps the own geometry. Foliage sways, so it is not cullable and has no shadow level: 1.61 million of the 2.34 million shadow triangles left are foliage.
+- Triangles fell 76 percent; the SwiftShader shadow share (first frame minus later frame) fell from 2.1 to 2.6 s to 1.5 to 1.9 s, less than the triangle count because the foliage, the terrain and the per-instance selection remain. The steady frame does not draw the shadow map (it is static unless a caster moves or wind advances), so the plain frame is unchanged: 3060 median 17.6 to 18.4 ms before and after, SwiftShader 7.0 to 7.3 s. The saving lands on the first frame and on every frame that redraws the map.
+- Picture: `mountain-valley` GPU render against the render before the change differs in 27,167 of 518,400 pixels, 80 of them by more than 8 levels (largest 24 of 255); SwiftShader 33,356 pixels, 78 above 8 levels (largest 35). In the darkest quarter of the image, where shadows are, the mean difference is 0.075 and 0.085 levels. Score against Cycles 0.3473 to 0.3478 (SwiftShader 0.3460 to 0.3466), against EEVEE 0.2420 to 0.2426. The other 20 scenes keep their scores to four digits.
+- Not done: a shadow level for foliage, which needs a bound that includes the wind sway.

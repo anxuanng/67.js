@@ -57,6 +57,10 @@ const bakePreset = bakePresetFlag >= 0 ? argumentsGiven[bakePresetFlag + 1] : nu
 const probesFlag =argumentsGiven.indexOf('--probes');
 const probesValue = probesFlag >= 0 ? argumentsGiven[probesFlag + 1] : undefined;
 const probedSceneIds = probesFlag >= 0 && probesValue && !probesValue.startsWith('--') ? probesValue.split(',') : null;
+// --object-probes [<id>,<id>] gives each reflective part of the named scenes (every scene when no ids follow) a probe of its own (traceObjectProbes).
+const objectProbesFlag = argumentsGiven.indexOf('--object-probes');
+const objectProbesValue = objectProbesFlag >= 0 ? argumentsGiven[objectProbesFlag + 1] : undefined;
+const objectProbeSceneIds = objectProbesFlag >= 0 && objectProbesValue && !objectProbesValue.startsWith('--') ? objectProbesValue.split(',') : null;
 const cascadesFlag = argumentsGiven.indexOf('--cascades');
 const cascades = cascadesFlag >= 0 ? Number(argumentsGiven[cascadesFlag + 1]) : 0;
 const ambientFlag = argumentsGiven.indexOf('--ambient');
@@ -87,8 +91,11 @@ async function renderBackend(backend, serverUrl, graphics) {
       await openHarness();
       const started = performance.now();
       const describe = backend === 'gpu';
-      const probes = probesFlag >= 0 && (probedSceneIds === null || probedSceneIds.includes(id));
+      const probesThisScene = probesFlag >= 0 && (probedSceneIds === null || probedSceneIds.includes(id));
       const bakesThisScene = bakeFlag >= 0 && (bakedSceneIds === null || bakedSceneIds.includes(id));
+      // Object probes are opt in: a recipe does not place them yet, so the baseline scores what a user gets by default.
+      const objectProbesThisScene = objectProbesFlag >= 0 && (objectProbeSceneIds === null || objectProbeSceneIds.includes(id));
+      const probes = objectProbesThisScene ? 'objects' : probesThisScene;
       const bake = bakesThisScene ? { ...skyOnlyOptions, ...(bakePreset ? { preset: bakePreset } : {}) } : null;
       const result = await page.evaluate(([sceneId, shouldDescribe, ambientOcclusion, ambientOcclusionRadius, bakeOptions, cascadeCount, withProbes, ambientScale]) => window.renderReferenceScene(sceneId, { describe: shouldDescribe, ambientOcclusion, ambientOcclusionRadius, bake: bakeOptions, cascades: cascadeCount, probes: withProbes, ambient: ambientScale }), [id, describe, ambientOcclusion, ambientOcclusionRadius, bake, cascades, probes, ambient]);
       if (result.glError !== 0) throw new Error(`${id} on ${backend} gave WebGL error ${result.glError}.`);

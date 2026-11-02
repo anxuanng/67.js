@@ -169,6 +169,18 @@ function buildBark(skeleton, preset, setting, bark) {
   return builder.build();
 }
 
+/**
+ * The trunk alone with half the sides, for a shadow map whose texels are wider than any branch. `error` is the width of
+ * the thickest branch it drops plus the corners it cuts from the trunk: detail thinner than that covers less than a
+ * texel of the map, so a level is used only when one texel is at least this wide.
+ */
+function buildShadowTrunk(skeleton, preset, bark) {
+  const trunkOnly = { sideScale: 0.5, maximumBranchLevel: 0 };
+  const thickestBranchRadius = Math.max(0, ...skeleton.branches.filter(branch => branch.level > 0).map(branch => branch.radii[0]));
+  const trunkRadius = skeleton.branches[0].radii[0] * preset.rootFlare;
+  return { geometry: buildBark(skeleton, preset, trunkOnly, bark), error: 2 * thickestBranchRadius + 0.15 * trunkRadius };
+}
+
 function isTextureDescriptor(value) {
   return Boolean(value) && typeof value === 'object' && Boolean(value.image);
 }
@@ -403,11 +415,13 @@ export function createTree(speciesOrOptions = 'broadleaf', seed = 1) {
   const bark = { scanned: Boolean(scannedBark), tileSize: options.barkTileSize ?? (scannedBark ? SCANNED_BARK_TILE_SIZE : BARK_TILE_SIZE) };
   const scannedLeaves = leaves === 'cards' ? resolveLeafTextures(options.leafTextures, options.species) : null;
   const materials = createMaterials(preset, leaves, scannedBark, scannedLeaves);
+  const shadowTrunk = buildShadowTrunk(skeleton, preset, bark);
   const levels = LEVEL_SETTINGS.map((setting, levelIndex) => {
     const levelRandom = createRandom(seed * 104729 + levelIndex);
     const foliageMaterial = setting.leafKeep === 0 ? materials.crown : materials.foliage;
+    const barkGeometry = buildBark(skeleton, preset, setting, bark);
     return describeLevel([
-      { role: 'bark', geometry: buildBark(skeleton, preset, setting, bark), material: materials.bark, tintable: false },
+      { role: 'bark', geometry: barkGeometry, material: materials.bark, tintable: false, shadowLods: [{ geometry: barkGeometry, error: 0 }, shadowTrunk] },
       { role: 'foliage', geometry: buildFoliage(skeleton, preset, leaves, levelIndex, levelRandom), material: foliageMaterial, tintable: true },
     ]);
   });
@@ -604,6 +618,7 @@ function instanceParts(instance, levelIndex, label) {
     instance.partsByLevel[levelIndex] = instance.variant.levels[levelIndex].parts.map((part) => ({
       name: `${label} ${part.role}`,
       geometry: part.geometry,
+      shadowLods: part.shadowLods,
       matrix: instance.matrix,
       material: part.tintable ? { ...part.material, color: part.material.color.map((channel, axis) => channel * instance.tint[axis]) } : part.material,
     }));
@@ -693,5 +708,5 @@ export function selectLevels(instances, eye, { distanceScale = 1, hysteresis = 0
 
 /** Renderer parts for one tree (or clump) placed by `matrix`, at a level of detail. */
 export function vegetationParts(variant, matrix, levelIndex = 0, name = variant.species) {
-  return variant.levels[levelIndex].parts.map(part => ({ name: `${name} ${part.role}`, geometry: part.geometry, matrix, material: part.material }));
+  return variant.levels[levelIndex].parts.map(part => ({ name: `${name} ${part.role}`, geometry: part.geometry, shadowLods: part.shadowLods, matrix, material: part.material }));
 }
