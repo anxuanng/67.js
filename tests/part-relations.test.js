@@ -2,6 +2,7 @@ import './support/load-agent-scene-modules.mjs';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createAgentScene } from '../src/agent-scene.js';
+import { normalizeRelations, solveRelations } from '../src/agent-relations.js';
 
 function recipeWith(nodes, geometries = []) {
   return {
@@ -205,14 +206,23 @@ test('relation nodes are bounded', () => {
   rejects(nodes, /At most 256 nodes can carry relations/);
 });
 
-test('a long chain of relations solves quickly', () => {
+test('a long chain of relations solves with work in proportion to its length', () => {
   const nodes = [{ id: 'part0', scale: [0.1, 0.1, 0.1] }];
   for (let index = 1; index < 200; index++) {
     nodes.push({ id: `part${index}`, scale: [0.1, 0.1, 0.1], relations: [{ kind: 'attach', to: `part${index - 1}`, side: '+x' }] });
   }
-  const started = performance.now();
-  const scene = createAgentScene(recipeWith(nodes.reverse()));
-  assert.ok(performance.now() - started < 3000);
+  nodes.reverse();
+  // Counting bounds reads replaces a stopwatch: each related part reads its own bounds and its target's, once.
+  const solverNodes = normalizeRelations(nodes.map(node => ({
+    geometry: 'cube', parent: null, rotation: [0, 0, 0, 1], translation: [0, 0, 0], ...node,
+  })));
+  let boundsReads = 0;
+  solveRelations(solverNodes, (node, matrix) => {
+    boundsReads += 1;
+    return { min: [matrix[12] - 0.05, -0.05, -0.05], max: [matrix[12] + 0.05, 0.05, 0.05] };
+  });
+  assert.equal(boundsReads, 2 * 199);
+  const scene = createAgentScene(recipeWith(nodes));
   near(worldBounds(scene, 'part199').min[0], worldBounds(scene, 'part198').max[0], 'end of the chain');
 });
 
