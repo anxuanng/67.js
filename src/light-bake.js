@@ -791,7 +791,37 @@ function skyVisibilityPart(part, geometry, texture, slot) {
  */
 export function bakeLightmaps(parts, lighting, options = {}) {
   const plan = planLightmaps(parts, lighting, options);
-  return traceLightmaps(plan, plan.settings);
+  return traceLightmaps(plan, { ...plan.settings, skyOnly: options.skyOnly === true });
+}
+
+/**
+ * Sky visibility alone, with no light written: the parts that see little of the sky get the occlusion map the full bake
+ * would give them, and every other part is returned as it was. One ray per sample and no light leaves it much cheaper
+ * than a bake, so it can run at a low density on a scene that never asked for one.
+ */
+export function bakeSkyVisibility(parts, lighting, options = {}) {
+  return bakeLightmaps(parts, lighting, { ...options, skyOnly: true });
+}
+
+// The gatherer of a sky-only bake: the same first-leg cosine rays, and nothing is shaded when one hits a part.
+function createSkyVisibilityGatherer({ tracer, offset, samples }) {
+  const direction = [0, 0, 0];
+  return function gatherSkyVisibility(point, surfaceNormal, texelIndex, sum) {
+    sum[0] = 0;
+    sum[1] = 0;
+    sum[2] = 0;
+    const rotation = hashUnit(texelIndex, 1, 7);
+    let escaped = 0;
+    for (let sample = 0; sample < samples; sample++) {
+      cosineDirection(surfaceNormal, (sample + 0.5) / samples, (radicalInverse(sample) + rotation) % 1, direction);
+      const hit = tracer.trace(
+        point[0] + surfaceNormal[0] * offset, point[1] + surfaceNormal[1] * offset, point[2] + surfaceNormal[2] * offset,
+        direction[0], direction[1], direction[2], Infinity, false,
+      );
+      if (hit.nearestTriangle < 0) escaped++;
+    }
+    return escaped / samples;
+  };
 }
 
 /**
@@ -855,7 +885,9 @@ export function traceLightmaps(plan, tracedSettings) {
   const directIrradiance = createDirectIrradiance(tracer, withReach(lights, parts), offset, scale);
   const albedoOfPart = parts.map(part => diffuseAlbedo(part.material));
   const emissionOfPart = parts.map(part => emittedRadiance(part.material));
-  const gather = createGatherer({ world, tracer, albedoOfPart, emissionOfPart, directIrradiance, offset, samples: settings.samples, bounces: settings.bounces });
+  const gather = settings.skyOnly
+    ? createSkyVisibilityGatherer({ tracer, offset, samples: settings.samples })
+    : createGatherer({ world, tracer, albedoOfPart, emissionOfPart, directIrradiance, offset, samples: settings.samples, bounces: settings.bounces });
   const baked = parts.slice();
   const partReports = [];
   const sum = [0, 0, 0];

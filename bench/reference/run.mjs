@@ -46,7 +46,11 @@ const ambientOcclusionRadius = radiusFlag >= 0 ? Number(argumentsGiven[radiusFla
 const bakeFlag = argumentsGiven.indexOf('--bake');
 const bakeValue = bakeFlag >= 0 ? argumentsGiven[bakeFlag + 1] : undefined;
 const bakedSceneIds = bakeFlag >= 0 && bakeValue && !bakeValue.startsWith('--') ? bakeValue.split(',') : null;
-const probesFlag = argumentsGiven.indexOf('--probes');
+// --sky-only <texelsPerUnit>,<samples> makes the --bake rows sky visibility alone (no light written) at that density.
+const skyOnlyFlag = argumentsGiven.indexOf('--sky-only');
+const [skyTexelsPerUnit, skySamples] = skyOnlyFlag >= 0 ? argumentsGiven[skyOnlyFlag + 1].split(',').map(Number) : [];
+const skyOnlyOptions = skyOnlyFlag >= 0 ? { skyOnly: true, texelsPerUnit: skyTexelsPerUnit, samples: skySamples } : {};
+const probesFlag =argumentsGiven.indexOf('--probes');
 const probesValue = probesFlag >= 0 ? argumentsGiven[probesFlag + 1] : undefined;
 const probedSceneIds = probesFlag >= 0 && probesValue && !probesValue.startsWith('--') ? probesValue.split(',') : null;
 const cascadesFlag = argumentsGiven.indexOf('--cascades');
@@ -80,7 +84,8 @@ async function renderBackend(backend, serverUrl, graphics) {
       const started = performance.now();
       const describe = backend === 'gpu';
       const probes = probesFlag >= 0 && (probedSceneIds === null || probedSceneIds.includes(id));
-      const bake = bakeFlag >= 0 && (bakedSceneIds === null || bakedSceneIds.includes(id)) ? {} : null;
+      const bakesThisScene = bakeFlag >= 0 && (bakedSceneIds === null || bakedSceneIds.includes(id));
+      const bake = bakesThisScene ? { ...skyOnlyOptions } : null;
       const result = await page.evaluate(([sceneId, shouldDescribe, ambientOcclusion, ambientOcclusionRadius, bakeOptions, cascadeCount, withProbes, ambientScale]) => window.renderReferenceScene(sceneId, { describe: shouldDescribe, ambientOcclusion, ambientOcclusionRadius, bake: bakeOptions, cascades: cascadeCount, probes: withProbes, ambient: ambientScale }), [id, describe, ambientOcclusion, ambientOcclusionRadius, bake, cascades, probes, ambient]);
       if (result.glError !== 0) throw new Error(`${id} on ${backend} gave WebGL error ${result.glError}.`);
       graphics[backend] = result.graphics;

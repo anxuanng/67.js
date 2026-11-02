@@ -1,4 +1,0 @@
-interface:
-  display_name: "Dựng cảnh 3D bằng 67js"
-  short_description: "Dựng model, cảnh thiên nhiên và phim bằng 67js"
-  default_prompt: "Use $build-67js-scene to implement and inspect this 67js scene."

@@ -1,10 +1,12 @@
 # Verification
 
+These figures are from the 0.3.x site and export work, measured around 2026-10-09 and not repeated since. Per-release checks from 0.4.0 on are in [release-verification.md](https://github.com/anxuanng/67.js/blob/main/docs/release-verification.md). Run `npm test` for the current test count.
+
 The checks used Windows Chrome 154 through Playwright, an RTX 3060 through ANGLE D3D11 and CPU rendering through SwiftShader.
 
 | Check | Result |
 | --- | --- |
-| Node tests | All 19 tests passed for geometry, bounds, scene budgets, timeline sampling and GLB loading. |
+| Node tests | Tests for geometry, bounds, scene budgets, timeline sampling and GLB loading passed. |
 | GLB | The independent Three.js GLTFLoader loaded all 574 WALL·E nodes. The assembled file contains 635,752 bytes. |
 | Explosion | The GPU pixel checksum returned to its original value after a 0 → 50 → 100 → 0 slider round trip. |
 | Allocation reuse | The shadow texture remained identical while the slider moved. |

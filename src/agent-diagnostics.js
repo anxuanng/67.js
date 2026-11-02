@@ -76,6 +76,16 @@ export function recipeDiagnostics(recipe) {
 }
 
 /**
+ * The scene looks like a closed room and asks for no bake, so the world's light reaches it through the walls and the room
+ * renders lifted and flat. `share` is the share of rays from the middle of the scene that hit an inner face.
+ */
+export function closedRoomDiagnostic(share) {
+  return diagnostic('closed-room-without-bake', 'warning', 'bake',
+    `${Math.round(share * 100)} percent of rays from the middle of the scene hit a wall, so this is a closed room, and without a bake the world's light still reaches it: the room renders lifted and grey, with weak contact shadows.`,
+    'Add "bake": { "preset": "standard" } (scene_apply set-bake). It darkens what the sky cannot see and adds bounced light; measured against Cycles it halves the error of a closed room.');
+}
+
+/**
  * Rig and asset diagnostics. `warnings` are the decoder's notes about features it accepted but does not draw.
  */
 export function assetDiagnostics({ assetId, warnings = [], skinnedParts, jointCount, clipCount }) {
