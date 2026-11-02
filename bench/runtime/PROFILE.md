@@ -220,3 +220,44 @@ Next ideas, by expected size: a far level that keeps the picture (try the clump 
 - Triangles fell 76 percent; the SwiftShader shadow share (first frame minus later frame) fell from 2.1 to 2.6 s to 1.5 to 1.9 s, less than the triangle count because the foliage, the terrain and the per-instance selection remain. The steady frame does not draw the shadow map (it is static unless a caster moves or wind advances), so the plain frame is unchanged: 3060 median 17.6 to 18.4 ms before and after, SwiftShader 7.0 to 7.3 s. The saving lands on the first frame and on every frame that redraws the map.
 - Picture: `mountain-valley` GPU render against the render before the change differs in 27,167 of 518,400 pixels, 80 of them by more than 8 levels (largest 24 of 255); SwiftShader 33,356 pixels, 78 above 8 levels (largest 35). In the darkest quarter of the image, where shadows are, the mean difference is 0.075 and 0.085 levels. Score against Cycles 0.3473 to 0.3478 (SwiftShader 0.3460 to 0.3466), against EEVEE 0.2420 to 0.2426. The other 20 scenes keep their scores to four digits.
 - Not done: a shadow level for foliage, which needs a bound that includes the wind sway.
+
+## Lit shader cost on SwiftShader, three tries, none kept (2026-11-03, branch `perf/lit-shader-cost`)
+
+Issue 74. Same method as before: `--cpu-only --frames 6`, `67js-ldr-one-sample` against `three-one-sample`, at below-normal priority, other sessions running (CPU 5 to 100 percent). Changed and unchanged file were swapped in `src/` and alternated, three rounds, no code is left changed.
+
+**The baseline moved with the machine, not with the code.** The same unchanged `origin/main` gave two different states within 30 minutes. Frame in ms, ranges over 3 to 5 runs (measured):
+
+| State | Scene | 67js | three.js | Ratio |
+| --- | --- | --- | --- | --- |
+| First (quiet) | `large-mesh` | 116 to 122 | 39 to 40 | 2.9 to 3.1 |
+| First (quiet) | `many-materials` | 120 to 122 | 44 to 46 | 2.6 to 2.7 |
+| First (quiet) | `instanced-objects` | 57 to 60 | 31 to 32 | 1.8 to 1.9 |
+| Second (busy) | `large-mesh` | 145 to 151 | 44 to 53 | 2.8 to 3.4 |
+| Second (busy) | `many-materials` | 188 to 200 | 46 to 49 | 3.9 to 4.3 |
+| Second (busy) | `instanced-objects` | 57 to 78 | 30 to 31 | 1.9 to 2.5 |
+
+So with MSAA and the HDR target removed on both sides, the 2026-11-01 figures (5.2 to 5.7) are not reproduced: the frame is 2 to 4 times three.js, and `many-materials` is the one scene over 3 in the busy state. (The earlier 533, 490 and 194 ms for the same three rows were taken under heavier load; this is inferred from the two states above, not shown.)
+
+**Ablations, to see where the frame goes (picture wrong in each, measured, one run each, quiet state for shadow and busy state for the rest):**
+
+| Left out | `large-mesh` | `many-materials` | `instanced-objects` |
+| --- | --- | --- | --- |
+| Nothing (same state) | 117 to 145 | 120 to 190 | 57 to 58 |
+| Sun shadow (`return 1.0`) | 129 | 91 to 97 | 45 to 46 |
+| Environment lighting | 136 | 149 | 50 |
+| `illuminate` reduced to a Lambert term | 140 | 175 | 70 |
+| Whole `main` replaced by a constant colour (3 pairs, alternated) | 145 to 147 vs 145 to 150 | 188 to 189 vs 188 to 190 | 58 to 60 vs 58 to 59 |
+
+The last row is the finding: in the busy state a constant fragment shader costs the same as the lit one, so the frame was not bound by the lit shader there. What remains then is outside it: the vertex stage (1 million triangles in `large-mesh`), and the environment background and post passes that three.js does not draw (about 45 ms each on `instanced-objects` at 4 samples, measured on 2026-10-31). The shadow filter (36 `texelFetch`) is the largest single block of the lit shader when the shader is the bottleneck, about 25 percent on `many-materials` and `instanced-objects`.
+
+**Changes tried (all pixel identical unless stated), alternated with the unchanged file, 3 rounds, `67js-ldr-one-sample`, busy state:**
+
+| Change | `large-mesh` before / after (ms) | `many-materials` | `instanced-objects` | Kept |
+| --- | --- | --- | --- | --- |
+| Shadow taps without `clamp` when the 3 by 3 footprint is inside the map, chosen with a `bool` argument | 145 to 147 / 150 | 188 to 191 / 193 to 199 | 58 to 59 / 61 to 63 | No, 3 to 5 percent slower |
+| Skip the shadow filter where the surface faces away from the sun, only in shaders without foliage, grass, floor, moss, sheen, clearcoat or add-on code (`SHADOW_ONLY_WHERE_LIT`) | 145 to 147 / 143 to 145 | 190 to 194 / 187 to 193 | 58.6 to 59.3 / 57.0 to 57.3 | No, inside noise (about 2 percent) |
+| `pow(x, 5.0)` in `fresnel` and `pow(roughness + 1.0, 2.0)` as multiplications (not bit identical: float rounding) | 145 to 146 / 143 to 145 | 188 to 191 / 184 to 185 | 59 to 63 / 57 to 58 | No, 0.5 to 5 percent and the pixels are not guaranteed identical |
+
+Inferred, not isolated: SwiftShader still pays for a branch that pixels in the same quad do not all take, so the first two behave as the earlier `fillIntensity` skip did. `textureGather` would cut 36 fetches to 9 but is not in WebGL 2 (GLSL ES 3.00).
+
+**What to try next.** Measure the two full-screen passes against the vertex stage on `large-mesh` and `many-materials` with a profile that does not depend on the machine state (pin the cores, or count instructions), since the lit shader is no longer the proven bottleneck. Draw the environment background only where no mesh covers the pixel was already tried on 2026-11-01 and moved nothing.
