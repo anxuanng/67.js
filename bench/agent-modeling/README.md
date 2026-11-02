@@ -289,3 +289,22 @@ The other half of the issue, `npm run smoke:agent-branches` on SwiftShader: pass
 | Sonnet | 1 | 1/1 | 9 | 0 | $0.40 | 3 |
 
 Result: all three agents used the query and wrote its keyframes into a `LINEAR` walker track (29 or 30 keys with the query's three-decimal values, not a hand-drawn polyline). The four Haiku errors were unrelated schema slips (`sessionId` on `scene_create`, motion keys at the recipe top level, a node with a geometry and no material), not path errors. Nothing here shows what the query saves: the task was not run with the query hidden, and an earlier task with one hole (`terrain-hole-walk`) was walked by hand 2 of 2 times by Haiku. Three runs is too few to separate Haiku from Sonnet. Total cost $0.55, one run each of the three.
+
+## Editing a cabinet, relations on and off (2026-11-02, issue #44)
+
+Issue #44 left one done condition open: tool calls do not drop on suite tasks with attached parts, because agents building from scratch compute positions themselves. The hypothesis here was that relations pay off when an agent edits a scene that already has them. `cabinet-resize` starts from a 10-part cabinet (body, four feet, two doors, two handles, a cornice) and asks for 30 percent wider (1.0 to 1.3 m) and 10 cm taller; `cabinet-resize-plain` holds the same parts as absolute positions. `desk-resize` and `desk-resize-plain` are the existing 12-part, three-step desk. Both are graded on contact (`touches`) and on every dependent part's final centre (`centreAt`). `--relations off` starts the MCP server without the relations field in `scene_create` and `scene_apply` and without the relations entry in `scene_capabilities`; records carry `relationCalls`.
+
+Three arms, 3 runs per task, budget $1 per run, 0 tool errors unless noted. Calls are per run:
+
+| Model | Start recipe | Relations in tools | cabinet pass | cabinet calls | desk pass | desk calls |
+|---|---|---|---|---|---|---|
+| Haiku | relations | on | 3/3 | 5, 7, 6 | 3/3 | 10, 9, 10 |
+| Haiku | plain | on | 1/3 | 5, 6, 5 (1 error) | 3/3 | 10, 9, 10 |
+| Haiku | plain | off | 1/3 | 6, 4, 5 | 3/3 | 10, 10, 12 |
+| Sonnet | relations | on | 3/3 | 3, 3, 3 | 3/3 | 8, 8, 8 |
+| Sonnet | plain | on | 3/3 | 3, 3, 3 | 3/3 | 8, 8, 8 |
+| Sonnet | plain | off | 3/3 | 3, 3, 3 | 3/3 | 8, 10, 8 |
+
+Result (measured): tool calls do not drop. Sonnet needs 3 calls on the cabinet (create, one `scene_apply`, export) and 8 on the desk (the prompt asks for an inspect after each of three steps) in every arm. Haiku's means are 6.0 against 5.3 and 5.0 on the cabinet and 9.7 against 9.7 and 10.7 on the desk, inside the noise at 3 runs. With relations on and a plain start, no run wrote a relations field (0 of 12), so agents do not add them on their own. The relations-start arms show 3 of 3 for `relationCalls` only because `scene_create` carries the recipe the task hands over.
+
+What did move is Haiku's pass rate on the cabinet: 3/3 with relations in the start recipe, 1/3 in both plain arms. The plain failures are the handles (0.01 m off their centre in three runs) and, once, the feet (12 of 21 checks). It is 3 runs, so treat it as a lead, not a result. The condition "tool calls drop on suite tasks with attached parts" stays unmet; Sonnet recomputes a 10 to 12 part scene in one call either way.

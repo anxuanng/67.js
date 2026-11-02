@@ -10,6 +10,7 @@ import { KETTLE_RESIZED, KETTLE_RESIZED_PLAIN } from './kettle.mjs';
 import { LAMP_SOLUTION } from './lamp.mjs';
 import { GALLERY_SOLUTION } from './gallery.mjs';
 import { DESK_FINAL, DESK_FINAL_PLAIN } from './desk.mjs';
+import { CABINET_FINAL, CABINET_FINAL_PLAIN } from './cabinet.mjs';
 
 const material = [{ id: 'paint', color: [0.6, 0.55, 0.5] }];
 
@@ -171,6 +172,8 @@ export const REFERENCES = {
   'kettle-resize-plain': KETTLE_RESIZED_PLAIN,
   'desk-resize': DESK_FINAL,
   'desk-resize-plain': DESK_FINAL_PLAIN,
+  'cabinet-resize': CABINET_FINAL,
+  'cabinet-resize-plain': CABINET_FINAL_PLAIN,
   'chamfer-plate': scene(
     [{
       id: 'plate', type: 'mesh', base: { type: 'box', bevel: 0 }, edits: [

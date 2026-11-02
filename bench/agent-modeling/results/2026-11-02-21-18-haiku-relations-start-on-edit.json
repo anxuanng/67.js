@@ -1,0 +1,361 @@
+{
+  "run": "2026-11-02-21-18-haiku-relations-start-on-edit",
+  "model": "claude-haiku-5-5",
+  "date": "2026-11-02T21:22:14.276Z",
+  "skill": false,
+  "branches": "on",
+  "relations": "on",
+  "runsPerTask": 3,
+  "passed": 6,
+  "tasks": 6,
+  "toolCalls": 47,
+  "costUsd": 0.82,
+  "byModel": {
+    "claude-haiku-5-5": {
+      "runs": 6,
+      "passed": 6,
+      "successRate": 1,
+      "toolCalls": 47,
+      "toolErrors": 0,
+      "inputTokens": 4298632,
+      "outputTokens": 37176,
+      "costUsd": 0.82,
+      "tasks": {
+        "cabinet-resize": {
+          "runs": 3,
+          "passed": 3,
+          "successRate": 1,
+          "toolCalls": 18,
+          "toolErrors": 0,
+          "inputTokens": 1882762,
+          "outputTokens": 17113,
+          "costUsd": 0.38
+        },
+        "desk-resize": {
+          "runs": 3,
+          "passed": 3,
+          "successRate": 1,
+          "toolCalls": 29,
+          "toolErrors": 0,
+          "inputTokens": 2415870,
+          "outputTokens": 20063,
+          "costUsd": 0.45
+        }
+      }
+    }
+  },
+  "records": [
+    {
+      "task": "cabinet-resize",
+      "attempt": 1,
+      "pass": true,
+      "passed": 21,
+      "total": 21,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 5,
+      "toolErrors": 0,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_create": 1,
+        "scene_inspect": 2,
+        "scene_apply": 1,
+        "scene_export_recipe": 1
+      },
+      "branchCalls": 0,
+      "relationCalls": 1,
+      "pathQueries": 0,
+      "features": {
+        "geometryTypes": [
+          "box"
+        ],
+        "meshOperations": [],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 1,
+            "side": 1,
+            "three-quarter": 1
+          },
+          "mean": 1
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-11-02-21-18-haiku-relations-start-on-edit/look/1/cabinet-resize-front.png",
+          "artifacts/agent-modeling/2026-11-02-21-18-haiku-relations-start-on-edit/look/1/cabinet-resize-side.png",
+          "artifacts/agent-modeling/2026-11-02-21-18-haiku-relations-start-on-edit/look/1/cabinet-resize-three-quarter.png"
+        ]
+      },
+      "turns": 7,
+      "costUsd": 0.11368388,
+      "inputTokens": 455463,
+      "outputTokens": 5948,
+      "wallSeconds": 36,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "desk-resize",
+      "attempt": 1,
+      "pass": true,
+      "passed": 21,
+      "total": 21,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 10,
+      "toolErrors": 0,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_create": 1,
+        "scene_inspect": 4,
+        "scene_apply": 3,
+        "scene_export_recipe": 1,
+        "scene_dispose": 1
+      },
+      "branchCalls": 0,
+      "relationCalls": 1,
+      "pathQueries": 0,
+      "features": {
+        "geometryTypes": [
+          "box"
+        ],
+        "meshOperations": [],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 1,
+            "side": 1,
+            "three-quarter": 1
+          },
+          "mean": 1
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-11-02-21-18-haiku-relations-start-on-edit/look/1/desk-resize-front.png",
+          "artifacts/agent-modeling/2026-11-02-21-18-haiku-relations-start-on-edit/look/1/desk-resize-side.png",
+          "artifacts/agent-modeling/2026-11-02-21-18-haiku-relations-start-on-edit/look/1/desk-resize-three-quarter.png"
+        ]
+      },
+      "turns": 12,
+      "costUsd": 0.15245048,
+      "inputTokens": 850412,
+      "outputTokens": 7100,
+      "wallSeconds": 42,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "cabinet-resize",
+      "attempt": 2,
+      "pass": true,
+      "passed": 21,
+      "total": 21,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 7,
+      "toolErrors": 0,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_create": 1,
+        "scene_inspect": 2,
+        "scene_apply": 1,
+        "scene_look": 1,
+        "scene_export_recipe": 1,
+        "scene_dispose": 1
+      },
+      "branchCalls": 0,
+      "relationCalls": 1,
+      "pathQueries": 0,
+      "features": {
+        "geometryTypes": [
+          "box"
+        ],
+        "meshOperations": [],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 0.9994,
+            "side": 1,
+            "three-quarter": 0.9981
+          },
+          "mean": 0.9992
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-11-02-21-18-haiku-relations-start-on-edit/look/2/cabinet-resize-front.png",
+          "artifacts/agent-modeling/2026-11-02-21-18-haiku-relations-start-on-edit/look/2/cabinet-resize-side.png",
+          "artifacts/agent-modeling/2026-11-02-21-18-haiku-relations-start-on-edit/look/2/cabinet-resize-three-quarter.png"
+        ]
+      },
+      "turns": 9,
+      "costUsd": 0.13271318000000001,
+      "inputTokens": 711373,
+      "outputTokens": 5797,
+      "wallSeconds": 35,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "desk-resize",
+      "attempt": 2,
+      "pass": true,
+      "passed": 21,
+      "total": 21,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 9,
+      "toolErrors": 0,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_create": 1,
+        "scene_inspect": 4,
+        "scene_apply": 3,
+        "scene_export_recipe": 1
+      },
+      "branchCalls": 0,
+      "relationCalls": 1,
+      "pathQueries": 0,
+      "features": {
+        "geometryTypes": [
+          "box"
+        ],
+        "meshOperations": [],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 1,
+            "side": 1,
+            "three-quarter": 1
+          },
+          "mean": 1
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-11-02-21-18-haiku-relations-start-on-edit/look/2/desk-resize-front.png",
+          "artifacts/agent-modeling/2026-11-02-21-18-haiku-relations-start-on-edit/look/2/desk-resize-side.png",
+          "artifacts/agent-modeling/2026-11-02-21-18-haiku-relations-start-on-edit/look/2/desk-resize-three-quarter.png"
+        ]
+      },
+      "turns": 11,
+      "costUsd": 0.14233718,
+      "inputTokens": 716116,
+      "outputTokens": 6214,
+      "wallSeconds": 38,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "cabinet-resize",
+      "attempt": 3,
+      "pass": true,
+      "passed": 21,
+      "total": 21,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 6,
+      "toolErrors": 0,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_capabilities": 1,
+        "scene_create": 1,
+        "scene_apply": 1,
+        "scene_inspect": 1,
+        "scene_export_recipe": 1,
+        "scene_dispose": 1
+      },
+      "branchCalls": 0,
+      "relationCalls": 1,
+      "pathQueries": 0,
+      "features": {
+        "geometryTypes": [
+          "box"
+        ],
+        "meshOperations": [],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 1,
+            "side": 1,
+            "three-quarter": 1
+          },
+          "mean": 1
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-11-02-21-18-haiku-relations-start-on-edit/look/3/cabinet-resize-front.png",
+          "artifacts/agent-modeling/2026-11-02-21-18-haiku-relations-start-on-edit/look/3/cabinet-resize-side.png",
+          "artifacts/agent-modeling/2026-11-02-21-18-haiku-relations-start-on-edit/look/3/cabinet-resize-three-quarter.png"
+        ]
+      },
+      "turns": 8,
+      "costUsd": 0.13190648,
+      "inputTokens": 715926,
+      "outputTokens": 5368,
+      "wallSeconds": 34,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "desk-resize",
+      "attempt": 3,
+      "pass": true,
+      "passed": 21,
+      "total": 21,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 10,
+      "toolErrors": 0,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_create": 1,
+        "scene_inspect": 4,
+        "scene_apply": 3,
+        "scene_export_recipe": 1,
+        "scene_dispose": 1
+      },
+      "branchCalls": 0,
+      "relationCalls": 1,
+      "pathQueries": 0,
+      "features": {
+        "geometryTypes": [
+          "box"
+        ],
+        "meshOperations": [],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 1,
+            "side": 1,
+            "three-quarter": 1
+          },
+          "mean": 1
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-11-02-21-18-haiku-relations-start-on-edit/look/3/desk-resize-front.png",
+          "artifacts/agent-modeling/2026-11-02-21-18-haiku-relations-start-on-edit/look/3/desk-resize-side.png",
+          "artifacts/agent-modeling/2026-11-02-21-18-haiku-relations-start-on-edit/look/3/desk-resize-three-quarter.png"
+        ]
+      },
+      "turns": 12,
+      "costUsd": 0.15107638,
+      "inputTokens": 849342,
+      "outputTokens": 6749,
+      "wallSeconds": 44,
+      "exitCode": 0,
+      "stopped": "success"
+    }
+  ]
+}
