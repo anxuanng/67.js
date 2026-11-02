@@ -28,4 +28,5 @@ jobs:
       - run: npm run test:isolated
       - run: npm run prepare:release
       - run: npm run smoke:package
+      - run: npm run check:links:package
       - run: npm run smoke:mcp-package

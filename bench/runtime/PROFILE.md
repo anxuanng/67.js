@@ -176,3 +176,30 @@ The vertex split on `large-mesh` (1,070 ms; the vertex stage alone is 360 ms the
 **3 times is not met.** What is left, by size, on `instanced-objects` (frame about 265): the lit shader about 160 over a constant shader (shadow filter, environment lookups, three lights, runtime-uniform fill and fog), the resolve 35, the background 25, the post pass 30. Items that need a picture or format decision by An: (a) `R11F_G11F_B10F` for the 4 sample target and the frame texture, without alpha, only for an opaque canvas. Measured: `instanced-objects` 338 to 271 (20 percent), but the pictures are not identical: mean absolute difference 0.13 to 0.59 levels per scene, maximum 6 to 53 levels, and the `transparency` scene has 32,689 pixels more than 2 levels away. It was not kept; `npm run reference` was not run on it. (b) Fewer shadow taps, or no MSAA (about 40 percent), or an LDR target (about 20 percent), as before. Cheap exact ones left: `boxPosition` only when a box-mapped material exists (about 25 ms on `large-mesh`), starting the environment background program with the others.
 
 Tests: `npm test` 1,292 tests, 1,283 pass; the 8 failures all need the optional `manifold-3d`, which this checkout does not have (mesh boolean, bracket recipe, blender-golden, other-clients, agent-asset-mesh, two suite reference tests). `npm run size` passes after `--update-baseline` and `--set-budgets`, because the program variants add about 2.4 to 2.8 KB gzip to the entries that include the renderer.
+
+## `mountain-valley`: where the time goes (issue #171)
+
+`node bench/reference/profile-scene.mjs mountain-valley gpu|cpu` runs the phases of one render three times and counts what the frame hands to the GPU. The scene has 7,698 parts in 418 batches and 9,721,668 triangles before culling. Measured on the RTX 3060 and on SwiftShader, 2026-11-02, while other sessions loaded the machine, so each number is a range over 3 runs.
+
+| Phase | RTX 3060 (ms) | SwiftShader (ms) |
+| --- | --- | --- |
+| Scene build (terrain, scatter, level selection) | 1,690 to 2,050 | 1,680 to 1,950 |
+| Renderer construction (upload, shadow commands queued) | 190 to 640 | 180 to 250 |
+| First frame, before the change | 41 to 94 | 9,900 to 10,600 |
+| First frame, after the change | 30 to 70 | 9,100 to 9,250 |
+| Later frame (main pass only) | 19 to 20 | 6,800 to 7,300 |
+| Whole `run.mjs` step for the scene | 10,000 to 15,200 | 19,900 to 22,400 |
+
+Triangles handed to the GPU: the later frame draws 6.46 million in 184 calls after frustum culling. Before the change the first frame drew 25.90 million in 1,020 calls, which is the main pass plus two shadow passes of 9.72 million each. After it draws 16.18 million in 602 calls, one shadow pass.
+
+What this shows:
+
+- The 8.3 s of the issue is not the GPU frame. On the 3060 the whole frame is about 20 ms. Most of the wall time of the step is outside the frame: scene build 1.7 s, and about 7 s for the harness to move the 21 MB scene description out of the page and write it, which is Blender export work and not renderer work. The in-page describe step itself takes 0.6 s (43 ms for the parts, 580 ms for the geometry bytes).
+- On SwiftShader the main pass is 7 s of the 9 s first frame, so triangles drawn matter there. The shadow pass is about 1.5 s per pass and is not culled: `drawShadowCasters` draws every caster batch whole, with no frustum test against the light and no level selection.
+- Level of detail already works on the camera side: with `distanceScale: 3` the trees switch at 114 m and 285 m, and 4,469 of 13,951 instances are beyond `cullDistance`. The last level still has 2,180 triangles per conifer (a trunk of about 2,050 and a crown of 120), so about 4,500 trees at 285 m and beyond make most of the 6.46 million.
+
+Kept: the constructor draws the shadow map, and the first `render` drew it again because `assemblyAmount` started undefined and compared as changed. It now starts at 0. Pictures are byte-identical to the renders before the change (GPU and SwiftShader PNG compared with `cmp`). Effect: first frame 41 to 94 ms became 30 to 70 ms on the 3060, and 9.9 to 10.6 s became 9.1 to 9.25 s on SwiftShader. The main pass is unchanged.
+
+Tried and reverted: a fourth tree level of detail beyond 260 m (trunk only, crown clumps 2.6 times wider, 152 triangles for a conifer). The unculled count fell, but the score against Cycles moved from 0.3473 to 0.3427 (SwiftShader 0.3460 to 0.3413), outside the 0.002 limit, and the other 20 scenes kept their scores. Distant trees are not invisible in this picture: the forest is a wide band across the valley and its coverage changes the mean. A gentler far level (keep the branches, widen the clumps less) was not tried because one rescore takes about 50 minutes on a loaded machine.
+
+Next ideas, by expected size: a far level that keeps the picture (try the clump width at 1.5 times and the trunk with its first branches); shadow level selection from the shadow texel size (2.2 m here, so level 3 geometry is enough for every tree in the map); a light frustum test per instance in the shadow pass; scene build at 1.7 s, of which scatter is 0.55 s and the rest is terrain and painting.
