@@ -105,8 +105,8 @@ def main():
         return
     # Khronos assets and cloth sheets sit in front of a sky that both sides draw alike, so they also get a score over the
     # pixels the scene covers.
-    set_name = "khronos" if "--khronos" in sys.argv else "cloth" if "--cloth" in sys.argv else None
-    khronos = set_name is not None
+    set_name = "khronos" if "--khronos" in sys.argv else "cloth" if "--cloth" in sys.argv else "grand" if "--grand" in sys.argv else None
+    khronos = set_name in ("khronos", "cloth")
     work_directory = Path(sys.argv[1])
     output_directory = Path(sys.argv[2])
     images_directory = output_directory / "images"

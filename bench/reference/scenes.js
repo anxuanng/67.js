@@ -27,7 +27,7 @@ function placedMatrix(translation, scale) {
   ]);
 }
 
-function part(name, geometry, translation, scale, material) {
+export function part(name, geometry, translation, scale, material) {
   return { name, geometry, matrix: placedMatrix(translation, scale), material: { tag: 'surface', metallic: 0, roughness: 0.5, emission: 0, ...material } };
 }
 
@@ -35,28 +35,35 @@ function floor(color = [0.5, 0.5, 0.5]) {
   return part('floor', box(0, 1), [0, -0.05, 0], [40, 0.1, 40], { color, roughness: 0.8 });
 }
 
-async function skyLighting(intensity = 1) {
+export async function skyLighting(intensity = 1) {
   const response = await fetch(HDRI_URL);
   const parsed = parseRadianceHdr(await response.arrayBuffer());
   const data = parsed.data.map((radiance) => Math.min(radiance, HDRI_RADIANCE_LIMIT));
   const map = createEnvironmentMap({ ...parsed, data, intensity, showBackground: true });
-  return { map, blenderWorld: { type: 'hdri', file: HDRI_FILE, intensity, radianceLimit: HDRI_RADIANCE_LIMIT } };
+  return { map, meanRadiance: meanRadiance(data, intensity), blenderWorld: { type: 'hdri', file: HDRI_FILE, intensity, radianceLimit: HDRI_RADIANCE_LIMIT } };
 }
 
-function constantLighting(value) {
+// The average colour of an equirectangular map. Rows are not weighted by solid angle: the scenes that use it do not need that.
+function meanRadiance(data, intensity) {
+  const sum = [0, 0, 0];
+  for (let index = 0; index < data.length; index++) sum[index % 3] += data[index];
+  return sum.map(channel => (channel / (data.length / 3)) * intensity);
+}
+
+export function constantLighting(value) {
   const data = new Float32Array(8 * 4 * 3).fill(value);
   const map = createEnvironmentMap({ width: 8, height: 4, data, showBackground: true });
   return { map, blenderWorld: { type: 'constant', value } };
 }
 
-function environment(lighting, { lightDirection = [-3, 6, 4], keyColor = [0, 0, 0], pointLights = [], spotLights = [], areaLights = [], volumeFog } = {}) {
+export function environment(lighting, { lightDirection = [-3, 6, 4], keyColor = [0, 0, 0], pointLights = [], spotLights = [], areaLights = [], volumeFog } = {}) {
   return {
     world: true, fillIntensity: 0, ambientIntensity: 1, fogDensity: 0, lightDirection, keyColor, pointLights, spotLights, areaLights,
     map: lighting.map, ...(volumeFog ? { volumeFog } : {}),
   };
 }
 
-const SUN_COLOR = [3, 2.8, 2.5];
+export const SUN_COLOR = [3, 2.8, 2.5];
 
 // A wall of bricks written as a material graph: a triangle wave across each course for the mortar joints, half a brick of
 // shift on every second course, noise through a colour ramp for the brick tone. Blender gets the same graph as nodes.
@@ -169,8 +176,8 @@ export const KHRONOS_SCENES = Object.fromEntries(KHRONOS_ASSET_NAMES.map(name =>
 
 // Grand scenes: the scale people actually want to draw, built from the engine's terrain, vegetation and plain boxes.
 // Only what Blender can draw too is used: the terrain colours are vertex colours, the emissive windows are Emission, the
-// fog is a volume box. The built-in leaf translucency of 67js has no Blender counterpart (see the README).
-function seededRandom(seed) {
+// fog is a volume box. Blender rebuilds the 67js leaf model for foliage materials (see the README).
+export function seededRandom(seed) {
   let state = seed >>> 0;
   return () => {
     state = (state + 0x6d2b79f5) >>> 0;
@@ -180,32 +187,32 @@ function seededRandom(seed) {
   };
 }
 
-function clamp01(value) {
+export function clamp01(value) {
   return Math.min(1, Math.max(0, value));
 }
 
-function smoothBetween(low, high, value) {
+export function smoothBetween(low, high, value) {
   const fraction = clamp01((value - low) / (high - low));
   return fraction * fraction * (3 - 2 * fraction);
 }
 
-function mixColors(first, second, amount) {
+export function mixColors(first, second, amount) {
   return first.map((channel, index) => channel + (second[index] - channel) * amount);
 }
 
-function normalized(vector) {
+export function normalized(vector) {
   const length = Math.hypot(...vector);
   return vector.map(component => component / length);
 }
 
 // A shadow map that looks along the sun from `depth` metres away and covers a square of half-width `extent`.
-function sunShadow(towardLight, target, extent, depth) {
+export function sunShadow(towardLight, target, extent, depth) {
   const direction = normalized(towardLight);
   return { eye: target.map((value, axis) => value + direction[axis] * depth), target, up: [0, 1, 0], extent, near: 1, far: depth * 2 };
 }
 
 // Mountain valley: a bowl about 2 km across whose rim rises into ridged peaks, a conifer forest on the lower slopes.
-const VALLEY_TERRAIN = { size: 5120, chunks: 20, resolution: 64, levels: 4 };
+export const VALLEY_TERRAIN = { size: 5120, chunks: 20, resolution: 64, levels: 4 };
 const VALLEY_FLOOR_RADIUS = 520;
 const VALLEY_RIM_RADIUS = 1500;
 const VALLEY_SNOW_LINE = 520;
@@ -266,8 +273,8 @@ async function mountainValleyScene() {
 
 // Temple hall: a nave 140 m long between four rows of columns 30 m tall, a roof with square openings that let the sun
 // fall through fog, a bright window at the far end and a few small figures near the camera for scale.
-const HALL_BLOCK = box(0, 1);
-const HALL = { halfWidth: 33, front: 50, back: -130, columnHeight: 30, columnRadius: 1.6, roofHeight: 31.5 };
+export const HALL_BLOCK = box(0, 1);
+export const HALL = { halfWidth: 33, front: 50, back: -130, columnHeight: 30, columnRadius: 1.6, roofHeight: 31.5 };
 const HALL_COLUMN_ROWS = [-22, -11, 11, 22];
 const HALL_COLUMN_PITCH = 12;
 const HALL_COLUMN_COUNT = 11;
@@ -277,7 +284,7 @@ const HALL_OPENING_COUNT = 6;
 const HALL_OPENING_FIRST_Z = -5;
 const HALL_OPENING_SIZE = [10, 7];
 
-function hallRoofParts(parts, stone) {
+export function hallRoofParts(parts, stone) {
   const roofThickness = 2;
   const length = HALL.front - HALL.back;
   const middleZ = (HALL.front + HALL.back) / 2;
@@ -294,7 +301,7 @@ function hallRoofParts(parts, stone) {
   }
 }
 
-function hallColumnParts(parts, stone) {
+export function hallColumnParts(parts, stone) {
   const column = cylinder(48, 0, 1);
   for (const [rowIndex, x] of HALL_COLUMN_ROWS.entries()) {
     for (let index = 0; index < HALL_COLUMN_COUNT; index++) {
@@ -308,7 +315,7 @@ function hallColumnParts(parts, stone) {
   }
 }
 
-function hallFigureParts(parts) {
+export function hallFigureParts(parts) {
   const body = cylinder(16, 0, 1);
   const head = sphere(16, 10);
   const robes = [[0.5, 0.1, 0.08], [0.1, 0.2, 0.45], [0.55, 0.45, 0.15], [0.15, 0.3, 0.18], [0.4, 0.4, 0.42]];
@@ -403,17 +410,105 @@ async function darkShaftScene() {
   const lighting = constantLighting(0.03);
   const stone = { color: [0.62, 0.55, 0.45], roughness: 0.85 };
   const floorStone = { color: [0.5, 0.45, 0.38], roughness: 0.6 };
+  const parts = [...shaftRoomParts(stone, floorStone), ...shaftPropParts(stone, floorStone)];
   const { halfWidth, front, back, height } = SHAFT_ROOM;
   const volumeFog = {
     density: 0.07, minimum: [-halfWidth, 0, back], maximum: [halfWidth, height, front],
     color: [1, 0.95, 0.85], ambient: [0.02, 0.02, 0.02], anisotropy: 0.6, noiseAmount: 0, steps: 48, maxDistance: 40,
   };
   return {
-    parts: [...shaftRoomParts(stone, floorStone), ...shaftPropParts(stone, floorStone)], blenderWorld: lighting.blenderWorld,
+    parts, blenderWorld: lighting.blenderWorld,
     environment: environment(lighting, { keyColor: [8, 6.9, 5.4], lightDirection: normalized(SHAFT_SUN_DIRECTION), volumeFog }),
     camera: { eye: [3.4, 1.6, 4.2], target: [-0.6, 1.2, -5], up: [0, 1, 0], fov: 62, near: 0.1, far: 60 },
     shadow: sunShadow(SHAFT_SUN_DIRECTION, [0, 3, -3], 14, 30),
     // The bright pixels of the Cycles image, grown by a few pixels, are scored on their own (score.py).
+    brightRegion: { luminance: 0.1, dilation: 4 },
+  };
+}
+
+// Fog valley: open ground under a clear sky with a low sun ahead of the camera, a field of blocks from 25 m to 400 m away, and
+// distance haze over all of it. There is no roof, so the fog sees the whole sky.
+const FOG_VALLEY_SUN_DIRECTION = [-0.45, 0.4, -0.75];
+const FOG_VALLEY_BLOCK_COUNT = 48;
+
+function fogValleyParts() {
+  const cube = HALL_BLOCK;
+  const parts = [part('ground', cube, [0, -0.5, -200], [900, 1, 900], { color: [0.32, 0.3, 0.24], roughness: 0.9 })];
+  let seed = 7;
+  const next = () => {
+    seed = (seed * 16807) % 2147483647;
+    return seed / 2147483647;
+  };
+  for (let index = 0; index < FOG_VALLEY_BLOCK_COUNT; index++) {
+    const distance = 25 + (index / FOG_VALLEY_BLOCK_COUNT) * 375;
+    const width = 4 + next() * 14;
+    const height = 3 + next() * 22;
+    const x = (next() - 0.5) * (60 + distance * 0.9);
+    const tone = 0.35 + next() * 0.3;
+    parts.push(part(`block-${index}`, cube, [x, height / 2, -distance], [width, height, 4 + next() * 14], { color: [tone, tone * 0.93, tone * 0.82], roughness: 0.85 }));
+  }
+  return parts;
+}
+
+async function fogValleyScene() {
+  const parts = fogValleyParts();
+  const lighting = await skyLighting();
+  const volumeFog = {
+    density: 0.005, minimum: [-300, 0, -450], maximum: [300, 90, 40],
+    color: [1, 1, 1], ambient: lighting.meanRadiance, anisotropy: 0.4, noiseAmount: 0, steps: 48, maxDistance: 600,
+  };
+  return {
+    parts, blenderWorld: lighting.blenderWorld,
+    environment: environment(lighting, { keyColor: [4, 3.7, 3.3], lightDirection: normalized(FOG_VALLEY_SUN_DIRECTION), volumeFog }),
+    camera: { eye: [0, 2.5, 14], target: [0, 8, -150], up: [0, 1, 0], fov: 55, near: 0.1, far: 700 },
+    shadow: sunShadow(FOG_VALLEY_SUN_DIRECTION, [0, 0, -190], 230, 500),
+  };
+}
+
+// Fog room: a 5 m square room with a window in one wall. The sun comes through the window as a shaft in the fog and lands
+// on the floor; the rest of the room is lit by what the window lets in of a 0.05 sky.
+const FOG_ROOM = { halfSize: 2.5, height: 3.2, wall: 0.4 };
+const FOG_ROOM_WINDOW = { bottom: 0.9, top: 2.5, halfWidth: 0.8 };
+const FOG_ROOM_SUN_DIRECTION = [0.8, 0.55, 0.2];
+
+function fogRoomParts(plaster, floorWood) {
+  const { halfSize, height, wall } = FOG_ROOM;
+  const { bottom, top, halfWidth } = FOG_ROOM_WINDOW;
+  const outer = (halfSize + wall) * 2;
+  const wallX = halfSize + wall / 2;
+  const gap = (halfSize - halfWidth) / 2 + halfWidth;
+  return [
+    part('floor', HALL_BLOCK, [0, -0.5, 0], [outer, 1, outer], floorWood),
+    part('roof', HALL_BLOCK, [0, height + 0.5, 0], [outer, 1, outer], plaster),
+    part('wall-left', HALL_BLOCK, [-wallX, height / 2, 0], [wall, height, outer], plaster),
+    part('wall-front', HALL_BLOCK, [0, height / 2, wallX], [outer, height, wall], plaster),
+    part('wall-back', HALL_BLOCK, [0, height / 2, -wallX], [outer, height, wall], plaster),
+    // Four pieces leave a rectangular window in the right wall.
+    part('wall-right-low', HALL_BLOCK, [wallX, bottom / 2, 0], [wall, bottom, outer], plaster),
+    part('wall-right-high', HALL_BLOCK, [wallX, (top + height) / 2, 0], [wall, height - top, outer], plaster),
+    part('wall-right-near', HALL_BLOCK, [wallX, (bottom + top) / 2, gap], [wall, top - bottom, halfSize - halfWidth], plaster),
+    part('wall-right-far', HALL_BLOCK, [wallX, (bottom + top) / 2, -gap], [wall, top - bottom, halfSize - halfWidth], plaster),
+    part('table', HALL_BLOCK, [-0.4, 0.4, -0.2], [1.2, 0.8, 0.8], floorWood),
+    part('vase', sphere(24, 16), [-0.4, 0.98, -0.2], [0.18, 0.18, 0.18], { color: [0.55, 0.3, 0.2], roughness: 0.4 }),
+    part('cabinet', HALL_BLOCK, [-1.9, 0.9, -1.8], [0.8, 1.8, 0.6], floorWood),
+  ];
+}
+
+async function fogRoomScene() {
+  const lighting = constantLighting(0.05);
+  const plaster = { color: [0.7, 0.66, 0.6], roughness: 0.85 };
+  const floorWood = { color: [0.45, 0.3, 0.18], roughness: 0.6 };
+  const parts = fogRoomParts(plaster, floorWood);
+  const { halfSize, height } = FOG_ROOM;
+  const volumeFog = {
+    density: 0.2, minimum: [-halfSize, 0, -halfSize], maximum: [halfSize, height, halfSize],
+    color: [1, 1, 1], ambient: [0.05, 0.05, 0.05], anisotropy: 0.5, noiseAmount: 0, steps: 48, maxDistance: 20,
+  };
+  return {
+    parts, blenderWorld: lighting.blenderWorld,
+    environment: environment(lighting, { keyColor: [8, 6.9, 5.4], lightDirection: normalized(FOG_ROOM_SUN_DIRECTION), volumeFog }),
+    camera: { eye: [-2.3, 1.5, 2.3], target: [0.4, 1.0, -1], up: [0, 1, 0], fov: 62, near: 0.05, far: 30 },
+    shadow: sunShadow(FOG_ROOM_SUN_DIRECTION, [0, 1.5, 0], 5, 20),
     brightRegion: { luminance: 0.1, dilation: 4 },
   };
 }
@@ -429,13 +524,13 @@ const CITY_ROW_COUNT = 29;
 const CITY_CENTER_Z = -430;
 const CITY_SUN_DIRECTION = [-0.7, 0.14, -0.35];
 const WINDOW_PITCH = 6.5;
-const FACADE_STYLES = [
+export const FACADE_STYLES = [
   { color: [0.07, 0.09, 0.13], metallic: 0.3, roughness: 0.25 },
   { color: [0.3, 0.3, 0.32], metallic: 0, roughness: 0.8 },
   { color: [0.38, 0.31, 0.25], metallic: 0, roughness: 0.75 },
   { color: [0.14, 0.16, 0.2], metallic: 0.5, roughness: 0.3 },
 ];
-const WINDOW_STYLES = [
+export const WINDOW_STYLES = [
   { color: [1, 0.7, 0.35], emission: 1.1 },
   { color: [1, 0.8, 0.55], emission: 1 },
   { color: [0.6, 0.78, 1], emission: 0.9 },
@@ -447,12 +542,12 @@ function towerHeight(x, z, random) {
   return random() < 0.04 ? ridge * 1.5 : ridge;
 }
 
-function cityTowerParts(parts, towerBox, x, z, random, towerIndex) {
+export function cityTowerParts(parts, towerBox, x, z, random, towerIndex, heightOverride) {
   const width = 24 + random() * 16;
   const depth = 24 + random() * 16;
   const facade = FACADE_STYLES[Math.floor(random() * FACADE_STYLES.length)];
   const windows = WINDOW_STYLES[Math.floor(random() * WINDOW_STYLES.length)];
-  const totalHeight = towerHeight(x, z, random);
+  const totalHeight = heightOverride ?? towerHeight(x, z, random);
   const tierCount = totalHeight > 90 ? 1 + Math.floor(random() * 3) : 1;
   let baseY = 0;
   for (let tier = 0; tier < tierCount; tier++) {
@@ -515,6 +610,8 @@ export const REFERENCE_SCENES = {
   'mountain-valley': mountainValleyScene,
   'temple-hall': templeHallScene,
   'dark-shaft': darkShaftScene,
+  'fog-valley': fogValleyScene,
+  'fog-room': fogRoomScene,
   'megacity-dusk': megacityDuskScene,
 
   async 'brick-graph'() {

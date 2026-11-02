@@ -1,6 +1,6 @@
 # Reference renders
 
-This suite scores how close a 67js render is to Blender on 21 fixed scenes. Later work uses these scores as its starting point.
+This suite scores how close a 67js render is to Blender on 23 fixed scenes. Later work uses these scores as its starting point.
 
 ## Run it
 
@@ -31,7 +31,7 @@ Scores against Cycles, with each change in turn:
 | `brushed-film` | 0.1613 | 0.1172 | 0.1149 | 0.0984 |
 | `metal` | 0.1868 | 0.1309 | 0.1294 | 0.0916 |
 | `material-spheres` | 0.1598 | 0.1337 | 0.1312 | 0.1053 |
-| `foliage` | 0.1594 | 0.1346 | 0.1290 | 0.0864 |
+| `foliage` | 0.1594 | 0.1346 | 0.1173 | 0.0888 |
 | `brick-flat` | 0.1999 | 0.1273 | 0.1272 | 0.1098 |
 | `brick-graph` | 0.2269 | 0.1604 | 0.1602 | 0.1221 |
 | `long-street` | 0.1555 | 0.1555 | 0.1407 | 0.0976 |
@@ -45,12 +45,30 @@ Three scenes test what people want to make, not one feature. Each one is built w
 | Scene | Parts | Triangles drawn | 67js against Cycles | EEVEE against Cycles | Largest visible gap |
 | --- | --- | --- | --- | --- | --- |
 | `megacity-dusk` | 4,300 | 51.6 thousand | 0.1627 | 0.1524 | Window bands are sharper, and facades get no light from the windows |
-| `mountain-valley` | 7,698 | 9.72 million | 0.3473 | 0.1828 | Trees are lighter from leaf translucency, and shadowed rock is brighter |
+| `mountain-valley` | 7,698 | 9.72 million | 0.2623 | 0.1879 | The valley floor and the trees are 1.3 to 1.7 times as bright as in Cycles, and shadowed rock is brighter (see "Sky visibility in crowns and valleys") |
 | `temple-hall` | 155 | 11 thousand | 0.2126 | 0.2341 | The fog shafts are stronger in 67js, and the floor gets no bounce light |
 
 With the shadow floor `temple-hall` scored 0.5841, `mountain-valley` 0.3658 and `megacity-dusk` 0.1583.
 
 `temple-hall` sets its own `bakeOptions`. The defaults need 1.4 million texels, and the bake allows 1 million. With the options the bake scores 0.2239, against 0.2126 without it.
+
+### Options for the grand scenes (2026-11-02, part of issue #168)
+
+The three scenes measure well and look plain, so `grand-scenes.js` holds three options of each, `-a`, `-b` and `-c`, each a different composition, light and time of day. `npm run reference -- --grand` draws them on both sides into `grand.json` and `images/grand-<id>.jpg`; `baseline.json` and the other images are unchanged. `python bench/reference/grand-sheets.py <directory>` (command in its header) writes one comparison sheet per scene. An picks by letter, and a later change moves the pick into `REFERENCE_SCENES`. Blender draws the same geometry; the sky is the same equirectangular gradient on both sides (`gradient` world type), and every window, lamp and sky panel is Emission.
+
+| Option | What it is | 67js against Cycles | Cycles seconds |
+| --- | --- | --- | --- |
+| `mountain-valley-a` | Golden hour at a lake, sun from the left, rocky shore in the foreground | 0.3530 | 26.3 |
+| `mountain-valley-b` | Midday from a high slope, a river winding down a flat valley floor | 0.1839 | 24.5 |
+| `mountain-valley-c` | Alpenglow on one tall peak, forest edge close to the camera | 0.2282 | 52.7 |
+| `temple-hall-a` | Four clerestory windows throw slanted sun shafts across the nave, people in the light | 0.2530 | 21.7 |
+| `temple-hall-b` | Square oculus hall: ring of columns, one beam on a gilded seated figure | 0.3642 | 25.4 |
+| `temple-hall-c` | Setting sun down the nave axis through a tall opening, columns as silhouettes in glowing fog | 0.2746 | 23.4 |
+| `megacity-dusk-a` | Blue hour on a river with lit bridges and quays | 0.1978 | 28.9 |
+| `megacity-dusk-b` | Sunrise across a bay from a pier, skyline and its reflection | 0.1575 | 33.2 |
+| `megacity-dusk-c` | Night, high view over an avenue grid of car lights and dense lit towers | 0.1149 | 35.9 |
+
+Known gaps in the 67js side: a lake or bay shows the sky only, where Cycles also mirrors the shore, the trees and the towers; the dark halls have no bounced light.
 
 ## Dark spaces (2026-11-01, part of issue #159)
 
@@ -226,6 +244,34 @@ A probe at the middle of the object and traced without it is the only option the
 
 Every other scene scored the same to four digits, GPU and CPU. `car-paint` has one reflective part, so it gains little: the clearcoat sphere reflects the floor and nothing else. The issue's second box holds (no frame cost without a reflective part); its first box does not (`metal` is 0.012 above EEVEE).
 
+## Fog on two more scenes, and a seam in baked rooms (2026-11-02, issues #164 and #165)
+
+**New scenes.** `fog-valley` is open ground under the HDRI sky with a low sun ahead of the camera, 48 blocks from 25 m to 400 m away and `volumeFog` density 0.005 over the whole field. `fog-room` is a 5 m square room with a window, density 0.2, a constant 0.05 world and the sun coming through the window as a shaft; it declares a `brightRegion` (24.3 percent of the frame). Both are built from engine code, so Blender gets the same geometry. Scores against Cycles on 2026-11-02 (RTX 3060):
+
+| Scene | 67js whole frame | EEVEE whole frame | 67js region | EEVEE region |
+| --- | --- | --- | --- | --- |
+| `fog-room` | 0.1953 | 0.3730 | 0.1682 | 0.3146 |
+| `fog-valley` | 0.1967 | 0.1952 | | |
+
+`fog-room` beats EEVEE by a wide margin with the constants of #161 unchanged. `fog-valley` is 0.0015 behind EEVEE, which is inside the CPU and GPU spread of that scene (`gpu-vs-cpu` 0.0122), so the constants hold on a scene they were not fitted to. Every other scene keeps its score to four digits.
+
+**Constants derived from the scene (tried, not kept).** The ambient floor of 15 percent in shadow is the constant most likely to be wrong in an open scene, so I measured the share of the sky that the fog's air sees: a grid of 512 points in the volume, 48 rays each, and the sun's shadow of each point. The ambient is scaled by the share the sunlit points see, and the shadowed fog keeps the ratio of the two shares. Results against Cycles, region in brackets:
+
+| Scene | Constants of #161 | Ambient times sunlit share | Same, with the shadow ratio |
+| --- | --- | --- | --- |
+| `temple-hall` no bake | 0.1436 (0.2305) | 0.1334 (0.2513) | 0.1329 (0.2519) |
+| `temple-hall` baked | 0.0559 (0.2523) | 0.0741 (0.2702) | 0.0751 (0.2708) |
+| `dark-shaft` no bake | 0.1430 (0.1273) | 0.1230 (0.1080) | 0.1226 (0.1080) |
+| `dark-shaft` baked | 0.0607 (0.1769) | 0.0792 (0.2259) | 0.0798 (0.2259) |
+| `fog-valley` no bake | 0.1967 | | 0.1998 |
+| `fog-room` no bake | 0.1953 (0.1682) | | 0.1512 (0.1820) |
+
+It improves the whole frame of three plain scenes and the region of `dark-shaft`, and worsens both baked rows, the region of `temple-hall`, `fog-valley` and the region of `fog-room`. The region of `temple-hall` is the pixels that Cycles shows bright, and there the fog wants more ambient, not less: a mean share per volume takes light from points that see the sky through the roof slots. A per-point share needs a 3D texture in the post shader, which is more than the 150 byte limit of the core entry, and I did not build it. The change was reverted, so `src/post.js` is as before and #164 is not fixed.
+
+**The corner line in baked `dark-shaft` (#165).** Measured with a ridge detector on the dark pixels (a pixel brighter than the pixels 3 to 4 px away on both sides): the plain frame has none above 0.03 display luminance, and the baked frame had a 56 px diagonal ridge at the right wall and floor corner (x 767 to 797, y 316 to 337) plus thin lines along the tops of the slabs. It is a bake seam leak. The unwrap packs charts one texel apart, so the texel just outside a chart's edge is the gutter, and `dilate` filled it with the average of every covered neighbour, including the neighbouring chart. The wall's inner face sits next to the outer face, which sees the whole sky: its sky visibility texel read 128 of 255 where the interior reads 1 or 2, and the bilinear read at the wall's bottom edge took about 20 percent of it. `rasterizeTexels` now gives a texel within 0.75 texel of a chart to the nearest triangle, at the nearest point on its edge, so a chart edge is sampled at its own surface; the sky visibility mean counts only texels inside a chart, so the area weighting of `skyVisibility` is unchanged. After the change the edge texel reads 1 against 1 in the row above, and the ridges are gone. The baked rows moved as a side effect: `dark-shaft` 0.0653 (0.1847) to 0.0607 (0.1769) and `temple-hall` 0.0578 (0.2550) to 0.0559 (0.2523).
+
+Region scores, before and after this change, against Cycles (EEVEE in brackets): `temple-hall` 0.2305 and 0.2523 baked (0.2455), `dark-shaft` 0.1273 and 0.1769 baked (0.2643). Only the baked rows moved, and they moved down.
+
 ## Baseline
 
 Measured on 2026-10-30 with an RTX 3060, SwiftShader and Blender 5.2.2. The metric is [FLIP](https://github.com/NVlabs/flip) for LDR images: 0 means identical, and a higher score means a larger visible difference.
@@ -315,11 +361,84 @@ Noise contributes nothing (0.2269 against 0.2270 without it), so the different n
 
 The two solvers differ in kind, so this mostly scores how alike the motion is. The banner sits at the EEVEE yardstick, which is a weak test: a flat sheet leaning in the wind has few pixels to get wrong. By eye the banner differs in shape: Blender's sheet wrinkles and sags along the bottom edge, 67js stays smooth and flat. The drape is about twice the yardstick: Blender's sheet has landed on the ball as a bell with wrinkles and its corners still up, while 67js has pulled its corners down and hangs flat panels on both sides of the ball. Wind is matched by the steady swing of the banner (Blender field strength 2 is 1.5 m/s here), because Blender's wind is a linear drag and this solver's is quadratic. The drape numbers also moved when the drag was matched: see "Recipe cloth" in `docs/physics.md`.
 
+## Leaf model and tree regions (issue #166)
+
+Before this change the Blender leaf was a plain Principled BSDF, while the 67js foliage shader (`CANOPY_TAG` in `src/shaders.js`) is not. `render-blender.py` now rebuilds each term of that shader on the Blender side, with the shader's own constants, for every material tagged `foliage`:
+
+| 67js foliage term | Blender node setup |
+| --- | --- |
+| Back faces keep the stored normal | Geometry normal times `1 - 2 * Backfacing` undoes Blender's flip |
+| Colour times `0.78 + 0.16 * sin(13 x + sin(9 y)) * sin(11 z - 5 y)` of the world position | The same sines on Geometry position, multiplied into the base colour |
+| Normal moved by `0.06 * (sin(12 z), sin(9 x), cos(11 y))`, then normalised | The same vector in Blender axes, on the Principled and Translucent normals |
+| Sky reflection 0.3 of a dielectric's | Specular IOR Level 0.5 * 0.3 |
+| Light from behind: `colour * max(dot(-N, L), 0) * 0.3 * keyColor / (3.7, 3.4, 2.9)` | Translucent BSDF with colour weight `0.3 * pi / (3.7, 3.4, 2.9)`, which returns the same radiance for a sun of irradiance `keyColor`, added to the Principled BSDF |
+| Alpha mask at 0.5 | Mix Shader with a Transparent BSDF, so the Translucent part is cut out too |
+
+The weights are derived from the shader, not tuned. One difference stays: the 67js term was not shadowed, and the Blender Translucent BSDF is. The 67js term now multiplies by the sun shadow `visibility` as well (a leaf can only pass sun that reaches it), which is the one engine change of this issue. It moved `foliage` from 0.1181 to 0.1173; on its own the shader change is small.
+
+Scores before and after (FLIP against Cycles, RTX 3060, 2026-11-02), with EEVEE against Cycles beside them:
+
+| Scene | Before | Fair leaf, old shader | After | EEVEE |
+| --- | --- | --- | --- | --- |
+| `foliage` | 0.1290 | 0.1181 | 0.1173 | 0.0864 before, 0.0888 after |
+| `mountain-valley` | 0.3473 | 0.3485 | 0.3483 | 0.1828 before, 0.1879 after |
+
+The fair leaf alone moved `foliage` by 0.0109 (the Cycles crown got brighter, from 0.135 to 0.176 mean display luminance) and `mountain-valley` by 0.001: the leaf model was never the main gap there. No other scene changed to four digits in the full rescore.
+
+Regions, measured on the Cycles image (display luminance, mean of the region; FLIP is the mean error of 67js against Cycles):
+
+| Scene and region | Cycles | EEVEE | 67js | FLIP 67js | Share of the error |
+| --- | --- | --- | --- | --- | --- |
+| `foliage` crown (green, upper rows) | 0.176 | 0.229 | 0.300 | 0.472 | 0.37 |
+| `foliage` trunk and ground under the tree | 0.139 | 0.191 | 0.208 | 0.313 | 0.02 |
+| `foliage` open ground and sky | 0.689 to 0.793 | the same | the same to 0.01 | 0.03 to 0.14 | 0.55 |
+| `mountain-valley` trees (green) | 0.186 | 0.225 | 0.335 | 0.481 | 0.53 |
+| `mountain-valley` valley floor, rows 440 to 530 | 0.272 | 0.306 | 0.416 | about 0.5 | |
+
+What the experiments show, each with the flags of this runner:
+
+- `foliage` crown with `--ambient 0` (sun and shading only): 67js 0.176, the same as the whole Cycles crown. So the sun term alone is already as bright as Cycles, and the sky term adds 0.12 on top. Cycles loses most of the sky inside a dense crown to the leaves around each card; 67js has no occlusion in the ambient term, only vertex colours that darken from the crown centre. Screen space occlusion (`--ambient-occlusion 1 --ambient-occlusion-radius 1`) takes `foliage` from 0.1181 to 0.1133 and the crown to 0.283, which is not enough to close the gap. The remaining gap is recorded, not fixed: it needs occlusion between cards, which is the light bake's job (`addons/light-bake`) and is not part of a shader.
+- `mountain-valley` floor with `--ambient 0`: 67js 0.180, against 0.272 for the full Cycles frame. The valley floor sits inside a ring of 1,100 m peaks that hide much of the sky in Cycles, and 67js lights the floor with the whole sky. This is inferred from the ring geometry and from the floor matching on the open `foliage` scene (0.698 against 0.689); it was not measured by removing the mountains. It is the main reason the trees there are lighter than in Cycles too. Fixing it needs sky visibility for terrain, which no shader has.
+- Ground under the `foliage` tree: the floor is within 0.01 luminance of Cycles, and FLIP is worst in a band of 0.2 to 0.5 at the canopy rows, not at the trunk base. The trunk and its contact shadow are 2% of the error.
+
+Blender render time of the two rerun scenes, now in `baseline.json`: `foliage` 26.4 s in Cycles and 13.5 s in EEVEE, `mountain-valley` 35.9 s and 39.2 s (other jobs loaded the machine).
+
+### Sky visibility in crowns and valleys (issue #191)
+
+The two experiments above point at the same missing term: sky light that reaches a surface which the scene itself shades. Cycles blocks that light and 67js did not. Two bakes now give the sky term a visibility, and no recipe field changes.
+
+Causes, each measured on its own:
+
+- Crown. With `--ambient 0` the 67js crown is 0.176, the same as the whole Cycles crown (0.175). The 0.12 the world adds in 67js (0.298 in total) is therefore sky light that Cycles stops inside the crown.
+- Valley floor, from the heightfield. A script walked 32 horizon directions from 6 floor points of the `mountain-valley` height function and computed the cosine weighted share of the sky above the horizon. The ring leaves 0.69 to 0.72 of the sky open. Without the ring the share is 0.995 to 0.999. Cycles was not rerun without the ring.
+- The valley sky term is 0.416 minus 0.180 = 0.236 in 67js, and 0.272 minus 0.180 = 0.092 in Cycles, which needs a share of 0.39. The ring explains the larger part of the gap. The estimate 0.18 + 0.7 * 0.236 = 0.345 is close to the measured result below (0.360). The rest is not explained: the sky of the HDRI is brightest near the horizon, which the ring hides, and a cosine share cannot see that.
+
+What changed:
+
+- `createTree` gives each foliage vertex a `skyVisibility` (`src/tree-sky.js`). The leaf vertices are binned in a grid of 14 cells along the longest side. For each occupied cell, 9 rays go up (1 zenith, 4 at 40 degrees, 4 at 65 degrees) and add the leaf density they cross. The cell keeps the mean of `exp(-depth)`, with a floor of 0.04. The opacity of one leaf vertex, 0.3, is the one fitted number: it was set on the `foliage` crown and not on `mountain-valley`. A level with fewer leaves counts each vertex for more, so the three levels agree.
+- `createTerrain` gives each terrain vertex a `skyVisibility` (`src/terrain-sky.js`). For 16 azimuths it marches the heightfield outward in growing steps, keeps the highest horizon, and integrates the cosine weighted sky above it for the tilted surface normal. It samples a lattice of at most 160 nodes per side and interpolates, so the cost does not grow with the grid.
+- The value travels in the fourth component of the vertex colour attribute, so the attribute layout is the same. The shader multiplies it into `occlusion` (which scales the environment light) and into the two fill lights in world mode. Direct lights are not touched. A mesh without the value reads 1.
+- The tree value is computed on first read, which is when the renderer uploads the geometry. The terrain value is computed per chunk when the chunk is built.
+
+Results (FLIP against Cycles, RTX 3060, 2026-11-02), with EEVEE against Cycles beside them. Region luminance is the mean display luminance of the region, taken on the Cycles image:
+
+| Scene and region | Cycles | EEVEE | 67js before | 67js after |
+| --- | --- | --- | --- | --- |
+| `foliage` score | - | 0.0888 | 0.1173 | 0.1023 |
+| `foliage` crown | 0.175 | 0.227 | 0.298 | 0.200 |
+| `mountain-valley` score | - | 0.1879 | 0.3483 | 0.2623 |
+| `mountain-valley` floor, rows 440 to 530 | 0.272 | 0.306 | 0.417 | 0.360 |
+| `mountain-valley` trees (green) | 0.151 | 0.193 | 0.312 | 0.254 |
+
+The `foliage` crown is now within 0.03 of Cycles, but the scene still scores worse than EEVEE: with the opacity at 0.12 the score was 0.1033 and the crown 0.226, so the rest of the crown error is leaf shape and placement, not sky. The valley trees stop at 0.254 because a conifer crown is already at the visibility floor, and a tree in the valley does not see the ring. The score against EEVEE of `mountain-valley` rose from 0.2382 to 0.2971, since EEVEE does not hide the sky either. No other scene changed to four digits in the full rescore, and the plain frame time of `material-spheres` did not change beyond the noise of a loaded machine (median 1.18 ms before, 1.0 ms after over 4 alternating runs).
+
+Build time, on this machine with other jobs running: a 5 km valley terrain adds about 0.2 to 0.35 s (1.7 to 2.2 s before). A conifer crown costs about 4 ms and a broadleaf crown 6 ms for three levels, so the 3 variants of the valley forest add about 15 ms, and a forest of 3,600 distinct trees would add about 15 to 20 s only if every tree is drawn, since the value is lazy.
+
 ## Limits
 
 - Scores come from one camera for each scene and one machine. They do not measure motion or speed.
 - This suite sets an HDRI from code and leaves occlusion off; `--ambient-occlusion <strength> [--ambient-occlusion-radius <units>]` turns it on. A recipe reaches only the named procedural setups, so these scores still describe a better environment than an agent gets (issue #53).
-- The Blender leaf material has no translucency, and the 67js foliage shader adds it by a trick. `foliage` is therefore partly a difference in materials.
+- Both sides use the same leaf model since issue #166 (see "Leaf model and tree regions"). Grass has its own extra term in the 67js shader (`TAG_GRASS`), and Blender does not get it; no reference scene draws grass cards.
 - `render-blender.py` does not read normal maps. No scene uses one yet, so a new scene with a normal map must add that first.
 - `glass` and `car-paint` use the real 67js `transmission` and `clearcoat` layers, and the Blender side sets the same values on the Principled BSDF. 67js refracts through the front surface only, so the sphere does not show the inverted sky that Cycles traces through the back face.
 - `car-paint` scored 0.1521 against Cycles and `glass` 0.1326 (it was 0.1450 with the `liquid` material). The other scenes scored the same as in the table above, to four digits. The table above is the 2026-10-30 baseline and has not been rewritten.
