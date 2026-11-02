@@ -114,7 +114,7 @@ A seek to any frame gives the same pixels: a job samples each frame from its tim
 
 ## Path tracer
 
-An `image` job can ask for the offline [path tracer](path-tracer.md) with `settings.renderer`:
+An `image` job can ask for the offline [path tracer](https://github.com/anxuanng/67.js/blob/main/docs/path-tracer.md) with `settings.renderer`:
 
 ```json
 { "kind": "image", "width": 960, "height": 540,

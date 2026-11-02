@@ -1,4 +1,4 @@
-// Speed baseline for the polygon mesh core (P1 of .agents/plans/modeling-parity.md).
+// Speed baseline for the polygon mesh core in addons/mesh.
 // Usage: node scripts/benchmark-mesh-core.mjs [gridSide=1000] [runs=5]
 import { mkdir, writeFile } from 'node:fs/promises';
 import { constants, cpus, setPriority } from 'node:os';

@@ -29,6 +29,12 @@ Version `0.8.0` adds source-node authoring on imported GLBs with retained rigs, 
 
 Version `0.9.0` adds isolated multi-angle and pose review with unchanged source revision and preview state.
 
+Version `0.10.0` adds terrain, texture sets, vegetation, liquid playback, vehicles, retargeting, image-based lighting, alpha materials and compressed glTF input.
+Version `0.11.0` adds `addons/mesh` for polygon editing, with booleans, bevel, loop cuts, UV unwrapping and a modifier stack. It adds the `mesh_edit`, `mesh_stack` and `mesh_inspect` tools, plus grass, clutter and moss.
+Version `0.12.0` adds seeded procedural material patterns.
+Version `0.13.0` adds `addons/skeleton-pose` with clip layers, masks and IK, and `0.13.1` and `0.14.0` make it work on real imported characters, including through MCP.
+[CHANGELOG.md](CHANGELOG.md) lists every change, including work on `main` that is not released yet.
+
 The stdio MCP server supplies twenty-two schema-backed tools and persistent CPU/GPU image previews.
 Recipes retain lighting, volumetric fog, grading and directional shadow coverage with atomic edits and undo.
 Imported asset sessions retain supported textures, rigs, morphs and clips from a configured local GLB catalog.
@@ -37,12 +43,14 @@ The npm package includes the prebuilt `67js-mcp` command with lazy browser start
 
 ## Next
 
-1. Extend imported asset sessions with deformed geometry diagnostics and merging several parts into one editable mesh (part topology edits are in the next release).
-2. Extend visual review with posed geometry bounds, automatic framing and compact rendered diagnostics.
-3. Extend render jobs with resumable long renders, several audio tracks, markers and events, and measured adaptive output quality. Timeline shots, one audio file with measured sync, an NVENC choice and 60 s videos are in place.
-4. Geometry, rig and asset diagnostics that help agents correct intersections, invalid transforms and unsupported materials.
-5. Agent workflows for imported assets, sculpting, surface fitting, lighting and animation, verified against rendered reference scenes.
-6. GPU timing and adaptive quality based on measured frame time, with stable resolution changes and explicit minimum quality.
+Issue 23 in the project repository orders the work in six milestones. Each milestone lists its own issues.
+
+1. Measure: benchmarks, size budgets and reference-scene scores that make each goal checkable.
+2. Lighter: remove weight so that new features fit under the package size budget.
+3. Modeling: close the mesh, rigging and procedural gaps against Blender.
+4. Look: close the material, lighting and rendering gaps against Blender.
+5. Motion and simulation: close the animation, physics and timeline gaps against Blender.
+6. Agent surface: make the tools cheaper to use and harder to misuse.
 
 ## Longer term
 
