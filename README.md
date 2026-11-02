@@ -19,7 +19,7 @@
   <a href="https://67js.codepawl.com">Showcase</a> ·
   <a href="https://67js.codepawl.com/docs.html">Documentation</a> ·
   <a href="https://67js.codepawl.com/llms.txt">Guide for agents</a> ·
-  <a href="CHANGELOG.md">Changelog</a>
+  <a href="https://github.com/anxuanng/67.js/blob/main/CHANGELOG.md">Changelog</a>
 </p>
 
 <p align="center">
@@ -188,13 +188,13 @@ They compare matching scenes on the same hardware. They do not show a general sp
 
 ## Contributing
 
-Read [CONTRIBUTING.md](CONTRIBUTING.md) before you open a pull request. It covers setup, checks, code style and the release flow.
+Read [CONTRIBUTING.md](https://github.com/anxuanng/67.js/blob/main/CONTRIBUTING.md) before you open a pull request. It covers setup, checks, code style and the release flow.
 
 ## Credits
 
 - [gl-matrix](https://github.com/toji/gl-matrix) supplies the matrix math.
 - The glTF addon has its own parser and does not depend on [Three.js](https://threejs.org/). The Draco, meshopt and KTX2 decoders are Three.js loaders that you pass in.
-- Textures, leaf atlases and the HDRI on the site are CC0 scans from [Poly Haven](https://polyhaven.com) and [ambientCG](https://ambientcg.com). See [the texture credits](public/textures/CREDITS.md).
+- Textures, leaf atlases and the HDRI on the site are CC0 scans from [Poly Haven](https://polyhaven.com) and [ambientCG](https://ambientcg.com). See [the texture credits](https://github.com/anxuanng/67.js/blob/main/public/textures/CREDITS.md).
 - WALL·E is a Disney/Pixar character. The study is procedural geometry with no external model assets.
 - The trailer study follows the shot order of [a Universal Pictures trailer](https://www.youtube.com/watch?v=uYPbbksJxIg) with procedural sets and an original score. It contains no film footage or soundtrack samples.
 

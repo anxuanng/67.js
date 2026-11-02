@@ -43,6 +43,28 @@ Use `--set-budgets` to reset every budget to 2% over the current size. Use it af
 
 Moving code into installed dependencies would shrink the archive further but adds install size to every consumer, including library users who never run MCP. Making `@modelcontextprotocol/server` and `zod` dependencies saved about 125 KB of archive for about 14.5 MB on disk, so it was not kept.
 
+### How the archive budget is set
+
+The budget is a hand-set ceiling, not a measurement. Two rules decide it.
+
+- **It protects install size.** The archive is what every consumer downloads, including library users who never run MCP. The ceiling stops slow growth that no single pull request notices.
+- **It keeps 20 KB of headroom.** The next feature of normal size must fit without a budget change. When the archive is within 20 KB of the budget, remove something before raising the number. Raising it needs a reason in the pull request.
+
+Measured 2026-11-02 with `npm pack --ignore-scripts --json`, gzipping each packed file alone. The archive was 740,972 bytes before the change below. The parts sum to more than that, because the archive compresses across files.
+
+| Part | Bytes gzip |
+| --- | --- |
+| `build/` without `build/mcp/` | 458,778 |
+| `build/mcp/` (`server.mjs` alone is 126,804) | 145,808 |
+| `docs/` | 122,481 |
+| `CHANGELOG.md` | 36,111 |
+| `skills/` | 25,078 |
+| the rest (README, notices, roadmap, `bin/`, `package.json`, license) | 13,967 |
+
+What may leave without a loss for users is text that GitHub serves at a stable address: the changelog and the docs that only the site needs. A shipped doc then links the GitHub copy with an absolute URL, because a relative link to a file the package does not hold is dead inside `node_modules`. `npm run check:links:package` packs the archive, unpacks it and checks every link, and the `Test` workflow runs it.
+
+`CHANGELOG.md` left the archive on 2026-11-02 for that reason. The archive is now 705,961 bytes, 34,039 under the budget. The 20 docs that `docs/guide.md` links but the package does not ship would add 64,477 bytes, so they stay on GitHub. Source maps are not packed, and the packed files hold no test fixtures or data.
+
 ## Limits
 
 The check reads gzip size only. It does not measure parse time, memory or runtime speed.

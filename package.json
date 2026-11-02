@@ -16,7 +16,6 @@
     "bin",
     "README.md",
     "LICENSE",
-    "CHANGELOG.md",
     "ROADMAP.md",
     "THIRD-PARTY-NOTICES.md",
     "skills",
@@ -133,7 +132,8 @@
     "size": "node scripts/measure-size.mjs",
     "benchmark:runtime": "node bench/runtime/run.mjs",
     "check:tool-schemas": "node scripts/check-tool-schemas.mjs",
-    "check:links": "node scripts/check-links.mjs"
+    "check:links": "node scripts/check-links.mjs",
+    "check:links:package": "node scripts/check-links.mjs --package"
   },
   "peerDependencies": {
     "@dimforge/rapier3d-compat": "0.21.0",

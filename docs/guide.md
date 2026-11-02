@@ -161,8 +161,8 @@ Extrusion supports holes and bevels. Open tube ends remain uncapped.
 4. Share the geometry among repeated parts.
 
 The [modeling contract](/modeling.md) defines input bounds, winding, bevel limits and resource estimates.
-The [scene graph](/scene-graph.md) supports hierarchy and pivots without changing mesh topology.
-The [modeling demo](/modeling.html) combines these tools in a lantern scene.
+The [scene graph](https://github.com/anxuanng/67.js/blob/main/docs/scene-graph.md) supports hierarchy and pivots without changing mesh topology.
+The [modeling demo](https://67js.codepawl.com/modeling.html) combines these tools in a lantern scene.
 These generators do not perform solid Boolean operations or provide a mesh editor.
 
 ## Sculpt brushes
@@ -177,9 +177,9 @@ The result preserves topology, UVs and colors, and rebuilds normals.
 3. Inspect the resulting surface for folds or intersections.
 4. Rebuild surface patches and query indices after changing geometry.
 
-The [sculpt contract](/sculpt.md) defines brush strength, seam handling and work limits.
+The [sculpt contract](https://github.com/anxuanng/67.js/blob/main/docs/sculpt.md) defines brush strength, seam handling and work limits.
 Smoothing can shrink volume. Sculpting rejects skin and morph channels and does not remesh or prevent intersections.
-Compatible deformations can become [relative morph targets](/morph-targets.md) for animation.
+Compatible deformations can become [relative morph targets](https://github.com/anxuanng/67.js/blob/main/docs/morph-targets.md) for animation.
 
 ## Contact detection
 
@@ -194,7 +194,7 @@ The `surfaces` mode finds triangle contact. The `closed-solids` mode also tests 
 5. Dispose the indices when their geometry is no longer needed.
 
 An index also supports `raycast(matrix, ray)` for a triangle number, hit point and barycentric coordinates.
-The [mesh query contract](/mesh-query.md) describes results, solid validation, numerical limits and budget errors.
+The [mesh query contract](https://github.com/anxuanng/67.js/blob/main/docs/mesh-query.md) describes results, solid validation, numerical limits and budget errors.
 Rebuild indices after geometry edits. Queries reject skin and morph channels.
 Contact results do not measure penetration depth, resolve collisions or diagnose z-fighting.
 
@@ -210,11 +210,11 @@ Nearest mode chooses a surface point. Project mode casts along a target-local di
 4. Use the returned geometry with the target part's retained matrix.
 5. Inspect `stats` and the resulting mesh before rendering.
 
-The [shrinkwrap contract](/shrinkwrap.md) defines local distances, work budgets and miss handling.
+The [shrinkwrap contract](https://github.com/anxuanng/67.js/blob/main/docs/shrinkwrap.md) defines local distances, work budgets and miss handling.
 Collapsed output triangles cause errors. Projection does not guarantee clearance across the complete accessory surface.
 
 `createSurfacePatch` from `67js/addons/surface` clips target triangles into an overlay with its own UVs and material.
-The [surface patch contract](/surface.md) defines projector orientation, depth and local clearance.
+The [surface patch contract](https://github.com/anxuanng/67.js/blob/main/docs/surface.md) defines projector orientation, depth and local clearance.
 Patches and shrinkwrap are static operations. They do not follow skin or morph deformation.
 
 ## HDR environment lighting
@@ -230,7 +230,7 @@ Pass `environment: { map }` to light and reflect from an equirectangular HDR ima
 3. Play it with `createSkinClipPlayer(skin, clip).apply(seconds)`, then `renderer.updateParts(parts)`.
 4. For a crowd, `createCrowd({ count, clip, seed })` gives placement, time offsets and playback rates. Each instance needs its own skin pose.
 
-The [retarget contract](/retarget.md) covers rest-pose assumptions and measured cost. Mixamo clips need the owner's Adobe login to download; the code only consumes files.
+The [retarget contract](https://github.com/anxuanng/67.js/blob/main/docs/retarget.md) covers rest-pose assumptions and measured cost. Mixamo clips need the owner's Adobe login to download; the code only consumes files.
 
 ## Baked liquid
 
@@ -241,7 +241,7 @@ The [retarget contract](/retarget.md) covers rest-pose assumptions and measured 
 3. Create a player with `createSpumePlayer(cache, { matrix, loop })`.
 4. Each frame, call `renderer.replaceParts([...sceneParts, ...player.partsAt(seconds)])` and render.
 
-The [Spume contract](/spume.md) covers the cache format, whitewater options, placement and measured cost.
+The [Spume contract](https://github.com/anxuanng/67.js/blob/main/docs/spume.md) covers the cache format, whitewater options, placement and measured cost.
 Textured, skinned and morphed parts may stay in the list unchanged while frames are replaced; adding or removing them needs a new renderer.
 
 ## Wheeled vehicles
@@ -254,7 +254,7 @@ Textured, skinned and morphed parts may stay in the list unchanged while frames 
 
 Wheel spin, front-wheel steering, roll, pitch and ground following come from the path.
 Scene-graph nodes and imported GLBs use `applyVehiclePoseToSceneGraph` and `applyVehiclePoseToAsset`.
-The [vehicle contract](/vehicle.md) lists conventions, options and limits.
+The [vehicle contract](https://github.com/anxuanng/67.js/blob/main/docs/vehicle.md) lists conventions, options and limits.
 
 ## Trees and grass
 
@@ -264,7 +264,7 @@ The [vehicle contract](/vehicle.md) lists conventions, options and limits.
 2. Pick detail per camera with `selectLevels(forest.instances, eye)`.
 3. Pass `view.parts` to `Renderer67` and rebuild when `view.changed` is true.
 
-Cards (`leaves: 'cards'`, the default) are single-sided, alpha-masked, double-sided `foliage` textures that sway with the wind; `'mesh'` leaves cost about twice the triangles. Pass `barkTextures` for scanned bark and `leafTextures: await loadLeafTextures('/textures/leaves')` for scanned leaf cards. The [Vegetation contract](/vegetation.md) lists species, triangle budgets and limits.
+Cards (`leaves: 'cards'`, the default) are single-sided, alpha-masked, double-sided `foliage` textures that sway with the wind; `'mesh'` leaves cost about twice the triangles. Pass `barkTextures` for scanned bark and `leafTextures: await loadLeafTextures('/textures/leaves')` for scanned leaf cards. The [Vegetation contract](https://github.com/anxuanng/67.js/blob/main/docs/vegetation.md) lists species, triangle budgets and limits.
 
 ## Grass fields
 
@@ -274,11 +274,11 @@ Cards (`leaves: 'cards'`, the default) are single-sided, alpha-masked, double-si
 2. Add `grass.parts` to the renderer and pass `wind` in each frame.
 3. When `grass.update(eye)` returns true, call `renderer.replaceParts` with the new part list.
 
-Tint the ground under the grass with `grass.groundColor`. The [Grass contract](/grass.md) lists options, levels, measured budgets and limits.
+Tint the ground under the grass with `grass.groundColor`. The [Grass contract](https://github.com/anxuanng/67.js/blob/main/docs/grass.md) lists options, levels, measured budgets and limits.
 
-`67js/addons/clutter` is in the current source and not yet published. It scatters pebbles, rocks, twigs and fallen leaves over terrain in the same streamed tiles. Pick a `preset` (`meadow`, `forest`, `riverbed`, `scree`), pass `terrainHeight`, and add `clutter.parts` next to the grass. The [Clutter contract](/clutter.md) lists options and budgets.
+`67js/addons/clutter` is in the current source and not yet published. It scatters pebbles, rocks, twigs and fallen leaves over terrain in the same streamed tiles. Pick a `preset` (`meadow`, `forest`, `riverbed`, `scree`), pass `terrainHeight`, and add `clutter.parts` next to the grass. The [Clutter contract](https://github.com/anxuanng/67.js/blob/main/docs/clutter.md) lists options and budgets.
 
-`67js/addons/light-bake` is in the current source and not yet published. `bakeLightmaps(parts, lights, options)` ray traces the light that bounces between surfaces into a lightmap texture for each part and returns new parts that draw it through the emissive map; direct light stays live. The [Light bake contract](/light-bake.md) lists the limits.
+`67js/addons/light-bake` is in the current source and not yet published. `bakeLightmaps(parts, lights, options)` ray traces the light that bounces between surfaces into a lightmap texture for each part and returns new parts that draw it through the emissive map; direct light stays live. The [Light bake contract](https://github.com/anxuanng/67.js/blob/main/docs/light-bake.md) lists the limits.
 
 ## Terrain and ground textures
 
@@ -288,7 +288,7 @@ Tint the ground under the grass with `grass.groundColor`. The [Grass contract](/
 2. `const terrain = createTerrain({ size, chunks, resolution, levels, seed })`; give every `terrain.parts` entry the one shared material.
 3. Pass `terrain.heightAt` to `scatterVegetation` and vehicles, and call `renderer.replaceParts` when `terrain.update(eye)` returns parts.
 
-The [Terrain contract](/terrain.md) lists every option, the texture-array memory and the limits.
+The [Terrain contract](https://github.com/anxuanng/67.js/blob/main/docs/terrain.md) lists every option, the texture-array memory and the limits.
 
 ## Retained surface attachments
 
@@ -302,7 +302,7 @@ The accessory uses the attachment's retained world matrix. Its positive Z axis f
 4. Update the target matrix, morph weights and skin palette for the frame.
 5. Call `attachment.update()` before `renderer.updateParts()`.
 
-The [attachment contract](/surface-attachment.md) defines retained identities, world-unit clearance and unsupported shader deformation.
+The [attachment contract](https://github.com/anxuanng/67.js/blob/main/docs/surface-attachment.md) defines retained identities, world-unit clearance and unsupported shader deformation.
 Updates sample the selected triangle without rebuilding a BVH.
 Static raycast hits can supply binding coordinates, but query indices cannot raycast a visibly skinned or morphed surface.
 An attachment positions one rigid frame. It does not conform the accessory footprint or prevent every intersection.
@@ -395,7 +395,7 @@ The [lighting contract](/lighting.md) defines intensity, radius, range and valid
 Point lights have no local shadows and can illuminate through walls.
 Radius regularizes attenuation and does not create an area emitter.
 
-The [volume fog contract](/volumetric.md) covers depth-clipped directional scattering in version `0.4.0`.
+The [volume fog contract](https://github.com/anxuanng/67.js/blob/main/docs/volumetric.md) covers depth-clipped directional scattering in version `0.4.0`.
 Active fog requires `hdr: true`, `depth: true` and supported floating-point targets.
 Its depth texture contributes to the render memory estimate.
 
@@ -421,11 +421,11 @@ Tracks target unique part names. Supported transform tracks are translation, rot
 
 Version `0.4.0` supports `CUBICSPLINE` tracks with explicit `inTangent` and `outTangent` values on every keyframe.
 Tangents represent component changes per second. Quaternion tangents are component derivatives.
-The [curve contract](/animation-curves.md) defines interpolation, overshoot constraints and retained player buffers.
+The [curve contract](https://github.com/anxuanng/67.js/blob/main/docs/animation-curves.md) defines interpolation, overshoot constraints and retained player buffers.
 
 `createAnimationMixer(parts)` combines clips through reusable actions and absolute-time control timelines.
 Actions support weights, playback speed, fades and crossfades.
-The [mixer contract](/animation-mixer.md) defines blending, ownership and control ordering.
+The [mixer contract](https://github.com/anxuanng/67.js/blob/main/docs/animation-mixer.md) defines blending, ownership and control ordering.
 
 1. Create clips and bind their actions through `mixer.clipAction(clip)`.
 2. Author `play`, `fadeTo` or `crossFade` controls in nondecreasing time order.
@@ -447,13 +447,13 @@ The renderer applies morph deltas before skinning.
 3. Update joint palette values and morph weights for the desired frame.
 4. Call `renderer.updateParts(parts)` to validate and upload the poses.
 
-The [skinning contract](/skinning.md) defines supported transforms, four influences and identity requirements.
-The [morph contract](/morph-targets.md) defines channel shapes, weight bounds and resource estimates.
+The [skinning contract](https://github.com/anxuanng/67.js/blob/main/docs/skinning.md) defines supported transforms, four influences and identity requirements.
+The [morph contract](https://github.com/anxuanng/67.js/blob/main/docs/morph-targets.md) defines channel shapes, weight bounds and resource estimates.
 Changing topology, influences or pose identities requires a new renderer.
 
 The glTF addon imports supported skins and relative targets, including joint and weight animation.
 `asset.applyAnimation(time, clipIndex)` updates retained parts and poses for upload.
-The [glTF morph contract](/gltf-morph.md) and [asset contract](/gltf.md) define the supported asset subset.
+The [glTF morph contract](https://github.com/anxuanng/67.js/blob/main/docs/gltf-morph.md) and [asset contract](/gltf.md) define the supported asset subset.
 
 ## Recorded physics
 
@@ -607,7 +607,7 @@ Core exports are available from `67js`:
 ## Release and source availability
 
 Published npm `0.4.0` includes modeling, sculpting, static mesh queries, shrinkwrap, surface patches, animation mixing, skinning, morphs, physics and lighting.
-Retained [surface attachments](/surface-attachment.md) are introduced in `0.4.1` and are absent from published npm `0.4.0`.
+Retained [surface attachments](https://github.com/anxuanng/67.js/blob/main/docs/surface-attachment.md) are introduced in `0.4.1` and are absent from published npm `0.4.0`.
 Source checkouts can contain unreleased changes beyond their package version.
 
 The [release metadata](/release.json) identifies the published package and browser module.
