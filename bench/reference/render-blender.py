@@ -363,6 +363,122 @@ def add_graph(material, principled, description):
         principled.inputs["Emission Strength"].default_value = description.get("emission", 1)
 
 
+# The 67js foliage shader (CANOPY_TAG in src/shaders.js) is not a plain Principled leaf. Each term is rebuilt below with the
+# same constants, so both sides evaluate the same material:
+#   - the shading normal of a double-sided card keeps its direction on the back face (Blender flips it);
+#   - the colour is scaled by 0.78 + 0.16 * sin(13 x + sin(9 y)) * sin(11 z - 5 y) of the world position;
+#   - the normal is moved by 0.06 * (sin(12 z), sin(9 x), cos(11 y)) of the world position, then normalised;
+#   - environment reflection is 0.3 of a dielectric's, which halves-and-more the Principled specular level (0.5 is F0 0.04);
+#   - light from behind adds colour * max(dot(-N, L), 0) * 0.3 * keyColor / resolve, with no shadow test.
+# resolve is the daylight divisor of the shader in world mode. A Translucent BSDF returns albedo * E / pi * cos, so the weight
+# that gives the same radiance is 0.3 * pi / resolve for each channel.
+CANOPY_NORMAL_JITTER = 0.06
+CANOPY_COLOR_BASE = 0.78
+CANOPY_COLOR_SWING = 0.16
+CANOPY_SKY_REFLECTION = 0.3
+CANOPY_BACK_LIGHT = 0.3
+WORLD_KEY_RESOLVE = (3.7, 3.4, 2.9)
+PRINCIPLED_SPECULAR_LEVEL_AT_DIELECTRIC = 0.5
+
+
+def add_canopy_leaf_model(material, principled):
+    nodes = material.node_tree.nodes
+    links = material.node_tree.links
+
+    def vector_math(operation, first, second=None, scale=None):
+        node = nodes.new("ShaderNodeVectorMath")
+        node.operation = operation
+        links.new(first, node.inputs[0])
+        if second is not None:
+            links.new(second, node.inputs[1])
+        if isinstance(scale, (int, float)):
+            node.inputs[3].default_value = scale
+        elif scale is not None:
+            links.new(scale, node.inputs[3])
+        return node.outputs[0]
+
+    def scalar_math(operation, first, second=None):
+        node = nodes.new("ShaderNodeMath")
+        node.operation = operation
+        for index, value in enumerate((first, second)):
+            if value is None:
+                continue
+            if isinstance(value, (int, float)):
+                node.inputs[index].default_value = value
+            else:
+                links.new(value, node.inputs[index])
+        return node.outputs[0]
+
+    geometry = nodes.new("ShaderNodeNewGeometry")
+    position = nodes.new("ShaderNodeSeparateXYZ")
+    links.new(geometry.outputs["Position"], position.inputs[0])
+    # 67js (x, y, z) is Blender (X, Z, -Y).
+    world_x = position.outputs["X"]
+    world_y = position.outputs["Z"]
+    world_z = scalar_math("MULTIPLY", position.outputs["Y"], -1.0)
+
+    inner = scalar_math("SINE", scalar_math("MULTIPLY", world_y, 9.0))
+    first_wave = scalar_math("SINE", scalar_math("ADD", scalar_math("MULTIPLY", world_x, 13.0), inner))
+    second_wave = scalar_math("SINE", scalar_math("SUBTRACT", scalar_math("MULTIPLY", world_z, 11.0), scalar_math("MULTIPLY", world_y, 5.0)))
+    swing = scalar_math("MULTIPLY", scalar_math("MULTIPLY", first_wave, second_wave), CANOPY_COLOR_SWING)
+    modulation = scalar_math("ADD", swing, CANOPY_COLOR_BASE)
+
+    base_input = principled.inputs["Base Color"]
+    if base_input.is_linked:
+        base_color = base_input.links[0].from_socket
+    else:
+        constant = nodes.new("ShaderNodeRGB")
+        constant.outputs[0].default_value = base_input.default_value
+        base_color = constant.outputs[0]
+    modulated = nodes.new("ShaderNodeMixRGB")
+    modulated.blend_type = "MULTIPLY"
+    modulated.inputs[0].default_value = 1
+    links.new(base_color, modulated.inputs[1])
+    links.new(modulation, modulated.inputs[2])
+    links.new(modulated.outputs["Color"], base_input)
+
+    # Back face keeps the stored normal: undo Blender's flip, then add the jitter.
+    unflip = scalar_math("SUBTRACT", 1.0, scalar_math("MULTIPLY", geometry.outputs["Backfacing"], 2.0))
+    stored_normal = vector_math("SCALE", geometry.outputs["Normal"], scale=unflip)
+    jitter = nodes.new("ShaderNodeCombineXYZ")
+    # 67js (sin(12 z), sin(9 x), cos(11 y)) is Blender (X, Y, Z) = (sin(12 z), -cos(11 y), sin(9 x)).
+    links.new(scalar_math("SINE", scalar_math("MULTIPLY", world_z, 12.0)), jitter.inputs["X"])
+    links.new(scalar_math("MULTIPLY", scalar_math("COSINE", scalar_math("MULTIPLY", world_y, 11.0)), -1.0), jitter.inputs["Y"])
+    links.new(scalar_math("SINE", scalar_math("MULTIPLY", world_x, 9.0)), jitter.inputs["Z"])
+    jitter_scaled = vector_math("SCALE", jitter.outputs[0], scale=CANOPY_NORMAL_JITTER)
+    shading_normal = vector_math("NORMALIZE", vector_math("ADD", stored_normal, jitter_scaled))
+    links.new(shading_normal, principled.inputs["Normal"])
+
+    principled.inputs["Specular IOR Level"].default_value = PRINCIPLED_SPECULAR_LEVEL_AT_DIELECTRIC * CANOPY_SKY_REFLECTION
+
+    translucent = nodes.new("ShaderNodeBsdfTranslucent")
+    weight = nodes.new("ShaderNodeRGB")
+    weight.outputs[0].default_value = tuple(CANOPY_BACK_LIGHT * math.pi / resolve for resolve in WORLD_KEY_RESOLVE) + (1,)
+    weighted = nodes.new("ShaderNodeMixRGB")
+    weighted.blend_type = "MULTIPLY"
+    weighted.inputs[0].default_value = 1
+    links.new(modulated.outputs["Color"], weighted.inputs[1])
+    links.new(weight.outputs[0], weighted.inputs[2])
+    links.new(weighted.outputs["Color"], translucent.inputs["Color"])
+    links.new(shading_normal, translucent.inputs["Normal"])
+
+    total = nodes.new("ShaderNodeAddShader")
+    links.new(principled.outputs["BSDF"], total.inputs[0])
+    links.new(translucent.outputs["BSDF"], total.inputs[1])
+    final = total.outputs[0]
+    alpha_input = principled.inputs["Alpha"]
+    if alpha_input.is_linked:
+        mask = alpha_input.links[0].from_socket
+        links.remove(alpha_input.links[0])
+        cutout = nodes.new("ShaderNodeMixShader")
+        links.new(mask, cutout.inputs[0])
+        links.new(nodes.new("ShaderNodeBsdfTransparent").outputs[0], cutout.inputs[1])
+        links.new(total.outputs[0], cutout.inputs[2])
+        final = cutout.outputs[0]
+    output = next(node for node in nodes if node.type == "OUTPUT_MATERIAL")
+    links.new(final, output.inputs["Surface"])
+
+
 def build_material(name, description, has_vertex_colors):
     material = bpy.data.materials.new(name)
     material.use_nodes = True
@@ -385,6 +501,8 @@ def build_material(name, description, has_vertex_colors):
         add_texture(material, principled, description, has_vertex_colors)
     elif has_vertex_colors:
         add_vertex_colors(material, principled, description)
+    if description.get("tag") == "foliage":
+        add_canopy_leaf_model(material, principled)
     return material
 
 

@@ -13,6 +13,7 @@ import {
   createMeshBuilder, createRandom, crossProduct, lerp, lerpVectors, normalized, randomInRange, scaleVector,
   subtractVectors, valueNoise, vectorLength,
 } from './vegetation-geometry.js';
+import { computeCrownSkyVisibility } from './tree-sky.js';
 import { LEVEL_SETTINGS, SPECIES, TREE_LEVEL_DISTANCES } from './vegetation-species.js';
 import { barkTextureDescriptor, leafTextureDescriptor } from './vegetation-textures.js';
 
@@ -379,6 +380,28 @@ function createMaterials(preset, mode, scannedBark, scannedLeaves) {
   };
 }
 
+// Every level describes the same crown, so each vertex of a thinner level stands for more leaf than one of level 0.
+// `skyVisibility` is worked out the first time something reads it (the renderer, when it uploads the geometry), so a
+// tree that is only measured or exported costs nothing extra, and a forest of distinct trees pays for the ones drawn.
+function bakeCrownSkyVisibility(levels) {
+  const foliageOf = level => level.parts.find(part => part.role === 'foliage').geometry;
+  const fullVertexCount = foliageOf(levels[0]).positions.length / 3;
+  for (const level of levels) {
+    const geometry = foliageOf(level);
+    const vertexCount = geometry.positions.length / 3;
+    if (vertexCount === 0) continue;
+    let skyVisibility = null;
+    Object.defineProperty(geometry, 'skyVisibility', {
+      enumerable: true,
+      configurable: true,
+      get() {
+        skyVisibility ??= computeCrownSkyVisibility(geometry.positions, fullVertexCount / vertexCount);
+        return skyVisibility;
+      },
+    });
+  }
+}
+
 function boundsOf(geometries) {
   const minimum = [Infinity, Infinity, Infinity];
   const maximum = [-Infinity, -Infinity, -Infinity];
@@ -425,6 +448,7 @@ export function createTree(speciesOrOptions = 'broadleaf', seed = 1) {
       { role: 'foliage', geometry: buildFoliage(skeleton, preset, leaves, levelIndex, levelRandom), material: foliageMaterial, tintable: true },
     ]);
   });
+  bakeCrownSkyVisibility(levels);
   return {
     kind: 'tree', species: options.species, seed, height, leaves, levels, materials,
     distances: TREE_LEVEL_DISTANCES,
