@@ -77,6 +77,7 @@
     "./addons/agent-asset": "./build/agent-asset.js",
     "./addons/hdri": "./build/hdri.js",
     "./addons/camera-effects": "./build/camera-effects.js",
+    "./addons/water-reflection": "./build/water-reflection.js",
     "./addons/render-passes": "./build/render-passes.js",
     "./addons/material-layer-shaders": "./build/material-layer-shaders.js",
     "./addons/light-linking": "./build/light-linking.js",

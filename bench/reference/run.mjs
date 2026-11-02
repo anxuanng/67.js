@@ -20,6 +20,7 @@ import { createServer } from 'vite';
 // cloth bake, and scores them into cloth.json the same way (the pixels the scene covers, with the sky left out).
 const khronos = process.argv.includes('--khronos');
 const cloth = process.argv.includes('--cloth');
+// --no-water draws the scenes without the water reflection (src/water-reflection.js), which is otherwise found from the materials; --ssr-water draws them with bench/reference/ssr-water.js instead.
 // --grand draws the options for the grand scenes (grand-scenes.js, issue #168) and scores them into grand.json.
 const grand = process.argv.includes('--grand');
 const sceneSet = khronos ? 'khronos' : cloth ? 'cloth' : grand ? 'grand' : null;
@@ -85,7 +86,8 @@ async function renderBackend(backend, serverUrl, graphics) {
     page.on('console', message => message.text().includes('GL_') && console.log('PAGE', message.text().slice(0, 200)));
     // Each scene gets a fresh page, so a large scene leaves no GL state or memory behind for the next one.
     const openHarness = async () => {
-      await page.goto(`${serverUrl}/bench/reference/harness.html${sceneSet ? `?set=${sceneSet}` : ''}`, { timeout: PAGE_LOAD_TIMEOUT });
+      const harnessQuery = [sceneSet ? `set=${sceneSet}` : null, argumentsGiven.includes('--no-water') ? 'water=off' : argumentsGiven.includes('--ssr-water') ? 'water=ssr' : null].filter(Boolean).join('&');
+      await page.goto(`${serverUrl}/bench/reference/harness.html${harnessQuery ? `?${harnessQuery}` : ''}`, { timeout: PAGE_LOAD_TIMEOUT });
       await page.waitForFunction(() => window.renderReferenceScene, null, { timeout: PAGE_LOAD_TIMEOUT });
     };
     await openHarness();

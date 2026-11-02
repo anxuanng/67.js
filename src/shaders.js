@@ -903,7 +903,7 @@ ${featureCode("probeSurroundings")}    radiance += surroundings * reflectance * 
   if (USES_SHEEN) radiance = sheenLayer(radiance, normal, viewDirection, visibility);
   if (USES_CLEARCOAT) radiance = clearCoatLayer(radiance, normal, viewDirection, visibility);
   radiance += emission;
-  if (TAG_WATER) {
+${featureCode("afterEmission")}  if (TAG_WATER) {
     float reflectivity = 0.20 + 0.65 * pow(1.0 - max(dot(normal, viewDirection), 0.0), 3.0);
     vec3 reflection = mix(vec3(0.12, 0.24, 0.28), vec3(0.40, 0.63, 0.78), clamp(reflect(-viewDirection, normal).y, 0.0, 1.0));
     radiance = mix(radiance * 0.6, reflection * daylight * ambientIntensity, reflectivity);
