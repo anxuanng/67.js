@@ -221,6 +221,22 @@ Next ideas, by expected size: a far level that keeps the picture (try the clump 
 - Picture: `mountain-valley` GPU render against the render before the change differs in 27,167 of 518,400 pixels, 80 of them by more than 8 levels (largest 24 of 255); SwiftShader 33,356 pixels, 78 above 8 levels (largest 35). In the darkest quarter of the image, where shadows are, the mean difference is 0.075 and 0.085 levels. Score against Cycles 0.3473 to 0.3478 (SwiftShader 0.3460 to 0.3466), against EEVEE 0.2420 to 0.2426. The other 20 scenes keep their scores to four digits.
 - Not done: a shadow level for foliage, which needs a bound that includes the wind sway.
 
+### Foliage shadow levels, culled foliage and a far tree level (issue #186, 2026-11-03)
+
+`node bench/reference/profile-scene.mjs mountain-valley gpu` now also prints the instances drawn per triangle count of the geometry, for the shadow pass and for the main pass. Triangles handed to the GPU, measured on the RTX 3060:
+
+| Step | Main pass | Shadow pass |
+| --- | --- | --- |
+| Before (main at 52244d3) | 6,456,732 | 2,341,826 |
+| Swaying foliage culled, foliage shadow layers | 5,368,328 | 1,759,378 |
+| Plus the fourth tree level, as kept | 2,891,430 | 1,394,478 |
+
+- Swaying batches (`foliage`, `grass`) are cullable now. The vertex shader moves a vertex by at most 0.555 (foliage) or 0.51 (grass) times the wind strength, so each bound grows by 0.56 times the strength (`SWAY_REACH_PER_STRENGTH` in `renderer.js`). That is exact, so the picture does not change; it removed 1.09 million main pass triangles of off-screen foliage.
+- Foliage shadow layers: a third of the leaves 1.7 times larger (error 1 m) and an eighth 2.8 times larger (error 2 m), with the tree's own leaf material. Trunks gain a second shadow level with a third of the rings. A tree at the last camera level had 2,050 trunk triangles in the main pass and now has 750 (conifer), with its crown clumps 1.5 times wider.
+- Score against Cycles for `mountain-valley`: GPU 0.2623 to 0.2629, SwiftShader 0.2600 to 0.2607 (limit 0.002). The other 22 scenes keep their scores to four digits.
+- The frame time on the 3060 is a range, not a result: three runs of the main pass were 18.3 to 18.8 ms before and 11.8 to 14.7 ms after, with other sessions loading the machine.
+- Not done: the shadow pass still draws 3,649 shadow trunks of 130 triangles and about 3,200 crown clumps of 96 to 108 triangles for trees that are smaller than a texel; the terrain tile of 8,192 triangles is drawn 14 times.
+
 ## Lit shader cost on SwiftShader, three tries, none kept (2026-11-03, branch `perf/lit-shader-cost`)
 
 Issue 74. Same method as before: `--cpu-only --frames 6`, `67js-ldr-one-sample` against `three-one-sample`, at below-normal priority, other sessions running (CPU 5 to 100 percent). Changed and unchanged file were swapped in `src/` and alternated, three rounds, no code is left changed.

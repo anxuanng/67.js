@@ -30,11 +30,12 @@ async function profileOnce(page) {
       started = performance.now();
     };
     // Counts what each frame hands to the GPU: draw calls and triangles.
-    const drawn = { calls: 0, triangles: 0 };
+    const drawn = { calls: 0, triangles: 0, instancesByTriangleCount: {} };
     const originalDraw = WebGL2RenderingContext.prototype.drawElementsInstanced;
     WebGL2RenderingContext.prototype.drawElementsInstanced = function (mode, count, type, offset, instances) {
       drawn.calls++;
       drawn.triangles += (count / 3) * instances;
+      drawn.instancesByTriangleCount[count / 3] = (drawn.instancesByTriangleCount[count / 3] ?? 0) + instances;
       return originalDraw.call(this, mode, count, type, offset, instances);
     };
     const scene = await REFERENCE_SCENES[id]();
@@ -58,10 +59,17 @@ async function profileOnce(page) {
     const firstFrameDrawn = { ...drawn };
     drawn.calls = 0;
     drawn.triangles = 0;
+    drawn.instancesByTriangleCount = {};
     renderer.render(frame);
     wait();
     lap('secondFrame');
     const secondFrameDrawn = { ...drawn };
+    // The shadow pass is the first frame minus the main pass: instances drawn per triangle count of the geometry.
+    const shadowInstancesByTriangleCount = {};
+    for (const [triangles, instances] of Object.entries(firstFrameDrawn.instancesByTriangleCount)) {
+      const shadowInstances = instances - (secondFrameDrawn.instancesByTriangleCount[triangles] ?? 0);
+      if (shadowInstances > 0) shadowInstancesByTriangleCount[triangles] = shadowInstances;
+    }
     WebGL2RenderingContext.prototype.drawElementsInstanced = originalDraw;
     renderer.render(frame);
     wait();
@@ -69,7 +77,7 @@ async function profileOnce(page) {
     const image = canvas.toDataURL('image/png');
     lap('canvasToPng');
     renderer.dispose();
-    return { parts: scene.parts.length, batches: renderer.batches.length, sceneTriangles: renderer.triangles, firstFrameDrawn, secondFrameDrawn, pngBytes: image.length, milliseconds };
+    return { parts: scene.parts.length, batches: renderer.batches.length, sceneTriangles: renderer.triangles, firstFrameDrawn: { calls: firstFrameDrawn.calls, triangles: firstFrameDrawn.triangles }, secondFrameDrawn: { calls: secondFrameDrawn.calls, triangles: secondFrameDrawn.triangles }, shadowInstancesByTriangleCount, mainInstancesByTriangleCount: secondFrameDrawn.instancesByTriangleCount, pngBytes: image.length, milliseconds };
   }, sceneId);
 }
 

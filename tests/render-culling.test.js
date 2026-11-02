@@ -91,6 +91,7 @@ function drawingRenderer(parts) {
   renderer.geometryBuffers = new Map();
   renderer.culling = true;
   renderer.lodPixelError = 1;
+  renderer.windState = { time: 0, strength: 0.3 };
   renderer.canvas = { height: CANVAS_HEIGHT };
   const noop = () => {};
   renderer.context = {
@@ -141,10 +142,10 @@ test('culling is off for deforming, skinned and alpha-blended batches, and lods 
   const lods = [{ geometry, error: 0 }, { geometry: box(0, 1), error: 0.1 }];
   const { renderer, batch } = drawingRenderer([rigidPart('tree', geometry, [0, 0, 0])]);
   assert.equal(batch.cullable, true);
-  const swaying = rigidPart('grass', geometry, [0, 0, 0]);
-  swaying.material.tag = 'grass';
-  assert.equal(renderer.createCullingState([swaying]).cullable, false);
-  assert.throws(() => renderer.createCullingState([{ ...swaying, lods }]), /lods need rigid, opaque parts/);
+  const deforming = rigidPart('water', geometry, [0, 0, 0]);
+  deforming.material.tag = 'water';
+  assert.equal(renderer.createCullingState([deforming]).cullable, false);
+  assert.throws(() => renderer.createCullingState([{ ...deforming, lods }]), /lods need rigid or swaying, opaque parts/);
   const glass = rigidPart('glass', geometry, [0, 0, 0]);
   glass.material.alphaMode = 'blend';
   glass.material.opacity = 0.5;
@@ -178,9 +179,36 @@ test('the shadow pass skips instances outside the light and picks the shadow lev
 test('a batch without shadow levels uses its camera levels in the shadow pass, and shadow levels are refused on deforming parts', () => {
   const geometry = box(0, 1);
   const { renderer } = drawingRenderer([rigidPart('tree', geometry, [0, 0, 0])]);
-  const swaying = rigidPart('grass', geometry, [0, 0, 0], { shadowLods: [{ geometry, error: 0 }, { geometry: box(0, 1), error: 0.1 }] });
-  swaying.material.tag = 'grass';
-  assert.throws(() => renderer.createCullingState([swaying]), /shadowLods need rigid, opaque parts/);
+  const deforming = rigidPart('water', geometry, [0, 0, 0], { shadowLods: [{ geometry, error: 0 }, { geometry: box(0, 1), error: 0.1 }] });
+  deforming.material.tag = 'water';
+  assert.throws(() => renderer.createCullingState([deforming]), /shadowLods need rigid or swaying, opaque parts/);
   const plain = renderer.createCullingState([rigidPart('plain', geometry, [0, 0, 0])]);
   assert.equal(plain.shadowLevels, null);
+});
+
+test('swaying foliage is culled and given shadow levels, with a bound that grows with the wind', () => {
+  const geometry = sphere(24, 12);
+  const shadowLods = [{ geometry, error: 0 }, { geometry: box(0, 1), error: 0.5 }];
+  const foliage = rigidPart('leaves', geometry, [0, 0, 0], { shadowLods });
+  foliage.material.tag = 'foliage';
+  const { renderer, batch } = drawingRenderer([foliage]);
+  assert.equal(batch.cullable, true);
+  assert.equal(batch.shadowLevels.levelGeometries[1], shadowLods[1].geometry);
+  assert.ok(batch.swayReach > 0.5, 'the reach covers the farthest leaf the wind shader moves (0.555 per unit of strength)');
+  const rigid = renderer.createCullingState([rigidPart('rock', geometry, [0, 0, 0])]);
+  assert.equal(rigid.swayReach, 0);
+  // An instance just outside the frustum edge swings into view when the wind is strong enough.
+  const { projection, viewProjection, planes } = cameraMatrices([0, 0, 10]);
+  renderer.viewProjection = viewProjection;
+  renderer.projection = projection;
+  renderer.frustumPlanes = planes;
+  const edge = rigidPart('edge', geometry, [9.8, 0, 0]);
+  edge.material.tag = 'foliage';
+  const edgeBatch = renderer.createCullingState([edge]);
+  const select = strength => {
+    renderer.windState = { time: 0, strength };
+    return renderer.selectBatchInstances({ ...edgeBatch, instanceData: instanceData([[9.8, 0, 0]]), instanceCount: 1 }).visibleCount;
+  };
+  assert.equal(select(0), 0);
+  assert.equal(select(4), 1);
 });

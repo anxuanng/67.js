@@ -128,5 +128,8 @@ export const LEVEL_SETTINGS = [
   { sideScale: 1, leafKeep: 1, leafScale: 1, maximumBranchLevel: Infinity },
   { sideScale: 0.6, leafKeep: 0.34, leafScale: 1.7, maximumBranchLevel: -1 },
   { sideScale: 0.4, leafKeep: 0, leafScale: 1, maximumBranchLevel: 1 },
+  // Far level: `pointStride` keeps every n-th ring of a branch above the trunk and `crownScale` widens the crown clumps,
+  // so it keeps the trunk, its first branches and the width of the crown in far fewer triangles.
+  { sideScale: 0.25, leafKeep: 0, leafScale: 1, maximumBranchLevel: 1, pointStride: 3, crownScale: 1.5 },
 ];
-export const TREE_LEVEL_DISTANCES = [38, 95];
+export const TREE_LEVEL_DISTANCES = [38, 95, 150];
