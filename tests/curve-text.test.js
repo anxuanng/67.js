@@ -1,3 +1,4 @@
+import './support/load-agent-scene-modules.mjs';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createAgentScene, agentSceneModulesNeeded, AGENT_SCENE_CAPABILITIES } from '../src/agent-scene.js';

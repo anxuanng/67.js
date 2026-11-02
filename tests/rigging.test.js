@@ -1,3 +1,4 @@
+import './support/load-agent-scene-modules.mjs';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
