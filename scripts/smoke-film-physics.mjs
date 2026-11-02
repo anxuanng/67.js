@@ -1,11 +1,26 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { writeFile } from 'node:fs/promises';
+import { spawn } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import { constants, setPriority } from 'node:os';
 import { chromium } from 'playwright';
 
 setPriority(0, constants.priority.PRIORITY_BELOW_NORMAL);
-const browser = await chromium.launch({ executablePath: 'C:/Program Files/Google/Chrome/Application/chrome.exe', headless: true, args: ['--enable-webgl', '--ignore-gpu-blocklist'] });
+const PORT = 5192;
+const server = spawn(process.execPath, ['node_modules/vite/bin/vite.js', '--host', '127.0.0.1', '--port', String(PORT), '--strictPort'], { windowsHide: true, stdio: 'pipe' });
+await new Promise((resolve, reject) => {
+  const timeout = setTimeout(() => reject(new Error('The film physics smoke server did not start.')), 30000);
+  server.stdout.on('data', bytes => {
+    if (bytes.toString().includes(`127.0.0.1:${PORT}`)) {
+      clearTimeout(timeout);
+      resolve();
+    }
+  });
+  server.on('error', reject);
+});
+const chrome = 'C:/Program Files/Google/Chrome/Application/chrome.exe';
+const browser = await chromium.launch({ ...(existsSync(chrome) ? { executablePath: chrome } : {}), headless: true, args: ['--enable-webgl', '--ignore-gpu-blocklist'] });
 const report = {};
 try {
   for (const [name, width, height] of [['wide', 960, 540], ['portrait', 540, 960]]) {
@@ -14,7 +29,7 @@ try {
     page.on('pageerror', error => errors.push(error.message));
     await page.route('**/src/film.js', route => route.fulfill({ contentType: 'application/javascript', body: "export * from '/build/film.js';" }));
     await page.route('**/src/renderer.js', route => route.fulfill({ contentType: 'application/javascript', body: "export { Renderer67 } from '/build/67.module.js';" }));
-    await page.goto(`http://127.0.0.1:5173/film.html?export=1&width=${width}&height=${height}`);
+    await page.goto(`http://127.0.0.1:${PORT}/film.html?export=1&width=${width}&height=${height}`);
     await page.waitForFunction(() => window.__filmReady);
     const result = await page.evaluate(() => {
       const scene = window.__film.scenes.apparatus;
@@ -79,4 +94,5 @@ try {
   console.log(JSON.stringify(report, null, 2));
 } finally {
   await browser.close();
+  server.kill();
 }
