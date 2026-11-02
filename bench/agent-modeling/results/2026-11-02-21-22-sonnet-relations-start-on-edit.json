@@ -1,0 +1,352 @@
+{
+  "run": "2026-11-02-21-22-sonnet-relations-start-on-edit",
+  "model": "claude-sonnet-5-5",
+  "date": "2026-11-02T21:25:37.343Z",
+  "skill": false,
+  "branches": "on",
+  "relations": "on",
+  "runsPerTask": 3,
+  "passed": 6,
+  "tasks": 6,
+  "toolCalls": 33,
+  "costUsd": 2.26,
+  "byModel": {
+    "claude-sonnet-5-5": {
+      "runs": 6,
+      "passed": 6,
+      "successRate": 1,
+      "toolCalls": 33,
+      "toolErrors": 0,
+      "inputTokens": 2680384,
+      "outputTokens": 22156,
+      "costUsd": 2.26,
+      "tasks": {
+        "cabinet-resize": {
+          "runs": 3,
+          "passed": 3,
+          "successRate": 1,
+          "toolCalls": 9,
+          "toolErrors": 0,
+          "inputTokens": 987778,
+          "outputTokens": 9024,
+          "costUsd": 1.05
+        },
+        "desk-resize": {
+          "runs": 3,
+          "passed": 3,
+          "successRate": 1,
+          "toolCalls": 24,
+          "toolErrors": 0,
+          "inputTokens": 1692606,
+          "outputTokens": 13132,
+          "costUsd": 1.21
+        }
+      }
+    }
+  },
+  "records": [
+    {
+      "task": "cabinet-resize",
+      "attempt": 1,
+      "pass": true,
+      "passed": 21,
+      "total": 21,
+      "failed": [],
+      "model": "claude-sonnet-5-5",
+      "toolCalls": 3,
+      "toolErrors": 0,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_create": 1,
+        "scene_apply": 1,
+        "scene_export_recipe": 1
+      },
+      "branchCalls": 0,
+      "relationCalls": 1,
+      "pathQueries": 0,
+      "features": {
+        "geometryTypes": [
+          "box"
+        ],
+        "meshOperations": [],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 1,
+            "side": 1,
+            "three-quarter": 1
+          },
+          "mean": 1
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-11-02-21-22-sonnet-relations-start-on-edit/look/1/cabinet-resize-front.png",
+          "artifacts/agent-modeling/2026-11-02-21-22-sonnet-relations-start-on-edit/look/1/cabinet-resize-side.png",
+          "artifacts/agent-modeling/2026-11-02-21-22-sonnet-relations-start-on-edit/look/1/cabinet-resize-three-quarter.png"
+        ]
+      },
+      "turns": 5,
+      "costUsd": 0.40067810000000004,
+      "inputTokens": 427545,
+      "outputTokens": 3025,
+      "wallSeconds": 28,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "desk-resize",
+      "attempt": 1,
+      "pass": true,
+      "passed": 21,
+      "total": 21,
+      "failed": [],
+      "model": "claude-sonnet-5-5",
+      "toolCalls": 8,
+      "toolErrors": 0,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_create": 1,
+        "scene_apply": 3,
+        "scene_inspect": 3,
+        "scene_export_recipe": 1
+      },
+      "branchCalls": 0,
+      "relationCalls": 1,
+      "pathQueries": 0,
+      "features": {
+        "geometryTypes": [
+          "box"
+        ],
+        "meshOperations": [],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 1,
+            "side": 1,
+            "three-quarter": 1
+          },
+          "mean": 1
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-11-02-21-22-sonnet-relations-start-on-edit/look/1/desk-resize-front.png",
+          "artifacts/agent-modeling/2026-11-02-21-22-sonnet-relations-start-on-edit/look/1/desk-resize-side.png",
+          "artifacts/agent-modeling/2026-11-02-21-22-sonnet-relations-start-on-edit/look/1/desk-resize-three-quarter.png"
+        ]
+      },
+      "turns": 10,
+      "costUsd": 0.4072661,
+      "inputTokens": 563411,
+      "outputTokens": 4765,
+      "wallSeconds": 39,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "cabinet-resize",
+      "attempt": 2,
+      "pass": true,
+      "passed": 21,
+      "total": 21,
+      "failed": [],
+      "model": "claude-sonnet-5-5",
+      "toolCalls": 3,
+      "toolErrors": 0,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_create": 1,
+        "scene_apply": 1,
+        "scene_export_recipe": 1
+      },
+      "branchCalls": 0,
+      "relationCalls": 1,
+      "pathQueries": 0,
+      "features": {
+        "geometryTypes": [
+          "box"
+        ],
+        "meshOperations": [],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 0.9994,
+            "side": 1,
+            "three-quarter": 0.9981
+          },
+          "mean": 0.9992
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-11-02-21-22-sonnet-relations-start-on-edit/look/2/cabinet-resize-front.png",
+          "artifacts/agent-modeling/2026-11-02-21-22-sonnet-relations-start-on-edit/look/2/cabinet-resize-side.png",
+          "artifacts/agent-modeling/2026-11-02-21-22-sonnet-relations-start-on-edit/look/2/cabinet-resize-three-quarter.png"
+        ]
+      },
+      "turns": 5,
+      "costUsd": 0.3242825,
+      "inputTokens": 280051,
+      "outputTokens": 2912,
+      "wallSeconds": 25,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "desk-resize",
+      "attempt": 2,
+      "pass": true,
+      "passed": 21,
+      "total": 21,
+      "failed": [],
+      "model": "claude-sonnet-5-5",
+      "toolCalls": 8,
+      "toolErrors": 0,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_create": 1,
+        "scene_apply": 3,
+        "scene_inspect": 3,
+        "scene_export_recipe": 1
+      },
+      "branchCalls": 0,
+      "relationCalls": 1,
+      "pathQueries": 0,
+      "features": {
+        "geometryTypes": [
+          "box"
+        ],
+        "meshOperations": [],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 1,
+            "side": 1,
+            "three-quarter": 1
+          },
+          "mean": 1
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-11-02-21-22-sonnet-relations-start-on-edit/look/2/desk-resize-front.png",
+          "artifacts/agent-modeling/2026-11-02-21-22-sonnet-relations-start-on-edit/look/2/desk-resize-side.png",
+          "artifacts/agent-modeling/2026-11-02-21-22-sonnet-relations-start-on-edit/look/2/desk-resize-three-quarter.png"
+        ]
+      },
+      "turns": 10,
+      "costUsd": 0.40633420000000003,
+      "inputTokens": 565084,
+      "outputTokens": 4393,
+      "wallSeconds": 36,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "cabinet-resize",
+      "attempt": 3,
+      "pass": true,
+      "passed": 21,
+      "total": 21,
+      "failed": [],
+      "model": "claude-sonnet-5-5",
+      "toolCalls": 3,
+      "toolErrors": 0,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_create": 1,
+        "scene_apply": 1,
+        "scene_export_recipe": 1
+      },
+      "branchCalls": 0,
+      "relationCalls": 1,
+      "pathQueries": 0,
+      "features": {
+        "geometryTypes": [
+          "box"
+        ],
+        "meshOperations": [],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 1,
+            "side": 1,
+            "three-quarter": 1
+          },
+          "mean": 1
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-11-02-21-22-sonnet-relations-start-on-edit/look/3/cabinet-resize-front.png",
+          "artifacts/agent-modeling/2026-11-02-21-22-sonnet-relations-start-on-edit/look/3/cabinet-resize-side.png",
+          "artifacts/agent-modeling/2026-11-02-21-22-sonnet-relations-start-on-edit/look/3/cabinet-resize-three-quarter.png"
+        ]
+      },
+      "turns": 5,
+      "costUsd": 0.3263459000000001,
+      "inputTokens": 280182,
+      "outputTokens": 3087,
+      "wallSeconds": 27,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "desk-resize",
+      "attempt": 3,
+      "pass": true,
+      "passed": 21,
+      "total": 21,
+      "failed": [],
+      "model": "claude-sonnet-5-5",
+      "toolCalls": 8,
+      "toolErrors": 0,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_create": 1,
+        "scene_apply": 3,
+        "scene_inspect": 3,
+        "scene_export_recipe": 1
+      },
+      "branchCalls": 0,
+      "relationCalls": 1,
+      "pathQueries": 0,
+      "features": {
+        "geometryTypes": [
+          "box"
+        ],
+        "meshOperations": [],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 1,
+            "side": 1,
+            "three-quarter": 1
+          },
+          "mean": 1
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-11-02-21-22-sonnet-relations-start-on-edit/look/3/desk-resize-front.png",
+          "artifacts/agent-modeling/2026-11-02-21-22-sonnet-relations-start-on-edit/look/3/desk-resize-side.png",
+          "artifacts/agent-modeling/2026-11-02-21-22-sonnet-relations-start-on-edit/look/3/desk-resize-three-quarter.png"
+        ]
+      },
+      "turns": 10,
+      "costUsd": 0.3997654,
+      "inputTokens": 564111,
+      "outputTokens": 3974,
+      "wallSeconds": 37,
+      "exitCode": 0,
+      "stopped": "success"
+    }
+  ]
+}
