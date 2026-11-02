@@ -79,7 +79,7 @@ Cost per frame (RTX 3060, `lit-interior`, medians of three alternating rounds of
 | Option | Default | Range | Meaning |
 | --- | --- | --- | --- |
 | `samples` | 128 | 1 to 512 | Paths per texel. |
-| `bounces` | 2 | 1 to 4 | Reflections followed by each path. |
+| `bounces` | 3 | 1 to 4 | Reflections followed by each path. |
 | `texelsPerUnit` | 6 | 0.5 to 64 | Lightmap density in world units. |
 | `maxResolution` | 128 | 4 to 256 | Largest lightmap side for one part. |
 | `maxSeconds` | 60 | 1 to 600 | Wall-clock limit. Passing it throws; a bake never returns a partial result. |

@@ -74,7 +74,9 @@ test('a part that sees little of the sky gets a linear occlusion map, and a part
   assert.equal(closedFloor.material.occlusionMap.colorSpace, 'linear');
   assert.equal(closedFloor.material.occlusionStrength, 1);
   assert.ok(Math.min(...closedFloor.material.occlusionMap.image.data.filter((value, index) => index % 4 === 0)) < 8);
-  assert.ok(closed.report.parts[0].skyVisibility < 0.5);
+  // The mean is over texels, and a floor slab is half top face (sees the closed room) and half underside (sees outside), now that texels are spread by area.
+  assert.ok(Math.abs(closed.report.parts[0].skyVisibility - 0.5) < 0.05);
+  assert.ok(closed.report.parts[6].skyVisibility < 0.05);
   const open = bakeLightmaps([placed('floor', [0, -0.05, 0], [6, 0.1, 6])], lamp, fastOptions);
   assert.equal(open.parts[0].material.occlusionMap, undefined);
   assert.equal(open.report.parts[0].skyVisibility, 1);
@@ -218,4 +220,27 @@ test('a light mapped part exports its second UV set as TEXCOORD_1 and its light 
 test('a bake that runs out of time throws instead of returning a partial result', () => {
   const slow = { samples: 256, bounces: 4, texelsPerUnit: 8, maxResolution: 128, maxSeconds: 1 };
   assert.throws(() => bakeLightmaps(smallRoom(), lamp, slow), /maxSeconds/);
+});
+
+// The mean light a baked part stores, in linear units: the texture is sRGB and is scaled back by the part's emission.
+function meanStoredLight(part) {
+  const bytes = lightmapBytes(part);
+  let total = 0;
+  let count = 0;
+  for (let index = 0; index < bytes.length; index += 4) {
+    total += (bytes[index] / 255) ** 2.2;
+    count++;
+  }
+  return (total / count) * part.material.emission;
+}
+
+test('the default bounces follow most of the light that a closed room keeps, which two bounces cut off', () => {
+  const { bounces, ...withoutBounces } = fastOptions;
+  const meanFloorLight = options => meanStoredLight(bakeLightmaps(smallRoom(), lamp, { ...withoutBounces, samples: 48, ...options }).parts[0]);
+  const byDefault = meanFloorLight({});
+  const two = meanFloorLight({ bounces: 2 });
+  const four = meanFloorLight({ bounces: 4 });
+  assert.ok(two < byDefault && byDefault < four, `2 bounces ${two}, default ${byDefault}, 4 bounces ${four}`);
+  assert.ok(byDefault > two * 1.05, `default ${byDefault} adds too little over 2 bounces ${two}`);
+  assert.equal(BAKE_LIMITS.bounces.fallback, 3);
 });

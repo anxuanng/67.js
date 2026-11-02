@@ -91,8 +91,8 @@ export const MAXIMUM_VIDEO_SECONDS = 60;
 /** Recipe bake presets and ranges. A bake inline on the page fails the edit after 20 s, before the 30 s page deadline; on a worker it has 90 s. */
 export const BAKE_PRESETS = Object.freeze({
   draft: Object.freeze({ samples: 32, bounces: 1, texelsPerUnit: 3 }),
-  standard: Object.freeze({ samples: 128, bounces: 2, texelsPerUnit: 6 }),
-  fine: Object.freeze({ samples: 192, bounces: 2, texelsPerUnit: 7 }),
+  standard: Object.freeze({ samples: 128, bounces: 3, texelsPerUnit: 6 }),
+  fine: Object.freeze({ samples: 192, bounces: 3, texelsPerUnit: 7 }),
 });
 export const BAKE_RANGES = Object.freeze({ samples: [1, 256], bounces: [1, 3], texelsPerUnit: [1, 12] });
 export const BAKE_MAXIMUM_SECONDS = 20;
