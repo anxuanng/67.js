@@ -212,9 +212,9 @@ A probe at the middle of the object and traced without it is the only option the
 
 `traceObjectProbes(parts, lighting, options)` in `src/probe-trace.js` finds the parts with `metallic` of at least 0.5 and `roughness` of at most 0.6, traces one 128 by 64 map at the middle of each one's bounds with that part left out, and returns the same shape as `traceProbes` plus the index of the part. `placeProbes` gives each such part its own probe. More than 8 reflective parts (lamp posts, spires) get none, because they read as shapes and not as mirrors. A trace shades a hit with the direct light, the part's colour (half the colour for metal) and the environment map's diffuse light. A ray that misses reads the environment map.
 
-`npm run reference` places these probes by default on every scene that has no bake and no `--probes` flag; `--no-object-probes` draws the old sky-only reflections, and `--object-probes` with `--probes` names the scenes. There is no recipe field: a recipe scene does not place object probes yet, because the recipe path has no map of the sky to light the floor in the reflection (the procedural sky is a colour gradient), and that is the next piece of work.
+`npm run reference -- --object-probes [<id>,<id>]` places these probes on the named scenes (every scene when no ids follow). It is opt in, like `--bake` and `--probes`, and the committed `baseline.json` and `images/` are the default run without it (`metal` 0.1294 again, confirmed on 2026-11-02). The scores below are from a full run with the flag. There is no recipe field: a recipe scene does not place object probes yet, because the recipe path has no map of the sky to light the floor in the reflection (the procedural sky is a colour gradient), and that is the next piece of work.
 
-### Scores against Cycles (GPU, full rescore, 2026-11-02)
+### Scores against Cycles with `--object-probes` (GPU, full rescore, 2026-11-02)
 
 | Scene | Before | After | EEVEE |
 | --- | --- | --- | --- |
