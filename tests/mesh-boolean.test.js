@@ -1,3 +1,4 @@
+import './support/load-agent-scene-modules.mjs';
 import { GEOMETRY_PROBLEMS } from '../src/mesh-lint.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
