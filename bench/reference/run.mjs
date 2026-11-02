@@ -20,7 +20,9 @@ import { createServer } from 'vite';
 // cloth bake, and scores them into cloth.json the same way (the pixels the scene covers, with the sky left out).
 const khronos = process.argv.includes('--khronos');
 const cloth = process.argv.includes('--cloth');
-const sceneSet = khronos ? 'khronos' : cloth ? 'cloth' : null;
+// --grand draws the options for the grand scenes (grand-scenes.js, issue #168) and scores them into grand.json.
+const grand = process.argv.includes('--grand');
+const sceneSet = khronos ? 'khronos' : cloth ? 'cloth' : grand ? 'grand' : null;
 const WORK_DIRECTORY = resolve(sceneSet ? `artifacts/reference-${sceneSet}` : 'artifacts/reference');
 const OUTPUT_DIRECTORY = resolve('bench/reference');
 const CHROME = process.env.CHROME_PATH ?? 'C:/Program Files/Google/Chrome/Application/chrome.exe';
@@ -102,7 +104,7 @@ async function renderBackend(backend, serverUrl, graphics) {
       graphics[backend] = result.graphics;
       await writeFile(`${WORK_DIRECTORY}/${id}-${backend}.png`, Buffer.from(result.image, 'base64'));
       if (describe) await writeFile(`${WORK_DIRECTORY}/scenes/${id}.json`, JSON.stringify(result.description));
-      if (sceneSet && describe) {
+      if ((khronos || cloth) && describe) {
         const background = await page.evaluate(sceneId => window.renderReferenceScene(sceneId, { describe: false, backgroundOnly: true }), id);
         await writeFile(`${WORK_DIRECTORY}/${id}-background.png`, Buffer.from(background.image, 'base64'));
       }
