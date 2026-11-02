@@ -1,0 +1,42 @@
+{
+ "metric": "FLIP (LDR), mean error of the baked GPU render against Cycles, lower is better",
+ "blenderVersion": "5.2.2 LTS",
+ "graphics": {
+  "gpu": "ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 (0x00002487) Direct3D11 vs_5_0 ps_5_0, D3D11)"
+ },
+ "scores": {
+  "lit-interior": {
+   "gpu-vs-cycles": 0.1399,
+   "gpu-vs-eevee": 0.4677,
+   "eevee-vs-cycles": 0.5159
+  },
+  "brick-room": {
+   "gpu-vs-cycles": 0.1423,
+   "gpu-vs-eevee": 0.4514,
+   "eevee-vs-cycles": 0.502
+  },
+  "dark-shaft": {
+   "gpu-vs-cycles": 0.055,
+   "gpu-vs-eevee": 0.2612,
+   "eevee-vs-cycles": 0.2654,
+   "region-pixels": 0.0989,
+   "region-gpu-vs-cycles": 0.1138,
+   "region-gpu-vs-eevee": 0.2653,
+   "region-eevee-vs-cycles": 0.2645
+  },
+  "temple-hall": {
+   "gpu-vs-cycles": 0.0554,
+   "gpu-vs-eevee": 0.244,
+   "eevee-vs-cycles": 0.2341,
+   "region-pixels": 0.0961,
+   "region-gpu-vs-cycles": 0.2233,
+   "region-gpu-vs-eevee": 0.3013,
+   "region-eevee-vs-cycles": 0.2453
+  },
+  "metal-room": {
+   "gpu-vs-cycles": 0.1716,
+   "gpu-vs-eevee": 0.4623,
+   "eevee-vs-cycles": 0.5262
+  }
+ }
+}

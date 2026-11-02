@@ -99,7 +99,47 @@ def score_path_tracer(work_directory, output_directory):
         print(scene_id.ljust(20) + f"{entry['pathtracer-vs-cycles']:.4f}".rjust(22) + f"{entry['seconds']:.1f}".rjust(10))
 
 
+def score_baked(work_directory, output_directory, scene_ids):
+    """FLIP of the GPU render of each baked scene against Cycles and EEVEE, into bake.json. The CPU render is not needed."""
+    images_directory = output_directory / "images"
+    images_directory.mkdir(parents=True, exist_ok=True)
+    results = {}
+    for scene_id in scene_ids:
+        cycles = tone_map_like_67js(np.load(work_directory / f"{scene_id}-cycles.npy"))
+        eevee = tone_map_like_67js(np.load(work_directory / f"{scene_id}-eevee.npy"))
+        gpu = load_png(work_directory / f"{scene_id}-gpu.png")
+        scores = {
+            "gpu-vs-cycles": flip_score(cycles, gpu),
+            "gpu-vs-eevee": flip_score(eevee, gpu),
+            "eevee-vs-cycles": flip_score(cycles, eevee),
+        }
+        region = json.loads((work_directory / "scenes" / f"{scene_id}.json").read_text(encoding="utf-8")).get("brightRegion")
+        if region:
+            mask = bright_region_mask(cycles, region)
+            scores["region-pixels"] = round(float(mask.mean()), 4)
+            scores["region-gpu-vs-cycles"] = masked_flip_score(cycles, gpu, mask)
+            scores["region-gpu-vs-eevee"] = masked_flip_score(eevee, gpu, mask)
+            scores["region-eevee-vs-cycles"] = masked_flip_score(cycles, eevee, mask)
+        results[scene_id] = scores
+        side_by_side(cycles, eevee, gpu, scores).save(images_directory / f"{scene_id}-baked.jpg", quality=80)
+    graphics = json.loads((work_directory / "graphics.json").read_text(encoding="utf-8"))
+    timings = json.loads((work_directory / "blender-timings.json").read_text(encoding="utf-8"))
+    report = {
+        "metric": "FLIP (LDR), mean error of the baked GPU render against Cycles, lower is better",
+        "blenderVersion": timings["blenderVersion"],
+        "graphics": {"gpu": graphics["gpu"]},
+        "scores": results,
+    }
+    (output_directory / "bake.json").write_text(json.dumps(report, indent=1) + "\n", encoding="utf-8")
+    print("scene".ljust(20) + "".join(column.rjust(18) for column in ["gpu-vs-cycles", "gpu-vs-eevee", "eevee-vs-cycles"]))
+    for scene_id, scores in results.items():
+        print(scene_id.ljust(20) + "".join(f"{scores[column]:.4f}".rjust(18) for column in ["gpu-vs-cycles", "gpu-vs-eevee", "eevee-vs-cycles"]))
+
+
 def main():
+    if "--bake" in sys.argv:
+        score_baked(Path(sys.argv[1]), Path(sys.argv[2]), sys.argv[sys.argv.index("--bake") + 1].split(","))
+        return
     if "--path-tracer" in sys.argv:
         score_path_tracer(Path(sys.argv[1]), Path(sys.argv[2]))
         return
