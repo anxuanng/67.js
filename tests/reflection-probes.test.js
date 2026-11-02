@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { box, sphere } from '../src/geometry.js';
-import { applyReflectionProbes, normalizeProbeList, selectProbe, roomCentreProbe } from '../src/reflection-probes.js';
-import { traceProbeMaps, traceProbes } from '../src/probe-trace.js';
+import { applyReflectionProbes, isReflectivePart, normalizeProbeList, placeProbes, selectProbe, roomCentreProbe, traceObjectProbes } from '../src/reflection-probes.js';
+import { MAXIMUM_OBJECT_PROBES, traceProbeMaps, traceProbes } from '../src/probe-trace.js';
 import { createFragmentShader } from '../src/shaders.js';
 import { normalizeAgentBake } from '../src/agent-bake.js';
 
@@ -107,4 +107,49 @@ test('a probe on a light-mapped part keeps its light map fields and still reads 
   assert.equal(probed.material.lightMapScale, 2);
   lightMapped.material.color = [0.2, 0.3, 0.4];
   assert.deepEqual(probed.material.color, [0.2, 0.3, 0.4]);
+});
+
+const openAir = { pointLights: [], keyColor: [0, 0, 0] };
+
+function objectScene() {
+  return [
+    placed('floor', cube, [0, -0.05, 0], [20, 0.1, 20], { color: [0.5, 0.5, 0.5] }),
+    placed('mirror', ball, [-1, 0.5, 0], [0.5, 0.5, 0.5], { metallic: 1, roughness: 0.05 }),
+    placed('block', cube, [1, 0.5, 0], [1, 1, 1], { color: [0.9, 0.1, 0.1] }),
+  ];
+}
+
+test('a reflective part gets a probe of its own, and no other part is probed', () => {
+  const parts = objectScene();
+  const trace = traceObjectProbes(parts, openAir, { width: 32 });
+  assert.equal(trace.traced.length, 1);
+  assert.equal(trace.traced[0].part, 1);
+  assert.deepEqual(trace.traced[0].position.map(value => Math.round(value * 100) / 100), [-1, 0.5, 0]);
+  const result = placeProbes(parts, trace);
+  assert.equal(result.report.partsWithProbe, 1);
+  assert.equal(result.parts[1].material.environmentProbe, result.probes[0].map);
+  assert.equal(result.parts[0].material.environmentProbe, undefined);
+  assert.equal(result.parts[2].material.environmentProbe, undefined);
+});
+
+test('the probe of a part never hits the part itself and sees the floor and the block', () => {
+  const [probe] = traceObjectProbes(objectScene(), openAir, { width: 64 }).traced;
+  // The floor fills the lower half of the view and the block part of the upper half; a mirror that traced itself would fill every ray.
+  assert.ok(probe.hitFraction > 0.45 && probe.hitFraction < 0.65, `floor and block fill about half the view: ${probe.hitFraction}`);
+});
+
+test('a scene with no reflective part, or too many, traces nothing', () => {
+  const plain = objectScene().map(part => ({ ...part, material: { ...part.material, metallic: 0 } }));
+  assert.equal(traceObjectProbes(plain, openAir).traced.length, 0);
+  const crowd = Array.from({ length: MAXIMUM_OBJECT_PROBES + 1 }, (item, index) => placed(`post-${index}`, cube, [index, 1, 0], [0.2, 2, 0.2], { metallic: 1, roughness: 0.3 }));
+  const trace = traceObjectProbes(crowd, openAir);
+  assert.equal(trace.traced.length, 0);
+  assert.match(trace.skipped, /more than 8/);
+});
+
+test('rough metal and plain surfaces are not reflective', () => {
+  assert.equal(isReflectivePart({ metallic: 1, roughness: 0.3 }), true);
+  assert.equal(isReflectivePart({ metallic: 1, roughness: 0.9 }), false);
+  assert.equal(isReflectivePart({ metallic: 0.2, roughness: 0.1 }), false);
+  assert.equal(isReflectivePart({}), false);
 });

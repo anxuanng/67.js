@@ -53,6 +53,8 @@ const skyOnlyOptions = skyOnlyFlag >= 0 ? { skyOnly: true, texelsPerUnit: skyTex
 const probesFlag =argumentsGiven.indexOf('--probes');
 const probesValue = probesFlag >= 0 ? argumentsGiven[probesFlag + 1] : undefined;
 const probedSceneIds = probesFlag >= 0 && probesValue && !probesValue.startsWith('--') ? probesValue.split(',') : null;
+// --object-probes turns the --probes scenes into one probe per reflective part (traceObjectProbes) instead of a hand placed one.
+const objectProbes = argumentsGiven.includes('--object-probes');
 const cascadesFlag = argumentsGiven.indexOf('--cascades');
 const cascades = cascadesFlag >= 0 ? Number(argumentsGiven[cascadesFlag + 1]) : 0;
 const ambientFlag = argumentsGiven.indexOf('--ambient');
@@ -83,8 +85,12 @@ async function renderBackend(backend, serverUrl, graphics) {
       await openHarness();
       const started = performance.now();
       const describe = backend === 'gpu';
-      const probes = probesFlag >= 0 && (probedSceneIds === null || probedSceneIds.includes(id));
+      const probesThisScene = probesFlag >= 0 && (probedSceneIds === null || probedSceneIds.includes(id));
       const bakesThisScene = bakeFlag >= 0 && (bakedSceneIds === null || bakedSceneIds.includes(id));
+      // A scene with no probe of its own and no bake gets one probe per reflective part, the way an engine would place them
+      // automatically. --no-object-probes draws the sky-only reflections instead.
+      const automaticProbes = !probesThisScene && !bakesThisScene && !argumentsGiven.includes('--no-object-probes');
+      const probes = probesThisScene ? (objectProbes ? 'objects' : true) : automaticProbes ? 'objects' : false;
       const bake = bakesThisScene ? { ...skyOnlyOptions } : null;
       const result = await page.evaluate(([sceneId, shouldDescribe, ambientOcclusion, ambientOcclusionRadius, bakeOptions, cascadeCount, withProbes, ambientScale]) => window.renderReferenceScene(sceneId, { describe: shouldDescribe, ambientOcclusion, ambientOcclusionRadius, bake: bakeOptions, cascades: cascadeCount, probes: withProbes, ambient: ambientScale }), [id, describe, ambientOcclusion, ambientOcclusionRadius, bake, cascades, probes, ambient]);
       if (result.glError !== 0) throw new Error(`${id} on ${backend} gave WebGL error ${result.glError}.`);

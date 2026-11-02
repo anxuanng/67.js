@@ -178,6 +178,54 @@ What ships: a `closed-room-without-bake` diagnostic in `scene_inspect` (`src/clo
 
 The no-bake scores of every scene are unchanged: no shader, renderer or scene build code moved, and the full rescore after this change matches the committed `baseline.json`. Size: the agent scene entry grows by 884 bytes gzip and `light-bake` by 158; every budget still holds, so none changed. Whether a cold agent follows the existing rule in the skill without the diagnostic was not measured: the suite's tasks each need a reference recipe and checks, which cost more than the $1 the issue allowed.
 
+## Reflections between objects (2026-11-02, issue #167)
+
+A mirror sphere and a steel cylinder showed only the sky and a flat horizon, where Cycles and EEVEE show the floor and the other objects. Parts now take a probe of their own, and `metal` goes from 0.1294 to 0.1036 against Cycles (EEVEE 0.0916). That recovers 68 percent of the gap to EEVEE and does not reach it.
+
+### Where the `metal` error was
+
+FLIP error by region, before the change, on the existing 960 by 540 renders. The regions are discs projected from the object bounds, so a share of each shadow counts toward the object. The renders used here score 0.1336 against Cycles (the committed baseline said 0.1294), so read the columns against each other and not against the table above. Each cell is the region's share of the whole image mean, mean error times the share of pixels.
+
+| Region | Pixels | 67js before | 67js with probes | EEVEE |
+| --- | --- | --- | --- | --- |
+| Chrome sphere | 5.6% | 0.0184 | 0.0145 | 0.0116 |
+| Gold torus | 1.6% | 0.0016 | 0.0016 | 0.0016 |
+| Copper box | 9.4% | 0.0307 | 0.0246 | 0.0248 |
+| Steel cylinder | 2.8% | 0.0106 | 0.0078 | 0.0055 |
+| Floor | 64.2% | 0.0702 | 0.0639 | 0.0565 |
+| Sky | 16.5% | 0.0025 | 0.0025 | 0.0016 |
+| Whole image | | 0.1336 | 0.1147 | 0.1014 |
+
+The four reflective parts held 46 percent of the error before and 55 percent of the gap to EEVEE (0.0178 of 0.0322). The sphere's lower half showed sky below the horizon, where Cycles shows the grey floor, and the cylinder reflected no lit floor. The floor itself is not a reflector (roughness 0.8). Its remaining gap to EEVEE (0.0074 after the change, 0.0137 before) is indirect light and shadow softness, which a reflection does not change.
+
+### Options
+
+| Option | What it costs per frame | Score on `metal` | Status |
+| --- | --- | --- | --- |
+| One probe per reflective part, traced without that part | 1.51 ms plain against 1.58 ms with four probes (RTX 3060, medians of three alternating rounds of 200 frames; the spread between rounds was about 0.2 ms). A scene with no reflective part draws the same frame: no wrapper, no shader change. Once: a CPU trace of 128 by 64 texels per probe and a GPU prefilter on the first draw. | 0.1294 to 0.1036 | Built |
+| Screen-space reflections | Not built. Inferred: a depth and colour pass before the reflective parts and a ray march for each reflective pixel, paid only by scenes with smooth metal. It shows only what is on screen, so the floor behind the camera and the back of an object stay missing. | not measured | Not built |
+| Planar reflection for flat floors | Not built. A second scene draw for each mirror plane. The `metal` floor is rough, so it has nothing to reflect, and the `metal-room` floor is the only case here. | not measured | Not built |
+
+A probe at the middle of the object and traced without it is the only option the code already supports, it costs no frame in a plain scene, and it gives a Cycles-like reflection of the floor and of other parts up to one bounce of direct light. A first version with one bounce had speckle on the floor (16 samples) and scored 0.1250 on the analysis renders; with no bounce and the sky's diffuse light added to each hit, it scored 0.1147. A first version without the sky light made the floor in the reflection black and scored 0.1457, worse than no probe (0.1336).
+
+### What it does
+
+`traceObjectProbes(parts, lighting, options)` in `src/probe-trace.js` finds the parts with `metallic` of at least 0.5 and `roughness` of at most 0.6, traces one 128 by 64 map at the middle of each one's bounds with that part left out, and returns the same shape as `traceProbes` plus the index of the part. `placeProbes` gives each such part its own probe. More than 8 reflective parts (lamp posts, spires) get none, because they read as shapes and not as mirrors. A trace shades a hit with the direct light, the part's colour (half the colour for metal) and the environment map's diffuse light. A ray that misses reads the environment map.
+
+`npm run reference` places these probes by default on every scene that has no bake and no `--probes` flag; `--no-object-probes` draws the old sky-only reflections, and `--object-probes` with `--probes` names the scenes. There is no recipe field: a recipe scene does not place object probes yet, because the recipe path has no map of the sky to light the floor in the reflection (the procedural sky is a colour gradient), and that is the next piece of work.
+
+### Scores against Cycles (GPU, full rescore, 2026-11-02)
+
+| Scene | Before | After | EEVEE |
+| --- | --- | --- | --- |
+| `metal` | 0.1294 | 0.1036 | 0.0916 |
+| `car-paint` | 0.1059 | 0.1038 | 0.0844 |
+| `brushed-film` | 0.1149 | 0.1029 | 0.0984 |
+| `material-spheres` | 0.1312 | 0.1293 | 0.1053 |
+| `metal-room` | 0.5128 | 0.5076 | 0.5262 |
+
+Every other scene scored the same to four digits, GPU and CPU. `car-paint` has one reflective part, so it gains little: the clearcoat sphere reflects the floor and nothing else. The issue's second box holds (no frame cost without a reflective part); its first box does not (`metal` is 0.012 above EEVEE).
+
 ## Baseline
 
 Measured on 2026-10-30 with an RTX 3060, SwiftShader and Blender 5.2.2. The metric is [FLIP](https://github.com/NVlabs/flip) for LDR images: 0 means identical, and a higher score means a larger visible difference.
