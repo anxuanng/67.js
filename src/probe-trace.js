@@ -1,3 +1,4 @@
+import { computeIrradianceCoefficients, evaluateIrradiance } from './environment.js';
 import { createTracer } from './ray-query.js';
 import {
   MAX_BAKE_PARTS, averageMapColor, buildWorld, createDirectIrradiance, createGatherer, emittedRadiance, hitNormal, normalizeLights, sceneScale, validatePart, withReach,
@@ -16,6 +17,14 @@ const PROBE_BOUNCES = 2;
 
 const MAX_PROBE_PIXELS = 65536;
 
+// Object probes: a sharp mirror needs a finer map than a room probe, and one bounce is enough for what a reflection shows.
+export const MAXIMUM_OBJECT_PROBES = 8;
+const OBJECT_PROBE_WIDTH = 128;
+const OBJECT_PROBE_SAMPLES = 16;
+const OBJECT_PROBE_BOUNCES = 0;
+const OBJECT_PROBE_MINIMUM_METALLIC = 0.5;
+const OBJECT_PROBE_MAXIMUM_ROUGHNESS = 0.6;
+
 // A metal part has no diffuse albedo, but a probe that showed it black would hide the one thing a reflection is for.
 function probeAlbedo(material) {
   const metallic = material.metallic ?? 0;
@@ -32,7 +41,7 @@ function probeAlbedo(material) {
  * lookup that applies the rotation finds the true direction. Returns `{ data, width, height, hitFraction }` for each
  * probe; the same input gives the same bytes.
  */
-export function traceProbeMaps(parts, lighting, positions, { width = 64, samples = 32, bounces = 2, rotation = 0, missRadiance = null, maxSeconds = 60 } = {}) {
+export function traceProbeMaps(parts, lighting, positions, { width = 64, samples = 32, bounces = 2, rotation = 0, missRadiance = null, skyIrradiance = null, maxSeconds = 60 } = {}) {
   const height = width / 2;
   if (!Number.isInteger(width) || width < 8 || width * height > MAX_PROBE_PIXELS) throw new RangeError(`Probe width must be an even integer from 8 whose map has at most ${MAX_PROBE_PIXELS} pixels.`);
   if (!Array.isArray(parts) || parts.length === 0 || parts.length > MAX_BAKE_PARTS) throw new RangeError(`Probes take from 1 to ${MAX_BAKE_PARTS} parts.`);
@@ -82,8 +91,11 @@ export function traceProbeMaps(parts, lighting, positions, { width = 64, samples
         const owner = world.triangleOwner[hit.nearestTriangle];
         const direct = directIrradiance(point, normal, owner);
         gather(point, normal, (probeIndex + 7777) * 1_000_003 + row * width + column, bounced);
+        // An open scene's surfaces are lit by the sky too, and the room trace leaves that to the environment map.
+        const sky = skyIrradiance ? skyIrradiance(normal) : null;
         for (let channel = 0; channel < 3; channel++) {
-          data[target + channel] = emissionOfPart[owner][channel] + albedoOfPart[owner][channel] * (direct[channel] / Math.PI + bounced[channel]);
+          const skyLight = sky ? sky[channel] : 0;
+          data[target + channel] = emissionOfPart[owner][channel] + albedoOfPart[owner][channel] * (direct[channel] / Math.PI + bounced[channel] + skyLight);
         }
       }
     }
@@ -163,6 +175,20 @@ function environmentMissRadiance(map) {
   };
 }
 
+// The diffuse light the environment map gives a surface with this normal, turned the way the renderer turns the map.
+function environmentSkyIrradiance(map) {
+  const coefficients = computeIrradianceCoefficients(map);
+  const cosine = Math.cos(map.rotation);
+  const sine = Math.sin(map.rotation);
+  const mapped = [0, 0, 0];
+  return normal => {
+    mapped[0] = cosine * normal[0] - sine * normal[2];
+    mapped[1] = normal[1];
+    mapped[2] = sine * normal[0] + cosine * normal[2];
+    return evaluateIrradiance(coefficients, mapped).map(value => value * map.intensity);
+  };
+}
+
 function skyMissRadiance(environment) {
   const bottom = environment.skyBottom ?? [0.62, 0.70, 0.67];
   const top = environment.skyTop ?? [0.20, 0.38, 0.52];
@@ -173,6 +199,40 @@ function skyMissRadiance(environment) {
       out[channel] = bottom[channel] + (top[channel] - bottom[channel]) * smooth;
     }
   };
+}
+
+/** A part that shows its surroundings: metal with a smooth enough surface for a reflection to read as a picture. */
+export function isReflectivePart(material) {
+  return (material.metallic ?? 0) >= OBJECT_PROBE_MINIMUM_METALLIC && (material.roughness ?? 1) <= OBJECT_PROBE_MAXIMUM_ROUGHNESS;
+}
+
+/**
+ * One probe for each reflective part, at the middle of its bounds, traced without that part so it shows the others and
+ * the floor and never itself. Each traced entry names its `part` (the index in `parts`). A scene with no reflective part,
+ * or only one part, traces nothing.
+ */
+export function traceObjectProbes(parts, lighting, options = {}) {
+  const { environment = {}, environmentMap = null, rotation = 0, samples = OBJECT_PROBE_SAMPLES, bounces = OBJECT_PROBE_BOUNCES, width = OBJECT_PROBE_WIDTH, maxSeconds = 60 } = options;
+  const reflective = [];
+  parts.forEach((part, index) => {
+    if (isReflectivePart(part.material)) reflective.push(index);
+  });
+  // Many small metal parts (lamp posts, spires) read as shapes and not as mirrors, and each probe costs a trace and a draw batch.
+  const wanted = reflective.length > MAXIMUM_OBJECT_PROBES ? [] : reflective;
+  const skipped = wanted.length > 0 ? null : reflective.length > 0 ? `more than ${MAXIMUM_OBJECT_PROBES} reflective parts` : 'no reflective part';
+  if (wanted.length === 0 || parts.length < 2) {
+    return { traced: [], automatic: true, requested: reflective.length, skipped, seconds: 0 };
+  }
+  const started = performance.now();
+  const missRadiance = environmentMap ? environmentMissRadiance(environmentMap) : skyMissRadiance(environment);
+  const skyIrradiance = environmentMap ? environmentSkyIrradiance(environmentMap) : null;
+  const traced = wanted.map(index => {
+    const others = parts.filter((part, other) => other !== index);
+    const position = boundsCentre(worldBounds(parts[index]));
+    const [map] = traceProbeMaps(others, lighting, [position], { width, samples, bounces, rotation, missRadiance, skyIrradiance, maxSeconds });
+    return { position, radius: null, part: index, ...map };
+  });
+  return { traced, automatic: true, requested: reflective.length, skipped: null, seconds: (performance.now() - started) / 1000 };
 }
 
 /**
