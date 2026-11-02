@@ -26,7 +26,7 @@ const OBJECT_PROBE_MINIMUM_METALLIC = 0.5;
 const OBJECT_PROBE_MAXIMUM_ROUGHNESS = 0.6;
 
 // A metal part has no diffuse albedo, but a probe that showed it black would hide the one thing a reflection is for.
-function probeAlbedo(material) {
+export function probeAlbedo(material) {
   const metallic = material.metallic ?? 0;
   const keep = 1 - metallic * 0.5;
   const mapAverage = averageMapColor(material.map);

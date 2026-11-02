@@ -36,7 +36,7 @@ function worldTriangles(parts, worldMatrices) {
   return { corners, triangleCount, centre: minimum.map((value, axis) => (value + maximum[axis]) / 2) };
 }
 
-function fibonacciDirection(index, count, out) {
+export function fibonacciDirection(index, count, out) {
   const height = 1 - (index + 0.5) * 2 / count;
   const ring = Math.sqrt(1 - height * height);
   const angle = index * Math.PI * (3 - Math.sqrt(5));

@@ -1658,7 +1658,7 @@ export class Renderer67 {
     context.disable(context.DEPTH_TEST);
     context.disable(context.CULL_FACE);
     context.bindVertexArray(null);
-    const fogSky = this.fogSkyVisibility?.(this.sceneParts, volume, context);
+    const fogSky = this.fogSkyVisibility?.(this.sceneParts, volume, context, environment);
     const post = this.selectPostProgram(this.postStepsOf(frame, effects, volume, occluded, fogSky));
     context.useProgram(post.program);
     context.activeTexture(context.TEXTURE0);
