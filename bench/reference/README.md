@@ -582,3 +582,20 @@ What the table shows:
 - `draft` is a rough preset: one bounce leaves the lit rooms at 0.29 to 0.32, still well under the unbaked 0.51.
 
 Frame costs from the issue (a baked closed room, and the fog glow mip chain on `dark-shaft`) were not measured: `nvidia-smi` showed 14 to 48 percent utilization and 6 to 7 GB in use over 24 seconds while another worker held the GPU, so a number would be a loaded one. The ranges above in this file stay ranges.
+
+## Sky visibility in crowns and under the valley rim, what is left (2026-11-03, issue #191)
+
+Method: Cycles was rendered a second time with the world light at 0 (sun only) for `foliage` and `mountain-valley`, and 67js with `render-gpu.mjs --ambient 0`. Region luminance is the mean over a region, in linear light after the tone curve of `src/post.js` (the "display" figures are the mean of the display values). The crown is the green and dark pixels above the ground of the Cycles image; the valley floor is the bottom 100 rows of `mountain-valley`.
+
+| Region | Cycles, sky and sun | Cycles, sun only | 67js | 67js, world 0 |
+| --- | --- | --- | --- | --- |
+| `foliage` crown, display | 0.163 | 0.126 | 0.209 | 0.177 |
+| `foliage` crown, sun-shadowed pixels, linear | 0.0062 | 0.0013 | 0.0052 | 0.0022 |
+| `foliage` crown, sun-lit pixels, linear | 0.0649 | | 0.1219 | |
+| `mountain-valley` floor, linear | 0.0651 | 0.0003 | 0.1117 | 0.0251 |
+| `mountain-valley` slopes (rows 100 to 250), linear | 0.0394 | 0.0014 | 0.0258 | 0.0019 |
+
+- Crown: the sky light inside the crown already matches. Where neither renderer has sun (44 percent of the crown pixels), 67js reads 0.0052 and Cycles 0.0062. The excess is sun light: with the world at 0 the 67js crown (0.177) is already brighter than Cycles with everything on (0.163). 9,252 of the 55,137 crown pixels are sun-lit in 67js and in shadow in Cycles (0.169 linear against 0.0016), and the pixels both sides light read 0.1065 against 0.0774. So the sun shadow inside the crown leaks; a darker sky value cannot fix that without being wrong in the shadowed leaves. A depth bias of a tenth of the current one moved the sun-lit pixel count from 25,922 to 22,981 (Cycles 21,574) and left 7,837 leaking pixels, so the bias is a part of it, not the cause. It was not kept.
+- Valley floor: the cause is mostly not sky visibility. In Cycles the sun does not reach the floor at all (0.0003): the sun is 13 degrees above the horizon behind a rim up to 1,100 m high. In 67js the floor takes 0.0251 from the sun, in stripes along the sun direction and with no tree shadows, which is 54 percent of the 0.0466 gap. The other 0.0215 is sky light (0.0866 against 0.0648).
+- Terrain sky visibility did read a little high. A brute-force march (48 azimuths, 8 m first step, 8 percent growth) gives 0.68 to 0.69 on the floor and `terrain-sky.js` gave 0.73, because the 1.3 step growth skips narrow peaks. A step growth of 1.1 gives 0.694 at about 0.03 s more build time. It moved the floor from 0.1117 to 0.1073 (nearer Cycles), but the slopes from 0.0258 to 0.0232 (further from Cycles 0.0394), and `mountain-valley` went from 0.2623 to 0.2743 against Cycles. Reverted. The slopes are already darker than Cycles, which has bounced light off the lit walls.
+- The sky radiance by elevation of the capped HDRI is nearly flat (the share of irradiance above a 40 degree horizon is 0.70 against 0.59 for a uniform sky), so a sky that is brighter near the horizon does not explain the floor.
