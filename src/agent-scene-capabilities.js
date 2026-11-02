@@ -92,7 +92,8 @@ export const MAXIMUM_VIDEO_SECONDS = 60;
 export const BAKE_PRESETS = Object.freeze({
   draft: Object.freeze({ samples: 32, bounces: 1, texelsPerUnit: 3 }),
   standard: Object.freeze({ samples: 128, bounces: 3, texelsPerUnit: 6 }),
-  fine: Object.freeze({ samples: 192, bounces: 3, texelsPerUnit: 7 }),
+  // An alias of standard: measured on the five reference rooms, no samples and density mix within the 20 s limit scored better (bench/reference/README.md).
+  fine: Object.freeze({ samples: 128, bounces: 3, texelsPerUnit: 6 }),
 });
 export const BAKE_RANGES = Object.freeze({ samples: [1, 256], bounces: [1, 3], texelsPerUnit: [1, 12] });
 export const BAKE_MAXIMUM_SECONDS = 20;
@@ -251,7 +252,7 @@ export const AGENT_SCENE_CAPABILITIES = Object.freeze({
   bake: Object.freeze({
     fields: 'preset, or samples (1-256), bounces (1-3), texelsPerUnit (1-12) over it; probes room by default, false for none, or up to 4 {position, radius?}. Same recipe, same bytes.',
     presets: BAKE_PRESETS,
-    notes: 'Bounced light from point, spot, area and key lights. Reruns when parts, lights, materials or bake change. Skips alpha, skin, morph, hair, cloth (bake.skipped). A preset shrinks to fit (bake.used, bake.reduced); explicit settings fail over maxPathWork or past maxSeconds. No environment map or specular. Probes (off by default): specular only, none in glTF.',
+    notes: 'Bounced light from point, spot, area and key lights. Reruns when parts, lights, materials or bake change. Skips alpha, skin, morph, hair, cloth (bake.skipped). A preset shrinks to fit, never refuses (bake.used, bake.reduction); explicit settings fail over maxPathWork or past maxSeconds. No environment map or specular. Probes (off by default): specular only, none in glTF.',
     limits: Object.freeze({ maxSeconds: BAKE_MAXIMUM_SECONDS, workerMaxSeconds: BAKE_WORKER_MAXIMUM_SECONDS, maxPathWork: BAKE_EXPLICIT_PATH_WORK_LIMIT, maxPointLights: 8 }),
   }),
   motionLimits: Object.freeze({ maxTracks: 128, maxKeyframesPerTrack: 64, maxKeyframes: 2048, maxDuration: 30 }),
