@@ -1,4 +1,0 @@
-interface:
-  display_name: "Xuất ảnh và video 67js"
-  short_description: "Render ảnh, video bằng GPU hoặc CPU có giới hạn nhớ"
-  default_prompt: "Use $render-67js-media to export this scene and verify its quality and memory report."

@@ -57,6 +57,10 @@ Skipped, with the reason in `report.skipped`: transparent parts, a material tag 
 
 GLB export writes `lightUvs` as `TEXCOORD_1` and the light map as the emissive texture on `texCoord` 1, with the base colour factor as `emissiveFactor`. glTF has no light map slot, so a base colour texture does not tint it there: the export is an approximation for viewers, not for reference renders. The path tracer ignores `lightMap` and `emissiveMap` on purpose: it traces indirect light itself, so reading a baked map would count the same light twice.
 
+## Sky visibility alone
+
+`bakeSkyVisibility(parts, lighting, options)` (or `bakeLightmaps` with `skyOnly: true`) shoots one cosine ray per sample from each texel and writes only the occlusion map of the parts that see under 98 percent of the sky. It writes no light and shades nothing, so it takes a second where a bake takes seconds to a minute, and density barely matters (0.5 and 1.5 texels per unit scored the same). On `dark-shaft` and `temple-hall` it gives about half of the improvement a full bake gives (see "Closed rooms without a bake" in `bench/reference/README.md`). The recipe does not use it: a recipe asks for a closed room's bake because `scene_inspect` reports `closed-room-without-bake`.
+
 ## Reflection probes
 
 A probe is the room around a point, traced once and prefiltered like an environment map (`createEnvironmentResources`), so a glossy part reflects the room and not only the sky. `src/reflection-probes.js` holds placement and the renderer link; `src/probe-trace.js` traces on the CPU with the bake's ray tracer (direct light, bounced light, emission; a ray that leaves the scene reads the environment map or the sky colours), 64 by 32 texels, 32 samples and 2 bounces, deterministic, about 0.2 to 0.3 s per probe. A part takes the nearest probe whose `radius` reaches the middle of its bounds, else the environment. A probe lights the specular term only: diffuse stays with the environment and the bake. No parallax correction (not built: a probe at the centre of a room is wrong near the walls).

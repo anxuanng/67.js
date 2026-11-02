@@ -77,7 +77,7 @@ Every recorded agent run used Claude Code. This table says what was tried elsewh
 | MCP Inspector CLI (`npx @modelcontextprotocol/inspector --cli node node_modules/67js/bin/67js-mcp.mjs --method tools/list`) | Lists all 22 tools. A `tools/call` of `scene_create` with a box recipe returned a session and inspection. |
 | JSON Schema 2020-12 validator with strict mode (Ajv 8), run in `npm test` | Every tool input schema compiles. |
 | Tool names and descriptions | Names are 9 to 24 characters from `[a-z_]`, within the 64-character limit OpenAI, Gemini and Anthropic share. No description is over 1024 characters. |
-| Codex, Cursor, Gemini CLI, Claude Desktop, VS Code, any OpenAI or Gemini model | Not run. No account or client was available. Configure them with the same `command` and `args` as above, which is unverified. |
+| Cursor, Gemini CLI, Claude Desktop, VS Code, any OpenAI or Gemini model | Not run. No account or client was available. Configure them with the same `command` and `args` as above, which is unverified. |
 | Install by `npm install 67js@npm:@codepawlhq/67js`, then `npx 67js-mcp`, or `npx --package @codepawlhq/67js 67js-mcp`, or the absolute path to `bin/67js-mcp.mjs` | All four start and report the version. |
 
 Known gaps, checked by `npm run check:tool-schemas`:

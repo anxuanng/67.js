@@ -1,0 +1,101 @@
+// A cheap test for a closed room: shoot a fixed set of rays from the middle of the scene's bounds and count how many hit
+// the inner face of a part. A solid object has only back faces facing a ray that starts inside it, so it never counts as a
+// room. It reads no clock and uses no random numbers, so the same scene gives the same share.
+
+export const CLOSED_ROOM_RAYS = 48;
+// The same share the automatic reflection probe uses to call a scene a room (probe-trace.js).
+export const CLOSED_ROOM_SHARE = 0.9;
+// Brute force over every triangle: 48 rays over this many triangles stays near 10 ms, and a larger scene is not tested.
+export const CLOSED_ROOM_MAXIMUM_TRIANGLES = 150_000;
+const PARALLEL_EPSILON = 1e-9;
+
+function worldTriangles(parts, worldMatrices) {
+  let triangleCount = 0;
+  for (const part of parts) {
+    triangleCount += part.geometry.indices.length / 3;
+  }
+  if (triangleCount === 0 || triangleCount > CLOSED_ROOM_MAXIMUM_TRIANGLES) {
+    return null;
+  }
+  const corners = new Float64Array(triangleCount * 9);
+  const minimum = [Infinity, Infinity, Infinity];
+  const maximum = [-Infinity, -Infinity, -Infinity];
+  let write = 0;
+  for (const part of parts) {
+    const matrix = worldMatrices.get(part.name);
+    const { positions, indices } = part.geometry;
+    for (const index of indices) {
+      for (let axis = 0; axis < 3; axis++) {
+        const value = matrix[axis] * positions[index * 3] + matrix[4 + axis] * positions[index * 3 + 1] + matrix[8 + axis] * positions[index * 3 + 2] + matrix[12 + axis];
+        corners[write++] = value;
+        minimum[axis] = Math.min(minimum[axis], value);
+        maximum[axis] = Math.max(maximum[axis], value);
+      }
+    }
+  }
+  return { corners, triangleCount, centre: minimum.map((value, axis) => (value + maximum[axis]) / 2) };
+}
+
+function fibonacciDirection(index, count, out) {
+  const height = 1 - (index + 0.5) * 2 / count;
+  const ring = Math.sqrt(1 - height * height);
+  const angle = index * Math.PI * (3 - Math.sqrt(5));
+  out[0] = Math.cos(angle) * ring;
+  out[1] = height;
+  out[2] = Math.sin(angle) * ring;
+}
+
+// Moller-Trumbore, counting only a triangle whose front face looks at the ray (det > 0).
+function hitsFrontFace(corners, offset, origin, direction) {
+  const edgeOneX = corners[offset + 3] - corners[offset];
+  const edgeOneY = corners[offset + 4] - corners[offset + 1];
+  const edgeOneZ = corners[offset + 5] - corners[offset + 2];
+  const edgeTwoX = corners[offset + 6] - corners[offset];
+  const edgeTwoY = corners[offset + 7] - corners[offset + 1];
+  const edgeTwoZ = corners[offset + 8] - corners[offset + 2];
+  const pX = direction[1] * edgeTwoZ - direction[2] * edgeTwoY;
+  const pY = direction[2] * edgeTwoX - direction[0] * edgeTwoZ;
+  const pZ = direction[0] * edgeTwoY - direction[1] * edgeTwoX;
+  const determinant = edgeOneX * pX + edgeOneY * pY + edgeOneZ * pZ;
+  if (determinant < PARALLEL_EPSILON) {
+    return false;
+  }
+  const toOriginX = origin[0] - corners[offset];
+  const toOriginY = origin[1] - corners[offset + 1];
+  const toOriginZ = origin[2] - corners[offset + 2];
+  const u = toOriginX * pX + toOriginY * pY + toOriginZ * pZ;
+  if (u < 0 || u > determinant) {
+    return false;
+  }
+  const qX = toOriginY * edgeOneZ - toOriginZ * edgeOneY;
+  const qY = toOriginZ * edgeOneX - toOriginX * edgeOneZ;
+  const qZ = toOriginX * edgeOneY - toOriginY * edgeOneX;
+  const v = direction[0] * qX + direction[1] * qY + direction[2] * qZ;
+  if (v < 0 || u + v > determinant) {
+    return false;
+  }
+  return edgeTwoX * qX + edgeTwoY * qY + edgeTwoZ * qZ > 0;
+}
+
+/**
+ * The share of rays from the middle of the parts' bounds that hit a part's inner face, or null when the scene is empty or
+ * has more than CLOSED_ROOM_MAXIMUM_TRIANGLES triangles. `worldMatrices` maps a part's name to its world matrix.
+ */
+export function closedRoomShare(parts, worldMatrices) {
+  const triangles = worldTriangles(parts.filter(part => part.material?.alphaMode !== 'blend'), worldMatrices);
+  if (!triangles) {
+    return null;
+  }
+  const direction = [0, 0, 0];
+  let hits = 0;
+  for (let ray = 0; ray < CLOSED_ROOM_RAYS; ray++) {
+    fibonacciDirection(ray, CLOSED_ROOM_RAYS, direction);
+    for (let triangle = 0; triangle < triangles.triangleCount; triangle++) {
+      if (hitsFrontFace(triangles.corners, triangle * 9, triangles.centre, direction)) {
+        hits++;
+        break;
+      }
+    }
+  }
+  return hits / CLOSED_ROOM_RAYS;
+}

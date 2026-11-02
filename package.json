@@ -122,6 +122,9 @@
     "smoke:site": "node scripts/smoke-site.mjs",
     "publish:ci": "node scripts/publish-ci.mjs",
     "smoke:character": "node scripts/smoke-character.mjs",
+    "smoke:modeling": "node scripts/smoke-modeling.mjs",
+    "smoke:material-maps": "node scripts/smoke-material-maps.mjs",
+    "benchmark:mesh-query": "node scripts/benchmark-mesh-query.mjs",
     "smoke:imported-topology": "node scripts/smoke-imported-topology.mjs",
     "smoke:agent-character": "node scripts/smoke-agent-character.mjs",
     "smoke:agent-review": "node scripts/smoke-agent-review.mjs",
@@ -130,7 +133,8 @@
     "reference": "node bench/reference/run.mjs",
     "size": "node scripts/measure-size.mjs",
     "benchmark:runtime": "node bench/runtime/run.mjs",
-    "check:tool-schemas": "node scripts/check-tool-schemas.mjs"
+    "check:tool-schemas": "node scripts/check-tool-schemas.mjs",
+    "check:links": "node scripts/check-links.mjs"
   },
   "peerDependencies": {
     "@dimforge/rapier3d-compat": "0.21.0",
