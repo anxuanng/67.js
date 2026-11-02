@@ -106,7 +106,7 @@ async function renderBackend(backend, serverUrl, graphics) {
         const background = await page.evaluate(sceneId => window.renderReferenceScene(sceneId, { describe: false, backgroundOnly: true }), id);
         await writeFile(`${WORK_DIRECTORY}/${id}-background.png`, Buffer.from(background.image, 'base64'));
       }
-      const bakeNote = result.bake?.report.refused ? `, bake REFUSED, drawn unbaked: ${result.bake.report.refused}` : result.bake ? `, bake ${result.bake.seconds.toFixed(1)} s, ${result.bake.report.texels} texels${result.bake.report.reduced ? ` (preset reduced to ${result.bake.report.used.samples} samples, ${result.bake.report.used.texelsPerUnit} texels per unit)` : ''}` : '';
+      const bakeNote = result.bake?.report.refused ? `, bake REFUSED, drawn unbaked: ${result.bake.report.refused}` : result.bake ? `, bake ${result.bake.seconds.toFixed(1)} s, ${result.bake.report.texels} texels${result.bake.report.reduced ? ` (preset reduced to ${result.bake.report.used.samples} samples, ${result.bake.report.used.bounces} bounces, ${result.bake.report.used.texelsPerUnit} texels per unit)` : ''}` : '';
       const probeNote = result.probes ? `, probes ${result.probes.report.placed.length} on ${result.probes.report.partsWithProbe} parts` : '';
       console.log(`${id} on ${backend}: ${Math.round(performance.now() - started)} ms${bakeNote}${probeNote}`);
     }
