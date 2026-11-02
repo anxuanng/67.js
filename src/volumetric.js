@@ -34,5 +34,6 @@ export function resolveVolumeFog(input = {}) {
   const noiseAmount = finiteRange(input.noiseAmount ?? 0.5, 0, 1, 'Volume noise amount');
   const noiseScale = finiteRange(input.noiseScale ?? 0.3, 0.001, 100, 'Volume noise scale');
   const maxDistance = finiteRange(input.maxDistance ?? 100, 0.01, 1e4, 'Volume maximum distance');
-  return { density, minimum, maximum, color, ambient, drift, steps, anisotropy, noiseAmount, noiseScale, maxDistance };
+  const shadowAmbient = finiteRange(input.shadowAmbient ?? 0.15, 0, 1, 'Volume shadow ambient');
+  return { density, minimum, maximum, color, ambient, drift, steps, anisotropy, noiseAmount, noiseScale, maxDistance, shadowAmbient };
 }

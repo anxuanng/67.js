@@ -599,3 +599,29 @@ Method: Cycles was rendered a second time with the world light at 0 (sun only) f
 - Valley floor: the cause is mostly not sky visibility. In Cycles the sun does not reach the floor at all (0.0003): the sun is 13 degrees above the horizon behind a rim up to 1,100 m high. In 67js the floor takes 0.0251 from the sun, in stripes along the sun direction and with no tree shadows, which is 54 percent of the 0.0466 gap. The other 0.0215 is sky light (0.0866 against 0.0648).
 - Terrain sky visibility did read a little high. A brute-force march (48 azimuths, 8 m first step, 8 percent growth) gives 0.68 to 0.69 on the floor and `terrain-sky.js` gave 0.73, because the 1.3 step growth skips narrow peaks. A step growth of 1.1 gives 0.694 at about 0.03 s more build time. It moved the floor from 0.1117 to 0.1073 (nearer Cycles), but the slopes from 0.0258 to 0.0232 (further from Cycles 0.0394), and `mountain-valley` went from 0.2623 to 0.2743 against Cycles. Reverted. The slopes are already darker than Cycles, which has bounced light off the lit walls.
 - The sky radiance by elevation of the capped HDRI is nearly flat (the share of irradiance above a 40 degree horizon is 0.70 against 0.59 for a uniform sky), so a sky that is brighter near the horizon does not explain the floor.
+
+## Fog valley against EEVEE (2026-11-03, part of issue #165)
+
+`fog-valley` scored 0.1967 against EEVEE's 0.1952. Measured by band of rows on the GPU render (FLIP against Cycles): 67js is better than EEVEE in the sky (0.1311 against 0.1608, and 0.0512 against 0.0815 within 40 pixels of the sun, so the glow is not the problem), and worse below the horizon (0.2437 against 0.2317 at rows 230 to 300, 0.2664 against 0.2576 at rows 300 to 400) and in the left third of the frame (0.2866 against 0.2556), where the shadowed face of the near tower and the ground shadow are darker than in Cycles. The fog's in-scatter inside the sun's shadow is the term that lifts them, and it keeps 15 percent of the ambient there, a constant fitted to closed rooms, where the air in shadow sees walls and not sky.
+
+Single constants tried on the GPU render of the five fog scenes (the whole frame against Cycles, before: `fog-valley` 0.1967, `fog-room` 0.1049, `dark-shaft` 0.0619, `temple-hall` 0.0659, `fog` 0.2257):
+
+| Change | `fog-valley` | `fog-room` | `dark-shaft` | `temple-hall` | `fog` |
+| --- | --- | --- | --- | --- | --- |
+| shadow floor 0.4 | 0.1915 | 0.1473 | 0.0637 | 0.0772 | 0.2252 |
+| glow weight 0.02 | 0.2073 | 0.0978 | 0.0586 | 0.0655 | 0.1951 |
+| glow weight 0.004 | 0.1942 | 0.1093 | 0.0644 | 0.0735 | 0.2474 |
+| glow only from pixels above 1.0, weight 0.02 | 0.2002 | 0.1144 | 0.0665 | 0.0722 | 0.2672 |
+
+Every global value trades a room against the open ground. The floor is now the fog field `shadowAmbient` (default 0.15, so every recipe and scene keeps its picture), and `fog-valley` sets 1: open ground under a sky is lit by the whole sky in shadow too. On the GPU render the valley goes 0.1967, 0.1915 (floor 0.4), 0.1883 (0.6) and 0.1855 (1.0) as the floor rises; the 0.6 and 1.0 renders were measured with two runs overlapping, so only the 1.0 value is kept, and the full run below was made alone.
+
+Full suite, `npm run reference -- --skip-blender` on the stored Cycles and EEVEE arrays (RTX 3060, GPU and CPU renders):
+
+| Scene | Before | After |
+| --- | --- | --- |
+| `fog-valley` against Cycles (GPU) | 0.1967 | 0.1855 |
+| `fog-valley` against Cycles (CPU) | 0.1965 | 0.1857 |
+| EEVEE against Cycles | 0.1952 | 0.1952 |
+| `fog-room`, `dark-shaft`, `temple-hall`, `fog` | 0.1049, 0.0619, 0.0659, 0.2257 | same to four digits |
+
+No other score in `baseline.json` moved by more than 0.0004. `gpu-vs-cpu` of `fog-valley` is 0.0120, so the 0.0112 gain is about as large as that spread; both renderers agree on the direction, and the valley is now 0.0097 below EEVEE, which the spread does not cover.

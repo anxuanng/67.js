@@ -35,6 +35,7 @@ uniform vec3 volumeAmbient;
 uniform vec3 volumeDrift;
 uniform int volumeSteps;
 uniform float volumeAnisotropy;
+uniform float volumeShadowAmbient;
 uniform float volumeNoiseAmount;
 uniform float volumeNoiseScale;
 uniform float volumeMaxDistance;
@@ -136,7 +137,7 @@ vec3 volumeFog(vec3 background) {
     if (all(greaterThanEqual(shadow, vec3(0))) && all(lessThanEqual(shadow, vec3(1)))) {
       visibility = step(shadow.z - 0.0008, texture(volumeShadowMap, shadow.xy).r);
     }
-    vec3 scattering = volumeColor * (volumeAmbient * mix(0.15, 1.0, visibility) + volumeLightColor * phase * visibility);
+    vec3 scattering = volumeColor * (volumeAmbient * mix(volumeShadowAmbient, 1.0, visibility) + volumeLightColor * phase * visibility);
     accumulated += transmittance * opacity * scattering;
     transmittance *= 1.0 - opacity;
     if (transmittance < 0.001) break;
