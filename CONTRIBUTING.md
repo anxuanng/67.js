@@ -18,7 +18,7 @@ The tests are in `tests/` and the guides are in `docs/`.
 2. Create a branch from `main`.
 3. Write the change and its tests in the same commit.
 4. Update the guide in `docs/` that describes the feature.
-5. Add a line to the top section of `CHANGELOG.md`.
+5. Add `changes/<issue-or-branch>.md` with your changelog bullet (format in `changes/README.md`). Do not edit `CHANGELOG.md`: two pull requests that edit it conflict on GitHub.
 6. Open a pull request that says what changed and how you checked it.
 
 ## Checks
@@ -73,7 +73,7 @@ Keep site assets out of the npm package: the `files` list in `package.json` deci
 
 Maintainers make releases. `package.json` holds the version, and the publish workflow runs when it changes on `main`.
 
-1. Update the version in `package.json` and the matching section of `CHANGELOG.md`.
+1. Update the version in `package.json`, then run `npm run changes:fold`. It writes the files in `changes/` into `CHANGELOG.md` as that version's section and deletes them. Read `npm run changes` first to see what it will fold.
 2. Run `npm test`, `npm run build` and `npm run smoke:package`.
 3. Commit and push to `main`.
 4. Wait for the `Publish 67js` workflow. It tests the package and publishes the new version through the npm trusted publisher.
