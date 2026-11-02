@@ -6,7 +6,8 @@ import { normalizeAgentLook, environmentPatchWithSetup, environmentLinksLights }
 import { agentSceneModule } from './agent-scene-modules.js';
 import { MESH_SMOOTH_ANGLE_DEFAULT, CURVE_TEXT_LIMITS, AGENT_SCENE_CAPABILITIES, AGENT_SCENE_DEFAULT_LIMITS, MAX_MATERIAL_PATTERNS, RECIPE_ALPHA_MODES } from './agent-scene-capabilities.js';
 import { ALL_LIGHTS_MASK, MATERIAL_LAYER_FIELDS, validateMaterialLayers } from './material-layers.js';
-import { recipeDiagnostics } from './agent-diagnostics.js';
+import { recipeDiagnostics, closedRoomDiagnostic } from './agent-diagnostics.js';
+import { closedRoomShare, CLOSED_ROOM_SHARE } from './closed-room.js';
 import { armatureNodes, bakeRigExport, bindSkins, createSkinStages, normalizeArmatures, publishSkinPoses, restWorldMatrix, rigReport, stageSkinPoses, transformedBounds, withoutArmatureNodes } from './rig.js';
 export { AGENT_SCENE_CAPABILITIES, AGENT_SCENE_DEFAULT_LIMITS };
 export { normalizeAgentLook, resolveAgentShadow } from './agent-look.js';
@@ -1128,6 +1129,21 @@ export function createAgentScene(input, inputLimits = {}) {
     return { ...lightBake, reused: false };
   }
 
+  // A scene that asks for no bake and looks like a closed room gets one diagnostic naming the bake. The ray test costs a
+  // few milliseconds, so it runs for scene_inspect only and is kept until the scene changes.
+  let closedRoomCache = null;
+  function closedRoomProblems() {
+    if (state.recipe.bake) {
+      return [];
+    }
+    if (closedRoomCache?.revision !== revision) {
+      const worldMatrices = new Map(state.parts.map(part => [part.name, state.graph.getNode(part.name).worldMatrix]));
+      closedRoomCache = { revision, share: closedRoomShare(state.parts, worldMatrices) };
+    }
+    const { share } = closedRoomCache;
+    return share !== null && share >= CLOSED_ROOM_SHARE ? [closedRoomDiagnostic(share)] : [];
+  }
+
   // A bake costs a solver run, so an unchanged section on unchanged geometry reuses the last one.
   function stagePhysics(recipe, geometryRecords) {
     if (!recipe.physics) {
@@ -1465,7 +1481,7 @@ export function createAgentScene(input, inputLimits = {}) {
         return result;
       });
       const resident = geometryStats(ownedGeometryRecords());
-      const diagnostics = recipeDiagnostics(state.recipe);
+      const diagnostics = [...recipeDiagnostics(state.recipe), ...closedRoomProblems()];
       return {
         revision, topologyRevision,
         ...(state.recipe.motion?.ik?.length ? { motionIk: agentSceneModule('motion').compileAgentMotion(state.recipe.motion, state.recipe).sweepIk() } : {}),

@@ -158,6 +158,26 @@ Baked scores against Cycles, whole frame (shaft region), before and after:
 
 Cost: the bake takes more path steps. `temple-hall` 38.9 to 74.9 s, `dark-shaft` 9.0 to 17.5 s, `lit-interior` 4.0 to 5.8 s, `brick-room` 4.3 to 5.2 s, `metal-room` 5.6 to 7.1 s (one run each, shared machine). The frame is unchanged: no shader or bundle code moved. A bake that passes `bounces: 2` keeps the old time and the old light.
 
+## Closed rooms without a bake (2026-11-02, issue #163)
+
+Without a bake, `dark-shaft` scores 0.1430 against Cycles and `temple-hall` 0.1436; with the default bake 0.0609 and 0.0560. An agent that never asks for a bake gets the first pair. Three ways to close the gap were weighed.
+
+| Option | `dark-shaft` | `temple-hall` | Cost | Verdict |
+| --- | --- | --- | --- | --- |
+| No bake | 0.1430 | 0.1436 | none | the gap |
+| Sky visibility alone, no light written, 0.5 texels per unit, 16 samples | 0.1021 | 0.0856 | bake 0.1 s and 0.9 s (1,168 and 102,048 texels) | measured, not shipped |
+| Sky visibility alone, 1.5 texels per unit, 16 samples | 0.1026 | 0.0859 | bake 0.2 s and 3.2 s (7,904 and 340,752 texels) | density does not matter |
+| Default bake (3 bounces) | 0.0609 | 0.0560 | 17.5 s and 75 s | the target |
+| `scene_inspect` names the bake | 0.0609 once the agent adds it | 0.0560 | no frame cost, no schema | shipped |
+
+Sky visibility alone gets about half of the bake's gain (`dark-shaft` 0.1430 to 0.1021 of 0.0821, `temple-hall` 0.1436 to 0.0856 of 0.0876) in a second. It does not shoot light, so the room keeps no bounced light and the sun shaft region gets worse (0.3066 and 0.2660, against 0.1763 and 0.2529 with the bake). `node bench/reference/run.mjs --skip-blender --bake dark-shaft,temple-hall --sky-only 0.5,16` draws these rows; `bakeSkyVisibility` in `src/light-bake.js` is the function. A density of 3 texels per unit with 32 samples was started and stopped on a loaded machine, so it has no number.
+
+Why it is not applied on its own. The agent scene loads its bake code on demand, picked by a text marker (`"bake":{`) in the recipe, and `createAgentScene` is synchronous. A scene that asks for nothing has no marker, so an automatic bake would make every recipe load the ray tracer or add a second detection path before the scene exists. The lifted look would also become a half-fix (0.10, not 0.06) that hides the cheaper full answer from the agent. A new recipe field was not added: an agent that does not know a closed room needs one would not set it.
+
+What ships: a `closed-room-without-bake` diagnostic in `scene_inspect` (`src/closed-room.js`). It shoots 48 fixed rays from the middle of the scene's bounds and counts a hit only on a triangle whose front face looks at the ray, so a solid object around the centre is never a room. At 90 percent or more (the share the automatic reflection probe already uses) and with no `bake` in the recipe, the result carries a warning that names `"bake": { "preset": "standard" }` and `scene_apply set-bake`. Nothing runs per frame: the test runs in `scene_inspect`, is kept until the scene's revision changes, and skips scenes of more than 150,000 triangles. Measured worst case, with no ray hitting anything, is 30 ms at 20,000 triangles and 140 ms at 150,000. A six-slab test room is detected (the reference scenes are drawn in the harness page, so `dark-shaft` itself was not run through it); the same room with its roof removed, a lone box and a recipe with a bake are not (`tests/closed-room.test.js`).
+
+The no-bake scores of every scene are unchanged: no shader, renderer or scene build code moved, and the full rescore after this change matches the committed `baseline.json`. Size: the agent scene entry grows by 884 bytes gzip and `light-bake` by 158; every budget still holds, so none changed. Whether a cold agent follows the existing rule in the skill without the diagnostic was not measured: the suite's tasks each need a reference recipe and checks, which cost more than the $1 the issue allowed.
+
 ## Baseline
 
 Measured on 2026-10-30 with an RTX 3060, SwiftShader and Blender 5.2.2. The metric is [FLIP](https://github.com/NVlabs/flip) for LDR images: 0 means identical, and a higher score means a larger visible difference.
