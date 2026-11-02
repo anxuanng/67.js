@@ -40,6 +40,8 @@ const BACKEND_ARGUMENTS = {
 const argumentsGiven = process.argv.slice(2);
 const scoreOnly = argumentsGiven.includes('--score-only');
 const skipBlender = argumentsGiven.includes('--skip-blender');
+// --skip-cpu leaves out the SwiftShader render (very slow for the 9 million triangle scenes) and the scoring, which needs it.
+const skipCpu = argumentsGiven.includes('--skip-cpu');
 const sceneFlag = argumentsGiven.indexOf('--scene');
 const occlusionFlag = argumentsGiven.indexOf('--ambient-occlusion');
 const ambientOcclusion = occlusionFlag >= 0 ? Number(argumentsGiven[occlusionFlag + 1]) : 0;
@@ -168,7 +170,7 @@ if (!scoreOnly && !pathTracerFlag) {
   try {
     const serverUrl = `http://127.0.0.1:${server.httpServer.address().port}`;
     await renderBackend('gpu', serverUrl, graphics);
-    await renderBackend('cpu', serverUrl, graphics);
+    if (!skipCpu) await renderBackend('cpu', serverUrl, graphics);
   } finally {
     await server.close();
   }
@@ -179,7 +181,7 @@ if (!scoreOnly && !pathTracerFlag) {
   }
 }
 
-if (!onlyScene || pathTracerFlag) {
+if ((!onlyScene && !skipCpu) || pathTracerFlag) {
   runChecked('uv', [
     'run', '--no-project', '--python', '3.12', '--with', 'flip-evaluator', '--with', 'pillow', '--with', 'numpy',
     'python', '-I', 'bench/reference/score.py', WORK_DIRECTORY, OUTPUT_DIRECTORY, ...(pathTracerFlag ? ['--path-tracer'] : []), ...(sceneSet ? [`--${sceneSet}`] : []),

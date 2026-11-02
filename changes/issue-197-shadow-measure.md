@@ -1,0 +1,1 @@
+- Add `bench/reference/shadow-depth.py` (issue #197), which measures shadow depth of a 67js frame against Cycles from the reference renders: dark percentiles, the shadow tile floor and lit level, lit to shadow contrast and edge width. `run.mjs` gains `--skip-cpu` to leave out the slow SwiftShader render.
