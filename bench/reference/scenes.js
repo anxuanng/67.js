@@ -169,7 +169,7 @@ export const KHRONOS_SCENES = Object.fromEntries(KHRONOS_ASSET_NAMES.map(name =>
 
 // Grand scenes: the scale people actually want to draw, built from the engine's terrain, vegetation and plain boxes.
 // Only what Blender can draw too is used: the terrain colours are vertex colours, the emissive windows are Emission, the
-// fog is a volume box. The built-in leaf translucency of 67js has no Blender counterpart (see the README).
+// fog is a volume box. Blender rebuilds the 67js leaf model for foliage materials (see the README).
 export function seededRandom(seed) {
   let state = seed >>> 0;
   return () => {
