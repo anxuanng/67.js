@@ -45,7 +45,7 @@ Three scenes test what people want to make, not one feature. Each one is built w
 | Scene | Parts | Triangles drawn | 67js against Cycles | EEVEE against Cycles | Largest visible gap |
 | --- | --- | --- | --- | --- | --- |
 | `megacity-dusk` | 4,300 | 51.6 thousand | 0.1627 | 0.1524 | Window bands are sharper, and facades get no light from the windows |
-| `mountain-valley` | 7,698 | 9.72 million | 0.3483 | 0.1879 | The valley floor and the trees are 2 to 3 times as bright as in Cycles, and shadowed rock is brighter (see "Leaf model and tree regions") |
+| `mountain-valley` | 7,698 | 9.72 million | 0.2623 | 0.1879 | The valley floor and the trees are 1.3 to 1.7 times as bright as in Cycles, and shadowed rock is brighter (see "Sky visibility in crowns and valleys") |
 | `temple-hall` | 155 | 11 thousand | 0.2126 | 0.2341 | The fog shafts are stronger in 67js, and the floor gets no bounce light |
 
 With the shadow floor `temple-hall` scored 0.5841, `mountain-valley` 0.3658 and `megacity-dusk` 0.1583.
@@ -308,6 +308,37 @@ What the experiments show, each with the flags of this runner:
 - Ground under the `foliage` tree: the floor is within 0.01 luminance of Cycles, and FLIP is worst in a band of 0.2 to 0.5 at the canopy rows, not at the trunk base. The trunk and its contact shadow are 2% of the error.
 
 Blender render time of the two rerun scenes, now in `baseline.json`: `foliage` 26.4 s in Cycles and 13.5 s in EEVEE, `mountain-valley` 35.9 s and 39.2 s (other jobs loaded the machine).
+
+### Sky visibility in crowns and valleys (issue #191)
+
+The two experiments above point at the same missing term: sky light that reaches a surface which the scene itself shades. Cycles blocks that light and 67js did not. Two bakes now give the sky term a visibility, and no recipe field changes.
+
+Causes, each measured on its own:
+
+- Crown. With `--ambient 0` the 67js crown is 0.176, the same as the whole Cycles crown (0.175). The 0.12 the world adds in 67js (0.298 in total) is therefore sky light that Cycles stops inside the crown.
+- Valley floor, from the heightfield. A script walked 32 horizon directions from 6 floor points of the `mountain-valley` height function and computed the cosine weighted share of the sky above the horizon. The ring leaves 0.69 to 0.72 of the sky open. Without the ring the share is 0.995 to 0.999. Cycles was not rerun without the ring.
+- The valley sky term is 0.416 minus 0.180 = 0.236 in 67js, and 0.272 minus 0.180 = 0.092 in Cycles, which needs a share of 0.39. The ring explains the larger part of the gap. The estimate 0.18 + 0.7 * 0.236 = 0.345 is close to the measured result below (0.360). The rest is not explained: the sky of the HDRI is brightest near the horizon, which the ring hides, and a cosine share cannot see that.
+
+What changed:
+
+- `createTree` gives each foliage vertex a `skyVisibility` (`src/tree-sky.js`). The leaf vertices are binned in a grid of 14 cells along the longest side. For each occupied cell, 9 rays go up (1 zenith, 4 at 40 degrees, 4 at 65 degrees) and add the leaf density they cross. The cell keeps the mean of `exp(-depth)`, with a floor of 0.04. The opacity of one leaf vertex, 0.3, is the one fitted number: it was set on the `foliage` crown and not on `mountain-valley`. A level with fewer leaves counts each vertex for more, so the three levels agree.
+- `createTerrain` gives each terrain vertex a `skyVisibility` (`src/terrain-sky.js`). For 16 azimuths it marches the heightfield outward in growing steps, keeps the highest horizon, and integrates the cosine weighted sky above it for the tilted surface normal. It samples a lattice of at most 160 nodes per side and interpolates, so the cost does not grow with the grid.
+- The value travels in the fourth component of the vertex colour attribute, so the attribute layout is the same. The shader multiplies it into `occlusion` (which scales the environment light) and into the two fill lights in world mode. Direct lights are not touched. A mesh without the value reads 1.
+- The tree value is computed on first read, which is when the renderer uploads the geometry. The terrain value is computed per chunk when the chunk is built.
+
+Results (FLIP against Cycles, RTX 3060, 2026-11-02), with EEVEE against Cycles beside them. Region luminance is the mean display luminance of the region, taken on the Cycles image:
+
+| Scene and region | Cycles | EEVEE | 67js before | 67js after |
+| --- | --- | --- | --- | --- |
+| `foliage` score | - | 0.0888 | 0.1173 | 0.1023 |
+| `foliage` crown | 0.175 | 0.227 | 0.298 | 0.200 |
+| `mountain-valley` score | - | 0.1879 | 0.3483 | 0.2623 |
+| `mountain-valley` floor, rows 440 to 530 | 0.272 | 0.306 | 0.417 | 0.360 |
+| `mountain-valley` trees (green) | 0.151 | 0.193 | 0.312 | 0.254 |
+
+The `foliage` crown is now within 0.03 of Cycles, but the scene still scores worse than EEVEE: with the opacity at 0.12 the score was 0.1033 and the crown 0.226, so the rest of the crown error is leaf shape and placement, not sky. The valley trees stop at 0.254 because a conifer crown is already at the visibility floor, and a tree in the valley does not see the ring. The score against EEVEE of `mountain-valley` rose from 0.2382 to 0.2971, since EEVEE does not hide the sky either. No other scene changed to four digits in the full rescore, and the plain frame time of `material-spheres` did not change beyond the noise of a loaded machine (median 1.18 ms before, 1.0 ms after over 4 alternating runs).
+
+Build time, on this machine with other jobs running: a 5 km valley terrain adds about 0.2 to 0.35 s (1.7 to 2.2 s before). A conifer crown costs about 4 ms and a broadleaf crown 6 ms for three levels, so the 3 variants of the valley forest add about 15 ms, and a forest of 3,600 distinct trees would add about 15 to 20 s only if every tree is drawn, since the value is lazy.
 
 ## Limits
 

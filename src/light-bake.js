@@ -578,18 +578,21 @@ function unwrapIntoSecondUvSet(geometry, scale) {
   const result = { positions: extracted.positions, normals: extracted.normals, indices: extracted.indices, lightUvs: extracted.uvs };
   const uvs = geometry.uvs ? new Float32Array(newCount * 2) : null;
   const colors = geometry.colors ? new Float32Array(newCount * 3) : null;
+  const skyVisibility = geometry.skyVisibility ? new Float32Array(newCount) : null;
   for (let vertex = 0; vertex < newCount; vertex++) {
     const source = Math.round(extracted.colors[vertex * 3]);
     if (uvs) {
       uvs[vertex * 2] = geometry.uvs[source * 2];
       uvs[vertex * 2 + 1] = geometry.uvs[source * 2 + 1];
     }
+    if (skyVisibility) skyVisibility[vertex] = geometry.skyVisibility[source];
     if (colors) {
       for (let channel = 0; channel < 3; channel++) colors[vertex * 3 + channel] = geometry.colors[source * 3 + channel];
     }
   }
   if (uvs) result.uvs = uvs;
   if (colors) result.colors = colors;
+  if (skyVisibility) result.skyVisibility = skyVisibility;
   return { geometry: result, utilization: Math.max(unwrapped.utilization, SURFACE_UTILIZATION_FLOOR) };
 }
 

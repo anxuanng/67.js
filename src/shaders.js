@@ -102,7 +102,7 @@ layout(location=10) in vec4 instanceSurface;
 layout(location=11) in vec3 assemblyOffset;
 layout(location=12) in vec3 assemblyDetailOffset;
 layout(location=13) in vec4 uvSets;
-layout(location=14) in vec3 vertexColor;
+layout(location=14) in vec4 vertexColor;
 layout(location=15) in vec3 instanceEmissive;
 uniform mat4 viewProjection;
 uniform mat4 lightProjection;
@@ -119,6 +119,7 @@ out vec4 shadowPosition;
 out vec2 textureUV;
 out vec2 lightmapUV;
 out vec3 vertexTint;
+out float vertexSkyVisibility;
 flat out vec3 emissionColor;
 flat out float instanceOrdinal;
 out vec3 boxPosition;
@@ -150,7 +151,8 @@ void main() {
   baseColor = instanceColor;
   textureUV = uv;
   lightmapUV = uvSets.zw;
-  vertexTint = vertexColor;
+  vertexTint = vertexColor.rgb;
+  vertexSkyVisibility = vertexColor.a;
   emissionColor = instanceEmissive;
   instanceOrdinal = float(gl_InstanceID);
   surface = instanceSurface;
@@ -363,6 +365,7 @@ in vec4 shadowPosition;
 in vec2 textureUV;
 in vec2 lightmapUV;
 in vec3 vertexTint;
+in float vertexSkyVisibility;
 flat in vec3 emissionColor;
 flat in float instanceOrdinal;
 uniform sampler2D lightMap;
@@ -806,8 +809,8 @@ void main() {
   vec3 baseReflectance = mix(materialDielectric, color, metallic);
 ${featureCode("mainSetup")}  float visibility = shadowVisibility(normal);
   vec3 radiance = illuminate(normal, viewDirection, normalize(lightDirection), keyColor * visibility${featureCode("linkSun")}, color, metallic, roughness);
-  radiance += illuminate(normal, viewDirection, normalize(vec3(4.0, 2.0, -3.0)), mix(vec3(0.8, 2.0, 1.8), vec3(0.12, 0.17, 0.20) * daylight, worldMode) * fillIntensity, color, metallic, roughness);
-  radiance += illuminate(normal, viewDirection, normalize(vec3(1.0, 2.0, 5.0)), vec3(0.6, 0.7, 0.8) * mix(1.0, 0.25 * daylight, worldMode) * fillIntensity, color, metallic, roughness);
+  radiance += illuminate(normal, viewDirection, normalize(vec3(4.0, 2.0, -3.0)), mix(vec3(0.8, 2.0, 1.8), vec3(0.12, 0.17, 0.20) * daylight, worldMode) * fillIntensity * mix(1.0, vertexSkyVisibility, worldMode), color, metallic, roughness);
+  radiance += illuminate(normal, viewDirection, normalize(vec3(1.0, 2.0, 5.0)), vec3(0.6, 0.7, 0.8) * mix(1.0, 0.25 * daylight, worldMode) * fillIntensity * mix(1.0, vertexSkyVisibility, worldMode), color, metallic, roughness);
   for (int index = 0; index < 8; index++) {
     if (index >= pointLightCount) break;
     vec3 offset = pointLightPositions[index].xyz - worldPosition;
@@ -867,7 +870,8 @@ ${featureCode("linkArea")}      vec3 lightNormal = areaLightNormals[index].xyz;
   vec3 reflectance = fresnel(max(dot(normal, viewDirection), 0.0), baseReflectance);
   float occlusion = 1.0;
   if (USES_OCCLUSION_MAP) occlusion = mix(1.0, texture(occlusionMap, mapUV(hasOcclusionMap)).r, occlusionStrength);
-  occlusion *= splatCavity;
+  // Trees and terrain bake how much sky each vertex sees; everything else carries 1.
+  occlusion *= splatCavity * vertexSkyVisibility;
   // Leaf and grass cards keep a faint sheen; full sky reflection washed grazing cards grey-blue.
   float skyReflection = canopyShaded ? 0.3 : 1.0;
   if (ENVIRONMENT_ENABLED) {
