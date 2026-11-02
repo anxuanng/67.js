@@ -385,23 +385,40 @@ Denoising a lower sample count (fixed 24 samples with the tracer's filter, thres
 
 Darker floor in `character` and `outdoor-hdri`: not found, but narrowed. In `outdoor-hdri` the mean display value of the bottom third (the floor) is 225.5 in Cycles, 225.4 in EEVEE, 224.8 in the rasterizer and 217.1 in the tracer, so the rasterizer agrees with Cycles and the tracer alone is darker, by 8.4 of 255 (the scene is bright, so the display curve compresses it; the linear gap is larger). A white furnace test (a diffuse floor of albedo 0.4 under a sky of radiance 1) gives 0.3955 straight down (1 percent low) and 0.588 at a grazing view with the sky reflection, so sampling the environment and the diffuse lobe is not what loses the light. What is left: the sun together with the HDRI, the clamp of 20 on bounced light (`fireflyClamp`), the grazing-angle specular and light from the other parts, none of which was isolated.
 
-## Recipe bake presets (2026-11-02, part of issue #170)
+## Recipe bake presets (2026-11-02, issues #170 and #189)
 
-An agent names a preset (`bake: { preset }`), and `standard` and `fine` shrink to the path work budget of 5 million steps (`bake.used`, `bake.reduced`). `npm run reference -- --skip-blender --bake <ids> --bake-preset <name> --probes <ids>` bakes the way a recipe does (`normalizeAgentBake` and `bakeAgentParts`, the scene's own `bakeOptions` ignored) and scores against the Cycles renders already in `artifacts/reference`. The preset rows below carry the room probe a recipe adds with a bake; the no-bake row has none. A preset the budget refuses (the error a recipe gets) draws the scene unbaked and prints `REFUSED`. Whole frame FLIP against Cycles, RTX 3060 shared with other jobs, one run per cell, bake seconds from the harness (not an idle machine):
+An agent names a preset (`bake: { preset }`). A preset shrinks to the path work budget of 5 million steps (texels x samples x bounces): samples by a fifth and texel density by a tenth, repeatedly, down to 16 samples and 1 texel per unit. A scene that still does not fit there gives up one bounce and starts again from the preset's samples and density, down to 1 bounce. A preset therefore bakes any scene the explicit limit allows, and the result says what changed: `bake.used` holds the settings that ran, `bake.reduced` is `true`, and `bake.reduction` names what the preset asked for, what ran, and that explicit samples, bounces and texelsPerUnit (up to 24 million path steps, 20 s inline) bake denser.
 
-| Scene | No bake | draft | standard | fine |
-| --- | --- | --- | --- | --- |
-| `lit-interior` | 0.5055 | 0.2919, 0.5 s, 8,000 texels | 0.1270, 3.4 s, 19,360 texels | 0.1293, 3.3 s, 16,800 texels |
-| `brick-room` | 0.5102 | 0.3185, 1.4 s, 37,136 texels | 0.1353, 1.8 s, 42,576 texels | 0.1382, 1.8 s, 37,136 texels |
-| `metal-room` | 0.5128 | 0.3187, 0.8 s, 8,816 texels | 0.1594, 3.2 s, 15,936 texels | 0.1624, 4.6 s, 18,336 texels |
-| `dark-shaft` | 0.1430 | 0.0791, 0.9 s, 28,208 texels | 0.0610, 2.3 s, 40,336 texels | 0.0603, 2.2 s, 35,664 texels |
-| `temple-hall` | 0.1436 | 0.0706, 5.7 s, 285,376 texels | refused (0.1504 drawn unbaked with a probe) | refused (same) |
+`npm run reference -- --skip-blender --bake <ids> --bake-preset <name> --probes <ids>` bakes the way a recipe does (`normalizeAgentBake` and `bakeAgentParts`, the scene's own `bakeOptions` ignored) and scores against the Cycles renders already in `artifacts/reference`. The preset rows carry the room probe a recipe adds with a bake; the no-bake row has none. Whole frame FLIP against Cycles, RTX 3060 shared with other jobs, one run per cell, bake seconds from the harness (not an idle machine):
+
+| Scene | No bake | draft | standard (`fine` is the same) |
+| --- | --- | --- | --- |
+| `lit-interior` | 0.5055 | 0.2919, 0.5 s, 8,000 texels | 0.1270, 3.8 s, 19,360 texels (81 samples, 3 bounces, 4.86 texels per unit) |
+| `brick-room` | 0.5102 | 0.3185, 1.4 s, 37,136 texels | 0.1353, 1.8 s, 42,576 texels (32 samples, 3 bounces, 3.19 texels per unit) |
+| `metal-room` | 0.5128 | 0.3187, 0.8 s, 8,816 texels | 0.1594, 3.3 s, 15,936 texels (64 samples, 3 bounces, 4.37 texels per unit) |
+| `dark-shaft` | 0.1430 | 0.0791, 0.9 s, 28,208 texels | 0.0610, 2.3 s, 40,336 texels |
+| `temple-hall` | 0.1436 | 0.0706, 5.7 s, 285,376 texels | 0.0705, 5.7 s, 304,480 texels (16 samples, 1 bounce, 1.37 texels per unit) |
+
+Before issue #189 `standard` and `fine` refused `temple-hall` (even 16 samples at 1 texel per unit and 3 bounces pass the budget), so a recipe got an unbaked hall at 0.1504 with a probe. Now `standard` bakes it, with one bounce, which is what `draft` does: the score matches `draft` (0.0705 against 0.0706). The scene's own tuned options score 0.0560, and reaching them takes explicit settings.
 
 What the table shows:
 
-- `standard` is the preset to name for a room: it halves the error of `draft` on `lit-interior`, `brick-room` and `metal-room` (3 bounces against 1) and beats the default bake of "Baked rooms and the bounce count" (0.1341, 0.1412, 0.1656) on all three, for 2 to 3.5 s.
-- `fine` is no better than `standard`. Its extra samples and density are cut back to the same budget (38 to 77 samples, 3.0 to 4.6 texels per unit), so it ends up within 0.003 of `standard`, slightly worse on three of five rooms, and costs the same or a little more. A recipe gains nothing by asking for it on these scenes.
-- `temple-hall` (167 parts, 3 bounces) is out of reach of `standard` and `fine`: even 16 samples at 1 texel per unit pass 5 million steps, so a recipe gets the error and no bake. `draft` works (reduced to 16 samples and 1.29 texels per unit) and scores 0.0706, against 0.0560 for the scene's own tuned options. Reaching `standard` on a hall needs explicit settings within the 24 million explicit limit, or a lower budget floor; this is left open.
+- `standard` halves the error of `draft` on `lit-interior`, `brick-room` and `metal-room` (3 bounces against 1) and beats the default bake of "Baked rooms and the bounce count" (0.1341, 0.1412, 0.1656) on all three, for 2 to 4 s.
+- `fine` could not be made better than `standard` inside the budget, so it is an alias with the same numbers. The old `fine` (192 samples, 7 texels per unit) was cut to the same budget, so it ended within 0.003 of `standard` and slightly worse on three of five rooms (0.1293, 0.1382, 0.1624, 0.0603). Five other mixes of samples and density were scored, each asked for through `fine` and shrunk to the budget the same way:
+
+| Asked (samples, bounces, texels per unit) | `lit-interior` | `brick-room` | `metal-room` | `dark-shaft` | `temple-hall` |
+| --- | --- | --- | --- | --- | --- |
+| 128, 3, 6 (`standard`) | 0.1270 | 0.1353 | 0.1594 | 0.0610 | 0.0705 |
+| 192, 3, 7 (old `fine`) | 0.1293 | 0.1382 | 0.1624 | 0.0603 | not baked |
+| 256, 3, 3 | 0.1363 | 0.1655 | 0.1636 | 0.0620 | 0.0718 |
+| 256, 3, 4 | 0.1401 | 0.1516 | 0.1677 | 0.0606 | 0.0699 |
+| 256, 3, 5 | 0.1442 | 0.1497 | 0.1746 | 0.0637 | 0.0703 |
+| 64, 3, 12 | 0.1320 | 0.1436 | 0.1667 | 0.0660 | 0.0700 |
+| 48, 3, 8 | 0.1208 | 0.1533 | 0.1643 | 0.0647 | 0.0700 |
+| 32, 3, 12 | 0.1274 | 0.1445 | 0.1712 | 0.0660 | 0.0700 |
+
+  More samples on fewer texels (256 samples at 3 to 5 texels per unit) lost on every room except `dark-shaft`, and more texels on fewer samples (32 to 64 samples at 8 to 12) lost on all but `lit-interior`, where `48, 3, 8` won by 0.006 and lost 0.018 to 0.004 on the other three. The `standard` mix of about 30 to 80 samples at 3 to 5 texels per unit after shrinking is the best or within 0.005 of the best on four of five rooms (not `lit-interior`), and the differences between mixes are small next to the gap to Cycles from missing indirect specular. A smoothing radius was not tried: `SMOOTH_RADIUS_TEXELS` is a constant in `src/light-bake.js` and the recipe has no field for it. Each cell is one run, so differences under about 0.005 are not separable from noise.
+- The 20 s inline limit and the budget agree on large rooms: `temple-hall`, the largest scene (167 parts, 304,480 texels), bakes in 5.7 s at the budget, and the slowest cell above is 6.0 s, so the budget leaves room under the limit on this machine.
 - `draft` is a rough preset: one bounce leaves the lit rooms at 0.29 to 0.32, still well under the unbaked 0.51.
 
 Frame costs from the issue (a baked closed room, and the fog glow mip chain on `dark-shaft`) were not measured: `nvidia-smi` showed 14 to 48 percent utilization and 6 to 7 GB in use over 24 seconds while another worker held the GPU, so a number would be a loaded one. The ranges above in this file stay ranges.
