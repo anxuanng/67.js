@@ -1,6 +1,6 @@
 // Renders the reference scenes in 67js and Blender, then scores them: npm run reference
 // --ambient-occlusion <strength> [--ambient-occlusion-radius <units>] turns occlusion on (off by default).
-// --bake [<id>,<id>] bakes bounced light into the named scenes (every scene when no ids follow) before 67js draws them;
+// --bake [<id>,<id>] [--bake-preset <name>] bakes bounced light into the named scenes (every scene when no ids follow) before 67js draws them;
 // Blender still gets the plain scene.
 // --probes [<id>,<id>] adds reflection probes (src/reflection-probes.js) to the named scenes, on top of --bake when both are given.
 // --ambient <scale> multiplies the light the world gives every surface (0 removes it); with --skip-blender it measures what the world adds.
@@ -50,6 +50,10 @@ const bakedSceneIds = bakeFlag >= 0 && bakeValue && !bakeValue.startsWith('--') 
 const skyOnlyFlag = argumentsGiven.indexOf('--sky-only');
 const [skyTexelsPerUnit, skySamples] = skyOnlyFlag >= 0 ? argumentsGiven[skyOnlyFlag + 1].split(',').map(Number) : [];
 const skyOnlyOptions = skyOnlyFlag >= 0 ? { skyOnly: true, texelsPerUnit: skyTexelsPerUnit, samples: skySamples } : {};
+// --bake-preset <draft|standard|fine> bakes the way a recipe does (`bake: { preset }`): the preset's own samples, bounces and
+// texel density, scaled down to the preset's path work budget, and the scene's own `bakeOptions` are ignored. Needs --bake.
+const bakePresetFlag = argumentsGiven.indexOf('--bake-preset');
+const bakePreset = bakePresetFlag >= 0 ? argumentsGiven[bakePresetFlag + 1] : null;
 const probesFlag =argumentsGiven.indexOf('--probes');
 const probesValue = probesFlag >= 0 ? argumentsGiven[probesFlag + 1] : undefined;
 const probedSceneIds = probesFlag >= 0 && probesValue && !probesValue.startsWith('--') ? probesValue.split(',') : null;
@@ -85,7 +89,7 @@ async function renderBackend(backend, serverUrl, graphics) {
       const describe = backend === 'gpu';
       const probes = probesFlag >= 0 && (probedSceneIds === null || probedSceneIds.includes(id));
       const bakesThisScene = bakeFlag >= 0 && (bakedSceneIds === null || bakedSceneIds.includes(id));
-      const bake = bakesThisScene ? { ...skyOnlyOptions } : null;
+      const bake = bakesThisScene ? { ...skyOnlyOptions, ...(bakePreset ? { preset: bakePreset } : {}) } : null;
       const result = await page.evaluate(([sceneId, shouldDescribe, ambientOcclusion, ambientOcclusionRadius, bakeOptions, cascadeCount, withProbes, ambientScale]) => window.renderReferenceScene(sceneId, { describe: shouldDescribe, ambientOcclusion, ambientOcclusionRadius, bake: bakeOptions, cascades: cascadeCount, probes: withProbes, ambient: ambientScale }), [id, describe, ambientOcclusion, ambientOcclusionRadius, bake, cascades, probes, ambient]);
       if (result.glError !== 0) throw new Error(`${id} on ${backend} gave WebGL error ${result.glError}.`);
       graphics[backend] = result.graphics;
@@ -95,7 +99,7 @@ async function renderBackend(backend, serverUrl, graphics) {
         const background = await page.evaluate(sceneId => window.renderReferenceScene(sceneId, { describe: false, backgroundOnly: true }), id);
         await writeFile(`${WORK_DIRECTORY}/${id}-background.png`, Buffer.from(background.image, 'base64'));
       }
-      const bakeNote = result.bake ? `, bake ${result.bake.seconds.toFixed(1)} s, ${result.bake.report.texels} texels` : '';
+      const bakeNote = result.bake?.report.refused ? `, bake REFUSED, drawn unbaked: ${result.bake.report.refused}` : result.bake ? `, bake ${result.bake.seconds.toFixed(1)} s, ${result.bake.report.texels} texels${result.bake.report.reduced ? ` (preset reduced to ${result.bake.report.used.samples} samples, ${result.bake.report.used.texelsPerUnit} texels per unit)` : ''}` : '';
       const probeNote = result.probes ? `, probes ${result.probes.report.placed.length} on ${result.probes.report.partsWithProbe} parts` : '';
       console.log(`${id} on ${backend}: ${Math.round(performance.now() - started)} ms${bakeNote}${probeNote}`);
     }

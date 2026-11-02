@@ -100,11 +100,30 @@ function describeScene(id, scene) {
 
 // Blender always gets the original parts: the bake is 67js's approximation of what Cycles computes.
 async function bakeScene(scene, bakeOptions) {
+  if (bakeOptions.preset) {
+    return bakeScenePreset(scene, bakeOptions.preset);
+  }
   const { bakeLightmaps } = await import('/src/light-bake.js');
   const { pointLights, keyColor, lightDirection } = scene.environment;
   const started = performance.now();
   // A scene as large as a hall can need its own texel density to stay under the bake's texel limit.
   const baked = bakeLightmaps(scene.parts, { pointLights, keyColor, lightDirection }, { ...scene.bakeOptions, ...bakeOptions });
+  return { parts: baked.parts, report: baked.report, seconds: (performance.now() - started) / 1000 };
+}
+
+// The bake an agent gets from `bake: { preset }`: the same settings and budget fit as a recipe. Probes stay out of it and come
+// from --probes, as in the other rows.
+async function bakeScenePreset(scene, preset) {
+  const { normalizeAgentBake, bakeAgentParts } = await import('/src/agent-bake.js');
+  const settings = normalizeAgentBake({ preset, probes: false });
+  const started = performance.now();
+  let baked;
+  try {
+    baked = bakeAgentParts(scene.parts, new Map(scene.parts.map(part => [part.name, part.matrix])), scene.environment, settings);
+  } catch (error) {
+    // A recipe would get this error and no bake: the scene is drawn unbaked and the row says so.
+    return { parts: scene.parts, report: { refused: error.message, texels: 0 }, seconds: 0 };
+  }
   return { parts: baked.parts, report: baked.report, seconds: (performance.now() - started) / 1000 };
 }
 
