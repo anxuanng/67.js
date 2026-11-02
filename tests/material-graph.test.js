@@ -197,9 +197,11 @@ test('hostile sizes and costs are rejected before any work', () => {
   const costly = { height: { voronoi: { scale: 8, at: { add: [{ uv: 'both' }, { mul: [{ vec: [{ noise: { octaves: 6 } }, { noise: { octaves: 6 } }, 0] }, 0.1] }] } } } };
   let graph = costly.height;
   for (let level = 0; level < 5; level++) graph = { add: [graph, { voronoi: { scale: 4, at: { vec: [graph, 0, 0] } } }] };
-  const started = Date.now();
-  assert.throws(() => normalizeMaterialPattern({ type: 'graph', graph: { height: graph }, resolution: 1024 }), /Material graph/);
-  assert.ok(Date.now() - started < 1000);
+  // The limits reject the graph while it is normalized, before any pixel is evaluated, so no clock is involved.
+  assert.throws(
+    () => normalizeMaterialPattern({ type: 'graph', graph: { height: graph }, resolution: 1024 }),
+    error => /^Material graph: nesting deeper than/.test(error.message),
+  );
 });
 
 test('hostile strings never reach a texture, a recipe or a shader', () => {
