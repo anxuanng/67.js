@@ -6,7 +6,7 @@ import { boundsCentre, traceProbes, worldBounds } from './probe-trace.js';
 // Reflection probes: the room around a point, traced once and prefiltered like an environment map, so a glossy part
 // reflects the objects around it and not only the sky. This module is optional. A scene without a probe never loads it,
 // and the renderer's only link to it is the material field `environmentProbe`, which batches parts by probe.
-export { MAXIMUM_PROBES, normalizeProbeList, roomCentreProbe, traceProbes } from './probe-trace.js';
+export { MAXIMUM_PROBES, isReflectivePart, normalizeProbeList, roomCentreProbe, traceObjectProbes, traceProbes } from './probe-trace.js';
 
 // A probe lights the specular term only. Diffuse light stays with the environment and the light bake, which already hold it.
 
@@ -43,11 +43,13 @@ function probedMaterial(liveMaterial, probeMap, wrappers) {
 
 /** Gives each part the nearest probe that reaches it, as a material wrapper that keeps reading the live material. */
 export function placeProbes(parts, probeTrace, { rotation = 0, wrappers = new Map() } = {}) {
-  const probes = probeTrace.traced.map(({ position, radius, width, height, data, hitFraction }) => ({
-    position, radius, hitFraction, map: createEnvironmentMap({ width, height, data, intensity: 1, rotation }),
+  const probes = probeTrace.traced.map(({ position, radius, width, height, data, hitFraction, part }) => ({
+    position, radius, hitFraction, part, map: createEnvironmentMap({ width, height, data, intensity: 1, rotation }),
   }));
-  const probedParts = parts.map(part => {
-    const probe = selectProbe(probes, boundsCentre(worldBounds(part)));
+  const probesByPart = new Map(probes.filter(probe => probe.part !== undefined).map(probe => [probe.part, probe]));
+  const sharedProbes = probes.filter(probe => probe.part === undefined);
+  const probedParts = parts.map((part, index) => {
+    const probe = probesByPart.get(index) ?? selectProbe(sharedProbes, boundsCentre(worldBounds(part)));
     return probe ? Object.freeze({ ...part, material: probedMaterial(part.material, probe.map, wrappers) }) : part;
   });
   const report = {

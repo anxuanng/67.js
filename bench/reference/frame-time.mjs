@@ -25,8 +25,11 @@ try {
   // Alternate the order so a drifting machine load does not favor one side. --cascades measures one map and three
   // cascades, each with a still camera and with a camera that moves every frame.
   // --plain measures only the plain frame, for scenes with more parts than the light bake takes.
+  // --objects measures the plain frame against the frame with one probe for each reflective part.
   const variants = process.argv.includes('--plain')
     ? [1, 2, 3].map(() => ({ bake: false, probes: false }))
+    : process.argv.includes('--objects')
+    ? [1, 2, 3].flatMap(round => (round % 2 ? [false, 'objects'] : ['objects', false]).map(probes => ({ bake: false, probes })))
     : process.argv.includes('--cascades')
     ? [0, 3, 0, 3].flatMap(cascades => [false, true].map(orbit => ({ bake: false, cascades, orbit })))
     : [1, 2, 3].flatMap(round => (round % 2 ? [[false, false], [true, false], [true, true], [false, true]] : [[false, true], [true, true], [true, false], [false, false]]).map(([bake, probes]) => ({ bake, probes })));
