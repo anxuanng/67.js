@@ -177,12 +177,12 @@
    "region-eevee-vs-cycles": 0.3146
   },
   "fog-valley": {
-   "gpu-vs-cycles": 0.1967,
-   "gpu-vs-eevee": 0.1098,
-   "cpu-vs-cycles": 0.1965,
-   "cpu-vs-eevee": 0.1095,
+   "gpu-vs-cycles": 0.1855,
+   "gpu-vs-eevee": 0.1443,
+   "cpu-vs-cycles": 0.1857,
+   "cpu-vs-eevee": 0.1447,
    "eevee-vs-cycles": 0.1952,
-   "gpu-vs-cpu": 0.0122
+   "gpu-vs-cpu": 0.012
   },
   "foliage": {
    "gpu-vs-cycles": 0.1023,

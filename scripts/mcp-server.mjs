@@ -141,6 +141,7 @@ const volumeFog = z.strictObject({
   noiseAmount: unit.optional(),
   noiseScale: bounded(0.001, 100).optional(),
   maxDistance: bounded(0.01, 1e4).optional(),
+  shadowAmbient: unit.optional(),
 });
 const affects = z.array(z.string()).optional();
 const environment = z.strictObject({
