@@ -179,7 +179,7 @@ These controls reuse `resolveVolumeFog` and its existing domain rules.
 | `noiseAmount` | `0.5` | `0` to `1` |
 | `noiseScale` | `0.3` | `0.001` to `100` |
 | `maxDistance` | `100` | `0.01` to `10000` |
-| `shadowAmbient` | `0.15` | `0` to `1` |
+| `shadowAmbient` | derived from the scene: 0.15 in a closed room, 1 under open sky | `0` to `1` |
 
 Fog bounds reject dimensions that collapse after Float32 rounding.
 The current volume supports one directional scattering source.

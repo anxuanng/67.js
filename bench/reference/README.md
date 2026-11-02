@@ -613,7 +613,7 @@ Single constants tried on the GPU render of the five fog scenes (the whole frame
 | glow weight 0.004 | 0.1942 | 0.1093 | 0.0644 | 0.0735 | 0.2474 |
 | glow only from pixels above 1.0, weight 0.02 | 0.2002 | 0.1144 | 0.0665 | 0.0722 | 0.2672 |
 
-Every global value trades a room against the open ground. The floor is now the fog field `shadowAmbient` (default 0.15, so every recipe and scene keeps its picture), and `fog-valley` sets 1: open ground under a sky is lit by the whole sky in shadow too. On the GPU render the valley goes 0.1967, 0.1915 (floor 0.4), 0.1883 (0.6) and 0.1855 (1.0) as the floor rises; the 0.6 and 1.0 renders were measured with two runs overlapping, so only the 1.0 value is kept, and the full run below was made alone.
+Every global value trades a room against the open ground. The floor is now the fog field `shadowAmbient`. Left unset it is derived: 32 upward rays from the middle of the fog box give the share that escapes the geometry, and the floor runs from 0.15 (closed room) to 1 (open sky), so `fog-valley` sets nothing and still gets 1 (the stored-Blender rerun with the hand-set value removed: valley 0.1855, `dark-shaft` 0.0619 to 0.0607, `fog` 0.2257 to 0.2243, `temple-hall` 0.0659 to 0.0674, every other scene identical to four places). Open ground under a sky is lit by the whole sky in shadow too. On the GPU render the valley goes 0.1967, 0.1915 (floor 0.4), 0.1883 (0.6) and 0.1855 (1.0) as the floor rises; the 0.6 and 1.0 renders were measured with two runs overlapping, so only the 1.0 value is kept, and the full run below was made alone.
 
 Full suite, `npm run reference -- --skip-blender` on the stored Cycles and EEVEE arrays (RTX 3060, GPU and CPU renders):
 

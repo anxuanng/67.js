@@ -34,6 +34,33 @@ export function resolveVolumeFog(input = {}) {
   const noiseAmount = finiteRange(input.noiseAmount ?? 0.5, 0, 1, 'Volume noise amount');
   const noiseScale = finiteRange(input.noiseScale ?? 0.3, 0.001, 100, 'Volume noise scale');
   const maxDistance = finiteRange(input.maxDistance ?? 100, 0.01, 1e4, 'Volume maximum distance');
-  const shadowAmbient = finiteRange(input.shadowAmbient ?? 0.15, 0, 1, 'Volume shadow ambient');
-  return { density, minimum, maximum, color, ambient, drift, steps, anisotropy, noiseAmount, noiseScale, maxDistance, shadowAmbient };
+  const resolved = { density, minimum, maximum, color, ambient, drift, steps, anisotropy, noiseAmount, noiseScale, maxDistance };
+  // Left out when unset, so the renderer can derive it from the scene (volumeShadowAmbient).
+  if (input.shadowAmbient !== undefined) {
+    resolved.shadowAmbient = finiteRange(input.shadowAmbient, 0, 1, 'Volume shadow ambient');
+  }
+  return resolved;
+}
+
+const derivedShadowAmbients = new WeakMap();
+
+/**
+ * The share of the fog's ambient that survives in the sun's shadow. A set value wins. Otherwise it follows how open the sky is
+ * from the middle of the fog: a closed room keeps 0.15, open ground under the sky keeps all of it.
+ * `measureOpenness(parts, point)` is the `skyOpenness` option of the renderer (src/closed-room.js), kept out of the core
+ * bundle; without it, or for a scene too large to test, the scene counts as enclosed. It runs once per scene and fog box.
+ */
+export function volumeShadowAmbient(volume, parts, measureOpenness) {
+  if (volume.shadowAmbient !== undefined) {
+    return volume.shadowAmbient;
+  }
+  const key = `${volume.minimum}|${volume.maximum}`;
+  const cached = derivedShadowAmbients.get(parts);
+  if (cached?.key === key) {
+    return cached.value;
+  }
+  const centre = volume.minimum.map((low, axis) => (low + volume.maximum[axis]) / 2);
+  const value = 0.15 + 0.85 * (measureOpenness?.(parts, centre) ?? 0);
+  derivedShadowAmbients.set(parts, { key, value });
+  return value;
 }

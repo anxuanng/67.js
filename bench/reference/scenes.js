@@ -455,7 +455,7 @@ async function fogValleyScene() {
   const lighting = await skyLighting();
   const volumeFog = {
     density: 0.005, minimum: [-300, 0, -450], maximum: [300, 90, 40],
-    color: [1, 1, 1], ambient: lighting.meanRadiance, shadowAmbient: 1, anisotropy: 0.4, noiseAmount: 0, steps: 48, maxDistance: 600,
+    color: [1, 1, 1], ambient: lighting.meanRadiance, anisotropy: 0.4, noiseAmount: 0, steps: 48, maxDistance: 600,
   };
   return {
     parts, blenderWorld: lighting.blenderWorld,
