@@ -41,7 +41,7 @@ const DEFORMING_TAGS = new Set(['foliage', 'grass', 'water', 'fire', 'smoke']);
 // strength, so they can be culled and given levels like rigid parts.
 const SWAY_REACH_PER_STRENGTH = 0.56;
 
-const POST_UNIFORMS = ['transparent', 'frameTexture', 'bloomTexture', 'bloomStrength', 'hdrEnabled', 'grade', 'vignette', 'grainAmount', 'resolution', 'monochrome', 'fade', 'cinematic', 'time', 'volumeExplosion', 'explosionProgress', 'inverseViewProjection', 'eye', 'sceneDepth', 'volumeShadowMap', 'volumeLightProjection', 'volumeLightDirection', 'volumeLightColor', 'volumeDensity', 'volumeMinimum', 'volumeMaximum', 'volumeColor', 'volumeAmbient', 'volumeDrift', 'volumeSteps', 'volumeAnisotropy', 'volumeShadowAmbient', 'volumeNoiseAmount', 'volumeNoiseScale', 'volumeMaxDistance', 'orthographic', 'occlusionTexture', 'occlusionStrength', 'occlusionTexel'];
+const POST_UNIFORMS = ['transparent', 'frameTexture', 'bloomTexture', 'bloomStrength', 'hdrEnabled', 'grade', 'vignette', 'grainAmount', 'resolution', 'monochrome', 'fade', 'cinematic', 'time', 'volumeExplosion', 'explosionProgress', 'inverseViewProjection', 'eye', 'sceneDepth', 'volumeShadowMap', 'volumeLightProjection', 'volumeLightDirection', 'volumeLightColor', 'volumeDensity', 'volumeMinimum', 'volumeMaximum', 'volumeColor', 'volumeAmbient', 'volumeDrift', 'volumeSteps', 'volumeAnisotropy', 'volumeShadowAmbient', 'volumeNoiseAmount', 'volumeNoiseScale', 'volumeMaxDistance', 'fogSkyVisibility', 'orthographic', 'occlusionTexture', 'occlusionStrength', 'occlusionTexel'];
 
 function postUniformLocations(context, program) {
   return Object.fromEntries(POST_UNIFORMS.map(name => [name, context.getUniformLocation(program, name)]));
@@ -410,11 +410,13 @@ function allFinite(values) {
 }
 
 export class Renderer67 {
-  constructor(canvas, parts, { batching = true, pixelRatio = 1.5, benchmark = false, world = false, ground = true, transparent = false, samples = 4, hdr = false, depth = false, memoryBudgetMiB = 256, environment = {}, shadowBounds = {}, shadowCascades = null, culling = true, lodPixelError = 1, createGpuTimer = null, skyOpenness = null } = {}) {
+  constructor(canvas, parts, { batching = true, pixelRatio = 1.5, benchmark = false, world = false, ground = true, transparent = false, samples = 4, hdr = false, depth = false, memoryBudgetMiB = 256, environment = {}, shadowBounds = {}, shadowCascades = null, culling = true, lodPixelError = 1, createGpuTimer = null, skyOpenness = null, fogSkyVisibility = null } = {}) {
     this.canvas = canvas;
     this.sceneParts = parts;
     // `skyOpenness` from closed-room.js is passed in, which keeps the ray code out of scenes without volume fog.
     this.skyOpenness = skyOpenness;
+    // `fogSkyVisibility` from fog-sky-visibility.js is passed in for the same reason; without it the post shader has no grid.
+    this.fogSkyVisibility = fogSkyVisibility;
     // `createGpuTimer` from adaptive-quality.js is passed in, which keeps the timer code out of scenes that do not time frames.
     this.createGpuTimer = createGpuTimer;
     this.gpuTimer = undefined;
@@ -1606,12 +1608,13 @@ export class Renderer67 {
   }
 
   // The post steps this frame uses. A step that is off costs nothing in a program that has it compiled out.
-  postStepsOf(frame, effects, volume, occluded) {
+  postStepsOf(frame, effects, volume, occluded, fogSky) {
     const steps = [];
     if (this.transparent) steps.push('transparent');
     if (occluded) steps.push('occlusion');
     if (effects.bloom.strength > 0) steps.push('bloom');
     if (volume.density > 0) steps.push('volume');
+    if (fogSky) steps.push('sky');
     if (frame.volumeExplosion) steps.push('explosion');
     const gradesColor = effects.saturation !== 1 || effects.contrast !== 1 || effects.temperature !== 0;
     const finishes = gradesColor || (frame.monochrome ?? 0) !== 0 || Boolean(frame.cinematic) || effects.vignette !== 0 || effects.grain !== 0;
@@ -1622,7 +1625,7 @@ export class Renderer67 {
   // Compiles a program for the steps of this frame the first time they occur. The program with every step stays in use
   // until the driver has finished building the new one, so a step that appears later does not stall a frame.
   selectPostProgram(steps) {
-    if (steps.length === POST_STEPS.length) return { program: this.postProgram, uniforms: this.postUniforms };
+    if (steps.join() === POST_STEPS.join()) return { program: this.postProgram, uniforms: this.postUniforms };
     const key = steps.join(',');
     let variant = this.postVariants.get(key);
     if (!variant) {
@@ -1631,7 +1634,7 @@ export class Renderer67 {
     }
     if (variant.pending) {
       const parallelCompile = this.context.getExtension('KHR_parallel_shader_compile');
-      const building = parallelCompile && !this.context.getProgramParameter(variant.pending.program, parallelCompile.COMPLETION_STATUS_KHR);
+      const building = parallelCompile && !steps.includes('sky') && !this.context.getProgramParameter(variant.pending.program, parallelCompile.COMPLETION_STATUS_KHR);
       if (building) return { program: this.postProgram, uniforms: this.postUniforms };
       variant.program = finishProgram(this.context, variant.pending);
       variant.uniforms = postUniformLocations(this.context, variant.program);
@@ -1655,7 +1658,8 @@ export class Renderer67 {
     context.disable(context.DEPTH_TEST);
     context.disable(context.CULL_FACE);
     context.bindVertexArray(null);
-    const post = this.selectPostProgram(this.postStepsOf(frame, effects, volume, occluded));
+    const fogSky = this.fogSkyVisibility?.(this.sceneParts, volume, context);
+    const post = this.selectPostProgram(this.postStepsOf(frame, effects, volume, occluded, fogSky));
     context.useProgram(post.program);
     context.activeTexture(context.TEXTURE0);
     context.bindTexture(context.TEXTURE_2D, sourceTexture);
@@ -1691,6 +1695,7 @@ export class Renderer67 {
     context.uniform1f(post.uniforms.volumeNoiseScale, volume.noiseScale);
     context.uniform1f(post.uniforms.volumeMaxDistance, volume.maxDistance);
     context.uniform1f(post.uniforms.orthographic, frame.projection === 'orthographic' ? 1 : 0);
+    context.uniform1i(post.uniforms.fogSkyVisibility, 5);
     context.activeTexture(context.TEXTURE2);
     context.bindTexture(context.TEXTURE_2D, effects.bloom.strength > 0 ? this.bloomTargets[1].texture : this.whiteTexture);
     context.uniform1i(post.uniforms.bloomTexture, 2);

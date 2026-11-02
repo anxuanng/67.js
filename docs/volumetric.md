@@ -45,6 +45,10 @@ renderer.render({ eye: [0, 2, 5], target: [0, 1, 0], time: 0 });
 
 Values must be finite numbers. Active volume fog accepts finite frame time within ±1,000,000 seconds and a nonzero light direction with components within ±1,000,000. Noise samples absolute time, so backward seeks reproduce earlier density.
 
+## Sky visibility of the fog
+
+Pass `fogSkyVisibility` from `src/fog-sky-visibility.js` to `Renderer67` (the agent preview and the reference harness do) and the fog's ambient follows a per-point sky visibility instead of one share for the whole box. `skyVisibilityGrid` in `src/closed-room.js` shoots 24 fixed upward rays from the centre of each cell of a grid over the fog box (at most 2,048 cells and 32 along an axis), once per scene and fog box, and the result is uploaded as one 8-bit 3D texture. The post shader samples it with trilinear filtering in the shadowed fog: a point that sees any sky keeps all of the ambient, a point that sees none keeps 0.1 of it, and fog the sun reaches keeps all of it as before. Without the option, or when volume fog is off, the sampling is compiled out of the post shader and the frame is drawn by the program it had before. A scene of more than 150,000 triangles has no grid and draws as before. The rays run on the CPU: 0.03 s for `dark-shaft` (1,120 triangles) and 1.7 s for `temple-hall` (11,892 triangles) at scene build. A recipe that sets `shadowAmbient` keeps it and gets no grid.
+
 ## Lighting and depth
 
 The fullscreen march clips against resolved opaque depth, supports perspective and orthographic cameras, and stops at the volume boundary or maximum distance. It integrates Beer-Lambert extinction and directional single scattering with a Henyey-Greenstein phase function. It uses the existing directional shadow map and key-light color. Keep authored shadow bounds aligned with the light direction and covering the medium.

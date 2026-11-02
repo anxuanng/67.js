@@ -40,6 +40,7 @@ uniform float volumeNoiseAmount;
 uniform float volumeNoiseScale;
 uniform float volumeMaxDistance;
 uniform float orthographic;
+uniform highp sampler3D fogSkyVisibility;
 uniform sampler2D occlusionTexture;
 uniform float occlusionStrength;
 uniform vec2 occlusionTexel;
@@ -137,7 +138,8 @@ vec3 volumeFog(vec3 background) {
     if (all(greaterThanEqual(shadow, vec3(0))) && all(lessThanEqual(shadow, vec3(1)))) {
       visibility = step(shadow.z - 0.0008, texture(volumeShadowMap, shadow.xy).r);
     }
-    vec3 scattering = volumeColor * (volumeAmbient * mix(volumeShadowAmbient, 1.0, visibility) + volumeLightColor * phase * visibility);
+    float shadowShare = POST_SKY ? 0.1 + 0.9 * min(1.0, 30.0 * texture(fogSkyVisibility, (position - volumeMinimum) / (volumeMaximum - volumeMinimum)).r) : volumeShadowAmbient;
+    vec3 scattering = volumeColor * (volumeAmbient * mix(shadowShare, 1.0, visibility) + volumeLightColor * phase * visibility);
     accumulated += transmittance * opacity * scattering;
     transmittance *= 1.0 - opacity;
     if (transmittance < 0.001) break;
@@ -269,11 +271,13 @@ const POST_STEP_CONDITIONS = {
   occlusion: ['POST_OCCLUSION', 'occlusionStrength > 0.0'],
   bloom: ['POST_BLOOM', 'bloomStrength > 0.0'],
   volume: ['POST_VOLUME', 'volumeDensity > 0.0'],
+  sky: ['POST_SKY', 'true'],
   explosion: ['POST_EXPLOSION', 'volumeExplosion > 0.5'],
   finish: ['POST_FINISH', 'true'],
 };
 
-export const POST_STEPS = Object.freeze(Object.keys(POST_STEP_CONDITIONS));
+// The sky step is left out: the program with every step is the one a frame draws while a variant builds, and it has no fog sky grid.
+export const POST_STEPS = Object.freeze(Object.keys(POST_STEP_CONDITIONS).filter(step => step !== 'sky'));
 
 /** The post pass with only the listed steps compiled in; every step is switched by its uniform, as before. */
 export function createPostFragment(steps = POST_STEPS) {
