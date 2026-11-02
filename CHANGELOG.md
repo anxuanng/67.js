@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Remove the AGPL-3.0 `@codepawlhq/orglet-ui` package, React and react-dom from the website (issue #176). The site now uses its own tokens and button in `src/site-tokens.css` and `src/site-controls.js`, and screenshots of the pages match before and after. The site JavaScript drops from 1,778,425 to 1,531,367 bytes. The published package was never affected.
 - Clean up docs, media and scripts. Remove stale logs, six unreferenced PNG previews (about 6.1 MB) with their render sidecars, the OpenAI skill metadata and ten scripts that aimed at harness pages that no longer exist. Update the roadmap, the mesh and verification docs and the contributing guide, point the links to unshipped docs at GitHub, and add `npm run check:links`, `smoke:modeling`, `smoke:material-maps` and `benchmark:mesh-query`.
 - The GitHub repository is `anxuanng/67.js`, public since 2026-11-02. Links and `repository.url` point there, which npm provenance needs to match.
 - Follow 3 bounces by default in a light bake, up from 2 (part of issue #159, which stays open). Baked rooms scored worse after the sky visibility change (`lit-interior` 0.1444 to 0.1915, `brick-room` 0.1515 to 0.2048 against Cycles) because the occlusion map removed the world light that had been filling the light a 2 bounce path cuts off. With 3 bounces they score 0.1341 and 0.1412, `dark-shaft` 0.0609 and `temple-hall` 0.0560. A bake takes about 1.3 to 1.9 times as long (`temple-hall` 39 to 75 s); pass `bounces: 2` for the old light and time. Recipe presets are unchanged.
