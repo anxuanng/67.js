@@ -354,8 +354,23 @@ function interleaveUvSets(geometry) {
   return combined;
 }
 
+// Sky visibility rides in the fourth component of the vertex colour attribute, so the attribute layout stays the same.
+function interleaveColorsWithSkyVisibility(geometry) {
+  const vertexCount = geometry.skyVisibility.length;
+  const combined = new Float32Array(vertexCount * 4);
+  for (let vertex = 0; vertex < vertexCount; vertex++) {
+    for (let channel = 0; channel < 3; channel++) {
+      combined[vertex * 4 + channel] = geometry.colors ? geometry.colors[vertex * 3 + channel] : 1;
+    }
+    combined[vertex * 4 + 3] = geometry.skyVisibility[vertex];
+  }
+  return combined;
+}
+
 function geometryBufferBytes(geometry) {
-  return ['positions', 'normals', 'colors', 'indices'].reduce((total, field) => total + (geometry[field]?.byteLength ?? 0), uvBufferBytes(geometry));
+  const plainBytes = ['positions', 'normals', 'colors', 'indices'].reduce((total, field) => total + (geometry[field]?.byteLength ?? 0), uvBufferBytes(geometry));
+  if (!geometry.skyVisibility) return plainBytes;
+  return plainBytes - (geometry.colors?.byteLength ?? 0) + geometry.skyVisibility.length * 16;
 }
 
 function validateReplacementGeometry(geometry) {
@@ -777,9 +792,10 @@ export class Renderer67 {
         if (geometry[field]) {
           const target = field === 'indices' ? context.ELEMENT_ARRAY_BUFFER : context.ARRAY_BUFFER;
           const values = field === 'uvs' && geometry.lightUvs ? interleaveUvSets(geometry) : geometry[field];
-          geometryBuffers.set(field, this.uploadBuffer(target, values));
+          geometryBuffers.set(field, this.uploadBuffer(target, field === 'colors' && geometry.skyVisibility ? interleaveColorsWithSkyVisibility(geometry) : values));
         }
       }
+      if (geometry.skyVisibility && !geometry.colors) geometryBuffers.set('colors', this.uploadBuffer(context.ARRAY_BUFFER, interleaveColorsWithSkyVisibility(geometry)));
       if (geometry.lightUvs && !geometry.uvs) geometryBuffers.set('uvs', this.uploadBuffer(context.ARRAY_BUFFER, interleaveUvSets(geometry)));
       this.geometryBuffers.set(geometry, geometryBuffers);
     }
@@ -800,11 +816,12 @@ export class Renderer67 {
       // (-1, -1) marks "no UVs": grass wind then bends by local height instead of by blade position.
       context.vertexAttrib2f(13, -1, -1);
     }
-    if (geometry.colors) {
-      if (geometry.colors.length !== geometry.positions.length) throw new Error('Geometry colors must contain RGB for every vertex.');
+    if (geometry.colors && geometry.colors.length !== geometry.positions.length) throw new Error('Geometry colors must contain RGB for every vertex.');
+    if (geometry.skyVisibility && geometry.skyVisibility.length !== geometry.positions.length / 3) throw new Error('Geometry skyVisibility must hold one value for every vertex.');
+    if (geometry.colors || geometry.skyVisibility) {
       context.bindBuffer(context.ARRAY_BUFFER, geometryBuffers.get('colors'));
       context.enableVertexAttribArray(14);
-      context.vertexAttribPointer(14, 3, context.FLOAT, false, 0, 0);
+      context.vertexAttribPointer(14, geometry.skyVisibility ? 4 : 3, context.FLOAT, false, 0, 0);
     } else {
       context.disableVertexAttribArray(14);
       context.vertexAttrib3f(14, 1, 1, 1);

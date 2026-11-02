@@ -19,6 +19,8 @@ export {
 
 const DEFAULT_LIMITS = AGENT_SCENE_DEFAULT_LIMITS;
 const MAX_MESH_REPORTS = 16;
+// Terrain meshes carry one more float for each vertex (sky visibility) than the 56 bytes the budget estimates.
+const TERRAIN_SKY_VISIBILITY_BYTES = 4;
 const CAMERA_DEFAULTS = Object.freeze({ eye: [4, 3, 5], target: [0, 0, 0], up: [0, 1, 0], fov: 45, near: 0.1, far: 1000 });
 const NODE_FIELDS = ['translation', 'rotation', 'scale', 'parent', 'label', 'geometry', 'material', 'skin', 'relations'];
 const MATERIAL_FIELDS = ['color', 'metallic', 'roughness', 'emission', 'emissiveColor', 'opacity', 'alphaMode', 'doubleSided', 'pattern', ...MATERIAL_LAYER_FIELDS];
@@ -1007,7 +1009,7 @@ export function createAgentScene(input, inputLimits = {}) {
           if (residentStats.vertices + pendingVertices - plan.estimatedVertices + vertices > limits.maxVertices) {
             throw new RangeError(`Mesh ${plan.definition.id} has ${vertices} render vertices after its edits, which exceeds maxVertices across the scene. Reduce detail or edits.`);
           }
-        } else if (vertices > plan.estimatedVertices || geometryBytes > plan.estimatedVertices * 56) {
+        } else if (vertices > plan.estimatedVertices || geometryBytes > plan.estimatedVertices * (56 + TERRAIN_SKY_VISIBILITY_BYTES)) {
           throw new RangeError('Generated geometry exceeds its conservative preflight bound.');
         }
         record = Object.freeze({

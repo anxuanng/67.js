@@ -26,13 +26,21 @@
    "cycles": 7.7,
    "eevee": 0.4
   },
+  "dark-shaft": {
+   "cycles": 129.3,
+   "eevee": 67.2
+  },
   "fog": {
    "cycles": 58.3,
    "eevee": 1.4
   },
+  "fog-room": {
+   "cycles": 29.4,
+   "eevee": 2.7
+  },
   "foliage": {
-   "cycles": 16.9,
-   "eevee": 0.6
+   "cycles": 26.4,
+   "eevee": 13.5
   },
   "glass": {
    "cycles": 18.9,
@@ -67,8 +75,8 @@
    "eevee": 41.9
   },
   "mountain-valley": {
-   "cycles": 30.5,
-   "eevee": 11.8
+   "cycles": 35.9,
+   "eevee": 39.2
   },
   "outdoor-hdri": {
    "cycles": 12.3,
@@ -81,10 +89,6 @@
   "temple-hall": {
    "cycles": 57.7,
    "eevee": 1.1
-  },
-  "dark-shaft": {
-   "cycles": 129.3,
-   "eevee": 67.2
   }
  },
  "graphics": {
@@ -160,13 +164,33 @@
    "eevee-vs-cycles": 0.2662,
    "gpu-vs-cpu": 0.0089
   },
+  "fog-room": {
+   "gpu-vs-cycles": 0.1953,
+   "gpu-vs-eevee": 0.2768,
+   "cpu-vs-cycles": 0.1958,
+   "cpu-vs-eevee": 0.2764,
+   "eevee-vs-cycles": 0.373,
+   "gpu-vs-cpu": 0.0059,
+   "region-pixels": 0.243,
+   "region-gpu-vs-cycles": 0.1682,
+   "region-gpu-vs-eevee": 0.3032,
+   "region-eevee-vs-cycles": 0.3146
+  },
+  "fog-valley": {
+   "gpu-vs-cycles": 0.1967,
+   "gpu-vs-eevee": 0.1098,
+   "cpu-vs-cycles": 0.1965,
+   "cpu-vs-eevee": 0.1095,
+   "eevee-vs-cycles": 0.1952,
+   "gpu-vs-cpu": 0.0122
+  },
   "foliage": {
-   "gpu-vs-cycles": 0.1181,
-   "gpu-vs-eevee": 0.0846,
-   "cpu-vs-cycles": 0.1178,
-   "cpu-vs-eevee": 0.0843,
+   "gpu-vs-cycles": 0.1023,
+   "gpu-vs-eevee": 0.0853,
+   "cpu-vs-cycles": 0.102,
+   "cpu-vs-eevee": 0.0849,
    "eevee-vs-cycles": 0.0888,
-   "gpu-vs-cpu": 0.01
+   "gpu-vs-cpu": 0.0098
   },
   "glass": {
    "gpu-vs-cycles": 0.1034,
@@ -233,12 +257,12 @@
    "gpu-vs-cpu": 0.0061
   },
   "mountain-valley": {
-   "gpu-vs-cycles": 0.349,
-   "gpu-vs-eevee": 0.2391,
-   "cpu-vs-cycles": 0.3478,
-   "cpu-vs-eevee": 0.2378,
+   "gpu-vs-cycles": 0.2623,
+   "gpu-vs-eevee": 0.2971,
+   "cpu-vs-cycles": 0.26,
+   "cpu-vs-eevee": 0.2947,
    "eevee-vs-cycles": 0.1879,
-   "gpu-vs-cpu": 0.0193
+   "gpu-vs-cpu": 0.0192
   },
   "outdoor-hdri": {
    "gpu-vs-cycles": 0.0462,

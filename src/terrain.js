@@ -2,6 +2,8 @@
 // The finest grid is sampled once. Every mesh vertex reads that grid, and heightAt() interpolates it over the same
 // triangles as the finest mesh, so vegetation and vehicles sit on the rendered surface.
 
+import { createSkyVisibilitySampler } from './terrain-sky.js';
+
 const DEFAULT_NOISE = Object.freeze({
   amplitude: 14,
   mountainAmplitude: 46,
@@ -223,6 +225,8 @@ export function createTerrain({ size = 512, resolution = 32, chunks = 8, levels 
     target[offset + 2] = -slopeZ * inverseLength;
   }
 
+  const skyVisibilityAt = createSkyVisibilitySampler({ heights, gridCells, spacing, highest, normalAt: (column, row, target) => gridNormal(column, row, 1, target, 0) });
+
   function locate(worldX, worldZ) {
     const gridX = clamp((worldX - origin) / spacing, 0, gridCells);
     const gridZ = clamp((worldZ - origin) / spacing, 0, gridCells);
@@ -267,6 +271,7 @@ export function createTerrain({ size = 512, resolution = 32, chunks = 8, levels 
     const positions = new Float32Array(side * side * 3);
     const normals = new Float32Array(side * side * 3);
     const uvs = new Float32Array(side * side * 2);
+    const skyVisibility = new Float32Array(side * side);
     const firstColumn = chunkColumn * resolution;
     const firstRow = chunkRow * resolution;
     for (let row = 0; row < side; row++) {
@@ -279,6 +284,7 @@ export function createTerrain({ size = 512, resolution = 32, chunks = 8, levels 
         positions.set([worldX, snappedHeight(column, row, side, step, gridColumn, gridRow, edgeLevels, level), worldZ], vertex * 3);
         gridNormal(gridColumn, gridRow, step, normals, vertex * 3);
         uvs.set([worldX, worldZ], vertex * 2);
+        skyVisibility[vertex] = skyVisibilityAt(clamp(gridColumn, 0, gridCells), clamp(gridRow, 0, gridCells));
       }
     }
     const indices = new Uint32Array(cells * cells * 6);
@@ -297,7 +303,7 @@ export function createTerrain({ size = 512, resolution = 32, chunks = 8, levels 
         cursor += 6;
       }
     }
-    return { positions, normals, uvs, indices: cursor === indices.length ? indices : indices.slice(0, cursor) };
+    return { positions, normals, uvs, skyVisibility, indices: cursor === indices.length ? indices : indices.slice(0, cursor) };
   }
 
   function snappedHeight(column, row, side, step, gridColumn, gridRow, edgeLevels, level) {
