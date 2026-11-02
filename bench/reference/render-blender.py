@@ -492,6 +492,27 @@ def build_cloth(scene, description):
     scene.collection.objects.link(bpy.data.objects.new("cloth", baked_mesh))
 
 
+def gradient_sky_image(sky):
+    """Sky colour by elevation: horizon to zenith above the horizon (raised to `power`), horizon to ground below it.
+
+    grand-scenes.js (skyGradient) uses the same formula; its first row is the zenith, and Blender images start at the bottom."""
+    import numpy
+    width, height = 256, 128
+    elevation = (numpy.arange(height) + 0.5) / height * math.pi - math.pi / 2
+    sine = numpy.sin(elevation)
+    above = numpy.clip(sine, 0, 1) ** sky["power"]
+    below = numpy.clip(-sine * 4, 0, 1)
+    horizon, zenith, ground = (numpy.array(sky[name]) for name in ("horizon", "zenith", "ground"))
+    colors = horizon + (zenith - horizon) * above[:, None]
+    colors = colors + (ground - colors) * below[:, None]
+    pixels = numpy.ones((height, width, 4), dtype=numpy.float32)
+    pixels[:, :, :3] = colors[:, None, :]
+    image = bpy.data.images.new("gradient-sky", width, height, float_buffer=True)
+    image.colorspace_settings.name = "Linear Rec.709"
+    image.pixels.foreach_set(pixels.ravel())
+    return image
+
+
 def build_world(scene, world_description, root):
     world = bpy.data.worlds.new("World")
     world.use_nodes = True
@@ -508,6 +529,14 @@ def build_world(scene, world_description, root):
     mapping = nodes.new("ShaderNodeMapping")
     mapping.inputs["Rotation"].default_value = (0, 0, ENVIRONMENT_ROTATION_Z)
     texture = nodes.new("ShaderNodeTexEnvironment")
+    if world_description["type"] == "gradient":
+        # The same equirectangular gradient that grand-scenes.js hands to 67js, written as an image.
+        texture.image = gradient_sky_image(world_description)
+        links.new(coordinates.outputs["Generated"], mapping.inputs["Vector"])
+        links.new(mapping.outputs["Vector"], texture.inputs["Vector"])
+        links.new(texture.outputs["Color"], background.inputs[0])
+        background.inputs[1].default_value = 1
+        return
     texture.image = bpy.data.images.load(os.path.join(root, world_description["file"]))
     links.new(coordinates.outputs["Generated"], mapping.inputs["Vector"])
     links.new(mapping.outputs["Vector"], texture.inputs["Vector"])
@@ -736,7 +765,12 @@ def main():
         eevee_seconds = render_to_numpy(scene, work_directory, f"{scene_id}-eevee")
         timings[scene_id] = {"cycles": round(cycles_seconds, 1), "eevee": round(eevee_seconds, 1)}
         print(f"RENDERED {scene_id} {timings[scene_id]}")
-    with open(os.path.join(work_directory, "blender-timings.json"), "w", encoding="utf-8") as file:
+    timings_path = os.path.join(work_directory, "blender-timings.json")
+    if only and os.path.exists(timings_path):
+        # A run of some scenes keeps the times of the others, so the scores of the whole directory still have them.
+        with open(timings_path, encoding="utf-8") as file:
+            timings = {**json.load(file)["seconds"], **timings}
+    with open(timings_path, "w", encoding="utf-8") as file:
         json.dump({"blenderVersion": bpy.app.version_string, "seconds": timings}, file, indent=1)
 
 

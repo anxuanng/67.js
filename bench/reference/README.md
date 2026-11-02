@@ -52,6 +52,24 @@ With the shadow floor `temple-hall` scored 0.5841, `mountain-valley` 0.3658 and 
 
 `temple-hall` sets its own `bakeOptions`. The defaults need 1.4 million texels, and the bake allows 1 million. With the options the bake scores 0.2239, against 0.2126 without it.
 
+### Options for the grand scenes (2026-11-02, part of issue #168)
+
+The three scenes measure well and look plain, so `grand-scenes.js` holds three options of each, `-a`, `-b` and `-c`, each a different composition, light and time of day. `npm run reference -- --grand` draws them on both sides into `grand.json` and `images/grand-<id>.jpg`; `baseline.json` and the other images are unchanged. `python bench/reference/grand-sheets.py <directory>` (command in its header) writes one comparison sheet per scene. An picks by letter, and a later change moves the pick into `REFERENCE_SCENES`. Blender draws the same geometry; the sky is the same equirectangular gradient on both sides (`gradient` world type), and every window, lamp and sky panel is Emission.
+
+| Option | What it is | 67js against Cycles | Cycles seconds |
+| --- | --- | --- | --- |
+| `mountain-valley-a` | Golden hour at a lake, sun from the left, rocky shore in the foreground | 0.3530 | 26.3 |
+| `mountain-valley-b` | Midday from a high slope, a river winding down a flat valley floor | 0.1839 | 24.5 |
+| `mountain-valley-c` | Alpenglow on one tall peak, forest edge close to the camera | 0.2282 | 52.7 |
+| `temple-hall-a` | Four clerestory windows throw slanted sun shafts across the nave, people in the light | 0.2530 | 21.7 |
+| `temple-hall-b` | Square oculus hall: ring of columns, one beam on a gilded seated figure | 0.3642 | 25.4 |
+| `temple-hall-c` | Setting sun down the nave axis through a tall opening, columns as silhouettes in glowing fog | 0.2746 | 23.4 |
+| `megacity-dusk-a` | Blue hour on a river with lit bridges and quays | 0.1978 | 28.9 |
+| `megacity-dusk-b` | Sunrise across a bay from a pier, skyline and its reflection | 0.1575 | 33.2 |
+| `megacity-dusk-c` | Night, high view over an avenue grid of car lights and dense lit towers | 0.1149 | 35.9 |
+
+Known gaps in the 67js side: a lake or bay shows the sky only, where Cycles also mirrors the shore, the trees and the towers; the dark halls have no bounced light.
+
 ## Dark spaces (2026-11-01, part of issue #159)
 
 `dark-shaft` is a closed stone room, 11 m by 15 m and 6.5 m high, with one 2.2 m opening in the roof. The sun comes through it as a shaft in `volumeFog` (density 0.07) and lands on the floor and on a plinth with an urn. There is no HDRI, and the world is a constant 0.03, as in `temple-hall`.
