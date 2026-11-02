@@ -16,7 +16,7 @@ const MAXIMUM_BLUR_HEIGHT_FRACTION = 0.05;
 // Longest motion streak as a fraction of the frame, so a camera cut cannot smear the whole image.
 const MAXIMUM_STREAK = 0.1;
 
-const sharedFragmentHeader = `#version 300 es
+export const sharedFragmentHeader = `#version 300 es
 precision highp float;
 in vec2 textureCoordinate;
 uniform sampler2D sourceTexture;
@@ -113,7 +113,7 @@ function createTarget(renderer) {
  * One full-frame stage. `isActive` decides from the resolved effects whether it runs, and `setUniforms` fills the
  * values that are specific to the effect.
  */
-function createStage({ name, fragment, uniformNames, isActive, setUniforms }) {
+export function createStage({ name, fragment, uniformNames, isActive, setUniforms }) {
   let program = null;
   let uniforms = null;
   let target = null;
