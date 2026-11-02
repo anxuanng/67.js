@@ -136,6 +136,8 @@
     "benchmark:runtime": "node bench/runtime/run.mjs",
     "check:tool-schemas": "node scripts/check-tool-schemas.mjs",
     "check:links": "node scripts/check-links.mjs",
+    "changes": "node scripts/changelog-fragments.mjs",
+    "changes:fold": "node scripts/changelog-fragments.mjs fold",
     "check:links:package": "node scripts/check-links.mjs --package"
   },
   "peerDependencies": {
