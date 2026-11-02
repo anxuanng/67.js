@@ -611,6 +611,6 @@ Retained [surface attachments](https://github.com/anxuanng/67.js/blob/main/docs/
 Source checkouts can contain unreleased changes beyond their package version.
 
 The [release metadata](/release.json) identifies the published package and browser module.
-The checkout's `CHANGELOG.md` separates released features from unreleased work.
+The checkout's `CHANGELOG.md` lists released features; the files in `changes/` hold the notes of unreleased work.
 The [GLB snapshot contract](/export-glb.md) describes geometry, colors, UVs, HDR emission and current morph weights.
 Module contracts define their own resource limits and disposal requirements.

@@ -100,22 +100,37 @@ function scalePresetDown(settings) {
  * they fail up front only over the hard limit, and otherwise run until the real maxSeconds limit. A preset is scaled down
  * (samples by a fifth, texel density by a tenth, repeatedly) until it fits BAKE_PRESET_PATH_WORK.
  */
-function fitSettingsToBudget(plan, settings) {
+export function fitSettingsToBudget(plan, settings) {
   if (!isPreset(settings)) {
     const pathWork = pathWorkOf(plan, settings);
     if (pathWork > BAKE_EXPLICIT_PATH_WORK_LIMIT) {
       throw new RangeError(overLimitMessage(plan, settings, pathWork));
     }
-    return { used: settings, reduced: false };
+    return { used: settings, reduced: false, reduction: null };
   }
-  let used = settings;
-  while (pathWorkOf(plan, used) > BAKE_PRESET_PATH_WORK) {
-    if (used.samples <= PRESET_SAMPLES_FLOOR && used.texelsPerUnit <= BAKE_RANGES.texelsPerUnit[0]) {
-      throw new RangeError(`Even ${PRESET_SAMPLES_FLOOR} samples at texelsPerUnit ${BAKE_RANGES.texelsPerUnit[0]} is over the preset budget of ${BAKE_PRESET_PATH_WORK} path steps for this scene. Remove parts or lights, or lower bounces.`);
+  // Samples and texel density shrink first. When the floor of both still does not fit (a large hall), a bounce is given up and
+  // the density and samples start again from the preset, so the result is the largest bake that fits and never a refusal.
+  // One bounce at the floor always fits a scene the explicit limit lets through, and past that the scene is too large to bake.
+  for (let bounces = settings.bounces; bounces >= BAKE_RANGES.bounces[0]; bounces--) {
+    let used = { ...settings, bounces };
+    while (pathWorkOf(plan, used) > BAKE_PRESET_PATH_WORK && !atPresetFloor(used)) {
+      used = scalePresetDown(used);
     }
-    used = scalePresetDown(used);
+    if (pathWorkOf(plan, used) <= BAKE_PRESET_PATH_WORK) {
+      const reduced = used.samples !== settings.samples || used.bounces !== settings.bounces || used.texelsPerUnit !== settings.texelsPerUnit;
+      return { used, reduced, reduction: reduced ? reductionMessage(settings, used) : null };
+    }
   }
-  return { used, reduced: used !== settings };
+  throw new RangeError(`Even ${PRESET_SAMPLES_FLOOR} samples, 1 bounce and texelsPerUnit ${BAKE_RANGES.texelsPerUnit[0]} is over the preset budget of ${BAKE_PRESET_PATH_WORK} path steps for this scene. Remove parts or lights.`);
+}
+
+function atPresetFloor(settings) {
+  return settings.samples <= PRESET_SAMPLES_FLOOR && settings.texelsPerUnit <= BAKE_RANGES.texelsPerUnit[0];
+}
+
+// What the agent reads in bake.reduction: what the preset asked for, what ran, and the one thing to do for more.
+function reductionMessage(asked, used) {
+  return `The preset asked for samples ${asked.samples}, bounces ${asked.bounces}, texelsPerUnit ${asked.texelsPerUnit}; this scene is too large for that within the preset budget of ${BAKE_PRESET_PATH_WORK} path steps, so it baked samples ${used.samples}, bounces ${used.bounces}, texelsPerUnit ${used.texelsPerUnit} (bake.used). For a denser bake pass explicit samples, bounces and texelsPerUnit, up to ${BAKE_EXPLICIT_PATH_WORK_LIMIT} path steps and ${BAKE_MAXIMUM_SECONDS} s.`;
 }
 
 function timeLimitMessage(error, settings) {
@@ -162,7 +177,7 @@ function traceWithAdvice(plan, used) {
  */
 export function bakeChangedParts(snapshots, lighting, settings) {
   const plan = planLightmaps(snapshots, lighting, { ...settings, maxSeconds: bakeSecondsLimit() });
-  const { used, reduced } = fitSettingsToBudget(plan, settings);
+  const { used, reduced, reduction } = fitSettingsToBudget(plan, settings);
   const { parts, report } = traceWithAdvice(plan, used);
   const changed = [];
   parts.forEach((part, index) => {
@@ -170,7 +185,7 @@ export function bakeChangedParts(snapshots, lighting, settings) {
       changed.push([index, part]);
     }
   });
-  return { changed, report, used, reduced };
+  return { changed, report, used, reduced, reduction };
 }
 
 /**
@@ -196,7 +211,7 @@ export function bakeAgentParts(parts, worldMatrices, environment, settings, gene
     material: { ...part.material },
     generatesGeometry: generatedGeometryGenerators.get(part.name) ?? false,
   }));
-  const { changed, report, used, reduced } = runKernel('lightBake', [snapshots, lighting, settings], bakeChangedParts);
+  const { changed, report, used, reduced, reduction } = runKernel('lightBake', [snapshots, lighting, settings], bakeChangedParts);
   // Probes see the unbaked parts, as the bake does, and are traced as a kernel of their own so a worker can take them too.
   const probeTrace = !settings.probes ? null
     : runKernel('probeTrace', [snapshots, lighting, settings.probes, { environment: lighting, maxSeconds: bakeSecondsLimit() }], traceProbes);
@@ -213,6 +228,6 @@ export function bakeAgentParts(parts, worldMatrices, environment, settings, gene
   });
   // Probes are placed here, on the page, because they build maps and materials; their trace ran above.
   const placed = probeTrace ? placeProbes(bakedParts, probeTrace) : null;
-  return { parts: Object.freeze(placed ? placed.parts : bakedParts), report: { ...settings, ...(placed ? { probes: placed.report } : {}), used, reduced, texels: report.texels, rayWork: report.rayWork, seconds: report.seconds,
+  return { parts: Object.freeze(placed ? placed.parts : bakedParts), report: { ...settings, ...(placed ? { probes: placed.report } : {}), used, reduced, reduction, texels: report.texels, rayWork: report.rayWork, seconds: report.seconds,
     bakedParts: report.parts.length, skipped: report.skipped } };
 }

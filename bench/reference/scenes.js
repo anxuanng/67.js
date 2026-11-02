@@ -40,7 +40,14 @@ export async function skyLighting(intensity = 1) {
   const parsed = parseRadianceHdr(await response.arrayBuffer());
   const data = parsed.data.map((radiance) => Math.min(radiance, HDRI_RADIANCE_LIMIT));
   const map = createEnvironmentMap({ ...parsed, data, intensity, showBackground: true });
-  return { map, blenderWorld: { type: 'hdri', file: HDRI_FILE, intensity, radianceLimit: HDRI_RADIANCE_LIMIT } };
+  return { map, meanRadiance: meanRadiance(data, intensity), blenderWorld: { type: 'hdri', file: HDRI_FILE, intensity, radianceLimit: HDRI_RADIANCE_LIMIT } };
+}
+
+// The average colour of an equirectangular map. Rows are not weighted by solid angle: the scenes that use it do not need that.
+function meanRadiance(data, intensity) {
+  const sum = [0, 0, 0];
+  for (let index = 0; index < data.length; index++) sum[index % 3] += data[index];
+  return sum.map(channel => (channel / (data.length / 3)) * intensity);
 }
 
 export function constantLighting(value) {
@@ -169,7 +176,7 @@ export const KHRONOS_SCENES = Object.fromEntries(KHRONOS_ASSET_NAMES.map(name =>
 
 // Grand scenes: the scale people actually want to draw, built from the engine's terrain, vegetation and plain boxes.
 // Only what Blender can draw too is used: the terrain colours are vertex colours, the emissive windows are Emission, the
-// fog is a volume box. The built-in leaf translucency of 67js has no Blender counterpart (see the README).
+// fog is a volume box. Blender rebuilds the 67js leaf model for foliage materials (see the README).
 export function seededRandom(seed) {
   let state = seed >>> 0;
   return () => {
@@ -403,17 +410,105 @@ async function darkShaftScene() {
   const lighting = constantLighting(0.03);
   const stone = { color: [0.62, 0.55, 0.45], roughness: 0.85 };
   const floorStone = { color: [0.5, 0.45, 0.38], roughness: 0.6 };
+  const parts = [...shaftRoomParts(stone, floorStone), ...shaftPropParts(stone, floorStone)];
   const { halfWidth, front, back, height } = SHAFT_ROOM;
   const volumeFog = {
     density: 0.07, minimum: [-halfWidth, 0, back], maximum: [halfWidth, height, front],
     color: [1, 0.95, 0.85], ambient: [0.02, 0.02, 0.02], anisotropy: 0.6, noiseAmount: 0, steps: 48, maxDistance: 40,
   };
   return {
-    parts: [...shaftRoomParts(stone, floorStone), ...shaftPropParts(stone, floorStone)], blenderWorld: lighting.blenderWorld,
+    parts, blenderWorld: lighting.blenderWorld,
     environment: environment(lighting, { keyColor: [8, 6.9, 5.4], lightDirection: normalized(SHAFT_SUN_DIRECTION), volumeFog }),
     camera: { eye: [3.4, 1.6, 4.2], target: [-0.6, 1.2, -5], up: [0, 1, 0], fov: 62, near: 0.1, far: 60 },
     shadow: sunShadow(SHAFT_SUN_DIRECTION, [0, 3, -3], 14, 30),
     // The bright pixels of the Cycles image, grown by a few pixels, are scored on their own (score.py).
+    brightRegion: { luminance: 0.1, dilation: 4 },
+  };
+}
+
+// Fog valley: open ground under a clear sky with a low sun ahead of the camera, a field of blocks from 25 m to 400 m away, and
+// distance haze over all of it. There is no roof, so the fog sees the whole sky.
+const FOG_VALLEY_SUN_DIRECTION = [-0.45, 0.4, -0.75];
+const FOG_VALLEY_BLOCK_COUNT = 48;
+
+function fogValleyParts() {
+  const cube = HALL_BLOCK;
+  const parts = [part('ground', cube, [0, -0.5, -200], [900, 1, 900], { color: [0.32, 0.3, 0.24], roughness: 0.9 })];
+  let seed = 7;
+  const next = () => {
+    seed = (seed * 16807) % 2147483647;
+    return seed / 2147483647;
+  };
+  for (let index = 0; index < FOG_VALLEY_BLOCK_COUNT; index++) {
+    const distance = 25 + (index / FOG_VALLEY_BLOCK_COUNT) * 375;
+    const width = 4 + next() * 14;
+    const height = 3 + next() * 22;
+    const x = (next() - 0.5) * (60 + distance * 0.9);
+    const tone = 0.35 + next() * 0.3;
+    parts.push(part(`block-${index}`, cube, [x, height / 2, -distance], [width, height, 4 + next() * 14], { color: [tone, tone * 0.93, tone * 0.82], roughness: 0.85 }));
+  }
+  return parts;
+}
+
+async function fogValleyScene() {
+  const parts = fogValleyParts();
+  const lighting = await skyLighting();
+  const volumeFog = {
+    density: 0.005, minimum: [-300, 0, -450], maximum: [300, 90, 40],
+    color: [1, 1, 1], ambient: lighting.meanRadiance, anisotropy: 0.4, noiseAmount: 0, steps: 48, maxDistance: 600,
+  };
+  return {
+    parts, blenderWorld: lighting.blenderWorld,
+    environment: environment(lighting, { keyColor: [4, 3.7, 3.3], lightDirection: normalized(FOG_VALLEY_SUN_DIRECTION), volumeFog }),
+    camera: { eye: [0, 2.5, 14], target: [0, 8, -150], up: [0, 1, 0], fov: 55, near: 0.1, far: 700 },
+    shadow: sunShadow(FOG_VALLEY_SUN_DIRECTION, [0, 0, -190], 230, 500),
+  };
+}
+
+// Fog room: a 5 m square room with a window in one wall. The sun comes through the window as a shaft in the fog and lands
+// on the floor; the rest of the room is lit by what the window lets in of a 0.05 sky.
+const FOG_ROOM = { halfSize: 2.5, height: 3.2, wall: 0.4 };
+const FOG_ROOM_WINDOW = { bottom: 0.9, top: 2.5, halfWidth: 0.8 };
+const FOG_ROOM_SUN_DIRECTION = [0.8, 0.55, 0.2];
+
+function fogRoomParts(plaster, floorWood) {
+  const { halfSize, height, wall } = FOG_ROOM;
+  const { bottom, top, halfWidth } = FOG_ROOM_WINDOW;
+  const outer = (halfSize + wall) * 2;
+  const wallX = halfSize + wall / 2;
+  const gap = (halfSize - halfWidth) / 2 + halfWidth;
+  return [
+    part('floor', HALL_BLOCK, [0, -0.5, 0], [outer, 1, outer], floorWood),
+    part('roof', HALL_BLOCK, [0, height + 0.5, 0], [outer, 1, outer], plaster),
+    part('wall-left', HALL_BLOCK, [-wallX, height / 2, 0], [wall, height, outer], plaster),
+    part('wall-front', HALL_BLOCK, [0, height / 2, wallX], [outer, height, wall], plaster),
+    part('wall-back', HALL_BLOCK, [0, height / 2, -wallX], [outer, height, wall], plaster),
+    // Four pieces leave a rectangular window in the right wall.
+    part('wall-right-low', HALL_BLOCK, [wallX, bottom / 2, 0], [wall, bottom, outer], plaster),
+    part('wall-right-high', HALL_BLOCK, [wallX, (top + height) / 2, 0], [wall, height - top, outer], plaster),
+    part('wall-right-near', HALL_BLOCK, [wallX, (bottom + top) / 2, gap], [wall, top - bottom, halfSize - halfWidth], plaster),
+    part('wall-right-far', HALL_BLOCK, [wallX, (bottom + top) / 2, -gap], [wall, top - bottom, halfSize - halfWidth], plaster),
+    part('table', HALL_BLOCK, [-0.4, 0.4, -0.2], [1.2, 0.8, 0.8], floorWood),
+    part('vase', sphere(24, 16), [-0.4, 0.98, -0.2], [0.18, 0.18, 0.18], { color: [0.55, 0.3, 0.2], roughness: 0.4 }),
+    part('cabinet', HALL_BLOCK, [-1.9, 0.9, -1.8], [0.8, 1.8, 0.6], floorWood),
+  ];
+}
+
+async function fogRoomScene() {
+  const lighting = constantLighting(0.05);
+  const plaster = { color: [0.7, 0.66, 0.6], roughness: 0.85 };
+  const floorWood = { color: [0.45, 0.3, 0.18], roughness: 0.6 };
+  const parts = fogRoomParts(plaster, floorWood);
+  const { halfSize, height } = FOG_ROOM;
+  const volumeFog = {
+    density: 0.2, minimum: [-halfSize, 0, -halfSize], maximum: [halfSize, height, halfSize],
+    color: [1, 1, 1], ambient: [0.05, 0.05, 0.05], anisotropy: 0.5, noiseAmount: 0, steps: 48, maxDistance: 20,
+  };
+  return {
+    parts, blenderWorld: lighting.blenderWorld,
+    environment: environment(lighting, { keyColor: [8, 6.9, 5.4], lightDirection: normalized(FOG_ROOM_SUN_DIRECTION), volumeFog }),
+    camera: { eye: [-2.3, 1.5, 2.3], target: [0.4, 1.0, -1], up: [0, 1, 0], fov: 62, near: 0.05, far: 30 },
+    shadow: sunShadow(FOG_ROOM_SUN_DIRECTION, [0, 1.5, 0], 5, 20),
     brightRegion: { luminance: 0.1, dilation: 4 },
   };
 }
@@ -515,6 +610,8 @@ export const REFERENCE_SCENES = {
   'mountain-valley': mountainValleyScene,
   'temple-hall': templeHallScene,
   'dark-shaft': darkShaftScene,
+  'fog-valley': fogValleyScene,
+  'fog-room': fogRoomScene,
   'megacity-dusk': megacityDuskScene,
 
   async 'brick-graph'() {
