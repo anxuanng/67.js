@@ -868,6 +868,10 @@ ${featureCode("linkArea")}      vec3 lightNormal = areaLightNormals[index].xyz;
   float occlusion = 1.0;
   if (USES_OCCLUSION_MAP) occlusion = mix(1.0, texture(occlusionMap, mapUV(hasOcclusionMap)).r, occlusionStrength);
   occlusion *= splatCavity;
+  if (ENVIRONMENT_ENABLED) {
+    float room = 1.0 - smoothstep(0.01, 0.06, dot(environmentDiffuse(vec3(0, 1, 0)), vec3(1)) / max(dot(keyColor, vec3(1)), 0.003));
+    occlusion *= mix(1.0, mix(0.25, 1.0, visibility), room * (1.0 - metallic));
+  }
   // Leaf and grass cards keep a faint sheen; full sky reflection washed grazing cards grey-blue.
   float skyReflection = canopyShaded ? 0.3 : 1.0;
   if (ENVIRONMENT_ENABLED) {
