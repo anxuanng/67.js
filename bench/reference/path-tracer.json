@@ -2,43 +2,43 @@
  "metric": "FLIP (LDR), mean error against Cycles, lower is better",
  "scores": {
   "brick-flat": {
-   "pathtracer-vs-cycles": 0.1152,
-   "seconds": 23,
+   "pathtracer-vs-cycles": 0.0246,
+   "seconds": 28.2,
    "samples": 64,
    "averageSamples": 64,
    "ignored": []
   },
   "brick-graph": {
-   "pathtracer-vs-cycles": 0.1476,
-   "seconds": 23.6,
+   "pathtracer-vs-cycles": 0.0805,
+   "seconds": 24.3,
    "samples": 64,
    "averageSamples": 64,
    "ignored": []
   },
   "brick-room": {
-   "pathtracer-vs-cycles": 0.2727,
-   "seconds": 95.7,
+   "pathtracer-vs-cycles": 0.2587,
+   "seconds": 98.1,
    "samples": 64,
    "averageSamples": 64,
    "ignored": []
   },
   "brushed-film": {
-   "pathtracer-vs-cycles": 0.1524,
-   "seconds": 35.1,
+   "pathtracer-vs-cycles": 0.0599,
+   "seconds": 36.1,
    "samples": 64,
    "averageSamples": 64,
    "ignored": []
   },
   "car-paint": {
-   "pathtracer-vs-cycles": 0.1343,
-   "seconds": 35,
+   "pathtracer-vs-cycles": 0.0324,
+   "seconds": 35.8,
    "samples": 64,
    "averageSamples": 64,
    "ignored": []
   },
   "character": {
-   "pathtracer-vs-cycles": 0.1289,
-   "seconds": 27.6,
+   "pathtracer-vs-cycles": 0.0287,
+   "seconds": 28.1,
    "samples": 64,
    "averageSamples": 64,
    "ignored": [
@@ -46,8 +46,8 @@
    ]
   },
   "fog": {
-   "pathtracer-vs-cycles": 0.5623,
-   "seconds": 24.5,
+   "pathtracer-vs-cycles": 0.5333,
+   "seconds": 24,
    "samples": 64,
    "averageSamples": 64,
    "ignored": [
@@ -55,8 +55,8 @@
    ]
   },
   "foliage": {
-   "pathtracer-vs-cycles": 0.1753,
-   "seconds": 60.9,
+   "pathtracer-vs-cycles": 0.1001,
+   "seconds": 61.5,
    "samples": 64,
    "averageSamples": 64,
    "ignored": [
@@ -64,57 +64,57 @@
    ]
   },
   "glass": {
-   "pathtracer-vs-cycles": 0.1406,
-   "seconds": 30.4,
+   "pathtracer-vs-cycles": 0.0385,
+   "seconds": 30.7,
    "samples": 64,
    "averageSamples": 64,
    "ignored": []
   },
   "light-linking": {
-   "pathtracer-vs-cycles": 0.6241,
-   "seconds": 34.6,
+   "pathtracer-vs-cycles": 0.6518,
+   "seconds": 35.2,
    "samples": 64,
    "averageSamples": 64,
    "ignored": []
   },
   "lit-interior": {
-   "pathtracer-vs-cycles": 0.2167,
-   "seconds": 75.3,
+   "pathtracer-vs-cycles": 0.0769,
+   "seconds": 78.5,
    "samples": 64,
    "averageSamples": 64,
    "ignored": []
   },
   "long-street": {
-   "pathtracer-vs-cycles": 0.1818,
-   "seconds": 42.1,
+   "pathtracer-vs-cycles": 0.0291,
+   "seconds": 40.9,
    "samples": 64,
    "averageSamples": 64,
    "ignored": []
   },
   "material-spheres": {
-   "pathtracer-vs-cycles": 0.1383,
-   "seconds": 43.9,
+   "pathtracer-vs-cycles": 0.0449,
+   "seconds": 45.1,
    "samples": 64,
    "averageSamples": 64,
    "ignored": []
   },
   "metal": {
-   "pathtracer-vs-cycles": 0.1492,
-   "seconds": 31.4,
+   "pathtracer-vs-cycles": 0.0439,
+   "seconds": 31.9,
    "samples": 64,
    "averageSamples": 64,
    "ignored": []
   },
   "outdoor-hdri": {
-   "pathtracer-vs-cycles": 0.1242,
-   "seconds": 18.9,
+   "pathtracer-vs-cycles": 0.0226,
+   "seconds": 19.5,
    "samples": 64,
    "averageSamples": 64,
    "ignored": []
   },
   "spot-area": {
-   "pathtracer-vs-cycles": 0.0658,
-   "seconds": 26,
+   "pathtracer-vs-cycles": 0.0261,
+   "seconds": 26.4,
    "samples": 64,
    "averageSamples": 64,
    "ignored": []
