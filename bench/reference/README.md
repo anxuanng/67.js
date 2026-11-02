@@ -439,3 +439,24 @@ Adaptive sampling is not free in quality. On `spot-area` the score is 0.0658 wit
 Denoising a lower sample count (fixed 24 samples with the tracer's filter, threshold 0, against the 64 sample score before the change): `brick-graph` 0.1394 against 0.1370 (0.0024 worse, 17.1 s against 37.3 s) and `character` 0.1164 against 0.1116 (0.0048 worse, 17.2 s against 39.3 s). Both are within 0.005, so a 24 sample still with the filter is a good still on these two scenes at about 45 percent of the time; two scenes are not proof for all.
 
 Darker floor in `character` and `outdoor-hdri`: not found, but narrowed. In `outdoor-hdri` the mean display value of the bottom third (the floor) is 225.5 in Cycles, 225.4 in EEVEE, 224.8 in the rasterizer and 217.1 in the tracer, so the rasterizer agrees with Cycles and the tracer alone is darker, by 8.4 of 255 (the scene is bright, so the display curve compresses it; the linear gap is larger). A white furnace test (a diffuse floor of albedo 0.4 under a sky of radiance 1) gives 0.3955 straight down (1 percent low) and 0.588 at a grazing view with the sky reflection, so sampling the environment and the diffuse lobe is not what loses the light. What is left: the sun together with the HDRI, the clamp of 20 on bounced light (`fireflyClamp`), the grazing-angle specular and light from the other parts, none of which was isolated.
+
+## Recipe bake presets (2026-11-02, part of issue #170)
+
+An agent names a preset (`bake: { preset }`), and `standard` and `fine` shrink to the path work budget of 5 million steps (`bake.used`, `bake.reduced`). `npm run reference -- --skip-blender --bake <ids> --bake-preset <name> --probes <ids>` bakes the way a recipe does (`normalizeAgentBake` and `bakeAgentParts`, the scene's own `bakeOptions` ignored) and scores against the Cycles renders already in `artifacts/reference`. The preset rows below carry the room probe a recipe adds with a bake; the no-bake row has none. A preset the budget refuses (the error a recipe gets) draws the scene unbaked and prints `REFUSED`. Whole frame FLIP against Cycles, RTX 3060 shared with other jobs, one run per cell, bake seconds from the harness (not an idle machine):
+
+| Scene | No bake | draft | standard | fine |
+| --- | --- | --- | --- | --- |
+| `lit-interior` | 0.5055 | 0.2919, 0.5 s, 8,000 texels | 0.1270, 3.4 s, 19,360 texels | 0.1293, 3.3 s, 16,800 texels |
+| `brick-room` | 0.5102 | 0.3185, 1.4 s, 37,136 texels | 0.1353, 1.8 s, 42,576 texels | 0.1382, 1.8 s, 37,136 texels |
+| `metal-room` | 0.5128 | 0.3187, 0.8 s, 8,816 texels | 0.1594, 3.2 s, 15,936 texels | 0.1624, 4.6 s, 18,336 texels |
+| `dark-shaft` | 0.1430 | 0.0791, 0.9 s, 28,208 texels | 0.0610, 2.3 s, 40,336 texels | 0.0603, 2.2 s, 35,664 texels |
+| `temple-hall` | 0.1436 | 0.0706, 5.7 s, 285,376 texels | refused (0.1504 drawn unbaked with a probe) | refused (same) |
+
+What the table shows:
+
+- `standard` is the preset to name for a room: it halves the error of `draft` on `lit-interior`, `brick-room` and `metal-room` (3 bounces against 1) and beats the default bake of "Baked rooms and the bounce count" (0.1341, 0.1412, 0.1656) on all three, for 2 to 3.5 s.
+- `fine` is no better than `standard`. Its extra samples and density are cut back to the same budget (38 to 77 samples, 3.0 to 4.6 texels per unit), so it ends up within 0.003 of `standard`, slightly worse on three of five rooms, and costs the same or a little more. A recipe gains nothing by asking for it on these scenes.
+- `temple-hall` (167 parts, 3 bounces) is out of reach of `standard` and `fine`: even 16 samples at 1 texel per unit pass 5 million steps, so a recipe gets the error and no bake. `draft` works (reduced to 16 samples and 1.29 texels per unit) and scores 0.0706, against 0.0560 for the scene's own tuned options. Reaching `standard` on a hall needs explicit settings within the 24 million explicit limit, or a lower budget floor; this is left open.
+- `draft` is a rough preset: one bounce leaves the lit rooms at 0.29 to 0.32, still well under the unbaked 0.51.
+
+Frame costs from the issue (a baked closed room, and the fog glow mip chain on `dark-shaft`) were not measured: `nvidia-smi` showed 14 to 48 percent utilization and 6 to 7 GB in use over 24 seconds while another worker held the GPU, so a number would be a loaded one. The ranges above in this file stay ranges.

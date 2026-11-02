@@ -128,10 +128,21 @@ test('a block between the sun and the floor leaves a shadow', async () => {
 });
 
 test('a render that runs out of time throws and returns nothing', async () => {
-  await assert.rejects(
-    renderPathTracedImage(checkerScene(), { width: 256, height: 256, samples: 1024, bounces: 4, maxSeconds: 1, threads: 1 }),
-    /1 second limit/,
-  );
+  // Each clock read costs a second, so the limit is passed on any machine.
+  const realNow = performance.now;
+  let clockReads = 0;
+  performance.now = () => {
+    clockReads += 1;
+    return clockReads * 1000;
+  };
+  try {
+    await assert.rejects(
+      renderPathTracedImage(checkerScene(), { width: 256, height: 256, samples: 1024, bounces: 4, maxSeconds: 1, threads: 1 }),
+      /1 second limit/,
+    );
+  } finally {
+    performance.now = realNow;
+  }
 });
 
 test('denoising keeps the mean of a noisy image and removes some of its noise', async () => {

@@ -219,7 +219,18 @@ test('a light mapped part exports its second UV set as TEXCOORD_1 and its light 
 
 test('a bake that runs out of time throws instead of returning a partial result', () => {
   const slow = { samples: 256, bounces: 4, texelsPerUnit: 8, maxResolution: 128, maxSeconds: 1 };
-  assert.throws(() => bakeLightmaps(smallRoom(), lamp, slow), /maxSeconds/);
+  // Each clock read costs a second, so the limit is passed on any machine.
+  const realNow = performance.now;
+  let clockReads = 0;
+  performance.now = () => {
+    clockReads += 1;
+    return clockReads * 1000;
+  };
+  try {
+    assert.throws(() => bakeLightmaps(smallRoom(), lamp, slow), /maxSeconds/);
+  } finally {
+    performance.now = realNow;
+  }
 });
 
 // The mean light a baked part stores, in linear units: the texture is sRGB and is scaled back by the part's emission.

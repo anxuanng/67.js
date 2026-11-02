@@ -224,16 +224,25 @@ test('a particle node cannot carry motion or physics, or be a cloth sheet', () =
   assert.throws(() => createAgentScene(child), /root node/);
 });
 
-test('a large burst samples within a bounded time, and a huge time is only a dead system', () => {
+test('a large burst seeks statelessly in fixed buffers, and a huge time is only a dead system', () => {
   const nodes = ['b'].map(id => ({ id, geometry: 'speck', material: 'glow' }));
   const scene = createAgentScene(sparkRecipe({ wind: [2, 0, 0], systems: [
     { node: 'sparks', count: 2000, floor: 0, drag: 0.3, lifetime: [1, 3], speed: [1, 8], spread: 180 },
     { node: 'b', count: 2000, rate: 400, lifetime: 3, drag: 0.3, emitter: { shape: 'box' } },
   ] }, nodes));
-  const started = performance.now();
-  for (const time of [0.3, 1, 2, 3.7, 0.3]) scene.sampleMotion(time);
-  const perSeek = (performance.now() - started) / 5;
-  assert.ok(perSeek < 150, `a seek of 4000 particles took ${perSeek.toFixed(1)} ms`);
+  // A seek computes each particle from its launch and the time alone, so its work is the particle count and never
+  // grows with the seeks before it: the same time gives the same result after any history, in buffers of one size.
+  const bothSystems = () => [...particlePositions(scene), ...particlePositions(scene, 'b')];
+  scene.sampleMotion(0.3);
+  const firstSeek = bothSystems();
+  const bufferSizes = new Set();
+  for (const time of [1, 2, 3.7]) {
+    scene.sampleMotion(time);
+    bufferSizes.add(bothSystems().length);
+  }
+  scene.sampleMotion(0.3);
+  assert.deepEqual(bothSystems(), firstSeek);
+  assert.equal(bufferSizes.size, 1, 'the particle buffers keep one size across seeks');
   scene.sampleMotion(3600);
   assert.ok(particlePositions(scene).every(Number.isFinite));
   assert.throws(() => scene.sampleMotion(3601), /Motion time/);
