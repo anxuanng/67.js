@@ -1,0 +1,67 @@
+/* Design tokens and the shared button for the website. Light is the default; dark follows the system. */
+:root {
+  --site-bg: #ffffff;
+  --site-surface: #f1f1f1;
+  --site-sidebar: #f7f7f8;
+  --site-text: #1f1f1f;
+  --site-muted: #666666;
+  --site-border: #e5e5e5;
+  --site-row-hover: #f1f1f2;
+  --site-row-active: #e8e8ea;
+  --site-focus: #576b99;
+  --site-radius: 9px;
+  --site-control-height: 34px;
+  --site-motion-quick: 110ms;
+  --site-motion-base: 170ms;
+  --site-ease-out: cubic-bezier(0.2, 0, 0, 1);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --site-bg: #212121;
+    --site-surface: #2f2f2f;
+    --site-sidebar: #171717;
+    --site-text: #ececec;
+    --site-muted: #b4b4b4;
+    --site-border: #404040;
+    --site-row-hover: #252525;
+    --site-row-active: #323232;
+    --site-focus: #a6c1ff;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --site-motion-quick: 0ms;
+    --site-motion-base: 0ms;
+  }
+}
+
+.site-button {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: var(--site-control-height);
+  padding: 6px 11px;
+  border: 1px solid transparent;
+  border-radius: 14px;
+  background: transparent;
+  font-size: 13px;
+  font-weight: 500;
+  white-space: normal;
+  transition: background-color var(--site-motion-quick) var(--site-ease-out), color var(--site-motion-quick) var(--site-ease-out), box-shadow var(--site-motion-quick) var(--site-ease-out);
+}
+.site-button svg { flex: none; }
+.site-button:hover:not(:disabled) { background: var(--site-surface); }
+.site-button:active:not(:disabled) { background: var(--site-row-active); }
+.site-button:focus-visible {
+  outline: 2px solid transparent;
+  box-shadow: 0 0 0 1px var(--site-focus), 0 0 0 4px color-mix(in srgb, var(--site-focus) 22%, transparent);
+}
+.site-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
