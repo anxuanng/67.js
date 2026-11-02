@@ -1,8 +1,6 @@
 # Polygon mesh core
 
-Unreleased. `67js/addons/mesh` is the first phase of agent-oriented polygon modeling
-(plan: `.agents/plans/modeling-parity.md`). It holds polygon topology, converts to and from renderer geometry, and
-checks meshes. Editing operators (extrude, inset, booleans and so on) build on it in the next phase.
+`67js/addons/mesh` is the polygon modeling core for agents, available since 0.11.0. It holds polygon topology, converts to and from renderer geometry, checks meshes and runs the editing operators (extrude, inset, booleans and so on) listed below.
 
 ```js
 import { box } from '67js';

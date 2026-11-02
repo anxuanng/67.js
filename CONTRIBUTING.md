@@ -1,10 +1,10 @@
 # Contributing to 67js
 
-Thank you for helping. This file covers setup, the checks a change must pass, the code style and the release flow.
+This file covers setup, the checks a change must pass, the code style and the release flow.
 
 ## Set up
 
-1. Install Node.js 22.12 or later and Google Chrome.
+1. Install Node.js 20.19 or later (the `Test` workflow uses 24) and Google Chrome.
 2. Clone the repository and run `npm ci`.
 3. Run `npm run dev`. Vite prints the local URL of the showcase.
 
@@ -26,8 +26,9 @@ The tests are in `tests/` and the guides are in `docs/`.
 Run these before you open a pull request:
 
 1. Run `npm test`. All Node tests must pass.
-2. Run `npm run build`. It builds the site and the viewers into `dist/`.
-3. Run `npm run smoke:package` if you changed exports, `package.json` or the build. It installs the packed archive into a clean project.
+2. Run `npm run check:links` if you changed a Markdown or HTML file. It finds links that point at no file.
+3. Run `npm run build`. It builds the site and the viewers into `dist/`.
+4. Run `npm run smoke:package` if you changed exports, `package.json` or the build. It installs the packed archive into a clean project.
 
 A renderer or shader change also needs a look at real pixels.
 Run `npm run smoke` or the `smoke:*` script for the area that you changed, and look at the screenshots that it saves under `artifacts/`.
@@ -36,7 +37,7 @@ Screenshots and other output go to `artifacts/`, which Git ignores.
 
 Every pull request runs `npm audit`, `npm run size`, `npm test`, `prepare:release`, `smoke:package` and `smoke:mcp-package` in the `Test` workflow. `smoke:mcp-package` draws through the MCP server on SwiftShader in Chrome. `bench/size/README.md` says what to do when a size budget fails.
 
-GitHub offers no branch protection on this private repository, so a red check can not block a merge by itself. Merge a pull request only when the `test` and `GitGuardian Security Checks` checks both pass. The person or agent who merges is responsible for this.
+Branch protection on `main` requires the `test` check to pass before a merge. Merge a pull request only when `GitGuardian Security Checks` also passes.
 
 These checks need a GPU or a person's eyes, so they do not run on a pull request. The author runs each one that applies:
 

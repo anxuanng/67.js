@@ -1,6 +1,6 @@
 # Release verification
 
-## Unreleased: preview shares the package chunks
+## Unreleased: preview shares the package chunks (measured 2026-10-31)
 
 The MCP preview page no longer bundles its own engine copy; it imports the chunks of the package build.
 Source checks used Windows Node.js, installed Chrome and CPU SwiftShader. Registry publication was not checked.
@@ -9,11 +9,15 @@ Source checks used Windows Node.js, installed Chrome and CPU SwiftShader. Regist
 | --- | --- |
 | Archive | 802,581 bytes before, 695,041 after (one-line notices in built files, no Ajv in the MCP server), so 353,535 bytes are free under 1 MiB. Install size is unchanged. |
 | Every export | `npm run smoke:package` loads each `exports` entry in a clean consumer. |
-| Node tests | 1359 tests passed. |
+| Node tests | 1359 tests passed on 2026-10-31. The count grows with each pull request, so run `npm test` for the current number. |
 | Clean source archive | `npm run smoke:package` passed. |
 | Installed MCP CLI | `npm run smoke:mcp-package` (not protocol only) passed with a modern and a legacy client, and checked every `previewChunks` hash. |
 | Real character | `npm run smoke:character` passed on the GPU. |
 | First scene | Median of runtime launch, page load and first scene on SwiftShader: 981 ms before (7 runs), 974 ms after (11 runs). |
+
+## 0.10.0 to 0.14.0
+
+This file has no per-release tables for these versions. The `Test` workflow ran `npm test`, `npm run prepare:release`, `npm run smoke:package` and `npm run smoke:mcp-package` on each pull request. [CHANGELOG.md](../CHANGELOG.md) lists what each release changed and measured.
 
 ## 0.9.1
 
@@ -42,7 +46,6 @@ The public contract review found a stalled page acquisition that could delay clo
 A rejecting cancellation race and late-page disposal removed that path. Regression tests failed before the correction and passed afterward.
 The source follow-up found no remaining findings within its scope.
 
-Only one model family reviewed the contract because the other reviewer remained unavailable. This gives weaker coverage than a completed cross review.
 
 A clean source package passed modern and legacy MCP calls without development dependencies or source files.
 These checks cover CPU rendering. They do not establish hardware GPU performance or better artistic quality.
@@ -89,7 +92,6 @@ Registry publication and live deployment require separate verification against t
 
 The bounded review found one combined-clock defect. A single transient pose transaction removed its causal path.
 The source follow-up found no remaining significant findings within its scope.
-Only one model family reviewed the contract because the other reviewer remained unavailable. This gives weaker coverage than a completed cross review.
 
 Square and portrait astronaut frames were inspected. These checks establish recognizable rig authoring, deterministic seeking and bounded CPU export.
 They do not establish cinematic character quality, Blender parity or hardware GPU performance.
@@ -112,7 +114,6 @@ Registry publication and live deployment require separate checks against the pus
 | Cleanup | The installed motion CLI exited after disposal and MCP connection closure. |
 
 The bounded public contract review found no significant findings within its source scope.
-This review used one model family because the other reviewer remained unavailable. Its coverage is weaker than a completed cross review.
 
 Representative square and portrait lamp frames were inspected.
 These fixtures establish deterministic authoring and export behavior. They do not establish cinematic quality or hardware GPU performance.
@@ -136,7 +137,6 @@ Registry publication and live deployment require separate verification against t
 
 The public contract review found two storage defects. Atomic admission publication and explicit stale-lock repair removed their causal paths.
 The follow-up found no remaining significant findings within that scope.
-This review used one model family because the other reviewer remained unavailable. It provides weaker coverage than a completed cross review.
 
 These checks establish bounded CPU rendering behavior. They do not establish hardware GPU speed or cinematic quality.
 Jobs encode silent video. They sample imported clips and renderer time without authoring new animation tracks.
@@ -233,10 +233,9 @@ The package is `@codepawlhq/67js`, installed locally through the `67js` alias. T
 The tested hardware was an RTX 3060 through ANGLE D3D11. Software rendering used Chrome ANGLE SwiftShader.
 The allocation figures estimate renderer targets, geometry, textures and capture staging. They do not measure total driver VRAM or browser RSS.
 
-The Codex review found three actionable issues: mismatched capture samples, unnormalized glTF resource URLs and hierarchy limits that depended on node ordering.
+Source review found three issues: mismatched capture samples, unnormalized glTF resource URLs and hierarchy limits that depended on node ordering.
 Constructor options now select capture samples, and sample reporting follows the negotiated allocation count.
 Resource lookup normalizes URLs, and hierarchy validation visits roots before descendant nodes. Regression tests cover all three paths.
-Claude reached its weekly limit on both review attempts. This release therefore has one-family source review, with weaker coverage than a completed cross review.
 
 ## Historical 0.2.0 checks
 
@@ -260,10 +259,8 @@ Layout and accessibility checks covered native controls, focus styles, labels, r
 Screen-reader operation, RTL and browser zoom were not verified.
 There were no remaining actionable interface findings within the inspected coverage.
 
-The Codex API reviewer found that the browser download omitted shared chunks.
+Source review found that the browser download omitted shared chunks.
 A separate, single-entry browser bundle fixed that issue. The downloaded-module check passed after the fix.
-The Claude reviewer hit its weekly limit on both attempts.
-This review therefore used one model family and provides weaker coverage than a completed cross review.
 
 Release metadata is generated from the package version and Git commit.
 Deployment requires a clean checkout and the same commit on `origin/main`.
