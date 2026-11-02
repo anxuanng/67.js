@@ -1,5 +1,5 @@
 // Frame time of a reference scene: plain, with the light bake, with reflection probes, and with both.
-// node bench/reference/frame-time.mjs [scene-id] [gpu|cpu]
+// node bench/reference/frame-time.mjs [scene-id] [gpu|cpu] [--grand]
 import { constants, setPriority } from 'node:os';
 import { chromium } from 'playwright';
 import { createServer } from 'vite';
@@ -19,14 +19,17 @@ const serverUrl = `http://127.0.0.1:${server.httpServer.address().port}`;
 const browser = await chromium.launch({ executablePath: CHROME, headless: true, args: BACKEND_ARGUMENTS[backend] });
 try {
   const page = await browser.newPage({ viewport: { width: 960, height: 540 } });
-  await page.goto(`${serverUrl}/bench/reference/harness.html`, { timeout: PAGE_LOAD_TIMEOUT });
+  await page.goto(`${serverUrl}/bench/reference/harness.html${process.argv.includes('--grand') ? '?set=grand' : ''}`, { timeout: PAGE_LOAD_TIMEOUT });
   await page.waitForFunction(() => window.measureReferenceFrameTime, null, { timeout: PAGE_LOAD_TIMEOUT });
   const results = [];
   // Alternate the order so a drifting machine load does not favor one side. --cascades measures one map and three
   // cascades, each with a still camera and with a camera that moves every frame.
   // --plain measures only the plain frame, for scenes with more parts than the light bake takes.
   // --objects measures the plain frame against the frame with one probe for each reflective part.
-  const variants = process.argv.includes('--plain')
+  // --water measures a frame without water reflection, with the planar one and with the screen-space one.
+  const variants = process.argv.includes('--water')
+    ? [1, 2, 3].flatMap(round => (round % 2 ? ['off', 'planar', 'ssr'] : ['ssr', 'planar', 'off']).map(water => ({ bake: false, probes: false, water: water === 'off' ? false : water })))
+    : process.argv.includes('--plain')
     ? [1, 2, 3].map(() => ({ bake: false, probes: false }))
     : process.argv.includes('--objects')
     ? [1, 2, 3].flatMap(round => (round % 2 ? [false, 'objects'] : ['objects', false]).map(probes => ({ bake: false, probes })))
@@ -39,7 +42,7 @@ try {
   const medianOf = values => values.sort((first, second) => first - second)[Math.floor(values.length / 2)];
   const summary = {};
   for (const result of results) {
-    const key = result.baked ? (result.probes ? 'bake+probes' : 'bake') : (result.probes ? 'probes' : 'plain');
+    const key = process.argv.includes('--water') ? (result.water || 'off') : result.baked ? (result.probes ? 'bake+probes' : 'bake') : (result.probes ? 'probes' : 'plain');
     (summary[key] ??= []).push(result.medianMilliseconds);
   }
   const medianByVariant = Object.fromEntries(Object.entries(summary).map(([key, values]) => [key, Number(medianOf(values).toFixed(3))]));

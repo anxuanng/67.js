@@ -39,6 +39,7 @@
   "entry:agent-asset+lazy": 270800,
   "entry:hdri": 3300,
   "entry:camera-effects": 8600,
+  "entry:water-reflection": 26000,
   "entry:render-passes": 1700,
   "entry:material-layer-shaders": 20700,
   "entry:light-linking": 19000,

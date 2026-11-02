@@ -47,6 +47,7 @@ export default defineConfig({
         'agent-asset': 'src/agent-asset.js',
         hdri: 'src/hdri.js',
         'camera-effects': 'src/camera-effects.js',
+        'water-reflection': 'src/water-reflection.js',
         'render-passes': 'src/render-passes.js',
         'material-layer-shaders': 'src/material-layer-shaders.js',
         'light-linking': 'src/light-linking.js',

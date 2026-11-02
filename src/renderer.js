@@ -65,6 +65,7 @@ function shaderFeaturesOfParts(parts) {
     });
     if (material.lightMap) features.add('lightMap');
     if (material.environmentProbe) features.add('probe');
+    if (material.waterReflection) features.add('waterReflection');
     if (material.normalMap?.uvTransform) features.add('normalMapTransform');
     Object.keys(material.layerMaps ?? {}).forEach(name => features.add(name));
     if (material.layers) features.add('splat');
@@ -161,7 +162,7 @@ function materialMapState(material) {
   const occlusionStrength = material.occlusionStrength ?? 1;
   validateSplatMaterial(material);
   if (material.layers && PROCEDURAL_MATERIAL_TAGS.has(material.tag)) throw new Error('Splat layers require a standard PBR material tag.');
-  return [...MATERIAL_MAPS.map(field => material[field] ?? null), normalScale[0], normalScale[1], occlusionStrength, ...mossState(material), material.boxMapScale ?? 0, material.boxMapAxis ?? 1, ...lightMapState(material), ...splatBatchState(material), material.layerMaps ?? null, material.environmentProbe ?? null];
+  return [...MATERIAL_MAPS.map(field => material[field] ?? null), normalScale[0], normalScale[1], occlusionStrength, ...mossState(material), material.boxMapScale ?? 0, material.boxMapAxis ?? 1, ...lightMapState(material), ...splatBatchState(material), material.layerMaps ?? null, material.environmentProbe ?? null, material.waterReflection ?? null];
 }
 
 // A baked light map reads the second UV set, so it is only drawn for parts that cannot be skinned or morphed.
@@ -1975,8 +1976,10 @@ export class Renderer67 {
     extractFrustumPlanes(this.viewProjection, this.frustumPlanes);
     this.viewForward = [-this.view[2], -this.view[6], -this.view[10]];
     this.shadowCascades?.update(this, casterChanged);
-    context.bindFramebuffer(context.FRAMEBUFFER, passMode ? this.passSupport.framebuffer : this.benchmark ? null : this.multisampleFramebuffer);
-    context.viewport(0, 0, this.canvas.width, this.canvas.height);
+    // The water reflection addon draws the scene a second time into its own smaller target (frame.reflectionTarget).
+    const mirrorTarget = frame.reflectionTarget;
+    context.bindFramebuffer(context.FRAMEBUFFER, mirrorTarget ? mirrorTarget.framebuffer : passMode ? this.passSupport.framebuffer : this.benchmark ? null : this.multisampleFramebuffer);
+    context.viewport(0, 0, mirrorTarget?.width ?? this.canvas.width, mirrorTarget?.height ?? this.canvas.height);
     if (passMode) {
       context.clearColor(...this.passSupport.background(frame.pass));
     } else if (this.transparent) {
@@ -2031,7 +2034,7 @@ export class Renderer67 {
     for (const batch of this.batches) {
       if (this.benchmark) {
         this.drawBatch(batch, true);
-      } else if (this.drawsInOpaqueLoop(batch)) {
+      } else if (this.drawsInOpaqueLoop(batch) && !(mirrorTarget && batch.mapState[20])) {
         context.uniform1f(this.uniforms.renderPassObjectBase, objectBase);
         objectBase += batch.instanceCount;
         // Object IDs are the instance ordinal, which culling and level selection renumber, so that pass draws every instance.
@@ -2041,6 +2044,11 @@ export class Renderer67 {
     context.disable(context.SAMPLE_ALPHA_TO_COVERAGE);
     context.enable(context.CULL_FACE);
     context.bindVertexArray(null);
+    if (mirrorTarget) {
+      this.renderingPass = false;
+      this.endGpuTiming();
+      return;
+    }
     if (passMode) {
       this.passSupport.copyToCanvas();
     } else if (!this.benchmark) {

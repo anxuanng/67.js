@@ -244,6 +244,65 @@ A probe at the middle of the object and traced without it is the only option the
 
 Every other scene scored the same to four digits, GPU and CPU. `car-paint` has one reflective part, so it gains little: the clearcoat sphere reflects the floor and nothing else. The issue's second box holds (no frame cost without a reflective part); its first box does not (`metal` is 0.012 above EEVEE).
 
+## Reflections in still water (2026-11-02, issue #195)
+
+A lake, a river or a bay showed only the sky, where Cycles mirrors the shore, the trees and the towers. A large flat smooth surface now draws the scene from the mirror image of the camera into a target half the canvas size in each direction, and samples that picture. `mountain-valley-a` goes from 0.3530 to 0.2562 against Cycles and `megacity-dusk-b` from 0.1575 to 0.1377. `megacity-dusk-a` (a river between quays) does not improve: 0.1978 to 0.1985.
+
+### Options
+
+Both options ran on the three water options and the two default scenes that hold such a surface. FLIP against Cycles, GPU, full rescore; frame time is the median of three alternating rounds of 200 frames on the RTX 3060 (`node bench/reference/frame-time.mjs <id> gpu --water --grand`), shared with other jobs.
+
+| Option | `mountain-valley-a` | `megacity-dusk-b` | Frame, `mountain-valley-a` | Frame, `megacity-dusk-b` |
+| --- | --- | --- | --- | --- |
+| No reflection (before) | 0.3530 | 0.1575 | 6.37 ms | 2.78 ms |
+| Screen-space reflection (`bench/reference/ssr-water.js`, 80 steps and 6 refinements, full resolution) | 0.3310 | 0.1423 | 7.25 ms | 4.09 ms |
+| Planar reflection (`src/water-reflection.js`) | 0.2562 | 0.1377 | 10.70 ms | 4.82 ms |
+
+The planar reflection wins on the score and costs more: it draws the scene a second time, at a quarter of the pixels but with all of the geometry. The screen-space version can only show what the frame holds, so it loses the shore's far side and anything behind a nearer surface; in `mountain-valley-a` the far peaks and the trees against the sky are most of what the lake shows. It stays in the harness (`--ssr-water`) as the comparison and is not shipped. The planar cost is what a scene with water pays: +4.3 ms and +2.0 ms here. A scene without water pays nothing: `temple-hall-a` measured 2.00 ms off, 1.90 ms planar and 1.80 ms screen-space, which is the spread of the machine, and its shader is the same text.
+
+### What qualifies
+
+No recipe field. `findWaterSurface(parts)` picks parts whose material has `roughness` of at most 0.1 and is not `liquid`, `foam`, `unlit`, `fire`, `smoke` or `floor` and has no `transmission`; whose bounds are flat (taller by at most 2 percent of the wider side); and whose footprint is at least 0.2 percent of the scene's. Metal qualifies the same way as water, so a polished floor reflects too. The largest such part sets the plane, at the top of its bounds, and parts within 5 cm of that height join it. One plane per frame: a second water level is not reflected. A camera below the plane draws no reflection. A narrow river in a wide scene qualifies at 0.2 percent and not at the 1 percent first tried; at 1 percent `megacity-dusk-a` was untouched.
+
+### The look
+
+A mirror looked fake: the first version, a hard reflection mixed in by the shader's own Fresnel, scored 0.2099 on `megacity-dusk-b`, worse than none. Three changes fixed it, in this order of effect:
+
+1. The sky the lighting already adds to a smooth surface is taken out before the reflection is added, so the water does not get the sky twice (the reflection picture holds the sky).
+2. Fresnel from the reflectance of water (0.02 at normal incidence): strong at grazing angles, faint when looking down into the water.
+3. Small moving ripples shake the picture, more with distance, and eight taps smear it, more up and down than across, as ripples stretch a reflection.
+
+Blur alone did not help: 12 taps over a wider area scored worse than 8 over a narrower one on both scenes (0.1944 against 0.1893 on `megacity-dusk-b`, before the sky was taken out). Water colour and depth near the shore are not done: the surface is a box and carries no depth, so the water has the body colour of its material everywhere. By eye, in the image of `mountain-valley-a` the lake reads as real still water: dark, strongly mirrored near the far shore and fading toward the camera. The bay in `megacity-dusk-b` reads as water too, and its reflection of the lit windows is brighter than Cycles': there the band of water is 0.34 where Cycles has 0.10, with or without the reflection, so that part of the gap is the water's body colour or the haze, not the reflection.
+
+### Scores against Cycles (GPU, full rescore, 2026-11-02)
+
+| Scene | Before | After | CPU before | CPU after |
+| --- | --- | --- | --- | --- |
+| `mountain-valley-a` | 0.3530 | 0.2562 | 0.3539 | 0.2567 |
+| `megacity-dusk-b` | 0.1575 | 0.1377 | 0.1584 | 0.1371 |
+| `megacity-dusk-a` | 0.1978 | 0.1985 | 0.1972 | 0.1980 |
+| `mountain-valley-b` | 0.1839 | 0.1784 | 0.1840 | 0.1785 |
+| `foliage` (default suite) | 0.1290 | 0.1181 | 0.1287 | 0.1178 |
+| `mountain-valley` (default suite) | 0.3478 | 0.3490 | 0.3466 | 0.3478 |
+
+The other 19 default scenes and the other 4 grand options re-scored identically to four digits, on GPU and CPU (`--no-water` reproduces the old numbers). Those two default scenes hold a qualifying surface, so they changed. `mountain-valley` is worse by 0.0012 and `megacity-dusk-a` by 0.0007.
+
+### Size
+
+The core grew by 374 bytes gzip in a `lit-box` scene (limit 400): a material field that batches parts, a feature name, a slot in the shader, and the second draw's target and early return. The reflection itself is the addon `67js/addons/water-reflection` (25,403 bytes gzip as an entry, budget 26,000). The shipped archive is 709,306 bytes.
+
+### Use
+
+```js
+import { applyWaterReflection, attachWaterReflection } from '@codepawlhq/67js/addons/water-reflection';
+
+const water = applyWaterReflection(parts);
+const renderer = new Renderer67(canvas, water.parts, options);
+attachWaterReflection(renderer, water.surface);
+```
+
+`water.surface` is null when no part qualifies, and `attachWaterReflection` then does nothing. A recipe scene does not place it yet: the recipe path has no hook that loads the addon from the materials, and that is the next piece of work. `npm run reference -- --no-water` draws the harness scenes without it.
+
 ## Baseline
 
 Measured on 2026-10-30 with an RTX 3060, SwiftShader and Blender 5.2.2. The metric is [FLIP](https://github.com/NVlabs/flip) for LDR images: 0 means identical, and a higher score means a larger visible difference.

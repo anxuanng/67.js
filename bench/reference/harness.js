@@ -7,6 +7,11 @@ import { boxProjectedGeometry } from '/src/export-box-uv.js';
 import '/src/material-layer-shaders.js';
 import { createCascadedShadows } from '/src/cascaded-shadows.js';
 import { applyLightLinks } from '/src/light-linking.js';
+import { applyWaterReflection, attachWaterReflection } from '/src/water-reflection.js';
+import { attachScreenSpaceWater } from './ssr-water.js';
+
+// Water reflection is on the way a recipe gets it: found from the materials, no field. ?water=off draws the scenes without it, ?water=ssr with the screen-space reflection it was compared with.
+const WATER_REFLECTION = { off: false, ssr: 'ssr' }[new URLSearchParams(location.search).get('water')] ?? 'planar';
 
 // ?set=khronos draws the Khronos sample assets (npm run reference -- --khronos) and ?set=cloth the cloth scenes
 // (npm run reference -- --cloth) instead of the fixed scenes.
@@ -129,11 +134,17 @@ async function bakeScenePreset(scene, preset) {
 }
 
 // The 67js renderer for a scene: light linking from the lights' affects lists, and cascaded sun shadows when asked for.
-function createSceneRenderer(parts, scene, cascades) {
-  return new Renderer67(document.querySelector('canvas'), applyLightLinks(parts, scene.environment), {
+function createSceneRenderer(parts, scene, cascades, { water = WATER_REFLECTION } = {}) {
+  const reflecting = water === 'planar' ? applyWaterReflection(parts) : { parts, surface: null };
+  const renderer = new Renderer67(document.querySelector('canvas'), applyLightLinks(reflecting.parts, scene.environment), {
     ground: false, hdr: true, depth: true, samples: 4, pixelRatio: 1, memoryBudgetMiB: 1024, world: true,
     environment: scene.environment, shadowBounds: scene.shadow, shadowCascades: cascades ? createCascadedShadows({ count: cascades }) : null,
   });
+  attachWaterReflection(renderer, reflecting.surface);
+  if (water === 'ssr') {
+    attachScreenSpaceWater(renderer, parts);
+  }
+  return renderer;
 }
 
 // Probes are traced from the original parts and placed on whichever parts the scene draws (baked or not). An open scene has
@@ -178,11 +189,11 @@ async function renderReferenceScene(id, { describe, ambientOcclusion = 0, ambien
 }
 
 // Frame time of one scene with and without the light bake: a bake only adds an emissive map to each part, so this shows what it costs to draw.
-async function measureReferenceFrameTime(id, { bake, probes = false, cascades = 0, orbit = false, warmupFrames = 20, measuredFrames = 200 }) {
-  const scene = await REFERENCE_SCENES[id]();
+async function measureReferenceFrameTime(id, { bake, probes = false, cascades = 0, orbit = false, water = WATER_REFLECTION, warmupFrames = 20, measuredFrames = 200 }) {
+  const scene = await SCENES[id]();
   const baked = bake ? await bakeScene(scene, {}) : null;
   const probed = probes ? await probeScene(scene, id, baked ? baked.parts : scene.parts, probes) : null;
-  const renderer = createSceneRenderer(probed ? probed.parts : baked ? baked.parts : scene.parts, scene, cascades);
+  const renderer = createSceneRenderer(probed ? probed.parts : baked ? baked.parts : scene.parts, scene, cascades, { water });
   renderer.resize();
   const frame = { ...scene.camera, environment: scene.environment, time: 0, exposure: 1, effects: { ambientOcclusion: 0, ambientOcclusionRadius: 0.5 } };
   // With orbit the camera moves a little every frame, so cascaded maps have to be redrawn each time, as in a camera move.
@@ -204,7 +215,7 @@ async function measureReferenceFrameTime(id, { bake, probes = false, cascades = 
   renderer.dispose();
   frameMilliseconds.sort((first, second) => first - second);
   const total = frameMilliseconds.reduce((sum, value) => sum + value, 0);
-  return { baked: Boolean(bake), probes: Boolean(probes), frames: measuredFrames, meanMilliseconds: total / measuredFrames,
+  return { baked: Boolean(bake), probes: Boolean(probes), water, frames: measuredFrames, meanMilliseconds: total / measuredFrames,
     medianMilliseconds: frameMilliseconds[Math.floor(measuredFrames / 2)], p95Milliseconds: frameMilliseconds[Math.floor(measuredFrames * 0.95)] };
 }
 
