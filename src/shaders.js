@@ -883,7 +883,7 @@ ${featureCode("probeSurroundings")}    radiance += surroundings * reflectance * 
   if (USES_LIGHT_MAP) radiance += color * (1.0 - metallic) * texture(lightMap, lightmapUV).rgb * lightMapScale;
   vec3 keyResponse = keyColor / mix(vec3(5.2, 4.7, 4.1), vec3(3.7, 3.4, 2.9), worldMode);
   keyResponse *= mix(daylight, 1.0, worldMode);
-  if (CANOPY_TAG) radiance += color * max(dot(-normal, normalize(lightDirection)), 0.0) * 0.3 * keyResponse;
+  if (CANOPY_TAG) radiance += color * max(dot(-normal, normalize(lightDirection)), 0.0) * 0.3 * keyResponse * visibility;
   if (mossCover > 0.001) {
     float sheen = pow(1.0 - max(dot(normal, viewDirection), 0.0), 4.0);
     float wrap = max(dot(normal, normalize(lightDirection)) + 0.5, 0.0) / 1.5;

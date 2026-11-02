@@ -31,7 +31,7 @@ Scores against Cycles, with each change in turn:
 | `brushed-film` | 0.1613 | 0.1172 | 0.1149 | 0.0984 |
 | `metal` | 0.1868 | 0.1309 | 0.1294 | 0.0916 |
 | `material-spheres` | 0.1598 | 0.1337 | 0.1312 | 0.1053 |
-| `foliage` | 0.1594 | 0.1346 | 0.1290 | 0.0864 |
+| `foliage` | 0.1594 | 0.1346 | 0.1173 | 0.0888 |
 | `brick-flat` | 0.1999 | 0.1273 | 0.1272 | 0.1098 |
 | `brick-graph` | 0.2269 | 0.1604 | 0.1602 | 0.1221 |
 | `long-street` | 0.1555 | 0.1555 | 0.1407 | 0.0976 |
@@ -45,7 +45,7 @@ Three scenes test what people want to make, not one feature. Each one is built w
 | Scene | Parts | Triangles drawn | 67js against Cycles | EEVEE against Cycles | Largest visible gap |
 | --- | --- | --- | --- | --- | --- |
 | `megacity-dusk` | 4,300 | 51.6 thousand | 0.1627 | 0.1524 | Window bands are sharper, and facades get no light from the windows |
-| `mountain-valley` | 7,698 | 9.72 million | 0.3473 | 0.1828 | Trees are lighter from leaf translucency, and shadowed rock is brighter |
+| `mountain-valley` | 7,698 | 9.72 million | 0.3483 | 0.1879 | The valley floor and the trees are 2 to 3 times as bright as in Cycles, and shadowed rock is brighter (see "Leaf model and tree regions") |
 | `temple-hall` | 155 | 11 thousand | 0.2126 | 0.2341 | The fog shafts are stronger in 67js, and the floor gets no bounce light |
 
 With the shadow floor `temple-hall` scored 0.5841, `mountain-valley` 0.3658 and `megacity-dusk` 0.1583.
@@ -267,11 +267,53 @@ Noise contributes nothing (0.2269 against 0.2270 without it), so the different n
 
 The two solvers differ in kind, so this mostly scores how alike the motion is. The banner sits at the EEVEE yardstick, which is a weak test: a flat sheet leaning in the wind has few pixels to get wrong. By eye the banner differs in shape: Blender's sheet wrinkles and sags along the bottom edge, 67js stays smooth and flat. The drape is about twice the yardstick: Blender's sheet has landed on the ball as a bell with wrinkles and its corners still up, while 67js has pulled its corners down and hangs flat panels on both sides of the ball. Wind is matched by the steady swing of the banner (Blender field strength 2 is 1.5 m/s here), because Blender's wind is a linear drag and this solver's is quadratic. The drape numbers also moved when the drag was matched: see "Recipe cloth" in `docs/physics.md`.
 
+## Leaf model and tree regions (issue #166)
+
+Before this change the Blender leaf was a plain Principled BSDF, while the 67js foliage shader (`CANOPY_TAG` in `src/shaders.js`) is not. `render-blender.py` now rebuilds each term of that shader on the Blender side, with the shader's own constants, for every material tagged `foliage`:
+
+| 67js foliage term | Blender node setup |
+| --- | --- |
+| Back faces keep the stored normal | Geometry normal times `1 - 2 * Backfacing` undoes Blender's flip |
+| Colour times `0.78 + 0.16 * sin(13 x + sin(9 y)) * sin(11 z - 5 y)` of the world position | The same sines on Geometry position, multiplied into the base colour |
+| Normal moved by `0.06 * (sin(12 z), sin(9 x), cos(11 y))`, then normalised | The same vector in Blender axes, on the Principled and Translucent normals |
+| Sky reflection 0.3 of a dielectric's | Specular IOR Level 0.5 * 0.3 |
+| Light from behind: `colour * max(dot(-N, L), 0) * 0.3 * keyColor / (3.7, 3.4, 2.9)` | Translucent BSDF with colour weight `0.3 * pi / (3.7, 3.4, 2.9)`, which returns the same radiance for a sun of irradiance `keyColor`, added to the Principled BSDF |
+| Alpha mask at 0.5 | Mix Shader with a Transparent BSDF, so the Translucent part is cut out too |
+
+The weights are derived from the shader, not tuned. One difference stays: the 67js term was not shadowed, and the Blender Translucent BSDF is. The 67js term now multiplies by the sun shadow `visibility` as well (a leaf can only pass sun that reaches it), which is the one engine change of this issue. It moved `foliage` from 0.1181 to 0.1173; on its own the shader change is small.
+
+Scores before and after (FLIP against Cycles, RTX 3060, 2026-11-02), with EEVEE against Cycles beside them:
+
+| Scene | Before | Fair leaf, old shader | After | EEVEE |
+| --- | --- | --- | --- | --- |
+| `foliage` | 0.1290 | 0.1181 | 0.1173 | 0.0864 before, 0.0888 after |
+| `mountain-valley` | 0.3473 | 0.3485 | 0.3483 | 0.1828 before, 0.1879 after |
+
+The fair leaf alone moved `foliage` by 0.0109 (the Cycles crown got brighter, from 0.135 to 0.176 mean display luminance) and `mountain-valley` by 0.001: the leaf model was never the main gap there. No other scene changed to four digits in the full rescore.
+
+Regions, measured on the Cycles image (display luminance, mean of the region; FLIP is the mean error of 67js against Cycles):
+
+| Scene and region | Cycles | EEVEE | 67js | FLIP 67js | Share of the error |
+| --- | --- | --- | --- | --- | --- |
+| `foliage` crown (green, upper rows) | 0.176 | 0.229 | 0.300 | 0.472 | 0.37 |
+| `foliage` trunk and ground under the tree | 0.139 | 0.191 | 0.208 | 0.313 | 0.02 |
+| `foliage` open ground and sky | 0.689 to 0.793 | the same | the same to 0.01 | 0.03 to 0.14 | 0.55 |
+| `mountain-valley` trees (green) | 0.186 | 0.225 | 0.335 | 0.481 | 0.53 |
+| `mountain-valley` valley floor, rows 440 to 530 | 0.272 | 0.306 | 0.416 | about 0.5 | |
+
+What the experiments show, each with the flags of this runner:
+
+- `foliage` crown with `--ambient 0` (sun and shading only): 67js 0.176, the same as the whole Cycles crown. So the sun term alone is already as bright as Cycles, and the sky term adds 0.12 on top. Cycles loses most of the sky inside a dense crown to the leaves around each card; 67js has no occlusion in the ambient term, only vertex colours that darken from the crown centre. Screen space occlusion (`--ambient-occlusion 1 --ambient-occlusion-radius 1`) takes `foliage` from 0.1181 to 0.1133 and the crown to 0.283, which is not enough to close the gap. The remaining gap is recorded, not fixed: it needs occlusion between cards, which is the light bake's job (`addons/light-bake`) and is not part of a shader.
+- `mountain-valley` floor with `--ambient 0`: 67js 0.180, against 0.272 for the full Cycles frame. The valley floor sits inside a ring of 1,100 m peaks that hide much of the sky in Cycles, and 67js lights the floor with the whole sky. This is inferred from the ring geometry and from the floor matching on the open `foliage` scene (0.698 against 0.689); it was not measured by removing the mountains. It is the main reason the trees there are lighter than in Cycles too. Fixing it needs sky visibility for terrain, which no shader has.
+- Ground under the `foliage` tree: the floor is within 0.01 luminance of Cycles, and FLIP is worst in a band of 0.2 to 0.5 at the canopy rows, not at the trunk base. The trunk and its contact shadow are 2% of the error.
+
+Blender render time of the two rerun scenes, now in `baseline.json`: `foliage` 26.4 s in Cycles and 13.5 s in EEVEE, `mountain-valley` 35.9 s and 39.2 s (other jobs loaded the machine).
+
 ## Limits
 
 - Scores come from one camera for each scene and one machine. They do not measure motion or speed.
 - This suite sets an HDRI from code and leaves occlusion off; `--ambient-occlusion <strength> [--ambient-occlusion-radius <units>]` turns it on. A recipe reaches only the named procedural setups, so these scores still describe a better environment than an agent gets (issue #53).
-- The Blender leaf material has no translucency, and the 67js foliage shader adds it by a trick. `foliage` is therefore partly a difference in materials.
+- Both sides use the same leaf model since issue #166 (see "Leaf model and tree regions"). Grass has its own extra term in the 67js shader (`TAG_GRASS`), and Blender does not get it; no reference scene draws grass cards.
 - `render-blender.py` does not read normal maps. No scene uses one yet, so a new scene with a normal map must add that first.
 - `glass` and `car-paint` use the real 67js `transmission` and `clearcoat` layers, and the Blender side sets the same values on the Principled BSDF. 67js refracts through the front surface only, so the sphere does not show the inverted sky that Cycles traces through the back face.
 - `car-paint` scored 0.1521 against Cycles and `glass` 0.1326 (it was 0.1450 with the `liquid` material). The other scenes scored the same as in the table above, to four digits. The table above is the 2026-10-30 baseline and has not been rewritten.
