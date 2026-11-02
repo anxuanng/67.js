@@ -565,8 +565,11 @@ function flatFieldsHint(operationType, wrapperKey) {
     ? `${operationType} takes its fields beside type, not inside ${wrapperKey}: {"type":"${operationType}","id":"<id>",...fields}. Move the fields of ${wrapperKey} up one level.`
     : undefined;
 }
-const operation = z.discriminatedUnion('type', [
-  z.strictObject({ type: z.literal('set-node'), id: identifier, geometry: identifier.optional(), material: identifier.optional(), ...nodeFields }, { error: flatFieldsHint('set-node', 'node') }),
+const nodeOperations = (nodeFieldShape, nodeSchema) => [
+  z.strictObject({ type: z.literal('set-node'), id: identifier, geometry: identifier.optional(), material: identifier.optional(), ...nodeFieldShape }, { error: flatFieldsHint('set-node', 'node') }),
+  z.strictObject({ type: z.literal('add-node'), node: nodeSchema }),
+];
+const otherOperations = [
   z.strictObject({ type: z.literal('set-material'), id: identifier, ...materialFields }, { error: flatFieldsHint('set-material', 'material') }),
   z.strictObject({ type: z.literal('set-camera'), ...cameraFields }),
   z.strictObject({ type: z.literal('set-motion'), motion: recipeMotionReference.nullable() }),
@@ -582,13 +585,22 @@ const operation = z.discriminatedUnion('type', [
   z.strictObject({ type: z.literal('set-root'), translation: vector3.optional(), rotation: quaternion.optional(), scale: z.tuple([positive, positive, positive]).optional() }),
   z.strictObject({ type: z.literal('set-asset-node'), id: identifier, translation: vector3.optional(), rotation: quaternion.optional(), scale: z.tuple([positive, positive, positive]).optional() }),
   z.strictObject({ type: z.literal('set-animation'), clip: z.number().int().min(0).nullable().optional(), time: nonnegative.optional() }),
-  z.strictObject({ type: z.literal('add-node'), node: nodeRecord }),
   z.strictObject({ type: z.literal('remove-node'), id: identifier, recursive: z.boolean().optional().describe('Remove descendants too. Defaults to false; dangling children reject the batch.') }),
   z.strictObject({ type: z.literal('add-geometry'), geometry }),
   z.strictObject({ type: z.literal('remove-geometry'), id: identifier }),
   z.strictObject({ type: z.literal('add-material'), material: z.strictObject({ id: identifier, tag: materialTag, ...materialFields }) }),
   z.strictObject({ type: z.literal('remove-material'), id: identifier }),
-]);
+];
+const operation = z.discriminatedUnion('type', [...nodeOperations(nodeFields, nodeRecord), ...otherOperations]);
+// The same schemas without the relations field, for the benchmark switch --relations off.
+const { relations: _relationsField, ...nodeFieldsWithoutRelations } = nodeFields;
+const nodeRecordWithoutRelations = nodeRecord.omit({ relations: true });
+const recipeWithoutRelations = recipe.extend({ nodes: z.array(nodeRecordWithoutRelations).max(4096) });
+function withoutRelationsAdvice(capabilities) {
+  const { relations: _relationsAdvice, ...scene } = capabilities.scene;
+  return { ...capabilities, scene };
+}
+const operationWithoutRelations = z.discriminatedUnion('type', [...nodeOperations(nodeFieldsWithoutRelations, nodeRecordWithoutRelations), ...otherOperations]);
 const branchName = z.string().regex(BRANCH_NAME_PATTERN).describe('Branch name, up to 24 characters.');
 const labelsFlag = z.boolean().optional().describe('Draw part names, tags and lint problems on the image; returned with pixel positions.');
 const sessionFields = { sessionId: z.uuid('sessionId is not a valid UUID. Leave it out to use the active scene.').optional().describe('Leave out: the active scene is used.') };
@@ -644,7 +656,7 @@ function jsonResult(value) {
   return { content: [{ type: 'text', text: JSON.stringify(value) }], structuredContent: value };
 }
 
-export function createAgentMcpServer(runtime, { version = packageMetadata.version, branches = true } = {}) {
+export function createAgentMcpServer(runtime, { version = packageMetadata.version, branches = true, relations = true } = {}) {
   // Without branches the schemas carry no branch field and the instructions do not mention variants (a benchmark switch).
   const branchField = branches ? { branch: branchName.optional().describe('Fork: store the result as this branch (up to 8), leaving the scene unchanged.') } : {};
   const reviewBranchField = branches ? { branch: branchName.optional().describe('Render this scene_apply branch.') } : {};
@@ -684,15 +696,15 @@ export function createAgentMcpServer(runtime, { version = packageMetadata.versio
       }
     });
   }
-  register('scene_capabilities', 'Read supported recipe features and runtime budgets before authoring. Does not launch a browser.', z.strictObject({}), readOnly, async () => jsonResult(await runtime.capabilities()));
-  register('scene_create', 'Create the single active render scene from a JSON recipe. Dispose an existing scene first.', z.strictObject({ recipe }), { ...edit, destructiveHint: false }, async argumentsValue => jsonResult(await runtime.create(argumentsValue)));
+  register('scene_capabilities', 'Read supported recipe features and runtime budgets before authoring. Does not launch a browser.', z.strictObject({}), readOnly, async () => jsonResult(relations ? await runtime.capabilities() : withoutRelationsAdvice(await runtime.capabilities())));
+  register('scene_create', 'Create the single active render scene from a JSON recipe. Dispose an existing scene first.', z.strictObject({ recipe: relations ? recipe : recipeWithoutRelations }), { ...edit, destructiveHint: false }, async argumentsValue => jsonResult(await runtime.create(argumentsValue)));
   register('scene_asset_catalog', 'List content-bound GLB IDs from the configured local asset directory. No arbitrary paths or downloads.', z.strictObject({}), readOnly, async () => jsonResult(await runtime.assetCatalog()));
   register('scene_create_asset', 'Create the active scene from a catalog GLB and editable asset recipe. Preserves supported maps, skins, morphs and clips. Dispose the existing scene first.', z.strictObject({ recipe: assetRecipe }), { ...edit, destructiveHint: false }, async argumentsValue => jsonResult(await runtime.createAsset(argumentsValue)));
   register('scene_inspect', 'Read revision, counts and selected nodes. For a recipe with physics, the result lists body final positions, resting times, contacts and sensor enter/leave events. Bounds describe authored geometry rather than shader displacement.', z.strictObject({ ...sessionFields, ids: z.array(identifier).max(4096).optional().describe('Selected node IDs. Omit to inspect scene order.'), kind: z.enum(['meshes', 'hierarchy']).optional().describe('Imported assets only: hierarchy exposes stable source-node IDs and joints.'), offset: z.number().int().min(0).max(4096).optional().describe('Imported assets only: pagination offset.'), limit: z.number().int().min(1).max(4096).optional().describe('Maximum returned node records. Defaults to 64.'), includeBounds: z.boolean().optional().describe('Include world geometry bounds. Defaults to false.'), path: z.record(z.string(), z.unknown()).optional().describe('Walking route over a ground node, around holes: fields in scene_capabilities navigation.') }), readOnly, async argumentsValue => jsonResult(await runtime.inspect(argumentsValue)));
   register('mesh_inspect', 'Check recipe geometries as polygon meshes: vertex, edge and face counts, triangles/quads/n-gons, connected and closed parts, face tags (top, bottom, side, left, right, front, back), bounds, and lint problems (non-manifold, inconsistent winding, inverted, degenerate, open, loose) with a suggested fix each. Also imported asset parts (mesh-0). Read-only and cached per geometry.', z.strictObject({ ...sessionFields, geometry: identifier.optional().describe('One geometry ID to check, as in mesh_edit.'), geometries: z.array(identifier).min(1).max(16).optional().describe('Geometry IDs to check. Omit both to check the first 16 geometries.') }), readOnly, async ({ geometry: geometryId, geometries, ...rest }) => jsonResult(await runtime.inspectMeshes({ ...rest, ...(geometries || geometryId ? { geometries: [...(geometries ?? []), ...(geometryId ? [geometryId] : [])] } : {}) })));
   register('mesh_edit', 'Append edits to a recipe mesh geometry or an imported asset part such as mesh-0 (or replace its edit log), atomically like scene_apply: extrude, inset, delete, flip, translate with falloff, tag, loop cut, bevel, mirror, array, solidify, UV unwrap, set_position and displace with field expressions (math, noise, attributes), booleans with a primitive cutter, sculpt brush strokes and shrinkwrap onto a primitive. Edits that select no faces or break limits fail without changing the scene. Returns the new revision, render status and the mesh report with per-edit results.', z.strictObject({ ...sessionFields, expectedRevision, geometry: identifier.describe('ID of a geometry with type mesh, or an imported part such as mesh-0.'), edits: meshEdits.min(1), replace: z.boolean().optional().describe('Replace the whole edit log instead of appending.') }), edit, async argumentsValue => jsonResult(await runtime.editMesh(argumentsValue)));
   register('mesh_stack', 'Set the non-destructive modifier stack of a recipe mesh geometry (ops and fields: scene_capabilities meshModifiers), evaluated after its edits, each prefix cached. apply: n moves the first n nodes into the edit log, as Blender\'s Apply modifier. Atomic like scene_apply. Returns the revision, render status and mesh report.', z.strictObject({ ...sessionFields, expectedRevision, geometry: identifier.describe('ID of a geometry with type mesh.'), stack: meshStack.optional().describe('The whole new stack. Omit to keep the current stack (for example with apply).'), apply: z.number().int().min(0).max(16).optional() }), edit, async argumentsValue => jsonResult(await runtime.setMeshStack(argumentsValue)));
-  register('scene_apply', 'Atomically edit transforms, look, camera or materials. Procedural scenes support membership and set-motion authoring. Imported assets support set-root, set-asset-node, set-motion and absolute set-animation sampling. Successful batches increment revision once.', z.strictObject({ ...sessionFields, expectedRevision, operations: z.array(operation).min(1).max(256).describe('Node/material/camera/root/animation commands use flat fields. Motion, look patches and add commands contain nested records. Backend validates each scene mode before publication.'), ...branchField }), edit, async argumentsValue => jsonResult(await runtime.apply(argumentsValue)));
+  register('scene_apply', 'Atomically edit transforms, look, camera or materials. Procedural scenes support membership and set-motion authoring. Imported assets support set-root, set-asset-node, set-motion and absolute set-animation sampling. Successful batches increment revision once.', z.strictObject({ ...sessionFields, expectedRevision, operations: z.array(relations ? operation : operationWithoutRelations).min(1).max(256).describe('Node/material/camera/root/animation commands use flat fields. Motion, look patches and add commands contain nested records. Backend validates each scene mode before publication.'), ...branchField }), edit, async argumentsValue => jsonResult(await runtime.apply(argumentsValue)));
   register('scene_look', 'Render the active scene as a bounded PNG, optionally with part labels. Optional authored motionTime seeks without changing revision; null restores the authored base pose. Omit to retain the last preview pose.', z.strictObject({ ...sessionFields, motionTime: z.number().min(0).max(3600).nullable().optional(), width: z.number().int().min(64).max(1024).default(768).describe('PNG width in pixels.'), height: z.number().int().min(64).max(1024).default(512).describe('PNG height in pixels.'), labels: labelsFlag }), readOnly, async argumentsValue => {
     const { data, mimeType, metadata } = await runtime.look(argumentsValue);
     return { content: [{ type: 'image', data, mimeType }, { type: 'text', text: JSON.stringify(metadata) }], structuredContent: metadata };
@@ -734,8 +746,8 @@ export async function runMcpCli({ argumentsValue = process.argv.slice(2),
   for (let index = 0; index < argumentsValue.length; index += 2) {
     const name = argumentsValue[index];
     const value = argumentsValue[index + 1];
-    if (!['--backend', '--browser', '--memory', '--assets', '--jobs', '--ffmpeg', '--audio', '--branches'].includes(name) || value === undefined) {
-      throw new Error(`Use --backend cpu|gpu, --browser <local executable path>, --memory <32..${MAXIMUM_MEMORY_MIB} MiB>, --assets <absolute GLB directory>, --jobs <absolute private output directory>, --ffmpeg <absolute executable>, --audio <absolute folder of .wav, .mp3, .ogg or .flac files for video jobs>, and --branches on|off (default on).`);
+    if (!['--backend', '--browser', '--memory', '--assets', '--jobs', '--ffmpeg', '--audio', '--branches', '--relations'].includes(name) || value === undefined) {
+      throw new Error(`Use --backend cpu|gpu, --browser <local executable path>, --memory <32..${MAXIMUM_MEMORY_MIB} MiB>, --assets <absolute GLB directory>, --jobs <absolute private output directory>, --ffmpeg <absolute executable>, --audio <absolute folder of .wav, .mp3, .ogg or .flac files for video jobs>, --branches on|off and --relations on|off (both default on).`);
     }
     options[name.slice(2)] = name === '--memory' ? Number(value) : value;
   }
@@ -744,7 +756,7 @@ export async function runMcpCli({ argumentsValue = process.argv.slice(2),
   }
   setPriority(0, constants.priority.PRIORITY_BELOW_NORMAL);
   const { createAgentRuntime } = await import('./agent-runtime.mjs');
-  const handle = serveStdio(() => createAgentMcpServer(createAgentRuntime({ ...options, previewUrl }), { version, branches: options.branches !== 'off' }), {
+  const handle = serveStdio(() => createAgentMcpServer(createAgentRuntime({ ...options, previewUrl }), { version, branches: options.branches !== 'off', relations: options.relations !== 'off' }), {
     transport: new StdioServerTransport(process.stdin, process.stdout, { maxBufferSize: 2 * 1024 * 1024 }),
     onerror: error => console.error(`67js MCP error: ${error.message}`),
   });

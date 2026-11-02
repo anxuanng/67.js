@@ -441,6 +441,31 @@ test('branches off leaves the branch field and the variants advice out of the sc
   assert.ok(!client.getInstructions().includes('branch'));
 });
 
+test('relations off leaves the relations field and the relations capabilities out', async context => {
+  const runtime = { async close() {}, activeSessionId() { return null; }, async capabilities() { return { scene: { relations: { kinds: {} }, rigging: {} } }; } };
+  const clients = {};
+  for (const relations of [true, false]) {
+    const server = createAgentMcpServer(runtime, { relations });
+    const client = new Client({ name: `67js-relations-${relations}-test`, version: '1' });
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    await server.connect(serverTransport);
+    await client.connect(clientTransport);
+    context.after(async () => {
+      await client.close();
+      await server.close();
+    });
+    clients[relations] = client;
+  }
+  for (const toolName of ['scene_create', 'scene_apply']) {
+    const schemaOf = async relations => JSON.stringify((await clients[relations].listTools()).tools.find(candidate => candidate.name === toolName).inputSchema);
+    assert.ok((await schemaOf(true)).includes('"relations"'), `${toolName} offers relations by default`);
+    assert.ok(!(await schemaOf(false)).includes('"relations"'), `${toolName} must not offer relations`);
+  }
+  const capabilitiesOf = async relations => (await clients[relations].callTool({ name: 'scene_capabilities', arguments: {} })).structuredContent.scene;
+  assert.ok('relations' in await capabilitiesOf(true));
+  assert.deepEqual(Object.keys(await capabilitiesOf(false)), ['rigging']);
+});
+
 test('SDK dynamic batches create resources, reject dangling edits, and restore scene membership', async context => {
   const { client, sessionId } = await connect(context);
   const call = (name, argumentsValue) => client.callTool({ name, arguments: argumentsValue });

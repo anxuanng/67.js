@@ -4,6 +4,7 @@
 import { REFERENCES } from './references.mjs';
 import { KETTLE_START, KETTLE_START_PLAIN } from './kettle.mjs';
 import { DESK_START, DESK_START_PLAIN, DESK_CHECKS } from './desk.mjs';
+import { CABINET_START, CABINET_START_PLAIN, CABINET_CHECKS } from './cabinet.mjs';
 import { LAMP_START, LAMP_PROMPT, LAMP_CHECKS } from './lamp.mjs';
 import { GALLERY_START, GALLERY_PROMPT, GALLERY_CHECKS } from './gallery.mjs';
 import { TERRAIN_TASKS } from './terrain.mjs';
@@ -62,6 +63,19 @@ of its drawer and centred on it, the lamp base and the book on the top at the sa
 const DESK_TASKS = [
   { id: 'desk-resize', startRecipe: DESK_START, prompt: DESK_PROMPT, checks: DESK_CHECKS },
   { id: 'desk-resize-plain', startRecipe: DESK_START_PLAIN, prompt: DESK_PROMPT, checks: DESK_CHECKS },
+];
+
+// One resize of a 10-part cabinet. The plain start recipe is the one for comparing --relations on and off: the agent
+// either recomputes every dependent part or states the attachments itself.
+const CABINET_PROMPT = `The cabinet scene below has a body on four feet, two doors on its front (+Z) face that together cover the
+width of the body, a handle on each door, and a cornice on top. Make the cabinet 30% wider (body 1.3 m instead of 1 m) and
+10 cm taller (1.9 m from the ground to the top of the cornice, so only the body gets taller). Keep the body depth and the size
+of the feet, handles and cornice overhang. Afterwards the feet must still stand 0.04 m in from the body's corners, each
+door must still be half the body width, flush with its end of the body and centred in Y with a 0.04 m margin at top and bottom,
+each handle 0.04 m in from the middle seam of its door and centred in Y, and the cornice centred on top of the body.`;
+const CABINET_TASKS = [
+  { id: 'cabinet-resize', startRecipe: CABINET_START, prompt: CABINET_PROMPT, checks: CABINET_CHECKS },
+  { id: 'cabinet-resize-plain', startRecipe: CABINET_START_PLAIN, prompt: CABINET_PROMPT, checks: CABINET_CHECKS },
 ];
 
 const LONG_TASKS = [
@@ -553,6 +567,7 @@ exported recipe is what gets graded.`,
   { id: 'render-pick', startRecipe: GALLERY_START, prompt: GALLERY_PROMPT, checks: GALLERY_CHECKS },
   ...KETTLE_TASKS,
   ...DESK_TASKS,
+  ...CABINET_TASKS,
   {
     id: 'robot-walk-wave',
     assets: true,
