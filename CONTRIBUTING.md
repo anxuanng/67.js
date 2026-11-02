@@ -34,7 +34,7 @@ Run `npm run smoke` or the `smoke:*` script for the area that you changed, and l
 A change to skinning, glTF loading, poses or IK also needs `npm run smoke:character`, which takes a real character through the MCP server. Run `npm run prepare:release` first.
 Screenshots and other output go to `artifacts/`, which Git ignores.
 
-Every pull request runs `npm audit`, `npm run size`, `npm test`, `prepare:release`, `smoke:package` and `smoke:mcp-package` in the `Test` workflow. `smoke:mcp-package` draws through the MCP server on SwiftShader in Chrome. `bench/size/README.md` says what to do when a size budget fails.
+Every pull request runs `npm audit`, `npm run size`, `npm test`, `npm run test:isolated` (each test file in its own process), `prepare:release`, `smoke:package` and `smoke:mcp-package` in the `Test` workflow. `smoke:mcp-package` draws through the MCP server on SwiftShader in Chrome. `bench/size/README.md` says what to do when a size budget fails.
 
 GitHub offers no branch protection on this private repository, so a red check can not block a merge by itself. Merge a pull request only when the `test` and `GitGuardian Security Checks` checks both pass. The person or agent who merges is responsible for this.
 
