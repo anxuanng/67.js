@@ -34,6 +34,10 @@
    "cycles": 58.3,
    "eevee": 1.4
   },
+  "fog-room": {
+   "cycles": 29.4,
+   "eevee": 2.7
+  },
   "foliage": {
    "cycles": 26.4,
    "eevee": 13.5
@@ -159,6 +163,26 @@
    "cpu-vs-eevee": 0.1084,
    "eevee-vs-cycles": 0.2662,
    "gpu-vs-cpu": 0.0089
+  },
+  "fog-room": {
+   "gpu-vs-cycles": 0.1953,
+   "gpu-vs-eevee": 0.2768,
+   "cpu-vs-cycles": 0.1958,
+   "cpu-vs-eevee": 0.2764,
+   "eevee-vs-cycles": 0.373,
+   "gpu-vs-cpu": 0.0059,
+   "region-pixels": 0.243,
+   "region-gpu-vs-cycles": 0.1682,
+   "region-gpu-vs-eevee": 0.3032,
+   "region-eevee-vs-cycles": 0.3146
+  },
+  "fog-valley": {
+   "gpu-vs-cycles": 0.1967,
+   "gpu-vs-eevee": 0.1098,
+   "cpu-vs-cycles": 0.1965,
+   "cpu-vs-eevee": 0.1095,
+   "eevee-vs-cycles": 0.1952,
+   "gpu-vs-cpu": 0.0122
   },
   "foliage": {
    "gpu-vs-cycles": 0.1023,
