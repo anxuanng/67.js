@@ -2,8 +2,8 @@ import { mat4, mat3 } from 'gl-matrix';
 import { box, cylinder, grid, sphere, torus } from './geometry.js';
 import { createSceneGraph } from './scene-graph.js';
 import { applyProjection } from './camera.js';
-import { normalizeAgentLook, environmentPatchWithSetup, environmentLinksLights } from './agent-look.js';
-import { agentSceneModule } from './agent-scene-modules.js';
+import { normalizeAgentLook, environmentPatchWithSetup, environmentLinksLights, agentEnvironmentMap } from './agent-look.js';
+import { agentSceneModule, agentSceneModuleLoaded } from './agent-scene-modules.js';
 import { MESH_SMOOTH_ANGLE_DEFAULT, CURVE_TEXT_LIMITS, AGENT_SCENE_CAPABILITIES, AGENT_SCENE_DEFAULT_LIMITS, MAX_MATERIAL_PATTERNS, RECIPE_ALPHA_MODES } from './agent-scene-capabilities.js';
 import { ALL_LIGHTS_MASK, MATERIAL_LAYER_FIELDS, validateMaterialLayers } from './material-layers.js';
 import { recipeDiagnostics, closedRoomDiagnostic } from './agent-diagnostics.js';
@@ -920,6 +920,7 @@ export function createAgentScene(input, inputLimits = {}) {
   let particleBake = null;
   let lightBake = null;
   let lightLinkCache = null;
+  let objectReflectionCache = null;
   const skinCache = new Map();
   const checkpoints = new Map();
 
@@ -1061,13 +1062,15 @@ export function createAgentScene(input, inputLimits = {}) {
       state.sourceRestParts.every((part, index) => part === nextParts[index]);
     const sourceRestParts = sameParts ? state.sourceRestParts : Object.freeze(nextParts);
     const lightBakeResult = stageLightBake(recipe, sourceRestParts, graph);
-    const restParts = stageLightLinks(recipe, lightBakeResult ? lightBakeResult.parts : sourceRestParts);
+    const reflected = stageObjectReflections(recipe, sourceRestParts, lightBakeResult ? lightBakeResult.parts : sourceRestParts, graph);
+    const restParts = stageLightLinks(recipe, reflected ? reflected.parts : lightBakeResult ? lightBakeResult.parts : sourceRestParts);
     const stagedState = {
       recipe, geometryRecords, geometries, graph, materialHandles,
       // Part identity decides what the next stage reuses, so it compares the parts as built, before any bake.
       sourceRestParts,
       parts: restParts, restParts,
       bakeReport: lightBakeResult ? { ...lightBakeResult.report, reused: lightBakeResult.reused } : null,
+      reflectionReport: reflected ? reflected.report : null,
       // A renderer holding the deformed cloth parts of the old state needs the rest parts back as a topology change.
       topologyChanged: Boolean(state && (restParts !== state.restParts || state.parts !== state.restParts)),
       stats: geometryStats(geometryRecords.values()),
@@ -1129,6 +1132,16 @@ export function createAgentScene(input, inputLimits = {}) {
     const baked = agentSceneModule('bake').bakeAgentParts(sourceRestParts, worldMatrices, recipe.environment, recipe.bake, generatedGeometryGenerators);
     lightBake = { key, sourceRestParts, parts: baked.parts, report: baked.report };
     return { ...lightBake, reused: false };
+  }
+
+  // Smooth metal parts get a probe of the scene around them (src/agent-reflections.js), unless environment.objectReflections
+  // is false. It runs only when that code is loaded, which a recipe with a metallic value of 0.5 or more does.
+  function stageObjectReflections(recipe, sourceRestParts, drawnParts, graph) {
+    if (recipe.environment.objectReflections === false || !agentSceneModuleLoaded('reflections')) {
+      return null;
+    }
+    objectReflectionCache = agentSceneModule('reflections').stageObjectReflections(objectReflectionCache, recipe, sourceRestParts, drawnParts, graph, agentEnvironmentMap(recipe.environment));
+    return objectReflectionCache.result;
   }
 
   // A scene that asks for no bake and looks like a closed room gets one diagnostic naming the bake. The ray test costs a
@@ -1334,7 +1347,7 @@ export function createAgentScene(input, inputLimits = {}) {
           knownKeys(operation, ['type', lookField], 'operation');
           const patch = operation[lookField];
           // Spot and area lights, cascades and sun links are absent from a recipe until it sets them.
-          const optionalFields = lookField === 'environment' ? ['spotLights', 'areaLights', 'shadowCascades', 'keyAffects'] : [];
+          const optionalFields = lookField === 'environment' ? ['spotLights', 'areaLights', 'shadowCascades', 'keyAffects', 'objectReflections'] : [];
           knownKeys(patch, [...Object.keys(candidate[lookField]), ...optionalFields], lookField);
           const nestedField = lookField === 'environment' ? 'volumeFog' : lookField === 'effects' ? 'bloom' : null;
           const merged = { ...candidate[lookField], ...(lookField === 'environment' ? environmentPatchWithSetup(patch) : patch) };
@@ -1492,6 +1505,7 @@ export function createAgentScene(input, inputLimits = {}) {
         ...(state.clothSampler ? { cloth: state.clothSampler.report() } : {}),
         ...(state.particleSampler ? { particles: state.particleSampler.report() } : {}),
         ...(state.bakeReport ? { bake: state.bakeReport } : {}),
+        ...(state.reflectionReport ? { reflections: state.reflectionReport } : {}),
         ...(state.recipe.armatures ? { rig: rigReport(state.recipe, state.skinBindings) } : {}),
         boundsSpace: 'authored-base-world',
         ...(diagnostics.length ? { diagnostics } : {}),

@@ -31,6 +31,9 @@ test('markers name the module a recipe needs', () => {
   assert.deepEqual(agentSceneModulesNeeded({ geometries: [{ id: 'g', type: 'mesh' }] }), ['mesh']);
   assert.deepEqual(agentSceneModulesNeeded({ geometries: [{ id: 'g', type: 'lathe' }] }), ['modeling']);
   assert.deepEqual(agentSceneModulesNeeded({ motion: { tracks: [] } }), ['motion']);
+  assert.deepEqual(agentSceneModulesNeeded({ materials: [{ id: 'm', metallic: 0.9 }] }), ['reflections']);
+  assert.deepEqual(agentSceneModulesNeeded({ materials: [{ id: 'm', metallic: 1 }] }), ['reflections']);
+  assert.deepEqual(agentSceneModulesNeeded({ materials: [{ id: 'm', metallic: 0 }, { id: 'n', metallic: 0.2 }] }), []);
   assert.deepEqual(agentSceneModulesNeeded({ materials: [{ id: 'm', pattern: { type: 'bricks' } }] }), ['patterns']);
 });
 

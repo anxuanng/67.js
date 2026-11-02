@@ -12,6 +12,7 @@ const MODULE_LOADERS = {
   cloth: () => import('./agent-cloth.js'),
   particles: () => import('./agent-particles.js'),
   bake: () => import('./agent-bake.js'),
+  reflections: () => import('./agent-reflections.js'),
   patterns: () => import('./material-patterns.js'),
   relations: () => import('./agent-relations.js'),
   timeline: () => import('./film-timeline.js'),
@@ -37,6 +38,8 @@ const MODULE_MARKERS = {
   cloth: ['"cloth":{'],
   particles: ['"particles":{'],
   bake: ['"bake":{'],
+  // A metallic value of 0.5 or more may make a part reflective; the module skips a scene that has no smooth one.
+  reflections: [/"metallic":(0\.[5-9]|1(?![0-9]))/],
   patterns: ['"pattern"'],
   relations: ['"relations":'],
   timeline: ['"timeline":{'],
@@ -67,7 +70,7 @@ export function agentSceneModulesNeeded(value) {
     return Object.keys(MODULE_LOADERS);
   }
   const compact = text.replace(/"\s*:\s*/g, '":');
-  return Object.keys(MODULE_MARKERS).filter(name => MODULE_MARKERS[name].some(marker => compact.includes(marker)));
+  return Object.keys(MODULE_MARKERS).filter(name => MODULE_MARKERS[name].some(marker => (marker instanceof RegExp ? marker.test(compact) : compact.includes(marker))));
 }
 
 function loadModule(name) {
