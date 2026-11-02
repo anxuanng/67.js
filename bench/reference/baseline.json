@@ -233,12 +233,12 @@
    "gpu-vs-cpu": 0.0061
   },
   "mountain-valley": {
-   "gpu-vs-cycles": 0.3483,
-   "gpu-vs-eevee": 0.2382,
-   "cpu-vs-cycles": 0.3469,
-   "cpu-vs-eevee": 0.2368,
+   "gpu-vs-cycles": 0.3488,
+   "gpu-vs-eevee": 0.2388,
+   "cpu-vs-cycles": 0.3475,
+   "cpu-vs-eevee": 0.2375,
    "eevee-vs-cycles": 0.1879,
-   "gpu-vs-cpu": 0.02
+   "gpu-vs-cpu": 0.0193
   },
   "outdoor-hdri": {
    "gpu-vs-cycles": 0.0462,
