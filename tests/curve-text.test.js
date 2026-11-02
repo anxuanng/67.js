@@ -229,7 +229,7 @@ const signRecipe = {
 };
 
 test('a recipe draws a labelled sign and a piped curve', () => {
-  assert.deepEqual(agentSceneModulesNeeded(signRecipe), ['modeling', 'text']);
+  assert.deepEqual(agentSceneModulesNeeded(signRecipe), ['modeling', 'text', 'reflections']);
   const scene = createAgentScene(signRecipe);
   const letters = scene.parts.find(part => part.name === 'letters');
   const pipe = scene.parts.find(part => part.name === 'pipe');

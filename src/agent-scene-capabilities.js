@@ -252,7 +252,7 @@ export const AGENT_SCENE_CAPABILITIES = Object.freeze({
   bake: Object.freeze({
     fields: 'preset, or samples (1-256), bounces (1-3), texelsPerUnit (1-12) over it; probes room by default, false for none, or up to 4 {position, radius?}. Same recipe, same bytes.',
     presets: BAKE_PRESETS,
-    notes: 'Bounced light from point, spot, area and key lights. Reruns when parts, lights, materials or bake change. Skips alpha, skin, morph, hair, cloth (bake.skipped). A preset shrinks to fit, never refuses (bake.used, bake.reduction); explicit settings fail over maxPathWork or past maxSeconds. No environment map or specular. Probes (off by default): specular only, none in glTF.',
+    notes: 'Bounced light from point, spot, area and key lights. Reruns when parts, lights, materials or bake change. Skips alpha, skin, morph, hair, cloth (bake.skipped). A preset shrinks to fit, never refuses (bake.used, bake.reduction); explicit settings fail over maxPathWork or past maxSeconds. No environment map or specular. Probes: specular only, none in glTF.',
     limits: Object.freeze({ maxSeconds: BAKE_MAXIMUM_SECONDS, workerMaxSeconds: BAKE_WORKER_MAXIMUM_SECONDS, maxPathWork: BAKE_EXPLICIT_PATH_WORK_LIMIT, maxPointLights: 8 }),
   }),
   motionLimits: Object.freeze({ maxTracks: 128, maxKeyframesPerTrack: 64, maxKeyframes: 2048, maxDuration: 30 }),

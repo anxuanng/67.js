@@ -107,6 +107,7 @@ Sky colors use display RGB, matching the renderer's existing environment contrac
 | --- | --- | --- |
 | `world` | `false` | Boolean world presentation flag. With `true` the setup environment is also the background |
 | `ground` | on | Absent unless set. `false` removes the preview's automatic floor and contact shadow |
+| `objectReflections` | on | Absent unless set. Each smooth metal part (`metallic` 0.5 or more, `roughness` 0.6 or less; at most 8 such parts) gets a reflection probe of the scene around it, so a chrome sphere shows the floor and its neighbours. `false` turns it off. Probes are traced at rest, so a part that moves reflects the scene as it started. `scene_inspect` names them in `reflections` |
 | `setup` | `daylight` | `daylight`, `overcast`, `sunset` or `studio`. See Lighting setups |
 | `environmentIntensity` | `1` | `0` to `100`. Scales the setup's environment light and reflections |
 | `environmentRotation` | `0` | `-100` to `100` radians around the vertical axis |
