@@ -2,6 +2,7 @@ import { buildWithKernels, kernelWorkersAvailable, kernelStats, resetKernelStats
 import { createAgentScene, loadAllAgentSceneModules, allAgentSceneModulesLoaded, needsMeshBooleans, loadMeshBooleans, meshBooleansLoaded, setManifoldModuleLoader, needsPhysics, loadPhysicsEngine, physicsEngineLoaded, setPhysicsModuleLoader } from '../src/agent-scene.js';
 import { Renderer67 } from '../src/renderer.js';
 import { skyOpenness } from '../src/closed-room.js';
+import { fogSkyVisibility } from '../src/fog-sky-visibility.js';
 import { installCameraEffects } from '../src/camera-effects.js';
 import { installRenderPasses } from '../src/render-passes.js';
 import { applyProjection } from '../src/camera.js';
@@ -218,6 +219,7 @@ function initializeRenderer(scene, { memoryBudgetMiB, backend }) {
     shadowBounds: resolveAgentShadow(scene.shadow, scene.environment.lightDirection),
     shadowCascades: cascadesFor(scene),
     skyOpenness,
+    fogSkyVisibility,
     pixelRatio: 1,
     samples: backend === 'cpu' ? 1 : 4,
     memoryBudgetMiB,

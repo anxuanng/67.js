@@ -43,6 +43,7 @@ function fibonacciDirection(index, count, out) {
   out[0] = Math.cos(angle) * ring;
   out[1] = height;
   out[2] = Math.sin(angle) * ring;
+  return out;
 }
 
 // Moller-Trumbore, counting only a triangle whose front face looks at the ray (det > 0).
@@ -127,4 +128,55 @@ export function skyOpenness(parts, point) {
     }
   }
   return escaped / SKY_OPENNESS_RAYS;
+}
+
+export const SKY_GRID_POINTS = 2048;
+export const SKY_GRID_LONGEST_AXIS = 32;
+export const SKY_GRID_RAYS = 24;
+
+/** Cells per axis: roughly cubic cells, at most SKY_GRID_POINTS in total and SKY_GRID_LONGEST_AXIS along any axis. */
+export function skyGridSize(minimum, maximum) {
+  const extent = maximum.map((high, axis) => high - minimum[axis]);
+  const spacing = Math.max(Math.cbrt(extent[0] * extent[1] * extent[2] / SKY_GRID_POINTS), Math.max(...extent) / SKY_GRID_LONGEST_AXIS);
+  return extent.map(length => Math.min(SKY_GRID_LONGEST_AXIS, Math.max(2, Math.ceil(length / spacing))));
+}
+
+/**
+ * Sky visibility at the centres of a grid of cells over the box `minimum`..`maximum`, as bytes (255 = every upward ray
+ * escapes), x fastest then y then z. Null when the scene is empty or too large to test. A fixed spiral of rays and fixed cell
+ * centres, so the same scene gives the same bytes. `createSkyVisibility` (fog-sky-visibility.js) uploads it as a texture.
+ */
+export function skyVisibilityGrid(parts, minimum, maximum) {
+  const worldMatrices = new Map(parts.map(part => [part.name, part.matrix]));
+  const triangles = worldTriangles(parts.filter(part => part.material?.alphaMode !== 'blend'), worldMatrices);
+  if (!triangles) {
+    return null;
+  }
+  const size = skyGridSize(minimum, maximum);
+  const directions = Array.from({ length: SKY_GRID_RAYS }, (unused, ray) => fibonacciDirection(ray, SKY_GRID_RAYS * 2, [0, 0, 0]));
+  const data = new Uint8Array(size[0] * size[1] * size[2]);
+  const point = [0, 0, 0];
+  let write = 0;
+  for (let z = 0; z < size[2]; z++) {
+    for (let y = 0; y < size[1]; y++) {
+      for (let x = 0; x < size[0]; x++) {
+        const cell = [x, y, z];
+        for (let axis = 0; axis < 3; axis++) {
+          point[axis] = minimum[axis] + (cell[axis] + 0.5) / size[axis] * (maximum[axis] - minimum[axis]);
+        }
+        let escaped = 0;
+        for (const direction of directions) {
+          let blocked = false;
+          for (let triangle = 0; triangle < triangles.triangleCount && !blocked; triangle++) {
+            blocked = hitsFrontFace(triangles.corners, triangle * 9, point, direction);
+          }
+          if (!blocked) {
+            escaped++;
+          }
+        }
+        data[write++] = Math.round(255 * escaped / SKY_GRID_RAYS);
+      }
+    }
+  }
+  return { size, data };
 }

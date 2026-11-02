@@ -625,3 +625,31 @@ Full suite, `npm run reference -- --skip-blender` on the stored Cycles and EEVEE
 | `fog-room`, `dark-shaft`, `temple-hall`, `fog` | 0.1049, 0.0619, 0.0659, 0.2257 | same to four digits |
 
 No other score in `baseline.json` moved by more than 0.0004. `gpu-vs-cpu` of `fog-valley` is 0.0120, so the 0.0112 gain is about as large as that spread; both renderers agree on the direction, and the valley is now 0.0097 below EEVEE, which the spread does not cover.
+
+## Sky visibility of the fog (2026-11-03, part of issue #164)
+
+The fog's ambient in the sun's shadow was one share for the whole box (`shadowAmbient`, derived from the middle of the box). `fogSkyVisibility` (`src/fog-sky-visibility.js`, passed to `Renderer67` by the harness and the agent preview like `skyOpenness`) replaces it with a per-point value: 24 upward rays from the centre of each cell of a grid over the fog box (at most 2,048 cells), read by the post shader from a 3D texture. A point that sees any sky keeps all the ambient, a point that sees none keeps 0.1, and sunlit fog keeps all of it as before. Without the option the sampling is compiled out, and a recipe that sets `shadowAmbient` gets no grid.
+
+Measured on the GPU render against the stored Cycles and EEVEE arrays (RTX 3060, `--skip-blender`; the whole frame, and the bright region in brackets; EEVEE against Cycles on the region is 0.2455 for `temple-hall`, 0.2643 for `dark-shaft`, 0.3146 for `fog-room`):
+
+| Scene | Before | After |
+| --- | --- | --- |
+| `temple-hall`, no bake | 0.0674 (0.2723) | 0.0640 (0.2611) |
+| `temple-hall`, baked | 0.0557 (0.2439) | 0.0559 (0.2335) |
+| `dark-shaft`, no bake | 0.0607 (0.1802) | 0.0559 (0.1282) |
+| `dark-shaft`, baked | 0.0598 (0.1716) | 0.0551 (0.1137) |
+| `fog-room`, no bake | 0.1049 (0.2405) | 0.1036 (0.1625) |
+
+Every other scene, including `fog` and `fog-valley`, has the same score to four digits. The region of `temple-hall` without a bake still does not beat EEVEE (0.2611 against 0.2455), so #164 stays open. Region and whole frame pull against each other there. Tried on the five fog scenes (floor for fog that sees no sky, steepness `k` of the ramp from the sky seen to the full ambient; `temple-hall` / `dark-shaft` / `fog-room` whole frame, then the `temple-hall` region):
+
+| Floor, k | whole frame | `temple-hall` region |
+| --- | --- | --- |
+| 0.15, 30 | 0.0651 / 0.0577 / 0.1088 | 0.2570 |
+| 0.10, 30 (kept) | 0.0640 / 0.0559 / 0.1036 | 0.2611 |
+| 0.10, 60 | 0.0652 / 0.0613 / 0.1096 | 0.2545 |
+| 0.06, 60 | 0.0638 / 0.0592 / 0.1056 | 0.2577 |
+| 0.15, 100 | 0.0681 / 0.0693 / 0.1207 | 0.2470 |
+
+A grid of the sky share alone (linear, no ramp) was worse everywhere: the share is under 0.05 for nine in ten cells of `temple-hall`, so the fog went dark (region 0.2938). The region of `temple-hall` wants more light near the far door (bounce from the sunlit floor and columns), which sky visibility does not carry; the bright haze outside the shafts is already close to Cycles in display luminance (0.0432 before, 0.0369 now, Cycles 0.0391). Next idea: a grid of the light the sunlit fog gives its neighbours, not of the sky.
+
+Cost: the rays run on the CPU once per scene and fog box: `dark-shaft` 0.03 s (1,120 triangles), `temple-hall` 1.7 s (11,892 triangles), a 12 x 6 x 32 grid. The core entry grows 141 bytes gzip (85,119 on main at 87561fd, 85,260 now); the agent preview entries grow 86 to 143 bytes (the ray code), and the four budgets `entry:agent-scene`, `entry:agent-asset`, `scene:agent-scene` and `scene:agent-scene+lazy` were raised by 100, 100, 200 and 100 bytes. Baked and plain rows are not in `baseline.json`, and `baseline.json` and the images were not rewritten by this change.

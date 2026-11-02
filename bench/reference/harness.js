@@ -6,6 +6,7 @@ import { skinnedGeometry } from '/src/path-tracer-scene.js';
 import { boxProjectedGeometry } from '/src/export-box-uv.js';
 import '/src/material-layer-shaders.js';
 import { skyOpenness } from '/src/closed-room.js';
+import { fogSkyVisibility } from '/src/fog-sky-visibility.js';
 import { createCascadedShadows } from '/src/cascaded-shadows.js';
 import { applyLightLinks } from '/src/light-linking.js';
 import { applyWaterReflection, attachWaterReflection } from '/src/water-reflection.js';
@@ -139,7 +140,7 @@ function createSceneRenderer(parts, scene, cascades, { water = WATER_REFLECTION 
   const reflecting = water === 'planar' ? applyWaterReflection(parts) : { parts, surface: null };
   const renderer = new Renderer67(document.querySelector('canvas'), applyLightLinks(reflecting.parts, scene.environment), {
     ground: false, hdr: true, depth: true, samples: 4, pixelRatio: 1, memoryBudgetMiB: 1024, world: true,
-    environment: scene.environment, shadowBounds: scene.shadow, shadowCascades: cascades ? createCascadedShadows({ count: cascades }) : null, skyOpenness,
+    environment: scene.environment, shadowBounds: scene.shadow, shadowCascades: cascades ? createCascadedShadows({ count: cascades }) : null, skyOpenness, fogSkyVisibility,
   });
   attachWaterReflection(renderer, reflecting.surface);
   if (water === 'ssr') {
