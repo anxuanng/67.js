@@ -431,6 +431,8 @@ export class Renderer67 {
     this.textureBytes = 4;
     this.shadowsDirty = true;
     this.windState = { time: 0, strength: 0.3 };
+    // The shadow map the constructor draws uses no assembly, so a first frame with none does not draw it again.
+    this.assemblyAmount = 0;
     const groups = groupParts(this.groundPart ? [...parts, this.groundPart] : parts, batching);
     const textureLimit = this.context.getParameter(this.context.MAX_TEXTURE_SIZE);
     this.hasSkins = groups.some(group => group[0].skin);
