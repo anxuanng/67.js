@@ -235,7 +235,7 @@ export class CascadedShadows {
     for (let layer = 0; layer < this.count; layer++) {
       context.framebufferTextureLayer(context.FRAMEBUFFER, context.DEPTH_ATTACHMENT, this.texture, 0, layer);
       context.clear(context.DEPTH_BUFFER_BIT);
-      renderer.drawShadowCasters(this.matrices.subarray(layer * 16, layer * 16 + 16));
+      renderer.drawShadowCasters(this.matrices.subarray(layer * 16, layer * 16 + 16), this.resolution);
     }
     context.bindFramebuffer(context.FRAMEBUFFER, null);
   }
