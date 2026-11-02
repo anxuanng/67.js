@@ -30,7 +30,7 @@ Version `0.8.0` adds source-node authoring on imported GLBs with retained rigs, 
 Version `0.9.0` adds isolated multi-angle and pose review with unchanged source revision and preview state.
 
 Version `0.10.0` adds terrain, texture sets, vegetation, liquid playback, vehicles, retargeting, image-based lighting, alpha materials and compressed glTF input.
-Version `0.11.0` adds `addons/mesh`: polygon editing, booleans, bevel, loop cuts, UV unwrapping and a modifier stack, with the `mesh_edit`, `mesh_stack` and `mesh_inspect` tools, plus grass, clutter and moss.
+Version `0.11.0` adds `addons/mesh` for polygon editing, with booleans, bevel, loop cuts, UV unwrapping and a modifier stack. It adds the `mesh_edit`, `mesh_stack` and `mesh_inspect` tools, plus grass, clutter and moss.
 Version `0.12.0` adds seeded procedural material patterns.
 Version `0.13.0` adds `addons/skeleton-pose` with clip layers, masks and IK, and `0.13.1` and `0.14.0` make it work on real imported characters, including through MCP.
 [CHANGELOG.md](CHANGELOG.md) lists every change, including work on `main` that is not released yet.
