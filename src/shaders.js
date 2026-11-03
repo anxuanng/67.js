@@ -466,7 +466,9 @@ vec3 terrainNoise(vec2 position) {
 }
 
 vec3 fresnel(float cosine, vec3 reflectance) {
-  return reflectance + (1.0 - reflectance) * pow(1.0 - cosine, 5.0);
+  // The light shading preset uses the spherical Gaussian fit of Schlick's power, which needs no logarithm.
+  float weight = LIGHT_SHADING ? exp2((-5.55473 * cosine - 6.98316) * cosine) : pow(1.0 - cosine, 5.0);
+  return reflectance + (1.0 - reflectance) * weight;
 }
 
 float shadowVisibility(vec3 normal) {
@@ -474,15 +476,17 @@ float shadowVisibility(vec3 normal) {
   if (projected.z > 1.0 || projected.z < 0.0 || any(lessThan(projected.xy, vec2(0.0))) || any(greaterThan(projected.xy, vec2(1.0)))) return 1.0;
   float cosine = max(dot(normal, normalize(lightDirection)), 0.05);
   float bias = shadowBiasPerSlope * clamp(sqrt(1.0 - cosine * cosine) / cosine, 0.25, 4.0);
+  // The light shading preset reads one comparison fetch, which is already filtered over 2 by 2 texels.
+  const int radius = LIGHT_SHADING ? 0 : 1;
   float visibility = 0.0;
   vec2 texel = 1.0 / vec2(textureSize(shadowMap, 0));
-  for (int row = -1; row <= 1; row++) {
-    for (int column = -1; column <= 1; column++) {
+  for (int row = -radius; row <= radius; row++) {
+    for (int column = -radius; column <= radius; column++) {
       // The sampler compares in hardware and filters the four texels bilinearly: one fetch instead of four.
       visibility += texture(shadowMap, vec3(projected.xy + vec2(column, row) * texel * 2.5, projected.z - bias));
     }
   }
-  return visibility / 9.0;
+  return visibility / float((2 * radius + 1) * (2 * radius + 1));
 }
 
 // Atlas tiles are 512 texels square on a 4 x 4 grid. The receiver is pushed off its surface by about two shadow texels,
@@ -548,12 +552,22 @@ ${featureCode("declarations")}vec3 illuminate(vec3 normal, vec3 viewDirection, v
   float alpha = roughness * roughness;
   float denominator = normalHalf * normalHalf * (alpha * alpha - 1.0) + 1.0;
   float distribution = alpha * alpha / max(PI * denominator * denominator, 0.00001);
-  float masking = pow(roughness + 1.0, 2.0) / 8.0;
-  float geometry = normalView / (normalView * (1.0 - masking) + masking);
-  geometry *= normalLight / (normalLight * (1.0 - masking) + masking);
+  float geometry;
+  float visibilityDenominator;
+  if (LIGHT_SHADING) {
+    // The Kelemen visibility replaces the Smith terms: one product, no divisions by roughness.
+    geometry = 1.0;
+    float lightHalf = max(dot(lightDirection, halfway), 0.001);
+    visibilityDenominator = 4.0 * lightHalf * lightHalf;
+  } else {
+    float masking = pow(roughness + 1.0, 2.0) / 8.0;
+    geometry = normalView / (normalView * (1.0 - masking) + masking);
+    geometry *= normalLight / (normalLight * (1.0 - masking) + masking);
+    visibilityDenominator = max(4.0 * normalView * normalLight, 0.001);
+  }
   vec3 baseReflectance = mix(materialDielectric, color, metallic);
 ${featureCode("illuminateReflectance")}  vec3 reflectance = fresnel(max(dot(halfway, viewDirection), 0.0), baseReflectance);
-  vec3 specular = distribution * geometry * reflectance / max(4.0 * normalView * normalLight, 0.001);
+  vec3 specular = distribution * geometry * reflectance / visibilityDenominator;
   specular *= directSpecularGain;
 ${featureCode("illuminateSpecular")}  vec3 diffuse = (1.0 - reflectance) * (1.0 - metallic) * color / PI;
   return (diffuse + specular) * radiance * normalLight;
@@ -801,7 +815,7 @@ void main() {
   }
   vec3 specularNormal = normal;
   vec3 baseReflectance = mix(materialDielectric, color, metallic);
-${featureCode("mainSetup")}  if (ENVIRONMENT_ENABLED) {
+${featureCode("mainSetup")}  if (ENVIRONMENT_ENABLED && !LIGHT_SHADING) {
     vec2 brdfLookup = texture(environmentBrdf, vec2(clamp(dot(normal, viewDirection), 0.001, 1.0), roughness)).rg;
     directSpecularGain = multipleScatterGain(brdfLookup, baseReflectance);
   }
@@ -975,7 +989,12 @@ const SHADER_FEATURE_CONDITIONS = {
 // Lighting from an environment map and the built-in studio lighting are two code paths, and a frame takes one of them.
 // SwiftShader runs both sides of a choice between them for every pixel, so a renderer that only ever draws one of the two
 // compiles the other out: ENVIRONMENT_ENABLED is true, false, or the uniform when both are listed.
-export const ENVIRONMENT_FEATURES = Object.freeze(['environmentMap', 'studioLighting']);
+export const LIGHT_SHADING_FEATURE = 'lightShading';
+/** Renderer option values: 'full' is the default picture, 'light' leaves out costly terms for weak machines. */
+export const SHADING_MODES = Object.freeze(['full', 'light']);
+/** The light preset resolves at most this many MSAA samples (on SwiftShader 2 cost a third of 4 in the blend heavy scene). */
+export const LIGHT_SHADING_MAXIMUM_SAMPLES = 2;
+export const ENVIRONMENT_FEATURES =Object.freeze(['environmentMap', 'studioLighting']);
 
 // Features that only the vertex shader reads: a part with a skeleton or morph targets.
 const VERTEX_ONLY_FEATURES = Object.freeze(['skin', 'morph']);
@@ -1013,7 +1032,7 @@ function requireFeatureCode(feature) {
 }
 
 function featureCodeSplicer(features) {
-  const codes = features.filter(feature => !(feature in SHADER_FEATURE_CONDITIONS) && !ENVIRONMENT_FEATURES.includes(feature) && !VERTEX_ONLY_FEATURES.includes(feature)).map(requireFeatureCode);
+  const codes = features.filter(feature => !(feature in SHADER_FEATURE_CONDITIONS) && !ENVIRONMENT_FEATURES.includes(feature) && !VERTEX_ONLY_FEATURES.includes(feature) && feature !== LIGHT_SHADING_FEATURE).map(requireFeatureCode);
   return slot => codes.map(code => code[slot] ?? '').join('');
 }
 
@@ -1045,6 +1064,8 @@ export function createFragmentShader(features = SHADER_FEATURES) {
   const lines = Object.entries(SHADER_FEATURE_CONDITIONS).map(([feature, [macro, condition]]) => `#define ${macro} ${enabled.has(feature) ? `(${condition})` : 'false'}`);
   lines.push('#define CANOPY_TAG (TAG_FOLIAGE || TAG_GRASS)');
   lines.push(`#define ENVIRONMENT_ENABLED ${environmentCondition(enabled)}`);
+  // Not in SHADER_FEATURES: the preset is chosen by the renderer, so a shader built from every feature keeps the full look.
+  lines.push(`#define LIGHT_SHADING ${enabled.has(LIGHT_SHADING_FEATURE) ? 'true' : 'false'}`);
   return buildFragmentShader(lines.join('\n'), featureCodeSplicer([...enabled]));
 }
 

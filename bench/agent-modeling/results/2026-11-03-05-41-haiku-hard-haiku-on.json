@@ -1,0 +1,194 @@
+{
+  "run": "2026-11-03-05-41-haiku-hard-haiku-on",
+  "model": "claude-haiku-5-5",
+  "date": "2026-11-03T05:45:57.277Z",
+  "skill": false,
+  "branches": "on",
+  "relations": "on",
+  "runsPerTask": 3,
+  "passed": 3,
+  "tasks": 3,
+  "toolCalls": 23,
+  "costUsd": 0.25,
+  "byModel": {
+    "claude-haiku-5-5": {
+      "runs": 3,
+      "passed": 3,
+      "successRate": 1,
+      "toolCalls": 23,
+      "toolErrors": 0,
+      "inputTokens": 1842818,
+      "outputTokens": 36593,
+      "costUsd": 0.25,
+      "tasks": {
+        "light-pick-hard": {
+          "runs": 3,
+          "passed": 3,
+          "successRate": 1,
+          "toolCalls": 23,
+          "toolErrors": 0,
+          "inputTokens": 1842818,
+          "outputTokens": 36593,
+          "costUsd": 0.25
+        }
+      }
+    }
+  },
+  "records": [
+    {
+      "task": "light-pick-hard",
+      "attempt": 1,
+      "pass": true,
+      "passed": 10,
+      "total": 10,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 5,
+      "toolErrors": 0,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_capabilities": 1,
+        "scene_create": 1,
+        "scene_apply": 1,
+        "scene_look": 1,
+        "scene_export_recipe": 1
+      },
+      "branchCalls": 0,
+      "relationCalls": 0,
+      "pathQueries": 0,
+      "features": {
+        "geometryTypes": [
+          "box"
+        ],
+        "meshOperations": [],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 1,
+            "side": 1,
+            "three-quarter": 1
+          },
+          "mean": 1
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-11-03-05-41-haiku-hard-haiku-on/look/1/light-pick-hard-front.png",
+          "artifacts/agent-modeling/2026-11-03-05-41-haiku-hard-haiku-on/look/1/light-pick-hard-side.png",
+          "artifacts/agent-modeling/2026-11-03-05-41-haiku-hard-haiku-on/look/1/light-pick-hard-three-quarter.png"
+        ]
+      },
+      "turns": 7,
+      "costUsd": 0.05559846,
+      "inputTokens": 446255,
+      "outputTokens": 14889,
+      "wallSeconds": 74,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "light-pick-hard",
+      "attempt": 2,
+      "pass": true,
+      "passed": 10,
+      "total": 10,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 9,
+      "toolErrors": 0,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_create": 1,
+        "scene_inspect": 1,
+        "scene_apply": 5,
+        "scene_review": 1,
+        "scene_export_recipe": 1
+      },
+      "branchCalls": 5,
+      "relationCalls": 0,
+      "pathQueries": 0,
+      "features": {
+        "geometryTypes": [
+          "box"
+        ],
+        "meshOperations": [],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 1,
+            "side": 1,
+            "three-quarter": 1
+          },
+          "mean": 1
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-11-03-05-41-haiku-hard-haiku-on/look/2/light-pick-hard-front.png",
+          "artifacts/agent-modeling/2026-11-03-05-41-haiku-hard-haiku-on/look/2/light-pick-hard-side.png",
+          "artifacts/agent-modeling/2026-11-03-05-41-haiku-hard-haiku-on/look/2/light-pick-hard-three-quarter.png"
+        ]
+      },
+      "turns": 11,
+      "costUsd": 0.15583933000000003,
+      "inputTokens": 710783,
+      "outputTokens": 11866,
+      "wallSeconds": 85,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "light-pick-hard",
+      "attempt": 3,
+      "pass": true,
+      "passed": 10,
+      "total": 10,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 9,
+      "toolErrors": 0,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_create": 1,
+        "scene_apply": 5,
+        "scene_review": 2,
+        "scene_export_recipe": 1
+      },
+      "branchCalls": 6,
+      "relationCalls": 0,
+      "pathQueries": 0,
+      "features": {
+        "geometryTypes": [
+          "box"
+        ],
+        "meshOperations": [],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 1,
+            "side": 1,
+            "three-quarter": 1
+          },
+          "mean": 1
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-11-03-05-41-haiku-hard-haiku-on/look/3/light-pick-hard-front.png",
+          "artifacts/agent-modeling/2026-11-03-05-41-haiku-hard-haiku-on/look/3/light-pick-hard-side.png",
+          "artifacts/agent-modeling/2026-11-03-05-41-haiku-hard-haiku-on/look/3/light-pick-hard-three-quarter.png"
+        ]
+      },
+      "turns": 11,
+      "costUsd": 0.041729640000000005,
+      "inputTokens": 685780,
+      "outputTokens": 9838,
+      "wallSeconds": 76,
+      "exitCode": 0,
+      "stopped": "success"
+    }
+  ]
+}

@@ -8,6 +8,8 @@ const GROUND_SPAN_SHARE = 0.9
 const GROUND_THINNESS = 0.25
 const GROUND_LOWEST_TOLERANCE = 1e-3
 const GROUND_MAXIMUM_METALLIC = 0.5
+// The display gamma stands for the sRGB curve: a mean albedo does not need its toe.
+const DISPLAY_GAMMA = 2.2
 const EXCLUDED_TAGS = new Set(['liquid', 'foam', 'unlit', 'fire', 'smoke', 'floor'])
 
 function sceneBoundsOf(boundsList) {
@@ -22,17 +24,44 @@ function sceneBoundsOf(boundsList) {
   return { minimum, maximum }
 }
 
-function groundAlbedo(material) {
-  const tinted = !material.map && !material.graph && material.alphaMode !== 'blend' && !(material.transmission > 0) && !EXCLUDED_TAGS.has(material.tag)
-  if (!tinted || !Array.isArray(material.color) || (material.metallic ?? 0) > GROUND_MAXIMUM_METALLIC) {
+// The mean of a base-colour texture in linear space, found once per image. Null for an image that is not raw RGBA bytes.
+const textureMeans = new WeakMap()
+
+function textureMeanAlbedo(map) {
+  const image = map.image
+  if (!image?.data || !(image.width > 0) || image.data.length < image.width * image.height * 4) {
     return null
   }
-  return material.color.slice(0, 3).map(channel => channel * (1 - (material.metallic ?? 0)))
+  if (!textureMeans.has(image)) {
+    const exponent = map.colorSpace === 'linear' ? 1 : DISPLAY_GAMMA
+    const sums = [0, 0, 0]
+    const pixelCount = image.width * image.height
+    for (let pixel = 0; pixel < pixelCount; pixel++) {
+      for (let channel = 0; channel < 3; channel++) {
+        sums[channel] += (image.data[pixel * 4 + channel] / 255) ** exponent
+      }
+    }
+    textureMeans.set(image, sums.map(sum => sum / pixelCount))
+  }
+  return textureMeans.get(image)
+}
+
+function groundAlbedo(material) {
+  const surface = !material.graph && material.alphaMode !== 'blend' && !(material.transmission > 0) && !EXCLUDED_TAGS.has(material.tag)
+  if (!surface || !Array.isArray(material.color) || (material.metallic ?? 0) > GROUND_MAXIMUM_METALLIC) {
+    return null
+  }
+  const textureMean = material.map ? textureMeanAlbedo(material.map) : [1, 1, 1]
+  if (!textureMean) {
+    return null
+  }
+  return material.color.slice(0, 3).map((channel, index) => channel * textureMean[index] * (1 - (material.metallic ?? 0)))
 }
 
 /**
- * The floor of a scene as `{ albedo }`, or null: the lowest, thin part that spans the scene, when it is a plain
- * coloured, non-metal, opaque surface. A textured floor, water and a scene without a floor give null.
+ * The floor of a scene as `{ albedo }`, or null: the lowest, thin part that spans the scene, when its surface is a plain
+ * or textured, non-metal, opaque colour. Water, a procedural graph material and a scene without a floor give null. A
+ * texture's albedo is its mean in linear space times the material colour.
  */
 export function findGroundSurface(parts) {
   if (parts.length < 2) {

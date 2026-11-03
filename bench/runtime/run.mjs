@@ -16,9 +16,9 @@ const BACKENDS = {
   gpu: { arguments: SHARED_ARGUMENTS, frames: 120 },
   cpu: { arguments: [...SHARED_ARGUMENTS, '--use-angle=swiftshader', '--enable-unsafe-swiftshader'], frames: 15 },
 };
-const ENGINES = ['67js', 'three', 'three-instanced', '67js-no-lod', '67js-no-culling', '67js-ldr', '67js-one-sample', '67js-ldr-one-sample', 'three-one-sample'];
+const ENGINES = ['67js', 'three', 'three-instanced', '67js-no-lod', '67js-no-culling', '67js-ldr', '67js-one-sample', '67js-ldr-one-sample', 'three-one-sample', '67js-light'];
 // Ablations of the HDR target and MSAA, which cost something in every scene. They run only when named with --engine.
-const FEATURE_ENGINES = new Set(['67js-ldr', '67js-one-sample', '67js-ldr-one-sample', 'three-one-sample']);
+const FEATURE_ENGINES = new Set(['67js-light', '67js-ldr', '67js-one-sample', '67js-ldr-one-sample', 'three-one-sample']);
 const INSTANCED_SCENES = new Set(['instanced-objects']);
 // Ablations of this renderer's own culling and level selection, which only a scene that has them can show.
 const ABLATION_SCENES = new Set(['large-outdoor']);
