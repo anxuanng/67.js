@@ -291,12 +291,7 @@ function nodeFrom(value) {
     }
     result.asset = agentSceneModule('assets').normalizeAssetPlacement(value.asset);
   }
-  if (value.vegetation !== undefined) {
-    if (value.geometry !== undefined || value.skin !== undefined || value.asset !== undefined) {
-      throw new TypeError(`Node ${value.id}: a node that grows vegetation is a group; drop geometry, material, skin and asset.`);
-    }
-    result.vegetation = agentSceneModule('vegetation').normalizeVegetation(value.vegetation);
-  }
+  if (value.vegetation !== undefined) result.vegetation = agentSceneModule('vegetation').normalizeVegetation(value.vegetation, value);
   if (value.decal !== undefined && typeof value.decal !== 'boolean') {
     throw new TypeError('decal must be boolean.');
   }
@@ -518,7 +513,7 @@ function compile(recipe, geometries, localBounds, limits) {
   const materials = new Map(recipe.materials.map(material => [material.id, material]));
   const graph = createSceneGraph(recipe.nodes.map(node => {
     if (node.geometry !== undefined && (!geometries.has(node.geometry) || !materials.has(node.material))) {
-      throw new RangeError(`Node ${node.id} uses ${geometries.has(node.geometry) ? `material ${node.material}` : `geometry ${node.geometry}`}, which does not exist. Add it to the recipe, or point the node at one of: ${(geometries.has(node.geometry) ? [...materials.keys()] : [...geometries.keys()]).join(', ')}.`);
+      throw new RangeError(`Node ${node.id} uses ${geometries.has(node.geometry) ? `material ${node.material}` : `geometry ${node.geometry}`}, which does not exist. Add it, or use one of: ${(geometries.has(node.geometry) ? [...materials.keys()] : [...geometries.keys()]).join(', ')}.`);
     }
     return { name: node.id, parent: node.parent,
       matrix: node.assetPart ? mat4.clone(node.assetPart.matrix) : mat4.fromRotationTranslationScale(mat4.create(), node.rotation, node.translation, node.scale),
@@ -633,7 +628,7 @@ function checkLightLinkNames(recipe) {
   }
   const unknown = agentSceneModule('lightLinking').unknownLightLinkNames(recipe.environment, recipe.nodes);
   if (unknown.length > 0) {
-    throw new RangeError(`Light links name nodes that do not exist (${unknown.slice(0, 4).join('; ')}). List node IDs with scene_inspect, then fix the affects list or add the node.`);
+    throw new RangeError(`Light links name nodes that do not exist (${unknown.slice(0, 4).join('; ')}). scene_inspect lists node IDs.`);
   }
 }
 
@@ -685,7 +680,7 @@ function normalizeRecipe(input, limits) {
   recipe.materials = resources(withDefaultMaterial(recipe), limits.maxMaterials, 'materials', materialFrom);
   const distinctPatterns = new Set(recipe.materials.filter(material => material.pattern).map(material => JSON.stringify(material.pattern)));
   if (distinctPatterns.size > MAX_MATERIAL_PATTERNS) {
-    throw new RangeError(`A scene holds at most ${MAX_MATERIAL_PATTERNS} different material patterns; it has ${distinctPatterns.size}. Reuse a pattern and tint it with color.`);
+    throw new RangeError(`A scene holds at most ${MAX_MATERIAL_PATTERNS} different material patterns; it has ${distinctPatterns.size}. Reuse one and tint it with color.`);
   }
   recipe.nodes = withoutArmatureNodes(recipe.nodes);
   if (hasInstancedNodes(recipe.nodes)) recipe.nodes = agentSceneModule('mesh').expandInstancedNodes(recipe.nodes, {
@@ -798,15 +793,6 @@ const NO_ASSETS = Object.freeze({ placements: [], animators: [], geometryParts: 
 function assetMaterialHandle(snapshot, output, ...candidates) {
   const reusable = candidates.find(handle => handle?.output === output);
   return reusable ?? { holder: { snapshot }, output };
-}
-
-function mergedRuntime(placed, vegetation) {
-  return {
-    ...placed,
-    geometryParts: new Map([...placed.geometryParts, ...vegetation.geometryParts]),
-    materialOutputs: new Map([...placed.materialOutputs, ...vegetation.materialOutputs]),
-    partExtras: new Map([...placed.partExtras, ...vegetation.partExtras]),
-  };
 }
 
 function retainedMatrices(parts) {
@@ -946,7 +932,7 @@ function removeNode(candidate, operation) {
     throw new TypeError('recursive must be boolean.');
   }
   if (!candidate.nodes.some(node => node.id === operation.id)) {
-    throw new RangeError(`${operation.type} target was not found: ${operation.id}. List current IDs with scene_inspect, or add it first with add-node, add-geometry or add-material.`);
+    throw new RangeError(`${operation.type} target was not found: ${operation.id}. scene_inspect lists the IDs; add it first with an add operation.`);
   }
   const children = new Map();
   for (const node of candidate.nodes) {
@@ -977,7 +963,6 @@ function removeNode(candidate, operation) {
 export function createAgentScene(input, inputLimits = {}, options = {}) {
   const limits = resolveLimits(inputLimits);
   const assetOutputCache = new Map();
-  let vegetationCache = null;
   let state = null;
   let revision = 0;
   let topologyRevision = 0;
@@ -1034,11 +1019,10 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
     const placedRuntime = recipe.nodes.some(node => node.asset)
       ? agentSceneModule('assets').expandAssetPlacements(recipe, options.assets, limits, assetOutputCache, recipe.nodes.some(node => node.asset?.drive) ? agentSceneModule('drive').createAssetDrive : null)
       : NO_ASSETS;
-    // Grown vegetation travels the placed-asset channel: generated geometries, materials and part nodes.
-    const vegetationRuntime = recipe.nodes.some(node => node.vegetation)
-      ? agentSceneModule('vegetation').expandVegetation(recipe, limits, vegetationCache ??= agentSceneModule('vegetation').createVegetationCache())
-      : null;
-    const assetRuntime = vegetationRuntime ? mergedRuntime(placedRuntime, vegetationRuntime) : placedRuntime;
+    // Grown vegetation travels the placed-asset channel; its module returns the placed runtime with its own parts added.
+    const assetRuntime = recipe.nodes.some(node => node.vegetation)
+      ? agentSceneModule('vegetation').expandVegetation(recipe, limits, assetOutputCache, placedRuntime)
+      : placedRuntime;
     if (state) {
       retainedMatrices(state.parts);
     }
@@ -1060,7 +1044,7 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
     const pendingVertices = pendingPlans.reduce((total, plan) => total + plan.estimatedVertices, 0);
     if (residentStats.vertices + pendingVertices > limits.maxVertices ||
         residentStats.geometryBytes + pendingVertices * 56 > limits.maxGeometryBytes) {
-      throw new RangeError('Geometry preflight exceeds peak maxVertices or maxGeometryBytes across active, checkpoint, and staged resources. Reduce detail or release checkpoints.');
+      throw new RangeError('Geometry preflight exceeds maxVertices or maxGeometryBytes across active, checkpoint and staged resources. Reduce detail or release checkpoints.');
     }
 
     // Validate references, hierarchy and matrix arithmetic before generating any new resource.
@@ -1158,7 +1142,6 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
       stats: geometryStats(geometryRecords.values()),
     };
     stagedState.assetRuntime = assetRuntime;
-    stagedState.vegetationReport = vegetationRuntime?.report ?? [];
     stagedState.localBounds = localBounds;
     stagedState.skinBindings = skinBindings;
     stagedState.skinStages = createSkinStages(skinBindings);
@@ -1551,7 +1534,7 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
           identifier(operation.id);
           const index = candidate[removal].findIndex(record => record.id === operation.id);
           if (index < 0) {
-            throw new RangeError(`${operation.type} target was not found: ${operation.id}. List current IDs with scene_inspect, or add it first with add-node, add-geometry or add-material.`);
+            throw new RangeError(`${operation.type} target was not found: ${operation.id}. scene_inspect lists the IDs; add it first with an add operation.`);
           }
           candidate[removal].splice(index, 1);
           if (operation.type === 'remove-material') {
@@ -1571,11 +1554,11 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
           fields = CAMERA_FIELDS;
           target = candidate.camera;
         } else {
-          throw new TypeError(`Unsupported operation type: ${operation.type}. Use one of set-node, set-material, set-camera, set-motion, set-physics, set-cloth, set-timeline, set-particles, set-bake, set-environment, set-effects, set-shadow, add-node, add-geometry, add-material, remove-node, remove-geometry, remove-material, edit-mesh, set-mesh-stack.`);
+          throw new TypeError(`Unsupported operation type: ${operation.type}. Use one of ${AGENT_SCENE_CAPABILITIES.operations.join(', ')}.`);
         }
         knownKeys(operation, ['type', ...(operation.type === 'set-camera' ? [] : ['id']), ...fields], 'operation');
         if (!target) {
-          throw new RangeError(`${operation.type} target was not found: ${operation.id}. List current IDs with scene_inspect, or add it first with add-node, add-geometry or add-material.`);
+          throw new RangeError(`${operation.type} target was not found: ${operation.id}. scene_inspect lists the IDs; add it first with an add operation.`);
         }
         for (const field of fields) {
           if (Object.hasOwn(operation, field)) {
@@ -1624,7 +1607,7 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
         physics: state.physicsSampler ? state.physicsSampler.report() : null,
         ...(state.clothSampler ? { cloth: state.clothSampler.report() } : {}),
         ...(state.particleSampler ? { particles: state.particleSampler.report() } : {}),
-        ...(state.vegetationReport?.length ? { vegetation: state.vegetationReport } : {}),
+        ...(state.assetRuntime.vegetation ? { vegetation: state.assetRuntime.vegetation } : {}),
         ...(state.assetRuntime.placements.length ? { assets: agentSceneModule('assets').describeAssetPlacements(state.assetRuntime, state.graph, geometry => state.localBounds.get(geometry)) } : {}),
         ...(state.bakeReport ? { bake: state.bakeReport } : {}),
         ...(state.reflectionReport ? { reflections: state.reflectionReport } : {}),

@@ -61,7 +61,7 @@ const MODULE_MARKERS = {
   lightLinking: ['"affects"', '"keyAffects"'],
   cascades: ['"shadowCascades"'],
   assets: ['"asset":{'],
-  vegetation: ['"vegetation":{'],
+  vegetation: ['"vegetation":{', '"wind":{'],
   lineArt: ['"lines":{', '"toon":'],
   viewTransform: ['"viewTransform":"agx"', '"viewTransform":"neutral"', '"look":"'],
   // The coplanar-overlap warning in scene_inspect appears only once this is loaded, which loadAllAgentSceneModules does; a recipe with resolveCoplanar needs it.

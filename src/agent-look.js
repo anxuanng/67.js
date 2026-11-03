@@ -292,13 +292,7 @@ function environmentFrom(input = {}) {
   if (input.shadowCascades !== undefined) {
     environment.shadowCascades = shadowCascadesFrom(input.shadowCascades);
   }
-  if (input.wind !== undefined && input.wind !== null) {
-    knownKeys(input.wind, ['strength', 'direction'], 'wind');
-    environment.wind = {
-      strength: numberInRange(fallback(input.wind.strength, 0.3), 0, 4, 'wind.strength'),
-      direction: numberInRange(fallback(input.wind.direction, 0), -360, 360, 'wind.direction'),
-    };
-  }
+  if (input.wind !== undefined && input.wind !== null) environment.wind = agentSceneModule('vegetation').normalizeWind(input.wind);
   if (input.viewTransform !== undefined) {
     if (!VIEW_TRANSFORM_NAMES.includes(input.viewTransform)) {
       throw new RangeError(`environment.viewTransform must be one of ${VIEW_TRANSFORM_NAMES.join(', ')}.`);

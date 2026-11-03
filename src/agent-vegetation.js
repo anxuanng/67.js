@@ -90,8 +90,31 @@ function normalizeScatter(value) {
   return result;
 }
 
-/** Validate the `vegetation` field of a node. Returns the canonical form kept in the recipe. */
-export function normalizeVegetation(value) {
+/** Validate environment.wind: strength 0 to 4 (0.3) and direction in degrees (0 toward +x, 90 toward +z). */
+export function normalizeWind(value) {
+  knownKeys(value, ['strength', 'direction'], 'wind');
+  return {
+    strength: numberWithin(value.strength ?? 0.3, 0, 4, 'wind.strength'),
+    direction: numberWithin(value.direction ?? 0, -360, 360, 'wind.direction'),
+  };
+}
+
+// The placed-asset runtime with the vegetation maps added to it, and the report for scene_inspect.
+function mergedRuntime(placed, vegetation) {
+  return {
+    ...placed,
+    vegetation: vegetation.report,
+    geometryParts: new Map([...placed.geometryParts, ...vegetation.geometryParts]),
+    materialOutputs: new Map([...placed.materialOutputs, ...vegetation.materialOutputs]),
+    partExtras: new Map([...placed.partExtras, ...vegetation.partExtras]),
+  };
+}
+
+/** Validate the `vegetation` field of a node (`node` is the whole node, which must be a group). Returns the canonical form kept in the recipe. */
+export function normalizeVegetation(value, node) {
+  if (node && (node.geometry !== undefined || node.skin !== undefined || node.asset !== undefined)) {
+    throw new TypeError(`Node ${node.id}: a node that grows vegetation is a group; drop geometry, material, skin and asset.`);
+  }
   knownKeys(value, VEGETATION_FIELDS, 'vegetation');
   const result = {};
   if ((value.species === undefined) === (value.mix === undefined)) {
@@ -237,10 +260,11 @@ function materialJson(material) {
 
 /**
  * Generate the geometries, materials and part nodes of every vegetation node into a normalized recipe, in place.
- * `cache` (kept by the scene) holds grown trees across edits, so a camera or season edit does not grow them again.
+ * `cache` (the scene's asset output map) holds grown trees across edits, so a camera or season edit does not grow them again.
  * Returns the runtime maps the scene merges with the placed-asset ones, and a report for scene_inspect.
  */
-export function expandVegetation(recipe, limits, cache) {
+export function expandVegetation(recipe, limits, cache, placedRuntime) {
+  cache.serial ??= 0;
   const planted = recipe.nodes.filter(node => node.vegetation);
   const runtime = { geometryParts: new Map(), materialOutputs: new Map(), partExtras: new Map(), report: [] };
   const generatedNodes = [];
@@ -248,9 +272,11 @@ export function expandVegetation(recipe, limits, cache) {
   const eye = recipe.camera?.eye ?? [0, 0, 0];
   for (const node of planted) {
     const { vegetation } = node;
-    const key = cacheKey(recipe, node);
+    const key = `vegetation:${cacheKey(recipe, node)}`;
     if (!cache.has(key)) {
-      if (cache.size >= VEGETATION_LIMITS.maxCachedSets) cache.delete(cache.keys().next().value);
+      // The scene shares this map with its placed assets, so only grown sets are evicted.
+      const grownKeys = [...cache.keys()].filter(candidate => candidate.startsWith('vegetation:'));
+      if (grownKeys.length >= VEGETATION_LIMITS.maxCachedSets) cache.delete(grownKeys[0]);
       cache.set(key, { serial: ++cache.serial, grown: grow(recipe, vegetation), outputs: new Map() });
     }
     const entry = cache.get(key);
@@ -317,12 +343,5 @@ export function expandVegetation(recipe, limits, cache) {
     throw new RangeError(`Vegetation expands to ${generatedNodes.length} part nodes, which with the ${recipe.nodes.length} authored nodes exceeds maxNodes ${limits.maxNodes}. Lower density or cull far trees with cullDistance.`);
   }
   recipe.nodes.push(...generatedNodes);
-  return runtime;
-}
-
-/** The cache a scene keeps for grown vegetation; a Map with a serial counter so geometry IDs never repeat. */
-export function createVegetationCache() {
-  const cache = new Map();
-  cache.serial = 0;
-  return cache;
+  return mergedRuntime(placedRuntime, runtime);
 }
