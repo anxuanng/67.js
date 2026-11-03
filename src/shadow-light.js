@@ -17,3 +17,17 @@ export function resolveShadowLight(world, lightDirection, shadowBounds = {}) {
   const eye = target.map((value, axis) => value + (direction[axis] / length) * distance);
   return { ...view, eye, ...shadowBounds, target };
 }
+
+// How far the 9 tap filter (taps 2.5 texels apart, plus the bilinear blend) reaches from its centre, in shadow texels.
+const FILTER_REACH_TEXELS = 3.5;
+
+/**
+ * The depth bias the sun shadow needs per unit of slope (tan of the angle between the surface normal and the sun), in
+ * the shadow map's 0 to 1 depth. It is the world distance the depth changes across the filter on a 45 degree slope,
+ * `extent * 2 / mapSize * FILTER_REACH_TEXELS`, divided by `far - near`, so the same scene gives the same bias in metres
+ * for any depth range. `light` is the result of `resolveShadowLight`.
+ */
+export function shadowBiasPerSlope(light, mapSize) {
+  const texelWorldSize = (light.extent * 2) / mapSize;
+  return (texelWorldSize * FILTER_REACH_TEXELS) / (light.far - light.near);
+}
