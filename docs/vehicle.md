@@ -48,6 +48,7 @@ renderer.updateParts(allParts);
 | `forwardAxis` | `'+z'` | Model forward direction |
 | `wheelbase` | measured front axle to rear axle | Metres, needed when the axles cannot be measured |
 | `maxSteerAngle` | 35 degrees | Clamp for the steering angle |
+| `lights` | none | Headlights and tail lights, see Lights |
 
 Per wheel: `side` is `left`, `right` or `center`, `axle` is `front` or `rear`; both are inferred from position when omitted.
 `steerable` defaults to the front axle.
@@ -82,13 +83,47 @@ Speed is arc-length based. Give exactly one of:
 
 Other options: `startTime`, `groundHeight(x, z)`, `maxSteerAngle`, `rollGain` (0.012 rad per m/s2), `pitchGain` (0.012), `bounceFrequency` (1.6 Hz), `dampingRatio` (0.45), `suspensionTravel` (0.2 m), `pathSamples` (400, for camera paths).
 
-`sample(seconds)` returns `{ time, distance, speed, position, heading, pitch, roll, steerAngle, wheels: [{ id, spinAngle, steerAngle, suspensionOffset }] }`.
+`sample(seconds)` returns `{ time, distance, speed, direction, position, heading, pitch, roll, steerAngle, wheels: [{ id, spinAngle, steerAngle, suspensionOffset }], lights }`.
 
 - Wheel spin is `distance / radius`; inside wheels in a corner turn slower by their lateral offset times the heading change.
-- Steering uses a bicycle model: `atan(wheelbase * curvature)`, clamped.
+- Steering uses a bicycle model: `pose.steerAngle` is `atan(wheelbase * curvature)`, clamped. By default each steerable wheel gets its own Ackermann angle `atan2(ahead * tan, wheelbase - sideways * tan)` about the same turning centre, from its measured offsets (`rig.wheelbase`, `rig.trackWidth`): at full lock the inner front wheel turns `atan(wheelbase / (R - track / 2))` and the outer `atan(wheelbase / (R + track / 2))`, with `R = wheelbase / tan(maxSteerAngle)`. Pass `steering: 'shared'` for one angle on every steerable wheel.
 - Roll follows lateral acceleration and pitch follows longitudinal acceleration through a spring and damper. The response is integrated at a fixed step when the drive is created, so sampling order does not matter.
 - With `groundHeight`, the body height and its slope pitch and roll are fitted to the ground under the four wheels, and each wheel gets a `suspensionOffset` so it touches the ground. Without it, height and slope come from the path.
 - The vehicle holds the end of the path with zero speed. Use `cruiseSpeed` for a natural stop; a constant `speed` stops instantly and the body pitches accordingly.
+
+## Reversing
+
+`driveAlongLegs(rig, legs, options)` drives `[{ path, direction: 'forward' | 'reverse', pause }]` in order and takes the same options as `driveAlongPath`, which is the one-leg case.
+The car stops at the end of every leg (only the first start and last end keep `startSpeed` and `endSpeed`), waits `pause` seconds (default 0), then starts the next leg.
+A reverse leg's path is the way the car travels, so list its points in travel order from where the previous leg ended.
+The car keeps facing the other way: heading is the path tangent plus a half turn, continuous at the stop, and steering and body roll flip so the same bend asks for the opposite lock.
+`pose.distance` and `pose.speed` are signed along the car's forward axis and `pose.direction` is `1` or `-1`, so wheel spin runs backwards while reversing and spin times radius still equals `pose.distance`.
+
+```js
+const drive = driveAlongLegs(rig, [
+  { path: [[0, 0, 0], [0, 0, 10]] },
+  { path: [[0, 0, 10], [0, 0, 4]], direction: 'reverse', pause: 0.5 },
+], { cruiseSpeed: 4, acceleration: 2, braking: 2 });
+```
+
+## Lights
+
+Describe lamps once in `createVehicleRig({ lights })`:
+
+| Field | Meaning |
+| --- | --- |
+| `headlights` | `[{ id, position, direction }]` in model space; `direction` defaults to the model forward axis |
+| `tailLights` | `[{ id, part \| node \| targets, signal: 'brake' \| 'reverse', off, on }]`, the lamp material's emission strength at signal 0 and 1 (defaults 0 and 4) |
+
+`pose.lights` is `{ brake, reverse, headlights: [{ id, position, direction }] }`.
+Headlight positions and unit directions are in world space and follow the body, including pitch and roll.
+`brake` is 0 to 1: the deceleration of the speed profile divided by `fullBrakeDeceleration` (default `braking`), so it is above 0 exactly while the car slows down, forwards or backwards.
+A constant `speed` never decelerates, so its brake signal stays 0.
+`reverse` is 1 while the car moves backwards.
+
+`computeVehicleLightEmissions(rig, pose)` returns `[{ id, emission, entries }]` for any source.
+`applyVehicleLightsToParts(rig, pose)` writes it to `part.material.emission` for a rig built from `parts` (give each lamp its own material, since parts sharing one material share the glow) and returns the parts; call `renderer.updateParts` after it.
+Use the headlight poses to place spot lights; the pose carries no renderer state.
 
 ## Applying a pose
 
@@ -104,8 +139,9 @@ Skinned vehicles are not driven by this addon.
 
 ## Limits
 
-- Kinematic only: no collisions, tire slip, jumps or reversing. Heading follows the path tangent.
+- Kinematic only: no collisions, tire slip or jumps. Heading follows the path tangent (plus a half turn while reversing).
 - Ground is sampled under the wheels as a plane fit, so sharp bumps narrower than the wheelbase show as suspension offsets, clamped to `suspensionTravel`.
-- All steerable wheels share one angle; there is no Ackermann split.
+- Rear-steered wheels get no Ackermann angle: the split is measured from the rear axle.
+- The MCP `motion.drive` field is not wired yet; the addon is code-only for now.
 - Nodes with a nonzero scene-graph `pivot` are rejected.
 - Wheel radius from geometry assumes the wheel is round in the plane across its axle.
