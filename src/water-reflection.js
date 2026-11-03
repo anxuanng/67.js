@@ -247,7 +247,8 @@ export function attachWaterReflection(renderer, surface, { scale = WATER_REFLECT
   const dispose = renderer.dispose;
   const renderFrame = frame => render.call(renderer, frame);
   renderer.render = frame => {
-    if (!frame.reflectionTarget) {
+    // A render pass (albedo, depth, object ID...) never shows the reflection, so it skips the mirror draw.
+    if (!frame.reflectionTarget && frame.pass === undefined) {
       drawMirrorImage(renderer, state, frame, renderFrame);
     }
     return render.call(renderer, frame);

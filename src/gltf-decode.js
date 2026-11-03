@@ -27,6 +27,11 @@ const WEBP_SIGNATURE = [0x52, 0x49, 0x46, 0x46, null, null, null, null, 0x57, 0x
 const LINEAR_SRGB = 'srgb-linear';
 const COMPONENT_CODES = new Map(Object.entries(COMPONENT_TYPES).map(([code, ArrayType]) => [ArrayType, Number(code)]));
 
+/** POINTS, LINES, LINE_LOOP and LINE_STRIP (modes 0 to 3) are not drawn, so the decoder leaves them out. */
+export function isLinePrimitive(primitive) {
+  return primitive.mode >= 0 && primitive.mode <= 3;
+}
+
 export function textureSourceIndex(texture) {
   return texture.extensions?.KHR_texture_basisu?.source ?? texture.extensions?.EXT_texture_webp?.source ?? texture.source;
 }
@@ -142,11 +147,11 @@ export async function decodeGltf({ document, glbBinary, resourceBytes, decoders,
     let loaded;
     if (isKtx2) {
       const texture = await loadKtx2Image(bytes);
-      loaded = { image: texture.image, isCompressedTexture: texture.isCompressedTexture === true };
+      loaded = { image: texture.image, isCompressedTexture: texture.isCompressedTexture === true, format: texture.format, mipmaps: texture.mipmaps };
       releasers.push(() => texture.dispose?.());
     } else {
       const image = await decodeImage(bytes, mimeTypeOf(document.images[sourceIndex], bytes), imageTargets.get(sourceIndex));
-      loaded = { image, isCompressedTexture: false };
+      loaded = { image, isCompressedTexture: false, format: undefined, mipmaps: undefined };
       releasers.push(() => image.close?.());
     }
     images.set(key, loaded);
@@ -171,10 +176,12 @@ export async function decodeGltf({ document, glbBinary, resourceBytes, decoders,
     if (textures.has(textureIndex)) return textures.get(textureIndex);
     const definition = document.textures[textureIndex];
     const sampler = document.samplers?.[definition.sampler] ?? {};
-    const { image, isCompressedTexture } = await loadTextureImage(definition);
+    const { image, isCompressedTexture, format, mipmaps } = await loadTextureImage(definition);
     const texture = {
       image,
       isCompressedTexture,
+      format,
+      mipmaps,
       wrapS: sampler.wrapS ?? 10497,
       wrapT: sampler.wrapT ?? 10497,
       minFilter: sampler.minFilter ?? 9987,
@@ -353,6 +360,7 @@ export async function decodeGltf({ document, glbBinary, resourceBytes, decoders,
     const objects = [];
     if (definition.mesh !== undefined) {
       for (let primitiveIndex = 0; primitiveIndex < document.meshes[definition.mesh].primitives.length; primitiveIndex++) {
+        if (isLinePrimitive(document.meshes[definition.mesh].primitives[primitiveIndex])) continue;
         objects.push(await createPrimitiveObject(definition, nodeIndex, definition.mesh, primitiveIndex));
       }
     }

@@ -362,6 +362,8 @@ const geometry = z.discriminatedUnion('type', [
   z.strictObject({ id: identifier, type: z.literal('grid'), segments: detail(1, 64) }),
   z.strictObject({ id: identifier, type: z.literal('mesh'), base: z.discriminatedUnion('type', primitiveGeometries(false)).describe('Starting shape, converted to welded quads with axis face tags.'), edits: recipeMeshEdits.optional().describe('Replayable edit log, applied in order. Each item has the shape of one mesh_edit edit; read that tool for every op and field.'), stack: recipeMeshStack.optional().describe('Non-destructive modifier stack evaluated after the edits. Each item has the shape of one mesh_stack node; read that tool for the ops.'), smoothAngle: bounded(0, 180).optional().describe('Edges bending more than this many degrees render hard. Defaults to 30.') }),
 ]);
+// No description: this field repeats in every motion track schema. A wrong name fails with every valid form, and docs/agent-motion.md lists them.
+const easingField = z.string().max(80).optional();
 function motionTrack(kind, property, value, tangent) {
   return z.strictObject({
     kind: z.literal(kind),
@@ -371,6 +373,7 @@ function motionTrack(kind, property, value, tangent) {
     keyframes: z.array(z.strictObject({
       time: z.number().min(0).max(30), value,
       inTangent: tangent.optional(), outTangent: tangent.optional(),
+      easing: easingField,
     })).min(1).max(64),
   });
 }
@@ -617,7 +620,7 @@ const renderSettings = z.strictObject({
   animation: z.strictObject({ clip: z.number().int().min(0), start: z.number().min(0).max(3600).optional() }).optional(),
   motion: z.strictObject({ start: z.number().min(0).max(3600).optional() }).optional(),
   rendererTime: z.strictObject({ start: z.number().min(0).max(3600).optional(), rate: z.number().min(-16).max(16).optional() }).optional(),
-  renderer: z.strictObject({ type: z.literal('pathTracer'), samples: z.number().optional(), bounces: z.number().optional(), denoise: z.boolean().optional(), seed: z.number().optional(), maxSeconds: z.number().optional(), noiseThreshold: z.number().optional() }).optional().describe('image only: offline path tracer; limits and skips in scene_capabilities pathTracer.'),
+  renderer: z.strictObject({ type: z.literal('pathTracer'), samples: z.number().optional(), bounces: z.number().optional(), denoise: z.union([z.boolean(), z.enum(['wavelet', 'oidn', 'none'])]).optional(), seed: z.number().optional(), maxSeconds: z.number().optional(), noiseThreshold: z.number().optional() }).optional().describe('image only: path tracer; see scene_capabilities pathTracer.'),
   timeline: z.strictObject({ start: z.number().min(0).max(60).optional() }).optional().describe('Play the recipe timeline from start (default 0); duration defaults to the rest of it. It owns the motion clock, so leave motion and animation out.'),
   audio: z.strictObject({ file: z.string().max(68), offset: z.number().min(0).max(3600).optional() }).optional().describe('Video only: a file name in the --audio folder (.wav, .mp3, .ogg, .flac) mixed in from offset seconds.'),
   encoder: z.enum(VIDEO_ENCODERS).optional().describe('Video only: cpu (default) or nvenc.'),

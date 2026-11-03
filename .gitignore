@@ -56,3 +56,8 @@ public/agent-motion.md
 public/agent-character-motion.md
 public/agent-review.md
 .claude/worktrees/
+bench/gaussian-splats/data/
+public/gaussian-splats.md
+
+# Optional denoiser binaries fetched by packages/denoise-oidn/fetch-oidn.mjs
+packages/denoise-oidn/vendor/
