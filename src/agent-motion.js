@@ -5,7 +5,6 @@ import { createNodeConstraintEvaluator, normalizeConstraints, normalizeDrivers }
 import { normalizeClipLayers } from './agent-clip-layers.js';
 import { normalizeKeyframeEasing } from './easing.js';
 import { normalizeFootLock } from './foot-lock.js';
-import { normalizeDrive } from './agent-drive-schema.js';
 import { bounded, denseArray, finite, knownKeys, valueFrom } from './motion-validation.js';
 
 const PROPERTIES = {
@@ -282,10 +281,10 @@ function ikKeyframeCount(ik) {
 /** Normalize bounded authored data without storing bindings or sampled poses. */
 /** The canonical drive entry and the drive built from it, which proves the wheels, path and speeds are usable. */
 function normalizedDrive(input, recipe) {
-  if (!recipe.buildDrive) {
+  if (!recipe.normalizeDrive) {
     throw new RangeError('motion.drive moves an imported asset recipe. For an asset placed in a scene, give the placement a drive: { asset: { id, drive } }.');
   }
-  const canonical = normalizeDrive(input);
+  const canonical = recipe.normalizeDrive(input);
   return { canonical, built: recipe.buildDrive(canonical) };
 }
 
@@ -304,7 +303,7 @@ export function normalizeAgentMotion(input, recipe) {
   const inputTracks = input.tracks ?? [];
   denseArray(inputTracks, 128, 'Motion tracks');
   if (!inputTracks.length && !input.layers?.length && !input.ik?.length && !input.constraints?.length && !input.drivers?.length && !drive) {
-    throw new RangeError('Motion needs at least one track, IK solver, constraint, driver or drive. Use null to clear it.');
+    throw new RangeError('Motion needs at least one track, IK solver, constraint or driver. Use null to clear it.');
   }
   const nodes = new Set((recipe.nodes ?? []).map(node => node.id));
   const materials = new Set((recipe.materials ?? []).map(material => material.id));

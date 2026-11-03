@@ -4,6 +4,8 @@ import { createVehicleRig, driveAlongLegs, createVehicleNodeOverrides } from './
 // The `drive` entry of an asset recipe's motion and of a placed asset: a car driven along a path by the vehicle kit.
 // Loaded on demand (module 'drive'); sampling is a pure function of time, so frames render in any order.
 
+export { normalizeDrive } from './agent-drive-schema.js';
+
 function resolvePath(path) {
   return Array.isArray(path) ? path : createCameraPath({ loop: false, ...path });
 }

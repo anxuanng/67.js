@@ -36,7 +36,7 @@ export const AGENT_ASSET_CAPABILITIES = Object.freeze({
     'set-camera', 'set-environment', 'set-effects', 'set-shadow',
     'set-root', 'set-animation', 'set-material', 'set-asset-node', 'set-motion', 'set-physics', 'edit-mesh',
   ]),
-  motionDrive: 'drive {path | legs [{path, direction forward|reverse, pause}], speed | cruiseSpeed (+ acceleration, braking, maxLateralAcceleration), wheels auto | [{id,node|nodes,side,axle,radius,steerable,spinSign}], body, forwardAxis, wheelbase, steering ackermann|shared, lights {headlights [{id,position,direction}], tailLights [{material,signal brake|reverse,off,on}]}}: a car driven along a path (points or a camera path), wheels rolling and steering, tail lights glowing with the brake. duration may be left out: it becomes the drive time. scene_inspect motionDrive lists the wheels found, rejectedNames and the light signals at the motion time. See docs/vehicle.md',
+  motionDrive: 'drive {path | legs [{path, direction forward|reverse, pause}], cruiseSpeed | speed, wheels auto | [{id,node,side,axle,radius}], lights {headlights, tailLights [{material,signal brake|reverse,off,on}]}}: a car along a path; duration may be left out. scene_inspect motionDrive reports wheels, rejectedNames and light signals; docs/vehicle.md has every field',
   ragdoll: 'physics {duration, floor?, ragdoll {}}: joints fall limp onto a floor at world height floor (default 0)',
   boundsKind: 'authored-base-world',
 });
@@ -527,7 +527,7 @@ export function createAgentAssetScene(asset, inputRecipe, { sources } = {}) {
     return {
       nodes: [...sourceNodes.values()].filter(node => node.editable),
       materials: [...baselines.values()], camera: candidate.camera,
-      buildDrive, ikHierarchy: [...sourceNodes.values()], clipLayerContext, morphTargets: [...morphTargetIndex.keys()],
+      buildDrive, normalizeDrive: input => agentSceneModule('drive').normalizeDrive(input), ikHierarchy: [...sourceNodes.values()], clipLayerContext, morphTargets: [...morphTargetIndex.keys()],
       ikRootMatrix: Array.from(mat4.fromRotationTranslationScale(mat4.create(), root.rotation, root.translation, [root.scale[0], root.scale[0], root.scale[0]])),
     };
   }
