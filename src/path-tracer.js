@@ -1,6 +1,8 @@
 import { pointLightFalloff } from './ray-query.js';
 import { buildTraceScene, SUN_ANGULAR_RADIUS } from './path-tracer-scene.js';
 import { denoiseRadiance } from './path-tracer-denoise.js';
+import { acesChannel, displayColor } from './view-transform.js';
+import { VIEW_TRANSFORM_NAMES } from './view-transform-names.js';
 import {
   buildFrame, createSurface, environmentPdf, environmentRadiance, evaluateSurface, luminance, mirrorWeight, prepareSurface,
   roughnessToAlpha, sampleEnvironment, sampleGlass, sampleSurface,
@@ -93,8 +95,11 @@ export function normalizePathTracerOptions(options = {}) {
     fireflyClamp: boundedNumber(options, 'fireflyClamp'),
     noiseThreshold: boundedNumber(options, 'noiseThreshold'),
     denoiser: denoiserNamed(options.denoise ?? true),
+    viewTransform: options.viewTransform ?? 'aces',
+    look: options.look ?? null,
   };
   result.denoise = result.denoiser !== 'none';
+  if (!VIEW_TRANSFORM_NAMES.includes(result.viewTransform)) throw new RangeError(`Path tracer viewTransform must be one of ${VIEW_TRANSFORM_NAMES.join(', ')}.`);
   if (result.width * result.height > MAX_TRACE_PIXELS) throw new RangeError(`A path trace takes at most ${MAX_TRACE_PIXELS} pixels.`);
   if (result.width * result.height * result.samples * (result.bounces + 1) > MAX_TRACE_RAY_WORK) throw new RangeError('This path trace would need too much ray work: lower the size, samples or bounces.');
   return result;
@@ -781,17 +786,15 @@ function createPathTracer(scene, options) {
 
 // ---- Image ----
 
-function toneMap(linear) {
-  const color = Math.max(linear, 0);
-  const mapped = Math.min(1, Math.max(0, (color * (2.51 * color + 0.03)) / (color * (2.43 * color + 0.59) + 0.14)));
-  return mapped ** (1 / 2.2);
-}
-
-/** The display transform of the rasterizer's post pass (filmic curve and gamma 2.2) applied to linear pixels. */
-export function toneMapToRgba8(linear, width, height) {
+/** The display transform of the rasterizer's post pass (view transform, gamma 2.2, optional look) applied to linear pixels. */
+export function toneMapToRgba8(linear, width, height, { viewTransform = 'aces', look = null } = {}) {
   const rgba = new Uint8ClampedArray(width * height * 4);
+  const plainCurve = viewTransform === 'aces' && !look;
   for (let pixel = 0; pixel < width * height; pixel++) {
-    for (let channel = 0; channel < 3; channel++) rgba[pixel * 4 + channel] = Math.round(toneMap(linear[pixel * 3 + channel]) * 255);
+    const color = plainCurve
+      ? [0, 1, 2].map(channel => acesChannel(linear[pixel * 3 + channel]) ** (1 / 2.2))
+      : displayColor([linear[pixel * 3], linear[pixel * 3 + 1], linear[pixel * 3 + 2]], { viewTransform, look });
+    for (let channel = 0; channel < 3; channel++) rgba[pixel * 4 + channel] = Math.round(color[channel] * 255);
     rgba[pixel * 4 + 3] = 255;
   }
   return rgba;
@@ -1002,7 +1005,7 @@ export async function renderPathTracedImage({ parts, environment = {}, camera },
   const { samplesTaken, ...denoiseInputs } = buffers;
   const linear = options.denoiser === 'wavelet' ? denoiseRadiance({ width, height, ...denoiseInputs }) : buffers.color;
   return {
-    width, height, linear, rgba: toneMapToRgba8(linear, width, height), features: denoiseInputs,
+    width, height, linear, rgba: toneMapToRgba8(linear, width, height, options), features: denoiseInputs,
     report: {
       width, height, samples: options.samples, bounces: options.bounces, seed: options.seed, denoised: options.denoiser === 'wavelet',
       denoiser: options.denoiser, threads,

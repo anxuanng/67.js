@@ -49,8 +49,8 @@ test('lightMaskFor treats a null list as every part', () => {
 });
 
 test('the layer state carries the mask and defaults to every light', () => {
-  assert.equal(materialLayerState({}).at(-1), ALL_LIGHTS_MASK);
-  assert.equal(materialLayerState({ lightMask: 5 }).at(-1), 5);
+  assert.equal(materialLayerState({})[21], ALL_LIGHTS_MASK);
+  assert.equal(materialLayerState({ lightMask: 5 })[21], 5);
   assert.equal(AREA_FIRST_BIT + MAX_AREA_LIGHTS, 32);
 });
 

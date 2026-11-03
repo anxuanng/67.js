@@ -4,6 +4,8 @@ import { tmpdir } from 'node:os';
 import { resolve, dirname } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
+import { DEFAULT_BASE_REF, readAcceptedBundles } from './size-base.mjs';
+import { archiveProblem } from './size-growth.mjs';
 
 const metadata = JSON.parse(await readFile('package.json', 'utf8'));
 const release = JSON.parse(await readFile('public/release.json', 'utf8'));
@@ -32,7 +34,8 @@ if (published) {
   const sourcePackResult = JSON.parse(sourcePack.stdout);
   const packedSource = Array.isArray(sourcePackResult) ? sourcePackResult[0] : sourcePackResult[metadata.name];
   assert.ok(packedSource?.filename, 'npm pack must return a source archive.');
-  assert.ok(packedSource.size <= sizeBudgets.archiveBytes, `The current source package is ${packedSource.size} bytes, over its archive budget of ${sizeBudgets.archiveBytes} in bench/size/budgets.json.`);
+  const archiveFailure = archiveProblem(packedSource.size, sizeBudgets.archiveBytes, readAcceptedBundles(process.env.SIZE_BASE_REF ?? DEFAULT_BASE_REF));
+  assert.ok(!archiveFailure, archiveFailure);
   const sourceArchive = resolve(consumer, packedSource.filename);
   installTarget = `67js@file:${sourceArchive.replaceAll('\\', '/')}`;
 }
