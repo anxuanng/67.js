@@ -277,3 +277,26 @@ The last row is the finding: in the busy state a constant fragment shader costs 
 Inferred, not isolated: SwiftShader still pays for a branch that pixels in the same quad do not all take, so the first two behave as the earlier `fillIntensity` skip did. `textureGather` would cut 36 fetches to 9 but is not in WebGL 2 (GLSL ES 3.00).
 
 **What to try next.** Measure the two full-screen passes against the vertex stage on `large-mesh` and `many-materials` with a profile that does not depend on the machine state (pin the cores, or count instructions), since the lit shader is no longer the proven bottleneck. Draw the environment background only where no mesh covers the pixel was already tried on 2026-11-01 and moved nothing.
+
+## Sun shadow as one comparison fetch per tap (2026-11-03)
+
+Measured on `perf/blended-shadow-taps` at 960 by 540, SwiftShader, `--cpu-only --frames 6`, Chrome headless. Each row alternates the old build, the new build and three.js in one window for 3 rounds, so machine load cancels; the machine ran at about 12 percent CPU from other sessions between runs. Frame in ms, then the median ratio to three.js (all three medians in the same window).
+
+The shadow depth texture now has `TEXTURE_COMPARE_MODE` and linear filtering, and the shader samples it as `sampler2DShadow`. One fetch returns the 2 by 2 percentage-closer result that four `texelFetch` calls and a `step` each used to build by hand, so the 9-tap filter is 9 fetches, not 36. Edges clamp the same way.
+
+| Scene | Before (ms) | After (ms) | three.js (ms) | Ratio before to after |
+| --- | --- | --- | --- | --- |
+| `transparency` | 424 to 431 | 364 to 367 | 51 to 52 | 8.4 to 7.1 |
+| `skinned-characters` | 186 to 192 | 159 to 165 | 25 to 26 | 7.6 to 6.6 |
+| `instanced-objects` | 171 to 177 | 100 to 148 | 31 to 32 | 5.5 to 4.0 |
+| `moving-shadows` | 70 to 72 | 65 | 19 | 3.8 to 3.5 |
+| `many-materials` | 561 to 570 | 478 to 490 | 173 to 175 | 3.25 to 2.79 |
+| `many-lights` | 439 to 445 | 392 to 397 | 150 to 153 | 2.89 to 2.59 |
+| `large-mesh` | 550 to 554 | 475 to 481 | 196 to 205 | 2.79 to 2.44 |
+| `large-outdoor` | 239 to 258 | 229 to 243 | 787 to 804 | 0.31 to 0.29 |
+
+`instanced-objects` has the widest spread after the change (100 to 148), so its ratio is a range of about 3.2 to 4.7. The 8 scenes keep their pictures: `npm run reference -- --skip-blender` scores all 23 reference scenes within 0.0001 of the stored scores against Cycles and EEVEE (largest move -0.0001), on both the GPU and SwiftShader renders. Nine rows of `baseline.json` changed in the fourth digit and were updated.
+
+Not kept: 4 taps in place of 9 (two by two, spaced 3.5 texels) took `transparency` from 366 to 351 ms, 4 percent, for a smaller and different filter. The remaining distance on `transparency` (7.1 times) and `skinned-characters` (6.6 times) is not the shadow filter any more; they stay above the issue 74 target of 3 times.
+
+The fog volume shares the shadow texture and now reads it through the comparison sampler, so its single tap is filtered over 2 by 2 texels where it was nearest. The main program also sets every 2D sampler to unit 1 when it links, because an unset sampler reads unit 0 and one unit may not hold two sampler types.
