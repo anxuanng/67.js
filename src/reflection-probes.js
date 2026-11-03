@@ -43,9 +43,12 @@ function probedMaterial(liveMaterial, probeMap, wrappers) {
 
 /** Gives each part the nearest probe that reaches it, as a material wrapper that keeps reading the live material. */
 export function placeProbes(parts, probeTrace, { rotation = 0, wrappers = new Map() } = {}) {
-  const probes = probeTrace.traced.map(({ position, radius, width, height, data, hitFraction, part }) => ({
-    position, radius, hitFraction, part, map: createEnvironmentMap({ width, height, data, intensity: 1, rotation }),
-  }));
+  const probes = probeTrace.traced.map(({ position, radius, width, height, data, hitFraction, part, floorHeight = null }) => {
+    const map = createEnvironmentMap({ width, height, data, intensity: 1, rotation });
+    // An object probe knows the floor under it, so the lookup can follow the ray from the shaded point to that floor.
+    const parallax = part !== undefined && floorHeight !== null ? [...position, floorHeight] : null;
+    return { position, radius, hitFraction, part, map: parallax ? Object.freeze({ ...map, parallax }) : map };
+  });
   const probesByPart = new Map(probes.filter(probe => probe.part !== undefined).map(probe => [probe.part, probe]));
   const sharedProbes = probes.filter(probe => probe.part === undefined);
   const probedParts = parts.map((part, index) => {
@@ -69,9 +72,17 @@ export function applyReflectionProbes(parts, lighting, specs, options = {}) {
 }
 
 registerShaderFeatureCode('probe', Object.freeze({
-  declarations: 'uniform float probeEnabled;\n',
+  declarations: 'uniform float probeEnabled;\nuniform vec4 probeFloor;\n',
   // Divides out the world-mode weight the surroundings get below, because a probe's radiance is already the real light.
   probeSurroundings: '    if (probeEnabled > 0.5) surroundings = environmentRadiance(reflected, roughness * environmentLevelMax) / max(mix(1.0, 0.5 * daylight, worldMode), 0.05);\n',
+  // probeEnabled is 2 when the probe knows its floor: a ray heading down is looked up toward where it meets that floor,
+  // seen from the probe, as a box-projected cube map does, because the probe sits at the part's centre and not at the shaded point.
+  probeReflection: [
+    '  if (probeEnabled > 1.5 && reflected.y < -0.01 && worldPosition.y > probeFloor.w) {',
+    '    reflected = normalize(worldPosition + reflected * ((probeFloor.w - worldPosition.y) / reflected.y) - probeFloor.xyz);',
+    '  }',
+    '',
+  ].join('\n'),
 }));
 
 const rendererStates = new WeakMap();
@@ -79,7 +90,8 @@ const rendererStates = new WeakMap();
 function stateOf(renderer) {
   if (!rendererStates.has(renderer)) {
     const enabledLocation = renderer.context.getUniformLocation(renderer.program, 'probeEnabled');
-    rendererStates.set(renderer, { resources: new Map(), enabledLocation, bound: false });
+    const floorLocation = renderer.context.getUniformLocation(renderer.program, 'probeFloor');
+    rendererStates.set(renderer, { resources: new Map(), enabledLocation, floorLocation, bound: false });
   }
   return rendererStates.get(renderer);
 }
@@ -150,7 +162,8 @@ function bindProbe(renderer, mapState) {
     // The environment's irradiance still lights the diffuse term, and the intensity uniform is now 1.
     context.uniform3fv(uniforms['environmentIrradiance[0]'], renderer.environmentResources.irradiance.map(value => value * globalMap.intensity));
   }
-  context.uniform1f(state.enabledLocation, 1);
+  if (probeMap.parallax) context.uniform4fv(state.floorLocation, probeMap.parallax);
+  context.uniform1f(state.enabledLocation, probeMap.parallax ? 2 : 1);
 }
 
 const previousBind = layerTextureSupport.bind;

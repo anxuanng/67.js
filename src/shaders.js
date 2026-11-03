@@ -877,11 +877,11 @@ ${featureCode("linkArea")}      vec3 lightNormal = areaLightNormals[index].xyz;
   }
   // Leaf and grass cards keep a faint sheen; full sky reflection washed grazing cards grey-blue.
   float skyReflection = canopyShaded ? 0.3 : 1.0;
-  if (ENVIRONMENT_ENABLED) {
-    radiance += environmentLighting(normal, specularNormal, baseReflectance, viewDirection, color, metallic, roughness, occlusion, ambientIntensity, skyReflection);
+  vec3 reflected = reflect(-viewDirection, specularNormal);
+${featureCode("probeReflection")}  if (ENVIRONMENT_ENABLED) {
+    radiance += environmentLighting(normal, specularNormal, baseReflectance, viewDirection, reflected, color, metallic, roughness, occlusion, ambientIntensity, skyReflection);
   } else {
     // Outdoors the surroundings are sky and haze; reflecting the studio softboxes there lit grazing leaves white and cyan.
-    vec3 reflected = reflect(-viewDirection, specularNormal);
     vec3 surroundings = worldMode > 0.5 ? mix(fogColor * 0.8, vec3(0.20, 0.38, 0.52) * 1.6, smoothstep(-0.15, 0.7, reflected.y)) : studio(reflected, roughness);
 ${featureCode("probeSurroundings")}    radiance += surroundings * reflectance * skyReflection * (1.0 - roughness * 0.55) * mix(1.0, 0.5 * daylight, worldMode) * occlusion * ambientIntensity;
     radiance += color * (1.0 - metallic) * mix(vec3(0.16, 0.20, 0.22), vec3(0.19, 0.25, 0.30) * max(daylight, 0.08), worldMode) * (0.45 + 0.55 * max(normal.y, 0.0)) * occlusion * ambientIntensity;
