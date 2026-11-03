@@ -27,6 +27,9 @@ function withDerivedGroundBounce(scene, drawnParts) {
   return GROUND_BOUNCE ? groundBounceEnvironment(drawnParts, scene.environment) : scene.environment;
 }
 
+// ?reversedDepth=off draws with the standard depth buffer, to compare against reversed-Z (issue #310).
+const REVERSED_DEPTH = new URLSearchParams(location.search).get('reversedDepth') !== 'off';
+
 const WATER_REFLECTION = { off: false, ssr: 'ssr' }[new URLSearchParams(location.search).get('water')] ?? 'planar';
 
 // ?set=khronos draws the Khronos sample assets (npm run reference -- --khronos) and ?set=cloth the cloth scenes
@@ -153,7 +156,7 @@ async function bakeScenePreset(scene, preset) {
 function createSceneRenderer(parts, scene, cascades, { water = WATER_REFLECTION } = {}) {
   const reflecting = water === 'planar' ? applyWaterReflection(parts) : { parts, surface: null };
   const renderer = new Renderer67(document.querySelector('canvas'), applyLightLinks(reflecting.parts, scene.environment), {
-    ground: false, hdr: true, depth: true, samples: 4, pixelRatio: 1, memoryBudgetMiB: 1024, world: true,
+    ground: false, hdr: true, depth: true, samples: 4, pixelRatio: 1, memoryBudgetMiB: 1024, world: true, reversedDepth: REVERSED_DEPTH,
     environment: scene.environment, shadowBounds: scene.shadow, shadowCascades: cascades ? createCascadedShadows({ count: cascades }) : null, skyOpenness, fogSkyVisibility,
   });
   attachWaterReflection(renderer, reflecting.surface);

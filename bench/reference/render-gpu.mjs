@@ -1,6 +1,6 @@
 // Draws chosen reference scenes with 67js on the GPU only, into a directory of your choice, with measurement switches. No Blender, no scoring.
 //   node bench/reference/render-gpu.mjs <output directory> <scene id>,<scene id> [--ambient <scale>] [--fill <scale>] [--key <scale>]
-//     [--ambient-occlusion <strength>] [--ambient-occlusion-radius <units>]
+//     [--ambient-occlusion <strength>] [--ambient-occlusion-radius <units>] [--standard-depth] [--cpu]
 // Files are <output directory>/<scene id>-gpu.png, the names measure-depth.py and score.py read. Used to find what makes shadows light (issue #197).
 import { mkdir, writeFile } from 'node:fs/promises';
 import { constants, setPriority } from 'node:os';
@@ -18,6 +18,7 @@ const sceneIds = argumentsGiven[1].split(',');
 const setOf = id => (/-[abc]$/.test(id) ? 'grand' : null);
 const waterIndex = argumentsGiven.indexOf('--water');
 const waterOption = waterIndex >= 0 ? argumentsGiven[waterIndex + 1] : null;
+const standardDepth = argumentsGiven.includes('--standard-depth');
 
 function numberAfter(flag) {
   const index = argumentsGiven.indexOf(flag);
@@ -37,12 +38,12 @@ await mkdir(outputDirectory, { recursive: true });
 const server = await createServer({ server: { host: '127.0.0.1', port: 0 }, logLevel: 'silent' });
 await server.listen();
 const serverUrl = `http://127.0.0.1:${server.httpServer.address().port}`;
-const browser = await chromium.launch({ executablePath: CHROME, headless: true, args: ['--enable-webgl', '--ignore-gpu-blocklist', '--disable-renderer-backgrounding'] });
+const browser = await chromium.launch({ executablePath: CHROME, headless: true, args: ['--enable-webgl', '--ignore-gpu-blocklist', '--disable-renderer-backgrounding', ...(argumentsGiven.includes('--cpu') ? ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] : [])] });
 try {
   const page = await browser.newPage({ viewport: { width: WIDTH, height: HEIGHT } });
   page.on('pageerror', error => console.log('PAGE ERROR', error.message));
   for (const id of sceneIds) {
-    await page.goto(`${serverUrl}/bench/reference/harness.html?${[setOf(id) ? `set=${setOf(id)}` : '', waterOption ? `water=${waterOption}` : ''].filter(Boolean).join('&')}`, { timeout: 180000 });
+    await page.goto(`${serverUrl}/bench/reference/harness.html?${[setOf(id) ? `set=${setOf(id)}` : '', waterOption ? `water=${waterOption}` : '', standardDepth ? 'reversedDepth=off' : ''].filter(Boolean).join('&')}`, { timeout: 180000 });
     await page.waitForFunction(() => window.renderReferenceScene, null, { timeout: 180000 });
     const result = await page.evaluate(([sceneId, renderOptions]) => window.renderReferenceScene(sceneId, { describe: false, ...renderOptions }), [id, options]);
     if (result.glError !== 0) throw new Error(`${id} gave WebGL error ${result.glError}.`);

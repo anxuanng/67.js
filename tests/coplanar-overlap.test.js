@@ -103,10 +103,14 @@ test('the polygon offset is scoped to the layer and switched off for layer 0', (
     disable: capability => calls.push(['disable', capability]),
     polygonOffset: (factor, units) => calls.push(['offset', factor, units]),
   };
-  const fake = { context };
+  const fake = { context, depthSign: 1 };
   Renderer67.prototype.applyDepthLayer.call(fake, 2);
   Renderer67.prototype.applyDepthLayer.call(fake, 0);
   assert.deepEqual(calls, [['enable', 'fill'], ['offset', -2, -8], ['disable', 'fill']]);
+  // Reversed-Z puts the near plane at depth 1, so pulling a layer closer takes the opposite sign.
+  calls.length = 0;
+  Renderer67.prototype.applyDepthLayer.call({ context, depthSign: -1 }, 2);
+  assert.deepEqual(calls, [['enable', 'fill'], ['offset', 2, 8]]);
 });
 
 test('the check is bounded: a work budget ends the sweep and says so', () => {

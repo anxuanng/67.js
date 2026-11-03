@@ -40,7 +40,7 @@ export function drawLiquidPass(renderer, { frame, environment, assemblyAmount, e
   context.enable(context.CULL_FACE);
   context.useProgram(renderer.liquidProgram);
   const uniforms = renderer.liquidUniforms;
-  context.uniformMatrix4fv(uniforms.viewProjection, false, renderer.viewProjection);
+  context.uniformMatrix4fv(uniforms.viewProjection, false, renderer.rasterViewProjection);
   context.uniformMatrix4fv(uniforms.lightProjection, false, renderer.lightProjection);
   context.uniform3fv(uniforms.eye, frame.eye);
   context.uniform2f(uniforms.resolution, width, height);

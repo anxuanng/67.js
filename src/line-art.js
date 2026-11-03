@@ -1,3 +1,4 @@
+import { STANDARD_DEPTH_GLSL } from './reversed-depth.js';
 import './toon-shader.js';
 
 // gl-program.js is not imported on purpose: this module loads on demand, and sharing a module with the scene entry makes
@@ -160,6 +161,7 @@ uniform sampler2D sceneDepth;
 uniform sampler2D partTexture;
 uniform sampler2D normalTexture;
 uniform vec3 projectionDepth;
+${STANDARD_DEPTH_GLSL}
 uniform float halfWidth;
 uniform vec3 lineColor;
 uniform float useBoundaries;
@@ -170,7 +172,7 @@ ivec2 lastPixel;
 vec3 partAt(ivec2 pixel) { return texelFetch(partTexture, clamp(pixel, ivec2(0), lastPixel), 0).rgb; }
 vec3 normalAt(ivec2 pixel) { return normalize(texelFetch(normalTexture, clamp(pixel, ivec2(0), lastPixel), 0).rgb * 2.0 - 1.0); }
 float depthAt(ivec2 pixel) {
-  float ndc = texelFetch(sceneDepth, clamp(pixel, ivec2(0), lastPixel), 0).r * 2.0 - 1.0;
+  float ndc = standardDepth(texelFetch(sceneDepth, clamp(pixel, ivec2(0), lastPixel), 0).r) * 2.0 - 1.0;
   return projectionDepth.z > 0.5 ? -(ndc - projectionDepth.y) / projectionDepth.x : (ndc + projectionDepth.x) / projectionDepth.y;
 }
 bool hasPart(vec3 part) { return dot(part, vec3(1.0)) > 0.0; }
@@ -256,6 +258,7 @@ const polylineFragment = `#version 300 es
 precision highp float;
 uniform sampler2D sceneDepth;
 uniform vec3 projectionDepth;
+${STANDARD_DEPTH_GLSL}
 uniform float lineWidth;
 uniform vec3 lineColor;
 uniform float depthTest;
@@ -271,7 +274,7 @@ void main() {
   float alpha = clamp(lineWidth * 0.5 - distanceToSegment + 0.5, 0.0, 1.0);
   if (alpha <= 0.0) discard;
   if (depthTest > 0.5) {
-    float sceneDistance = eyeDepth(texelFetch(sceneDepth, ivec2(gl_FragCoord.xy), 0).r);
+    float sceneDistance = eyeDepth(standardDepth(texelFetch(sceneDepth, ivec2(gl_FragCoord.xy), 0).r));
     if (eyeDepth(gl_FragCoord.z) > sceneDistance * 1.005 + 0.002) discard;
   }
   outputColor = vec4(lineColor * alpha, alpha);
@@ -379,9 +382,10 @@ function createLineArtStage(state) {
     if (!outlineProgram) {
       outlineProgram = compileProgram(context, fullscreenVertex, outlineFragment);
       outlineUniforms = uniformLocations(context, outlineProgram, ['sourceTexture', 'sceneDepth', 'partTexture', 'normalTexture',
-        'projectionDepth', 'halfWidth', 'lineColor', 'useBoundaries', 'creaseCosine', 'depthJump']);
+        'projectionDepth', 'halfWidth', 'lineColor', 'useBoundaries', 'creaseCosine', 'depthJump', 'depthReversed']);
     }
     context.useProgram(outlineProgram);
+    context.uniform1f(outlineUniforms.depthReversed, renderer.reversedDepth ? 1 : 0);
     const bindings = [[sourceTexture, 'sourceTexture'], [renderer.depthTexture, 'sceneDepth'], [guideTarget(renderer, 'part').texture, 'partTexture'], [guideTarget(renderer, 'normal').texture, 'normalTexture']];
     bindings.forEach(([texture, uniform], unit) => {
       context.activeTexture(context.TEXTURE0 + unit);
@@ -416,7 +420,7 @@ function createLineArtStage(state) {
     if (!polylineProgram) {
       polylineProgram = compileProgram(context, polylineVertex, polylineFragment);
       polylineUniforms = uniformLocations(context, polylineProgram, ['viewProjection', 'resolution', 'lineWidth', 'sceneDepth',
-        'projectionDepth', 'lineColor', 'depthTest']);
+        'projectionDepth', 'lineColor', 'depthTest', 'depthReversed']);
       vertexArray = context.createVertexArray();
     }
     context.useProgram(polylineProgram);
@@ -426,6 +430,7 @@ function createLineArtStage(state) {
     context.activeTexture(context.TEXTURE0);
     context.bindTexture(context.TEXTURE_2D, renderer.depthTexture);
     context.uniform1i(polylineUniforms.sceneDepth, 0);
+    context.uniform1f(polylineUniforms.depthReversed, renderer.reversedDepth ? 1 : 0);
     context.uniformMatrix4fv(polylineUniforms.viewProjection, false, renderer.viewProjection);
     context.uniform2f(polylineUniforms.resolution, canvas.width, canvas.height);
     context.uniform3fv(polylineUniforms.projectionDepth, projectionDepth(renderer));

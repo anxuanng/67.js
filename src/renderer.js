@@ -6,6 +6,7 @@ import { fullscreenVertex, startProgram, finishProgram, compileProgram } from '.
 import { ambientOcclusionFragment } from './ambient-occlusion.js';
 import { planRenderSize, estimateTextureBytes, estimateFrameBytes } from './budget.js';
 import { applyProjection } from './camera.js';
+import { reverseProjectionDepth } from './reversed-depth.js';
 import { resolveEffects } from './effects.js';
 import { frameDiagnostics } from './frame-diagnostics.js';
 import { depthLayerOf } from './depth-layer.js';
@@ -47,7 +48,7 @@ const DEFORMING_TAGS = new Set(['foliage', 'grass', 'water', 'fire', 'smoke']);
 // strength, so they can be culled and given levels like rigid parts.
 const SWAY_REACH_PER_STRENGTH = 0.56;
 
-const POST_UNIFORMS = ['transparent', 'frameTexture', 'bloomTexture', 'bloomStrength', 'hdrEnabled', 'grade', 'vignette', 'grainAmount', 'resolution', 'monochrome', 'fade', 'cinematic', 'time', 'volumeExplosion', 'explosionProgress', 'inverseViewProjection', 'eye', 'sceneDepth', 'volumeShadowMap', 'volumeLightProjection', 'volumeLightDirection', 'volumeLightColor', 'volumeDensity', 'volumeMinimum', 'volumeMaximum', 'volumeColor', 'volumeAmbient', 'volumeDrift', 'volumeSteps', 'volumeAnisotropy', 'volumeShadowAmbient', 'volumeNoiseAmount', 'volumeNoiseScale', 'volumeMaxDistance', 'fogSkyVisibility', 'orthographic', 'occlusionTexture', 'occlusionStrength', 'occlusionTexel'];
+const POST_UNIFORMS = ['transparent', 'frameTexture', 'bloomTexture', 'bloomStrength', 'hdrEnabled', 'grade', 'vignette', 'grainAmount', 'resolution', 'monochrome', 'fade', 'cinematic', 'time', 'volumeExplosion', 'explosionProgress', 'inverseViewProjection', 'eye', 'sceneDepth', 'depthReversed', 'volumeShadowMap', 'volumeLightProjection', 'volumeLightDirection', 'volumeLightColor', 'volumeDensity', 'volumeMinimum', 'volumeMaximum', 'volumeColor', 'volumeAmbient', 'volumeDrift', 'volumeSteps', 'volumeAnisotropy', 'volumeShadowAmbient', 'volumeNoiseAmount', 'volumeNoiseScale', 'volumeMaxDistance', 'fogSkyVisibility', 'orthographic', 'occlusionTexture', 'occlusionStrength', 'occlusionTexel'];
 
 function postUniformLocations(context, program) {
   return Object.fromEntries(POST_UNIFORMS.map(name => [name, context.getUniformLocation(program, name)]));
@@ -380,9 +381,9 @@ export function textureDescriptorInfo(map, maximumSize = Infinity) {
   return { width, height, wrapS, wrapT, minFilter, magFilter, mipmaps, bytes: estimateTextureBytes(width, height, { mipmaps }) };
 }
 
-function sampleCount(context, format, requested) {
+function sampleCount(context, format, requested, depthFormat) {
   const colorCounts = Array.from(context.getInternalformatParameter(context.RENDERBUFFER, format, context.SAMPLES));
-  const depthCounts = Array.from(context.getInternalformatParameter(context.RENDERBUFFER, context.DEPTH_COMPONENT24, context.SAMPLES));
+  const depthCounts = Array.from(context.getInternalformatParameter(context.RENDERBUFFER, depthFormat, context.SAMPLES));
   return Math.max(0, ...colorCounts.filter(count => count <= requested && depthCounts.includes(count)));
 }
 
@@ -455,7 +456,7 @@ function allFinite(values) {
 }
 
 export class Renderer67 {
-  constructor(canvas, parts, { batching = true, pixelRatio = 1.5, benchmark = false, world = false, ground = true, transparent = false, samples = 4, hdr = false, depth = false, memoryBudgetMiB = 256, environment = {}, shadowBounds = {}, shadowCascades = null, culling = true, lodPixelError = 1, createGpuTimer = null, skyOpenness = null, fogSkyVisibility = null, shading = 'full', viewTransform = 'aces', look = null } = {}) {
+  constructor(canvas, parts, { batching = true, pixelRatio = 1.5, benchmark = false, world = false, ground = true, transparent = false, samples = 4, hdr = false, depth = false, reversedDepth = true, memoryBudgetMiB = 256, environment = {}, shadowBounds = {}, shadowCascades = null, culling = true, lodPixelError = 1, createGpuTimer = null, skyOpenness = null, fogSkyVisibility = null, shading = 'full', viewTransform = 'aces', look = null } = {}) {
     this.canvas = canvas;
     this.sceneParts = parts;
     // `skyOpenness` from closed-room.js is passed in, which keeps the ray code out of scenes without volume fog.
@@ -505,8 +506,12 @@ export class Renderer67 {
     this.memoryBudgetMiB = memoryBudgetMiB;
     this.hdr = Boolean(hdr && !benchmark && this.context.getExtension('EXT_color_buffer_float'));
     if (volume.density > 0 && !this.hdr) throw new Error('Volume fog requires EXT_color_buffer_float for HDR rendering');
-    this.multisampleSamples = benchmark ? 0 : sampleCount(this.context, this.hdr ? this.context.RGBA16F : this.context.RGBA8, Math.min(shading === 'light' ? Math.min(samples, LIGHT_SHADING_MAXIMUM_SAMPLES) : samples, this.context.getParameter(this.context.MAX_SAMPLES)));
-    this.capabilities = { hdr: this.hdr, hdrRequested: Boolean(hdr), hdrFallbackReason: hdr && !this.hdr ? benchmark ? 'HDR is disabled in benchmark mode' : 'EXT_color_buffer_float is unavailable' : null, samples: this.multisampleSamples };
+    // Reversed-Z (issue #310) needs EXT_clip_control; without it, or in benchmark mode, the standard path draws.
+    this.clipControl = reversedDepth && !benchmark ? this.context.getExtension?.('EXT_clip_control') ?? null : null;
+    this.reversedDepth = Boolean(this.clipControl);
+    this.depthFormat = this.reversedDepth ? 'DEPTH_COMPONENT32F' : 'DEPTH_COMPONENT24';
+    this.multisampleSamples = benchmark ? 0 : sampleCount(this.context, this.hdr ? this.context.RGBA16F : this.context.RGBA8, Math.min(shading === 'light' ? Math.min(samples, LIGHT_SHADING_MAXIMUM_SAMPLES) : samples, this.context.getParameter(this.context.MAX_SAMPLES)), this.context[this.depthFormat]);
+    this.capabilities = { reversedDepth: this.reversedDepth, hdr: this.hdr, hdrRequested: Boolean(hdr), hdrFallbackReason: hdr && !this.hdr ? benchmark ? 'HDR is disabled in benchmark mode' : 'EXT_color_buffer_float is unavailable' : null, samples: this.multisampleSamples };
     this.geometryBytes = 0;
     this.geometryBuffers = new Map();
     this.batching = batching;
@@ -599,6 +604,10 @@ export class Renderer67 {
     this.view = mat4.create();
     this.projection = mat4.create();
     this.viewProjection = mat4.create();
+    // What the rasterizer sees: the same matrices with depth reversed when EXT_clip_control is in use, else the very same arrays.
+    this.rasterProjection = this.reversedDepth ? mat4.create() : this.projection;
+    this.rasterViewProjection = this.reversedDepth ? mat4.create() : this.viewProjection;
+    this.depthSign = 1;
     this.lightProjection = mat4.create();
     this.shadowBiasPerSlope = 0;
     this.inverseViewProjection = mat4.create();
@@ -1489,7 +1498,7 @@ export class Renderer67 {
     const context = this.context;
     if (!this.occlusionProgram) {
       this.occlusionProgram = compileProgram(context, fullscreenVertex, ambientOcclusionFragment);
-      const names = ['sceneDepth', 'inverseViewProjection', 'eye', 'radius', 'projectionScale', 'aspect', 'orthographic'];
+      const names = ['sceneDepth', 'inverseViewProjection', 'eye', 'radius', 'projectionScale', 'aspect', 'orthographic', 'depthReversed'];
       this.occlusionUniforms = Object.fromEntries(names.map(name => [name, context.getUniformLocation(this.occlusionProgram, name)]));
     }
     if (this.occlusionTarget) return;
@@ -1522,6 +1531,7 @@ export class Renderer67 {
     context.activeTexture(context.TEXTURE1);
     context.bindTexture(context.TEXTURE_2D, this.depthTexture);
     context.uniform1i(uniforms.sceneDepth, 1);
+    context.uniform1f(uniforms.depthReversed, this.reversedDepth ? 1 : 0);
     context.uniformMatrix4fv(uniforms.inverseViewProjection, false, this.inverseViewProjection);
     context.uniform3fv(uniforms.eye, frame.eye);
     context.uniform1f(uniforms.radius, effects.ambientOcclusionRadius);
@@ -1542,11 +1552,11 @@ export class Renderer67 {
     context.framebufferRenderbuffer(context.FRAMEBUFFER, context.COLOR_ATTACHMENT0, context.RENDERBUFFER, this.multisampleColor);
     this.multisampleDepth = context.createRenderbuffer();
     context.bindRenderbuffer(context.RENDERBUFFER, this.multisampleDepth);
-    context.renderbufferStorageMultisample(context.RENDERBUFFER, this.multisampleSamples, context.DEPTH_COMPONENT24, width, height);
+    context.renderbufferStorageMultisample(context.RENDERBUFFER, this.multisampleSamples, context[this.depthFormat], width, height);
     context.framebufferRenderbuffer(context.FRAMEBUFFER, context.DEPTH_ATTACHMENT, context.RENDERBUFFER, this.multisampleDepth);
     if (context.checkFramebufferStatus(context.FRAMEBUFFER) !== context.FRAMEBUFFER_COMPLETE) throw new Error('Multisample framebuffer allocation failed. Choose a lower quality preset.');
     this.renderTargets.record('multisampleColor', { width, height, format: this.hdr ? 'RGBA16F' : 'RGBA8', samples: this.multisampleSamples });
-    this.renderTargets.record('multisampleDepth', { width, height, format: 'DEPTH_COMPONENT24', samples: this.multisampleSamples });
+    this.renderTargets.record('multisampleDepth', { width, height, format: this.depthFormat, samples: this.multisampleSamples });
     this.renderTargets.record('frameColor', { width, height, format: this.hdr ? 'RGBA16F' : 'RGBA8' });
     this.frameTexture = context.createTexture();
     context.bindTexture(context.TEXTURE_2D, this.frameTexture);
@@ -1561,13 +1571,13 @@ export class Renderer67 {
     if (this.depth) {
       this.depthTexture = context.createTexture();
       context.bindTexture(context.TEXTURE_2D, this.depthTexture);
-      context.texImage2D(context.TEXTURE_2D, 0, context.DEPTH_COMPONENT24, width, height, 0, context.DEPTH_COMPONENT, context.UNSIGNED_INT, null);
+      context.texImage2D(context.TEXTURE_2D, 0, context[this.depthFormat], width, height, 0, context.DEPTH_COMPONENT, this.reversedDepth ? context.FLOAT : context.UNSIGNED_INT, null);
       context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MIN_FILTER, context.NEAREST);
       context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MAG_FILTER, context.NEAREST);
       context.texParameteri(context.TEXTURE_2D, context.TEXTURE_WRAP_S, context.CLAMP_TO_EDGE);
       context.texParameteri(context.TEXTURE_2D, context.TEXTURE_WRAP_T, context.CLAMP_TO_EDGE);
       context.framebufferTexture2D(context.FRAMEBUFFER, context.DEPTH_ATTACHMENT, context.TEXTURE_2D, this.depthTexture, 0);
-      this.renderTargets.record('sceneDepth', { width, height, format: 'DEPTH_COMPONENT24' });
+      this.renderTargets.record('sceneDepth', { width, height, format: this.depthFormat });
     }
     if (context.checkFramebufferStatus(context.FRAMEBUFFER) !== context.FRAMEBUFFER_COMPLETE) throw new Error('Resolve framebuffer allocation failed. Choose a lower quality preset.');
     this.bloomWidth = Math.max(1, Math.ceil(width / 2));
@@ -1791,6 +1801,7 @@ export class Renderer67 {
     context.uniform1f(post.uniforms.volumeNoiseScale, volume.noiseScale);
     context.uniform1f(post.uniforms.volumeMaxDistance, volume.maxDistance);
     context.uniform1f(post.uniforms.orthographic, frame.projection === 'orthographic' ? 1 : 0);
+    context.uniform1f(post.uniforms.depthReversed, this.reversedDepth ? 1 : 0);
     context.uniform1i(post.uniforms.fogSkyVisibility, 5);
     context.activeTexture(context.TEXTURE2);
     context.bindTexture(context.TEXTURE_2D, effects.bloom.strength > 0 ? this.bloomTargets[1].texture : this.whiteTexture);
@@ -1913,7 +1924,7 @@ export class Renderer67 {
     const context = this.context;
     if (layer) {
       context.enable(context.POLYGON_OFFSET_FILL);
-      context.polygonOffset(-layer, -layer * 4);
+      context.polygonOffset(-layer * this.depthSign, -layer * 4 * this.depthSign);
     } else {
       context.disable(context.POLYGON_OFFSET_FILL);
     }
@@ -2076,6 +2087,7 @@ export class Renderer67 {
     this.diagnostics = frameDiagnostics({ world: this.world, depth: this.depth, effects, lightDirection: environment.lightDirection, shadowBounds: this.shadowBounds, coplanarProblems: this.coplanarDiagnostics?.(this.batches) });
     const start = performance.now();
     const context = this.context;
+    this.endReversedDepth();
     this.beginGpuTiming();
     const assemblyAmount = Math.max(0, Math.min(1, frame.assemblyAmount ?? 0));
     // Swaying foliage moves every frame, so its shadow map is redrawn whenever time or wind changes.
@@ -2095,6 +2107,10 @@ export class Renderer67 {
     mat4.lookAt(this.view, eye, target, frame.up ?? [0, 1, 0]);
     mat4.multiply(this.viewProjection, this.projection, this.view);
     mat4.invert(this.inverseViewProjection, this.viewProjection);
+    if (this.reversedDepth) {
+      reverseProjectionDepth(this.rasterProjection, this.projection);
+      mat4.multiply(this.rasterViewProjection, this.rasterProjection, this.view);
+    }
     extractFrustumPlanes(this.viewProjection, this.frustumPlanes);
     this.viewForward = [-this.view[2], -this.view[6], -this.view[10]];
     // The water mirror is a cheap draw: it reuses the cascades of the last lit frame and leaves their redraw to the lit frame that follows.
@@ -2117,13 +2133,15 @@ export class Renderer67 {
     }
     // The environment background covers every pixel, so the colour clear before it would be overwritten.
     const backgroundCoversFrame = !passMode && Boolean(environmentMap?.showBackground) && !this.transparent;
+    if (this.reversedDepth) context.clearDepth(0);
     context.clear(backgroundCoversFrame ? context.DEPTH_BUFFER_BIT : context.COLOR_BUFFER_BIT | context.DEPTH_BUFFER_BIT);
     const environmentBackgroundDrawn = !passMode && this.drawEnvironmentBackground(environmentMap, frame, exposure);
     if (this.world && !this.benchmark && !passMode && !environmentBackgroundDrawn) this.drawSky(frame);
+    this.beginReversedDepth();
     context.enable(context.DEPTH_TEST);
     context.enable(context.CULL_FACE);
     context.useProgram(this.program);
-    context.uniformMatrix4fv(this.uniforms.viewProjection, false, this.viewProjection);
+    context.uniformMatrix4fv(this.uniforms.viewProjection, false, this.rasterViewProjection);
     context.uniformMatrix4fv(this.uniforms.lightProjection, false, this.lightProjection);
     context.uniform1f(this.uniforms.shadowBiasPerSlope, this.shadowBiasPerSlope);
     context.uniform3fv(this.uniforms.eye, eye);
@@ -2175,20 +2193,42 @@ export class Renderer67 {
     context.enable(context.CULL_FACE);
     context.bindVertexArray(null);
     if (mirrorTarget) {
+      this.endReversedDepth();
       this.renderingPass = false;
       this.endGpuTiming();
       return;
     }
     if (passMode) {
+      this.endReversedDepth();
       this.passSupport.copyToCanvas();
     } else if (!this.benchmark) {
       this.drawTranslucent(frame, environment, assemblyAmount, environmentMap);
       this.drawBlendBatches(frame);
+      this.endReversedDepth();
       this.resolveFrame(frame, effects, environment, volume);
     }
     this.renderingPass = false;
     this.endGpuTiming();
     this.cpuMilliseconds = performance.now() - start;
+  }
+
+  // The rasterizer runs reversed (depth 1 at the near plane, GREATER) only while the scene is drawn. The shadow maps, the
+  // backgrounds and the post passes keep the standard clip range, so none of their projections or depth reads change.
+  beginReversedDepth() {
+    if (!this.reversedDepth) return;
+    const context = this.context;
+    this.clipControl.clipControlEXT(this.clipControl.LOWER_LEFT_EXT, this.clipControl.ZERO_TO_ONE_EXT);
+    context.depthFunc(context.GREATER);
+    this.depthSign = -1;
+  }
+
+  endReversedDepth() {
+    if (!this.reversedDepth || this.depthSign > 0) return;
+    const context = this.context;
+    this.clipControl.clipControlEXT(this.clipControl.LOWER_LEFT_EXT, this.clipControl.NEGATIVE_ONE_TO_ONE_EXT);
+    context.depthFunc(context.LESS);
+    context.clearDepth(1);
+    this.depthSign = 1;
   }
 
   beginGpuTiming() {

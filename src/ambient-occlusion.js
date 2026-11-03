@@ -1,3 +1,4 @@
+import { STANDARD_DEPTH_GLSL } from './reversed-depth.js';
 export const AMBIENT_OCCLUSION_SAMPLES = 12;
 
 /**
@@ -15,7 +16,7 @@ uniform float radius;
 uniform float projectionScale;
 uniform float aspect;
 uniform float orthographic;
-out vec4 occlusion;
+${STANDARD_DEPTH_GLSL}out vec4 occlusion;
 
 vec3 worldPosition(vec2 uv, float depth) {
   vec4 point = inverseViewProjection * vec4(uv * 2.0 - 1.0, depth * 2.0 - 1.0, 1.0);
@@ -27,7 +28,7 @@ float interleavedNoise(vec2 pixel) {
 }
 
 void main() {
-  float depth = texture(sceneDepth, textureCoordinate).r;
+  float depth = standardDepth(texture(sceneDepth, textureCoordinate).r);
   if (depth >= 1.0) {
     occlusion = vec4(1.0);
     return;
@@ -44,7 +45,7 @@ void main() {
     float angle = rotation + float(index) * 2.3999632;
     vec2 offset = vec2(cos(angle), sin(angle)) * sqrt(fraction) * screenRadius;
     vec2 sampleUv = textureCoordinate + vec2(offset.x / aspect, offset.y);
-    float sampleDepth = texture(sceneDepth, sampleUv).r;
+    float sampleDepth = standardDepth(texture(sceneDepth, sampleUv).r);
     if (sampleDepth >= 1.0) continue;
     vec3 toSample = worldPosition(sampleUv, sampleDepth) - position;
     float sampleDistance = length(toSample);
