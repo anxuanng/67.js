@@ -54,6 +54,8 @@
   "scene:agent-scene+lazy": 300582,
   "entry:coplanar-overlap": 2960,
   "entry:view-transform": 2120,
-  "entry:view-transform-shader": 21213
+  "entry:view-transform-shader": 21213,
+  "entry:liquid-shader": 16892,
+  "entry:splat-shader": 20897
  }
 }

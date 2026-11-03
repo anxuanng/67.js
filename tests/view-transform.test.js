@@ -3,13 +3,17 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { toneMapToRgba8 } from '../src/path-tracer.js';
 import { normalizeAgentLook } from '../src/agent-look.js';
-import { fragmentShader, liquidFragmentShader, viewTransformShader } from '../src/shaders.js';
+import '../src/liquid-shader.js';
+import { fragmentShader, liquidFragmentSource, viewTransformShader } from '../src/shaders.js';
 import { environmentBackgroundFragment } from '../src/environment.js';
 import { postFragment } from '../src/post.js';
 import {
   acesChannel, AGX_CONSTANTS, applyViewTransform, displayColor, namedLook, neutralColor, NEUTRAL_CONSTANTS, parseCube, sampleLook,
 } from '../src/view-transform.js';
 import { LOOK_NAMES } from '../src/view-transform-names.js';
+
+// The liquid pass is an addon since #281; importing it above registers its shader.
+const liquidFragmentShader = liquidFragmentSource();
 import '../src/view-transform-shader.js';
 
 const golden = JSON.parse(readFileSync(new URL('./fixtures/blender/view-transform-golden.json', import.meta.url), 'utf8'));
