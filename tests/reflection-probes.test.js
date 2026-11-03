@@ -138,6 +138,21 @@ test('the probe of a part never hits the part itself and sees the floor and the 
   assert.ok(probe.hitFraction > 0.45 && probe.hitFraction < 0.65, `floor and block fill about half the view: ${probe.hitFraction}`);
 });
 
+test('an object probe records the level floor under it so the lookup can follow the ray to the floor', () => {
+  const parts = objectScene();
+  const trace = traceObjectProbes(parts, openAir, { width: 32 });
+  assert.ok(Math.abs(trace.traced[0].floorHeight) < 1e-3, `floor top is at 0: ${trace.traced[0].floorHeight}`);
+  const { probes } = placeProbes(parts, trace);
+  assert.deepEqual(probes[0].map.parallax.map(value => Math.round(value * 100) / 100), [-1, 0.5, 0, 0]);
+  assert.match(createFragmentShader(['probe']), /probeFloor/);
+});
+
+test('a room probe keeps the plain lookup', () => {
+  const parts = objectScene();
+  const trace = traceProbes(parts, openAir, [{ position: [0, 1, 0], radius: 9 }]);
+  assert.equal(placeProbes(parts, trace).probes[0].map.parallax, undefined);
+});
+
 test('a scene with no reflective part, or too many, traces nothing', () => {
   const plain = objectScene().map(part => ({ ...part, material: { ...part.material, metallic: 0 } }));
   assert.equal(traceObjectProbes(plain, openAir).traced.length, 0);

@@ -125,7 +125,7 @@ uniform float waterReflectionEnabled;
     }
     mirrored = (hdrEnabled > 0.5 ? mirrored / ${BLUR_TAPS}.0 : pow(mirrored / ${BLUR_TAPS}.0, vec3(2.2))) / max(exposure, 1e-4);
     float fresnelWeight = ${FRESNEL_BASE} + (1.0 - ${FRESNEL_BASE}) * pow(1.0 - max(viewDirection.y, 0.0), 5.0);
-    vec3 skyLight = ENVIRONMENT_ENABLED ? environmentLighting(normal, specularNormal, baseReflectance, viewDirection, vec3(0.0), metallic, roughness, occlusion, ambientIntensity, skyReflection) : vec3(0.0);
+    vec3 skyLight = ENVIRONMENT_ENABLED ? environmentLighting(normal, specularNormal, baseReflectance, viewDirection, reflect(-viewDirection, specularNormal), vec3(0.0), metallic, roughness, occlusion, ambientIntensity, skyReflection) : vec3(0.0);
     radiance = ENVIRONMENT_ENABLED ? max(radiance - skyLight, vec3(0.0)) + mirrored * ${REFLECTION_GAIN} * fresnelWeight : mix(radiance, mirrored * ${REFLECTION_GAIN}, fresnelWeight);
   }
 `,

@@ -1,0 +1,1 @@
+- Look up an object probe along the ray from its centre to where the reflected ray meets the floor under it, so chrome shows the floor next to its contact point where the real ray lands (part of issue #167). `metal` goes from 0.0962 to 0.0957 against Cycles; `car-paint`, `brushed-film` and `material-spheres` also improve and no scene gets worse.

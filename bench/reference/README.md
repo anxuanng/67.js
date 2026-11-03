@@ -996,3 +996,21 @@ Scores against Cycles (GPU, the five scenes with a reflective part; every other 
 Every weight is worse for `metal`, so the shadow is not kept and no engine file changed. A cure needs the lookup to account for where the ray leaves the surface (a parallax-corrected probe: the reflected ray intersected with a sphere or box proxy of the part and with the floor plane), which is a shader change with a per-pixel cost and its own issue.
 
 The floor, checked with the existing screen-space occlusion (`--ambient-occlusion <strength> --ambient-occlusion-radius <units>`, off by default): `metal` 0.0964 (0.5, 0.5), 0.0979 (1, 0.5) and 0.1097 (1, 1.5) against 0.0962 without it, so occlusion does not explain the floor's gap to Cycles either. It helps parts that sit on a floor with little reflection (`car-paint` 0.1028 to 0.1013, 0.1000 and 0.0960; `material-spheres` 0.1185 to 0.1181, 0.1174, then 0.1206), so it stays opt-in. The floor share of the `metal` error is therefore not contact darkening; the bounce light from the metal parts remains the candidate listed in the multiple scattering section.
+
+## Parallax-corrected object probes (2026-11-03, part of issue #167)
+
+An object probe sits at its part's centre, so a ray reflected at a point on the surface was looked up as if it had left the centre. The probe now records the level floor under it (one ray straight down at trace time, kept only where the surface normal is within 0.99 of up), and the shader sends a reflected ray that heads down toward the point where it meets that plane, seen from the probe: `normalize(hit - probeCentre)`, the plane-projected cube map correction. A probe with no level floor, and every room probe, keeps the plain lookup. The code is compiled in only with the `probe` shader feature, so a scene with no reflective part has the same shader code as before.
+
+Main reproduced `baseline.json` to four digits on the stored arrays first. Scores against Cycles, GPU:
+
+| Variant | `metal` | `car-paint` | `brushed-film` | `material-spheres` | `metal-room` |
+| --- | --- | --- | --- | --- | --- |
+| Main | 0.0962 | 0.1028 | 0.1026 | 0.1185 | 0.5071 |
+| Parallax | 0.0957 | 0.1021 | 0.1016 | 0.1180 | 0.5071 |
+| Parallax, plus the part's shadow on the probe's floor (full sun) | 0.0984 | 0.1020 | 0.1000 | 0.1178 | 0.5072 |
+
+Every other scene is unchanged (it has no object probe). The shadow on top of the parallax lookup helps the other three scenes and makes `metal` worse again (0.0957 to 0.0984), so it was not kept; the correction alone is. `metal` is still 0.0041 above EEVEE (0.0916), so the first box of #167 stays open. Parallax moved the sphere's bottom edge less than hoped, which points at the floor term and the bounce light from the other metal parts, not the lookup, as what is left (guessed, not measured).
+
+Frame cost, RTX 3060 (`frame-time.mjs`, 200 frames): `brick-flat` plain 0.385 ms (0.375 to 0.39 before), `metal` plain 0.43 ms (0.44 to 0.45 before). SwiftShader `transparency` in `bench/runtime`: 350.3 ms (345.9 and 347.5 before; 15 frames, machine under load).
+
+Bundle size: the floor trace and the lookup correction add about 250 bytes gzip to the three bundles that carry reflection probes (`entry:agent-scene+lazy`, `entry:agent-asset+lazy`, `scene:agent-scene+lazy`), so each budget in `bench/size/budgets.json` is raised by 280 bytes. Measured: they were over by 244, 239 and 253 bytes.

@@ -16,6 +16,7 @@ const PROBE_SAMPLES = 32;
 const PROBE_BOUNCES = 2;
 
 const MAX_PROBE_PIXELS = 65536;
+const LEVEL_FLOOR_NORMAL = 0.99;
 
 // Object probes: a sharp mirror needs a finer map than a room probe, and one bounce is enough for what a reflection shows.
 export const MAXIMUM_OBJECT_PROBES = 8;
@@ -99,8 +100,18 @@ export function traceProbeMaps(parts, lighting, positions, { width = 64, samples
         }
       }
     }
-    return { data, width, height, hitFraction: hits / (width * height) };
+    return { data, width, height, hitFraction: hits / (width * height), floorHeight: floorBelow(world, tracer, position) };
   });
+}
+
+// The height of the horizontal surface straight under a probe, or null when the ground there is not level. A reflected ray
+// that heads down meets this plane, which is how the lookup is corrected for the probe sitting away from the shaded point.
+function floorBelow(world, tracer, position) {
+  const hit = tracer.trace(position[0], position[1], position[2], 0, -1, 0, Infinity, false);
+  if (hit.nearestTriangle < 0) return null;
+  const normal = [0, 0, 0];
+  hitNormal(world, hit.nearestTriangle, [0, -1, 0], normal);
+  return normal[1] > LEVEL_FLOOR_NORMAL ? position[1] - hit.nearestDistance : null;
 }
 
 /** Validates the probe list of a recipe: up to MAXIMUM_PROBES of `{ position, radius? }`. */
