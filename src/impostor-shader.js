@@ -4,7 +4,7 @@
 // extra attribute. The same function runs in the colour and shadow vertex shaders: in the shadow pass the "eye" is
 // the light, so the card shows the tree as the sun sees it.
 
-import { materialTags, registerAddonGlsl } from './shader-registry.js';
+import { materialTags, addonGlsl } from './shader-registry.js';
 
 /** Frames per side of the hemi-octahedral atlas (the atlas holds this many squared views). */
 export const IMPOSTOR_FRAMES = 8;
@@ -57,22 +57,23 @@ const ALPHA_COVERAGE = `  if (materialOpacity > 1.0) {
   }
 `;
 
-registerAddonGlsl({
-  alphaCoverage: ALPHA_COVERAGE,
-  declarations: impostorShader,
-  colorHook: `  vec3 impostorNormal = vec3(0.0, 1.0, 0.0);
-  bool isImpostor = instanceSurface.w == ${IMPOSTOR_TAG}.0;
-  if (isImpostor) {
+Object.assign(addonGlsl, {
+  alpha: ALPHA_COVERAGE,
+  defs: impostorShader,
+  color: `  if (instanceSurface.w == ${IMPOSTOR_TAG}.0) {
     vec2 atlasUv;
-    world.xyz = impostorCard(position, uv, instanceMatrix, viewProjection, time, wind, atlasUv, impostorNormal);
+    vec3 cardNormal;
+    world.xyz = impostorCard(position, uv, instanceMatrix, viewProjection, time, wind, atlasUv, cardNormal);
     uv = atlasUv;
+    worldPosition = world.xyz;
+    worldNormal = cardNormal;
   }
 `,
-  normalHook: `  if (isImpostor) worldNormal = impostorNormal;
-`,
-  depthHook: `  if (instanceSurface.w == ${IMPOSTOR_TAG}.0) {
+  depth: `  if (instanceSurface.w == ${IMPOSTOR_TAG}.0) {
     vec3 lightFacing;
-    world.xyz = impostorCard(position, uv, instanceMatrix, lightProjection, time, wind, shadowUv, lightFacing);
+    vec2 atlasUv;
+    world.xyz = impostorCard(position, uv, instanceMatrix, lightProjection, time, wind, atlasUv, lightFacing);
+    uv = atlasUv;
   }
 `,
 });

@@ -34,7 +34,7 @@ An instance uses the coarsest level whose `error` (the farthest its vertices lie
 
 ## Cross-fades and impostor levels
 
-`lods` switch a mesh by its pixel error and do not fade. The vegetation addon chooses its own levels by distance (`selectLevels`) and can fade between them: `selectLevels(instances, eye, { fade: 0.06 })` draws both levels near a threshold with complementary screen-door coverage (`alphaMode: 'dither'`, `opacity` and `ditherIncoming` on the material), and `impostors` adds a last level that draws one baked card per tree (material tag `impostor`). Culling treats the card as a rigid part: its bounding sphere holds the quad, and the sway is a few centimetres. Both choices depend on the distance only, so they keep the determinism below; see [Vegetation](/vegetation.md#impostors-and-cross-fade).
+`lods` switch a mesh by its pixel error and do not fade. The vegetation addon chooses its own levels by distance (`selectLevels`) and can fade between them: `selectLevels(instances, eye, { fade: 0.06 })` draws both levels near a threshold with complementary screen-door coverage (a mask material whose `opacityBias` carries the coverage; the code registers when the vegetation addon is imported), and `impostors` adds a last level that draws one baked card per tree (material tag `impostor`). Culling treats the card as a rigid part: its bounding sphere holds the quad, and the sway is a few centimetres. Both choices depend on the distance only, so they keep the determinism below; see [Vegetation](/vegetation.md#impostors-and-cross-fade).
 
 ## Determinism
 
