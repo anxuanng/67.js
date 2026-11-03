@@ -1,0 +1,1 @@
+- The dev server scans only the project's own pages for dependencies and does not watch `.claude/`. With a few hundred agent worktrees there, the first page load went from 13 s to 1.2 s, and the runtime benchmark no longer times out opening its harness.
