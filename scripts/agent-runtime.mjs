@@ -6,6 +6,7 @@ import { dirname, isAbsolute, join } from 'node:path';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import packageMetadata from '../package.json' with { type: 'json' };
+import { VEGETATION_CAPABILITY_NOTE } from '../src/agent-vegetation-notes.js';
 import { AGENT_SCENE_CAPABILITIES, AGENT_SCENE_DEFAULT_LIMITS, RENDER_PASS_NAMES, RENDER_PASS_DEPTH_RANGE, VIDEO_ENCODERS, MAXIMUM_VIDEO_SECONDS, MAXIMUM_JOB_SIDE, MAXIMUM_JOB_PIXELS, MAXIMUM_MEMORY_MIB, BAKE_WORKER_MAXIMUM_SECONDS } from '../src/agent-scene-capabilities.js';
 import { PATH_TRACER_CAPABILITIES } from '../src/path-tracer-capabilities.js';
 import { chooseDenoiser, finishWithOidn } from './agent-path-trace-denoise.mjs';
@@ -562,7 +563,7 @@ export function createAgentRuntime({ kernelWorkers = true, backend = 'gpu', brow
   return Object.freeze({
     async capabilities() {
       return {
-        scene: AGENT_SCENE_CAPABILITIES,
+        scene: { ...AGENT_SCENE_CAPABILITIES, vegetation: VEGETATION_CAPABILITY_NOTE },
         sceneLimits: SCENE_LIMITS,
         preview: { backend, memoryBudgetMiB: memory, maximumWidth: 1024, maximumHeight: 1024, maximumImageBytes: MAXIMUM_IMAGE_BYTES, maximumActiveScenes: 1, maximumQueuedCalls: MAXIMUM_QUEUED_CALLS, evaluationTimeoutMs: EVALUATION_TIMEOUT_MS },
         review: { ...REVIEW_LIMITS, backend, memoryBudgetMiB: memory, evaluationTimeoutMs: EVALUATION_TIMEOUT_MS,

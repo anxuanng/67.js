@@ -171,7 +171,7 @@ export const AGENT_SCENE_CAPABILITIES = Object.freeze({
     'add-geometry', 'remove-geometry', 'add-material', 'remove-material',
     'set-environment', 'set-effects', 'set-shadow', 'set-motion', 'set-armatures', 'set-physics', 'set-cloth', 'set-timeline', 'set-particles', 'set-bake', 'edit-mesh', 'set-mesh-stack',
   ]),
-  materialTags: Object.freeze(['surface', 'unlit', 'liquid', 'foam']),
+  materialTags: Object.freeze(['surface', 'unlit', 'liquid', 'foam', 'foliage', 'grass']),
   materialLayers: Object.freeze(Object.fromEntries(MATERIAL_LAYER_FIELDS.map(field => [field, Object.freeze({
     range: MATERIAL_LAYER_SCALAR_RANGES[field] ?? MATERIAL_LAYER_COLOR_RANGES[field] ?? 'above 0',
     note: MATERIAL_LAYER_NOTES[field],
