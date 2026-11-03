@@ -22,10 +22,12 @@ export const GLTF_CAPABILITIES = Object.freeze({
 
 const LAYER_SHADER_EXTENSIONS = Object.freeze(['KHR_materials_anisotropy', 'KHR_materials_iridescence']);
 
-// The shader code for anisotropy and iridescence is not in the core bundle; a file that uses either brings it in.
+// The shader code for anisotropy, iridescence and transmission is not in the core bundle; a file that uses one brings it in.
 async function loadLayerShadersFor(document) {
   const usesLayerShaders = (document.materials ?? []).some(material => LAYER_SHADER_EXTENSIONS.some(extension => material?.extensions?.[extension]) || layerTextureReferences(material).length > 0 || materialUvTransforms(material ?? {}).normalRelative);
   if (usesLayerShaders) await import('./material-layer-shaders.js');
+  const usesLiquidShader = (document.materials ?? []).some(material => material?.extensions?.KHR_materials_transmission);
+  if (usesLiquidShader) await import('./liquid-shader.js');
 }
 
 const DEFAULT_MAX_BYTES = 32 * 1024 * 1024;
@@ -116,6 +118,14 @@ function documentFrom(data, maxBytes) {
     offset += 8 + length;
   }
   return JSON.parse(new TextDecoder().decode(new Uint8Array(data, 20, jsonLength)));
+}
+
+/** Morph target names the file gives (extras.targetNames), in target order, or null when it names none. */
+function morphTargetNamesOf(document, node, count) {
+  const names = document.meshes?.[document.nodes?.[node.association?.nodes]?.mesh]?.extras?.targetNames;
+  const valid = Array.isArray(names) && names.length === count && new Set(names).size === count &&
+    names.every(name => typeof name === 'string' && name.length > 0 && name.length <= 128);
+  return valid ? [...names] : null;
 }
 
 function morphCount(mesh) {
@@ -1034,6 +1044,8 @@ export async function parseGltf(data, options = {}) {
         if (geometry.morphTargets) {
           const binding = makeMorphBinding(node, geometry, morphMetadata);
           part.morph = binding.pose;
+          const targetNames = morphTargetNamesOf(document, node, binding.pose.weights.length);
+          if (targetNames) part.morphTargetNames = targetNames;
           validateMorphTransform(binding.pose, binding.metadata, part.matrix, part.skin);
           morphBindings.push({ ...binding, part, pendingMatrix: transformBinding.pendingMatrix, pendingSkin });
         }

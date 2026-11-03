@@ -22,6 +22,7 @@ import { sessionProblem } from '../src/agent-errors.js';
 
 const SCENE_LIMITS = AGENT_SCENE_DEFAULT_LIMITS;
 const MAXIMUM_IMAGE_BYTES = 1024 * 1024;
+const MAXIMUM_MOTION_SOURCES = 4;
 // A job writes files, not MCP image responses, so a 1920x1080 PNG may be larger than an inline image.
 const MAXIMUM_JOB_FRAME_BYTES = 12 * 1024 * 1024;
 // The object ID pass lists the part behind each ID in the job metrics; longer lists are cut and flagged.
@@ -136,6 +137,23 @@ export function createAgentRuntime({ kernelWorkers = true, backend = 'gpu', brow
     if (!needs.length) return {};
     const entries = await Promise.all(needs.map(async ({ id }) => [id, (await (await catalog()).read(id)).toString('base64')]));
     return { assetData: Object.fromEntries(entries) };
+  }
+
+  // Motion layers can play a clip of another catalog asset (`from.asset`). The page gets those assets' bytes by catalog ID,
+  // never a path, and keeps only their clips and nodes.
+  async function motionSources(motions) {
+    const ids = new Set();
+    for (const motion of motions) {
+      for (const layer of Array.isArray(motion?.layers) ? motion.layers : []) {
+        const id = layer?.from?.asset;
+        if (typeof id === 'string' && /^[a-f0-9]{64}$/i.test(id)) ids.add(id.toLowerCase());
+      }
+    }
+    if (ids.size > MAXIMUM_MOTION_SOURCES) throw new RangeError(`Motion layers can retarget clips of at most ${MAXIMUM_MOTION_SOURCES} other assets at once.`);
+    if (!ids.size) return {};
+    const sources = {};
+    for (const id of ids) sources[id] = (await (await catalog()).read(id)).toString('base64');
+    return { sources };
   }
 
   function enqueue(task) {
@@ -345,7 +363,7 @@ export function createAgentRuntime({ kernelWorkers = true, backend = 'gpu', brow
       await jobPage.goto(origin);
       await jobPage.waitForFunction(() => Boolean(window.__agentPreview));
       const input = { sessionId: jobId, recipe: snapshot.recipe, memoryBudgetMiB: memory, backend,
-        ...(snapshot.assetBytes ? { data: snapshot.assetBytes.toString('base64') } : {}) };
+        ...(snapshot.assetBytes ? { data: snapshot.assetBytes.toString('base64'), ...(await motionSources([snapshot.recipe.motion])) } : {}) };
       const created = await jobPage.evaluate(({ method, input }) => window.__agentPreview[method](input),
         { method: snapshot.assetBytes ? 'createAsset' : 'create', input });
       const width = settings.kind === 'video' ? Math.floor(created.render.width / 2) * 2 : created.render.width;
@@ -549,7 +567,7 @@ export function createAgentRuntime({ kernelWorkers = true, backend = 'gpu', brow
         const bytes = await (await catalog()).read(recipe.assetId);
         await boot();
         const sessionId = randomUUID();
-        const result = await evaluate('createAsset', { recipe, data: bytes.toString('base64'), sessionId, memoryBudgetMiB: memory, backend });
+        const result = await evaluate('createAsset', { recipe, data: bytes.toString('base64'), sessionId, memoryBudgetMiB: memory, backend, ...(await motionSources([recipe.motion])) });
         activeSessionId = sessionId;
         return result;
       });
@@ -581,7 +599,8 @@ export function createAgentRuntime({ kernelWorkers = true, backend = 'gpu', brow
         }
         const bakeAfter = bakeAfterOperations(input.operations);
         const rebakes = activeSceneHasBake || bakeAfter === true;
-        const applied = await invoke('apply', { ...input, ...(await placedAssetData(input.operations)) }, rebakes ? BAKE_EVALUATION_TIMEOUT_MS : EVALUATION_TIMEOUT_MS);
+        const motions = (input.operations ?? []).filter(operation => operation.type === 'set-motion').map(operation => operation.motion);
+        const applied = await invoke('apply', { ...input, ...(await motionSources(motions)), ...(await placedAssetData(input.operations)) }, rebakes ? BAKE_EVALUATION_TIMEOUT_MS : EVALUATION_TIMEOUT_MS);
         activeSceneHasBake = bakeAfter ?? activeSceneHasBake;
         return applied;
       });
@@ -688,7 +707,7 @@ export function createAgentRuntime({ kernelWorkers = true, backend = 'gpu', brow
             privateSessionId = randomUUID();
             await reviewEvaluate(branchRecipe || !assetBytes ? 'create' : 'createAsset', { sessionId: privateSessionId,
               recipe: branchRecipe ? branchRecipe.recipe : snapshot.recipe, memoryBudgetMiB: memory, backend,
-              ...(!branchRecipe && assetBytes ? { data: assetBytes.toString('base64') } : {}),
+              ...(!branchRecipe && assetBytes ? { data: assetBytes.toString('base64'), ...(await motionSources([snapshot.recipe.motion])) } : {}),
               ...(!assetBytes ? await placedAssetData(branchRecipe ? branchRecipe.recipe : snapshot.recipe) : {}) });
             privateCreated = true;
             for (const index of group.shotIndexes) {

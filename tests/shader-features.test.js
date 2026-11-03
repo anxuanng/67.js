@@ -2,10 +2,11 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createFragmentShader, fragmentShader, SHADER_FEATURES } from '../src/shaders.js';
 import '../src/material-layer-shaders.js';
+import '../src/world-material-shader.js';
 
 test('the default fragment shader keeps every feature', () => {
   assert.equal(fragmentShader, createFragmentShader(SHADER_FEATURES));
-  assert.match(fragmentShader, /#define TAG_WATER \(surface\.w == 3\.0\)/);
+  assert.match(fragmentShader, /#define TAG_WATER false/, 'the world materials load with their own module, so the default shader leaves them out');
   assert.match(fragmentShader, /#define USES_NORMAL_MAP \(hasNormalMap > 0\.5\)/);
 });
 

@@ -14,10 +14,10 @@ jobs:
   test:
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    env:
-      SIZE_BASE_REF: origin/${{ github.base_ref }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 2
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '24'
@@ -25,16 +25,20 @@ jobs:
       - run: npm install --global npm@12.1.0
       - run: npm ci --ignore-scripts
       - run: npm audit --audit-level=high
-      - name: Fetch the base branch for the size check
+      # The tested tree is the merge of the pull request into the base branch as it was when the merge was built. Its first parent
+      # is the base of every size, tool cost and archive check, not the newest tip, which may hold work this tree lacks.
+      - name: Find the base of the size checks
         id: base
         run: |
-          git fetch --no-tags --depth=1 origin "${GITHUB_BASE_REF}:refs/remotes/${SIZE_BASE_REF}"
-          echo "sha=$(git rev-parse "${SIZE_BASE_REF}")" >> "$GITHUB_OUTPUT"
+          sha=$(node scripts/ci-base-sha.mjs)
+          echo "sha=${sha}" >> "$GITHUB_OUTPUT"
+          echo "SIZE_BASE_REF=${sha}" >> "$GITHUB_ENV"
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: node_modules/.cache/size-base
-          key: size-base-${{ steps.base.outputs.sha }}-${{ hashFiles('scripts/measure-size.mjs', 'scripts/size-*.mjs', 'package-lock.json') }}
+          key: size-base-${{ steps.base.outputs.sha }}-${{ hashFiles('scripts/measure-size.mjs', 'scripts/size-*.mjs', 'scripts/*tool-cost*.mjs', 'scripts/measure-archive.mjs', 'scripts/build-mcp.mjs', 'vite.lib.config.js', 'package-lock.json') }}
       - run: npm run size -- --base "$SIZE_BASE_REF"
+      - run: npm run tool-cost -- --base "$SIZE_BASE_REF"
       - run: npm test
       - run: npm run test:isolated
       - run: npm run prepare:release

@@ -21,9 +21,9 @@ test('the static graph of the core shaders does not reach the layer shader modul
 test('a layer without registered code fails with the import to add', async () => {
   const { createFragmentShader, fragmentShader } = await import('../src/shaders.js?without-layer-code');
   assert.doesNotMatch(fragmentShader, /anisotropicSpecular|filmReflectance/);
-  assert.throws(() => createFragmentShader(['anisotropy']), /anisotropy layer needs its shader code.*addons\/material-layer-shaders/);
-  assert.throws(() => createFragmentShader(['iridescence']), /iridescence layer needs its shader code.*addons\/material-layer-shaders/);
-  assert.doesNotThrow(() => createFragmentShader(['water']));
+  assert.throws(() => createFragmentShader(['anisotropy']), /anisotropy feature needs its shader code.*addons\/material-layer-shaders/);
+  assert.throws(() => createFragmentShader(['iridescence']), /iridescence feature needs its shader code.*addons\/material-layer-shaders/);
+  assert.doesNotThrow(() => createFragmentShader(['floor']));
 });
 
 test('importing the layer shader module registers the code for the shader that asked for it', async () => {

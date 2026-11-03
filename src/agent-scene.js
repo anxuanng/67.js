@@ -1142,7 +1142,7 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
     stagedState.skinStages = createSkinStages(skinBindings);
     stagedState.motionSampler = recipe.motion ? agentSceneModule('motion').compileAgentMotion(recipe.motion, recipe) : null;
     stagedState.physicsSampler = stagePhysics(recipe, geometryRecords);
-    stagedState.clothSampler = stageCloth(recipe, geometryRecords);
+    stagedState.clothSampler = stageCloth(recipe, geometryRecords, stagedState.motionSampler);
     stagedState.particleSampler = stageParticles(recipe, geometryRecords);
     const animated = Boolean(stagedState.motionSampler || stagedState.physicsSampler || stagedState.clothSampler || stagedState.particleSampler || assetRuntime.animators.length);
     stagedState.poseGraph = animated ? compile(recipe, geometries, localBounds, limits) : null;
@@ -1263,16 +1263,17 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
   }
 
   // Same rule as physics: an unchanged cloth section on unchanged geometry and nodes reuses the last bake.
-  function stageCloth(recipe, geometryRecords) {
+  function stageCloth(recipe, geometryRecords, motionSampler) {
     if (!recipe.cloth) {
       return null;
     }
     const involved = new Set([...recipe.cloth.sheets, ...(recipe.cloth.colliders ?? [])].map(entry => entry.node));
     const involvedNodes = recipe.nodes.filter(node => involved.has(node.id));
-    const key = JSON.stringify([recipe.cloth, involvedNodes, involvedNodes.map(node => geometryRecords.get(node.geometry).signature)]);
+    const followsMotion = recipe.cloth.sheets.some(sheet => sheet.pinTo) || (recipe.cloth.colliders ?? []).some(collider => collider.node === undefined);
+    const key = JSON.stringify([recipe.cloth, involvedNodes, involvedNodes.map(node => geometryRecords.get(node.geometry)?.signature), followsMotion ? [recipe.motion, recipe.nodes, recipe.armatures] : null]);
     if (clothBake?.key !== key) {
       const geometries = new Map([...geometryRecords].map(([id, record]) => [id, record.geometry]));
-      clothBake = { key, sampler: agentSceneModule('cloth').bakeAgentCloth(recipe.cloth, recipe, geometries) };
+      clothBake = { key, sampler: agentSceneModule('cloth').bakeAgentCloth(recipe.cloth, recipe, geometries, motionSampler) };
     }
     return clothBake.sampler;
   }

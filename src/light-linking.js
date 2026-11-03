@@ -1,4 +1,4 @@
-import { registerShaderFeatureCode } from './shaders.js';
+import { registerShaderFeatureCode } from './shader-registry.js';
 import { ALL_LIGHTS_MASK } from './material-layers.js';
 import { SUN_BIT, POINT_FIRST_BIT, SPOT_FIRST_BIT, AREA_FIRST_BIT } from './light-link-bits.js';
 

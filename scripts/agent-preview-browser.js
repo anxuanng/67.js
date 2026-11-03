@@ -31,6 +31,26 @@ function requireSession(sessionId) {
   return active;
 }
 
+function bytesFromBase64(data) {
+  if (typeof Uint8Array.fromBase64 === 'function') return Uint8Array.fromBase64(data);
+  const binary = atob(data);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index++) bytes[index] = binary.charCodeAt(index);
+  return bytes;
+}
+
+// Other catalog assets whose clips a motion layer retargets: only their clips and nodes are kept, so the decoded
+// meshes and textures are released at once.
+async function decodeMotionSources(encoded = {}) {
+  const decoded = {};
+  for (const [assetId, data] of Object.entries(encoded)) {
+    const source = await parseGltf(bytesFromBase64(data).buffer, { maxBytes: 16 * 1024 * 1024, maxVertices: 250000, maxParts: 4096, maxTexturePixels: 4194304, maxJoints: 1024 });
+    decoded[assetId] = { animations: source.animations, nodes: source.nodes };
+    source.dispose();
+  }
+  return decoded;
+}
+
 function validatePreviewCamera(camera) {
   const view = mat4.lookAt(mat4.create(), camera.eye, camera.target, camera.up);
   for (const aspect of [1 / 16, 16]) {
@@ -288,15 +308,6 @@ setPhysicsModuleLoader(() => import(/* @vite-ignore */ new URL('/vendor/rapier.j
 
 // The preview bundle is one file, so the on-demand scene modules load together on the first call and later calls stay
 // synchronous. The boolean engine is WebAssembly and loads asynchronously, once, only for calls that need it.
-function decodeBase64(data) {
-  if (typeof Uint8Array.fromBase64 === 'function') {
-    return Uint8Array.fromBase64(data);
-  }
-  const binary = atob(data);
-  const bytes = new Uint8Array(binary.length);
-  for (let index = 0; index < binary.length; index++) bytes[index] = binary.charCodeAt(index);
-  return bytes;
-}
 
 const ASSET_DECODE_LIMITS = { maxBytes: 16 * 1024 * 1024, maxVertices: 250000, maxParts: 4096, maxTexturePixels: 4194304, maxJoints: 1024 };
 
@@ -313,7 +324,7 @@ async function loadPlacedAssets(pool, value, assetData) {
       const key = assetCopyKey(id, copy);
       if (pool.has(key)) continue;
       if (!assetData?.[id]) throw new Error(`Asset ${id.slice(0, 12)} was not supplied. Check asset_catalog for its id.`);
-      pool.set(key, await parseGltf(decodeBase64(assetData[id]).buffer, ASSET_DECODE_LIMITS));
+      pool.set(key, await parseGltf(bytesFromBase64(assetData[id]).buffer, ASSET_DECODE_LIMITS));
     }
   }
 }
@@ -702,13 +713,13 @@ window.__agentPreview = {
   },
   async createAsset(input) {
     if (active) throw new Error('Dispose the current scene before creating another.');
-    const bytes = decodeBase64(input.data);
+    const bytes = bytesFromBase64(input.data);
     let asset;
     try {
       // Labels, mesh reports and motion read the on-demand modules on any asset, not only one with mesh edits.
       await loadAllAgentSceneModules();
       asset = await parseGltf(bytes.buffer, { maxBytes: 16 * 1024 * 1024, maxVertices: 250000, maxParts: 4096, maxTexturePixels: 4194304, maxJoints: 1024 });
-      return createPreview(createAgentAssetScene(asset, input.recipe), input, asset);
+      return createPreview(createAgentAssetScene(asset, input.recipe, { sources: await decodeMotionSources(input.sources) }), input, asset);
     } catch (error) {
       asset?.dispose();
       throw error;
@@ -726,6 +737,13 @@ window.__agentPreview = {
     return { sessionId, ...scene.inspectMeshes(options) };
   },
   apply(input) {
+    if (input.sources) {
+      const { scene } = requireSession(input.sessionId);
+      return decodeMotionSources(input.sources).then(decoded => {
+        scene.provideMotionSources?.(decoded);
+        return afterMeshBooleans(input.operations, () => this.applyLoaded(input));
+      });
+    }
     if (recipeAssetNeeds(input.operations).length) return this.applyWithAssets(input);
     return afterMeshBooleans(input.operations, () => this.applyLoaded(input));
   },

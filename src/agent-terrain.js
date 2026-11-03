@@ -1,5 +1,6 @@
 // Recipe terrain: a seeded rolling ground with optional round holes, built with the terrain addon as one mesh.
 // It loads on demand with the recipes that contain a terrain geometry, so the scene entry does not carry it.
+import './world-material-shader.js';
 import { createTerrain } from './terrain.js';
 
 export const TERRAIN_LIMITS = Object.freeze({

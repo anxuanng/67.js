@@ -10,4 +10,4 @@ Do not edit `CHANGELOG.md` in a pull request. Two pull requests then never touch
 
 `npm run changes` prints the pending notes. At release time `npm run changes:fold` writes them into `CHANGELOG.md` as the section for the version in `package.json` and deletes the files.
 
-A size note, `changes/<issue>.size.md`, is not a changelog bullet. It accepts a bundle size increase, and `bench/size/README.md` says how. `changes:fold` leaves it out of the changelog and deletes it.
+A size note, `changes/<issue>.size.md`, is not a changelog bullet. It accepts a bundle size increase, and `bench/size/README.md` says how. `changes:fold` leaves it out of the changelog and deletes it. The same note accepts a tool cost increase, with lines such as `- tool:scene_create: <reason>`, and `bench/tool-cost/README.md` says how.
