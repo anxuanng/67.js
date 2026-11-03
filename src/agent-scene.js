@@ -1032,7 +1032,7 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
   function stage(inputRecipe, preferred = null, removedNodes = new Set(), removedMaterials = new Set()) {
     const recipe = normalizeRecipe(inputRecipe, limits);
     const placedRuntime = recipe.nodes.some(node => node.asset)
-      ? agentSceneModule('assets').expandAssetPlacements(recipe, options.assets, limits, assetOutputCache)
+      ? agentSceneModule('assets').expandAssetPlacements(recipe, options.assets, limits, assetOutputCache, recipe.nodes.some(node => node.asset?.drive) ? agentSceneModule('drive').createAssetDrive : null)
       : NO_ASSETS;
     // Grown vegetation travels the placed-asset channel: generated geometries, materials and part nodes.
     const vegetationRuntime = recipe.nodes.some(node => node.vegetation)

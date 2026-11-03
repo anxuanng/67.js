@@ -279,19 +279,30 @@ function ikKeyframeCount(ik) {
 }
 
 /** Normalize bounded authored data without storing bindings or sampled poses. */
+/** The canonical drive entry and the drive built from it, which proves the wheels, path and speeds are usable. */
+function normalizedDrive(input, recipe) {
+  if (!recipe.normalizeDrive) {
+    throw new RangeError('motion.drive moves an imported asset recipe. For an asset placed in a scene, give the placement a drive: { asset: { id, drive } }.');
+  }
+  const canonical = recipe.normalizeDrive(input);
+  return { canonical, built: recipe.buildDrive(canonical) };
+}
+
 export function normalizeAgentMotion(input, recipe) {
   if (input === null || input === undefined) {
     return null;
   }
-  knownKeys(input, ['duration', 'loop', 'tracks', 'ik', 'constraints', 'drivers', 'layers', 'footLock'], 'motion');
-  const duration = bounded(input.duration, 0.1, 30, 'Motion duration');
+  knownKeys(input, ['duration', 'loop', 'tracks', 'ik', 'constraints', 'drivers', 'layers', 'footLock', 'drive'], 'motion');
+  const drive = input.drive === undefined ? null : normalizedDrive(input.drive, recipe);
+  // A drive knows how long its path takes, so the motion may leave the duration out.
+  const duration = bounded(input.duration === undefined && drive ? Math.ceil(drive.built.duration * 1000) / 1000 : input.duration, 0.1, 30, 'Motion duration');
   const loop = input.loop === undefined ? false : input.loop;
   if (typeof loop !== 'boolean') {
     throw new TypeError('Motion loop must be boolean.');
   }
   const inputTracks = input.tracks ?? [];
   denseArray(inputTracks, 128, 'Motion tracks');
-  if (!inputTracks.length && !input.layers?.length && !input.ik?.length && !input.constraints?.length && !input.drivers?.length) {
+  if (!inputTracks.length && !input.layers?.length && !input.ik?.length && !input.constraints?.length && !input.drivers?.length && !drive) {
     throw new RangeError('Motion needs at least one track, IK solver, constraint or driver. Use null to clear it.');
   }
   const nodes = new Set((recipe.nodes ?? []).map(node => node.id));
@@ -349,6 +360,9 @@ export function normalizeAgentMotion(input, recipe) {
     return result;
   });
   const result = { duration, loop, tracks };
+  if (drive) {
+    result.drive = drive.canonical;
+  }
   if (input.layers !== undefined) {
     result.layers = normalizeClipLayers(input.layers, recipe.clipLayerContext);
   }
@@ -566,6 +580,14 @@ export function compileAgentMotion(input, recipe) {
     if (!output.materials.has(target.id)) output.materials.set(target.id, {});
     output.materials.get(target.id)[target.property] = target.component === undefined ? 0 : new Float64Array(3);
   }
+  const driveSampler = motion.drive ? recipe.buildDrive(motion.drive) : null;
+  if (driveSampler) {
+    // The drive touches the same nodes and tail-light materials at every time, so its patches are allocated once.
+    for (const { id } of driveSampler.sample(0).nodeOverrides) {
+      output.nodes.set(id, { translation: new Float64Array(3), rotation: new Float64Array(4), scale: new Float64Array(3) });
+    }
+    for (const { material } of motion.drive.lights?.tailLights ?? []) output.materials.set(material, { emission: 0 });
+  }
   const baselines = new Map((recipe.materials ?? []).map(material => [material.id, structuredClone(material)]));
   const cameraTracks = motion.tracks.filter(track => track.kind === 'camera');
   const cameraInput = {
@@ -596,6 +618,7 @@ export function compileAgentMotion(input, recipe) {
   }
   return Object.freeze({
     ikUsesStagedPose,
+    driveSampler,
     /**
      * Solve IK, then drivers and constraints, over a pose an asset staged for this time ({ id, translation, rotation,
      * scale } per node). Returns the node overrides to add: rotations for IK nodes, whole transforms for constrained ones.
@@ -656,6 +679,7 @@ export function compileAgentMotion(input, recipe) {
           materialSamples.get(track.id)[track.property] = value;
         }
       }
+      const driven = driveSampler?.sample(time);
       if (!ikUsesStagedPose) ikEvaluator?.solve(time);
       const evaluated = constraintEvaluator?.evaluate(time, ikUsesStagedPose ? trackBases() : poseBases());
       const drivenValues = [];
@@ -697,6 +721,13 @@ export function compileAgentMotion(input, recipe) {
           nodePatch.scale.set(frame.scale);
         }
       }
+      for (const override of driven?.nodeOverrides ?? []) {
+        const nodePatch = output.nodes.get(override.id);
+        nodePatch.translation.set(override.translation);
+        nodePatch.rotation.set(override.rotation);
+        nodePatch.scale.set(override.scale);
+      }
+      for (const { material, emission } of driven?.emissions ?? []) output.materials.get(material).emission = emission;
       for (const { target, value } of drivenValues) {
         const materialPatch = output.materials.get(target.id);
         if (typeof value === 'number') materialPatch[target.property] = value;
