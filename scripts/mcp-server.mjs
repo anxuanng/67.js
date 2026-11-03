@@ -102,13 +102,13 @@ const materialLayerFields = {
 };
 
 
-const subsurfaceColor = (field, [minimum, maximum]) => z.tuple([0, 1, 2].map(() => z.number().min(minimum, `subsurface.${field} components must be at least ${minimum}.`).max(maximum, `subsurface.${field} components must be at most ${maximum}.`)));
+const subsurfaceTriple = ([minimum, maximum]) => z.tuple([0, 1, 2].map(() => z.number().min(minimum).max(maximum)));
 const subsurface = z.strictObject({
-  weight: z.number().min(SUBSURFACE_RANGES.weight[0]).max(SUBSURFACE_RANGES.weight[1]).optional().describe('Share of light that scatters under the surface; 0 is off.'),
-  radius: subsurfaceColor('radius', SUBSURFACE_RANGES.radius).optional().describe('Red, green, blue mean free path in units of scale. Default [1, 0.2, 0.1] (skin).'),
-  scale: z.number().min(SUBSURFACE_RANGES.scale[0]).max(SUBSURFACE_RANGES.scale[1]).optional().describe('Metres per radius unit. Default 0.05.'),
-  color: subsurfaceColor('color', SUBSURFACE_RANGES.color).optional().describe('Linear RGB scatter colour; the base color when left out.'),
-}).describe('Light scattered under the surface (skin, wax, leaves), as Blender Principled BSDF Subsurface. Rasterizer only; the path tracer ignores it.');
+  weight: z.number().min(SUBSURFACE_RANGES.weight[0]).max(SUBSURFACE_RANGES.weight[1]).optional(),
+  radius: subsurfaceTriple(SUBSURFACE_RANGES.radius).optional().describe('RGB mean free path in scale units.'),
+  scale: z.number().min(SUBSURFACE_RANGES.scale[0]).max(SUBSURFACE_RANGES.scale[1]).optional().describe('Metres per radius unit.'),
+  color: subsurfaceTriple(SUBSURFACE_RANGES.color).optional(),
+}).describe('Subsurface scattering (skin, wax, leaves) as Blender Principled BSDF; details in scene_capabilities materialSubsurface.');
 
 const materialFields = {
   ...materialLayerFields,
