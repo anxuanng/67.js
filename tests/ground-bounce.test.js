@@ -124,3 +124,22 @@ test('a point, spot or area light keeps the environment, as the term knows only 
   }
   assert.ok(groundBounceEnvironment(openScene(), { ...environment, pointLights: [] }).map.irradianceSource);
 });
+
+function textureOf(pixels, colorSpace = 'srgb') {
+  return { image: { width: pixels.length, height: 1, data: new Uint8ClampedArray(pixels.flat()) }, colorSpace };
+}
+
+test('a textured floor gives its colour times the mean of the texture in linear space', () => {
+  const checker = textureOf([[255, 255, 255, 255], [0, 0, 0, 255]]);
+  const albedo = findGroundSurface(openScene({ ...GRASS, color: [1, 0.5, 0.25], map: checker })).albedo;
+  [0.5, 0.25, 0.125].forEach((expected, index) => assert.ok(Math.abs(albedo[index] - expected) < 1e-6));
+  const linearMiddle = textureOf([[128, 128, 128, 255]], 'linear');
+  assert.ok(Math.abs(findGroundSurface(openScene({ ...GRASS, color: [1, 1, 1], map: linearMiddle })).albedo[0] - 128 / 255) < 1e-6);
+});
+
+test('the mean of a texture is found once per image', () => {
+  const map = textureOf([[255, 255, 255, 255]]);
+  findGroundSurface(openScene({ ...GRASS, map }));
+  map.image.data.fill(0);
+  assert.ok(findGroundSurface(openScene({ ...GRASS, map })).albedo[0] > 0.1);
+});
