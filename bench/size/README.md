@@ -59,7 +59,9 @@ A bundle fails when it grows by more than its allowance:
 
 A bundle that the base does not have is reported and never fails. A bundle that shrinks never fails.
 
-The table in the output shows each bundle, the base size, the growth and the allowance. The release budgets in `budgets.json` and the goals are printed as a report. They do not fail a pull request.
+The table in the output shows each bundle, the base size, the growth and the allowance. The release budgets in `budgets.json` are printed as a report and do not fail a pull request.
+
+The goals in `budgets.json` (`lit-box`, `gltf-box`, `agent-scene`) also gate: a goal scene that was at or under its goal on the base and goes over it fails, even inside its allowance, because many small accepted increases otherwise add up past the goal. Only a `- goal:<scene>: <why>` line accepts that, and An approves those lines. A `scene:<name>` line does not. A scene already over its goal on the base is held by its allowance only, until work brings it back under.
 
 ## When a check fails
 
