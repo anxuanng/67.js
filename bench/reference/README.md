@@ -32,7 +32,7 @@ All of them are against the Blender 5.2.2 renders taken on 2026-11-03 with the s
 | `fog-valley` | 0.1855 | 0.1952 | 0.1443 |  |  |
 | `foliage` | 0.1023 | 0.0888 | 0.0853 |  | 0.1753 |
 | `glass` | 0.1034 | 0.1009 | 0.0996 |  | 0.1406 |
-| `light-linking` | 0.0998 | 0.1558 | 0.1122 |  | 0.6241 |
+| `light-linking` | 0.0998 | 0.1558 | 0.1122 |  | 0.0213 |
 | `lit-interior` | 0.5055 | 0.5159 | 0.0923 | 0.1399 | 0.2167 |
 | `long-street` | 0.1407 | 0.0976 | 0.1252 |  | 0.1818 |
 | `material-spheres` | 0.1293 | 0.1053 | 0.0756 |  | 0.1383 |
@@ -536,7 +536,7 @@ The tracer is worse than the rasterizer on `outdoor-hdri` and `character`: in th
 
 Path tracer, second pass (issue #129, 2026-11-01): 64 samples at most, `noiseThreshold` 0.03, four threads, 960 by 540; seconds are wall time and include scene setup. The scores are in "Scores now".
 
-`light-linking` scores 0.6241 because the tracer does not trace light linking (every light lights every part).
+`light-linking` scores 0.0213 against Cycles, ahead of the rasterizer (0.0998): the tracer honours light linking, so a light adds nothing at a part it skips.
 
 Before and after on four scenes, 64 samples: every sample drawn without the box-projection and shadow-ray changes (the state of `main`), then the defaults of this change. `brick-graph` 0.1370 then 0.1373, `brick-room` 0.2794 then 0.2743 (seconds 121.2 then 126.7, the box-projected walls now read their projected UVs), `character` 0.1116 then 0.1120, `outdoor-hdri` 0.1014 then 0.1016. `brick-graph` is a UV-mapped wall, so it already drew its bump and nothing in this change touches it: against the 0.1538 of the table above (32 samples) it improved, against the same tracer at 64 samples it did not move (0.0003 worse, inside the noise). `brick-room` is the scene with box-projected materials; its normal and roughness maps used to be ignored.
 

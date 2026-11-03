@@ -427,7 +427,11 @@ function createPathTracer(scene, options) {
   let selectionProbability = 1;
   const fullWeight = () => 1 / selectionProbability;
 
+  // A light skips a part whose mask has its bit clear, at every bounce, so it is no bounce source there either.
+  const reaches = light => (hit.material.lightMask >> light.bit & 1) === 1;
+
   function sampleSun(depth, normal) {
+    if (!reaches(lights.sun)) return;
     const cosineTheta = 1 - random.next() * (1 - sunCosineMax);
     const sineTheta = Math.sqrt(Math.max(0, 1 - cosineTheta * cosineTheta));
     const phi = 2 * Math.PI * random.next();
@@ -462,6 +466,7 @@ function createPathTracer(scene, options) {
   const jitter = new Float64Array(3);
 
   function samplePointLight(depth, normal, light) {
+    if (!reaches(light)) return;
     randomOnSphere(light.radius, jitter);
     const { distance, distanceSquared } = aimAt(light.position[0] + jitter[0], light.position[1] + jitter[1], light.position[2] + jitter[2]);
     if (distance < 1e-6) return;
@@ -471,6 +476,7 @@ function createPathTracer(scene, options) {
   }
 
   function sampleSpotLight(depth, normal, light) {
+    if (!reaches(light)) return;
     randomOnSphere(light.radius, jitter);
     const { distance, distanceSquared } = aimAt(light.position[0] + jitter[0], light.position[1] + jitter[1], light.position[2] + jitter[2]);
     if (distance < 1e-6) return;
@@ -484,6 +490,7 @@ function createPathTracer(scene, options) {
   }
 
   function sampleAreaLight(depth, normal, light) {
+    if (!reaches(light)) return;
     const across = (random.next() - 0.5) * light.width;
     const along = (random.next() - 0.5) * light.height;
     const pointX = light.position[0] + light.across[0] * across + light.along[0] * along;
@@ -675,7 +682,6 @@ export function describeIgnoredFeatures(parts, environment) {
     for (const field of IGNORED_MAP_FIELDS) if (material[field]) notes.add(`${field} is ignored.`);
     if (material.tag && material.tag !== 'surface') notes.add(`${material.tag} materials are traced as plain surfaces.`);
     if (material.alphaMode === 'blend') notes.add('Blended transparency is traced as opaque.');
-    if (material.lightMask !== undefined) notes.add('Light linking (affects) is not traced: every light lights every part.');
   }
   return [...notes];
 }

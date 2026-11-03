@@ -227,7 +227,7 @@ window.measureReferenceFrameTime = measureReferenceFrameTime;
 async function renderReferencePathTraced(id, options) {
   const scene = await REFERENCE_SCENES[id]();
   const { renderPathTracedImage } = await import('/src/path-tracer.js');
-  const result = await renderPathTracedImage({ parts: scene.parts, environment: scene.environment, camera: scene.camera }, options);
+  const result = await renderPathTracedImage({ parts: applyLightLinks(scene.parts, scene.environment), environment: scene.environment, camera: scene.camera }, options);
   const canvas = document.createElement('canvas');
   canvas.width = result.width;
   canvas.height = result.height;
