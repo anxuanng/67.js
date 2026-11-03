@@ -97,6 +97,7 @@
     "./addons/light-linking": "./build/light-linking.js",
     "./addons/cascaded-shadows": "./build/cascaded-shadows.js",
     "./addons/gaussian-splats": "./build/gaussian-splats.js",
+    "./addons/texture-update": "./build/texture-update.js",
     "./package.json": "./package.json"
   },
   "scripts": {
@@ -111,6 +112,7 @@
     "test:isolated": "node scripts/test-each-file.mjs",
     "smoke": "node scripts/smoke.mjs",
     "smoke:scenes": "node scripts/smoke-scenes.mjs",
+    "smoke:vegetation-impostors": "node scripts/smoke-vegetation-impostors.mjs",
     "smoke:transport": "node scripts/smoke-film-transport.mjs",
     "render": "node scripts/render-media.mjs",
     "score": "node scripts/score.mjs",
@@ -143,6 +145,7 @@
     "smoke:character": "node scripts/smoke-character.mjs",
     "smoke:modeling": "node scripts/smoke-modeling.mjs",
     "smoke:material-maps": "node scripts/smoke-material-maps.mjs",
+    "smoke:texture-update": "node scripts/smoke-texture-update.mjs",
     "benchmark:mesh-query": "node scripts/benchmark-mesh-query.mjs",
     "benchmark:update-parts": "node scripts/benchmark-update-parts.mjs",
     "smoke:imported-topology": "node scripts/smoke-imported-topology.mjs",
@@ -151,6 +154,7 @@
     "smoke:agent-branches": "node scripts/smoke-agent-branches.mjs",
     "parity": "node scripts/parity-report.mjs",
     "reference": "node bench/reference/run.mjs",
+    "reference:line-art": "node bench/reference/line-art.mjs",
     "size": "node scripts/measure-size.mjs",
     "size:release": "node scripts/measure-size.mjs --set-budgets",
     "tool-cost": "node scripts/check-tool-cost.mjs",

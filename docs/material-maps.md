@@ -59,11 +59,32 @@ A batch groups geometry identity, all five map identities, `normalScale` values,
 The renderer uses batch uniforms for scale and strength because its instance attributes already occupy 16 vertex locations.
 Changing any of these batch fields requires a new renderer. `updateParts()` rejects changes before uploading instance data.
 Color, metallic, roughness, emission, emissive color, and transforms retain their existing update behavior.
-Descriptors and decoded image contents must remain unchanged while a renderer uses them.
+Descriptors must remain unchanged while a renderer uses them. Image pixels change only through `updateTexture`.
 
 Two API shapes were considered. A nested channel registry could carry arbitrary channel packing and transforms.
 Named per-channel descriptors reuse the existing `material.map` contract and make channel semantics explicit.
 The current API uses named descriptors. Arbitrary channel routing and texture transforms remain unsupported.
+
+## Updating pixels
+
+`renderer.updateTexture(descriptor, update)` replaces the pixels of a texture the renderer has already uploaded. It needs `import '@codepawlhq/67js/addons/texture-update'`, so scenes that never update a texture do not carry the code.
+
+```js
+import '@codepawlhq/67js/addons/texture-update';
+
+renderer.updateTexture(descriptor);
+renderer.updateTexture(descriptor, { image: video });
+renderer.updateTexture(descriptor, { region: { x: 64, y: 32, width: 16, height: 16, data: rgbaBytes } });
+```
+
+Without `update`, the descriptor image uploads again. This suits a canvas that you draw on.
+`image` replaces every pixel. It must have the same width and height as the uploaded texture.
+`region` replaces one rectangle. `data` holds `width * height * 4` RGBA bytes as a `Uint8Array` or `Uint8ClampedArray`, top row first. `x` and `y` count from the top left of the image, and `flipY` is handled for you. Give `image` or `region`, not both.
+
+Colour space, `flipY` and the unpack state follow the first upload. An `srgb` descriptor keeps sRGB storage, premultiplied alpha stays off, and the previous WebGL unpack state returns afterwards. A texture with mipmaps regenerates all of them after the upload, so a small region still costs one mipmap pass.
+
+The size cannot change, because the texture memory is planned at construction. Compressed textures reject updates, since their mip levels come from the file. A descriptor that was never uploaded, a region outside the texture, or a data length that does not match throws an error that names the problem.
+Update between two `render()` calls. The change shows on the next frame.
 
 ## glTF import and lifetime
 

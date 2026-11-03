@@ -15,6 +15,9 @@ export const layerTextureSupport = {};
 // view-transform-shader.js sets apply(source, kind, viewTransform, hasLook), bindLook(renderer, program) and dispose(renderer).
 export const viewTransformShader = {};
 
+// texture-update.js sets update(renderer, descriptor, update): the body of renderer.updateTexture.
+export const textureUpdateSupport = {};
+
 // splat-shader.js sets the JavaScript half of the splat ground material: validate, textureBytes, resolveSize,
 // packParameters and buildPixels. The renderer calls them only for a material with layers.
 const splatSupport = {};
@@ -50,6 +53,12 @@ export function requireFeatureCode(feature) {
   return slots;
 }
 
+
+/** Value of `material.tag` in the instance data; the vegetation addon adds `impostor`. */
+export const materialTags = { armor: 1, floor: 2, water: 3, foliage: 4, terrain: 5, grass: 7, fire: 8, smoke: 9, unlit: 10, liquid: 11, foam: 12 };
+
+// Functions from source to source that startProgram applies to every shader before compiling it; the vegetation addon adds its card code here.
+export const shaderTransforms = [];
 
 /** The most morph targets one geometry carries; the morph shader's weight array has this length. */
 export const MAX_MORPH_TARGETS = 64;
