@@ -33,3 +33,16 @@ test('the baseline records real hardware and a software renderer, and no local p
   assert.match(baseline.graphics.cpu, /swiftshader/i);
   assert.doesNotMatch(JSON.stringify(baseline), /[A-Z]:[\\/]Users/);
 });
+
+test('the water of the megacity scenes stands above the ground box, not in the same plane', () => {
+  // Cycles resolves two surfaces in one plane at random per ray, which dimmed the river to about a third of a mirror (#232).
+  const source = readFileSync(new URL('grand-scenes.js', REFERENCE_DIRECTORY), 'utf8');
+  const topOf = (name, thickness) => {
+    const match = source.match(new RegExp(`part\\('${name}', UNIT_BOX, \\[[^,]+, (-?[\\d.]+), `));
+    assert.ok(match, `${name} is declared in grand-scenes.js`);
+    return Number((Number(match[1]) + thickness / 2).toFixed(3));
+  };
+  const groundTop = topOf('city-ground', 2);
+  assert.ok(topOf('river', 1.4) > groundTop, 'the river top is above the ground top');
+  assert.ok(topOf('bay', 1.4) > groundTop, 'the bay top is above the ground top');
+});
