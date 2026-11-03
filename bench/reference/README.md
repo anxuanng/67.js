@@ -1455,3 +1455,42 @@ The mismatch that is in the compiler: the bake read the slope by a central diffe
 After the change: `brick-graph` 0.0933 (GPU) and 0.0930 (CPU) against Cycles, 0.0994 against EEVEE; `brick-flat` 0.0547. Excess over the flat wall 0.0386, was 0.0420 on the same renders, against EEVEE's 0.0120, so the first Done-when box of #50 stays open (gap 0.0266). Only `brick-graph` reads a graph. The full default run and the `--grand` run scored every other scene within 0.002 of main or better (`mountain-valley` 0.1769 to 0.1693 and the grand mountain-valley rows improved from other work on main; none is worse). The bundle budgets of the three `agent-scene` and `agent-asset` lazy entries were raised to the measured size plus 20 bytes (3 lines of `bench/size/budgets.json`). `emissive-sign` (new on main) had no Cycles render in the stored arrays and was rendered here to complete the run (0.2372 against Cycles); its row is not committed in this change.
 
 What is left is not in the bake. On the bump-only wall across the dark side of a joint, luminance (display space) is 0.25 at the darkest pixel in Cycles, 0.34 in EEVEE and 0.37 in 67js, against 0.62 on the flat wall: EEVEE and 67js agree with each other and Cycles is darker. That is a shading difference on a normal tilted about 70 degrees from the surface, in the lighting of `src/shaders.js`, which this change does not touch; it needs the engine session.
+
+## The reference harness drew `foliage` in a breeze (2026-11-03, part of issue #191)
+
+Found by comparing the leaf cards of the two sides. No engine code changed and no Blender render changed: the Cycles and EEVEE arrays are the ones of the earlier runs.
+
+| Property | 67js (scene JSON) | Blender (`render-blender.py`) | Same |
+| --- | --- | --- | --- |
+| Cards | 558 in one geometry, 2,232 vertices, UVs 0 to 1 | the same arrays, `build_mesh` | yes |
+| Transform | identity part matrix, Y-up to Z-up | `Y_UP_TO_Z_UP @ matrix` | yes |
+| Winding / back faces | `doubleSided: true`, no culling | Principled has no culling, back face keeps the stored normal | yes |
+| UV orientation | v as stored | image rows reversed and v flipped, net data row = v * height | yes |
+| Alpha mode, cutoff | `mask`, 0.5 | `GREATER_THAN` 0.5 on the texture alpha, then a transparent mix | yes |
+| Filtering | linear, trilinear mips | linear, no mips (Cycles) | differs by design (tried in #191, not kept) |
+| Wrap | clamp | repeat, but the card texture has alpha 0 on all four edges | no effect |
+| Leaf texture | 128 by 128, 22.5 percent of texels above 127 | the same pixels | yes |
+| Wind | renderer default `wind: 0.3` at `time: 0` | a still scene | **no** |
+
+The last row is the mismatch. The foliage vertex shader (`windOffset` in `src/shaders.js`) sways and flutters the cards even at time 0, up to 0.14 m of sway and 0.02 m of flutter at strength 0.3. At the camera distance of 12 m a pixel is 0.016 m, so crown cards were drawn up to about 4 px away from where Blender draws them (the shadow pass moves with them). `harness.js` built its frame without `wind`, so every vegetation scene paid for it.
+
+Measured with a CPU rasteriser of the cards (Python, bilinear alpha above 0.5 at mip 0, 4 by 4 samples per pixel, bark as occluder), over the crown rows of the 960 by 540 frame; mismatch is pixels whose "sky or not" differs between that mask and each render:
+
+| Render | Mismatch before | Best shift of the mask before | Mismatch with `wind: 0` |
+| --- | --- | --- | --- |
+| EEVEE | 1,036 | none | n/a |
+| Cycles | 2,523 | none | n/a |
+| 67js (GPU) | 3,228 | 1.5 px right, 0.5 px down (2,558) | 1,607 |
+| 67js (CPU) | 3,178 | 1.5 px right, 0.5 px down (2,492) | 1,493 |
+
+Fix: `harness.js` renders the reference frame with `wind: 0`. Re-run with 67js only (`--skip-blender`, GPU lock), then `--score-only`; only scenes with leaf cards moved. FLIP against Cycles (GPU), before to after:
+
+| Scene | 67js against Cycles | 67js against EEVEE | EEVEE against Cycles |
+| --- | --- | --- | --- |
+| foliage | 0.0979 to 0.0838 | 0.0771 to 0.0613 | 0.0924 |
+| mountain-valley | 0.1769 to 0.1691 | 0.2668 to 0.2613 | 0.1895 |
+| mountain-valley-a (grand) | 0.1671 to 0.1653 | 0.2392 to 0.2373 | 0.176 |
+| mountain-valley-b (grand) | 0.2096 to 0.2019 | 0.2645 to 0.2567 | 0.1306 |
+| mountain-valley-c (grand) | 0.1836 to 0.1775 | 0.223 to 0.2182 | 0.1522 |
+
+`foliage` now sits 0.0086 under EEVEE against Cycles (was 0.0055 over). Every other default and grand scene has no leaf cards and was not re-rendered; the only score that rose is a GPU against CPU difference (`gpu-vs-cpu` of `foliage` 0.0095 to 0.0097, `mountain-valley-b` 0.0158 to 0.0164). The Cycles and EEVEE columns did not move, so this is a change on the 67js side of the comparison and not a new reference. The score no longer includes the wind, which a real scene still has by default (`wind` 0.3); that is by design and is not scored here.
