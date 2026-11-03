@@ -4,6 +4,7 @@ import { postFragment, createPostFragment, POST_STEPS, skyFragment, bloomFragmen
 import { fullscreenVertex, startProgram, finishProgram, compileProgram } from './gl-program.js';
 import { ambientOcclusionFragment } from './ambient-occlusion.js';
 import { planRenderSize, estimateTextureBytes, estimateFrameBytes } from './budget.js';
+import { uploadCompressedImage } from './compressed-texture.js';
 import { applyProjection } from './camera.js';
 import { resolveEffects } from './effects.js';
 import { frameDiagnostics } from './frame-diagnostics.js';
@@ -337,6 +338,13 @@ export function textureDescriptorInfo(map, maximumSize = Infinity) {
   const magFilter = map.magFilter ?? 9729;
   if (![10497, 33071, 33648].includes(wrapS) || ![10497, 33071, 33648].includes(wrapT)) throw new Error('Unsupported texture wrap mode.');
   if (![9728, 9729, 9984, 9985, 9986, 9987].includes(minFilter) || ![9728, 9729].includes(magFilter)) throw new Error('Unsupported texture filtering mode.');
+  const compressed = map.image.compressed;
+  if (compressed) {
+    // A compressed image carries its own mips and cannot be mipmapped on the GPU. One level means no mip filtering.
+    const hasMips = compressed.levels.length > 1;
+    const effectiveMinFilter = hasMips || minFilter < 9984 ? minFilter : (minFilter === 9984 || minFilter === 9986 ? 9728 : 9729);
+    return { width, height, wrapS, wrapT, minFilter: effectiveMinFilter, magFilter, mipmaps: false, bytes: compressed.bytes };
+  }
   const mipmaps = minFilter >= 9984;
   return { width, height, wrapS, wrapT, minFilter, magFilter, mipmaps, bytes: estimateTextureBytes(width, height, { mipmaps }) };
 }
@@ -678,7 +686,8 @@ export class Renderer67 {
       context.pixelStorei(context.UNPACK_COLORSPACE_CONVERSION_WEBGL, context.NONE);
       if (map) {
         const info = textureDescriptorInfo(map, context.getParameter(context.MAX_TEXTURE_SIZE));
-        context.texImage2D(context.TEXTURE_2D, 0, map.colorSpace === 'linear' ? context.RGBA8 : context.SRGB8_ALPHA8, context.RGBA, context.UNSIGNED_BYTE, map.image);
+        if (map.image.compressed) uploadCompressedImage(context, map.image.compressed, map.colorSpace);
+        else context.texImage2D(context.TEXTURE_2D, 0, map.colorSpace === 'linear' ? context.RGBA8 : context.SRGB8_ALPHA8, context.RGBA, context.UNSIGNED_BYTE, map.image);
         context.texParameteri(context.TEXTURE_2D, context.TEXTURE_WRAP_S, info.wrapS);
         context.texParameteri(context.TEXTURE_2D, context.TEXTURE_WRAP_T, info.wrapT);
         context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MIN_FILTER, info.minFilter);
