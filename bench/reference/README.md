@@ -1400,3 +1400,18 @@ An earlier cut of this analysis, which called "lit" a Cycles luminance above 0.5
 - So the dominant class is coverage: leaf mask mismatch against Cycles is 6,073 pixels in 67js and 2,864 in EEVEE, in a window of the crown (75,890 Cycles leaf pixels; 67js 73,567, EEVEE 73,288). 67js misses 4,198 Cycles leaf pixels (EEVEE 2,733) and draws 1,875 that Cycles does not (EEVEE 131). It is not one shift: the best integer shift of the mask is 0 to 3 pixels left and differs by quadrant, and it removes at most 30 percent of the mismatch in any one of them. The mismatch is along leaf edges and tips (about 60 percent within a pixel of the other mask).
 - Shading is not it. The too-dark leaves (b) get 0.163 of linear-ish luminance from the sun in 67js (the sun-off render is 0.080 against 0.244 with the sun) against 0.448 in Cycles, and EEVEE has the same count. The lit leaves that 67js gets right take 0.232 from the sun. Leaf transmission and normals are not what separates 67js from EEVEE.
 - Candidate not run: the leaf texture is read with trilinear mip filtering and cut at alpha 0.5, so thin leaflets and tips fall under the cutoff at a coarse level, while Cycles reads the full-size image. Reading cutout materials one mip level finer (`texture(baseMap, uv, -1.0)` for `alphaMode` mask) is a one-line change, written but not measured because the GPU lock was held by another job for 35 minutes of waiting (the queued render was cancelled). It also touches grass and every other cutout, so it needs the full default and `--grand` suites before it is kept.
+
+## Soft leaf edges: alpha to coverage is already on, coverage-preserving mips did not help (2026-11-03, part of issue #191)
+
+No engine change was kept and `baseline.json` is unchanged. Alpha to coverage for alpha-mask materials is already in the renderer (`SAMPLE_ALPHA_TO_COVERAGE` plus the `fwidth` softened alpha in `surfaceAlpha`) and the harness renders with 4 samples, so the first option was in place before this attempt and measured nothing new.
+
+The second option was tried: for alpha-mask materials only, the base map got its own texture whose mip levels 1 and up are box filtered on the CPU (colour in linear light) and then have their alpha scaled so that the share of texels at or above the cutoff is as close as the alpha values allow to the share at level 0. Opaque and blend materials, and the shader, were untouched. Result for `foliage` (full `--score-only` after one GPU render of the scene, GPU 401 ms per frame, as before within noise):
+
+| `foliage` | before | coverage-preserving mips |
+| --- | --- | --- |
+| 67js against Cycles (GPU) | 0.0979 | 0.0981 |
+| 67js against Cycles (CPU) | 0.0976 | 0.0977 |
+| 67js against EEVEE (GPU) | 0.0771 | 0.0769 |
+| EEVEE against Cycles | 0.0924 | 0.0924 |
+
+Worse by 0.0002 against Cycles, so the default suite and `--grand` were not run and the code was reverted. Reading (inferred): the lost coverage is at full-size edges, not at coarse mips, since the crown is seen at about one texel per pixel; keeping more coverage in the coarse levels cannot reach it. Same direction as the one mip finer attempt (0.0979 to 0.0982). Next idea: match Cycles' edge softness at level 0 (a slightly blurred alpha, or the leaf alpha edge drawn with a ramp wider than a texel) instead of changing the mips.
