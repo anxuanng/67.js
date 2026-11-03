@@ -253,6 +253,24 @@ async function renderReferencePathTraced(id, options) {
   return { image: canvas.toDataURL('image/png').split(',')[1], report: result.report };
 }
 
+function floatsToBase64(values) {
+  const bytes = new Uint8Array(values.buffer, values.byteOffset, values.byteLength);
+  let binary = '';
+  for (let start = 0; start < bytes.length; start += 0x8000) binary += String.fromCharCode(...bytes.subarray(start, start + 0x8000));
+  return btoa(binary);
+}
+
+// The untouched tracer output (no denoiser) with its feature images, so denoisers can be compared on the same noisy pixels.
+async function renderReferencePathTracedFeatures(id, options) {
+  const scene = await REFERENCE_SCENES[id]();
+  const { renderPathTracedImage } = await import('/src/path-tracer.js');
+  const result = await renderPathTracedImage({ parts: applyLightLinks(scene.parts, scene.environment), environment: scene.environment, camera: scene.camera }, { ...options, denoise: false });
+  const features = {};
+  for (const [name, values] of Object.entries(result.features)) features[name] = floatsToBase64(values);
+  return { features, report: result.report };
+}
+
+window.renderReferencePathTracedFeatures = renderReferencePathTracedFeatures;
 window.renderReferenceScene = renderReferenceScene;
 window.renderReferencePathTraced = renderReferencePathTraced;
 window.referenceSceneIds = Object.keys(SCENES);

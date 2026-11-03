@@ -37,8 +37,11 @@ const HEIGHT = 540;
 // This process runs below normal priority, so a busy machine takes the page load past Playwright's 30 second default
 // (measured 22 s, against 5 s when idle). Load time does not affect any score.
 const PAGE_LOAD_TIMEOUT = 180000;
+// --no-gpu keeps the whole run off the GPU: the "gpu" render uses SwiftShader and Cycles runs on the CPU. The scene
+// descriptions and the Cycles images are what the path tracer comparison needs; the rasterizer scores of such a run are not comparable.
+const noGpu = process.argv.includes('--no-gpu');
 const BACKEND_ARGUMENTS = {
-  gpu: ['--enable-webgl', '--ignore-gpu-blocklist', '--disable-renderer-backgrounding'],
+  gpu: noGpu ? ['--enable-webgl', '--ignore-gpu-blocklist', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'] : ['--enable-webgl', '--ignore-gpu-blocklist', '--disable-renderer-backgrounding'],
   cpu: ['--enable-webgl', '--ignore-gpu-blocklist', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'],
 };
 
@@ -162,7 +165,7 @@ async function renderPathTracerScenes(serverUrl) {
 }
 
 function runChecked(command, commandArguments) {
-  const result = spawnSync(command, commandArguments, { stdio: ['ignore', 'pipe', 'inherit'], encoding: 'utf8', maxBuffer: 1 << 28 });
+  const result = spawnSync(command, commandArguments, { stdio: ['ignore', 'pipe', 'inherit'], encoding: 'utf8', maxBuffer: 1 << 28, env: { ...process.env, ...(noGpu ? { CYCLES_DEVICE: 'CPU' } : {}) } });
   const lines = result.stdout.split('\n').filter(line => !/^(Fra:|Saved:|Time:|\s*$)/.test(line));
   console.log(lines.slice(-30).join('\n'));
   if (result.status !== 0) throw new Error(`${command} exited with ${result.status}.`);

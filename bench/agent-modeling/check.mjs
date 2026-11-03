@@ -47,6 +47,25 @@ function checkWalk(rig, check) {
 const WALK_SAMPLES = 41;
 
 // A walker leaves one point to reach another, stays on the ground surface and keeps clear of a round opening.
+/** A node moves along one axis from a start to a target, passes the target and peaks within a range, then settles on it. */
+function checkOvershoot(check, measures) {
+  const axis = AXES[check.axis];
+  const heights = [];
+  for (let sample = 0; sample < WALK_SAMPLES; sample++) {
+    const position = measures.nodePosition(check.node, check.duration * sample / (WALK_SAMPLES - 1));
+    if (!position) return { pass: false, detail: `no drawn node ${check.node}` };
+    heights.push(position[axis]);
+  }
+  const peak = Math.max(...heights);
+  const problems = [];
+  if (Math.abs(heights[0] - check.from) > 0.02) problems.push(`starts at ${round(heights[0])}`);
+  if (Math.abs(heights.at(-1) - check.to) > 0.02) problems.push(`ends at ${round(heights.at(-1))}`);
+  if (peak < check.peak[0] || peak > check.peak[1]) problems.push(`peaks at ${round(peak)}`);
+  const peakIndex = heights.indexOf(peak);
+  if (peakIndex >= heights.length - 2) problems.push('never settles back from its peak');
+  return { pass: problems.length === 0, detail: problems.join('; ') || `peaks at ${round(peak)}, settles on ${check.to}` };
+}
+
 function checkWalkPath(check, measures) {
   const problems = [];
   const planarDistance = (position, target) => Math.hypot(position[0] - target[0], position[2] - target[1]);
@@ -269,6 +288,8 @@ function checkOne(check, measures) {
       const relief = bounds.max[1] - bounds.min[1];
       return { pass: relief >= check.min && relief <= check.max, detail: `${check.node} spans ${round(relief)} m in height` };
     }
+    case 'overshoot':
+      return checkOvershoot(check, measures);
     case 'walkPath':
       return checkWalkPath(check, measures);
     case 'renderedLook': {

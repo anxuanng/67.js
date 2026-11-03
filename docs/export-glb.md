@@ -108,6 +108,7 @@ Weights are normalised to sum to one, the skin's `bindMatrix` is folded into the
 `options.clips` takes clips in `createAnimationClip` form (`clipFromGltfAnimation` converts an imported one) whose track targets are node names.
 Translation, rotation and scale tracks are written as LINEAR, STEP or CUBICSPLINE.
 SMOOTH becomes CUBICSPLINE with zero tangents, which equals its scalar easing and approximates rotation slerp.
+A track with eased keyframes (`easing`) is written as LINEAR with 32 samples per segment, because glTF has no easing.
 A track on another property, or on a node that is not exported, fails with the fix.
 
 ```js

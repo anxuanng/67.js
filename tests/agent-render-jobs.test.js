@@ -361,6 +361,28 @@ test('asset digests bind immutable bytes and still/video settings produce only t
   await controller.close();
 });
 
+test('a path tracer job names its denoiser, and oidn defaults to 16 samples instead of 64', async context => {
+  const root = await temporary(context);
+  const assetBytes = Buffer.from('bounded embedded GLB fixture');
+  const assetId = createHash('sha256').update(assetBytes).digest('hex');
+  const snapshot = { recipe: { format: '67js.asset', assetId }, assetBytes, clips: [{ duration: 5 }] };
+  const controller = await createAgentRenderJobs({ root, limits, async run({ directory }) {
+    await writeFile(join(directory, 'render.png.partial'), Buffer.alloc(32, 1));
+    return { artifacts: [{ temporary: 'render.png.partial', filename: 'render.png', mimeType: 'image/png' }], metrics: {} };
+  } });
+  const submitWith = renderer => controller.submit({ sourceRevision: 1, snapshot, settings: { kind: 'image', width: 64, height: 64, renderer: { type: 'pathTracer', ...renderer } } });
+  const expectations = [[{}, true, 64], [{ denoise: 'oidn' }, 'oidn', 16], [{ denoise: 'oidn', samples: 8 }, 'oidn', 8], [{ denoise: 'wavelet' }, 'wavelet', 64], [{ denoise: false }, false, 64]];
+  for (const [renderer, denoise, samples] of expectations) {
+    const job = await submitWith(renderer);
+    await terminal(controller, job.jobId);
+    const settings = controller.status(job.jobId).settings.renderer;
+    assert.equal(settings.denoise, denoise);
+    assert.equal(settings.samples, samples);
+  }
+  await assert.rejects(submitWith({ denoise: 'bm3d' }), /denoise must be/);
+  await controller.close();
+});
+
 test('a path tracer job draws every sample unless it passes a noise threshold, which stays within 0 to 0.1', async context => {
   const root = await temporary(context);
   const assetBytes = Buffer.from('bounded embedded GLB fixture');
