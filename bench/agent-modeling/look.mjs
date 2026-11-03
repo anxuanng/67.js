@@ -82,6 +82,14 @@ export async function withLookPage(callback, viewport = { width: IMAGE_SIZE, hei
   }
 }
 
+/** Draws a recipe once from its own camera and measures the picture: brightness, warmth, clipped and crushed shares. */
+export async function measureRenderedLook(recipe) {
+  return withLookPage(async page => {
+    const [view] = await page.evaluate(sceneRecipe => window.renderLookViews(sceneRecipe, [{ name: 'recipe' }], true), withoutPhysics(recipe));
+    return view.statistics;
+  });
+}
+
 /** Draws jobs ([{ recipe, taskId, prefix, directory }]) from the task cameras; returns repository-relative PNG paths per job. */
 export async function renderLookImages(jobs) {
   return withLookPage(async page => {

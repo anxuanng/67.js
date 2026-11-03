@@ -1,0 +1,196 @@
+{
+  "run": "2026-11-03-06-05-haiku-look-haiku-off",
+  "model": "claude-haiku-5-5",
+  "date": "2026-11-03T06:06:32.305Z",
+  "skill": false,
+  "branches": "off",
+  "relations": "on",
+  "runsPerTask": 3,
+  "passed": 3,
+  "tasks": 3,
+  "toolCalls": 28,
+  "costUsd": 0.08,
+  "byModel": {
+    "claude-haiku-5-5": {
+      "runs": 3,
+      "passed": 3,
+      "successRate": 1,
+      "toolCalls": 28,
+      "toolErrors": 0,
+      "inputTokens": 2067838,
+      "outputTokens": 8350,
+      "costUsd": 0.08,
+      "tasks": {
+        "look-pick": {
+          "runs": 3,
+          "passed": 3,
+          "successRate": 1,
+          "toolCalls": 28,
+          "toolErrors": 0,
+          "inputTokens": 2067838,
+          "outputTokens": 8350,
+          "costUsd": 0.08
+        }
+      }
+    }
+  },
+  "records": [
+    {
+      "task": "look-pick",
+      "attempt": 1,
+      "pass": true,
+      "passed": 6,
+      "total": 6,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 9,
+      "toolErrors": 0,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_create": 1,
+        "scene_look": 3,
+        "scene_apply": 3,
+        "scene_export_recipe": 1,
+        "scene_dispose": 1
+      },
+      "branchCalls": 0,
+      "relationCalls": 0,
+      "pathQueries": 0,
+      "features": {
+        "geometryTypes": [
+          "box"
+        ],
+        "meshOperations": [],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 1,
+            "side": 1,
+            "three-quarter": 1
+          },
+          "mean": 1
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-11-03-06-05-haiku-look-haiku-off/look/1/look-pick-front.png",
+          "artifacts/agent-modeling/2026-11-03-06-05-haiku-look-haiku-off/look/1/look-pick-side.png",
+          "artifacts/agent-modeling/2026-11-03-06-05-haiku-look-haiku-off/look/1/look-pick-three-quarter.png"
+        ]
+      },
+      "turns": 11,
+      "costUsd": 0.021732660000000004,
+      "inputTokens": 646859,
+      "outputTokens": 2775,
+      "wallSeconds": 26,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "look-pick",
+      "attempt": 2,
+      "pass": true,
+      "passed": 6,
+      "total": 6,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 10,
+      "toolErrors": 0,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_capabilities": 1,
+        "scene_create": 1,
+        "scene_look": 3,
+        "scene_apply": 3,
+        "scene_export_recipe": 1,
+        "scene_dispose": 1
+      },
+      "branchCalls": 0,
+      "relationCalls": 0,
+      "pathQueries": 0,
+      "features": {
+        "geometryTypes": [
+          "box"
+        ],
+        "meshOperations": [],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 1,
+            "side": 1,
+            "three-quarter": 1
+          },
+          "mean": 1
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-11-03-06-05-haiku-look-haiku-off/look/2/look-pick-front.png",
+          "artifacts/agent-modeling/2026-11-03-06-05-haiku-look-haiku-off/look/2/look-pick-side.png",
+          "artifacts/agent-modeling/2026-11-03-06-05-haiku-look-haiku-off/look/2/look-pick-three-quarter.png"
+        ]
+      },
+      "turns": 12,
+      "costUsd": 0.03413852,
+      "inputTokens": 705931,
+      "outputTokens": 2699,
+      "wallSeconds": 29,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "look-pick",
+      "attempt": 3,
+      "pass": true,
+      "passed": 6,
+      "total": 6,
+      "failed": [],
+      "model": "claude-haiku-5-5",
+      "toolCalls": 9,
+      "toolErrors": 0,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_create": 1,
+        "scene_look": 3,
+        "scene_apply": 3,
+        "scene_export_recipe": 1,
+        "scene_dispose": 1
+      },
+      "branchCalls": 0,
+      "relationCalls": 0,
+      "pathQueries": 0,
+      "features": {
+        "geometryTypes": [
+          "box"
+        ],
+        "meshOperations": [],
+        "motionIk": [],
+        "motionTracks": 0
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 1,
+            "side": 1,
+            "three-quarter": 1
+          },
+          "mean": 1
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-11-03-06-05-haiku-look-haiku-off/look/3/look-pick-front.png",
+          "artifacts/agent-modeling/2026-11-03-06-05-haiku-look-haiku-off/look/3/look-pick-side.png",
+          "artifacts/agent-modeling/2026-11-03-06-05-haiku-look-haiku-off/look/3/look-pick-three-quarter.png"
+        ]
+      },
+      "turns": 11,
+      "costUsd": 0.02202044,
+      "inputTokens": 715048,
+      "outputTokens": 2876,
+      "wallSeconds": 25,
+      "exitCode": 0,
+      "stopped": "success"
+    }
+  ]
+}

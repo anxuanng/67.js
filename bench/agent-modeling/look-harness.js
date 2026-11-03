@@ -4,7 +4,43 @@ import { agentEnvironmentMap, resolveAgentShadow } from '/src/agent-look.js';
 import { agentGroundPlacement, createAgentGround } from '/src/agent-ground.js';
 import { Renderer67 } from '/src/renderer.js';
 
-async function renderLookViews(recipe, views) {
+const CLIPPED_CHANNEL = 250;
+const CRUSHED_LUMA = 12;
+
+/** Mean brightness, warmth (mean red over mean blue), and the shares of clipped and crushed pixels of a drawn canvas. */
+function pixelStatistics(canvas) {
+  const copy = document.createElement('canvas');
+  copy.width = canvas.width;
+  copy.height = canvas.height;
+  const context = copy.getContext('2d');
+  context.drawImage(canvas, 0, 0);
+  const { data } = context.getImageData(0, 0, copy.width, copy.height);
+  const pixelCount = data.length / 4;
+  let lumaTotal = 0;
+  let redTotal = 0;
+  let blueTotal = 0;
+  let clipped = 0;
+  let crushed = 0;
+  for (let index = 0; index < data.length; index += 4) {
+    const red = data[index];
+    const green = data[index + 1];
+    const blue = data[index + 2];
+    const luma = 0.2126 * red + 0.7152 * green + 0.0722 * blue;
+    lumaTotal += luma;
+    redTotal += red;
+    blueTotal += blue;
+    if (red >= CLIPPED_CHANNEL && green >= CLIPPED_CHANNEL && blue >= CLIPPED_CHANNEL) clipped++;
+    if (luma <= CRUSHED_LUMA) crushed++;
+  }
+  return {
+    meanBrightness: lumaTotal / pixelCount / 255,
+    warmth: redTotal / Math.max(blueTotal, 1),
+    clippedShare: clipped / pixelCount,
+    crushedShare: crushed / pixelCount,
+  };
+}
+
+async function renderLookViews(recipe, views, measure = false) {
   await loadAllAgentSceneModules();
   if (needsMeshBooleans(recipe)) await loadMeshBooleans();
   const scene = createAgentScene(recipe);
@@ -30,7 +66,9 @@ async function renderLookViews(recipe, views) {
       renderer.render({ ...camera, environment, effects, exposure: effects.exposure, time: 0 });
       const glError = renderer.context.getError();
       if (glError !== 0) throw new Error(`${name} gave WebGL error ${glError}.`);
-      images.push({ name, image: canvas.toDataURL('image/png').split(',')[1] });
+      images.push(measure
+        ? { name, statistics: pixelStatistics(canvas) }
+        : { name, image: canvas.toDataURL('image/png').split(',')[1] });
     }
   } finally {
     renderer.dispose();

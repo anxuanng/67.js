@@ -271,6 +271,18 @@ function checkOne(check, measures) {
     }
     case 'walkPath':
       return checkWalkPath(check, measures);
+    case 'renderedLook': {
+      const look = measures.renderedLook;
+      if (!look) return { pass: false, detail: 'the recipe could not be drawn' };
+      const [lowest, highest] = check.brightness;
+      const problems = [];
+      if (look.meanBrightness < lowest) problems.push('too dim');
+      if (look.meanBrightness > highest) problems.push('too pale');
+      if (look.clippedShare > check.maxClipped) problems.push('blown-out whites');
+      if (look.crushedShare > check.maxCrushed) problems.push('crushed blacks');
+      const numbers = `mean brightness ${round(look.meanBrightness)}, ${round(look.clippedShare * 100)}% clipped, ${round(look.crushedShare * 100)}% crushed`;
+      return { pass: problems.length === 0, detail: problems.length ? `${numbers}: ${problems.join(', ')}` : numbers };
+    }
     case 'litPainting':
       return checkLitPainting(check, measures);
     case 'shell':
@@ -405,6 +417,10 @@ export async function gradeRecipe(task, recipe) {
   } catch (error) {
     const results = task.checks.map(check => ({ kind: check.kind, label: check.label, pass: false, detail: `recipe failed: ${error.message}` }));
     return { pass: false, passed: 0, total: results.length, results };
+  }
+  if (task.checks.some(check => check.kind === 'renderedLook')) {
+    const { measureRenderedLook } = await import('./look.mjs');
+    measures.renderedLook = await measureRenderedLook(recipe).catch(() => null);
   }
   const results = task.checks.map(check => ({ kind: check.kind, ...(check.label ? { label: check.label } : {}), ...checkOne(check, measures) }));
   const passed = results.filter(result => result.pass).length;
