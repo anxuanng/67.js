@@ -133,6 +133,7 @@
     "smoke:modeling": "node scripts/smoke-modeling.mjs",
     "smoke:material-maps": "node scripts/smoke-material-maps.mjs",
     "benchmark:mesh-query": "node scripts/benchmark-mesh-query.mjs",
+    "benchmark:update-parts": "node scripts/benchmark-update-parts.mjs",
     "smoke:imported-topology": "node scripts/smoke-imported-topology.mjs",
     "smoke:agent-character": "node scripts/smoke-agent-character.mjs",
     "smoke:agent-review": "node scripts/smoke-agent-review.mjs",
