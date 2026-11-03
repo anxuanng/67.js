@@ -8,6 +8,8 @@ Run `npm run reference`. It prints one row for each scene, and it rewrites `base
 
 The run needs Chrome, Blender 5.2, `uv` and an NVIDIA GPU, and it took 751 s on an RTX 3060 with other jobs on the machine (2026-11-01). Use `--scene <id>,<id>` to render some scenes, then `--score-only` to score the scenes in the work directory; that also rewrites `baseline.json` with only those scenes. Use `CHROME_PATH` and `BLENDER_PATH` to change the program paths.
 
+`raster-only.mjs <out-directory> <gpu|cpu> <scene-id>,<scene-id>` draws scenes with the rasterizer only, without Blender or scoring, to look at a change before the Cycles queue has a turn.
+
 The other sets: `--khronos` (download the five GLB files from [glTF-Sample-Assets](https://github.com/KhronosGroup/glTF-Sample-Assets) into the gitignored `artifacts/khronos/<name>/<name>.glb` first, see below), `--path-tracer --scene <ids>` (needs the Cycles renders of an earlier plain run, for example `--skip-cpu`, which renders without scoring), and `--bake <id>,<id> --skip-blender`, which draws and scores only those scenes baked, against the Cycles renders of an earlier plain run.
 
 A baked run writes `artifacts/reference/bake.json` and compares it with the committed `bake.json` (`compare-scores.mjs`): it exits with an error when a score is worse by more than 0.01 FLIP. `--update-baseline` replaces `bake.json` and `images/<id>-baked.jpg`. The bake is deterministic on one machine (two runs gave the same four digits), so 0.01 is a margin for other GPUs and drivers, and well under the 0.047 that went unnoticed in #160.
@@ -1534,3 +1536,7 @@ Fix: `harness.js` renders the reference frame with `wind: 0`. Re-run with 67js o
 | mountain-valley-c (grand) | 0.1836 to 0.1775 | 0.223 to 0.2182 | 0.1522 |
 
 `foliage` now sits 0.0086 under EEVEE against Cycles (was 0.0055 over). Every other default and grand scene has no leaf cards and was not re-rendered; the only score that rose is a GPU against CPU difference (`gpu-vs-cpu` of `foliage` 0.0095 to 0.0097, `mountain-valley-b` 0.0158 to 0.0164). The Cycles and EEVEE columns did not move, so this is a change on the 67js side of the comparison and not a new reference. The score no longer includes the wind, which a real scene still has by default (`wind` 0.3); that is by design and is not scored here.
+
+## Subsurface scattering (2026-11-04, part of issue #283)
+
+`subsurface` (wax candle, skin sphere, leaf slab, weight 1) and `subsurface-off` (the same scene at weight 0 in both renderers) are scored each against its own Cycles render: the rasterizer scores 0.1180 with subsurface on and 0.0940 off, and EEVEE scores 0.1028 and 0.0764, so the scene with subsurface is the harder one for both, and the on scene does not score better than the off scene. Scored against the same Cycles render with subsurface, the weight 0 picture of 67js scores 0.1229 and the weight 1 picture 0.1180 (0.1211 with back translucency 0.5), so the block moves the picture toward Cycles by 0.005. The leaf is the part that stays dark (signed mean luminance error of -0.05, wax and skin +0.01). Frame cost with `frame-time.mjs <scene> gpu --plain`: 0.45 to 0.49 ms on, 0.455 to 0.485 ms off, the same within noise.
