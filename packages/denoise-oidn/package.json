@@ -1,0 +1,23 @@
+{
+  "name": "@codepawlhq/67js-denoise-oidn",
+  "version": "0.1.0",
+  "description": "Optional native Intel Open Image Denoise for 67js path traced stills. Not part of the core archive.",
+  "type": "module",
+  "main": "./index.mjs",
+  "exports": {
+    ".": "./index.mjs",
+    "./fetch": "./fetch-oidn.mjs"
+  },
+  "files": [
+    "index.mjs",
+    "fetch-oidn.mjs",
+    "README.md"
+  ],
+  "scripts": {
+    "fetch": "node fetch-oidn.mjs"
+  },
+  "license": "MIT",
+  "engines": {
+    "node": ">=22"
+  }
+}

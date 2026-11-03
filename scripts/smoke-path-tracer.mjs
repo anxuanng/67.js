@@ -82,6 +82,18 @@ try {
   const rasterized = await renderedBytes(sessionId, base);
   assert.notDeepEqual(rasterized.bytes, first.bytes, 'The path tracer must not return the rasterizer image.');
 
+  // denoise "oidn" runs the native tool of the optional package when it is installed; without it the job says it used the wavelet filter.
+  const { findOidnBinary } = await import('@codepawlhq/67js-denoise-oidn').catch(() => ({ findOidnBinary: () => null }));
+  const external = await renderedBytes(sessionId, { ...base, renderer: { ...tracer, denoise: 'oidn' } });
+  if (findOidnBinary()) {
+    assert.equal(external.metrics.pathTracer.denoiser, 'oidn');
+    assert.ok(external.metrics.pathTracer.denoiseSeconds > 0);
+    const again = await renderedBytes(sessionId, { ...base, renderer: { ...tracer, denoise: 'oidn' } });
+    assert.deepEqual(again.bytes, external.bytes, 'The same recipe, seed and OIDN must give the same PNG on one machine.');
+  } else {
+    assert.equal(external.metrics.pathTracer.denoiser, 'wavelet');
+    assert.match(external.metrics.pathTracer.denoiserNote, /wavelet filter ran instead/);
+  }
   for (const [settings, message] of [
     [{ ...base, renderer: { ...tracer, samples: 99999 } }, /samples/],
     [{ ...base, renderer: { ...tracer, extra: 1 } }, /extra|Unrecognized|Unknown/],

@@ -4,7 +4,7 @@ import { isAbsolute, join, resolve } from 'node:path';
 
 import { RENDER_PASS_NAMES, VIDEO_ENCODERS, AUDIO_FILE_PATTERN, MAXIMUM_VIDEO_SECONDS, MAXIMUM_JOB_SIDE, MAXIMUM_JOB_PIXELS } from '../src/agent-scene-capabilities.js';
 import { normalizeFilmTimeline, filmTimelineDuration } from '../src/film-timeline.js';
-import { PATH_TRACER_JOB_LIMITS } from '../src/path-tracer-capabilities.js';
+import { OIDN_DEFAULT_SAMPLES, PATH_TRACER_DENOISERS, PATH_TRACER_JOB_LIMITS } from '../src/path-tracer-capabilities.js';
 
 const UUID =/^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
 const STATES = ['queued', 'running', 'finalizing', 'completed', 'cancelling', 'cancelled', 'failed', 'interrupted'];
@@ -146,11 +146,13 @@ function rendererFrom(renderer, kind, passes) {
   if (renderer.type !== 'pathTracer') throw new TypeError('renderer.type must be pathTracer.');
   if (kind !== 'image') throw new RangeError('The path tracer renders one image: use kind image.');
   if (passes !== undefined) throw new RangeError('The path tracer writes the lit image only: leave passes out.');
-  if (renderer.denoise !== undefined && typeof renderer.denoise !== 'boolean') throw new TypeError('renderer.denoise must be a boolean.');
-  const result = { type: 'pathTracer', denoise: renderer.denoise ?? true };
+  const denoise = renderer.denoise ?? true;
+  if (typeof denoise !== 'boolean' && !PATH_TRACER_DENOISERS.includes(denoise)) throw new TypeError(`renderer.denoise must be a boolean or one of ${PATH_TRACER_DENOISERS.join(', ')}.`);
+  const result = { type: 'pathTracer', denoise };
   for (const name of Object.keys(PATH_TRACER_JOB_LIMITS)) {
     const { minimum, maximum, default: fallback } = PATH_TRACER_JOB_LIMITS[name];
-    result[name] = boundedNumber(renderer[name] ?? fallback, minimum, maximum, `renderer ${name}`, !FRACTIONAL_RENDERER_FIELDS.has(name));
+    const defaultValue = name === 'samples' && denoise === 'oidn' ? OIDN_DEFAULT_SAMPLES : fallback;
+    result[name] = boundedNumber(renderer[name] ?? defaultValue, minimum, maximum, `renderer ${name}`, !FRACTIONAL_RENDERER_FIELDS.has(name));
   }
   return result;
 }

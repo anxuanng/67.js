@@ -44,7 +44,7 @@ Unidirectional path tracing against the triangle BVH that the [light bake](light
 | `threads` | 4 | 1 to 8 | Module workers; the pixels are the same for any count. Without `Worker` it runs on one thread. |
 | `noiseThreshold` | 0 | 0 to 1 (render jobs: 0 to 0.1) | 0 draws every sample. Above 0, a pixel stops once the standard error of its mean luminance, relative to that mean plus 0.05, is under this, checked from 16 samples on and after every 8 more. It costs quality on some scenes (see the table below). It reads only the pixel's own samples, so the result is the same on any thread count and band split. `report.averageSamples` says how many paths a pixel took. |
 | `maxSeconds` | 300 | 1 to 1800 | Wall-clock limit. Passing it throws; there is never a partial image. |
-| `denoise` | true | boolean | Filters the light with normal, depth and noise guides. |
+| `denoise` | true | boolean, `"wavelet"`, `"oidn"`, `"none"` | `true` or `"wavelet"` filters the light with normal, depth and noise guides; `false` or `"none"` does not filter. `"oidn"` is [Open Image Denoise](#open-image-denoise-optional): a render job with it defaults to 16 samples. |
 | `fireflyClamp` | 20 | 1 to 1000 | Largest radiance one bounce may add to a sample. |
 
 Also checked before any ray is traced: samples times pixels times bounces at most 4 billion, 400,000 triangles, 1,024 parts, 32 lights, and finite numbers and in-range indices in every part. A render job limits `maxSeconds` to 600: the job runs on workers without blocking the page, and its deadline is `maxSeconds` plus 60 seconds for the page and the PNG, so a trace that reaches its limit still ends before the job does.
@@ -91,6 +91,27 @@ Adaptive sampling beats fewer samples at the same cost on this room (4.87 at 11.
 Fewer samples with the denoiser lose little on some scenes: 24 samples scored within 0.005 of 64 on `brick-graph` (0.1394 against 0.1370) and `character` (0.1164 against 0.1116), at about 45 percent of the time. Two scenes are not proof for all. Drawing one light at the first hit halves the time but makes the image noisier than 24 samples cost, so it was not kept.
 
 The 1920 by 1080 still of `tests/fixtures/demo-room.recipe.json` at `samples: 64`, through an MCP image job with 8 threads: 246.4 s in the tracer (229.4 s tracing, the rest the filter), 30.7 samples per pixel on average, 257 s for the whole job (measured, once, with `noiseThreshold` 0.03, the setting at that time). With the default of 0 every pixel draws all 64, so the same still takes 585.9 s in the tracer and 596.1 s for the job (measured 2026-11-01 on 8 threads, machine at 100 percent CPU), inside the 600 s limit with almost no room: lower `samples` or pass a `noiseThreshold` for a larger room. That is 6 seconds over the old 240 s job limit, so the limit is now 600. The hair strands were not the cost by themselves: the time was per ray, and every ray was slow.
+
+## Open Image Denoise (optional)
+
+`settings.renderer.denoise: "oidn"` filters the still with [Intel Open Image Denoise](https://github.com/RenderKit/oidn) 2.5.1 (Apache-2.0), the denoiser Cycles uses, fed the colour, albedo and normal images the tracer writes. It is the package `@codepawlhq/67js-denoise-oidn` (`packages/denoise-oidn`), not part of the core archive: install it beside `67js` and run its `fetch` script, which downloads the official release binary for the platform after a SHA-256 check. The job runner calls the `oidnDenoise` tool on the CPU. Without the package or the binary the job runs the wavelet filter and says why in `metrics.pathTracer.denoiserNote`; `metrics.pathTracer.denoiser` always names the filter that ran. Only the native build is shipped. The browser port (`denoiser` 0.0.11 on tensorflow.js) is a 134 MB install; its scores are not in the table because the GPU it needs was not free for this comparison (`bench/reference/denoise-browser.mjs` is the script to run it), and the job runner already has Node.
+
+Compared on 960 by 540 captures of six reference scenes, FLIP against Cycles, lower is better (`bench/reference/denoise.json`, made by `denoise-capture.mjs`, `denoise-compare.mjs` and `denoise-score.py`). The unfiltered tracer, the wavelet filter and OIDN all land within 0.01 of each other on every scene except `metal`, because most of the score is the difference between the tracer and Cycles, not noise:
+
+| Scene | Wavelet, 64 samples | Wavelet, 16 | OIDN, 16 | OIDN, 8 | OIDN, 32 |
+| --- | --- | --- | --- | --- | --- |
+| `brick-graph` | 0.0805 | 0.0812 | 0.0812 | 0.0818 | 0.0806 |
+| `character` | 0.0287 | 0.0297 | 0.0308 | 0.0324 | 0.0295 |
+| `glass` | 0.0385 | 0.0399 | 0.0395 | 0.0407 | 0.0385 |
+| `material-spheres` | 0.0449 | 0.0465 | 0.0471 | 0.0487 | 0.0457 |
+| `metal` | 0.0439 | 0.0474 | 0.0444 | 0.0457 | 0.0440 |
+| `outdoor-hdri` | 0.0226 | 0.0231 | 0.0239 | 0.0250 | 0.0230 |
+
+OIDN at 16 samples does not score at or below the wavelet filter at 64 on any of the six scenes: it is 0.0005 to 0.0022 higher. At 32 samples it equals it on `glass` and is 0.0001 to 0.0008 higher on the other five. Issue #303's goal (no worse than the wavelet filter at 64 on four scenes with 16 samples or fewer) is therefore not met by this measure. At equal samples OIDN is clearly better only on `metal` (0.0444 against 0.0474 at 16); on the other scenes the two are within 0.0013 of each other, the wavelet filter ahead on `character`, `material-spheres` and `outdoor-hdri`. So 16 samples is the default for `oidn` because it costs a quarter of the tracing time for a score about 0.001 to 0.002 higher, not because it matches 64.
+
+Time of the denoise step alone, 1920 by 1080 demo room: 1.6 s for OIDN against about 9 s for the wavelet filter (measured once each, machine loaded by other jobs; the 960 by 540 captures took 0.45 to 0.67 s against 2.1 to 3.2 s). The whole still at 16 samples took 138 s with OIDN (113 s tracing) and 105 s with the wavelet filter (85 s tracing); the tracing times differ because of load, not of the filters. A 64 sample wavelet still of that room took 586 s (above), so 16 samples with OIDN is about four times faster at a FLIP score 0.001 to 0.002 higher on these scenes.
+
+OIDN's output is the same bytes run to run on one machine (the CPU device, two runs on each of the 24 captures, and two identical PNGs from an MCP job); it was not compared across machines or CPU generations, where OIDN does not promise it.
 
 ## Measured
 
