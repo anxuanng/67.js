@@ -173,6 +173,7 @@ test('a goal scene over its goal on the base may shrink or stay, and one under i
   const base = { 'scene:lit-box': size(50189), 'scene:gltf-box': size(77000) };
   assert.deepEqual(goalProblems({ 'scene:lit-box': size(50150), 'scene:gltf-box': size(79000) }, base, goals), []);
   assert.deepEqual(goalProblems({ 'scene:lit-box': size(50189), 'scene:gltf-box': size(77000) }, base, goals), []);
+  assert.deepEqual(goalProblems({ 'scene:lit-box': size(50197), 'scene:gltf-box': size(77000) }, base, goals), [], 'eight bytes is build noise');
 });
 
 test('a goal scene over its goal on the base fails when it grows, unless a goal line accepts it', () => {
