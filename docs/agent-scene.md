@@ -287,6 +287,17 @@ A node with a `vegetation` field is a group that grows trees from the addon in [
 - Materials with tag `foliage` or `grass` sway. `environment.wind` is `{ "strength": 0.3, "direction": 0 }` (strength 0 to 4; direction in degrees, 0 toward +x and 90 toward +z, turning the sway and the grass gusts). The wind clock is the render time, so a render job or `scene_review` `rendererTime` gives the same frame at the same time.
 - At most 1000 instances (a scatter whose area times density is above 4000 is refused first), and `maxNodes` for the generated parts. `scene_inspect` adds `vegetation`: per node the instances, culled count, triangles, and per species the instances and the count at each level.
 
+### Crowds
+
+An asset placement with a `crowd` field fills its group node with `count` (1 to 1000) copies of one catalog character playing one clip, each at its own time offset and rate, drawn as one batch per material. Options and measurements are in [Crowds](https://67js.codepawl.com/retarget.md).
+
+```json
+{ "id": "people", "asset": { "id": "<catalog asset id>", "crowd": { "clip": 3, "count": 200, "seed": 7, "spacing": 2, "farDistance": 25, "farRate": 6 } } }
+```
+
+- `clip` is a clip index, `layout` is `grid` or `scatter`, and the pose is a pure function of scene time, `seed` and the recipe camera, so a render at a time equals the frame reached by playing. People farther than `farDistance` from the recipe camera hold each pose for `1 / farRate` seconds.
+- The crowd takes one decoded copy of the asset, the generated part nodes (count times materials) count against `maxNodes`, and `scene_inspect` lists it under `assets` with `kind: "crowd"`, `instances`, `batches`, `frames`, `paletteBytes` and `boundsRadius`.
+
 ### Relations between parts
 
 A mesh node can list `relations` that place it against other mesh nodes, so a resized body keeps its handle where it

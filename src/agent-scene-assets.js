@@ -12,8 +12,20 @@ export * from './agent-texture-sequence.js';
 
 export const ASSET_PLACEMENT_LIMITS = Object.freeze({ maxPlacements: 512, maxAssets: 16, maxAnimatedPlacements: 16, maxOverrides: 32 });
 
+// The crowd code registers itself here when it loads, so this file (which the MCP host imports) never pulls it in.
+let crowdModule = null;
+
+export function registerCrowdModule(module) {
+  crowdModule = module;
+}
+
+function crowdCode() {
+  if (!crowdModule) throw new Error('This recipe places a crowd, which loads on demand: await loadAgentSceneModules(recipe) before createAgentScene or apply.');
+  return crowdModule;
+}
+
 const ASSET_ID = /^[a-f0-9]{64}$/;
-const PLACEMENT_FIELDS = ['id', 'materials', 'clip', 'drive'];
+const PLACEMENT_FIELDS = ['id', 'materials', 'clip', 'drive', 'crowd'];
 const CLIP_FIELDS = ['index', 'start', 'speed', 'loop'];
 const COLOR_FIELDS = ['color', 'emissiveColor'];
 const UNIT_FIELDS = ['metallic', 'roughness', 'opacity'];
@@ -95,6 +107,10 @@ export function normalizeAssetPlacement(value) {
     if (typeof loop !== 'boolean') throw new TypeError('asset clip loop must be boolean.');
     result.clip = { index, start, speed, loop };
   }
+  if (value.crowd !== undefined) {
+    if (value.clip !== undefined || value.drive !== undefined) throw new TypeError('An asset placement plays a clip, drives along a path or fills a crowd, only one of them.');
+    result.crowd = crowdCode().normalizeCrowd(value.crowd);
+  }
   if (value.drive !== undefined) {
     if (value.clip !== undefined) throw new TypeError('An asset placement plays a clip or drives along a path, not both.');
     result.drive = normalizeDrive(value.drive);
@@ -131,7 +147,7 @@ export function recipeAssetNeeds(value) {
   for (const placement of placements) {
     const id = placement.id.toLowerCase();
     const need = needs.get(id) ?? { id, copies: 1 };
-    if (placement.clip || placement.drive) need.copies++;
+    if (placement.clip || placement.drive || placement.crowd) need.copies++;
     needs.set(id, need);
   }
   return [...needs.values()];
@@ -141,7 +157,7 @@ export function assetCopyKey(id, copy) {
   return `${id}:${copy}`;
 }
 
-function jsonMaterial(source) {
+export function jsonMaterial(source) {
   const result = {};
   for (const [field, value] of Object.entries(source)) {
     if (typeof value === 'number' || typeof value === 'string' || typeof value === 'boolean') {
@@ -162,7 +178,7 @@ function overrideFields(override) {
   return fields;
 }
 
-function materialOutput(source, fields) {
+export function materialOutput(source, fields) {
   const output = { ...source };
   for (const [field, value] of Object.entries(fields)) {
     output[field] = Array.isArray(value) ? Object.freeze([...value]) : value;
@@ -185,7 +201,7 @@ export function expandAssetPlacements(recipe, assets, limits, outputCache = new 
     throw new Error('This recipe places catalog assets, which a host loads and decodes first. Pass them as the assets option of createAgentScene; MCP does this for scene_create.');
   }
   const distinct = new Set(placed.map(node => node.asset.id));
-  const animated = placed.filter(node => node.asset.clip || node.asset.drive);
+  const animated = placed.filter(node => node.asset.clip || node.asset.drive || node.asset.crowd);
   if (placed.length > ASSET_PLACEMENT_LIMITS.maxPlacements || distinct.size > ASSET_PLACEMENT_LIMITS.maxAssets ||
       animated.length > ASSET_PLACEMENT_LIMITS.maxAnimatedPlacements) {
     throw new RangeError(`A scene places at most ${ASSET_PLACEMENT_LIMITS.maxPlacements} assets, ${ASSET_PLACEMENT_LIMITS.maxAssets} different ones, ${ASSET_PLACEMENT_LIMITS.maxAnimatedPlacements} of them playing a clip; this recipe places ${placed.length}, ${distinct.size} and ${animated.length}.`);
@@ -195,9 +211,9 @@ export function expandAssetPlacements(recipe, assets, limits, outputCache = new 
   const materialIds = new Map();
   const generatedNodes = [];
   for (const node of placed) {
-    const { id: assetId, materials: overrides = [], clip, drive } = node.asset;
+    const { id: assetId, materials: overrides = [], clip, drive, crowd } = node.asset;
     let copy = 0;
-    if (clip || drive) {
+    if (clip || drive || crowd) {
       copy = (copyCounter.get(assetId) ?? 0) + 1;
       copyCounter.set(assetId, copy);
     }
@@ -207,6 +223,13 @@ export function expandAssetPlacements(recipe, assets, limits, outputCache = new 
     }
     if (clip && !asset.animations[clip.index]) {
       throw new RangeError(`Node ${node.id}: asset ${assetId.slice(0, 12)} has ${asset.animations.length} clips, so clip index ${clip.index} does not exist. scene_inspect lists them under assets.`);
+    }
+    if (crowd) {
+      const expanded = crowdCode().expandCrowd(recipe, node, asset, copy, outputCache, runtime, limits);
+      generatedNodes.push(...expanded.nodes);
+      runtime.placements.push(expanded.record);
+      runtime.animators.push(expanded.record);
+      continue;
     }
     const materialNames = new Set(asset.parts.map(part => part.material.name).filter(Boolean));
     for (const override of overrides) {
@@ -286,6 +309,10 @@ export function stageAssetClips(runtime, graph, time) {
   try {
     for (const record of runtime.animators) {
       let transaction;
+      if (record.crowd) {
+        transactions.push(record.crowd.stage(time ?? 0));
+        continue;
+      }
       if (record.drive) {
         const driven = record.drive.sample(time ?? 0);
         record.drivePose = driven.pose;
@@ -315,6 +342,7 @@ export function stageAssetClips(runtime, graph, time) {
 /** What scene_inspect reports for each placement: the asset id, its world bounds, its clips and material names. */
 export function describeAssetPlacements(runtime, graph, geometryBounds) {
   return runtime.placements.map(record => {
+    if (record.crowd) return record.crowd.describe();
     const minimum = [Infinity, Infinity, Infinity];
     const maximum = [-Infinity, -Infinity, -Infinity];
     for (const id of record.partNodeIds) {

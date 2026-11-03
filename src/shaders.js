@@ -88,8 +88,8 @@ ${skinningShader(features)}
 ${morphingShader(features)}
 ${windShader(features)}
 void main() {
-  // A crowd batch reads its joints and weights from the UV and colour attributes, which then carry no texture or tint.
-  vec2 uv = USES_CROWD ? vec2(-1.0) : uvSets.xy;
+  // A crowd batch reads its joints and weights from the colour attribute, which then carries no tint.
+  vec2 uv = uvSets.xy;
   mat4 deformation = USES_CROWD ? crowdTransform() : (USES_SKIN ? skinTransform() : mat4(1.0));
   vec4 world = instanceMatrix * deformation * vec4(USES_MORPH ? morphedPosition(position) : position, 1.0);
   world.xyz += USES_CROWD ? vec3(0.0) : assemblyOffset * assemblyAmount + assemblyDetailOffset * smoothstep(0.3, 1.0, assemblyAmount);
@@ -142,7 +142,7 @@ ${skinningShader(features)}
 ${morphingShader(features)}
 ${windShader(features)}
 void main() {
-  vec2 uv = USES_CROWD ? vec2(-1.0) : uvSets.xy;
+  vec2 uv = uvSets.xy;
   vec4 world = instanceMatrix * (USES_CROWD ? crowdTransform() : skinTransform()) * vec4(morphedPosition(position), 1.0);
   world.xyz += USES_CROWD ? vec3(0.0) : assemblyOffset * assemblyAmount + assemblyDetailOffset * smoothstep(0.3, 1.0, assemblyAmount);
   // Same displacement as the colour pass, so shadows follow the swaying leaves.

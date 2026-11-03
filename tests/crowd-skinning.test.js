@@ -6,6 +6,7 @@ import { parseGltf } from '../src/gltf.js';
 import { clipFromGltfAnimation, createAssetPose } from '../src/skeleton-pose.js';
 import { createCrowd } from '../src/retarget.js';
 import { groupParts, Renderer67 } from '../src/renderer.js';
+import { validateMorphGeometry } from '../src/morph.js';
 import { InstanceSelection, extractFrustumPlanes, selectInstances } from '../src/render-culling.js';
 import {
   bakeCrowdPalette, createCrowdLods, createCrowdParts, createCrowdRig, crowdFrameBlend, crowdVertexAt,
@@ -153,4 +154,65 @@ test('the renderer culls crowd instances with the bound of the whole clip, and r
     planes: extractFrustumPlanes(viewProjection, new Float32Array(24)), viewProjection, pixelsPerUnit: 540 / 2 * projection[5], pixelError: 1,
   });
   assert.equal(selection.visibleCount, 1, 'only the instance in front of the camera draws');
+});
+
+test('a crowd reached by seeking equals the same crowd reached by playing, with a lower pose rate for far instances', async () => {
+  const { pose, rig, duration } = await loadWalker();
+  const palette = bakeCrowdPalette(rig, seconds => pose.apply(seconds), { duration });
+  const crowd = createCrowd({ count: 80, clip: { duration, tracks: [] }, seed: 11, spacing: 2 });
+  const eye = [0, 2, 8];
+  const farPose = { distance: 8, rate: 3 };
+  const played = createCrowdParts({ rig, palette, instances: crowd.instances, farPose });
+  const sought = createCrowdParts({ rig, palette, instances: crowd.instances, farPose });
+  const blends = set => set.parts.map(part => part.assembly.offset.slice());
+  for (let step = 0; step <= 40; step++) played.setTimes(index => crowd.clipTime(index, step * 0.05), eye);
+  sought.setTimes(index => crowd.clipTime(index, 2), eye);
+  assert.deepEqual(blends(played), blends(sought));
+  const everyFrame = createCrowdParts({ rig, palette, instances: crowd.instances });
+  everyFrame.setTimes(index => crowd.clipTime(index, 2), eye);
+  const farInstances = crowd.instances.filter(instance => Math.hypot(instance.matrix[12] - eye[0], instance.matrix[13] - eye[1], instance.matrix[14] - eye[2]) > farPose.distance);
+  assert.ok(farInstances.length > 0 && farInstances.length < crowd.instances.length, 'the field has near and far instances');
+  const differing = sought.parts.filter((part, index) => part.assembly.offset.join() !== everyFrame.parts[index].assembly.offset.join());
+  assert.ok(differing.length > 0, 'far instances use the held pose');
+  assert.ok(differing.length <= farInstances.length * rig.parts.length, 'near instances are untouched');
+});
+
+test('a crowd rig keeps UVs through levels and packs joints and weights exactly', () => {
+  const material = { color: [1, 1, 1], map: { name: 'checker' } };
+  const geometry = {
+    positions: new Float32Array([0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 0.5, 0.5, 0]),
+    normals: new Float32Array([0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1]),
+    uvs: new Float32Array([0, 0, 1, 0, 1, 1, 0, 1, 0.5, 0.5]),
+    indices: new Uint32Array([0, 1, 4, 1, 2, 4, 2, 3, 4, 3, 0, 4]),
+  };
+  const identity = mat4.create();
+  const rig = createCrowdRig([{ name: 'quad', geometry, matrix: identity, material }, { name: 'other', geometry, matrix: identity, material }]);
+  const merged = rig.parts[0].geometry;
+  assert.equal(merged.uvs.length, 20);
+  assert.deepEqual(Array.from(merged.uvs.slice(10)), Array.from(geometry.uvs));
+  merged.crowdJoints.forEach((joint, index) => {
+    const packed = merged.crowdPacked[index];
+    assert.equal(Math.floor(packed / 4096), joint);
+    assert.equal((packed - joint * 4096) / 4095, merged.crowdWeights[index]);
+  });
+  const levels = createCrowdLods(merged, { cells: [0.5] });
+  assert.equal(levels[1].geometry.uvs.length / 2, levels[1].geometry.positions.length / 3);
+  assert.equal(levels[1].geometry.crowdPacked.length, levels[1].geometry.crowdJoints.length);
+});
+
+test('morph targets stay on their own crowd part when the rig asks for them', async () => {
+  const { asset, pose, duration } = await loadWalker();
+  const morphed = asset.parts.filter(part => part.morph && part.geometry.morphTargets);
+  assert.ok(morphed.length > 0, 'the robot has morph targets');
+  assert.ok(createCrowdRig(asset.parts).parts.every(part => !part.morph), 'morphs are off by default');
+  const withMorphs = createCrowdRig(asset.parts, { morphs: true });
+  const morphParts = withMorphs.parts.filter(part => part.morph);
+  assert.equal(morphParts.length, morphed.length);
+  for (const part of morphParts) {
+    const metadata = validateMorphGeometry(part.geometry, part.morph);
+    assert.equal(metadata.vertexCount, part.geometry.positions.length / 3);
+  }
+  const palette = bakeCrowdPalette(withMorphs, seconds => pose.apply(seconds), { duration });
+  const set = createCrowdParts({ rig: withMorphs, palette, instances: [{ matrix: mat4.create() }] });
+  assert.ok(set.parts.filter(part => part.morph).every(part => !part.lods), 'a morphed part draws at full detail');
 });
