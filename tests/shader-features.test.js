@@ -19,6 +19,12 @@ test('a feature that a scene does not use becomes a constant false', () => {
   assert.match(withWater, /#define TAG_FIRE false/);
 });
 
+test('the two fill lights compile in only for a renderer whose fill intensity is above 0', () => {
+  assert.match(createFragmentShader([]), /#define FILL_ON false/);
+  assert.match(createFragmentShader(['fill']), /#define FILL_ON \(true\)/);
+  assert.match(fragmentShader, /#define FILL_ON \(true\)/);
+});
+
 test('every feature condition is a macro that the shader body uses', () => {
   for (const line of fragmentShader.split('\n').filter(text => text.startsWith('#define ') && text.includes('('))) {
     const macro = line.split(' ')[1];

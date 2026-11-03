@@ -347,3 +347,39 @@ The shadow depth texture now has `TEXTURE_COMPARE_MODE` and linear filtering, an
 Not kept: 4 taps in place of 9 (two by two, spaced 3.5 texels) took `transparency` from 366 to 351 ms, 4 percent, for a smaller and different filter. The remaining distance on `transparency` (7.1 times) and `skinned-characters` (6.6 times) is not the shadow filter any more; they stay above the issue 74 target of 3 times.
 
 The fog volume shares the shadow texture and now reads it through the comparison sampler, so its single tap is filtered over 2 by 2 texels where it was nearest. The main program also sets every 2D sampler to unit 1 when it links, because an unset sampler reads unit 0 and one unit may not hold two sampler types.
+
+## Fill lights compiled out, and where `transparency` and `skinned-characters` still go (2026-11-03, branch `perf/blended-skinned-cost`, issue #74)
+
+Method: `--cpu-only --frames 6`, one scene and one engine per process, the old shader, the new shader and three.js alternated inside each of 3 rounds, below-normal priority. CPU load sampled for 1 s before each triple: 2 to 8 percent. Frame in ms (measured).
+
+**Kept: `FILL_ON`.** The two fill-light `illuminate` calls scale with `fillIntensity`, which is 0 here and in four of the five lighting setups. A uniform branch `if (fillIntensity != 0.0)` did not move any scene (`transparency` 363 to 366, `skinned-characters` 160 to 163), because SwiftShader runs both sides. A macro does: `shaderFeaturesOfLighting` adds the `fill` feature while `fillIntensity > 0`, the program is rebuilt once if it rises later (as for spot lights), and the default shader keeps the code. PNG bytes are identical to the merge base in all 8 scenes, and the reference suite (`--skip-blender`) gives the same scores with and without the change (the stored arrays copied from other worktrees differ from `main` on `mountain-valley`, so `baseline.json` was left as it is).
+
+| Scene | Before (ms) | After (ms) | three.js (ms) | Ratio before to after |
+| --- | --- | --- | --- | --- |
+| `transparency` | 365 to 366 | 341 to 345 | 51 to 52 | 7.1 to 6.7 |
+| `skinned-characters` | 160.5 | 120 to 140 | 24 | 6.6 to 5.2 |
+| `instanced-objects` | 98 to 113 | 93 to 96 | 31 to 33 | 3.2 to 3.0 |
+| `moving-shadows` | 64 to 65 | 62 to 64 | 19 to 20 | 3.3 to 3.2 |
+| `many-materials` | 475 to 506 | 455 to 459 | 171 to 174 | 2.8 to 2.65 |
+| `many-lights` | 389 to 392 | 371 to 372 | 131 to 142 | 2.85 to 2.7 |
+| `large-mesh` | 471 to 481 | 451 to 457 | 198 to 203 | 2.4 to 2.27 |
+| `large-outdoor` | 235 | 216 to 227 | 768 to 828 | 0.29 to 0.28 |
+
+First frame on the RTX 3060 (`--gpu-only`, GPU 0 percent busy before): `skinned-characters` 287 ms, `transparency` 234 ms, `large-mesh` 364 ms, all under 1 s. The three scene bundles' size budgets rose by 100 bytes each for the extra shader lines.
+
+**Where the rest goes (ablations, picture wrong in each, 2 to 4 runs, frame in ms).** `transparency` at 365 before the change:
+
+| Left out | Frame |
+| --- | --- |
+| Environment lighting, all of it | 276 to 287 (80 less) |
+| Environment specular lookup (`textureLod`) | 311 to 316 |
+| Environment BRDF table lookup | 347 to 350 |
+| Environment diffuse (9 irradiance terms) | 345 to 348 |
+| Sun shadow read (`return 1.0`) | 326 to 327 (nine comparison fetches, about 40) |
+| Key `illuminate` | 354 to 366 (nothing: half of each sphere faces away) |
+| `atan` and `acos` in the equirectangular lookup | no change |
+| `room` term, `fog`, HDR or LDR output branch, roughness derivatives | no change (each within 3 of the 340 baseline) |
+
+`skinned-characters` at 124: base colour only 47 (vertex skinning and the shadow pass), shadow read 38 less, environment lighting 50 less, so 77 ms of its fragment cost is these two. A compile-out of the sun shadow read when no part casts was tried first and changed nothing in `transparency`, because the bench floor is an opaque caster; it was reverted.
+
+**Not done, needs a pixel change.** Environment specular (about 50), the sun shadow (about 40), the BRDF table and the diffuse terms (about 20 each) are the frame. Fewer shadow taps, an analytic BRDF fit or a smaller irradiance basis would change pixels, and three.js has none of them in this scene (an ambient colour and one light, no shadow map). `transparency` stays 6.7 and `skinned-characters` 5.2 times three.js, so the target of 3 is not met for them.

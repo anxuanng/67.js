@@ -798,8 +798,10 @@ void main() {
   vec3 baseReflectance = mix(materialDielectric, color, metallic);
 ${featureCode("mainSetup")}  float visibility = shadowVisibility(normal);
   vec3 radiance = illuminate(normal, viewDirection, normalize(lightDirection), keyColor * visibility${featureCode("linkSun")}, color, metallic, roughness);
+  if (FILL_ON) {
   radiance += illuminate(normal, viewDirection, normalize(vec3(4.0, 2.0, -3.0)), mix(vec3(0.8, 2.0, 1.8), vec3(0.12, 0.17, 0.20) * daylight, worldMode) * fillIntensity * mix(1.0, vertexSkyVisibility, worldMode), color, metallic, roughness);
   radiance += illuminate(normal, viewDirection, normalize(vec3(1.0, 2.0, 5.0)), vec3(0.6, 0.7, 0.8) * mix(1.0, 0.25 * daylight, worldMode) * fillIntensity * mix(1.0, vertexSkyVisibility, worldMode), color, metallic, roughness);
+  }
   for (int index = 0; index < 8; index++) {
     if (index >= pointLightCount) break;
     vec3 offset = pointLightPositions[index].xyz - worldPosition;
@@ -954,6 +956,7 @@ const SHADER_FEATURE_CONDITIONS = {
   spotLights: ['USES_SPOT_LIGHTS', 'spotLightCount > 0'],
   areaLights: ['USES_AREA_LIGHTS', 'areaLightCount > 0'],
   localShadows: ['USES_LOCAL_SHADOWS', 'true'],
+  fill: ['FILL_ON', 'true'],
   renderPass: ['USES_RENDER_PASS', 'renderPassMode > 0.5'],
   sheen: ['USES_SHEEN', 'materialSheen.rgb != vec3(0.0)'],
   clearcoat: ['USES_CLEARCOAT', 'materialCoat.x > 0.0'],

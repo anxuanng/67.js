@@ -57,6 +57,7 @@ function shaderFeaturesOfLighting(lighting) {
   if (lighting.spotCount > 0) features.push('spotLights');
   if (lighting.areaCount > 0) features.push('areaLights');
   if (lighting.shadowCasters.length > 0) features.push('localShadows');
+  if (lighting.fillIntensity > 0) features.push('fill');
   return features;
 }
 
