@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="afterimage">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -24,11 +24,11 @@
             <h1 id="showcase-title">Showcase</h1>
             <p id="showcase-blurb"></p>
           </div>
-          <div id="showcase-tabs" class="showcase-tabs" role="group" aria-label="Scene"></div>
+          <div class="showcase-controls"><div id="showcase-tabs" class="showcase-tabs" role="group" aria-label="Scene"></div><button id="showcase-reset" type="button">Reset view</button></div>
         </div>
         <div class="showcase-frame">
-          <canvas id="showcase-viewport" tabindex="0" aria-label="Live 3D scene. Drag to orbit, scroll to zoom."></canvas>
-          <p id="showcase-status" role="status">◷ Loading the scene…</p>
+          <canvas id="showcase-viewport" tabindex="0" aria-label="Live 3D scene. Drag to orbit, right-drag or shift-drag to pan, scroll to zoom, WASD or arrow keys to move, Q and E to turn."></canvas>
+          <p id="showcase-status" role="status"></p>
         </div>
         <details class="showcase-credits">
           <summary>Models and licences</summary>

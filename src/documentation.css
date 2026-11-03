@@ -53,9 +53,6 @@
 .doc-pagination span { color:var(--muted); font-size:12px; }
 .doc-pagination strong { font-size:14px; font-weight:500; }
 .docs-sidebar, .doc-actions, .doc-pagination, .navigation { user-select:none; }
-@media (prefers-color-scheme:light) {
-  .documentation { --syntax-string:#246a43; --syntax-keyword:#77439b; --syntax-number:#93601e; --syntax-comment:#666; --syntax-name:#245e91; }
-}
 @media (max-width:1200px) and (min-width:1051px) { .documentation .docs-page { gap:30px; grid-template-columns:220px minmax(0,1fr); padding:30px; } }
 @media (max-width:1050px) {
   .documentation .docs-page { display:block; padding:28px 30px 50px; }
