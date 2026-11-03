@@ -1,6 +1,20 @@
 # WebGPU decision (issue #56)
 
-Decision: wait. WebGL2 stays the only backend. Revisit when a feature needs compute and the CPU path has been measured as the bottleneck, not before.
+Decision: wait. WebGL2 stays the only backend of the real-time renderer; the offline path tracer runs on the GPU through WebGL2 too (see the update below). Revisit when a feature needs compute and the CPU path has been measured as the bottleneck, not before.
+
+## Update for the offline path tracer (issue #302)
+
+The trigger named below ("a feature measured as too slow on the CPU") was met by the path tracer, so it got a GPU backend. Choice: **WebGL2 fragment shader, not WebGPU compute**, for an offline-only tracer. The real-time renderer is unchanged: WebGL2 only, no WebGPU backend.
+
+Why WebGL2 fragment (measured on this machine, 2026-11-03, RTX 3060 shared with other sessions, Chrome with ANGLE on Direct3D 11, headless):
+
+- It reached the target without compute. The 1920 by 1080 still of `tests/fixtures/demo-room.recipe.json` (181,708 triangles, 64 samples, 8 bounces, the 8-thread CPU tracer took 585.9 s) took 55.8 s end to end on the GPU in the first full run, of which 13.0 s was compiling the kernel and about 12 s was the denoiser and the BVH build (the log of that run: `seconds` 55.81, `tracedSeconds` 43.80, `compileSeconds` 13.03).
+- The same kernel, in the same random-number order as the CPU tracer, gives the same picture: GPU against CPU FLIP (LDR, mean) was 0.0001 to 0.0018 on all 16 path tracer reference scenes at 480 by 270 and 32 samples (measured; `bench/reference/gpu-compare.mjs` and `flip-compare.py`). Float32 against float64 and a 24-bit random value are the only differences.
+- On those 16 scenes the GPU tracer took 0.5 to 1.8 s against 1.6 to 9.0 s for the CPU tracer on 8 threads, both including the denoiser (measured).
+- It needs no new API surface: WebGL2 is what the job pages already use, `EXT_color_buffer_float` and `EXT_float_blend` are present on the RTX 3060 in headless Chrome, and a page without them falls back to the CPU tracer by choosing `backend: "cpu"` (the default).
+- Cost: the kernel takes 13 to 30 s to compile on ANGLE's Direct3D 11 backend (the first version, with one copy of the traversal for every light type, did not finish in 4 minutes). It compiles once per page and is reused by later stills. Keeping a single copy of the shadow-ray traversal (shadow rays are recorded and traced after each light sample) is what made it compile.
+
+Not built: a WGSL compute version. It was not needed to meet the target, and the open questions that made WebGPU attractive (storage buffers for the BVH, no texture size limits, subgroup tricks) did not block the fragment path: the scene tables fit in 2048-wide float textures (the demo room is 1.6 million triangle texels, 800 rows). This is a decision on what was measured, not a measurement of WebGPU compute: a compute path could be faster per ray, and it was not run. If the compile time or the texture-table limits become the bottleneck, the packing in `src/path-tracer-gpu-pack.js` is the part that would move to storage buffers.
 
 Each claim carries a tag: **measured** (run on this machine on 2026-10-31), **inferred** (follows from a measurement or a source) or **guessed** (an estimate nobody ran).
 
