@@ -1232,3 +1232,32 @@ Measured on the same Cycles arrays as main (GPU, 960 x 540; `brick-flat` redrawn
 The shadow floors move toward Cycles (mostly by 0.02 to 0.2) but five scenes get worse and two pass the 0.002 limit (`material-spheres` +0.0093, `brick-flat` +0.0061; worst regression). Cause (inferred): the term cuts the bounce that reaches the sides of objects and walls, where Cycles still has all of it, more than it cuts the light in the shadowed floor tiles; `material-spheres` lit-level 1.09 after. The shadowed floor itself gets no bounce from the lower-half copy in the first place (a level surface sees none of a lower hemisphere), so the floor ratio gap is not mostly this term: removing the whole bounce took `material-spheres` only from 2.01 to 1.51. Not kept; `baseline.json` is unchanged.
 
 Next idea: occlude per surface, not per scene: a sky and sun visibility lookup for the ground next to each caster, which needs a texture in the core shader and is a size cost; or darken only the floor-facing lower part of casters, which the shader would need a height above the floor for.
+
+## Where the rest of `metal` sits, and a metal mirror in the probe trace, measured and not kept (2026-11-03, part of issue #167)
+
+`bench/reference/region-errors.py <scene> [gpu|cpu]` splits the FLIP error map of a scene by what each pixel shows. It draws each part's triangles back to front with the scene's camera (the floor quad reaches behind the camera, so the floor is the uncovered pixels below the horizon), then prints share, mean error and luminance per region for 67js and EEVEE against Cycles. GPU render, same arrays as the baseline (67js 0.0944, EEVEE 0.0916); the shares of the error are of the error map's own total (its mean is 0.1053, a little above the 0.0944 of the scorer, so use the shares and not the absolute values):
+
+| Region | Frame share | FLIP 67js | FLIP EEVEE | Share of 67js error | Display luminance 67js / Cycles / EEVEE |
+| --- | --- | --- | --- | --- | --- |
+| Floor, open | 0.632 | 0.0883 | 0.0745 | 53% | 0.677 / 0.679 / 0.677 |
+| Chrome sphere | 0.059 | 0.2430 | 0.2056 | 13% | 0.654 / 0.627 / 0.629 |
+| Gold torus | 0.053 | 0.2331 | 0.3045 | 12% | 0.633 / 0.646 / 0.601 |
+| Copper cube | 0.060 | 0.2085 | 0.3082 | 12% | 0.611 / 0.638 / 0.571 |
+| Steel cylinder | 0.029 | 0.2531 | 0.1894 | 7% | 0.556 / 0.573 / 0.544 |
+| Sky | 0.161 | 0.0148 | 0.0098 | 2% | 0.860 / 0.860 / 0.860 |
+| Floor front edge | 0.006 | 0.1200 | 0.0838 | 1% | 0.672 / 0.687 / 0.683 |
+
+67js already beats EEVEE on the gold torus (0.0124 against 0.0162 of the frame mean) and the copper cube (0.0125 against 0.0185). EEVEE leads on the open floor (0.0087 of the frame), the chrome sphere (0.0022), the steel cylinder (0.0019) and the sky (0.0008). The floor has the largest gap and no luminance gap (0.677 against 0.679), so what is left there is structure (the shadow shapes and the halo of bounced light around the parts), as #241 found. The steel cylinder is 0.017 too dark and the chrome sphere 0.027 too bright.
+
+Change tried: in the probe trace, a hit on a metal part returns what that part mirrors toward the probe, times the metal's colour: the environment when the mirrored ray leaves the scene, else the direct and sky light of the part it meets (no further bounce). Either added to the diffuse term or in place of its metallic share. SwiftShader, `metal`, same Cycles arrays:
+
+| Variant | FLIP | chrome / steel luminance | probe trace |
+| --- | --- | --- | --- |
+| Main | 0.0942 | 0.654 / 0.556 | 0.24 s |
+| Mirror added, gain 1 | 0.0942 | 0.662 / 0.590 | 0.25 s |
+| Mirror added, gain 0.4 | 0.0938 | 0.658 / not read | 0.25 s |
+| Mirror replacing the metallic share of the diffuse term | 0.0953 | 0.654 / 0.559 | 0.25 s |
+
+The best of them is 0.0004 better, which is inside what the choice of gain alone moves, and 0.0022 short of EEVEE. At gain 1 it overshoots the steel cylinder (0.556 to 0.590, Cycles 0.573) and brightens the chrome sphere, which is already too bright; the sphere's error is the structure of the reflection (the cloud pattern and the floor under its base), not its level. This agrees with the earlier "metal parts mirroring the sky too" row (0.0939). Not kept; no engine file, scene or `baseline.json` row changed, and the first box of #167 stays open: `metal` 0.0944 against EEVEE 0.0916. A scene without a reflective part never loads the trace, so its frame cost is as before.
+
+Next idea: the open floor is more than half of the error and the largest gap, and a surface-level cause there needs a new input (light the metal parts reflect onto the floor, which a diffuse bounce leaves out), for example a few traced caustic-like patches stamped into the ground bounce.
