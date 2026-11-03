@@ -269,7 +269,7 @@ A node with an `asset` field places a GLB from the `--assets` catalog inside the
 - `clip` plays that clip, held at its first frame until scene time `start`, then at `speed`, looping unless `loop` is false. Each placement that plays a clip gets a decoded copy of its own (its geometry is not shared), because a pose is state of one decoded asset. A seek gives the same frame as playing to that time. `set-motion` tracks still move the node itself, so a walking figure is a clip plus a motion track on the same node.
 - Bounds: 512 placements, 16 different assets, 16 placements playing a clip, and `maxNodes` for the generated parts. Placed geometry does not count against `maxVertices`; each asset keeps the decoder limits of the catalog.
 - `scene_inspect` adds `assets`: per placement the asset id, part count, world bounds, clips (index, name, duration), material names and the playing clip.
-- Not yet: render jobs refuse a scene with placed assets (`scene_look` draws them), and a scene created without any placed asset cannot add the first one with `scene_apply`.
+- Not yet: a scene created without any placed asset cannot add the first one with `scene_apply`. Render jobs draw placed assets and play their clips on scene time (`settings.motion.start`).
 
 ### Vegetation
 
