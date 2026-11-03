@@ -128,7 +128,10 @@ test('steering turns the front wheels toward the turn and leaves the rear straig
   assert.ok(leftPose.heading > 0.1);
   assert.ok(rightPose.heading < -0.1);
   assert.equal(leftPose.wheels[2].steerAngle, 0);
-  assert.equal(leftPose.wheels[0].steerAngle, leftPose.steerAngle);
+  assert.ok(leftPose.wheels[0].steerAngle > leftPose.steerAngle);
+  const sharedPose = driveAlongPath(rig, arcPath(10, 1), { speed: 5, steering: 'shared' }).sample(1.5);
+  assert.equal(sharedPose.wheels[0].steerAngle, sharedPose.steerAngle);
+  assert.equal(sharedPose.wheels[1].steerAngle, sharedPose.steerAngle);
 });
 
 test('front wheel matrices yaw toward the turn relative to the body', () => {

@@ -98,9 +98,10 @@ export class InstanceSelection {
  * Splits a batch's instances into the ones that touch the frustum, by level. `bounds` is the geometry's bounding
  * sphere, `levelErrors` the error of each level in geometry units (level 0 is 0), and `pixelsPerUnit` the pixels
  * that one world unit covers at depth 1 (half the canvas height times projection[5]). `margin` widens every sphere by that many
- * world units, for vertices that move away from their geometry (wind sway).
+ * world units, for vertices that move away from their geometry (wind sway). `belowHeight` drops an instance whose sphere lies wholly under
+ * that world height, and `minimumPixelRadius` one whose sphere covers a smaller radius than that on screen (the water mirror uses both).
  */
-export function selectInstances(selection, { instanceData, instanceCount, stride, bounds, margin = 0, levelErrors, planes, viewProjection, pixelsPerUnit, pixelError = DEFAULT_LOD_PIXEL_ERROR }) {
+export function selectInstances(selection, { instanceData, instanceCount, stride, bounds, margin = 0, levelErrors, planes, viewProjection, pixelsPerUnit, pixelError = DEFAULT_LOD_PIXEL_ERROR, belowHeight = -Infinity, minimumPixelRadius = 0 }) {
   selection.counts.fill(0);
   selection.visibleCount = 0;
   const hasLevels = levelErrors.length > 1;
@@ -111,11 +112,13 @@ export function selectInstances(selection, { instanceData, instanceCount, stride
     const y = instanceData[offset + 1] * centerX + instanceData[offset + 5] * centerY + instanceData[offset + 9] * centerZ + instanceData[offset + 13];
     const z = instanceData[offset + 2] * centerX + instanceData[offset + 6] * centerY + instanceData[offset + 10] * centerZ + instanceData[offset + 14];
     const worldScale = largestColumnLength(instanceData, offset);
-    if (isOutsideFrustum(planes, x, y, z, bounds.radius * worldScale + margin)) continue;
+    const reach = bounds.radius * worldScale + margin;
+    if (y + reach < belowHeight || isOutsideFrustum(planes, x, y, z, reach)) continue;
     let level = 0;
-    if (hasLevels) {
+    if (hasLevels || minimumPixelRadius > 0) {
       const depth = viewProjection[3] * x + viewProjection[7] * y + viewProjection[11] * z + viewProjection[15];
-      level = depth > MINIMUM_DEPTH ? chooseLevel(levelErrors, worldScale, pixelsPerUnit / depth, pixelError) : 0;
+      if (depth > MINIMUM_DEPTH && reach * pixelsPerUnit / depth < minimumPixelRadius) continue;
+      level = hasLevels && depth > MINIMUM_DEPTH ? chooseLevel(levelErrors, worldScale, pixelsPerUnit / depth, pixelError) : 0;
     }
     selection.indices[level][selection.counts[level]++] = index;
     selection.visibleCount++;
