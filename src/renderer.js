@@ -1531,11 +1531,13 @@ export class Renderer67 {
     context.framebufferRenderbuffer(context.FRAMEBUFFER, context.COLOR_ATTACHMENT0, context.RENDERBUFFER, this.multisampleColor);
     this.multisampleDepth = context.createRenderbuffer();
     context.bindRenderbuffer(context.RENDERBUFFER, this.multisampleDepth);
-    context.renderbufferStorageMultisample(context.RENDERBUFFER, this.multisampleSamples, context.DEPTH_COMPONENT24, width, height);
+    // Without a depth texture nothing reads or resolves the depth, so the visibility test can use 16 bits; a depth texture needs the same format.
+    const depthFormat = this.depth ? 'DEPTH_COMPONENT24' : 'DEPTH_COMPONENT16';
+    context.renderbufferStorageMultisample(context.RENDERBUFFER, this.multisampleSamples, context[depthFormat], width, height);
     context.framebufferRenderbuffer(context.FRAMEBUFFER, context.DEPTH_ATTACHMENT, context.RENDERBUFFER, this.multisampleDepth);
     if (context.checkFramebufferStatus(context.FRAMEBUFFER) !== context.FRAMEBUFFER_COMPLETE) throw new Error('Multisample framebuffer allocation failed. Choose a lower quality preset.');
     this.renderTargets.record('multisampleColor', { width, height, format: this.hdr ? 'RGBA16F' : 'RGBA8', samples: this.multisampleSamples });
-    this.renderTargets.record('multisampleDepth', { width, height, format: 'DEPTH_COMPONENT24', samples: this.multisampleSamples });
+    this.renderTargets.record('multisampleDepth', { width, height, format: depthFormat, samples: this.multisampleSamples });
     this.renderTargets.record('frameColor', { width, height, format: this.hdr ? 'RGBA16F' : 'RGBA8' });
     this.frameTexture = context.createTexture();
     context.bindTexture(context.TEXTURE_2D, this.frameTexture);
