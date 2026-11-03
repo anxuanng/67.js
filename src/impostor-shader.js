@@ -4,7 +4,7 @@
 // extra attribute. The same function runs in the colour and shadow vertex shaders: in the shadow pass the "eye" is
 // the light, so the card shows the tree as the sun sees it.
 
-import { materialTags, addonGlsl } from './shader-registry.js';
+import { materialTags, shaderTransforms } from './shader-registry.js';
 
 /** Frames per side of the hemi-octahedral atlas (the atlas holds this many squared views). */
 export const IMPOSTOR_FRAMES = 8;
@@ -43,7 +43,8 @@ vec3 impostorCard(vec3 localPosition, vec2 corner, mat4 modelMatrix, mat4 clipMa
 }
 `;
 
-// The hooks sit in main() of the colour and shadow vertex shaders (shaders.js); importing this module installs them.
+// Importing this module installs a transform that startProgram applies to every shader source: it inserts the card code
+// before known lines of the colour vertex, shadow vertex and fragment shaders, so shaders.js carries none of it.
 materialTags.impostor = IMPOSTOR_TAG;
 
 // A fade carries its coverage in the opacity: 1 plus the coverage for the outgoing side, 2 plus it for the incoming side.
@@ -57,10 +58,7 @@ const ALPHA_COVERAGE = `  if (materialOpacity > 1.0) {
   }
 `;
 
-Object.assign(addonGlsl, {
-  alpha: ALPHA_COVERAGE,
-  defs: impostorShader,
-  color: `  if (instanceSurface.w == ${IMPOSTOR_TAG}.0) {
+const COLOR_HOOK = `  if (instanceSurface.w == ${IMPOSTOR_TAG}.0) {
     vec2 atlasUv;
     vec3 cardNormal;
     world.xyz = impostorCard(position, uv, instanceMatrix, viewProjection, time, wind, atlasUv, cardNormal);
@@ -68,12 +66,28 @@ Object.assign(addonGlsl, {
     worldPosition = world.xyz;
     worldNormal = cardNormal;
   }
-`,
-  depth: `  if (instanceSurface.w == ${IMPOSTOR_TAG}.0) {
+`;
+
+const DEPTH_HOOK = `  if (instanceSurface.w == ${IMPOSTOR_TAG}.0) {
     vec3 lightFacing;
     vec2 atlasUv;
     world.xyz = impostorCard(position, uv, instanceMatrix, lightProjection, time, wind, atlasUv, lightFacing);
     uv = atlasUv;
   }
-`,
-});
+`;
+
+function insertBefore(source, anchor, code) {
+  return source.includes(anchor) ? source.replace(anchor, () => code + anchor) : source;
+}
+
+/** Adds the card and dither code to a shader source that has the lines it hooks into; other sources pass through. */
+export function addImpostorCode(source) {
+  if (source.includes('float surfaceAlpha(float textureAlpha) {')) return insertBefore(source, '  if (alphaMode > 1.5) return alpha;', ALPHA_COVERAGE);
+  if (!source.includes('uniform float wind;') || !source.includes('void main() {')) return source;
+  const withDefinitions = insertBefore(source, 'void main() {', impostorShader);
+  if (withDefinitions.includes('worldNormal = normalize(')) return insertBefore(withDefinitions, "  // Metres along the object's own axes", COLOR_HOOK);
+  return insertBefore(withDefinitions, '  textureUV = uv;
+  gl_Position = lightProjection * world;', DEPTH_HOOK);
+}
+
+shaderTransforms.push(addImpostorCode);
