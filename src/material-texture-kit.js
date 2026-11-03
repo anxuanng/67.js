@@ -108,25 +108,43 @@ export function createImage(data, width, height) {
   return typeof ImageData === 'function' ? new ImageData(data, width, height) : { width, height, data };
 }
 
-/** Tangent-space normal map bytes from a height field. Height differences are per texel; scale them so a bump of 1 reads the same at any resolution. */
-export function normalMapFromHeights(heights, resolution, bump) {
+function normalMapFromSlopes(resolution, slopeU, slopeV) {
   const normalData = new Uint8ClampedArray(resolution * resolution * 4);
-  const slopeScale = bump * resolution / 64;
   for (let row = 0; row < resolution; row++) {
-    const rowAbove = (row + 1) % resolution;
-    const rowBelow = (row + resolution - 1) % resolution;
     for (let column = 0; column < resolution; column++) {
-      const columnRight = (column + 1) % resolution;
-      const columnLeft = (column + resolution - 1) % resolution;
-      const slopeU = (heights[row * resolution + columnRight] - heights[row * resolution + columnLeft]) * slopeScale;
-      const slopeV = (heights[rowAbove * resolution + column] - heights[rowBelow * resolution + column]) * slopeScale;
-      const length = Math.hypot(slopeU, slopeV, 1);
+      const slopeAcross = slopeU(column, row);
+      const slopeUp = slopeV(column, row);
+      const length = Math.hypot(slopeAcross, slopeUp, 1);
       const offset = (row * resolution + column) * 4;
-      normalData[offset] = Math.round((-slopeU / length * 0.5 + 0.5) * 255);
-      normalData[offset + 1] = Math.round((-slopeV / length * 0.5 + 0.5) * 255);
+      normalData[offset] = Math.round((-slopeAcross / length * 0.5 + 0.5) * 255);
+      normalData[offset + 1] = Math.round((-slopeUp / length * 0.5 + 0.5) * 255);
       normalData[offset + 2] = Math.round((1 / length * 0.5 + 0.5) * 255);
       normalData[offset + 3] = 255;
     }
   }
   return normalData;
+}
+
+/** Tangent-space normal map bytes from a height field. Height differences are per texel; scale them so a bump of 1 reads the same at any resolution. */
+export function normalMapFromHeights(heights, resolution, bump) {
+  const slopeScale = bump * resolution / 64;
+  const heightAt = (column, row) => heights[((row + resolution) % resolution) * resolution + ((column + resolution) % resolution)];
+  return normalMapFromSlopes(
+    resolution,
+    (column, row) => (heightAt(column + 1, row) - heightAt(column - 1, row)) * slopeScale,
+    (column, row) => (heightAt(column, row + 1) - heightAt(column, row - 1)) * slopeScale,
+  );
+}
+
+/** The same slope per UV unit (bump / 32) read from a height function of (u, v) by a central difference of half a texel each side.
+ * Blender's Bump node reads a footprint of 0.1 pixel, so a joint edge stays one texel thin where two texels each side widen it to three. */
+export function normalMapFromHeightFunction(heightAt, resolution, bump) {
+  const halfStep = 0.5 / resolution;
+  const slopeScale = bump * resolution / 32;
+  const slopeAt = (column, row, acrossStep, upStep) => {
+    const u = (column + 0.5) / resolution;
+    const v = (row + 0.5) / resolution;
+    return (heightAt(u + acrossStep, v + upStep) - heightAt(u - acrossStep, v - upStep)) * slopeScale;
+  };
+  return normalMapFromSlopes(resolution, (column, row) => slopeAt(column, row, halfStep, 0), (column, row) => slopeAt(column, row, 0, halfStep));
 }
