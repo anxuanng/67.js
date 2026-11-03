@@ -62,7 +62,7 @@ const MODULE_MARKERS = {
   navigation: [],
   lightLinking: ['"affects"', '"keyAffects"'],
   cascades: ['"shadowCascades"'],
-  assets: ['"asset":{'],
+  assets: ['"asset":{', '"sequence":{'],
   vegetation: ['"vegetation":{', '"wind":{'],
   lineArt: ['"lines":{', '"toon":'],
   viewTransform: ['"viewTransform":"agx"', '"viewTransform":"neutral"', '"look":"'],

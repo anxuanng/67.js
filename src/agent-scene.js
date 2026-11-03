@@ -24,7 +24,7 @@ const MAX_MESH_REPORTS = 16;
 const TERRAIN_SKY_VISIBILITY_BYTES = 4;
 const CAMERA_DEFAULTS = Object.freeze({ eye: [4, 3, 5], target: [0, 0, 0], up: [0, 1, 0], fov: 45, near: 0.1, far: 1000 });
 const NODE_FIELDS = ['translation', 'rotation', 'scale', 'parent', 'label', 'geometry', 'material', 'skin', 'relations', 'asset', 'vegetation', 'decal', 'depthLayer'];
-const MATERIAL_FIELDS = ['color', 'metallic', 'roughness', 'emission', 'emissiveColor', 'opacity', 'alphaMode', 'doubleSided', 'pattern', 'subsurface', ...MATERIAL_LAYER_FIELDS];
+const MATERIAL_FIELDS = ['color', 'metallic', 'roughness', 'emission', 'emissiveColor', 'opacity', 'alphaMode', 'doubleSided', 'pattern', 'map', 'subsurface', ...MATERIAL_LAYER_FIELDS];
 const PATTERN_TEXTURE_FIELDS = ['map', 'normalMap', 'metallicRoughnessMap', 'emissiveMap', 'boxMapScale', 'boxMapAxis'];
 const CAMERA_FIELDS = Object.keys(CAMERA_DEFAULTS);
 const LOOK_OPERATION_FIELDS = Object.freeze({
@@ -210,6 +210,7 @@ function materialFrom(value) {
   if (!AGENT_SCENE_CAPABILITIES.materialTags.includes(result.tag)) {
     throw new RangeError(`Material tag must be one of ${AGENT_SCENE_CAPABILITIES.materialTags.join(', ')}.`);
   }
+  if (value.map !== undefined) agentSceneModule('assets').applyMapSequence(value, result);
   if (value.pattern !== undefined) {
     if (result.tag !== 'surface') throw new RangeError('Material pattern needs the surface tag.');
     result.pattern = agentSceneModule('patterns').normalizeMaterialPattern(value.pattern);
@@ -753,15 +754,16 @@ function geometryStats(records) {
 function batchSignature(material) {
   // Textures are fixed per renderer, so a changed pattern rebuilds it like a changed tag does.
   // Transmission moves a material to the pass that sees the opaque scene, which is fixed per renderer.
-  return `${material.tag}|${material.alphaMode}|${material.opacity}|${material.transmission > 0}|${material.doubleSided}|${JSON.stringify(material.pattern ?? null)}`;
+  return `${material.tag}|${material.alphaMode}|${material.opacity}|${material.transmission > 0}|${material.doubleSided}|${JSON.stringify(material.pattern ?? material.map ?? null)}`;
 }
 
-function materialHandle(snapshot) {
-  const holder = { snapshot };
+function materialHandle(snapshot, sequence) {
+  const holder = { snapshot, sequence };
   const output = {};
   for (const field of ['tag', ...MATERIAL_FIELDS]) {
     Object.defineProperty(output, field, {
       enumerable: true,
+      configurable: true,
       get() {
         return holder.snapshot[field];
       },
@@ -772,6 +774,7 @@ function materialHandle(snapshot) {
       enumerable: true,
       // Baked on first read, so validating or inspecting a recipe never pays for it.
       get() {
+        if (field === 'map' && holder.sequence) return holder.sequence.descriptor;
         return holder.snapshot.pattern ? agentSceneModule('patterns').materialPatternTextures(holder.snapshot.pattern)[field] : undefined;
       },
     });
@@ -908,6 +911,7 @@ function publishPose(stagedState, pose) {
       if (matrix) Float32Array.prototype.set.call(part.matrix, matrix);
     }
   }
+  for (const sequence of stagedState.sequences) sequence.seek(pose.time);
   stagedState.renderCamera = pose.camera;
   stagedState.motionTime = pose.time;
   const nextParts = partsWithCloth(stagedState.restParts, pose.clothGeometries);
@@ -985,25 +989,7 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
   }
 
   // The route is computed over the authored pose of the ground and of the nodes to avoid, like the bounds in scene_inspect.
-  function pathQuery(query) {
-    if (query === null || typeof query !== 'object' || Array.isArray(query)) throw new TypeError('path must be an object.');
-    const navigation = agentSceneModule('navigation');
-    knownKeys(query, navigation.NAVIGATION_FIELDS, 'path');
-    if (query.avoid !== undefined && (!Array.isArray(query.avoid) || query.avoid.length > 64)) throw new RangeError('path avoid must list at most 64 node IDs.');
-    const { geometry, worldMatrix } = drawnNodeGeometry(query.ground, 'ground');
-    const positions = new Float32Array(geometry.positions.length);
-    for (let offset = 0; offset < positions.length; offset += 3) {
-      for (let axis = 0; axis < 3; axis++) {
-        positions[offset + axis] = worldMatrix[axis] * geometry.positions[offset] + worldMatrix[4 + axis] * geometry.positions[offset + 1]
-          + worldMatrix[8 + axis] * geometry.positions[offset + 2] + worldMatrix[12 + axis];
-      }
-    }
-    const avoidBounds = (query.avoid ?? []).map(id => {
-      const avoided = drawnNodeGeometry(id, 'avoid');
-      return boundsFor(avoided.geometry, avoided.worldMatrix);
-    });
-    return navigation.queryAgentPath(query, { positions, indices: geometry.indices }, avoidBounds);
-  }
+  const pathQuery = query => agentSceneModule('navigation').resolvePathQuery(query, drawnNodeGeometry, boundsFor);
 
   function ownedGeometryRecords() {
     const records = new Set(state?.geometryRecords.values() ?? []);
@@ -1103,7 +1089,7 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
       // The renderer keeps tag, blending, opacity and sidedness per batch, so a handle is reused only when all match.
       const existing = [preferredHandle, activeHandle].find(handle => handle && batchSignature(handle.holder.snapshot) === batchSignature(material));
       const assetOutput = assetRuntime.materialOutputs.get(material.id);
-      const handle = assetOutput ? assetMaterialHandle(snapshot, assetOutput, preferredHandle, activeHandle) : existing ?? materialHandle(snapshot);
+      const handle = assetOutput ? assetMaterialHandle(snapshot, assetOutput, preferredHandle, activeHandle) : existing ?? materialHandle(snapshot, material.map && agentSceneModule('assets').createTextureSequence(material.id, material.map, options.sequenceFrames));
       materialHandles.set(material.id, handle);
     }
     const activeParts = new Map(state?.sourceRestParts.map(part => [part.name, part]) ?? []);
@@ -1143,6 +1129,7 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
       stats: geometryStats(geometryRecords.values()),
     };
     stagedState.assetRuntime = assetRuntime;
+    stagedState.sequences = [...materialHandles.values()].map(handle => handle.holder.sequence).filter(Boolean);
     stagedState.localBounds = localBounds;
     stagedState.skinBindings = skinBindings;
     stagedState.skinStages = createSkinStages(skinBindings);
@@ -1343,11 +1330,14 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
     get motionTime() {
       return state.motionTime;
     },
+    sequenceTextures() {
+      return state.sequences;
+    },
     sampleMotion(time) {
       if (time !== null && (!Number.isFinite(time) || time < 0 || time > 3600)) {
         throw new RangeError('Motion time must be null or within zero and 3600 seconds.');
       }
-      if (time !== null && !state.motionSampler && !state.physicsSampler && !state.clothSampler && !state.particleSampler && !state.assetRuntime.animators.length) {
+      if (time !== null && !state.motionSampler && !state.physicsSampler && !state.clothSampler && !state.particleSampler && !state.assetRuntime.animators.length && !state.sequences.length) {
         throw new RangeError('This procedural recipe has no motion, physics, cloth or particles, and no placed asset clip.');
       }
       if (publishPose(state, stagePose(state, time))) {
@@ -1549,7 +1539,7 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
           fields = NODE_FIELDS;
           target = candidate.nodes.find(node => node.id === operation.id);
         } else if (operation.type === 'set-material') {
-          fields = MATERIAL_FIELDS;
+          fields = [...MATERIAL_FIELDS, 'map'];
           target = candidate.materials.find(material => material.id === operation.id);
         } else if (operation.type === 'set-camera') {
           fields = CAMERA_FIELDS;
@@ -1610,6 +1600,7 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
         ...(state.particleSampler ? { particles: state.particleSampler.report() } : {}),
         ...(state.assetRuntime.vegetation ? { vegetation: state.assetRuntime.vegetation } : {}),
         ...(state.assetRuntime.placements.length ? { assets: agentSceneModule('assets').describeAssetPlacements(state.assetRuntime, state.graph, geometry => state.localBounds.get(geometry)) } : {}),
+        ...(state.sequences.length ? { textureSequences: state.sequences.map(sequence => sequence.describe()) } : {}),
         ...(state.bakeReport ? { bake: state.bakeReport } : {}),
         ...(state.reflectionReport ? { reflections: state.reflectionReport } : {}),
         ...(state.recipe.armatures ? { rig: rigReport(state.recipe, state.skinBindings) } : {}),

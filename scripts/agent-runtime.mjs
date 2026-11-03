@@ -12,6 +12,8 @@ import { PATH_TRACER_CAPABILITIES } from '../src/path-tracer-capabilities.js';
 import { chooseDenoiser, finishWithOidn } from './agent-path-trace-denoise.mjs';
 import { createAgentAssetCatalog } from './agent-asset-catalog.mjs';
 import { recipeAssetNeeds } from '../src/agent-scene-assets.js';
+import { sequenceFrameIds } from '../src/agent-texture-sequence.js';
+import { TEXTURE_SEQUENCE_CAPABILITIES } from '../src/texture-sequence-limits.js';
 import { createAgentRenderJobs, EXPORT_DIRECTORY_NAME } from './agent-render-jobs.mjs';
 import { createFrameEncoder } from './frame-encoder.mjs';
 import { DEFAULT_PAGE_ENCODER_QUANTIZER, createFrameReceiver, startVideoEncoderInPage } from './gpu-frame-reader.mjs';
@@ -138,9 +140,16 @@ export function createAgentRuntime({ kernelWorkers = true, backend = 'gpu', brow
   /** Bytes of the catalog assets a recipe or edit list places, base64 by asset id, for the page that decodes them. */
   async function placedAssetData(value) {
     const needs = recipeAssetNeeds(value);
-    if (!needs.length) return {};
     const entries = await Promise.all(needs.map(async ({ id }) => [id, (await (await catalog()).read(id)).toString('base64')]));
-    return { assetData: Object.fromEntries(entries) };
+    return { ...(needs.length ? { assetData: Object.fromEntries(entries) } : {}), ...(await sequenceFrameData(value)) };
+  }
+
+  /** Bytes of the catalog images a recipe or edit list uses as map sequence frames, base64 by asset id. The page decodes them. */
+  async function sequenceFrameData(value) {
+    const ids = sequenceFrameIds(value);
+    if (!ids.length) return {};
+    const entries = await Promise.all(ids.map(async id => [id, (await (await catalog()).read(id)).toString('base64')]));
+    return { sequenceData: Object.fromEntries(entries) };
   }
 
   // Motion layers can play a clip of another catalog asset (`from.asset`). The page gets those assets' bytes by catalog ID,
@@ -563,7 +572,7 @@ export function createAgentRuntime({ kernelWorkers = true, backend = 'gpu', brow
   return Object.freeze({
     async capabilities() {
       return {
-        scene: { ...AGENT_SCENE_CAPABILITIES, vegetation: VEGETATION_CAPABILITY_NOTE },
+        scene: { ...AGENT_SCENE_CAPABILITIES, vegetation: VEGETATION_CAPABILITY_NOTE, textureSequence: TEXTURE_SEQUENCE_CAPABILITIES },
         sceneLimits: SCENE_LIMITS,
         preview: { backend, memoryBudgetMiB: memory, maximumWidth: 1024, maximumHeight: 1024, maximumImageBytes: MAXIMUM_IMAGE_BYTES, maximumActiveScenes: 1, maximumQueuedCalls: MAXIMUM_QUEUED_CALLS, evaluationTimeoutMs: EVALUATION_TIMEOUT_MS },
         review: { ...REVIEW_LIMITS, backend, memoryBudgetMiB: memory, evaluationTimeoutMs: EVALUATION_TIMEOUT_MS,
@@ -572,7 +581,7 @@ export function createAgentRuntime({ kernelWorkers = true, backend = 'gpu', brow
         phase: closing && phase !== 'closed' ? 'closing' : phase,
         availableIn: packageMetadata.version,
         assets: {
-          configured: Boolean(assetRoot), formats: ['self-contained GLB'],
+          configured: Boolean(assetRoot), formats: ['self-contained GLB', 'PNG, JPEG or WebP image (map sequence frame)'],
           maximumBytes: 16 * 1024 * 1024, maximumAssets: 64,
           maximumVertices: 250000, maximumParts: 4096, maximumTexturePixels: 4194304, maximumJoints: 1024, maximumClips: 256,
           commands: ['set-root', 'set-asset-node', 'set-motion', 'set-animation', 'set-material', 'set-camera', 'set-environment', 'set-effects', 'set-shadow'],

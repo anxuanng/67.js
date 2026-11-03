@@ -7,6 +7,9 @@ import { normalizeDrive } from './agent-drive-schema.js';
 // geometry and the same material objects, so the renderer draws the copies as one instanced batch per material.
 // A placement with a `clip` gets its own decoded copy (an "instance" above 0), because a pose is state of one decoded asset.
 
+// The `assets` module also serves map sequences, so a recipe with one loads no extra module entry in the scene.
+export * from './agent-texture-sequence.js';
+
 export const ASSET_PLACEMENT_LIMITS = Object.freeze({ maxPlacements: 512, maxAssets: 16, maxAnimatedPlacements: 16, maxOverrides: 32 });
 
 const ASSET_ID = /^[a-f0-9]{64}$/;

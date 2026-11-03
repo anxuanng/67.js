@@ -5,6 +5,7 @@ import { InMemoryTransport } from '@modelcontextprotocol/server';
 import { createAgentMcpServer } from './mcp-server.mjs';
 import { VEGETATION_CAPABILITY_NOTE } from '../src/agent-vegetation-notes.js';
 import { createAgentScene, AGENT_SCENE_CAPABILITIES } from '../src/agent-scene.js';
+import { TEXTURE_SEQUENCE_CAPABILITIES } from '../src/texture-sequence-limits.js';
 import { loadAgentSceneModules } from '../src/agent-scene-modules.js';
 
 // JSON is dense in tokens: about 3.5 characters each for schemas and recipes (an estimate, not a tokenizer count).
@@ -69,7 +70,7 @@ async function typicalResults(recipe) {
   const meshReport = scene.inspectMeshes({ geometries: ['seat'] });
   const { inspection, ...statusWithoutInspection } = status;
   return {
-    scene_capabilities: { ...AGENT_SCENE_CAPABILITIES, vegetation: VEGETATION_CAPABILITY_NOTE },
+    scene_capabilities: { ...AGENT_SCENE_CAPABILITIES, vegetation: VEGETATION_CAPABILITY_NOTE, textureSequence: TEXTURE_SEQUENCE_CAPABILITIES },
     scene_create: status,
     scene_inspect: { sessionId: SAMPLE_SESSION, ...scene.inspect() },
     mesh_inspect: { sessionId: SAMPLE_SESSION, ...meshReport },
