@@ -1,1 +1,0 @@
-- Filter mipmapped material textures anisotropically (8x, or less where the GPU caps it). Only terrain texture arrays had it, so glTF floors, roads and aprons seen at a grazing angle fell to a blurred mip level. The far apron joints of the airport showcase read sharper; core grows 40 bytes gzip.

@@ -1,1 +1,0 @@
-- Record that a graph bump scale per world unit (`normalScale` `[0.8, 1.2]` on the 6 by 4 `brick-graph` wall) does not improve it against Cycles (0.1518 to 0.1525, nothing kept) and that the brick-face colour gap is Cycles-only light, not the colour path (part of issue #50). See `bench/reference/README.md`.
