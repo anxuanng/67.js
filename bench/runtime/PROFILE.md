@@ -277,3 +277,50 @@ The last row is the finding: in the busy state a constant fragment shader costs 
 Inferred, not isolated: SwiftShader still pays for a branch that pixels in the same quad do not all take, so the first two behave as the earlier `fillIntensity` skip did. `textureGather` would cut 36 fetches to 9 but is not in WebGL 2 (GLSL ES 3.00).
 
 **What to try next.** Measure the two full-screen passes against the vertex stage on `large-mesh` and `many-materials` with a profile that does not depend on the machine state (pin the cores, or count instructions), since the lit shader is no longer the proven bottleneck. Draw the environment background only where no mesh covers the pixel was already tried on 2026-11-01 and moved nothing.
+
+## Remeasure on current main, and one exact change that did not pay (2026-11-03, branch `perf/swiftshader-ratio`, issue #74)
+
+Method: `bench/runtime/run.mjs --cpu-only --frames 8`, one scene and one engine per process, 67js and three.js alternated inside each round, 3 rounds, below-normal priority. CPU load was sampled for 1 s before each pair: 2 to 41 percent (the machine was quiet, other sessions mostly idle). The RTX 3060 showed 0 percent busy before the GPU runs. The driver script is not kept in the repository.
+
+**Frame on SwiftShader, default settings (4 samples, HDR target), milliseconds, medians of 3 (measured):**
+
+| Scene | 67js | three.js | Ratio median | Ratio range |
+| --- | --- | --- | --- | --- |
+| `instanced-objects` | 174 | 32 | 5.4 | 5.2 to 5.6 |
+| `many-materials` | 568 | 181 | 3.1 | 2.7 to 3.2 |
+| `many-lights` | 443 | 153 | 2.9 | 2.9 |
+| `moving-shadows` | 77 | 20 | 3.8 | 3.7 to 5.8 |
+| `large-mesh` | 557 | 198 | 2.8 | 2.8 to 2.9 |
+| `skinned-characters` | 191 | 27 | 7.5 | 6.9 to 7.7 |
+| `transparency` | 431 | 52 | 8.3 | 8.2 to 8.9 |
+| `large-outdoor` | 243 | 816 | 0.30 | 0.30 to 0.32 |
+
+So three of eight runtime scenes are at or under 3 (`large-mesh`, `many-lights`, `many-materials` at the edge), and five scenes are above: `instanced-objects`, `moving-shadows`, `skinned-characters` and `transparency` are 3.8 to 8.3. The scenes with fewer fragments per triangle fall behind most, which agrees with a fixed per-fragment cost plus MSAA.
+
+**First frame on the RTX 3060** (`--gpu-only`, empty profile, 2 runs per scene, milliseconds, measured): `instanced-objects` 229, 204; `many-materials` 268, 222; `many-lights` 197, 266; `transparency` 235, 210; `moving-shadows` 265, 210; `large-mesh` 389, 365; `skinned-characters` 267, 265; `large-outdoor` 257, 248. Every scene is under 1 s (the worst is 389). The "under 1 s" target holds.
+
+**Where `transparency` (the worst ratio) goes** (`67js-ldr-one-sample`, 202 ms against `three-one-sample` 22 ms, so MSAA and HDR are not the cause; measured, 1 to 2 runs each):
+
+| Variant (picture wrong in each) | Frame (ms) |
+| --- | --- |
+| Nothing | 202 |
+| Blend batches not drawn | 42 |
+| Fragment shader returns the base colour right after `surfaceAlpha` | 30 |
+| `shadowVisibility` returns 1.0 | 114 to 136 |
+| Shadow filter skipped where the surface faces away from the sun | 191 |
+
+Both engines draw 288,000 triangles, and 67js draws them in 4 draw calls against 301. The blend pass is 80 percent of the frame and nearly all of it is the lit fragment shader across 300 overlapping layers; the sun shadow filter is 40 to 45 percent of that. `skinned-characters` with the same facing test: 130 to 80 ms (`67js-ldr-one-sample`, upper bound, picture wrong).
+
+**One change tried, pixel identical, not kept.** Take the 36 shadow fetches only where the sun lights the surface (`dot(normal, lightDirection) > 0`), or where another term reads `visibility` directly (floor, canopy, grass, sheen, clear coat, moss, and the room occlusion, which needed `room` to be computed before the call). `illuminate` returns nothing when that dot product is not positive, so the result is the same. PNG bytes were identical to the merge base in all 8 scenes. Default settings, 3 alternated rounds, ms:
+
+| Scene | Before | After |
+| --- | --- | --- |
+| `skinned-characters` | 185, 188, 193 | 181, 179, 184 |
+| `transparency` | 430, 435, 429 | 430, 601 (load), 436 |
+| `many-materials` | 578, 580, 593 | 572, 599, 575 |
+| `instanced-objects` | 178, 175, 170 | 173, 167, 167 |
+| `large-mesh` | 559, 560, 550 | 552, 546, 575 |
+
+The best case is 3 percent on `skinned-characters` and the rest is noise, so it was reverted. The 38 percent in the table above was with MSAA and HDR off; with them on, the cost the facing test skips is a small part of the frame.
+
+**Where this leaves the target.** Not met: five of eight scenes are above 3 on SwiftShader. The remaining gap in `transparency` and `skinned-characters` is the lit fragment shader itself (fragment cost per covered pixel), and the measured exact changes in this file (this one, the three on 2026-11-03, the two on 2026-11-01) each move under 5 percent. The routes that remain change pixels or the frame format: no MSAA, `R11F_G11F_B10F` (20 percent on `instanced-objects`, mean 0.13 to 0.59 levels, not run through `npm run reference`), fewer shadow taps, or a shader with fewer terms for blended parts.
