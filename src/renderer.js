@@ -14,6 +14,7 @@ import { assertEnvironmentMap, createEnvironmentResources, environmentBackground
 import { validateSkinGeometry, validateSkinPose, skinTextureLayout, packSkinInfluences } from './skinning.js';
 import { validateSplatMaterial, splatBatchState, splatTextureBytes, resolveSplatSize, packSplatParameters, buildSplatPixels } from './splat.js';
 import { materialLayerState, materialLayerValue } from './material-layers.js';
+import { fittedFogDensity } from './fog-fit.js';
 import { InstanceSelection, extractFrustumPlanes, geometryBoundingSphere, selectInstances } from './render-culling.js';
 import { resolveShadowLight, shadowBiasPerSlope } from './shadow-light.js';
 import { validateMorphGeometry, validateMorphPose, validateMorphTransform, packMorphTargets } from './morph.js';
@@ -446,6 +447,7 @@ export class Renderer67 {
     this.depth = Boolean(depth && !benchmark);
     this.world = world;
     this.environment = environment;
+    this.fittedFogDensity = world ? fittedFogDensity(parts) : undefined;
     this.shadowBounds = shadowBounds;
     /** Warnings about the last frame drawn, in the shape of `agent-diagnostics.js`; see `frame-diagnostics.js`. */
     this.diagnostics = [];
@@ -2016,6 +2018,7 @@ export class Renderer67 {
     const { eye, target = [0, 1.2, 0], armorColor = [0.53, 0.39, 0.24], armorSurface = [0.88, 0.32], exposure = 1, inspection = false } = frame;
     const effects = resolveEffects(frame.effects);
     const environment = { lightDirection: [-3, 6, 4], fogColor: [0.35, 0.43, 0.43], fogDensity: 0.006, daylight: 1, explosionCenter: [0, 0, 0], ...this.environment, ...frame.environment };
+    environment.fogDensity ??= this.fittedFogDensity ?? 0.006;
     const volume = resolveVolumeFog(environment.volumeFog);
     if (volume.density > 0) {
       if (!this.depth || !this.hdr || this.transparent || this.benchmark) throw new Error('Volume fog requires depth:true, active HDR and an opaque canvas');

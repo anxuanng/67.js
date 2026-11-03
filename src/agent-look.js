@@ -252,7 +252,7 @@ function environmentFrom(input = {}) {
     skyTop: vectorInRange(fallback(input.skyTop, defaults.skyTop), 0, 1, 'skyTop'),
     skyBottom: vectorInRange(fallback(input.skyBottom, defaults.skyBottom), 0, 1, 'skyBottom'),
     fogColor: vectorInRange(fallback(input.fogColor, [0.35, 0.43, 0.43]), 0, 1, 'fogColor'),
-    fogDensity: numberInRange(fallback(input.fogDensity, 0.006), 0, 10, 'fogDensity'),
+    fogDensity: input.fogDensity === undefined || input.fogDensity === null ? null : numberInRange(input.fogDensity, 0, 10, 'fogDensity'),
     volumeFog: volumeFogFrom(input.volumeFog),
   };
   // Optional so recipes without these fields keep their exported shape.
