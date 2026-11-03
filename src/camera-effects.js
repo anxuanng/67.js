@@ -1,4 +1,3 @@
-import { STANDARD_DEPTH_GLSL } from './reversed-depth.js';
 import { mat4 } from 'gl-matrix';
 import { applyProjection } from './camera.js';
 import { compileProgram, fullscreenVertex } from './gl-program.js';
@@ -24,12 +23,12 @@ uniform sampler2D sourceTexture;
 uniform sampler2D sceneDepth;
 uniform mat4 inverseViewProjection;
 uniform vec2 resolution;
-${STANDARD_DEPTH_GLSL}out vec4 outputColor;
+out vec4 outputColor;
 float pixelRotation() {
   return 6.2831853 * fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
 }
 vec3 worldPointAt(vec2 coordinate) {
-  float depth = standardDepth(texture(sceneDepth, coordinate).r);
+  float depth = texture(sceneDepth, coordinate).r;
   vec4 point = inverseViewProjection * vec4(coordinate * 2.0 - 1.0, depth * 2.0 - 1.0, 1.0);
   return point.xyz / point.w;
 }
@@ -132,7 +131,7 @@ export function createStage({ name, fragment, uniformNames, isActive, setUniform
     const context = renderer.context;
     if (!program) {
       program = compileProgram(context, fullscreenVertex, fragment);
-      const names = ['sourceTexture', 'sceneDepth', 'inverseViewProjection', 'resolution', 'depthReversed', ...uniformNames];
+      const names = ['sourceTexture', 'sceneDepth', 'inverseViewProjection', 'resolution', ...uniformNames];
       uniforms = Object.fromEntries(names.map(uniformName => [uniformName, context.getUniformLocation(program, uniformName)]));
     }
     target ??= createTarget(renderer);
@@ -148,7 +147,6 @@ export function createStage({ name, fragment, uniformNames, isActive, setUniform
     context.activeTexture(context.TEXTURE1);
     context.bindTexture(context.TEXTURE_2D, renderer.depthTexture);
     context.uniform1i(uniforms.sceneDepth, 1);
-    context.uniform1f(uniforms.depthReversed, renderer.reversedDepth ? 1 : 0);
     context.uniformMatrix4fv(uniforms.inverseViewProjection, false, renderer.inverseViewProjection);
     context.uniform2f(uniforms.resolution, renderer.canvas.width, renderer.canvas.height);
     setUniforms(context, uniforms, renderer, frame, effects);

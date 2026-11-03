@@ -1,4 +1,3 @@
-import { STANDARD_DEPTH_GLSL } from './reversed-depth.js';
 import { registeredFeatureCode } from './shader-registry.js';
 
 export { fullscreenVertex } from './gl-program.js';
@@ -47,7 +46,6 @@ uniform highp sampler3D fogSkyVisibility;
 uniform sampler2D occlusionTexture;
 uniform float occlusionStrength;
 uniform vec2 occlusionTexel;
-${STANDARD_DEPTH_GLSL}
 out vec4 outputColor;
 float luminance(vec3 color) { return dot(color, vec3(0.299, 0.587, 0.114)); }
 float hash(vec3 position) { return fract(sin(dot(position, vec3(127.1, 311.7, 74.7))) * 43758.5453); }
@@ -66,7 +64,7 @@ vec3 volumeFog(vec3 background) {
   vec4 nearPoint = inverseViewProjection * vec4(clipXY, -1.0, 1.0);
   vec3 origin = orthographic > 0.5 ? nearPoint.xyz / nearPoint.w : eye;
   vec3 direction = normalize(farPoint.xyz - origin * farPoint.w);
-  float depth = standardDepth(texture(sceneDepth, textureCoordinate).r);
+  float depth = texture(sceneDepth, textureCoordinate).r;
   vec4 surfacePoint = inverseViewProjection * vec4(clipXY, depth * 2.0 - 1.0, 1.0);
   float surfaceDistance = volumeMaxDistance;
   if (surfacePoint.w > 0.0) surfaceDistance = max(0.0, dot(surfacePoint.xyz - origin * surfacePoint.w, direction) / surfacePoint.w);

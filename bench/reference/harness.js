@@ -17,6 +17,7 @@ import { applyLightLinks } from '/src/light-linking.js';
 import { applyWaterReflection, attachWaterReflection } from '/src/water-reflection.js';
 import { attachScreenSpaceWater } from './ssr-water.js';
 import { groundBounceEnvironment } from '/src/ground-bounce.js';
+import { installReversedDepth } from '/src/reversed-depth.js';
 
 // Water reflection is on the way a recipe gets it: found from the materials, no field. ?water=off draws the scenes without it, ?water=ssr with the screen-space reflection it was compared with.
 // Ground bounce is on the way a recipe gets it: found from the floor part, no field. ?groundBounce=off draws the scenes without it.
@@ -27,8 +28,8 @@ function withDerivedGroundBounce(scene, drawnParts) {
   return GROUND_BOUNCE ? groundBounceEnvironment(drawnParts, scene.environment) : scene.environment;
 }
 
-// ?reversedDepth=off draws with the standard depth buffer, to compare against reversed-Z (issue #310).
-const REVERSED_DEPTH = new URLSearchParams(location.search).get('reversedDepth') !== 'off';
+// ?reversedDepth=on draws with reversed-Z (issue #310); the scenes draw with the standard depth buffer otherwise.
+const REVERSED_DEPTH = new URLSearchParams(location.search).get('reversedDepth') === 'on';
 
 const WATER_REFLECTION = { off: false, ssr: 'ssr' }[new URLSearchParams(location.search).get('water')] ?? 'planar';
 
@@ -156,9 +157,10 @@ async function bakeScenePreset(scene, preset) {
 function createSceneRenderer(parts, scene, cascades, { water = WATER_REFLECTION } = {}) {
   const reflecting = water === 'planar' ? applyWaterReflection(parts) : { parts, surface: null };
   const renderer = new Renderer67(document.querySelector('canvas'), applyLightLinks(reflecting.parts, scene.environment), {
-    ground: false, hdr: true, depth: true, samples: 4, pixelRatio: 1, memoryBudgetMiB: 1024, world: true, reversedDepth: REVERSED_DEPTH,
+    ground: false, hdr: true, depth: true, samples: 4, pixelRatio: 1, memoryBudgetMiB: 1024, world: true,
     environment: scene.environment, shadowBounds: scene.shadow, shadowCascades: cascades ? createCascadedShadows({ count: cascades }) : null, skyOpenness, fogSkyVisibility,
   });
+  if (REVERSED_DEPTH) installReversedDepth(renderer, true);
   attachWaterReflection(renderer, reflecting.surface);
   if (water === 'ssr') {
     attachScreenSpaceWater(renderer, parts);

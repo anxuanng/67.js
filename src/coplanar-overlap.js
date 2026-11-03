@@ -1,4 +1,5 @@
 import { depthLayerOf, MAXIMUM_DEPTH_LAYER } from './depth-layer.js';
+import { installReversedDepth } from './reversed-depth.js';
 
 // Loaded on demand (renderer diagnostics, scene_inspect, resolveCoplanar), never part of the core bundle.
 // Finds pairs of parts that draw the same plane in the same place, which z-fight: a sign flush with a wall, a road marking
@@ -328,17 +329,37 @@ function diagonalOfPart(part) {
   return diagonal(worldBounds(part));
 }
 
+// A 24-bit depth buffer with a 0.1 near plane cannot tell a 1 mm gap apart much beyond this many units from the eye.
+export const REVERSED_DEPTH_PAIR_DISTANCE = 40;
+
+/** Whether the smaller part of any pair is farther from the eye than a 24-bit depth buffer can separate it from the larger one. */
+export function hasFarOverlap(overlaps, view, distanceLimit = REVERSED_DEPTH_PAIR_DISTANCE) {
+  if (!view) return false;
+  return overlaps.some(({ smaller }) => {
+    const [x, y, z] = smaller.matrix.slice(12, 15);
+    const viewX = view[0] * x + view[4] * y + view[8] * z + view[12];
+    const viewY = view[1] * x + view[5] * y + view[9] * z + view[13];
+    const viewZ = view[2] * x + view[6] * y + view[10] * z + view[14];
+    return Math.hypot(viewX, viewY, viewZ) > distanceLimit;
+  });
+}
+
 /**
  * Adds the coplanar-overlap warning to `renderer.diagnostics`. The check is bounded (see findCoplanarOverlaps) and runs once
  * per layout, when the renderer's batches change, not per frame, so parts that move later are not rechecked.
+ * It also installs reversed-Z depth (reversed-depth.js): `reversedDepth` is `true` (always), `false` (never) or `'auto'`, which
+ * switches it on for a very long lens (far / near over 10,000) or for a flush pair far from the eye.
  */
-export function installCoplanarDiagnostics(renderer) {
+export function installCoplanarDiagnostics(renderer, { reversedDepth = 'auto' } = {}) {
   let checkedBatches = null;
   let problems = null;
+  installReversedDepth(renderer, reversedDepth);
   renderer.coplanarDiagnostics = batches => {
     if (batches !== checkedBatches) {
       checkedBatches = batches;
-      problems = coplanarOverlapDiagnostics(findCoplanarOverlaps(batches.flatMap(batch => batch.parts)));
+      const { overlaps, truncated } = findCoplanarOverlaps(batches.flatMap(batch => batch.parts));
+      problems = coplanarOverlapDiagnostics({ overlaps, truncated });
+      if (hasFarOverlap(overlaps, renderer.view)) renderer.requestReversedDepth?.();
     }
     return problems;
   };

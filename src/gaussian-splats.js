@@ -214,7 +214,7 @@ function prepareState(renderer, attachment, frame) {
   context.blendFuncSeparate(context.ONE, context.ONE_MINUS_SRC_ALPHA, context.ONE, context.ONE_MINUS_SRC_ALPHA);
   context.useProgram(attachment.program);
   const { uniforms } = attachment;
-  context.uniformMatrix4fv(uniforms.projection, false, renderer.rasterProjection);
+  context.uniformMatrix4fv(uniforms.projection, false, renderer.rasterProjection ?? renderer.projection);
   context.uniform2f(uniforms.focal, renderer.projection[0] * width * 0.5, renderer.projection[5] * height * 0.5);
   context.uniform2f(uniforms.viewport, width, height);
   context.uniform1f(uniforms.hdrEnabled, renderer.hdr ? 1 : 0);

@@ -2,6 +2,7 @@
 // The near plane is red and the far plane is blue; each pair is a pair of identical boxes whose near face sits `gap` closer to the camera.
 import { Renderer67 } from '/src/renderer.js';
 import { box } from '/src/geometry.js';
+import { installReversedDepth } from '/src/reversed-depth.js';
 
 const DISTANCES = [1, 50, 500];
 const GAPS_IN_METRES = [0, 0.0001, 0.001];
@@ -45,7 +46,8 @@ function measure(reversedDepth) {
   for (const distance of DISTANCES) {
     for (const gap of GAPS_IN_METRES) {
       const canvas = document.querySelector('canvas');
-      const renderer = new Renderer67(canvas, pairOfPlanes(distance, gap), { ground: false, hdr: false, depth: false, samples: 1, pixelRatio: 1, world: true, environment: { fogDensity: 0 }, reversedDepth });
+      const renderer = new Renderer67(canvas, pairOfPlanes(distance, gap), { ground: false, hdr: false, depth: false, samples: 1, pixelRatio: 1, world: true, environment: { fogDensity: 0 } });
+      if (reversedDepth) installReversedDepth(renderer, true);
       renderer.resize();
       const fractions = [];
       const covered = [];
@@ -67,7 +69,8 @@ function measure(reversedDepth) {
 // One frame as a PNG data URL, to look at where the far plane wins.
 window.drawDepthCase = (distance, gapMillimetres, jitter, reversedDepth) => {
   const canvas = document.querySelector('canvas');
-  const renderer = new Renderer67(canvas, pairOfPlanes(distance, gapMillimetres / 1000), { ground: false, hdr: false, depth: false, samples: 1, pixelRatio: 1, world: true, environment: { fogDensity: 0 }, reversedDepth });
+  const renderer = new Renderer67(canvas, pairOfPlanes(distance, gapMillimetres / 1000), { ground: false, hdr: false, depth: false, samples: 1, pixelRatio: 1, world: true, environment: { fogDensity: 0 } });
+  if (reversedDepth) installReversedDepth(renderer, true);
   renderer.resize();
   renderer.render(jitteredFrame(distance, jitter));
   renderer.render(jitteredFrame(distance, jitter));
