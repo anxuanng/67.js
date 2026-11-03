@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { box, sphere } from '../src/geometry.js';
 import { applyWaterReflection, attachWaterReflection, findWaterSurface } from '../src/water-reflection.js';
 import { createFragmentShader } from '../src/shaders.js';
+import { Renderer67 } from '../src/renderer.js';
 
 const cube = box(0, 1);
 
@@ -127,4 +128,67 @@ test('a render pass frame skips the mirror image and the next lit frame draws it
   renderer.render(camera);
   assert.equal(mirrorDraws(), 1);
   detach();
+});
+
+test('the mirror draw leaves out spot and area lights and the lit frame sends them again', () => {
+  const counts = {};
+  const context = new Proxy({}, { get: (_, name) => (name === 'uniform1i' ? (location, value) => { counts[location] = value; } : () => {}) });
+  const renderer = Object.create(Renderer67.prototype);
+  const lighting = { spotCount: 3, areaCount: 2, shadowCasters: [], pointShadows: [], spotPositions: [], spotColors: [], spotDirections: [], spotParameters: [], areaPositions: [], areaColors: [], areaNormals: [], areaTangents: [] };
+  Object.assign(renderer, { context, lighting, uniforms: { spotLightCount: 'spot', areaLightCount: 'area' } });
+  renderer.applyLocalLightUniforms(true);
+  assert.deepEqual(counts, { spot: 0, area: 0 });
+  renderer.applyLocalLightUniforms();
+  assert.deepEqual(counts, { spot: 3, area: 2 });
+});
+
+function reuseRig(options) {
+  const context = new Proxy({}, { get: (_, name) => (name === 'checkFramebufferStatus' ? () => 1 : name === 'FRAMEBUFFER_COMPLETE' ? 1 : typeof name === 'string' && name === name.toUpperCase() ? 0 : () => ({})) });
+  const mirrorFrames = [];
+  const renderer = { context, canvas: { width: 960, height: 540 }, hdr: false, viewProjection: new Float32Array(16), render: frame => frame.reflectionTarget && mirrorFrames.push(frame), updateParts() {}, dispose() {} };
+  const detach = attachWaterReflection(renderer, findWaterSurface(lakeScene()), options);
+  return { renderer, mirrorFrames, detach };
+}
+
+test('the mirror image is kept while the frame holds the same values, even when its arrays are changed in place', () => {
+  const { renderer, mirrorFrames, detach } = reuseRig();
+  const eye = [0, 20, 100];
+  renderer.render({ eye, target: [0, 0, 0], time: 1 });
+  renderer.render({ eye: [0, 20, 100], target: [0, 0, 0], time: 1 });
+  assert.equal(mirrorFrames.length, 1);
+  eye[0] = 5;
+  renderer.render({ eye, target: [0, 0, 0], time: 1 });
+  assert.equal(mirrorFrames.length, 2);
+  renderer.render({ eye, target: [0, 0, 0], time: 2 });
+  assert.equal(mirrorFrames.length, 3);
+  detach();
+});
+
+test('a part update, a lower camera and a changed canvas size each draw the mirror image again', () => {
+  const { renderer, mirrorFrames, detach } = reuseRig();
+  const camera = { eye: [0, 20, 100], target: [0, 0, 0] };
+  renderer.render(camera);
+  renderer.render(camera);
+  assert.equal(mirrorFrames.length, 1);
+  renderer.updateParts([]);
+  renderer.render(camera);
+  assert.equal(mirrorFrames.length, 2);
+  renderer.canvas.width = 1280;
+  renderer.render(camera);
+  assert.equal(mirrorFrames.length, 3);
+  renderer.render({ eye: [0, -5, 100], target: [0, 0, 0] });
+  renderer.render(camera);
+  assert.equal(mirrorFrames.length, 4);
+  detach();
+});
+
+test('updateEvery 2 keeps the picture for one lit frame after each draw, and detaching puts updateParts back', () => {
+  const { renderer, mirrorFrames, detach } = reuseRig({ updateEvery: 2 });
+  for (let step = 0; step < 6; step++) {
+    renderer.render({ eye: [step, 20, 100], target: [0, 0, 0] });
+  }
+  assert.equal(mirrorFrames.length, 3);
+  assert.notEqual(renderer.updateParts.name, 'updateParts');
+  detach();
+  assert.equal(renderer.updateParts.name, 'updateParts');
 });
