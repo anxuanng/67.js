@@ -14,6 +14,11 @@ export const WATER_MAXIMUM_THICKNESS_RATIO = 0.02;
 export const WATER_MINIMUM_SCENE_SHARE = 0.002;
 /** The reflection target is this share of the canvas in each direction. */
 export const WATER_REFLECTION_SCALE = 0.75;
+// The mirror draw is blurred and rippled, so it can use coarser levels and drop parts that cover almost nothing.
+/** The mirror draw accepts this many times the level error that the lit frame accepts (`lodPixelError`). */
+export const WATER_MIRROR_LOD_SCALE = 3;
+/** The mirror draw skips a part whose bounding sphere covers a smaller radius than this on screen, in pixels. */
+export const WATER_MIRROR_MINIMUM_PIXEL_RADIUS = 1.5;
 // How the picture is treated before it reaches the surface (see afterEmission). Fresnel starts at the reflectance of water.
 const FRESNEL_BASE = '0.02';
 const REFLECTION_GAIN = '1.0';
@@ -189,9 +194,12 @@ function drawMirrorImage(renderer, state, frame, renderFrame) {
   renderer.context.bindTexture(renderer.context.TEXTURE_2D, null);
   renderer.context.activeTexture(renderer.context.TEXTURE0);
   state.drawing = true;
+  // Parts wholly under the plane are discarded by the shader anyway, so the renderer leaves them out of the draw.
+  renderer.mirrorCulling = { belowHeight: state.height + CLIP_MARGIN, lodScale: WATER_MIRROR_LOD_SCALE, minimumPixelRadius: WATER_MIRROR_MINIMUM_PIXEL_RADIUS };
   try {
     renderFrame(mirroredFrame(frame, state.height, state.target));
   } finally {
+    renderer.mirrorCulling = null;
     state.drawing = false;
   }
   state.matrix.set(renderer.viewProjection);
