@@ -6,7 +6,9 @@ import { fitPerspectiveDistance } from './camera.js';
 import { validateSkinGeometry, validateSkinPose } from './skinning.js';
 import { validateMorphGeometry, validateMorphTransform } from './morph.js';
 import * as agentMotion from './agent-motion.js';
-import { clipLayerContextFromAsset } from './agent-clip-layers.js';
+import { clipLayerContextFromAsset, retargetSourceFromAsset } from './agent-clip-layers.js';
+import { retargetAssetClip, retargetReport } from './agent-retarget.js';
+import { createFootLock } from './foot-lock.js';
 import { clipFromGltfAnimation, createAssetLayerEvaluator, morphClipFromGltfAnimation } from './skeleton-pose.js';
 import { registerAgentSceneModule, agentSceneModule } from './agent-scene-modules.js';
 import { normalizeMeshEditEntries, meshEditEntriesAfter, realizeMeshEdits, meshEditSignature } from './agent-asset-mesh.js';
@@ -258,7 +260,7 @@ function framedCamera(bounds) {
 }
 
 /** Own authoring state around one exclusively owned, decoded parseGltf asset. */
-export function createAgentAssetScene(asset, inputRecipe) {
+export function createAgentAssetScene(asset, inputRecipe, { sources } = {}) {
   if (!asset || !Array.isArray(asset.parts) || !asset.parts.length || !Array.isArray(asset.animations) ||
       typeof asset.stagePose !== 'function' || !Array.isArray(asset.nodes)) {
     throw new TypeError('createAgentAssetScene requires a decoded parseGltf asset.');
@@ -303,6 +305,22 @@ export function createAgentAssetScene(asset, inputRecipe) {
   const materialRecords = new Map([...materials.values()].map(record => [record.id, record]));
   const sourceNodes = new Map(asset.nodes.map(node => [node.id, structuredClone(node)]));
   const clipLayerContext = clipLayerContextFromAsset(asset.animations, [...sourceNodes.values()]);
+  /** Other catalog assets whose clips layers may retarget, by asset ID: decoded `{ animations, nodes }`. */
+  function provideMotionSources(decodedSources) {
+    for (const [sourceId, decoded] of Object.entries(decodedSources ?? {})) {
+      if (/^[a-f0-9]{64}$/i.test(sourceId)) clipLayerContext.external.set(sourceId.toLowerCase(), retargetSourceFromAsset(decoded));
+    }
+  }
+  provideMotionSources(sources);
+  // Morph targets by the names the file gives them, so motion can key a weight by name; defaults fill a part no layer drives.
+  const morphTargetIndex = new Map();
+  const morphDefaults = sourceParts.map(part => (part.morph ? Float32Array.from(part.morph.weights) : null));
+  sourceParts.forEach((part, partIndex) => {
+    (part.morphTargetNames ?? []).forEach((name, index) => {
+      if (!morphTargetIndex.has(name)) morphTargetIndex.set(name, []);
+      morphTargetIndex.get(name).push({ part: partIndex, index });
+    });
+  });
   const initialRecipe = copiedJson(inputRecipe);
   const assetId = initialRecipe?.assetId;
   if (typeof assetId !== 'string' || !/^[a-f0-9]{64}$/i.test(assetId)) {
@@ -318,6 +336,7 @@ export function createAgentAssetScene(asset, inputRecipe) {
   let physicsSampler = null;
   let physicsBake = null;
   let layerEvaluator = null;
+  let footLockEvaluator = null;
   let motionTime = null;
   let sampledCamera;
   const checkpoints = new Map();
@@ -478,8 +497,8 @@ export function createAgentAssetScene(asset, inputRecipe) {
     if (meshEdits.length) {
       result.meshEdits = meshEdits;
     }
-    if (candidate.motion?.ik?.length && Math.max(...result.root.scale) - Math.min(...result.root.scale) > 1e-3 * Math.max(...result.root.scale)) {
-      throw new RangeError('Motion ik needs a uniform asset root scale.');
+    if ((candidate.motion?.ik?.length || candidate.motion?.footLock) && Math.max(...result.root.scale) - Math.min(...result.root.scale) > 1e-3 * Math.max(...result.root.scale)) {
+      throw new RangeError('Motion ik and footLock need a uniform asset root scale.');
     }
     result.motion = agentMotion.normalizeAgentMotion(candidate.motion, motionRecipe(result));
     if (candidate.physics !== undefined && candidate.physics !== null) {
@@ -497,7 +516,7 @@ export function createAgentAssetScene(asset, inputRecipe) {
     return {
       nodes: [...sourceNodes.values()].filter(node => node.editable),
       materials: [...baselines.values()], camera: candidate.camera,
-      ikHierarchy: [...sourceNodes.values()], clipLayerContext,
+      ikHierarchy: [...sourceNodes.values()], clipLayerContext, morphTargets: [...morphTargetIndex.keys()],
       ikRootMatrix: Array.from(mat4.fromRotationTranslationScale(mat4.create(), root.rotation, root.translation, [root.scale[0], root.scale[0], root.scale[0]])),
     };
   }
@@ -512,11 +531,47 @@ export function createAgentAssetScene(asset, inputRecipe) {
     }
   }
 
+  /** A clip of another catalog asset moved onto this asset's rest pose. Cached: the same layer always gives the same clip. */
+  const retargetedClips = new Map();
+  function retargetedLayerClip(layer, loop) {
+    const key = JSON.stringify([layer.from, layer.scale, layer.rootMotion, loop]);
+    if (!retargetedClips.has(key)) {
+      const source = clipLayerContext.external.get(layer.from.asset);
+      const sourceClip = clipFromGltfAnimation(source.animations[layer.from.clip], { loop });
+      retargetedClips.set(key, retargetAssetClip(source.nodes, asset.nodes, sourceClip, { scale: layer.scale, rootMotion: layer.rootMotion }));
+    }
+    return retargetedClips.get(key);
+  }
+
+  /** Foot lock over the motion's layers, or null when the motion does not ask for it. */
+  function compileFootLock(candidate) {
+    const motion = candidate.motion;
+    if (!motion?.footLock) return null;
+    return createFootLock({
+      settings: motion.footLock, nodes: asset.nodes, rootMatrix: motionRecipe(candidate).ikRootMatrix,
+      layers: layerDefinitions(motion.layers), duration: motion.duration, loop: motion.loop,
+    });
+  }
+
+  /** Weights keyed by morph target name replace what layers or the file's defaults give those targets. */
+  function keyedMorphWeights(layerWeights, keyed) {
+    if (!keyed?.size) return layerWeights;
+    const byPart = new Map(layerWeights.map(({ part, weights }) => [part, weights]));
+    for (const [name, patch] of keyed) {
+      for (const { part, index } of morphTargetIndex.get(name) ?? []) {
+        if (!byPart.has(part)) byPart.set(part, Array.from(morphDefaults[part]));
+        byPart.get(part)[index] = patch.weight;
+      }
+    }
+    return [...byPart].map(([part, weights]) => ({ part, weights }));
+  }
+
   /** Layers of the motion as definitions for the pose code: decoded clips, renamed by `bones`, with their morph tracks. */
   function layerDefinitions(layers) {
     return layers.map(layer => {
-      const animation = asset.animations[layer.clip];
       const loop = layer.loop !== false;
+      if (layer.from) return { clip: retargetedLayerClip(layer, loop), weight: layer.weight, speed: layer.speed, offset: layer.offset, additive: layer.additive, reference: layer.reference, mask: layer.mask };
+      const animation = asset.animations[layer.clip];
       return {
         clip: clipFromGltfAnimation(animation, { loop, rename: layer.bones }),
         ...(layer.morph === false ? {} : { morphs: morphClipFromGltfAnimation(animation, { loop }) }),
@@ -537,7 +592,7 @@ export function createAgentAssetScene(asset, inputRecipe) {
     for (const override of layered?.nodeOverrides ?? []) {
       withLayers.set(override.id, { ...withLayers.get(override.id), ...override });
     }
-    return { nodeOverrides: trackOverrides([...withLayers.values()], sampled), morphWeights: layered?.morphWeights ?? [] };
+    return { nodeOverrides: trackOverrides([...withLayers.values()], sampled), morphWeights: keyedMorphWeights(layered?.morphWeights ?? [], sampled?.morphs) };
   }
 
   function trackOverrides(baseOverrides, sampled) {
@@ -575,6 +630,7 @@ export function createAgentAssetScene(asset, inputRecipe) {
     }
     let stagedSampler = transientTime === undefined ? agentMotion.compileAgentMotion(candidate.motion, motionRecipe(candidate)) : sampler;
     const stagedLayers = transientTime === undefined ? compileLayers(candidate.motion) : layerEvaluator;
+    const stagedFootLock = transientTime === undefined ? compileFootLock(candidate) : footLockEvaluator;
     const stagedPhysics = transientTime === undefined ? stageAssetPhysics(candidate) : physicsSampler;
     const targetTime = transientTime === undefined ? (candidate.motion || candidate.physics ? 0 : null) : transientTime;
     if (targetTime !== null && !stagedSampler && !stagedPhysics) {
@@ -597,6 +653,12 @@ export function createAgentAssetScene(asset, inputRecipe) {
       }
     }
     const { nodeOverrides, morphWeights } = poseOverrides(candidate.nodeOverrides, targetTime === null ? null : stagedLayers, sampled, targetTime);
+    if (targetTime !== null && stagedFootLock) {
+      const nodePoses = stagedNodePoses(candidate.animation, [...nodeOverrides.values()]);
+      for (const override of stagedFootLock.solve(targetTime, nodePoses)) {
+        if (sourceNodes.get(override.id)?.editable) nodeOverrides.set(override.id, { ...nodeOverrides.get(override.id), ...override });
+      }
+    }
     if (targetTime !== null && stagedSampler?.ikUsesStagedPose) {
       const nodePoses = stagedNodePoses(candidate.animation, [...nodeOverrides.values()]);
       for (const override of stagedSampler.solveStagedPose(targetTime, nodePoses)) {
@@ -677,6 +739,7 @@ export function createAgentAssetScene(asset, inputRecipe) {
         sampler = stagedSampler;
         physicsSampler = stagedPhysics;
         layerEvaluator = stagedLayers;
+        footLockEvaluator = stagedFootLock;
       }
       materialSnapshots = stagedMaterials;
       sampledCamera = stagedCamera;
@@ -704,6 +767,18 @@ export function createAgentAssetScene(asset, inputRecipe) {
       clipCount: asset.animations.length,
     });
     return diagnostics.length ? { diagnostics } : {};
+  }
+
+  /** scene_inspect's retargets (what the humanoid map matched for each layer taken from another asset), footLock (when feet are planted) and morph target names. */
+  function motionLayerReport() {
+    const retargets = (recipe.motion?.layers ?? []).flatMap((layer, position) => (layer.from
+      ? [{ layer: position, from: layer.from, ...retargetReport(clipLayerContext.external.get(layer.from.asset).nodes, [...sourceNodes.values()], 'retarget') }]
+      : []));
+    return {
+      ...(retargets.length ? { retargets } : {}),
+      ...(footLockEvaluator ? { footLock: footLockEvaluator.report() } : {}),
+      ...(morphTargetIndex.size ? { morphTargetNames: [...morphTargetIndex.keys()].slice(0, 128) } : {}),
+    };
   }
 
   function motionIkReport() {
@@ -751,6 +826,7 @@ export function createAgentAssetScene(asset, inputRecipe) {
     exportRecipe() {
       return structuredClone(recipe);
     },
+    provideMotionSources,
     sampleMotion(time) {
       if (time !== null && (!Number.isFinite(time) || time < 0 || time > 3600)) {
         throw new RangeError('Motion sample time must be null or within zero and 3600.');
@@ -895,7 +971,7 @@ export function createAgentAssetScene(asset, inputRecipe) {
           return sourceNodes.get(id);
         });
         const nodes = structuredClone(selected.slice(offset, offset + limit));
-        return { revision, topologyRevision, assetId: canonicalAssetId, kind: 'hierarchy', ...motionIkReport(), ...diagnosticsReport(),
+        return { revision, topologyRevision, assetId: canonicalAssetId, kind: 'hierarchy', ...motionIkReport(), ...motionLayerReport(), ...diagnosticsReport(),
           counts: { nodes: sourceNodes.size, joints: [...sourceNodes.values()].filter(node => node.joint).length },
           nodes, offset, truncated: offset + nodes.length < selected.length,
           motion: recipe.motion ? { duration: recipe.motion.duration, loop: recipe.motion.loop, tracks: recipe.motion.tracks.length, time: motionTime } : null };

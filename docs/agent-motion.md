@@ -158,11 +158,49 @@ each blending over the pose so far, before tracks and IK:
 
 `tracks` can be left out when there are layers. Layers need an imported asset: a procedural recipe refuses them. Everything is
 checked against the asset (clip indexes, node IDs and names, track names) and bounded before anything is built, and the
-pose is rebuilt from the rest pose for each time, so a seek equals playing. `bones` renames tracks inside one asset; moving a
-clip from another rig (rest-pose retargeting with `retargetClip`) is code only, because the MCP holds one asset at a time.
-Foot tilt on slopes is not done.
+pose is rebuilt from the rest pose for each time, so a seek equals playing. `bones` renames tracks inside one asset.
 
 [Skeleton pose layers](skeleton-pose.md) have the same layers in code.
+
+### A clip from another catalog asset
+
+A layer takes `from: { "asset": "<catalog ID>", "clip": 0 }` instead of `clip`: the clip of another file in the catalog, moved
+onto this asset with `retargetClip` and the humanoid bone map. Both skeletons must map the required bones (hips, spine, head,
+arms and legs) or the call fails and lists what is missing. `scale` (0.1 to 10) and `rootMotion` (boolean) are the
+`retargetClip` options of the same names. `from` replaces `clip` and `bones`, and morph tracks of the source are not carried.
+The runtime reads the other asset by its catalog ID (at most 4 at once); a session made without a catalog cannot use it.
+`scene_inspect` `kind: "hierarchy"` returns `retargets`: per `from` layer, `source` and `target` with `mapped` (bones
+matched), `unmapped` (joints no bone claimed, up to 24, with `unmappedCount`) and `missing`.
+
+```json
+"motion": { "duration": 1, "loop": true, "layers": [{ "from": { "asset": "<id of the walking file>", "clip": 0 }, "scale": 1.1 }] }
+```
+
+### Foot lock
+
+`motion.footLock` (opt-in, needs `layers`) plants the feet. The layers are sampled at 30 frames per second once, and a foot
+counts as planted while its ankle is within `contactHeight` of its lowest point in the clip and its horizontal speed is under
+`contactSpeed`, for at least three frames. During each planted phase the leg is solved with two-bone IK to where the ankle
+touched down, faded in and out over `blend` seconds. The leg bones must map to the humanoid bones, and the root needs a
+uniform scale. `true` takes the defaults:
+
+| Field | Default | Meaning |
+| --- | --- | --- |
+| `contactHeight` | 0.05 | Metres above the lowest ankle height (0.001 to 1) |
+| `contactSpeed` | 0.35 | Metres per second (0.01 to 5). A retargeted foot that slides may need a higher value to be found |
+| `blend` | 0.1 | Seconds to fade the pin in and out (0.01 to 1) |
+| `ground` | none | `{ height = 0, normal = [0, 1, 0] }` in world space: the planted ankle is put on that plane and the sole is turned to the normal. The normal must lean less than 60 degrees from +Y |
+
+The lock reads the layers only: tracks and `ik` are applied after it. `scene_inspect` returns `footLock.feet` with the
+planted phases per foot. The hips do not move, so a ground far from the character's floor can be out of reach.
+
+### Morph weight tracks
+
+A track `{ "kind": "morph", "id": "eyeBlinkLeft", "property": "weight", "keyframes": [...] }` keys the weight (0 to 1) of every
+morph target of that name, with the interpolations and `easing` of any other track. It replaces what a layer or the file
+gives that target; targets without a track keep theirs. Names come from the file (`extras.targetNames`, the glTF convention
+that Blender and face rigs with ARKit names such as `eyeBlinkLeft` and `jawOpen` export); `scene_inspect` returns them as
+`morphTargetNames`, and an unknown name fails with the first ones. Tracks can address morph targets only on an imported asset.
 
 ### Joint limits and sanity warnings
 

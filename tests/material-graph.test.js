@@ -72,6 +72,27 @@ test('height becomes a normal map: flat height is a flat normal, relief tilts it
   assert.ok(Math.max(...tilted) - Math.min(...tilted) > 40);
 });
 
+test('a height ramp tilts the normal by bump / 32 per UV unit at any resolution, the sign pointing downhill', () => {
+  for (const resolution of [256, 512]) {
+    const ramp = bakeMaterialPattern(normalizeMaterialPattern({ type: 'graph', graph: { height: { uv: 'u' } }, resolution, bump: 4 }));
+    const { data } = ramp.normalMap.image;
+    const slope = 4 / 32;
+    const length = Math.hypot(slope, 1);
+    const offset = (Math.floor(resolution / 2) * resolution + Math.floor(resolution / 2)) * 4;
+    assert.equal(data[offset], Math.round((-slope / length * 0.5 + 0.5) * 255));
+    assert.equal(data[offset + 1], 128);
+    assert.equal(data[offset + 2], Math.round((1 / length * 0.5 + 0.5) * 255));
+  }
+});
+
+test('the slope of a sharp joint edge stays within one texel of the edge instead of spreading over three', () => {
+  const resolution = 256;
+  const step = { smoothstep: [0.5, 0.5 + 1 / resolution, { uv: 'u' }] };
+  const edge = bakeMaterialPattern(normalizeMaterialPattern({ type: 'graph', graph: { height: step }, resolution, bump: 1 }));
+  const tiltedColumns = Array.from({ length: resolution }, (_, column) => column).filter(column => edge.normalMap.image.data[(10 * resolution + column) * 4] !== 128);
+  assert.ok(tiltedColumns.length <= 2, `${tiltedColumns.length} texels are tilted`);
+});
+
 test('every graph texture node tiles across the seam', () => {
   const nodes = [{ noise: { scale: 6 } }, { voronoi: { scale: 5, output: 'edge' } }, { wave: { frequency: 3, direction: 'diagonal' } }, { checker: { count: 8 } }];
   for (const node of nodes) {
