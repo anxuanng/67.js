@@ -40,7 +40,7 @@ function levelsForScene(scene) {
   return levels;
 }
 
-export async function create67Adapter(canvas, scene, characters, { culling = true, lods = true, hdr = true, samples = 4 } = {}) {
+export async function create67Adapter(canvas, scene, characters, { culling = true, lods = true, hdr = true, samples = 4, shading = 'full' } = {}) {
   const environment = {
     world: true, fillIntensity: 0, ambientIntensity: 1, fogDensity: 0,
     lightDirection: scene.sun.direction, keyColor: scene.sun.color,
@@ -67,7 +67,7 @@ export async function create67Adapter(canvas, scene, characters, { culling = tru
     ? { eye: scene.sun.direction.map(value => value * 5), target: [0, 0, 0], up: [0, 1, 0], extent: scene.shadowExtent, near: 0.1, far: 150 }
     : {};
   const renderer = new Renderer67(canvas, parts, {
-    ground: false, hdr, depth: false, samples, pixelRatio: 1, memoryBudgetMiB: 2048, world: true, environment, shadowBounds, culling,
+    ground: false, hdr, depth: false, samples, pixelRatio: 1, memoryBudgetMiB: 2048, world: true, environment, shadowBounds, culling, shading,
   });
   renderer.resize();
   const frame = { eye: scene.camera.eye, target: scene.camera.target, up: [0, 1, 0], fov: scene.camera.fov, near: scene.camera.near, far: scene.camera.far, environment, time: 0, exposure: 1, effects: {} };

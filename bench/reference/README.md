@@ -1132,6 +1132,47 @@ Main reproduced `baseline.json` first on the stored arrays (`brick-flat` 0.1264,
   Cycles is 10.7% brighter than 67js and 9.8% brighter than EEVEE on the plain flat wall, with no texture at all, so most of the 0.524 against 0.466 on the brick faces (12.4%) is Cycles-only light, the same offset as in `brick-flat`'s score. Once the flat wall removes it, the face ratios are within 1.6% (0.852, 0.849, 0.838), which is the share the graph's colour path and noise statistics can own. Ramp stops and mix constants are linear on both sides (`element.color` in `render-blender.py` takes linear values and the bake writes `linearToSrgbByte`), the ramp is linear in both, and the Blender noise differs from the 67js one (stated in `render-blender.py`), so a 1.6% face offset cannot be traced further without a Blender run, which this pass did not have. Not changed.
 - Excess of the graph wall over its flat wall, the number #50 asks for: 67js 0.1518 - 0.1264 = 0.0254, EEVEE 0.0122, unchanged.
 
+## Shadow depth against Cycles, remeasured on main (2026-11-03, part of issue #197)
+
+Main at `e4bdee9` (after #222, #224, #226, #234, #236, #238 and the ground bounce of #245), GPU, 960 x 540. The GPU FLIP columns of `baseline.json` reproduce to four digits for all 23 scenes (only `gpu-vs-cpu` of two scenes moved, 0.0001 to 0.0017). Measured with `bench/reference/shadow-depth.py` against the Cycles arrays of the earlier runs (the re-rendered `megacity-dusk-a` and `-b` arrays); luminance is in display space. Percentiles are 67js / Cycles. `floor` is the shadow-tile floor, 67js over Cycles (above 1 means the shadows are too light), `contrast` is log2 of lit over shadowed in the same 24 pixel tile, 67js / Cycles, and `edge` is the median width of the lit-to-shadow transition in pixels, far half / near half of the frame, 67js / Cycles.
+
+| Scene | p1 | p5 | p25 | floor | contrast | edge far | edge near |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `mountain-valley-a` | 0.012 / 0.023 | 0.039 / 0.072 | 0.163 / 0.174 | 0.79 | 2.52 / 2.12 | 3.4 / 3.4 | 3.3 / 3.3 |
+| `mountain-valley-b` | 0.069 / 0.047 | 0.228 / 0.200 | 0.482 / 0.580 | 1.63 | 2.39 / 3.12 | 3.7 / 3.4 | 3.2 / 3.2 |
+| `mountain-valley-c` | 0.015 / 0.004 | 0.034 / 0.019 | 0.177 / 0.201 | 1.85 | 2.24 / 2.52 | 3.2 / 3.1 | 2.9 / 2.7 |
+| `megacity-dusk-a` | 0.049 / 0.048 | 0.063 / 0.073 | 0.113 / 0.148 | 0.83 | 2.71 / 2.49 | 3.1 / 3.1 | 3.1 / 3.2 |
+| `megacity-dusk-b` | 0.164 / 0.151 | 0.220 / 0.221 | 0.339 / 0.351 | 1.07 | 1.74 / 1.80 | 3.3 / 3.4 | 3.3 / 3.3 |
+| `megacity-dusk-c` | 0.029 / 0.035 | 0.030 / 0.035 | 0.033 / 0.039 | 0.56 | 3.99 / 3.10 | 3.3 / 3.4 | 3.0 / 3.2 |
+| `temple-hall-a` | 0.049 / 0.033 | 0.056 / 0.036 | 0.067 / 0.047 | 0.73 | 1.16 / 1.33 | 3.0 / 3.3 | 2.0 / 3.3 |
+| `temple-hall-b` | 0.071 / 0.034 | 0.072 / 0.037 | 0.079 / 0.045 | 1.47 | 0.78 / 1.80 | 3.3 / 4.2 | 3.1 / 3.3 |
+| `temple-hall-c` | 0.039 / 0.016 | 0.039 / 0.018 | 0.055 / 0.022 | 1.85 | 1.33 / 2.02 | 4.6 / 5.4 | 3.4 / 3.3 |
+| `dark-shaft` | 0.044 / 0.029 | 0.044 / 0.031 | 0.047 / 0.043 | 0.85 | 2.46 / 1.96 | 3.5 / 3.4 | 3.5 / 3.4 |
+| `material-spheres` | 0.481 / 0.399 | 0.579 / 0.545 | 0.789 / 0.780 | 2.01 | 0.54 / 1.36 | 3.7 / 3.8 | 3.7 / 3.1 |
+| `car-paint` | 0.187 / 0.130 | 0.247 / 0.229 | 0.642 / 0.614 | 2.61 | 0.94 / 1.79 | 6.9 / 3.1 | 3.8 / 3.3 |
+| `character` | 0.209 / 0.214 | 0.472 / 0.395 | 0.775 / 0.771 | 1.27 | 1.21 / 1.48 | 3.1 / 3.0 | 3.2 / 3.1 |
+| `long-street` | 0.201 / 0.138 | 0.364 / 0.322 | 0.507 / 0.479 | 1.68 | 1.11 / 1.59 | 3.1 / 3.2 | 3.1 / 3.2 |
+| `mountain-valley` | 0.014 / 0.011 | 0.018 / 0.021 | 0.158 / 0.202 | 1.92 | 2.41 / 2.71 | 3.2 / 3.1 | 2.8 / 2.9 |
+| `megacity-dusk` | 0.071 / 0.084 | 0.095 / 0.139 | 0.220 / 0.269 | 0.75 | 2.58 / 2.16 | 3.2 / 3.3 | 3.0 / 3.1 |
+
+`metal`, `brushed-film` and `outdoor-hdri` have a floor of 2.6, 2.4 and 2.4 but only 9, 52 and 2 shadow tiles. FLIP against Cycles now, for the grand options: `mountain-valley-a` 0.1671, `-b` 0.2096, `-c` 0.1836, `megacity-dusk-a` 0.1640, `-b` 0.1106, `-c` 0.1192, `temple-hall-a` 0.1642, `-b` 0.1566, `-c` 0.1177. The rows of `grand.json` (0.2530 to 0.3642 for the temple options, 0.3530 for `mountain-valley-a`) are from 2026-11-02 and no longer match main; they were not rewritten here because this run had no EEVEE column.
+
+What the numbers say (measured, except where marked):
+
+- There is no single direction. The dark end is too light in the three `temple-hall` options (p1 1.5x, 2.1x and 2.4x Cycles; the contrast of `-b` is 0.78 against 1.80 log2 steps), in `mountain-valley-c` (p1 3.9x) and `-b` (1.5x), and on open floors (`material-spheres`, `car-paint`, `long-street`: floor 1.7 to 2.6). It is too dark and too deep in `mountain-valley-a`, `megacity-dusk-a`, `-c` and `megacity-dusk` (floor 0.56 to 0.83). The issue's "too light" holds for halls, midday valleys and open floors, and is reversed for dusk and night cities.
+- Shadow edges are mostly not the problem: 16 of 26 scenes with a measurable edge are within 0.5 pixel of Cycles on both halves. The outliers are the glossy scenes (`car-paint` far 6.9 against 3.1, `metal`, `metal-room`, `brushed-film`, where a reflection edge counts as a tile edge; inferred), `temple-hall-a` near (2.0 against 3.3, sharper), `temple-hall-b` and `-c` far (3.3 against 4.2, 4.6 against 5.4, narrower) and `fog-room` far (1.5 against 3.2). A filter that grows with distance from the caster would touch only the temple options.
+- Lit areas are within 0.9 to 1.1 of Cycles except `mountain-valley-c` (1.26), `car-paint` (1.37), and `temple-hall-a` and `-b` (0.65 and 0.69; the cause was not isolated).
+
+Single changes tried (GPU; 13 default scenes and the 9 grand options; FLIP against Cycles, change from main):
+
+| Change | Dark end | FLIP, worse | FLIP, better | Kept |
+| --- | --- | --- | --- | --- |
+| No ground bounce (`--no-ground-bounce`) | `material-spheres` floor 2.01 to 1.51, `character` 1.27 to 1.02, `outdoor-hdri` 2.42 to 1.44; `megacity-dusk-a` floor 0.83 to 0.94 | `material-spheres` +0.0224, `character` +0.0145, `outdoor-hdri` +0.0110, `car-paint` +0.0042, `long-street` +0.0028 | `megacity-dusk-a` -0.0135, `-c` -0.0045 | No |
+| Ambient occlusion 1, radius 0.5 (`--ambient-occlusion 1`) | floor 0.03 to 0.2 lower (`material-spheres` 2.01 to 1.87), `megacity-dusk` p5 0.095 to 0.082 | `megacity-dusk` +0.0273, `-c` +0.0144, `-a` +0.0131, `mountain-valley-b` +0.0111, `mountain-valley-a` +0.0081, `brick-room` +0.0048 | `car-paint` -0.0033, `long-street` -0.0031 | No |
+| World light times 0.7 (`--ambient 0.7`) | `mountain-valley` floor 1.92 to 1.44, `temple-hall-b` 1.47 to 1.25 | `mountain-valley` +0.1009, `material-spheres` +0.0661, `outdoor-hdri` +0.0603, `long-street` +0.0602 | `temple-hall-b` -0.0252, `-c` -0.0167, `-a` -0.0085 | No |
+
+Which causes matter now: the world and sky light that reaches shadowed floors is the largest lever on the dark percentiles (a 30 percent cut moves the `mountain-valley` floor from 1.92 to 1.44 and lowers the `temple-hall` options' FLIP by up to 0.025), and the same light makes the outdoor lit areas right, so it can not be cut globally (up to +0.10 FLIP). It has to be occluded where a caster or a rim blocks the sky; the screen-space occlusion at 0.5 unit does that too little in studio scenes and too much in dusk streets. The ground bounce is about a quarter of the shadow floor in studio scenes (0.5 of 2.0 in `material-spheres`) because it is not occluded under objects, but removing it costs up to 0.022 FLIP. The sun shadow itself (map, bias, filter) no longer shows: `lit-level` is near 1 and edge widths mostly match. No cause dominates across the scenes and every global knob failed the 0.002 FLIP limit, so no engine change is kept in this pass and the frame cost is unchanged (nothing to measure). Next attempts, one each: darken the ground bounce under and beside casters, and give halls a world-light visibility term from their openings.
+
 ## Ground bounce on textured floors and terrain (2026-11-03, part of issue #191)
 
 Main reproduced the GPU columns of `baseline.json` to four digits on the stored Cycles and EEVEE arrays first (GPU render and FLIP rescore of all 23 scenes; CPU renders were not redone, so the CPU columns are unchanged).
@@ -1172,3 +1213,22 @@ Kept: one bounce, the copy, the capped Fresnel sky reflection. The uncapped Fres
 | `brushed-film` | 0.1017 | 0.1019 | 0.0984 |
 
 `brushed-film` is 0.0002 worse (the sky reflection; it was 0.1015 with the bounce alone on SwiftShader). Probe trace time on this machine (SwiftShader run, JS, so the same on the GPU run): `metal` 0.12 to 0.25 s, `brushed-film` 0.09 to 0.20 s, `car-paint` 0.06 to 0.10 s, `material-spheres` 0.19 to 0.37 s, `metal-room` 0.06 to 0.41 s; the trace runs when parts, lights or materials change, and a scene without a reflective part never loads it. `metal` is still 0.0028 above EEVEE: the cylinder's floor reflection is the closest gap left (probe 0.567 against Cycles 0.578 in the region, mean display luminance), the rest is light between metal parts that a diffuse bounce does not carry. The room probe trace (`PROBE_BOUNCES` 2) had the same overwritten `direct` and now reads the right light; no baseline scene uses it.
+
+## Ground bounce occluded by the parts above it, measured and not kept (2026-11-03, part of issue #197)
+
+Idea, from the shadow depth remeasure (#252): the ground bounce counts the ground as lit, but under and beside a caster it is in shadow, and Cycles darkens the bounce there. Change tried: `groundOpenness(parts)` in `src/ground-bounce.js` traced 24 upward rays from an 8 by 8 grid over the ground around the non-floor parts (their footprint widened by the tallest part's height) with `skyVisibilityGrid`, took the mean share that escapes (1 is open ground), and multiplied the lower half of the diffuse copy by it. Derived from the scene, once per parts array, no cost per frame, and nothing in core. `closed-room.js` only gained an optional grid size.
+
+Measured on the same Cycles arrays as main (GPU, 960 x 540; `brick-flat` redrawn as well, the other scenes have no part above the floor, so the term is 1 and their rows are unchanged by construction):
+
+| Scene | floor before | floor after | FLIP before | FLIP after | change |
+| --- | --- | --- | --- | --- | --- |
+| `material-spheres` | 2.01 | 1.81 | 0.0956 | 0.1049 | +0.0093 |
+| `car-paint` | 2.61 | 2.57 | 0.0979 | 0.0995 | +0.0016 |
+| `long-street` | 1.68 | 1.66 | 0.1121 | 0.1134 | +0.0013 |
+| `outdoor-hdri` | 2.42 | 2.28 | 0.0333 | 0.0350 | +0.0017 |
+| `brick-flat` | | | 0.0547 | 0.0608 | +0.0061 |
+| `character` | 1.27 | 1.23 | 0.0567 | 0.0567 | 0.0000 |
+
+The shadow floors move toward Cycles (mostly by 0.02 to 0.2) but five scenes get worse and two pass the 0.002 limit (`material-spheres` +0.0093, `brick-flat` +0.0061; worst regression). Cause (inferred): the term cuts the bounce that reaches the sides of objects and walls, where Cycles still has all of it, more than it cuts the light in the shadowed floor tiles; `material-spheres` lit-level 1.09 after. The shadowed floor itself gets no bounce from the lower-half copy in the first place (a level surface sees none of a lower hemisphere), so the floor ratio gap is not mostly this term: removing the whole bounce took `material-spheres` only from 2.01 to 1.51. Not kept; `baseline.json` is unchanged.
+
+Next idea: occlude per surface, not per scene: a sky and sun visibility lookup for the ground next to each caster, which needs a texture in the core shader and is a size cost; or darken only the floor-facing lower part of casters, which the shader would need a height above the floor for.

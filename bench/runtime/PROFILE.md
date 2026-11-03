@@ -383,3 +383,22 @@ First frame on the RTX 3060 (`--gpu-only`, GPU 0 percent busy before): `skinned-
 `skinned-characters` at 124: base colour only 47 (vertex skinning and the shadow pass), shadow read 38 less, environment lighting 50 less, so 77 ms of its fragment cost is these two. A compile-out of the sun shadow read when no part casts was tried first and changed nothing in `transparency`, because the bench floor is an opaque caster; it was reverted.
 
 **Not done, needs a pixel change.** Environment specular (about 50), the sun shadow (about 40), the BRDF table and the diffuse terms (about 20 each) are the frame. Fewer shadow taps, an analytic BRDF fit or a smaller irradiance basis would change pixels, and three.js has none of them in this scene (an ambient colour and one light, no shadow map). `transparency` stays 6.7 and `skinned-characters` 5.2 times three.js, so the target of 3 is not met for them.
+
+## Opt-in `shading: 'light'` (2026-11-03, issue #74)
+
+Decision of the project owner: the default picture stays as it is, and `new Renderer67(canvas, parts, { shading: 'light' })` draws a cheaper one for weak machines and software rendering. The `67js-light` engine of this suite uses it (`node bench/runtime/run.mjs --cpu-only --scene <id> --engine 67js-light`). What the preset leaves out or replaces: MSAA is capped at 2 samples (4 by default); the sun shadow is one comparison fetch, not 9; the environment BRDF comes from an analytic fit, not the table, with no second bounce gain; the sky reflection is the irradiance of the surface normal, not a prefiltered lookup; irradiance keeps the first four of nine terms; the direct specular term uses the Kelemen visibility and a logarithm free Fresnel.
+
+Method: SwiftShader, `--cpu-only --frames 6`, 3 rounds, `67js-light`, three.js and `67js` alternated for each scene inside a round, machine at 5 to 15 percent CPU from other sessions. Frame in ms (measured), then the ratio of the medians to three.js:
+
+| Scene | `67js` default | `67js-light` | three.js | Default ratio | Light ratio |
+| --- | --- | --- | --- | --- | --- |
+| `instanced-objects` | 145 to 155 | 49 to 52 | 33 to 34 | 4.6 | 1.5 |
+| `many-materials` | 470 to 494 | 93 to 122 | 177 to 184 | 2.7 | 0.66 |
+| `many-lights` | 375 to 394 | 93 to 95 | 154 to 163 | 2.4 | 0.58 |
+| `transparency` | 349 to 364 | 79 to 83 | 58 to 61 | 6.1 | 1.4 |
+| `moving-shadows` | 68 to 79 | 42 to 52 | 20 to 21 | 3.5 | 2.2 |
+| `large-mesh` | 461 to 473 | 130 to 132 | 196 to 208 | 2.4 | 0.66 |
+| `skinned-characters` | 152 to 154 | 54 to 58 | 27 to 28 | 5.5 | 2.0 |
+| `large-outdoor` | 233 to 256 | 58 to 59 | 815 to 838 | 0.28 | 0.07 |
+
+Every scene is at or under 2.2 times three.js with the preset on. Most of it is the MSAA cap: on `transparency`, the shader terms alone (4 samples) gave 233 ms, 2 samples with them 78 ms, and 1 sample 83 ms. The pictures differ from the default (mean absolute difference of 255 levels, and the share of pixels more than 16 levels away): `instanced-objects` 1.27 and 1.8 percent, `many-materials` 5.5 and 18.4, `many-lights` 2.0 and 0.6, `transparency` 1.0 and 0.0, `moving-shadows` 2.1 and 2.3, `large-mesh` 0.16 and 0.0, `skinned-characters` 1.7 and 1.6, `large-outdoor` 0.9 and 0.4. With the option off (the default), the PNG bytes of all 8 scenes on SwiftShader are identical to the merge base.
