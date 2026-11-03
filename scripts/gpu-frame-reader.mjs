@@ -61,8 +61,14 @@ export function createFrameReceiver({ maximumBytes }) {
   const sockets = new WebSocketServer({ noServer: true, maxPayload: maximumBytes, perMessageDeflate: false });
   const acknowledgement = Buffer.from([1]);
   let received;
+  let chunkHandler;
   sockets.on('connection', socket => {
     socket.on('message', (data, isBinary) => {
+      // Encoded chunks go straight to the handler and are not acknowledged. The page's closing text message is.
+      if (isBinary && chunkHandler) {
+        chunkHandler(data);
+        return;
+      }
       if (isBinary) received = data;
       socket.send(acknowledgement);
     });
@@ -73,6 +79,10 @@ export function createFrameReceiver({ maximumBytes }) {
       if (request.url !== path) return false;
       sockets.handleUpgrade(request, socket, head, connection => sockets.emit('connection', connection, request));
       return true;
+    },
+    /** Sends each encoded video chunk from the page to `handler(bytes)` in order. */
+    onChunk(handler) {
+      chunkHandler = handler;
     },
     /** The frame the page sent since the last call, checked against the size the encoder was started with. */
     take({ width, height }, info) {
@@ -107,3 +117,76 @@ export async function startFrameServer(receiver) {
   return { url: `ws://127.0.0.1:${server.address().port}${receiver.path}`,
     close: () => new Promise(resolve => { receiver.close(); server.closeAllConnections(); server.close(resolve); }) };
 }
+
+/**
+ * Runs in the page. Defines window.__startVideoEncoder(), __encodeFrame() and __finishVideoEncoder().
+ * The page encodes each frame with the browser's hardware H.264 encoder, so only the encoded chunks, a few tens of
+ * kilobytes a frame, travel over the socket instead of 3.7 MB of pixels (issue #301).
+ */
+function installVideoEncoder(url) {
+  const maximumQueuedFrames = 3;
+  const maximumBufferedBytes = 16 * 1024 ** 2;
+  let encoder;
+  let socket;
+  let encoderFailure;
+  let wakeAcknowledgement;
+  let settings;
+  const pause = () => new Promise(resolve => setTimeout(resolve, 1));
+  // Waits for the GPU to finish the draw, so that draw time is not counted as encode time.
+  window.__finishDraw = () => document.querySelector('canvas').getContext('webgl2').finish();
+  window.__startVideoEncoder = async ({ width, height, fps, quantizer }) => {
+    if (typeof VideoEncoder === 'undefined' || typeof VideoFrame === 'undefined') return { supported: false, reason: 'WebCodecs is unavailable.' };
+    const level = width * height > 1920 * 1088 ? '33' : '28';
+    const config = { codec: `avc1.6400${level}`, width, height, framerate: fps, bitrate: 20e6, bitrateMode: 'quantizer',
+      hardwareAcceleration: 'prefer-hardware', latencyMode: 'quality', avc: { format: 'annexb' } };
+    const support = await VideoEncoder.isConfigSupported(config);
+    if (!support.supported) return { supported: false, reason: 'The browser cannot encode this size with a hardware H.264 encoder.' };
+    socket = new WebSocket(url);
+    socket.binaryType = 'arraybuffer';
+    await new Promise((resolve, reject) => {
+      socket.onopen = () => resolve();
+      socket.onerror = () => reject(new Error('The video socket could not connect.'));
+    });
+    socket.onmessage = () => wakeAcknowledgement?.();
+    encoder = new VideoEncoder({
+      output: chunk => {
+        const bytes = new Uint8Array(chunk.byteLength);
+        chunk.copyTo(bytes);
+        socket.send(bytes);
+      },
+      error: error => { encoderFailure = error; },
+    });
+    encoder.configure(config);
+    settings = { fps, quantizer, keyFrameInterval: fps * 2 };
+    return { supported: true };
+  };
+  // Call in the same task as the draw: the browser clears the drawing buffer once it presents the frame.
+  window.__encodeFrame = async index => {
+    if (encoderFailure) throw new Error(`The page video encoder failed: ${encoderFailure.message}`);
+    const started = performance.now();
+    const frame = new VideoFrame(document.querySelector('canvas'), { timestamp: Math.round(index * 1e6 / settings.fps) });
+    encoder.encode(frame, { keyFrame: index % settings.keyFrameInterval === 0, avc: { quantizer: settings.quantizer } });
+    frame.close();
+    const submitMilliseconds = performance.now() - started;
+    while (encoder.encodeQueueSize > maximumQueuedFrames || socket.bufferedAmount > maximumBufferedBytes) await pause();
+    return { submitMilliseconds, waitMilliseconds: performance.now() - started - submitMilliseconds };
+  };
+  window.__finishVideoEncoder = async () => {
+    await encoder.flush();
+    if (encoderFailure) throw new Error(`The page video encoder failed: ${encoderFailure.message}`);
+    const acknowledged = new Promise(resolve => { wakeAcknowledgement = resolve; });
+    socket.send('end');
+    await acknowledged;
+    encoder.close();
+    socket.close();
+  };
+}
+
+/** Starts the page's hardware H.264 encoder. Returns { supported, reason }: when it is not supported, use readback frames. */
+export async function startVideoEncoderInPage(page, url, { width, height, fps, quantizer }) {
+  await page.evaluate(installVideoEncoder, url);
+  return page.evaluate(options => window.__startVideoEncoder(options), { width, height, fps, quantizer });
+}
+
+/** Quantizer that matches the quality of the NVENC constant quality 20 files this pipeline wrote before. */
+export const DEFAULT_PAGE_ENCODER_QUANTIZER = 20;

@@ -8,7 +8,7 @@ import { resolve, dirname, basename } from 'node:path';
 import { FILM_DURATION } from '../src/film.js';
 import { RENDER_PRESETS } from '../src/budget.js';
 import { createFrameEncoder } from './frame-encoder.mjs';
-import { createFrameReceiver, installFrameReaderInPage, startFrameServer } from './gpu-frame-reader.mjs';
+import { DEFAULT_PAGE_ENCODER_QUANTIZER, createFrameReceiver, installFrameReaderInPage, startFrameServer, startVideoEncoderInPage } from './gpu-frame-reader.mjs';
 
 function argumentsFrom(values) {
   const result = {};
@@ -53,9 +53,9 @@ export function parseRenderOptions(values) {
   const start = numberOption('start', 0, 0, 3600);
   const memory = numberOption('memory', preset.memoryBudgetMiB, 32, 1024);
   const assembly = numberOption('assembly', 0, 0, 1);
-  const captureFormat = options.capture ?? (kind === 'video' ? 'raw' : 'png');
-  if (!['jpeg', 'png', 'raw'].includes(captureFormat)) throw new Error('Capture must be raw, jpeg or png.');
-  if (captureFormat === 'raw' && kind !== 'video') throw new Error('Raw capture is for video only. Stills are PNG or JPEG screenshots.');
+  const captureFormat = options.capture ?? (kind === 'video' ? 'auto' : 'png');
+  if (!['auto', 'webcodecs', 'raw', 'jpeg', 'png'].includes(captureFormat)) throw new Error('Capture must be auto, webcodecs, raw, jpeg or png.');
+  if (['auto', 'webcodecs', 'raw'].includes(captureFormat) && kind !== 'video') throw new Error('Auto, webcodecs and raw capture are for video only. Stills are PNG or JPEG screenshots.');
   const jpegQuality = numberOption('jpeg-quality', 95, 1, 100);
   if (!Number.isInteger(jpegQuality)) throw new Error('JPEG quality must be an integer.');
   const output = resolve(options.output ?? `artifacts/${scene}-${backend}.${kind === 'video' ? 'mp4' : captureFormat === 'jpeg' ? 'jpg' : 'png'}`);
@@ -111,7 +111,8 @@ function freePort() {
 
 export async function renderMedia(values = process.argv.slice(2)) {
   const plan = parseRenderOptions(values);
-  const { options, kind, backend, scene, presetName, preset, aspect, width, height, fps, time, start, memory, assembly, output, captureFormat, jpegQuality } = plan;
+  const { options, kind, backend, scene, presetName, preset, aspect, width, height, fps, time, start, memory, assembly, output, jpegQuality } = plan;
+  let captureFormat = plan.captureFormat;
   let duration = plan.duration;
   if (options.asset) {
     const details = await stat(resolve(options.asset));
@@ -192,16 +193,26 @@ export async function renderMedia(values = process.argv.slice(2)) {
       } else window.renderAt = (time) => window.__nature.renderAt(time);
     }, { memory, width, height, samples: backend === 'cpu' ? 1 : preset.samples, scene, assembly });
     const session = await page.context().newCDPSession(page);
-    if (captureFormat === 'raw') {
+    if (['auto', 'webcodecs', 'raw'].includes(captureFormat)) {
       frameReceiver = createFrameReceiver({ maximumBytes: width * height * 4 });
       frameServer = await startFrameServer(frameReceiver);
-      await installFrameReaderInPage(page, frameServer.url);
     }
+    if (['auto', 'webcodecs'].includes(captureFormat)) {
+      // The page encodes with the browser's hardware H.264 encoder and sends only the small encoded chunks. Software
+      // rendering or a CPU encoder request keeps the readback path, which feeds ffmpeg's libx264.
+      const wantsCpu = backend === 'cpu' || options.encoder === 'cpu';
+      const started = wantsCpu ? { supported: false, reason: 'A CPU render or encoder was requested.' }
+        : await startVideoEncoderInPage(page, frameServer.url, { width, height, fps, quantizer: DEFAULT_PAGE_ENCODER_QUANTIZER });
+      if (started.supported) captureFormat = 'webcodecs';
+      else if (captureFormat === 'webcodecs') throw new Error(`Capture webcodecs is not available: ${started.reason}`);
+      else captureFormat = 'raw';
+    }
+    if (captureFormat === 'raw') await installFrameReaderInPage(page, frameServer.url);
     // A raw frame is read from the drawing buffer in the same task as the draw. The round trip beyond the draw is capture.
-    const render = async (seconds) => {
+    const render = async (seconds, frameIndex) => {
       if (errors.length) throw new Error(`Browser render errors: ${errors.join('; ')}`);
       const renderStarted = performance.now();
-      const drawn = await page.evaluate(async ({ value, readFrame }) => {
+      const drawn = await page.evaluate(async ({ value, readFrame, encodeIndex }) => {
         const drawStarted = performance.now();
         if (window.__scene) window.__scene.renderAt(value);
         else if (window.renderAt) window.renderAt(value);
@@ -209,13 +220,14 @@ export async function renderMedia(values = process.argv.slice(2)) {
         const renderer = window.__scene?.renderer ?? window.__film?.renderer ?? window.__nature?.renderer ?? window.__studio?.renderer;
         const glError = renderer.context.getError();
         if (glError !== 0) throw new Error(`WebGL render error ${glError}.`);
-        if (readFrame) window.__finishDraw();
+        if (readFrame || encodeIndex !== null) window.__finishDraw();
         const drawMilliseconds = performance.now() - drawStarted;
-        return { rendererPlan: renderer.memoryPlan, drawMilliseconds, frame: readFrame ? await window.__readFrame() : undefined };
-      }, { value: seconds, readFrame: captureFormat === 'raw' });
+        return { rendererPlan: renderer.memoryPlan, drawMilliseconds, frame: readFrame ? await window.__readFrame() : undefined,
+          encoded: encodeIndex !== null ? await window.__encodeFrame(encodeIndex) : undefined };
+      }, { value: seconds, readFrame: captureFormat === 'raw', encodeIndex: captureFormat === 'webcodecs' ? frameIndex : null });
       const rendererPlan = drawn.rendererPlan;
       const roundTripSeconds = (performance.now() - renderStarted) / 1000;
-      const drawSeconds = drawn.frame ? drawn.drawMilliseconds / 1000 : roundTripSeconds;
+      const drawSeconds = drawn.frame || drawn.encoded ? drawn.drawMilliseconds / 1000 : roundTripSeconds;
       stageTimings.renderSeconds += drawSeconds;
       stageTimings.captureSeconds += roundTripSeconds - drawSeconds;
       stageTimings.readPixelsSeconds += (drawn.frame?.readMilliseconds ?? 0) / 1000;
@@ -225,10 +237,14 @@ export async function renderMedia(values = process.argv.slice(2)) {
       const nodeBytes = process.memoryUsage().rss;
       peakNodeBytes = Math.max(peakNodeBytes, nodeBytes);
       if (nodeBytes > 512 * 1024 ** 2) throw new Error('Capture process exceeded 512 MiB. Export stopped before buffering more frames.');
-      return drawn.frame;
+      return drawn;
     };
-    async function capture(seconds) {
-      const rawFrame = await render(seconds);
+    async function capture(seconds, frameIndex) {
+      const { frame: rawFrame, encoded } = await render(seconds, frameIndex);
+      if (encoded) {
+        capturedFrames++;
+        return undefined;
+      }
       if (rawFrame) {
         capturedFrames++;
         const bytes = frameReceiver.take({ width, height }, rawFrame);
@@ -251,15 +267,16 @@ export async function renderMedia(values = process.argv.slice(2)) {
       const audioPath = plan.audio ? resolve(plan.audio) : null;
       if (options.audio && !existsSync(audioPath)) throw new Error('The selected audio file was not found.');
       const audioArguments = audioPath && existsSync(audioPath) ? ['-ss', String(start), '-i', audioPath] : [];
-      encoder = createFrameEncoder({ executable: ffmpeg, output, fps, format: captureFormat === 'raw' ? 'rawvideo' : captureFormat,
+      encoder = createFrameEncoder({ executable: ffmpeg, output, fps, format: captureFormat === 'raw' ? 'rawvideo' : captureFormat === 'webcodecs' ? 'h264' : captureFormat,
         width, height, backend: encoderBackend, audioArguments, maximumFrameBytes: 64 * 1024 * 1024,
         maximumOutputBytes: Number.MAX_SAFE_INTEGER });
       const frameCount = Math.ceil(duration * fps);
+      if (captureFormat === 'webcodecs') frameReceiver.onChunk(chunk => encoder.writeChunk(chunk));
       const captureSequenceStarted = performance.now();
       for (let frame = 0; frame < frameCount; frame++) {
-        const image = await capture(start + frame / fps);
+        const image = await capture(start + frame / fps, frame);
         maximumPendingFrames = Math.max(maximumPendingFrames, 1);
-        await encoder.writeFrame(image);
+        if (image) await encoder.writeFrame(image);
         stageTimings.encoderBackpressureSeconds = encoder.metrics.backpressureSeconds;
         if (frame % 48 === 0) {
           const { usedSize } = await session.send('Runtime.getHeapUsage');
@@ -272,6 +289,7 @@ export async function renderMedia(values = process.argv.slice(2)) {
           console.log(message);
         }
       }
+      if (captureFormat === 'webcodecs') await page.evaluate(() => window.__finishVideoEncoder());
       const encoding = await encoder.finish();
       stageTimings.encoderFinishSeconds = encoding.finishSeconds;
     } else if (kind === 'stills') {
@@ -295,7 +313,7 @@ export async function renderMedia(values = process.argv.slice(2)) {
     if (graphics.glError !== 0) throw new Error(`WebGL render error ${graphics.glError}.`);
     if (backend === 'cpu' && !graphics.gpu.toLowerCase().includes('swiftshader')) throw new Error('CPU backend did not select SwiftShader.');
     const elapsedSeconds = (performance.now() - started) / 1000;
-    const report = { scene, kind, backend, preset: presetName, aspect, start, encoder: encoderBackend, requestedEncoder: kind === 'video' ? plan.encoderBackend : null, captureFormat, jpegQuality: captureFormat === 'jpeg' ? jpegQuality : null, capturedFrames, stageTimings, effectiveFPS: capturedFrames / elapsedSeconds, speedRatio: kind === 'video' ? capturedFrames / fps / elapsedSeconds : null, assembly: scene === 'object' ? assembly : null, width, height, actualRenderSize, fps, duration: kind === 'video' ? duration : null, memoryBudgetMiB: memory, peakEstimatedRenderBytes, peakNodeBytes, peakBrowserHeap, maximumPendingFrames, firstFrameBytes, elapsedSeconds, graphics, output: basename(output), errors };
+    const report = { scene, kind, backend, preset: presetName, aspect, start, encoder: captureFormat === 'webcodecs' ? 'browser-h264' : encoderBackend, requestedEncoder: kind === 'video' ? plan.encoderBackend : null, captureFormat, jpegQuality: captureFormat === 'jpeg' ? jpegQuality : null, capturedFrames, stageTimings, effectiveFPS: capturedFrames / elapsedSeconds, speedRatio: kind === 'video' ? capturedFrames / fps / elapsedSeconds : null, assembly: scene === 'object' ? assembly : null, width, height, actualRenderSize, fps, duration: kind === 'video' ? duration : null, memoryBudgetMiB: memory, peakEstimatedRenderBytes, peakNodeBytes, peakBrowserHeap, maximumPendingFrames, firstFrameBytes, elapsedSeconds, graphics, output: basename(output), errors };
     await writeFile(`${output}.json`, JSON.stringify(report, null, 2));
     console.log(JSON.stringify(report, null, 2));
   } finally {
