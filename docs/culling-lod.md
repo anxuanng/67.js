@@ -32,6 +32,10 @@ An instance uses the coarsest level whose `error` (the farthest its vertices lie
 
 `lods` is refused for the parts that culling skips (the list above), because their levels could not be chosen from a bounding sphere.
 
+## Cross-fades and impostor levels
+
+`lods` switch a mesh by its pixel error and do not fade. The vegetation addon chooses its own levels by distance (`selectLevels`) and can fade between them: `selectLevels(instances, eye, { fade: 0.06 })` draws both levels near a threshold with complementary screen-door coverage (`alphaMode: 'dither'`, `opacity` and `ditherIncoming` on the material), and `impostors` adds a last level that draws one baked card per tree (material tag `impostor`). Culling treats the card as a rigid part: its bounding sphere holds the quad, and the sway is a few centimetres. Both choices depend on the distance only, so they keep the determinism below; see [Vegetation](/vegetation.md#impostors-and-cross-fade).
+
 ## Determinism
 
 The selection is a pure function of the geometry, the instance matrices, the camera and the canvas height. It keeps no state between frames, so a seek to any time draws the same instances at the same levels as playing up to it. `tests/render-culling.test.js` checks this on the selection, and `npm run benchmark:runtime` draws the first frame again after every measured frame and fails when the picture differs.

@@ -116,6 +116,37 @@ When `changed` is true, build a new renderer from the new parts. Grass switches 
 
 `vegetationParts(variant, matrix, level, name)` places one tree or clump yourself.
 
+## Impostors and cross-fade
+
+Both are off by default, so a scene keeps its picture and its hysteresis until it asks.
+
+```js
+import { prepareImpostors, selectLevels } from '67js/addons/vegetation';
+
+prepareImpostors(forest.variants);                 // bake now, so no frame pays for it
+const view = selectLevels(forest.instances, camera.eye, { impostors: { from: 3 }, fade: 0.06, cullDistance: 900 });
+```
+
+`impostors` (`true` or `{ from, frameSize, level }`) draws every tree from level `from` on (default 3, beyond 150 m) as one card instead of its mesh. `from: 2` starts at 95 m. Bushes and palms take it too; grass and flowers do not. The result gains `impostors` (cards drawn) and `fading` (instances in a cross-fade).
+
+An impostor is baked per tree variant on first use, or by `prepareImpostors(variants)`. `bakeImpostorAtlas` draws the tree from 8 by 8 directions of a hemi-octahedral grid (the upper hemisphere, so a view from below the horizon shows the horizon view) into a colour atlas (sRGB, alpha is the leaf mask) and a normal atlas (linear, the tangent space of that view, green up), each 96 px a frame, on the CPU in plain JavaScript: it runs in Node and the browser alike and the pixels repeat exactly. It bakes level 1 of the tree. Instance tint multiplies the colour like it does on the meshes.
+
+The card is a quad with the `impostor` material tag. The vertex shader (`src/impostor-shader.js`) turns it to the eye, picks the atlas cell nearest the view direction in the tree's own frame (so yaw is respected) and sways its top by `frame.wind`; the standard fragment shader then lights it with the sun, the sky and the shadow map like any other surface, using the baked normals. In the shadow pass the "eye" is the light, so the card casts the tree's shadow as the sun sees it, cutout by the baked leaf mask. The card counts 2 triangles.
+
+`fade` (a fraction of the switch distance, default 0.06 when `impostors` is on) cross-fades two neighbouring levels over a band of that fraction either side of each threshold: both draw, with `alphaMode: 'dither'`, whose coverage in eighths of the way is complementary (a pixel the outgoing level drops is drawn by the incoming one, from the same interleaved-gradient pattern of the screen position). The level and the step come from the distance alone, so a camera position always draws the same picture and a seek repeats. Selection with `fade` or `impostors` keeps no hysteresis, since the band does its job; `changed` is true when any instance moved to another level or step. Shadows draw every level of a fade at full coverage.
+
+Measured (Node, 2026-11-03), 5,223 trees (broadleaf, birch, conifer, bush, 3 variants each) on a 1,550 m square with the eye at its middle at 2 m, so every distance from 0 to 1,100 m occurs:
+
+| Selection | Triangles |
+| --- | --- |
+| Levels only | 2,684,078 |
+| `impostors: { from: 3 }` | 524,870 |
+| `impostors: { from: 2 }` | 358,790 |
+
+Baking one variant each of the five species takes 0.6 to 0.7 s in Node on the CPU (about 0.14 s a variant; 0.1 s a variant with mesh leaves), and 1.4 to 2.6 s for nine variants in headless Chrome on SwiftShader. `npm run smoke:vegetation-impostors` draws a forest with every level, with cards and with fades, and writes the pictures to `artifacts/`.
+
+The depth of each view is used to resolve hidden surfaces while baking but is not stored, and the card shows the nearest single view with no blending between neighbouring views and no parallax, so a tree seen while the camera circles it steps between 64 views. Both are open work on issue #324.
+
 ## Measured
 
 On the demo clearing (125 trees and bushes, 1,941 grass clumps and 129 flower patches, camera at the clearing edge), headless Chrome with GPU:
@@ -125,5 +156,5 @@ Meshes and textures are built in plain JavaScript, so tests run in Node.
 ## Limits
 
 - Cards need the renderer's alpha mask to look right. Without `leafTextures` the leaf textures are 128 px procedural sprigs that look flat from under a few metres; the scanned cards hold up to about 1 m. Palm fronds have no scanned card yet. The conifer card is a cedar spray, so it reads as a flat branch tip rather than separate needles.
-- Level changes pop; there is no cross-fade. Level 2 crowns are blobs or crossed cards, not baked imposters.
+- Level changes pop unless `selectLevels` gets `fade`; level 2 crowns are blobs or crossed cards, and baked impostors exist only when asked for (see Impostors and cross-fade).
 - Species are fixed presets; there is no seasonal color, wind-bent skeleton or collision with other trees.

@@ -2,6 +2,7 @@ import { MAX_MORPH_TARGETS } from './morph.js';
 import { MAX_POINT_LIGHTS, MAX_SPOT_LIGHTS, MAX_AREA_LIGHTS } from './light-limits.js';
 import { environmentLookupGlsl, environmentShadingGlsl } from './environment.js';
 import { splatGlsl } from './splat-shader.js';
+import { impostorGlsl } from './impostor-slots.js';
 
 const morphingShader = `
 uniform float morphEnabled;
@@ -129,11 +130,12 @@ flat out mat3 boxNormalMatrix;
 ${skinningShader}
 ${morphingShader}
 ${windShader}
+${impostorGlsl.declarations}
 void main() {
   vec2 uv = uvSets.xy;
   mat4 deformation = USES_SKIN ? skinTransform() : mat4(1.0);
   vec4 world = instanceMatrix * deformation * vec4(USES_MORPH ? morphedPosition(position) : position, 1.0);
-  world.xyz += assemblyOffset * assemblyAmount + assemblyDetailOffset * smoothstep(0.3, 1.0, assemblyAmount);
+${impostorGlsl.colorHook}  world.xyz += assemblyOffset * assemblyAmount + assemblyDetailOffset * smoothstep(0.3, 1.0, assemblyAmount);
   if (USES_WIND) world.xyz += windOffset(position, world.xyz, uv, instanceSurface.w, time, wind);
   if (USES_WAVES && instanceSurface.w == 3.0) {
     world.y += sin(world.x * 1.4 + time * 0.8) * 0.025 + sin(world.z * 1.8 - time) * 0.02;
@@ -145,7 +147,7 @@ void main() {
   vec3 localNormal = USES_MORPH ? morphedNormal(normal) : normal;
   vec3 deformedNormal = USES_SKIN ? transpose(inverse(mat3(deformation))) * localNormal : localNormal;
   worldNormal = normalize(instanceNormal * deformedNormal);
-  // Metres along the object's own axes, so a pattern follows a moving node and is not stretched by its scale.
+${impostorGlsl.normalHook}  // Metres along the object's own axes, so a pattern follows a moving node and is not stretched by its scale.
   boxPosition = (USES_MORPH ? morphedPosition(position) : position) * vec3(length(instanceMatrix[0].xyz), length(instanceMatrix[1].xyz), length(instanceMatrix[2].xyz));
   boxNormal = deformedNormal;
   boxNormalMatrix = instanceNormal;
@@ -162,7 +164,8 @@ void main() {
 }`;
 }
 
-export const depthVertexShader = `#version 300 es
+function depthVertexShaderSource() {
+  return `#version 300 es
 precision highp float;
 layout(location=0) in vec3 position;
 layout(location=2) in mat4 instanceMatrix;
@@ -178,14 +181,24 @@ out vec2 textureUV;
 ${skinningShader}
 ${morphingShader}
 ${windShader}
+${impostorGlsl.declarations}
 void main() {
   vec4 world = instanceMatrix * skinTransform() * vec4(morphedPosition(position), 1.0);
   world.xyz += assemblyOffset * assemblyAmount + assemblyDetailOffset * smoothstep(0.3, 1.0, assemblyAmount);
   // Same displacement as the colour pass, so shadows follow the swaying leaves.
   world.xyz += windOffset(position, world.xyz, uv, instanceSurface.w, time, wind);
-  textureUV = uv;
+  vec2 shadowUv = uv;
+${impostorGlsl.depthHook}  textureUV = shadowUv;
   gl_Position = lightProjection * world;
 }`;
+}
+
+export const depthVertexShader = depthVertexShaderSource();
+
+/** The shadow vertex shader as it is now, with any registered impostor code (the constant above is built on import). */
+export function createDepthVertexShader() {
+  return depthVertexShaderSource();
+}
 
 // Only masked batches sample the base map, so shadows follow the cutout.
 export const depthFragmentShader = `#version 300 es
@@ -662,6 +675,14 @@ void mossMasks(vec3 normal, float amount, out float sharpMask, out float softMas
 float surfaceAlpha(float textureAlpha) {
   if (!USES_ALPHA_MODE) return 1.0;
   float alpha = materialOpacity * textureAlpha;
+  if (alphaMode > 2.5) {
+    // Screen-door fade: opacity above 1 marks the incoming side, which keeps the pixels the outgoing side drops.
+    bool incoming = materialOpacity > 1.0;
+    float coverage = incoming ? materialOpacity - 1.0 : materialOpacity;
+    float threshold = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
+    if (textureAlpha < alphaCutoff || (incoming ? coverage < 1.0 - threshold : coverage <= threshold)) discard;
+    return 1.0;
+  }
   if (alphaMode > 1.5) return alpha;
   if (alphaToCoverage > 0.5) {
     float softness = max(fwidth(alpha), 0.0001);
@@ -998,7 +1019,7 @@ export const LIGHT_SHADING_MAXIMUM_SAMPLES = 2;
 export const ENVIRONMENT_FEATURES =Object.freeze(['environmentMap', 'studioLighting']);
 
 // Features that only the vertex shader reads: a part with a skeleton or morph targets.
-const VERTEX_ONLY_FEATURES = Object.freeze(['skin', 'morph']);
+const VERTEX_ONLY_FEATURES = Object.freeze(['skin', 'morph', 'impostor']);
 
 function environmentCondition(enabled) {
   const hasMap = enabled.has('environmentMap');
@@ -1046,6 +1067,7 @@ function vertexDefinitions(enabled) {
   return [
     `#define USES_SKIN ${condition(enabled.has('skin'), 'skinEnabled > 0.5')}`,
     `#define USES_MORPH ${condition(enabled.has('morph'), 'morphEnabled > 0.5')}`,
+    `#define USES_IMPOSTOR ${condition(enabled.has('impostor') && impostorGlsl.colorHook !== '', 'true')}`,
     `#define USES_WIND ${condition(enabled.has('foliage') || enabled.has('grass'), 'true')}`,
     `#define USES_WAVES ${condition(enabled.has('water'), 'true')}`,
     `#define USES_EXPLOSION ${condition(enabled.has('fire') || enabled.has('smoke'), 'true')}`,

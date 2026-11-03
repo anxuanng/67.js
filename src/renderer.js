@@ -1,5 +1,5 @@
 import { mat4, mat3 } from 'gl-matrix';
-import { layerTextureSupport, LIGHT_SHADING_FEATURE, SHADING_MODES, LIGHT_SHADING_MAXIMUM_SAMPLES, vertexShader, createVertexShader, createFragmentShader, liquidFragmentShader, depthVertexShader, depthFragmentShader, benchmarkVertexShader, benchmarkFragmentShader } from './shaders.js';
+import { layerTextureSupport, LIGHT_SHADING_FEATURE, SHADING_MODES, LIGHT_SHADING_MAXIMUM_SAMPLES, vertexShader, createVertexShader, createFragmentShader, liquidFragmentShader, createDepthVertexShader, depthFragmentShader, benchmarkVertexShader, benchmarkFragmentShader } from './shaders.js';
 import { postFragment, createPostFragment, POST_STEPS, skyFragment, bloomFragment } from './post.js';
 import { fullscreenVertex, startProgram, finishProgram, compileProgram } from './gl-program.js';
 import { ambientOcclusionFragment } from './ambient-occlusion.js';
@@ -21,14 +21,14 @@ import { resolveShadowLight, shadowBiasPerSlope } from './shadow-light.js';
 import { validateMorphGeometry, validateMorphPose, validateMorphTransform, packMorphTargets } from './morph.js';
 
 const SHADOW_MAP_SIZE = 2048;
-const MATERIAL_TAGS = { armor: 1, floor: 2, water: 3, foliage: 4, terrain: 5, grass: 7, fire: 8, smoke: 9, unlit: 10, liquid: 11, foam: 12 };
+const MATERIAL_TAGS = { armor: 1, floor: 2, water: 3, foliage: 4, terrain: 5, grass: 7, fire: 8, smoke: 9, unlit: 10, liquid: 11, foam: 12, impostor: 13 };
 // Liquid and foam see the resolved opaque scene, so they draw in their own pass after it.
 const TRANSLUCENT_TAGS = new Set(['liquid', 'foam']);
 const DEFAULT_LIQUID = Object.freeze({ thickness: 0.5, ior: 1.33, refraction: 1, scattering: 1, foamOpacity: 0.55, foamSoftness: 1 });
 const INSTANCE_STRIDE = 41;
 // Shaders get this in place of an infinite attenuation distance, which is not a safe uniform value.
 const MAX_FINITE_DISTANCE = 3e38;
-const ALPHA_MODES = { opaque: 0, mask: 1, blend: 2 };
+const ALPHA_MODES = { opaque: 0, mask: 1, blend: 2, dither: 3 };
 const ZERO_VECTOR = Object.freeze([0, 0, 0]);
 const MATERIAL_MAPS = ['map', 'normalMap', 'metallicRoughnessMap', 'occlusionMap', 'emissiveMap'];
 const MAP_UNIFORMS = ['baseMap', 'normalMap', 'metallicRoughnessMap', 'occlusionMap', 'emissiveMap'];
@@ -55,7 +55,7 @@ function postUniformLocations(context, program) {
 
 const MAP_SHADER_FEATURES = ['baseMap', 'normalMap', 'metallicRoughnessMap', 'occlusionMap', 'emissiveMap'];
 // Tags whose look the main fragment shader draws with code that other tags never reach.
-const TAG_SHADER_FEATURES = new Set(['floor', 'water', 'foliage', 'terrain', 'grass', 'fire', 'smoke', 'unlit']);
+const TAG_SHADER_FEATURES = new Set(['floor', 'water', 'foliage', 'terrain', 'grass', 'fire', 'smoke', 'unlit', 'impostor']);
 
 function shaderFeaturesOfLighting(lighting) {
   const features = [];
@@ -187,7 +187,7 @@ function lightMapState(material) {
 
 function validateAlphaMaterial(material) {
   const alphaMode = material.alphaMode ?? 'opaque';
-  if (!Object.hasOwn(ALPHA_MODES, alphaMode)) throw new Error("alphaMode must be 'opaque', 'mask' or 'blend'.");
+  if (!Object.hasOwn(ALPHA_MODES, alphaMode)) throw new Error("alphaMode must be 'opaque', 'mask', 'blend' or 'dither'.");
   for (const field of ['alphaCutoff', 'opacity']) {
     const value = material[field] ?? 1;
     if (typeof value !== 'number' || !Number.isFinite(value) || value < 0 || value > 1) throw new Error(`${field} must be a number within zero and one.`);
@@ -199,8 +199,9 @@ function validateAlphaMaterial(material) {
 function materialAlphaState(material) {
   validateAlphaMaterial(material);
   const alphaMode = material.alphaMode ?? 'opaque';
-  const alphaCutoff = alphaMode === 'mask' ? material.alphaCutoff ?? 0.5 : 0;
-  const opacity = alphaMode === 'opaque' ? 1 : material.opacity ?? 1;
+  const alphaCutoff = alphaMode === 'mask' || alphaMode === 'dither' ? material.alphaCutoff ?? 0.5 : 0;
+  // A dither fade keeps its pixels in the incoming side's half of the pattern: opacity plus one tells the shader.
+  const opacity = alphaMode === 'opaque' ? 1 : (material.opacity ?? 1) + (alphaMode === 'dither' && material.ditherIncoming === true ? 1 : 0);
   return [alphaMode, alphaCutoff, opacity, material.doubleSided === true];
 }
 
@@ -580,7 +581,7 @@ export class Renderer67 {
     if (shadowCascades) this.shaderFeatures.add(shadowCascades.shaderFeature);
     const pending = {
       main: this.startMainProgram(),
-      depth: startProgram(this.context, depthVertexShader, depthFragmentShader),
+      depth: startProgram(this.context, createDepthVertexShader(), depthFragmentShader),
     };
     if (!benchmark) {
       pending.post = startProgram(this.context, fullscreenVertex, postFragment);
@@ -1900,12 +1901,14 @@ export class Renderer67 {
     } else {
       context.enable(context.CULL_FACE);
     }
-    const masked = batch.alphaMode === 'mask';
+    const dithered = batch.alphaMode === 'dither';
+    const masked = batch.alphaMode === 'mask' || dithered;
     if (!textured) {
       const uniforms = this.depthAlphaUniforms;
       context.uniform1f(uniforms.alphaMasked, masked ? 1 : 0);
       context.uniform1f(uniforms.alphaCutoff, batch.alphaCutoff);
-      context.uniform1f(uniforms.materialOpacity, batch.opacity);
+      // A fading level still casts its whole shadow.
+      context.uniform1f(uniforms.materialOpacity, dithered ? 1 : batch.opacity);
       context.uniform1f(uniforms.hasBaseMap, batch.mapState[0] ? 1 : 0);
       if (masked) {
         context.activeTexture(context.TEXTURE0 + 1);
@@ -1913,7 +1916,7 @@ export class Renderer67 {
       }
       return;
     }
-    const useCoverage = masked && this.samples > 1 && !this.benchmark && !this.renderingPass;
+    const useCoverage = batch.alphaMode === 'mask' && this.samples > 1 && !this.benchmark && !this.renderingPass;
     if (useCoverage) {
       context.enable(context.SAMPLE_ALPHA_TO_COVERAGE);
     } else {

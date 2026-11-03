@@ -16,6 +16,10 @@ import {
 import { computeCrownSkyVisibility } from './tree-sky.js';
 import { LEVEL_SETTINGS, SPECIES, TREE_LEVEL_DISTANCES } from './vegetation-species.js';
 import { barkTextureDescriptor, leafTextureDescriptor } from './vegetation-textures.js';
+import { selectBlendedLevels } from './vegetation-impostors.js';
+
+export { prepareImpostors, getImpostor, bakeImpostorAtlas, blendLevels } from './vegetation-impostors.js';
+const DEFAULT_FADE_BAND = 0.06;
 
 export { SPECIES };
 
@@ -741,9 +745,11 @@ function nextLevel(currentLevel, distance, thresholds, hysteresis, cullDistance)
 /**
  * Picks a level of detail per instance from its distance to `eye`. A level changes only after the
  * distance passes its threshold by `hysteresis` (a fraction), so instances at a boundary do not flicker.
+ * `fade` (a fraction, such as 0.06) cross-fades neighbouring levels with a dither; `impostors` (`true` or `{ from }`) draws the baked card from level `from` (default 3) on. Either one picks the level from the distance alone, with no hysteresis.
  * Returns `{ parts, changed, levelCounts, culled, triangles }` (`culled` counts instances past `cullDistance`); rebuild or update the renderer when `changed` is true.
  */
-export function selectLevels(instances, eye, { distanceScale = 1, hysteresis = 0.12, cullDistance = Infinity } = {}) {
+export function selectLevels(instances, eye, { distanceScale = 1, hysteresis = 0.12, cullDistance = Infinity, fade = 0, impostors = false } = {}) {
+  if (fade > 0 || impostors) return selectBlendedLevels(instances, eye, { distanceScale, fade: fade || DEFAULT_FADE_BAND, cullDistance, impostors });
   const parts = [];
   const levelCounts = [];
   let changed = false;
