@@ -240,3 +240,6 @@ body.site > main { flex: 1; width: var(--page); margin-inline: auto; padding-blo
   .site .agent-cards a:hover { background: var(--border); }
 }
 .site .site-footer p { display: flex; align-items: center; gap: 5px; }
+.site .section-heading { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 8px 20px; }
+.site .section-heading a { color: var(--muted); font-size: 15px; }
+.site .section-heading a:hover { color: var(--text); text-decoration: underline; }

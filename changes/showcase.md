@@ -1,0 +1,1 @@
+- Add a showcase page (`showcase.html`) of live scenes built from real PBR models: an airport ramp, an AI data center and a container port, each a GLB with a Poly Haven sky and credits in `public/showcase/<id>/scene.json`. The home page gallery shows these scenes instead of the older demos.

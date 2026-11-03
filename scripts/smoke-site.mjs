@@ -66,7 +66,7 @@ try {
     if (route === '/') {
       assert.equal(await page.locator('video').count(), 0, 'Homepage still embeds video');
       assert.equal(await page.locator('#downloads').count(), 1, 'Homepage install controls are missing');
-      const scenePaths = await page.locator('.gallery .example').evaluateAll(links => links.map(link => new URL(link.href).pathname));
+      const scenePaths = await page.locator('.gallery .example').evaluateAll(links => links.map(link => { const url = new URL(link.href); return url.pathname + url.search; }));
       assert.equal(new Set(scenePaths).size, scenePaths.length, 'Showcase repeats the same scene');
       await page.locator('#home-preview').scrollIntoViewIfNeeded();
       await page.waitForFunction(() => window.__homePreview?.renderer && window.__homePreview.state.visible);
