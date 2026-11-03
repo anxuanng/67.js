@@ -42,6 +42,7 @@
   "entry:camera-effects": 8600,
   "entry:water-reflection": 26580,
   "entry:render-passes": 1700,
+  "entry:gaussian-splats": 11023,
   "entry:material-layer-shaders": 21400,
   "entry:light-linking": 19720,
   "entry:cascaded-shadows": 28530,
