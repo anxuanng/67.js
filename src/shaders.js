@@ -1,4 +1,5 @@
 import { MAX_POINT_LIGHTS, MAX_SPOT_LIGHTS, MAX_AREA_LIGHTS } from './light-limits.js';
+import { addonGlsl } from './shader-registry.js';
 import { registeredFeatureCode, requireFeatureCode, registerShaderFeatureCode, registerSplatSupport, requireSplatSupport, layerTextureSupport, viewTransformShader, SPLAT_UNITS } from './shader-registry.js';
 
 export { registerShaderFeatureCode, registerSplatSupport, requireSplatSupport, layerTextureSupport, viewTransformShader, SPLAT_UNITS };
@@ -87,6 +88,7 @@ flat out mat3 boxNormalMatrix;
 ${skinningShader(features)}
 ${morphingShader(features)}
 ${windShader(features)}
+${addonGlsl.defs}
 void main() {
   // A crowd batch reads its joints and weights from the UV and colour attributes, which then carry no texture or tint.
   vec2 uv = USES_CROWD ? vec2(-1.0) : uvSets.xy;
@@ -104,7 +106,7 @@ void main() {
   vec3 localNormal = USES_MORPH ? morphedNormal(normal) : normal;
   vec3 deformedNormal = (USES_SKIN || USES_CROWD) ? transpose(inverse(mat3(deformation))) * localNormal : localNormal;
   worldNormal = normalize(instanceNormal * deformedNormal);
-  // Metres along the object's own axes, so a pattern follows a moving node and is not stretched by its scale.
+${addonGlsl.color}  // Metres along the object's own axes, so a pattern follows a moving node and is not stretched by its scale.
   boxPosition = (USES_MORPH ? morphedPosition(position) : position) * vec3(length(instanceMatrix[0].xyz), length(instanceMatrix[1].xyz), length(instanceMatrix[2].xyz));
   boxNormal = deformedNormal;
   boxNormalMatrix = instanceNormal;
@@ -141,13 +143,14 @@ out vec2 textureUV;
 ${skinningShader(features)}
 ${morphingShader(features)}
 ${windShader(features)}
+${addonGlsl.defs}
 void main() {
   vec2 uv = USES_CROWD ? vec2(-1.0) : uvSets.xy;
   vec4 world = instanceMatrix * (USES_CROWD ? crowdTransform() : skinTransform()) * vec4(morphedPosition(position), 1.0);
   world.xyz += USES_CROWD ? vec3(0.0) : assemblyOffset * assemblyAmount + assemblyDetailOffset * smoothstep(0.3, 1.0, assemblyAmount);
   // Same displacement as the colour pass, so shadows follow the swaying leaves.
   world.xyz += windOffset(position, world.xyz, uv, instanceSurface.w, time, wind);
-  textureUV = uv;
+${addonGlsl.depth}  textureUV = uv;
   gl_Position = lightProjection * world;
 }`;
 }
@@ -464,7 +467,7 @@ ${featureCode("worldMossFunction")}// Opaque draws 1, mask resolves to a cutout 
 float surfaceAlpha(float textureAlpha) {
   if (!USES_ALPHA_MODE) return 1.0;
   float alpha = materialOpacity * textureAlpha;
-  if (alphaMode > 1.5) return alpha;
+${addonGlsl.alpha}  if (alphaMode > 1.5) return alpha;
   if (alphaToCoverage > 0.5) {
     float softness = max(fwidth(alpha), 0.0001);
     alpha = clamp((alpha - alphaCutoff) / softness + 0.5, 0.0, 1.0);
