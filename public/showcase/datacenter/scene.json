@@ -326,5 +326,6 @@
       "licence": "MIT",
       "source": "https://github.com/anxuanng/67.js"
     }
-  ]
+  ],
+  "waterReflection": true
 }
