@@ -23,14 +23,18 @@ Unidirectional path tracing against the triangle BVH that the [light bake](light
 - Emission: `emission` times `emissiveColor` (the base colour when none is given) times the `emissiveMap` texel at the hit, so a screen or a sign glows with its picture and lights what is near it. An emissive surface is found by the paths that hit it, not sampled as a light, so a small bright panel is noisy at low sample counts.
 - Volume fog: `environment.volumeFog` is traced as a homogeneous medium inside its box, with its `density`, `color` (the scattering albedo), `anisotropy` (Henyey-Greenstein) and `maxDistance`. The distance to each scattering event is drawn from the exact free-flight distribution, so there is no step count and no banding. Every event is lit by next-event estimation (sun, point, spot, area lights and the sky, with shadow rays) and light reaching a surface through the fog is dimmed by it. Fog events count as bounces. `noiseAmount`, `noiseScale`, `drift`, `steps` and the `ambient` glow are rasterizer tricks and are not used.
 
+## Subsurface
+
+A part with a material `subsurface` weight above 0 sends that share of its diffuse light through a bounded random walk, after the Random Walk model of Blender's Principled BSDF (issue #283). The walk starts inward from the hit with a cosine-weighted direction, scatters isotropically with a per-channel mean free path of radius times scale in metres (one channel draws the distance and the other two are weighted by the mean density, so every channel stays unbiased), and leaves where it meets the part's own surface; there the path continues as white diffuse light with the walk's throughput, lit by every light. The colour is the block's `color`, or the base colour, mapped to a single scattering albedo with the fit Cycles uses, so a colour of 1 gives an albedo of 1 and gains no energy. A walk ends after 32 scattering events (`SUBSURFACE_WALK_STEPS`) or when it meets another part, and then its path ends. A point with no surface of its own behind it is a card: half of the colour is reflected on the near side and half is transmitted through it. The specular lobe and clear coat stay as they are, a weight of 0 takes the unchanged code path (the same samples and pixels), and the GPU tracer ignores the block until #302 packs it.
+
 ## What it does not draw
 
 `report.ignored` lists the ones this scene asks for; a render job returns it as `metrics.pathTracer.ignored`. It names occlusion maps, anisotropy, iridescence, sheen, moss, splat layers, baked `lightMap`s, tagged materials (foliage, liquid, water and the like, traced as plain surfaces), blended transparency, and the fog fields above.
 
 - The procedural sky when there is no environment map (the sky is black).
 - Occlusion maps. Normal and metallic-roughness maps are drawn on UV-mapped and on box-projected materials. Material graphs and patterns are drawn through the colour map they bake.
-- Translucent leaves (foliage looks darker than in the rasterizer), liquids, foam and blended transparency (traced as plain or opaque surfaces).
-- Lights seen in mirrors (area lights and spot lights are lit but not visible), caustics, subsurface scattering, motion blur, depth of field, bloom and colour grade.
+- Translucent leaves without a `subsurface` block (foliage looks darker than in the rasterizer), liquids, foam and blended transparency (traced as plain or opaque surfaces).
+- Lights seen in mirrors (area lights and spot lights are lit but not visible), caustics, motion blur, depth of field, bloom and colour grade.
 - Multiple-scattering GGX: rough metal is a little darker than in Blender.
 
 ## Limits

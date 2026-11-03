@@ -3,6 +3,7 @@ import { createTracer } from './ray-query.js';
 import { SUN_BIT, POINT_FIRST_BIT, SPOT_FIRST_BIT, AREA_FIRST_BIT } from './light-link-bits.js';
 import { boxProjectedGeometry, columnLengths } from './export-box-uv.js';
 import { resolveTraceVolume } from './path-tracer-volume.js';
+import { resolveTraceSubsurface } from './path-tracer-subsurface.js';
 
 // The scene a path trace reads: every part flattened into one world-space triangle soup with per-vertex normals, UVs
 // and colours, one resolved material per part, the lights in plain arrays, and the environment map as a sampling table.
@@ -95,6 +96,7 @@ function resolveMaterial(material) {
     clearcoat: material.clearcoat ?? 0,
     clearcoatRoughness: material.clearcoatRoughness ?? 0,
     transmission: material.transmission ?? 0,
+    subsurface: resolveTraceSubsurface(material.subsurface),
     ior: material.ior ?? 1.5,
     texture: resolveTexture(material.map),
     normalTexture: resolveTexture(material.normalMap),
