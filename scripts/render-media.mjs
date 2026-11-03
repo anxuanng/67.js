@@ -199,13 +199,13 @@ export async function renderMedia(values = process.argv.slice(2)) {
     }
     if (['auto', 'webcodecs'].includes(captureFormat)) {
       // The page encodes with the browser's hardware H.264 encoder and sends only the small encoded chunks. Software
-      // rendering or a CPU encoder request keeps the readback path, which feeds ffmpeg's libx264.
+      // rendering or a CPU encoder request uses screenshots, which feed ffmpeg's libx264, because raw readback is slower.
       const wantsCpu = backend === 'cpu' || options.encoder === 'cpu';
       const started = wantsCpu ? { supported: false, reason: 'A CPU render or encoder was requested.' }
         : await startVideoEncoderInPage(page, frameServer.url, { width, height, fps, quantizer: DEFAULT_PAGE_ENCODER_QUANTIZER });
       if (started.supported) captureFormat = 'webcodecs';
       else if (captureFormat === 'webcodecs') throw new Error(`Capture webcodecs is not available: ${started.reason}`);
-      else captureFormat = 'raw';
+      else captureFormat = 'jpeg';
     }
     if (captureFormat === 'raw') await installFrameReaderInPage(page, frameServer.url);
     // A raw frame is read from the drawing buffer in the same task as the draw. The round trip beyond the draw is capture.

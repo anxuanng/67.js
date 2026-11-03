@@ -55,11 +55,13 @@ test('invalid export options fail before starting resources', () => {
   ]) assert.throws(() => parseRenderOptions(args));
 });
 
-test('video defaults to JPEG 95 and auto encoding while stills retain lossless PNG', () => {
+test('video defaults to automatic capture, JPEG 95 for screenshots and auto encoding while stills retain lossless PNG', () => {
   const video = parseRenderOptions(['--kind', 'video']);
-  assert.equal(video.captureFormat, 'jpeg');
+  assert.equal(video.captureFormat, 'auto');
   assert.equal(video.jpegQuality, 95);
   assert.throws(() => parseRenderOptions(['--capture', 'raw']));
+  assert.equal(parseRenderOptions(['--kind', 'video', '--capture', 'webcodecs']).captureFormat, 'webcodecs');
+  assert.throws(() => parseRenderOptions(['--capture', 'webcodecs']));
   assert.equal(parseRenderOptions(['--kind', 'video', '--capture', 'raw']).captureFormat, 'raw');
   assert.equal(video.encoderBackend, 'auto');
   assert.equal(parseRenderOptions([]).captureFormat, 'png');

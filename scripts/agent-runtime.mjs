@@ -12,7 +12,7 @@ import { chooseDenoiser, finishWithOidn } from './agent-path-trace-denoise.mjs';
 import { createAgentAssetCatalog } from './agent-asset-catalog.mjs';
 import { createAgentRenderJobs, EXPORT_DIRECTORY_NAME } from './agent-render-jobs.mjs';
 import { createFrameEncoder } from './frame-encoder.mjs';
-import { createFrameReceiver, installFrameReaderInPage } from './gpu-frame-reader.mjs';
+import { DEFAULT_PAGE_ENCODER_QUANTIZER, createFrameReceiver, startVideoEncoderInPage } from './gpu-frame-reader.mjs';
 import { audioInputArguments, createAudioLibrary, measureStreamSeconds } from './job-audio.mjs';
 import { filmTimelineDuration, filmTimelineShotStarts, sampleFilmTimeline } from '../src/film-timeline.js';
 import { isPreviewHost } from './preview-host.mjs';
@@ -323,6 +323,7 @@ export function createAgentRuntime({ kernelWorkers = true, backend = 'gpu', brow
     let jobPage;
     let encoder;
     let frameReceiver;
+    let pageEncodes = false;
     let suspended = false;
     const sessionId = activeSessionId;
     const started = performance.now();
@@ -357,14 +358,21 @@ export function createAgentRuntime({ kernelWorkers = true, backend = 'gpu', brow
       const timeline = settings.timeline ? snapshot.recipe.timeline : undefined;
       const audio = settings.audio ? await prepareAudio(settings) : undefined;
       if (settings.kind === 'video') {
-        // Video frames are read from the drawing buffer and sent over a socket on the preview's own port (issue #301).
+        // With NVENC the page encodes each frame in the browser and sends only the H.264 chunks over a socket on the
+        // preview's own port (issue #301). Otherwise, or when the browser cannot encode this size, frames are screenshots.
         frameReceiver = createFrameReceiver({ maximumBytes: width * height * 4 });
         activeFrameReceiver = frameReceiver;
-        await installFrameReaderInPage(jobPage, `ws://127.0.0.1:${httpServer.address().port}${frameReceiver.path}`);
+        const frameSocketUrl = `ws://127.0.0.1:${httpServer.address().port}${frameReceiver.path}`;
+        if (settings.encoder === 'nvenc') {
+          const pageEncoder = await startVideoEncoderInPage(jobPage, frameSocketUrl,
+            { width, height, fps: settings.fps, quantizer: DEFAULT_PAGE_ENCODER_QUANTIZER });
+          pageEncodes = pageEncoder.supported;
+        }
         encoder = createFrameEncoder({ executable: ffmpeg, output: join(directory, 'render.mp4.partial'),
-          fps: settings.fps, format: 'rawvideo', width, height, signal, maximumFrameBytes: MAXIMUM_JOB_FRAME_BYTES, backend: settings.encoder === 'nvenc' ? 'gpu' : 'cpu',
+          fps: settings.fps, format: pageEncodes ? 'h264' : 'jpeg', width, height, signal, maximumFrameBytes: MAXIMUM_JOB_FRAME_BYTES, backend: settings.encoder === 'nvenc' ? 'gpu' : 'cpu',
           audioArguments: settings.audio ? audioInputArguments(audio.path, settings.audio.offset) : [] });
-        metrics.videoEncoder = settings.encoder === 'nvenc' ? 'h264_nvenc' : 'libx264';
+        if (pageEncodes) frameReceiver.onChunk(chunk => encoder.writeChunk(chunk));
+        metrics.videoEncoder = pageEncodes ? 'browser-h264' : settings.encoder === 'nvenc' ? 'h264_nvenc' : 'libx264';
       }
       if (timeline) metrics.shots = filmTimelineShotStarts(timeline);
       for (let frame = 0; frame < settings.frameCount; frame++) {
@@ -402,16 +410,16 @@ export function createAgentRuntime({ kernelWorkers = true, backend = 'gpu', brow
           continue;
         }
         // A video frame is read in the same task as its draw, because the browser clears the drawing buffer after presenting.
-        const rendered = await jobPage.evaluate(async ({ input, readFrame }) => {
+        const rendered = await jobPage.evaluate(async ({ input, encodeIndex }) => {
           const drawStarted = performance.now();
           const result = await window.__agentPreview.frame(input);
-          if (!readFrame) return result;
+          if (encodeIndex === null) return result;
           window.__finishDraw();
           const drawMilliseconds = performance.now() - drawStarted;
-          return { ...result, drawMilliseconds, rawFrame: await window.__readFrame() };
-        }, { input: frameInput, readFrame: settings.kind === 'video' });
+          return { ...result, drawMilliseconds, pageEncoded: await window.__encodeFrame(encodeIndex) };
+        }, { input: frameInput, encodeIndex: pageEncodes ? frame : null });
         const roundTripSeconds = (performance.now() - renderStarted) / 1000;
-        const drawSeconds = rendered.rawFrame ? rendered.drawMilliseconds / 1000 : roundTripSeconds;
+        const drawSeconds = rendered.pageEncoded ? rendered.drawMilliseconds / 1000 : roundTripSeconds;
         metrics.renderSeconds += drawSeconds;
         metrics.captureSeconds += roundTripSeconds - drawSeconds;
         if (backend === 'cpu' && !/swiftshader/i.test(rendered.graphics)) throw new Error('CPU job did not select SwiftShader.');
@@ -420,9 +428,9 @@ export function createAgentRuntime({ kernelWorkers = true, backend = 'gpu', brow
         metrics.height = height;
         metrics.estimatedBytes = rendered.estimatedBytes;
         async function captureFrameBytes() {
-          if (rendered.rawFrame) {
+          if (rendered.pageEncoded) {
             signal.throwIfAborted();
-            return frameReceiver.take({ width, height }, rendered.rawFrame);
+            return undefined;
           }
           const captureStarted = performance.now();
           const captured = await session.send('Page.captureScreenshot', { fromSurface: true,
@@ -439,7 +447,9 @@ export function createAgentRuntime({ kernelWorkers = true, backend = 'gpu', brow
           artifacts.push({ temporary: `${filename}.partial`, filename, mimeType: 'image/png' });
         }
         const bytes = await captureFrameBytes();
-        if (encoder) await encoder.writeFrame(bytes);
+        if (encoder) {
+          if (bytes) await encoder.writeFrame(bytes);
+        }
         else {
           const stem = settings.kind === 'image' ? 'render' : `frame-${frame}`;
           await writeArtifact(`${stem}.png`, bytes);
@@ -464,6 +474,7 @@ export function createAgentRuntime({ kernelWorkers = true, backend = 'gpu', brow
         await progress({ frames: frame + 1, maximumPendingFrames: 1 });
       }
       if (encoder) {
+        if (pageEncodes) await jobPage.evaluate(() => window.__finishVideoEncoder());
         metrics.encoder = await encoder.finish();
         if (audio) metrics.sync = await measureSync(join(directory, 'render.mp4.partial'));
         artifacts.push({ temporary: 'render.mp4.partial', filename: 'render.mp4', mimeType: 'video/mp4' });
