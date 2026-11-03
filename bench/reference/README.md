@@ -21,7 +21,7 @@ All of them are against the Blender 5.2.2 renders taken on 2026-11-03 with the s
 | Scene | 67js against Cycles | EEVEE against Cycles | 67js against EEVEE | Baked 67js against Cycles | Path tracer against Cycles |
 | --- | --- | --- | --- | --- | --- |
 | `brick-flat` | 0.0547 | 0.1098 | 0.0961 |  | 0.1152 |
-| `brick-graph` | 0.0982 | 0.1221 | 0.1001 |  | 0.1476 |
+| `brick-graph` | 0.0933 | 0.1221 | 0.0994 |  | 0.1476 |
 | `brick-room` | 0.5102 | 0.5020 | 0.0710 | 0.1423 | 0.2727 |
 | `brushed-film` | 0.1029 | 0.0984 | 0.0855 |  | 0.1524 |
 | `car-paint` | 0.1038 | 0.0844 | 0.0650 |  | 0.1343 |
@@ -1455,6 +1455,29 @@ The second option was tried: for alpha-mask materials only, the base map got its
 | EEVEE against Cycles | 0.0924 | 0.0924 |
 
 Worse by 0.0002 against Cycles, so the default suite and `--grand` were not run and the code was reverted. Reading (inferred): the lost coverage is at full-size edges, not at coarse mips, since the crown is seen at about one texel per pixel; keeping more coverage in the coarse levels cannot reach it. Same direction as the one mip finer attempt (0.0979 to 0.0982). Next idea: match Cycles' edge softness at level 0 (a slightly blurred alpha, or the leaf alpha edge drawn with a ramp wider than a texel) instead of changing the mips.
+
+## Graph bump slope read at a point, and where the graph excess comes from (2026-11-03, part of issue #50)
+
+Main (merged with `origin/main` of the day) on the stored Cycles and EEVEE arrays, GPU, 960 x 540. Before: `brick-graph` 0.0967 against Cycles in a fresh render (0.0982 in the committed row), `brick-flat` 0.0547, so the excess of the graph wall over the flat wall was 0.0420 (0.0435 by the committed rows) against EEVEE's 0.0120 (0.1249 against 0.1129).
+
+The split, with Blender renders of each variant too (temporary scene variants, not committed; each row is 67js against Cycles of the same variant, FLIP, lower is better; the flat wall is the average colour of the graph):
+
+| Variant | 67js | EEVEE | 67js over flat | EEVEE over flat |
+| --- | --- | --- | --- | --- |
+| flat wall | 0.0547 | 0.1129 | | |
+| colour only (bump off) | 0.0735 | 0.1194 | +0.0188 | +0.0065 |
+| bump only (flat albedo) | 0.0827 | 0.1214 | +0.0280 | +0.0085 |
+| both (`brick-graph`) | 0.0967 | 0.1249 | +0.0420 | +0.0120 |
+
+Colour is about +0.019 and bump about +0.028; the earlier split (+0.010 and +0.023) was taken when the flat wall scored 0.1999. The flat wall has since improved by more than 0.07 (ground bounce and sky terms), so a flat wall that matches Cycles almost exactly leaves the graph's detail error fully visible, while EEVEE's flat wall is already 0.113 away from Cycles (luminance 0.559 against 0.616 on the plain wall) and FLIP does not add detail error on top of a brightness offset one for one. Part of the gap is the metric: the excess moved from 0.0254 to 0.042 because the flat wall got better, not because the graph got worse.
+
+Parity of the Blender material with the graph, checked line by line: Bump node Distance 0.15 times `graphBump`, strength 1, not inverted, height into Bump (not Displacement), normal into the Principled Normal; Colour Ramp linear with linear stop colours; the bake writes `linearToSrgbByte` and the map is sampled as sRGB, so mix and ramp are evaluated linearly on both sides; the UVs agree (v flipped in the mesh, undone in the translator). The slope is bump / 32 per UV unit in the bake and `0.15 * bump` per world unit in Blender, which is 0.8 and 1.2 of it along U and V on the 6 by 4 wall and was measured to be worth about 0.0003 earlier. No mismatch in the export, so the Blender side and its renders are unchanged.
+
+The mismatch that is in the compiler: the bake read the slope by a central difference over two baked texels, so a joint edge a texel thin became three texels wide, and the bands of a bevel were wider than Blender's, whose Bump node reads a footprint of 0.1 pixel. `bakeMaterialGraph` now evaluates the height function half a texel either side of each texel centre (`normalMapFromHeightFunction`), with the same slope scale per UV unit. Step in texels against 67js GPU, FLIP of `brick-graph` against Cycles (against EEVEE): 2 texels 0.1060 (0.0978), 1 texel (the old bake) 0.0967 (0.0973), 0.5 texel 0.0933 (0.0994), 0.25 texel 0.0931 (0.1010). The half texel is kept: the quarter texel gains 0.0002 and moves the render further from EEVEE.
+
+After the change: `brick-graph` 0.0933 (GPU) and 0.0930 (CPU) against Cycles, 0.0994 against EEVEE; `brick-flat` 0.0547. Excess over the flat wall 0.0386, was 0.0420 on the same renders, against EEVEE's 0.0120, so the first Done-when box of #50 stays open (gap 0.0266). Only `brick-graph` reads a graph. The full default run and the `--grand` run scored every other scene within 0.002 of main or better (`mountain-valley` 0.1769 to 0.1693 and the grand mountain-valley rows improved from other work on main; none is worse). The bundle budgets of the three `agent-scene` and `agent-asset` lazy entries were raised to the measured size plus 20 bytes (3 lines of `bench/size/budgets.json`). `emissive-sign` (new on main) had no Cycles render in the stored arrays and was rendered here to complete the run (0.2372 against Cycles); its row is not committed in this change.
+
+What is left is not in the bake. On the bump-only wall across the dark side of a joint, luminance (display space) is 0.25 at the darkest pixel in Cycles, 0.34 in EEVEE and 0.37 in 67js, against 0.62 on the flat wall: EEVEE and 67js agree with each other and Cycles is darker. That is a shading difference on a normal tilted about 70 degrees from the surface, in the lighting of `src/shaders.js`, which this change does not touch; it needs the engine session.
 
 ## Named looks for the grand scenes (2026-11-03, part of issue #168)
 

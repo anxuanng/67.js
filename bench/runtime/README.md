@@ -23,43 +23,43 @@ CI does not run this suite. It needs Chrome and a GPU, and `tests/runtime-report
 
 ## Result
 
-Measured on 2026-11-03 at 960 by 540 with 4 MSAA samples, against three.js 0.186.1, after the issue 74 changes. The GPU was between 5 and 95 percent busy before the runs (`gpuBusyBefore` in `report.json`; 8 percent before the first scene), so the RTX 3060 numbers are noisy. A ratio above 1 means that 67js costs more.
+Measured on 2026-11-03 at 960 by 540 with 4 MSAA samples, against three.js 0.187.0 (0.186.1 before), after the issue 74 changes. The GPU was shared with other jobs during this run (`gpuBusyBefore` in `report.json`), and the RTX 3060 rows are about twice the earlier 0.186.1 run for both engines (three.js `many-materials` took 1.6 ms before and 7.0 ms now), so treat them as noise and compare the SwiftShader table. A ratio above 1 means that 67js costs more.
 
 **Full frame on SwiftShader, in milliseconds.** This is the path that a headless agent uses.
 
 | Scene | 67js | three.js | Ratio |
 | --- | --- | --- | --- |
-| `instanced-objects` | 101 | 34 (instanced 43) | 3.0 |
-| `many-materials` | 524 | 193 | 2.7 |
-| `many-lights` | 367 | 144 | 2.6 |
-| `transparency` | 329 | 67 | 4.9 |
-| `moving-shadows` | 73 | 28 | 2.6 |
-| `large-mesh` | 443 | 172 | 2.6 |
-| `skinned-characters` | 177 | 45 | 3.9 |
+| `instanced-objects` | 160 | 44 (instanced 44) | 3.6 |
+| `many-materials` | 559 | 190 | 2.9 |
+| `many-lights` | 388 | 143 | 2.7 |
+| `transparency` | 287 | 65 | 4.4 |
+| `moving-shadows` | 71 | 21 | 3.4 |
+| `large-mesh` | 529 | 221 | 2.4 |
+| `skinned-characters` | 164 | 43 | 3.8 |
 
 **Full frame on an RTX 3060, in milliseconds.** Other jobs shared the GPU during parts of this run, so these numbers are noisy.
 
 | Scene | 67js | three.js | Ratio |
 | --- | --- | --- | --- |
-| `instanced-objects` | 0.84 | 2.36 (instanced 0.27) | 0.4 |
-| `many-materials` | 2.32 | 1.62 | 1.4 |
-| `many-lights` | 1.41 | 0.85 | 1.7 |
-| `transparency` | 0.97 | 0.74 | 1.3 |
-| `moving-shadows` | 0.85 | 1.16 | 0.7 |
-| `large-mesh` | 2.38 | 0.37 | 6.4 |
-| `skinned-characters` | 4.02 | 1.99 | 2.0 |
+| `instanced-objects` | 0.88 | 2.34 (instanced 0.28) | 0.4 |
+| `many-materials` | 3.77 | 6.96 | 0.5 |
+| `many-lights` | 2.95 | 2.01 | 1.5 |
+| `transparency` | 2.33 | 1.88 | 1.2 |
+| `moving-shadows` | 1.74 | 2.30 | 0.8 |
+| `large-mesh` | 3.42 | 1.10 | 3.1 |
+| `skinned-characters` | 8.23 | 3.94 | 2.1 |
 
 **First frame on an RTX 3060, in milliseconds.** Each run has an empty browser profile, so no shader cache helps either engine.
 
 | Scene | 67js | three.js | Ratio |
 | --- | --- | --- | --- |
-| `instanced-objects` | 257 | 85 | 3.0 |
-| `many-materials` | 233 | 109 | 2.1 |
-| `many-lights` | 230 | 123 | 1.9 |
-| `transparency` | 225 | 132 | 1.7 |
-| `moving-shadows` | 259 | 119 | 2.2 |
-| `large-mesh` | 394 | 246 | 1.6 |
-| `skinned-characters` | 310 | 289 | 1.1 |
+| `instanced-objects` | 259 | 112 (instanced 427) | 2.3 |
+| `many-materials` | 447 | 184 | 2.4 |
+| `many-lights` | 381 | 203 | 1.9 |
+| `transparency` | 347 | 159 | 2.2 |
+| `moving-shadows` | 492 | 97 | 5.1 |
+| `large-mesh` | 666 | 627 | 1.1 |
+| `skinned-characters` | 681 | 457 | 1.5 |
 
 ## GPU memory per render target
 
@@ -70,7 +70,7 @@ Each 67js result in `report.json` lists its render targets (`renderTargets`: nam
 **three.js wins:**
 
 - Full frames on SwiftShader, in every scene.
-- Full frames on the RTX 3060, in 5 of 7 scenes. 67js is faster than three.js with separate meshes in `instanced-objects` and `moving-shadows`, but an `InstancedMesh` beats 67js in `instanced-objects` by 3.1 times.
+- Full frames on the RTX 3060, in 4 of 7 scenes (`many-lights`, `transparency`, `large-mesh`, `skinned-characters`); the loaded GPU put `many-materials` the other way. 67js is faster than three.js with separate meshes in `instanced-objects` and `moving-shadows`, but an `InstancedMesh` beats 67js in `instanced-objects` by 3.1 times.
 - The first frame, in every scene.
 - GPU memory that WebGL calls show, in every scene. 67js allocates about 44 MB for its render targets (it was 46 MB): 16 MB shadow map, 15.8 MB multisampled colour, 7.9 MB multisampled depth and 4 MB resolved colour at this size. A scene with no shadow casters allocates a one texel shadow map instead of 16 MB, and bloom, ambient occlusion, cascades and the point light atlas allocate only when used. The benchmark scenes all cast shadows. three.js shows 0 to 32 MB because its targets live in the canvas, which the counter leaves out.
 - Fewer triangles when objects are off camera, because it culls them. 67js draws all of them (issue 37).
@@ -90,12 +90,12 @@ FLIP between the two engines, where 0 means identical.
 | Scene | FLIP |
 | --- | --- |
 | `large-mesh` | 0.027 |
-| `instanced-objects` | 0.047 |
-| `moving-shadows` | 0.090 |
-| `skinned-characters` | 0.102 |
-| `transparency` | 0.129 |
-| `many-lights` | 0.132 |
-| `many-materials` | 0.241 |
+| `instanced-objects` | 0.048 |
+| `moving-shadows` | 0.072 |
+| `skinned-characters` | 0.107 |
+| `transparency` | 0.131 |
+| `many-lights` | 0.133 |
+| `many-materials` | 0.269 |
 
 Both engines use the same geometry, lights and tone curve, so these are small differences. `many-materials` is the largest, because half of its spheres are metal and three.js has only an ambient light, with nothing for metal to reflect. 67js reflects a constant environment map, so it is the one that has reflections.
 

@@ -1,4 +1,4 @@
-import { viewTransformShader } from './shaders.js';
+import { viewTransformShader } from './shader-registry.js';
 import { AGX_CONSTANTS, NEUTRAL_CONSTANTS, namedLook } from './view-transform.js';
 import { VIEW_TRANSFORM_NAMES } from './view-transform-names.js';
 

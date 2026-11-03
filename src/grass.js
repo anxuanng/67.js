@@ -3,6 +3,7 @@
 // and lean, rounded normals, a dark base fading to a bright tip, dry patches, and tiles whose level of detail
 // keeps a stable subset of the same blades. Wind lives in the vertex shader (`grass` tag).
 
+import './world-material-shader.js';
 import {
   FULL_TURN, WORLD_UP, clamp, createMeshBuilder, createRandom, crossProduct, lerp, lerpVectors, normalized, valueNoise,
 } from './vegetation-geometry.js';

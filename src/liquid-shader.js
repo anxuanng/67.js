@@ -1,5 +1,5 @@
 import { environmentLookupGlsl } from './environment-shading.js';
-import { registerShaderFeatureCode } from './shaders.js';
+import { registerShaderFeatureCode } from './shader-registry.js';
 import { drawLiquidPass } from './liquid-renderer.js';
 
 // Importing this module registers the liquid and foam shader. A renderer with a transmissive, liquid or foam part

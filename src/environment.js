@@ -2,6 +2,7 @@
 // Convention: image row 0 is straight up, the image centre looks toward -Z, and
 // `rotation` turns the environment about +Y in radians.
 
+import { registerShaderFeatureCode } from './shader-registry.js';
 import { equirectangularGlsl, environmentLookupGlsl, environmentShadingGlsl, registerEnvironmentSupport } from './environment-shading.js';
 
 export const ENVIRONMENT_ROUGHNESS_LEVELS = 7;
@@ -345,6 +346,8 @@ export function createEnvironmentResources(context, map, { compileProgram, fulls
 }
 
 export { environmentLookupGlsl, environmentShadingGlsl };
+
+registerShaderFeatureCode('environmentMap', { environmentShading: environmentLookupGlsl + environmentShadingGlsl });
 
 registerEnvironmentSupport({
   assertMap: assertEnvironmentMap,
