@@ -1,0 +1,1 @@
+- Water reflection draws its picture at three quarters of the canvas instead of half and blurs it less, so a river between towers keeps the sharp window bands Cycles mirrors: `megacity-dusk-a` 0.2072 to 0.1999 (no reflection 0.2084), `megacity-dusk-b` 0.1459 to 0.1242, `mountain-valley-a` 0.1946 to 0.1924 against Cycles on the current main (#195).
