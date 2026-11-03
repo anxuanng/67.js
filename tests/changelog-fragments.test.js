@@ -18,7 +18,7 @@ async function withFragments(files, check) {
 }
 
 test('fragments are read in name order, skipping the README and empty files', async () => {
-  await withFragments({ 'b.md': '- B.\n', 'a.md': '\n- A.\n\n', 'README.md': 'Format.', 'empty.md': '\n' }, async (folder) => {
+  await withFragments({ 'b.md': '- B.\n', 'a.md': '\n- A.\n\n', 'README.md': 'Format.', 'empty.md': '\n', '337.size.md': '- entry:core: why' }, async (folder) => {
     const fragments = await readFragments(folder);
     assert.deepEqual(fragments.map((fragment) => fragment.name), ['a.md', 'b.md']);
   });
