@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mat4, vec4 } from 'gl-matrix';
-import { exceedsFarToNearLimit, installReversedDepth, reverseProjectionDepth } from '../src/reversed-depth.js';
-import { hasFarOverlap } from '../src/coplanar-overlap.js';
+import { exceedsFarToNearLimit, hasFarOverlap, installReversedDepth, reverseProjectionDepth } from '../src/reversed-depth.js';
+
 
 function depthAt(projection, eyeDistance) {
   const clip = vec4.transformMat4(vec4.create(), [0, 0, -eyeDistance, 1], projection);

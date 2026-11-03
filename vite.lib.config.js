@@ -55,6 +55,7 @@ export default defineConfig({
         'render-passes': 'src/render-passes.js',
         'line-art': 'src/line-art.js',
         'coplanar-overlap': 'src/coplanar-overlap.js',
+        'reversed-depth': 'src/reversed-depth.js',
         'material-layer-shaders': 'src/material-layer-shaders.js',
         'view-transform-shader': 'src/view-transform-shader.js',
         'view-transform': 'src/view-transform.js',

@@ -7,6 +7,7 @@
 // FAR_TO_NEAR_LIMIT or `renderer.requestReversedDepth()` is called (the coplanar check does, for a flush pair far from the eye).
 // Switching on reallocates the frame targets once, at the start of a frame.
 import { mat4 } from 'gl-matrix';
+import { installCoplanarDiagnostics } from './coplanar-overlap.js';
 import { compileProgram, fullscreenVertex } from './gl-program.js';
 
 export const FAR_TO_NEAR_LIMIT = 1e4;
@@ -218,4 +219,30 @@ export function installReversedDepth(renderer, mode = 'auto') {
   };
   if (requested) enable();
   return renderer;
+}
+
+// A 24-bit depth buffer with a 0.1 near plane cannot tell a 1 mm gap apart much beyond this many units from the eye.
+export const REVERSED_DEPTH_PAIR_DISTANCE = 40;
+
+/** Whether the smaller part of any coplanar pair is farther from the eye (the view matrix) than the distance limit. */
+export function hasFarOverlap(overlaps, view, distanceLimit = REVERSED_DEPTH_PAIR_DISTANCE) {
+  if (!view) return false;
+  return overlaps.some(({ smaller }) => {
+    const [x, y, z] = smaller.matrix.slice(12, 15);
+    const viewX = view[0] * x + view[4] * y + view[8] * z + view[12];
+    const viewY = view[1] * x + view[5] * y + view[9] * z + view[13];
+    const viewZ = view[2] * x + view[6] * y + view[10] * z + view[14];
+    return Math.hypot(viewX, viewY, viewZ) > distanceLimit;
+  });
+}
+
+/**
+ * The coplanar-overlap warning (coplanar-overlap.js) together with reversed-Z: `reversedDepth` is `true`, `false` or `'auto'`, which
+ * also switches it on when the coplanar check finds a flush pair far from the eye, besides the far / near rule.
+ */
+export function installDepthPrecision(renderer, { reversedDepth = 'auto' } = {}) {
+  installReversedDepth(renderer, reversedDepth);
+  return installCoplanarDiagnostics(renderer, overlaps => {
+    if (hasFarOverlap(overlaps, renderer.view)) renderer.requestReversedDepth?.();
+  });
 }
