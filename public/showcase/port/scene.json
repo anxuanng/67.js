@@ -32,7 +32,7 @@
   "credits": [
     { "model": "Gantry Crane (yard cranes, decimated and repainted)", "author": "alanUscanga", "licence": "CC BY 4.0", "source": "https://sketchfab.com/3d-models/76119b46c26f436ba78f4b53c98fc935" },
     { "model": "[XYZ] KR Scania R_Draft (terminal tractors and wheels, repainted)", "author": "radzig541", "licence": "CC BY", "source": "https://sketchfab.com/3d-models/c46e8ee246aa4863a2cf602cddf1bfeb" },
-    { "model": "Ship, quay cranes, containers, quay, road and harbour craft", "author": "codepawl (built in Blender for this scene)", "licence": "CC0", "source": "https://67js.codepawl.com" },
+    { "model": "Ship, quay cranes, containers, quay, road and harbour craft", "author": "CodePawl", "licence": "MIT", "source": "https://github.com/anxuanng/67.js" },
     { "model": "concrete_floor_worn_001 (ground and quay textures)", "author": "Poly Haven", "licence": "CC0", "source": "https://polyhaven.com/a/concrete_floor_worn_001" },
     { "model": "asphalt_02 (road texture)", "author": "Poly Haven", "licence": "CC0", "source": "https://polyhaven.com/a/asphalt_02" },
     { "model": "rusty_painted_metal, rust_coarse_01, blue_metal_plate, metal_grate_rusty, rusty_metal_03, metal_plate_02, container_side (baked into container, hull and paint textures)", "author": "Poly Haven", "licence": "CC0", "source": "https://polyhaven.com/textures" },

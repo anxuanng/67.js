@@ -96,7 +96,7 @@ async function selectScene(id) {
     blurb.textContent = description.blurb;
     showCredits(description.credits);
     const [asset, map] = await Promise.all([
-      loadGltf(description.glb),
+      loadGltf(description.glb, description.gltfOptions ?? {}),
       loadHdri(description.hdri, description.hdriOptions ?? {}),
     ]);
     if (request !== loadingRequest) return;

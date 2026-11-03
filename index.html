@@ -10,8 +10,8 @@
     <meta property="og:title" content="67js · a 3D engine agents can drive" />
     <meta property="og:description" content="WebGL2 rendering, deterministic animation and an MCP server in one npm package." />
     <meta property="og:url" content="https://67js.codepawl.com/" />
-    <meta property="og:image" content="https://67js.codepawl.com/previews/wall-e.png" />
-    <meta property="og:image:alt" content="WALL·E rendered by 67js" />
+    <meta property="og:image" content="https://67js.codepawl.com/previews/showcase-airport.webp" />
+    <meta property="og:image:alt" content="An airport ramp rendered by 67js" />
     <meta name="twitter:card" content="summary_large_image" />
     <link rel="canonical" href="https://67js.codepawl.com/" />
     <title>67js · a 3D engine agents can drive</title>
@@ -52,14 +52,10 @@
           </div>
         </header>
 
-        <section class="feature-showcase live-showcase" aria-label="Interactive 3D preview">
-          <canvas id="home-preview" tabindex="0" aria-label="WALL·E 3D model. Drag or use arrow keys to rotate. Use plus and minus to zoom. Press Space to pause or resume animation."></canvas>
-          <p id="home-preview-status" role="status">Loading 3D preview…</p>
-          <div class="preview-assembly">
-            <div class="preview-assembly-label"><label for="preview-assembly">Take it apart</label><output id="preview-assembly-value" for="preview-assembly">Assembled</output></div>
-            <input id="preview-assembly" type="range" min="0" max="100" step="1" value="0" aria-valuetext="Assembled" />
-          </div>
-        </section>
+        <a class="hero-shot" href="./showcase.html?scene=airport" aria-label="Open the airport ramp as a live 3D scene">
+          <img src="./previews/showcase-airport.webp" alt="An airport ramp with a 787 at its stand and the turnaround crew, rendered by 67js" width="1280" height="720" fetchpriority="high" />
+          <span class="hero-shot-label">Open the live scene</span>
+        </a>
       </section>
 
       <section id="code" class="code-section" aria-labelledby="code-title">
@@ -67,22 +63,22 @@
           <h2 id="code-title">A scene in a few lines</h2>
           <div class="code-block">
             <pre><code id="home-code">import { Renderer67 } from '67js';
-import { createModel } from '67js/addons/model';
+import { loadGltf } from '67js/addons/gltf';
+import { loadHdri } from '67js/addons/hdri';
 
-const renderer = new Renderer67(canvas, createModel(), {
-  samples: 4,
-  memoryBudgetMiB: 256,
+const { parts } = await loadGltf('/airport.glb');
+const map = await loadHdri('/sky.hdr');
+const renderer = new Renderer67(canvas, parts, {
+  hdr: true,
+  ground: false,
+  environment: { map },
 });
 
-renderer.render({
-  eye: [4, 3, 7],
-  target: [0, 1.5, 0],
-  assemblyAmount: 0.5,
-});</code></pre>
+renderer.render({ eye: [58, 31, 84], target: [-8, 3, -18] });</code></pre>
             <button data-copy-code="home-code" aria-label="Copy the code example">Copy</button>
           </div>
         </div>
-        <img class="code-result" src="./previews/wall-e-exploded.webp" alt="WALL·E pulled apart into its 574 parts, rendered by the code on the left" width="1280" height="720" loading="lazy" />
+        <img class="code-result" src="./previews/showcase-datacenter.webp" alt="A cutaway AI data center hall rendered by 67js from a GLB and an HDRI" width="1280" height="720" loading="lazy" />
       </section>
 
       <section id="examples" class="examples" aria-labelledby="examples-title">

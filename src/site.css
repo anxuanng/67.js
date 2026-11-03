@@ -243,3 +243,9 @@ body.site > main { flex: 1; width: var(--page); margin-inline: auto; padding-blo
 .site .section-heading { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 8px 20px; }
 .site .section-heading a { color: var(--muted); font-size: 15px; }
 .site .section-heading a:hover { color: var(--text); text-decoration: underline; }
+/* The hero shows a still of a showcase scene; it opens the live scene. */
+.site .hero-shot { position: relative; display: block; min-width: 0; overflow: hidden; border-radius: var(--panel-radius); background: var(--surface); box-shadow: var(--shot-shadow); }
+.site .hero-shot img { display: block; width: 100%; height: auto; aspect-ratio: 16 / 9; object-fit: cover; transition: transform .4s cubic-bezier(.2, 0, 0, 1); }
+.site .hero-shot:hover img { transform: scale(1.02); }
+.site .hero-shot-label { position: absolute; left: 14px; bottom: 14px; padding: 6px 12px; border-radius: 999px; background: color-mix(in srgb, var(--window) 88%, transparent); color: var(--text); font-size: 14px; font-weight: 500; backdrop-filter: blur(8px); }
+@media (prefers-reduced-motion: reduce) { .site .hero-shot:hover img { transform: none; } }
