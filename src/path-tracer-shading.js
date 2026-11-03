@@ -196,6 +196,9 @@ export function createSurface() {
     sampledCoat: false,
     coatAlpha: MINIMUM_ALPHA,
     diffuseChance: 1,
+    // The diffuse light a part with subsurface sends through its random walk instead, and the Fresnel share it keeps.
+    subsurfaceChance: 0,
+    diffuseShare: 1,
     specularChance: 0,
     // Outputs of evaluate().
     value: new Float64Array(3),
@@ -248,8 +251,31 @@ export function prepareSurface(surface, material, metallic, roughness, baseColor
   const coatChance = surface.coatWeight;
   const sum = diffuseLuminance + specularChance + coatChance;
   surface.diffuseChance = sum > 0 ? diffuseLuminance / sum : 1;
+  surface.subsurfaceChance = 0;
+  surface.diffuseShare = diffuseShare;
   surface.specularChance = sum > 0 ? specularChance / sum : 0;
   surface.coatChance = sum > 0 ? coatChance / sum : 0;
+}
+
+/**
+ * Moves `weight` of the diffuse lobe to the subsurface walk: the surface keeps the rest of the diffuse light, all of the
+ * specular and the coat, and `subsurfaceChance` is the chance of taking the walk, drawn before sampleSurface().
+ */
+export function splitSubsurface(surface, weight) {
+  surface.subsurfaceChance = surface.diffuseChance * weight;
+  surface.diffuseChance -= surface.subsurfaceChance;
+  for (let channel = 0; channel < 3; channel++) surface.diffuseColor[channel] *= 1 - weight;
+}
+
+/** A white Lambertian surface facing `normal`: where a subsurface walk leaves, the walk's throughput carries the colour. */
+export function setWhiteDiffuse(surface, normal) {
+  buildFrame(normal, surface.frame);
+  surface.diffuseColor.fill(1);
+  surface.diffuseChance = 1;
+  surface.subsurfaceChance = 0;
+  surface.specularChance = 0;
+  surface.coatChance = 0;
+  surface.coatWeight = 0;
 }
 
 function microfacetTerm(alpha, viewCosine, lightCosine, halfCosine) {
