@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createEnvironmentMap, computeIrradianceCoefficients, evaluateIrradiance, estimateEnvironmentBytes, environmentSpecularLayout, ENVIRONMENT_BRDF_SIZE } from '../src/environment.js';
+import { createEnvironmentMap, computeIrradianceCoefficients, evaluateIrradiance, estimateEnvironmentBytes, environmentSpecularLayout, ENVIRONMENT_BRDF_SIZE, environmentShadingGlsl } from '../src/environment.js';
 import { parseRadianceHdr, loadHdri } from '../src/hdri.js';
 
 function filledMap(width, height, fillPixel, extra = {}) {
@@ -119,4 +119,9 @@ test('environment memory accounting counts the half-float chain and the BRDF loo
   const small = createEnvironmentMap({ width: 16, height: 8, data: new Float32Array(16 * 8 * 3) });
   assert.equal(environmentSpecularLayout(small).levelCount, 5);
   assert.throws(() => estimateEnvironmentBytes({ ...small, data: new Float32Array(3) }, 4096), /data length/);
+});
+
+test('environment specular adds the energy a rough surface scatters a second time', () => {
+  assert.match(environmentShadingGlsl, /missingEnergy/);
+  assert.match(environmentShadingGlsl, /singleScatter \/ \(1\.0 - missingEnergy \* averageFresnel\)/);
 });
