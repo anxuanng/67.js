@@ -190,6 +190,17 @@ def add_thin_film(principled, description):
     principled.inputs["Thin Film IOR"].default_value = description.get("iridescenceIor", 1.3)
 
 
+def add_subsurface(principled, description):
+    """Maps the 67js subsurface block onto the Principled BSDF subsurface inputs (random walk). Blender 4 and later takes the base color as the scatter color."""
+    block = description.get("subsurface")
+    if not block or block.get("weight", 0) <= 0:
+        return
+    principled.subsurface_method = "RANDOM_WALK"
+    principled.inputs["Subsurface Weight"].default_value = block["weight"]
+    principled.inputs["Subsurface Radius"].default_value = block.get("radius", [1, 0.2, 0.1])
+    principled.inputs["Subsurface Scale"].default_value = block.get("scale", 0.05)
+
+
 def add_material_layers(material, principled, description):
     """Maps the 67js material layers onto the Principled BSDF inputs of the same meaning."""
     principled.inputs["Coat Weight"].default_value = description.get("clearcoat", 0)
@@ -206,6 +217,7 @@ def add_material_layers(material, principled, description):
     set_linear_color(principled.inputs["Specular Tint"], description.get("specularColor", [1, 1, 1]))
     add_anisotropy(principled, description)
     add_thin_film(principled, description)
+    add_subsurface(principled, description)
     attenuation_distance = description.get("attenuationDistance")
     if attenuation_distance:
         absorption = material.node_tree.nodes.new("ShaderNodeVolumeAbsorption")
