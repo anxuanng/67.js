@@ -118,11 +118,11 @@ test('lights beyond the renderer limits are skipped, each with a warning', async
   lights.push({ type: 'directional' }, { type: 'directional', name: 'Second sun' }, { type: 'spot', spot: { innerConeAngle: 1, outerConeAngle: 0.5 } });
   const asset = await parseGltf(triangleDocument(document => addLights(document, lights)));
   assert.equal(asset.lights.pointLights.length, MAX_POINT_LIGHTS);
-  assert.equal(asset.warnings.filter(warning => /at most 8 point lights/.test(warning)).length, 2);
+  assert.equal(asset.warnings.filter(warning => warning.includes(`at most ${MAX_POINT_LIGHTS} point lights`)).length, 2);
   assert.equal(asset.warnings.filter(warning => /Second sun/.test(warning)).length, 1);
   assert.equal(asset.warnings.filter(warning => /cone angles are invalid/.test(warning)).length, 1);
   assert.equal(asset.lights.spotLights.length, MAX_SPOT_LIGHTS);
-  assert.equal(asset.warnings.filter(warning => /at most 8 spot lights/.test(warning)).length, 1);
+  assert.equal(asset.warnings.filter(warning => warning.includes(`at most ${MAX_SPOT_LIGHTS} spot lights`)).length, 1);
 });
 
 test('a file without lights returns an empty lights object', async () => {
