@@ -1479,6 +1479,22 @@ After the change: `brick-graph` 0.0933 (GPU) and 0.0930 (CPU) against Cycles, 0.
 
 What is left is not in the bake. On the bump-only wall across the dark side of a joint, luminance (display space) is 0.25 at the darkest pixel in Cycles, 0.34 in EEVEE and 0.37 in 67js, against 0.62 on the flat wall: EEVEE and 67js agree with each other and Cycles is darker. That is a shading difference on a normal tilted about 70 degrees from the surface, in the lighting of `src/shaders.js`, which this change does not touch; it needs the engine session.
 
+## The sky share of a tilted normal, squared (2026-11-04, part of issue #50, SwiftShader 960 x 540)
+
+Rendered on SwiftShader (`run.mjs --no-gpu --skip-blender --skip-cpu --scene brick-graph,brick-flat`, no GPU) and scored by FLIP against the stored Cycles and EEVEE arrays (`brick-graph` and `brick-flat` rows reproduce the committed 0.0933 and 0.0547 to within 0.0004). Only `brick-graph` has a normal map in the suite, so the change cannot move any other scene (the line is behind `USES_NORMAL_MAP`); `brick-flat` was rendered again and stayed 0.0543. Wall pixels are rows 110 to 430, columns 230 to 730, display luminance.
+
+| Variant of the horizon share `h = 0.5 + 0.5 * dot(mapped, geometric)` | `brick-graph` against Cycles | darkest pixel | 1st percentile | mean |
+| --- | --- | --- | --- | --- |
+| Cycles | | 0.218 | 0.253 | 0.5495 |
+| EEVEE (0.1249 against Cycles) | | 0.218 | 0.266 | 0.5199 |
+| `h` (before) | 0.0930 | 0.289 | 0.326 | 0.5591 |
+| `h^1.5` | 0.0893 | 0.252 | 0.283 | 0.5521 |
+| `h^2` (kept) | 0.0866 | 0.210 | 0.240 | 0.5459 |
+| `h^3` | 0.0884 | 0.144 | 0.170 | 0.5355 |
+| `h^2`, and the shadow lookup with the geometric normal | 0.0909 | 0.210 | 0.240 | 0.5493 |
+
+Excess over the flat wall (0.0543): 0.0387 before, 0.0323 after, against EEVEE's 0.0120, so the first Done-when box of #50 stays open. The dark side moves from 0.289 to 0.210 where Cycles has 0.218, and the wall mean from 0.5591 to 0.5459 (Cycles 0.5495). The shadow lookup with the geometric normal made it worse and was not kept. The change is one line of `src/shaders.js`; `scene:lit-box` grows 16 bytes gzip (50127 to 50143, over the 50,000 goal already on main by 127).
+
 ## Named looks for the grand scenes (2026-11-03, part of issue #168)
 
 `look-options.js` holds a second round of options for the three grand scenes, each a named variant: `node bench/reference/run.mjs --option mountain-valley:dawn` (several separated by commas) draws it with the GPU only into `artifacts/reference-look/<scene>-<option>-gpu.png`, with no Blender, no score and no baseline change. Sheets: `uv run --no-project --with pillow python -I bench/reference/look-sheets.py artifacts/reference-look artifacts/look-168` copies each frame to `artifacts/look-168/<scene>/<option>.png` and writes one contact sheet per scene. The default scenes and the letters of `grand-scenes.js` are unchanged. Blender would get the same geometry and materials: ground cover is vertex colour, facades are material graphs (Emission through the graph), halls use Emission panels and volume fog. An picks; no option is claimed to match anyone's taste.
