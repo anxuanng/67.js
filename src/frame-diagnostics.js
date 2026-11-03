@@ -7,6 +7,10 @@ import { resolveShadowLight } from './shadow-light.js';
 const SHADOW_DISAGREEMENT_DEGREES = 10;
 const NO_DIAGNOSTICS = Object.freeze([]);
 
+function warning(kind, target, message, fix) {
+  return { kind, severity: 'warning', target, message, fix };
+}
+
 function angleBetweenDegrees(first, second) {
   const dot = first[0] * second[0] + first[1] * second[1] + first[2] * second[2];
   const lengths = Math.hypot(...first) * Math.hypot(...second);
@@ -19,21 +23,17 @@ function shadowDirectionProblem(world, lightDirection, shadowBounds) {
   const towardShadowEye = light.eye.map((value, axis) => value - light.target[axis]);
   const degrees = angleBetweenDegrees(towardShadowEye, lightDirection);
   if (degrees < SHADOW_DISAGREEMENT_DEGREES) return null;
-  return {
-    kind: 'shadow-light-direction-mismatch', severity: 'warning', target: 'shadowBounds.eye',
-    message: `shadowBounds.eye points ${Math.round(degrees)} degrees away from environment.lightDirection. The eye decides where shadows fall; lightDirection only moves the shading.`,
-    fix: 'Remove shadowBounds.eye so the shadow follows lightDirection, or set lightDirection to the direction from shadowBounds.target to shadowBounds.eye.',
-  };
+  return warning('shadow-light-direction-mismatch', 'shadowBounds.eye',
+    `shadowBounds.eye is ${Math.round(degrees)} degrees off lightDirection; the eye sets the shadow direction.`,
+    'Drop shadowBounds.eye, or point lightDirection from shadowBounds.target to it.');
 }
 
 export function frameDiagnostics({ world, depth, effects, lightDirection, shadowBounds }) {
   const problems = [];
   if (effects.ambientOcclusion > 0 && !depth) {
-    problems.push({
-      kind: 'ambient-occlusion-without-depth', severity: 'warning', target: 'effects.ambientOcclusion',
-      message: `effects.ambientOcclusion is ${effects.ambientOcclusion} but the renderer was built without depth, so the occlusion pass is skipped.`,
-      fix: 'Construct the renderer with depth: true, or set effects.ambientOcclusion to 0.',
-    });
+    problems.push(warning('ambient-occlusion-without-depth', 'effects.ambientOcclusion',
+      `ambientOcclusion is ${effects.ambientOcclusion} but the renderer has no depth, so the pass is skipped.`,
+      'Build the renderer with depth: true, or set ambientOcclusion to 0.'));
   }
   if (shadowBounds?.eye && lightDirection) {
     const problem = shadowDirectionProblem(world, lightDirection, shadowBounds);
