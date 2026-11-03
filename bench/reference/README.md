@@ -691,6 +691,27 @@ No engine change came out of this. Method: the stored Cycles array of `foliage` 
 
 Open: a sun-only Cycles render (world light 0, as #191 made) is needed to say whether Cycles shadows these leaves by the sun or the stored image darkens them by something else, for instance the Translucent term, which Cycles shadows differently from the 67js term. This needs Blender, which was not run. The second Done-when of #206 stays open.
 
+## The foliage crown against a sun-only Cycles render (2026-11-03, part of issue #206)
+
+The section above approximated the Cycles shadow mask from the full-light array. This one renders it: `blender -b --factory-startup -t 6 --python bench/reference/render-blender.py -- artifacts/reference --world-strength 0 foliage` draws Cycles only (same camera, 960 x 540, 256 samples, denoised), with the world's light at 0, so only the sun is left, into `foliage-cycles-world0.npy`. The EEVEE render and the timings stay as they were. `python bench/reference/crown-leak.py artifacts/reference <67js --ambient 0 png>` (command in its header) counts the pixels. Branch: the sun-aligned shadow and the world-unit bias (#224, #226) included.
+
+Crown pixels are the green-or-dark pixels of the full-light Cycles image in the top 62 percent of the frame, 56,921 of them (the 52,281 of the section above came from a slightly different colour test). Cycles shadowed is a tone-mapped linear value below 0.02 in the sun-only render; 67js sun-lit is above 0.01 in the `--ambient 0` render.
+
+| | Pixels |
+| --- | --- |
+| Sun-lit in Cycles / in 67js / in both | 19,883 / 30,907 / 17,836 |
+| Lit in 67js, shadowed in Cycles (the leak) | 13,071 |
+| of those, within 2 px of a pixel Cycles lights | 7,424 |
+| of those, farther away | 5,647 |
+| Lit in Cycles only | 2,047 |
+
+The true mask gives a larger leak than the full-light approximation did (11,137 on this crown). The target of fewer than 3,000 is not met, and nothing in the 67js shader moved it.
+
+- Shadow or silhouette: 7,424 of the 13,071 sit beside a leaf Cycles lights, as a sliver along its edge with a matching blue sliver (lit only in Cycles) on the other side. That is leaf placement and the denoiser, not shadow. The other 5,647 are patches inside the lower crown that 67js lights and Cycles shadows.
+- Translucency is not the difference. The Blender leaf adds a Translucent BSDF with the weight of the 67js back-light term (`CANOPY_BACK_LIGHT`), and the 67js term is multiplied by the sun visibility, so both sides shadow it (the comment in `render-blender.py` said the opposite and is corrected). This is read from the two definitions; a Cycles render without the Translucent BSDF would settle it and was not made.
+- A shadow bias grown on back-facing leaves is not the cause either. `shadowVisibility` floors the cosine at 0.05, which gives a back-lit leaf the largest bias; using `abs(dot)` changed the leak from 13,071 to 13,069, so it was not kept.
+- Solid quads in the shadow pass (no cutout) leave 5,418 leaking pixels (2,804 away from a lit edge) but 67js then lights 14,991 crown pixels against 19,883 in Cycles, and 10,310 are lit only in Cycles. The truth is between the two: the cutout shadow lets too much sun through, solid cards block too much, and neither a bias nor a threshold sits between them (see the table of the section above). The cause is still open; the lead is how much of a card Cycles blocks for a shadow ray, which needs a Cycles render with the leaf alpha changed to test.
+
 ## Fog valley against EEVEE (2026-11-03, part of issue #165)
 
 `fog-valley` scored 0.1967 against EEVEE's 0.1952. Measured by band of rows on the GPU render (FLIP against Cycles): 67js is better than EEVEE in the sky (0.1311 against 0.1608, and 0.0512 against 0.0815 within 40 pixels of the sun, so the glow is not the problem), and worse below the horizon (0.2437 against 0.2317 at rows 230 to 300, 0.2664 against 0.2576 at rows 300 to 400) and in the left third of the frame (0.2866 against 0.2556), where the shadowed face of the near tower and the ground shadow are darker than in Cycles. The fog's in-scatter inside the sun's shadow is the term that lifts them, and it keeps 15 percent of the ambient there, a constant fitted to closed rooms, where the air in shadow sees walls and not sky.
