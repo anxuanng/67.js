@@ -9,6 +9,11 @@ test('the default fragment shader keeps every feature', () => {
   assert.match(fragmentShader, /#define USES_NORMAL_MAP \(hasNormalMap > 0\.5\)/);
 });
 
+test('a mapped normal takes the sky light below the surface plane out of the ambient term', () => {
+  assert.match(fragmentShader, /vec3 geometricNormal = normal;\s+if \(USES_NORMAL_MAP\) normal = /);
+  assert.match(fragmentShader, /if \(USES_NORMAL_MAP\) occlusion \*= 0\.5 \+ 0\.5 \* dot\(normal, geometricNormal\);/);
+});
+
 test('a feature that a scene does not use becomes a constant false', () => {
   const plain = createFragmentShader([]);
   for (const macro of ['USES_NORMAL_MAP', 'USES_SPLAT', 'USES_MOSS', 'USES_ALPHA_MODE', 'TAG_WATER', 'TAG_FIRE']) {
