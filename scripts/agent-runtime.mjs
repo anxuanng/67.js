@@ -10,6 +10,7 @@ import { AGENT_SCENE_CAPABILITIES, AGENT_SCENE_DEFAULT_LIMITS, RENDER_PASS_NAMES
 import { PATH_TRACER_CAPABILITIES } from '../src/path-tracer-capabilities.js';
 import { chooseDenoiser, finishWithOidn } from './agent-path-trace-denoise.mjs';
 import { createAgentAssetCatalog } from './agent-asset-catalog.mjs';
+import { recipeAssetNeeds } from '../src/agent-scene-assets.js';
 import { createAgentRenderJobs, EXPORT_DIRECTORY_NAME } from './agent-render-jobs.mjs';
 import { createFrameEncoder } from './frame-encoder.mjs';
 import { audioInputArguments, createAudioLibrary, measureStreamSeconds } from './job-audio.mjs';
@@ -128,6 +129,14 @@ export function createAgentRuntime({ kernelWorkers = true, backend = 'gpu', brow
     if (!assetRoot) throw new Error('Configure --assets with an absolute directory before importing GLB assets.');
     catalogPromise ??= createAgentAssetCatalog(assetRoot);
     return catalogPromise;
+  }
+
+  /** Bytes of the catalog assets a recipe or edit list places, base64 by asset id, for the page that decodes them. */
+  async function placedAssetData(value) {
+    const needs = recipeAssetNeeds(value);
+    if (!needs.length) return {};
+    const entries = await Promise.all(needs.map(async ({ id }) => [id, (await (await catalog()).read(id)).toString('base64')]));
+    return { assetData: Object.fromEntries(entries) };
   }
 
   // Motion layers can play a clip of another catalog asset (`from.asset`). The page gets those assets' bytes by catalog ID,
@@ -543,7 +552,7 @@ export function createAgentRuntime({ kernelWorkers = true, backend = 'gpu', brow
         }
         await boot();
         const sessionId = randomUUID();
-        const result = await evaluate('create', { recipe, sessionId, memoryBudgetMiB: memory, backend }, page, recipe?.bake ? BAKE_EVALUATION_TIMEOUT_MS : EVALUATION_TIMEOUT_MS);
+        const result = await evaluate('create', { recipe, sessionId, memoryBudgetMiB: memory, backend, ...(await placedAssetData(recipe)) }, page, recipe?.bake ? BAKE_EVALUATION_TIMEOUT_MS : EVALUATION_TIMEOUT_MS);
         activeSessionId = sessionId;
         activeSceneHasBake = Boolean(recipe?.bake);
         return result;
@@ -591,7 +600,7 @@ export function createAgentRuntime({ kernelWorkers = true, backend = 'gpu', brow
         const bakeAfter = bakeAfterOperations(input.operations);
         const rebakes = activeSceneHasBake || bakeAfter === true;
         const motions = (input.operations ?? []).filter(operation => operation.type === 'set-motion').map(operation => operation.motion);
-        const applied = await invoke('apply', { ...input, ...(await motionSources(motions)) }, rebakes ? BAKE_EVALUATION_TIMEOUT_MS : EVALUATION_TIMEOUT_MS);
+        const applied = await invoke('apply', { ...input, ...(await motionSources(motions)), ...(await placedAssetData(input.operations)) }, rebakes ? BAKE_EVALUATION_TIMEOUT_MS : EVALUATION_TIMEOUT_MS);
         activeSceneHasBake = bakeAfter ?? activeSceneHasBake;
         return applied;
       });
@@ -698,7 +707,8 @@ export function createAgentRuntime({ kernelWorkers = true, backend = 'gpu', brow
             privateSessionId = randomUUID();
             await reviewEvaluate(branchRecipe || !assetBytes ? 'create' : 'createAsset', { sessionId: privateSessionId,
               recipe: branchRecipe ? branchRecipe.recipe : snapshot.recipe, memoryBudgetMiB: memory, backend,
-              ...(!branchRecipe && assetBytes ? { data: assetBytes.toString('base64'), ...(await motionSources([snapshot.recipe.motion])) } : {}) });
+              ...(!branchRecipe && assetBytes ? { data: assetBytes.toString('base64'), ...(await motionSources([snapshot.recipe.motion])) } : {}),
+              ...(!assetBytes ? await placedAssetData(branchRecipe ? branchRecipe.recipe : snapshot.recipe) : {}) });
             privateCreated = true;
             for (const index of group.shotIndexes) {
               const rendered = await reviewEvaluate('reviewShot', { sessionId: privateSessionId, shot: settings.shots[index], index,
@@ -802,6 +812,9 @@ export function createAgentRuntime({ kernelWorkers = true, backend = 'gpu', brow
         }
         const snapshot = await invoke('snapshot', { sessionId, expectedRevision });
         const assetBytes = snapshot.recipe.format === '67js.asset' ? await (await catalog()).read(snapshot.recipe.assetId) : undefined;
+        if (recipeAssetNeeds(snapshot.recipe).length) {
+          throw new Error('Render jobs do not yet render scenes that place catalog assets. Use scene_look for stills of this scene.');
+        }
         phase = 'rendering';
         try {
           return await controller.submit({ sourceRevision: snapshot.sourceRevision,
