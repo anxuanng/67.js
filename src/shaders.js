@@ -409,7 +409,7 @@ uniform float fogDensity;
 uniform vec3 waterRipple;
 uniform float rippleTime;
 uniform float explosionProgress;
-uniform sampler2D shadowMap;
+uniform highp sampler2DShadow shadowMap;
 uniform float shadowBiasPerSlope;
 uniform sampler2D baseMap;
 uniform float hasBaseMap;
@@ -469,30 +469,17 @@ vec3 fresnel(float cosine, vec3 reflectance) {
   return reflectance + (1.0 - reflectance) * pow(1.0 - cosine, 5.0);
 }
 
-float filteredShadow(vec2 coordinates, float receiverDepth, ivec2 dimensions) {
-  vec2 pixel = coordinates * vec2(dimensions) - 0.5;
-  ivec2 origin = ivec2(floor(pixel));
-  vec2 blend = fract(pixel);
-  ivec2 maximum = dimensions - 1;
-  float lowerLeft = step(receiverDepth, texelFetch(shadowMap, clamp(origin, ivec2(0), maximum), 0).r);
-  float lowerRight = step(receiverDepth, texelFetch(shadowMap, clamp(origin + ivec2(1, 0), ivec2(0), maximum), 0).r);
-  float upperLeft = step(receiverDepth, texelFetch(shadowMap, clamp(origin + ivec2(0, 1), ivec2(0), maximum), 0).r);
-  float upperRight = step(receiverDepth, texelFetch(shadowMap, clamp(origin + ivec2(1, 1), ivec2(0), maximum), 0).r);
-  return mix(mix(lowerLeft, lowerRight, blend.x), mix(upperLeft, upperRight, blend.x), blend.y);
-}
-
 float shadowVisibility(vec3 normal) {
   vec3 projected = shadowPosition.xyz / shadowPosition.w * 0.5 + 0.5;
   if (projected.z > 1.0 || projected.z < 0.0 || any(lessThan(projected.xy, vec2(0.0))) || any(greaterThan(projected.xy, vec2(1.0)))) return 1.0;
   float cosine = max(dot(normal, normalize(lightDirection)), 0.05);
   float bias = shadowBiasPerSlope * clamp(sqrt(1.0 - cosine * cosine) / cosine, 0.25, 4.0);
   float visibility = 0.0;
-  ivec2 dimensions = textureSize(shadowMap, 0);
-  vec2 texel = 1.0 / vec2(dimensions);
+  vec2 texel = 1.0 / vec2(textureSize(shadowMap, 0));
   for (int row = -1; row <= 1; row++) {
     for (int column = -1; column <= 1; column++) {
-      float comparison = filteredShadow(projected.xy + vec2(column, row) * texel * 2.5, projected.z - bias, dimensions);
-      visibility += comparison;
+      // The sampler compares in hardware and filters the four texels bilinearly: one fetch instead of four.
+      visibility += texture(shadowMap, vec3(projected.xy + vec2(column, row) * texel * 2.5, projected.z - bias));
     }
   }
   return visibility / 9.0;
