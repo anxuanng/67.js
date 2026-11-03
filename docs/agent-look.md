@@ -121,7 +121,7 @@ Sky colors use display RGB, matching the renderer's existing environment contrac
 | `skyTop` | `[0.2, 0.38, 0.52]` | Components from `0` to `1` |
 | `skyBottom` | `[0.62, 0.7, 0.67]` | Components from `0` to `1` |
 | `fogColor` | `[0.35, 0.43, 0.43]` | Components from `0` to `1` |
-| `fogDensity` | `0.006` | `0` to `10` |
+| `fogDensity` | `null` | `0` to `10`. `null` fits the density to the scene: `0.006`, or `1.2` divided by the scene diagonal in metres when that is smaller, so a 900 m scene keeps 30 percent of its contrast at the far side. Set `0` for no fog |
 | `volumeFog` | Complete defaults below | One bounded world volume |
 
 Directional key radiance equals `keyColor * keyIntensity`.

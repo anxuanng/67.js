@@ -22,7 +22,7 @@ test('default look is complete, detached JSON and idempotent', () => {
     skyTop: [0.2, 0.38, 0.52],
     skyBottom: [0.62, 0.7, 0.67],
     fogColor: [0.35, 0.43, 0.43],
-    fogDensity: 0.006,
+    fogDensity: null,
     volumeFog: resolveVolumeFog(),
   });
   assert.deepEqual(look.effects, {
