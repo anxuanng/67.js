@@ -1329,3 +1329,55 @@ The sky and the open floor have the same luminance as Cycles, and their gap is a
 Inside the crown, by the Cycles luminance of the pixel (contribution to the frame mean, 67js / EEVEE): pixels under 0.15 (share 0.063) 0.0227 / 0.0261, 67js better; 0.15 to 0.5 (0.047) 0.0187 / 0.0170; over 0.5 (0.057, sunlit leaves) 0.0094 / 0.0038. The mean crown luminance is closer to Cycles in 67js (+0.019) than in EEVEE (+0.050). So the level is right and the loss is where individual bright leaves sit: in pixels Cycles draws as lit leaf, 67js has error 0.167 against 0.067, while its shaded leaves beat EEVEE. This is the leaf shape and placement cause #191 already named; the edge of the silhouette (3 px) is only 0.0007 of the frame.
 
 Next idea: the crown needs a per-card measurement, for example the Cycles array against 67js with the same leaf card in each pixel (a card id image from the harness), to see whether the bright-leaf error is cards missing, shifted or too dark; and the scorer could report the 8-bit EEVEE figure beside the float one so "beats EEVEE" compares like with like. Neither was tried. The first box of #191 stays open.
+
+## Every cell regenerated with the 8-bit EEVEE scorer (2026-11-03, #258)
+
+`npm run reference -- --skip-blender` and `npm run reference -- --grand --skip-blender` drew 67js on the GPU and with SwiftShader and scored every cell of `baseline.json` and `grand.json` with the current `score.py`, against the stored Cycles and EEVEE arrays of the earlier Blender runs. Blender was not run, so the `seconds` rows are as they were. The grand EEVEE arrays come from the earlier grand run that holds all nine frames (its Cycles arrays are identical to the ones used before). The tables show old to new; "same" means the cell did not change. In the default suite 24 of 150 cells changed, in the grand suite 51 of 54.
+
+### Default suite
+
+| scene | gpu-vs-cycles | cpu-vs-cycles | gpu-vs-cpu | eevee-vs-cycles | gpu-vs-eevee | cpu-vs-eevee |
+| --- | --- | --- | --- | --- | --- | --- |
+| brick-flat | same | same | same | same | same | same |
+| brick-graph | same | same | same | same | same | same |
+| brick-room | same | same | same | same | same | 0.0714 to 0.0715 |
+| brushed-film | same | same | same | 0.0984 to 0.1015 | 0.0835 to 0.0813 | 0.0835 to 0.0801 |
+| car-paint | same | same | same | same | 0.066 to 0.0636 | 0.0661 to 0.0627 |
+| character | same | same | same | same | same | same |
+| dark-shaft | same | same | same | same | same | 0.2636 to 0.2638 |
+| fog | same | same | same | same | same | same |
+| fog-room | same | same | same | same | same | same |
+| fog-valley | same | same | same | same | same | same |
+| foliage | same | same | same | same | same | 0.0802 to 0.0753 |
+| glass | same | same | same | same | same | same |
+| light-linking | same | same | same | same | same | 0.1132 to 0.1116 |
+| lit-interior | same | same | same | same | same | 0.0932 to 0.0933 |
+| long-street | same | 0.115 to 0.1125 | 0.0066 to 0.0083 | same | same | 0.0919 to 0.1147 |
+| material-spheres | same | same | same | same | 0.0744 to 0.0742 | 0.0743 to 0.0732 |
+| megacity-dusk | same | 0.1577 to 0.1586 | 0.0276 to 0.028 | same | same | 0.1076 to 0.0967 |
+| metal | same | same | same | same | 0.0826 to 0.0806 | 0.0828 to 0.0797 |
+| metal-room | same | same | same | same | 0.1122 to 0.1123 | 0.1129 to 0.113 |
+| mountain-valley | same | same | same | same | same | 0.2655 to 0.2651 |
+| outdoor-hdri | same | same | same | same | same | same |
+| spot-area | same | same | same | same | same | 0.1712 to 0.1689 |
+| temple-hall | same | same | same | same | same | same |
+
+One 67js column moved by more than 0.002: `long-street` `cpu-vs-cycles`, 0.115 to 0.1125. Its `gpu-vs-cycles` is the same, so it is the SwiftShader frame, and the committed CPU cells of that scene were already stale (`cpu-vs-eevee` 0.0919 against 0.1147 now). `megacity-dusk` `cpu-vs-cycles` moved 0.0009, below the threshold. Every GPU 67js column against Cycles is the same to four digits, so the scorer change did not touch them.
+
+`foliage`: 67js 0.0979 against Cycles, EEVEE 0.0924 against Cycles; against EEVEE itself 0.0771 on the GPU, 0.0753 on the CPU. `metal`: 67js 0.0944 against Cycles, EEVEE 0.0944 (a tie, as in the section above); against EEVEE itself 0.0806 on the GPU, 0.0797 on the CPU.
+
+### Grand suite
+
+| scene | gpu-vs-cycles | cpu-vs-cycles | gpu-vs-cpu | eevee-vs-cycles | gpu-vs-eevee | cpu-vs-eevee |
+| --- | --- | --- | --- | --- | --- | --- |
+| megacity-dusk-a | 0.1507 to 0.1989 | 0.1502 to 0.198 | 0.0224 to 0.0223 | 0.1455 to 0.1421 | 0.1141 to 0.1573 | 0.1152 to 0.1574 |
+| megacity-dusk-b | 0.1108 to 0.1107 | same | 0.0368 to 0.0369 | 0.1041 to 0.1078 | 0.1246 to 0.1206 | 0.1268 to 0.1216 |
+| megacity-dusk-c | 0.1149 to 0.1192 | 0.1087 to 0.1124 | 0.0419 to 0.0424 | 0.098 to 0.0996 | same | 0.0657 to 0.0642 |
+| mountain-valley-a | 0.1924 to 0.1671 | 0.1924 to 0.1671 | 0.0109 to 0.0088 | 0.1756 to 0.176 | 0.1856 to 0.2392 | 0.186 to 0.2389 |
+| mountain-valley-b | 0.1784 to 0.2096 | 0.1785 to 0.2088 | 0.0157 to 0.0158 | 0.13 to 0.1306 | 0.1422 to 0.2645 | 0.1415 to 0.2638 |
+| mountain-valley-c | 0.2282 to 0.1836 | 0.2273 to 0.1819 | 0.017 to 0.0156 | 0.1504 to 0.1522 | 0.163 to 0.223 | 0.1619 to 0.2215 |
+| temple-hall-a | 0.253 to 0.1642 | 0.2533 to 0.1645 | same | 0.4986 to 0.4989 | 0.4215 to 0.5298 | 0.4211 to 0.5295 |
+| temple-hall-b | 0.3642 to 0.1564 | 0.3644 to 0.1567 | 0.0054 to 0.0044 | 0.4743 to 0.4747 | 0.234 to 0.4573 | 0.2335 to 0.457 |
+| temple-hall-c | 0.2746 to 0.1177 | 0.2749 to 0.118 | 0.0028 to 0.0025 | 0.3989 to 0.3992 | 0.2216 to 0.3682 | 0.2213 to 0.3679 |
+
+The EEVEE-against-Cycles column barely moves (at most 0.0037), so the references are the ones the old numbers used. The 67js columns moved a lot: 17 cells by more than 0.002, up to 0.21 (`temple-hall-b` against Cycles 0.3642 to 0.1564, `megacity-dusk-a` 0.1507 to 0.1989). That is not the scorer, which changes only the EEVEE columns by a few thousandths. It is 67js drawing these scenes differently from the run that wrote the old `grand.json`, which was written before the water and river commits (#195, #232) and other work on main (inferred from the commit history; the individual cause of each scene was not isolated). These are the numbers of main as of this run.
