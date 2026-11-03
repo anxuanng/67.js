@@ -669,6 +669,28 @@ The shadow depth pass now draws both faces (`applyAlphaState` in `src/renderer.j
 
 The map is redrawn only when a caster, the wind or the assembly changes, so a still scene pays nothing per frame. The floor is now lit by the sky alone, so a tree shadow cannot fall on it: the sun does not reach it, as in Cycles. The `foliage` crown leak is not this cause: its FLIP and picture did not move. The crown's sun-shadow rows (9,252 pixels sun-lit in 67js and shadowed in Cycles) stay open under #206; the depth bias is the remaining lead (a tenth of it removed 2,941 pixels).
 
+## The foliage crown's sun, ruled out one by one (2026-11-03, part of issue #206)
+
+No engine change came out of this. Method: the stored Cycles array of `foliage` is full light, so the Cycles shadow mask is approximated from it. Crown pixels are the green-or-dark pixels of the Cycles image in the top 62 percent of the frame, 52,281 of them. Cycles reads shadowed where its linear value after the tone curve is below 0.02 (28,129 pixels); 67js reads sun-lit where the `--ambient 0` render is above 0.01. The count of both is the leak. On the branch of #222 it is 9,402 (the 9,252 of #191 was taken on another mask), and the crown mean is 0.0704 against Cycles 0.0509. Each row changes one thing on the GPU render, 960 x 540, with the rest as drawn:
+
+| Change | Leaking pixels | Crown mean (linear) | FLIP against Cycles |
+| --- | --- | --- | --- |
+| as drawn | 9,402 | 0.0704 | 0.1023 |
+| depth bias 0.00002 and no polygon offset | 6,952 | 0.0566 | 0.1532 (acne on the ground) |
+| the same, filter taps 0.5 texel apart instead of 2.5 | 6,771 | 0.0546 | |
+| shadow level of detail off (levels of the colour pass) | 6,771 (same as the row above) | | |
+| texture read at level 0 in the shadow pass | 9,416 | 0.0704 | |
+| shadow camera on the sun direction (eye y 15 instead of 14) | 9,036 | 0.0700 | 0.0989 |
+| shadow cutout at 0.2 instead of 0.5 | 8,850 | 0.0685 | 0.1022 |
+| shadow pass without the cutout, cards as solid quads | 3,201 | 0.0488 | 0.1110 |
+
+- Bias, filter width, level of detail, mip level and map resolution (0.009 m a texel over 18 m) are small or nothing: bias moves 2,450 pixels and costs the ground.
+- The shadow camera of `foliage` looks along (-6, 11, 8) while the sun is (-3, 6, 4), 4 degrees apart. Aligning them changes the leak by 370 pixels but takes FLIP from 0.1023 to 0.0989 (EEVEE 0.0888). That is a scene fix, not made here, because other scenes set `shadow` by hand too and the default `shadowBounds` of a world scene is further from its `lightDirection` than this.
+- Only the solid quad moves the count, and it does so by darkening: it leaves 10,479 fewer crown pixels sun-lit than Cycles does (13,673 against 24,152) and FLIP gets worse (0.1110). The ground under the tree agrees with it (0.4132 against Cycles 0.4086, 0.4352 as drawn, mean linear over rows 380 to 540, columns 250 to 700), but the picture does not. So the leak is not the cutout reading the wrong alpha, and cards that cast their transparent part are not what Cycles draws either.
+- The leaking pixels come as leaf-sized patches and thin slivers along leaf edges (the slivers are silhouette differences, not shadow). The patch that stays sits on a leaf that a leaf above it shadows in Cycles.
+
+Open: a sun-only Cycles render (world light 0, as #191 made) is needed to say whether Cycles shadows these leaves by the sun or the stored image darkens them by something else, for instance the Translucent term, which Cycles shadows differently from the 67js term. This needs Blender, which was not run. The second Done-when of #206 stays open.
+
 ## Fog valley against EEVEE (2026-11-03, part of issue #165)
 
 `fog-valley` scored 0.1967 against EEVEE's 0.1952. Measured by band of rows on the GPU render (FLIP against Cycles): 67js is better than EEVEE in the sky (0.1311 against 0.1608, and 0.0512 against 0.0815 within 40 pixels of the sun, so the glow is not the problem), and worse below the horizon (0.2437 against 0.2317 at rows 230 to 300, 0.2664 against 0.2576 at rows 300 to 400) and in the left third of the frame (0.2866 against 0.2556), where the shadowed face of the near tower and the ground shadow are darker than in Cycles. The fog's in-scatter inside the sun's shadow is the term that lifts them, and it keeps 15 percent of the ambient there, a constant fitted to closed rooms, where the air in shadow sees walls and not sky.
