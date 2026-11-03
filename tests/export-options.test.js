@@ -59,6 +59,8 @@ test('video defaults to JPEG 95 and auto encoding while stills retain lossless P
   const video = parseRenderOptions(['--kind', 'video']);
   assert.equal(video.captureFormat, 'jpeg');
   assert.equal(video.jpegQuality, 95);
+  assert.throws(() => parseRenderOptions(['--capture', 'raw']));
+  assert.equal(parseRenderOptions(['--kind', 'video', '--capture', 'raw']).captureFormat, 'raw');
   assert.equal(video.encoderBackend, 'auto');
   assert.equal(parseRenderOptions([]).captureFormat, 'png');
   assert.equal(parseRenderOptions(['--kind', 'stills']).captureFormat, 'png');

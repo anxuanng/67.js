@@ -36,6 +36,8 @@ The source revision, pose and checkpoints survive completion or cancellation.
 Cancellation becomes terminal after the owned encoder and job page stop and the preview recovers.
 
 Video uses H.264 (CPU by default, see `settings.encoder`), even dimensions and one streamed frame at a time.
+MCP video jobs still take a JPEG screenshot per frame. Measured at 1280 by 720 on an RTX 3060, capture is 28.8 ms and the draw 7.4 ms a frame, and `metrics.captureSeconds` and `metrics.renderSeconds` report both.
+A raw read of the drawing buffer exists in `scripts/render-media.mjs` as `--capture raw` and is not yet in the MCP job (issue #301).
 The render backend can use GPU or CPU. Memory limits can reduce the actual output dimensions.
 Results report actual dimensions and measured timings. They do not embed video bytes.
 

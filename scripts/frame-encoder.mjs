@@ -1,27 +1,32 @@
 import { spawn } from 'node:child_process';
 import { stat } from 'node:fs/promises';
 import { performance } from 'node:perf_hooks';
+import { rawFrameInputArguments } from './gpu-frame-reader.mjs';
 
 /** Drain and finalization wait this long: below-normal priority jobs on a busy machine need more than 5 s. */
 export const DEFAULT_ENCODER_TIMEOUT_MS = 30000;
 
 /** One streamed frame at a time. The caller owns output publication and cleanup. */
 export function createFrameEncoder({ executable = 'ffmpeg', output, fps, format = 'jpeg', backend = 'cpu',
-  audioArguments = [], signal, maximumFrameBytes = 1024 * 1024,
+  audioArguments = [], width, height, signal, maximumFrameBytes = 1024 * 1024,
   maximumOutputBytes = 128 * 1024 * 1024, timeoutMs = DEFAULT_ENCODER_TIMEOUT_MS } = {}) {
   if (typeof output !== 'string' || !output || !Number.isFinite(fps) || fps < 1 || fps > 60 ||
-      !['jpeg', 'png'].includes(format) || !['cpu', 'gpu'].includes(backend)) {
+      !['jpeg', 'png', 'rawvideo'].includes(format) || !['cpu', 'gpu'].includes(backend)) {
     throw new TypeError('Encoder requires an output path, valid fps, format and backend.');
   }
   for (const value of [maximumFrameBytes, maximumOutputBytes, timeoutMs]) {
     if (!Number.isSafeInteger(value) || value <= 0) throw new RangeError('Encoder limits must be positive safe integers.');
   }
+  if (format === 'rawvideo' && !(Number.isSafeInteger(width) && Number.isSafeInteger(height) && width > 0 && height > 0)) {
+    throw new TypeError('Raw video frames need a width and a height.');
+  }
   signal?.throwIfAborted();
+  const raw = format === 'rawvideo' ? rawFrameInputArguments({ width, height, fps }) : undefined;
   const codec = backend === 'gpu'
     ? ['-c:v', 'h264_nvenc', '-preset', 'p5', '-cq', '20']
     : ['-c:v', 'libx264', '-preset', 'fast', '-crf', '18', '-threads', '2'];
-  const argumentsValue = ['-hide_banner', '-loglevel', 'error', '-y', '-f', 'image2pipe', '-framerate', String(fps),
-    '-vcodec', format === 'jpeg' ? 'mjpeg' : 'png', '-i', 'pipe:0', ...audioArguments, ...codec,
+  const argumentsValue = ['-hide_banner', '-loglevel', 'error', '-y', ...(raw ? raw.input : ['-f', 'image2pipe', '-framerate', String(fps), '-vcodec', format === 'jpeg' ? 'mjpeg' : 'png']),
+    '-i', 'pipe:0', ...audioArguments, ...(raw ? raw.filter : []), ...codec,
     '-pix_fmt', 'yuv420p', '-color_primaries', 'bt709', '-color_trc', 'bt709', '-colorspace', 'bt709',
     '-movflags', '+faststart', ...(audioArguments.length ? ['-c:a', 'aac', '-b:a', '192k', '-shortest'] : []),
     '-f', 'mp4', output];

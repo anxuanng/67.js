@@ -33,6 +33,26 @@ assert.equal(probe.streams[0].color_space, 'bt709');
 assert.equal(Number(probe.format.duration), 2);
 const decoded = run('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-i', output, '-frames:v', '2', '-f', 'rawvideo', '-pix_fmt', 'rgb24', 'pipe:1'], true);
 assert.notDeepEqual(decoded.subarray(0, 64 * 64 * 3), decoded.subarray(64 * 64 * 3));
+// Raw frames are bottom-up RGBA, as readPixels gives them: the first row written (red) must decode at the bottom.
+const rawPixels = Buffer.alloc(64 * 64 * 4);
+for (let row = 0; row < 64; row++) {
+  for (let column = 0; column < 64; column++) {
+    const offset = (row * 64 + column) * 4;
+    rawPixels[offset + (row < 32 ? 0 : 2)] = 255;
+    rawPixels[offset + 3] = 255;
+  }
+}
+const rawOutput = join(directory, 'raw.mp4.partial');
+const rawEncoder = createFrameEncoder({ output: rawOutput, fps: 4, format: 'rawvideo', width: 64, height: 64 });
+try {
+  for (let index = 0; index < 4; index++) await rawEncoder.writeFrame(rawPixels);
+  await rawEncoder.finish();
+} finally { await rawEncoder.close(); }
+const rawDecoded = run('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-i', rawOutput, '-frames:v', '1', '-f', 'rawvideo', '-pix_fmt', 'rgb24', 'pipe:1'], true);
+const pixelAt = (row) => rawDecoded.subarray((row * 64 + 32) * 3, (row * 64 + 32) * 3 + 3);
+assert.ok(pixelAt(60)[0] > 200 && pixelAt(60)[2] < 60, 'the first row written must decode at the bottom as red');
+assert.ok(pixelAt(4)[2] > 200 && pixelAt(4)[0] < 60, 'the last rows written must decode at the top as blue');
+assert.throws(() => createFrameEncoder({ output: rawOutput, fps: 4, format: 'rawvideo' }), /width and a height/);
 const cancelled = new AbortController();
 const abortEncoder = createFrameEncoder({ output: join(directory, 'cancel.mp4.partial'), fps: 24, format: 'png', signal: cancelled.signal });
 await abortEncoder.writeFrame(frames[0]);
