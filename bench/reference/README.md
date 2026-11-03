@@ -1430,3 +1430,20 @@ The second option was tried: for alpha-mask materials only, the base map got its
 | EEVEE against Cycles | 0.0924 | 0.0924 |
 
 Worse by 0.0002 against Cycles, so the default suite and `--grand` were not run and the code was reverted. Reading (inferred): the lost coverage is at full-size edges, not at coarse mips, since the crown is seen at about one texel per pixel; keeping more coverage in the coarse levels cannot reach it. Same direction as the one mip finer attempt (0.0979 to 0.0982). Next idea: match Cycles' edge softness at level 0 (a slightly blurred alpha, or the leaf alpha edge drawn with a ramp wider than a texel) instead of changing the mips.
+
+## Named looks for the grand scenes (2026-11-03, part of issue #168)
+
+`look-options.js` holds a second round of options for the three grand scenes, each a named variant: `node bench/reference/run.mjs --option mountain-valley:dawn` (several separated by commas) draws it with the GPU only into `artifacts/reference-look/<scene>-<option>-gpu.png`, with no Blender, no score and no baseline change. Sheets: `uv run --no-project --with pillow python -I bench/reference/look-sheets.py artifacts/reference-look artifacts/look-168` copies each frame to `artifacts/look-168/<scene>/<option>.png` and writes one contact sheet per scene. The default scenes and the letters of `grand-scenes.js` are unchanged. Blender would get the same geometry and materials: ground cover is vertex colour, facades are material graphs (Emission through the graph), halls use Emission panels and volume fog. An picks; no option is claimed to match anyone's taste.
+
+| Option | What changes |
+| --- | --- |
+| `mountain-valley:dawn` | Cool dawn, sun behind the far massif, a river down a flat floor, a mist layer, ridges fading into haze, a snowy hero peak |
+| `mountain-valley:tarn` | Midday on the shore of a turquoise lake, forest across the water, rounded snow massifs, boulders at the camera |
+| `mountain-valley:sunset` | Low orange sun from the left, long tree shadows over wildflower drifts, one peak lit pink |
+| `temple-hall:rose` | The nave seen down its axis toward a stained glass rose window and five lancets (all Emission), roof openings with sun shafts, candles along the carpet |
+| `temple-hall:court` | Hall open to the sky over the nave, high sun and blue sky light, pale floor, two colossi and a glowing door at the far end |
+| `megacity-dusk:golden-avenue` | Street level on a broad avenue at sunset, the right-hand towers lit gold, lines of car lights, street trees |
+| `megacity-dusk:blue-hour` | Elevated bank over a river, a 560 m landmark tower, windows lit in drifts, lit bridges, parkland trees |
+| `megacity-dusk:night-grid` | High night view of avenue grids, dense towers with most windows lit, cyan and magenta signs |
+
+Terrain shape: the rim is rounded massifs (erosion noise) with a little ridged noise for crags, in place of the reference's needle ridges. Towers have a lit podium, one to three setbacks and a crown (plant, stepped or spire), and a facade graph gives panes in a wall with lit panes in drifts instead of full-width stripes. No downloaded textures or models are used: the terrain chunks and tower boxes carry no UV sets in the export, so a scanned texture would not reach Blender the same way.
