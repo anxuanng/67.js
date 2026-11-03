@@ -242,7 +242,7 @@ function windFrame(environment) {
 
 // The heading lives in the on-demand world material code, so the core renderer carries nothing for it.
 function applyRecipeWindHeading(renderer, environment) {
-  if (!agentSceneModuleLoaded('worldMaterials')) return;
+  if (!agentSceneModuleLoaded('worldMaterials') || (!environment.wind && !renderer.windHeading)) return;
   agentSceneModule('worldMaterials').applyWindHeading(renderer, (environment.wind?.direction ?? 0) * Math.PI / 180);
 }
 
