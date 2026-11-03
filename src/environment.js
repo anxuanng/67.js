@@ -276,6 +276,11 @@ uniform float environmentEnabled;
 uniform vec3 environmentIrradiance[9];
 vec3 environmentDiffuse(vec3 normal) {
   vec3 mapped = environmentDirection(normal);
+  // The light shading preset keeps the first four terms (the average and the direction of the light), not the second order ones.
+  if (LIGHT_SHADING) {
+    vec3 firstOrder = environmentIrradiance[0] + environmentIrradiance[1] * mapped.y + environmentIrradiance[2] * mapped.z + environmentIrradiance[3] * mapped.x;
+    return max(firstOrder, vec3(0.0)) * environmentIntensity;
+  }
   vec3 result = environmentIrradiance[0]
     + environmentIrradiance[1] * mapped.y
     + environmentIrradiance[2] * mapped.z
@@ -294,7 +299,20 @@ vec3 multipleScatterGain(vec2 lookup, vec3 baseReflectance) {
   return 1.0 / (1.0 - missingEnergy * averageFresnel);
 }
 // specularWeight scales only the reflected sky; leaf cards use less, since their bent normals face the view at grazing angles.
+// Analytic fit of the lookup table (Karis 2014), for the light shading preset.
+vec2 environmentBrdfFit(float normalView, float roughness) {
+  vec4 terms = roughness * vec4(-1.0, -0.0275, -0.572, 0.022) + vec4(1.0, 0.0425, 1.04, -0.04);
+  float edge = min(terms.x * terms.x, exp2(-9.28 * normalView)) * terms.x + terms.y;
+  return vec2(-1.04, 1.04) * edge + terms.zw;
+}
 vec3 environmentLighting(vec3 normal, vec3 specularNormal, vec3 baseReflectance, vec3 viewDirection, vec3 reflected, vec3 color, float metallic, float roughness, float occlusion, float ambient, float specularWeight) {
+  if (LIGHT_SHADING) {
+    // No second bounce, and the sky reflection is the blurred sky of the surface's own normal: one irradiance read serves both.
+    vec2 fitted = environmentBrdfFit(clamp(dot(normal, viewDirection), 0.001, 1.0), roughness);
+    vec3 fittedColor = (baseReflectance * fitted.x + fitted.y) * specularWeight;
+    vec3 irradiance = environmentDiffuse(normal);
+    return irradiance * (fittedColor + color * (1.0 - metallic) * (1.0 - fittedColor)) * occlusion * ambient;
+  }
   float normalView = clamp(dot(normal, viewDirection), 0.001, 1.0);
   vec2 lookup = texture(environmentBrdf, vec2(normalView, roughness)).rg;
   vec3 singleScatter = baseReflectance * lookup.x + lookup.y;
