@@ -1,5 +1,8 @@
+import { depthLayerOf, MAXIMUM_DEPTH_LAYER } from './depth-layer.js';
+
+// Loaded on demand (renderer diagnostics, scene_inspect, resolveCoplanar), never part of the core bundle.
 // Finds pairs of parts that draw the same plane in the same place, which z-fight: a sign flush with a wall, a road marking
-// on asphalt, two boxes whose visible faces coincide. The work is bounded: a sweep over part bounds, then triangles only
+// on asphalt, two boxes whose visible faces coincide. The work is bounded: a grid over part bounds, then triangles only
 // inside the shared box of a pair, with a fixed budget for the whole scene (`truncated` says it ran out).
 // Only faces that look the same way count, since a face against a floor looks away from it and is culled. A part with a
 // double-sided material shows both sides, so there an opposite-facing pair counts too.
@@ -8,8 +11,6 @@
 export const COPLANAR_TOLERANCE = 0.001;
 /** Overlaps smaller than this (square metres) are edge contact, not a fight. */
 export const COPLANAR_MINIMUM_AREA = 1e-4;
-/** Highest layer `resolveCoplanar` hands out; the draw-time offset grows with the layer. */
-export const MAXIMUM_DEPTH_LAYER = 4;
 /** The distance suggested in the fix text, in metres. */
 export const SUGGESTED_OFFSET = 0.002;
 const DEFAULT_WORK_BUDGET = 1_000_000;
@@ -157,11 +158,6 @@ function diagonal(bounds) {
 
 function resolvedByLayer(first, second) {
   return depthLayerOf(first) !== depthLayerOf(second);
-}
-
-/** The layer a part draws on: `depthLayer` if set, else 1 for `decal: true`, else 0. */
-export function depthLayerOf(part) {
-  return part.depthLayer ?? (part.decal ? 1 : 0);
 }
 
 function pairOverlap(first, second, region, tolerance, budget) {
@@ -330,6 +326,23 @@ export function coplanarLayers(overlaps) {
 
 function diagonalOfPart(part) {
   return diagonal(worldBounds(part));
+}
+
+/**
+ * Adds the coplanar-overlap warning to `renderer.diagnostics`. The check is bounded (see findCoplanarOverlaps) and runs once
+ * per layout, when the renderer's batches change, not per frame, so parts that move later are not rechecked.
+ */
+export function installCoplanarDiagnostics(renderer) {
+  let checkedBatches = null;
+  let problems = null;
+  renderer.coplanarDiagnostics = batches => {
+    if (batches !== checkedBatches) {
+      checkedBatches = batches;
+      problems = coplanarOverlapDiagnostics(findCoplanarOverlaps(batches.flatMap(batch => batch.parts)));
+    }
+    return problems;
+  };
+  return renderer;
 }
 
 /** `parts` with `depthLayer` set on the smaller part of each coplanar pair; other parts are returned as they are. */

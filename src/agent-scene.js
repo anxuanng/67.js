@@ -8,7 +8,7 @@ import { MESH_SMOOTH_ANGLE_DEFAULT, CURVE_TEXT_LIMITS, AGENT_SCENE_CAPABILITIES,
 import { ALL_LIGHTS_MASK, MATERIAL_LAYER_FIELDS, validateMaterialLayers } from './material-layers.js';
 import { recipeDiagnostics, closedRoomDiagnostic } from './agent-diagnostics.js';
 import { closedRoomShare, CLOSED_ROOM_SHARE } from './closed-room.js';
-import { coplanarOverlapDiagnostics, depthLayerOf, findCoplanarOverlaps, MAXIMUM_DEPTH_LAYER, resolveCoplanarParts } from './coplanar-overlap.js';
+import { depthLayerOf, MAXIMUM_DEPTH_LAYER } from './depth-layer.js';
 import { armatureNodes, bakeRigExport, bindSkins, createSkinStages, normalizeArmatures, publishSkinPoses, restWorldMatrix, rigReport, stageSkinPoses, transformedBounds, withoutArmatureNodes } from './rig.js';
 export { AGENT_SCENE_CAPABILITIES, AGENT_SCENE_DEFAULT_LIMITS };
 export { normalizeAgentLook, resolveAgentShadow } from './agent-look.js';
@@ -1177,16 +1177,20 @@ export function createAgentScene(input, inputLimits = {}) {
     if (coplanarCache?.parts === parts) {
       return coplanarCache.resolved;
     }
-    const resolved = Object.freeze(resolveCoplanarParts(parts));
+    const resolved = Object.freeze(agentSceneModule('coplanar').resolveCoplanarParts(parts));
     coplanarCache = { parts, resolved };
     return resolved;
   }
 
-  // scene_inspect names coplanar pairs: the check is bounded, runs on inspect only and is kept until the scene changes.
+  // scene_inspect names coplanar pairs: the check is bounded, runs on inspect only, once the coplanar code is loaded, and is kept until the scene changes.
   let coplanarReportCache = null;
   function coplanarProblems() {
+    if (!agentSceneModuleLoaded('coplanar')) {
+      return [];
+    }
     if (coplanarReportCache?.revision !== revision) {
-      coplanarReportCache = { revision, problems: coplanarOverlapDiagnostics(findCoplanarOverlaps(state.parts)) };
+      const coplanar = agentSceneModule('coplanar');
+      coplanarReportCache = { revision, problems: coplanar.coplanarOverlapDiagnostics(coplanar.findCoplanarOverlaps(state.parts)) };
     }
     return coplanarReportCache.problems;
   }

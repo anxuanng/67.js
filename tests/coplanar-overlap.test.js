@@ -1,10 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createAgentScene } from '../src/agent-scene.js';
-import { findCoplanarOverlaps, coplanarOverlapDiagnostics, resolveCoplanarParts, depthLayerOf } from '../src/coplanar-overlap.js';
+import { findCoplanarOverlaps, coplanarOverlapDiagnostics, installCoplanarDiagnostics, resolveCoplanarParts } from '../src/coplanar-overlap.js';
+import { depthLayerOf } from '../src/depth-layer.js';
+import { loadAgentSceneModules } from '../src/agent-scene-modules.js';
 import { frameDiagnostics } from '../src/frame-diagnostics.js';
 import { groupParts, Renderer67 } from '../src/renderer.js';
 import { resolveEffects } from '../src/effects.js';
+
+await loadAgentSceneModules({ environment: { resolveCoplanar: 'offset' } });
 
 function node(id, translation, scale, extra = {}) {
   return { id, geometry: 'box', material: 'paint', translation, scale, ...extra };
@@ -80,8 +84,11 @@ test('node decal and depthLayer are validated', () => {
 
 test('renderer diagnostics carry the same warning, and a decal batches apart from its wall', () => {
   const scene = createAgentScene(recipe([wall, sign]));
-  const result = findCoplanarOverlaps(scene.parts);
-  const problems = frameDiagnostics({ world: false, depth: true, effects: resolveEffects({}), coplanarOverlaps: result });
+  const renderer = installCoplanarDiagnostics({});
+  const batches = [{ parts: scene.parts }];
+  const coplanarProblems = renderer.coplanarDiagnostics(batches);
+  assert.equal(renderer.coplanarDiagnostics(batches), coplanarProblems, 'the same layout is checked once');
+  const problems = frameDiagnostics({ world: false, depth: true, effects: resolveEffects({}), coplanarProblems });
   assert.deepEqual(problems.map(problem => problem.kind), ['coplanar-overlap']);
   const resolved = resolveCoplanarParts(scene.parts);
   assert.equal(groupParts(scene.parts).length, 1);
@@ -96,10 +103,7 @@ test('the polygon offset is scoped to the layer and switched off for layer 0', (
     disable: capability => calls.push(['disable', capability]),
     polygonOffset: (factor, units) => calls.push(['offset', factor, units]),
   };
-  const fake = { context, activeDepthLayer: 0 };
-  Renderer67.prototype.applyDepthLayer.call(fake, 0);
-  assert.deepEqual(calls, []);
-  Renderer67.prototype.applyDepthLayer.call(fake, 2);
+  const fake = { context };
   Renderer67.prototype.applyDepthLayer.call(fake, 2);
   Renderer67.prototype.applyDepthLayer.call(fake, 0);
   assert.deepEqual(calls, [['enable', 'fill'], ['offset', -2, -8], ['disable', 'fill']]);

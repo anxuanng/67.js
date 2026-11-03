@@ -1,5 +1,4 @@
 import { resolveShadowLight } from './shadow-light.js';
-import { coplanarOverlapDiagnostics } from './coplanar-overlap.js';
 
 /**
  * Diagnostics for a frame that renders without error but not as asked. They use the shape of `agent-diagnostics.js`
@@ -29,7 +28,7 @@ function shadowDirectionProblem(world, lightDirection, shadowBounds) {
     'Drop shadowBounds.eye, or point lightDirection from shadowBounds.target to it.');
 }
 
-export function frameDiagnostics({ world, depth, effects, lightDirection, shadowBounds, coplanarOverlaps = null }) {
+export function frameDiagnostics({ world, depth, effects, lightDirection, shadowBounds, coplanarProblems = null }) {
   const problems = [];
   if (effects.ambientOcclusion > 0 && !depth) {
     problems.push(warning('ambient-occlusion-without-depth', 'effects.ambientOcclusion',
@@ -40,6 +39,6 @@ export function frameDiagnostics({ world, depth, effects, lightDirection, shadow
     const problem = shadowDirectionProblem(world, lightDirection, shadowBounds);
     if (problem) problems.push(problem);
   }
-  if (coplanarOverlaps?.overlaps.length) problems.push(...coplanarOverlapDiagnostics(coplanarOverlaps));
+  if (coplanarProblems?.length) problems.push(...coplanarProblems);
   return problems.length ? problems : NO_DIAGNOSTICS;
 }
