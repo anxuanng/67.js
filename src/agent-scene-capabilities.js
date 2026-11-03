@@ -1,3 +1,4 @@
+import { VIEW_TRANSFORM_NAMES, LOOK_NAMES } from './view-transform-names.js';
 import { MAX_POINT_LIGHTS, MAX_SPOT_LIGHTS, MAX_AREA_LIGHTS } from './light-limits.js';
 import {
   MESH_EDIT_OPERATIONS, MAX_MESH_EDITS, STACK_OPERATIONS, MAX_STACK_NODES,
@@ -208,6 +209,12 @@ export const AGENT_SCENE_CAPABILITIES = Object.freeze({
   localShadows: Object.freeze({ lights: Object.freeze(['pointLights', 'spotLights']), atlasTiles: 24, pointLightTiles: 6, spotLightTiles: 1, tileSize: 512 }),
   lightLinking: Object.freeze({ fields: Object.freeze(['environment.keyAffects', 'pointLights[].affects', 'spotLights[].affects', 'areaLights[].affects']), unlisted: 'a light without affects lights every node', unknownNode: 'rejected', bake: 'honoured', pathTracer: 'ignored, named in report.ignored' }),
   shadowCascades: Object.freeze({ field: 'environment.shadowCascades', counts: Object.freeze([0, 1, 2, 3, 4]), zero: 'one shadow map', automatic: 'three cascades when shadow.extent is above 40 and the field is unset', maximumDistance: 150, note: 'volume fog and water read the single map' }),
+  viewTransform: Object.freeze({
+    field: 'environment.viewTransform', names: VIEW_TRANSFORM_NAMES, default: 'aces', look: 'environment.look', looks: LOOK_NAMES,
+    choose: 'agx for lit scenes and Blender comparisons, neutral for product and brand colour, aces for contrast; needs loadAgentSceneModules',
+  }),
+  // Flush surfaces flicker (z-fighting). scene_inspect and renderer.diagnostics warn with coplanar-overlap; these fix it at draw time.
+  depthBias: Object.freeze({ nodeFields: Object.freeze(['decal', 'depthLayer']), maxDepthLayer: 4, environment: 'environment.resolveCoplanar', modes: Object.freeze(['offset']), warning: 'coplanar-overlap', note: 'decal wins over the surface below; depthLayer stacks decals; resolveCoplanar offset biases the smaller part of a flagged pair.' }),
   proceduralMotion: true,
   motionIk: Object.freeze(['two-bone', 'aim']),
   // Authored rigs: armatures expand into bone nodes, and a node `skin` binds a mesh with automatic weights (four influences).

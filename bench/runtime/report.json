@@ -12,398 +12,1357 @@
   "gpu": {
    "instanced-objects": {
     "67js": {
-     "firstFrameMilliseconds": 2608,
+     "firstFrameMilliseconds": 257,
      "updateMilliseconds": 0,
-     "renderCpuMilliseconds": 0.07,
-     "gpuMilliseconds": 0.66,
-     "fullFrameMilliseconds": 1.25,
+     "renderCpuMilliseconds": 0.28,
+     "gpuMilliseconds": 0.25,
+     "fullFrameMilliseconds": 0.84,
      "drawCalls": 3,
-     "triangles": 60002,
-     "gpuMegabytes": 46.51,
-     "heapMegabytes": 5,
-     "gpuBusyBefore": 95
+     "triangles": 49850,
+     "gpuMegabytes": 45.31,
+     "heapMegabytes": 5.9,
+     "renderTargets": [
+      {
+       "name": "shadowMap",
+       "width": 2048,
+       "height": 2048,
+       "layers": 1,
+       "format": "DEPTH_COMPONENT24",
+       "samples": 1,
+       "bytes": 16777216,
+       "megabytes": 16
+      },
+      {
+       "name": "multisampleColor",
+       "width": 960,
+       "height": 540,
+       "layers": 1,
+       "format": "RGBA16F",
+       "samples": 4,
+       "bytes": 16588800,
+       "megabytes": 15.82
+      },
+      {
+       "name": "multisampleDepth",
+       "width": 960,
+       "height": 540,
+       "layers": 1,
+       "format": "DEPTH_COMPONENT24",
+       "samples": 4,
+       "bytes": 8294400,
+       "megabytes": 7.91
+      },
+      {
+       "name": "frameColor",
+       "width": 960,
+       "height": 540,
+       "layers": 1,
+       "format": "RGBA16F",
+       "samples": 1,
+       "bytes": 4147200,
+       "megabytes": 3.96
+      }
+     ],
+     "gpuBusyBefore": 8
     },
     "three": {
-     "firstFrameMilliseconds": 204,
+     "firstFrameMilliseconds": 85,
      "updateMilliseconds": 0,
-     "renderCpuMilliseconds": 3.91,
-     "gpuMilliseconds": 0.3,
-     "fullFrameMilliseconds": 4.34,
+     "renderCpuMilliseconds": 1.96,
+     "gpuMilliseconds": 0.09,
+     "fullFrameMilliseconds": 2.36,
      "drawCalls": 4154,
      "triangles": 49848,
      "gpuMegabytes": 0,
      "heapMegabytes": 8.5,
-     "gpuBusyBefore": 41
+     "renderTargets": null,
+     "gpuBusyBefore": 9
     },
     "three-instanced": {
-     "firstFrameMilliseconds": 190,
+     "firstFrameMilliseconds": 79,
      "updateMilliseconds": 0,
-     "renderCpuMilliseconds": 0.05,
+     "renderCpuMilliseconds": 0.04,
      "gpuMilliseconds": 0.05,
-     "fullFrameMilliseconds": 0.36,
+     "fullFrameMilliseconds": 0.27,
      "drawCalls": 1,
      "triangles": 60000,
      "gpuMegabytes": 0.31,
      "heapMegabytes": 2.4,
-     "gpuBusyBefore": 10
+     "renderTargets": null,
+     "gpuBusyBefore": 12
+    }
+   },
+   "large-outdoor": {
+    "67js": {
+     "firstFrameMilliseconds": 264,
+     "updateMilliseconds": 0,
+     "renderCpuMilliseconds": 0.35,
+     "gpuMilliseconds": 0.58,
+     "fullFrameMilliseconds": 1.31,
+     "drawCalls": 6,
+     "triangles": 270474,
+     "gpuMegabytes": 47.54,
+     "heapMegabytes": 6.8,
+     "renderTargets": [
+      {
+       "name": "shadowMap",
+       "width": 2048,
+       "height": 2048,
+       "layers": 1,
+       "format": "DEPTH_COMPONENT24",
+       "samples": 1,
+       "bytes": 16777216,
+       "megabytes": 16
+      },
+      {
+       "name": "multisampleColor",
+       "width": 960,
+       "height": 540,
+       "layers": 1,
+       "format": "RGBA16F",
+       "samples": 4,
+       "bytes": 16588800,
+       "megabytes": 15.82
+      },
+      {
+       "name": "multisampleDepth",
+       "width": 960,
+       "height": 540,
+       "layers": 1,
+       "format": "DEPTH_COMPONENT24",
+       "samples": 4,
+       "bytes": 8294400,
+       "megabytes": 7.91
+      },
+      {
+       "name": "frameColor",
+       "width": 960,
+       "height": 540,
+       "layers": 1,
+       "format": "RGBA16F",
+       "samples": 1,
+       "bytes": 4147200,
+       "megabytes": 3.96
+      }
+     ],
+     "gpuBusyBefore": 19
+    },
+    "three": {
+     "firstFrameMilliseconds": 108,
+     "updateMilliseconds": 0,
+     "renderCpuMilliseconds": 3.73,
+     "gpuMilliseconds": 0.72,
+     "fullFrameMilliseconds": 4.47,
+     "drawCalls": 4542,
+     "triangles": 4359372,
+     "gpuMegabytes": 0.03,
+     "heapMegabytes": 9.8,
+     "renderTargets": null,
+     "gpuBusyBefore": 48
+    },
+    "67js-no-lod": {
+     "firstFrameMilliseconds": 256,
+     "updateMilliseconds": 0,
+     "renderCpuMilliseconds": 0.45,
+     "gpuMilliseconds": 8.2,
+     "fullFrameMilliseconds": 9.29,
+     "drawCalls": 4,
+     "triangles": 4359374,
+     "gpuMegabytes": 45.65,
+     "heapMegabytes": 6.4,
+     "renderTargets": [
+      {
+       "name": "shadowMap",
+       "width": 2048,
+       "height": 2048,
+       "layers": 1,
+       "format": "DEPTH_COMPONENT24",
+       "samples": 1,
+       "bytes": 16777216,
+       "megabytes": 16
+      },
+      {
+       "name": "multisampleColor",
+       "width": 960,
+       "height": 540,
+       "layers": 1,
+       "format": "RGBA16F",
+       "samples": 4,
+       "bytes": 16588800,
+       "megabytes": 15.82
+      },
+      {
+       "name": "multisampleDepth",
+       "width": 960,
+       "height": 540,
+       "layers": 1,
+       "format": "DEPTH_COMPONENT24",
+       "samples": 4,
+       "bytes": 8294400,
+       "megabytes": 7.91
+      },
+      {
+       "name": "frameColor",
+       "width": 960,
+       "height": 540,
+       "layers": 1,
+       "format": "RGBA16F",
+       "samples": 1,
+       "bytes": 4147200,
+       "megabytes": 3.96
+      }
+     ],
+     "gpuBusyBefore": 22
+    },
+    "67js-no-culling": {
+     "firstFrameMilliseconds": 256,
+     "updateMilliseconds": 0,
+     "renderCpuMilliseconds": 0.13,
+     "gpuMilliseconds": 10.66,
+     "fullFrameMilliseconds": 11.27,
+     "drawCalls": 4,
+     "triangles": 5760014,
+     "gpuMegabytes": 44.72,
+     "heapMegabytes": 5.6,
+     "renderTargets": [
+      {
+       "name": "shadowMap",
+       "width": 2048,
+       "height": 2048,
+       "layers": 1,
+       "format": "DEPTH_COMPONENT24",
+       "samples": 1,
+       "bytes": 16777216,
+       "megabytes": 16
+      },
+      {
+       "name": "multisampleColor",
+       "width": 960,
+       "height": 540,
+       "layers": 1,
+       "format": "RGBA16F",
+       "samples": 4,
+       "bytes": 16588800,
+       "megabytes": 15.82
+      },
+      {
+       "name": "multisampleDepth",
+       "width": 960,
+       "height": 540,
+       "layers": 1,
+       "format": "DEPTH_COMPONENT24",
+       "samples": 4,
+       "bytes": 8294400,
+       "megabytes": 7.91
+      },
+      {
+       "name": "frameColor",
+       "width": 960,
+       "height": 540,
+       "layers": 1,
+       "format": "RGBA16F",
+       "samples": 1,
+       "bytes": 4147200,
+       "megabytes": 3.96
+      }
+     ],
+     "gpuBusyBefore": 23
     }
    },
    "many-materials": {
     "67js": {
-     "firstFrameMilliseconds": 2564,
+     "firstFrameMilliseconds": 233,
      "updateMilliseconds": 0,
-     "renderCpuMilliseconds": 0.11,
-     "gpuMilliseconds": 4.24,
-     "fullFrameMilliseconds": 4.75,
+     "renderCpuMilliseconds": 0.19,
+     "gpuMilliseconds": 1.54,
+     "fullFrameMilliseconds": 2.32,
      "drawCalls": 4,
-     "triangles": 960014,
-     "gpuMegabytes": 45.91,
-     "heapMegabytes": 2.4,
-     "gpuBusyBefore": 19
+     "triangles": 925454,
+     "gpuMegabytes": 44.09,
+     "heapMegabytes": 2.7,
+     "renderTargets": [
+      {
+       "name": "shadowMap",
+       "width": 2048,
+       "height": 2048,
+       "layers": 1,
+       "format": "DEPTH_COMPONENT24",
+       "samples": 1,
+       "bytes": 16777216,
+       "megabytes": 16
+      },
+      {
+       "name": "multisampleColor",
+       "width": 960,
+       "height": 540,
+       "layers": 1,
+       "format": "RGBA16F",
+       "samples": 4,
+       "bytes": 16588800,
+       "megabytes": 15.82
+      },
+      {
+       "name": "multisampleDepth",
+       "width": 960,
+       "height": 540,
+       "layers": 1,
+       "format": "DEPTH_COMPONENT24",
+       "samples": 4,
+       "bytes": 8294400,
+       "megabytes": 7.91
+      },
+      {
+       "name": "frameColor",
+       "width": 960,
+       "height": 540,
+       "layers": 1,
+       "format": "RGBA16F",
+       "samples": 1,
+       "bytes": 4147200,
+       "megabytes": 3.96
+      }
+     ],
+     "gpuBusyBefore": 95
     },
     "three": {
-     "firstFrameMilliseconds": 269,
+     "firstFrameMilliseconds": 109,
      "updateMilliseconds": 0,
-     "renderCpuMilliseconds": 2.34,
+     "renderCpuMilliseconds": 1.09,
      "gpuMilliseconds": 0.19,
-     "fullFrameMilliseconds": 2.97,
+     "fullFrameMilliseconds": 1.62,
      "drawCalls": 965,
      "triangles": 925452,
      "gpuMegabytes": 0.03,
      "heapMegabytes": 12.9,
-     "gpuBusyBefore": 84
+     "renderTargets": null,
+     "gpuBusyBefore": 78
     }
    },
    "many-lights": {
     "67js": {
-     "firstFrameMilliseconds": 2655,
+     "firstFrameMilliseconds": 230,
      "updateMilliseconds": 0,
-     "renderCpuMilliseconds": 0.11,
-     "gpuMilliseconds": 3.78,
-     "fullFrameMilliseconds": 4.54,
+     "renderCpuMilliseconds": 0.1,
+     "gpuMilliseconds": 0.99,
+     "fullFrameMilliseconds": 1.41,
      "drawCalls": 4,
-     "triangles": 384014,
-     "gpuMegabytes": 45.82,
-     "heapMegabytes": 1.6,
-     "gpuBusyBefore": 13
+     "triangles": 368654,
+     "gpuMegabytes": 43.9,
+     "heapMegabytes": 1.8,
+     "renderTargets": [
+      {
+       "name": "shadowMap",
+       "width": 2048,
+       "height": 2048,
+       "layers": 1,
+       "format": "DEPTH_COMPONENT24",
+       "samples": 1,
+       "bytes": 16777216,
+       "megabytes": 16
+      },
+      {
+       "name": "multisampleColor",
+       "width": 960,
+       "height": 540,
+       "layers": 1,
+       "format": "RGBA16F",
+       "samples": 4,
+       "bytes": 16588800,
+       "megabytes": 15.82
+      },
+      {
+       "name": "multisampleDepth",
+       "width": 960,
+       "height": 540,
+       "layers": 1,
+       "format": "DEPTH_COMPONENT24",
+       "samples": 4,
+       "bytes": 8294400,
+       "megabytes": 7.91
+      },
+      {
+       "name": "frameColor",
+       "width": 960,
+       "height": 540,
+       "layers": 1,
+       "format": "RGBA16F",
+       "samples": 1,
+       "bytes": 4147200,
+       "megabytes": 3.96
+      }
+     ],
+     "gpuBusyBefore": 20
     },
     "three": {
-     "firstFrameMilliseconds": 276,
+     "firstFrameMilliseconds": 123,
      "updateMilliseconds": 0,
-     "renderCpuMilliseconds": 0.82,
+     "renderCpuMilliseconds": 0.27,
      "gpuMilliseconds": 0.33,
-     "fullFrameMilliseconds": 2.46,
+     "fullFrameMilliseconds": 0.85,
      "drawCalls": 385,
      "triangles": 368652,
      "gpuMegabytes": 0.03,
      "heapMegabytes": 2.3,
-     "gpuBusyBefore": 92
+     "renderTargets": null,
+     "gpuBusyBefore": 16
     }
    },
    "transparency": {
     "67js": {
-     "firstFrameMilliseconds": 2853,
+     "firstFrameMilliseconds": 225,
      "updateMilliseconds": 0,
-     "renderCpuMilliseconds": 0.16,
-     "gpuMilliseconds": 2.02,
-     "fullFrameMilliseconds": 2.7,
+     "renderCpuMilliseconds": 0.12,
+     "gpuMilliseconds": 0.59,
+     "fullFrameMilliseconds": 0.97,
      "drawCalls": 4,
      "triangles": 288014,
-     "gpuMegabytes": 45.8,
-     "heapMegabytes": 1.4,
-     "gpuBusyBefore": 88
+     "gpuMegabytes": 43.82,
+     "heapMegabytes": 1.9,
+     "renderTargets": [
+      {
+       "name": "shadowMap",
+       "width": 2048,
+       "height": 2048,
+       "layers": 1,
+       "format": "DEPTH_COMPONENT24",
+       "samples": 1,
+       "bytes": 16777216,
+       "megabytes": 16
+      },
+      {
+       "name": "multisampleColor",
+       "width": 960,
+       "height": 540,
+       "layers": 1,
+       "format": "RGBA16F",
+       "samples": 4,
+       "bytes": 16588800,
+       "megabytes": 15.82
+      },
+      {
+       "name": "multisampleDepth",
+       "width": 960,
+       "height": 540,
+       "layers": 1,
+       "format": "DEPTH_COMPONENT24",
+       "samples": 4,
+       "bytes": 8294400,
+       "megabytes": 7.91
+      },
+      {
+       "name": "frameColor",
+       "width": 960,
+       "height": 540,
+       "layers": 1,
+       "format": "RGBA16F",
+       "samples": 1,
+       "bytes": 4147200,
+       "megabytes": 3.96
+      }
+     ],
+     "gpuBusyBefore": 31
     },
     "three": {
-     "firstFrameMilliseconds": 231,
+     "firstFrameMilliseconds": 132,
      "updateMilliseconds": 0,
-     "renderCpuMilliseconds": 0.55,
-     "gpuMilliseconds": 0.16,
-     "fullFrameMilliseconds": 1.35,
+     "renderCpuMilliseconds": 0.34,
+     "gpuMilliseconds": 0.17,
+     "fullFrameMilliseconds": 0.74,
      "drawCalls": 301,
      "triangles": 288012,
      "gpuMegabytes": 0.03,
-     "heapMegabytes": 5,
-     "gpuBusyBefore": 83
+     "heapMegabytes": 5.4,
+     "renderTargets": null,
+     "gpuBusyBefore": 67
     }
    },
    "moving-shadows": {
     "67js": {
-     "firstFrameMilliseconds": 2606,
-     "updateMilliseconds": 0.54,
+     "firstFrameMilliseconds": 259,
+     "updateMilliseconds": 0.64,
      "renderCpuMilliseconds": 0.21,
-     "gpuMilliseconds": 1.34,
-     "fullFrameMilliseconds": 2.34,
+     "gpuMilliseconds": 0.31,
+     "fullFrameMilliseconds": 0.85,
      "drawCalls": 4,
      "triangles": 12026,
-     "gpuMegabytes": 45.8,
-     "heapMegabytes": 1.4,
-     "gpuBusyBefore": 8
+     "gpuMegabytes": 43.83,
+     "heapMegabytes": 1.6,
+     "renderTargets": [
+      {
+       "name": "shadowMap",
+       "width": 2048,
+       "height": 2048,
+       "layers": 1,
+       "format": "DEPTH_COMPONENT24",
+       "samples": 1,
+       "bytes": 16777216,
+       "megabytes": 16
+      },
+      {
+       "name": "multisampleColor",
+       "width": 960,
+       "height": 540,
+       "layers": 1,
+       "format": "RGBA16F",
+       "samples": 4,
+       "bytes": 16588800,
+       "megabytes": 15.82
+      },
+      {
+       "name": "multisampleDepth",
+       "width": 960,
+       "height": 540,
+       "layers": 1,
+       "format": "DEPTH_COMPONENT24",
+       "samples": 4,
+       "bytes": 8294400,
+       "megabytes": 7.91
+      },
+      {
+       "name": "frameColor",
+       "width": 960,
+       "height": 540,
+       "layers": 1,
+       "format": "RGBA16F",
+       "samples": 1,
+       "bytes": 4147200,
+       "megabytes": 3.96
+      }
+     ],
+     "gpuBusyBefore": 29
     },
     "three": {
-     "firstFrameMilliseconds": 245,
-     "updateMilliseconds": 0.05,
-     "renderCpuMilliseconds": 1.31,
-     "gpuMilliseconds": 0.16,
-     "fullFrameMilliseconds": 1.85,
+     "firstFrameMilliseconds": 119,
+     "updateMilliseconds": 0.02,
+     "renderCpuMilliseconds": 0.73,
+     "gpuMilliseconds": 0.17,
+     "fullFrameMilliseconds": 1.16,
      "drawCalls": 1002,
      "triangles": 12024,
      "gpuMegabytes": 32,
-     "heapMegabytes": 2.2,
-     "gpuBusyBefore": 98
+     "heapMegabytes": 2.1,
+     "renderTargets": null,
+     "gpuBusyBefore": 22
     }
    },
    "large-mesh": {
     "67js": {
-     "firstFrameMilliseconds": 3113,
+     "firstFrameMilliseconds": 394,
      "updateMilliseconds": 0,
-     "renderCpuMilliseconds": 0.11,
-     "gpuMilliseconds": 3.57,
-     "fullFrameMilliseconds": 4.24,
+     "renderCpuMilliseconds": 0.08,
+     "gpuMilliseconds": 2.01,
+     "fullFrameMilliseconds": 2.38,
      "drawCalls": 3,
      "triangles": 1046530,
-     "gpuMegabytes": 73.75,
-     "heapMegabytes": 28.6,
-     "gpuBusyBefore": 10
+     "gpuMegabytes": 71.77,
+     "heapMegabytes": 28.7,
+     "renderTargets": [
+      {
+       "name": "shadowMap",
+       "width": 2048,
+       "height": 2048,
+       "layers": 1,
+       "format": "DEPTH_COMPONENT24",
+       "samples": 1,
+       "bytes": 16777216,
+       "megabytes": 16
+      },
+      {
+       "name": "multisampleColor",
+       "width": 960,
+       "height": 540,
+       "layers": 1,
+       "format": "RGBA16F",
+       "samples": 4,
+       "bytes": 16588800,
+       "megabytes": 15.82
+      },
+      {
+       "name": "multisampleDepth",
+       "width": 960,
+       "height": 540,
+       "layers": 1,
+       "format": "DEPTH_COMPONENT24",
+       "samples": 4,
+       "bytes": 8294400,
+       "megabytes": 7.91
+      },
+      {
+       "name": "frameColor",
+       "width": 960,
+       "height": 540,
+       "layers": 1,
+       "format": "RGBA16F",
+       "samples": 1,
+       "bytes": 4147200,
+       "megabytes": 3.96
+      }
+     ],
+     "gpuBusyBefore": 11
     },
     "three": {
-     "firstFrameMilliseconds": 459,
+     "firstFrameMilliseconds": 246,
      "updateMilliseconds": 0,
-     "renderCpuMilliseconds": 0.05,
+     "renderCpuMilliseconds": 0.04,
      "gpuMilliseconds": 0.15,
-     "fullFrameMilliseconds": 0.59,
+     "fullFrameMilliseconds": 0.37,
      "drawCalls": 1,
      "triangles": 1046528,
      "gpuMegabytes": 24.01,
      "heapMegabytes": 29,
-     "gpuBusyBefore": 85
+     "renderTargets": null,
+     "gpuBusyBefore": 24
     }
    },
    "skinned-characters": {
     "67js": {
-     "firstFrameMilliseconds": 3266,
-     "updateMilliseconds": 7.57,
-     "renderCpuMilliseconds": 1.27,
-     "gpuMilliseconds": 5.17,
-     "fullFrameMilliseconds": 9.02,
+     "firstFrameMilliseconds": 310,
+     "updateMilliseconds": 5.22,
+     "renderCpuMilliseconds": 0.81,
+     "gpuMilliseconds": 1.83,
+     "fullFrameMilliseconds": 4.02,
      "drawCalls": 308,
      "triangles": 51818,
-     "gpuMegabytes": 49.02,
-     "heapMegabytes": 17.8,
-     "gpuBusyBefore": 73
+     "gpuMegabytes": 47.04,
+     "heapMegabytes": 17.4,
+     "renderTargets": [
+      {
+       "name": "shadowMap",
+       "width": 2048,
+       "height": 2048,
+       "layers": 1,
+       "format": "DEPTH_COMPONENT24",
+       "samples": 1,
+       "bytes": 16777216,
+       "megabytes": 16
+      },
+      {
+       "name": "multisampleColor",
+       "width": 960,
+       "height": 540,
+       "layers": 1,
+       "format": "RGBA16F",
+       "samples": 4,
+       "bytes": 16588800,
+       "megabytes": 15.82
+      },
+      {
+       "name": "multisampleDepth",
+       "width": 960,
+       "height": 540,
+       "layers": 1,
+       "format": "DEPTH_COMPONENT24",
+       "samples": 4,
+       "bytes": 8294400,
+       "megabytes": 7.91
+      },
+      {
+       "name": "frameColor",
+       "width": 960,
+       "height": 540,
+       "layers": 1,
+       "format": "RGBA16F",
+       "samples": 1,
+       "bytes": 4147200,
+       "megabytes": 3.96
+      }
+     ],
+     "gpuBusyBefore": 5
     },
     "three": {
-     "firstFrameMilliseconds": 551,
-     "updateMilliseconds": 0.05,
-     "renderCpuMilliseconds": 1.84,
-     "gpuMilliseconds": 0.37,
-     "fullFrameMilliseconds": 3.13,
+     "firstFrameMilliseconds": 289,
+     "updateMilliseconds": 0.03,
+     "renderCpuMilliseconds": 0.89,
+     "gpuMilliseconds": 0.39,
+     "fullFrameMilliseconds": 1.99,
      "drawCalls": 306,
      "triangles": 51816,
      "gpuMegabytes": 32.34,
-     "heapMegabytes": 5.6,
-     "gpuBusyBefore": 79
+     "heapMegabytes": 4.2,
+     "renderTargets": null,
+     "gpuBusyBefore": 24
     }
    }
   },
   "cpu": {
    "instanced-objects": {
     "67js": {
-     "firstFrameMilliseconds": 2109,
+     "firstFrameMilliseconds": 476,
      "updateMilliseconds": 0,
-     "renderCpuMilliseconds": 0.2,
-     "gpuMilliseconds": 629.74,
-     "fullFrameMilliseconds": 631.01,
+     "renderCpuMilliseconds": 0.46,
+     "gpuMilliseconds": 100.21,
+     "fullFrameMilliseconds": 101.49,
      "drawCalls": 3,
-     "triangles": 60002,
-     "gpuMegabytes": 46.51,
-     "heapMegabytes": 4.9,
-     "gpuBusyBefore": 78
+     "triangles": 49850,
+     "gpuMegabytes": 45.31,
+     "heapMegabytes": 5.9,
+     "renderTargets": [
+      {
+       "name": "shadowMap",
+       "width": 2048,
+       "height": 2048,
+       "layers": 1,
+       "format": "DEPTH_COMPONENT24",
+       "samples": 1,
+       "bytes": 16777216,
+       "megabytes": 16
+      },
+      {
+       "name": "multisampleColor",
+       "width": 960,
+       "height": 540,
+       "layers": 1,
+       "format": "RGBA16F",
+       "samples": 4,
+       "bytes": 16588800,
+       "megabytes": 15.82
+      },
+      {
+       "name": "multisampleDepth",
+       "width": 960,
+       "height": 540,
+       "layers": 1,
+       "format": "DEPTH_COMPONENT24",
+       "samples": 4,
+       "bytes": 8294400,
+       "megabytes": 7.91
+      },
+      {
+       "name": "frameColor",
+       "width": 960,
+       "height": 540,
+       "layers": 1,
+       "format": "RGBA16F",
+       "samples": 1,
+       "bytes": 4147200,
+       "megabytes": 3.96
+      }
+     ],
+     "gpuBusyBefore": 5
     },
     "three": {
-     "firstFrameMilliseconds": 290,
-     "updateMilliseconds": 0,
-     "renderCpuMilliseconds": 7.87,
-     "gpuMilliseconds": 36.89,
-     "fullFrameMilliseconds": 47.58,
+     "firstFrameMilliseconds": 221,
+     "updateMilliseconds": 0.01,
+     "renderCpuMilliseconds": 2.5,
+     "gpuMilliseconds": 29.36,
+     "fullFrameMilliseconds": 33.66,
      "drawCalls": 4154,
      "triangles": 49848,
      "gpuMegabytes": 0,
      "heapMegabytes": 8.5,
-     "gpuBusyBefore": 35
+     "renderTargets": null,
+     "gpuBusyBefore": 5
     },
     "three-instanced": {
-     "firstFrameMilliseconds": 347,
+     "firstFrameMilliseconds": 252,
      "updateMilliseconds": 0,
-     "renderCpuMilliseconds": 0.18,
-     "gpuMilliseconds": 42.69,
-     "fullFrameMilliseconds": 43.66,
+     "renderCpuMilliseconds": 0.16,
+     "gpuMilliseconds": 41.3,
+     "fullFrameMilliseconds": 42.77,
      "drawCalls": 1,
      "triangles": 60000,
      "gpuMegabytes": 0.31,
      "heapMegabytes": 2.4,
-     "gpuBusyBefore": 78
+     "renderTargets": null,
+     "gpuBusyBefore": 5
+    }
+   },
+   "large-outdoor": {
+    "67js": {
+     "firstFrameMilliseconds": 572,
+     "updateMilliseconds": 0,
+     "renderCpuMilliseconds": 0.63,
+     "gpuMilliseconds": 178.69,
+     "fullFrameMilliseconds": 180.13,
+     "drawCalls": 6,
+     "triangles": 270474,
+     "gpuMegabytes": 47.54,
+     "heapMegabytes": 6.8,
+     "renderTargets": [
+      {
+       "name": "shadowMap",
+       "width": 2048,
+       "height": 2048,
+       "layers": 1,
+       "format": "DEPTH_COMPONENT24",
+       "samples": 1,
+       "bytes": 16777216,
+       "megabytes": 16
+      },
+      {
+       "name": "multisampleColor",
+       "width": 960,
+       "height": 540,
+       "layers": 1,
+       "format": "RGBA16F",
+       "samples": 4,
+       "bytes": 16588800,
+       "megabytes": 15.82
+      },
+      {
+       "name": "multisampleDepth",
+       "width": 960,
+       "height": 540,
+       "layers": 1,
+       "format": "DEPTH_COMPONENT24",
+       "samples": 4,
+       "bytes": 8294400,
+       "megabytes": 7.91
+      },
+      {
+       "name": "frameColor",
+       "width": 960,
+       "height": 540,
+       "layers": 1,
+       "format": "RGBA16F",
+       "samples": 1,
+       "bytes": 4147200,
+       "megabytes": 3.96
+      }
+     ],
+     "gpuBusyBefore": 5
+    },
+    "three": {
+     "firstFrameMilliseconds": 979,
+     "updateMilliseconds": 0.01,
+     "renderCpuMilliseconds": 8.91,
+     "gpuMilliseconds": 849.75,
+     "fullFrameMilliseconds": 860.61,
+     "drawCalls": 4542,
+     "triangles": 4359372,
+     "gpuMegabytes": 0.03,
+     "heapMegabytes": 9.8,
+     "renderTargets": null,
+     "gpuBusyBefore": 15
+    },
+    "67js-no-lod": {
+     "firstFrameMilliseconds": 2560,
+     "updateMilliseconds": 0,
+     "renderCpuMilliseconds": 1.38,
+     "gpuMilliseconds": 1978.28,
+     "fullFrameMilliseconds": 1981.26,
+     "drawCalls": 4,
+     "triangles": 4359374,
+     "gpuMegabytes": 45.65,
+     "heapMegabytes": 6.4,
+     "renderTargets": [
+      {
+       "name": "shadowMap",
+       "width": 2048,
+       "height": 2048,
+       "layers": 1,
+       "format": "DEPTH_COMPONENT24",
+       "samples": 1,
+       "bytes": 16777216,
+       "megabytes": 16
+      },
+      {
+       "name": "multisampleColor",
+       "width": 960,
+       "height": 540,
+       "layers": 1,
+       "format": "RGBA16F",
+       "samples": 4,
+       "bytes": 16588800,
+       "megabytes": 15.82
+      },
+      {
+       "name": "multisampleDepth",
+       "width": 960,
+       "height": 540,
+       "layers": 1,
+       "format": "DEPTH_COMPONENT24",
+       "samples": 4,
+       "bytes": 8294400,
+       "megabytes": 7.91
+      },
+      {
+       "name": "frameColor",
+       "width": 960,
+       "height": 540,
+       "layers": 1,
+       "format": "RGBA16F",
+       "samples": 1,
+       "bytes": 4147200,
+       "megabytes": 3.96
+      }
+     ],
+     "gpuBusyBefore": 6
+    },
+    "67js-no-culling": {
+     "firstFrameMilliseconds": 3224,
+     "updateMilliseconds": 0.01,
+     "renderCpuMilliseconds": 0.3,
+     "gpuMilliseconds": 2207.13,
+     "fullFrameMilliseconds": 2209.16,
+     "drawCalls": 4,
+     "triangles": 5760014,
+     "gpuMegabytes": 44.72,
+     "heapMegabytes": 5.6,
+     "renderTargets": [
+      {
+       "name": "shadowMap",
+       "width": 2048,
+       "height": 2048,
+       "layers": 1,
+       "format": "DEPTH_COMPONENT24",
+       "samples": 1,
+       "bytes": 16777216,
+       "megabytes": 16
+      },
+      {
+       "name": "multisampleColor",
+       "width": 960,
+       "height": 540,
+       "layers": 1,
+       "format": "RGBA16F",
+       "samples": 4,
+       "bytes": 16588800,
+       "megabytes": 15.82
+      },
+      {
+       "name": "multisampleDepth",
+       "width": 960,
+       "height": 540,
+       "layers": 1,
+       "format": "DEPTH_COMPONENT24",
+       "samples": 4,
+       "bytes": 8294400,
+       "megabytes": 7.91
+      },
+      {
+       "name": "frameColor",
+       "width": 960,
+       "height": 540,
+       "layers": 1,
+       "format": "RGBA16F",
+       "samples": 1,
+       "bytes": 4147200,
+       "megabytes": 3.96
+      }
+     ],
+     "gpuBusyBefore": 7
     }
    },
    "many-materials": {
     "67js": {
-     "firstFrameMilliseconds": 3681,
+     "firstFrameMilliseconds": 785,
      "updateMilliseconds": 0,
-     "renderCpuMilliseconds": 0.2,
-     "gpuMilliseconds": 2206.27,
-     "fullFrameMilliseconds": 2207.49,
+     "renderCpuMilliseconds": 0.59,
+     "gpuMilliseconds": 521.53,
+     "fullFrameMilliseconds": 524.17,
      "drawCalls": 4,
-     "triangles": 960014,
-     "gpuMegabytes": 45.91,
-     "heapMegabytes": 2.4,
-     "gpuBusyBefore": 90
+     "triangles": 925454,
+     "gpuMegabytes": 44.09,
+     "heapMegabytes": 2.7,
+     "renderTargets": [
+      {
+       "name": "shadowMap",
+       "width": 2048,
+       "height": 2048,
+       "layers": 1,
+       "format": "DEPTH_COMPONENT24",
+       "samples": 1,
+       "bytes": 16777216,
+       "megabytes": 16
+      },
+      {
+       "name": "multisampleColor",
+       "width": 960,
+       "height": 540,
+       "layers": 1,
+       "format": "RGBA16F",
+       "samples": 4,
+       "bytes": 16588800,
+       "megabytes": 15.82
+      },
+      {
+       "name": "multisampleDepth",
+       "width": 960,
+       "height": 540,
+       "layers": 1,
+       "format": "DEPTH_COMPONENT24",
+       "samples": 4,
+       "bytes": 8294400,
+       "megabytes": 7.91
+      },
+      {
+       "name": "frameColor",
+       "width": 960,
+       "height": 540,
+       "layers": 1,
+       "format": "RGBA16F",
+       "samples": 1,
+       "bytes": 4147200,
+       "megabytes": 3.96
+      }
+     ],
+     "gpuBusyBefore": 6
     },
     "three": {
-     "firstFrameMilliseconds": 542,
-     "updateMilliseconds": 0,
-     "renderCpuMilliseconds": 4.51,
-     "gpuMilliseconds": 231.55,
-     "fullFrameMilliseconds": 236.68,
+     "firstFrameMilliseconds": 442,
+     "updateMilliseconds": 0.01,
+     "renderCpuMilliseconds": 5.09,
+     "gpuMilliseconds": 186.14,
+     "fullFrameMilliseconds": 193.38,
      "drawCalls": 965,
      "triangles": 925452,
      "gpuMegabytes": 0.03,
      "heapMegabytes": 12.9,
+     "renderTargets": null,
      "gpuBusyBefore": 5
     }
    },
    "many-lights": {
     "67js": {
-     "firstFrameMilliseconds": 3080,
+     "firstFrameMilliseconds": 930,
      "updateMilliseconds": 0,
-     "renderCpuMilliseconds": 0.26,
-     "gpuMilliseconds": 1504.6,
-     "fullFrameMilliseconds": 1506.23,
+     "renderCpuMilliseconds": 0.31,
+     "gpuMilliseconds": 365.31,
+     "fullFrameMilliseconds": 367.25,
      "drawCalls": 4,
-     "triangles": 384014,
-     "gpuMegabytes": 45.82,
-     "heapMegabytes": 1.6,
+     "triangles": 368654,
+     "gpuMegabytes": 43.9,
+     "heapMegabytes": 1.8,
+     "renderTargets": [
+      {
+       "name": "shadowMap",
+       "width": 2048,
+       "height": 2048,
+       "layers": 1,
+       "format": "DEPTH_COMPONENT24",
+       "samples": 1,
+       "bytes": 16777216,
+       "megabytes": 16
+      },
+      {
+       "name": "multisampleColor",
+       "width": 960,
+       "height": 540,
+       "layers": 1,
+       "format": "RGBA16F",
+       "samples": 4,
+       "bytes": 16588800,
+       "megabytes": 15.82
+      },
+      {
+       "name": "multisampleDepth",
+       "width": 960,
+       "height": 540,
+       "layers": 1,
+       "format": "DEPTH_COMPONENT24",
+       "samples": 4,
+       "bytes": 8294400,
+       "megabytes": 7.91
+      },
+      {
+       "name": "frameColor",
+       "width": 960,
+       "height": 540,
+       "layers": 1,
+       "format": "RGBA16F",
+       "samples": 1,
+       "bytes": 4147200,
+       "megabytes": 3.96
+      }
+     ],
      "gpuBusyBefore": 5
     },
     "three": {
-     "firstFrameMilliseconds": 444,
+     "firstFrameMilliseconds": 360,
      "updateMilliseconds": 0,
-     "renderCpuMilliseconds": 1.12,
-     "gpuMilliseconds": 258.75,
-     "fullFrameMilliseconds": 261.08,
+     "renderCpuMilliseconds": 0.83,
+     "gpuMilliseconds": 141.51,
+     "fullFrameMilliseconds": 143.81,
      "drawCalls": 385,
      "triangles": 368652,
      "gpuMegabytes": 0.03,
      "heapMegabytes": 2.3,
+     "renderTargets": null,
      "gpuBusyBefore": 5
     }
    },
    "transparency": {
     "67js": {
-     "firstFrameMilliseconds": 3834,
+     "firstFrameMilliseconds": 622,
      "updateMilliseconds": 0,
      "renderCpuMilliseconds": 0.39,
-     "gpuMilliseconds": 1697.26,
-     "fullFrameMilliseconds": 1698.63,
+     "gpuMilliseconds": 327.9,
+     "fullFrameMilliseconds": 329.12,
      "drawCalls": 4,
      "triangles": 288014,
-     "gpuMegabytes": 45.8,
-     "heapMegabytes": 1.3,
-     "gpuBusyBefore": 30
+     "gpuMegabytes": 43.82,
+     "heapMegabytes": 1.4,
+     "renderTargets": [
+      {
+       "name": "shadowMap",
+       "width": 2048,
+       "height": 2048,
+       "layers": 1,
+       "format": "DEPTH_COMPONENT24",
+       "samples": 1,
+       "bytes": 16777216,
+       "megabytes": 16
+      },
+      {
+       "name": "multisampleColor",
+       "width": 960,
+       "height": 540,
+       "layers": 1,
+       "format": "RGBA16F",
+       "samples": 4,
+       "bytes": 16588800,
+       "megabytes": 15.82
+      },
+      {
+       "name": "multisampleDepth",
+       "width": 960,
+       "height": 540,
+       "layers": 1,
+       "format": "DEPTH_COMPONENT24",
+       "samples": 4,
+       "bytes": 8294400,
+       "megabytes": 7.91
+      },
+      {
+       "name": "frameColor",
+       "width": 960,
+       "height": 540,
+       "layers": 1,
+       "format": "RGBA16F",
+       "samples": 1,
+       "bytes": 4147200,
+       "megabytes": 3.96
+      }
+     ],
+     "gpuBusyBefore": 6
     },
     "three": {
-     "firstFrameMilliseconds": 461,
+     "firstFrameMilliseconds": 287,
      "updateMilliseconds": 0,
-     "renderCpuMilliseconds": 1.78,
-     "gpuMilliseconds": 128.53,
-     "fullFrameMilliseconds": 131.2,
+     "renderCpuMilliseconds": 0.85,
+     "gpuMilliseconds": 65.71,
+     "fullFrameMilliseconds": 67.27,
      "drawCalls": 301,
      "triangles": 288012,
      "gpuMegabytes": 0.03,
      "heapMegabytes": 4.9,
+     "renderTargets": null,
      "gpuBusyBefore": 5
     }
    },
    "moving-shadows": {
     "67js": {
-     "firstFrameMilliseconds": 1756,
-     "updateMilliseconds": 1.44,
-     "renderCpuMilliseconds": 0.45,
-     "gpuMilliseconds": 409.61,
-     "fullFrameMilliseconds": 411.28,
+     "firstFrameMilliseconds": 394,
+     "updateMilliseconds": 0.95,
+     "renderCpuMilliseconds": 0.38,
+     "gpuMilliseconds": 71.38,
+     "fullFrameMilliseconds": 72.76,
      "drawCalls": 4,
      "triangles": 12026,
-     "gpuMegabytes": 45.8,
-     "heapMegabytes": 1.4,
+     "gpuMegabytes": 43.83,
+     "heapMegabytes": 1.5,
+     "renderTargets": [
+      {
+       "name": "shadowMap",
+       "width": 2048,
+       "height": 2048,
+       "layers": 1,
+       "format": "DEPTH_COMPONENT24",
+       "samples": 1,
+       "bytes": 16777216,
+       "megabytes": 16
+      },
+      {
+       "name": "multisampleColor",
+       "width": 960,
+       "height": 540,
+       "layers": 1,
+       "format": "RGBA16F",
+       "samples": 4,
+       "bytes": 16588800,
+       "megabytes": 15.82
+      },
+      {
+       "name": "multisampleDepth",
+       "width": 960,
+       "height": 540,
+       "layers": 1,
+       "format": "DEPTH_COMPONENT24",
+       "samples": 4,
+       "bytes": 8294400,
+       "megabytes": 7.91
+      },
+      {
+       "name": "frameColor",
+       "width": 960,
+       "height": 540,
+       "layers": 1,
+       "format": "RGBA16F",
+       "samples": 1,
+       "bytes": 4147200,
+       "megabytes": 3.96
+      }
+     ],
      "gpuBusyBefore": 5
     },
     "three": {
-     "firstFrameMilliseconds": 336,
-     "updateMilliseconds": 0.15,
-     "renderCpuMilliseconds": 2.59,
-     "gpuMilliseconds": 39.22,
-     "fullFrameMilliseconds": 43.1,
+     "firstFrameMilliseconds": 252,
+     "updateMilliseconds": 0.11,
+     "renderCpuMilliseconds": 1.25,
+     "gpuMilliseconds": 25.5,
+     "fullFrameMilliseconds": 28.05,
      "drawCalls": 1002,
      "triangles": 12024,
      "gpuMegabytes": 32,
      "heapMegabytes": 2.1,
-     "gpuBusyBefore": 6
+     "renderTargets": null,
+     "gpuBusyBefore": 5
     }
    },
    "large-mesh": {
     "67js": {
-     "firstFrameMilliseconds": 4154,
+     "firstFrameMilliseconds": 1005,
      "updateMilliseconds": 0,
-     "renderCpuMilliseconds": 0.21,
-     "gpuMilliseconds": 2214.27,
-     "fullFrameMilliseconds": 2215.82,
+     "renderCpuMilliseconds": 0.17,
+     "gpuMilliseconds": 441.89,
+     "fullFrameMilliseconds": 443.42,
      "drawCalls": 3,
      "triangles": 1046530,
-     "gpuMegabytes": 73.75,
-     "heapMegabytes": 28.6,
-     "gpuBusyBefore": 31
+     "gpuMegabytes": 71.77,
+     "heapMegabytes": 28.7,
+     "renderTargets": [
+      {
+       "name": "shadowMap",
+       "width": 2048,
+       "height": 2048,
+       "layers": 1,
+       "format": "DEPTH_COMPONENT24",
+       "samples": 1,
+       "bytes": 16777216,
+       "megabytes": 16
+      },
+      {
+       "name": "multisampleColor",
+       "width": 960,
+       "height": 540,
+       "layers": 1,
+       "format": "RGBA16F",
+       "samples": 4,
+       "bytes": 16588800,
+       "megabytes": 15.82
+      },
+      {
+       "name": "multisampleDepth",
+       "width": 960,
+       "height": 540,
+       "layers": 1,
+       "format": "DEPTH_COMPONENT24",
+       "samples": 4,
+       "bytes": 8294400,
+       "megabytes": 7.91
+      },
+      {
+       "name": "frameColor",
+       "width": 960,
+       "height": 540,
+       "layers": 1,
+       "format": "RGBA16F",
+       "samples": 1,
+       "bytes": 4147200,
+       "megabytes": 3.96
+      }
+     ],
+     "gpuBusyBefore": 5
     },
     "three": {
-     "firstFrameMilliseconds": 797,
-     "updateMilliseconds": 0,
-     "renderCpuMilliseconds": 0.18,
-     "gpuMilliseconds": 219.34,
-     "fullFrameMilliseconds": 220.5,
+     "firstFrameMilliseconds": 408,
+     "updateMilliseconds": 0.01,
+     "renderCpuMilliseconds": 0.13,
+     "gpuMilliseconds": 170.53,
+     "fullFrameMilliseconds": 171.83,
      "drawCalls": 1,
      "triangles": 1046528,
      "gpuMegabytes": 24.01,
      "heapMegabytes": 29,
-     "gpuBusyBefore": 12
+     "renderTargets": null,
+     "gpuBusyBefore": 5
     }
    },
    "skinned-characters": {
     "67js": {
-     "firstFrameMilliseconds": 2295,
-     "updateMilliseconds": 11.43,
-     "renderCpuMilliseconds": 1.43,
-     "gpuMilliseconds": 721.09,
-     "fullFrameMilliseconds": 730.07,
+     "firstFrameMilliseconds": 474,
+     "updateMilliseconds": 13.55,
+     "renderCpuMilliseconds": 2.13,
+     "gpuMilliseconds": 167.93,
+     "fullFrameMilliseconds": 177.29,
      "drawCalls": 308,
      "triangles": 51818,
-     "gpuMegabytes": 49.02,
-     "heapMegabytes": 17.7,
-     "gpuBusyBefore": 7
+     "gpuMegabytes": 47.04,
+     "heapMegabytes": 17.3,
+     "renderTargets": [
+      {
+       "name": "shadowMap",
+       "width": 2048,
+       "height": 2048,
+       "layers": 1,
+       "format": "DEPTH_COMPONENT24",
+       "samples": 1,
+       "bytes": 16777216,
+       "megabytes": 16
+      },
+      {
+       "name": "multisampleColor",
+       "width": 960,
+       "height": 540,
+       "layers": 1,
+       "format": "RGBA16F",
+       "samples": 4,
+       "bytes": 16588800,
+       "megabytes": 15.82
+      },
+      {
+       "name": "multisampleDepth",
+       "width": 960,
+       "height": 540,
+       "layers": 1,
+       "format": "DEPTH_COMPONENT24",
+       "samples": 4,
+       "bytes": 8294400,
+       "megabytes": 7.91
+      },
+      {
+       "name": "frameColor",
+       "width": 960,
+       "height": 540,
+       "layers": 1,
+       "format": "RGBA16F",
+       "samples": 1,
+       "bytes": 4147200,
+       "megabytes": 3.96
+      }
+     ],
+     "gpuBusyBefore": 5
     },
     "three": {
-     "firstFrameMilliseconds": 640,
-     "updateMilliseconds": 0.09,
-     "renderCpuMilliseconds": 2.96,
-     "gpuMilliseconds": 63.23,
-     "fullFrameMilliseconds": 67.76,
+     "firstFrameMilliseconds": 728,
+     "updateMilliseconds": 0.11,
+     "renderCpuMilliseconds": 3.14,
+     "gpuMilliseconds": 40.03,
+     "fullFrameMilliseconds": 44.94,
      "drawCalls": 306,
      "triangles": 51816,
      "gpuMegabytes": 32.34,
      "heapMegabytes": 5.5,
-     "gpuBusyBefore": 6
+     "renderTargets": null,
+     "gpuBusyBefore": 7
     }
    }
   }
  },
  "scenes": {
   "instanced-objects": "5,000 boxes that share a geometry and a material",
+  "large-outdoor": "6000 spheres of about 1,000 triangles over 600 by 600 units, seen from the edge",
   "many-materials": "1,000 spheres with 1,000 different materials",
   "many-lights": "400 spheres lit by 8 point lights",
   "transparency": "300 overlapping translucent spheres that need sorting",
@@ -412,20 +1371,22 @@
   "skinned-characters": "8 animated copies of a CC0 robot, at one spot with different clip times"
  },
  "pictureDifference": {
-  "cpu-instanced-objects": 0.0456,
+  "cpu-instanced-objects": 0.0468,
   "cpu-large-mesh": 0.027,
-  "cpu-many-lights": 0.131,
-  "cpu-many-materials": 0.2411,
-  "cpu-moving-shadows": 0.091,
-  "cpu-skinned-characters": 0.1037,
-  "cpu-transparency": 0.1293,
-  "gpu-instanced-objects": 0.0465,
-  "gpu-large-mesh": 0.027,
-  "gpu-many-lights": 0.1315,
-  "gpu-many-materials": 0.2411,
-  "gpu-moving-shadows": 0.0903,
-  "gpu-skinned-characters": 0.1038,
-  "gpu-transparency": 0.1293
+  "cpu-large-outdoor": 0.0431,
+  "cpu-many-lights": 0.1327,
+  "cpu-many-materials": 0.2684,
+  "cpu-moving-shadows": 0.0731,
+  "cpu-skinned-characters": 0.1072,
+  "cpu-transparency": 0.1307,
+  "gpu-instanced-objects": 0.0477,
+  "gpu-large-mesh": 0.0271,
+  "gpu-large-outdoor": 0.0431,
+  "gpu-many-lights": 0.1331,
+  "gpu-many-materials": 0.2691,
+  "gpu-moving-shadows": 0.0721,
+  "gpu-skinned-characters": 0.1074,
+  "gpu-transparency": 0.1307
  },
  "threeVersion": "0.186.1"
 }

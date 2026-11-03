@@ -196,7 +196,7 @@ The `surfaces` mode finds triangle contact. The `closed-solids` mode also tests 
 An index also supports `raycast(matrix, ray)` for a triangle number, hit point and barycentric coordinates.
 The [mesh query contract](https://github.com/codepawl/67.js/blob/main/docs/mesh-query.md) describes results, solid validation, numerical limits and budget errors.
 Rebuild indices after geometry edits. Queries reject skin and morph channels.
-Contact results do not measure penetration depth, resolve collisions or diagnose z-fighting.
+Contact results do not measure penetration depth or resolve collisions. Z-fighting has its own check: `renderer.diagnostics` and `scene_inspect` report `coplanar-overlap` for two parts that draw the same plane (within 1 mm, same facing, at least 1 cm2 shared). Fix it with `decal: true` on the smaller part (layer 1; `depthLayer` 0 to 4 orders stacked decals), or `environment.resolveCoplanar: 'offset'` to bias the smaller part of every flagged pair. Both draw with a scoped polygon offset in the colour pass and render passes, and never move geometry. Use a real offset along the normal when the gap should be visible in exports or the path tracer. The coplanar code is not in the core bundle: call `installCoplanarDiagnostics(renderer)` from `67js/addons/coplanar-overlap` to add the warning to `renderer.diagnostics` (checked once per layout), and `scene_inspect` shows it once `loadAllAgentSceneModules()` (or a recipe with `resolveCoplanar`) has loaded the code. Reversed-Z depth is not implemented yet (#310).
 
 ## Shrinkwrap and surface patches
 
@@ -228,7 +228,7 @@ Pass `environment: { map }` to light and reflect from an equirectangular HDR ima
 1. Build rigs with `createRigFromSkin(asset.skins[0])`. Name families (Mixamo, VRM, Unreal, Rigify, Quaternius) map through `mapHumanoidBones`; fix a miss with `targetOverrides`.
 2. Call `retargetClip(sourceRig, targetRig, clip, { rootMotion })`.
 3. Play it with `createSkinClipPlayer(skin, clip).apply(seconds)`, then `renderer.updateParts(parts)`.
-4. For a crowd, `createCrowd({ count, clip, seed })` gives placement, time offsets and playback rates. Each instance needs its own skin pose.
+4. For a crowd, `createCrowd({ count, clip, seed })` gives placement, time offsets and playback rates. For dozens or hundreds of animated instances, bake the clip once with `67js/addons/crowd-skinning` so they draw as a few instanced batches (see `docs/retarget.md`, Crowds); the plain path needs one skin pose per instance.
 
 The [retarget contract](https://github.com/codepawl/67.js/blob/main/docs/retarget.md) covers rest-pose assumptions and measured cost. Mixamo clips need the owner's Adobe login to download; the code only consumes files.
 
