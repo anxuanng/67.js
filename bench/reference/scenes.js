@@ -78,7 +78,7 @@ function brickGraph() {
   const jointAcross = { smoothstep: [0.12, 0.3, { wave: { frequency: BRICK_COLUMNS, direction: 'u', shape: 'triangle', at: shifted } }] };
   const jointAlong = { smoothstep: [0.08, 0.2, { wave: { frequency: BRICK_ROWS, direction: 'v', shape: 'triangle' } }] };
   const body = { min: [jointAcross, jointAlong] };
-  const tone = { ramp: { value: { noise: { scale: 10, seed: 2, octaves: 3 } }, stops: [[0, [0.3, 0.09, 0.05]], [1, [0.58, 0.24, 0.14]]] } };
+  const tone = { ramp: { value: { noise: { scale: 10, octaves: 3, tile: false } }, stops: [[0, [0.3, 0.09, 0.05]], [1, [0.58, 0.24, 0.14]]] } };
   return { color: { mix: [[0.45, 0.42, 0.38], tone, body] }, height: body };
 }
 
