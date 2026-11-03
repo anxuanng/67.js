@@ -258,7 +258,7 @@ A node with an `asset` field places a GLB from the `--assets` catalog inside the
 
 ### Vegetation
 
-A node with a `vegetation` field is a group that grows trees from the addon in [Vegetation](/vegetation.md). Its parts become generated child nodes like placed assets (`<node>/<instance>/<bark|foliage>`), left out of `scene_inspect` nodes and `scene_export_recipe`.
+A node with a `vegetation` field is a group that grows trees from the addon in [Vegetation](https://67js.codepawl.com/vegetation.md). Its parts become generated child nodes like placed assets (`<node>/<instance>/<bark|foliage>`), left out of `scene_inspect` nodes and `scene_export_recipe`.
 
 ```json
 { "id": "forest", "vegetation": { "mix": { "broadleaf": 3, "conifer": 2, "bush": 2 }, "seed": 11, "season": 0.4,

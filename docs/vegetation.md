@@ -118,7 +118,7 @@ When `changed` is true, build a new renderer from the new parts. Grass switches 
 
 ## Recipes and MCP
 
-A recipe node with a `vegetation` field grows and scatters these trees, with wind, seasons and imported trees; see "Vegetation" in [Agent scenes](/agent-scene.md). `scatterVegetation` is called with the terrain's own `heightAt`, so the instances match the addon for the same options.
+A recipe node with a `vegetation` field grows and scatters these trees, with wind, seasons and imported trees; see "Vegetation" in [Agent scenes](https://67js.codepawl.com/agent-scene.md). `scatterVegetation` is called with the terrain's own `heightAt`, so the instances match the addon for the same options.
 `levelForDistance(distance, variant, { distanceScale, cullDistance })` is the stateless form of `selectLevels`: no hysteresis, so the level is a pure function of the distance.
 
 ## Impostors and cross-fade
