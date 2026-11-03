@@ -69,6 +69,8 @@ Local `environment.pointLights` support 16 world-space sources with inverse-squa
 Each light provides `position` and optional `color`, `intensity`, `radius`, `range` and `castShadow`.
 `environment.spotLights` (eight) take `position`, `direction`, and optional `angle` (outer half angle in radians, default 0.785), `penumbra` (0 to 1, default 0.15), `color`, `intensity`, `radius`, `range` and `castShadow`. Intensity is candela, the same unit as a point light.
 `environment.areaLights` (four) are rectangles with `position`, `direction` (the side that emits), `width`, `height`, optional `up`, `color` and `intensity` (candela seen head on). They cast no shadow.
+`environment.viewTransform` (`aces` default, `agx` for lit scenes and Blender comparisons, `neutral` for product and brand colour) and `environment.look` (`warm`, `cool`, `contrast`, `faded`) set the display curve and a grade; `scene_capabilities.viewTransform` says when to pick each, and a recipe using them needs `loadAgentSceneModules`.
+
 `castShadow: true` on a point light uses 6 of the 24 shadow tiles, on a spot light 1. Past 24 the edit is rejected. Shadows reach `range`, or 30 units when `range` is 0. Set `castShadow` on the few lights that show a visible shadow, because each one adds a depth pass. `affects: ['node-id', ...]` on a point, spot or area light, and `environment.keyAffects` for the sun, limit a light to those nodes (a light without it lights every node; an unknown ID is rejected; the bake honours it, the path tracer ignores it and says so). `environment.shadowCascades` (1 to 4, 0 for one map) sharpens a long sun shadow near the camera; it turns on by itself at 3 when `shadow.extent` is above 40, so set it only to choose another count or 0. Details: docs/lighting.md.
 `keyIntensity`, `fillIntensity` and `ambientIntensity` independently scale existing lighting.
 Read the checkout's `docs/lighting.md` for defaults, numeric limits and frame overrides.
@@ -129,7 +131,7 @@ It rejects skin, morph, assembly and procedural targets. It does not detect arbi
 
 Static `createMeshQueryIndex` copies geometry into an owned disposable BVH. Read `docs/mesh-query.md` for numerical and work limits.
 Pass current affine matrices to `createMeshPairQuery(...).evaluate()`. Rebuild indices after editing geometry.
-Closed-solid containment requires two `solid: true` indices. Surface contact does not prove volume penetration or z-fighting.
+Closed-solid containment requires two `solid: true` indices. Surface contact does not prove volume penetration. Flush faces flicker: `scene_inspect` warns `coplanar-overlap` naming both parts; set `decal: true` on the smaller node (a sign, a road marking), `depthLayer` 0 to 4 for stacked decals, or `environment.resolveCoplanar: 'offset'` to bias every flagged pair at draw time. Or move one part 2 mm along its normal. Never use these to hide overlapping solids.
 
 Use `docs/primitives.md` for exact seam closure and preallocation bounds. Preserve indeterminate and budget errors rather than reporting a miss.
 

@@ -136,6 +136,10 @@ Options: `count` (1 to 4, default 3), `resolution` (256 to 4096, default 2048), 
 
 Recipes reach it through `environment.shadowCascades` (an integer from 1 to 4, or 0 for the single map). Without the field a scene gets three cascades when `shadow.extent` is above 40, because the single map then covers more than 80 m and a texel is 4 cm or wider (`extent / 1024` metres); a scene with the default extent of 3.5 and any scene at or below 40 draws exactly as before. The rule reads only recipe numbers, so a recipe always resolves the same way; set `shadowCascades: 0` to keep the single map on a wide scene. The preview loads the cascade code only for a scene that gets cascades, and rebuilds its renderer when the count changes.
 
+### View transform and look
+
+`environment.viewTransform` picks the display curve: `aces` (default, contrasty), `agx` (Blender's default, keeps bright saturated colour without clipping; pick it for a lit scene or to compare with Blender) or `neutral` (Khronos PBR Neutral, base colours show as authored; pick it for product shots and brand colours). `environment.look` adds a graded look after the curve: `warm`, `cool`, `contrast` or `faded`. In code, `new Renderer67(canvas, parts, { viewTransform: 'agx', look })` takes a look from `parseCube(text)` (a 3D `.cube` file, up to size 65) in `@codepawlhq/67js/addons/view-transform`; recipes and MCP never take a file path. The curves and the look live in `@codepawlhq/67js/addons/view-transform-shader`, which a recipe loads through `loadAgentSceneModules`; the default curve costs nothing extra. The path tracer takes the same `viewTransform` and `look` options, so a still and its path-traced image match. The look is not applied to Gaussian splats.
+
 ## Light linking
 
 A light can be limited to some parts, as Blender's receiver collection does. Give a light an `affects` list of part names (and `environment.keyAffects` for the sun) and pass the parts through `applyLightLinks`:
