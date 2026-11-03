@@ -12,7 +12,7 @@
   },
   "waterReflection": true,
   "gltfOptions": {
-    "maxTexturePixels": 33554432
+    "maxTexturePixels": 67108864
   },
   "exposure": 1.2,
   "eye": [
@@ -135,6 +135,18 @@
       "author": "Poly Haven",
       "licence": "CC0",
       "source": "https://polyhaven.com/a/industrial_sunset_02_puresky"
+    },
+    {
+      "model": "Container atlas, ship hull and crane paint texture sets (baked from the Poly Haven CC0 textures above)",
+      "author": "CodePawl",
+      "licence": "MIT",
+      "source": "https://67js.codepawl.com"
+    },
+    {
+      "model": "Yard ground detail normal map (concrete_floor_worn_001, tiled) and outer ground (asphalt_02: colour, normal, roughness)",
+      "author": "Poly Haven",
+      "licence": "CC0",
+      "source": "https://polyhaven.com/a/asphalt_02"
     }
   ]
 }

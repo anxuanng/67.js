@@ -5,6 +5,7 @@
   "glb": "/showcase/airport/scene.glb",
   "hdri": "/showcase/airport/sky.hdr",
   "hdriOptions": { "intensity": 0.8, "rotation": -0.323, "showBackground": true, "backgroundBlur": 0 },
+  "gltfOptions": { "maxTexturePixels": 33554432 },
   "exposure": 1.0,
   "eye": [138, 64, 36],
   "target": [1, 3, -13],
@@ -50,6 +51,12 @@
     { "model": "Concrete Floor Worn 001 texture", "author": "Poly Haven", "licence": "CC0", "source": "https://polyhaven.com/a/concrete_floor_worn_001" },
     { "model": "Asphalt026B texture", "author": "ambientCG (Lennart Demes)", "licence": "CC0", "source": "https://ambientcg.com/view?id=Asphalt026B" },
     { "model": "DiamondPlate008A and Metal032 textures (pushback tug)", "author": "ambientCG (Lennart Demes)", "licence": "CC0", "source": "https://ambientcg.com" },
+    { "model": "Metal Plate 02 texture (vehicles, masts, bridges)", "author": "Poly Haven", "licence": "CC0", "source": "https://polyhaven.com/a/metal_plate_02" },
+    { "model": "Corrugated Iron texture (terminal roof)", "author": "Poly Haven", "licence": "CC0", "source": "https://polyhaven.com/a/corrugated_iron" },
+    { "model": "Concrete034 texture (terminal base)", "author": "ambientCG (Lennart Demes)", "licence": "CC0", "source": "https://ambientcg.com/view?id=Concrete034" },
+    { "model": "Painted Plaster Wall texture (terminal interior)", "author": "Poly Haven", "licence": "CC0", "source": "https://polyhaven.com/a/painted_plaster_wall" },
+    { "model": "Floor Tiles 06 texture (terminal interior)", "author": "Poly Haven", "licence": "CC0", "source": "https://polyhaven.com/a/floor_tiles_06" },
+    { "model": "Scene assembly, ramp ground and material setup", "author": "CodePawl", "licence": "MIT", "source": "https://67js.codepawl.com" },
     { "model": "Industrial Sunset (Pure Sky) HDRI", "author": "Poly Haven", "licence": "CC0", "source": "https://polyhaven.com/a/industrial_sunset_puresky" }
   ]
 }
