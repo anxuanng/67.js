@@ -277,6 +277,28 @@ async function renderReferencePathTracedFeatures(id, options) {
 }
 
 window.renderReferencePathTracedFeatures = renderReferencePathTracedFeatures;
+
+// Traces a scene recipe the way an agent render job does (parts, environment map and camera of the agent scene).
+async function renderRecipePathTraced(recipe, options) {
+  const { createAgentScene, loadAllAgentSceneModules, needsMeshBooleans, loadMeshBooleans, setManifoldModuleLoader } = await import('/src/agent-scene.js');
+  const { agentEnvironmentMap } = await import('/src/agent-look.js');
+  await loadAllAgentSceneModules();
+  if (needsMeshBooleans(recipe)) {
+    setManifoldModuleLoader(() => import(/* @vite-ignore */ '/node_modules/manifold-3d/manifold.js'));
+    await loadMeshBooleans();
+  }
+  const scene = createAgentScene(recipe);
+  const { renderPathTracedImage } = await import('/src/path-tracer.js');
+  const environment = scene.environment;
+  const result = await renderPathTracedImage({ parts: scene.parts, environment: { ...environment, map: agentEnvironmentMap(environment) }, camera: scene.camera }, options);
+  const canvas = document.createElement('canvas');
+  canvas.width = result.width;
+  canvas.height = result.height;
+  canvas.getContext('2d').putImageData(new ImageData(result.rgba, result.width, result.height), 0, 0);
+  return { image: canvas.toDataURL('image/png').split(',')[1], report: result.report };
+}
+
+window.renderRecipePathTraced = renderRecipePathTraced;
 window.renderReferenceScene = renderReferenceScene;
 window.renderReferencePathTraced = renderReferencePathTraced;
 window.referenceSceneIds = Object.keys(SCENES);
