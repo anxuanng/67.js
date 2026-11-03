@@ -14,6 +14,7 @@ import { validateSkinGeometry, validateSkinPose, skinTextureLayout, packSkinInfl
 import { validateSplatMaterial, splatBatchState, splatTextureBytes, resolveSplatSize, packSplatParameters, buildSplatPixels } from './splat.js';
 import { materialLayerState, materialLayerValue } from './material-layers.js';
 import { InstanceSelection, extractFrustumPlanes, geometryBoundingSphere, selectInstances } from './render-culling.js';
+import { resolveShadowLight } from './shadow-light.js';
 import { validateMorphGeometry, validateMorphPose, validateMorphTransform, packMorphTargets } from './morph.js';
 
 const SHADOW_MAP_SIZE = 2048;
@@ -440,6 +441,7 @@ export class Renderer67 {
     this.world = world;
     this.environment = environment;
     this.shadowBounds = shadowBounds;
+    this.activeLightDirection = environment.lightDirection ?? [-3, 6, 4];
     this.shadowCascades = shadowCascades;
     this.memoryBudgetMiB = memoryBudgetMiB;
     this.hdr = Boolean(hdr && !benchmark && this.context.getExtension('EXT_color_buffer_float'));
@@ -1228,8 +1230,7 @@ export class Renderer67 {
     context.drawBuffers([context.NONE]);
     context.readBuffer(context.NONE);
     if (context.checkFramebufferStatus(context.FRAMEBUFFER) !== context.FRAMEBUFFER_COMPLETE) throw new Error('Shadow framebuffer is incomplete.');
-    const defaults = this.world ? { eye: [-25, 60, 30], target: [0, 2, -10], extent: 65, near: 1, far: 220 } : { eye: [-3, 6, 4], target: [0, 1, 0], extent: 3.5, near: 0.1, far: 15 };
-    const light = { ...defaults, ...this.shadowBounds };
+    const light = resolveShadowLight(this.world, this.activeLightDirection, this.shadowBounds);
     const lightView = mat4.lookAt(mat4.create(), light.eye, light.target, light.up ?? [0, 1, 0]);
     mat4.ortho(this.lightProjection, -light.extent, light.extent, -light.extent, light.extent, light.near, light.far);
     mat4.multiply(this.lightProjection, this.lightProjection, lightView);
@@ -1986,13 +1987,16 @@ export class Renderer67 {
       if (!Number.isFinite(lightLength) || lightLength < 1e-6 || !Array.from(direction).every(component => typeof component === 'number' && Math.abs(component) <= 1e6)) throw new RangeError('Volume light direction must have a finite nonzero length and bounded components');
     }
     updateLightingState(this.lighting, environment, { world: this.world });
+    // The shadow view follows the sun, so a moved sun redraws the map.
+    const lightChanged = String(this.activeLightDirection) !== String(environment.lightDirection);
+    this.activeLightDirection = environment.lightDirection;
     const start = performance.now();
     const context = this.context;
     this.beginGpuTiming();
     const assemblyAmount = Math.max(0, Math.min(1, frame.assemblyAmount ?? 0));
     // Swaying foliage moves every frame, so its shadow map is redrawn whenever time or wind changes.
     const windChanged = this.updateWindState(frame);
-    const casterChanged = this.assemblyAmount !== assemblyAmount || this.shadowsDirty || windChanged;
+    const casterChanged = this.assemblyAmount !== assemblyAmount || this.shadowsDirty || windChanged || lightChanged;
     this.requireFeatureNames(shaderFeaturesOfLighting(this.lighting));
     const passMode = this.preparePass(frame);
     this.renderingPass = passMode > 0;

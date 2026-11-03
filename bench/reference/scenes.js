@@ -121,7 +121,7 @@ async function brickWallScene({ withGraph }) {
     parts: [floor([0.4, 0.38, 0.32]), wall], blenderWorld: lighting.blenderWorld,
     environment: environment(lighting, { keyColor: SUN_COLOR }),
     camera: { eye: [0, 2, 8.5], target: [0, 2, 0], up: [0, 1, 0], fov: 40, near: 0.1, far: 100 },
-    shadow: { eye: [-6, 10, 8], target: [0, 1, 0], up: [0, 1, 0], extent: 8, near: 0.1, far: 40 },
+    shadow: shadowAlongSun(DEFAULT_SUN_DIRECTION, { target: [0, 1, 0], distance: 13.45, extent: 8, near: 0.1, far: 40 }),
   };
 }
 
@@ -168,7 +168,7 @@ async function khronosAssetScene(name) {
     parts: asset.parts, glb: file, blenderWorld: lighting.blenderWorld,
     environment: environment(lighting, { keyColor: SUN_COLOR }),
     camera,
-    shadow: { eye: [center[0] - radius, center[1] + radius * 2, center[2] + radius], target: center, up: [0, 1, 0], extent: radius * 1.5, near: radius * 0.1, far: radius * 8 },
+    shadow: shadowAlongSun(DEFAULT_SUN_DIRECTION, { target: center, distance: radius * Math.sqrt(6), extent: radius * 1.5, near: radius * 0.1, far: radius * 8 }),
   };
 }
 
@@ -209,6 +209,15 @@ export function normalized(vector) {
 export function sunShadow(towardLight, target, extent, depth) {
   const direction = normalized(towardLight);
   return { eye: target.map((value, axis) => value + direction[axis] * depth), target, up: [0, 1, 0], extent, near: 1, far: depth * 2 };
+}
+
+// The sun every scene gets from environment() unless it names its own.
+const DEFAULT_SUN_DIRECTION = [-3, 6, 4];
+
+// A shadow map that looks along the sun toward `target` from `distance` metres away, so shadows fall where the shading says.
+function shadowAlongSun(towardLight, { target, distance, extent, near, far }) {
+  const direction = normalized(towardLight);
+  return { eye: target.map((value, axis) => value + direction[axis] * distance), target, up: [0, 1, 0], extent, near, far };
 }
 
 // Mountain valley: a bowl about 2 km across whose rim rises into ridged peaks, a conifer forest on the lower slopes.
@@ -637,7 +646,7 @@ export const REFERENCE_SCENES = {
       parts, blenderWorld: lighting.blenderWorld,
       environment: environment(lighting, { keyColor: SUN_COLOR }),
       camera: { eye: [0, 3.5, 7.5], target: [0, 0.4, 0], up: [0, 1, 0], fov: 35, near: 0.1, far: 200 },
-      shadow: { eye: [-6, 12, 8], target: [0, 0, 0], up: [0, 1, 0], extent: 8, near: 0.1, far: 40 },
+      shadow: shadowAlongSun(DEFAULT_SUN_DIRECTION, { target: [0, 0, 0], distance: 15.62, extent: 8, near: 0.1, far: 40 }),
     };
   },
 
@@ -787,7 +796,7 @@ export const REFERENCE_SCENES = {
       parts, blenderWorld: lighting.blenderWorld,
       environment: environment(lighting, { keyColor: SUN_COLOR, lightDirection: [-0.7, 0.8, 0.35] }),
       camera: { eye: [-1.5, 1.7, 56], target: [0, 2.2, -40], up: [0, 1, 0], fov: 50, near: 0.1, far: 200 },
-      shadow: { eye: [-58, 66, 30], target: [0, 0, -10], up: [0, 1, 0], extent: 85, near: 1, far: 260 },
+      shadow: shadowAlongSun([-0.7, 0.8, 0.35], { target: [0, 0, -10], distance: 96.54, extent: 85, near: 1, far: 260 }),
     };
   },
 
@@ -823,7 +832,7 @@ export const REFERENCE_SCENES = {
       parts: [floor([0.4, 0.42, 0.45]), ...asset.parts], blenderWorld: lighting.blenderWorld,
       environment: environment(lighting, { keyColor: SUN_COLOR }),
       camera: { eye: [2, 3.5, 9], target: [0, 2.4, 0], up: [0, 1, 0], fov: 35, near: 0.1, far: 200 },
-      shadow: { eye: [-6, 12, 8], target: [0, 2, 0], up: [0, 1, 0], extent: 7, near: 0.1, far: 40 },
+      shadow: shadowAlongSun(DEFAULT_SUN_DIRECTION, { target: [0, 2, 0], distance: 14.14, extent: 7, near: 0.1, far: 40 }),
     };
   },
 
@@ -835,7 +844,7 @@ export const REFERENCE_SCENES = {
       blenderWorld: lighting.blenderWorld,
       environment: environment(lighting, { keyColor: SUN_COLOR }),
       camera: { eye: [0, 3.5, 12], target: [0, 3.2, 0], up: [0, 1, 0], fov: 40, near: 0.1, far: 200 },
-      shadow: { eye: [-6, 14, 8], target: [0, 3, 0], up: [0, 1, 0], extent: 9, near: 0.1, far: 40 },
+      shadow: shadowAlongSun(DEFAULT_SUN_DIRECTION, { target: [0, 3, 0], distance: 14.87, extent: 9, near: 0.1, far: 40 }),
     };
   },
 
@@ -854,7 +863,7 @@ export const REFERENCE_SCENES = {
       parts, blenderWorld: lighting.blenderWorld,
       environment: environment(lighting, { keyColor: SUN_COLOR }),
       camera: { eye: [0, 1.8, 6], target: [0, 0.9, 0], up: [0, 1, 0], fov: 35, near: 0.1, far: 200 },
-      shadow: { eye: [-6, 12, 8], target: [0, 0, 0], up: [0, 1, 0], extent: 6, near: 0.1, far: 40 },
+      shadow: shadowAlongSun(DEFAULT_SUN_DIRECTION, { target: [0, 0, 0], distance: 15.62, extent: 6, near: 0.1, far: 40 }),
     };
   },
 
@@ -870,7 +879,7 @@ export const REFERENCE_SCENES = {
       parts, blenderWorld: lighting.blenderWorld,
       environment: environment(lighting, { keyColor: SUN_COLOR }),
       camera: { eye: [0, 2.2, 7], target: [0, 0.7, 0], up: [0, 1, 0], fov: 35, near: 0.1, far: 200 },
-      shadow: { eye: [-6, 12, 8], target: [0, 0, 0], up: [0, 1, 0], extent: 6, near: 0.1, far: 40 },
+      shadow: shadowAlongSun(DEFAULT_SUN_DIRECTION, { target: [0, 0, 0], distance: 15.62, extent: 6, near: 0.1, far: 40 }),
     };
   },
 
@@ -887,7 +896,7 @@ export const REFERENCE_SCENES = {
       parts, blenderWorld: lighting.blenderWorld,
       environment: environment(lighting, { keyColor: SUN_COLOR }),
       camera: { eye: [0, 2.2, 7], target: [0, 0.7, 0], up: [0, 1, 0], fov: 35, near: 0.1, far: 200 },
-      shadow: { eye: [-6, 12, 8], target: [0, 0, 0], up: [0, 1, 0], extent: 6, near: 0.1, far: 40 },
+      shadow: shadowAlongSun(DEFAULT_SUN_DIRECTION, { target: [0, 0, 0], distance: 15.62, extent: 6, near: 0.1, far: 40 }),
     };
   },
 
@@ -904,7 +913,7 @@ export const REFERENCE_SCENES = {
       parts, blenderWorld: lighting.blenderWorld,
       environment: environment(lighting, { keyColor: SUN_COLOR }),
       camera: { eye: [0, 2.2, 7], target: [0, 0.7, 0], up: [0, 1, 0], fov: 35, near: 0.1, far: 200 },
-      shadow: { eye: [-6, 12, 8], target: [0, 0, 0], up: [0, 1, 0], extent: 6, near: 0.1, far: 40 },
+      shadow: shadowAlongSun(DEFAULT_SUN_DIRECTION, { target: [0, 0, 0], distance: 15.62, extent: 6, near: 0.1, far: 40 }),
     };
   },
 
@@ -924,7 +933,7 @@ export const REFERENCE_SCENES = {
       parts, blenderWorld: lighting.blenderWorld,
       environment: environment(lighting, { lightDirection: [-5, 6, 2], keyColor: [6, 5.6, 5], volumeFog }),
       camera: { eye: [0, 1.6, 7], target: [0, 1.6, -4], up: [0, 1, 0], fov: 50, near: 0.1, far: 80 },
-      shadow: { eye: [-10, 12, 4], target: [0, 0, -1], up: [0, 1, 0], extent: 12, near: 0.1, far: 50 },
+      shadow: shadowAlongSun([-5, 6, 2], { target: [0, 0, -1], distance: 16.4, extent: 12, near: 0.1, far: 50 }),
     };
   },
 
@@ -941,7 +950,7 @@ export const REFERENCE_SCENES = {
       parts, blenderWorld: lighting.blenderWorld,
       environment: environment(lighting, { keyColor: SUN_COLOR }),
       camera: { eye: [0, 2, 10], target: [0, 1.5, 0], up: [0, 1, 0], fov: 45, near: 0.1, far: 300 },
-      shadow: { eye: [-8, 14, 10], target: [0, 0, 0], up: [0, 1, 0], extent: 10, near: 0.1, far: 50 },
+      shadow: shadowAlongSun(DEFAULT_SUN_DIRECTION, { target: [0, 0, 0], distance: 18.97, extent: 10, near: 0.1, far: 50 }),
     };
   },
 };
@@ -993,7 +1002,7 @@ async function clothScene({ kind, seconds }) {
     camera: isBanner
       ? { eye: [1.2, 2.2, 6.5], target: [0.1, 1.9, 0.3], up: [0, 1, 0], fov: 35, near: 0.1, far: 200 }
       : { eye: [2.6, 1.5, 3.6], target: [0, 0.5, 0], up: [0, 1, 0], fov: 35, near: 0.1, far: 200 },
-    shadow: { eye: [-6, 12, 8], target: [0, 0, 0], up: [0, 1, 0], extent: 8, near: 0.1, far: 40 },
+    shadow: shadowAlongSun(DEFAULT_SUN_DIRECTION, { target: [0, 0, 0], distance: 15.62, extent: 8, near: 0.1, far: 40 }),
     blenderCloth: {
       part: 'cloth', segments: CLOTH_SEGMENTS, restMatrix, seconds, framesPerSecond: 60,
       vertexMass: CLOTH_DENSITY * sheetArea / ((CLOTH_SEGMENTS + 1) ** 2),

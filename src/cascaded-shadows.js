@@ -1,5 +1,6 @@
 import { mat4, vec3 } from 'gl-matrix';
 import { registerShaderFeatureCode } from './shaders.js';
+import { resolveShadowLight } from './shadow-light.js';
 
 // Cascaded sun shadows. The camera frustum is cut into up to four slices by view depth; each slice gets its own depth
 // map, fitted to a bounding sphere of the slice, so a shadow near the camera is sharp and a far one is coarse. Pass
@@ -23,8 +24,6 @@ const DEFAULT_CASTER_REACH = 200;
 // A sampler that a program never sets reads unit 0, and the cascade array lives on unit 0, so the main program's other
 // samplers are pinned to their own units here. These are the units renderer.js uses: the five maps on 1 to 5, the light map on 6, the local shadow atlas on 15.
 const MAIN_SAMPLER_UNITS = { baseMap: 1, normalMap: 2, metallicRoughnessMap: 3, occlusionMap: 4, emissiveMap: 5, lightMap: 6, localShadowAtlas: 15 };
-// The light direction when the renderer's shadowBounds do not give one, as renderer.js defaults it.
-const DEFAULT_LIGHT_VIEWS = { world: { eye: [-25, 60, 30], target: [0, 2, -10] }, studio: { eye: [-3, 6, 4], target: [0, 1, 0] } };
 const NDC_CORNERS = [[-1, -1], [1, -1], [-1, 1], [1, 1]];
 
 const CASCADE_DECLARATIONS = `uniform highp sampler2DArray cascadeShadowMap;
@@ -196,7 +195,7 @@ export class CascadedShadows {
 
   // Fits every slice to the current camera. Returns the number of slices whose matrix moved.
   fitToCamera(renderer) {
-    const light = { ...DEFAULT_LIGHT_VIEWS[renderer.world ? 'world' : 'studio'], ...renderer.shadowBounds };
+    const light = resolveShadowLight(renderer.world, renderer.activeLightDirection, renderer.shadowBounds);
     const towardLight = vec3.normalize(vec3.create(), vec3.subtract(vec3.create(), light.eye, light.target));
     const corners = frustumCorners(renderer.inverseViewProjection);
     const nearDistance = viewDepthOf(corners[0], renderer.view);
