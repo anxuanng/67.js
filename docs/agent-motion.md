@@ -176,6 +176,12 @@ matched), `unmapped` (joints no bone claimed, up to 24, with `unmappedCount`) an
 "motion": { "duration": 1, "loop": true, "layers": [{ "from": { "asset": "<id of the walking file>", "clip": 0 }, "scale": 1.1 }] }
 ```
 
+### Drive
+
+`motion.drive` (imported assets only; a placed asset takes `asset.drive`) drives a car GLB along a path: wheels found by name and geometry roll and steer with Ackermann angles, the body leans with the speed profile, legs can reverse, and tail lights glow with the brake.
+`motion.duration` may be left out and becomes the drive time.
+Fields, the `motionDrive` report of `scene_inspect` and the limits are in [vehicle.md](vehicle.md#driving-through-mcp).
+
 ### Foot lock
 
 `motion.footLock` (opt-in, needs `layers`) plants the feet. The layers are sampled at 30 frames per second once, and a foot

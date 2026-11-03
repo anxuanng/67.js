@@ -36,6 +36,7 @@ export const AGENT_ASSET_CAPABILITIES = Object.freeze({
     'set-camera', 'set-environment', 'set-effects', 'set-shadow',
     'set-root', 'set-animation', 'set-material', 'set-asset-node', 'set-motion', 'set-physics', 'edit-mesh',
   ]),
+  motionDrive: 'drive {path | legs [{path, direction forward|reverse, pause}], speed | cruiseSpeed (+ acceleration, braking, maxLateralAcceleration), wheels auto | [{id,node|nodes,side,axle,radius,steerable,spinSign}], body, forwardAxis, wheelbase, steering ackermann|shared, lights {headlights [{id,position,direction}], tailLights [{material,signal brake|reverse,off,on}]}}: a car driven along a path (points or a camera path), wheels rolling and steering, tail lights glowing with the brake. duration may be left out: it becomes the drive time. scene_inspect motionDrive lists the wheels found, rejectedNames and the light signals at the motion time. See docs/vehicle.md',
   ragdoll: 'physics {duration, floor?, ragdoll {}}: joints fall limp onto a floor at world height floor (default 0)',
   boundsKind: 'authored-base-world',
 });
@@ -507,6 +508,16 @@ export function createAgentAssetScene(asset, inputRecipe, { sources } = {}) {
     return copiedJson(result);
   }
 
+  /** The drive of motion.drive for this asset. Built once per distinct entry: the rig and the speed profile cost a simulation. */
+  const builtDrives = new Map();
+  function buildDrive(drive) {
+    const key = JSON.stringify(drive);
+    if (!builtDrives.has(key)) {
+      builtDrives.set(key, agentSceneModule('drive').createAssetDrive(asset, drive, { materialIds: new Set(materialRecords.keys()) }));
+    }
+    return builtDrives.get(key);
+  }
+
   function motionRecipe(candidate) {
     const baselines = new Map([...materialRecords].map(([id, record]) => [id, { id, ...record.baseline }]));
     for (const override of candidate.materialOverrides) {
@@ -516,7 +527,7 @@ export function createAgentAssetScene(asset, inputRecipe, { sources } = {}) {
     return {
       nodes: [...sourceNodes.values()].filter(node => node.editable),
       materials: [...baselines.values()], camera: candidate.camera,
-      ikHierarchy: [...sourceNodes.values()], clipLayerContext, morphTargets: [...morphTargetIndex.keys()],
+      buildDrive, ikHierarchy: [...sourceNodes.values()], clipLayerContext, morphTargets: [...morphTargetIndex.keys()],
       ikRootMatrix: Array.from(mat4.fromRotationTranslationScale(mat4.create(), root.rotation, root.translation, [root.scale[0], root.scale[0], root.scale[0]])),
     };
   }
@@ -781,6 +792,13 @@ export function createAgentAssetScene(asset, inputRecipe, { sources } = {}) {
     };
   }
 
+  /** scene_inspect's motionDrive: the wheels found, the names rejected and the light signals at the current motion time. */
+  function motionDriveReport() {
+    if (!recipe.motion?.drive) return {};
+    const drive = buildDrive(recipe.motion.drive);
+    return { motionDrive: drive.describe(motionTime === null ? undefined : drive.sample(motionTime).pose) };
+  }
+
   function motionIkReport() {
     if (!recipe.motion?.ik?.length) return {};
     const sweeper = agentMotion.compileAgentMotion(recipe.motion, motionRecipe(recipe));
@@ -971,7 +989,7 @@ export function createAgentAssetScene(asset, inputRecipe, { sources } = {}) {
           return sourceNodes.get(id);
         });
         const nodes = structuredClone(selected.slice(offset, offset + limit));
-        return { revision, topologyRevision, assetId: canonicalAssetId, kind: 'hierarchy', ...motionIkReport(), ...motionLayerReport(), ...diagnosticsReport(),
+        return { revision, topologyRevision, assetId: canonicalAssetId, kind: 'hierarchy', ...motionIkReport(), ...motionDriveReport(), ...motionLayerReport(), ...diagnosticsReport(),
           counts: { nodes: sourceNodes.size, joints: [...sourceNodes.values()].filter(node => node.joint).length },
           nodes, offset, truncated: offset + nodes.length < selected.length,
           motion: recipe.motion ? { duration: recipe.motion.duration, loop: recipe.motion.loop, tracks: recipe.motion.tracks.length, time: motionTime } : null };
