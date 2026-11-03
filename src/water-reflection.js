@@ -177,18 +177,72 @@ function mirroredFrame(frame, height, target) {
   return { ...frame, eye: [eyeX, 2 * height - eyeY, eyeZ], target: [targetX, 2 * height - targetY, targetZ], up: [upX, -upY, upZ], reflectionTarget: target };
 }
 
+const SNAPSHOT_DEPTH = 4;
+
+// A copy of the frame's values (arrays, typed arrays and plain objects are copied, anything else is kept by reference), so a later
+// frame can be compared with what this one held even when the caller changes the same arrays in place.
+function snapshotOf(value, depth = 0) {
+  if (depth >= SNAPSHOT_DEPTH || value === null || typeof value !== 'object') {
+    return value;
+  }
+  if (ArrayBuffer.isView(value)) {
+    return value.slice();
+  }
+  if (Array.isArray(value)) {
+    return value.map(item => snapshotOf(item, depth + 1));
+  }
+  if (Object.getPrototypeOf(value) === Object.prototype) {
+    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, snapshotOf(item, depth + 1)]));
+  }
+  return value;
+}
+
+function sameValue(first, second, depth = 0) {
+  if (first === second) {
+    return true;
+  }
+  if (depth >= SNAPSHOT_DEPTH || first === null || second === null || typeof first !== 'object' || typeof second !== 'object') {
+    return false;
+  }
+  const firstKeys = Object.keys(first);
+  if (Object.getPrototypeOf(first) !== Object.getPrototypeOf(second) || firstKeys.length !== Object.keys(second).length) {
+    return false;
+  }
+  return firstKeys.every(key => sameValue(first[key], second[key], depth + 1));
+}
+
+/**
+ * Whether the picture from the last mirror draw still serves this frame: the frame holds the same values as the one it was drawn for
+ * and no part was updated since, or `updateEvery` asks for the last picture to stay for that many lit frames.
+ */
+export function canReuseMirrorImage(state, frame) {
+  if (!state.ready || !state.drawnFrame) {
+    return false;
+  }
+  if (state.partsRevision === state.drawnRevision && sameValue(state.drawnFrame, frame)) {
+    return true;
+  }
+  return state.framesSinceDraw < state.updateEvery - 1;
+}
+
 function drawMirrorImage(renderer, state, frame, renderFrame) {
   const width = Math.max(1, Math.ceil(renderer.canvas.width * state.scale));
   const height = Math.max(1, Math.ceil(renderer.canvas.height * state.scale));
   if (!state.target || state.target.width !== width || state.target.height !== height) {
     releaseReflectionTarget(renderer, state.target);
     state.target = createReflectionTarget(renderer, width, height);
+    state.ready = false;
   }
   const lookingDown = frame.eye[1] > state.height;
-  state.ready = false;
   if (!lookingDown || !state.target.complete) {
+    state.ready = false;
     return;
   }
+  if (canReuseMirrorImage(state, frame)) {
+    state.framesSinceDraw++;
+    return;
+  }
+  state.ready = false;
   // The last frame left the picture bound for sampling, and a target cannot be drawn into while it is bound.
   renderer.context.activeTexture(renderer.context.TEXTURE0 + REFLECTION_TEXTURE_UNIT);
   renderer.context.bindTexture(renderer.context.TEXTURE_2D, null);
@@ -203,6 +257,9 @@ function drawMirrorImage(renderer, state, frame, renderFrame) {
     state.drawing = false;
   }
   state.matrix.set(renderer.viewProjection);
+  state.drawnFrame = snapshotOf(frame);
+  state.drawnRevision = state.partsRevision;
+  state.framesSinceDraw = 0;
   state.ready = true;
 }
 
@@ -243,16 +300,19 @@ layerTextureSupport.bind = (renderer, mapState) => {
 /**
  * Draws the mirror image before each frame of a renderer built from the parts `applyWaterReflection` marked. Wraps
  * `renderer.render` and `renderer.dispose`; the returned function undoes both. Does nothing when `surface` is null.
- * `scale` is the target's size against the canvas in each direction (default 0.75).
+ * `scale` is the target's size against the canvas in each direction (default 0.75). The picture is kept while the frame holds the same
+ * values as the one it was drawn for and no part was updated (`renderer.updateParts`); `updateEvery: 2` also keeps it for one lit frame
+ * after each draw (the reflection then trails the camera by a frame), which suits a film.
  */
-export function attachWaterReflection(renderer, surface, { scale = WATER_REFLECTION_SCALE } = {}) {
+export function attachWaterReflection(renderer, surface, { scale = WATER_REFLECTION_SCALE, updateEvery = 1 } = {}) {
   if (!surface) {
     return () => {};
   }
-  const state = { height: surface.height, scale, target: null, ready: false, drawing: false, matrix: new Float32Array(16), program: null, locations: null };
+  const state = { height: surface.height, scale, updateEvery: Math.max(1, Math.floor(updateEvery)), partsRevision: 0, drawnRevision: -1, drawnFrame: null, framesSinceDraw: 0, target: null, ready: false, drawing: false, matrix: new Float32Array(16), program: null, locations: null };
   rendererStates.set(renderer, state);
   const render = renderer.render;
   const dispose = renderer.dispose;
+  const updateParts = renderer.updateParts;
   const renderFrame = frame => render.call(renderer, frame);
   renderer.render = frame => {
     // A render pass (albedo, depth, object ID...) never shows the reflection, so it skips the mirror draw.
@@ -261,6 +321,12 @@ export function attachWaterReflection(renderer, surface, { scale = WATER_REFLECT
     }
     return render.call(renderer, frame);
   };
+  if (updateParts) {
+    renderer.updateParts = (...updateArguments) => {
+      state.partsRevision++;
+      return updateParts.apply(renderer, updateArguments);
+    };
+  }
   renderer.dispose = () => {
     releaseReflectionTarget(renderer, state.target);
     rendererStates.delete(renderer);
@@ -269,6 +335,9 @@ export function attachWaterReflection(renderer, surface, { scale = WATER_REFLECT
   return () => {
     renderer.render = render;
     renderer.dispose = dispose;
+    if (updateParts) {
+      renderer.updateParts = updateParts;
+    }
     releaseReflectionTarget(renderer, state.target);
     rendererStates.delete(renderer);
   };
