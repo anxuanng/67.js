@@ -168,3 +168,13 @@ test('rough metal and plain surfaces are not reflective', () => {
   assert.equal(isReflectivePart({ metallic: 0.2, roughness: 0.1 }), false);
   assert.equal(isReflectivePart({}), false);
 });
+
+test('a bounce in the probe trace adds light to a lit surface and never takes direct light away', () => {
+  const total = options => {
+    const [probe] = traceObjectProbes(objectScene(), lamp, { width: 32, samples: 8, ...options }).traced;
+    return probe.data.reduce((sum, value) => sum + value, 0);
+  };
+  const withoutBounce = total({ bounces: 0 });
+  assert.ok(withoutBounce > 0);
+  assert.ok(total({ bounces: 1 }) >= withoutBounce, 'the gatherer reuses the direct light buffer, which must not leak into the probe pixel');
+});
