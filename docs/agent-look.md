@@ -237,6 +237,8 @@ View, projection, and combined matrices must remain finite and nonsingular at Fl
 Large targets and short distances can fail these combined checks even when each field fits its individual range.
 Derived projectors do not automatically fit scene or fog bounds.
 
+Recipes always derive the eye from `lightDirection`, so shadows follow the light. A custom adapter that passes its own `shadowBounds.eye` to the renderer overrides that: the eye decides where shadows fall, and `lightDirection` only moves the shading. When the two differ by 10 degrees or more, the renderer lists a `shadow-light-direction-mismatch` warning in `renderer.diagnostics`. Leave `eye` out of `shadowBounds` to make the shadow follow the light.
+
 ## Validation boundary
 
 Every object rejects unknown keys.
