@@ -1,6 +1,6 @@
 // Runs in the page: draws one reference scene, and describes it as plain data for Blender.
 import { Renderer67 } from '/src/renderer.js';
-import { REFERENCE_SCENES, KHRONOS_SCENES, CLOTH_SCENES } from './scenes.js';
+import { REFERENCE_SCENES, KHRONOS_SCENES, KTX2_SCENES, loadBarnLampVariant, CLOTH_SCENES } from './scenes.js';
 import { GRAND_SCENES } from './grand-scenes.js';
 import { LOOK_OPTIONS } from './look-options.js';
 import { skinnedGeometry } from '/src/path-tracer-scene.js';
@@ -30,7 +30,7 @@ const WATER_REFLECTION = { off: false, ssr: 'ssr' }[new URLSearchParams(location
 
 // ?set=khronos draws the Khronos sample assets (npm run reference -- --khronos) and ?set=cloth the cloth scenes
 // (npm run reference -- --cloth) instead of the fixed scenes.
-const SCENE_SETS = { khronos: KHRONOS_SCENES, cloth: CLOTH_SCENES, grand: GRAND_SCENES, look: LOOK_OPTIONS };
+const SCENE_SETS = { khronos: KHRONOS_SCENES, ktx2: KTX2_SCENES, cloth: CLOTH_SCENES, grand: GRAND_SCENES, look: LOOK_OPTIONS };
 const SCENES = SCENE_SETS[new URLSearchParams(location.search).get('set')] ?? REFERENCE_SCENES;
 
 function encodeBytes(typedArray) {
@@ -300,5 +300,6 @@ async function renderRecipePathTraced(recipe, options) {
 
 window.renderRecipePathTraced = renderRecipePathTraced;
 window.renderReferenceScene = renderReferenceScene;
+window.loadBarnLampVariant = loadBarnLampVariant;
 window.renderReferencePathTraced = renderReferencePathTraced;
 window.referenceSceneIds = Object.keys(SCENES);
