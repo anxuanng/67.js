@@ -38,7 +38,7 @@ Cancellation becomes terminal after the owned encoder and job page stop and the 
 Video uses H.264 (CPU by default, see `settings.encoder`), even dimensions and one streamed frame at a time.
 MCP video frames are read from the drawing buffer with `readPixels` in the same task as the draw and sent to Node over one binary WebSocket on the preview server port, with a one byte acknowledgement per frame so one frame is in flight and the encoder sets the pace (issue #301).
 PNG stills and render passes still use a DevTools screenshot, byte for byte as before.
-`metrics.captureSeconds` and `metrics.renderSeconds` report the two costs. A screenshot cost 28.8 ms a frame to capture and 7.4 ms to draw at 1280 by 720 on an RTX 3060. FILM_NUMBERS
+`metrics.captureSeconds` and `metrics.renderSeconds` report the two costs. A screenshot cost 28.8 ms a frame to capture and 7.4 ms to draw at 1280 by 720 on an RTX 3060. The full 4,488 frame film at 1280 by 720 on the RTX 3060 survived raw capture (measured once, loaded machine): 405 s in all, draw 2.9 ms and readPixels 4.4 ms a frame, but 85 ms a frame in capture, so the WebSocket round trip is too slow and the 40 s and 5 ms targets are not met.
 The render backend can use GPU or CPU. Memory limits can reduce the actual output dimensions.
 Results report actual dimensions and measured timings. They do not embed video bytes.
 
