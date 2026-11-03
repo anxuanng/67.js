@@ -27,6 +27,8 @@ const renderer = new Renderer67(canvas, parts, {
 renderer.render({ eye: [0, 2, 5], target: [0, 1, 0], fov: 40 });
 ```
 
+With `world: true` the default `environment.fogDensity` is 0.006 per unit, which hazes a model 100 to 600 units wide into milky haze. Set a lower `fogDensity` for a large scene.
+
 ## Light controls
 
 `keyIntensity` scales the existing shadowed directional light. `keyColor` optionally replaces its linear RGB radiance color. `fillIntensity` scales the two existing fill/rim lights. `ambientIntensity` scales procedural reflection and hemisphere fill. Each intensity defaults to one, preserving previous lighting when no controls are supplied. Set all three to zero to isolate local lights on standard PBR surfaces.
