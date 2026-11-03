@@ -1,4 +1,9 @@
+import { registerShaderFeatureCode, registerSplatSupport } from './shaders.js';
+import { initializeSplatPlaceholders, createSplatResources, bindSplat, disposeSplatResources } from './splat-renderer.js';
+import { validateSplatMaterial, splatTextureBytes, resolveSplatSize, packSplatParameters, buildSplatPixels } from './splat.js';
+
 // Fragment shader chunk for the splat ground material. It is spliced into the main fragment shader after terrainNoise.
+// Importing this module registers it: a renderer with splat layers needs it, and any other renderer does not carry it.
 // Texture arrays: unit 11 color (sRGB), unit 12 normal (linear), unit 13 roughness (red) and height (green), unit 14 weight mask.
 export const splatGlsl = `
 uniform float splatEnabled;
@@ -264,3 +269,16 @@ void applySplat(inout vec3 color, inout vec3 normal, inout float roughness, inou
   cavity = mix(1.0, mix(0.55, 1.0, smoothstep(0.1, 0.85, blendedHeight)), splatOptions.w);
 }
 `;
+
+registerShaderFeatureCode('splat', { libraries: splatGlsl });
+registerSplatSupport({
+  validate: validateSplatMaterial,
+  textureBytes: splatTextureBytes,
+  resolveSize: resolveSplatSize,
+  packParameters: packSplatParameters,
+  buildPixels: buildSplatPixels,
+  initializePlaceholders: initializeSplatPlaceholders,
+  createResources: createSplatResources,
+  bind: bindSplat,
+  dispose: disposeSplatResources,
+});
