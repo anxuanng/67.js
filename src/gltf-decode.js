@@ -27,6 +27,11 @@ const WEBP_SIGNATURE = [0x52, 0x49, 0x46, 0x46, null, null, null, null, 0x57, 0x
 const LINEAR_SRGB = 'srgb-linear';
 const COMPONENT_CODES = new Map(Object.entries(COMPONENT_TYPES).map(([code, ArrayType]) => [ArrayType, Number(code)]));
 
+/** POINTS, LINES, LINE_LOOP and LINE_STRIP (modes 0 to 3) are not drawn, so the decoder leaves them out. */
+export function isLinePrimitive(primitive) {
+  return primitive.mode >= 0 && primitive.mode <= 3;
+}
+
 export function textureSourceIndex(texture) {
   return texture.extensions?.KHR_texture_basisu?.source ?? texture.extensions?.EXT_texture_webp?.source ?? texture.source;
 }
@@ -353,6 +358,7 @@ export async function decodeGltf({ document, glbBinary, resourceBytes, decoders,
     const objects = [];
     if (definition.mesh !== undefined) {
       for (let primitiveIndex = 0; primitiveIndex < document.meshes[definition.mesh].primitives.length; primitiveIndex++) {
+        if (isLinePrimitive(document.meshes[definition.mesh].primitives[primitiveIndex])) continue;
         objects.push(await createPrimitiveObject(definition, nodeIndex, definition.mesh, primitiveIndex));
       }
     }

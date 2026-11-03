@@ -1,7 +1,8 @@
 import { applyClip } from './gltf-animation.js';
 import { GLTF_LAYER_EXTENSIONS, layerTextureReferences, materialLayersFromGltf } from './gltf-layers.js';
 import { attributeFloats } from './gltf-accessors.js';
-import { decodeGltf, textureSourceIndex } from './gltf-decode.js';
+import { decodeGltf, isLinePrimitive, textureSourceIndex } from './gltf-decode.js';
+import { readPunctualLights } from './gltf-lights.js';
 import { Matrix4 } from './gltf-nodes.js';
 import { textureDescriptorInfo } from './renderer.js';
 import { createSkinPose, updateSkinPose, validateSkinGeometry, validateSkinPose } from './skinning.js';
@@ -9,10 +10,12 @@ import { MAX_MORPH_TARGETS, createMorphPose, validateMorphGeometry, validateMorp
 
 export const GLTF_CAPABILITIES = Object.freeze({
   formats: ['glb', 'gltf'],
-  supported: ['triangle meshes', 'world transforms', 'rigid node animations', 'four-influence skeletal skinning', 'joint node animations', 'relative POSITION/NORMAL morph targets', 'morph weight animations', 'PNG/JPEG/WebP base color textures', 'normal/occlusion/emissive/metallic-roughness textures', 'TEXCOORD_0', 'TEXCOORD_1 for occlusion, emissive and metallic-roughness textures', 'clearcoat, clearcoat roughness, clearcoat normal, anisotropy, sheen color and sheen roughness textures', 'linear RGB vertex colors', 'metallic roughness factors', 'emissive factors', 'alpha mask and blend modes', 'double-sided materials', 'KHR_mesh_quantization', 'KHR_materials_emissive_strength', 'KHR_materials_clearcoat, transmission, volume, ior, specular, sheen, anisotropy and iridescence factors', 'KHR_texture_transform baked into UVs, with a normal map that differs by scale and offset applied in the shader', 'EXT_mesh_gpu_instancing expanded into parts', 'KHR_draco_mesh_compression with options.decoders.draco', 'EXT_meshopt_compression with options.decoders.meshopt', 'KHR_texture_basisu with options.decoders.ktx2', 'EXT_texture_webp, with the PNG or JPEG fallback source when the browser cannot decode WebP'],
+  supported: ['triangle meshes', 'world transforms', 'rigid node animations', 'four-influence skeletal skinning', 'joint node animations', 'relative POSITION/NORMAL morph targets', 'morph weight animations', 'PNG/JPEG/WebP base color textures', 'normal/occlusion/emissive/metallic-roughness textures', 'TEXCOORD_0', 'TEXCOORD_1 for occlusion, emissive and metallic-roughness textures', 'clearcoat, clearcoat roughness, clearcoat normal, anisotropy, sheen color and sheen roughness textures', 'linear RGB vertex colors, with the alpha of RGBA colors ignored and reported in warnings','metallic roughness factors', 'emissive factors', 'alpha mask and blend modes', 'double-sided materials', 'KHR_mesh_quantization', 'KHR_materials_emissive_strength', 'KHR_materials_clearcoat, transmission, volume, ior, specular, sheen, anisotropy and iridescence factors', 'KHR_texture_transform baked into UVs, with a normal map that differs by scale and offset applied in the shader', 'EXT_mesh_gpu_instancing expanded into parts', 'KHR_draco_mesh_compression with options.decoders.draco', 'EXT_meshopt_compression with options.decoders.meshopt', 'KHR_texture_basisu with options.decoders.ktx2', 'EXT_texture_webp, with the PNG or JPEG fallback source when the browser cannot decode WebP', 'KHR_materials_unlit as the unlit material tag, with a base color map only', 'KHR_lights_punctual point and spot lights (up to eight each) and the first directional light, returned in lights as environment options'],
   // The primitive's own material is drawn; the other variants are not selectable.
-  ignoredExtensions: ['KHR_materials_variants'],
-  unsupported: ['more than four skin influences', 'singular weighted skin transforms', 'reflected skin transforms', 'TANGENT morph targets', 'morph targets without authored base normals', 'vertex alpha below one', 'different texture transforms on one material, except a normal map that differs by scale and offset', 'skinned or morphed GPU instancing', 'transmission, iridescence and specular textures (their factors are used)', 'texture transforms on TEXCOORD_1'],
+  ignoredExtensions: ['KHR_materials_variants', 'KHR_materials_dispersion', 'KHR_materials_diffuse_roughness', 'EXT_materials_bump', 'EXT_texture_avif'],
+  optionalExtensions: 'Any other optional extension is ignored and named in warnings. One listed in extensionsRequired that 67js does not read is refused.',
+  skippedPrimitives: ['POINTS', 'LINES', 'LINE_LOOP', 'LINE_STRIP'],
+  unsupported: ['more than four skin influences', 'singular weighted skin transforms', 'reflected skin transforms', 'TANGENT morph targets', 'morph targets without authored base normals', 'drawing vertex alpha (it is ignored with a warning)','different texture transforms on one material, except a normal map that differs by scale and offset', 'skinned or morphed GPU instancing', 'transmission, iridescence and specular textures (their factors are used)', 'texture transforms on TEXCOORD_1'],
 });
 
 const LAYER_SHADER_EXTENSIONS = Object.freeze(['KHR_materials_anisotropy', 'KHR_materials_iridescence']);
@@ -30,10 +33,8 @@ const DEFAULT_MAX_INSTANCES = 4096;
 // KHR_xmp_json_ld and its earlier name KHR_xmp only carry metadata (authors, licences) and change nothing drawn: the
 // Khronos sample assets list them, and a file must not be refused for them.
 const METADATA_EXTENSIONS = ['KHR_xmp_json_ld', 'KHR_xmp'];
-const ALLOWED_EXTENSIONS = new Set(['KHR_mesh_quantization', 'KHR_materials_emissive_strength', 'KHR_texture_transform', 'EXT_mesh_gpu_instancing', 'EXT_texture_webp', ...METADATA_EXTENSIONS, ...GLTF_LAYER_EXTENSIONS]);
+const ALLOWED_EXTENSIONS = new Set(['KHR_mesh_quantization', 'KHR_materials_emissive_strength', 'KHR_texture_transform', 'EXT_mesh_gpu_instancing', 'EXT_texture_webp', 'KHR_materials_unlit', 'KHR_lights_punctual', ...METADATA_EXTENSIONS, ...GLTF_LAYER_EXTENSIONS]);
 const DECODER_BY_EXTENSION = { KHR_draco_mesh_compression: 'draco', EXT_meshopt_compression: 'meshopt', KHR_texture_basisu: 'ktx2' };
-// Accepted when optional, because 67js does not render them. Rejected when listed in extensionsRequired.
-const IGNORED_EXTENSIONS = new Set(GLTF_CAPABILITIES.ignoredExtensions);
 const IDENTITY_UV_TRANSFORM = Object.freeze({ offset: [0, 0], rotation: 0, scale: [1, 1] });
 const IDENTITY_UV_TRANSFORM_KEY = JSON.stringify([IDENTITY_UV_TRANSFORM.offset, IDENTITY_UV_TRANSFORM.rotation, IDENTITY_UV_TRANSFORM.scale]);
 const MATERIAL_TEXTURES = [
@@ -172,12 +173,16 @@ function unsupportedExtensionError(extension) {
   return new Error(`Unsupported glTF extension: ${extension}.${hint}`);
 }
 
-/** Rejects unknown extensions and returns the sorted names of accepted but unrendered ones. */
+/**
+ * Returns the sorted names of optional extensions that 67js does not use and loads the file without them, as the glTF
+ * specification allows. Rejects an extension listed in extensionsRequired that 67js does not read, and a compression
+ * extension whose decoder is missing, because its meshes or textures would arrive empty.
+ */
 function scanExtensions(document, allowedExtensions) {
   const ignored = new Set();
   function checkOptional(extension) {
     if (allowedExtensions.has(extension)) return;
-    if (!IGNORED_EXTENSIONS.has(extension)) throw unsupportedExtensionError(extension);
+    if (DECODER_BY_EXTENSION[extension]) throw unsupportedExtensionError(extension);
     ignored.add(extension);
   }
   const pending = [document];
@@ -274,10 +279,9 @@ function validateMaterialExtensions(material) {
 
 /** Validates EXT_mesh_gpu_instancing on a node and returns how many instances it expands to. */
 function nodeInstanceCount(document, node, limits) {
-  const extensions = Object.keys(node.extensions ?? {});
-  if (!extensions.length) return 1;
-  if (extensions.length > 1 || extensions[0] !== 'EXT_mesh_gpu_instancing') throw new Error('Node extensions other than EXT_mesh_gpu_instancing are unsupported.');
-  const attributes = node.extensions.EXT_mesh_gpu_instancing.attributes;
+  const instancing = node.extensions?.EXT_mesh_gpu_instancing;
+  if (!instancing) return 1;
+  const attributes = instancing.attributes;
   if (node.mesh === undefined || node.skin !== undefined) throw new Error('EXT_mesh_gpu_instancing requires a static mesh node without a skin.');
   if (morphCount(document.meshes?.[node.mesh])) throw new Error('EXT_mesh_gpu_instancing with morph targets is unsupported.');
   const shapes = { TRANSLATION: 'VEC3', ROTATION: 'VEC4', SCALE: 'VEC3' };
@@ -311,7 +315,8 @@ function validateDocument(document, limits, allowedExtensions) {
     if (targetCount > MAX_MORPH_TARGETS) throw new Error('Morph target count exceeds 64.');
     validateDefaultWeights(mesh.weights, targetCount);
     for (const primitive of mesh.primitives ?? []) {
-      if ((primitive.mode ?? 4) !== 4) throw new Error('Only glTF TRIANGLES primitives are supported.');
+      if (isLinePrimitive(primitive)) continue;
+      if ((primitive.mode ?? 4) !== 4) throw new Error('Only glTF TRIANGLES primitives are supported. POINTS, LINES, LINE_LOOP and LINE_STRIP are skipped with a warning.');
       const position = document.accessors?.[primitive.attributes?.POSITION];
       if (!position || position.type !== 'VEC3' || !Number.isSafeInteger(position.count) || position.count < 3) {
         throw new Error('Each mesh primitive requires a valid POSITION accessor.');
@@ -392,6 +397,7 @@ function validateDocument(document, limits, allowedExtensions) {
     if (node.skin !== undefined) {
       if (!Number.isInteger(node.skin) || !document.skins?.[node.skin] || !document.meshes?.[node.mesh]) throw new Error('Invalid skinned mesh or skin index.');
       for (const primitive of document.meshes[node.mesh].primitives ?? []) {
+        if (isLinePrimitive(primitive)) continue;
         if (primitive.attributes?.JOINTS_0 === undefined || primitive.attributes?.WEIGHTS_0 === undefined) throw new Error('Skinned meshes require JOINTS_0 and WEIGHTS_0.');
         poseJointCount += document.skins[node.skin].joints.length;
         if (poseJointCount > limits.maxJoints) throw new Error('Instanced skin poses exceed maxJoints.');
@@ -433,6 +439,7 @@ function validateDocument(document, limits, allowedExtensions) {
   }
   for (const mesh of document.meshes ?? []) {
     for (const primitive of mesh.primitives ?? []) {
+      if (isLinePrimitive(primitive)) continue;
       const material = document.materials?.[primitive.material];
       for (const [, reference] of materialTextureReferences(material ?? {})) {
         const attribute = `TEXCOORD_${uvChannelOf(reference)}`;
@@ -451,6 +458,26 @@ function validateDocument(document, limits, allowedExtensions) {
   }
   if (decodedBytes > limits.maxBytes * 4) throw new Error('Decoded glTF accessors exceed four times maxBytes.');
   return { vertices, ignoredExtensions };
+}
+
+const LINE_MODE_NAMES = ['POINTS', 'LINES', 'LINE_LOOP', 'LINE_STRIP'];
+
+/** One warning per mesh that has point or line primitives, which 67js does not draw. */
+function skippedPrimitiveWarnings(document) {
+  const warnings = [];
+  (document.meshes ?? []).forEach((mesh, meshIndex) => {
+    const counts = new Map();
+    for (const primitive of mesh.primitives ?? []) {
+      if (!isLinePrimitive(primitive)) continue;
+      const modeName = LINE_MODE_NAMES[primitive.mode];
+      counts.set(modeName, (counts.get(modeName) ?? 0) + 1);
+    }
+    if (!counts.size) return;
+    const summary = [...counts].map(([modeName, count]) => `${count} ${modeName}`).join(', ');
+    const meshLabel = mesh.name ? `"${mesh.name}"` : meshIndex;
+    warnings.push(`Skipped ${summary} primitive(s) in mesh ${meshLabel}: 67js draws triangles only.`);
+  });
+  return warnings;
 }
 
 function validateHierarchy(nodes) {
@@ -688,7 +715,7 @@ function computeVertexNormals(positions, indices) {
   return normals;
 }
 
-function convertGeometry(source, mirrored, primitive, secondUvSet) {
+function convertGeometry(source, mirrored, primitive, secondUvSet, onIgnoredVertexAlpha) {
   const { position, normal, uv, uv1, color, skinIndex, skinWeight } = source.attributes;
   const positions = copyAttribute(position, 3);
   const indices = new Uint32Array(source.index?.count ?? position.count);
@@ -719,7 +746,7 @@ function convertGeometry(source, mirrored, primitive, secondUvSet) {
     if (!uv1 || uv1.count !== position.count) throw new Error('TEXCOORD_1 and POSITION counts must match.');
     geometry.lightUvs = copyAttribute(uv1, 2);
   }
-  if (color) geometry.colors = convertVertexColors(color, position.count);
+  if (color) geometry.colors = convertVertexColors(color, position.count, onIgnoredVertexAlpha);
   if (skinIndex) geometry.skinIndices = new Uint16Array(copyAttribute(skinIndex, 4));
   if (skinWeight) geometry.skinWeights = copyAttribute(skinWeight, 4);
   if (primitive.targets?.length) {
@@ -805,23 +832,24 @@ function worldMatrixOf(node, instanceMatrix, target) {
   return instanceMatrix ? target.multiplyMatrices(node.matrixWorld, instanceMatrix) : target.copy(node.matrixWorld);
 }
 
-function convertVertexColors(attribute, vertexCount) {
+/** Keeps the RGB of COLOR_0. The alpha of an RGBA attribute is dropped, and onIgnoredVertexAlpha hears of it when it is below one. */
+function convertVertexColors(attribute, vertexCount, onIgnoredVertexAlpha) {
   if (attribute.count !== vertexCount || ![3, 4].includes(attribute.itemSize)) {
     throw new Error('COLOR_0 requires matching RGB or RGBA vertex values.');
   }
   const values = copyAttribute(attribute, attribute.itemSize);
   const colors = new Float32Array(vertexCount * 3);
+  let alphaBelowOne = false;
   for (let vertex = 0; vertex < vertexCount; vertex++) {
     const offset = vertex * attribute.itemSize;
-    if (attribute.itemSize === 4 && values[offset + 3] !== 1) {
-      throw new Error('Vertex alpha is unsupported. Every COLOR_0 alpha value must equal one.');
-    }
+    if (attribute.itemSize === 4 && values[offset + 3] < 1) alphaBelowOne = true;
     for (let component = 0; component < 3; component++) {
       const value = values[offset + component];
       if (value < 0 || value > 1) throw new Error('COLOR_0 RGB values must be within zero and one.');
       colors[vertex * 3 + component] = value;
     }
   }
+  if (alphaBelowOne) onIgnoredVertexAlpha();
   return colors;
 }
 
@@ -861,8 +889,9 @@ function textureDescriptorFor(texture, field, { colorSpace, uvChannel, uvTransfo
 }
 
 function convertMaterial(source, limits, maps, definition = {}) {
+  const unlit = Boolean(definition.extensions?.KHR_materials_unlit);
   const material = {
-    tag: 'gltf',
+    tag: unlit ? 'unlit' : 'gltf',
     color: [...source.color],
     metallic: source.metalness,
     roughness: source.roughness,
@@ -875,17 +904,20 @@ function convertMaterial(source, limits, maps, definition = {}) {
   material.alphaCutoff = definition.alphaCutoff ?? 0.5;
   material.opacity = definition.pbrMetallicRoughness?.baseColorFactor?.[3] ?? 1;
   material.doubleSided = definition.doubleSided ?? false;
-  Object.assign(material, materialLayersFromGltf(definition));
+  if (!unlit) Object.assign(material, materialLayersFromGltf(definition));
+  // An unlit surface shows its base color alone, and the renderer's unlit tag takes only a base map.
+  if (unlit) material.emissiveColor = [0, 0, 0];
   if (!material.emissiveColor.some(value => value > 0)) material.emission = 0;
   if (!Number.isFinite(Math.fround(material.emission)) || material.emission < 0) throw new Error('Emissive intensity must be a finite nonnegative float.');
   for (const [field, property, colorSpace] of MATERIAL_TEXTURES) {
+    if (unlit && field !== 'map') continue;
     const texture = source[field === 'metallicRoughnessMap' ? 'metalnessMap' : field === 'occlusionMap' ? 'aoMap' : field];
     if (!texture) continue;
     const uvChannel = uvChannelOf(materialTexture(definition, property));
     const uvTransform = field === 'normalMap' ? materialUvTransforms(definition).normalRelative : null;
     material[field] = textureDescriptorFor(texture, field, { colorSpace, uvChannel, uvTransform }, limits, maps);
   }
-  for (const [name, reference, colorSpace] of layerTextureReferences(definition)) {
+  for (const [name, reference, colorSpace] of unlit ? [] : layerTextureReferences(definition)) {
     const texture = source.layerTextures?.[name];
     if (!texture) continue;
     material.layerMaps ??= {};
@@ -901,7 +933,7 @@ export async function parseGltf(data, options = {}) {
   const decoders = options.decoders ?? {};
   const { ignoredExtensions } = validateDocument(document, limits, allowedExtensionsFor(decoders));
   await loadLayerShadersFor(document);
-  const warnings = ignoredExtensions.map(extension => `${extension} is accepted but not rendered.`);
+  const warnings = [...ignoredExtensions.map(extension => `${extension} is accepted but not rendered.`), ...skippedPrimitiveWarnings(document)];
   const dataBytes = typeof data === 'string' ? new TextEncoder().encode(data).byteLength : data.byteLength;
   const { resourceBytes, textureScaling } = await prepareResources(document, data, dataBytes, options, limits);
   if (textureScaling.scaledTextures.length) {
@@ -920,11 +952,17 @@ export async function parseGltf(data, options = {}) {
     const materials = new Map();
     const maps = new Map();
     const nodes = [];
+    const meshNamesWithIgnoredAlpha = new Set();
+    const lightNodes = [];
     const pendingTransform = new Matrix4();
     const pendingNodeMatrix = new Float32Array(16);
     let actualVertices = 0;
     gltf.scene.traverse(node => {
       nodes.push(node);
+      const sourceNodeIndex = node.association?.nodes;
+      if (sourceNodeIndex !== undefined && document.nodes?.[sourceNodeIndex]?.extensions?.KHR_lights_punctual) {
+        lightNodes.push({ nodeIndex: sourceNodeIndex, matrix: Array.from(node.matrixWorld.elements) });
+      }
       if (!node.isMesh) return;
       const association = node.association;
       const primitive = document.meshes?.[association?.meshes]?.primitives?.[association?.primitives];
@@ -945,7 +983,7 @@ export async function parseGltf(data, options = {}) {
         if (!geometries.has(geometryKey)) {
           actualVertices += node.geometry.attributes.position.count * (1 + (primitive.targets?.length ?? 0));
           if (actualVertices > limits.maxVertices) throw new Error('Decoded geometry exceeds maxVertices.');
-          const converted = convertGeometry(node.geometry, geometryMirrored, primitive, secondUvSet);
+          const converted = convertGeometry(node.geometry, geometryMirrored, primitive, secondUvSet, () => meshNamesWithIgnoredAlpha.add(node.name));
           if (converted.uvs) bakeUvTransform(converted.uvs, uvTransform);
           geometries.set(geometryKey, converted);
         }
@@ -979,6 +1017,11 @@ export async function parseGltf(data, options = {}) {
     });
     validateNodeTransforms(nodes, pendingNodeMatrix, pendingTransform);
     if (!parts.length) throw new Error('glTF scene contains no supported triangle meshes.');
+    const { lights, warnings: lightWarnings } = readPunctualLights(document, lightNodes);
+    warnings.push(...lightWarnings);
+    if (meshNamesWithIgnoredAlpha.size) {
+      warnings.push(`Ignored the alpha of RGBA COLOR_0 vertex colors in ${[...meshNamesWithIgnoredAlpha].join(', ')}; only the RGB is used.`);
+    }
     const sourceNodes = new Map();
     for (const node of nodes) {
       const index = node.association.nodes;
@@ -1319,7 +1362,7 @@ export async function parseGltf(data, options = {}) {
       }
       return stagePose({ animation: { clip: clipIndex, time: Math.max(0, Math.min(time, clip.duration)) } }).commit();
     }
-    return { parts, warnings, scaledTextures: textureScaling.scaledTextures, skins: skinBindings.map(binding => binding.skin), animations: gltf.animations,
+    return { parts, warnings, lights, scaledTextures: textureScaling.scaledTextures, skins: skinBindings.map(binding => binding.skin), animations: gltf.animations,
       get nodes() { return structuredClone(nodeMetadata); }, stagePose, applyAnimation, dispose, capabilities: GLTF_CAPABILITIES };
   } catch (error) {
     gltf?.release();
