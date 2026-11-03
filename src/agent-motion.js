@@ -4,12 +4,15 @@ import { createSkeletonPose } from './skeleton-pose.js';
 import { createNodeConstraintEvaluator, normalizeConstraints, normalizeDrivers } from './node-constraints.js';
 import { normalizeClipLayers } from './agent-clip-layers.js';
 import { normalizeKeyframeEasing } from './easing.js';
+import { normalizeFootLock } from './foot-lock.js';
 import { bounded, denseArray, finite, knownKeys, valueFrom } from './motion-validation.js';
 
 const PROPERTIES = {
   node: { translation: 3, rotation: 4, scale: 3 },
   material: { color: 3, emissiveColor: 3, emission: 1, metallic: 1, roughness: 1 },
   camera: { eye: 3, target: 3, fov: 1, roll: 1 },
+  // An imported asset's morph target weight, addressed by the target's name.
+  morph: { weight: 1 },
 };
 const INTERPOLATIONS = ['LINEAR', 'STEP', 'SMOOTH', 'CUBICSPLINE'];
 const MAX_IK_SOLVERS = 16;
@@ -31,6 +34,9 @@ function validateValue(kind, property, value) {
     if (['color', 'metallic', 'roughness'].includes(property) && components.some(component => component > 1)) {
       throw new RangeError(`Motion ${property} must stay within zero and one.`);
     }
+  }
+  if (kind === 'morph' && components.some(component => component < 0 || component > 1)) {
+    throw new RangeError('Motion morph weight must stay within zero and one.');
   }
   if (kind === 'camera' && property === 'fov' && (Math.fround(value) <= 0 || Math.fround(value) >= 180)) {
     throw new RangeError('Motion fov must stay between zero and 180 at Float32 precision.');
@@ -277,7 +283,7 @@ export function normalizeAgentMotion(input, recipe) {
   if (input === null || input === undefined) {
     return null;
   }
-  knownKeys(input, ['duration', 'loop', 'tracks', 'ik', 'constraints', 'drivers', 'layers'], 'motion');
+  knownKeys(input, ['duration', 'loop', 'tracks', 'ik', 'constraints', 'drivers', 'layers', 'footLock'], 'motion');
   const duration = bounded(input.duration, 0.1, 30, 'Motion duration');
   const loop = input.loop === undefined ? false : input.loop;
   if (typeof loop !== 'boolean') {
@@ -290,6 +296,7 @@ export function normalizeAgentMotion(input, recipe) {
   }
   const nodes = new Set((recipe.nodes ?? []).map(node => node.id));
   const materials = new Set((recipe.materials ?? []).map(material => material.id));
+  const morphTargets = new Set(recipe.morphTargets ?? []);
   const identities = new Set();
   let keyframeCount = 0;
   const tracks = inputTracks.map((track, index) => {
@@ -305,9 +312,10 @@ export function normalizeAgentMotion(input, recipe) {
       if (typeof track.id !== 'string' || !track.id.trim() || track.id.length > 128) {
         throw new TypeError('Motion target IDs need 1 to 128 characters.');
       }
-      const references = track.kind === 'node' ? nodes : materials;
+      const references = track.kind === 'node' ? nodes : track.kind === 'morph' ? morphTargets : materials;
       if (!references.has(track.id)) {
-        throw new RangeError(`Motion target was not found: ${track.id}.`);
+        const hint = track.kind === 'morph' ? ` Morph targets of this asset: ${[...morphTargets].slice(0, 24).join(', ') || 'none'}.` : '';
+        throw new RangeError(`Motion target was not found: ${track.id}.${hint}`);
       }
     }
     const identity = JSON.stringify([track.kind, track.id ?? null, track.property]);
@@ -343,6 +351,10 @@ export function normalizeAgentMotion(input, recipe) {
   const result = { duration, loop, tracks };
   if (input.layers !== undefined) {
     result.layers = normalizeClipLayers(input.layers, recipe.clipLayerContext);
+  }
+  if (input.footLock !== undefined) {
+    if (!result.layers?.length) throw new RangeError('Motion footLock plants the feet of the clips in motion.layers, so it needs layers.');
+    result.footLock = normalizeFootLock(input.footLock);
   }
   if (input.ik !== undefined) {
     result.ik = normalizeIk(input.ik, recipe, tracks, duration);
@@ -508,9 +520,10 @@ export function compileAgentMotion(input, recipe) {
     })),
   });
   const sampler = compileAnimationSampler(clip);
-  const output = { nodes: new Map(), materials: new Map(), camera: null };
+  const output = { nodes: new Map(), materials: new Map(), morphs: new Map(), camera: null };
+  const patchesByKind = { node: output.nodes, material: output.materials, morph: output.morphs };
   const bindings = ordinaryTracks.map((track, index) => {
-    const patches = track.kind === 'node' ? output.nodes : output.materials;
+    const patches = patchesByKind[track.kind];
     if (!patches.has(track.id)) {
       patches.set(track.id, {});
     }
