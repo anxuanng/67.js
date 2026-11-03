@@ -615,7 +615,45 @@ async function megacityDuskScene() {
   };
 }
 
+// A lit sign at night (issue #284): a dark wall with a panel whose emissive map is a strip of colour bars with a scan line
+// pattern, over a pale floor under a faint constant sky. The panel is the only strong light, so the colours must come from
+// the map and the floor in front of it must pick up its glow.
+const SIGN_MAP_WIDTH = 32;
+const SIGN_MAP_HEIGHT = 16;
+const SIGN_BAR_COLORS = [[255, 255, 255], [255, 210, 40], [40, 220, 230], [60, 230, 70], [240, 60, 220], [240, 50, 40], [50, 70, 240], [20, 20, 20]];
+
+function signEmissiveImage() {
+  const pixels = new Uint8ClampedArray(SIGN_MAP_WIDTH * SIGN_MAP_HEIGHT * 4);
+  for (let row = 0; row < SIGN_MAP_HEIGHT; row++) {
+    for (let column = 0; column < SIGN_MAP_WIDTH; column++) {
+      const bar = SIGN_BAR_COLORS[Math.floor(column / (SIGN_MAP_WIDTH / SIGN_BAR_COLORS.length))];
+      const scanLineDimming = row % 4 === 3 ? 0.35 : 1;
+      const base = (row * SIGN_MAP_WIDTH + column) * 4;
+      pixels[base] = bar[0] * scanLineDimming;
+      pixels[base + 1] = bar[1] * scanLineDimming;
+      pixels[base + 2] = bar[2] * scanLineDimming;
+      pixels[base + 3] = 255;
+    }
+  }
+  return new ImageData(pixels, SIGN_MAP_WIDTH, SIGN_MAP_HEIGHT);
+}
+
+async function emissiveSignScene() {
+  const lighting = constantLighting(0.02);
+  const sign = part('sign', wallQuad(4, 1.6), [0, 0.7, 0.02], [1, 1, 1], {
+    color: [0.02, 0.02, 0.02], roughness: 0.6, emission: 6, emissiveColor: [1, 1, 1], emissiveMap: { image: signEmissiveImage(), colorSpace: 'srgb' },
+  });
+  return {
+    parts: [floor([0.45, 0.43, 0.4]), part('wall', wallQuad(8, 4), [0, 0, 0], [1, 1, 1], { color: [0.25, 0.25, 0.27], roughness: 0.9 }), sign],
+    blenderWorld: lighting.blenderWorld,
+    environment: environment(lighting),
+    camera: { eye: [1.5, 1.4, 5], target: [0, 1.2, 0], up: [0, 1, 0], fov: 45, near: 0.1, far: 60 },
+    shadow: shadowAlongSun(DEFAULT_SUN_DIRECTION, { target: [0, 0, 0], distance: 13.45, extent: 8, near: 0.1, far: 40 }),
+  };
+}
+
 export const REFERENCE_SCENES = {
+  'emissive-sign': emissiveSignScene,
   'mountain-valley': mountainValleyScene,
   'temple-hall': templeHallScene,
   'dark-shaft': darkShaftScene,
