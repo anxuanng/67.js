@@ -1,0 +1,333 @@
+{
+ "metric": "FLIP (LDR), mean error against Cycles, lower is better; 960 by 540, tone mapped and rounded to 8 bits",
+ "scores": {
+  "brick-graph": {
+   "8": {
+    "none": 0.0878,
+    "oidn-clean-aux": 0.0822,
+    "oidn": 0.0818,
+    "wavelet": 0.0821
+   },
+   "16": {
+    "none": 0.0844,
+    "oidn-clean-aux": 0.0819,
+    "oidn": 0.0812,
+    "wavelet": 0.0812
+   },
+   "32": {
+    "none": 0.0824,
+    "oidn-clean-aux": 0.0814,
+    "oidn": 0.0806,
+    "wavelet": 0.0807
+   },
+   "64": {
+    "none": 0.0811,
+    "oidn-clean-aux": 0.0811,
+    "oidn": 0.0804,
+    "wavelet": 0.0805
+   }
+  },
+  "character": {
+   "8": {
+    "none": 0.0425,
+    "oidn-clean-aux": 0.0322,
+    "oidn": 0.0324,
+    "wavelet": 0.0316
+   },
+   "16": {
+    "none": 0.036,
+    "oidn-clean-aux": 0.0311,
+    "oidn": 0.0308,
+    "wavelet": 0.0297
+   },
+   "32": {
+    "none": 0.0319,
+    "oidn-clean-aux": 0.03,
+    "oidn": 0.0295,
+    "wavelet": 0.0289
+   },
+   "64": {
+    "none": 0.0294,
+    "oidn-clean-aux": 0.0293,
+    "oidn": 0.0289,
+    "wavelet": 0.0287
+   }
+  },
+  "glass": {
+   "8": {
+    "none": 0.0522,
+    "oidn-clean-aux": 0.0408,
+    "oidn": 0.0407,
+    "wavelet": 0.0413
+   },
+   "16": {
+    "none": 0.0456,
+    "oidn-clean-aux": 0.0401,
+    "oidn": 0.0395,
+    "wavelet": 0.0399
+   },
+   "32": {
+    "none": 0.0416,
+    "oidn-clean-aux": 0.0391,
+    "oidn": 0.0385,
+    "wavelet": 0.0391
+   },
+   "64": {
+    "none": 0.0392,
+    "oidn-clean-aux": 0.0382,
+    "oidn": 0.0376,
+    "wavelet": 0.0385
+   }
+  },
+  "material-spheres": {
+   "8": {
+    "none": 0.0675,
+    "oidn-clean-aux": 0.0484,
+    "oidn": 0.0487,
+    "wavelet": 0.0488
+   },
+   "16": {
+    "none": 0.0578,
+    "oidn-clean-aux": 0.0474,
+    "oidn": 0.0471,
+    "wavelet": 0.0465
+   },
+   "32": {
+    "none": 0.0514,
+    "oidn-clean-aux": 0.0459,
+    "oidn": 0.0457,
+    "wavelet": 0.0454
+   },
+   "64": {
+    "none": 0.0474,
+    "oidn-clean-aux": 0.0452,
+    "oidn": 0.0449,
+    "wavelet": 0.0449
+   }
+  },
+  "metal": {
+   "8": {
+    "none": 0.0687,
+    "oidn-clean-aux": 0.0447,
+    "oidn": 0.0457,
+    "wavelet": 0.0513
+   },
+   "16": {
+    "none": 0.0594,
+    "oidn-clean-aux": 0.0432,
+    "oidn": 0.0444,
+    "wavelet": 0.0474
+   },
+   "32": {
+    "none": 0.0529,
+    "oidn-clean-aux": 0.0427,
+    "oidn": 0.044,
+    "wavelet": 0.0451
+   },
+   "64": {
+    "none": 0.0486,
+    "oidn-clean-aux": 0.0427,
+    "oidn": 0.0437,
+    "wavelet": 0.0439
+   }
+  },
+  "outdoor-hdri": {
+   "8": {
+    "none": 0.0351,
+    "oidn-clean-aux": 0.0258,
+    "oidn": 0.025,
+    "wavelet": 0.0241
+   },
+   "16": {
+    "none": 0.0302,
+    "oidn-clean-aux": 0.0258,
+    "oidn": 0.0239,
+    "wavelet": 0.0231
+   },
+   "32": {
+    "none": 0.0271,
+    "oidn-clean-aux": 0.025,
+    "oidn": 0.023,
+    "wavelet": 0.0227
+   },
+   "64": {
+    "none": 0.0249,
+    "oidn-clean-aux": 0.0248,
+    "oidn": 0.0226,
+    "wavelet": 0.0226
+   }
+  }
+ },
+ "timings": {
+  "brick-graph/16": {
+   "waveletSeconds": 3.41,
+   "oidnSeconds": 0.73,
+   "oidnDevice": "cpu",
+   "oidnSameBytesTwice": true
+  },
+  "brick-graph/32": {
+   "waveletSeconds": 3.47,
+   "oidnSeconds": 0.67,
+   "oidnDevice": "cpu",
+   "oidnSameBytesTwice": true
+  },
+  "brick-graph/64": {
+   "waveletSeconds": 3.99,
+   "oidnSeconds": 0.53,
+   "oidnDevice": "cpu",
+   "oidnSameBytesTwice": true
+  },
+  "brick-graph/8": {
+   "waveletSeconds": 22.47,
+   "oidnSeconds": 1.74,
+   "oidnDevice": "cpu",
+   "oidnSameBytesTwice": true
+  },
+  "character/16": {
+   "waveletSeconds": 3.94,
+   "oidnSeconds": 0.59,
+   "oidnDevice": "cpu",
+   "oidnSameBytesTwice": true
+  },
+  "character/32": {
+   "waveletSeconds": 3.79,
+   "oidnSeconds": 0.53,
+   "oidnDevice": "cpu",
+   "oidnSameBytesTwice": true
+  },
+  "character/64": {
+   "waveletSeconds": 4.07,
+   "oidnSeconds": 0.61,
+   "oidnDevice": "cpu",
+   "oidnSameBytesTwice": true
+  },
+  "character/8": {
+   "waveletSeconds": 3.49,
+   "oidnSeconds": 0.62,
+   "oidnDevice": "cpu",
+   "oidnSameBytesTwice": true
+  },
+  "glass/16": {
+   "waveletSeconds": 3.71,
+   "oidnSeconds": 0.51,
+   "oidnDevice": "cpu",
+   "oidnSameBytesTwice": true
+  },
+  "glass/32": {
+   "waveletSeconds": 4.05,
+   "oidnSeconds": 0.68,
+   "oidnDevice": "cpu",
+   "oidnSameBytesTwice": true
+  },
+  "glass/64": {
+   "waveletSeconds": 3.44,
+   "oidnSeconds": 0.75,
+   "oidnDevice": "cpu",
+   "oidnSameBytesTwice": true
+  },
+  "glass/8": {
+   "waveletSeconds": 3.74,
+   "oidnSeconds": 0.61,
+   "oidnDevice": "cpu",
+   "oidnSameBytesTwice": true
+  },
+  "material-spheres/16": {
+   "waveletSeconds": 3.92,
+   "oidnSeconds": 0.55,
+   "oidnDevice": "cpu",
+   "oidnSameBytesTwice": true
+  },
+  "material-spheres/32": {
+   "waveletSeconds": 3.9,
+   "oidnSeconds": 0.53,
+   "oidnDevice": "cpu",
+   "oidnSameBytesTwice": true
+  },
+  "material-spheres/64": {
+   "waveletSeconds": 3.47,
+   "oidnSeconds": 0.6,
+   "oidnDevice": "cpu",
+   "oidnSameBytesTwice": true
+  },
+  "material-spheres/8": {
+   "waveletSeconds": 3.7,
+   "oidnSeconds": 0.52,
+   "oidnDevice": "cpu",
+   "oidnSameBytesTwice": true
+  },
+  "metal/16": {
+   "waveletSeconds": 3.88,
+   "oidnSeconds": 0.7,
+   "oidnDevice": "cpu",
+   "oidnSameBytesTwice": true
+  },
+  "metal/32": {
+   "waveletSeconds": 3.49,
+   "oidnSeconds": 0.61,
+   "oidnDevice": "cpu",
+   "oidnSameBytesTwice": true
+  },
+  "metal/64": {
+   "waveletSeconds": 3.41,
+   "oidnSeconds": 0.5,
+   "oidnDevice": "cpu",
+   "oidnSameBytesTwice": true
+  },
+  "metal/8": {
+   "waveletSeconds": 4.01,
+   "oidnSeconds": 0.6,
+   "oidnDevice": "cpu",
+   "oidnSameBytesTwice": true
+  },
+  "outdoor-hdri/16": {
+   "waveletSeconds": 3.54,
+   "oidnSeconds": 0.65,
+   "oidnDevice": "cpu",
+   "oidnSameBytesTwice": true
+  },
+  "outdoor-hdri/32": {
+   "waveletSeconds": 3.59,
+   "oidnSeconds": 0.52,
+   "oidnDevice": "cpu",
+   "oidnSameBytesTwice": true
+  },
+  "outdoor-hdri/64": {
+   "waveletSeconds": 2.2,
+   "oidnSeconds": 0.46,
+   "oidnDevice": "cpu",
+   "oidnSameBytesTwice": true
+  },
+  "outdoor-hdri/8": {
+   "waveletSeconds": 2.82,
+   "oidnSeconds": 0.45,
+   "oidnDevice": "cpu",
+   "oidnSameBytesTwice": true
+  }
+ },
+ "scenesWhereMethodAtOrBelow16BeatsWaveletAt64": {
+  "oidn": [],
+  "oidn-clean-aux": [
+   "metal"
+  ]
+ },
+ "samplesThatBeatWaveletAt64": {
+  "oidn": {
+   "brick-graph": [],
+   "character": [],
+   "glass": [],
+   "material-spheres": [],
+   "metal": [],
+   "outdoor-hdri": []
+  },
+  "oidn-clean-aux": {
+   "brick-graph": [],
+   "character": [],
+   "glass": [],
+   "material-spheres": [],
+   "metal": [
+    "16"
+   ],
+   "outdoor-hdri": []
+  }
+ }
+}

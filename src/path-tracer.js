@@ -5,6 +5,7 @@ import {
   buildFrame, createSurface, environmentPdf, environmentRadiance, evaluateSurface, luminance, mirrorWeight, prepareSurface,
   roughnessToAlpha, sampleEnvironment, sampleGlass, sampleSurface,
 } from './path-tracer-shading.js';
+import { henyeyGreensteinPhase, sampleHenyeyGreensteinCosine, volumeInterval } from './path-tracer-volume.js';
 
 // Offline still renderer: unidirectional path tracing on the CPU with next-event estimation for every light, the
 // environment map drawn by importance, and a wavelet denoiser. It reads the same parts, materials, lights and camera
@@ -34,7 +35,16 @@ const ADAPTIVE_MINIMUM_SAMPLES = 16;
 const ADAPTIVE_BATCH_SAMPLES = 8;
 // Mean luminance added to the standard error's reference, so very dark pixels are not held to a relative error.
 const CONVERGENCE_LUMINANCE_FLOOR = 0.05;
-const IGNORED_MAP_FIELDS = ['occlusionMap', 'emissiveMap'];
+const IGNORED_MAP_FIELDS = ['occlusionMap'];
+// Shading layers of the rasterizer that the tracer's surface model has no term for.
+const IGNORED_LAYERS = [
+  ['anisotropy', material => material.anisotropy > 0],
+  ['iridescence', material => material.iridescence > 0],
+  ['sheen', material => (material.sheenColor ?? []).some(channel => channel !== 0)],
+  ['moss', material => material.moss > 0],
+  ['splat layers', material => Boolean(material.layers || material.layerMaps)],
+  ['lightMap', material => Boolean(material.lightMap)],
+];
 
 function boundedInteger(options, name) {
   const limit = PATH_TRACER_LIMITS[name];
@@ -54,6 +64,22 @@ function boundedNumber(options, name) {
   return value;
 }
 
+// Kept equal to PATH_TRACER_DENOISERS in path-tracer-capabilities.js by tests/path-tracer-denoise-oidn.test.js; the
+// capabilities file stays out of this bundle.
+export const PATH_TRACER_DENOISERS = Object.freeze(['wavelet', 'oidn', 'none']);
+
+/**
+ * `denoise` is true (the wavelet filter) or false (none), or a name: "wavelet", "oidn" or "none". "oidn" is the optional
+ * native Open Image Denoise (packages/denoise-oidn): the tracer then leaves the colour as traced and returns the feature
+ * images, and the caller that has the package filters them.
+ */
+function denoiserNamed(value) {
+  if (value === true) return 'wavelet';
+  if (value === false) return 'none';
+  if (PATH_TRACER_DENOISERS.includes(value)) return value;
+  throw new TypeError(`Path tracer denoise must be a boolean or one of ${PATH_TRACER_DENOISERS.join(', ')}.`);
+}
+
 export function normalizePathTracerOptions(options = {}) {
   if (options === null || typeof options !== 'object') throw new TypeError('Path tracer options must be an object.');
   const result = {
@@ -66,9 +92,9 @@ export function normalizePathTracerOptions(options = {}) {
     maxSeconds: boundedNumber(options, 'maxSeconds'),
     fireflyClamp: boundedNumber(options, 'fireflyClamp'),
     noiseThreshold: boundedNumber(options, 'noiseThreshold'),
-    denoise: options.denoise ?? true,
+    denoiser: denoiserNamed(options.denoise ?? true),
   };
-  if (typeof result.denoise !== 'boolean') throw new TypeError('Path tracer denoise must be a boolean.');
+  result.denoise = result.denoiser !== 'none';
   if (result.width * result.height > MAX_TRACE_PIXELS) throw new RangeError(`A path trace takes at most ${MAX_TRACE_PIXELS} pixels.`);
   if (result.width * result.height * result.samples * (result.bounces + 1) > MAX_TRACE_RAY_WORK) throw new RangeError('This path trace would need too much ray work: lower the size, samples or bounces.');
   return result;
@@ -126,7 +152,7 @@ function createHit() {
   return {
     distance: 0, material: null,
     point: new Float64Array(3), normal: new Float64Array(3), color: new Float64Array(3),
-    texel: new Float64Array(4), mapTexel: new Float64Array(4),
+    texel: new Float64Array(4), mapTexel: new Float64Array(4), emission: new Float64Array(3),
     metallic: 0, roughness: 0,
   };
 }
@@ -291,6 +317,15 @@ function fillHit(scene, triangleId, originX, originY, originZ, directionX, direc
     hit.color[2] *= hit.texel[2];
     alpha = hit.texel[3];
   }
+  hit.emission[0] = material.emission[0];
+  hit.emission[1] = material.emission[1];
+  hit.emission[2] = material.emission[2];
+  if (material.emissiveTexture) {
+    sampleTexture(material.emissiveTexture, u, v, hit.mapTexel);
+    hit.emission[0] *= hit.mapTexel[0];
+    hit.emission[1] *= hit.mapTexel[1];
+    hit.emission[2] *= hit.mapTexel[2];
+  }
   hit.metallic = material.metallic;
   hit.roughness = material.roughness;
   if (material.surfaceTexture) {
@@ -380,6 +415,8 @@ function createPathTracer(scene, options) {
   const normal = new Float64Array(3);
   const features = { albedo: new Float64Array(3), normal: new Float64Array(3), depth: 0 };
   const random = createRandom();
+  // The denoiser's features come from the first surface a camera ray meets, not from fog in front of it.
+  let featuresRecorded = false;
   const { lights, environment } = scene;
   if (lights.sun) buildFrame(lights.sun.direction, sunFrame);
   const sunCosineMax = Math.cos(SUN_ANGULAR_RADIUS);
@@ -402,8 +439,44 @@ function createPathTracer(scene, options) {
     radiance[2] += clampedBlue;
   }
 
+  // True while a light is sampled from a scattering event in the fog instead of from a surface.
+  let inMedium = false;
+  const phaseCandidate = { pdf: 0 };
+  const volumeSpan = new Float64Array(2);
+  const mediumFrame = new Float64Array(9);
+  const scatteredDirection = new Float64Array(3);
+
+  /** The share of light that survives the fog along a shadow ray of the given length. */
+  function fogTransmittance(originX, originY, originZ, distance) {
+    const { volume } = scene;
+    if (!volume) return 1;
+    if (!volumeInterval(volume, originX, originY, originZ, lightDirection[0], lightDirection[1], lightDirection[2], distance, volumeSpan)) return 1;
+    return Math.exp(-volume.density * (volumeSpan[1] - volumeSpan[0]));
+  }
+
+  /** Light from the sampled direction at a scattering event: phase function, shadow ray, fog on the way to the light. */
+  function addMediumDirect(depth, distance, weight) {
+    const { volume } = scene;
+    const cosine = lightDirection[0] * direction[0] + lightDirection[1] * direction[1] + lightDirection[2] * direction[2];
+    const phase = henyeyGreensteinPhase(volume.anisotropy, cosine);
+    const [originX, originY, originZ] = hit.point;
+    if (occluded(scene, originX, originY, originZ, lightDirection[0], lightDirection[1], lightDirection[2], distance, shadowHit)) return;
+    phaseCandidate.pdf = phase;
+    const scale = phase * fogTransmittance(originX, originY, originZ, distance) * weight(phaseCandidate);
+    addRadiance(
+      depth + 1,
+      throughput[0] * lightRadiance[0] * scale,
+      throughput[1] * lightRadiance[1] * scale,
+      throughput[2] * lightRadiance[2] * scale,
+    );
+  }
+
   /** Adds the light from one sampled direction: surface value, cosine, shadow ray. `weight` carries MIS and sampling. */
   function addDirect(depth, normal, distance, weight) {
+    if (inMedium) {
+      addMediumDirect(depth, distance, weight);
+      return;
+    }
     const cosine = normal[0] * lightDirection[0] + normal[1] * lightDirection[1] + normal[2] * lightDirection[2];
     if (cosine <= 0) return;
     evaluateSurface(surface, lightDirection[0], lightDirection[1], lightDirection[2]);
@@ -413,7 +486,7 @@ function createPathTracer(scene, options) {
     const originY = hit.point[1] + normal[1] * scene.surfaceOffset;
     const originZ = hit.point[2] + normal[2] * scene.surfaceOffset;
     if (occluded(scene, originX, originY, originZ, lightDirection[0], lightDirection[1], lightDirection[2], distance, shadowHit)) return;
-    const scale = cosine * weight(surface);
+    const scale = cosine * weight(surface) * fogTransmittance(originX, originY, originZ, distance);
     addRadiance(
       depth,
       throughput[0] * value[0] * lightRadiance[0] * scale,
@@ -428,7 +501,7 @@ function createPathTracer(scene, options) {
   const fullWeight = () => 1 / selectionProbability;
 
   // A light skips a part whose mask has its bit clear, at every bounce, so it is no bounce source there either.
-  const reaches = light => (hit.material.lightMask >> light.bit & 1) === 1;
+  const reaches = light => inMedium || (hit.material.lightMask >> light.bit & 1) === 1;
 
   function sampleSun(depth, normal) {
     if (!reaches(lights.sun)) return;
@@ -571,6 +644,48 @@ function createPathTracer(scene, options) {
     features.depth = hit.distance;
   }
 
+  function survivesRoulette(depth) {
+    if (depth < RUSSIAN_ROULETTE_START) return true;
+    const survival = Math.min(0.95, Math.max(0.05, Math.max(throughput[0], throughput[1], throughput[2])));
+    if (random.next() >= survival) return false;
+    for (let channel = 0; channel < 3; channel++) throughput[channel] /= survival;
+    return true;
+  }
+
+  /**
+   * Draws the distance to the next scattering event along the segment. When it falls inside the fog before the segment ends,
+   * puts the event in `hit.point` and returns true; otherwise the ray crosses the fog (or misses it) unchanged, because the
+   * chance of not scattering is exactly the transmittance that the sampling would otherwise multiply in.
+   */
+  function scatterInFog(originX, originY, originZ, segmentLength) {
+    const { volume } = scene;
+    if (!volumeInterval(volume, originX, originY, originZ, direction[0], direction[1], direction[2], segmentLength, volumeSpan)) return false;
+    const eventDistance = volumeSpan[0] - Math.log(1 - random.next()) / volume.density;
+    if (eventDistance >= volumeSpan[1]) return false;
+    hit.point[0] = originX + direction[0] * eventDistance;
+    hit.point[1] = originY + direction[1] * eventDistance;
+    hit.point[2] = originZ + direction[2] * eventDistance;
+    return true;
+  }
+
+  /** Lights the scattering event, then turns `direction` by a Henyey-Greenstein draw. Returns the draw's density. */
+  function scatterInMedium(depth) {
+    const { volume } = scene;
+    for (let channel = 0; channel < 3; channel++) throughput[channel] *= volume.albedo[channel];
+    inMedium = true;
+    addLights(depth, normal);
+    inMedium = false;
+    const cosine = sampleHenyeyGreensteinCosine(volume.anisotropy, random.next());
+    const sine = Math.sqrt(Math.max(0, 1 - cosine * cosine));
+    const azimuth = 2 * Math.PI * random.next();
+    buildFrame(direction, mediumFrame);
+    for (let axis = 0; axis < 3; axis++) {
+      scatteredDirection[axis] = mediumFrame[axis] * sine * Math.cos(azimuth) + mediumFrame[3 + axis] * sine * Math.sin(azimuth) + mediumFrame[6 + axis] * cosine;
+    }
+    for (let axis = 0; axis < 3; axis++) direction[axis] = scatteredDirection[axis];
+    return henyeyGreensteinPhase(volume.anisotropy, cosine);
+  }
+
   /** Follows one camera ray. Leaves the radiance in `radiance` and the first-hit features in `features`. */
   function trace(originX, originY, originZ, directionX, directionY, directionZ, pixel, sample) {
     random.reset(pixel, sample, options.seed);
@@ -581,6 +696,7 @@ function createPathTracer(scene, options) {
     throughput[1] = 1;
     throughput[2] = 1;
     features.albedo.fill(1);
+    featuresRecorded = false;
     // A ray that finds nothing has the sky as its feature: one fixed normal and depth, so the filter treats sky as one surface.
     features.normal[0] = 0;
     features.normal[1] = 0;
@@ -595,7 +711,17 @@ function createPathTracer(scene, options) {
     let previousPdf = 0;
     let afterMirror = true;
     for (let depth = 0; depth <= options.bounces; depth++) {
-      if (!intersect(scene, positionX, positionY, positionZ, direction[0], direction[1], direction[2], hit)) {
+      const found = intersect(scene, positionX, positionY, positionZ, direction[0], direction[1], direction[2], hit);
+      if (scene.volume && scatterInFog(positionX, positionY, positionZ, found ? hit.distance : scene.farDistance)) {
+        previousPdf = scatterInMedium(depth);
+        afterMirror = false;
+        positionX = hit.point[0];
+        positionY = hit.point[1];
+        positionZ = hit.point[2];
+        if (!survivesRoulette(depth)) break;
+        continue;
+      }
+      if (!found) {
         addEscape(depth, previousPdf, afterMirror);
         break;
       }
@@ -606,8 +732,11 @@ function createPathTracer(scene, options) {
       normal[1] = hit.normal[1] * facing;
       normal[2] = hit.normal[2] * facing;
       const isGlass = material.transmission > 0 && random.next() < material.transmission;
-      if (depth === 0) recordFeatures(normal, isGlass);
-      addRadiance(depth, throughput[0] * material.emission[0], throughput[1] * material.emission[1], throughput[2] * material.emission[2]);
+      if (!featuresRecorded) {
+        recordFeatures(normal, isGlass);
+        featuresRecorded = true;
+      }
+      addRadiance(depth, throughput[0] * hit.emission[0], throughput[1] * hit.emission[1], throughput[2] * hit.emission[2]);
       const viewX = -direction[0];
       const viewY = -direction[1];
       const viewZ = -direction[2];
@@ -643,11 +772,7 @@ function createPathTracer(scene, options) {
       positionX = hit.point[0] + direction[0] * scene.surfaceOffset;
       positionY = hit.point[1] + direction[1] * scene.surfaceOffset;
       positionZ = hit.point[2] + direction[2] * scene.surfaceOffset;
-      if (depth >= RUSSIAN_ROULETTE_START) {
-        const survival = Math.min(0.95, Math.max(0.05, Math.max(throughput[0], throughput[1], throughput[2])));
-        if (random.next() >= survival) break;
-        for (let channel = 0; channel < 3; channel++) throughput[channel] /= survival;
-      }
+      if (!survivesRoulette(depth)) break;
     }
   }
 
@@ -675,13 +800,16 @@ export function toneMapToRgba8(linear, width, height) {
 /** Names what this scene asks for that the path tracer does not draw, so a result never claims more than it traced. */
 export function describeIgnoredFeatures(parts, environment) {
   const notes = new Set();
-  if (environment?.volumeFog) notes.add('volumeFog is not traced.');
+  const fog = environment?.volumeFog;
+  if (fog?.density > 0 && (fog.noiseAmount ?? 0.5) > 0) notes.add('volumeFog is traced as a uniform medium: noiseAmount, noiseScale and drift are ignored.');
+  if (fog?.density > 0 && fog.ambient) notes.add('volumeFog.ambient is not added: the fog is lit by the traced lights and sky.');
   if (!environment?.map) notes.add('There is no environment map, so the sky is black and only the lights shine.');
   for (const part of parts) {
     const material = part.material ?? {};
     for (const field of IGNORED_MAP_FIELDS) if (material[field]) notes.add(`${field} is ignored.`);
     if (material.tag && material.tag !== 'surface') notes.add(`${material.tag} materials are traced as plain surfaces.`);
     if (material.alphaMode === 'blend') notes.add('Blended transparency is traced as opaque.');
+    for (const [name, isUsed] of IGNORED_LAYERS) if (isUsed(material)) notes.add(`${name} is ignored.`);
   }
   return [...notes];
 }
@@ -872,11 +1000,12 @@ export async function renderPathTracedImage({ parts, environment = {}, camera },
   const tracedSeconds = (performance.now() - started) / 1000;
   normalizeNormals(buffers.normal, pixelCount);
   const { samplesTaken, ...denoiseInputs } = buffers;
-  const linear = options.denoise ? denoiseRadiance({ width, height, ...denoiseInputs }) : buffers.color;
+  const linear = options.denoiser === 'wavelet' ? denoiseRadiance({ width, height, ...denoiseInputs }) : buffers.color;
   return {
-    width, height, linear, rgba: toneMapToRgba8(linear, width, height),
+    width, height, linear, rgba: toneMapToRgba8(linear, width, height), features: denoiseInputs,
     report: {
-      width, height, samples: options.samples, bounces: options.bounces, seed: options.seed, denoised: options.denoise, threads,
+      width, height, samples: options.samples, bounces: options.bounces, seed: options.seed, denoised: options.denoiser === 'wavelet',
+      denoiser: options.denoiser, threads,
       averageSamples: totalSamples(samplesTaken) / pixelCount, noiseThreshold: options.noiseThreshold,
       triangles: scene.indices.length / 3, tracedSeconds, seconds: (performance.now() - started) / 1000,
       ignored: describeIgnoredFeatures(parts, environment),

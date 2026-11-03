@@ -3,6 +3,7 @@ import { createCameraPath } from './camera-path.js';
 import { createSkeletonPose } from './skeleton-pose.js';
 import { createNodeConstraintEvaluator, normalizeConstraints, normalizeDrivers } from './node-constraints.js';
 import { normalizeClipLayers } from './agent-clip-layers.js';
+import { normalizeKeyframeEasing } from './easing.js';
 import { bounded, denseArray, finite, knownKeys, valueFrom } from './motion-validation.js';
 
 const PROPERTIES = {
@@ -48,6 +49,7 @@ function copiedKeyframe(keyframe, interpolation) {
     time: keyframe.time,
     value: Array.isArray(keyframe.value) ? [...keyframe.value] : keyframe.value,
   };
+  if (keyframe.easing !== undefined) result.easing = keyframe.easing;
   if (interpolation === 'CUBICSPLINE') {
     result.inTangent = Array.isArray(keyframe.inTangent) ? [...keyframe.inTangent] : keyframe.inTangent;
     result.outTangent = Array.isArray(keyframe.outTangent) ? [...keyframe.outTangent] : keyframe.outTangent;
@@ -56,13 +58,18 @@ function copiedKeyframe(keyframe, interpolation) {
 }
 
 function normalizedKeyframe(keyframe, track, duration, interpolation) {
-  knownKeys(keyframe, ['time', 'value', 'inTangent', 'outTangent'], 'motion keyframe');
+  knownKeys(keyframe, ['time', 'value', 'inTangent', 'outTangent', 'easing'], 'motion keyframe');
   const size = PROPERTIES[track.kind][track.property];
   const result = {
     time: bounded(keyframe.time, 0, duration, 'Keyframe time'),
     value: valueFrom(keyframe.value, size, 'Keyframe value'),
   };
   validateValue(track.kind, track.property, result.value);
+  const easing = normalizeKeyframeEasing(keyframe);
+  if (easing && interpolation !== 'LINEAR' && interpolation !== 'SMOOTH') {
+    throw new RangeError(`Keyframe easing needs LINEAR or SMOOTH interpolation, not ${interpolation}.`);
+  }
+  Object.assign(result, easing);
   if (interpolation === 'CUBICSPLINE') {
     result.inTangent = valueFrom(keyframe.inTangent, size, 'Incoming tangent');
     result.outTangent = valueFrom(keyframe.outTangent, size, 'Outgoing tangent');

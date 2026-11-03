@@ -98,6 +98,9 @@ The server accepts no arbitrary code and no remote asset URLs. The [MCP referenc
 Two skills teach an agent the engine: [build-67js-scene](skills/build-67js-scene/SKILL.md) for scenes and materials, and [render-67js-media](skills/render-67js-media/SKILL.md) for image and video export.
 For a plain-text guide, give the agent [llms.txt](https://67js.codepawl.com/llms.txt).
 
+[viz3d](https://github.com/codepawl/viz3d) uses 67js. It is a skill that turns places, systems and events into 3D apps and films, and it renders its films and stills in 67js.
+To add it in Claude Code, run `/plugin marketplace add codepawl/viz3d`, then `/plugin install visualize-in-3d@codepawl`.
+
 ## Addons
 
 Each addon is a separate import, so a page loads only what it uses.

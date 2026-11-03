@@ -170,13 +170,13 @@ test('unsupported features fail explicitly before loading resources', async () =
       primitive.targets = [{ TANGENT: 0 }];
     }, /Unsupported morph/],
     [document => { document.meshes[0].primitives[0].attributes.COLOR_0 = 1; }, /COLOR_0/],
-    [document => { document.meshes[0].primitives[0].mode = 1; }, /TRIANGLES/],
+    [document => { document.meshes[0].primitives[0].mode = 5; }, /TRIANGLES/],
     [document => { document.materials[0].alphaMode = 'DITHER'; }, /alpha mode/],
     [document => { document.materials[0].alphaCutoff = 2; }, /alphaCutoff/],
     [document => { document.materials[0].doubleSided = 'yes'; }, /doubleSided/],
     [document => { document.materials[0].normalTexture = { index: 0 }; }, /normalTexture texture index/],
     [document => { document.extensionsRequired = ['KHR_draco_mesh_compression']; }, /KHR_draco/],
-    [document => { document.materials[0].extensions = { KHR_materials_unknown_vendor: {} }; }, /KHR_materials_unknown_vendor/],
+    [document => { document.extensionsRequired = ['KHR_materials_unknown_vendor']; }, /KHR_materials_unknown_vendor/],
     [document => { document.buffers[0].uri = 'external.bin'; }, /baseUrl/],
     [document => { document.nodes[2].children = [0]; }, /Cyclic/],
     [document => { document.materials[0].pbrMetallicRoughness.metallicFactor = 2; }, /metallic/],
@@ -367,15 +367,31 @@ test('linear RGB and normalized Uint8 vertex colors become shared Float32 RGB ge
   }
 });
 
-test('vertex colors reject nonopaque alpha and invalid RGB factors explicitly', async () => {
-  for (const [colors, type, expected] of [
-    [new Float32Array([1, 0, 0, 1, 0, 1, 0, 0.5, 0, 0, 1, 1]), 'VEC4', /Vertex alpha/],
-    [new Float32Array([1, 0, 0, 0, -0.1, 0, 0, 0, 1]), 'VEC3', /COLOR_0 RGB/],
-  ]) {
-    await assert.rejects(parseGltf(triangleAsset((document, append) => {
-      document.meshes[0].primitives[0].attributes.COLOR_0 = append(colors, type);
-    })), expected);
-  }
+test('RGBA vertex colors with alpha below one keep their RGB and warn that the alpha is ignored', async () => {
+  const colors = new Float32Array([1, 0, 0, 1, 0, 1, 0, 0.5, 0, 0, 1, 0.25]);
+  const asset = await parseGltf(triangleAsset((document, append) => {
+    document.meshes[0].primitives[0].attributes.COLOR_0 = append(colors, 'VEC4');
+  }));
+  assert.deepEqual(Array.from(asset.parts[0].geometry.colors), [1, 0, 0, 0, 1, 0, 0, 0, 1]);
+  assert.equal(asset.warnings.length, 1);
+  assert.match(asset.warnings[0], /alpha of RGBA COLOR_0/);
+  asset.dispose();
+});
+
+test('RGBA vertex colors that are fully opaque load without a warning', async () => {
+  const colors = new Float32Array([1, 0, 0, 1, 0, 1, 0, 1, 0, 0, 1, 1]);
+  const asset = await parseGltf(triangleAsset((document, append) => {
+    document.meshes[0].primitives[0].attributes.COLOR_0 = append(colors, 'VEC4');
+  }));
+  assert.deepEqual(asset.warnings, []);
+  asset.dispose();
+});
+
+test('vertex colors reject invalid RGB factors explicitly', async () => {
+  const colors = new Float32Array([1, 0, 0, 0, -0.1, 0, 0, 0, 1]);
+  await assert.rejects(parseGltf(triangleAsset((document, append) => {
+    document.meshes[0].primitives[0].attributes.COLOR_0 = append(colors, 'VEC3');
+  })), /COLOR_0 RGB/);
 });
 
 const PNG_IMAGE = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAEklEQVR4AWI6k2b8H4SZGKAAAAAA//8VS4tGAAAABklEQVQDAEBuBM3uhq5wAAAAAElFTkSuQmCC';

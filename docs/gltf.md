@@ -126,10 +126,10 @@ Disposal is idempotent, and subsequent animation calls fail explicitly.
 The bridge supports triangle meshes, PNG/JPEG base color textures, rigid animations, and metallic-roughness material factors.
 It also supports `KHR_mesh_quantization` and `KHR_materials_emissive_strength`.
 
-Alpha masking, alpha blending and double-sided materials import onto `alphaMode`, `alphaCutoff`, `opacity` and `doubleSided` (see the material maps guide). Vertex transparency is still rejected.
+Alpha masking, alpha blending and double-sided materials import onto `alphaMode`, `alphaCutoff`, `opacity` and `doubleSided` (see the material maps guide). Vertex alpha is not drawn: an RGBA `COLOR_0` loads with its RGB, and `warnings` names the meshes whose alpha was below one and was dropped.
 It supports base-color, normal, metallic-roughness, occlusion and emissive texture channels.
-It rejects unknown extensions, including optional ones.
-Line and point primitives are unsupported.
+An optional extension that 67js does not read is ignored and named in `warnings`, as the glTF specification allows. An extension listed in `extensionsRequired` that 67js does not read still fails the load with `Unsupported glTF extension`.
+POINTS, LINES, LINE_LOOP and LINE_STRIP primitives are skipped with a warning that names the mesh and their count. Drawing them is not supported. TRIANGLE_STRIP and TRIANGLE_FAN primitives are still refused.
 
 ## Extensions
 
@@ -138,6 +138,9 @@ Line and point primitives are unsupported.
 | `KHR_mesh_quantization`, `KHR_materials_emissive_strength` | Supported. |
 | `KHR_texture_transform` | Offset, rotation and scale are baked into `geometry.uvs`. All maps of one material must share one transform, except the normal map: it may differ by an offset and a positive scale (same rotation), which the shader applies on top of the baked UVs (`normalMapTransform` in `material-layer-shaders`). Any other difference fails the import. `texCoord` overrides are rejected. |
 | `EXT_mesh_gpu_instancing` | The node expands into one part per instance and primitive. Parts of one primitive share one geometry object, so the renderer batches them. Skinned or morphed instancing is rejected. |
+| `KHR_materials_unlit` | The material gets the renderer's `unlit` tag and shows its base color and base color map alone. Emissive, normal, occlusion and metallic-roughness maps and layers are dropped. |
+| `KHR_lights_punctual` | Point and spot lights (up to the renderer limits of 16 point and 8 spot lights, in candela like the renderer) and the first directional light become `asset.lights`, a partial `environment`: `pointLights`, `spotLights`, and `keyColor` (color times lux), `lightDirection` and `keyIntensity` for the key light. Pass it as `Renderer67`'s `environment` option or a `frame.environment`. A spot's `penumbra` is `(outer - inner) / outer`. A light over the limits, a second directional light and an invalid light are skipped with a warning. The renderer has no calibrated photometric units, so judge the level by eye. |
+| `KHR_materials_variants`, `KHR_materials_dispersion`, `KHR_materials_diffuse_roughness`, `EXT_materials_bump`, `EXT_texture_avif` and any other optional extension | Ignored, named in `warnings`. |
 | `KHR_draco_mesh_compression` | Needs `options.decoders.draco`. |
 | `EXT_meshopt_compression` | Needs `options.decoders.meshopt`. |
 | `KHR_texture_basisu` | Needs `options.decoders.ktx2`. |
@@ -157,26 +160,42 @@ A Draco loader needs `decodeDracoFile(buffer, onLoad, attributeIds, attributeTyp
 ```js
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 import { KTX2Loader } from 'three/addons/loaders/KTX2Loader.js';
+import { loadGltf, ktx2WorkerConfigFor } from '67js/addons/gltf';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 
 const draco = new DRACOLoader().setDecoderPath('/vendor/draco/');   // copy three/examples/jsm/libs/draco/
 const ktx2 = new KTX2Loader().setTranscoderPath('/vendor/basis/');  // copy three/examples/jsm/libs/basis/
-// Transcode to RGBA8 only: the renderer uploads plain pixels, not GPU-compressed formats.
-ktx2.workerConfig = { astcSupported: false, astcHDRSupported: false, etc1Supported: false, etc2Supported: false, dxtSupported: false, bptcSupported: false, pvrtcSupported: false };
+// Transcode to a GPU-compressed format the renderer's context takes, or to RGBA8 where it takes none.
+ktx2.workerConfig = ktx2WorkerConfigFor(renderer.context);
 
 const asset = await loadGltf('/models/car.glb', { decoders: { draco, ktx2, meshopt: MeshoptDecoder } });
 ```
 
 Any subset works. Draco and KTX2 decode in browser workers. Dispose the loaders yourself when done (`draco.dispose()`, `ktx2.dispose()`).
-A KTX2 texture that decodes to a GPU-compressed format fails with a message that points back to this setting.
-KTX2 dimensions count toward `maxTexturePixels` before decoding. KTX2 images are never scaled, so a KTX2-heavy file over the budget fails.
+
+### KTX2 texture formats
+
+`ktx2WorkerConfigFor(context)` (exported next to `loadGltf`) reads the extensions of a WebGL2 context and returns the `workerConfig` for the loader. The loader then picks one format per file.
+The renderer uploads these GPU-compressed formats as they are, with `texStorage2D` and `compressedTexSubImage2D` for each mip:
+
+| Format | Needs | Bytes a texel |
+| --- | --- | --- |
+| BC7 | `EXT_texture_compression_bptc` | 1 |
+| BC1 or BC3 | `WEBGL_compressed_texture_s3tc` and `WEBGL_compressed_texture_s3tc_srgb` | 0.5 or 1 |
+| ASTC 4x4 | `WEBGL_compressed_texture_astc` | 1 |
+| ETC2 | `WEBGL_compressed_texture_etc` | 0.5 or 1 |
+
+A context with none of these, such as SwiftShader, gets RGBA8 (4 bytes a texel). Set `workerConfig` before the first load. A loader that you leave without a config throws.
+Color maps upload as sRGB and data maps as linear. A file with a partial mip chain keeps only its first level. A compressed texture cannot be exported to GLB or read by the path tracer, so transcode to RGBA8 for those.
+`asset.textureFormats` lists `{ format, width, height, colorSpace, bytes }` for each texture, with `format` set to `bc7`, `bc1-rgb`, `bc1-rgba`, `bc3`, `astc-4x4`, `etc2-rgb`, `etc2-rgba` or `rgba8`.
+KTX2 dimensions count toward `maxTexturePixels` before decoding. KTX2 images are never scaled. When the loader's `workerConfig` allows a compressed format, a KTX2 image counts a quarter of its pixels, because it takes at most one byte a texel on the GPU. A KTX2-heavy file over the budget still fails.
 
 ### Instancing limits
 
 `maxInstances` (default 4,096) caps the instances of one node, and `maxParts` still caps the total number of parts.
 Both are checked from the accessor counts before any data is decoded.
-The bridge does not import cameras, lights or scene environments into Renderer67.
-The caller supplies its own camera and lighting.
+The bridge does not import cameras or scene environments into Renderer67. The caller supplies its own camera and base lighting.
+Lights from `KHR_lights_punctual` come back in `asset.lights` and are applied only when the caller passes them on (see the extension table).
 
 ## Verification
 
