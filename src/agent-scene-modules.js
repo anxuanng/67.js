@@ -26,6 +26,7 @@ const MODULE_LOADERS = {
   lightLinking: () => import('./light-linking.js'),
   cascades: () => import('./cascaded-shadows.js'),
   assets: () => import('./agent-scene-assets.js'),
+  sequences: () => import('./agent-texture-sequence.js'),
   lineArt: () => import('./line-art.js'),
   viewTransform: () => import('./view-transform-shader.js'),
   coplanar: () => import('./coplanar-overlap.js'),
@@ -62,6 +63,7 @@ const MODULE_MARKERS = {
   lightLinking: ['"affects"', '"keyAffects"'],
   cascades: ['"shadowCascades"'],
   assets: ['"asset":{'],
+  sequences: ['"sequence":{'],
   lineArt: ['"lines":{', '"toon":'],
   viewTransform: ['"viewTransform":"agx"', '"viewTransform":"neutral"', '"look":"'],
   // The coplanar-overlap warning in scene_inspect appears only once this is loaded, which loadAllAgentSceneModules does; a recipe with resolveCoplanar needs it.

@@ -100,7 +100,7 @@ Modeling point inputs have a maximum of 4096 points.
 An extrusion has at most 128 holes and 4096 total contour points.
 Shared resource IDs generate geometry once, regardless of the number of mesh nodes.
 
-Materials contain `id`, `tag`, `color`, `metallic`, `roughness`, `emission`, optional `emissiveColor`, `opacity`, `alphaMode`, `doubleSided` and `pattern`.
+Materials contain `id`, `tag`, `color`, `metallic`, `roughness`, `emission`, optional `emissiveColor`, `opacity`, `alphaMode`, `doubleSided`, `pattern` and `map`.
 The defaults are `surface`, `[0.5, 0.5, 0.5]`, `0`, `0.5`, `0`, opacity `1`, `opaque` and `false`.
 The tag can be `surface`, `unlit`, `liquid` or `foam` and remains fixed during editing.
 `liquid` refracts and tints what lies behind it: its color is the light one metre lets through, so `[0.56, 0.84, 0.88]` is clear water. `foam` draws soft blended droplets.
@@ -190,6 +190,21 @@ geometry's UVs, so a mesh with a `uv_unwrap` stack node (or `geometry.uvs`) carr
 texture repeats outside 0 to 1 and tiles. `size` and `axis` only apply to `box`. A `uv` pattern on geometry without UVs
 fails at render and at `scene_export_glb` with a message that names `uv_unwrap`. GLB export writes the baked graph textures
 and the geometry UVs.
+
+### Image sequence maps
+
+`map: { sequence: { frames, fps, loop } }` gives a `surface` material a colour map that plays a list of images, such as the output of a video or a simulation. It covers the colour map only (`map`; normal, roughness and emissive maps stay with `pattern`), needs geometry with UVs (`grid`, `box`, a `uv_unwrap`ped mesh), and does not combine with `pattern`. `color` defaults to white and tints the frames.
+
+```json
+{ "id": "screen", "map": { "sequence": { "frames": ["<catalog image id>", "<catalog image id>"], "fps": 12 } } }
+```
+
+- `frames` lists 2 to 64 IDs from `scene_asset_catalog`. The `--assets` folder takes PNG, JPEG and WebP files next to GLBs, with the same 16 MiB file budget, content-bound SHA-256 IDs and no links. An extension that does not match the file signature rejects the catalog. Entries report `kind: "image"` and `mimeType`; GLBs report `kind: "glb"`. No remote URLs are read.
+- All frames share one size, at most 1024 pixels a side, and a scene decodes at most 64 MiB of frames. Frames are read without colour conversion and should be opaque.
+- `fps` is above 0 and at most 60. The frame at scene time `t` is `floor(t * fps)`: wrapped around the list when `loop` is true (the default), held on the last frame when `loop` is false. Frame 0 shows before any motion time is set.
+- The clock is `motionTime`, the one `scene_look`, `scene_review` and `motion` use. A seek is deterministic: the same time gives the same frame and the same PNG bytes. `scene_render_submit` reads it from `settings.motion.start` plus the elapsed time (or a timeline shot), so a still or video frame shows the frame that `scene_look` shows at that time. A recipe with a sequence and no authored `motion` accepts `settings.motion`.
+- The renderer uploads a frame with `updateTexture` only when the frame index changes. `scene_inspect` reports `textureSequences`: material, frame count, `fps`, `loop`, current `index` and its asset ID.
+- `set-material` and `add-material` take `map`; the frames must be catalog images, which the host decodes before the edit.
 
 Nodes contain `id`, optional `label`, `parent`, `translation`, `rotation`, and `scale`.
 Mesh nodes also require both `geometry` and `material` resource IDs.
@@ -302,7 +317,7 @@ Final resource references and hierarchy must be valid before publication.
 | Operation | Fields |
 | --- | --- |
 | `set-node` | `id`, optional `translation`, `rotation`, `scale`, `parent`, `label`, `geometry`, `material` |
-| `set-material` | `id`, optional `color`, `metallic`, `roughness`, `emission`, `emissiveColor`, `pattern` |
+| `set-material` | `id`, optional `color`, `metallic`, `roughness`, `emission`, `emissiveColor`, `pattern`, `map` |
 | `set-camera` | Optional `eye`, `target`, `up`, `fov`, `near`, `far` directly on the command |
 | `add-geometry` | `geometry`, containing a complete geometry record |
 | `remove-geometry` | `id` |

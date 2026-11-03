@@ -1,0 +1,8 @@
+- tool-total: one new material field, map.sequence, in the shared material schema that scene_create, scene_apply (set-material and add-material) and scene_create_asset repeat; the prose lives in scene_capabilities and docs.
+- tool:scene_create: material.map.sequence { frames, fps, loop }, about 480 bytes of schema.
+- tool:scene_apply: the same field in set-material and add-material.
+- tool:scene_create_asset: the same field in the shared material schema.
+- result:scene_capabilities: textureSequence documents the field, its frame rule, covered maps, image formats and limits for agents.
+- scene:agent-scene: the recipe field map.sequence adds validation hooks, a per-material sequence runtime in the material handle and a textureSequences report to the scene entry (about 300 bytes gzip); the frame logic itself is in the lazy sequences module.
+- scene:agent-scene+lazy: the new sequences module (frame selection, validation, descriptor runtime), the catalog image kinds and the page decoder for frames.
+- goal:agent-scene: needs An to accept, it is about 300 bytes gzip over the goal for an image sequence map that cannot live outside the scene entry. If not accepted, the field can move behind a lazy module hook in a follow-up.

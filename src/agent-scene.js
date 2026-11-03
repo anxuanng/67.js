@@ -25,6 +25,8 @@ const TERRAIN_SKY_VISIBILITY_BYTES = 4;
 const CAMERA_DEFAULTS = Object.freeze({ eye: [4, 3, 5], target: [0, 0, 0], up: [0, 1, 0], fov: 45, near: 0.1, far: 1000 });
 const NODE_FIELDS = ['translation', 'rotation', 'scale', 'parent', 'label', 'geometry', 'material', 'skin', 'relations', 'asset', 'decal', 'depthLayer'];
 const MATERIAL_FIELDS = ['color', 'metallic', 'roughness', 'emission', 'emissiveColor', 'opacity', 'alphaMode', 'doubleSided', 'pattern', 'subsurface', ...MATERIAL_LAYER_FIELDS];
+// `map` is an image sequence (src/agent-texture-sequence.js). It is a recipe field, and the handle builds its descriptor.
+const RECIPE_MATERIAL_FIELDS = [...MATERIAL_FIELDS, 'map'];
 const PATTERN_TEXTURE_FIELDS = ['map', 'normalMap', 'metallicRoughnessMap', 'emissiveMap', 'boxMapScale', 'boxMapAxis'];
 const CAMERA_FIELDS = Object.keys(CAMERA_DEFAULTS);
 const LOOK_OPERATION_FIELDS = Object.freeze({
@@ -199,9 +201,9 @@ function copyMaterialLayers(value, result) {
 }
 
 function materialFrom(value) {
-  knownKeys(value, ['id', 'tag', ...MATERIAL_FIELDS], 'material');
+  knownKeys(value, ['id', 'tag', ...RECIPE_MATERIAL_FIELDS], 'material');
   // A pattern brings its own colours, so the color field tints it and leaves it unchanged by default.
-  const defaultColor = value.pattern === undefined ? [0.5, 0.5, 0.5] : [1, 1, 1];
+  const defaultColor = value.pattern === undefined && value.map === undefined ? [0.5, 0.5, 0.5] : [1, 1, 1];
   const graph = value.pattern?.type === 'graph' ? value.pattern.graph : {};
   // A graph that makes roughness, metallic or emission passes it through as written, so the factors default to 1.
   const graphFactor = (output, fallback) => (Object.hasOwn(graph ?? {}, output) ? 1 : fallback);
@@ -213,6 +215,11 @@ function materialFrom(value) {
   if (value.pattern !== undefined) {
     if (result.tag !== 'surface') throw new RangeError('Material pattern needs the surface tag.');
     result.pattern = agentSceneModule('patterns').normalizeMaterialPattern(value.pattern);
+  }
+  if (value.map !== undefined) {
+    if (result.tag !== 'surface') throw new RangeError('Material map needs the surface tag.');
+    if (value.pattern !== undefined) throw new TypeError('A material takes a pattern or a map sequence, not both.');
+    result.map = agentSceneModule('sequences').normalizeMapSequence(value.map);
   }
   result.opacity = defaultValue(value.opacity, 1);
   finite(result.opacity, 'opacity');
@@ -752,11 +759,11 @@ function geometryStats(records) {
 function batchSignature(material) {
   // Textures are fixed per renderer, so a changed pattern rebuilds it like a changed tag does.
   // Transmission moves a material to the pass that sees the opaque scene, which is fixed per renderer.
-  return `${material.tag}|${material.alphaMode}|${material.opacity}|${material.transmission > 0}|${material.doubleSided}|${JSON.stringify(material.pattern ?? null)}`;
+  return `${material.tag}|${material.alphaMode}|${material.opacity}|${material.transmission > 0}|${material.doubleSided}|${JSON.stringify(material.pattern ?? null)}|${JSON.stringify(material.map ?? null)}`;
 }
 
-function materialHandle(snapshot) {
-  const holder = { snapshot };
+function materialHandle(snapshot, sequence = null) {
+  const holder = { snapshot, sequence };
   const output = {};
   for (const field of ['tag', ...MATERIAL_FIELDS]) {
     Object.defineProperty(output, field, {
@@ -771,6 +778,7 @@ function materialHandle(snapshot) {
       enumerable: true,
       // Baked on first read, so validating or inspecting a recipe never pays for it.
       get() {
+        if (field === 'map' && holder.sequence) return holder.sequence.descriptor;
         return holder.snapshot.pattern ? agentSceneModule('patterns').materialPatternTextures(holder.snapshot.pattern)[field] : undefined;
       },
     });
@@ -907,12 +915,17 @@ function publishPose(stagedState, pose) {
       if (matrix) Float32Array.prototype.set.call(part.matrix, matrix);
     }
   }
+  for (const handle of stagedState.materialHandles.values()) handle.holder.sequence?.seek(pose.time);
   stagedState.renderCamera = pose.camera;
   stagedState.motionTime = pose.time;
   const nextParts = partsWithCloth(stagedState.restParts, pose.clothGeometries);
   const partsChanged = nextParts !== stagedState.parts;
   stagedState.parts = nextParts;
   return partsChanged;
+}
+
+function hasSequences(sceneState) {
+  return [...sceneState.materialHandles.values()].some(handle => handle.holder.sequence);
 }
 
 // The recipe an agent wrote: without the geometries, materials and part nodes that placed assets generate.
@@ -1098,7 +1111,7 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
       // The renderer keeps tag, blending, opacity and sidedness per batch, so a handle is reused only when all match.
       const existing = [preferredHandle, activeHandle].find(handle => handle && batchSignature(handle.holder.snapshot) === batchSignature(material));
       const assetOutput = assetRuntime.materialOutputs.get(material.id);
-      const handle = assetOutput ? assetMaterialHandle(snapshot, assetOutput, preferredHandle, activeHandle) : existing ?? materialHandle(snapshot);
+      const handle = assetOutput ? assetMaterialHandle(snapshot, assetOutput, preferredHandle, activeHandle) : existing ?? materialHandle(snapshot, material.map ? agentSceneModule('sequences').createTextureSequence(material.id, material.map, options.sequenceFrames) : null);
       materialHandles.set(material.id, handle);
     }
     const activeParts = new Map(state?.sourceRestParts.map(part => [part.name, part]) ?? []);
@@ -1338,12 +1351,17 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
     get motionTime() {
       return state.motionTime;
     },
+    /** The colour map of each sequence material: its descriptor, the frame to show and the pixels of that frame. */
+    sequenceTextures() {
+      return [...state.materialHandles.values()].filter(handle => handle.holder.sequence)
+        .map(({ holder }) => ({ descriptor: holder.sequence.descriptor, index: holder.sequence.index, image: holder.sequence.image }));
+    },
     sampleMotion(time) {
       if (time !== null && (!Number.isFinite(time) || time < 0 || time > 3600)) {
         throw new RangeError('Motion time must be null or within zero and 3600 seconds.');
       }
-      if (time !== null && !state.motionSampler && !state.physicsSampler && !state.clothSampler && !state.particleSampler && !state.assetRuntime.animators.length) {
-        throw new RangeError('This procedural recipe has no motion, physics, cloth or particles, and no placed asset clip.');
+      if (time !== null && !state.motionSampler && !state.physicsSampler && !state.clothSampler && !state.particleSampler && !state.assetRuntime.animators.length && !hasSequences(state)) {
+        throw new RangeError('This procedural recipe has no motion, physics, cloth or particles, no placed asset clip and no map sequence.');
       }
       if (publishPose(state, stagePose(state, time))) {
         topologyRevision++;
@@ -1544,7 +1562,7 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
           fields = NODE_FIELDS;
           target = candidate.nodes.find(node => node.id === operation.id);
         } else if (operation.type === 'set-material') {
-          fields = MATERIAL_FIELDS;
+          fields = RECIPE_MATERIAL_FIELDS;
           target = candidate.materials.find(material => material.id === operation.id);
         } else if (operation.type === 'set-camera') {
           fields = CAMERA_FIELDS;
@@ -1604,6 +1622,7 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
         ...(state.clothSampler ? { cloth: state.clothSampler.report() } : {}),
         ...(state.particleSampler ? { particles: state.particleSampler.report() } : {}),
         ...(state.assetRuntime.placements.length ? { assets: agentSceneModule('assets').describeAssetPlacements(state.assetRuntime, state.graph, geometry => state.localBounds.get(geometry)) } : {}),
+        ...(hasSequences(state) ? { textureSequences: [...state.materialHandles.values()].filter(handle => handle.holder.sequence).map(handle => handle.holder.sequence.describe()) } : {}),
         ...(state.bakeReport ? { bake: state.bakeReport } : {}),
         ...(state.reflectionReport ? { reflections: state.reflectionReport } : {}),
         ...(state.recipe.armatures ? { rig: rigReport(state.recipe, state.skinBindings) } : {}),

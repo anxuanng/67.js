@@ -108,16 +108,18 @@ function settingsFrom(input, clips, recipe) {
   if (input.audio !== undefined) result.audio = audioFrom(input.audio, input.kind);
   if (input.motion !== undefined) {
     objectKeys(input.motion, ['start'], 'motion');
-    if (!['67js.scene', '67js.asset'].includes(recipe?.format) || !recipe.motion) {
-      throw new RangeError('Motion settings require a recipe with authored motion.');
+    // A map sequence reads the same clock, so a recipe with one takes motion settings without authored motion.
+    const sequenceOnly = !recipe?.motion && JSON.stringify(recipe?.materials ?? []).includes('"sequence":{');
+    if (!['67js.scene', '67js.asset'].includes(recipe?.format) || (!recipe.motion && !sequenceOnly)) {
+      throw new RangeError('Motion settings require a recipe with authored motion or a map sequence.');
     }
-    const motionDuration = boundedNumber(recipe.motion.duration, 0.1, 30, 'motion duration');
-    if (recipe.motion.loop !== undefined && typeof recipe.motion.loop !== 'boolean') {
+    const motionDuration = sequenceOnly ? 3600 : boundedNumber(recipe.motion.duration, 0.1, 30, 'motion duration');
+    if (recipe.motion?.loop !== undefined && typeof recipe.motion.loop !== 'boolean') {
       throw new TypeError('Motion loop must be boolean.');
     }
     const start = boundedNumber(input.motion.start === undefined ? 0 : input.motion.start, 0, 3600, 'motion start');
     boundedNumber(start + lastSampleTime, 0, 3600, 'motion end');
-    if (!recipe.motion.loop && start + lastSampleTime > motionDuration) {
+    if (!sequenceOnly && !recipe.motion.loop && start + lastSampleTime > motionDuration) {
       throw new RangeError('Motion range exceeds the authored duration.');
     }
     result.motion = { start };
