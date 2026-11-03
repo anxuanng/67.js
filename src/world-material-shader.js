@@ -35,6 +35,19 @@ export function resolveWaterMaterial({ waterPreset, absorption, turbidity } = {}
   return { waterPreset: preset, absorption: [...resolvedAbsorption], turbidity: resolvedTurbidity };
 }
 
+/** Copies a recipe material's water fields: a water material always carries the resolved absorption, turbidity and preset. */
+export function copyWaterFields(value, result, toVector) {
+  const given = ['waterPreset', 'absorption', 'turbidity'].filter(field => value[field] !== undefined);
+  if (result.tag !== 'water') {
+    if (given.length > 0) {
+      throw new RangeError(`${given.join(', ')} need the water tag.`);
+    }
+    return;
+  }
+  const absorption = value.absorption === undefined ? undefined : toVector(value.absorption, 3, 'absorption');
+  Object.assign(result, resolveWaterMaterial({ ...value, absorption }));
+}
+
 function partBounds(part) {
   const { positions } = part.geometry;
   const { matrix } = part;

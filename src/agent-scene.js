@@ -24,8 +24,7 @@ const MAX_MESH_REPORTS = 16;
 const TERRAIN_SKY_VISIBILITY_BYTES = 4;
 const CAMERA_DEFAULTS = Object.freeze({ eye: [4, 3, 5], target: [0, 0, 0], up: [0, 1, 0], fov: 45, near: 0.1, far: 1000 });
 const NODE_FIELDS = ['translation', 'rotation', 'scale', 'parent', 'label', 'geometry', 'material', 'skin', 'relations', 'asset', 'vegetation', 'decal', 'depthLayer'];
-const WATER_MATERIAL_FIELDS = ['waterPreset', 'absorption', 'turbidity'];
-const MATERIAL_FIELDS = ['color', 'metallic', 'roughness', 'emission', 'emissiveColor', 'opacity', 'alphaMode', 'doubleSided', 'pattern', 'subsurface', ...WATER_MATERIAL_FIELDS, ...MATERIAL_LAYER_FIELDS];
+const MATERIAL_FIELDS = ['color', 'metallic', 'roughness', 'emission', 'emissiveColor', 'opacity', 'alphaMode', 'doubleSided', 'pattern', 'subsurface', 'waterPreset', 'absorption', 'turbidity', ...MATERIAL_LAYER_FIELDS];
 const PATTERN_TEXTURE_FIELDS = ['map', 'normalMap', 'metallicRoughnessMap', 'emissiveMap', 'boxMapScale', 'boxMapAxis'];
 const CAMERA_FIELDS = Object.keys(CAMERA_DEFAULTS);
 const LOOK_OPERATION_FIELDS = Object.freeze({
@@ -199,17 +198,6 @@ function copyMaterialLayers(value, result) {
   if (result.toon > 0) agentSceneModule('lineArt');
 }
 
-// Water optics (src/world-material-shader.js): a water material always carries the resolved absorption, turbidity and preset.
-function copyWaterFields(value, result) {
-  const given = WATER_MATERIAL_FIELDS.filter(field => value[field] !== undefined);
-  if (result.tag !== 'water') {
-    if (given.length > 0) throw new RangeError(`${given.join(', ')} need the water tag.`);
-    return;
-  }
-  const fields = agentSceneModule('worldMaterials').resolveWaterMaterial({ ...value, absorption: value.absorption === undefined ? undefined : vector(value.absorption, 3, 'absorption') });
-  Object.assign(result, fields);
-}
-
 function materialFrom(value) {
   knownKeys(value, ['id', 'tag', ...MATERIAL_FIELDS], 'material');
   // A pattern brings its own colours, so the color field tints it and leaves it unchanged by default.
@@ -258,7 +246,9 @@ function materialFrom(value) {
     }
   }
   copyMaterialLayers(value, result);
-  copyWaterFields(value, result);
+  if (agentSceneModuleLoaded('worldMaterials')) {
+    agentSceneModule('worldMaterials').copyWaterFields(value, result, vector);
+  }
   const emissiveColor = result.emissiveColor ?? result.color;
   for (const component of emissiveColor) {
     const radiance = Math.fround(component) * Math.fround(result.emission);
