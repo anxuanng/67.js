@@ -320,9 +320,10 @@ function isOpenAir(parts) {
   return openAir
 }
 
-function outdoorFillEnvironment(parts, environment, ground) {
+// The fill as a `bounce` colour, or null when the scene gets none.
+function outdoorFillBounce(parts, environment, ground) {
   if (environment.outdoorFill === false || !environment.keyColor || !hasKeyLight(environment) || !isOpenAir(parts)) {
-    return environment
+    return null
   }
   const { lightDirection } = environment
   const sunLength = Math.hypot(...lightDirection)
@@ -330,11 +331,10 @@ function outdoorFillEnvironment(parts, environment, ground) {
   const sunOnWall = Math.hypot(lightDirection[0], lightDirection[2]) / sunLength
   const lowSun = Math.max(sunOnWall - sunOnGround, 0) ** 2
   if (lowSun === 0) {
-    return environment
+    return null
   }
   const albedo = (ground?.albedo ?? [0, 0, 0]).map(channel => Math.max(channel, OUTDOOR_MINIMUM_ALBEDO))
-  const bounce = albedo.map((channel, index) => (OUTDOOR_FILL_GAIN * channel * environment.keyColor[index] * (environment.keyIntensity ?? 1) * lowSun) / Math.PI)
-  return { ...environment, map: { ...environment.map, bounce } }
+  return albedo.map((channel, index) => (OUTDOOR_FILL_GAIN * channel * environment.keyColor[index] * (environment.keyIntensity ?? 1) * lowSun) / Math.PI)
 }
 
 /**
@@ -355,17 +355,18 @@ export function groundBounceEnvironment(parts, environment, { automaticAlbedo = 
     return environment
   }
   const ground = groundOf(parts, automaticAlbedo)
-  const fill = outdoorFillEnvironment(parts, environment, ground)
+  const fill = outdoorFillBounce(parts, environment, ground)
   if (!ground) {
-    return fill
+    return fill ? { ...environment, map: { ...environment.map, bounce: fill } } : environment
   }
   const { lightDirection } = environment
   const keyColor = environment.keyColor.map(channel => channel * (environment.keyIntensity ?? 1))
-  const key = JSON.stringify([ground.albedo, keyColor, lightDirection])
+  const key = JSON.stringify([ground.albedo, keyColor, lightDirection, fill])
   const byInputs = cache.get(environment.map) ?? new Map()
   cache.set(environment.map, byInputs)
   if (!byInputs.has(key)) {
-    byInputs.set(key, withGroundBounce(environment.map, { albedo: ground.albedo, keyColor, lightDirection }))
+    const bounced = withGroundBounce(environment.map, { albedo: ground.albedo, keyColor, lightDirection })
+    byInputs.set(key, fill ? { ...bounced, bounce: fill } : bounced)
   }
-  return { ...fill, map: { ...byInputs.get(key), ...(fill.map.bounce && { bounce: fill.map.bounce }) } }
+  return { ...environment, map: byInputs.get(key) }
 }

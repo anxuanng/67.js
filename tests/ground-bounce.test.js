@@ -143,3 +143,17 @@ test('the mean of a texture is found once per image', () => {
   map.image.data.fill(0);
   assert.ok(findGroundSurface(openScene({ ...GRASS, map })).albedo[0] > 0.1);
 });
+
+test('a low sun adds a bounce colour to the map, a high sun, no sun or outdoorFill false add none', () => {
+  const parts = openScene();
+  const lowSun = { map: uniformSky(0.5), keyColor: [3, 3, 3], lightDirection: [-5, 1, 4] };
+  const filled = groundBounceEnvironment(parts, lowSun);
+  assert.ok(filled.map.irradianceSource);
+  assert.ok(filled.map.bounce.every(channel => channel > 0));
+  assert.equal(groundBounceEnvironment(parts, lowSun).map, filled.map);
+  assert.equal(groundBounceEnvironment(parts, environmentOf(uniformSky(0.5))).map.bounce, undefined);
+  assert.equal(groundBounceEnvironment(parts, { ...lowSun, keyColor: [0, 0, 0] }).map.bounce, undefined);
+  assert.equal(groundBounceEnvironment(parts, { ...lowSun, outdoorFill: false }).map.bounce, undefined);
+  const withoutFloor = groundBounceEnvironment(parts.slice(1), lowSun);
+  assert.ok(withoutFloor.map.bounce.every(channel => channel > 0));
+});
