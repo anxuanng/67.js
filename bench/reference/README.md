@@ -1056,3 +1056,18 @@ Main reproduced `baseline.json` first on the stored arrays (`brick-flat` 0.1264,
 - Change: for a mapped normal the ambient and reflected sky term is scaled by `0.5 + 0.5 * dot(mapped, geometric)`, the share of an even sky lobe that stays above the surface. `brick-graph` 0.1584 to 0.1518 (EEVEE 0.0875 to 0.0844, CPU the same); all 22 other scenes reproduce their rows to 4 digits (none uses a normal map). Excess over its flat wall: 67js 0.0320 to 0.0254, EEVEE 0.0122.
 - Still open: the sun is not clipped against the surface plane (the wall faces the sun, so it changes nothing here), the colour gap on the brick faces (Cycles 0.524, EEVEE 0.476, 67js 0.466 in luminance), and a bump scale per world unit instead of per UV unit (Blender's Distance 0.15 is 0.025 per UV unit across and 0.0375 up on this 6 by 4 wall, the bake gives 0.031 both ways). Whether the condition of #50 can be met is still An's decision.
 Bundle size: the two shader lines add 9 to 18 bytes gzip to eight bundles that carry the main fragment shader (ntry:core, ntry:agent-scene, ntry:agent-asset, ntry:cascaded-shadows, scene:lit-box, scene:gltf-box, scene:gltf-box+lazy, scene:agent-scene); their budgets rose by 20 to 30 bytes.
+## Bump scale per world unit and the brick-face colour (2026-11-03, part of issue #50)
+
+Main reproduced `baseline.json` first on the stored arrays (`brick-flat` 0.1264, `brick-graph` 0.1518, EEVEE against Cycles 0.1099 and 0.1221, GPU). Nothing is kept and no engine file, baseline row or budget changed.
+
+- Bump scale per world unit, tried and not kept. The baked map has a slope of `bump / 32` per UV unit; Blender's Bump node with Distance 0.15 has `0.15 * bump / L` per world length `L` of the UV axis, so the wall (6 across, 4 up) needs the existing `normalScale` uniform at `[4.8 / 6, 4.8 / 4]` = `[0.8, 1.2]` (a scale of the map's x and y leaves the slope ratio exact). `brick-graph` against Cycles goes 0.1518 to 0.1525 (worse), against EEVEE 0.0844 to 0.0840, CPU the same; `brick-flat` and `brick-room` are unchanged. The mean scale is still 1, and earlier measurements here show bump strength is not what separates the render from Cycles, so matching the anisotropy does not help. No shader or material field was added for it.
+- Brick-face colour, measured: the gap is light, not the colour path. Mean luminance (display space, tone-mapped like 67js) over the wall, a uniform-colour wall (`brick-flat`) against the graph wall, by region found by projecting the wall back to UV:
+
+| Renderer | flat wall | graph, brick faces (body over 0.95) | faces / flat | graph, mortar (under 0.05) | mortar / flat |
+| --- | --- | --- | --- | --- | --- |
+| Cycles | 0.6149 | 0.5236 | 0.852 | 0.7062 | 1.148 |
+| EEVEE | 0.5600 | 0.4755 | 0.849 | 0.6610 | 1.180 |
+| 67js | 0.5557 | 0.4657 | 0.838 | 0.6295 | 1.133 |
+
+  Cycles is 10.7% brighter than 67js and 9.8% brighter than EEVEE on the plain flat wall, with no texture at all, so most of the 0.524 against 0.466 on the brick faces (12.4%) is Cycles-only light, the same offset as in `brick-flat`'s score. Once the flat wall removes it, the face ratios are within 1.6% (0.852, 0.849, 0.838), which is the share the graph's colour path and noise statistics can own. Ramp stops and mix constants are linear on both sides (`element.color` in `render-blender.py` takes linear values and the bake writes `linearToSrgbByte`), the ramp is linear in both, and the Blender noise differs from the 67js one (stated in `render-blender.py`), so a 1.6% face offset cannot be traced further without a Blender run, which this pass did not have. Not changed.
+- Excess of the graph wall over its flat wall, the number #50 asks for: 67js 0.1518 - 0.1264 = 0.0254, EEVEE 0.0122, unchanged.
