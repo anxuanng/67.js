@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mat4 } from 'gl-matrix';
 import { normalizeAgentLook, resolveAgentShadow } from '../src/agent-look.js';
-import { createLightingState, updateLightingState } from '../src/lighting.js';
+import { createLightingState, updateLightingState, MAX_POINT_LIGHTS } from '../src/lighting.js';
 import { resolveVolumeFog } from '../src/volumetric.js';
 
 test('default look is complete, detached JSON and idempotent', () => {
@@ -127,12 +127,12 @@ test('malformed JSON, getters, sparse arrays and executable values reject withou
 });
 
 test('lighting ranges include zero intensity and unlimited point range while rejecting invalid edge values', () => {
-  const lights = Array.from({ length: 8 }, (_, index) => ({ position: [index, 0, 0], intensity: 0, range: 0 }));
+  const lights = Array.from({ length: MAX_POINT_LIGHTS }, (_, index) => ({ position: [index, 0, 0], intensity: 0, range: 0 }));
   const look = normalizeAgentLook({ environment: { pointLights: lights, keyIntensity: 0, fillIntensity: 0, ambientIntensity: 0, daylight: 0, fogDensity: 0 } });
-  assert.equal(look.environment.pointLights.length, 8);
+  assert.equal(look.environment.pointLights.length, MAX_POINT_LIGHTS);
   assert.equal(look.environment.keyIntensity, 0);
   assert.deepEqual(normalizeAgentLook({ environment: { pointLights: [] } }).environment.pointLights, []);
-  assert.throws(() => normalizeAgentLook({ environment: { pointLights: [...lights, lights[0]] } }), /8/);
+  assert.throws(() => normalizeAgentLook({ environment: { pointLights: [...lights, lights[0]] } }), new RegExp(String(MAX_POINT_LIGHTS)));
   const invalid = [
     { pointLights: [{ position: [0, 0, 0], range: 0.0001 }] },
     { pointLights: [{ position: [0, 0, 0], radius: 0 }] },

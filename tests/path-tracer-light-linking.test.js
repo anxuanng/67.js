@@ -4,7 +4,7 @@ import test from 'node:test';
 
 import { box, sphere } from '../src/geometry.js';
 import { createEnvironmentMap } from '../src/environment.js';
-import { SUN_BIT, POINT_FIRST_BIT } from '../src/light-link-bits.js';
+import { SUN_BIT, POINT_FIRST_BIT, SPOT_FIRST_BIT, AREA_FIRST_BIT } from '../src/light-link-bits.js';
 import { describeIgnoredFeatures, renderPathTracedImage } from '../src/path-tracer.js';
 
 function placed(translation, scale) {
@@ -15,7 +15,7 @@ function surface(color, extra = {}) {
   return { tag: 'surface', metallic: 0, roughness: 0.5, emission: 0, color, ...extra };
 }
 
-const EVERY_BIT = 0x1fffff;
+const EVERY_BIT = -1;
 const without = (...bits) => bits.reduce((mask, bit) => mask & ~(1 << bit), EVERY_BIT);
 
 // A scene with no linking at all. Its pixels were hashed on the code before the path tracer read light masks, so a
@@ -90,7 +90,7 @@ test('a spot light and an area light honour their bits too', async () => {
     areaLights: [{ position: [100, 3, 0], direction: [0, -1, 0], width: 1, height: 1, color: [1, 1, 1], intensity: 8 }],
   };
   assert.ok(await centreOf(twoFloors(EVERY_BIT, environment).parts, environment, 100) > 0.05);
-  assert.equal(await centreOf(twoFloors(without(9, 17), environment).parts, environment, 100), 0);
+  assert.equal(await centreOf(twoFloors(without(SPOT_FIRST_BIT, AREA_FIRST_BIT), environment).parts, environment, 100), 0);
 });
 
 test('the path tracer no longer names light linking as ignored', () => {

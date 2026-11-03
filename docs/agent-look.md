@@ -117,7 +117,7 @@ Sky colors use display RGB, matching the renderer's existing environment contrac
 | `fillIntensity` | `0` | `0` to `100` |
 | `ambientIntensity` | `1` | `0` to `100`. Scales the environment light |
 | `daylight` | `1` | `0` to `100` |
-| `pointLights` | `[]` | At most eight point light records |
+| `pointLights` | `[]` | At most 16 point light records |
 | `skyTop` | `[0.2, 0.38, 0.52]` | Components from `0` to `1` |
 | `skyBottom` | `[0.62, 0.7, 0.67]` | Components from `0` to `1` |
 | `fogColor` | `[0.35, 0.43, 0.43]` | Components from `0` to `1` |
@@ -263,7 +263,7 @@ Every object rejects unknown keys.
 Inputs must contain ordinary plain JSON objects and dense arrays without extra fields or hidden properties.
 Accessors, executable values, cyclic references, typed arrays, and nonfinite numbers reject.
 The helpers return independent arrays, including volume defaults.
-JSON nesting has a maximum depth of 32, and look arrays have at most eight entries.
+JSON nesting has a maximum depth of 32, and look arrays have at most 16 entries.
 
 | Design | Benefit | Cost |
 | --- | --- | --- |

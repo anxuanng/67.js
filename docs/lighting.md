@@ -63,7 +63,7 @@ Limits: the diffuse term uses L2 spherical harmonics, so a very small intense su
 
 ## Point lights
 
-At most eight lights are supported per frame. Each light supplies `position`. Optional fields default to white `color`, `intensity: 1`, `radius: 0.05` and unlimited `range: 0`.
+At most 16 lights are supported per frame. Each light supplies `position`. Optional fields default to white `color`, `intensity: 1`, `radius: 0.05` and unlimited `range: 0`.
 
 The light uses inverse-square falloff outside its radius. Doubling distance reduces incoming illumination to one quarter before material response. Intensity follows the candela convention for a point source, but the renderer's existing exposure and environment are not a calibrated photographic pipeline.
 
@@ -83,9 +83,33 @@ A point light casts a shadow only with `castShadow: true` (see [Local shadows](#
 
 ## Area lights
 
-`environment.areaLights` holds at most four rectangles. Each has `position` (the center), `direction` (the side it emits to), `width` and `height` in scene units, and optional `up`, `color` and `intensity`. The width axis is `up x direction`, so a downward panel with `up: [0, 0, 1]` has its width along X. `intensity` is the candela of the whole rectangle seen head on, and the light has Lambert emission, so it fades with the cosine to the side.
+`environment.areaLights` holds at most seven rectangles. Each has `position` (the center), `direction` (the side it emits to), `width` and `height` in scene units, and optional `up`, `color` and `intensity`. The width axis is `up x direction`, so a downward panel with `up: [0, 0, 1]` has its width along X. `intensity` is the candela of the whole rectangle seen head on, and the light has Lambert emission, so it fades with the cosine to the side.
 
 Method: representative point, not a light-transform lookup table. The closest point of the rectangle to the shaded point stands in for the source, and the light is `intensity * cos(emission) / (d^2 + area / pi)`. The `area / pi` term keeps it finite at the surface and equals a disc source on its axis. Measured against Cycles on a white plane, a Blender area light of W watts matches `W / pi` candela, and this formula is within 1.2 percent on the axis for 1 m and 2 m squares from 0.2 m to 2 m away (measured). Off-axis error and the shape of a specular highlight are not measured: the highlight is a point highlight from the representative point, so a large panel does not give a stretched reflection. Area lights cast no shadow and a rectangle seen from behind gives no light.
+
+## Light counts and frame cost
+
+A frame takes at most 16 point lights, 8 spot lights and 7 area lights, and `agent-look`, the scene capabilities (`maxPointLights`, `maxSpotLights`, `maxAreaLights`) and the light bake use the same numbers. The three limits and the sun share the 32 bits of the light-linking mask, which is why the area limit is 7 and not 8. Every light is added in a loop in the fragment shader, so a frame costs about the same for each light whether or not it reaches a pixel; a `range` lets the loop skip a light that is out of reach.
+
+Measured on an RTX 3060 at 960x540 with 4 samples, a server hall of 49 boxes drawn with the lights spread over the ceiling (`node bench/lighting/frame-time.mjs gpu`, median of 3 runs of 200 frames each, below-normal priority; the machine was shared with other jobs, so read the spread as load). The 32 point light and 8 area light rows come from a run with the limits raised for the measurement:
+
+| Lights | Median frame time |
+| --- | --- |
+| none | 1.07 ms |
+| 8 point | 1.42 ms |
+| 16 point | 1.81 ms |
+| 32 point | 2.38 ms |
+| 4 area | 1.28 ms |
+| 7 area | 1.32 ms |
+| 8 area | 1.38 ms |
+| 12 point and 7 area | 1.88 ms |
+| 16 point and 7 area | 1.92 ms |
+| 32 point and 8 area | 2.53 ms |
+| 32 point with `range: 6` | 1.63 ms |
+
+A point light costs about 0.04 to 0.05 ms and an area light about 0.04 ms at this size, and a software rasterizer (SwiftShader, one run) shows the same order: 134 ms with no lights, 172 ms with 16 point lights and 246 ms with 12 point and 7 area lights. 32 point lights would have cost 2.4 ms and fit the GPU's 1,024 fragment uniform vectors, but they do not fit the mask without dropping spot or area lights, so the limit stays at 16. Point lights are not culled by tile or cluster; that would pay off at hundreds of lights, which the bit mask and the uniform arrays could not hold anyway.
+
+`node bench/lighting/frame-time.mjs gpu --each-light` draws the hall with 12 point and 7 area lights and again without each light in turn; every removal changes the picture (checked on the software rasterizer).
 
 ## Local shadows
 
@@ -123,7 +147,7 @@ const environment = { pointLights: [{ position: [-1.8, 2.4, 1.2], intensity: 14,
 const renderer = new Renderer67(canvas, applyLightLinks(parts, environment), { environment });
 ```
 
-A part gets a bit mask in `material.lightMask` (bit 0 the sun, bits 1 to 8 the point lights, 9 to 16 the spot lights, 17 to 20 the area lights, in list order); the shader skips a light whose bit is clear. Linking changes what a light adds, not what it shadows: a part a light does not reach still blocks that light for the others, and in Blender too. Parts with different masks are different batches. The path tracer ignores linking and says so in `report.ignored`; the light bake honours it, so a lamp linked to some parts bakes no light onto the others, not even as a bounce off a part it lights.
+A part gets a bit mask in `material.lightMask` (bit 0 the sun, bits 1 to 16 the point lights, 17 to 24 the spot lights, 25 to 31 the area lights, in list order); the shader skips a light whose bit is clear. Linking changes what a light adds, not what it shadows: a part a light does not reach still blocks that light for the others, and in Blender too. Parts with different masks are different batches. The path tracer ignores linking and says so in `report.ignored`; the light bake honours it, so a lamp linked to some parts bakes no light onto the others, not even as a bounce off a part it lights.
 
 Recipes reach it through `affects` (a list of node IDs) on a point, spot or area light and `environment.keyAffects` for the sun; a light without the list lights every node. A name that is not a node of the recipe is refused with the list of names to check (`scene_inspect`), and removing a node that a list names is refused until the list changes. `set-environment` carries the lists, `scene_export_recipe` keeps them, and the code loads on demand only for a recipe that names them. A scene without links compiles none of this code. The reference scene `light-linking` is the measured case.
 

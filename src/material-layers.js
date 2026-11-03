@@ -2,9 +2,8 @@
 // This module holds plain data only, so the MCP server, recipes, the glTF code and the renderer share one set of ranges.
 
 const UNIT = Object.freeze([0, 1]);
-
-// Bit 0 is the sun, bits 1 to 8 the point lights, 9 to 16 the spot lights and 17 to 20 the area lights (light-linking.js).
-export const ALL_LIGHTS_MASK = 0x1fffff;
+// Bit 0 is the sun, then the point, spot and area lights in that order (light-link-bits.js). Every bit of the 32 bit integer is set.
+export const ALL_LIGHTS_MASK = -1;
 
 export const MATERIAL_LAYER_DEFAULTS = Object.freeze({
   clearcoat: 0,
