@@ -6,7 +6,7 @@
   "agent-scene": 100000
  },
  "budgets": {
-  "entry:core": 87540,
+  "entry:core": 87600,
   "entry:model": 14400,
   "entry:nature": 13200,
   "entry:motion": 13600,
@@ -34,21 +34,21 @@
   "entry:ground-bounce": 9460,
   "entry:path-tracer": 14600,
   "entry:texture-set": 900,
-  "entry:agent-scene": 78550,
-  "entry:agent-scene+lazy": 261000,
-  "entry:agent-asset": 109920,
-  "entry:agent-asset+lazy": 272400,
+  "entry:agent-scene": 78650,
+  "entry:agent-scene+lazy": 261170,
+  "entry:agent-asset": 109990,
+  "entry:agent-asset+lazy": 272540,
   "entry:hdri": 3300,
   "entry:camera-effects": 8600,
-  "entry:water-reflection": 26540,
+  "entry:water-reflection": 26580,
   "entry:render-passes": 1700,
-  "entry:material-layer-shaders": 21360,
-  "entry:light-linking": 19680,
-  "entry:cascaded-shadows": 28480,
-  "scene:lit-box": 64890,
+  "entry:material-layer-shaders": 21400,
+  "entry:light-linking": 19720,
+  "entry:cascaded-shadows": 28530,
+  "scene:lit-box": 64970,
   "scene:gltf-box": 86880,
   "scene:gltf-box+lazy": 90200,
-  "scene:agent-scene": 106710,
-  "scene:agent-scene+lazy": 289120
+  "scene:agent-scene": 106800,
+  "scene:agent-scene+lazy": 289320
  }
 }

@@ -385,7 +385,7 @@ Outdoor `environment` accepts `skyTop`, `skyBottom` (display RGB), `fogColor` (l
 ## Local lights and volume fog
 
 Version `0.4.0` supports local lighting through the renderer's `environment` option and per-frame environment overrides.
-`pointLights` accepts at most eight world-space lights with linear RGB colors.
+`pointLights` accepts at most 16 world-space lights with linear RGB colors.
 `keyIntensity`, `fillIntensity` and `ambientIntensity` control the existing studio lighting.
 
 1. Set the environment's lighting controls when creating the renderer.

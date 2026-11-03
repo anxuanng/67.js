@@ -43,7 +43,7 @@ A node that hosts cloth is skipped like a hair host: the cloth simulation replac
 
 The bake traces cosine-weighted paths from each texel through up to `bounces` reflections. Each hit adds its own emission and the direct light it receives from the point lights and the sun, with shadow rays. A texel stores that light times its own albedo. Direct light is not baked: it stays live, so shadows and moving lights keep working. The stored light is only what has bounced at least once, so a scene needs the same lights at run time that it gave the bake.
 
-Spot lights take the cone and soft edge the renderer uses (`angle`, `penumbra`, default 0.15), with `range` and `radius` as for a point light. An area light is a rectangle that emits from its front side only, with the path tracer's `intensity * cosine / distance squared`. A hit is lit by one shadow ray per area light to a point of the rectangle that changes on every call; the sequence is a hash of the call count, so it repeats exactly, and the many paths of a texel average the soft shadow. At most 8 spot and 4 area lights. A scene without spot or area lights bakes the same bytes as before.
+Spot lights take the cone and soft edge the renderer uses (`angle`, `penumbra`, default 0.15), with `range` and `radius` as for a point light. An area light is a rectangle that emits from its front side only, with the path tracer's `intensity * cosine / distance squared`. A hit is lit by one shadow ray per area light to a point of the rectangle that changes on every call; the sequence is a hash of the call count, so it repeats exactly, and the many paths of a texel average the soft shadow. At most 8 spot and 7 area lights. A scene without spot or area lights bakes the same bytes as before.
 
 Not baked: the environment map (it already lights every surface at run time) and specular reflection. A metal part reflects no baked light. Fresnel and sheen are ignored.
 
@@ -92,7 +92,7 @@ Cost per frame (RTX 3060, `lit-interior`, medians of three alternating rounds of
 | `maxResolution` | 128 | 4 to 256 | Largest lightmap side for one part. |
 | `maxSeconds` | 60 | 1 to 600 | Wall-clock limit. Passing it throws; a bake never returns a partial result. |
 
-Also checked before any ray is traced: at most 256 parts, 200,000 triangles in total, 8 point lights, 1,000,000 texels and 400 million units of ray work (texels, samples, bounces and lights multiplied). Positions, indices, matrices, colours and lights must be finite and in range, and an error names the field.
+Also checked before any ray is traced: at most 256 parts, 200,000 triangles in total, 16 point lights, 1,000,000 texels and 400 million units of ray work (texels, samples, bounces and lights multiplied). Positions, indices, matrices, colours and lights must be finite and in range, and an error names the field.
 
 The result is deterministic: the same parts, lights and options give the same bytes, with no `Math.random` and no clock in the output. `report.seconds` is the only value that varies from run to run.
 

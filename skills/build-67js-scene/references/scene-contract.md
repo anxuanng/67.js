@@ -65,7 +65,7 @@ An outdoor renderer receives `world: true`, `ground: false` and the scene enviro
 The environment provides `fogColor`, `fogDensity`, `skyTop`, `skyBottom`, `lightDirection` and optional `daylight`.
 The sky colors are display RGB. Fog colors are linear RGB.
 
-Local `environment.pointLights` support eight world-space sources with inverse-square falloff.
+Local `environment.pointLights` support 16 world-space sources with inverse-square falloff.
 Each light provides `position` and optional `color`, `intensity`, `radius`, `range` and `castShadow`.
 `environment.spotLights` (eight) take `position`, `direction`, and optional `angle` (outer half angle in radians, default 0.785), `penumbra` (0 to 1, default 0.15), `color`, `intensity`, `radius`, `range` and `castShadow`. Intensity is candela, the same unit as a point light.
 `environment.areaLights` (four) are rectangles with `position`, `direction` (the side that emits), `width`, `height`, optional `up`, `color` and `intensity` (candela seen head on). They cast no shadow.

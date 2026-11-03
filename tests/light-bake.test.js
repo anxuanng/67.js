@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { box } from '../src/geometry.js';
 import { exportGlb } from '../src/export.js';
-import { BAKE_LIMITS, MAX_BAKE_POINT_LIGHTS, bakeLightmaps, normalizeBakeOptions } from '../src/light-bake.js';
+import { BAKE_LIMITS, MAX_BAKE_POINT_LIGHTS, MAX_BAKE_SPOT_LIGHTS, MAX_BAKE_AREA_LIGHTS, bakeLightmaps, normalizeBakeOptions } from '../src/light-bake.js';
 
 const cube = box(0, 1);
 
@@ -153,10 +153,10 @@ test('hostile spot and area lights are refused before any ray is traced', () => 
     [{ spotLights: [{ ...spot, direction: [0, 0, 0] }] }, /spot light 0.*direction/],
     [{ spotLights: [{ ...spot, position: [0, Number.NaN, 0] }] }, /spot light 0/],
     [{ spotLights: [{ ...spot, angle: 4 }] }, /spot light 0.*angle/],
-    [{ spotLights: Array(9).fill(spot) }, /at most 8 spot lights/],
+    [{ spotLights: Array(MAX_BAKE_SPOT_LIGHTS + 1).fill(spot) }, new RegExp(`at most ${MAX_BAKE_SPOT_LIGHTS} spot lights`)],
     [{ areaLights: [{ ...area, width: -1 }] }, /area light 0.*width/],
     [{ areaLights: [{ ...area, intensity: Infinity }] }, /area light 0/],
-    [{ areaLights: Array(5).fill(area) }, /at most 4 area lights/],
+    [{ areaLights: Array(MAX_BAKE_AREA_LIGHTS + 1).fill(area) }, new RegExp(`at most ${MAX_BAKE_AREA_LIGHTS} area lights`)],
   ];
   for (const [lights, message] of refused) {
     assert.throws(() => bakeLightmaps(smallRoom(), { ...lamp, ...lights }, fastOptions), message);
@@ -188,7 +188,7 @@ test('hostile parts and lights are refused before any ray is traced', () => {
   assert.throws(() => bakeLightmaps([], lamp, fastOptions), /from 1 to/);
   assert.throws(() => bakeLightmaps(null, lamp, fastOptions), /from 1 to/);
   const tooManyLights = { pointLights: Array.from({ length: MAX_BAKE_POINT_LIGHTS + 1 }, () => lamp.pointLights[0]) };
-  assert.throws(() => bakeLightmaps(smallRoom(), tooManyLights, fastOptions), /at most 8 point lights/);
+  assert.throws(() => bakeLightmaps(smallRoom(), tooManyLights, fastOptions), new RegExp(`at most ${MAX_BAKE_POINT_LIGHTS} point lights`));
   for (const light of [{ position: [Number.NaN, 0, 0], intensity: 1 }, { position: [0, 0, 0], intensity: -1 }, { position: [0, 0, 0], intensity: Infinity }, { position: [0, 0], intensity: 1 }, { position: [0, 0, 0], intensity: 1, range: -2 }]) {
     assert.throws(() => bakeLightmaps(smallRoom(), { pointLights: [light] }, fastOptions), RangeError);
   }

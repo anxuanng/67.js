@@ -5,7 +5,7 @@ import { SUN_BIT, POINT_FIRST_BIT, SPOT_FIRST_BIT, AREA_FIRST_BIT } from './ligh
 // Light linking: a light can be limited to the parts it lights, as Blender's receiver collection does. A part carries
 // a bit mask in `material.lightMask`; the shader skips a light whose bit is clear. The code lives here, not in the
 // renderer, so a scene without linking never downloads it and its shader has no mask test.
-// Bit 0 is the sun (the key light), bits 1 to 8 the point lights, 9 to 16 the spot lights and 17 to 20 the area lights,
+// Bit 0 is the sun, then one bit for each point light, spot light and area light up to the limits in light-limits.js,
 // in the order of the environment lists. Linking changes what a light adds, not what it shadows: a part that a light
 // does not reach still blocks that light for the others. The path tracer and the light bake honour it too.
 // The GLSL has no comments, because comments ship to every page.
@@ -19,9 +19,9 @@ bool lightLinked(int bit) {
 }
 `,
   linkSun: ' * float(lightLinked(0))',
-  linkPoint: '    if (!lightLinked(1 + index)) continue;\n',
-  linkSpot: '      if (!lightLinked(9 + index)) continue;\n',
-  linkArea: '      if (!lightLinked(17 + index)) continue;\n',
+  linkPoint: `    if (!lightLinked(${POINT_FIRST_BIT} + index)) continue;\n`,
+  linkSpot: `      if (!lightLinked(${SPOT_FIRST_BIT} + index)) continue;\n`,
+  linkArea: `      if (!lightLinked(${AREA_FIRST_BIT} + index)) continue;\n`,
 });
 
 const LIGHT_LISTS = [['pointLights', POINT_FIRST_BIT], ['spotLights', SPOT_FIRST_BIT], ['areaLights', AREA_FIRST_BIT]];

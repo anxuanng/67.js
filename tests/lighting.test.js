@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createLightingState, updateLightingState } from '../src/lighting.js';
+import { createLightingState, updateLightingState, MAX_POINT_LIGHTS, MAX_AREA_LIGHTS } from '../src/lighting.js';
 
 test('lighting preserves legacy key defaults and independently controls direct fill and ambient light', () => {
   const state = createLightingState();
@@ -51,7 +51,7 @@ test('malformed later lights reject atomically before replacing any retained lig
     assert.throws(() => updateLightingState(state, { pointLights: [light, malformed], fillIntensity: 0 }));
     assert.deepEqual(state, snapshot);
   }
-  assert.throws(() => updateLightingState(state, { pointLights: Array(9).fill(light) }), /at most/);
+  assert.throws(() => updateLightingState(state, { pointLights: Array(MAX_POINT_LIGHTS + 1).fill(light) }), /at most/);
   assert.throws(() => updateLightingState(state, { keyIntensity: -1 }));
   assert.throws(() => updateLightingState(state, { ambientIntensity: Infinity }));
   assert.deepEqual(state, snapshot);
@@ -107,10 +107,23 @@ test('area lights store a unit normal and a width axis perpendicular to it', () 
   assert.equal(state.areaColors[3], 5);
 });
 
+test('twelve point lights and seven area lights fill the uniform arrays', () => {
+  const state = createLightingState();
+  const pointLights = Array.from({ length: 12 }, (_, index) => ({ position: [index, 1, 0], intensity: index + 1 }));
+  const areaLights = Array.from({ length: 7 }, (_, index) => ({ position: [index, 3, 0], direction: [0, -1, 0], width: 1, height: 1, intensity: index + 1 }));
+  updateLightingState(state, { pointLights, areaLights });
+  assert.equal(state.pointCount, 12);
+  assert.equal(state.areaCount, 7);
+  assert.equal(state.colors[11 * 4 + 3], 12);
+  assert.equal(state.areaColors[6 * 4 + 3], 7);
+  assert.equal(state.positions.length, MAX_POINT_LIGHTS * 4);
+  assert.equal(state.areaPositions.length, MAX_AREA_LIGHTS * 4);
+});
+
 test('malformed spot and area lights are rejected', () => {
   const state = createLightingState();
   assert.throws(() => updateLightingState(state, { spotLights: [{ position: [0, 0, 0], direction: [0, 0, 0] }] }), /zero length/);
   assert.throws(() => updateLightingState(state, { spotLights: [{ position: [0, 0, 0], direction: [0, -1, 0], angle: 2 }] }), /angle/);
   assert.throws(() => updateLightingState(state, { areaLights: [{ position: [0, 0, 0], direction: [0, -1, 0], width: 0, height: 1 }] }), /width/);
-  assert.throws(() => updateLightingState(state, { areaLights: new Array(5).fill({ position: [0, 0, 0], direction: [0, -1, 0], width: 1, height: 1 }) }), /at most 4/);
+  assert.throws(() => updateLightingState(state, { areaLights: new Array(MAX_AREA_LIGHTS + 1).fill({ position: [0, 0, 0], direction: [0, -1, 0], width: 1, height: 1 }) }), new RegExp(`at most ${MAX_AREA_LIGHTS}`));
 });

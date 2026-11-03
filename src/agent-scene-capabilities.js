@@ -1,3 +1,4 @@
+import { MAX_POINT_LIGHTS, MAX_SPOT_LIGHTS, MAX_AREA_LIGHTS } from './light-limits.js';
 import {
   MESH_EDIT_OPERATIONS, MAX_MESH_EDITS, STACK_OPERATIONS, MAX_STACK_NODES,
   FIELD_OPERATOR_NAMES, FIELD_ATTRIBUTES, MAX_FIELD_NODES, MAX_FIELD_DEPTH, MAX_FIELD_ELEMENTS, INSTANCE_SOURCES, MAX_INSTANCE_CANDIDATES,
@@ -197,12 +198,12 @@ export const AGENT_SCENE_CAPABILITIES = Object.freeze({
     rejects: 'On a skinned or morphed part an edit farther than maxTransferFraction of the part bounds diagonal from the original surface; booleans on open parts (fill_holes first).',
   }),
   fixedResources: false, dynamicTopology: true, checkpoints: true, positiveScaleOnly: true,
-  authoredLook: true, maxPointLights: 8,
+  authoredLook: true, maxPointLights: MAX_POINT_LIGHTS,
   lightingSetups: LIGHTING_SETUP_NAMES, defaultLightingSetup: DEFAULT_LIGHTING_SETUP,
   ambientOcclusion: Object.freeze({ default: DEFAULT_AMBIENT_OCCLUSION, defaultRadius: 0.5, off: 0 }),
   // Local lights: spot and rectangular area lights. Shadows share one 2048 x 3072 depth atlas of 24 tiles; a shadowed
   // point light uses 6 tiles and a shadowed spot light 1. Area lights cast no shadow. Recipes reach light linking and cascaded sun shadows through lightLinking and shadowCascades below.
-  maxSpotLights: 8, maxAreaLights: 4,
+  maxSpotLights: MAX_SPOT_LIGHTS, maxAreaLights: MAX_AREA_LIGHTS,
   localShadows: Object.freeze({ lights: Object.freeze(['pointLights', 'spotLights']), atlasTiles: 24, pointLightTiles: 6, spotLightTiles: 1, tileSize: 512 }),
   lightLinking: Object.freeze({ fields: Object.freeze(['environment.keyAffects', 'pointLights[].affects', 'spotLights[].affects', 'areaLights[].affects']), unlisted: 'a light without affects lights every node', unknownNode: 'rejected', bake: 'honoured', pathTracer: 'ignored, named in report.ignored' }),
   shadowCascades: Object.freeze({ field: 'environment.shadowCascades', counts: Object.freeze([0, 1, 2, 3, 4]), zero: 'one shadow map', automatic: 'three cascades when shadow.extent is above 40 and the field is unset', maximumDistance: 150, note: 'volume fog and water read the single map' }),
@@ -253,7 +254,7 @@ export const AGENT_SCENE_CAPABILITIES = Object.freeze({
     fields: 'preset, or samples (1-256), bounces (1-3), texelsPerUnit (1-12) over it; probes room by default, false for none, or up to 4 {position, radius?}. Same recipe, same bytes.',
     presets: BAKE_PRESETS,
     notes: 'Bounced light from point, spot, area and key lights. Reruns when parts, lights, materials or bake change. Skips alpha, skin, morph, hair, cloth (bake.skipped). A preset shrinks to fit, never refuses (bake.used, bake.reduction); explicit settings fail over maxPathWork or past maxSeconds. No environment map or specular. Probes: specular only, none in glTF.',
-    limits: Object.freeze({ maxSeconds: BAKE_MAXIMUM_SECONDS, workerMaxSeconds: BAKE_WORKER_MAXIMUM_SECONDS, maxPathWork: BAKE_EXPLICIT_PATH_WORK_LIMIT, maxPointLights: 8 }),
+    limits: Object.freeze({ maxSeconds: BAKE_MAXIMUM_SECONDS, workerMaxSeconds: BAKE_WORKER_MAXIMUM_SECONDS, maxPathWork: BAKE_EXPLICIT_PATH_WORK_LIMIT, maxPointLights: MAX_POINT_LIGHTS }),
   }),
   motionLimits: Object.freeze({ maxTracks: 128, maxKeyframesPerTrack: 64, maxKeyframes: 2048, maxDuration: 30 }),
 });

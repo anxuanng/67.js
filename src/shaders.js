@@ -1,4 +1,5 @@
 import { MAX_MORPH_TARGETS } from './morph.js';
+import { MAX_POINT_LIGHTS, MAX_SPOT_LIGHTS, MAX_AREA_LIGHTS } from './light-limits.js';
 import { environmentLookupGlsl, environmentShadingGlsl } from './environment.js';
 import { splatGlsl } from './splat-shader.js';
 
@@ -384,20 +385,20 @@ uniform float time;
 uniform float daylight;
 uniform vec3 lightDirection;
 uniform int pointLightCount;
-uniform vec4 pointLightPositions[8];
-uniform vec4 pointLightColors[8];
-uniform float pointLightRadii[8];
-uniform float pointLightShadowTiles[8];
+uniform vec4 pointLightPositions[${MAX_POINT_LIGHTS}];
+uniform vec4 pointLightColors[${MAX_POINT_LIGHTS}];
+uniform float pointLightRadii[${MAX_POINT_LIGHTS}];
+uniform float pointLightShadowTiles[${MAX_POINT_LIGHTS}];
 uniform int spotLightCount;
-uniform vec4 spotLightPositions[8];
-uniform vec4 spotLightColors[8];
-uniform vec4 spotLightDirections[8];
-uniform vec4 spotLightParameters[8];
+uniform vec4 spotLightPositions[${MAX_SPOT_LIGHTS}];
+uniform vec4 spotLightColors[${MAX_SPOT_LIGHTS}];
+uniform vec4 spotLightDirections[${MAX_SPOT_LIGHTS}];
+uniform vec4 spotLightParameters[${MAX_SPOT_LIGHTS}];
 uniform int areaLightCount;
-uniform vec4 areaLightPositions[4];
-uniform vec4 areaLightColors[4];
-uniform vec4 areaLightNormals[4];
-uniform vec4 areaLightTangents[4];
+uniform vec4 areaLightPositions[${MAX_AREA_LIGHTS}];
+uniform vec4 areaLightColors[${MAX_AREA_LIGHTS}];
+uniform vec4 areaLightNormals[${MAX_AREA_LIGHTS}];
+uniform vec4 areaLightTangents[${MAX_AREA_LIGHTS}];
 uniform sampler2D localShadowAtlas;
 uniform mat4 localShadowMatrices[24];
 uniform float localShadowTexelAngles[24];
@@ -825,7 +826,7 @@ ${featureCode("mainSetup")}  if (ENVIRONMENT_ENABLED && !LIGHT_SHADING) {
   radiance += illuminate(normal, viewDirection, normalize(vec3(4.0, 2.0, -3.0)), mix(vec3(0.8, 2.0, 1.8), vec3(0.12, 0.17, 0.20) * daylight, worldMode) * fillIntensity * mix(1.0, vertexSkyVisibility, worldMode), color, metallic, roughness);
   radiance += illuminate(normal, viewDirection, normalize(vec3(1.0, 2.0, 5.0)), vec3(0.6, 0.7, 0.8) * mix(1.0, 0.25 * daylight, worldMode) * fillIntensity * mix(1.0, vertexSkyVisibility, worldMode), color, metallic, roughness);
   }
-  for (int index = 0; index < 8; index++) {
+  for (int index = 0; index < ${MAX_POINT_LIGHTS}; index++) {
     if (index >= pointLightCount) break;
     vec3 offset = pointLightPositions[index].xyz - worldPosition;
     float distanceSquared = dot(offset, offset);
@@ -840,7 +841,7 @@ ${featureCode("linkPoint")}    vec3 lightRadiance = pointLightColors[index].rgb 
     radiance += illuminate(normal, viewDirection, offset * inversesqrt(distanceSquared), lightRadiance, color, metallic, roughness);
   }
   if (USES_SPOT_LIGHTS) {
-    for (int index = 0; index < 8; index++) {
+    for (int index = 0; index < ${MAX_SPOT_LIGHTS}; index++) {
       if (index >= spotLightCount) break;
       vec3 offset = spotLightPositions[index].xyz - worldPosition;
       float distanceSquared = dot(offset, offset);
@@ -859,7 +860,7 @@ ${featureCode("linkSpot")}      vec3 lightRadiance = spotLightColors[index].rgb 
     }
   }
   if (USES_AREA_LIGHTS) {
-    for (int index = 0; index < 4; index++) {
+    for (int index = 0; index < ${MAX_AREA_LIGHTS}; index++) {
       if (index >= areaLightCount) break;
 ${featureCode("linkArea")}      vec3 lightNormal = areaLightNormals[index].xyz;
       vec3 widthAxis = areaLightTangents[index].xyz;

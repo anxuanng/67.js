@@ -1,6 +1,6 @@
-export const MAX_POINT_LIGHTS = 8;
-export const MAX_SPOT_LIGHTS = 8;
-export const MAX_AREA_LIGHTS = 4;
+import { MAX_POINT_LIGHTS, MAX_SPOT_LIGHTS, MAX_AREA_LIGHTS } from './light-limits.js';
+
+export { MAX_POINT_LIGHTS, MAX_SPOT_LIGHTS, MAX_AREA_LIGHTS };
 // One 2048 x 3072 depth atlas holds 24 tiles of 512 x 512 (24 MiB). A shadowed spot light uses one tile and a shadowed point
 // light uses six, one for each cube face.
 export const SHADOW_ATLAS_TILES = 24;

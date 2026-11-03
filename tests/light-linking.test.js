@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createFragmentShader } from '../src/shaders.js';
 import { ALL_LIGHTS_MASK, materialLayerState } from '../src/material-layers.js';
+import { MAX_AREA_LIGHTS } from '../src/light-limits.js';
 import { applyLightLinks, lightMaskFor, AREA_FIRST_BIT, POINT_FIRST_BIT, SPOT_FIRST_BIT, SUN_BIT } from '../src/light-linking.js';
 
 function part(name) {
@@ -50,12 +51,12 @@ test('lightMaskFor treats a null list as every part', () => {
 test('the layer state carries the mask and defaults to every light', () => {
   assert.equal(materialLayerState({}).at(-1), ALL_LIGHTS_MASK);
   assert.equal(materialLayerState({ lightMask: 5 }).at(-1), 5);
-  assert.equal(ALL_LIGHTS_MASK, (1 << (AREA_FIRST_BIT + 4)) - 1);
+  assert.equal(AREA_FIRST_BIT + MAX_AREA_LIGHTS, 32);
 });
 
 test('the mask test compiles in only with the feature', () => {
   const linked = createFragmentShader(['lightLinking']);
-  for (const statement of ['lightLinked(1 + index)', 'lightLinked(9 + index)', 'lightLinked(17 + index)', 'float(lightLinked(0))']) {
+  for (const statement of [`lightLinked(${POINT_FIRST_BIT} + index)`, `lightLinked(${SPOT_FIRST_BIT} + index)`, `lightLinked(${AREA_FIRST_BIT} + index)`, 'float(lightLinked(0))']) {
     assert.ok(linked.includes(statement), statement);
   }
   const plain = createFragmentShader([]);
