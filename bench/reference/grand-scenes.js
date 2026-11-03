@@ -11,12 +11,12 @@ import {
   normalized, part, seededRandom, smoothBetween, sunShadow,
 } from './scenes.js';
 
-const UNIT_BOX = box(0, 1);
-const UNIT_CYLINDER = cylinder(32, 0, 1);
-const UNIT_SPHERE = sphere(20, 14);
+export const UNIT_BOX = box(0, 1);
+export const UNIT_CYLINDER = cylinder(32, 0, 1);
+export const UNIT_SPHERE = sphere(20, 14);
 
 // A part with a turn about Y (yaw) and then about X (pitch), which `part` does not have.
-function turnedPart(name, geometry, translation, scale, material, yaw = 0, pitch = 0) {
+export function turnedPart(name, geometry, translation, scale, material, yaw = 0, pitch = 0) {
   const [cosYaw, sinYaw] = [Math.cos(yaw), Math.sin(yaw)];
   const [cosPitch, sinPitch] = [Math.cos(pitch), Math.sin(pitch)];
   const turn = ([x, y, z]) => [cosYaw * x + sinYaw * z, y, -sinYaw * x + cosYaw * z];
@@ -28,7 +28,7 @@ function turnedPart(name, geometry, translation, scale, material, yaw = 0, pitch
 
 // Sky colour by elevation: horizon to zenith above the horizon (raised to `power`), horizon to ground below it.
 // render-blender.py (gradient_sky_image) uses the same formula, and `intensity` scales all three colours.
-function skyGradient({ zenith, horizon, ground = horizon, power = 0.5, intensity = 1 }) {
+export function skyGradient({ zenith, horizon, ground = horizon, power = 0.5, intensity = 1 }) {
   const [width, height] = [256, 128];
   const scaled = colors => colors.map(color => color.map(channel => channel * intensity));
   const [zenithColor, horizonColor, groundColor] = scaled([zenith, horizon, ground]);
@@ -44,14 +44,14 @@ function skyGradient({ zenith, horizon, ground = horizon, power = 0.5, intensity
   return { map, blenderWorld: { type: 'gradient', zenith: zenithColor, horizon: horizonColor, ground: groundColor, power } };
 }
 
-const WATER = { color: [0.02, 0.05, 0.08], roughness: 0.04 };
+export const WATER = { color: [0.02, 0.05, 0.08], roughness: 0.04 };
 
 // ---------------------------------------------------------------------------------------------------------------------
 // Mountain valley
 
 // The reference valley (floor hills, a rim of ridged peaks, a far wall) with options: a flatter floor, a hero peak, and
 // `carve(x, z, height)` for a lake or a river.
-function valleyHeight({ floorScale = 1, floorOffset = 0, rimScale = 1, hero = null, carve = (x, z, height) => height }) {
+export function valleyHeight({ floorScale = 1, floorOffset = 0, rimScale = 1, hero = null, carve = (x, z, height) => height }) {
   const floorHills = createNoiseHeight({ amplitude: 14, featureSize: 260, mountainMask: () => 0 }, 3);
   const peaks = createNoiseHeight({ amplitude: 0, mountainAmplitude: 1100, featureSize: 800, octaves: 7, warp: 260, warpFeatureSize: 700, mountainMask: () => 1 }, 11);
   return (x, z) => {
@@ -86,7 +86,7 @@ function paintGrandTerrain(terrain, { grass, alpine, rock, snow, shore, treeLine
 }
 
 // Boulders around a point: squashed spheres and tilted blocks, so the near ground reads as rock and not as a bare slope.
-function boulderParts({ terrain, center, innerRadius, outerRadius, count, size, seed, facing = 0 }) {
+export function boulderParts({ terrain, center, innerRadius, outerRadius, count, size, seed, facing = 0 }) {
   const random = seededRandom(seed);
   const parts = [];
   const tones = [[0.3, 0.27, 0.24], [0.24, 0.23, 0.22], [0.36, 0.32, 0.27], [0.2, 0.22, 0.17]];
@@ -188,7 +188,7 @@ async function mountainValleyC() {
 const ROBES = [[0.5, 0.1, 0.08], [0.1, 0.2, 0.45], [0.55, 0.45, 0.15], [0.15, 0.3, 0.18], [0.4, 0.4, 0.42], [0.6, 0.3, 0.1]];
 
 // People at the given [x, z] spots: a robe and a head, 1.5 to 1.8 m tall, for scale.
-function peopleParts(spots, prefix = 'person') {
+export function peopleParts(spots, prefix = 'person') {
   const parts = [];
   spots.forEach(([x, z, yaw = 0], index) => {
     const height = 1.55 + (index % 4) * 0.08;
@@ -198,17 +198,17 @@ function peopleParts(spots, prefix = 'person') {
   return parts;
 }
 
-function fogBox(density, minimum, maximum, maxDistance, anisotropy = 0.6) {
+export function fogBox(density, minimum, maximum, maxDistance, anisotropy = 0.6) {
   return { density, minimum, maximum, color: [1, 0.95, 0.85], ambient: [0.02, 0.02, 0.02], anisotropy, noiseAmount: 0, steps: 48, maxDistance };
 }
 
-const NAVE_LENGTH = HALL.front - HALL.back;
-const NAVE_MIDDLE = (HALL.front + HALL.back) / 2;
-const STONE = { color: [0.52, 0.45, 0.36], roughness: 0.85 };
-const FLOOR_STONE = { color: [0.36, 0.32, 0.27], roughness: 0.6 };
+export const NAVE_LENGTH = HALL.front - HALL.back;
+export const NAVE_MIDDLE = (HALL.front + HALL.back) / 2;
+export const STONE = { color: [0.52, 0.45, 0.36], roughness: 0.85 };
+export const FLOOR_STONE = { color: [0.36, 0.32, 0.27], roughness: 0.6 };
 
 // The reference nave without the roof openings: floor, carpet, solid roof, the far wall and the columns.
-function closedNaveParts() {
+export function closedNaveParts() {
   const roofY = HALL.roofHeight;
   const parts = [
     part('hall-floor', HALL_BLOCK, [0, -0.5, NAVE_MIDDLE], [HALL.halfWidth * 2, 1, NAVE_LENGTH], FLOOR_STONE),
@@ -329,10 +329,10 @@ async function templeHallC() {
 // ---------------------------------------------------------------------------------------------------------------------
 // Megacity
 
-const GROUND = { color: [0.1, 0.1, 0.11], roughness: 0.95 };
-const ROAD = { color: [0.14, 0.14, 0.15], roughness: 0.6 };
+export const GROUND = { color: [0.1, 0.1, 0.11], roughness: 0.95 };
+export const ROAD = { color: [0.14, 0.14, 0.15], roughness: 0.6 };
 
-function lampParts(prefix, positions, { height = 10, emission = 14, color = [1, 0.75, 0.4] } = {}) {
+export function lampParts(prefix, positions, { height = 10, emission = 14, color = [1, 0.75, 0.4] } = {}) {
   const parts = [];
   positions.forEach(([x, z], index) => {
     parts.push(part(`${prefix}-post-${index}`, UNIT_BOX, [x, height / 2, z], [0.5, height, 0.5], { color: [0.15, 0.15, 0.16], roughness: 0.5, metallic: 0.8 }));
@@ -342,7 +342,7 @@ function lampParts(prefix, positions, { height = 10, emission = 14, color = [1, 
 }
 
 // Towers from a list of [x, z, height] sites, with the reference city's facades, windows and spires.
-function towerParts(sites, seed) {
+export function towerParts(sites, seed) {
   const parts = [];
   const random = seededRandom(seed);
   sites.forEach(([x, z, towerHeight], index) => cityTowerParts(parts, UNIT_BOX, x, z, random, index, towerHeight));
@@ -350,7 +350,7 @@ function towerParts(sites, seed) {
 }
 
 // Sites on a grid with jitter. `heightAt(x, z, random)` gives the height, `skip(x, z)` leaves a gap.
-function gridSites({ xs, zs, jitter = 6, heightAt, skip = () => false, seed }) {
+export function gridSites({ xs, zs, jitter = 6, heightAt, skip = () => false, seed }) {
   const random = seededRandom(seed);
   const sites = [];
   for (const z of zs) {
@@ -364,8 +364,8 @@ function gridSites({ xs, zs, jitter = 6, heightAt, skip = () => false, seed }) {
 }
 
 // Values from `from` to `to` inclusive, in either direction.
-const range = (from, to, step) => Array.from({ length: Math.floor(Math.abs(to - from) / step) + 1 }, (_, index) => from + Math.sign(to - from) * index * step);
-const downtown = (x, z, centreZ, spreadX, spreadZ) => Math.exp(-(((z - centreZ) / spreadZ) ** 2)) * Math.exp(-((x / spreadX) ** 2));
+export const range = (from, to, step) => Array.from({ length: Math.floor(Math.abs(to - from) / step) + 1 }, (_, index) => from + Math.sign(to - from) * index * step);
+export const downtown = (x, z, centreZ, spreadX, spreadZ) => Math.exp(-(((z - centreZ) / spreadZ) ** 2)) * Math.exp(-((x / spreadX) ** 2));
 
 // A: blue hour on a river. The sun is down, the sky goes from deep blue to a warm band on the horizon, and every bridge and
 // quay is a line of light. Towers stand on both banks.
