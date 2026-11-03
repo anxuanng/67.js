@@ -27,7 +27,15 @@ export function baseRefExists(baseRef, cwd = process.cwd()) {
   return run('git', ['rev-parse', '--verify', '--quiet', `${baseRef}^{commit}`], cwd).status === 0;
 }
 
-// The commit this branch grew from. On CI the checkout is the pull request merged into the base, so this is the base tip.
+// On a pull request, CI checks out the merge of the pull request into the base branch. The first parent of that merge is the
+// exact base tip it was built on. Comparing with it charges the pull request only for its own change, even when the base
+// branch has moved on since, which the newest tip would count against it. Null when HEAD is not a merge of two parents.
+export function pullRequestBaseOf(cwd = process.cwd()) {
+  const parents = run('git', ['rev-list', '--parents', '-n', '1', 'HEAD'], cwd).stdout.trim().split(' ');
+  return parents.length === 3 ? parents[1] : null;
+}
+
+// The commit this branch grew from. On CI the base is the first parent of the merge (see pullRequestBaseOf), so this is that commit.
 // On a branch that has not caught up with the base, it keeps work merged by others out of this branch's numbers.
 export function mergeBaseOf(baseRef, cwd = process.cwd()) {
   const result = run('git', ['merge-base', baseRef, 'HEAD'], cwd);

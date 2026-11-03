@@ -47,7 +47,7 @@ Still in the lit box and worth moving next, with rough gzip sizes: skin and morp
 
 ## How the check decides
 
-The check measures the base branch with the same script, then compares each bundle. In CI the base is the branch that the pull request targets. On your machine it is `origin/main`, from the commit where your branch left it. The base numbers are cached by base commit in `node_modules/.cache/size-base`, and CI caches that folder, so a run on an unchanged base skips the second measurement. The base is measured beside your own bundles, so a cold run costs little more than one measurement.
+The check measures the base branch with the same script, then compares each bundle. In CI the tested tree is the merge of the pull request into the target branch, and the base is the first parent of that merge. It is not the newest tip of the target branch, which may hold work that the tree lacks and would charge the pull request for it. `scripts/ci-base-sha.mjs` prints it, and the tool cost and archive checks use the same base. On your machine it is `origin/main`, from the commit where your branch left it. The base numbers are cached by base commit in `node_modules/.cache/size-base`, and CI caches that folder, so a run on an unchanged base skips the second measurement. The base is measured beside your own bundles, so a cold run costs little more than one measurement.
 
 A bundle fails when it grows by more than its allowance:
 

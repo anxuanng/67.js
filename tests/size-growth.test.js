@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
-import { readAcceptedBundles } from '../scripts/size-base.mjs';
+import { mergeBaseOf, pullRequestBaseOf, readAcceptedBundles } from '../scripts/size-base.mjs';
 import { archiveAllowance, archiveCeilingProblem, archiveGrowthProblem, compareToBase, growthAllowance, parseSizeNote } from '../scripts/size-growth.mjs';
 
 const size = gzip => ({ min: gzip * 3, gzip });
@@ -105,6 +105,39 @@ test('two pull requests that grow different entries merge in sequence without to
     git(folder, 'merge', '-q', '--no-ff', '-m', 'merge nature', 'grow-nature');
     assert.equal(readFileSync(join(folder, 'src/model.js'), 'utf8'), 'export const model = 2;\n');
     assert.equal(readFileSync(join(folder, 'src/nature.js'), 'utf8'), 'export const nature = 2;\n');
+  } finally {
+    rmSync(folder, { recursive: true, force: true });
+  }
+});
+
+test('a pull request behind the base branch is compared with the base it was merged into, not the newest tip', () => {
+  const folder = mkdtempSync(join(tmpdir(), 'size-behind-'));
+  try {
+    git(folder, 'init', '-q', '-b', 'main');
+    commitFile(folder, 'src/core.js', 'export const core = 1;\n', 'base');
+    const mergedInto = git(folder, 'rev-parse', 'HEAD').trim();
+
+    git(folder, 'checkout', '-q', '-b', 'feature');
+    commitFile(folder, 'src/model.js', 'export const model = 2;\n', 'grow model');
+    commitFile(folder, 'changes/401.size.md', '- entry:model: new joints\n', 'accept model');
+
+    // The base branch moves on after the merge was built, as when another pull request shrinks core.
+    git(folder, 'checkout', '-q', 'main');
+    commitFile(folder, 'src/core.js', 'export const core = 0;\n', 'shrink core');
+    commitFile(folder, 'changes/402.size.md', '- entry:core: another pull request\n', 'another note');
+    git(folder, 'update-ref', 'refs/remotes/origin/main', 'HEAD');
+
+    // CI tests the merge of the pull request into the base as it was: the first parent is the base, the second the pull request.
+    git(folder, 'checkout', '-q', '--detach', mergedInto);
+    git(folder, 'merge', '-q', '--no-ff', '-m', 'merge ref', 'feature');
+
+    assert.equal(pullRequestBaseOf(folder), mergedInto);
+    assert.equal(mergeBaseOf(mergedInto, folder), mergedInto);
+    assert.deepEqual([...readAcceptedBundles(mergedInto, folder).keys()], ['entry:model']);
+    assert.equal(git(folder, 'diff', '--name-only', mergedInto, 'HEAD').includes('src/core.js'), false);
+
+    git(folder, 'checkout', '-q', 'main');
+    assert.equal(pullRequestBaseOf(folder), null);
   } finally {
     rmSync(folder, { recursive: true, force: true });
   }
