@@ -12,7 +12,7 @@
   },
   "waterReflection": true,
   "gltfOptions": {
-    "maxTexturePixels": 67108864
+    "maxTexturePixels": 134217728
   },
   "exposure": 1.2,
   "eye": [
@@ -78,7 +78,7 @@
   "frame": {
     "fov": 40,
     "near": 2,
-    "far": 6000,
+    "far": 60000,
     "effects": {
       "ambientOcclusion": 0.7,
       "ambientOcclusionRadius": 7,
@@ -111,6 +111,30 @@
       "author": "CodePawl",
       "licence": "MIT",
       "source": "https://67js.codepawl.com"
+    },
+    {
+      "model": "Gate canopy and camera portals, gate plaza (six lanes with painted arrows, lane numbers and kerbs, lathe-turned bollards, admin building from the Modular Factory Facade kit, parked and queued tractor-trailers), reefer racks, rail spur with locomotive and cars, road trucks, straddle carriers, AGVs, pilot boats, breakwater, lighthouse, far ridge, full ship stacks (everything added to the port world)",
+      "author": "CodePawl",
+      "licence": "MIT",
+      "source": "https://67js.codepawl.com"
+    },
+    {
+      "model": "Modular Factory Facade kit (warehouse walls, decimated)",
+      "author": "James Ray Cock (Poly Haven)",
+      "licence": "CC0",
+      "source": "https://polyhaven.com/a/modular_factory_facade"
+    },
+    {
+      "model": "Street Lamp 02 and Concrete Road Barrier (decimated)",
+      "author": "Poly Haven",
+      "licence": "CC0",
+      "source": "https://polyhaven.com/models"
+    },
+    {
+      "model": "aerial_grass_rock (land outside the terminal and the grass edge of the ground bake, toned green-brown) and corrugated_iron (warehouse roofs)",
+      "author": "Poly Haven",
+      "licence": "CC0",
+      "source": "https://polyhaven.com/textures"
     },
     {
       "model": "concrete_floor_worn_001 (ground and quay textures)",
@@ -148,5 +172,18 @@
       "licence": "CC0",
       "source": "https://polyhaven.com/a/asphalt_02"
     }
-  ]
+  ],
+  "bounds": {
+    "min": [
+      -950,
+      3,
+      -850
+    ],
+    "max": [
+      950,
+      420,
+      800
+    ]
+  },
+  "maxDistance": 1600
 }
