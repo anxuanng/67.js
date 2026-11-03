@@ -1,5 +1,7 @@
 # Renders each described scene in Cycles and EEVEE, and saves linear pixels as .npy for the scorer.
-#   blender -b --factory-startup --python bench/reference/render-blender.py -- <work directory>
+#   blender -b --factory-startup --python bench/reference/render-blender.py -- <work directory> [scene ids]
+#   ... -- <work directory> --world-strength <scale> [scene ids]  renders Cycles only, with the world's light multiplied by <scale>
+#   (0 leaves the sun and the point lights), into <id>-cycles-world<scale>.npy. The EEVEE render and the timings are left alone.
 # Light units were measured on a white plane: sun strength equals irradiance, a point or spot light has 4 pi watts for each
 # unit of 67js intensity, and an area light has pi watts for each unit.
 import base64
@@ -369,7 +371,7 @@ def add_graph(material, principled, description):
 #   - the colour is scaled by 0.78 + 0.16 * sin(13 x + sin(9 y)) * sin(11 z - 5 y) of the world position;
 #   - the normal is moved by 0.06 * (sin(12 z), sin(9 x), cos(11 y)) of the world position, then normalised;
 #   - environment reflection is 0.3 of a dielectric's, which halves-and-more the Principled specular level (0.5 is F0 0.04);
-#   - light from behind adds colour * max(dot(-N, L), 0) * 0.3 * keyColor / resolve, with no shadow test.
+#   - light from behind adds colour * max(dot(-N, L), 0) * 0.3 * keyColor / resolve, times the sun shadow (a Translucent BSDF is shadowed too).
 # resolve is the daylight divisor of the shader in world mode. A Translucent BSDF returns albedo * E / pi * cos, so the weight
 # that gives the same radiance is 0.3 * pi / resolve for each channel.
 CANOPY_NORMAL_JITTER = 0.06
@@ -842,6 +844,12 @@ def import_glb(root, glb_file):
     bpy.ops.import_scene.gltf(filepath=os.path.join(root, glb_file))
 
 
+def scale_world_light(scene, scale):
+    """A measurement switch: the world's light times scale, like --ambient on the 67js side. The sky seen by the camera scales too."""
+    background = scene.world.node_tree.nodes["Background"]
+    background.inputs[1].default_value *= scale
+
+
 def build_scene(description, root):
     clear_scene()
     scene_images[:] = description.get("images", [])
@@ -865,6 +873,11 @@ def build_scene(description, root):
 def main():
     arguments = sys.argv[sys.argv.index("--") + 1:]
     work_directory = os.path.abspath(arguments[0])
+    world_scale = None
+    if "--world-strength" in arguments:
+        flag_index = arguments.index("--world-strength")
+        world_scale = float(arguments[flag_index + 1])
+        del arguments[flag_index:flag_index + 2]
     only = set(arguments[1:])
     root = os.getcwd()
     timings = {}
@@ -876,6 +889,12 @@ def main():
         with open(os.path.join(scene_directory, file_name), encoding="utf-8") as file:
             description = json.load(file)
         scene = build_scene(description, root)
+        if world_scale is not None:
+            scale_world_light(scene, world_scale)
+            configure_cycles(scene)
+            seconds = render_to_numpy(scene, work_directory, f"{scene_id}-cycles-world{world_scale:g}")
+            print(f"RENDERED {scene_id} with the world at {world_scale:g}: {seconds:.1f} s")
+            continue
         configure_cycles(scene)
         cycles_seconds = render_to_numpy(scene, work_directory, f"{scene_id}-cycles")
         scene = build_scene(description, root)
