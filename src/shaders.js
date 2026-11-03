@@ -35,7 +35,16 @@ vec3 morphedNormal(vec3 base) {
 }
 `;
 
-const skinningShader = `
+// The GPU crowd path (src/crowd-skinning.js) replaces this stub with its own code when that addon is imported, so the core pays for two lines.
+const CROWD_SHADER_STUB = 'uniform float crowdEnabled;\nmat4 crowdTransform() { return mat4(1.0); }';
+let crowdShaderCode = CROWD_SHADER_STUB;
+
+/** Installs the vertex code that skins a crowd batch from a baked joint-matrix texture. Called by the crowd addon on import. */
+export function installCrowdShader(code) {
+  crowdShaderCode = code;
+}
+
+const skinningShader = () => `
 uniform float skinEnabled;
 uniform highp sampler2D skinInfluences;
 uniform highp sampler2D jointPalette;
@@ -48,6 +57,7 @@ mat4 jointMatrix(int joint) {
   return mat4(skinTexel(jointPalette, offset), skinTexel(jointPalette, offset + 1),
     skinTexel(jointPalette, offset + 2), skinTexel(jointPalette, offset + 3));
 }
+${crowdShaderCode}
 mat4 skinTransform() {
   if (skinEnabled < 0.5) return mat4(1.0);
   ivec4 joints = ivec4(skinTexel(skinInfluences, gl_VertexID * 2));
@@ -126,14 +136,15 @@ flat out float instanceOrdinal;
 out vec3 boxPosition;
 out vec3 boxNormal;
 flat out mat3 boxNormalMatrix;
-${skinningShader}
+${skinningShader()}
 ${morphingShader}
 ${windShader}
 void main() {
-  vec2 uv = uvSets.xy;
-  mat4 deformation = USES_SKIN ? skinTransform() : mat4(1.0);
+  // A crowd batch reads its joints and weights from the UV and colour attributes, which then carry no texture or tint.
+  vec2 uv = USES_CROWD ? vec2(-1.0) : uvSets.xy;
+  mat4 deformation = USES_CROWD ? crowdTransform() : (USES_SKIN ? skinTransform() : mat4(1.0));
   vec4 world = instanceMatrix * deformation * vec4(USES_MORPH ? morphedPosition(position) : position, 1.0);
-  world.xyz += assemblyOffset * assemblyAmount + assemblyDetailOffset * smoothstep(0.3, 1.0, assemblyAmount);
+  world.xyz += USES_CROWD ? vec3(0.0) : assemblyOffset * assemblyAmount + assemblyDetailOffset * smoothstep(0.3, 1.0, assemblyAmount);
   if (USES_WIND) world.xyz += windOffset(position, world.xyz, uv, instanceSurface.w, time, wind);
   if (USES_WAVES && instanceSurface.w == 3.0) {
     world.y += sin(world.x * 1.4 + time * 0.8) * 0.025 + sin(world.z * 1.8 - time) * 0.02;
@@ -143,7 +154,7 @@ void main() {
   }
   worldPosition = world.xyz;
   vec3 localNormal = USES_MORPH ? morphedNormal(normal) : normal;
-  vec3 deformedNormal = USES_SKIN ? transpose(inverse(mat3(deformation))) * localNormal : localNormal;
+  vec3 deformedNormal = (USES_SKIN || USES_CROWD) ? transpose(inverse(mat3(deformation))) * localNormal : localNormal;
   worldNormal = normalize(instanceNormal * deformedNormal);
   // Metres along the object's own axes, so a pattern follows a moving node and is not stretched by its scale.
   boxPosition = (USES_MORPH ? morphedPosition(position) : position) * vec3(length(instanceMatrix[0].xyz), length(instanceMatrix[1].xyz), length(instanceMatrix[2].xyz));
@@ -152,8 +163,8 @@ void main() {
   baseColor = instanceColor;
   textureUV = uv;
   lightmapUV = uvSets.zw;
-  vertexTint = vertexColor.rgb;
-  vertexSkyVisibility = vertexColor.a;
+  vertexTint = USES_CROWD ? vec3(1.0) : vertexColor.rgb;
+  vertexSkyVisibility = USES_CROWD ? 1.0 : vertexColor.a;
   emissionColor = instanceEmissive;
   instanceOrdinal = float(gl_InstanceID);
   surface = instanceSurface;
@@ -162,30 +173,38 @@ void main() {
 }`;
 }
 
-export const depthVertexShader = `#version 300 es
+// Built when a renderer starts, so the crowd addon can install its skinning code first.
+export function createDepthVertexShader(features = []) {
+  return `#version 300 es
+${vertexDefinitions(new Set(features))}
 precision highp float;
 layout(location=0) in vec3 position;
 layout(location=2) in mat4 instanceMatrix;
 layout(location=10) in vec4 instanceSurface;
 layout(location=11) in vec3 assemblyOffset;
 layout(location=12) in vec3 assemblyDetailOffset;
-layout(location=13) in vec2 uv;
+layout(location=13) in vec4 uvSets;
+layout(location=14) in vec4 vertexColor;
 uniform mat4 lightProjection;
 uniform float assemblyAmount;
 uniform float time;
 uniform float wind;
 out vec2 textureUV;
-${skinningShader}
+${skinningShader()}
 ${morphingShader}
 ${windShader}
 void main() {
-  vec4 world = instanceMatrix * skinTransform() * vec4(morphedPosition(position), 1.0);
-  world.xyz += assemblyOffset * assemblyAmount + assemblyDetailOffset * smoothstep(0.3, 1.0, assemblyAmount);
+  vec2 uv = USES_CROWD ? vec2(-1.0) : uvSets.xy;
+  vec4 world = instanceMatrix * (USES_CROWD ? crowdTransform() : skinTransform()) * vec4(morphedPosition(position), 1.0);
+  world.xyz += USES_CROWD ? vec3(0.0) : assemblyOffset * assemblyAmount + assemblyDetailOffset * smoothstep(0.3, 1.0, assemblyAmount);
   // Same displacement as the colour pass, so shadows follow the swaying leaves.
   world.xyz += windOffset(position, world.xyz, uv, instanceSurface.w, time, wind);
   textureUV = uv;
   gl_Position = lightProjection * world;
 }`;
+}
+
+export const depthVertexShader = createDepthVertexShader();
 
 // Only masked batches sample the base map, so shadows follow the cutout.
 export const depthFragmentShader = `#version 300 es
@@ -211,7 +230,7 @@ layout(location=2) in mat4 instanceMatrix;
 layout(location=9) in vec3 instanceColor;
 uniform mat4 viewProjection;
 out vec3 color;
-${skinningShader}
+${skinningShader()}
 ${morphingShader}
 void main() {
   color = instanceColor;
@@ -998,7 +1017,7 @@ export const LIGHT_SHADING_MAXIMUM_SAMPLES = 2;
 export const ENVIRONMENT_FEATURES =Object.freeze(['environmentMap', 'studioLighting']);
 
 // Features that only the vertex shader reads: a part with a skeleton or morph targets.
-const VERTEX_ONLY_FEATURES = Object.freeze(['skin', 'morph']);
+const VERTEX_ONLY_FEATURES = Object.freeze(['skin', 'morph', 'crowd']);
 
 function environmentCondition(enabled) {
   const hasMap = enabled.has('environmentMap');
@@ -1048,6 +1067,7 @@ function vertexDefinitions(enabled) {
   const condition = (active, expression) => (active ? `(${expression})` : 'false');
   return [
     `#define USES_SKIN ${condition(enabled.has('skin'), 'skinEnabled > 0.5')}`,
+    `#define USES_CROWD ${condition(enabled.has('crowd'), 'crowdEnabled > 0.5')}`,
     `#define USES_MORPH ${condition(enabled.has('morph'), 'morphEnabled > 0.5')}`,
     `#define USES_WIND ${condition(enabled.has('foliage') || enabled.has('grass'), 'true')}`,
     `#define USES_WAVES ${condition(enabled.has('water'), 'true')}`,
@@ -1060,7 +1080,7 @@ export function createVertexShader(features = SHADER_FEATURES) {
   return vertexShaderSource(vertexDefinitions(new Set(features)));
 }
 
-export const vertexShader = createVertexShader();
+export const vertexShader = createVertexShader(SHADER_FEATURES.filter(feature => feature !== 'crowd'));
 
 /** The fragment shader for a set of features. A feature with separate code throws until its module is imported. */
 export function createFragmentShader(features = SHADER_FEATURES) {

@@ -228,7 +228,7 @@ Pass `environment: { map }` to light and reflect from an equirectangular HDR ima
 1. Build rigs with `createRigFromSkin(asset.skins[0])`. Name families (Mixamo, VRM, Unreal, Rigify, Quaternius) map through `mapHumanoidBones`; fix a miss with `targetOverrides`.
 2. Call `retargetClip(sourceRig, targetRig, clip, { rootMotion })`.
 3. Play it with `createSkinClipPlayer(skin, clip).apply(seconds)`, then `renderer.updateParts(parts)`.
-4. For a crowd, `createCrowd({ count, clip, seed })` gives placement, time offsets and playback rates. Each instance needs its own skin pose.
+4. For a crowd, `createCrowd({ count, clip, seed })` gives placement, time offsets and playback rates. For dozens or hundreds of animated instances, bake the clip once with `67js/addons/crowd-skinning` so they draw as a few instanced batches (see `docs/retarget.md`, Crowds); the plain path needs one skin pose per instance.
 
 The [retarget contract](https://github.com/codepawl/67.js/blob/main/docs/retarget.md) covers rest-pose assumptions and measured cost. Mixamo clips need the owner's Adobe login to download; the code only consumes files.
 
