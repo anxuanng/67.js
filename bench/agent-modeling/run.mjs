@@ -2,7 +2,7 @@
 // server, then grades the recipe the agent exported.
 //
 // node bench/agent-modeling/run.mjs --claude <claude executable> [--model sonnet] [--tasks crate,bolt]
-//   [--runs 3] [--budget 3] [--timeout 1200] [--label baseline] [--skill] [--branches off] [--relations off] [--resume <run name>]
+//   [--runs 3] [--budget 3] [--timeout 1200] [--label baseline] [--skill] [--branches off] [--relations off] [--backend gpu|cpu] [--resume <run name>]
 //
 // --runs repeats every task that many times, each in a fresh session; the summary reports success rate, tool calls,
 // tool errors, tokens and cost for the model and for each task.
@@ -44,6 +44,7 @@ const { values: options } = parseArgs({
     branches: { type: 'string', default: 'on' },
     relations: { type: 'string', default: 'on' },
     resume: { type: 'string' },
+    backend: { type: 'string', default: 'gpu' },
   },
 });
 
@@ -61,7 +62,7 @@ async function skillPrompt() {
 function mcpConfig(assetDirectory) {
   return { mcpServers: { [MCP_SERVER_NAME]: {
     command: process.execPath,
-    args: [join(repository, 'scripts', 'mcp-server.mjs'), '--backend', 'gpu', '--memory', '192', '--branches', options.branches, '--relations', options.relations, ...(assetDirectory ? ['--assets', assetDirectory] : [])],
+    args: [join(repository, 'scripts', 'mcp-server.mjs'), '--backend', options.backend, '--memory', '192', '--branches', options.branches, '--relations', options.relations, ...(assetDirectory ? ['--assets', assetDirectory] : [])],
   } } };
 }
 
