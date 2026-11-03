@@ -110,6 +110,14 @@ test('two pull requests that grow different entries merge in sequence without to
   }
 });
 
+test('the base measurement of the bundles prints one JSON document and no archive size', () => {
+  const result = spawnSync(process.execPath, ['scripts/measure-size.mjs', '--json'], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+  assert.equal(result.status, 0, result.stderr);
+  const measured = JSON.parse(result.stdout);
+  assert.ok(measured['entry:core'].gzip > 0);
+  assert.equal(measured.archiveBytes, undefined);
+});
+
 test('a pull request behind the base branch is compared with the base it was merged into, not the newest tip', () => {
   const folder = mkdtempSync(join(tmpdir(), 'size-behind-'));
   try {

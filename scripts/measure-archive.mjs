@@ -4,6 +4,7 @@
 import { spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 const MAX_OUTPUT_BYTES = 64 * 1024 * 1024;
 
@@ -34,6 +35,7 @@ export function measureArchiveBytes() {
   return packed.size;
 }
 
-if (process.argv.includes('--json')) {
+// Only when this file is the script that runs: measure-size.mjs imports it and has its own --json output.
+if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href && process.argv.includes('--json')) {
   process.stdout.write(JSON.stringify({ archiveBytes: measureArchiveBytes() }));
 }
