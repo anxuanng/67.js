@@ -1280,3 +1280,35 @@ Change tried: in the probe trace, a hit on a metal part returns what that part m
 The best of them is 0.0004 better, which is inside what the choice of gain alone moves, and 0.0022 short of EEVEE. At gain 1 it overshoots the steel cylinder (0.556 to 0.590, Cycles 0.573) and brightens the chrome sphere, which is already too bright; the sphere's error is the structure of the reflection (the cloud pattern and the floor under its base), not its level. This agrees with the earlier "metal parts mirroring the sky too" row (0.0939). Not kept; no engine file, scene or `baseline.json` row changed, and the first box of #167 stays open: `metal` 0.0944 against EEVEE 0.0916. A scene without a reflective part never loads the trace, so its frame cost is as before.
 
 Next idea: the open floor is more than half of the error and the largest gap, and a surface-level cause there needs a new input (light the metal parts reflect onto the floor, which a diffuse bounce leaves out), for example a few traced caustic-like patches stamped into the ground bounce.
+
+## Same quantisation for 67js and EEVEE (2026-11-03, #258)
+
+The scorer read 67js back as an 8-bit PNG but scored EEVEE from a float array, so every 67js against EEVEE number carried the rounding of one side only. `score.py` now rounds the EEVEE array to 8 bits in display space (`load_eevee`), which is what writing the PNG does. Cycles stays float, because it is the reference both are measured against. The alternative, reading 67js back as float, would need a float readback path in the harness for a measurement of the same size, and the PNG is what the 67js columns already use. `tests/reference-quantisation.test.js` pins the loader against an 8-bit PNG round trip.
+
+The EEVEE columns were regenerated from the stored Cycles and EEVEE arrays and the stored 67js PNGs of the baseline run, without rendering. A cell is replaced only where the old scorer on those stored files reproduces the committed number, so the 67js columns (gpu-vs-cycles, cpu-vs-cycles, gpu-vs-cpu) are untouched. Scene order against EEVEE does not flip in any scene; `metal` goes from EEVEE ahead (0.0916 against 0.0944) to a tie at 0.0944.
+
+| scene | eevee-vs-cycles | gpu-vs-eevee |
+| --- | --- | --- |
+| brick-flat | 0.1099 to 0.1129 | 0.0961 to 0.0941 |
+| brick-graph | 0.1221 to 0.1249 | 0.1001 to 0.0976 |
+| brick-room | 0.5020 to 0.5021 | same |
+| car-paint | 0.0844 to 0.0869 | same |
+| character | 0.0622 to 0.0657 | 0.0661 to 0.0626 |
+| dark-shaft | 0.2654 to 0.2658 | 0.2638 to 0.2640 |
+| fog | 0.2662 to 0.2677 | 0.1324 to 0.1334 |
+| fog-room | 0.3730 to 0.3736 | 0.3635 to 0.3638 |
+| fog-valley | 0.1952 to 0.1960 | 0.1563 to 0.1571 |
+| foliage | 0.0888 to 0.0924 | 0.0804 to 0.0771 |
+| glass | 0.1008 to 0.1056 | 0.1100 to 0.1082 |
+| light-linking | 0.1558 to 0.1574 | 0.1127 to 0.1111 |
+| lit-interior | same | 0.0926 to 0.0927 |
+| long-street | 0.0976 to 0.0990 | 0.1152 to 0.1146 |
+| material-spheres | 0.1053 to 0.1070 | same |
+| megacity-dusk | 0.1524 to 0.1532 | 0.0947 to 0.0935 |
+| metal | 0.0916 to 0.0944 | same |
+| mountain-valley | 0.1893 to 0.1895 | 0.2671 to 0.2668 |
+| outdoor-hdri | 0.0403 to 0.0441 | 0.0366 to 0.0328 |
+| spot-area | 0.1935 to 0.1957 | 0.1709 to 0.1686 |
+| temple-hall | 0.2341 to 0.2345 | same |
+
+Not regenerated, still on the old float basis: `cpu-vs-eevee` for most scenes, `gpu-vs-eevee` for `brushed-film`, `car-paint`, `material-spheres`, `metal` and `metal-room` and `eevee-vs-cycles` for `brushed-film`. The `region-*` EEVEE cells of `dark-shaft`, `fog-room` and `temple-hall` were regenerated and are not in the table. The stored images of those scenes come from a later run than the baseline, so the old scorer does not reproduce the committed number from them, and a new number would mix two changes. They need a full `npm run reference` run. `grand.json` is also not regenerated: only `megacity-dusk-a` has an EEVEE array stored, and its stored images score 0.1985 against Cycles where `grand.json` has 0.1507. The side by side images in `images/` keep their old labels until that run.

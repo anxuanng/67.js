@@ -3,8 +3,13 @@
 # A scene that declares brightRegion (scenes.js) also gets region-* scores over the bright pixels of its Cycles image.
 # FLIP is 0 for identical images, and higher means a larger visible difference. EEVEE against Cycles is a yardstick:
 # it shows what a good rasterizer scores on the same scene.
+# Quantisation (#258): 67js is read back from an 8-bit PNG, so the EEVEE array is rounded to 8 bits in display space the same
+# way before FLIP. Cycles stays float because it is the reference both sides are measured against. 67js is not read back as
+# float because the harness reads canvas pixels, which are 8-bit by construction.
+#   uv run --no-project --python 3.12 --with flip-evaluator --with pillow --with numpy python -I bench/reference/score.py --self-test
 import json
 import sys
+import tempfile
 from pathlib import Path
 
 import flip_evaluator
@@ -22,6 +27,34 @@ def tone_map_like_67js(linear):
     color = np.maximum(linear, 0)
     mapped = np.clip((color * (2.51 * color + 0.03)) / (color * (2.43 * color + 0.59) + 0.14), 0, 1)
     return mapped ** (1 / GAMMA)
+
+
+def quantise_to_8_bit(display):
+    """Rounds display-space values to the nearest of 256 steps, as writing an 8-bit PNG does."""
+    return np.round(np.clip(display, 0, 1) * 255).astype(np.float32) / 255
+
+
+def load_eevee(path):
+    """An EEVEE render in the same 8-bit display space as a 67js PNG, so FLIP sees equal rounding on both sides."""
+    return quantise_to_8_bit(tone_map_like_67js(np.load(path)))
+
+
+def self_test():
+    rng = np.random.default_rng(258)
+    linear = rng.random((16, 16, 3), dtype=np.float32) * 3
+    with tempfile.TemporaryDirectory() as directory:
+        path = Path(directory) / "scene-eevee.npy"
+        np.save(path, linear)
+        loaded = load_eevee(path)
+        png_path = Path(directory) / "scene.png"
+        Image.fromarray(np.round(np.clip(tone_map_like_67js(linear), 0, 1) * 255).astype(np.uint8)).save(png_path)
+        written = load_png(png_path)
+    assert np.array_equal(loaded, written), "the EEVEE array does not match what an 8-bit PNG of it reads back as"
+    assert np.array_equal(np.round(loaded * 255), np.round(loaded * 255).astype(np.uint8)), "values are not whole 8-bit steps"
+    assert np.array_equal(quantise_to_8_bit(loaded), loaded), "quantising twice changed the values"
+    float_display = tone_map_like_67js(linear)
+    assert 0 < np.abs(loaded - float_display).max() <= 0.5 / 255 + 1e-6, "the rounding error is outside half a step"
+    print("score self-test ok")
 
 
 def load_png(path):
@@ -106,7 +139,7 @@ def score_baked(work_directory, output_directory, scene_ids):
     results = {}
     for scene_id in scene_ids:
         cycles = tone_map_like_67js(np.load(work_directory / f"{scene_id}-cycles.npy"))
-        eevee = tone_map_like_67js(np.load(work_directory / f"{scene_id}-eevee.npy"))
+        eevee = load_eevee(work_directory / f"{scene_id}-eevee.npy")
         gpu = load_png(work_directory / f"{scene_id}-gpu.png")
         scores = {
             "gpu-vs-cycles": flip_score(cycles, gpu),
@@ -137,6 +170,9 @@ def score_baked(work_directory, output_directory, scene_ids):
 
 
 def main():
+    if "--self-test" in sys.argv:
+        self_test()
+        return
     if "--bake" in sys.argv:
         score_baked(Path(sys.argv[1]), Path(sys.argv[2]), sys.argv[sys.argv.index("--bake") + 1].split(","))
         return
@@ -155,7 +191,7 @@ def main():
     results = {}
     for scene_id in scene_ids:
         cycles = tone_map_like_67js(np.load(work_directory / f"{scene_id}-cycles.npy"))
-        eevee = tone_map_like_67js(np.load(work_directory / f"{scene_id}-eevee.npy"))
+        eevee = load_eevee(work_directory / f"{scene_id}-eevee.npy")
         gpu = load_png(work_directory / f"{scene_id}-gpu.png")
         cpu = load_png(work_directory / f"{scene_id}-cpu.png")
         scores = {
