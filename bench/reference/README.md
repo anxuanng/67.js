@@ -1497,6 +1497,23 @@ Rendered on SwiftShader (`run.mjs --no-gpu --skip-blender --skip-cpu --scene bri
 
 Excess over the flat wall (0.0543): 0.0387 before, 0.0323 after, against EEVEE's 0.0120, so the first Done-when box of #50 stays open. The dark side moves from 0.289 to 0.210 where Cycles has 0.218, and the wall mean from 0.5591 to 0.5459 (Cycles 0.5495). The shadow lookup with the geometric normal made it worse and was not kept. The change is one line of `src/shaders.js`; `scene:lit-box` grows 16 bytes gzip (50127 to 50143, over the 50,000 goal already on main by 127).
 
+## The dark side of a tilted normal, next levers measured and none kept (2026-11-04, part of issue #50, RTX 3060 960 x 540)
+
+Scored on the GPU through `raster-only.mjs` and FLIP against the Cycles and EEVEE arrays of the 2026-11-03 run (same scorer maths as `score.py`; wall pixels rows 110 to 430, columns 230 to 730, display luminance). Main with the squared horizon share of #365: `brick-flat` 0.0547, `brick-graph` 0.0871 against Cycles (EEVEE 0.1249 and 0.1129), so the excess is 0.0324 against EEVEE's 0.0120. The darkest wall pixel is already 0.210 (Cycles 0.218, EEVEE 0.218), and the wall mean is 0.5462 (Cycles 0.5495); the SwiftShader round of #365 and the GPU agree.
+
+| Variant, `brick-graph` only (`brick-flat` stayed 0.0547 in each) | against Cycles | excess over the flat wall | darkest pixel |
+| --- | --- | --- | --- |
+| main, `h^2` | 0.0871 | 0.0324 | 0.210 |
+| `h^1.75` | 0.0883 | 0.0336 | 0.231 |
+| `h^2.5` | 0.0869 | 0.0322 | 0.174 |
+| `h^3` (the cube) | 0.0890 | 0.0343 | 0.145 |
+| sun diffuse times `max(dot(geometric, L), 0)` | 0.1613 | 0.1066 | 0.210 |
+| sun diffuse times `smoothstep(0, 0.25, dot(geometric, L))` | 0.0871 | 0.0324 | 0.210 |
+
+Not scored, because the result is known without a render: the fill lights (`fillIntensity` is 0 in this scene, so the term is zero) and the sky and environment specular (`occlusion`, which already carries the horizon share, multiplies the environment diffuse and the environment specular together, so that clip is already there). The wall faces the sun, so a soft terminator clip is a no-op and the literal product only darkens the whole lit wall.
+
+Nothing is kept: `h^2.5` is 0.0002 better, inside the spread between runs, and pushes the darkest pixel past Cycles, so the exponent is at its optimum between 2 and 2.5. The remaining 0.0324 is not shading at the joint. The FLIP error map of 67js on the wall is the blotchy low-frequency brick tone inside each brick (inferred from the error map, not isolated: the noise through the colour ramp, which the two renderers may evaluate differently), while EEVEE's error is an almost uniform offset of its darker flat wall (0.560 against 0.615), which FLIP charges less than misplaced detail. The excess over the flat wall therefore compares a pattern error with a brightness offset, and a shader change at the joint cannot close it. No source file changed, so no size or suite number moved.
+
 ## Named looks for the grand scenes (2026-11-03, part of issue #168)
 
 `look-options.js` holds a second round of options for the three grand scenes, each a named variant: `node bench/reference/run.mjs --option mountain-valley:dawn` (several separated by commas) draws it with the GPU only into `artifacts/reference-look/<scene>-<option>-gpu.png`, with no Blender, no score and no baseline change. Sheets: `uv run --no-project --with pillow python -I bench/reference/look-sheets.py artifacts/reference-look artifacts/look-168` copies each frame to `artifacts/look-168/<scene>/<option>.png` and writes one contact sheet per scene. The default scenes and the letters of `grand-scenes.js` are unchanged. Blender would get the same geometry and materials: ground cover is vertex colour, facades are material graphs (Emission through the graph), halls use Emission panels and volume fog. An picks; no option is claimed to match anyone's taste.
