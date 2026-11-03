@@ -90,6 +90,8 @@
     "./addons/material-layer-shaders": "./build/material-layer-shaders.js",
     "./addons/view-transform-shader": "./build/view-transform-shader.js",
     "./addons/view-transform": "./build/view-transform.js",
+    "./addons/liquid-shader": "./build/liquid-shader.js",
+    "./addons/splat-shader": "./build/splat-shader.js",
     "./addons/light-linking": "./build/light-linking.js",
     "./addons/cascaded-shadows": "./build/cascaded-shadows.js",
     "./addons/gaussian-splats": "./build/gaussian-splats.js",
