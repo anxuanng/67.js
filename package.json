@@ -141,6 +141,7 @@
     "parity": "node scripts/parity-report.mjs",
     "reference": "node bench/reference/run.mjs",
     "size": "node scripts/measure-size.mjs",
+    "size:release": "node scripts/measure-size.mjs --set-budgets",
     "benchmark:runtime": "node bench/runtime/run.mjs",
     "check:tool-schemas": "node scripts/check-tool-schemas.mjs",
     "check:links": "node scripts/check-links.mjs",
