@@ -19,20 +19,25 @@ const glslNumber = value => (Number.isInteger(value) ? value.toFixed(1) : String
 const glslVector = values => `vec3(${values.map(glslNumber).join(', ')})`;
 const glslMatrix = columns => `mat3(${columns.map(glslVector).join(', ')})`;
 
-const AGX_GLSL = `const mat3 agxToRec2020 = ${glslMatrix(AGX_CONSTANTS.toRec2020)};
-const mat3 agxFromRec2020 = ${glslMatrix(AGX_CONSTANTS.fromRec2020)};
-const mat3 agxInset = ${glslMatrix(AGX_CONSTANTS.inset)};
+const agxSide = ({ scale, power }) => ({ scale: glslNumber(scale), power: glslNumber(power), inversePower: glslNumber(1 / power) });
+const agxToe = agxSide(AGX_CONSTANTS.toe);
+const agxShoulder = agxSide(AGX_CONSTANTS.shoulder);
+
+const AGX_GLSL = `const mat3 agxInset = ${glslMatrix(AGX_CONSTANTS.inset)};
 const mat3 agxOutset = ${glslMatrix(AGX_CONSTANTS.outset)};
-vec3 agxContrast(vec3 x) {
-  vec3 x2 = x * x;
-  vec3 x4 = x2 * x2;
-  return ${glslNumber(AGX_CONSTANTS.contrast[0])} * x4 * x2 + ${glslNumber(AGX_CONSTANTS.contrast[1])} * x4 * x + ${glslNumber(AGX_CONSTANTS.contrast[2])} * x4 + ${glslNumber(AGX_CONSTANTS.contrast[3])} * x2 * x + ${glslNumber(AGX_CONSTANTS.contrast[4])} * x2 + ${glslNumber(AGX_CONSTANTS.contrast[5])} * x + ${glslNumber(AGX_CONSTANTS.contrast[6])};
+vec3 agxCurve(vec3 x) {
+  vec3 distance = ${glslNumber(AGX_CONSTANTS.slope)} * (x - ${glslNumber(AGX_CONSTANTS.pivot[0])});
+  vec3 above = max(distance, 0.0) / ${agxShoulder.scale};
+  vec3 below = max(-distance, 0.0) / ${agxToe.scale};
+  vec3 rise = ${agxShoulder.scale} * above / pow(1.0 + pow(above, vec3(${agxShoulder.power})), vec3(${agxShoulder.inversePower}));
+  vec3 fall = ${agxToe.scale} * below / pow(1.0 + pow(below, vec3(${agxToe.power})), vec3(${agxToe.inversePower}));
+  return ${glslNumber(AGX_CONSTANTS.pivot[1])} + rise - fall;
 }
 vec3 selectedViewTransform(vec3 color) {
-  color = agxInset * (agxToRec2020 * color);
+  color = agxInset * color;
   color = clamp((log2(max(color, vec3(1e-10))) - ${glslNumber(AGX_CONSTANTS.minimumEv)}) / ${glslNumber(AGX_CONSTANTS.maximumEv - AGX_CONSTANTS.minimumEv)}, 0.0, 1.0);
-  color = pow(max(vec3(0.0), agxOutset * agxContrast(color)), vec3(2.2));
-  return clamp(agxFromRec2020 * color, 0.0, 1.0);
+  color = pow(max(agxCurve(color), vec3(0.0)), vec3(${glslNumber(AGX_CONSTANTS.encodingPower)}));
+  return clamp(agxOutset * color, 0.0, 1.0);
 }`;
 
 const NEUTRAL_GLSL = `vec3 selectedViewTransform(vec3 color) {

@@ -3,20 +3,30 @@ import { LOOK_NAMES, VIEW_TRANSFORM_NAMES } from './view-transform-names.js';
 // Display transforms and look LUTs as plain functions, shared by the path tracer, the tests and the GLSL in
 // view-transform-shader.js (which prints the constants below, so the three cannot drift apart).
 // - aces is the Narkowicz fit the rasterizer has always used, applied per channel.
-// - agx follows Blender's AgX through the Filament port that three.js ships: Rec.2020 inset, log2 between -12.47393 and
-//   4.026069 EV, a polynomial for the default contrast, outset, then a 2.2 power back to linear sRGB.
+// - agx is Blender 5.2's AgX (the sRGB view of its OCIO config: E-Gamut log2 between -12.47393 and 4.026069 EV, a per-channel
+//   sigmoid, a 2.4 power, a matrix back to Rec.709) as a fit of AgX_Base_sRGB.cube, not the 57-point LUT itself. The
+//   older Filament/three.js polynomial put 0.18 grey 0.04 above Blender (0.501 against 0.461).
 // - neutral is the Khronos PBR Neutral tone mapper: base colours below 0.76 pass unchanged.
-// All three take linear sRGB and return linear sRGB in 0 to 1; the caller encodes with a power of 1 / 2.2.
+// All three take linear sRGB and return display-linear sRGB in 0 to 1; the caller encodes with a power of 1 / 2.2.
 
-/** Columns of each matrix, as GLSL writes them. */
+const rowsToColumns = rows => rows[0].map((_, column) => rows.map(row => row[column]));
+
+/**
+ * Matrices as columns, as GLSL writes them. inset takes linear Rec.709 to the space the log and the sigmoid work in; outset
+ * takes the linearised sigmoid output back to Rec.709. Rows sum to 1, so grey stays grey. Both were fitted to the LUT, and
+ * the sigmoid to its grey diagonal. From the pivot (0.18 grey) it rises by scale * v / (1 + v ** power) ** (1 / power)
+ * with v = slope * distance / scale, and falls the same way with the toe's own scale and power.
+ */
 export const AGX_CONSTANTS = Object.freeze({
-  toRec2020: [[0.6274, 0.0691, 0.0164], [0.3293, 0.9195, 0.0880], [0.0433, 0.0113, 0.8956]],
-  fromRec2020: [[1.6605, -0.1246, -0.0182], [-0.5876, 1.1329, -0.1006], [-0.0728, -0.0083, 1.1187]],
-  inset: [[0.856627153315983, 0.137318972929847, 0.11189821299995], [0.0951212405381588, 0.761241990602591, 0.0767994186031903], [0.0482516061458583, 0.101439036467562, 0.811302368396859]],
-  outset: [[1.1271005818144368, -0.1413297634984383, -0.14132976349843826], [-0.11060664309660323, 1.157823702216272, -0.11060664309660294], [-0.016493938717834573, -0.016493938717834257, 1.2519364065950405]],
+  inset: rowsToColumns([[0.57215, 0.33216, 0.09569], [0.12368, 0.74091, 0.13541], [0.09814, 0.19729, 0.70457]]),
+  outset: rowsToColumns([[1.84762, -0.70741, -0.14021], [-0.2341, 1.3225, -0.0884], [-0.19713, -0.30062, 1.49775]]),
   minimumEv: -12.47393,
   maximumEv: 4.026069,
-  contrast: [15.5, -40.14, 31.96, -6.868, 0.4298, 0.1191, -0.00232],
+  pivot: [0.60608, 0.48834],
+  slope: 2.39013,
+  toe: { scale: 0.56474, power: 1.50159 },
+  shoulder: { scale: 0.70613, power: 1.53357 },
+  encodingPower: 2.4,
 });
 export const NEUTRAL_CONSTANTS = Object.freeze({ startCompression: 0.8 - 0.04, desaturation: 0.15 });
 
@@ -36,21 +46,24 @@ export function acesChannel(value) {
   return clampUnit((color * (2.51 * color + 0.03)) / (color * (2.43 * color + 0.59) + 0.14));
 }
 
-function agxContrast(value) {
-  const [sixth, fifth, fourth, third, second, first, zeroth] = AGX_CONSTANTS.contrast;
-  const square = value * value;
-  const quartic = square * square;
-  return sixth * quartic * square + fifth * quartic * value + fourth * quartic + third * square * value + second * square + first * value + zeroth;
+function agxSigmoidSide(distance, side) {
+  const scaled = distance / side.scale;
+  return side.scale * scaled / (1 + scaled ** side.power) ** (1 / side.power);
+}
+
+function agxCurve(value) {
+  const { pivot, slope, toe, shoulder } = AGX_CONSTANTS;
+  const distance = slope * (value - pivot[0]);
+  return pivot[1] + (distance >= 0 ? agxSigmoidSide(distance, shoulder) : -agxSigmoidSide(-distance, toe));
 }
 
 export function agxColor(rgb) {
-  const { toRec2020, fromRec2020, inset, outset, minimumEv, maximumEv } = AGX_CONSTANTS;
-  const encoded = multiply(inset, multiply(toRec2020, rgb)).map(channel => {
+  const { inset, outset, minimumEv, maximumEv, encodingPower } = AGX_CONSTANTS;
+  const linear = multiply(inset, rgb).map(channel => {
     const logged = (Math.log2(Math.max(channel, 1e-10)) - minimumEv) / (maximumEv - minimumEv);
-    return agxContrast(clampUnit(logged));
+    return Math.max(0, agxCurve(clampUnit(logged))) ** encodingPower;
   });
-  const linear = multiply(outset, encoded).map(channel => Math.max(0, channel) ** 2.2);
-  return multiply(fromRec2020, linear).map(clampUnit);
+  return multiply(outset, linear).map(clampUnit);
 }
 
 export function neutralColor(rgb) {

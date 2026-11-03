@@ -22,11 +22,12 @@ const golden = JSON.parse(readFileSync(new URL('./fixtures/blender/view-transfor
 const srgbEncode = value => (value <= 0.0031308 ? value * 12.92 : 1.055 * value ** (1 / 2.4) - 0.055);
 
 // Tolerance per channel in sRGB-encoded units (0 to 1), measured on this ramp against Blender 5.2.2: neutral 0.0079 at most
-// (mean 0.0013), as Blender runs the Khronos formula. agx 0.0885 at most (mean 0.025): it is the Filament/three.js port of
-// AgX (a polynomial for the contrast, 4-digit Rec.2020 matrices), and Blender 5.2 is about 0.04 darker in the mid-tones
-// (0.18 maps to 0.461, the port gives 0.501) and more saturated for strong colours (0.8, 0.1, 0.05 is the worst patch).
-// Closing that gap needs Blender's own AgX curve; the bounds stay at the measured error so a regression shows.
-const TOLERANCE = { agx: 0.09, neutral: 0.01 };
+// (mean 0.0013), as Blender runs the Khronos formula. agx 0.0247 at most (mean 0.0026) since it is a fit of Blender's
+// AgX_Base_sRGB.cube (the Filament polynomial it replaced was 0.0885 at most, 0.501 at grey 0.18 against Blender's 0.461).
+// The grey patches are within 0.0012; what is left is saturated colour (2.0, 0.8, 0.1 is the worst patch), which a
+// per-channel sigmoid and two matrices cannot follow exactly. The bounds sit just above the measured error so a regression shows.
+const TOLERANCE = { agx: 0.026, neutral: 0.01 };
+const MID_GREY_TOLERANCE = 0.005;
 
 for (const name of ['agx', 'neutral']) {
   test(`${name} matches Blender ${golden.blenderVersion} on the colour ramp within ${TOLERANCE[name]}`, () => {
@@ -38,6 +39,12 @@ for (const name of ['agx', 'neutral']) {
     assert.ok(worst <= TOLERANCE[name], `${name} differs from Blender by ${worst.toFixed(5)}`);
   });
 }
+
+test('agx maps 0.18 mid grey to what Blender does', () => {
+  const grey = golden.patches.find(patch => patch.input.every(value => value === 0.18));
+  const mine = applyViewTransform('agx', grey.input).map(srgbEncode);
+  for (let channel = 0; channel < 3; channel++) assert.ok(Math.abs(mine[channel] - grey.agx[channel]) <= MID_GREY_TOLERANCE, `channel ${channel}: ${mine[channel]}`);
+});
 
 test('the ramp covers greys from black to 16 and saturated colours', () => {
   assert.ok(golden.patches.length >= 25);
@@ -66,8 +73,10 @@ test('the rasterizer shaders and the path tracer apply the same default curve', 
 
 test('the GLSL of agx and neutral prints the constants the path tracer uses', () => {
   const agx = viewTransformShader.apply(fragmentShader, 'main', 'agx', false);
-  const numbers = [...AGX_CONSTANTS.toRec2020, ...AGX_CONSTANTS.fromRec2020, ...AGX_CONSTANTS.inset, ...AGX_CONSTANTS.outset].flat();
-  for (const value of [...numbers, AGX_CONSTANTS.minimumEv, ...AGX_CONSTANTS.contrast]) assert.ok(agx.includes(String(value)) || agx.includes(value.toFixed(1)), `agx GLSL holds ${value}`);
+  const { inset, outset, minimumEv, slope, pivot, toe, shoulder, encodingPower } = AGX_CONSTANTS;
+  const numbers = [...inset, ...outset].flat();
+  const curve = [slope, ...pivot, toe.scale, toe.power, shoulder.scale, shoulder.power, encodingPower];
+  for (const value of [...numbers, minimumEv, ...curve]) assert.ok(agx.includes(String(value)) || agx.includes(value.toFixed(1)), `agx GLSL holds ${value}`);
   const neutral = viewTransformShader.apply(fragmentShader, 'main', 'neutral', false);
   for (const value of [NEUTRAL_CONSTANTS.startCompression, NEUTRAL_CONSTANTS.desaturation, 1 - NEUTRAL_CONSTANTS.startCompression]) assert.ok(neutral.includes(String(value)), `neutral GLSL holds ${value}`);
 });

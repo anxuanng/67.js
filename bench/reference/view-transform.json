@@ -2,8 +2,8 @@
  "metric": "FLIP (LDR), mean error, lower is better",
  "viewTransform": "agx",
  "scores": {
-  "outdoor-hdri": 0.0997,
-  "material-spheres": 0.1467,
-  "character": 0.1238
+  "outdoor-hdri": 0.0425,
+  "material-spheres": 0.0903,
+  "character": 0.0581
  }
 }

@@ -67,19 +67,19 @@ Colour ramp (`scripts/blender-view-transform-golden.py`, rerun on 5.2.2: the out
 | Transform | Threshold (max) | Max error | Mean error | Max per channel R, G, B | Within |
 | --- | --- | --- | --- | --- | --- |
 | `neutral` | 0.010 | 0.0079 | 0.0013 | 0.0079, 0.0052, 0.0079 | yes |
-| `agx` | 0.090 | 0.0885 | 0.0252 | 0.0714, 0.0756, 0.0885 | yes, but loose |
+| `agx` | 0.026 | 0.0247 | 0.0026 | 0.0168, 0.0247, 0.0072 | yes |
 
-`agx` is within its threshold only because the threshold was set at the measured error. 67js uses the Filament/three.js polynomial for the AgX contrast, and Blender 5.2.2 is darker in the mid-tones: grey 0.18 maps to 0.461 in Blender and 0.501 in 67js (0.09 gives 0.320 against 0.374, 0.03 gives 0.165 against 0.198); the worst patch is the saturated red 0.8, 0.1, 0.05. `neutral` follows Blender to within 2 steps of 255 (the Khronos formula is the same). Closing the `agx` gap needs Blender's own contrast curve; no change was made to `src/` here.
+`agx` was 0.0885 at most (mean 0.0252) before 2026-11-03, measured the same way. Blender 5.2's AgX is the EaryChow version, not the Troy Sobotka one the Filament/three.js polynomial copies: E-Gamut input, log2 over -12.47393 to +4.026 EV (the same range as before), a per-channel sigmoid with pivot at 0.18 grey (output 0.488, slope 2.39, toe and shoulder power about 1.5), a 2.4 power, then a matrix back to Rec.709 applied to the linear value. The differing steps were the sigmoid (the 6th-degree polynomial was too bright in the mid-tones: grey 0.18 gave 0.501 against Blender's 0.461), the matrices (Rec.2020 inset and outset against Blender's gamut-specific LUT) and the output power (2.2 against 2.4 before the matrix). `src/view-transform.js` now holds a fit of `AgX_Base_sRGB.cube`: the sigmoid is fitted to the LUT's grey diagonal (within 0.0013 in the 2.4-encoded value), the two matrices to random colours. Grey 0.18 maps to 0.460 (Blender 0.461); the grey patches are within 0.0012. The rest of the error is saturated colour (worst patch 2.0, 0.8, 0.1, green channel), which a per-channel sigmoid and two matrices cannot follow exactly, so the threshold is 0.026. `neutral` follows Blender to within 2 steps of 255 (the Khronos formula is the same).
 
 Scenes: `npm run reference -- --view-transform agx --scene <id>,<id>` draws 67js with `viewTransform: 'agx'`, renders Cycles with the AgX view transform (same samples, denoising and scene description as the suite; 8-bit sRGB PNG, so both sides are quantised), and scores them with FLIP. Blender's sRGB picture is decoded and encoded with the 2.2 power 67js uses, so the score measures the curve and the lighting, not the transfer function. The standard column is the suite's own score (Cycles with the `Raw` transform, then the ACES fit on both sides, `baseline.json`).
 
-| Scene | 67js `agx` against Cycles AgX | Standard (ACES fit both sides) | Change |
+| Scene | `agx` before (2026-11-03, #343) | `agx` after (2026-11-03) | Standard (ACES fit both sides) |
 | --- | --- | --- | --- |
-| `outdoor-hdri` | 0.0997 | 0.0462 | +0.0535 |
-| `material-spheres` | 0.1467 | 0.1293 | +0.0174 |
-| `character` | 0.1238 | 0.0799 | +0.0439 |
+| `outdoor-hdri` | 0.0997 | 0.0425 | 0.0462 |
+| `material-spheres` | 0.1467 | 0.0903 | 0.1293 |
+| `character` | 0.1238 | 0.0581 | 0.0799 |
 
-AgX scores worse than the standard row on all three. The mid-tone gap measured on the ramp (67js `agx` is brighter than Blender's) is the likely cause (inferred, not isolated by an experiment). The scores are in `view-transform.json`; Cycles ran on OptiX as in the suite, 67js on the RTX 3060.
+AgX now scores better than the standard row on all three (the mid-tone gap was the cause; the Cycles pictures were reused, only 67js was redrawn). The scores are in `view-transform.json`; Cycles ran on OptiX as in the suite, 67js on the RTX 3060.
 
 ## One sun (2026-11-01)
 
