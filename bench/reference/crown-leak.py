@@ -1,6 +1,8 @@
 # Counts the crown pixels of `foliage` that 67js lights with the sun and Cycles leaves in shadow.
-#   uv run --no-project --with numpy --with pillow python bench/reference/crown-leak.py <work directory> <67js --ambient 0 png>
-# Needs <work directory>/foliage-cycles.npy (full light, to find the crown) and foliage-cycles-world0.npy (sun only, the true
+#   uv run --no-project --with numpy --with pillow python bench/reference/crown-leak.py <work directory> <67js --ambient 0 png> [<67js --ambient 0 --key 0 png>]
+# With the third picture (the same render with the sun off) its light is subtracted from the sun render, so the 67js sun is
+# compared with the sun of Cycles alone: the sky's reflection in a leaf is not sun, and Cycles has no sky in its sun-only render.
+# Both sides then use one threshold (CYCLES_SHADOWED_BELOW); without it the old, uneven pair of thresholds applies. Needs <work directory>/foliage-cycles.npy (full light, to find the crown) and foliage-cycles-world0.npy (sun only, the true
 # shadow mask; render it with render-blender.py ... --world-strength 0 foliage). Prints the counts and writes leak.png beside the PNG:
 # red = leak, grey = lit on both sides, blue = lit only in Cycles, dark grey = the rest of the crown.
 import sys
@@ -44,6 +46,12 @@ def main():
     cycles_full = tone_map_like_67js(np.load(work_directory / "foliage-cycles.npy"))
     cycles_sun = tone_map_like_67js(np.load(work_directory / "foliage-cycles-world0.npy"))
     gpu_sun = np.asarray(Image.open(gpu_path).convert("RGB"), dtype=np.float32) / 255
+    gpu_lit_above = GPU_LIT_ABOVE
+    gpu_sun_luminance = tone_mapped_luminance(gpu_sun)
+    if len(sys.argv) > 3:
+        sun_off = np.asarray(Image.open(sys.argv[3]).convert("RGB"), dtype=np.float32) / 255
+        gpu_sun_luminance = gpu_sun_luminance - tone_mapped_luminance(sun_off)
+        gpu_lit_above = CYCLES_SHADOWED_BELOW
 
     red, green, blue = cycles_full[..., 0], cycles_full[..., 1], cycles_full[..., 2]
     upper_rows = np.zeros(green.shape, bool)
@@ -52,7 +60,7 @@ def main():
 
     cycles_shadowed = crown & (tone_mapped_luminance(cycles_sun) < CYCLES_SHADOWED_BELOW)
     cycles_lit = crown & ~cycles_shadowed
-    gpu_lit = crown & (tone_mapped_luminance(gpu_sun) > GPU_LIT_ABOVE)
+    gpu_lit = crown & (gpu_sun_luminance > gpu_lit_above)
     leak = gpu_lit & cycles_shadowed
     beside_lit_leaf = near_any(cycles_lit, SILHOUETTE_REACH)
 
