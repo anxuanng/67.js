@@ -81,7 +81,7 @@ assert.deepEqual(importedMorph.parts[0].geometry.uvs, morphGeometry.uvs);
 assert.deepEqual(importedMorph.parts[0].material.emissiveColor, [1, 0.25, 0]);
 assert.equal(importedMorph.parts[0].material.emission, 4);
 importedMorph.dispose();
-assert.throws(() => new Renderer67({}, [], { environment: { pointLights: Array(9).fill({ position: [0, 1, 0] }) } }), /at most/, 'Packed renderer must validate light limits before requesting a GPU context.');
+assert.throws(() => new Renderer67({}, [], { environment: { pointLights: Array(17).fill({ position: [0, 1, 0] }) } }), /at most/, 'Packed renderer must validate light limits before requesting a GPU context.');
 assert.ok(box().positions.length > 0);
 const sculptSource = box();
 const sculptOutput = sculptGeometry(sculptSource, [{ type: 'inflate', center: [0, 0, 0], radius: 10, strength: 0.05 }]);
