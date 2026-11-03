@@ -67,6 +67,15 @@ export function sequenceFrameIds(value) {
   return [...ids];
 }
 
+/** The material `map` field of a recipe material: validates it against the rest of the material and stores it on `result`. */
+export function applyMapSequence(value, result) {
+  if (result.tag !== 'surface') throw new RangeError('Material map needs the surface tag.');
+  if (value.pattern !== undefined) throw new TypeError('A material takes a pattern or a map sequence, not both.');
+  result.map = normalizeMapSequence(value.map);
+  // Like a pattern, the frames bring their own colours, so color tints them and defaults to white.
+  if (value.color === undefined) result.color = [1, 1, 1];
+}
+
 /**
  * The runtime of one material: a stable colour map descriptor holding the first frame, and the frame picked by `seek`.
  * `pool` maps catalog image IDs to decoded `{ width, height, data }` RGBA frames.
