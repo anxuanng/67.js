@@ -138,8 +138,9 @@ vec3 volumeFog(vec3 background) {
     if (all(greaterThanEqual(shadow, vec3(0))) && all(lessThanEqual(shadow, vec3(1)))) {
       visibility = step(shadow.z - 0.0008, texture(volumeShadowMap, shadow.xy).r);
     }
-    float shadowShare = POST_SKY ? 0.1 + 0.9 * min(1.0, 30.0 * texture(fogSkyVisibility, (position - volumeMinimum) / (volumeMaximum - volumeMinimum)).r) : volumeShadowAmbient;
-    vec3 scattering = volumeColor * (volumeAmbient * mix(shadowShare, 1.0, visibility) + volumeLightColor * phase * visibility);
+    vec4 skyCell = POST_SKY ? texture(fogSkyVisibility, (position - volumeMinimum) / (volumeMaximum - volumeMinimum)) : vec4(0);
+    float shadowShare = POST_SKY ? 0.1 + 0.9 * min(1.0, 30.0 * skyCell.r) : volumeShadowAmbient;
+    vec3 scattering = volumeColor * (volumeAmbient * mix(shadowShare, 1.0, visibility) + volumeLightColor * phase * visibility + 0.6 * skyCell.gba);
     accumulated += transmittance * opacity * scattering;
     transmittance *= 1.0 - opacity;
     if (transmittance < 0.001) break;

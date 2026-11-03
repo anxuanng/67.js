@@ -653,3 +653,28 @@ Every other scene, including `fog` and `fog-valley`, has the same score to four 
 A grid of the sky share alone (linear, no ramp) was worse everywhere: the share is under 0.05 for nine in ten cells of `temple-hall`, so the fog went dark (region 0.2938). The region of `temple-hall` wants more light near the far door (bounce from the sunlit floor and columns), which sky visibility does not carry; the bright haze outside the shafts is already close to Cycles in display luminance (0.0432 before, 0.0369 now, Cycles 0.0391). Next idea: a grid of the light the sunlit fog gives its neighbours, not of the sky.
 
 Cost: the rays run on the CPU once per scene and fog box: `dark-shaft` 0.03 s (1,120 triangles), `temple-hall` 1.7 s (11,892 triangles), a 12 x 6 x 32 grid. The core entry grows 141 bytes gzip (85,119 on main at 87561fd, 85,260 now); the agent preview entries grow 86 to 143 bytes (the ray code), and the four budgets `entry:agent-scene`, `entry:agent-asset`, `scene:agent-scene` and `scene:agent-scene+lazy` were raised by 100, 100, 200 and 100 bytes. Baked and plain rows are not in `baseline.json`, and `baseline.json` and the images were not rewritten by this change.
+
+## Light the fog gets from surfaces (2026-11-03, part of issue #164)
+
+`fogSkyVisibility` now also builds `fogBounceGrid` (`src/fog-bounce.js`): for each cell of the sky grid, 64 fixed rays find the nearest surface, which returns its emission plus the point light it receives times albedo over pi (shadow rays through the light bake's BVH tracer). The grid shares the sky grid's texture (`RGBA16F`, bounce in green, blue and alpha) and the post shader adds 0.6 of it to the fog's scattering. Parts with an emissive map (baked parts) and the sun are left out. Measured on the GPU render against the stored Cycles arrays (RTX 3060, `--skip-blender`, the whole frame and the bright region in brackets; EEVEE against Cycles on the `temple-hall` region is 0.2455):
+
+| Scene | Before | After |
+| --- | --- | --- |
+| `temple-hall`, no bake | 0.0640 (0.2611) | 0.0647 (0.2421) |
+| `temple-hall`, baked (`--bake temple-hall`) | 0.0559 (0.2335) | 0.0554 (0.2236) |
+| `dark-shaft`, no bake | 0.0559 (0.1282) | 0.0559 (0.1282) |
+| `dark-shaft`, baked | 0.0551 (0.1137) | 0.0551 (0.1137) |
+| `fog-room` | 0.1036 (0.1625) | 0.1036 (0.1624) |
+
+Every other scene keeps its score to four digits. Tried and not kept, on `temple-hall` no bake (whole, region), all against the same Cycles arrays:
+
+| Variant | whole | region |
+| --- | --- | --- |
+| Sun, emission and lamps, 24 rays, weight 1 | 0.0637 (`dark-shaft` 0.0746) | 0.2246 (`dark-shaft` 0.1764) |
+| Sun, emission and lamps, 24 rays, weight 0.5 | 0.0617 (`dark-shaft` 0.0626) | 0.2379 (`dark-shaft` 0.1427) |
+| Emission and lamps, 24 rays, weight 1 | 0.0636 | 0.2455 |
+| Emission and lamps, 64 rays, weight 1 | 0.0665 | 0.2334 |
+| Emission and lamps, 64 rays, weight 0.6 (kept) | 0.0647 | 0.2421 |
+| Emission and lamps, 64 rays, weight 0.5 | 0.0644 | 0.2450 |
+
+The sun's bounce helps `fog` (0.2240 to 0.1065) and `temple-hall` but breaks `dark-shaft`, whose ambient already stands in for it, so it stays out. The whole-frame score of `temple-hall` without a bake is 0.0007 worse (0.0640 to 0.0647): the grid is isotropic and the fog has `anisotropy` 0.6, so the light cannot follow the forward lobe toward the window, and a weight that lifts the whole frame back to 0.0640 leaves the region at 0.2450, 0.0005 under EEVEE. A baked first attempt read the lightmap in the emissive slot as a source and scored 0.50 to 0.69; baked parts are skipped now. Cost: the grid takes 0.3 s for `temple-hall` and 0.07 s for `dark-shaft` (measured in the page, 64 rays, on a loaded machine), after the sky rays (1.7 s and 0.03 s). `entry:core` grows 28 bytes gzip (85,260 to 85,288); no budget changed. `baseline.json` and the images were not rewritten.
