@@ -239,6 +239,23 @@ dropped. `yaw` turns each instance randomly about up, `alignToNormal` (surface o
 is a random uniform `[min, max]`. At most 2048 candidate points per node, and the scene's node limit still applies.
 The group's own scale applies to the spacing and the points, because they are in its space.
 
+### Placed catalog assets
+
+A node with an `asset` field places a GLB from the `--assets` catalog inside the recipe, so one scene holds terrain, lights, procedural meshes and imported models (`scene_create_asset` opens one asset alone). The node is a group: its transform places the asset, and its parts become generated child nodes named `<node>/<part index>` that `scene_inspect` and `scene_export_recipe` leave out.
+
+```json
+{ "id": "tree-1", "translation": [4, 0, -2], "asset": { "id": "<64 hex asset id>",
+  "materials": [{ "name": "Leaves", "color": [0.2, 0.5, 0.1] }],
+  "clip": { "index": 0, "start": 0.5, "speed": 1, "loop": true } } }
+```
+
+- `id` is an id from `scene_asset_catalog`. `materials` override source materials by glTF material name (`color`, `metallic`, `roughness`, `opacity`, `emission`, `emissiveColor`); `scene_inspect` lists the names. Placements with the same overrides share one material.
+- Placements of the same asset share geometry and materials, so they draw as one instanced batch per material (`drawBatches` in the render status stays flat as copies are added). Skins and morphs keep working.
+- `clip` plays that clip, held at its first frame until scene time `start`, then at `speed`, looping unless `loop` is false. Each placement that plays a clip gets a decoded copy of its own (its geometry is not shared), because a pose is state of one decoded asset. A seek gives the same frame as playing to that time. `set-motion` tracks still move the node itself, so a walking figure is a clip plus a motion track on the same node.
+- Bounds: 512 placements, 16 different assets, 16 placements playing a clip, and `maxNodes` for the generated parts. Placed geometry does not count against `maxVertices`; each asset keeps the decoder limits of the catalog.
+- `scene_inspect` adds `assets`: per placement the asset id, part count, world bounds, clips (index, name, duration), material names and the playing clip.
+- Not yet: render jobs refuse a scene with placed assets (`scene_look` draws them), and a scene created without any placed asset cannot add the first one with `scene_apply`.
+
 ### Relations between parts
 
 A mesh node can list `relations` that place it against other mesh nodes, so a resized body keeps its handle where it

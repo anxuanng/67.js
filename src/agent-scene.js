@@ -22,7 +22,7 @@ const MAX_MESH_REPORTS = 16;
 // Terrain meshes carry one more float for each vertex (sky visibility) than the 56 bytes the budget estimates.
 const TERRAIN_SKY_VISIBILITY_BYTES = 4;
 const CAMERA_DEFAULTS = Object.freeze({ eye: [4, 3, 5], target: [0, 0, 0], up: [0, 1, 0], fov: 45, near: 0.1, far: 1000 });
-const NODE_FIELDS = ['translation', 'rotation', 'scale', 'parent', 'label', 'geometry', 'material', 'skin', 'relations'];
+const NODE_FIELDS = ['translation', 'rotation', 'scale', 'parent', 'label', 'geometry', 'material', 'skin', 'relations', 'asset'];
 const MATERIAL_FIELDS = ['color', 'metallic', 'roughness', 'emission', 'emissiveColor', 'opacity', 'alphaMode', 'doubleSided', 'pattern', ...MATERIAL_LAYER_FIELDS];
 const PATTERN_TEXTURE_FIELDS = ['map', 'normalMap', 'metallicRoughnessMap', 'emissiveMap', 'boxMapScale', 'boxMapAxis'];
 const CAMERA_FIELDS = Object.keys(CAMERA_DEFAULTS);
@@ -283,6 +283,12 @@ function nodeFrom(value) {
     identifier(value.geometry);
     identifier(value.material);
   }
+  if (value.asset !== undefined) {
+    if (value.geometry !== undefined || value.skin !== undefined) {
+      throw new TypeError(`Node ${value.id}: a node that places an asset is a group; drop geometry, material and skin.`);
+    }
+    result.asset = agentSceneModule('assets').normalizeAssetPlacement(value.asset);
+  }
   if (value.skin !== undefined) {
     if (value.geometry === undefined) {
       throw new TypeError('Only mesh nodes can have a skin.');
@@ -501,7 +507,7 @@ function compile(recipe, geometries, localBounds, limits) {
       throw new RangeError(`Node ${node.id} uses ${geometries.has(node.geometry) ? `material ${node.material}` : `geometry ${node.geometry}`}, which does not exist. Add it to the recipe, or point the node at one of: ${(geometries.has(node.geometry) ? [...materials.keys()] : [...geometries.keys()]).join(', ')}.`);
     }
     return { name: node.id, parent: node.parent,
-      matrix: mat4.fromRotationTranslationScale(mat4.create(), node.rotation, node.translation, node.scale),
+      matrix: node.assetPart ? mat4.clone(node.assetPart.matrix) : mat4.fromRotationTranslationScale(mat4.create(), node.rotation, node.translation, node.scale),
       geometry: geometries.get(node.geometry), material: materials.get(node.material) };
   }), limits);
   validateGraph(graph, localBounds);
@@ -646,8 +652,12 @@ function normalizeRecipe(input, limits) {
     throw new RangeError('Expected 67js.scene schemaVersion 1.');
   }
   // A scene with no mesh, or whose nodes all take the default material, has nothing to list: absent means empty.
+  // Placed assets generate their own geometries, materials and part nodes each time; an exported or checkpointed recipe may still carry them.
   recipe.geometries ??= [];
   recipe.materials ??= [];
+  if (Array.isArray(recipe.geometries)) recipe.geometries = recipe.geometries.filter(geometry => geometry?.type !== 'asset');
+  if (Array.isArray(recipe.materials)) recipe.materials = recipe.materials.filter(material => !material?.assetSource);
+  if (Array.isArray(recipe.nodes)) recipe.nodes = recipe.nodes.filter(node => !node?.assetPart);
   recipe.geometries = resources(recipe.geometries, limits.maxGeometries, 'geometries', value => {
     geometryEstimate(value);
     const definition = { id: value.id, type: value.type };
@@ -768,6 +778,14 @@ function immutableMaterial(snapshot) {
   return Object.freeze(snapshot);
 }
 
+const NO_ASSETS = Object.freeze({ placements: [], animators: [], geometryParts: new Map(), materialOutputs: new Map(), partExtras: new Map() });
+
+// A placed asset's material is the decoded one, shared by every placement that uses the same overrides.
+function assetMaterialHandle(snapshot, output, ...candidates) {
+  const reusable = candidates.find(handle => handle?.output === output);
+  return reusable ?? { holder: { snapshot }, output };
+}
+
 function retainedMatrices(parts) {
   for (const part of parts) {
     if (part.matrix.length !== 16 || part.matrix.byteLength !== 64) {
@@ -808,6 +826,10 @@ function stagePose(stagedState, time) {
       if (Array.from(scale).some(component => !Number.isFinite(Math.fround(component)) || Math.fround(component) <= 0)) {
         throw new RangeError('Motion scale must remain positive at Float32 precision.');
       }
+      if (node.assetPart) {
+        graph.getNode(node.id).localMatrix.set(node.assetPart.matrix);
+        continue;
+      }
       mat4.fromRotationTranslationScale(graph.getNode(node.id).localMatrix, rotation, translation, scale);
     }
     graph.update();
@@ -831,7 +853,10 @@ function stagePose(stagedState, time) {
   }
   const camera = sampled?.camera ? cameraPoseFrom(sampled.camera) : stagedState.recipe.camera;
   retainedMatrices(stagedState.parts);
-  return { graph, materialUpdates, camera, time, clothGeometries: sampledGeometries(stagedState, time) };
+  const clothGeometries = sampledGeometries(stagedState, time);
+  // Staged last: a pose pending on a decoded asset must be committed or discarded, so nothing above may throw after it.
+  const assetClips = stagedState.assetRuntime.animators.length ? agentSceneModule('assets').stageAssetClips(stagedState.assetRuntime, graph, time) : null;
+  return { graph, materialUpdates, camera, time, clothGeometries, assetClips };
 }
 
 // Cloth and particles replace the geometry of their own nodes at a sampled time; no node belongs to both.
@@ -866,12 +891,28 @@ function publishPose(stagedState, pose) {
     update.holder.snapshot = update.snapshot;
   }
   publishSkinPoses(stagedState.skinStages);
+  if (pose.assetClips) {
+    pose.assetClips.commit();
+    for (const part of stagedState.restParts) {
+      const matrix = pose.assetClips.matrices.get(part.name);
+      if (matrix) Float32Array.prototype.set.call(part.matrix, matrix);
+    }
+  }
   stagedState.renderCamera = pose.camera;
   stagedState.motionTime = pose.time;
   const nextParts = partsWithCloth(stagedState.restParts, pose.clothGeometries);
   const partsChanged = nextParts !== stagedState.parts;
   stagedState.parts = nextParts;
   return partsChanged;
+}
+
+// The recipe an agent wrote: without the geometries, materials and part nodes that placed assets generate.
+function authoredRecipe(recipe) {
+  const authored = structuredClone(recipe);
+  authored.nodes = authored.nodes.filter(node => !node.assetPart);
+  authored.geometries = authored.geometries.filter(geometry => geometry.type !== 'asset');
+  authored.materials = authored.materials.filter(material => !material.assetSource);
+  return authored;
 }
 
 function removeNode(candidate, operation) {
@@ -910,8 +951,9 @@ function removeNode(candidate, operation) {
 }
 
 /** A bounded CPU authoring session. Render adapters must treat geometry as immutable. */
-export function createAgentScene(input, inputLimits = {}) {
+export function createAgentScene(input, inputLimits = {}, options = {}) {
   const limits = resolveLimits(inputLimits);
+  const assetOutputCache = new Map();
   let state = null;
   let revision = 0;
   let topologyRevision = 0;
@@ -965,6 +1007,9 @@ export function createAgentScene(input, inputLimits = {}) {
 
   function stage(inputRecipe, preferred = null, removedNodes = new Set(), removedMaterials = new Set()) {
     const recipe = normalizeRecipe(inputRecipe, limits);
+    const assetRuntime = recipe.nodes.some(node => node.asset)
+      ? agentSceneModule('assets').expandAssetPlacements(recipe, options.assets, limits, assetOutputCache)
+      : NO_ASSETS;
     if (state) {
       retainedMatrices(state.parts);
     }
@@ -979,7 +1024,7 @@ export function createAgentScene(input, inputLimits = {}) {
       const activeRecord = state?.geometryRecords.get(definition.id);
       const existing = [preferredRecord, activeRecord, availableRecords.get(signature)]
         .find(record => record?.signature === signature);
-      return { definition, signature, existing, estimatedVertices: geometryEstimate(definition) };
+      return { definition, signature, existing, estimatedVertices: definition.type === 'asset' ? 0 : geometryEstimate(definition) };
     });
     const residentStats = geometryStats(ownedRecords);
     const pendingPlans = plans.filter(plan => !plan.existing);
@@ -1002,7 +1047,11 @@ export function createAgentScene(input, inputLimits = {}) {
     const geometryRecords = new Map();
     for (const plan of plans) {
       let record = plan.existing;
-      if (!record) {
+      if (!record && plan.definition.type === 'asset') {
+        // A decoded asset geometry is shared by every placement. Its size is bounded by the asset decoder, not by this scene's budget.
+        const geometry = assetRuntime.geometryParts.get(plan.definition.id);
+        record = Object.freeze({ signature: plan.signature, geometry, bounds: boundsFor(geometry, mat4.create()), vertices: 0, geometryBytes: 0, estimatedVertices: 0 });
+      } else if (!record) {
         const geometry = Object.freeze(generateGeometry(plan.definition, Math.min(limits.maxVertices, 1_000_000)));
         const geometryBytes = Object.values(geometry).reduce((total, array) => total + array.byteLength, 0);
         const vertices = geometry.positions.length / 3;
@@ -1039,7 +1088,8 @@ export function createAgentScene(input, inputLimits = {}) {
       const activeHandle = removedMaterials.has(material.id) ? null : state?.materialHandles.get(material.id);
       // The renderer keeps tag, blending, opacity and sidedness per batch, so a handle is reused only when all match.
       const existing = [preferredHandle, activeHandle].find(handle => handle && batchSignature(handle.holder.snapshot) === batchSignature(material));
-      const handle = existing ?? materialHandle(snapshot);
+      const assetOutput = assetRuntime.materialOutputs.get(material.id);
+      const handle = assetOutput ? assetMaterialHandle(snapshot, assetOutput, preferredHandle, activeHandle) : existing ?? materialHandle(snapshot);
       materialHandles.set(material.id, handle);
     }
     const activeParts = new Map(state?.sourceRestParts.map(part => [part.name, part]) ?? []);
@@ -1048,13 +1098,15 @@ export function createAgentScene(input, inputLimits = {}) {
       const binding = skinBindings.get(node.id);
       const geometry = binding?.geometry ?? geometries.get(node.geometry);
       const material = materialHandles.get(node.material).output;
+      const assetExtras = assetRuntime.partExtras.get(node.id);
       const activePart = removedNodes.has(node.id) ? null : activeParts.get(node.id);
       const existing = [activePart, preferredParts.get(node.id)]
-        .find(part => part?.geometry === geometry && part.material === material && part.skin === binding?.skin);
+        .find(part => part?.geometry === geometry && part.material === material && part.skin === (assetExtras?.skin ?? binding?.skin) && part.morph === assetExtras?.morph);
       return existing ?? Object.freeze({
         name: node.id, geometry, material,
         matrix: new Float32Array(graph.getNode(node.id).worldMatrix),
         ...(binding ? { skin: binding.skin } : {}),
+        ...assetExtras,
       });
     });
     retainedMatrices(nextParts);
@@ -1075,6 +1127,7 @@ export function createAgentScene(input, inputLimits = {}) {
       topologyChanged: Boolean(state && (restParts !== state.restParts || state.parts !== state.restParts)),
       stats: geometryStats(geometryRecords.values()),
     };
+    stagedState.assetRuntime = assetRuntime;
     stagedState.localBounds = localBounds;
     stagedState.skinBindings = skinBindings;
     stagedState.skinStages = createSkinStages(skinBindings);
@@ -1082,7 +1135,7 @@ export function createAgentScene(input, inputLimits = {}) {
     stagedState.physicsSampler = stagePhysics(recipe, geometryRecords);
     stagedState.clothSampler = stageCloth(recipe, geometryRecords);
     stagedState.particleSampler = stageParticles(recipe, geometryRecords);
-    const animated = Boolean(stagedState.motionSampler || stagedState.physicsSampler || stagedState.clothSampler || stagedState.particleSampler);
+    const animated = Boolean(stagedState.motionSampler || stagedState.physicsSampler || stagedState.clothSampler || stagedState.particleSampler || assetRuntime.animators.length);
     stagedState.poseGraph = animated ? compile(recipe, geometries, localBounds, limits) : null;
     stagedState.initialPose = stagePose(stagedState, animated ? 0 : null);
     return stagedState;
@@ -1243,8 +1296,8 @@ export function createAgentScene(input, inputLimits = {}) {
       if (time !== null && (!Number.isFinite(time) || time < 0 || time > 3600)) {
         throw new RangeError('Motion time must be null or within zero and 3600 seconds.');
       }
-      if (time !== null && !state.motionSampler && !state.physicsSampler && !state.clothSampler && !state.particleSampler) {
-        throw new RangeError('This procedural recipe has no motion, physics, cloth or particles.');
+      if (time !== null && !state.motionSampler && !state.physicsSampler && !state.clothSampler && !state.particleSampler && !state.assetRuntime.animators.length) {
+        throw new RangeError('This procedural recipe has no motion, physics, cloth, particles or placed asset clip.');
       }
       if (publishPose(state, stagePose(state, time))) {
         topologyRevision++;
@@ -1261,7 +1314,7 @@ export function createAgentScene(input, inputLimits = {}) {
       return structuredClone(state.recipe.shadow);
     },
     exportRecipe() {
-      return structuredClone(state.recipe);
+      return authoredRecipe(state.recipe);
     },
     /** Bone nodes at rest and a clip baked from motion, as `exportGlb` options. Leaves the pose where it was. */
     rigExport(options = {}) {
@@ -1278,7 +1331,7 @@ export function createAgentScene(input, inputLimits = {}) {
         throw new RangeError('operations must contain 1 to maxOperations commands.');
       }
       const operations = copiedJson(inputOperations, limits.maxRecipeBytes);
-      const candidate = structuredClone(state.recipe);
+      const candidate = authoredRecipe(state.recipe);
       const removedNodes = new Set();
       const removedMaterials = new Set();
       for (const operation of operations) {
@@ -1474,7 +1527,7 @@ export function createAgentScene(input, inputLimits = {}) {
       if (options.ids !== undefined && (!Array.isArray(options.ids) || options.ids.length > limits.maxNodes)) {
         throw new RangeError('Inspection IDs exceed maxNodes.');
       }
-      const selected = options.ids === undefined ? state.recipe.nodes : options.ids.map(id => {
+      const selected = options.ids === undefined ? state.recipe.nodes.filter(node => !node.assetPart) : options.ids.map(id => {
         identifier(id);
         const node = state.recipe.nodes.find(value => value.id === id);
         if (!node) {
@@ -1504,6 +1557,7 @@ export function createAgentScene(input, inputLimits = {}) {
         physics: state.physicsSampler ? state.physicsSampler.report() : null,
         ...(state.clothSampler ? { cloth: state.clothSampler.report() } : {}),
         ...(state.particleSampler ? { particles: state.particleSampler.report() } : {}),
+        ...(state.assetRuntime.placements.length ? { assets: agentSceneModule('assets').describeAssetPlacements(state.assetRuntime, state.graph, geometry => state.localBounds.get(geometry)) } : {}),
         ...(state.bakeReport ? { bake: state.bakeReport } : {}),
         ...(state.reflectionReport ? { reflections: state.reflectionReport } : {}),
         ...(state.recipe.armatures ? { rig: rigReport(state.recipe, state.skinBindings) } : {}),
@@ -1554,7 +1608,7 @@ export function createAgentScene(input, inputLimits = {}) {
       }
       const handle = Object.freeze({});
       checkpoints.set(handle, {
-        recipe: structuredClone(state.recipe),
+        recipe: authoredRecipe(state.recipe),
         geometryRecords: new Map(state.geometryRecords),
         materialHandles: new Map(state.materialHandles),
         restParts: state.restParts,

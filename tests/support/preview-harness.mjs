@@ -7,6 +7,7 @@ import { resolveAgentShadow, agentEnvironmentMap } from '../../src/agent-look.js
 import { agentSceneModule } from '../../src/agent-scene-modules.js';
 import { createAgentAssetScene } from '../../src/agent-asset.js';
 import { parseGltf } from '../../src/gltf.js';
+import { assetCopyKey, recipeAssetNeeds } from '../../src/agent-scene-assets.js';
 import { BRANCH_LIMITS, createBranchStore, printableLabel } from '../../src/agent-branches.js';
 import { sessionProblem } from '../../src/agent-errors.js';
 
@@ -73,7 +74,7 @@ export function previewHarness() {
     // The harness loads Manifold from node_modules directly, so the preview's served-file loader is ignored.
     setManifoldModuleLoader: () => {},
     needsPhysics, loadPhysicsEngine, physicsEngineLoaded, setPhysicsModuleLoader: () => {},
-    parseGltf, Uint8Array, atob, sessionProblem,
+    parseGltf, Uint8Array, atob, sessionProblem, assetCopyKey, recipeAssetNeeds,
     applyProjection, mat4, resolveAgentShadow, agentEnvironmentMap, agentSceneModule, BRANCH_LIMITS, createBranchStore, printableLabel,
     Renderer67: FaultInjectedRenderer, skyOpenness: () => 1, fogSkyVisibility: () => null,
     // The fault-injected renderer has no floor part; the automatic floor is covered by agent-ground.test.js and the live smokes.

@@ -60,6 +60,7 @@ Using Node directly also avoids shell-specific npm launcher behavior in MCP clie
 The asset catalog reads regular files directly inside that directory, with limits of 64 files and 16 MiB per file.
 Asset IDs bind file contents through SHA-256. Changed files require a runtime restart before they receive refreshed IDs.
 Catalog imports retain supported textures, skins, morphs and animation clips.
+The catalog takes self-contained GLB only. Poly Haven and similar sites ship a glTF folder (`.gltf`, `.bin` and textures): bundle it first with one command, then put the result in the catalog directory: `npx @gltf-transform/cli copy tree_01_1k.gltf tree_01.glb`. A recipe places a catalog asset with an `asset` node field (see [the scene guide](agent-scene.md#placed-catalog-assets)).
 
 These launch options remain outside tool arguments.
 The process runs below normal priority to reduce interference with other work.

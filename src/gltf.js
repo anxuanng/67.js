@@ -926,6 +926,8 @@ function convertMaterial(source, limits, maps, definition = {}) {
     normalScale: [definition.normalTexture?.scale ?? 1, definition.normalTexture?.scale ?? 1],
     occlusionStrength: source.aoMapIntensity,
   };
+  // Recipe scenes override a placed asset's materials by this source name.
+  if (typeof definition.name === 'string' && definition.name) material.name = definition.name.slice(0, 256);
   material.alphaMode = GLTF_ALPHA_MODES[definition.alphaMode ?? 'OPAQUE'];
   material.alphaCutoff = definition.alphaCutoff ?? 0.5;
   material.opacity = definition.pbrMetallicRoughness?.baseColorFactor?.[3] ?? 1;
