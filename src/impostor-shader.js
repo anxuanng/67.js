@@ -4,7 +4,7 @@
 // extra attribute. The same function runs in the colour and shadow vertex shaders: in the shadow pass the "eye" is
 // the light, so the card shows the tree as the sun sees it.
 
-import { registerAddonGlsl } from './impostor-slots.js';
+import { registerAddonGlsl } from './shader-registry.js';
 
 /** Frames per side of the hemi-octahedral atlas (the atlas holds this many squared views). */
 export const IMPOSTOR_FRAMES = 8;
