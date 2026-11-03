@@ -186,7 +186,8 @@ async function renderReferenceScene(id, { describe, ambientOcclusion = 0, ambien
   // backgroundOnly draws the sky alone, so a score can be limited to the pixels the asset covers.
   const renderer = createSceneRenderer(backgroundOnly ? [] : probed ? probed.parts : baked ? baked.parts : scene.parts, scene, cascades);
   renderer.resize();
-  const frame = { ...scene.camera, environment: scene.environment, time: 0, exposure: 1, effects: { ambientOcclusion, ambientOcclusionRadius } };
+  // Blender draws a still scene. The renderer's default wind (0.3) would move the leaf cards by up to four pixels at time 0.
+  const frame = { ...scene.camera, environment: scene.environment, time: 0, wind: 0, exposure: 1, effects: { ambientOcclusion, ambientOcclusionRadius } };
   renderer.render(frame);
   renderer.render(frame);
   const debug = renderer.context.getExtension('WEBGL_debug_renderer_info');

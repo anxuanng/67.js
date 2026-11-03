@@ -1038,6 +1038,9 @@ const registeredFeatureCode = new Map();
 // material-layer-shaders.js sets bind(renderer, layerMaps): it binds the textures of material.layerMaps for one batch.
 export const layerTextureSupport = {};
 
+// view-transform-shader.js sets apply(source, kind, viewTransform, hasLook), bindLook(renderer, program) and dispose(renderer).
+export const viewTransformShader = {};
+
 /** Register the GLSL of an optional feature. Called by the module that holds it, on import. */
 export function registerShaderFeatureCode(feature, slots) {
   registeredFeatureCode.set(feature, slots);
