@@ -39,7 +39,7 @@ All of them are against the Blender 5.2.2 renders taken on 2026-11-03 with the s
 | `megacity-dusk` | 0.1627 | 0.1524 | 0.1022 |  |  |
 | `metal` | 0.1036 | 0.0916 | 0.0782 |  | 0.1492 |
 | `metal-room` | 0.5076 | 0.5262 | 0.1082 | 0.1716 |  |
-| `mountain-valley` | 0.2629 | 0.1879 | 0.2981 |  |  |
+| `mountain-valley` | 0.1792 | 0.1879 | 0.2692 |  |  |
 | `outdoor-hdri` | 0.0462 | 0.0403 | 0.0296 |  | 0.1242 |
 | `spot-area` | 0.1242 | 0.1935 | 0.1707 |  | 0.0658 |
 | `temple-hall` | 0.0659 | 0.2341 | 0.2394 | 0.0554 |  |
@@ -93,7 +93,7 @@ Three scenes test what people want to make, not one feature. Each one is built w
 | Scene | Parts | Triangles drawn | 67js against Cycles | EEVEE against Cycles | Largest visible gap |
 | --- | --- | --- | --- | --- | --- |
 | `megacity-dusk` | 4,300 | 51.6 thousand | 0.1627 | 0.1524 | Window bands are sharper, and facades get no light from the windows |
-| `mountain-valley` | 7,698 | 9.72 million | 0.2623 | 0.1879 | The valley floor and the trees are 1.3 to 1.7 times as bright as in Cycles, and shadowed rock is brighter (see "Sky visibility in crowns and valleys") |
+| `mountain-valley` | 7,698 | 9.72 million | 0.1792 | 0.1879 | The valley floor and the trees are 1.3 to 1.7 times as bright as in Cycles, and shadowed rock is brighter (see "Sky visibility in crowns and valleys") |
 | `temple-hall` | 155 | 11 thousand | 0.2126 | 0.2341 | The fog shafts are stronger in 67js, and the floor gets no bounce light |
 
 With the shadow floor `temple-hall` scored 0.5841, `mountain-valley` 0.3658 and `megacity-dusk` 0.1583.
@@ -647,12 +647,27 @@ Display luminance of the bottom 100 rows of `mountain-valley`, GPU column, store
 | terrain left out of the shadow pass | 0.2274 | The shadow comes from the terrain; the trees add almost nothing at this size. |
 | depth bias `0.00002` (was up to `0.002`) | 0.1705 | Bias is not the cause. |
 | shadow LOD selection off | 0.1809 | Not the cause. |
-| no culling in the shadow pass | 0.1809 | Not the cause. |
+| no instance (frustum) culling in the shadow pass | 0.1809 | Not the cause. |
 | terrain `levels: 1` (no LOD at all) | 0.1822 | Not the cause. |
 | shadow map depth 2,000 m / 6,000 m (was 3,500 m) | 0.1720 / 0.2164 | Moves with the bias, which scales with the depth range; not the cause. |
 | receivers outside the map return 0 instead of 1 | 0.1822 | The floor is inside the map. |
 
 The geometry says the floor is dark: marching the height function toward the sun (`createNoiseHeight` with the scene's parameters, 336 floor points, 4 m steps to 5 km) finds a horizon above the sun at every point, with a margin of at least 0.295 in tangent (median 0.52) over the sun's 0.227. So the 1,100 m rim blocks the sun by a wide margin, Cycles agrees, and the single shadow map does not show it. The cause is still unknown, and none of the settings above closes it when tried alone. Sky visibility is not the cause: the crown now reads 0.2026 against 0.1762 in Cycles (green pixels above 60 percent of the frame height, EEVEE 0.2295), and the remaining gap on both scenes is the sun shadow of #206.
+
+## The valley floor's sun: back faces in the shadow pass (2026-11-03, part of issue #206)
+
+Probe: the sun shadow depth (2048 x 2048, 24 bit) was copied to a float target and read back, and 259 floor points were projected into it. A march over the terrain's own mesh blocks the sun at all 259; the map shadows 123 of them. For the others the texel holds the floor's own depth where the march's first hit, 1,000 to 1,500 m toward the sun and 300 m up, has a depth of 0.36 against the floor's 0.58. Nothing is drawn there. The cause is the cull state of the shadow pass: it culled back faces. A ray that enters the terrain sideways (the mesh has no wall on its outer edge, and a slope that climbs toward the sun faster than the sun's 13 degrees faces away from the light) meets only back faces, writes no depth, and the sun passes through the rock. In the readback the floor shows as an unoccluded patch under the rim. The ten single changes of #221 could not close it because each left the culling alone; a finest-level terrain (`lodDistance` large) also left the floor at 0.1727.
+
+The shadow depth pass now draws both faces (`applyAlphaState` in `src/renderer.js`, `textured` false). A closed mesh gives the same map, because its front face is the nearest; only an open surface changes. Measured, GPU, 960 x 540:
+
+| | before | after | Cycles |
+| --- | --- | --- | --- |
+| `mountain-valley` floor, world light 0, display, rows 400 to 540 | 0.1727 | 0.0000 | 0.0003 (linear) |
+| `mountain-valley` against Cycles, FLIP | 0.2612 | 0.1792 | |
+| every other scene, FLIP against Cycles and EEVEE | | unchanged to four digits | |
+| shadow map redraw, median of 3 runs of 40 (RTX 3060) | `mountain-valley` 1.75 to 1.81 ms, `foliage` 0.25 to 0.27, `long-street` 0.15 to 0.18 | 1.81 to 1.88, 0.28 to 0.31, 0.19 | |
+
+The map is redrawn only when a caster, the wind or the assembly changes, so a still scene pays nothing per frame. The floor is now lit by the sky alone, so a tree shadow cannot fall on it: the sun does not reach it, as in Cycles. The `foliage` crown leak is not this cause: its FLIP and picture did not move. The crown's sun-shadow rows (9,252 pixels sun-lit in 67js and shadowed in Cycles) stay open under #206; the depth bias is the remaining lead (a tenth of it removed 2,941 pixels).
 
 ## Fog valley against EEVEE (2026-11-03, part of issue #165)
 
