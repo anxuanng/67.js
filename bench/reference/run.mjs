@@ -42,7 +42,7 @@ const argumentsGiven = process.argv.slice(2);
 const scoreOnly = argumentsGiven.includes('--score-only');
 const skipBlender = argumentsGiven.includes('--skip-blender');
 // --skip-cpu leaves out the SwiftShader render (very slow for the 9 million triangle scenes) and the scoring, which needs it.
-const skipCpu = argumentsGiven.includes('--skip-cpu');
+const skipCpuFlag = argumentsGiven.includes('--skip-cpu');
 const sceneFlag = argumentsGiven.indexOf('--scene');
 const occlusionFlag = argumentsGiven.indexOf('--ambient-occlusion');
 const ambientOcclusion = occlusionFlag >= 0 ? Number(argumentsGiven[occlusionFlag + 1]) : 0;
@@ -76,7 +76,18 @@ const samplesFlag = argumentsGiven.indexOf('--samples');
 const pathTracerSamples = samplesFlag >= 0 ? Number(argumentsGiven[samplesFlag + 1]) : 64;
 const noiseThresholdFlag = argumentsGiven.indexOf('--noise-threshold');
 const pathTracerNoiseThreshold = noiseThresholdFlag >= 0 ? Number(argumentsGiven[noiseThresholdFlag + 1]) : undefined;
-const onlyScene = sceneFlag >= 0 ? argumentsGiven[sceneFlag + 1] : null;
+// --scene takes one id or several separated by commas.
+const sceneIdsGiven = sceneFlag >= 0 ? argumentsGiven[sceneFlag + 1].split(',') : null;
+// --bake <id>,<id> alone is a baked-score run: it draws and scores only those scenes, with the GPU, against the Cycles and EEVEE renders
+// of an earlier run (use --skip-blender), and writes bake.json. With an option that changes the bake (--sky-only, --bake-preset, --probes,
+// --ambient, --ambient-occlusion, --cascades) the scores go to the work directory and the committed files stay as they are.
+// The fresh bake.json lands in the work directory and is checked against the committed one (compare-scores.mjs); --update-baseline replaces
+// the committed bake.json and images/<id>-baked.jpg with it.
+const bakeScoreRun = bakedSceneIds !== null && !sceneSet && !pathTracerFlag;
+const bakeVariantFlags = ['--sky-only', '--bake-preset', '--probes', '--ambient', '--ambient-occlusion', '--cascades', '--no-object-probes', '--object-probes', '--no-water', '--ssr-water'];
+const bakeScoreIsBaseline = bakeScoreRun && argumentsGiven.includes('--update-baseline') && !bakeVariantFlags.some(flag => argumentsGiven.includes(flag));
+const onlyScenes = sceneIdsGiven ?? (bakeScoreRun ? bakedSceneIds : null);
+const skipCpu = skipCpuFlag || bakeScoreRun;
 
 async function renderBackend(backend, serverUrl, graphics) {
   const browser = await chromium.launch({ executablePath: CHROME, headless: true, args: BACKEND_ARGUMENTS[backend] });
@@ -94,7 +105,7 @@ async function renderBackend(backend, serverUrl, graphics) {
     await openHarness();
     const sceneIds = await page.evaluate(() => window.referenceSceneIds);
     for (const id of sceneIds) {
-      if (onlyScene && id !== onlyScene) continue;
+      if (onlyScenes && !onlyScenes.includes(id)) continue;
       await openHarness();
       const started = performance.now();
       const describe = backend === 'gpu';
@@ -133,7 +144,7 @@ async function renderPathTracerScenes(serverUrl) {
     await page.waitForFunction(() => window.renderReferencePathTraced, null, { timeout: PAGE_LOAD_TIMEOUT });
     const sceneIds = await page.evaluate(() => window.referenceSceneIds);
     for (const id of sceneIds) {
-      if (onlyScene && id !== onlyScene) continue;
+      if (onlyScenes && !onlyScenes.includes(id)) continue;
       const options = { width: WIDTH, height: HEIGHT, samples: pathTracerSamples, maxSeconds: 1800, ...(pathTracerNoiseThreshold === undefined ? {} : { noiseThreshold: pathTracerNoiseThreshold }) };
       const result = await page.evaluate(([sceneId, tracerOptions]) => window.renderReferencePathTraced(sceneId, tracerOptions), [id, options]);
       await writeFile(`${WORK_DIRECTORY}/${id}-pathtracer.png`, Buffer.from(result.image, 'base64'));
@@ -179,16 +190,20 @@ if (!scoreOnly && !pathTracerFlag) {
   }
   await writeFile(`${WORK_DIRECTORY}/graphics.json`, JSON.stringify(graphics, null, 1));
   if (!skipBlender) {
-    const sceneArguments = onlyScene ? [onlyScene] : [];
+    const sceneArguments = onlyScenes ?? [];
     runChecked(BLENDER, ['-b', '--factory-startup', '--python', 'bench/reference/render-blender.py', '--', WORK_DIRECTORY, ...sceneArguments]);
   }
 }
 
-if ((!onlyScene && !skipCpu) || pathTracerFlag) {
+if ((!onlyScenes && !skipCpu) || pathTracerFlag || bakeScoreRun) {
   runChecked('uv', [
     'run', '--no-project', '--python', '3.12', '--with', 'flip-evaluator', '--with', 'pillow', '--with', 'numpy',
-    'python', '-I', 'bench/reference/score.py', WORK_DIRECTORY, OUTPUT_DIRECTORY, ...(pathTracerFlag ? ['--path-tracer'] : []), ...(sceneSet ? [`--${sceneSet}`] : []),
+    'python', '-I', 'bench/reference/score.py', WORK_DIRECTORY, bakeScoreRun && !bakeScoreIsBaseline ? WORK_DIRECTORY : OUTPUT_DIRECTORY, ...(pathTracerFlag ? ['--path-tracer'] : []), ...(bakeScoreRun ? ['--bake', bakedSceneIds.join(',')] : []), ...(sceneSet ? [`--${sceneSet}`] : []),
   ]);
+  if (bakeScoreRun && !bakeScoreIsBaseline && !bakeVariantFlags.some(flag => argumentsGiven.includes(flag))) {
+    const comparison = spawnSync('node', ['bench/reference/compare-scores.mjs', `${WORK_DIRECTORY}/bake.json`], { stdio: 'inherit' });
+    if (comparison.status !== 0) process.exitCode = 1;
+  }
 }
 else {
   // Scoring reads every scene in the work directory, so a run of one scene would mix new and old renders; it leaves the scores as they were.

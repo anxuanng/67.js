@@ -6,15 +6,63 @@ This suite scores how close a 67js render is to Blender on 23 fixed scenes. Late
 
 Run `npm run reference`. It prints one row for each scene, and it rewrites `baseline.json` and `images/`.
 
-The run needs Chrome, Blender 5.2, `uv` and an NVIDIA GPU, and it took 751 s on an RTX 3060 with other jobs on the machine (2026-11-01). Use `--scene <id>` to render one scene, then `--score-only` to score the scenes in the work directory; that also rewrites `baseline.json` with only those scenes. Use `CHROME_PATH` and `BLENDER_PATH` to change the program paths.
+The run needs Chrome, Blender 5.2, `uv` and an NVIDIA GPU, and it took 751 s on an RTX 3060 with other jobs on the machine (2026-11-01). Use `--scene <id>,<id>` to render some scenes, then `--score-only` to score the scenes in the work directory; that also rewrites `baseline.json` with only those scenes. Use `CHROME_PATH` and `BLENDER_PATH` to change the program paths.
 
-CI does not run this suite. `tests/reference-baseline.test.js` checks only that the committed baseline is complete.
+The other sets: `--khronos` (download the five GLB files from [glTF-Sample-Assets](https://github.com/KhronosGroup/glTF-Sample-Assets) into the gitignored `artifacts/khronos/<name>/<name>.glb` first, see below), `--path-tracer --scene <ids>` (needs the Cycles renders of an earlier plain run, for example `--skip-cpu`, which renders without scoring), and `--bake <id>,<id> --skip-blender`, which draws and scores only those scenes baked, against the Cycles renders of an earlier plain run.
+
+A baked run writes `artifacts/reference/bake.json` and compares it with the committed `bake.json` (`compare-scores.mjs`): it exits with an error when a score is worse by more than 0.01 FLIP. `--update-baseline` replaces `bake.json` and `images/<id>-baked.jpg`. The bake is deterministic on one machine (two runs gave the same four digits), so 0.01 is a margin for other GPUs and drivers, and well under the 0.047 that went unnoticed in #160.
+
+CI does not run this suite. `tests/reference-baseline.test.js` checks that the committed baseline is complete, and `tests/reference-bake-regression.test.js` reads JSON only: it checks `bake.json`, tests the comparison on the numbers of #160, and compares a fresh `artifacts/reference/bake.json` with the stored one when a run left one there.
+
+## Scores now (2026-11-03)
+
+All of them are against the Blender 5.2.2 renders taken on 2026-11-03 with the sky capped at radiance 16 (one sun, see "One sun" below); the metric is [FLIP](https://github.com/NVlabs/flip) for LDR images, mean error, 0 means identical and a higher score means a larger visible difference. The first three columns are `baseline.json` (RTX 3060 as the 67js side, unchanged by this rerun), the baked column is `bake.json` (default bake of the scene, 3 bounces, `temple-hall` with its own `bakeOptions`), and the path tracer column is `path-tracer.json` (64 samples at most, 16 scenes; the tracer skips the six newest scenes). An empty cell was not measured.
+
+| Scene | 67js against Cycles | EEVEE against Cycles | 67js against EEVEE | Baked 67js against Cycles | Path tracer against Cycles |
+| --- | --- | --- | --- | --- | --- |
+| `brick-flat` | 0.1272 | 0.1098 | 0.0462 |  | 0.1152 |
+| `brick-graph` | 0.1602 | 0.1221 | 0.0896 |  | 0.1476 |
+| `brick-room` | 0.5102 | 0.5020 | 0.0710 | 0.1423 | 0.2727 |
+| `brushed-film` | 0.1029 | 0.0984 | 0.0855 |  | 0.1524 |
+| `car-paint` | 0.1038 | 0.0844 | 0.0650 |  | 0.1343 |
+| `character` | 0.0799 | 0.0622 | 0.0553 |  | 0.1289 |
+| `dark-shaft` | 0.0619 | 0.2653 | 0.2808 | 0.0550 |  |
+| `fog` | 0.2257 | 0.2662 | 0.1060 |  | 0.5623 |
+| `fog-room` | 0.1049 | 0.3730 | 0.3917 |  |  |
+| `fog-valley` | 0.1855 | 0.1952 | 0.1443 |  |  |
+| `foliage` | 0.1023 | 0.0888 | 0.0853 |  | 0.1753 |
+| `glass` | 0.1034 | 0.1009 | 0.0996 |  | 0.1406 |
+| `light-linking` | 0.0998 | 0.1558 | 0.1122 |  | 0.6241 |
+| `lit-interior` | 0.5055 | 0.5159 | 0.0923 | 0.1399 | 0.2167 |
+| `long-street` | 0.1407 | 0.0976 | 0.1252 |  | 0.1818 |
+| `material-spheres` | 0.1293 | 0.1053 | 0.0756 |  | 0.1383 |
+| `megacity-dusk` | 0.1627 | 0.1524 | 0.1022 |  |  |
+| `metal` | 0.1036 | 0.0916 | 0.0782 |  | 0.1492 |
+| `metal-room` | 0.5076 | 0.5262 | 0.1082 | 0.1716 |  |
+| `mountain-valley` | 0.2629 | 0.1879 | 0.2981 |  |  |
+| `outdoor-hdri` | 0.0462 | 0.0403 | 0.0296 |  | 0.1242 |
+| `spot-area` | 0.1242 | 0.1935 | 0.1707 |  | 0.0658 |
+| `temple-hall` | 0.0659 | 0.2341 | 0.2394 | 0.0554 |  |
+
+The mean of the 23 baseline scenes is 0.1746 for 67js and 0.1986 for EEVEE. The Khronos assets (`khronos.json`, own work directory) are scored over the pixels the asset changes, since the sky fills the frame and both sides draw it alike:
+
+| Asset | Pixels covered | 67js against Cycles (asset only) | 67js against EEVEE (asset only) | EEVEE against Cycles (asset only) |
+| --- | --- | --- | --- | --- |
+| `AnisotropyBarnLamp` | 0.0732 | 0.3355 | 0.3891 | 0.3291 |
+| `AnisotropyDiscTest` | 0.1074 | 0.2864 | 0.2771 | 0.1532 |
+| `ClearCoatTest` | 0.1354 | 0.2097 | 0.1563 | 0.1303 |
+| `SheenChair` | 0.1003 | 0.3316 | 0.3098 | 0.2299 |
+| `TransmissionTest` | 0.1350 | 0.2539 | 0.2027 | 0.1590 |
+
+## History
+
+Dated notes below, kept where they explain a decision. Numbers in them are from the date they name, and those before 2026-11-01 use the sky with two suns.
 
 ## One sun (2026-11-01)
 
 The HDRI holds its own sun: 6 of its 524,288 pixels carry 48.1 percent of the sky light, at 48 degrees of elevation. Most scenes also add a sun light. Cycles and EEVEE therefore drew two shadows of each object, and 67js drew one because its environment casts no shadow. `scenes.js` and `render-blender.py` now cap the image at radiance 16 on both sides, which removes the sun and its halo and keeps the clouds. The sky keeps 49.2 percent of its light. A scene with a sky now has only its own sun light.
 
-`baseline.json` and `images/` use the cap. Scores measured before this date, including the tables and notes below, `khronos.json` and `path-tracer.json`, use the sky with two suns. Scenes with a constant world did not move when the cap went in.
+`baseline.json`, `khronos.json`, `path-tracer.json`, `bake.json` and `images/` use the cap (the last three were rerun on 2026-11-03). Scores in the notes below that were measured before 2026-11-01 use the sky with two suns. Scenes with a constant world did not move when the cap went in.
 
 ## No shadow floor (2026-11-01)
 
@@ -333,21 +381,7 @@ Region scores, before and after this change, against Cycles (EEVEE in brackets):
 
 ## Baseline
 
-Measured on 2026-10-30 with an RTX 3060, SwiftShader and Blender 5.2.2. The metric is [FLIP](https://github.com/NVlabs/flip) for LDR images: 0 means identical, and a higher score means a larger visible difference.
-
-| Scene | 67js against Cycles | EEVEE against Cycles | 67js against EEVEE | Largest visible gap against Cycles |
-| --- | --- | --- | --- | --- |
-| `outdoor-hdri` | 0.0676 | 0.0383 | 0.0520 | Soft shadow contact, and a darker ball base |
-| `character` | 0.0995 | 0.0740 | 0.0833 | No contact shadow from the environment light |
-| `glass` | 0.1450 | 0.1150 | 0.1469 | The sphere does not bend the view or reflect the sky |
-| `foliage` | 0.1594 | 0.0783 | 0.1386 | Bright leaves from a built-in translucency trick |
-| `material-spheres` | 0.1598 | 0.1006 | 0.1196 | No reflection between objects, and light shadows |
-| `metal` | 0.1868 | 0.0934 | 0.1565 | No reflection between objects |
-| `fog` | 0.2612 | 0.2662 | 0.0542 | No multiple scattering |
-| `lit-interior` | 0.4997 | 0.5159 | 0.1204 | No indirect light, and point lights cast no shadows |
-| `spot-area` | 0.1242 | 0.1935 | 0.1707 | The sphere is lit more weakly at its shaded edge, and the wall has no bounce light |
-| `brick-graph` | 0.2269 | 0.1440 | 0.1480 | Bump is stronger than Blender's Bump node (measured 2026-11-01, see below; an earlier note said weaker), and Blender's noise is not 67js noise, so brick tone differs |
-| `brushed-film` | 0.1613 | 0.0939 | 0.1601 | The film colours on the dark sphere are close to Cycles, but its reflections are softer; the brushed highlight is pinched less at the pole, and there is no ground bounce under the spheres |
+Taken on 2026-10-30, under the sky with two suns, and replaced by "Scores now". The notes below explain decisions; their numbers are from the dates they name.
 
 Rows are the baseline taken before shadows for point lights. The `lit-interior` scene now sets `castShadow` on its three point lights. With shadows, 67js scores 0.5055 against Cycles (0.4997 before, so 0.0058 worse) and 0.0923 against EEVEE (0.1204 before, better): the shadow shape now matches, but Cycles fills its shadows with indirect light and 67js leaves them dark. The committed `lit-interior` row stays at the earlier numbers. `spot-area` is new with shadows, a spot light and an area light.
 
@@ -378,15 +412,7 @@ EEVEE against Cycles is a yardstick: it shows what a good rasterizer scores. In 
 - **Display:** Blender writes linear pixels, and `score.py` applies the tone curve and gamma from `src/post.js`. Both sides then use one display transform.
 - **Lighting tricks:** the 67js fill lights are off. All light comes from the sun, the environment and point lights.
 
-Khronos sample assets (issue #51): `npm run reference -- --khronos` draws files from [KhronosGroup/glTF-Sample-Assets](https://github.com/KhronosGroup/glTF-Sample-Assets) that you download by hand into `artifacts/khronos/<name>/<name>.glb` (gitignored; nothing is committed). Blender imports the same GLB with its own importer, so Cycles is the reference for the file and not for our reading of it. The run uses its own work directory and writes `khronos.json` and `images/khronos-<name>.jpg`; `baseline.json` stays as it is. The sky fills most of each frame and both sides draw it alike, so the whole-frame FLIP score is about 0.05 for every asset and says little. The `asset-` columns score only the pixels the asset changes (a second render of the empty sky decides which, threshold 0.03). Licences, checked in each model's `LICENSE.md`: ClearCoatTest and AnisotropyBarnLamp are CC BY 4.0 (Analytical Graphics, Inc. and Wayfair, LLC), TransmissionTest, AnisotropyDiscTest and SheenChair are CC0 1.0 (SheenChair's model files are CC0; only its metadata files are CC BY 4.0). Measured 2026-11-01 on the RTX 3060 (SwiftShader within 0.0004 on the whole frame):
-
-| Asset | Pixels covered | 67js against Cycles (asset only) | 67js against EEVEE | EEVEE against Cycles | What differs |
-| --- | --- | --- | --- | --- | --- |
-| `ClearCoatTest` | 0.1353 | 0.2306 (was 0.2344) | 0.1808 | 0.1335 | The coat, coat roughness and coat normal textures are read; most of the gap is outside the coat |
-| `TransmissionTest` | 0.1356 | 0.2708 | 0.2371 | 0.1656 | Refraction through the front surface only, no roughness-blurred background |
-| `AnisotropyDiscTest` | 0.1074 | 0.2808 (was 0.3481) | 0.2772 | 0.1534 | `anisotropyTexture` is read: the disc pattern now draws, but the tiles are darker than Cycles; 0.2773 with anisotropy switched off |
-| `AnisotropyBarnLamp` | 0.0733 | 0.3584 (was 0.4758) | 0.4318 | 0.3765 | `anisotropyTexture` and the coat normal texture are read, and it now scores better than anisotropy switched off (0.3945) |
-| `SheenChair` | 0.1007 | 0.3745 | 0.3374 | 0.2384 | New. Cycles shows a bright red velvet rim along the top of the backrest and a more saturated orange; 67js draws the same shape and tufting but flatter, paler and with only a faint rim, so the error is a band along that edge and the seat front |
+Khronos sample assets (issue #51): `npm run reference -- --khronos` draws files from [KhronosGroup/glTF-Sample-Assets](https://github.com/KhronosGroup/glTF-Sample-Assets) that you download by hand into `artifacts/khronos/<name>/<name>.glb` (gitignored; nothing is committed). Blender imports the same GLB with its own importer, so Cycles is the reference for the file and not for our reading of it. The run uses its own work directory and writes `khronos.json` and `images/khronos-<name>.jpg`; `baseline.json` stays as it is. The sky fills most of each frame and both sides draw it alike, so the whole-frame FLIP score is about 0.05 for every asset and says little. The `asset-` columns score only the pixels the asset changes (a second render of the empty sky decides which, threshold 0.03). Licences, checked in each model's `LICENSE.md`: ClearCoatTest and AnisotropyBarnLamp are CC BY 4.0 (Analytical Graphics, Inc. and Wayfair, LLC), TransmissionTest, AnisotropyDiscTest and SheenChair are CC0 1.0 (SheenChair's model files are CC0; only its metadata files are CC BY 4.0). The scores are in "Scores now". The `AnisotropyBarnLamp` and `AnisotropyDiscTest` rows read `anisotropyTexture` since 2026-11-01 (0.4758 to 0.3584 and 0.3481 to 0.2808 then, under the sky with two suns).
 
 Reading `anisotropyTexture` (strength in blue, direction in red and green) fixed the shade: the factor alone spread a highlight over everything, and it scored worse than no anisotropy. The disc test is still level with anisotropy switched off, so the remaining gap there is not the texture. `TransmissionTest` is unchanged at 0.2708: its `transmissionTexture` is not read, because transmission draws in the liquid pass, which has no feature code, and the scores do not show that the other slots (iridescence, specular) matter. `SheenChair` is scored since the importer accepts a normal map with its own `KHR_texture_transform` scale and offset: the fabric tiles its base color 7 times and its normal map 2 times, so the importer bakes the base color transform into the UVs and the shader applies the normal map's remainder (`normalMapTransform`, outside core; core grew by 25 bytes gzip). The score does not say that the transform is right: the visible gap is the sheen rim, and why it is weaker was not investigated. Both Blender's engines disagree on the lamp by 0.3761, so part of that gap is Blender's own anisotropy and clear coat. Two importer bugs the assets found are fixed: `KHR_xmp` and `KHR_xmp_json_ld` (metadata) stopped the whole import, and `KHR_materials_variants` is now accepted with a warning and draws the default material.
 
@@ -504,38 +530,13 @@ Build time, on this machine with other jobs running: a 5 km valley terrain adds 
 - `fog` has no noise on either side. EEVEE and 67js approximate scattering, and Cycles follows 8 volume bounces.
 - Sample counts are fixed: 256 for Cycles with denoising, 64 for EEVEE and 4 MSAA samples for 67js.
 
-Path tracer (issue #57): `npm run reference -- --path-tracer [--samples 32]` draws each scene with `addons/path-tracer` (CPU, 960 by 540, four threads, below-normal priority) and scores it against the Cycles renders of an earlier run into `path-tracer.json`; `baseline.json` and `images/` stay as they are. Measured 2026-10-31 at 32 samples with the tracer's own denoiser, on a Ryzen 5 5600X that another session was also loading (seconds are wall time and are inflated by that):
+Path tracer (issue #57): `npm run reference -- --path-tracer [--samples 32]` draws each scene with `addons/path-tracer` (CPU, 960 by 540, four threads, below-normal priority) and scores it against the Cycles renders of an earlier run into `path-tracer.json`; `baseline.json` and `images/` stay as they are. The first pass (2026-10-31) drew 32 samples with the tracer's own denoiser; the second pass is below.
 
-| Scene | 67js rasterizer | Path tracer | Seconds | Not drawn by the tracer |
-| --- | --- | --- | --- | --- |
-| `brick-graph` | 0.2269 | 0.1538 | 34.2 | normal map (bump) |
-| `car-paint` | 0.1521 | 0.1372 | 44.5 | |
-| `character` | 0.0995 | 0.1143 | 35.5 | |
-| `fog` | 0.2612 | 0.5622 | 33.5 | volume fog |
-| `foliage` | 0.1594 | 0.1597 | 126.1 | leaf translucency |
-| `glass` | 0.1326 | 0.1237 | 50.3 | |
-| `lit-interior` | 0.5055 | 0.1993 | 238.0 | |
-| `material-spheres` | 0.1598 | 0.1215 | 66.8 | |
-| `metal` | 0.1868 | 0.1467 | 43.2 | |
-| `outdoor-hdri` | 0.0676 | 0.1036 | 25.1 | |
-| `spot-area` | 0.1242 | 0.0639 | 71.6 | |
+The tracer is worse than the rasterizer on `outdoor-hdri` and `character`: in the images the floor is darker than in Cycles (the cause is not found), and `fog` shows the missing volume. The denoiser blurs some soft shadows. Cycles used 256 samples. See `docs/path-tracer.md` for what the tracer draws and skips.
 
-The mean against Cycles is 0.171 for the path tracer and 0.189 for the rasterizer (the light bake gets `lit-interior` to 0.1341 with 3 bounces (0.1444 with 2), better than the tracer's 0.1993). The tracer is worse on `outdoor-hdri` and `character`: in the images the floor is darker than in Cycles (the cause is not found), and `fog` shows the missing volume. The denoiser blurs some soft shadows. Cycles used 256 samples. See `docs/path-tracer.md` for what the tracer draws and skips.
+Path tracer, second pass (issue #129, 2026-11-01): 64 samples at most, `noiseThreshold` 0.03, four threads, 960 by 540; seconds are wall time and include scene setup. The scores are in "Scores now".
 
-Path tracer, second pass (issue #129, measured 2026-11-01, 64 samples at most, `noiseThreshold` 0.03, four threads, 960 by 540; seconds are wall time and include scene setup). Scores against Cycles, all 17 scenes in `path-tracer.json`:
-
-| Scene | Score | Seconds | | Scene | Score | Seconds |
-| --- | --- | --- | --- | --- | --- | --- |
-| `brick-flat` | 0.1117 | 24.2 | | `lit-interior` | 0.2214 | 106.7 |
-| `brick-graph` | 0.1373 | 26.8 | | `long-street` | 0.1838 | 50.2 |
-| `brick-room` | 0.2743 | 125.9 | | `material-spheres` | 0.1187 | 52.3 |
-| `brushed-film` | 0.1462 | 47.2 | | `metal` | 0.1435 | 43.5 |
-| `car-paint` | 0.1337 | 46.5 | | `outdoor-hdri` | 0.1016 | 24.8 |
-| `character` | 0.1120 | 35.1 | | `spot-area` | 0.0900 | 21.3 |
-| `fog` | 0.5628 | 26.4 | | `light-linking` | 0.6191 | 33.9 |
-| `foliage` | 0.1577 | 69.5 | | `glass` | 0.1220 | 41.2 |
-
-The mean over the 11 scenes of the first table is 0.1728 (0.171 at 32 samples before). `light-linking` scores 0.6191 because the tracer does not trace light linking (every light lights every part).
+`light-linking` scores 0.6241 because the tracer does not trace light linking (every light lights every part).
 
 Before and after on four scenes, 64 samples: every sample drawn without the box-projection and shadow-ray changes (the state of `main`), then the defaults of this change. `brick-graph` 0.1370 then 0.1373, `brick-room` 0.2794 then 0.2743 (seconds 121.2 then 126.7, the box-projected walls now read their projected UVs), `character` 0.1116 then 0.1120, `outdoor-hdri` 0.1014 then 0.1016. `brick-graph` is a UV-mapped wall, so it already drew its bump and nothing in this change touches it: against the 0.1538 of the table above (32 samples) it improved, against the same tracer at 64 samples it did not move (0.0003 worse, inside the noise). `brick-room` is the scene with box-projected materials; its normal and roughness maps used to be ignored.
 
