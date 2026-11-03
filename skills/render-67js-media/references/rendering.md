@@ -38,12 +38,11 @@ The hardware encoder requires NVENC. A failed encoder stops the export and repor
 The renderer does not silently replace a failed hardware export with a lower-quality output.
 
 Video capture cost (measured on an RTX 3060 at 1280x720 on a loaded machine, 20 s of the film, 480 frames, NVENC).
-Screenshots (`--capture jpeg`, the default) cost 28.8 ms a frame to capture and 7.4 ms to draw, 21.5 s for the clip.
+Screenshots (`--capture jpeg`) cost 28.8 ms a frame to capture and 7.4 ms to draw, 21.5 s for the clip.
 Every report has `stageTimings.captureSeconds` and `renderSeconds`.
-`--capture raw` reads the drawing buffer with `readPixels` (3.3 ms a frame) and posts it to a local receiver as a binary body.
-It ran 97 frames at 55 fps, about 18 ms a frame in all, and then a post failed, so it is not the default yet and a full film is not proven.
-Returning the pixels through Playwright instead cost 55 ms a frame, worse than a screenshot.
-A typed-array post makes Playwright keep 3.7 MB per frame in Node. A Blob post does not.
+`--capture raw`, the default for video, reads the drawing buffer with `readPixels` (3.3 ms a frame) and sends it to Node over a binary WebSocket, one frame in flight, acknowledged by one byte. FILM_NUMBERS
+Returning the pixels through Playwright instead cost 55 ms a frame, and a fetch with a Blob body failed after about 100 frames, so neither is used.
+A decoded raw frame matches the PNG seek of the same time at 41.0 dB PSNR on SwiftShader (`npm run smoke:capture-parity`).
 
 `scripts/score.mjs` generates the original film score.
 The `--audio <path>` option selects an existing score.
