@@ -62,8 +62,21 @@ export function formatGrowthRows(rows) {
   return [header, ...lines].join('\n');
 }
 
-// The packed archive has a ceiling instead of a base measurement, because measuring the base archive needs a full build.
-export function archiveProblem(archiveBytes, ceiling, accepted = new Map()) {
-  if (archiveBytes <= ceiling || accepted.has(ARCHIVE_NAME)) return null;
-  return `The current source package is ${archiveBytes} bytes, over its archive ceiling of ${ceiling} in bench/size/budgets.json by ${archiveBytes - ceiling}. ${acceptInstruction(ARCHIVE_NAME)}`;
+// The packed archive is measured like a bundle, against the archive of the base branch. It gets 2% of that archive, because
+// every consumer downloads it and 2% is what the other entries get. An archive line in a size note accepts more.
+export function archiveAllowance(baseBytes) {
+  return Math.floor(baseBytes * OTHER_ALLOWANCE_FRACTION);
+}
+
+export function archiveGrowthProblem(archiveBytes, baseBytes, accepted = new Map()) {
+  const allowance = archiveAllowance(baseBytes);
+  const growth = archiveBytes - baseBytes;
+  if (growth <= allowance || accepted.has(ARCHIVE_NAME)) return null;
+  return `The source package is ${archiveBytes} bytes, ${growth} more than the ${baseBytes} bytes of the base branch, over its allowance of ${allowance}. ${acceptInstruction(ARCHIVE_NAME)}`;
+}
+
+// The ceiling in bench/size/budgets.json is a release report like the other absolute budgets. --absolute enforces it.
+export function archiveCeilingProblem(archiveBytes, ceiling) {
+  if (archiveBytes <= ceiling) return null;
+  return `The source package is ${archiveBytes} bytes, over its release ceiling of ${ceiling} in bench/size/budgets.json by ${archiveBytes - ceiling}. A release refreshes it.`;
 }

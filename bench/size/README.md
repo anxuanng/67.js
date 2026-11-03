@@ -48,7 +48,7 @@ Still in the lit box and worth moving next, with rough gzip sizes: skin and morp
 
 ## How the check decides
 
-The check measures the base branch with the same script, then compares each bundle. In CI the base is the branch that the pull request targets. On your machine it is `origin/main`, from the commit where your branch left it. The base numbers are cached by base commit in `node_modules/.cache/size-base`, and CI caches that folder, so a run on an unchanged base skips the second measurement. The base is measured beside your own bundles, so a cold run costs little more than one measurement.
+The check measures the base branch with the same script, then compares each bundle. In CI the tested tree is the merge of the pull request into the target branch, and the base is the first parent of that merge. It is not the newest tip of the target branch, which may hold work that the tree lacks and would charge the pull request for it. `scripts/ci-base-sha.mjs` prints it, and the tool cost and archive checks use the same base. On your machine it is `origin/main`, from the commit where your branch left it. The base numbers are cached by base commit in `node_modules/.cache/size-base`, and CI caches that folder, so a run on an unchanged base skips the second measurement. The base is measured beside your own bundles, so a cold run costs little more than one measurement.
 
 A bundle fails when it grows by more than its allowance:
 
@@ -82,7 +82,9 @@ Release steps in `CONTRIBUTING.md` run `npm run changes:fold`, which deletes the
 
 ## Package archive
 
-`archiveBytes` in `budgets.json` caps the npm archive that `npm pack` makes. `npm run smoke:package` checks it, after `npm run prepare:release`. The archive has a ceiling and not a base measurement, because measuring the base archive needs a full build. A pull request that pushes the archive over the ceiling accepts it with an `archive` line in its size note. Only a release edits `archiveBytes`. The archive was 904,975 bytes before the MCP preview shared the package's engine chunks and 666,214 after; features then grew it to 802,581, and one-line notices in each built file plus a stub for the SDK's unused Ajv shim brought it to 695,041. The budget is now 740,000 bytes (measured 2026-11-02 against `budgets.json`: lower it when the archive shrinks). Lower `archiveBytes` when work shrinks it.
+`npm run smoke:package` checks the npm archive that `npm pack` makes, after `npm run prepare:release`. It measures the archive of the base branch the same way as the bundles. It unpacks the base, builds the library and the MCP server there, and asks `npm pack --dry-run` for the size. That takes about ten seconds, and CI caches the result by base with the bundle sizes. The archive may grow by 2% of the base archive. A pull request that grows it more accepts it with an `archive` line in its size note. Two pull requests that each stay inside 2% never fail each other, because each one is compared with its own base.
+
+`archiveBytes` in `budgets.json` is the release ceiling. `smoke:package` reports it, and `npm run smoke:package -- --absolute` enforces it. `npm run size:release` resets it to 2% over the archive of the current build. A pull request never edits it. The archive was 904,975 bytes before the MCP preview shared the package's engine chunks and 666,214 after; features then grew it to 802,581, and one-line notices in each built file plus a stub for the SDK's unused Ajv shim brought it to 695,041. The budget is now 740,000 bytes (measured 2026-11-02 against `budgets.json`: lower it when the archive shrinks). Lower `archiveBytes` when work shrinks it.
 
 Moving code into installed dependencies would shrink the archive further but adds install size to every consumer, including library users who never run MCP. Making `@modelcontextprotocol/server` and `zod` dependencies saved about 125 KB of archive for about 14.5 MB on disk, so it was not kept.
 
