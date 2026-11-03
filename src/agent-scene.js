@@ -288,7 +288,7 @@ function nodeFrom(value) {
   }
   if (value.asset !== undefined) {
     if (value.geometry !== undefined || value.skin !== undefined) {
-      throw new TypeError(`Node ${value.id}: a node that places an asset is a group; drop geometry, material and skin.`);
+      throw new TypeError(`Node ${value.id}: an asset node is a group; drop geometry, material and skin.`);
     }
     result.asset = agentSceneModule('assets').normalizeAssetPlacement(value.asset);
   }
@@ -514,7 +514,7 @@ function compile(recipe, geometries, localBounds, limits) {
   const materials = new Map(recipe.materials.map(material => [material.id, material]));
   const graph = createSceneGraph(recipe.nodes.map(node => {
     if (node.geometry !== undefined && (!geometries.has(node.geometry) || !materials.has(node.material))) {
-      throw new RangeError(`Node ${node.id} uses ${geometries.has(node.geometry) ? `material ${node.material}` : `geometry ${node.geometry}`}, which does not exist. Add it, or use one of: ${(geometries.has(node.geometry) ? [...materials.keys()] : [...geometries.keys()]).join(', ')}.`);
+      throw new RangeError(`Node ${node.id} uses ${geometries.has(node.geometry) ? `material ${node.material}` : `geometry ${node.geometry}`}, which does not exist. Use one of: ${(geometries.has(node.geometry) ? [...materials.keys()] : [...geometries.keys()]).join(', ')}.`);
     }
     return { name: node.id, parent: node.parent,
       matrix: node.assetPart ? mat4.clone(node.assetPart.matrix) : mat4.fromRotationTranslationScale(mat4.create(), node.rotation, node.translation, node.scale),
@@ -681,7 +681,7 @@ function normalizeRecipe(input, limits) {
   recipe.materials = resources(withDefaultMaterial(recipe), limits.maxMaterials, 'materials', materialFrom);
   const distinctPatterns = new Set(recipe.materials.filter(material => material.pattern).map(material => JSON.stringify(material.pattern)));
   if (distinctPatterns.size > MAX_MATERIAL_PATTERNS) {
-    throw new RangeError(`A scene holds at most ${MAX_MATERIAL_PATTERNS} different material patterns; it has ${distinctPatterns.size}. Reuse one and tint it with color.`);
+    throw new RangeError(`A scene holds at most ${MAX_MATERIAL_PATTERNS} different material patterns; it has ${distinctPatterns.size}. Reuse one; tint with color.`);
   }
   recipe.nodes = withoutArmatureNodes(recipe.nodes);
   if (hasInstancedNodes(recipe.nodes)) recipe.nodes = agentSceneModule('mesh').expandInstancedNodes(recipe.nodes, {
@@ -933,7 +933,7 @@ function removeNode(candidate, operation) {
     throw new TypeError('recursive must be boolean.');
   }
   if (!candidate.nodes.some(node => node.id === operation.id)) {
-    throw new RangeError(`${operation.type} target was not found: ${operation.id}. scene_inspect lists the IDs; add it first with an add operation.`);
+    throw new RangeError(`${operation.type} target was not found: ${operation.id}. scene_inspect lists the IDs.`);
   }
   const children = new Map();
   for (const node of candidate.nodes) {
@@ -1045,7 +1045,7 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
     const pendingVertices = pendingPlans.reduce((total, plan) => total + plan.estimatedVertices, 0);
     if (residentStats.vertices + pendingVertices > limits.maxVertices ||
         residentStats.geometryBytes + pendingVertices * 56 > limits.maxGeometryBytes) {
-      throw new RangeError('Geometry preflight exceeds maxVertices or maxGeometryBytes across active, checkpoint and staged resources. Reduce detail or release checkpoints.');
+      throw new RangeError('Geometry preflight exceeds peak maxVertices or maxGeometryBytes across active, checkpoint and staged resources. Reduce detail or release checkpoints');
     }
 
     // Validate references, hierarchy and matrix arithmetic before generating any new resource.
