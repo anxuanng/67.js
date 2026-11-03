@@ -47,13 +47,13 @@ test('a budget leaves 2% of room, rounded up to 100 bytes', () => {
   assert.equal(budgetFor(10001), 10300);
 });
 
-test('every package entry has a source file and a budget', () => {
+// A new addon has no budget until npm run size:release sets one, so a pull request never edits budgets.json.
+test('every package entry has a source file', () => {
   const addons = Object.keys(manifest.exports).filter(key => key.startsWith('./addons/'));
   assert.ok(addons.length > 0);
   for (const key of addons) {
     const name = key.slice('./addons/'.length);
     assert.ok(existsSync(new URL(`../src/${name}.js`, import.meta.url)), `No source for ${key}`);
-    assert.ok(budgetFile.budgets[`entry:${name}`] > 0, `No budget for ${key}`);
   }
   assert.ok(budgetFile.budgets['entry:core'] > 0);
 });

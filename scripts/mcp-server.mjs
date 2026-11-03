@@ -95,6 +95,7 @@ const materialLayerFields = {
   iridescence: layerNumber('iridescence', 'Thin-film colour shift.'),
   iridescenceIor: layerNumber('iridescenceIor', 'Film index of refraction.'),
   iridescenceThickness: layerNumber('iridescenceThickness', 'Film thickness, nanometres.'),
+  toon: layerNumber('toon', 'Light steps (toon); 0 off.'),
 };
 
 
@@ -144,6 +145,7 @@ const volumeFog = z.strictObject({
   shadowAmbient: unit.optional(),
 });
 const affects = z.array(z.string()).optional();
+const lines = z.record(z.string(), z.unknown()).describe('Outlines, toon light and polylines as plain JSON; fields and limits in scene_capabilities lineArt. null clears.');
 const environment = z.strictObject({
   world: z.boolean().optional().describe('Draw the sky and apply surface fog.'),
   ground: z.boolean().optional().describe('false: no automatic floor.'),
@@ -195,6 +197,7 @@ const environment = z.strictObject({
   fogDensity: bounded(0, 10).optional(),
   volumeFog: volumeFog.optional().describe('Directional scattering; needs HDR.'),
   liquid: liquidOptics.optional().describe('Optics for materials tagged liquid or foam.'),
+  lines: lines.nullable().optional(),
 });
 const effects = z.strictObject({
   exposure: bounded(0.01, 16).optional(),
