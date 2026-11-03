@@ -1,5 +1,5 @@
 // Draws chosen reference scenes with 67js on the GPU only, into a directory of your choice, with measurement switches. No Blender, no scoring.
-//   node bench/reference/render-gpu.mjs <output directory> <scene id>,<scene id> [--ambient <scale>] [--fill <scale>]
+//   node bench/reference/render-gpu.mjs <output directory> <scene id>,<scene id> [--ambient <scale>] [--fill <scale>] [--key <scale>]
 //     [--ambient-occlusion <strength>] [--ambient-occlusion-radius <units>]
 // Files are <output directory>/<scene id>-gpu.png, the names measure-depth.py and score.py read. Used to find what makes shadows light (issue #197).
 import { mkdir, writeFile } from 'node:fs/promises';
@@ -25,6 +25,7 @@ function numberAfter(flag) {
 const options = {
   ambient: numberAfter('--ambient'),
   fill: numberAfter('--fill'),
+  key: numberAfter('--key'),
   ambientOcclusion: numberAfter('--ambient-occlusion') ?? 0,
   ambientOcclusionRadius: numberAfter('--ambient-occlusion-radius') ?? 0.5,
 };
