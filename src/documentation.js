@@ -1,14 +1,7 @@
 import './home.js';
 import './documentation.css';
 import guide from '../docs/guide.md?raw';
-import highlight from 'highlight.js/lib/core';
-import javascript from 'highlight.js/lib/languages/javascript';
-import xml from 'highlight.js/lib/languages/xml';
-import bash from 'highlight.js/lib/languages/bash';
-
-highlight.registerLanguage('javascript', javascript);
-highlight.registerLanguage('xml', xml);
-highlight.registerLanguage('bash', bash);
+import { highlightCode } from './code-highlight.js';
 
 const article = document.querySelector('#doc-article');
 const topicNavigation = document.querySelector('#doc-toc');
@@ -113,7 +106,7 @@ function codeBlock(block, title) {
   const pre = document.createElement('pre');
   const code = document.createElement('code');
   code.className = language ? `hljs language-${language}` : 'hljs';
-  code.innerHTML = language ? highlight.highlight(source, { language }).value : escapeHtml(source);
+  code.innerHTML = language ? highlightCode(source, language) : escapeHtml(source);
   button.addEventListener('click', () => copyText(button, source, code));
   header.append(languageLabel, button);
   pre.append(code);

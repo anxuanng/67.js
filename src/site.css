@@ -22,6 +22,12 @@
   --error: #ffb4ab;
   --invert-border: #ffffff26;
   --dither-ink: #ff9a62;
+  --syntax-keyword: #c9a8ff;
+  --syntax-string: #8fe3c0;
+  --syntax-number: #ffb877;
+  --syntax-flag: #ffc98f;
+  --syntax-name: #8cc8ff;
+  --syntax-comment: #8a83a3;
   --dither-strength: 2.2;
   transition: --glow .9s ease-out;
 }
@@ -63,6 +69,12 @@ body.site h1 { font-size: clamp(40px, 6.2vw, 74px); font-weight: 600; letter-spa
 body.site h2 { font-size: clamp(26px, 3vw, 36px); font-weight: 600; letter-spacing: -.8px; line-height: 1.2; }
 body.site h3 { font-size: 16px; font-weight: 600; letter-spacing: -.2px; }
 body.site code, body.site pre { font-family: var(--mono); }
+.hljs-keyword, .hljs-selector-tag, .hljs-literal { color: var(--syntax-keyword); }
+.hljs-string, .hljs-template-tag, .hljs-regexp { color: var(--syntax-string); }
+.hljs-number, .hljs-symbol { color: var(--syntax-number); }
+.hljs-attr { color: var(--syntax-flag); }
+.hljs-title, .hljs-built_in, .hljs-tag, .hljs-name { color: var(--syntax-name); }
+.hljs-comment { color: var(--syntax-comment); font-style: italic; }
 body.site :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: 4px; }
 body.site ::selection { background: color-mix(in srgb, var(--focus) 24%, transparent); }
 body.site .icon { width: 18px; height: 18px; margin: 0; }
