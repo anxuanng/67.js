@@ -337,6 +337,7 @@ Tags select specialized behavior: `armor` allows studio finish overrides. `floor
 | environment | {} | Sky, light and fog settings |
 | shadowBounds | {} | Custom extent, eye and target for shadow framing |
 | benchmark | false | Diagnostic flat shader. Not the appearance renderer |
+| shading | 'full' | `'light'` is a cheaper picture for weak machines and software rendering: at most 2 MSAA samples, one shadow fetch, a fitted BRDF, the sky reflected by its blurred irradiance, no second order irradiance. `'full'` is unchanged |
 
 `render(frame)` draws synchronously. `resize()` replans targets after CSS size or `pixelRatio` changes. `updateParts(parts, { shadows: true })` uploads changed matrices and materials using retained buffers. It does not add new part, geometry or texture identities.
 
