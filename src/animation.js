@@ -1,4 +1,5 @@
 import { mat4, quat } from 'gl-matrix';
+import { easedProgress, normalizeKeyframeEasing } from './easing.js';
 
 const PROPERTY_SIZES = { translation: 3, rotation: 4, scale: 3, value: 1, emission: 1, metallic: 1, roughness: 1 };
 const INTERPOLATIONS = new Set(['LINEAR', 'STEP', 'SMOOTH', 'CUBICSPLINE']);
@@ -70,6 +71,11 @@ export function createAnimationClip({ duration, loop = false, tracks = [] } = {}
         throw new RangeError('Keyframe times must be within the clip duration.');
       }
       const compiledKeyframe = { time: keyframe.time, value: normalizedValue(track.property, keyframe.value) };
+      const easing = normalizeKeyframeEasing(keyframe);
+      if (easing && interpolation !== 'LINEAR' && interpolation !== 'SMOOTH') {
+        throw new RangeError(`Keyframe easing needs LINEAR or SMOOTH interpolation, not ${interpolation}.`);
+      }
+      Object.assign(compiledKeyframe, easing);
       if (interpolation === 'CUBICSPLINE') {
         compiledKeyframe.inTangent = normalizedTangent(track.property, keyframe.inTangent);
         compiledKeyframe.outTangent = normalizedTangent(track.property, keyframe.outTangent);
@@ -140,7 +146,8 @@ function sampleTrackInto(track, time, output) {
     }
     return output;
   }
-  if (track.interpolation === 'SMOOTH') progress = progress * progress * (3 - 2 * progress);
+  if (start.easing !== undefined) progress = easedProgress(start, progress);
+  else if (track.interpolation === 'SMOOTH') progress = progress * progress * (3 - 2 * progress);
   if (track.property === 'rotation') return quat.slerp(output, start.value, end.value, progress);
   for (let axis = 0; axis < output.length; axis++) {
     const startValue = output.length === 1 ? start.value : start.value[axis];
@@ -148,6 +155,28 @@ function sampleTrackInto(track, time, output) {
     output[axis] = startValue + (endValue - startValue) * progress;
   }
   return output;
+}
+
+/**
+ * Linear keyframes that trace a track with eased segments, for formats with no easing (glTF). Each segment gets
+ * `stepsPerSegment` linear pieces; a track without easing comes back unchanged.
+ */
+export function bakeEasedKeyframes(track, stepsPerSegment) {
+  if (!track.keyframes.some(keyframe => keyframe.easing !== undefined)) return track.keyframes;
+  const size = PROPERTY_SIZES[track.property];
+  const baked = [];
+  for (let index = 0; index < track.keyframes.length; index++) {
+    const start = track.keyframes[index];
+    baked.push({ time: start.time, value: start.value });
+    const end = track.keyframes[index + 1];
+    if (!end) break;
+    for (let step = 1; step < stepsPerSegment; step++) {
+      const time = start.time + (end.time - start.time) * step / stepsPerSegment;
+      const output = sampleTrackInto(track, time, new Float64Array(size));
+      baked.push({ time, value: size === 1 ? output[0] : Array.from(output) });
+    }
+  }
+  return baked;
 }
 
 function normalizedTime(clip, time) {
