@@ -15,8 +15,10 @@ const FLOATS_PER_MATRIX = 16;
 const TEXELS_PER_MATRIX = 4;
 const DEFAULT_FRAME_RATE = 30;
 const DEFAULT_LEVEL_CELLS = Object.freeze([0.02, 0.05]);
+const JOINT_STRIDE = 4096;
+const WEIGHT_STEPS = 4095;
 
-// Joint ids sit in the geometry's crowdJoints attribute (location 13) and weights in crowdWeights (location 14).
+// Each vertex carries four packed influences in the colour attribute (location 14): joint * 4096 + weight * 4095, exact in a float.
 // The frame blend is in assemblyOffset: x and y are the texel offsets of the two frames, z the blend between them.
 installCrowdShader(`
 uniform float crowdEnabled;
@@ -25,23 +27,26 @@ mat4 crowdJoint(int frameTexel, int joint) {
   return mat4(skinTexel(jointPalette, texel), skinTexel(jointPalette, texel + 1),
     skinTexel(jointPalette, texel + 2), skinTexel(jointPalette, texel + 3));
 }
-mat4 crowdInfluence(float joint, float weight) {
+mat4 crowdInfluence(float packedInfluence) {
+  float joint = floor(packedInfluence / 4096.0);
+  float weight = (packedInfluence - joint * 4096.0) / 4095.0;
   int firstFrame = int(assemblyOffset.x + 0.5);
   int secondFrame = int(assemblyOffset.y + 0.5);
   int jointIndex = int(joint + 0.5);
   return (crowdJoint(firstFrame, jointIndex) * (1.0 - assemblyOffset.z) + crowdJoint(secondFrame, jointIndex) * assemblyOffset.z) * weight;
 }
 mat4 crowdTransform() {
-  return crowdInfluence(uvSets.x, vertexColor.x) + crowdInfluence(uvSets.y, vertexColor.y)
-    + crowdInfluence(uvSets.z, vertexColor.z) + crowdInfluence(uvSets.w, vertexColor.w);
+  return crowdInfluence(vertexColor.x) + crowdInfluence(vertexColor.y) + crowdInfluence(vertexColor.z) + crowdInfluence(vertexColor.w);
 }`);
 
 /**
  * Merge the parts of a character into crowd geometries, one per material. A rigid part becomes one joint that
- * follows its matrix; a skinned part keeps its joints, each premultiplied by the part's matrix. Morph targets are not
- * applied. Each part is { name, geometry, matrix, material, skin? } as an imported asset lists them.
+ * follows its matrix; a skinned part keeps its joints, each premultiplied by the part's matrix. UVs are kept, so
+ * materials with maps work. Parts with morph targets are merged with their weights ignored, unless `morphs` is true:
+ * then each keeps its own geometry and draws with the weights it has when the rig is made (one set for the whole crowd,
+ * and no levels or culling for that part). Each part is { name, geometry, matrix, material, skin?, morph? } as an imported asset lists them.
  */
-export function createCrowdRig(sourceParts) {
+export function createCrowdRig(sourceParts, { morphs = false } = {}) {
   if (!Array.isArray(sourceParts) || sourceParts.length === 0) throw new TypeError('A crowd rig needs a list of parts.');
   const jointOffsets = [];
   let jointCount = 0;
@@ -51,17 +56,30 @@ export function createCrowdRig(sourceParts) {
     jointOffsets.push(jointCount);
     jointCount += part.skin ? part.skin.jointMatrices.length / FLOATS_PER_MATRIX : 1;
   }
-  const partsByMaterial = new Map();
+  if (jointCount > JOINT_STRIDE) throw new RangeError(`A crowd rig holds at most ${JOINT_STRIDE} joints; this one has ${jointCount}.`);
+  const groups = new Map();
+  const morphedParts = [];
   sourceParts.forEach((part, index) => {
-    if (!partsByMaterial.has(part.material)) partsByMaterial.set(part.material, []);
-    partsByMaterial.get(part.material).push(index);
+    if (morphs && part.morph && part.geometry.morphTargets) {
+      morphedParts.push(index);
+      return;
+    }
+    if (!groups.has(part.material)) groups.set(part.material, []);
+    groups.get(part.material).push(index);
   });
   const scratch = mat4.create();
-  const parts = [...partsByMaterial].map(([material, indices]) => ({
+  const entryOf = index => ({ part: sourceParts[index], jointOffset: jointOffsets[index] });
+  const parts = [...groups].map(([material, indices]) => ({
     name: sourceParts[indices[0]].name,
     material,
-    geometry: mergeCrowdGeometry(indices.map(index => ({ part: sourceParts[index], jointOffset: jointOffsets[index] }))),
+    geometry: mergeCrowdGeometry(indices.map(entryOf)),
   }));
+  for (const index of morphedParts) {
+    const part = sourceParts[index];
+    const geometry = mergeCrowdGeometry([entryOf(index)]);
+    geometry.morphTargets = part.geometry.morphTargets;
+    parts.push({ name: part.name, material: part.material, geometry, morph: { weights: new Float32Array(part.morph.weights) } });
+  }
   return {
     jointCount,
     parts,
@@ -93,6 +111,7 @@ function mergeCrowdGeometry(entries) {
     crowdJoints: new Float32Array(vertexCount * 4),
     crowdWeights: new Float32Array(vertexCount * 4),
   };
+  if (entries.some(({ part }) => part.geometry.uvs)) merged.uvs = new Float32Array(vertexCount * 2);
   let vertexStart = 0;
   let indexStart = 0;
   for (const { part, jointOffset } of entries) {
@@ -100,6 +119,7 @@ function mergeCrowdGeometry(entries) {
     const count = geometry.positions.length / 3;
     merged.positions.set(geometry.positions, vertexStart * 3);
     merged.normals.set(geometry.normals, vertexStart * 3);
+    if (geometry.uvs) merged.uvs.set(geometry.uvs, vertexStart * 2);
     for (let index = 0; index < geometry.indices.length; index++) merged.indices[indexStart + index] = geometry.indices[index] + vertexStart;
     for (let vertex = 0; vertex < count; vertex++) {
       const target = (vertexStart + vertex) * 4;
@@ -112,13 +132,22 @@ function mergeCrowdGeometry(entries) {
       for (let influence = 0; influence < 4; influence++) total += geometry.skinWeights[vertex * 4 + influence];
       for (let influence = 0; influence < 4; influence++) {
         merged.crowdJoints[target + influence] = geometry.skinIndices[vertex * 4 + influence] + jointOffset;
-        merged.crowdWeights[target + influence] = geometry.skinWeights[vertex * 4 + influence] / total;
+        merged.crowdWeights[target + influence] = Math.round(geometry.skinWeights[vertex * 4 + influence] / total * WEIGHT_STEPS) / WEIGHT_STEPS;
       }
     }
     vertexStart += count;
     indexStart += geometry.indices.length;
   }
+  packCrowdInfluences(merged);
   return merged;
+}
+
+/** The attribute the renderer uploads: joint * 4096 + round(weight * 4095) for each of four influences. Weights are already whole steps. */
+function packCrowdInfluences(geometry) {
+  geometry.crowdPacked = new Float32Array(geometry.crowdJoints.length);
+  for (let index = 0; index < geometry.crowdJoints.length; index++) {
+    geometry.crowdPacked[index] = geometry.crowdJoints[index] * JOINT_STRIDE + Math.round(geometry.crowdWeights[index] * WEIGHT_STEPS);
+  }
 }
 
 /** The position of one crowd vertex under a table of joint matrices at `frameOffset` (in matrices), the maths the shader runs. */
@@ -262,7 +291,7 @@ function clusterCrowdGeometry(geometry, cellSize) {
     const key = [0, 1, 2].map(axis => Math.floor(geometry.positions[vertex * 3 + axis] / cellSize)).join(',') + `:${geometry.crowdJoints[vertex * 4 + dominant]}`;
     if (!clusterByKey.has(key)) {
       clusterByKey.set(key, representatives.length);
-      representatives.push({ vertex, count: 0, position: [0, 0, 0], normal: [0, 0, 0] });
+      representatives.push({ vertex, count: 0, position: [0, 0, 0], normal: [0, 0, 0], uv: [0, 0] });
     }
     const clusterIndex = clusterByKey.get(key);
     const cluster = representatives[clusterIndex];
@@ -272,10 +301,15 @@ function clusterCrowdGeometry(geometry, cellSize) {
       cluster.position[axis] += geometry.positions[vertex * 3 + axis];
       cluster.normal[axis] += geometry.normals[vertex * 3 + axis];
     }
+    if (geometry.uvs) {
+      cluster.uv[0] += geometry.uvs[vertex * 2];
+      cluster.uv[1] += geometry.uvs[vertex * 2 + 1];
+    }
   }
   const coarse = {
     positions: new Float32Array(representatives.length * 3),
     normals: new Float32Array(representatives.length * 3),
+    ...(geometry.uvs ? { uvs: new Float32Array(representatives.length * 2) } : {}),
     crowdJoints: new Float32Array(representatives.length * 4),
     crowdWeights: new Float32Array(representatives.length * 4),
   };
@@ -284,6 +318,10 @@ function clusterCrowdGeometry(geometry, cellSize) {
     for (let axis = 0; axis < 3; axis++) {
       coarse.positions[index * 3 + axis] = cluster.position[axis] / cluster.count;
       coarse.normals[index * 3 + axis] = cluster.normal[axis] / length;
+    }
+    if (geometry.uvs) {
+      coarse.uvs[index * 2] = cluster.uv[0] / cluster.count;
+      coarse.uvs[index * 2 + 1] = cluster.uv[1] / cluster.count;
     }
     coarse.crowdJoints.set(geometry.crowdJoints.subarray(cluster.vertex * 4, cluster.vertex * 4 + 4), index * 4);
     coarse.crowdWeights.set(geometry.crowdWeights.subarray(cluster.vertex * 4, cluster.vertex * 4 + 4), index * 4);
@@ -296,6 +334,7 @@ function clusterCrowdGeometry(geometry, cellSize) {
     if (first !== second && second !== third && first !== third) indices.push(first, second, third);
   }
   coarse.indices = Uint32Array.from(indices);
+  packCrowdInfluences(coarse);
   return coarse;
 }
 
@@ -303,11 +342,14 @@ function clusterCrowdGeometry(geometry, cellSize) {
  * The renderer parts of a crowd: one part per instance and material, all instances of a material sharing a geometry,
  * a palette and `lods`, so they draw as one batch per material and level. `instances` come from createCrowd (or any
  * list with a column-major `matrix`). Call `setTimes` with each instance's clip time, then `renderer.updateParts(parts)`.
- * `lods: false` turns the coarser levels off; `cells` sets their sizes.
+ * `lods: false` turns the coarser levels off; `cells` sets their sizes. `farPose: { distance, rate }` makes an instance
+ * more than `distance` from the eye passed to `setTimes` hold each pose for 1 / `rate` seconds. That is still a pure
+ * function of the clip time and the eye, so a seek equals playing.
  */
-export function createCrowdParts({ rig, palette, instances, lods = true, cells, name = 'crowd' }) {
+export function createCrowdParts({ rig, palette, instances, lods = true, cells, farPose = null, name = 'crowd' }) {
   if (!instances?.length) throw new TypeError('A crowd needs a list of instances.');
-  const rigParts = rig.parts.map(part => ({ ...part, levels: lods ? createCrowdLods(part.geometry, { cells }) : null }));
+  if (farPose && !(farPose.distance > 0 && farPose.rate > 0)) throw new RangeError('farPose needs a positive distance and rate.');
+  const rigParts = rig.parts.map(part => ({ ...part, levels: lods && !part.morph ? createCrowdLods(part.geometry, { cells }) : null }));
   const blends = [];
   const parts = [];
   instances.forEach((instance, index) => {
@@ -321,15 +363,25 @@ export function createCrowdParts({ rig, palette, instances, lods = true, cells, 
         material: rigPart.material,
         crowd: palette,
         assembly: { offset: blend, detailOffset: [0, 0, 0] },
+        ...(rigPart.morph ? { morph: rigPart.morph } : {}),
         ...(rigPart.levels ? { lods: rigPart.levels } : {}),
       });
     }
   });
   return {
     parts,
-    /** Set every instance's clip time: an array of seconds or `(index) => seconds`. */
-    setTimes(times) {
-      blends.forEach((blend, index) => crowdFrameBlend(palette, typeof times === 'function' ? times(index) : times[index], blend));
+    /** Set every instance's clip time: an array of seconds or `(index) => seconds`. `eye` is the camera position, used with `farPose`. */
+    setTimes(times, eye = null) {
+      blends.forEach((blend, index) => {
+        let seconds = typeof times === 'function' ? times(index) : times[index];
+        if (farPose && eye) {
+          const matrix = instances[index].matrix;
+          if (Math.hypot(matrix[12] - eye[0], matrix[13] - eye[1], matrix[14] - eye[2]) > farPose.distance) {
+            seconds = Math.floor(seconds * farPose.rate) / farPose.rate;
+          }
+        }
+        crowdFrameBlend(palette, seconds, blend);
+      });
     },
   };
 }

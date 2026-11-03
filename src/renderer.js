@@ -833,7 +833,7 @@ export class Renderer67 {
     let geometryBuffers = this.geometryBuffers.get(geometry);
     if (!geometryBuffers) {
       geometryBuffers = new Map();
-      for (const field of ['positions', 'normals', 'uvs', 'colors', 'indices', 'crowdJoints', 'crowdWeights']) {
+      for (const field of ['positions', 'normals', 'uvs', 'colors', 'indices', 'crowdPacked']) {
         if (geometry[field]) {
           const target = field === 'indices' ? context.ELEMENT_ARRAY_BUFFER : context.ARRAY_BUFFER;
           const values = field === 'uvs' && geometry.lightUvs ? interleaveUvSets(geometry) : geometry[field];
@@ -871,13 +871,11 @@ export class Renderer67 {
       context.disableVertexAttribArray(14);
       context.vertexAttrib3f(14, 1, 1, 1);
     }
-    // A crowd geometry keeps four joint ids and four weights per vertex where textures and tints would sit.
-    if (geometry.crowdJoints) {
-      for (const [location, field] of [[13, 'crowdJoints'], [14, 'crowdWeights']]) {
-        context.bindBuffer(context.ARRAY_BUFFER, geometryBuffers.get(field));
-        context.enableVertexAttribArray(location);
-        context.vertexAttribPointer(location, 4, context.FLOAT, false, 0, 0);
-      }
+    // A crowd geometry packs four joint ids and weights into the colour attribute; its UVs stay free for maps.
+    if (geometry.crowdPacked) {
+      context.bindBuffer(context.ARRAY_BUFFER, geometryBuffers.get('crowdPacked'));
+      context.enableVertexAttribArray(14);
+      context.vertexAttribPointer(14, 4, context.FLOAT, false, 0, 0);
     }
     context.bindBuffer(context.ELEMENT_ARRAY_BUFFER, geometryBuffers.get('indices'));
   }
