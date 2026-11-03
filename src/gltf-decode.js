@@ -38,11 +38,14 @@ function mimeTypeOf(imageDefinition, bytes) {
   return PNG_SIGNATURE.every((value, index) => bytes[index] === value) ? 'image/png' : 'image/jpeg';
 }
 
-async function decodeImage(bytes, mimeType) {
+async function decodeImage(bytes, mimeType, target) {
   const blob = new Blob([bytes], { type: mimeType });
   if (typeof createImageBitmap === 'function') {
-    return createImageBitmap(blob, { premultiplyAlpha: 'none', colorSpaceConversion: 'none', imageOrientation: 'none' });
+    const options = { premultiplyAlpha: 'none', colorSpaceConversion: 'none', imageOrientation: 'none' };
+    if (target) Object.assign(options, { resizeWidth: target.width, resizeHeight: target.height, resizeQuality: 'high' });
+    return createImageBitmap(blob, options);
   }
+  if (target) throw new Error('Scaling textures to fit maxTexturePixels requires createImageBitmap.');
   const url = URL.createObjectURL(blob);
   try {
     const image = new Image();
@@ -83,7 +86,7 @@ function normalizedWeights(weights) {
  * The result has the shape the Renderer67 conversion in gltf.js reads. Nothing here imports three.js: Draco, meshopt
  * and KTX2 decoders arrive as `decoders` objects that the caller supplies.
  */
-export async function decodeGltf({ document, glbBinary, resourceBytes, decoders, limits }) {
+export async function decodeGltf({ document, glbBinary, resourceBytes, decoders, limits, imageTargets = new Map() }) {
   const releasers = [];
   const usedNames = new Map();
   const nodeCache = new Map();
@@ -138,7 +141,7 @@ export async function decodeGltf({ document, glbBinary, resourceBytes, decoders,
       loaded = { image: texture.image, isCompressedTexture: texture.isCompressedTexture === true };
       releasers.push(() => texture.dispose?.());
     } else {
-      const image = await decodeImage(bytes, mimeTypeOf(document.images[sourceIndex], bytes));
+      const image = await decodeImage(bytes, mimeTypeOf(document.images[sourceIndex], bytes), imageTargets.get(sourceIndex));
       loaded = { image, isCompressedTexture: false };
       releasers.push(() => image.close?.());
     }

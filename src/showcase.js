@@ -1,6 +1,7 @@
 import './site.css';
 import './brand.js';
 import './showcase.css';
+import './pointer-light.js';
 import { Renderer67 } from './renderer.js';
 import { loadGltf } from './gltf.js';
 import { loadHdri } from './hdri.js';
@@ -8,26 +9,79 @@ import { createCascadedShadows } from './cascaded-shadows.js';
 import { applyWaterReflection, attachWaterReflection } from './water-reflection.js';
 
 // Each scene lives in public/showcase/<id>/scene.json: its GLB, sky, camera, renderer and frame options, and credits.
+// Optional fields: "bounds" ({ min, max } the camera target stays inside), "minDistance" and "maxDistance".
 const SCENE_LABELS = { airport: 'Airport ramp', datacenter: 'AI data center', port: 'Container port' };
+const SCENE_GLOWS = { airport: '#ff6a2b', datacenter: '#3b82f6', port: '#f59e0b' };
 const SCENE_IDS = Object.keys(SCENE_LABELS);
+const MIN_PITCH = 0.05;
+const MAX_PITCH = 1.45;
+const DEFAULT_MAX_DISTANCE_FACTOR = 3;
+const DEFAULT_MIN_DISTANCE_FACTOR = 0.05;
+const BOUNDS_MARGIN = 0.25;
+const MAX_SAMPLED_VERTICES_PER_PART = 4000;
+const KEY_MOVE_PER_SECOND = 0.6;
+const KEY_TURN_PER_SECOND = 1.6;
+
+const SPINNER_ICON = '<svg class="status-icon spinner" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-opacity=".25" stroke-width="3"/><path d="M21 12a9 9 0 0 0-9-9" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg>';
+const ERROR_ICON = '<svg class="status-icon" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M12 3 2.5 20h19L12 3Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M12 10v4.5M12 17.2v.1" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
 
 const canvas = document.querySelector('#showcase-viewport');
+const frame = document.querySelector('.showcase-frame');
 const status = document.querySelector('#showcase-status');
 const tabs = document.querySelector('#showcase-tabs');
+const resetButton = document.querySelector('#showcase-reset');
 const title = document.querySelector('#showcase-title');
 const blurb = document.querySelector('#showcase-blurb');
 const creditList = document.querySelector('#showcase-credits');
 const orbit = { yaw: 0, pitch: 0, distance: 1, target: [0, 0, 0] };
+const limits = { minDistance: 0.1, maxDistance: 10, boundsMin: [-1, -1, -1], boundsMax: [1, 1, 1] };
+const homeView = { yaw: 0, pitch: 0, distance: 1, target: [0, 0, 0] };
+const pointers = new Map();
+const pressedKeys = new Set();
 let renderer = null;
 let scene = null;
+let currentId = null;
+let loadingId = null;
 let loadingRequest = 0;
 let scheduledFrame = 0;
-let pointer = null;
+let dragMode = 'orbit';
+let keyFrame = 0;
+let keyTimestamp = 0;
 
-function showStatus(message, failed = false) {
+function setLoadingState(id) {
+  loadingId = id;
+  frame.dataset.loading = id ? 'true' : 'false';
+  for (const button of tabs.querySelectorAll('button')) {
+    button.disabled = Boolean(id) && (button.dataset.scene === id || button.dataset.scene === currentId);
+  }
+}
+
+function showStatus(kind, message) {
   status.hidden = false;
-  status.dataset.failed = failed ? 'true' : 'false';
-  status.textContent = `${failed ? '⚠' : '◷'} ${message}`;
+  status.dataset.kind = kind;
+  status.innerHTML = kind === 'error' ? ERROR_ICON : SPINNER_ICON;
+  const text = document.createElement('span');
+  text.className = 'status-text';
+  text.textContent = message;
+  status.append(text);
+}
+
+function showProgress(id, fraction) {
+  const percent = fraction === null ? '' : ` ${Math.round(fraction * 100)}%`;
+  showStatus('loading', `Loading ${SCENE_LABELS[id]}…${percent}`);
+}
+
+function dot(a, b) {
+  return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+}
+
+function cross(a, b) {
+  return [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+}
+
+function normalize(vector) {
+  const length = Math.hypot(...vector) || 1;
+  return vector.map(value => value / length);
 }
 
 function orbitFromCamera(eye, target) {
@@ -48,14 +102,94 @@ function eyeFromOrbit() {
   ];
 }
 
+function clampOrbit() {
+  orbit.pitch = Math.max(MIN_PITCH, Math.min(MAX_PITCH, orbit.pitch));
+  orbit.distance = Math.max(limits.minDistance, Math.min(limits.maxDistance, orbit.distance));
+  orbit.target = orbit.target.map((value, axis) => Math.max(limits.boundsMin[axis], Math.min(limits.boundsMax[axis], value)));
+}
+
+// The part bounds, sampled so a scene with millions of vertices still opens quickly, plus a margin.
+function boundsOfParts(parts) {
+  const minimum = [Infinity, Infinity, Infinity];
+  const maximum = [-Infinity, -Infinity, -Infinity];
+  for (const part of parts) {
+    const positions = part.geometry?.positions;
+    const matrix = part.matrix;
+    if (!positions || !matrix) continue;
+    const vertexCount = positions.length / 3;
+    const stride = Math.max(1, Math.floor(vertexCount / MAX_SAMPLED_VERTICES_PER_PART));
+    for (let vertex = 0; vertex < vertexCount; vertex += stride) {
+      const x = positions[vertex * 3];
+      const y = positions[vertex * 3 + 1];
+      const z = positions[vertex * 3 + 2];
+      for (let axis = 0; axis < 3; axis++) {
+        const value = matrix[axis] * x + matrix[4 + axis] * y + matrix[8 + axis] * z + matrix[12 + axis];
+        minimum[axis] = Math.min(minimum[axis], value);
+        maximum[axis] = Math.max(maximum[axis], value);
+      }
+    }
+  }
+  return minimum.every(Number.isFinite) ? { min: minimum, max: maximum } : null;
+}
+
+function applyLimits(description, parts) {
+  const bounds = description.bounds ?? boundsOfParts(parts) ?? {
+    min: orbit.target.map(value => value - orbit.distance),
+    max: orbit.target.map(value => value + orbit.distance),
+  };
+  const margin = bounds.max.map((value, axis) => (value - bounds.min[axis]) * BOUNDS_MARGIN);
+  limits.boundsMin = bounds.min.map((value, axis) => Math.min(value - margin[axis], orbit.target[axis]));
+  limits.boundsMax = bounds.max.map((value, axis) => Math.max(value + margin[axis], orbit.target[axis]));
+  limits.minDistance = description.minDistance ?? orbit.distance * DEFAULT_MIN_DISTANCE_FACTOR;
+  limits.maxDistance = description.maxDistance ?? orbit.distance * DEFAULT_MAX_DISTANCE_FACTOR;
+}
+
 function draw() {
   scheduledFrame = 0;
   if (!renderer || !scene) return;
+  clampOrbit();
   renderer.render({ ...scene.frame, eye: eyeFromOrbit(), target: orbit.target });
 }
 
 function requestDraw() {
   if (!scheduledFrame) scheduledFrame = requestAnimationFrame(draw);
+}
+
+// Screen-space pan: the target slides along the camera's right and up directions.
+function panByPixels(deltaX, deltaY) {
+  const forward = normalize(orbit.target.map((value, axis) => value - eyeFromOrbit()[axis]));
+  const right = normalize(cross(forward, [0, 1, 0]));
+  const up = cross(right, forward);
+  const scale = orbit.distance * 0.0016;
+  orbit.target = orbit.target.map((value, axis) => value - right[axis] * deltaX * scale + up[axis] * deltaY * scale);
+  requestDraw();
+}
+
+function moveOnGround(forwardAmount, rightAmount) {
+  const forward = [-Math.sin(orbit.yaw), 0, -Math.cos(orbit.yaw)];
+  const right = [Math.cos(orbit.yaw), 0, -Math.sin(orbit.yaw)];
+  orbit.target = orbit.target.map((value, axis) => value + forward[axis] * forwardAmount + right[axis] * rightAmount);
+}
+
+function keyboardStep(timestamp) {
+  keyFrame = 0;
+  if (!pressedKeys.size) return;
+  const seconds = Math.min(0.1, (timestamp - keyTimestamp) / 1000);
+  keyTimestamp = timestamp;
+  const step = orbit.distance * KEY_MOVE_PER_SECOND * seconds;
+  const axis = (positive, negative) => Number(pressedKeys.has(positive)) - Number(pressedKeys.has(negative));
+  moveOnGround(step * (axis('w', 's') + axis('arrowup', 'arrowdown')), step * (axis('d', 'a') + axis('arrowright', 'arrowleft')));
+  orbit.yaw += KEY_TURN_PER_SECOND * seconds * axis('q', 'e');
+  requestDraw();
+  keyFrame = requestAnimationFrame(keyboardStep);
+}
+
+function resetView() {
+  orbit.yaw = homeView.yaw;
+  orbit.pitch = homeView.pitch;
+  orbit.distance = homeView.distance;
+  orbit.target = [...homeView.target];
+  requestDraw();
 }
 
 function renderTabs() {
@@ -75,6 +209,25 @@ async function readDescription(id) {
   return response.json();
 }
 
+// Streams the GLB so the loading chip can show real progress; Content-Length may be missing or compressed.
+async function downloadWithProgress(url, onProgress) {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`model is not available (${response.status})`);
+  const total = Number(response.headers.get('content-length')) || 0;
+  if (!response.body?.getReader) return response.blob();
+  const reader = response.body.getReader();
+  const chunks = [];
+  let received = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(value);
+    received += value.length;
+    onProgress(total ? Math.min(0.99, received / total) : null);
+  }
+  return new Blob(chunks, { type: 'model/gltf-binary' });
+}
+
 function showCredits(credits = []) {
   creditList.replaceChildren(...credits.map(credit => {
     const item = document.createElement('li');
@@ -86,20 +239,25 @@ function showCredits(credits = []) {
   }));
 }
 
+function markPressedTab(id) {
+  for (const button of tabs.querySelectorAll('button')) button.setAttribute('aria-pressed', String(button.dataset.scene === id));
+}
+
+// The old scene stays on screen and interactive until the new one is ready.
 async function selectScene(id) {
   const request = ++loadingRequest;
-  history.replaceState(null, '', `?scene=${id}`);
-  for (const button of tabs.querySelectorAll('button')) button.setAttribute('aria-pressed', String(button.dataset.scene === id));
-  showStatus('Loading the scene…');
+  document.documentElement.style.setProperty('--glow', SCENE_GLOWS[id]);
+  setLoadingState(id);
+  markPressedTab(id);
+  showProgress(id, null);
   try {
     const description = await readDescription(id);
-    title.textContent = description.title;
-    blurb.textContent = description.blurb;
-    showCredits(description.credits);
-    const [asset, map] = await Promise.all([
-      loadGltf(description.glb, description.gltfOptions ?? {}),
+    const glbUrl = new URL(description.glb, location.href);
+    const [model, map] = await Promise.all([
+      downloadWithProgress(glbUrl.href, fraction => { if (request === loadingRequest) showProgress(id, fraction); }),
       loadHdri(description.hdri, description.hdriOptions ?? {}),
     ]);
+    const asset = await loadGltf(model, { baseUrl: new URL('.', glbUrl).href, ...(description.gltfOptions ?? {}) });
     if (request !== loadingRequest) return;
     renderer?.dispose();
     const rendererOptions = description.renderer ?? {};
@@ -116,32 +274,87 @@ async function selectScene(id) {
     attachWaterReflection(renderer, reflection.surface);
     scene = { frame: { exposure: description.exposure ?? 1, ...(description.frame ?? {}) } };
     orbitFromCamera(description.eye, description.target);
-    window.__showcase = { renderer, scene, orbit, draw };
+    applyLimits(description, asset.parts);
+    Object.assign(homeView, { yaw: orbit.yaw, pitch: orbit.pitch, distance: orbit.distance, target: [...orbit.target] });
+    currentId = id;
+    history.replaceState(null, '', `?scene=${id}`);
+    title.textContent = description.title;
+    blurb.textContent = description.blurb;
+    showCredits(description.credits);
+    window.__showcase = { renderer, scene, orbit, draw, limits };
     status.hidden = true;
+    setLoadingState(null);
     requestDraw();
   } catch (error) {
-    if (request === loadingRequest) showStatus(`Could not open this scene: ${error.message}`, true);
+    if (request !== loadingRequest) return;
+    markPressedTab(currentId);
+    setLoadingState(null);
+    showStatus('error', `Could not open ${SCENE_LABELS[id]}: ${error.message}`);
   }
 }
 
+function pairMetrics() {
+  const [first, second] = [...pointers.values()];
+  return {
+    distance: Math.hypot(first.x - second.x, first.y - second.y) || 1,
+    x: (first.x + second.x) / 2,
+    y: (first.y + second.y) / 2,
+  };
+}
+
+canvas.addEventListener('contextmenu', event => event.preventDefault());
 canvas.addEventListener('pointerdown', event => {
-  pointer = { x: event.clientX, y: event.clientY };
+  pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+  dragMode = event.button === 2 || event.button === 1 || event.shiftKey ? 'pan' : 'orbit';
   canvas.setPointerCapture(event.pointerId);
 });
 canvas.addEventListener('pointermove', event => {
-  if (!pointer) return;
-  orbit.yaw -= (event.clientX - pointer.x) * 0.005;
-  orbit.pitch = Math.max(0.05, Math.min(1.45, orbit.pitch + (event.clientY - pointer.y) * 0.004));
-  pointer = { x: event.clientX, y: event.clientY };
+  const previous = pointers.get(event.pointerId);
+  if (!previous) return;
+  if (pointers.size === 2) {
+    const before = pairMetrics();
+    pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    const after = pairMetrics();
+    orbit.distance *= before.distance / after.distance;
+    panByPixels(after.x - before.x, after.y - before.y);
+    return;
+  }
+  const deltaX = event.clientX - previous.x;
+  const deltaY = event.clientY - previous.y;
+  pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+  if (dragMode === 'pan') {
+    panByPixels(deltaX, deltaY);
+    return;
+  }
+  orbit.yaw -= deltaX * 0.005;
+  orbit.pitch += deltaY * 0.004;
   requestDraw();
 });
-canvas.addEventListener('pointerup', () => { pointer = null; });
-canvas.addEventListener('pointercancel', () => { pointer = null; });
+const endPointer = event => { pointers.delete(event.pointerId); };
+canvas.addEventListener('pointerup', endPointer);
+canvas.addEventListener('pointercancel', endPointer);
 canvas.addEventListener('wheel', event => {
   event.preventDefault();
   orbit.distance *= Math.exp(event.deltaY * 0.001);
   requestDraw();
 }, { passive: false });
+
+canvas.addEventListener('keydown', event => {
+  if (event.ctrlKey || event.metaKey || event.altKey) return;
+  const key = event.key.toLowerCase();
+  if (!'wasdqe'.includes(key) && !key.startsWith('arrow')) return;
+  event.preventDefault();
+  if (pressedKeys.has(key)) return;
+  pressedKeys.add(key);
+  if (!keyFrame) {
+    keyTimestamp = performance.now();
+    keyFrame = requestAnimationFrame(keyboardStep);
+  }
+});
+canvas.addEventListener('keyup', event => { pressedKeys.delete(event.key.toLowerCase()); });
+canvas.addEventListener('blur', () => pressedKeys.clear());
+
+resetButton.addEventListener('click', resetView);
 window.addEventListener('resize', () => {
   renderer?.resize();
   requestDraw();

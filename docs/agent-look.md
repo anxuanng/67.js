@@ -121,7 +121,7 @@ Sky colors use display RGB, matching the renderer's existing environment contrac
 | `skyTop` | `[0.2, 0.38, 0.52]` | Components from `0` to `1` |
 | `skyBottom` | `[0.62, 0.7, 0.67]` | Components from `0` to `1` |
 | `fogColor` | `[0.35, 0.43, 0.43]` | Components from `0` to `1` |
-| `fogDensity` | `0.006` | `0` to `10` |
+| `fogDensity` | `null` | `0` to `10`. `null` fits the density to the scene: `0.006`, or `1.2` divided by the scene diagonal in metres when that is smaller, so a 900 m scene keeps 30 percent of its contrast at the far side. Set `0` for no fog |
 | `volumeFog` | Complete defaults below | One bounded world volume |
 
 Directional key radiance equals `keyColor * keyIntensity`.
@@ -129,6 +129,24 @@ Zero intensity disables that lighting contribution.
 Direction magnitude remains in the canonical recipe.
 The shadow projector uses its normalized direction, so changing only magnitude does not change shadow placement.
 High radiance can clip at the renderer's half-float HDR target limit of `65504` before bloom and tone mapping.
+
+## Light units and three.js conversion
+
+Every intensity is a linear scene value, not a photometric unit with its own scale.
+For a white diffuse surface facing a light, the outgoing radiance is `intensity * color / PI`, the same as three.js r155 and later (`useLegacyLights` removed, physical units).
+So a three.js light copies over with the factor below, and a scene lit by one light matches without tuning.
+Compare at the same `exposure` (three.js `toneMappingExposure`), and note that 67js tone maps with an ACES-style curve only when `hdr` is off.
+
+| 67js field | Unit | three.js light | Value to use |
+| --- | --- | --- | --- |
+| `keyColor * keyIntensity` | Irradiance on a surface facing the light, lux-like | `DirectionalLight.color * intensity` | Same value. Put the intensity in `keyIntensity` and keep `keyColor` in `0` to `1` |
+| `pointLights[].intensity` | Candela-like: irradiance at distance `d` is `intensity / d^2` | `PointLight.intensity` | Same value. `range` is `distance` (the same smooth cutoff). Set `radius: 0.1` to match three.js's clamp of `d^2` at `0.01` |
+| `spotLights[].intensity` | Candela-like, as a point light, scaled by the cone | `SpotLight.intensity` | Same value. `angle` is the same half angle in radians. `penumbra` fades in cosine here and in angle in three.js; both agree at `0` and `1` |
+| `areaLights[].intensity` | Candela-like: on axis, far from the light, irradiance is `intensity / d^2`, and `intensity / (d^2 + width * height / PI)` in general | `RectAreaLight.intensity` (nits) | `nits * width * height` |
+| `fillIntensity`, `ambientIntensity`, `environmentIntensity` | Unitless multipliers on the fill rig, the sky ambient and the setup's environment map | `AmbientLight`, `HemisphereLight`, `scene.environmentIntensity` | No exact equivalent. |
+
+A three.js scene built before r155 with the legacy light model multiplies each of those intensities by `PI` to get the 67js value.
+`tests/light-units.test.js` ports a directional, point, spot and area light this way and checks the irradiance each produces against the three.js formula within 2 percent.
 
 ## Lighting setups
 
@@ -191,7 +209,7 @@ See [volume fog](https://67js.codepawl.com/volumetric.md) for renderer requireme
 The controls reuse `resolveEffects` with a preview bloom strength of `0.12`.
 Exposure remains independent and maps to `frame.exposure`.
 Bloom strength zero disables bloom.
-Ambient occlusion reads the depth texture, so it needs the HDR depth target that previews use. The program compiles and its half-resolution target allocates on first use. On SwiftShader at 960 by 540 it adds about 16 ms to a 190 ms frame (measured, 8 percent). It is off by default: against Cycles on 10 reference scenes it improved no score by more than 0.002 and made most slightly worse, because the largest gaps are cast shadow shape and reflections, not contact darkening. Pixels that direct light already brightens keep less of it, because occlusion belongs to indirect light.
+Ambient occlusion reads the depth texture, so it needs the HDR depth target that previews use. A renderer built without `depth: true` skips the pass and lists an `ambient-occlusion-without-depth` warning in `renderer.diagnostics` (the preview's render info carries it too). The program compiles and its half-resolution target allocates on first use. On SwiftShader at 960 by 540 it adds about 16 ms to a 190 ms frame (measured, 8 percent). It is off by default: against Cycles on 10 reference scenes it improved no score by more than 0.002 and made most slightly worse, because the largest gaps are cast shadow shape and reflections, not contact darkening. Pixels that direct light already brightens keep less of it, because occlusion belongs to indirect light.
 
 | Field | Default | Range |
 | --- | --- | --- |
@@ -236,6 +254,8 @@ The derived eye and target must remain distinguishable at Float32 precision.
 View, projection, and combined matrices must remain finite and nonsingular at Float32 precision.
 Large targets and short distances can fail these combined checks even when each field fits its individual range.
 Derived projectors do not automatically fit scene or fog bounds.
+
+Recipes always derive the eye from `lightDirection`, so shadows follow the light. A custom adapter that passes its own `shadowBounds.eye` to the renderer overrides that: the eye decides where shadows fall, and `lightDirection` only moves the shading. When the two differ by 10 degrees or more, the renderer lists a `shadow-light-direction-mismatch` warning in `renderer.diagnostics`. Leave `eye` out of `shadowBounds` to make the shadow follow the light.
 
 ## Validation boundary
 

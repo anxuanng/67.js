@@ -215,7 +215,74 @@ test('texture pixel budgets reject compressed images before browser decoding', a
   const oversized = triangleAsset(document => {
     document.images = [{ uri: `data:image/png;base64,${Buffer.from(header).toString('base64')}` }];
   });
-  await assert.rejects(parseGltf(oversized), /maxTexturePixels before decoding/);
+  await assert.rejects(parseGltf(oversized), /maxTextureImagePixels before decoding/);
+});
+
+function pngHeaderUri(width, height) {
+  const header = new Uint8Array(24);
+  const view = new DataView(header.buffer);
+  view.setUint32(0, 0x89504e47);
+  view.setUint32(4, 0x0d0a1a0a);
+  view.setUint32(12, 0x49484452);
+  view.setUint32(16, width);
+  view.setUint32(20, height);
+  return `data:image/png;base64,${Buffer.from(header).toString('base64')}`;
+}
+
+function mockImageBitmapWithResize(context) {
+  const previousBitmap = globalThis.createImageBitmap;
+  const previousSelf = globalThis.self;
+  globalThis.self = globalThis;
+  const requests = [];
+  globalThis.createImageBitmap = async (blob, options) => {
+    requests.push(options);
+    return { width: options.resizeWidth ?? 1024, height: options.resizeHeight ?? 1024, close() {} };
+  };
+  context.after(() => {
+    if (previousBitmap) globalThis.createImageBitmap = previousBitmap;
+    else delete globalThis.createImageBitmap;
+    if (previousSelf) globalThis.self = previousSelf;
+    else delete globalThis.self;
+  });
+  return requests;
+}
+
+test('forty 1024 px maps load with default options by scaling them down and naming each one', async context => {
+  const requests = mockImageBitmapWithResize(context);
+  const asset = await parseGltf(triangleAsset(document => {
+    document.images = Array.from({ length: 40 }, (unused, index) => ({ name: `map ${index}`, uri: pngHeaderUri(1024, 1024) }));
+  }));
+  assert.equal(asset.scaledTextures.length, 40);
+  assert.deepEqual(asset.scaledTextures[3], { name: 'map 3', from: [1024, 1024], to: [512, 512] });
+  assert.match(asset.warnings.join(' '), /Scaled 40 texture image\(s\)/);
+  assert.equal(requests.length, 0, 'unreferenced images are not decoded');
+  asset.dispose();
+});
+
+test('only the largest maps are scaled, and decoding requests the scaled size', async context => {
+  const requests = mockImageBitmapWithResize(context);
+  const asset = await parseGltf(triangleAsset(document => {
+    addMaterialMaps(document);
+    document.images = [{ name: 'big', uri: pngHeaderUri(4, 4) }];
+  }), { maxTexturePixels: 8 });
+  assert.deepEqual(asset.scaledTextures, [{ name: 'big', from: [4, 4], to: [2, 2] }]);
+  assert.equal(requests[0].resizeWidth, 2);
+  assert.equal(requests[0].resizeHeight, 2);
+  const unscaled = await parseGltf(triangleAsset(addMaterialMaps));
+  assert.deepEqual(unscaled.scaledTextures, []);
+  asset.dispose();
+  unscaled.dispose();
+});
+
+test('the single image ceiling still rejects a hostile image whatever the combined budget', async () => {
+  const hostile = triangleAsset(document => {
+    document.images = [{ uri: pngHeaderUri(100000, 100000) }];
+  });
+  await assert.rejects(parseGltf(hostile, { maxTexturePixels: 1_000_000_000_000 }), /maxTextureImagePixels before decoding/);
+  const large = triangleAsset(document => {
+    document.images = [{ uri: pngHeaderUri(2048, 2048) }];
+  });
+  await assert.rejects(parseGltf(large, { maxTextureImagePixels: 1024 * 1024 }), /maxTextureImagePixels before decoding/);
 });
 
 test('hierarchy depth guards reject long chains regardless of node ordering', async () => {
@@ -387,7 +454,6 @@ test('map preflight rejects unsupported UVs, sampler states, invalid scales and 
       change(document);
     })), expected);
   }
-  await assert.rejects(parseGltf(triangleAsset(addMaterialMaps), { maxTexturePixels: 3 }), /maxTexturePixels/);
 });
 
 function skinPosition(part, vertex) {

@@ -75,6 +75,16 @@ try {
       await showcase.waitForFunction(() => window.__showcase?.renderer, null, { timeout:60000 });
       assert.equal(await showcase.evaluate(() => window.__showcase.renderer.context.getError()), 0);
       assert.equal(await showcase.locator('#showcase-tabs button').count(), 3);
+      await showcase.locator('#showcase-reset').waitFor();
+      await showcase.evaluate(() => { window.__firstRenderer = window.__showcase.renderer; });
+      await showcase.locator('#showcase-tabs button[data-scene="airport"]').click();
+      const chip = showcase.locator('#showcase-status');
+      assert.equal(await chip.isVisible(), true, 'Loading chip is missing after a tab switch');
+      assert.match(await chip.textContent(), /Loading Airport ramp/);
+      assert.equal(await showcase.locator('#showcase-tabs button[data-scene="airport"]').isDisabled(), true, 'Tab can be clicked again while loading');
+      await showcase.waitForFunction(() => window.__showcase.renderer !== window.__firstRenderer, null, { timeout:60000 });
+      await chip.waitFor({ state:'hidden', timeout:10000 });
+      assert.equal(await showcase.locator('#showcase-tabs button[data-scene="airport"]').getAttribute('aria-pressed'), 'true');
       await showcase.close();
       report.interactions.push('Hero links to the live airport scene, and the showcase opens the data center scene');
     }
@@ -160,7 +170,7 @@ try {
   }
   await page.emulateMedia({colorScheme:'light'});
   await page.goto(origin);
-  assert.equal(await page.evaluate(() => getComputedStyle(document.body).getPropertyValue('--window').trim()),'#fff');
+  assert.equal(await page.evaluate(() => getComputedStyle(document.body).getPropertyValue('--window').trim()),'#09070f', 'Site is dark in light mode too');
   await page.screenshot({path:'artifacts/site-home-light.png',fullPage:true});
   await page.goto(`${origin}/object.html`);
   await page.waitForFunction(() => window.__studio?.renderer);

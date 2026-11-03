@@ -78,6 +78,7 @@ function limitsFor(options) {
     maxParts: options.maxParts ?? 20_000,
     maxResources: options.maxResources ?? 64,
     maxTexturePixels: options.maxTexturePixels ?? 16_777_216,
+    maxTextureImagePixels: options.maxTextureImagePixels ?? 16_777_216,
     maxJoints: options.maxJoints ?? 4096,
     maxInstances: options.maxInstances ?? DEFAULT_MAX_INSTANCES,
   };
@@ -488,10 +489,11 @@ function dataUriBytes(uri) {
   return Uint8Array.from(binary, character => character.charCodeAt(0));
 }
 
-function validateImage(bytes, maxPixels) {
+function validateImage(bytes, maxImagePixels) {
   const header = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   let width;
   let height;
+  let scalable = true;
   if (bytes.length >= 24 && header.getUint32(0) === 0x89504e47 && header.getUint32(4) === 0x0d0a1a0a && header.getUint32(12) === 0x49484452) {
     width = header.getUint32(16);
     height = header.getUint32(20);
@@ -517,10 +519,11 @@ function validateImage(bytes, maxPixels) {
   if (!width && bytes.length >= 28 && ktx2Identifier.every((value, index) => bytes[index] === value)) {
     width = header.getUint32(20, true);
     height = header.getUint32(24, true);
+    scalable = false;
   }
   if (!width || !height) throw new Error('Only valid PNG, JPEG and KTX2 texture images are supported.');
-  if (width * height > maxPixels) throw new Error('Texture image exceeds maxTexturePixels before decoding.');
-  return width * height;
+  if (width * height > maxImagePixels) throw new Error('Texture image exceeds maxTextureImagePixels before decoding.');
+  return { width, height, scalable };
 }
 
 function binaryChunk(data) {
@@ -590,7 +593,7 @@ async function prepareResources(document, data, dataBytes, options, limits) {
     usedBytes += resource.bytes.byteLength;
     resourceBytes.set(uri, resource.bytes);
   }
-  let texturePixels = 0;
+  const imageSizes = [];
   for (const image of document.images ?? []) {
     let bytes = resourceBytes.get(image.uri);
     if (!bytes && image.bufferView !== undefined) {
@@ -604,11 +607,37 @@ async function prepareResources(document, data, dataBytes, options, limits) {
       bytes = source.subarray(offset, offset + view.byteLength);
     }
     if (!bytes) throw new Error('glTF image has no supported source.');
-    texturePixels += validateImage(bytes, limits.maxTexturePixels);
-    if (texturePixels > limits.maxTexturePixels) throw new Error('Combined texture images exceed maxTexturePixels before decoding.');
+    imageSizes.push(validateImage(bytes, limits.maxTextureImagePixels));
   }
-  return resourceBytes;
-  return resourceBytes;
+  return { resourceBytes, textureScaling: planTextureScaling(document.images ?? [], imageSizes, limits.maxTexturePixels) };
+}
+
+/**
+ * Fit the combined texture pixels into the budget by halving the largest images together, so equal maps stay equal.
+ * KTX2 images cannot be resized before transcoding; they count toward the budget and are never scaled.
+ */
+function planTextureScaling(imageDefinitions, imageSizes, maxTexturePixels) {
+  const targets = imageSizes.map(({ width, height }) => ({ width, height }));
+  const totalPixels = () => targets.reduce((sum, { width, height }) => sum + width * height, 0);
+  while (totalPixels() > maxTexturePixels) {
+    const scalable = targets.filter((target, index) => imageSizes[index].scalable && target.width * target.height > 1);
+    if (!scalable.length) throw new Error('Texture images exceed maxTexturePixels and cannot be scaled down further.');
+    const largestPixels = Math.max(...scalable.map(target => target.width * target.height));
+    for (const target of scalable) {
+      if (target.width * target.height !== largestPixels) continue;
+      target.width = Math.max(1, target.width >> 1);
+      target.height = Math.max(1, target.height >> 1);
+    }
+  }
+  const scaledTextures = [];
+  const targetByImageIndex = new Map();
+  targets.forEach((target, index) => {
+    const source = imageSizes[index];
+    if (target.width === source.width && target.height === source.height) return;
+    targetByImageIndex.set(index, target);
+    scaledTextures.push({ name: imageDefinitions[index].name ?? `image ${index}`, from: [source.width, source.height], to: [target.width, target.height] });
+  });
+  return { targetByImageIndex, scaledTextures };
 }
 
 function copyAttribute(attribute, size) {
@@ -786,7 +815,7 @@ function textureDescriptorFor(texture, field, { colorSpace, uvChannel, uvTransfo
   const key = `${colorSpace}:${uvChannel}:${uvTransform ?? ''}`;
   if (!descriptors.has(key)) {
     const image = decodedTextureImage(texture, field);
-    if (!image || image.width * image.height > limits.maxTexturePixels) throw new Error(`${field} image is missing or exceeds maxTexturePixels.`);
+    if (!image || image.width * image.height > limits.maxTextureImagePixels) throw new Error(`${field} image is missing or exceeds maxTextureImagePixels.`);
     const descriptor = {
       image,
       uvChannel,
@@ -847,10 +876,14 @@ export async function parseGltf(data, options = {}) {
   await loadLayerShadersFor(document);
   const warnings = ignoredExtensions.map(extension => `${extension} is accepted but not rendered.`);
   const dataBytes = typeof data === 'string' ? new TextEncoder().encode(data).byteLength : data.byteLength;
-  const resourceBytes = await prepareResources(document, data, dataBytes, options, limits);
+  const { resourceBytes, textureScaling } = await prepareResources(document, data, dataBytes, options, limits);
+  if (textureScaling.scaledTextures.length) {
+    const names = textureScaling.scaledTextures.map(({ name, from, to }) => `${name} ${from.join('x')} to ${to.join('x')}`);
+    warnings.push(`Scaled ${names.length} texture image(s) to fit maxTexturePixels: ${names.join(', ')}.`);
+  }
   let gltf;
   try {
-    gltf = await decodeGltf({ document, glbBinary: binaryChunk(data), resourceBytes, decoders, limits });
+    gltf = await decodeGltf({ document, glbBinary: binaryChunk(data), resourceBytes, decoders, limits, imageTargets: textureScaling.targetByImageIndex });
     const parts = [];
     const bindings = [];
     const skinBindings = [];
@@ -1259,7 +1292,7 @@ export async function parseGltf(data, options = {}) {
       }
       return stagePose({ animation: { clip: clipIndex, time: Math.max(0, Math.min(time, clip.duration)) } }).commit();
     }
-    return { parts, warnings, skins: skinBindings.map(binding => binding.skin), animations: gltf.animations,
+    return { parts, warnings, scaledTextures: textureScaling.scaledTextures, skins: skinBindings.map(binding => binding.skin), animations: gltf.animations,
       get nodes() { return structuredClone(nodeMetadata); }, stagePose, applyAnimation, dispose, capabilities: GLTF_CAPABILITIES };
   } catch (error) {
     gltf?.release();

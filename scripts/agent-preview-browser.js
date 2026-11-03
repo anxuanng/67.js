@@ -71,6 +71,7 @@ function renderInfo(renderer) {
     morphTextures: renderer.morphTextures?.size ?? 0,
     gpuBuffers: renderer.buffers?.length ?? 0,
     drawBatches: renderer.batches?.length ?? 0,
+    ...(renderer.diagnostics?.length ? { diagnostics: renderer.diagnostics } : {}),
   };
 }
 

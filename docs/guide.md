@@ -380,7 +380,7 @@ Each effect compiles and allocates its targets on the first frame that turns it 
 Passes draw without multisampling into their own target, and `renderer.passObjectNames()` lists the part behind each object ID.
 The pass branch of the main shader compiles on the first pass request. MCP render jobs write passes to files; see [agent render jobs](agent-render-jobs.md#render-passes).
 
-Outdoor `environment` accepts `skyTop`, `skyBottom` (display RGB), `fogColor` (linear RGB), `fogDensity`, `lightDirection` and `daylight`. Set `world: true` and `ground: false`. Frames can override environment and supply `time`, `wind`, `waterRipple` and `rippleTime`.
+Outdoor `environment` accepts `skyTop`, `skyBottom` (display RGB), `fogColor` (linear RGB), `fogDensity` (unset, it is 0.006, thinned to 1.2 divided by the scene diagonal for scenes wider than about 200 m), `lightDirection` and `daylight`. Set `world: true` and `ground: false`. Frames can override environment and supply `time`, `wind`, `waterRipple` and `rippleTime`.
 
 ## Local lights and volume fog
 

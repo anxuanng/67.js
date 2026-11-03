@@ -39,7 +39,8 @@ The optional `signal` aborts those fetches.
 | `maxVertices` | 2,000,000 | Declared and decoded geometry vertices. Indices have a separate ceiling of twelve times this value. |
 | `maxParts` | 20,000 | Declared nodes and decoded mesh parts. |
 | `maxResources` | 64 | Unique resource URIs. |
-| `maxTexturePixels` | 16,777,216 | Combined texture image pixels, checked before decoding. |
+| `maxTexturePixels` | 16,777,216 | Combined texture image pixels, checked from the file headers before decoding. Over the budget, the largest images are halved together until they fit, and `asset.scaledTextures` lists each one as `{ name, from, to }` (also summarised in `asset.warnings`). |
+| `maxTextureImagePixels` | 16,777,216 | Hard ceiling for one image, checked before decoding. Larger images are rejected, never scaled. |
 | `maxJoints` | 4,096 | Combined declared joints and joint palettes for instantiated meshes. |
 | `maxInstances` | 4,096 | Instances of one `EXT_mesh_gpu_instancing` node. |
 
@@ -167,7 +168,7 @@ const asset = await loadGltf('/models/car.glb', { decoders: { draco, ktx2, mesho
 
 Any subset works. Draco and KTX2 decode in browser workers. Dispose the loaders yourself when done (`draco.dispose()`, `ktx2.dispose()`).
 A KTX2 texture that decodes to a GPU-compressed format fails with a message that points back to this setting.
-KTX2 dimensions count toward `maxTexturePixels` before decoding.
+KTX2 dimensions count toward `maxTexturePixels` before decoding. KTX2 images are never scaled, so a KTX2-heavy file over the budget fails.
 
 ### Instancing limits
 
