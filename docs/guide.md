@@ -341,6 +341,8 @@ Tags select specialized behavior: `armor` allows studio finish overrides. `floor
 
 `render(frame)` draws synchronously. `resize()` replans targets after CSS size or `pixelRatio` changes. `updateParts(parts, { shadows: true })` uploads changed matrices and materials using retained buffers. It does not add new part, geometry or texture identities.
 
+`updateTexture(descriptor, { image?, region? })` pushes new pixels into a texture the renderer already uploaded, such as a live canvas or a simulation. Import `@codepawlhq/67js/addons/texture-update` first. `docs/material-maps.md` has the options.
+
 Construct a new renderer for a new graph. `dispose()` releases owned resources.
 
 Read `memoryPlan` for actual width, height, estimatedBytes and reduced status. `capabilities` for HDR and MSAA negotiation. `triangles`, `batches.length` and `cpuMilliseconds` for diagnostics. CPU submission time is not GPU frame time.
