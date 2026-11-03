@@ -6,6 +6,7 @@ import { ambientOcclusionFragment } from './ambient-occlusion.js';
 import { planRenderSize, estimateTextureBytes, estimateFrameBytes } from './budget.js';
 import { applyProjection } from './camera.js';
 import { resolveEffects } from './effects.js';
+import { frameDiagnostics } from './frame-diagnostics.js';
 import { createLightingState, updateLightingState } from './lighting.js';
 import { SHADOW_ATLAS_WIDTH, SHADOW_ATLAS_HEIGHT, tileViewport, writeShadowTile } from './local-shadows.js';
 import { resolveVolumeFog, volumeShadowAmbient } from './volumetric.js';
@@ -446,6 +447,8 @@ export class Renderer67 {
     this.world = world;
     this.environment = environment;
     this.shadowBounds = shadowBounds;
+    /** Warnings about the last frame drawn, in the shape of `agent-diagnostics.js`; see `frame-diagnostics.js`. */
+    this.diagnostics = [];
     this.activeLightDirection = environment.lightDirection ?? [-3, 6, 4];
     this.shadowCascades = shadowCascades;
     this.memoryBudgetMiB = memoryBudgetMiB;
@@ -2025,6 +2028,7 @@ export class Renderer67 {
     // The shadow view follows the sun, so a moved sun redraws the map.
     const lightChanged = String(this.activeLightDirection) !== String(environment.lightDirection);
     this.activeLightDirection = environment.lightDirection;
+    this.diagnostics = frameDiagnostics({ depth: this.depth, effects });
     const start = performance.now();
     const context = this.context;
     this.beginGpuTiming();

@@ -191,7 +191,7 @@ See [volume fog](https://67js.codepawl.com/volumetric.md) for renderer requireme
 The controls reuse `resolveEffects` with a preview bloom strength of `0.12`.
 Exposure remains independent and maps to `frame.exposure`.
 Bloom strength zero disables bloom.
-Ambient occlusion reads the depth texture, so it needs the HDR depth target that previews use. The program compiles and its half-resolution target allocates on first use. On SwiftShader at 960 by 540 it adds about 16 ms to a 190 ms frame (measured, 8 percent). It is off by default: against Cycles on 10 reference scenes it improved no score by more than 0.002 and made most slightly worse, because the largest gaps are cast shadow shape and reflections, not contact darkening. Pixels that direct light already brightens keep less of it, because occlusion belongs to indirect light.
+Ambient occlusion reads the depth texture, so it needs the HDR depth target that previews use. A renderer built without `depth: true` skips the pass and lists an `ambient-occlusion-without-depth` warning in `renderer.diagnostics` (the preview's render info carries it too). The program compiles and its half-resolution target allocates on first use. On SwiftShader at 960 by 540 it adds about 16 ms to a 190 ms frame (measured, 8 percent). It is off by default: against Cycles on 10 reference scenes it improved no score by more than 0.002 and made most slightly worse, because the largest gaps are cast shadow shape and reflections, not contact darkening. Pixels that direct light already brightens keep less of it, because occlusion belongs to indirect light.
 
 | Field | Default | Range |
 | --- | --- | --- |
