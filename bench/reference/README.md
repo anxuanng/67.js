@@ -635,6 +635,25 @@ Method: Cycles was rendered a second time with the world light at 0 (sun only) f
 - Terrain sky visibility did read a little high. A brute-force march (48 azimuths, 8 m first step, 8 percent growth) gives 0.68 to 0.69 on the floor and `terrain-sky.js` gave 0.73, because the 1.3 step growth skips narrow peaks. A step growth of 1.1 gives 0.694 at about 0.03 s more build time. It moved the floor from 0.1117 to 0.1073 (nearer Cycles), but the slopes from 0.0258 to 0.0232 (further from Cycles 0.0394), and `mountain-valley` went from 0.2623 to 0.2743 against Cycles. Reverted. The slopes are already darker than Cycles, which has bounced light off the lit walls.
 - The sky radiance by elevation of the capped HDRI is nearly flat (the share of irradiance above a 40 degree horizon is 0.70 against 0.59 for a uniform sky), so a sky that is brighter near the horizon does not explain the floor.
 
+### Where the valley floor's sun comes from (2026-11-03, part of issue #191, tracked in #206)
+
+Display luminance of the bottom 100 rows of `mountain-valley`, GPU column, stored Cycles and EEVEE renders, `--ambient 0` (sun only in 67js). Cycles reads 0.2753 and EEVEE 0.3082 with the whole sky on; the 67js frame with the sky on reads 0.3620. Each row changes one thing against the first row:
+
+| 67js, world light 0 | Floor | What it tells |
+| --- | --- | --- |
+| as drawn | 0.1822 | The sun alone lights the floor. |
+| sun term off (`keyColor * 0`) | 0.0015 | All of the 0.1822 is sun, not the fill lights. |
+| shadow term off (visibility 1) | 0.2287 | The shadow map takes only a fifth of the sun away. |
+| terrain left out of the shadow pass | 0.2274 | The shadow comes from the terrain; the trees add almost nothing at this size. |
+| depth bias `0.00002` (was up to `0.002`) | 0.1705 | Bias is not the cause. |
+| shadow LOD selection off | 0.1809 | Not the cause. |
+| no instance (frustum) culling in the shadow pass | 0.1809 | Not the cause. |
+| terrain `levels: 1` (no LOD at all) | 0.1822 | Not the cause. |
+| shadow map depth 2,000 m / 6,000 m (was 3,500 m) | 0.1720 / 0.2164 | Moves with the bias, which scales with the depth range; not the cause. |
+| receivers outside the map return 0 instead of 1 | 0.1822 | The floor is inside the map. |
+
+The geometry says the floor is dark: marching the height function toward the sun (`createNoiseHeight` with the scene's parameters, 336 floor points, 4 m steps to 5 km) finds a horizon above the sun at every point, with a margin of at least 0.295 in tangent (median 0.52) over the sun's 0.227. So the 1,100 m rim blocks the sun by a wide margin, Cycles agrees, and the single shadow map does not show it. The cause is still unknown, and none of the settings above closes it when tried alone. Sky visibility is not the cause: the crown now reads 0.2026 against 0.1762 in Cycles (green pixels above 60 percent of the frame height, EEVEE 0.2295), and the remaining gap on both scenes is the sun shadow of #206.
+
 ## The valley floor's sun: back faces in the shadow pass (2026-11-03, part of issue #206)
 
 Probe: the sun shadow depth (2048 x 2048, 24 bit) was copied to a float target and read back, and 259 floor points were projected into it. A march over the terrain's own mesh blocks the sun at all 259; the map shadows 123 of them. For the others the texel holds the floor's own depth where the march's first hit, 1,000 to 1,500 m toward the sun and 300 m up, has a depth of 0.36 against the floor's 0.58. Nothing is drawn there. The cause is the cull state of the shadow pass: it culled back faces. A ray that enters the terrain sideways (the mesh has no wall on its outer edge, and a slope that climbs toward the sun faster than the sun's 13 degrees faces away from the light) meets only back faces, writes no depth, and the sun passes through the rock. In the readback the floor shows as an unoccluded patch under the rim. The ten single changes of #221 could not close it because each left the culling alone; a finest-level terrain (`lodDistance` large) also left the floor at 0.1727.
