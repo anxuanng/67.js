@@ -1381,3 +1381,22 @@ One 67js column moved by more than 0.002: `long-street` `cpu-vs-cycles`, 0.115 t
 | temple-hall-c | 0.2746 to 0.1177 | 0.2749 to 0.118 | 0.0028 to 0.0025 | 0.3989 to 0.3992 | 0.2216 to 0.3682 | 0.2213 to 0.3679 |
 
 The EEVEE-against-Cycles column barely moves (at most 0.0037), so the references are the ones the old numbers used. The 67js columns moved a lot: 17 cells by more than 0.002, up to 0.21 (`temple-hall-b` against Cycles 0.3642 to 0.1564, `megacity-dusk-a` 0.1507 to 0.1989). That is not the scorer, which changes only the EEVEE columns by a few thousandths. It is 67js drawing these scenes differently from the run that wrote the old `grand.json`, which was written before the water and river commits (#195, #232) and other work on main (inferred from the commit history; the individual cause of each scene was not isolated). These are the numbers of main as of this run.
+
+## The foliage crown's lit leaves: coverage, not shading (2026-11-03, part of issue #191)
+
+No engine change was kept and `baseline.json` is unchanged. Method: the crown is the card pixels of `broadleaf foliage` (label image of `region-errors.py`, 86,646 pixels); a pixel is leaf when it is green-dominant (green at least red, green at least blue + 0.02) or darker than 0.25, in Cycles and in each renderer separately. Sun-lit Cycles leaf is a Cycles display luminance above 0.35 (12,456 pixels). The stored 67js GPU render and a `render-gpu.mjs --key 0` render (sun off) were used. Each lit Cycles pixel is classed by what the renderer shows there: (a) no leaf, (b) leaf more than 0.10 darker, (c) more than 0.10 brighter, (d) within 0.10. Contribution is the FLIP sum over the frame.
+
+An earlier cut of this analysis, which called "lit" a Cycles luminance above 0.5, was mostly sky seen through gaps in the cards (Cycles luminance 0.83) and is wrong; the 0.167 against 0.067 of the section above carries the same contamination.
+
+| Class (lit Cycles leaf) | 67js pixels (share) | 67js contribution | EEVEE pixels (share) | EEVEE contribution |
+| --- | --- | --- | --- | --- |
+| (a) no leaf | 929 (0.075) | 0.0010 | 114 (0.009) | 0.0001 |
+| (b) too dark | 2,359 (0.189) | 0.0024 | 2,071 (0.166) | 0.0024 |
+| (c) too bright | 221 (0.018) | 0.0002 | 95 (0.008) | 0.0001 |
+| (d) within 0.10 | 8,947 (0.718) | 0.0039 | 10,176 (0.817) | 0.0035 |
+| leaf here, sky in Cycles (whole crown) | 1,862 | 0.0022 | 118 | 0.0001 |
+
+- Lit leaves lose to EEVEE by 0.0014 (0.0075 against 0.0061). Of that, missing leaf (a) is 0.0009, brightness (c) 0.0001, the rest of the leaves 0.0004, and too-dark leaves (b) nothing: EEVEE has the same count and the same error. Counting the leaf 67js draws on sky pixels of Cycles (0.0022 against 0.0001), the card coverage accounts for more than the whole gap; 67js wins on the darkest crown pixels (0.0197 against 0.0236).
+- So the dominant class is coverage: leaf mask mismatch against Cycles is 6,073 pixels in 67js and 2,864 in EEVEE, in a window of the crown (75,890 Cycles leaf pixels; 67js 73,567, EEVEE 73,288). 67js misses 4,198 Cycles leaf pixels (EEVEE 2,733) and draws 1,875 that Cycles does not (EEVEE 131). It is not one shift: the best integer shift of the mask is 0 to 3 pixels left and differs by quadrant, and it removes at most 30 percent of the mismatch in any one of them. The mismatch is along leaf edges and tips (about 60 percent within a pixel of the other mask).
+- Shading is not it. The too-dark leaves (b) get 0.163 of linear-ish luminance from the sun in 67js (the sun-off render is 0.080 against 0.244 with the sun) against 0.448 in Cycles, and EEVEE has the same count. The lit leaves that 67js gets right take 0.232 from the sun. Leaf transmission and normals are not what separates 67js from EEVEE.
+- Candidate not run: the leaf texture is read with trilinear mip filtering and cut at alpha 0.5, so thin leaflets and tips fall under the cutoff at a coarse level, while Cycles reads the full-size image. Reading cutout materials one mip level finer (`texture(baseMap, uv, -1.0)` for `alphaMode` mask) is a one-line change, written but not measured because the GPU lock was held by another job for 35 minutes of waiting (the queued render was cancelled). It also touches grass and every other cutout, so it needs the full default and `--grand` suites before it is kept.
