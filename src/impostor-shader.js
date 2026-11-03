@@ -12,17 +12,20 @@ export const IMPOSTOR_FRAMES = 8;
 export const IMPOSTOR_TAG = 13;
 
 export const impostorShader = `
-// Hemi-octahedral cell of a direction in the tree's own frame; the upper hemisphere fills the square.
-vec2 impostorCell(vec3 localDirection) {
+// Hemi-octahedral position of a direction in the tree's own frame, in cells: the upper hemisphere fills the square and a
+// cell's own view sits at its middle, so the four views around the position can be blended in the fragment shader.
+vec2 impostorCellPosition(vec3 localDirection) {
   vec3 folded = vec3(localDirection.x, max(localDirection.y, 0.0), localDirection.z);
   folded /= max(abs(folded.x) + folded.y + abs(folded.z), 0.00001);
   vec2 square = vec2(folded.x + folded.z, folded.x - folded.z) * 0.5 + 0.5;
-  return clamp(floor(square * ${IMPOSTOR_FRAMES}.0), 0.0, ${IMPOSTOR_FRAMES - 1}.0);
+  return square * ${IMPOSTOR_FRAMES}.0 - 0.5;
 }
 
-// Returns the world position of this corner and the atlas uv of the nearest view. clipMatrix is the matrix of the pass
-// (camera or light); the eye is where it projects to w = 0, or for an orthographic pass a direction.
-vec3 impostorCard(vec3 localPosition, vec2 corner, mat4 modelMatrix, mat4 clipMatrix, float seconds, float strength, out vec2 atlasUv, out vec3 cardNormal) {
+// Returns the world position of this corner, the atlas uv of the first of the four views around the viewing direction
+// and viewBlend: the fractions toward the second view along each axis, then the uv step to it (0 at the atlas edge).
+// clipMatrix is the matrix of the pass (camera or light); the eye is where it projects to w = 0, or for an orthographic
+// pass a direction.
+vec3 impostorCard(vec3 localPosition, vec2 corner, mat4 modelMatrix, mat4 clipMatrix, float seconds, float strength, out vec2 atlasUv, out vec4 viewBlend, out vec3 cardNormal) {
   vec2 side = vec2(corner.x * 2.0 - 1.0, 1.0 - corner.y * 2.0);
   float radius = abs(localPosition.x);
   float centerHeight = localPosition.y - side.y * radius;
@@ -36,7 +39,11 @@ vec3 impostorCard(vec3 localPosition, vec2 corner, mat4 modelMatrix, mat4 clipMa
   cardNormal = toEye;
   float scale = length(modelMatrix[0].xyz);
   vec3 localDirection = normalize(transpose(mat3(modelMatrix)) * toEye);
-  atlasUv = (impostorCell(localDirection) + corner) / ${IMPOSTOR_FRAMES}.0;
+  vec2 cellPosition = impostorCellPosition(localDirection);
+  vec2 firstCell = clamp(floor(cellPosition), 0.0, ${IMPOSTOR_FRAMES - 1}.0);
+  vec2 secondCell = clamp(floor(cellPosition) + 1.0, 0.0, ${IMPOSTOR_FRAMES - 1}.0);
+  atlasUv = (firstCell + corner) / ${IMPOSTOR_FRAMES}.0;
+  viewBlend = vec4(cellPosition - floor(cellPosition), (secondCell - firstCell) / ${IMPOSTOR_FRAMES}.0);
   float heightFraction = side.y * 0.5 + 0.5;
   float sway = sin(seconds * 1.2 + center.z * 0.31 + center.x * 0.17) * strength * 0.05 * radius * heightFraction * heightFraction;
   return center + (right * (side.x * radius + sway) + cardUp * side.y * radius) * scale;
@@ -58,10 +65,12 @@ const ALPHA_COVERAGE = `  if (materialOpacity > 1.0) {
   }
 `;
 
-const COLOR_HOOK = `  if (instanceSurface.w == ${IMPOSTOR_TAG}.0) {
+const VIEW_BLEND_OUTPUT = 'out vec4 cardViewBlend;\n';
+const COLOR_HOOK = `  cardViewBlend = vec4(0.0);
+  if (instanceSurface.w == ${IMPOSTOR_TAG}.0) {
     vec2 atlasUv;
     vec3 cardNormal;
-    world.xyz = impostorCard(position, uv, instanceMatrix, viewProjection, time, wind, atlasUv, cardNormal);
+    world.xyz = impostorCard(position, uv, instanceMatrix, viewProjection, time, wind, atlasUv, cardViewBlend, cardNormal);
     uv = atlasUv;
     worldPosition = world.xyz;
     worldNormal = cardNormal;
@@ -71,8 +80,9 @@ const COLOR_HOOK = `  if (instanceSurface.w == ${IMPOSTOR_TAG}.0) {
 const DEPTH_HOOK = `  if (instanceSurface.w == ${IMPOSTOR_TAG}.0) {
     vec3 lightFacing;
     vec2 atlasUv;
-    world.xyz = impostorCard(position, uv, instanceMatrix, lightProjection, time, wind, atlasUv, lightFacing);
-    uv = atlasUv;
+    vec4 viewBlend;
+    world.xyz = impostorCard(position, uv, instanceMatrix, lightProjection, time, wind, atlasUv, viewBlend, lightFacing);
+    uv = atlasUv + step(0.5, viewBlend.xy) * viewBlend.zw;
   }
 `;
 
@@ -80,12 +90,39 @@ function insertBefore(source, anchor, code) {
   return source.includes(anchor) ? source.replace(anchor, () => code + anchor) : source;
 }
 
+// The colour fragment shader samples the atlas through cardUV: the view picked for this pixel among the four around the
+// viewing direction, by their bilinear weights against a screen pattern like the fade's (a stochastic blend, so one sample
+// a pixel). Gradients still come from textureUV, so mip levels and the normal basis stay smooth across the picks.
+const VIEW_BLEND_FRAGMENT = `in vec4 cardViewBlend;
+vec2 cardUV;
+vec2 pickCardUV() {
+  vec2 fraction = cardViewBlend.xy;
+  float threshold = fract(52.9829189 * fract(dot(gl_FragCoord.xy + 17.0, vec2(0.06711056, 0.00583715))));
+  float afterFirst = (1.0 - fraction.x) * (1.0 - fraction.y);
+  float afterSecond = afterFirst + fraction.x * (1.0 - fraction.y);
+  float afterThird = afterSecond + (1.0 - fraction.x) * fraction.y;
+  vec2 pick = threshold < afterFirst ? vec2(0.0) : threshold < afterSecond ? vec2(1.0, 0.0) : threshold < afterThird ? vec2(0.0, 1.0) : vec2(1.0);
+  return textureUV + pick * cardViewBlend.zw;
+}
+`;
+
+function addViewBlend(source) {
+  if (!source.includes('in vec2 textureUV;') || !source.includes('void main() {')) return source;
+  const gradients = 'dFdx(textureUV), dFdy(textureUV)';
+  return source
+    .replace('texture(baseMap, textureUV)', () => `textureGrad(baseMap, cardUV, ${gradients})`)
+    .replace(/texture\(normalMap, textureUV([^)]*)\)/, (match, transform) => `textureGrad(normalMap, cardUV${transform}, ${gradients})`)
+    .replace('in vec2 textureUV;', () => `in vec2 textureUV;\n${VIEW_BLEND_FRAGMENT}`)
+    .replace('void main() {', () => 'void main() {\n  cardUV = pickCardUV();');
+}
+
 /** Adds the card and dither code to a shader source that has the lines it hooks into; other sources pass through. */
 export function addImpostorCode(source) {
-  if (source.includes('float surfaceAlpha(float textureAlpha) {')) return insertBefore(source, '  if (alphaMode > 1.5) return alpha;', ALPHA_COVERAGE);
+  if (source.includes('float surfaceAlpha(float textureAlpha) {')) return addViewBlend(insertBefore(source, '  if (alphaMode > 1.5) return alpha;', ALPHA_COVERAGE));
   if (!source.includes('uniform float wind;') || !source.includes('void main() {')) return source;
-  const withDefinitions = insertBefore(source, 'void main() {', impostorShader);
-  if (withDefinitions.includes('worldNormal = normalize(')) return insertBefore(withDefinitions, "  // Metres along the object's own axes", COLOR_HOOK);
+  const isColor = source.includes('worldNormal = normalize(');
+  const withDefinitions = insertBefore(source, 'void main() {', (isColor ? VIEW_BLEND_OUTPUT : '') + impostorShader);
+  if (isColor) return insertBefore(withDefinitions, "  // Metres along the object's own axes", COLOR_HOOK);
   return insertBefore(withDefinitions, '  textureUV = uv;\n  gl_Position = lightProjection * world;', DEPTH_HOOK);
 }
 
