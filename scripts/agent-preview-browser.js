@@ -767,8 +767,8 @@ window.__agentPreview = {
   create(input) {
     if (active) throw new Error('Dispose the current scene before creating another.');
     if (recipeAssetNeeds(input.recipe).length) return this.createWithAssets(input);
-    return afterMeshBooleans(input.recipe, async () => {
-      const sequenceFrames = await loadSequenceFrames(new Map(), input.sequenceData);
+    // Only a recipe with image sequences waits for its frames to decode; any other create stays synchronous.
+    const build = sequenceFrames => {
       startBuildReport();
       const startedAt = performance.now();
       if (!useKernelWorkers()) {
@@ -780,7 +780,8 @@ window.__agentPreview = {
         finishBuildReport(startedAt);
         return createPreview(scene, input, undefined, undefined, sequenceFrames);
       });
-    });
+    };
+    return afterMeshBooleans(input.recipe, () => (input.sequenceData ? loadSequenceFrames(new Map(), input.sequenceData).then(build) : build(new Map())));
   },
   async createAsset(input) {
     if (active) throw new Error('Dispose the current scene before creating another.');
