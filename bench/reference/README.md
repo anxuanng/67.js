@@ -902,7 +902,6 @@ Row bands of 60 rows, 67js over Cycles with the sun off: 0.99, 0.98, 0.96, 0.94,
 
 The towers and the quay are slightly darker in 67js than in Cycles with only the sky, not brighter, so the canyon walls and the street do not get too much sky light. The river is 3 to 4 times brighter, but taking all the sky's diffuse light away (`--ambient 0`) removes only 0.007 to 0.010 of an excess of 0.021 to 0.037, so 67js stays 2.6 to 2.8 times over Cycles with no ambient at all. Even a perfect occlusion of the sky light in the river could close about a third of the gap, and the walls give no sign that the occlusion is missing. The rest comes from what the water draws besides diffuse sky: the reflection of the lit windows and the lamps (`src/water-reflection.js`), which is the part #195 works on. No sky visibility grid was built.
 
-<<<<<<< HEAD
 ## Multiple scattering in the environment specular (2026-11-03, part of issue #167)
 
 Re-measured on current main, `metal` was still 0.1036 against Cycles (EEVEE 0.0916), `car-paint` 0.1037 and `brushed-film` 0.1029, so the object probes of #209 had held. FLIP over screen regions of `metal` (GPU against Cycles, EEVEE in brackets, mean luminance difference to Cycles in the last column, regions cut from the projected bounds of each part):
@@ -928,7 +927,7 @@ The rough metals (copper, gold, steel) were darker than Cycles by 0.03 to 0.06 i
 | `brushed-film` | 0.1029 | 0.1027 |
 
 Every other scene moves by 0.0006 or less, none worse than 0.0002. Per region after the change: copper 0.2289 (was 0.2957), gold 0.1963 (was 0.2109), steel 0.3003, chrome 0.2127, floor 0.0994. Copper and gold are now past EEVEE; the remaining gap to EEVEE (0.0058) sits in the floor (50% of the error, 0.0994 against 0.0884: light bounced from the metal parts onto it, which the earlier one bounce probe test did not fix), the chrome sphere (0.021 too bright) and the steel cylinder. The direct light specular (`illuminate`) has no multiple scattering yet; it needs the BRDF lookup in the per light path, so it is the next thing to measure. Box 1 of #167 (metal reaches EEVEE) stays open.
-=======
+
 Correction to the table above: the sun was never on in `megacity-dusk-a` (`keyColor` is 0, 0, 0 in `grand-scenes.js`), so `--key 0` and `--sun-strength 0` change nothing there. The two Cycles arrays are the same render and the 67js `--key 0` image equals the full one pixel for pixel. The "sky only" numbers above are the plain comparison, and the sky was the only light all along.
 
 ## The Cycles river was dark, not the 67js river bright (2026-11-03, issue #232)
@@ -953,4 +952,3 @@ Both water boxes now stand 1 cm above the ground. Cycles is re-rendered for `meg
 | `megacity-dusk-b` GPU / CPU | 0.1242 / 0.1258 | 0.1108 / 0.1120 |
 
 Mean linear luminance of 67js over Cycles after the change, `megacity-dusk-a`: towers 0.92, street 0.90, river middle 0.82, river sides 0.82. The river is now slightly dark in 67js instead of 2.4 times bright. The scores of `mountain-valley-a` and the default suite are not touched: no engine file changed, and neither scene uses these boxes (inferred; not re-run). The measuring switch `render-gpu.mjs --water off|ssr` is new. Done-when 1 of #232 holds (the cause is measured); the sky visibility grid of its scope is not needed, and the issue's second item is moot.
->>>>>>> origin/main
