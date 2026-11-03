@@ -387,11 +387,52 @@ function assertNoPivot(entries) {
   }
 }
 
+function transformDirection(matrix, origin, direction) {
+  const tip = vec3.transformMat4(vec3.create(), vec3.add(vec3.create(), origin, direction), matrix);
+  const base = vec3.transformMat4(vec3.create(), origin, matrix);
+  return vec3.normalize(tip, vec3.subtract(tip, tip, base));
+}
+
+function assertVector3(value, message) {
+  if (!value || value.length !== 3 || !Array.from(value).every(Number.isFinite)) throw new TypeError(message);
+}
+
+/**
+ * `lights.headlights`: `[{ id, position, direction }]` in model space (direction defaults to forward).
+ * `lights.tailLights`: `[{ id, part|node|targets, signal: 'brake' | 'reverse', off, on }]`, emission strengths of the lamp material.
+ */
+function resolveLights(source, lights = {}, inverseRestFrame, forward) {
+  const headlights = (lights.headlights ?? []).map((light, index) => {
+    assertVector3(light.position, `Headlight ${index} needs a position of three finite numbers.`);
+    const direction = light.direction ?? forward;
+    assertVector3(direction, `Headlight ${index} direction must be three finite numbers.`);
+    const position = vec3.transformMat4(vec3.create(), light.position, inverseRestFrame);
+    return {
+      id: light.id ?? `headlight-${index}`,
+      positionLocal: Array.from(position),
+      directionLocal: Array.from(transformDirection(inverseRestFrame, light.position, direction)),
+    };
+  });
+  const tailLights = (lights.tailLights ?? []).map((light, index) => {
+    if (light.signal !== 'brake' && light.signal !== 'reverse') throw new RangeError(`Tail light ${index} signal must be brake or reverse.`);
+    const references = light.targets ?? light.parts ?? light.nodes ?? [light.target ?? light.part ?? light.node];
+    if (!Array.isArray(references) || references.length === 0 || references.includes(undefined)) {
+      throw new TypeError(`Tail light ${index} needs a part, node or targets list.`);
+    }
+    const { off = 0, on = 4 } = light;
+    if (!Number.isFinite(off) || !Number.isFinite(on) || off < 0 || on < 0) throw new RangeError(`Tail light ${index} off and on must be zero or positive.`);
+    const entries = references.map(reference => resolveEntry(source, reference));
+    return { id: light.id ?? entries[0].label, signal: light.signal, entries, off, on };
+  });
+  return { headlights: Object.freeze(headlights), tailLights: Object.freeze(tailLights) };
+}
+
 /**
  * Describes a vehicle: a rigid body plus wheels, found in `parts`, a scene `graph` or a loaded glTF `asset`.
  * `wheels` is an array of `{ id, part|node|targets, side, axle, radius, center, steerable, spinSign }` or 'auto'.
+ * `lights` adds headlight positions and tail-light parts (see `resolveLights`).
  */
-export function createVehicleRig({ parts, graph, asset, body, wheels = 'auto', forwardAxis = '+z', wheelbase, maxSteerAngle = DEFAULT_MAX_STEER_ANGLE } = {}) {
+export function createVehicleRig({ parts, graph, asset, body, wheels = 'auto', forwardAxis = '+z', wheelbase, maxSteerAngle = DEFAULT_MAX_STEER_ANGLE, lights } = {}) {
   const forward = FORWARD_AXES[forwardAxis];
   if (!forward) throw new RangeError('forwardAxis must be one of +x, -x, +z or -z.');
   assertFinitePositive(maxSteerAngle, 'maxSteerAngle must be positive radians.');
@@ -404,11 +445,17 @@ export function createVehicleRig({ parts, graph, asset, body, wheels = 'auto', f
   const layout = resolveWheelLayout(measuredWheels, forward);
   const bodyEntries = resolveBodyEntries(source, body, layout.wheels);
   assertNoPivot([...bodyEntries, ...layout.wheels.flatMap(wheel => wheel.entries)]);
+  const resolvedWheelbase = resolveWheelbase(layout.wheels, wheelbase);
+  const referenceWheels = layout.wheels.some(wheel => wheel.axle === 'front') ? layout.wheels.filter(wheel => wheel.axle === 'front') : layout.wheels;
+  const lateralOffsets = referenceWheels.map(wheel => wheel.centerLocal[0]);
   return Object.freeze({
     kind: source.kind,
     source,
     forwardAxis,
-    wheelbase: resolveWheelbase(layout.wheels, wheelbase),
+    wheelbase: resolvedWheelbase,
+    trackWidth: Math.max(...lateralOffsets) - Math.min(...lateralOffsets),
+    rearAxleZ: mean(referenceWheels.map(wheel => wheel.centerLocal[2])) - resolvedWheelbase,
+    ...resolveLights(source, lights, layout.inverseRestFrame, forward),
     maxSteerAngle,
     restFrame: layout.restFrame,
     inverseRestFrame: layout.inverseRestFrame,
@@ -573,6 +620,7 @@ function createMotion(table, options) {
       duration: startTime + duration,
       distanceAt: time => clamp((time - startTime) * options.speed, 0, table.length),
       speedAt: time => (time > startTime && time < startTime + duration ? options.speed : 0),
+      accelerationAt: () => 0,
     };
   }
   const profile = createSpeedProfile(table, options);
@@ -598,6 +646,11 @@ function createMotion(table, options) {
       const { index, elapsed, acceleration } = intervalAt(local);
       return Math.max(0, profile.speeds[index] + acceleration * elapsed);
     },
+    accelerationAt(time) {
+      const local = time - startTime;
+      if (local <= 0 || local >= profile.duration) return 0;
+      return intervalAt(local).acceleration;
+    },
   };
 }
 
@@ -610,8 +663,9 @@ function interpolateTable(values, spacing, distance) {
   return Array.isArray(first) ? first.map((value, axis) => value + (second[axis] - value) * fraction) : first + (second - first) * fraction;
 }
 
-function integrateBodyMotion(table, motion, options) {
-  const steps = Math.ceil((motion.duration + SETTLE_SECONDS) / SIMULATION_STEP_SECONDS) + 1;
+// The timeline gives the signed forward speed and the curvature per metre driven forward at any time.
+function integrateBodyMotion(timeline, options) {
+  const steps = Math.ceil((timeline.duration + SETTLE_SECONDS) / SIMULATION_STEP_SECONDS) + 1;
   const pitches = new Float64Array(steps);
   const rolls = new Float64Array(steps);
   const omega = 2 * Math.PI * options.bounceFrequency;
@@ -622,9 +676,9 @@ function integrateBodyMotion(table, motion, options) {
   let rollRate = 0;
   for (let step = 0; step < steps; step++) {
     const time = step * SIMULATION_STEP_SECONDS;
-    const speed = motion.speedAt(time);
-    const longitudinal = (motion.speedAt(time + SIMULATION_STEP_SECONDS) - motion.speedAt(time - SIMULATION_STEP_SECONDS)) / (2 * SIMULATION_STEP_SECONDS);
-    const curvature = interpolateTable(table.curvature, table.spacing, motion.distanceAt(time));
+    const speed = timeline.signedSpeedAt(time);
+    const longitudinal = (timeline.signedSpeedAt(time + SIMULATION_STEP_SECONDS) - timeline.signedSpeedAt(time - SIMULATION_STEP_SECONDS)) / (2 * SIMULATION_STEP_SECONDS);
+    const curvature = timeline.curvatureAt(time);
     const pitchTarget = clamp(options.pitchGain * longitudinal, -MAX_BODY_ANGLE, MAX_BODY_ANGLE);
     const rollTarget = clamp(options.rollGain * speed * speed * curvature, -MAX_BODY_ANGLE, MAX_BODY_ANGLE);
     pitchRate += (omega ** 2 * (pitchTarget - pitch) - damping * pitchRate) * SIMULATION_STEP_SECONDS;
@@ -706,26 +760,90 @@ function suspensionOffsets(rig, bodyMatrix, groundHeight, travel) {
  * `maxLateralAcceleration`. The vehicle holds the path end once it arrives.
  */
 export function driveAlongPath(rig, path, options = {}) {
+  return driveAlongLegs(rig, [{ path }], options);
+}
+
+function buildLegs(legDescriptions, settings) {
+  const legs = [];
+  legDescriptions.forEach((description, index) => {
+    const { path, direction = 'forward', pause = 0 } = description ?? {};
+    if (direction !== 'forward' && direction !== 'reverse') throw new RangeError(`Leg ${index} direction must be forward or reverse.`);
+    if (!Number.isFinite(pause) || pause < 0) throw new RangeError(`Leg ${index} pause must be zero or positive seconds.`);
+    const previous = legs.at(-1);
+    const sign = direction === 'reverse' ? -1 : 1;
+    const startTime = previous ? previous.endTime + pause : settings.startTime;
+    const table = buildPathTable(path, settings.pathSamples);
+    // Every leg stops at both ends except the outer ones, which keep startSpeed and endSpeed.
+    const motion = createMotion(table, {
+      ...settings,
+      startTime,
+      startSpeed: previous ? 0 : settings.startSpeed,
+      endSpeed: index === legDescriptions.length - 1 ? settings.endSpeed : 0,
+    });
+    // A reversing car faces away from its direction of travel. The shift also keeps the heading continuous at a cusp.
+    let headingShift = direction === 'reverse' ? Math.PI : 0;
+    if (previous) {
+      const previousEnd = previous.headingShift + previous.table.headings.at(-1);
+      headingShift += Math.round((previousEnd - table.headings[0] - headingShift) / (2 * Math.PI)) * 2 * Math.PI;
+    }
+    legs.push({
+      table,
+      motion,
+      sign,
+      startTime,
+      endTime: motion.duration,
+      headingShift,
+      startForwardDistance: previous ? previous.startForwardDistance + previous.sign * previous.table.length : 0,
+      startHeadingChange: previous ? previous.startHeadingChange + previous.table.headings.at(-1) - previous.table.headings[0] : 0,
+    });
+  });
+  return legs;
+}
+
+/**
+ * Like `driveAlongPath` for a list of legs `[{ path, direction: 'forward' | 'reverse', pause }]` driven in order.
+ * The vehicle stops at the end of every leg. A reverse leg's path is the way the car travels; the car keeps facing the other way.
+ * `pose.distance` and `pose.speed` are signed along the car's forward axis, so they fall while reversing.
+ */
+export function driveAlongLegs(rig, legDescriptions, options = {}) {
   if (!rig || !rig.wheels || !rig.restFrame) throw new TypeError('driveAlongPath needs a rig from createVehicleRig.');
+  if (!Array.isArray(legDescriptions) || legDescriptions.length === 0) throw new TypeError('legs must be a non-empty array of { path, direction, pause }.');
   const settings = resolveDriveOptions(rig, options);
-  const table = buildPathTable(path, settings.pathSamples);
-  const motion = createMotion(table, settings);
-  const dynamics = integrateBodyMotion(table, motion, settings);
+  const legs = buildLegs(legDescriptions, settings);
+  const duration = legs.at(-1).endTime;
+  const length = legs.reduce((total, leg) => total + leg.table.length, 0);
+  const legAt = time => legs.findLast(leg => leg.startTime <= time) ?? legs[0];
+  const timeline = {
+    duration,
+    signedSpeedAt(time) {
+      const leg = legAt(time);
+      return leg.sign * leg.motion.speedAt(time);
+    },
+    curvatureAt(time) {
+      const leg = legAt(time);
+      return leg.sign * interpolateTable(leg.table.curvature, leg.table.spacing, leg.motion.distanceAt(time));
+    },
+  };
+  const dynamics = integrateBodyMotion(timeline, settings);
   const maxSteer = settings.maxSteerAngle;
 
   function sample(seconds) {
     if (!Number.isFinite(seconds)) throw new RangeError('Sample time must be finite.');
-    const distance = motion.distanceAt(seconds);
-    const heading = interpolateTable(table.headings, table.spacing, distance);
-    const curvature = interpolateTable(table.curvature, table.spacing, distance);
-    const headingChange = heading - table.headings[0];
+    const leg = legAt(seconds);
+    const { table, motion, sign } = leg;
+    const legDistance = motion.distanceAt(seconds);
+    const distance = leg.startForwardDistance + sign * legDistance;
+    const tableHeading = interpolateTable(table.headings, table.spacing, legDistance);
+    const heading = tableHeading + leg.headingShift;
+    const curvature = sign * interpolateTable(table.curvature, table.spacing, legDistance);
+    const headingChange = leg.startHeadingChange + tableHeading - table.headings[0];
     const dynamicIndex = clamp(seconds, 0, (dynamics.pitches.length - 1) * SIMULATION_STEP_SECONDS) / SIMULATION_STEP_SECONDS;
     const lower = Math.min(Math.floor(dynamicIndex), dynamics.pitches.length - 2);
     const blend = dynamicIndex - lower;
     const dynamicPitch = dynamics.pitches[lower] + (dynamics.pitches[lower + 1] - dynamics.pitches[lower]) * blend;
     const dynamicRoll = dynamics.rolls[lower] + (dynamics.rolls[lower + 1] - dynamics.rolls[lower]) * blend;
-    const position = interpolateTable(table.positions, table.spacing, distance);
-    let slopePitch = interpolateTable(table.slopes, table.spacing, distance);
+    const position = interpolateTable(table.positions, table.spacing, legDistance);
+    let slopePitch = sign * interpolateTable(table.slopes, table.spacing, legDistance);
     let slopeRoll = 0;
     if (settings.groundHeight) {
       const plane = groundPlane(rig, position, heading, settings.groundHeight);
@@ -738,10 +856,13 @@ export function driveAlongPath(rig, path, options = {}) {
     const bodyMatrix = bodyWorldMatrix(position, heading, pitch, roll);
     const offsets = suspensionOffsets(rig, bodyMatrix, settings.groundHeight, settings.suspensionTravel);
     const steerAngle = clamp(Math.atan(rig.wheelbase * curvature), -maxSteer, maxSteer);
+    const wheelSteerAngles = settings.steering === 'ackermann' ? ackermannSteerAngles(rig, steerAngle) : null;
+    const speed = sign * motion.speedAt(seconds);
     return {
       time: seconds,
       distance,
-      speed: motion.speedAt(seconds),
+      speed,
+      direction: sign,
       position,
       heading,
       pitch,
@@ -750,13 +871,17 @@ export function driveAlongPath(rig, path, options = {}) {
       wheels: rig.wheels.map((wheel, index) => ({
         id: wheel.id,
         spinAngle: wheel.spinSign * (distance - wheel.centerLocal[0] * headingChange) / wheel.radius,
-        steerAngle: wheel.steerable ? steerAngle : 0,
+        steerAngle: wheelSteerAngles ? wheelSteerAngles[index] : wheel.steerable ? steerAngle : 0,
         suspensionOffset: offsets[index],
       })),
+      lights: computeLightSignals(rig, bodyMatrix, {
+        braking: Math.max(0, -motion.accelerationAt(seconds)) / settings.fullBrakeDeceleration,
+        reversing: sign < 0 && speed !== 0,
+      }),
     };
   }
 
-  return Object.freeze({ rig, length: table.length, duration: motion.duration, sample });
+  return Object.freeze({ rig, length, duration, sample });
 }
 
 function resolveDriveOptions(rig, options) {
@@ -764,7 +889,10 @@ function resolveDriveOptions(rig, options) {
     speed, cruiseSpeed, acceleration = 3, braking = 4, startSpeed = 0, endSpeed = 0, maxLateralAcceleration = Infinity,
     startTime = 0, groundHeight, maxSteerAngle = rig.maxSteerAngle, rollGain = 0.012, pitchGain = 0.012,
     bounceFrequency = 1.6, dampingRatio = 0.45, suspensionTravel = 0.2, pathSamples = 400,
+    steering = 'ackermann', fullBrakeDeceleration = braking,
   } = options;
+  if (steering !== 'ackermann' && steering !== 'shared') throw new RangeError("steering must be 'ackermann' or 'shared'.");
+  assertFinitePositive(fullBrakeDeceleration, 'fullBrakeDeceleration must be positive and finite.');
   if ((speed === undefined) === (cruiseSpeed === undefined)) {
     throw new TypeError('Give exactly one of speed (constant) or cruiseSpeed (with acceleration and braking).');
   }
@@ -786,8 +914,57 @@ function resolveDriveOptions(rig, options) {
   if (!Number.isInteger(pathSamples) || pathSamples < 8) throw new RangeError('pathSamples must be an integer of at least 8.');
   return {
     speed, cruiseSpeed, acceleration, braking, startSpeed, endSpeed, maxLateralAcceleration, startTime, groundHeight,
-    maxSteerAngle, rollGain, pitchGain, bounceFrequency, dampingRatio, suspensionTravel, pathSamples,
+    maxSteerAngle, rollGain, pitchGain, bounceFrequency, dampingRatio, suspensionTravel, pathSamples, steering, fullBrakeDeceleration,
   };
+}
+
+// Each steerable wheel turns about the one centre the body turns about: tan(angle) = ahead / (turning radius - sideways).
+function ackermannSteerAngles(rig, centerAngle) {
+  const tangent = Math.tan(centerAngle);
+  return rig.wheels.map(wheel => {
+    if (!wheel.steerable) return 0;
+    const ahead = wheel.centerLocal[2] - rig.rearAxleZ;
+    return Math.atan2(ahead * tangent, rig.wheelbase - wheel.centerLocal[0] * tangent);
+  });
+}
+
+function computeLightSignals(rig, bodyMatrix, { braking, reversing }) {
+  return {
+    brake: clamp(braking, 0, 1),
+    reverse: reversing ? 1 : 0,
+    headlights: rig.headlights.map(light => ({
+      id: light.id,
+      position: Array.from(vec3.transformMat4(vec3.create(), light.positionLocal, bodyMatrix)),
+      direction: Array.from(transformDirection(bodyMatrix, light.positionLocal, light.directionLocal)),
+    })),
+  };
+}
+
+/** Emission strength per tail light for a pose: `off` plus `(on - off)` times the brake or reverse signal. */
+export function computeVehicleLightEmissions(rig, pose) {
+  if (!pose || !pose.lights) throw new TypeError('pose must come from drive.sample for this rig.');
+  return rig.tailLights.map(light => ({
+    id: light.id,
+    emission: light.off + (light.on - light.off) * pose.lights[light.signal],
+    entries: light.entries,
+  }));
+}
+
+/**
+ * Sets `material.emission` on the parts of every tail light for a rig built from `parts`. Give each lamp its own material:
+ * parts that share one material share the glow. Call `renderer.updateParts` afterwards. Returns the parts changed.
+ */
+export function applyVehicleLightsToParts(rig, pose) {
+  assertKind(rig, 'parts');
+  const changed = [];
+  for (const { id, emission, entries } of computeVehicleLightEmissions(rig, pose)) {
+    for (const { key: part } of entries) {
+      if (!part.material) throw new TypeError(`Tail light ${id} part needs a material to set emission on.`);
+      part.material.emission = emission;
+      changed.push(part);
+    }
+  }
+  return changed;
 }
 
 function wheelMotionMatrix(wheel, wheelPose) {
