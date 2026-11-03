@@ -11,8 +11,17 @@ import { createCascadedShadows } from '/src/cascaded-shadows.js';
 import { applyLightLinks } from '/src/light-linking.js';
 import { applyWaterReflection, attachWaterReflection } from '/src/water-reflection.js';
 import { attachScreenSpaceWater } from './ssr-water.js';
+import { groundBounceEnvironment } from '/src/ground-bounce.js';
 
 // Water reflection is on the way a recipe gets it: found from the materials, no field. ?water=off draws the scenes without it, ?water=ssr with the screen-space reflection it was compared with.
+// Ground bounce is on the way a recipe gets it: found from the floor part, no field. ?groundBounce=off draws the scenes without it.
+const GROUND_BOUNCE = new URLSearchParams(location.search).get('groundBounce') !== 'off';
+
+// The scene's environment with the light its floor bounces, when it has a plain one and nothing else gives that light (a bake, a closed room).
+function withDerivedGroundBounce(scene, drawnParts) {
+  return GROUND_BOUNCE ? groundBounceEnvironment(drawnParts, scene.environment) : scene.environment;
+}
+
 const WATER_REFLECTION = { off: false, ssr: 'ssr' }[new URLSearchParams(location.search).get('water')] ?? 'planar';
 
 // ?set=khronos draws the Khronos sample assets (npm run reference -- --khronos) and ?set=cloth the cloth scenes
@@ -172,6 +181,7 @@ async function renderReferenceScene(id, { describe, ambientOcclusion = 0, ambien
   if (key !== null) scene.environment = { ...scene.environment, keyIntensity: key };
   const baked = bake ? await bakeScene(scene, bake) : null;
   const probed = probes ? await probeScene(scene, id, baked ? baked.parts : scene.parts, probes) : null;
+  scene.environment = withDerivedGroundBounce(scene, probed ? probed.parts : baked ? baked.parts : scene.parts);
   const canvas = document.querySelector('canvas');
   // backgroundOnly draws the sky alone, so a score can be limited to the pixels the asset covers.
   const renderer = createSceneRenderer(backgroundOnly ? [] : probed ? probed.parts : baked ? baked.parts : scene.parts, scene, cascades);
@@ -197,6 +207,7 @@ async function measureReferenceFrameTime(id, { bake, probes = false, cascades = 
   const scene = await SCENES[id]();
   const baked = bake ? await bakeScene(scene, {}) : null;
   const probed = probes ? await probeScene(scene, id, baked ? baked.parts : scene.parts, probes) : null;
+  scene.environment = withDerivedGroundBounce(scene, probed ? probed.parts : baked ? baked.parts : scene.parts);
   const renderer = createSceneRenderer(probed ? probed.parts : baked ? baked.parts : scene.parts, scene, cascades, { water });
   renderer.resize();
   const frame = { ...scene.camera, environment: scene.environment, time: 0, exposure: 1, effects: { ambientOcclusion: 0, ambientOcclusionRadius: 0.5 } };

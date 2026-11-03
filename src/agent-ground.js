@@ -12,7 +12,7 @@ const FLOOR_LOWEST_TOLERANCE = 1e-3;
 // The disc reaches this many scene half-widths past the scene, so its edge stays out of a framed shot.
 const DISC_REACH = 6;
 const MINIMUM_RADIUS = 2;
-const FLOOR_COLOR = [0.22, 0.22, 0.21];
+export const FLOOR_COLOR = [0.22, 0.22, 0.21];
 
 /** World-space axis-aligned bounds of one part, from its positions and matrix. */
 function partBounds(part) {

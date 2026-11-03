@@ -4,6 +4,8 @@
 #   (0 leaves the sun and the point lights), into <id>-cycles-world<scale>.npy. The EEVEE render and the timings are left alone.
 #   ... -- <work directory> --sun-strength <scale> [scene ids]  the same for the sun: Cycles only, the sun times <scale> (0 leaves the world and
 #   the point lights), into <id>-cycles-sun<scale>.npy. Both switches together write <id>-cycles-world<a>-sun<b>.npy.
+#   ... -- <work directory> --max-bounces <n> [--floor-color <v>] [scene ids]  Cycles only, with at most n light bounces (0 is direct light only)
+#   and/or the part named "floor" painted a grey of v (0 is black), into <id>-cycles-bounces<n>-floor<v>.npy. They show how much light the ground bounces.
 # Light units were measured on a white plane: sun strength equals irradiance, a point or spot light has 4 pi watts for each
 # unit of 67js intensity, and an area light has pi watts for each unit.
 import base64
@@ -859,6 +861,24 @@ def scale_sun_light(scene, scale):
             light.data.energy *= scale
 
 
+def limit_bounces(scene, bounces):
+    """A measurement switch: every Cycles ray type stops after this many bounces (0 leaves direct light and the sky)."""
+    scene.cycles.max_bounces = bounces
+    scene.cycles.diffuse_bounces = bounces
+    scene.cycles.glossy_bounces = bounces
+    scene.cycles.transmission_bounces = bounces
+
+
+def paint_floor(scene, grey):
+    """A measurement switch: the part named floor becomes a plain grey, so the light it bounces is known."""
+    floor = scene.objects["floor"]
+    for slot in floor.material_slots:
+        principled = slot.material.node_tree.nodes["Principled BSDF"]
+        for link in list(principled.inputs["Base Color"].links):
+            slot.material.node_tree.links.remove(link)
+        principled.inputs["Base Color"].default_value = (grey, grey, grey, 1)
+
+
 def build_scene(description, root):
     clear_scene()
     scene_images[:] = description.get("images", [])
@@ -892,6 +912,16 @@ def main():
         flag_index = arguments.index("--sun-strength")
         sun_scale = float(arguments[flag_index + 1])
         del arguments[flag_index:flag_index + 2]
+    bounces = None
+    if "--max-bounces" in arguments:
+        flag_index = arguments.index("--max-bounces")
+        bounces = int(arguments[flag_index + 1])
+        del arguments[flag_index:flag_index + 2]
+    floor_grey = None
+    if "--floor-color" in arguments:
+        flag_index = arguments.index("--floor-color")
+        floor_grey = float(arguments[flag_index + 1])
+        del arguments[flag_index:flag_index + 2]
     only = set(arguments[1:])
     root = os.getcwd()
     timings = {}
@@ -903,8 +933,13 @@ def main():
         with open(os.path.join(scene_directory, file_name), encoding="utf-8") as file:
             description = json.load(file)
         scene = build_scene(description, root)
-        if world_scale is not None or sun_scale is not None:
+        if world_scale is not None or sun_scale is not None or bounces is not None or floor_grey is not None:
             suffix = ""
+            if bounces is not None:
+                suffix += f"-bounces{bounces}"
+            if floor_grey is not None:
+                paint_floor(scene, floor_grey)
+                suffix += f"-floor{floor_grey:g}"
             if world_scale is not None:
                 scale_world_light(scene, world_scale)
                 suffix += f"-world{world_scale:g}"
@@ -912,6 +947,8 @@ def main():
                 scale_sun_light(scene, sun_scale)
                 suffix += f"-sun{sun_scale:g}"
             configure_cycles(scene)
+            if bounces is not None:
+                limit_bounces(scene, bounces)
             seconds = render_to_numpy(scene, work_directory, f"{scene_id}-cycles{suffix}")
             print(f"RENDERED {scene_id} as cycles{suffix}: {seconds:.1f} s")
             continue

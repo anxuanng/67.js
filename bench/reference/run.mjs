@@ -20,6 +20,7 @@ import { createServer } from 'vite';
 // cloth bake, and scores them into cloth.json the same way (the pixels the scene covers, with the sky left out).
 const khronos = process.argv.includes('--khronos');
 const cloth = process.argv.includes('--cloth');
+// --no-ground-bounce draws the scenes without the light their floor bounces (src/ground-bounce.js), which is otherwise found from the floor part.
 // --no-water draws the scenes without the water reflection (src/water-reflection.js), which is otherwise found from the materials; --ssr-water draws them with bench/reference/ssr-water.js instead.
 // --grand draws the options for the grand scenes (grand-scenes.js, issue #168) and scores them into grand.json.
 const grand = process.argv.includes('--grand');
@@ -84,7 +85,7 @@ const sceneIdsGiven = sceneFlag >= 0 ? argumentsGiven[sceneFlag + 1].split(',') 
 // The fresh bake.json lands in the work directory and is checked against the committed one (compare-scores.mjs); --update-baseline replaces
 // the committed bake.json and images/<id>-baked.jpg with it.
 const bakeScoreRun = bakedSceneIds !== null && !sceneSet && !pathTracerFlag;
-const bakeVariantFlags = ['--sky-only', '--bake-preset', '--probes', '--ambient', '--ambient-occlusion', '--cascades', '--no-object-probes', '--object-probes', '--no-water', '--ssr-water'];
+const bakeVariantFlags = ['--sky-only', '--bake-preset', '--probes', '--ambient', '--ambient-occlusion', '--cascades', '--no-object-probes', '--object-probes', '--no-water', '--ssr-water', '--no-ground-bounce'];
 const bakeScoreIsBaseline = bakeScoreRun && argumentsGiven.includes('--update-baseline') && !bakeVariantFlags.some(flag => argumentsGiven.includes(flag));
 const onlyScenes = sceneIdsGiven ?? (bakeScoreRun ? bakedSceneIds : null);
 const skipCpu = skipCpuFlag || bakeScoreRun;
@@ -98,7 +99,7 @@ async function renderBackend(backend, serverUrl, graphics) {
     page.on('console', message => message.text().includes('GL_') && console.log('PAGE', message.text().slice(0, 200)));
     // Each scene gets a fresh page, so a large scene leaves no GL state or memory behind for the next one.
     const openHarness = async () => {
-      const harnessQuery = [sceneSet ? `set=${sceneSet}` : null, argumentsGiven.includes('--no-water') ? 'water=off' : argumentsGiven.includes('--ssr-water') ? 'water=ssr' : null].filter(Boolean).join('&');
+      const harnessQuery = [sceneSet ? `set=${sceneSet}` : null, argumentsGiven.includes('--no-water') ? 'water=off' : argumentsGiven.includes('--ssr-water') ? 'water=ssr' : null, argumentsGiven.includes('--no-ground-bounce') ? 'groundBounce=off' : null].filter(Boolean).join('&');
       await page.goto(`${serverUrl}/bench/reference/harness.html${harnessQuery ? `?${harnessQuery}` : ''}`, { timeout: PAGE_LOAD_TIMEOUT });
       await page.waitForFunction(() => window.renderReferenceScene, null, { timeout: PAGE_LOAD_TIMEOUT });
     };
