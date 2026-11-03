@@ -1,6 +1,6 @@
 # Bundle size budgets
 
-`npm run size` bundles each package entry with esbuild, minified and tree-shaken, and compares its gzip size with a budget. The `Test` workflow runs it on every pull request.
+`npm run size` bundles each package entry with esbuild, minified and tree-shaken, and compares its gzip size with the same bundle on the base branch. The `Test` workflow runs it on every pull request. A pull request never edits a size number, so two pull requests do not conflict over one.
 
 ## What it measures
 
@@ -22,24 +22,43 @@ Measured on 2026-10-31 with three.js 0.186.1. Sizes are bytes gzip.
 
 `bench/size/baseline.json` holds every size. The goals are proposals from issue 23.
 
+## How the check decides
+
+The check measures the base branch with the same script, then compares each bundle. In CI the base is the branch that the pull request targets. On your machine it is `origin/main`, from the commit where your branch left it. The base numbers are cached by base commit in `node_modules/.cache/size-base`, and CI caches that folder, so a run on an unchanged base skips the second measurement. The base is measured beside your own bundles, so a cold run costs little more than one measurement.
+
+A bundle fails when it grows by more than its allowance:
+
+- `entry:core` and every `scene:*` bundle, with their `+lazy` rows: 64 bytes gzip.
+- Every other entry: 2% of its size on the base, and at least 64 bytes.
+
+A bundle that the base does not have is reported and never fails. A bundle that shrinks never fails.
+
+The table in the output shows each bundle, the base size, the growth and the allowance. The release budgets in `budgets.json` and the goals are printed as a report. They do not fail a pull request.
+
 ## When a check fails
 
-The output names the bundle, its size and its budget.
+The output names the bundle, how much it grew and its allowance.
 
 1. Find out why the bundle grew. A new import of a large module is the usual cause.
 2. If the growth is a mistake, remove it.
-3. If the growth is worth its cost, raise the number in `bench/size/budgets.json`.
-4. State the reason in the pull request. The budget change is then visible in the diff.
+3. If the growth is worth its cost, accept it. Add `changes/<issue>.size.md` to your pull request, with one line for each bundle that you accept:
 
-## After a change lands
+```md
+- entry:core: the lighting pass costs 180 bytes and replaces two shaders
+- archive: the new guide ships in the package
+```
 
-Run `node scripts/measure-size.mjs --update-baseline` to record the new sizes, so the next pull request shows its own change. The budget does not move.
+4. State the same reason in the pull request.
 
-Use `--set-budgets` to reset every budget to 2% over the current size. Use it after work that makes bundles smaller, so that the saving stays. A reset also hides any growth since the last reset, so check the diff.
+A line needs a bundle name, a colon, a space and a reason. A bundle with no line still fails. The check reads only the size notes that your branch adds, so a note from another pull request never accepts your growth. Your note is a new file, so it conflicts with nobody. Use `archive` for the package archive.
+
+## At release
+
+Release steps in `CONTRIBUTING.md` run `npm run changes:fold`, which deletes the size notes. Then run `npm run size:release`. It resets every budget to 2% over the current size and rewrites `baseline.json`. Run `npm run size -- --absolute` before it to see which bundles are past their release budget. Check the diff of `budgets.json`, because a reset hides growth since the last reset. Also review the sizes of the accepted bundles, since each accepted increase is small alone and they add up.
 
 ## Package archive
 
-`archiveBytes` in `budgets.json` caps the npm archive that `npm pack` makes. `npm run smoke:package` checks it, after `npm run prepare:release`. The archive was 904,975 bytes before the MCP preview shared the package's engine chunks and 666,214 after; features then grew it to 802,581, and one-line notices in each built file plus a stub for the SDK's unused Ajv shim brought it to 695,041. The budget is now 740,000 bytes (measured 2026-11-02 against `budgets.json`: lower it when the archive shrinks). Lower `archiveBytes` when work shrinks it.
+`archiveBytes` in `budgets.json` caps the npm archive that `npm pack` makes. `npm run smoke:package` checks it, after `npm run prepare:release`. The archive has a ceiling and not a base measurement, because measuring the base archive needs a full build. A pull request that pushes the archive over the ceiling accepts it with an `archive` line in its size note. Only a release edits `archiveBytes`. The archive was 904,975 bytes before the MCP preview shared the package's engine chunks and 666,214 after; features then grew it to 802,581, and one-line notices in each built file plus a stub for the SDK's unused Ajv shim brought it to 695,041. The budget is now 740,000 bytes (measured 2026-11-02 against `budgets.json`: lower it when the archive shrinks). Lower `archiveBytes` when work shrinks it.
 
 Moving code into installed dependencies would shrink the archive further but adds install size to every consumer, including library users who never run MCP. Making `@modelcontextprotocol/server` and `zod` dependencies saved about 125 KB of archive for about 14.5 MB on disk, so it was not kept.
 
