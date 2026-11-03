@@ -18,7 +18,7 @@ import { MaterialSnapshot } from './material-snapshot.js';
 import { fittedFogDensity } from './fog-fit.js';
 import { InstanceSelection, extractFrustumPlanes, geometryBoundingSphere, selectInstances } from './render-culling.js';
 import { resolveShadowLight, shadowBiasPerSlope } from './shadow-light.js';
-import { requireDeformationSupport } from './shader-registry.js';
+import { requireDeformationSupport, textureUpdateSupport } from './shader-registry.js';
 
 const SHADOW_MAP_SIZE = 2048;
 const MATERIAL_TAGS = { armor: 1, floor: 2, water: 3, foliage: 4, terrain: 5, grass: 7, fire: 8, smoke: 9, unlit: 10, liquid: 11, foam: 12 };
@@ -786,6 +786,13 @@ export class Renderer67 {
     }
     this.textures.set(map, texture);
     return texture;
+  }
+
+  // Re-uploads a descriptor's pixels: the whole image (update.image, or the descriptor image again) or update.region {x, y, width, height, data}.
+  // The code is in the texture-update addon, so a scene that never updates a texture does not carry it.
+  updateTexture(descriptor, update = {}) {
+    if (!textureUpdateSupport.update) throw new Error("updateTexture needs its code: add import '@codepawlhq/67js/addons/texture-update'.");
+    textureUpdateSupport.update(this, descriptor, update);
   }
 
   // Parts can arrive after construction (replaceParts) or change their tag (updateParts). When one needs a shader feature

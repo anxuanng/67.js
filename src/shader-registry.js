@@ -15,6 +15,9 @@ export const layerTextureSupport = {};
 // view-transform-shader.js sets apply(source, kind, viewTransform, hasLook), bindLook(renderer, program) and dispose(renderer).
 export const viewTransformShader = {};
 
+// texture-update.js sets update(renderer, descriptor, update): the body of renderer.updateTexture.
+export const textureUpdateSupport = {};
+
 // splat-shader.js sets the JavaScript half of the splat ground material: validate, textureBytes, resolveSize,
 // packParameters and buildPixels. The renderer calls them only for a material with layers.
 const splatSupport = {};
