@@ -199,6 +199,33 @@ function pushOutOfBall(point, ball, thickness, normal) {
   return true;
 }
 
+// A capsule is a ball whose centre slides to the closest point of its axis segment.
+const capsuleBall = { center: [0, 0, 0], radius: 0 };
+
+function pushOutOfCapsule(point, capsule, thickness, normal) {
+  const { start, end } = capsule;
+  const axisX = end[0] - start[0];
+  const axisY = end[1] - start[1];
+  const axisZ = end[2] - start[2];
+  const lengthSquared = axisX * axisX + axisY * axisY + axisZ * axisZ;
+  const along = (point[0] - start[0]) * axisX + (point[1] - start[1]) * axisY + (point[2] - start[2]) * axisZ;
+  const fraction = lengthSquared > 0 ? Math.min(Math.max(along / lengthSquared, 0), 1) : 0;
+  const centerX = start[0] + axisX * fraction;
+  const centerY = start[1] + axisY * fraction;
+  const centerZ = start[2] + axisZ * fraction;
+  const reach = capsule.radius + thickness;
+  const offsetX = point[0] - centerX;
+  const offsetY = point[1] - centerY;
+  const offsetZ = point[2] - centerZ;
+  // Most particles are far from most capsules, so leave before the square root and the shared push.
+  if (offsetX * offsetX + offsetY * offsetY + offsetZ * offsetZ >= reach * reach) return false;
+  capsuleBall.center[0] = centerX;
+  capsuleBall.center[1] = centerY;
+  capsuleBall.center[2] = centerZ;
+  capsuleBall.radius = capsule.radius;
+  return pushOutOfBall(point, capsuleBall, thickness, normal);
+}
+
 function pushOutOfBox(point, box, thickness, normal) {
   const { center, axes, halfExtents } = box;
   const offset = [point[0] - center[0], point[1] - center[1], point[2] - center[2]];
@@ -234,6 +261,8 @@ function pushOutOfBox(point, box, thickness, normal) {
   return true;
 }
 
+const PUSH_OUT = { ball: pushOutOfBall, capsule: pushOutOfCapsule, box: pushOutOfBox };
+
 function collide(state, previous, colliders, thickness, friction) {
   const { positions, inverseMasses, particleCount } = state;
   const point = [0, 0, 0];
@@ -245,7 +274,7 @@ function collide(state, previous, colliders, thickness, friction) {
     point[1] = positions[offset + 1];
     point[2] = positions[offset + 2];
     for (const collider of colliders) {
-      const touched = collider.kind === 'ball' ? pushOutOfBall(point, collider, thickness, normal) : pushOutOfBox(point, collider, thickness, normal);
+      const touched = PUSH_OUT[collider.kind](point, collider, thickness, normal);
       if (!touched) continue;
       // Friction removes part of the sideways travel this substep, so cloth drags over a surface instead of skating.
       const travel = [point[0] - previous[offset], point[1] - previous[offset + 1], point[2] - previous[offset + 2]];
@@ -257,6 +286,30 @@ function collide(state, previous, colliders, thickness, friction) {
     positions[offset] = point[0];
     positions[offset + 1] = point[1];
     positions[offset + 2] = point[2];
+  }
+}
+
+const MOVING_COLLIDER_NUMBERS = 7;
+
+function movingColliders(track, offset, count) {
+  const colliders = [];
+  for (let collider = 0; collider < count; collider++) {
+    const base = offset + collider * MOVING_COLLIDER_NUMBERS;
+    colliders.push({ kind: 'capsule', start: track.subarray(base, base + 3), end: track.subarray(base + 3, base + 6), radius: track[base + 6] });
+  }
+  return colliders;
+}
+
+// Pulls anchored particles toward where their node is now. A weight of 1 holds the particle on the target exactly.
+function followAnchors(positions, moving, targets, softOnly) {
+  const { anchorParticles, anchorWeights } = moving;
+  for (let anchor = 0; anchor < anchorParticles.length; anchor++) {
+    const weight = anchorWeights[anchor];
+    if (softOnly && weight >= 1) continue;
+    for (let axis = 0; axis < 3; axis++) {
+      const index = anchorParticles[anchor] * 3 + axis;
+      positions[index] += (targets[anchor * 3 + axis] - positions[index]) * weight;
+    }
   }
 }
 
@@ -276,15 +329,21 @@ function checkWork(particleCount, constraintCount, triangleCount, colliderCount,
 /**
  * Simulate one sheet. `positions` are world-space rest positions (3 numbers per particle), `triangles` index them.
  * Options: pinned (particle indices that stay put), gravity, wind (m/s), stiffness and bend (0 to 1), density (kg/m2),
- * damping (1/s), friction (0 to 1), thickness (m), colliders ({ kind: 'ball', center, radius } or
- * { kind: 'box', center, axes, halfExtents }), frameCount and framesPerSecond.
+ * damping (1/s), friction (0 to 1), thickness (m), colliders ({ kind: 'ball', center, radius },
+ * { kind: 'capsule', start, end, radius } or { kind: 'box', center, axes, halfExtents }), frameCount and framesPerSecond.
+ * `moving` follows a body that moves with time, sampled ahead as plain numbers so it can cross to a worker. One entry per
+ * substep (frame 1 substep 0 first): anchorTrack holds each anchor's target (3 numbers), colliderTrack each moving
+ * collider as a capsule (start 3, end 3, radius 1; a ball has start equal to end). A particle in anchorParticles with
+ * weight 1 sits on its target; a lower weight pulls it there by that fraction each iteration.
+ * { anchorParticles, anchorWeights, anchorTrack, colliderCount, colliderTrack }
  * Returns the recorded frames: Float32Array of frameCount * particleCount * 3.
  */
 export function bakeCloth(positions, triangles, options) {
   const particleCount = positions.length / 3;
   const colliders = options.colliders ?? [];
+  const moving = options.moving ?? null;
   const constraints = buildConstraints(positions, triangles, particleCount, options.bend ?? 0.1, options.stiffness ?? 0.9);
-  checkWork(particleCount, constraints.count, triangles.length / 3, colliders.length, options.frameCount);
+  checkWork(particleCount, constraints.count, triangles.length / 3, colliders.length + (moving?.colliderCount ?? 0), options.frameCount);
   const gravity = options.gravity ?? GRAVITY_DEFAULT;
   const wind = options.wind ?? [0, 0, 0];
   const density = options.density ?? 0.2;
@@ -300,6 +359,11 @@ export function bakeCloth(positions, triangles, options) {
   for (const particle of options.pinned ?? []) {
     inverseMasses[particle] = 0;
   }
+  const anchorStride = (moving?.anchorParticles.length ?? 0) * 3;
+  const colliderStride = (moving?.colliderCount ?? 0) * MOVING_COLLIDER_NUMBERS;
+  moving?.anchorParticles.forEach((particle, anchor) => {
+    if (moving.anchorWeights[anchor] >= 1) inverseMasses[particle] = 0;
+  });
   const state = {
     particleCount, inverseMasses, positions: Float64Array.from(positions),
     velocities: new Float64Array(positions.length), windScratch: new Float64Array(positions.length),
@@ -311,6 +375,14 @@ export function bakeCloth(positions, triangles, options) {
     for (let substep = 0; substep < CLOTH_LIMITS.substeps; substep++) {
       if (hasWind) applyWind(state, wind, areas, triangles, substepSeconds, density);
       previous.set(state.positions);
+      let activeColliders = colliders;
+      let anchorTargets = null;
+      if (moving) {
+        const substepIndex = (frame - 1) * CLOTH_LIMITS.substeps + substep;
+        anchorTargets = moving.anchorTrack.subarray(substepIndex * anchorStride, (substepIndex + 1) * anchorStride);
+        activeColliders = colliders.concat(movingColliders(moving.colliderTrack, substepIndex * colliderStride, moving.colliderCount));
+        followAnchors(state.positions, moving, anchorTargets, false);
+      }
       for (let particle = 0; particle < particleCount; particle++) {
         if (inverseMasses[particle] === 0) continue;
         for (let axis = 0; axis < 3; axis++) {
@@ -321,7 +393,8 @@ export function bakeCloth(positions, triangles, options) {
       }
       for (let iteration = 0; iteration < CLOTH_LIMITS.iterations; iteration++) {
         solveDistances(state.positions, inverseMasses, constraints);
-        collide(state, previous, colliders, thickness, friction);
+        if (moving) followAnchors(state.positions, moving, anchorTargets, true);
+        collide(state, previous, activeColliders, thickness, friction);
       }
       for (let index = 0; index < positions.length; index++) {
         state.velocities[index] = (state.positions[index] - previous[index]) / substepSeconds * dampingFactor;
