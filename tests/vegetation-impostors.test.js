@@ -5,8 +5,8 @@ import { createTree, scatterVegetation, selectLevels } from '../src/vegetation.j
 import {
   bakeImpostorAtlas, blendLevels, FADE_STEPS, getImpostor, impostorCardBasis, impostorCellOf, impostorFrameDirection, selectBlendedLevels,
 } from '../src/vegetation-impostors.js';
-import { IMPOSTOR_FRAMES, impostorShader } from '../src/impostor-shader.js';
-import { createDepthVertexShader, createFragmentShader, createVertexShader } from '../src/shaders.js';
+import { addImpostorCode, IMPOSTOR_FRAMES, impostorShader } from '../src/impostor-shader.js';
+import { createDepthVertexShader, createFragmentShader, createVertexShader, depthFragmentShader } from '../src/shaders.js';
 
 const FAST_BAKE = { frameSize: 32 };
 const THRESHOLDS = [38, 95, 150];
@@ -144,9 +144,13 @@ test('a 5,000 tree forest draws far fewer triangles with impostors', () => {
   assert.ok(earlyCards.triangles < 1.5e6);
 });
 
-test('the shaders carry the card code only where a pass needs it', () => {
-  assert.match(createVertexShader([]), /impostorCard\(position, uv, instanceMatrix, viewProjection/);
-  assert.match(createDepthVertexShader(), /impostorCard\(position, uv, instanceMatrix, lightProjection/);
-  assert.match(impostorShader, new RegExp(`floor\\(square \\* ${IMPOSTOR_FRAMES}\\.0\\)`));
-  assert.match(createFragmentShader(['alphaMode']), /incoming \? coverage < 1\.0 - threshold : coverage <= threshold/);
+test('the impostor code is added to the three shaders it hooks into and to nothing else', () => {
+  const colour = addImpostorCode(createVertexShader([]));
+  assert.ok(colour.includes("impostorCard(position, uv, instanceMatrix, viewProjection"));
+  assert.ok(colour.includes("worldNormal = cardNormal"));
+  assert.ok(addImpostorCode(createDepthVertexShader()).includes("impostorCard(position, uv, instanceMatrix, lightProjection"));
+  assert.ok(impostorShader.includes(`floor(square * ${IMPOSTOR_FRAMES}.0)`));
+  assert.ok(addImpostorCode(createFragmentShader(["alphaMode"])).includes("incoming ? coverage < 1.0 - threshold : coverage <= threshold"));
+  assert.equal(addImpostorCode(depthFragmentShader), depthFragmentShader);
+  assert.equal(createVertexShader([]).includes('impostorCard'), false, 'the core shaders carry none of it');
 });
