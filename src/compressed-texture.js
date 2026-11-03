@@ -1,5 +1,5 @@
 // GPU-compressed texture formats that a KTX2 loader can hand over. Only the glTF addon imports this file.
-// It hands the renderer a generic image: { width, height, compressed: { internalFormat, extension, levels: [{ data, width, height }], bytes } }.
+// It hands the renderer a generic image: { width, height, compressed: { levels, bytes, minFilter(filter), upload(context) } }.
 
 const BPTC = 'EXT_texture_compression_bptc';
 const S3TC = 'WEBGL_compressed_texture_s3tc';
@@ -59,7 +59,23 @@ export function describeCompressedImage(glFormat, levels, field, colorSpace) {
   const srgb = colorSpace !== 'linear';
   const extension = srgb && info.srgbExtension ? info.srgbExtension : info.extension;
   const internalFormat = srgb ? info.srgbFormat : glFormat;
-  return { width: base.width, height: base.height, compressed: { internalFormat, extension, name: info.name, levels: usable, bytes } };
+  return { width: base.width, height: base.height, compressed: { name: info.name, levels: usable, bytes, minFilter: minFilterFor(usable.length), upload: context => uploadLevels(context, usable, internalFormat, extension) } };
+}
+
+// A single level cannot be mip filtered. Odd filter enums are the linear ones.
+function minFilterFor(levelCount) {
+  return minFilter => (levelCount === 1 && minFilter >= 9984 ? 9728 + (minFilter & 1) : minFilter);
+}
+
+/** Upload every mip level into the bound TEXTURE_2D with immutable storage. */
+function uploadLevels(context, levels, internalFormat, extension) {
+  if (!context.getExtension(extension)) {
+    throw new Error(`This context lacks ${extension}, which the compressed texture needs. Transcode KTX2 for this context with ktx2WorkerConfigFor(context) (see docs/gltf.md).`);
+  }
+  context.texStorage2D(context.TEXTURE_2D, levels.length, internalFormat, levels[0].width, levels[0].height);
+  levels.forEach((level, index) => {
+    context.compressedTexSubImage2D(context.TEXTURE_2D, index, 0, 0, level.width, level.height, internalFormat, level.data);
+  });
 }
 
 /**

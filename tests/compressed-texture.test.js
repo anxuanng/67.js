@@ -21,7 +21,7 @@ function fakeContext(extensionNames) {
 }
 
 function uploadLevels(context, image) {
-  Renderer67.prototype.uploadCompressedLevels.call({ context }, image.compressed);
+  image.compressed.upload(context);
 }
 
 function bc7Levels() {
@@ -116,7 +116,7 @@ test('createTexture uploads a compressed image without generating mips', () => {
     compressedTexSubImage2D: () => calls.push('compressedTexSubImage2D'),
   };
   const map = { image: describeCompressedImage(BC7, bc7Levels(), 'map', 'srgb'), colorSpace: 'srgb' };
-  const renderer = { context, textures: new Map(), applyAnisotropy: () => calls.push('anisotropy'), uploadCompressedLevels: Renderer67.prototype.uploadCompressedLevels };
+  const renderer = { context, textures: new Map(), applyAnisotropy: () => calls.push('anisotropy') };
   Renderer67.prototype.createTexture.call(renderer, map);
   assert.deepEqual(calls, ['texStorage2D', 'compressedTexSubImage2D', 'compressedTexSubImage2D', 'compressedTexSubImage2D', 'compressedTexSubImage2D']);
 });

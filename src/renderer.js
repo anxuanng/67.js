@@ -338,11 +338,8 @@ export function textureDescriptorInfo(map, maximumSize = Infinity) {
   if (![10497, 33071, 33648].includes(wrapS) || ![10497, 33071, 33648].includes(wrapT)) throw new Error('Unsupported texture wrap mode.');
   if (![9728, 9729, 9984, 9985, 9986, 9987].includes(minFilter) || ![9728, 9729].includes(magFilter)) throw new Error('Unsupported texture filtering mode.');
   const compressed = map.image.compressed;
-  if (compressed) {
-    // Precompressed mips come with the image and cannot be generated. A single level drops mip filtering (odd enums are linear).
-    const singleLevel = compressed.levels.length === 1 && minFilter >= 9984;
-    return { width, height, wrapS, wrapT, minFilter: singleLevel ? 9728 + (minFilter & 1) : minFilter, magFilter, mipmaps: false, bytes: compressed.bytes };
-  }
+  // Precompressed mips come with the image and are never generated. The image supplies its own filter and byte count.
+  if (compressed) return { width, height, wrapS, wrapT, minFilter: compressed.minFilter(minFilter), magFilter, mipmaps: false, bytes: compressed.bytes };
   const mipmaps = minFilter >= 9984;
   return { width, height, wrapS, wrapT, minFilter, magFilter, mipmaps, bytes: estimateTextureBytes(width, height, { mipmaps }) };
 }
@@ -672,14 +669,6 @@ export class Renderer67 {
     context.texParameterf(target, extension.TEXTURE_MAX_ANISOTROPY_EXT, Math.min(MAX_TEXTURE_ANISOTROPY, supported));
   }
 
-  /** Upload precompressed mips ({ internalFormat, extension, levels }) into the bound texture. */
-  uploadCompressedLevels({ internalFormat, extension, levels }) {
-    const context = this.context;
-    if (!context.getExtension(extension)) throw new Error(`This context lacks ${extension}, which the compressed texture needs (see docs/gltf.md).`);
-    context.texStorage2D(context.TEXTURE_2D, levels.length, internalFormat, levels[0].width, levels[0].height);
-    levels.forEach((level, index) => context.compressedTexSubImage2D(context.TEXTURE_2D, index, 0, 0, level.width, level.height, internalFormat, level.data));
-  }
-
   createTexture(map) {
     if (this.textures.has(map)) return this.textures.get(map);
     const context = this.context;
@@ -692,7 +681,7 @@ export class Renderer67 {
       context.pixelStorei(context.UNPACK_COLORSPACE_CONVERSION_WEBGL, context.NONE);
       if (map) {
         const info = textureDescriptorInfo(map, context.getParameter(context.MAX_TEXTURE_SIZE));
-        if (map.image.compressed) this.uploadCompressedLevels(map.image.compressed);
+        if (map.image.compressed) map.image.compressed.upload(context);
         else context.texImage2D(context.TEXTURE_2D, 0, map.colorSpace === 'linear' ? context.RGBA8 : context.SRGB8_ALPHA8, context.RGBA, context.UNSIGNED_BYTE, map.image);
         context.texParameteri(context.TEXTURE_2D, context.TEXTURE_WRAP_S, info.wrapS);
         context.texParameteri(context.TEXTURE_2D, context.TEXTURE_WRAP_T, info.wrapT);
