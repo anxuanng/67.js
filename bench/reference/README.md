@@ -1312,3 +1312,20 @@ The EEVEE columns were regenerated from the stored Cycles and EEVEE arrays and t
 | temple-hall | 0.2341 to 0.2345 | same |
 
 Not regenerated, still on the old float basis: `cpu-vs-eevee` for most scenes, `gpu-vs-eevee` for `brushed-film`, `car-paint`, `material-spheres`, `metal` and `metal-room` and `eevee-vs-cycles` for `brushed-film`. The `region-*` EEVEE cells of `dark-shaft`, `fog-room` and `temple-hall` were regenerated and are not in the table. The stored images of those scenes come from a later run than the baseline, so the old scorer does not reproduce the committed number from them, and a new number would mix two changes. They need a full `npm run reference` run. `grand.json` is also not regenerated: only `megacity-dusk-a` has an EEVEE array stored, and its stored images score 0.1985 against Cycles where `grand.json` has 0.1507. The side by side images in `images/` keep their old labels until that run.
+
+## Where `foliage` loses to EEVEE, by region (2026-11-03, part of issue #191)
+
+Nothing in the engine changed; `baseline.json` is unchanged. The GPU was held for the whole session by a long Blender render (`gpu-lock.sh` queue), so only the stored arrays were analysed and no fix was tried on a render. Method: `bench/reference/region-errors.py foliage gpu` (67js 0.0979, EEVEE 0.0888, against Cycles), then the same FLIP error map cut finer (distance from the silhouette, Cycles luminance of the pixel). The shares are of the frame; the gap is the contribution of 67js minus the contribution of EEVEE to the frame mean:
+
+| Region | Frame share | FLIP 67js / EEVEE | Gap to EEVEE | Display luminance 67js / Cycles / EEVEE |
+| --- | --- | --- | --- | --- |
+| Crown (`broadleaf foliage`) | 0.167 | 0.3037 / 0.2805 | +0.0039 | 0.395 / 0.377 / 0.427 |
+| Open floor | 0.459 | 0.0988 / 0.0931 | +0.0026 | 0.735 / 0.730 / 0.736 |
+| Sky | 0.364 | 0.0157 / 0.0101 | +0.0020 | 0.829 / 0.829 / 0.829 |
+| Bark and the floor part | 0.010 | 0.2016 / 0.1792 | +0.0002 | |
+
+The sky and the open floor have the same luminance as Cycles, and their gap is almost all 8-bit rounding. The 67js frame is an 8-bit PNG while the Cycles and EEVEE arrays are floats: in the flat sky 67js differs from Cycles by 0.0010 per channel (mean absolute, the value of uniform rounding) and EEVEE by 0.0002, and the sky error is 0.0157 against 0.0101. The floor lit by the sun (Cycles luminance 0.7 to 0.8) shows the same offset (0.0854 against 0.0796). Rounding the EEVEE array to 8 bits and rescoring: EEVEE 0.0888 becomes 0.0924, so 0.0036 of the 0.0091 gap is the format of the comparison, not a rendering error, and no shader can remove it. The remaining gap is 0.0055.
+
+Inside the crown, by the Cycles luminance of the pixel (contribution to the frame mean, 67js / EEVEE): pixels under 0.15 (share 0.063) 0.0227 / 0.0261, 67js better; 0.15 to 0.5 (0.047) 0.0187 / 0.0170; over 0.5 (0.057, sunlit leaves) 0.0094 / 0.0038. The mean crown luminance is closer to Cycles in 67js (+0.019) than in EEVEE (+0.050). So the level is right and the loss is where individual bright leaves sit: in pixels Cycles draws as lit leaf, 67js has error 0.167 against 0.067, while its shaded leaves beat EEVEE. This is the leaf shape and placement cause #191 already named; the edge of the silhouette (3 px) is only 0.0007 of the frame.
+
+Next idea: the crown needs a per-card measurement, for example the Cycles array against 67js with the same leaf card in each pixel (a card id image from the harness), to see whether the bright-leaf error is cards missing, shifted or too dark; and the scorer could report the 8-bit EEVEE figure beside the float one so "beats EEVEE" compares like with like. Neither was tried. The first box of #191 stays open.
