@@ -175,6 +175,8 @@ The recipe also accepts [authored lighting, fog, effects and shadow coverage](ag
 Use `set-environment`, `set-effects` and `set-shadow` with nested partial records to adjust the look.
 Nested `volumeFog` and `bloom` fields merge. `pointLights` replaces the complete list.
 
+`environment.lines` turns on outlines, toon light and polylines, and `lines: null` removes them. A material takes `toon` for its own light steps. The code loads only for a recipe that uses either. See [line art](line-art.md).
+
 The preview allocates depth support at creation so enabling fog does not recreate render targets.
 Active volume fog requires HDR support. Unsupported previews reject that edit before committing.
 

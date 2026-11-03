@@ -24,7 +24,10 @@ const cloth = process.argv.includes('--cloth');
 // --no-water draws the scenes without the water reflection (src/water-reflection.js), which is otherwise found from the materials; --ssr-water draws them with bench/reference/ssr-water.js instead.
 // --grand draws the options for the grand scenes (grand-scenes.js, issue #168) and scores them into grand.json.
 const grand = process.argv.includes('--grand');
-const sceneSet = khronos ? 'khronos' : cloth ? 'cloth' : grand ? 'grand' : null;
+// --option <scene>:<option>,<scene>:<option> draws named looks (look-options.js, issue #168) with the GPU only, into artifacts/reference-look/<scene>-<option>-gpu.png. No Blender, no score, no baseline.
+const optionFlag = process.argv.indexOf('--option');
+const lookIds = optionFlag >= 0 ? process.argv[optionFlag + 1].split(',').map(name => name.replace(':', '-')) : null;
+const sceneSet = khronos ? 'khronos' : cloth ? 'cloth' : grand ? 'grand' : lookIds ? 'look' : null;
 // --view-transform <agx|neutral> draws the scenes with that environment.viewTransform and renders Cycles with the matching Blender view
 // transform (AgX, Khronos PBR Neutral), then scores the pair with view-transform-score.py into view-transform.json (issue #282).
 // Use it with --scene <id>,<id>; the work directory is separate and baseline.json stays as it is.
@@ -51,9 +54,9 @@ const BACKEND_ARGUMENTS = {
 
 const argumentsGiven = process.argv.slice(2);
 const scoreOnly = argumentsGiven.includes('--score-only');
-const skipBlender = argumentsGiven.includes('--skip-blender');
+const skipBlender = argumentsGiven.includes('--skip-blender') || lookIds !== null;
 // --skip-cpu leaves out the SwiftShader render (very slow for the 9 million triangle scenes) and the scoring, which needs it.
-const skipCpuFlag = argumentsGiven.includes('--skip-cpu');
+const skipCpuFlag = argumentsGiven.includes('--skip-cpu') || lookIds !== null;
 const sceneFlag = argumentsGiven.indexOf('--scene');
 const occlusionFlag = argumentsGiven.indexOf('--ambient-occlusion');
 const ambientOcclusion = occlusionFlag >= 0 ? Number(argumentsGiven[occlusionFlag + 1]) : 0;
@@ -88,7 +91,7 @@ const pathTracerSamples = samplesFlag >= 0 ? Number(argumentsGiven[samplesFlag +
 const noiseThresholdFlag = argumentsGiven.indexOf('--noise-threshold');
 const pathTracerNoiseThreshold = noiseThresholdFlag >= 0 ? Number(argumentsGiven[noiseThresholdFlag + 1]) : undefined;
 // --scene takes one id or several separated by commas.
-const sceneIdsGiven = sceneFlag >= 0 ? argumentsGiven[sceneFlag + 1].split(',') : null;
+const sceneIdsGiven = lookIds ?? (sceneFlag >= 0 ? argumentsGiven[sceneFlag + 1].split(',') : null);
 // --bake <id>,<id> alone is a baked-score run: it draws and scores only those scenes, with the GPU, against the Cycles and EEVEE renders
 // of an earlier run (use --skip-blender), and writes bake.json. With an option that changes the bake (--sky-only, --bake-preset, --probes,
 // --ambient, --ambient-occlusion, --cascades) the scores go to the work directory and the committed files stay as they are.

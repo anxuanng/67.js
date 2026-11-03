@@ -22,6 +22,7 @@ export const MATERIAL_LAYER_DEFAULTS = Object.freeze({
   iridescence: 0,
   iridescenceIor: 1.3,
   iridescenceThickness: 400,
+  toon: 0,
 });
 
 export const MATERIAL_LAYER_FIELDS = Object.freeze(Object.keys(MATERIAL_LAYER_DEFAULTS));
@@ -39,6 +40,7 @@ export const MATERIAL_LAYER_SCALAR_RANGES = Object.freeze({
   iridescence: UNIT,
   iridescenceIor: Object.freeze([1, 3]),
   iridescenceThickness: Object.freeze([0, 1200]),
+  toon: Object.freeze([0, 8]),
 });
 
 export const MATERIAL_LAYER_COLOR_RANGES = Object.freeze({
@@ -110,7 +112,7 @@ export function dielectricReflectance(material) {
 
 /**
  * Plain values the renderer batches by: dielectric F0 (3), coat (2), sheen (4), transmission (4), attenuation colour (3),
- * anisotropy strength and rotation (2), iridescence factor, film IOR and film thickness in nanometres (3), light mask (1).
+ * anisotropy strength and rotation (2), iridescence factor, film IOR and film thickness in nanometres (3), light mask (1), toon bands (1).
  */
 export function materialLayerState(material) {
   validateMaterialLayers(material);
@@ -131,7 +133,8 @@ export function materialLayerState(material) {
     materialLayerValue(material, 'iridescenceIor'),
     materialLayerValue(material, 'iridescenceThickness'),
     material.lightMask ?? ALL_LIGHTS_MASK,
+    materialLayerValue(material, 'toon'),
   ];
 }
 
-export const MATERIAL_LAYER_STATE_LENGTH = 22;
+export const MATERIAL_LAYER_STATE_LENGTH = 23;
