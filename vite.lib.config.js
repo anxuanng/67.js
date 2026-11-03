@@ -64,6 +64,7 @@ export default defineConfig({
         'light-linking': 'src/light-linking.js',
         'cascaded-shadows': 'src/cascaded-shadows.js',
         'gaussian-splats': 'src/gaussian-splats.js',
+        'texture-update': 'src/texture-update.js',
         // Page of the MCP preview. It imports the engine chunks above instead of bundling its own copy.
         'mcp/preview': 'scripts/agent-preview-browser.js',
       },
