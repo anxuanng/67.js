@@ -1,6 +1,6 @@
 // The liquid and foam optics a frame may set. Kept apart from the liquid pass so the recipe look can check them without the pass.
 // Each entry is [default, minimum, maximum].
-const LIQUID_OPTICS = {
+export const LIQUID_OPTICS = {
   thickness: [0.5, 0, 100],
   ior: [1.33, 1, 3],
   refraction: [1, 0, 4],
@@ -18,7 +18,7 @@ export function resolveLiquidOptics(options = {}) {
   for (const name in LIQUID_OPTICS) {
     const [, minimum, maximum] = LIQUID_OPTICS[name];
     const value = optics[name];
-    if (typeof value !== 'number' || !Number.isFinite(value) || value < minimum || value > maximum) throw new RangeError(`liquid.${name} must be between ${minimum} and ${maximum}.`);
+    if (!Number.isFinite(value) || value < minimum || value > maximum) throw new RangeError(`liquid.${name} must be between ${minimum} and ${maximum}.`);
   }
   return optics;
 }
