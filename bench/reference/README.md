@@ -1037,3 +1037,22 @@ Oracle ceilings (Cycles pixels pasted into one region of the 67js frame, whole f
 - Bake: `--bake metal --bake-preset standard` scores 0.1526, worse.
 
 Where EEVEE beats 67js on the floor is the mid band (46% of the gap) and the open and far floor (30%), where the means are within 0.002 to 0.007 and the difference is spread thin (FLIP is also reading Cycles' own noise there); the one concentrated piece, the halo at the chrome sphere, is bounced light. No engine file, scene, baseline row or budget changed, and the first box of #167 stays open: `metal` 0.0957 against EEVEE 0.0916. The floor has no single cause left that a measured change reaches; what is left sits in the parts (the chrome sphere's lower half and the steel cylinder) and in bounce light.
+
+
+## Bump edges and the sky light below the surface (2026-11-03, part of issue #50)
+
+Main reproduced `baseline.json` first on the stored arrays (`brick-flat` 0.1264, `brick-graph` 0.1584, EEVEE against Cycles 0.1099 and 0.1221, GPU). The Cycles arrays came from a worktree whose flat wall matched to 4 digits; one other worktree's arrays gave 0.1301 for the flat wall's EEVEE gap and were not used. Regions come from projecting the wall back to UV (mortar `body` under 0.05, edge 0.05 to 0.95, brick over 0.95), FLIP per pixel against Cycles.
+
+| `brick-graph`, GPU | all | mortar | edge | brick | edge luminance (Cycles 0.444, EEVEE 0.494) |
+| --- | --- | --- | --- | --- | --- |
+| Bump 0 (no normal map) | 0.1467 | 0.2855 | 0.4293 | 0.2854 | 0.593 |
+| Bump 0.5 | 0.1536 | 0.3177 | 0.4029 | 0.3116 | 0.513 |
+| Bump 1 (baseline) | 0.1584 | 0.3342 | 0.4286 | 0.3204 | 0.521 |
+| Bump 2 | 0.1622 | 0.3471 | 0.4507 | 0.3267 | 0.533 |
+| Bump 1, ambient clipped to the surface plane | 0.1518 | 0.3238 | 0.3565 | 0.3150 | 0.465 |
+
+- The bump hurts against Cycles at every strength, and stronger is worse, so the scale (#219) and the footprint are not the lead. The 512 texel normal map puts the joint edges where Cycles puts them (the albedo transition of the bump-free render sits on the same pixels, 423 to 430 on row 168), and the signs match.
+- Across a joint's right edge Cycles stays dark over the whole 6 pixel transition (0.25 to 0.36) and 67js is dark over 2 or 3 pixels (0.33 to 0.47). Cycles discards light that arrives from below the geometric surface, and a bumped normal tilted 60 to 70 degrees has a third of its lobe there. 67js lit the full lobe.
+- Change: for a mapped normal the ambient and reflected sky term is scaled by `0.5 + 0.5 * dot(mapped, geometric)`, the share of an even sky lobe that stays above the surface. `brick-graph` 0.1584 to 0.1518 (EEVEE 0.0875 to 0.0844, CPU the same); all 22 other scenes reproduce their rows to 4 digits (none uses a normal map). Excess over its flat wall: 67js 0.0320 to 0.0254, EEVEE 0.0122.
+- Still open: the sun is not clipped against the surface plane (the wall faces the sun, so it changes nothing here), the colour gap on the brick faces (Cycles 0.524, EEVEE 0.476, 67js 0.466 in luminance), and a bump scale per world unit instead of per UV unit (Blender's Distance 0.15 is 0.025 per UV unit across and 0.0375 up on this 6 by 4 wall, the bake gives 0.031 both ways). Whether the condition of #50 can be met is still An's decision.
+Bundle size: the two shader lines add 9 to 18 bytes gzip to eight bundles that carry the main fragment shader (ntry:core, ntry:agent-scene, ntry:agent-asset, ntry:cascaded-shadows, scene:lit-box, scene:gltf-box, scene:gltf-box+lazy, scene:agent-scene); their budgets rose by 20 to 30 bytes.

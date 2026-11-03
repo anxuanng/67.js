@@ -109,10 +109,10 @@
    "gpu-vs-cpu": 0.0065
   },
   "brick-graph": {
-   "gpu-vs-cycles": 0.1584,
-   "gpu-vs-eevee": 0.0875,
-   "cpu-vs-cycles": 0.1584,
-   "cpu-vs-eevee": 0.0876,
+   "gpu-vs-cycles": 0.1518,
+   "gpu-vs-eevee": 0.0844,
+   "cpu-vs-cycles": 0.1518,
+   "cpu-vs-eevee": 0.0844,
    "eevee-vs-cycles": 0.1221,
    "gpu-vs-cpu": 0.0077
   },

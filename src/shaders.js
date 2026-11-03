@@ -715,6 +715,7 @@ void main() {
   // canopy, so the back face keeps it instead of flipping to point into the crown.
   bool canopyShaded = CANOPY_TAG;
   if (doubleSided > 0.5 && !gl_FrontFacing && !canopyShaded) normal = -normal;
+  vec3 geometricNormal = normal;
   if (USES_NORMAL_MAP) normal = boxMapScale > 0.0 ? boxMappedNormal(normal) : mappedNormal(normal);
   vec3 viewDirection = normalize(eye - worldPosition);
   vec3 color = mix(baseColor, armorColor, step(0.5, surface.w) * (1.0 - step(1.5, surface.w)));
@@ -871,6 +872,7 @@ ${featureCode("linkArea")}      vec3 lightNormal = areaLightNormals[index].xyz;
   if (USES_OCCLUSION_MAP) occlusion = mix(1.0, texture(occlusionMap, mapUV(hasOcclusionMap)).r, occlusionStrength);
   // Trees and terrain bake how much sky each vertex sees; everything else carries 1.
   occlusion *= splatCavity * vertexSkyVisibility;
+  if (USES_NORMAL_MAP) occlusion *= 0.5 + 0.5 * dot(normal, geometricNormal);
   if (ENVIRONMENT_ENABLED) {
     float room = 1.0 - smoothstep(0.01, 0.06, dot(environmentDiffuse(vec3(0, 1, 0)), vec3(1)) / max(dot(keyColor, vec3(1)), 0.003));
     occlusion *= mix(1.0, mix(0.25, 1.0, visibility), room * (1.0 - metallic));
