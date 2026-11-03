@@ -4,11 +4,27 @@
   "blurb": "A container ship at berth between quay cranes and a stacked yard.",
   "glb": "/showcase/port/scene.glb",
   "hdri": "/showcase/port/sky.hdr",
-  "hdriOptions": { "intensity": 1, "rotation": 3.07, "showBackground": true, "backgroundBlur": 0 },
-  "gltfOptions": { "maxTexturePixels": 33554432 },
-  "exposure": 0.95,
-  "eye": [-185, 112, 235],
-  "target": [25, 6, -75],
+  "hdriOptions": {
+    "intensity": 0.6,
+    "rotation": 2.2,
+    "showBackground": true,
+    "backgroundBlur": 0
+  },
+  "waterReflection": true,
+  "gltfOptions": {
+    "maxTexturePixels": 33554432
+  },
+  "exposure": 1.2,
+  "eye": [
+    235,
+    88,
+    -165
+  ],
+  "target": [
+    0,
+    14,
+    10
+  ],
   "renderer": {
     "world": true,
     "ground": false,
@@ -17,25 +33,108 @@
     "pixelRatio": 1,
     "memoryBudgetMiB": 512,
     "environment": {
-      "lightDirection": [-0.5, 0.32, 0.8],
-      "keyIntensity": 4.5,
-      "keyColor": [1, 0.7, 0.45],
-      "fillIntensity": 0.2,
-      "ambientIntensity": 0.8,
-      "fogColor": [0.58, 0.4, 0.3],
+      "lightDirection": [
+        0.3,
+        0.26,
+        0.92
+      ],
+      "keyIntensity": 1,
+      "keyColor": [
+        4,
+        1.9,
+        0.75
+      ],
+      "fillIntensity": 1,
+      "ambientIntensity": 1,
+      "fogColor": [
+        0.584,
+        0.356,
+        0.231
+      ],
       "fogDensity": 0.00017
     },
-    "shadowBounds": { "target": [10, 5, -40], "eye": [-392, 262, 602], "extent": 420, "near": 100, "far": 1500 },
-    "shadowCascades": { "count": 4, "resolution": 4096, "maximumDistance": 900 }
+    "shadowBounds": {
+      "target": [
+        30,
+        0,
+        -60
+      ],
+      "eye": [
+        270,
+        208,
+        676
+      ],
+      "extent": 300,
+      "near": 100,
+      "far": 1500
+    },
+    "shadowCascades": {
+      "count": 4,
+      "resolution": 4096,
+      "maximumDistance": 700
+    },
+    "depth": true
   },
-  "frame": { "fov": 44, "near": 5, "far": 6000 },
+  "frame": {
+    "fov": 40,
+    "near": 2,
+    "far": 6000,
+    "effects": {
+      "ambientOcclusion": 0.7,
+      "ambientOcclusionRadius": 7,
+      "saturation": 1.08,
+      "contrast": 1.18,
+      "vignette": 0.2,
+      "grain": 0.012,
+      "bloom": {
+        "strength": 0.3,
+        "threshold": 1,
+        "radius": 1.2
+      }
+    }
+  },
   "credits": [
-    { "model": "Gantry Crane (yard cranes, decimated and repainted)", "author": "alanUscanga", "licence": "CC BY 4.0", "source": "https://sketchfab.com/3d-models/76119b46c26f436ba78f4b53c98fc935" },
-    { "model": "[XYZ] KR Scania R_Draft (terminal tractors and wheels, repainted)", "author": "radzig541", "licence": "CC BY", "source": "https://sketchfab.com/3d-models/c46e8ee246aa4863a2cf602cddf1bfeb" },
-    { "model": "Ship, quay cranes, containers, quay, road and harbour craft", "author": "CodePawl", "licence": "MIT", "source": "https://github.com/anxuanng/67.js" },
-    { "model": "concrete_floor_worn_001 (ground and quay textures)", "author": "Poly Haven", "licence": "CC0", "source": "https://polyhaven.com/a/concrete_floor_worn_001" },
-    { "model": "asphalt_02 (road texture)", "author": "Poly Haven", "licence": "CC0", "source": "https://polyhaven.com/a/asphalt_02" },
-    { "model": "rusty_painted_metal, rust_coarse_01, blue_metal_plate, metal_grate_rusty, rusty_metal_03, metal_plate_02, container_side (baked into container, hull and paint textures)", "author": "Poly Haven", "licence": "CC0", "source": "https://polyhaven.com/textures" },
-    { "model": "industrial_sunset_02_puresky (sky lighting)", "author": "Poly Haven", "licence": "CC0", "source": "https://polyhaven.com/a/industrial_sunset_02_puresky" }
+    {
+      "model": "Gantry Crane (yard cranes, decimated and repainted)",
+      "author": "alanUscanga",
+      "licence": "CC BY 4.0",
+      "source": "https://sketchfab.com/3d-models/76119b46c26f436ba78f4b53c98fc935"
+    },
+    {
+      "model": "[XYZ] KR Scania R_Draft (terminal tractors and wheels, repainted)",
+      "author": "radzig541",
+      "licence": "CC BY",
+      "source": "https://sketchfab.com/3d-models/c46e8ee246aa4863a2cf602cddf1bfeb"
+    },
+    {
+      "model": "Ship, quay cranes, containers, quay, road and harbour craft",
+      "author": "CodePawl",
+      "licence": "MIT",
+      "source": "https://67js.codepawl.com"
+    },
+    {
+      "model": "concrete_floor_worn_001 (ground and quay textures)",
+      "author": "Poly Haven",
+      "licence": "CC0",
+      "source": "https://polyhaven.com/a/concrete_floor_worn_001"
+    },
+    {
+      "model": "asphalt_02 (road texture)",
+      "author": "Poly Haven",
+      "licence": "CC0",
+      "source": "https://polyhaven.com/a/asphalt_02"
+    },
+    {
+      "model": "rusty_painted_metal, rust_coarse_01, blue_metal_plate, metal_grate_rusty, rusty_metal_03, metal_plate_02, container_side (baked into container, hull and paint textures)",
+      "author": "Poly Haven",
+      "licence": "CC0",
+      "source": "https://polyhaven.com/textures"
+    },
+    {
+      "model": "industrial_sunset_02_puresky (sky lighting)",
+      "author": "Poly Haven",
+      "licence": "CC0",
+      "source": "https://polyhaven.com/a/industrial_sunset_02_puresky"
+    }
   ]
 }
