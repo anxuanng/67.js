@@ -33,6 +33,7 @@
   "entry:clutter": 5300,
   "entry:light-bake": 28500,
   "entry:ground-bounce": 9460,
+  "entry:floor-sky-visibility": 15040,
   "entry:path-tracer": 17110,
   "entry:texture-set": 900,
   "entry:agent-scene": 81967,
