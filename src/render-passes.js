@@ -52,6 +52,7 @@ export function installRenderPasses(renderer) {
     context.deleteTexture(target.texture);
     context.deleteRenderbuffer(target.depth);
     context.deleteFramebuffer(target.framebuffer);
+    renderer.renderTargets.release('passColor', 'passDepth');
     target = null;
   }
 
@@ -73,7 +74,12 @@ export function installRenderPasses(renderer) {
       copyProgram = compileProgram(context, fullscreenVertex, passCopyFragment);
       copyTextureUniform = context.getUniformLocation(copyProgram, 'sourceTexture');
     }
-    target ??= createPassTarget(context, renderer.canvas.width, renderer.canvas.height);
+    if (!target) {
+      const { width, height } = renderer.canvas;
+      target = createPassTarget(context, width, height);
+      renderer.renderTargets.record('passColor', { width, height, format: 'RGBA8' });
+      renderer.renderTargets.record('passDepth', { width, height, format: 'DEPTH_COMPONENT24' });
+    }
     return mode;
   }
 

@@ -10,7 +10,8 @@ import { EASING_PLAIN_SOLUTION } from '../bench/agent-modeling/easing.mjs';
 
 test('the look pick passes the golden grade and fails the dim, the pale and a moved scene', async () => {
   const task = taskById('look-pick');
-  assert.deepEqual(failedKinds(await gradeRecipe(task, structuredClone(REFERENCES['look-pick']))), []);
+  const golden = await gradeRecipe(task, structuredClone(REFERENCES['look-pick']));
+  assert.deepEqual(failedKinds(golden), [], failedDetails(golden));
 
   for (const [name, reason] of [['dusk', /too dim/], ['airy', /too pale/]]) {
     const wrongGrade = structuredClone(REFERENCES['look-pick']);
@@ -30,6 +31,7 @@ test('the look pick passes the golden grade and fails the dim, the pale and a mo
 });
 
 const failedKinds = grade => grade.results.filter(result => !result.pass).map(result => result.label ?? result.kind);
+const failedDetails = grade => JSON.stringify(grade.results.filter(result => !result.pass));
 
 test('every task has a reference solution that passes all its checks', async () => {
   assert.deepEqual(Object.keys(REFERENCES).sort(), TASKS.map(task => task.id).sort());

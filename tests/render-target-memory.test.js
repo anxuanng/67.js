@@ -1,0 +1,70 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { Renderer67 } from '../src/renderer.js';
+import { RenderTargetLedger } from '../src/render-target-ledger.js';
+
+const BYTES_PER_MEGABYTE = 1048576;
+
+test('the ledger sizes a target by pixels, layers, samples and format and lists the largest first', () => {
+  const ledger = new RenderTargetLedger();
+  ledger.record('frameColor', { width: 960, height: 540, format: 'RGBA16F' });
+  ledger.record('multisampleColor', { width: 960, height: 540, format: 'RGBA16F', samples: 4 });
+  ledger.record('cascades', { width: 2048, height: 2048, layers: 3, format: 'DEPTH_COMPONENT24' });
+  const report = ledger.report();
+  assert.deepEqual(report.targets.map(target => target.name), ['cascades', 'multisampleColor', 'frameColor']);
+  assert.equal(report.targets[1].bytes, 960 * 540 * 4 * 8);
+  assert.equal(report.targets[0].bytes, 2048 * 2048 * 3 * 4);
+  assert.equal(report.totalBytes, report.targets.reduce((total, target) => total + target.bytes, 0));
+  assert.equal(report.totalMegabytes, Number((report.totalBytes / BYTES_PER_MEGABYTE).toFixed(2)));
+});
+
+test('the ledger forgets released targets', () => {
+  const ledger = new RenderTargetLedger();
+  ledger.record('first', { width: 4, height: 4, format: 'R8' });
+  ledger.record('second', { width: 4, height: 4, format: 'RGBA8' });
+  ledger.release('first', 'missing');
+  assert.deepEqual(ledger.report().targets.map(target => target.name), ['second']);
+});
+
+function recordingContext() {
+  const sizes = [];
+  const context = new Proxy({}, {
+    get(_, name) {
+      if (name === 'texImage2D') return (_target, _level, _format, width, height) => sizes.push([width, height]);
+      if (name === 'checkFramebufferStatus') return () => context.FRAMEBUFFER_COMPLETE;
+      if (name === 'FRAMEBUFFER_COMPLETE') return 1;
+      if (name === 'createTexture' || name === 'createFramebuffer') return () => ({});
+      return typeof name === 'string' && /^[A-Z_0-9]+$/.test(name) ? 1 : () => {};
+    },
+  });
+  return { context, sizes };
+}
+
+function shadowRenderer(batches) {
+  const { context, sizes } = recordingContext();
+  const renderer = Object.create(Renderer67.prototype);
+  Object.assign(renderer, {
+    context, batches, renderTargets: new RenderTargetLedger(), world: null, activeLightDirection: [1, 2, 3], shadowBounds: {},
+    lightProjection: new Float32Array(16), windState: { time: 0, strength: 0 }, drawShadowCasters() {},
+  });
+  return { renderer, sizes };
+}
+
+test('a scene with nothing to cast keeps a one texel shadow map and a casting scene keeps the full one', () => {
+  const empty = shadowRenderer([{ floor: true, castShadow: true }, { castShadow: false }]);
+  empty.renderer.createShadowMap();
+  assert.deepEqual(empty.sizes[0], [1, 1]);
+  assert.equal(empty.renderer.memoryReport().targets[0].bytes, 4);
+  const casting = shadowRenderer([{ castShadow: true }]);
+  casting.renderer.createShadowMap();
+  assert.deepEqual(casting.sizes[0], [2048, 2048]);
+  assert.equal(casting.renderer.memoryReport().totalBytes, 2048 * 2048 * 4);
+});
+
+test('the local shadow atlas holds one row of tiles per four shadow tiles and regrows when more are needed', () => {
+  const { renderer, sizes } = shadowRenderer([]);
+  renderer.allocateLocalShadowAtlas(1);
+  renderer.allocateLocalShadowAtlas(6);
+  assert.deepEqual(sizes, [[2048, 512], [2048, 1024]]);
+  assert.equal(renderer.memoryReport().targets[0].height, 1024);
+});

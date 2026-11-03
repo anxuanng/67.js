@@ -2,7 +2,7 @@
   <a href="https://67js.codepawl.com">
     <picture>
       <source media="(prefers-color-scheme: dark)" srcset="https://67js.codepawl.com/brand/wordmark-dark.svg" />
-      <img src="https://67js.codepawl.com/brand/wordmark-light.svg" alt="67js" width="260" />
+      <img src="https://67js.codepawl.com/brand/wordmark-light.svg" alt="67js" width="144" />
     </picture>
   </a>
 </p>

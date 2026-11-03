@@ -7,8 +7,10 @@ import { planRenderSize, estimateTextureBytes, estimateFrameBytes } from './budg
 import { applyProjection } from './camera.js';
 import { resolveEffects } from './effects.js';
 import { frameDiagnostics } from './frame-diagnostics.js';
+import { depthLayerOf } from './depth-layer.js';
 import { createLightingState, updateLightingState } from './lighting.js';
-import { SHADOW_ATLAS_WIDTH, SHADOW_ATLAS_HEIGHT, tileViewport, writeShadowTile } from './local-shadows.js';
+import { RenderTargetLedger } from './render-target-ledger.js';
+import { SHADOW_ATLAS_WIDTH, SHADOW_TILE_SIZE, SHADOW_TILES_PER_ROW, tileViewport, writeShadowTile } from './local-shadows.js';
 import { resolveVolumeFog, volumeShadowAmbient } from './volumetric.js';
 import { assertEnvironmentMap, createEnvironmentResources, environmentBackgroundFragment, environmentBrdfFragment, environmentPrefilterFragment, estimateEnvironmentBytes } from './environment.js';
 import { validateSkinGeometry, validateSkinPose, skinTextureLayout, packSkinInfluences } from './skinning.js';
@@ -204,6 +206,9 @@ function materialAlphaState(material) {
   return [alphaMode, alphaCutoff, opacity, material.doubleSided === true];
 }
 
+// A decal or depth layer draws with a scoped polygon offset so it wins against the surface it lies on (z-fighting).
+// Larger layers win over smaller ones; geometry never moves.
+
 // Translucent glass is not a shadow caster unless the part asks for it.
 function castsShadow(part) {
   return part.castShadow ?? (part.material.alphaMode ?? 'opaque') !== 'blend';
@@ -331,7 +336,7 @@ export function groupParts(parts, batching = true) {
     const key = batching ? part.geometry : part;
     if (!groups.has(key)) groups.set(key, new Map());
     let maps = groups.get(key);
-    for (const value of [...materialMapState(part.material), ...materialLayerState(part.material), part.skin ?? null, part.morph ?? null, castsShadow(part), renderPass(part.material), part.lods ?? null, part.shadowLods ?? null, ...materialAlphaState(part.material)]) {
+    for (const value of [...materialMapState(part.material), ...materialLayerState(part.material), part.skin ?? null, part.morph ?? null, castsShadow(part), depthLayerOf(part), renderPass(part.material), part.lods ?? null, part.shadowLods ?? null, ...materialAlphaState(part.material)]) {
       if (!maps.has(value)) maps.set(value, new Map());
       maps = maps.get(value);
     }
@@ -473,10 +478,13 @@ export class Renderer67 {
     this.environment = environment;
     this.fittedFogDensity = world ? fittedFogDensity(parts) : undefined;
     this.shadowBounds = shadowBounds;
+    /** Set by installCoplanarDiagnostics (coplanar-overlap.js): called with the batches, returns coplanar-overlap warnings. */
+    this.coplanarDiagnostics = null;
     /** Warnings about the last frame drawn, in the shape of `agent-diagnostics.js`; see `frame-diagnostics.js`. */
     this.diagnostics = [];
     this.activeLightDirection = environment.lightDirection ?? [-3, 6, 4];
     this.shadowCascades = shadowCascades;
+    this.renderTargets = new RenderTargetLedger();
     this.memoryBudgetMiB = memoryBudgetMiB;
     this.hdr = Boolean(hdr && !benchmark && this.context.getExtension('EXT_color_buffer_float'));
     if (volume.density > 0 && !this.hdr) throw new Error('Volume fog requires EXT_color_buffer_float for HDR rendering');
@@ -970,7 +978,8 @@ export class Renderer67 {
     return selectInstances(batch.selection, {
       instanceData: batch.instanceData, instanceCount: batch.instanceCount, stride: INSTANCE_STRIDE, bounds: batch.bounds, margin: batch.swayReach * Math.abs(this.windState.strength),
       levelErrors: batch.levelErrors, planes: this.frustumPlanes, viewProjection: this.viewProjection,
-      pixelsPerUnit: this.canvas.height / 2 * this.projection[5], pixelError: this.lodPixelError,
+      pixelsPerUnit: this.canvas.height / 2 * this.projection[5], pixelError: this.lodPixelError * (this.mirrorCulling?.lodScale ?? 1),
+      belowHeight: this.mirrorCulling?.belowHeight, minimumPixelRadius: this.mirrorCulling?.minimumPixelRadius,
     });
   }
 
@@ -1023,7 +1032,7 @@ export class Renderer67 {
     const [alphaMode, alphaCutoff, opacity, doubleSided] = materialAlphaState(parts[0].material);
     const layerState = materialLayerState(parts[0].material);
     const culling = this.createCullingState(parts);
-    const batch = { ...culling, alphaMode, alphaCutoff, opacity, doubleSided, layerState, parts: [...parts], vertexArray, instanceBuffer, instanceData, textures, mapState, splat, lightMapTexture, texture: textures[0], map, skin, skinTexture, influenceTexture, morph, morphTexture, morphWeights, indexCount: geometry.indices.length, instanceCount: parts.length, floor: parts[0].material.tag === 'floor', castShadow: castsShadow(parts[0]), pass: renderPass(parts[0].material) };
+    const batch = { ...culling, alphaMode, alphaCutoff, opacity, doubleSided, layerState, parts: [...parts], vertexArray, instanceBuffer, instanceData, textures, mapState, splat, lightMapTexture, texture: textures[0], map, skin, skinTexture, influenceTexture, morph, morphTexture, morphWeights, indexCount: geometry.indices.length, instanceCount: parts.length, floor: parts[0].material.tag === 'floor', castShadow: castsShadow(parts[0]), depthLayer: depthLayerOf(parts[0]), pass: renderPass(parts[0].material) };
     if (parts[0].lods) culling.levelGeometries.forEach((geometryOfLevel, level) => this.levelDraw(batch, level));
     culling.shadowLevels?.levelGeometries.forEach((geometryOfLevel, level) => this.levelDraw(batch, level, batch.shadowLevels));
     parts.forEach((part, index) => this.partLocations.set(part, { batch, index, geometry: part.geometry, map, mapState, layerState, skin, jointMatrices: skin?.jointMatrices, skinIndices: geometry.skinIndices, skinWeights: geometry.skinWeights, morph, morphWeights: morph?.weights, morphTargets: geometry.morphTargets, normalMatrix: mat3.create(), committedMatrix: batch.instanceData.subarray(index * INSTANCE_STRIDE, index * INSTANCE_STRIDE + 16) }));
@@ -1050,7 +1059,7 @@ export class Renderer67 {
       const mapState = materialMapState(first.material);
       const sameParts = batch?.parts.length === group.length && batch.parts.every((part, index) => part === group[index]);
       const alphaState = materialAlphaState(first.material);
-      const sameState = location?.geometry === first.geometry && batch?.castShadow === castsShadow(first) &&
+      const sameState = location?.geometry === first.geometry && batch?.castShadow === castsShadow(first) && (batch.depthLayer ?? 0) === depthLayerOf(first) &&
         batch.floor === (first.material.tag === 'floor') && batchPass(batch) === renderPass(first.material) &&
         [batch.alphaMode, batch.alphaCutoff, batch.opacity, batch.doubleSided].every((value, index) => value === alphaState[index]) &&
         batch.mapState.every((value, index) => value === mapState[index]) &&
@@ -1203,6 +1212,7 @@ export class Renderer67 {
       if (part.skin || part.morph) this.updatePartIdentities.add(part);
       if (part.castShadow !== undefined && typeof part.castShadow !== 'boolean') throw new TypeError('castShadow must be a boolean');
       if (castsShadow(part) !== location.batch.castShadow) throw new Error(`Shadow casting changes require a new renderer: ${part.name}`);
+      if (depthLayerOf(part) !== (location.batch.depthLayer ?? 0)) throw new Error(`depthLayer changes require replaceParts: ${part.name}`);
       // A material whose fields still equal the ones that passed the full checks below needs none of them again.
       const materialUnchanged = location.materialSnapshot?.matches(part.material) === true;
       if (!materialUnchanged) {
@@ -1295,10 +1305,16 @@ export class Renderer67 {
   createShadowMap() {
     const context = this.context;
     const allocateShadow = !this.shadowTexture;
+    // A scene with nothing to cast keeps a one texel map that stays cleared to the far depth, so every point reads as lit.
+    this.shadowMapSize ??= this.batches.some(batch => !batch.floor && batch.castShadow) ? SHADOW_MAP_SIZE : 1;
+    const mapSize = this.shadowMapSize;
     if (allocateShadow) this.shadowTexture = context.createTexture();
     context.activeTexture(context.TEXTURE0);
     context.bindTexture(context.TEXTURE_2D, this.shadowTexture);
-    if (allocateShadow) context.texImage2D(context.TEXTURE_2D, 0, context.DEPTH_COMPONENT24, SHADOW_MAP_SIZE, SHADOW_MAP_SIZE, 0, context.DEPTH_COMPONENT, context.UNSIGNED_INT, null);
+    if (allocateShadow) {
+      context.texImage2D(context.TEXTURE_2D, 0, context.DEPTH_COMPONENT24, mapSize, mapSize, 0, context.DEPTH_COMPONENT, context.UNSIGNED_INT, null);
+      this.renderTargets.record('shadowMap', { width: mapSize, height: mapSize, format: 'DEPTH_COMPONENT24' });
+    }
     // Compare on fetch (the default function is LEQUAL) with linear filtering gives a 2 x 2 percentage-closer result from one fetch.
     context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MIN_FILTER, context.LINEAR);
     context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MAG_FILTER, context.LINEAR);
@@ -1315,12 +1331,12 @@ export class Renderer67 {
     const lightView = mat4.lookAt(mat4.create(), light.eye, light.target, light.up ?? [0, 1, 0]);
     mat4.ortho(this.lightProjection, -light.extent, light.extent, -light.extent, light.extent, light.near, light.far);
     mat4.multiply(this.lightProjection, this.lightProjection, lightView);
-    context.viewport(0, 0, SHADOW_MAP_SIZE, SHADOW_MAP_SIZE);
+    context.viewport(0, 0, mapSize, mapSize);
     context.enable(context.DEPTH_TEST);
     context.enable(context.CULL_FACE);
     context.clear(context.DEPTH_BUFFER_BIT);
     this.shadowBiasPerSlope = shadowBiasPerSlope(light, SHADOW_MAP_SIZE);
-    this.drawShadowCasters(this.lightProjection, SHADOW_MAP_SIZE);
+    this.drawShadowCasters(this.lightProjection, mapSize);
     context.bindFramebuffer(context.FRAMEBUFFER, null);
     this.shadowsDirty = false;
   }
@@ -1368,12 +1384,17 @@ export class Renderer67 {
     context.enable(context.CULL_FACE);
   }
 
-  allocateLocalShadowAtlas() {
+  // The atlas has one row of tiles per four shadow tiles in use. The shader fetches by texel, so the height is free.
+  allocateLocalShadowAtlas(tileCount) {
     const context = this.context;
+    if (this.localShadowTexture) context.deleteTexture(this.localShadowTexture);
+    if (this.localShadowFramebuffer) context.deleteFramebuffer(this.localShadowFramebuffer);
+    this.localShadowAtlasHeight = Math.ceil(tileCount / SHADOW_TILES_PER_ROW) * SHADOW_TILE_SIZE;
     this.localShadowTexture = context.createTexture();
     context.activeTexture(context.TEXTURE0 + LOCAL_SHADOW_UNIT);
     context.bindTexture(context.TEXTURE_2D, this.localShadowTexture);
-    context.texImage2D(context.TEXTURE_2D, 0, context.DEPTH_COMPONENT24, SHADOW_ATLAS_WIDTH, SHADOW_ATLAS_HEIGHT, 0, context.DEPTH_COMPONENT, context.UNSIGNED_INT, null);
+    context.texImage2D(context.TEXTURE_2D, 0, context.DEPTH_COMPONENT24, SHADOW_ATLAS_WIDTH, this.localShadowAtlasHeight, 0, context.DEPTH_COMPONENT, context.UNSIGNED_INT, null);
+    this.renderTargets.record('localShadowAtlas', { width: SHADOW_ATLAS_WIDTH, height: this.localShadowAtlasHeight, format: 'DEPTH_COMPONENT24' });
     context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MIN_FILTER, context.NEAREST);
     context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MAG_FILTER, context.NEAREST);
     context.texParameteri(context.TEXTURE_2D, context.TEXTURE_WRAP_S, context.CLAMP_TO_EDGE);
@@ -1404,9 +1425,9 @@ export class Renderer67 {
     previous.set(matrices);
     this.localShadowTileCount = casters.length;
     const context = this.context;
-    if (!this.localShadowTexture) this.allocateLocalShadowAtlas();
+    if (!this.localShadowTexture || Math.ceil(casters.length / SHADOW_TILES_PER_ROW) * SHADOW_TILE_SIZE > this.localShadowAtlasHeight) this.allocateLocalShadowAtlas(casters.length);
     context.bindFramebuffer(context.FRAMEBUFFER, this.localShadowFramebuffer);
-    context.viewport(0, 0, SHADOW_ATLAS_WIDTH, SHADOW_ATLAS_HEIGHT);
+    context.viewport(0, 0, SHADOW_ATLAS_WIDTH, this.localShadowAtlasHeight);
     context.enable(context.DEPTH_TEST);
     context.clear(context.DEPTH_BUFFER_BIT);
     for (let tile = 0; tile < casters.length; tile++) {
@@ -1438,6 +1459,11 @@ export class Renderer67 {
     this.projection[8] = !this.benchmark && !this.world && this.canvas.clientWidth > 700 ? -0.25 : 0;
   }
 
+  /** Every GPU render target this renderer holds: name, size, format, samples and bytes, largest first, with the total. */
+  memoryReport() {
+    return this.renderTargets.report();
+  }
+
   releaseFrameTargets() {
     const context = this.context;
     if (this.multisampleFramebuffer) context.deleteFramebuffer(this.multisampleFramebuffer);
@@ -1451,6 +1477,7 @@ export class Renderer67 {
       context.deleteFramebuffer(target.framebuffer);
     }
     this.bloomTargets = [];
+    this.renderTargets.release('multisampleColor', 'multisampleDepth', 'frameColor', 'sceneDepth', 'bloomA', 'bloomB');
     this.releaseOcclusionTarget();
     this.passSupport?.releaseTargets(context);
     for (const stage of this.postStages ?? []) stage.releaseTargets(context);
@@ -1466,6 +1493,7 @@ export class Renderer67 {
     if (!this.occlusionTarget) return;
     this.context.deleteTexture(this.occlusionTarget.texture);
     this.context.deleteFramebuffer(this.occlusionTarget.framebuffer);
+    this.renderTargets.release('ambientOcclusion');
     this.occlusionTarget = null;
   }
 
@@ -1488,6 +1516,7 @@ export class Renderer67 {
     const texture = context.createTexture();
     context.bindTexture(context.TEXTURE_2D, texture);
     context.texImage2D(context.TEXTURE_2D, 0, context.R8, width, height, 0, context.RED, context.UNSIGNED_BYTE, null);
+    this.renderTargets.record('ambientOcclusion', { width, height, format: 'R8' });
     context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MIN_FILTER, context.LINEAR);
     context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MAG_FILTER, context.LINEAR);
     context.texParameteri(context.TEXTURE_2D, context.TEXTURE_WRAP_S, context.CLAMP_TO_EDGE);
@@ -1534,6 +1563,9 @@ export class Renderer67 {
     context.renderbufferStorageMultisample(context.RENDERBUFFER, this.multisampleSamples, context.DEPTH_COMPONENT24, width, height);
     context.framebufferRenderbuffer(context.FRAMEBUFFER, context.DEPTH_ATTACHMENT, context.RENDERBUFFER, this.multisampleDepth);
     if (context.checkFramebufferStatus(context.FRAMEBUFFER) !== context.FRAMEBUFFER_COMPLETE) throw new Error('Multisample framebuffer allocation failed. Choose a lower quality preset.');
+    this.renderTargets.record('multisampleColor', { width, height, format: this.hdr ? 'RGBA16F' : 'RGBA8', samples: this.multisampleSamples });
+    this.renderTargets.record('multisampleDepth', { width, height, format: 'DEPTH_COMPONENT24', samples: this.multisampleSamples });
+    this.renderTargets.record('frameColor', { width, height, format: this.hdr ? 'RGBA16F' : 'RGBA8' });
     this.frameTexture = context.createTexture();
     context.bindTexture(context.TEXTURE_2D, this.frameTexture);
     context.texImage2D(context.TEXTURE_2D, 0, this.hdr ? context.RGBA16F : context.RGBA8, width, height, 0, context.RGBA, this.hdr ? context.HALF_FLOAT : context.UNSIGNED_BYTE, null);
@@ -1553,24 +1585,11 @@ export class Renderer67 {
       context.texParameteri(context.TEXTURE_2D, context.TEXTURE_WRAP_S, context.CLAMP_TO_EDGE);
       context.texParameteri(context.TEXTURE_2D, context.TEXTURE_WRAP_T, context.CLAMP_TO_EDGE);
       context.framebufferTexture2D(context.FRAMEBUFFER, context.DEPTH_ATTACHMENT, context.TEXTURE_2D, this.depthTexture, 0);
+      this.renderTargets.record('sceneDepth', { width, height, format: 'DEPTH_COMPONENT24' });
     }
     if (context.checkFramebufferStatus(context.FRAMEBUFFER) !== context.FRAMEBUFFER_COMPLETE) throw new Error('Resolve framebuffer allocation failed. Choose a lower quality preset.');
     this.bloomWidth = Math.max(1, Math.ceil(width / 2));
     this.bloomHeight = Math.max(1, Math.ceil(height / 2));
-    for (let index = 0; index < 2; index++) {
-      const texture = context.createTexture();
-      const framebuffer = context.createFramebuffer();
-      this.bloomTargets.push({ texture, framebuffer });
-      context.bindTexture(context.TEXTURE_2D, texture);
-      context.texImage2D(context.TEXTURE_2D, 0, this.hdr ? context.RGBA16F : context.RGBA8, this.bloomWidth, this.bloomHeight, 0, context.RGBA, this.hdr ? context.HALF_FLOAT : context.UNSIGNED_BYTE, null);
-      context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MIN_FILTER, context.LINEAR);
-      context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MAG_FILTER, context.LINEAR);
-      context.texParameteri(context.TEXTURE_2D, context.TEXTURE_WRAP_S, context.CLAMP_TO_EDGE);
-      context.texParameteri(context.TEXTURE_2D, context.TEXTURE_WRAP_T, context.CLAMP_TO_EDGE);
-      context.bindFramebuffer(context.FRAMEBUFFER, framebuffer);
-      context.framebufferTexture2D(context.FRAMEBUFFER, context.COLOR_ATTACHMENT0, context.TEXTURE_2D, texture, 0);
-      if (context.checkFramebufferStatus(context.FRAMEBUFFER) !== context.FRAMEBUFFER_COMPLETE) throw new Error('Bloom framebuffer allocation failed. Choose a lower quality preset.');
-    }
     context.bindFramebuffer(context.FRAMEBUFFER, null);
   }
 
@@ -1871,8 +1890,32 @@ export class Renderer67 {
     context.bindVertexArray(null);
   }
 
+  // Allocated on the first frame that asks for bloom, so scenes without it pay nothing.
+  ensureBloomTargets() {
+    if (this.bloomTargets.length > 0) return;
+    const context = this.context;
+    for (let index = 0; index < 2; index++) {
+      const texture = context.createTexture();
+      const framebuffer = context.createFramebuffer();
+      this.bloomTargets.push({ texture, framebuffer });
+      context.bindTexture(context.TEXTURE_2D, texture);
+      context.texImage2D(context.TEXTURE_2D, 0, this.hdr ? context.RGBA16F : context.RGBA8, this.bloomWidth, this.bloomHeight, 0, context.RGBA, this.hdr ? context.HALF_FLOAT : context.UNSIGNED_BYTE, null);
+      context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MIN_FILTER, context.LINEAR);
+      context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MAG_FILTER, context.LINEAR);
+      context.texParameteri(context.TEXTURE_2D, context.TEXTURE_WRAP_S, context.CLAMP_TO_EDGE);
+      context.texParameteri(context.TEXTURE_2D, context.TEXTURE_WRAP_T, context.CLAMP_TO_EDGE);
+      context.bindFramebuffer(context.FRAMEBUFFER, framebuffer);
+      context.framebufferTexture2D(context.FRAMEBUFFER, context.COLOR_ATTACHMENT0, context.TEXTURE_2D, texture, 0);
+      if (context.checkFramebufferStatus(context.FRAMEBUFFER) !== context.FRAMEBUFFER_COMPLETE) throw new Error('Bloom framebuffer allocation failed. Choose a lower quality preset.');
+    }
+    context.bindFramebuffer(context.FRAMEBUFFER, null);
+    this.renderTargets.record('bloomA', { width: this.bloomWidth, height: this.bloomHeight, format: this.hdr ? 'RGBA16F' : 'RGBA8' });
+    this.renderTargets.record('bloomB', { width: this.bloomWidth, height: this.bloomHeight, format: this.hdr ? 'RGBA16F' : 'RGBA8' });
+  }
+
   drawBloom(bloom, sourceTexture = this.frameTexture) {
     const context = this.context;
+    this.ensureBloomTargets();
     context.disable(context.DEPTH_TEST);
     context.disable(context.CULL_FACE);
     context.bindVertexArray(null);
@@ -1913,6 +1956,7 @@ export class Renderer67 {
       }
       return;
     }
+    this.applyDepthLayer(batch.depthLayer);
     const useCoverage = masked && this.samples > 1 && !this.benchmark && !this.renderingPass;
     if (useCoverage) {
       context.enable(context.SAMPLE_ALPHA_TO_COVERAGE);
@@ -1925,6 +1969,17 @@ export class Renderer67 {
     context.uniform1f(uniforms.materialOpacity, batch.opacity);
     context.uniform1f(uniforms.alphaToCoverage, useCoverage ? 1 : 0);
     context.uniform1f(uniforms.doubleSided, batch.doubleSided ? 1 : 0);
+  }
+
+  /** Sets the scoped polygon offset of a depth layer for the colour pass; layer 0 is the plain depth test. */
+  applyDepthLayer(layer) {
+    const context = this.context;
+    if (layer) {
+      context.enable(context.POLYGON_OFFSET_FILL);
+      context.polygonOffset(-layer, -layer * 4);
+    } else {
+      context.disable(context.POLYGON_OFFSET_FILL);
+    }
   }
 
   /** Reorders a blend batch's instances back to front for this eye; translation columns stand in for object centers. */
@@ -1975,6 +2030,7 @@ export class Renderer67 {
       this.drawAlphaBatch(batch, true);
     }
     context.depthMask(true);
+    this.applyDepthLayer(0);
     context.disable(context.BLEND);
     context.disable(context.SAMPLE_ALPHA_TO_COVERAGE);
     context.enable(context.CULL_FACE);
@@ -2073,7 +2129,7 @@ export class Renderer67 {
     // The shadow view follows the sun, so a moved sun redraws the map.
     const lightChanged = String(this.activeLightDirection) !== String(environment.lightDirection);
     this.activeLightDirection = environment.lightDirection;
-    this.diagnostics = frameDiagnostics({ world: this.world, depth: this.depth, effects, lightDirection: environment.lightDirection, shadowBounds: this.shadowBounds });
+    this.diagnostics = frameDiagnostics({ world: this.world, depth: this.depth, effects, lightDirection: environment.lightDirection, shadowBounds: this.shadowBounds, coplanarProblems: this.coplanarDiagnostics?.(this.batches) });
     const start = performance.now();
     const context = this.context;
     this.beginGpuTiming();
@@ -2097,7 +2153,13 @@ export class Renderer67 {
     mat4.invert(this.inverseViewProjection, this.viewProjection);
     extractFrustumPlanes(this.viewProjection, this.frustumPlanes);
     this.viewForward = [-this.view[2], -this.view[6], -this.view[10]];
-    this.shadowCascades?.update(this, casterChanged);
+    // The water mirror is a cheap draw: it reuses the cascades of the last lit frame and leaves their redraw to the lit frame that follows.
+    if (frame.reflectionTarget && this.shadowCascades?.texture) {
+      this.cascadeCastersChanged ||= casterChanged;
+    } else {
+      this.shadowCascades?.update(this, casterChanged || Boolean(this.cascadeCastersChanged));
+      this.cascadeCastersChanged = false;
+    }
     // The water reflection addon draws the scene a second time into its own smaller target (frame.reflectionTarget).
     const mirrorTarget = frame.reflectionTarget;
     context.bindFramebuffer(context.FRAMEBUFFER, mirrorTarget ? mirrorTarget.framebuffer : passMode ? this.passSupport.framebuffer : this.benchmark ? null : this.multisampleFramebuffer);
@@ -2127,11 +2189,11 @@ export class Renderer67 {
     context.uniform1f(this.uniforms.exposure, exposure);
     context.uniform1f(this.uniforms.inspection, inspection ? 1 : 0);
     context.uniform1f(this.uniforms.hdrEnabled, this.hdr ? 1 : 0);
-    context.uniform1i(this.uniforms.pointLightCount, this.lighting.pointCount);
+    context.uniform1i(this.uniforms.pointLightCount, frame.reflectionTarget ? 0 : this.lighting.pointCount);
     context.uniform4fv(this.uniforms['pointLightPositions[0]'], this.lighting.positions);
     context.uniform4fv(this.uniforms['pointLightColors[0]'], this.lighting.colors);
     context.uniform1fv(this.uniforms['pointLightRadii[0]'], this.lighting.radii);
-    this.applyLocalLightUniforms();
+    this.applyLocalLightUniforms(Boolean(frame.reflectionTarget));
     context.uniform3fv(this.uniforms.keyColor, this.lighting.keyColor);
     context.uniform1f(this.uniforms.fillIntensity, this.lighting.fillIntensity);
     context.uniform1f(this.uniforms.ambientIntensity, this.lighting.ambientIntensity);
@@ -2164,6 +2226,7 @@ export class Renderer67 {
         this.drawAlphaBatch(batch, true, passMode !== OBJECT_ID_PASS_MODE);
       }
     }
+    this.applyDepthLayer(0);
     context.disable(context.SAMPLE_ALPHA_TO_COVERAGE);
     context.enable(context.CULL_FACE);
     context.bindVertexArray(null);
@@ -2195,17 +2258,18 @@ export class Renderer67 {
     this.gpuMilliseconds = this.gpuTimer.collect();
   }
 
-  applyLocalLightUniforms() {
+  // The water mirror draws without local lights: it is blurred and rippled, and the sun, sky and fog colour carry the picture.
+  applyLocalLightUniforms(withoutLights = false) {
     const context = this.context;
     const lighting = this.lighting;
     const uniforms = this.uniforms;
     context.uniform1fv(uniforms['pointLightShadowTiles[0]'], lighting.pointShadows);
-    context.uniform1i(uniforms.spotLightCount, lighting.spotCount);
+    context.uniform1i(uniforms.spotLightCount, withoutLights ? 0 : lighting.spotCount);
     context.uniform4fv(uniforms['spotLightPositions[0]'], lighting.spotPositions);
     context.uniform4fv(uniforms['spotLightColors[0]'], lighting.spotColors);
     context.uniform4fv(uniforms['spotLightDirections[0]'], lighting.spotDirections);
     context.uniform4fv(uniforms['spotLightParameters[0]'], lighting.spotParameters);
-    context.uniform1i(uniforms.areaLightCount, lighting.areaCount);
+    context.uniform1i(uniforms.areaLightCount, withoutLights ? 0 : lighting.areaCount);
     context.uniform4fv(uniforms['areaLightPositions[0]'], lighting.areaPositions);
     context.uniform4fv(uniforms['areaLightColors[0]'], lighting.areaColors);
     context.uniform4fv(uniforms['areaLightNormals[0]'], lighting.areaNormals);
@@ -2221,7 +2285,7 @@ export class Renderer67 {
 
   dispose() {
     this.releaseFrameTargets();
-    this.shadowCascades?.dispose(this.context);
+    this.shadowCascades?.dispose(this.context, this.renderTargets);
     if (this.localShadowTexture) this.context.deleteTexture(this.localShadowTexture);
     if (this.localShadowFramebuffer) this.context.deleteFramebuffer(this.localShadowFramebuffer);
     this.batches.forEach((batch) => {
