@@ -1,0 +1,126 @@
+{
+ "metric": "FLIP (LDR), mean error against Cycles, lower is better",
+ "scores": {
+  "brick-flat": {
+   "pathtracer-vs-cycles": 0.0246,
+   "seconds": 4.3,
+   "samples": 64,
+   "averageSamples": 64,
+   "ignored": []
+  },
+  "brick-graph": {
+   "pathtracer-vs-cycles": 0.0809,
+   "seconds": 72.9,
+   "samples": 64,
+   "averageSamples": 64,
+   "ignored": []
+  },
+  "brick-room": {
+   "pathtracer-vs-cycles": 0.2587,
+   "seconds": 7.1,
+   "samples": 64,
+   "averageSamples": 64,
+   "ignored": []
+  },
+  "brushed-film": {
+   "pathtracer-vs-cycles": 0.0599,
+   "seconds": 6.6,
+   "samples": 64,
+   "averageSamples": 64,
+   "ignored": [
+    "anisotropy is ignored.",
+    "iridescence is ignored."
+   ]
+  },
+  "car-paint": {
+   "pathtracer-vs-cycles": 0.0324,
+   "seconds": 5.7,
+   "samples": 64,
+   "averageSamples": 64,
+   "ignored": []
+  },
+  "character": {
+   "pathtracer-vs-cycles": 0.0288,
+   "seconds": 5,
+   "samples": 64,
+   "averageSamples": 64,
+   "ignored": [
+    "gltf materials are traced as plain surfaces."
+   ]
+  },
+  "fog": {
+   "pathtracer-vs-cycles": 0.0312,
+   "seconds": 7.1,
+   "samples": 64,
+   "averageSamples": 64,
+   "ignored": [
+    "volumeFog.ambient is not added: the fog is lit by the traced lights and sky."
+   ]
+  },
+  "foliage": {
+   "pathtracer-vs-cycles": 0.1002,
+   "seconds": 12.8,
+   "samples": 64,
+   "averageSamples": 64,
+   "ignored": [
+    "foliage materials are traced as plain surfaces."
+   ]
+  },
+  "glass": {
+   "pathtracer-vs-cycles": 0.0386,
+   "seconds": 5.2,
+   "samples": 64,
+   "averageSamples": 64,
+   "ignored": []
+  },
+  "light-linking": {
+   "pathtracer-vs-cycles": 0.0213,
+   "seconds": 4.3,
+   "samples": 64,
+   "averageSamples": 64,
+   "ignored": []
+  },
+  "lit-interior": {
+   "pathtracer-vs-cycles": 0.0769,
+   "seconds": 5.5,
+   "samples": 64,
+   "averageSamples": 64,
+   "ignored": []
+  },
+  "long-street": {
+   "pathtracer-vs-cycles": 0.0291,
+   "seconds": 4.1,
+   "samples": 64,
+   "averageSamples": 64,
+   "ignored": []
+  },
+  "material-spheres": {
+   "pathtracer-vs-cycles": 0.0449,
+   "seconds": 5.8,
+   "samples": 64,
+   "averageSamples": 64,
+   "ignored": []
+  },
+  "metal": {
+   "pathtracer-vs-cycles": 0.0439,
+   "seconds": 6.2,
+   "samples": 64,
+   "averageSamples": 64,
+   "ignored": []
+  },
+  "outdoor-hdri": {
+   "pathtracer-vs-cycles": 0.0226,
+   "seconds": 4.4,
+   "samples": 64,
+   "averageSamples": 64,
+   "ignored": []
+  },
+  "spot-area": {
+   "pathtracer-vs-cycles": 0.0262,
+   "seconds": 4.5,
+   "samples": 64,
+   "averageSamples": 64,
+   "ignored": []
+  }
+ }
+}
