@@ -14,6 +14,7 @@ import { assertEnvironmentMap, createEnvironmentResources, environmentBackground
 import { validateSkinGeometry, validateSkinPose, skinTextureLayout, packSkinInfluences } from './skinning.js';
 import { validateSplatMaterial, splatBatchState, splatTextureBytes, resolveSplatSize, packSplatParameters, buildSplatPixels } from './splat.js';
 import { materialLayerState, materialLayerValue } from './material-layers.js';
+import { MaterialSnapshot } from './material-snapshot.js';
 import { fittedFogDensity } from './fog-fit.js';
 import { InstanceSelection, extractFrustumPlanes, geometryBoundingSphere, selectInstances } from './render-culling.js';
 import { resolveShadowLight, shadowBiasPerSlope } from './shadow-light.js';
@@ -212,12 +213,21 @@ function hasMaterialMap(material) {
   return MATERIAL_MAPS.some(field => material[field]);
 }
 
+// Math.fround turns a double of 2^128 - 2^103 or more into Infinity, so that is the first value that is not a finite float.
+const FLOAT_OVERFLOW = 2 ** 128 - 2 ** 103;
+
 function finiteFloat(value) {
-  return Number.isFinite(value) && Number.isFinite(Math.fround(value));
+  return typeof value === 'number' && value > -FLOAT_OVERFLOW && value < FLOAT_OVERFLOW;
 }
 
 function finiteVector(value, size) {
   if (value?.length !== size) return false;
+  if (value instanceof Float32Array) {
+    // Every float is already in range, so it is finite exactly when 0 * value is 0 and not NaN. This runs without a branch per element.
+    let zeroSum = 0;
+    for (let index = 0; index < size; index++) zeroSum += value[index] * 0;
+    return zeroSum === 0;
+  }
   for (let index = 0; index < size; index++) if (!finiteFloat(value[index])) return false;
   return true;
 }
@@ -225,26 +235,37 @@ function finiteVector(value, size) {
 function validateTransform(part, normalMatrix = mat3.create()) {
   if (!finiteVector(part.matrix, 16)) throw new Error(`Invalid transform: ${part.name}`);
   if (!mat3.normalFromMat4(normalMatrix, part.matrix) || !finiteVector(normalMatrix, 9)) throw new Error(`Singular transform: ${part.name}`);
-  if (!finiteVector(part.material.color, 3) || !finiteVector(part.material.emissiveColor ?? part.material.color, 3) ||
-      !finiteVector(part.assembly?.offset ?? ZERO_VECTOR, 3) || !finiteVector(part.assembly?.detailOffset ?? ZERO_VECTOR, 3)) {
+  // An absent emissive colour or assembly offset packs as the base colour or zero, which need no second check.
+  const material = part.material;
+  const assembly = part.assembly;
+  if (!finiteVector(material.color, 3) || (material.emissiveColor !== undefined && !finiteVector(material.emissiveColor, 3)) ||
+      (assembly && (!finiteVector(assembly.offset ?? ZERO_VECTOR, 3) || !finiteVector(assembly.detailOffset ?? ZERO_VECTOR, 3)))) {
     throw new Error(`Invalid instance vector: ${part.name}`);
   }
   if (!finiteFloat(part.material.metallic) || !finiteFloat(part.material.roughness) || !finiteFloat(part.material.emission ?? 0)) throw new Error(`Invalid material: ${part.name}`);
   return normalMatrix;
 }
 
+// TypedArray.set costs more per call than three stores, and a loop shared by every vector length reads its source through a slow polymorphic path.
+function copyVector3(target, offset, source) {
+  target[offset] = source[0];
+  target[offset + 1] = source[1];
+  target[offset + 2] = source[2];
+}
+
 function packInstance(data, index, part, normalMatrix) {
   const offset = index * INSTANCE_STRIDE;
+  const material = part.material;
   data.set(part.matrix, offset);
   data.set(normalMatrix, offset + 16);
-  data.set(part.material.color, offset + 25);
-  data[offset + 28] = part.material.metallic;
-  data[offset + 29] = part.material.roughness;
-  data[offset + 30] = part.material.emission ?? 0;
-  data[offset + 31] = MATERIAL_TAGS[part.material.tag] ?? 0;
-  data.set(part.assembly?.offset ?? ZERO_VECTOR, offset + 32);
-  data.set(part.assembly?.detailOffset ?? ZERO_VECTOR, offset + 35);
-  data.set(part.material.emissiveColor ?? part.material.color, offset + 38);
+  copyVector3(data, offset + 25, material.color);
+  data[offset + 28] = material.metallic;
+  data[offset + 29] = material.roughness;
+  data[offset + 30] = material.emission ?? 0;
+  data[offset + 31] = MATERIAL_TAGS[material.tag] ?? 0;
+  copyVector3(data, offset + 32, part.assembly?.offset ?? ZERO_VECTOR);
+  copyVector3(data, offset + 35, part.assembly?.detailOffset ?? ZERO_VECTOR);
+  copyVector3(data, offset + 38, material.emissiveColor ?? material.color);
 }
 
 // The objectId mode of RENDER_PASS_MODES in render-passes.js.
@@ -1171,18 +1192,26 @@ export class Renderer67 {
     this.updateMorphs ??= new Set();
     this.updateMorphs.clear();
     this.updateBatches.clear();
+    const locations = this.updateLocations ??= [];
+    locations.length = parts.length;
     // Preflight every part before touching packed data or submitting GPU writes.
-    for (const part of parts) {
-      this.updatePartIdentities.add(part);
+    for (let partIndex = 0; partIndex < parts.length; partIndex++) {
+      const part = parts[partIndex];
       const location = this.partLocations.get(part);
       if (!location) throw new Error(`Unknown part identity: ${part.name}`);
+      locations[partIndex] = location;
+      if (part.skin || part.morph) this.updatePartIdentities.add(part);
       if (part.castShadow !== undefined && typeof part.castShadow !== 'boolean') throw new TypeError('castShadow must be a boolean');
       if (castsShadow(part) !== location.batch.castShadow) throw new Error(`Shadow casting changes require a new renderer: ${part.name}`);
-      const alphaState = materialAlphaState(part.material);
-      const batchAlphaState = [location.batch.alphaMode, location.batch.alphaCutoff, location.batch.opacity, location.batch.doubleSided];
-      if (alphaState.some((value, index) => value !== batchAlphaState[index])) throw new Error(`Alpha mode, cutoff, opacity and double-sided changes require a new renderer: ${part.name}`);
+      // A material whose fields still equal the ones that passed the full checks below needs none of them again.
+      const materialUnchanged = location.materialSnapshot?.matches(part.material) === true;
+      if (!materialUnchanged) {
+        const alphaState = materialAlphaState(part.material);
+        const batchAlphaState = [location.batch.alphaMode, location.batch.alphaCutoff, location.batch.opacity, location.batch.doubleSided];
+        if (alphaState.some((value, index) => value !== batchAlphaState[index])) throw new Error(`Alpha mode, cutoff, opacity and double-sided changes require a new renderer: ${part.name}`);
+      }
       if (part.geometry !== location.geometry) throw new Error(`Geometry changes require a new renderer: ${part.name}`);
-      if (renderPass(part.material) !== batchPass(location.batch)) throw new Error(`Moving a part into or out of the liquid or foam pass requires replaceParts: ${part.name}`);
+      if (!materialUnchanged && renderPass(part.material) !== batchPass(location.batch)) throw new Error(`Moving a part into or out of the liquid or foam pass requires replaceParts: ${part.name}`);
       if ((part.skin ?? null) !== location.skin || part.skin?.jointMatrices !== location.jointMatrices || part.geometry.skinIndices !== location.skinIndices || part.geometry.skinWeights !== location.skinWeights) throw new Error(`Skin identity changes require a new renderer: ${part.name}`);
       if (part.skin) {
         if (PROCEDURAL_MATERIAL_TAGS.has(part.material.tag)) throw new Error('Skinned parts require a standard material tag.');
@@ -1195,6 +1224,10 @@ export class Renderer67 {
         validateMorphTransform(part.morph, location.batch.morphTexture.info, part.matrix, part.skin);
         this.updateMorphs.add(part.morph);
       }
+      if (materialUnchanged) {
+        validateTransform(part, location.normalMatrix);
+        continue;
+      }
       if ((part.material.map ?? null) !== location.map) throw new Error(`Texture map changes require a new renderer: ${part.name}`);
       validateMaterialMaps(part.material);
       const normalScale = part.material.normalScale ?? DEFAULT_NORMAL_SCALE;
@@ -1206,6 +1239,7 @@ export class Renderer67 {
       if (lightMapDescriptor !== (mapState[14] ?? null) || lightMapScale !== (mapState[15] ?? 0) || (part.material.layerMaps ?? null) !== (mapState[18] ?? null)) throw new Error(`Light map and layer texture changes require a new renderer: ${part.name}`);
       if (normalScale[0] !== mapState[5] || normalScale[1] !== mapState[6] || (part.material.occlusionStrength ?? 1) !== mapState[7] || mossState(part.material).some((value, index) => value !== mapState[8 + index]) || materialLayerState(part.material).some((value, index) => value !== location.layerState[index])) throw new Error(`Material map or scale changes require a new renderer: ${part.name}`);
       validateTransform(part, location.normalMatrix);
+      location.materialSnapshot = MaterialSnapshot.of(part.material);
     }
     // A palette upload also changes consumers absent from the submitted part list.
     if (this.updateSkins.size) {
@@ -1216,15 +1250,19 @@ export class Renderer67 {
       }
     }
     // Shared weights also affect batches absent from the submitted part list.
-    for (const [part, location] of this.partLocations) {
-      if (!location.morph || this.updatePartIdentities.has(part)) continue;
-      if (!this.updateMorphs.has(location.morph) && !this.updateSkins.has(location.batch.skinTexture)) continue;
-      const committedMatrix = location.committedMatrix ?? location.batch.instanceData.subarray(location.index * INSTANCE_STRIDE, location.index * INSTANCE_STRIDE + 16);
-      validateMorphTransform(location.morph, location.batch.morphTexture.info, committedMatrix, location.skin);
+    // Nothing is shared when the update carries no morph and no skin.
+    if (this.updateMorphs.size || this.updateSkins.size) {
+      for (const [part, location] of this.partLocations) {
+        if (!location.morph || this.updatePartIdentities.has(part)) continue;
+        if (!this.updateMorphs.has(location.morph) && !this.updateSkins.has(location.batch.skinTexture)) continue;
+        const committedMatrix = location.committedMatrix ?? location.batch.instanceData.subarray(location.index * INSTANCE_STRIDE, location.index * INSTANCE_STRIDE + 16);
+        validateMorphTransform(location.morph, location.batch.morphTexture.info, committedMatrix, location.skin);
+      }
     }
     this.updateBatches.clear();
-    for (const part of parts) {
-      const location = this.partLocations.get(part);
+    for (let partIndex = 0; partIndex < parts.length; partIndex++) {
+      const part = parts[partIndex];
+      const location = locations[partIndex];
       // A tag can change between frames without a new batch, so its shader code may not be compiled yet.
       if (TAG_SHADER_FEATURES.has(part.material.tag) && !this.shaderFeatures?.has(part.material.tag)) this.requireShaderFeatures([part]);
       packInstance(location.batch.instanceData, location.index, part, location.normalMatrix);
