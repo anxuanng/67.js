@@ -64,6 +64,22 @@ function boundedNumber(options, name) {
   return value;
 }
 
+// Kept equal to PATH_TRACER_DENOISERS in path-tracer-capabilities.js by tests/path-tracer-denoise-oidn.test.js; the
+// capabilities file stays out of this bundle.
+export const PATH_TRACER_DENOISERS = Object.freeze(['wavelet', 'oidn', 'none']);
+
+/**
+ * `denoise` is true (the wavelet filter) or false (none), or a name: "wavelet", "oidn" or "none". "oidn" is the optional
+ * native Open Image Denoise (packages/denoise-oidn): the tracer then leaves the colour as traced and returns the feature
+ * images, and the caller that has the package filters them.
+ */
+function denoiserNamed(value) {
+  if (value === true) return 'wavelet';
+  if (value === false) return 'none';
+  if (PATH_TRACER_DENOISERS.includes(value)) return value;
+  throw new TypeError(`Path tracer denoise must be a boolean or one of ${PATH_TRACER_DENOISERS.join(', ')}.`);
+}
+
 export function normalizePathTracerOptions(options = {}) {
   if (options === null || typeof options !== 'object') throw new TypeError('Path tracer options must be an object.');
   const result = {
@@ -76,9 +92,9 @@ export function normalizePathTracerOptions(options = {}) {
     maxSeconds: boundedNumber(options, 'maxSeconds'),
     fireflyClamp: boundedNumber(options, 'fireflyClamp'),
     noiseThreshold: boundedNumber(options, 'noiseThreshold'),
-    denoise: options.denoise ?? true,
+    denoiser: denoiserNamed(options.denoise ?? true),
   };
-  if (typeof result.denoise !== 'boolean') throw new TypeError('Path tracer denoise must be a boolean.');
+  result.denoise = result.denoiser !== 'none';
   if (result.width * result.height > MAX_TRACE_PIXELS) throw new RangeError(`A path trace takes at most ${MAX_TRACE_PIXELS} pixels.`);
   if (result.width * result.height * result.samples * (result.bounces + 1) > MAX_TRACE_RAY_WORK) throw new RangeError('This path trace would need too much ray work: lower the size, samples or bounces.');
   return result;
@@ -984,11 +1000,12 @@ export async function renderPathTracedImage({ parts, environment = {}, camera },
   const tracedSeconds = (performance.now() - started) / 1000;
   normalizeNormals(buffers.normal, pixelCount);
   const { samplesTaken, ...denoiseInputs } = buffers;
-  const linear = options.denoise ? denoiseRadiance({ width, height, ...denoiseInputs }) : buffers.color;
+  const linear = options.denoiser === 'wavelet' ? denoiseRadiance({ width, height, ...denoiseInputs }) : buffers.color;
   return {
-    width, height, linear, rgba: toneMapToRgba8(linear, width, height),
+    width, height, linear, rgba: toneMapToRgba8(linear, width, height), features: denoiseInputs,
     report: {
-      width, height, samples: options.samples, bounces: options.bounces, seed: options.seed, denoised: options.denoise, threads,
+      width, height, samples: options.samples, bounces: options.bounces, seed: options.seed, denoised: options.denoiser === 'wavelet',
+      denoiser: options.denoiser, threads,
       averageSamples: totalSamples(samplesTaken) / pixelCount, noiseThreshold: options.noiseThreshold,
       triangles: scene.indices.length / 3, tracedSeconds, seconds: (performance.now() - started) / 1000,
       ignored: describeIgnoredFeatures(parts, environment),

@@ -822,12 +822,16 @@ def configure_output(scene):
 
 def configure_cycles(scene):
     scene.render.engine = "CYCLES"
-    preferences = bpy.context.preferences.addons["cycles"].preferences
-    preferences.compute_device_type = "OPTIX"
-    preferences.get_devices()
-    for device in preferences.devices:
-        device.use = device.type == "OPTIX"
-    scene.cycles.device = "GPU"
+    if os.environ.get("CYCLES_DEVICE") == "CPU":
+        # --no-gpu in run.mjs: the same renderer on the CPU, for when another job holds the GPU.
+        scene.cycles.device = "CPU"
+    else:
+        preferences = bpy.context.preferences.addons["cycles"].preferences
+        preferences.compute_device_type = "OPTIX"
+        preferences.get_devices()
+        for device in preferences.devices:
+            device.use = device.type == "OPTIX"
+        scene.cycles.device = "GPU"
     scene.cycles.samples = CYCLES_SAMPLES
     scene.cycles.use_denoising = True
     scene.cycles.volume_step_rate = 1

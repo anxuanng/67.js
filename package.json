@@ -164,6 +164,7 @@
     }
   },
   "devDependencies": {
+    "@codepawlhq/67js-denoise-oidn": "file:packages/denoise-oidn",
     "@dimforge/rapier3d-compat": "0.21.0",
     "@modelcontextprotocol/client": "2.4.0",
     "@modelcontextprotocol/server": "2.4.0",

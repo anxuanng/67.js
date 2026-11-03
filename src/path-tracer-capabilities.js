@@ -10,8 +10,13 @@ export const PATH_TRACER_JOB_LIMITS = Object.freeze({
   noiseThreshold: Object.freeze({ minimum: 0, maximum: 0.1, default: 0 }),
 });
 
+// "wavelet" is the built-in filter (true), "none" is no filter (false), and "oidn" is Intel Open Image Denoise from the optional
+// package @codepawlhq/67js-denoise-oidn. A job that asks for "oidn" and leaves samples out gets OIDN_DEFAULT_SAMPLES.
+export const PATH_TRACER_DENOISERS = Object.freeze(['wavelet', 'oidn', 'none']);
+export const OIDN_DEFAULT_SAMPLES = 16;
+
 export const PATH_TRACER_CAPABILITIES = Object.freeze({
-  setting: 'settings.renderer { type: "pathTracer", samples, bounces, denoise, seed, maxSeconds, noiseThreshold }; image jobs only, no passes. Past maxSeconds the job fails.',
+  setting: 'settings.renderer { type: "pathTracer", samples, bounces, denoise (true | false | "wavelet" | "oidn" | "none"), seed, maxSeconds, noiseThreshold }; image jobs only, no passes. Past maxSeconds the job fails.',
   noiseThreshold: 'Default 0 draws every sample. Above 0 a pixel stops once its standard error relative to its mean is under the value, checked from 16 samples on: faster and noisier, and it cost quality on spot-area (score 0.0658 at 0, 0.0900 at 0.03). docs/path-tracer.md has the table.',
   traces: 'emissive maps and strength; volume fog as a uniform medium (density, colour, anisotropy, box; noise, drift and ambient are not used).',
   skips: 'occlusion maps, translucent leaves, liquids, anisotropy, iridescence, sheen, caustics, depth of field, bloom; metrics.pathTracer.ignored in the job result lists what the scene asked for.',
