@@ -1,5 +1,5 @@
 import { mat4, mat3 } from 'gl-matrix';
-import { layerTextureSupport, LIGHT_SHADING_FEATURE, SHADING_MODES, LIGHT_SHADING_MAXIMUM_SAMPLES, vertexShader, createVertexShader, createFragmentShader, liquidFragmentShader, depthVertexShader, depthFragmentShader, benchmarkVertexShader, benchmarkFragmentShader } from './shaders.js';
+import { layerTextureSupport, viewTransformShader, LIGHT_SHADING_FEATURE, SHADING_MODES, LIGHT_SHADING_MAXIMUM_SAMPLES, vertexShader, createVertexShader, createFragmentShader, liquidFragmentShader, depthVertexShader, depthFragmentShader, benchmarkVertexShader, benchmarkFragmentShader } from './shaders.js';
 import { postFragment, createPostFragment, POST_STEPS, skyFragment, bloomFragment } from './post.js';
 import { fullscreenVertex, startProgram, finishProgram, compileProgram } from './gl-program.js';
 import { ambientOcclusionFragment } from './ambient-occlusion.js';
@@ -446,7 +446,7 @@ function allFinite(values) {
 }
 
 export class Renderer67 {
-  constructor(canvas, parts, { batching = true, pixelRatio = 1.5, benchmark = false, world = false, ground = true, transparent = false, samples = 4, hdr = false, depth = false, memoryBudgetMiB = 256, environment = {}, shadowBounds = {}, shadowCascades = null, culling = true, lodPixelError = 1, createGpuTimer = null, skyOpenness = null, fogSkyVisibility = null, shading = 'full' } = {}) {
+  constructor(canvas, parts, { batching = true, pixelRatio = 1.5, benchmark = false, world = false, ground = true, transparent = false, samples = 4, hdr = false, depth = false, memoryBudgetMiB = 256, environment = {}, shadowBounds = {}, shadowCascades = null, culling = true, lodPixelError = 1, createGpuTimer = null, skyOpenness = null, fogSkyVisibility = null, shading = 'full', viewTransform = 'aces', look = null } = {}) {
     this.canvas = canvas;
     this.sceneParts = parts;
     // `skyOpenness` from closed-room.js is passed in, which keeps the ray code out of scenes without volume fog.
@@ -486,6 +486,13 @@ export class Renderer67 {
     this.activeLightDirection = environment.lightDirection ?? [-3, 6, 4];
     this.shadowCascades = shadowCascades;
     this.renderTargets = new RenderTargetLedger();
+    // The constructor options are the default; a frame's environment (a recipe's viewTransform and look) overrides them.
+    this.defaultViewTransform = viewTransform;
+    this.defaultLook = look;
+    this.viewTransform = 'aces';
+    this.look = null;
+    this.lookSource = null;
+    this.selectViewTransform(viewTransform, look);
     this.memoryBudgetMiB = memoryBudgetMiB;
     this.hdr = Boolean(hdr && !benchmark && this.context.getExtension('EXT_color_buffer_float'));
     if (volume.density > 0 && !this.hdr) throw new Error('Volume fog requires EXT_color_buffer_float for HDR rendering');
@@ -592,10 +599,10 @@ export class Renderer67 {
       depth: startProgram(this.context, depthVertexShader, depthFragmentShader),
     };
     if (!benchmark) {
-      pending.post = startProgram(this.context, fullscreenVertex, postFragment);
+      pending.post = startProgram(this.context, fullscreenVertex, this.withViewTransform(postFragment, 'post'));
       pending.sky = startProgram(this.context, fullscreenVertex, skyFragment);
       pending.bloom = startProgram(this.context, fullscreenVertex, bloomFragment);
-      pending.liquid = startProgram(this.context, vertexShader, liquidFragmentShader);
+      pending.liquid = startProgram(this.context, vertexShader, this.withViewTransform(liquidFragmentShader, 'liquid'));
       if (environment.map) this.startEnvironmentPrograms();
     }
     this.finishMainProgram(pending.main);
@@ -643,10 +650,51 @@ export class Renderer67 {
     if (!this.benchmark && !this.multisampleFramebuffer) this.allocateFrameTargets(this.canvas.width, this.canvas.height);
   }
 
+  selectViewTransform(viewTransform, lookSource) {
+    if ((viewTransform !== 'aces' || lookSource) && !viewTransformShader.apply) throw new Error("viewTransform and look need their shader code: add import '@codepawlhq/67js/addons/view-transform-shader' (a recipe: await loadAgentSceneModules(recipe)).");
+    this.viewTransform = viewTransform;
+    this.lookSource = lookSource;
+    this.look = lookSource ? viewTransformShader.resolveLook(lookSource) : null;
+  }
+
+  // A recipe's environment.viewTransform and environment.look reach the renderer in each frame; a change recompiles the
+  // programs that carry the display curve (main, liquid, environment background, post) before the frame is drawn.
+  syncViewTransform(environment) {
+    const viewTransform = environment.viewTransform ?? this.defaultViewTransform;
+    const lookSource = environment.look ?? this.defaultLook;
+    if (viewTransform === this.viewTransform && lookSource === this.lookSource) return;
+    viewTransformShader.dispose?.(this);
+    this.selectViewTransform(viewTransform, lookSource);
+    if (this.benchmark) return;
+    const context = this.context;
+    this.rebuildMainProgram();
+    for (const variant of this.postVariants.values()) context.deleteProgram(variant.pending ? finishProgram(context, variant.pending) : variant.program);
+    this.postVariants.clear();
+    context.deleteProgram(this.postProgram);
+    this.postProgram = finishProgram(context, startProgram(context, fullscreenVertex, this.withViewTransform(postFragment, 'post')));
+    this.postUniforms = postUniformLocations(context, this.postProgram);
+    const liquidNames = Object.keys(this.liquidUniforms);
+    context.deleteProgram(this.liquidProgram);
+    this.liquidProgram = finishProgram(context, startProgram(context, vertexShader, this.withViewTransform(liquidFragmentShader, 'liquid')));
+    this.liquidUniforms = Object.fromEntries(liquidNames.map(name => [name, context.getUniformLocation(this.liquidProgram, name)]));
+    context.useProgram(this.liquidProgram);
+    context.uniform1i(this.liquidUniforms.skinInfluences, 6);
+    context.uniform1i(this.liquidUniforms.jointPalette, 7);
+    context.uniform1i(this.liquidUniforms.morphTargets, 8);
+    if (this.environmentBackgroundProgram) context.deleteProgram(this.environmentBackgroundProgram);
+    this.environmentBackgroundProgram = null;
+  }
+
+  // The display curve and look of this renderer, spliced into one of its programs (view-transform-shader.js); the default curve changes nothing.
+  withViewTransform(source, kind) {
+    if (this.viewTransform === 'aces' && !this.look) return source;
+    return viewTransformShader.apply(source, kind, this.viewTransform, Boolean(this.look));
+  }
+
   // Compiles the main program with only the shader features that this renderer's parts use, and finds its uniforms.
   startMainProgram() {
     const benchmark = this.benchmark;
-    const fragmentSource = benchmark ? benchmarkFragmentShader : createFragmentShader(this.shaderFeatures);
+    const fragmentSource = benchmark ? benchmarkFragmentShader : this.withViewTransform(createFragmentShader(this.shaderFeatures), 'main');
     return startProgram(this.context, benchmark ? benchmarkVertexShader : createVertexShader(this.shaderFeatures), fragmentSource);
   }
 
@@ -1669,7 +1717,7 @@ export class Renderer67 {
     if (!map?.showBackground || this.transparent) return false;
     const context = this.context;
     if (!this.environmentBackgroundProgram) {
-      this.environmentBackgroundProgram = compileProgram(context, fullscreenVertex, environmentBackgroundFragment);
+      this.environmentBackgroundProgram = compileProgram(context, fullscreenVertex, this.withViewTransform(environmentBackgroundFragment, 'background'));
       const names = ['inverseViewProjection', 'eye', 'backgroundLevel', 'exposure', 'hdrEnabled', 'environmentSpecular', 'environmentRotation', 'environmentIntensity', 'environmentLevelMax'];
       this.environmentBackgroundUniforms = Object.fromEntries(names.map(name => [name, context.getUniformLocation(this.environmentBackgroundProgram, name)]));
     }
@@ -1732,7 +1780,7 @@ export class Renderer67 {
     const key = steps.join(',');
     let variant = this.postVariants.get(key);
     if (!variant) {
-      variant = { pending: startProgram(this.context, fullscreenVertex, createPostFragment(steps)) };
+      variant = { pending: startProgram(this.context, fullscreenVertex, this.withViewTransform(createPostFragment(steps), 'post')) };
       this.postVariants.set(key, variant);
     }
     if (variant.pending) {
@@ -1764,6 +1812,7 @@ export class Renderer67 {
     const fogSky = this.fogSkyVisibility?.(this.sceneParts, volume, context, environment);
     const post = this.selectPostProgram(this.postStepsOf(frame, effects, volume, occluded, fogSky));
     context.useProgram(post.program);
+    if (this.look) viewTransformShader.bindLook(this, post.program);
     context.activeTexture(context.TEXTURE0);
     context.bindTexture(context.TEXTURE_2D, sourceTexture);
     // The fog's glow reads blurred copies of the frame from its mip chain, so a tap is smooth instead of one speckled pixel.
@@ -2128,6 +2177,7 @@ export class Renderer67 {
       if (!Number.isFinite(lightLength) || lightLength < 1e-6 || !Array.from(direction).every(component => typeof component === 'number' && Math.abs(component) <= 1e6)) throw new RangeError('Volume light direction must have a finite nonzero length and bounded components');
     }
     updateLightingState(this.lighting, environment, { world: this.world });
+    this.syncViewTransform(environment);
     // The shadow view follows the sun, so a moved sun redraws the map.
     const lightChanged = String(this.activeLightDirection) !== String(environment.lightDirection);
     this.activeLightDirection = environment.lightDirection;
@@ -2288,6 +2338,7 @@ export class Renderer67 {
   dispose() {
     this.releaseFrameTargets();
     this.shadowCascades?.dispose(this.context, this.renderTargets);
+    viewTransformShader.dispose?.(this);
     if (this.localShadowTexture) this.context.deleteTexture(this.localShadowTexture);
     if (this.localShadowFramebuffer) this.context.deleteFramebuffer(this.localShadowFramebuffer);
     this.batches.forEach((batch) => {

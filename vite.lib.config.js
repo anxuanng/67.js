@@ -53,6 +53,8 @@ export default defineConfig({
         'line-art': 'src/line-art.js',
         'coplanar-overlap': 'src/coplanar-overlap.js',
         'material-layer-shaders': 'src/material-layer-shaders.js',
+        'view-transform-shader': 'src/view-transform-shader.js',
+        'view-transform': 'src/view-transform.js',
         'light-linking': 'src/light-linking.js',
         'cascaded-shadows': 'src/cascaded-shadows.js',
         'gaussian-splats': 'src/gaussian-splats.js',
