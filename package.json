@@ -128,6 +128,7 @@
     "smoke:agent-look": "node scripts/smoke-agent-look.mjs",
     "smoke:view-transform": "node scripts/smoke-view-transform.mjs",
     "smoke:agent-assets": "node scripts/smoke-agent-assets.mjs",
+    "smoke:agent-vegetation": "node scripts/smoke-agent-vegetation.mjs",
     "smoke:agent-render-jobs": "node scripts/smoke-agent-render-jobs.mjs",
     "smoke:agent-texture-sequence": "node scripts/smoke-agent-texture-sequence.mjs",
     "smoke:render-passes": "node scripts/smoke-render-passes.mjs",
