@@ -9,6 +9,7 @@ import { walkerRecipe } from './walker.mjs';
 import { KETTLE_RESIZED, KETTLE_RESIZED_PLAIN } from './kettle.mjs';
 import { LAMP_SOLUTION } from './lamp.mjs';
 import { GALLERY_SOLUTION } from './gallery.mjs';
+import { DUSK_SOLUTION } from './dusk.mjs';
 import { COLONNADE_SOLUTION } from './colonnade.mjs';
 import { DESK_FINAL, DESK_FINAL_PLAIN } from './desk.mjs';
 import { CABINET_FINAL, CABINET_FINAL_PLAIN } from './cabinet.mjs';
@@ -170,6 +171,7 @@ export const REFERENCES = {
   'best-of-three': LAMP_SOLUTION,
   'render-pick': GALLERY_SOLUTION,
   'light-pick-hard': COLONNADE_SOLUTION,
+  'look-pick': DUSK_SOLUTION,
   'kettle-resize': KETTLE_RESIZED,
   'kettle-resize-plain': KETTLE_RESIZED_PLAIN,
   'desk-resize': DESK_FINAL,

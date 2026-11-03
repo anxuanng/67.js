@@ -1,0 +1,1 @@
+- Agent modeling suite: `look-pick` offers three colour grades and checks the picture the exported recipe draws (mean brightness, clipped and crushed shares), so the pick cannot be traced from numbers. Branches saved no calls on it (#67).

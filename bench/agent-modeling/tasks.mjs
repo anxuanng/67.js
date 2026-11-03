@@ -7,6 +7,7 @@ import { DESK_START, DESK_START_PLAIN, DESK_CHECKS } from './desk.mjs';
 import { CABINET_START, CABINET_START_PLAIN, CABINET_CHECKS } from './cabinet.mjs';
 import { LAMP_START, LAMP_PROMPT, LAMP_CHECKS } from './lamp.mjs';
 import { GALLERY_START, GALLERY_PROMPT, GALLERY_CHECKS } from './gallery.mjs';
+import { DUSK_START, DUSK_PROMPT, DUSK_CHECKS } from './dusk.mjs';
 import { COLONNADE_START, COLONNADE_PROMPT, COLONNADE_CHECKS } from './colonnade.mjs';
 import { TERRAIN_TASKS } from './terrain.mjs';
 
@@ -567,6 +568,7 @@ exported recipe is what gets graded.`,
   { id: 'best-of-three', startRecipe: LAMP_START, prompt: LAMP_PROMPT, checks: LAMP_CHECKS },
   { id: 'render-pick', startRecipe: GALLERY_START, prompt: GALLERY_PROMPT, checks: GALLERY_CHECKS },
   { id: 'light-pick-hard', startRecipe: COLONNADE_START, prompt: COLONNADE_PROMPT, checks: COLONNADE_CHECKS },
+  { id: 'look-pick', startRecipe: DUSK_START, prompt: DUSK_PROMPT, checks: DUSK_CHECKS },
   ...KETTLE_TASKS,
   ...DESK_TASKS,
   ...CABINET_TASKS,

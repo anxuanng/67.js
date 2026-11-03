@@ -7,6 +7,7 @@
 //
 // node bench/agent-modeling/look.mjs <task-id> <recipe.json> [--images <directory>]
 // node bench/agent-modeling/look.mjs --references
+import { existsSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -66,8 +67,10 @@ export async function withLookPage(callback, viewport = { width: IMAGE_SIZE, hei
   const { createServer } = await import('vite');
   const server = await createServer({ root: repository, server: { host: '127.0.0.1', port: 0 }, logLevel: 'silent' });
   await server.listen();
-  const browser = await chromium.launch({ executablePath: CHROME, headless: true, args: SWIFTSHADER_ARGUMENTS });
+  let browser = null;
   try {
+    // The Windows path is this machine's Chrome; elsewhere (CI on Linux) Playwright finds the installed Chrome by channel.
+    browser = await chromium.launch({ ...(existsSync(CHROME) ? { executablePath: CHROME } : { channel: 'chrome' }), headless: true, args: SWIFTSHADER_ARGUMENTS });
     const page = await browser.newPage({ viewport });
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
@@ -77,9 +80,18 @@ export async function withLookPage(callback, viewport = { width: IMAGE_SIZE, hei
     if (errors.length) throw new Error(errors.join('\n'));
     return result;
   } finally {
-    await browser.close();
+    // A failed launch must still close the server, or the test process never exits.
+    if (browser) await browser.close();
     await server.close();
   }
+}
+
+/** Draws a recipe once from its own camera and measures the picture: brightness, warmth, clipped and crushed shares. */
+export async function measureRenderedLook(recipe) {
+  return withLookPage(async page => {
+    const [view] = await page.evaluate(sceneRecipe => window.renderLookViews(sceneRecipe, [{ name: 'recipe' }], true), withoutPhysics(recipe));
+    return view.statistics;
+  });
 }
 
 /** Draws jobs ([{ recipe, taskId, prefix, directory }]) from the task cameras; returns repository-relative PNG paths per job. */

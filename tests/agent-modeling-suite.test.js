@@ -5,6 +5,28 @@ import { TASKS, taskById, taskPrompt } from '../bench/agent-modeling/tasks.mjs';
 import { REFERENCES } from '../bench/agent-modeling/references.mjs';
 import { GALLERY_LIGHT_POSITIONS } from '../bench/agent-modeling/gallery.mjs';
 import { COLONNADE_BEST_PLACE, COLONNADE_LIGHT_POSITIONS } from '../bench/agent-modeling/colonnade.mjs';
+import { DUSK_GRADES } from '../bench/agent-modeling/dusk.mjs';
+
+test('the look pick passes the golden grade and fails the dim, the pale and a moved scene', async () => {
+  const task = taskById('look-pick');
+  assert.deepEqual(failedKinds(await gradeRecipe(task, structuredClone(REFERENCES['look-pick']))), []);
+
+  for (const [name, reason] of [['dusk', /too dim/], ['airy', /too pale/]]) {
+    const wrongGrade = structuredClone(REFERENCES['look-pick']);
+    wrongGrade.effects = { ...DUSK_GRADES[name] };
+    const grade = await gradeRecipe(task, wrongGrade);
+    assert.deepEqual(failedKinds(grade), ['renderedLook'], name);
+    assert.match(grade.results.at(-1).detail, reason);
+  }
+
+  const brightLight = structuredClone(REFERENCES['look-pick']);
+  brightLight.environment.keyIntensity = 6;
+  assert.deepEqual(failedKinds(await gradeRecipe(task, brightLight)), ['renderedLook']);
+
+  const movedLoaf = structuredClone(REFERENCES['look-pick']);
+  movedLoaf.nodes.find(node => node.id === 'loaf').translation = [0.5, 0.82, -0.3];
+  assert.ok(failedKinds(await gradeRecipe(task, movedLoaf)).includes('centreAt'));
+});
 
 const failedKinds = grade => grade.results.filter(result => !result.pass).map(result => result.label ?? result.kind);
 
