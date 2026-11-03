@@ -295,7 +295,7 @@ Method: `bench/runtime/run.mjs --cpu-only --frames 8`, one scene and one engine 
 | `transparency` | 431 | 52 | 8.3 | 8.2 to 8.9 |
 | `large-outdoor` | 243 | 816 | 0.30 | 0.30 to 0.32 |
 
-So three of eight runtime scenes are at or under 3 (`large-mesh`, `many-lights`, `many-materials` at the edge), and five scenes are above: `instanced-objects`, `moving-shadows`, `skinned-characters` and `transparency` are 3.8 to 8.3. The scenes with fewer fragments per triangle fall behind most, which agrees with a fixed per-fragment cost plus MSAA.
+So `large-mesh`, `many-lights` and `large-outdoor` are at or under 3, `many-materials` is at 3.1 (range 2.7 to 3.2), and `instanced-objects`, `moving-shadows`, `skinned-characters` and `transparency` are 3.8 to 8.3. The scenes with fewer fragments per triangle fall behind most, which fits a fixed per-fragment cost plus MSAA (inferred).
 
 **First frame on the RTX 3060** (`--gpu-only`, empty profile, 2 runs per scene, milliseconds, measured): `instanced-objects` 229, 204; `many-materials` 268, 222; `many-lights` 197, 266; `transparency` 235, 210; `moving-shadows` 265, 210; `large-mesh` 389, 365; `skinned-characters` 267, 265; `large-outdoor` 257, 248. Every scene is under 1 s (the worst is 389). The "under 1 s" target holds.
 
@@ -323,4 +323,4 @@ Both engines draw 288,000 triangles, and 67js draws them in 4 draw calls against
 
 The best case is 3 percent on `skinned-characters` and the rest is noise, so it was reverted. The 38 percent in the table above was with MSAA and HDR off; with them on, the cost the facing test skips is a small part of the frame.
 
-**Where this leaves the target.** Not met: five of eight scenes are above 3 on SwiftShader. The remaining gap in `transparency` and `skinned-characters` is the lit fragment shader itself (fragment cost per covered pixel), and the measured exact changes in this file (this one, the three on 2026-11-03, the two on 2026-11-01) each move under 5 percent. The routes that remain change pixels or the frame format: no MSAA, `R11F_G11F_B10F` (20 percent on `instanced-objects`, mean 0.13 to 0.59 levels, not run through `npm run reference`), fewer shadow taps, or a shader with fewer terms for blended parts.
+**Where this leaves the target.** Not met: four scenes are above 3 and `many-materials` is on the line. The remaining gap in `transparency` and `skinned-characters` is the lit fragment shader itself (fragment cost per covered pixel), and the measured exact changes in this file (this one, the three on 2026-11-03, the two on 2026-11-01) each move under 5 percent. The routes that remain change pixels or the frame format: no MSAA, `R11F_G11F_B10F` (20 percent on `instanced-objects`, mean 0.13 to 0.59 levels, not run through `npm run reference`), fewer shadow taps, or a shader with fewer terms for blended parts.
