@@ -7,17 +7,23 @@ const REST_HEIGHT = 0.2;
 const TARGET_HEIGHT = 1.2;
 const DURATION = 1;
 
-export const EASING_TASKS = [
-  {
-    id: 'overshoot-lift',
-    prompt: `You are working with the 67js MCP tools. Units are metres and Y is up. Build a node named block, a box ${BLOCK_SIZE} m on every side, standing on the ground at X = 0, Z = 0 (its centre ${REST_HEIGHT} m high), with a material.
+const OVERSHOOT_PROMPT = `You are working with the 67js MCP tools. Units are metres and Y is up. Build a node named block, a box ${BLOCK_SIZE} m on every side, standing on the ground at X = 0, Z = 0 (its centre ${REST_HEIGHT} m high), with a material.
 Add a ${DURATION} second motion that lifts the block straight up until its centre is ${TARGET_HEIGHT} m high, with an overshoot: on the way up it passes ${TARGET_HEIGHT} m, peaks between 1.25 m and 1.45 m, and settles back to
-exactly ${TARGET_HEIGHT} m by the end of the motion, where it stays. When it is finished, call scene_export_recipe once: the exported recipe is what gets graded.`,
+exactly ${TARGET_HEIGHT} m by the end of the motion, where it stays. When it is finished, call scene_export_recipe once: the exported recipe is what gets graded.`;
+
+const OVERSHOOT_CHECKS = [
+  { kind: 'lint' },
+  { kind: 'overshoot', node: 'block', axis: 'y', from: REST_HEIGHT, to: TARGET_HEIGHT, duration: DURATION, peak: [1.25, 1.45] },
+];
+
+export const EASING_TASKS = [
+  { id: 'overshoot-lift', prompt: OVERSHOOT_PROMPT, ownPreamble: true, checks: OVERSHOOT_CHECKS },
+  {
+    // The same task with the named easings ruled out, so the agent places the peak and the settle by hand.
+    id: 'overshoot-lift-plain',
+    prompt: OVERSHOOT_PROMPT.replace('with an overshoot:', 'with an overshoot, using only plain keyframes (do not use the easing field on any keyframe):'),
     ownPreamble: true,
-    checks: [
-      { kind: 'lint' },
-      { kind: 'overshoot', node: 'block', axis: 'y', from: REST_HEIGHT, to: TARGET_HEIGHT, duration: DURATION, peak: [1.25, 1.45] },
-    ],
+    checks: OVERSHOOT_CHECKS,
   },
 ];
 

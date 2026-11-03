@@ -2,6 +2,8 @@
 import { signedBytes } from './size-budget.mjs';
 
 const CORE_ALLOWANCE_BYTES = 64;
+// Two builds of the same source can differ by a few bytes gzip (measured +2 and -2 on 2026-11-04), so growth this small is noise.
+const GOAL_NOISE_BYTES = 8;
 const OTHER_ALLOWANCE_FRACTION = 0.02;
 const OTHER_ALLOWANCE_FLOOR_BYTES = 64;
 export const ARCHIVE_NAME = 'archive';
@@ -45,6 +47,25 @@ export function compareToBase(measured, baseMeasured, accepted = new Map()) {
     }
   }
   return { rows, problems };
+}
+
+// A goal scene may not cross its goal, and a scene already over its goal on the base may not grow beyond build noise (8 bytes).
+// Only a "- goal:<scene>:" line accepts either, and An approves those lines, so a bundle note for the scene does not count.
+export function goalProblems(measured, baseMeasured, goals, accepted = new Map()) {
+  const problems = [];
+  for (const [scene, goal] of Object.entries(goals)) {
+    const size = measured[`scene:${scene}`]?.gzip;
+    const baseSize = baseMeasured[`scene:${scene}`]?.gzip;
+    if (size === undefined || baseSize === undefined || size <= goal) continue;
+    if (accepted.has(`goal:${scene}`)) continue;
+    const acceptLine = `ask An to accept it with the line "- goal:${scene}: <why>" in changes/<issue>.size.md`;
+    if (baseSize <= goal) {
+      problems.push(`scene:${scene} is ${size} bytes gzip, over its goal of ${goal}, which the base branch met (${baseSize}). Move code out of the core bundle, or ${acceptLine}.`);
+    } else if (size - baseSize > GOAL_NOISE_BYTES) {
+      problems.push(`scene:${scene} grew from ${baseSize} to ${size} bytes gzip while it is over its goal of ${goal}. A scene over its goal may only shrink: move code out of the core bundle, or ${acceptLine}.`);
+    }
+  }
+  return problems;
 }
 
 function noteFor(row) {

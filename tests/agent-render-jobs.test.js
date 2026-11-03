@@ -76,6 +76,22 @@ test('motion job ranges use immutable recipe duration, loops and actual sample t
   await reopened.close();
 });
 
+test('a scene that places a clip takes motion settings without authored motion, one that places a still asset does not', async context => {
+  const root = await temporary(context);
+  const controller = await createAgentRenderJobs({ root, limits, run: writeImage });
+  const id = 'a'.repeat(64);
+  const input = request();
+  input.settings = { kind: 'image', width: 64, height: 64, motion: { start: 2 } };
+  input.snapshot.recipe = { format: '67js.scene', nodes: [{ id: 'walker', asset: { id, clip: { index: 0 } } }] };
+  const submitted = await controller.submit(input);
+  assert.equal((await terminal(controller, submitted.jobId)).state, 'completed');
+  assert.equal(controller.status(submitted.jobId).settings.motion.start, 2);
+  input.snapshot.recipe = { format: '67js.scene', nodes: [{ id: 'prop', asset: { id } }] };
+  await assert.rejects(controller.submit(input), /authored motion or a placed clip/);
+  await controller.release(submitted.jobId);
+  await controller.close();
+});
+
 test('real files publish after success with copied snapshots, hashes and restart persistence', async context => {
   const root = await temporary(context);
   const started = deferred();

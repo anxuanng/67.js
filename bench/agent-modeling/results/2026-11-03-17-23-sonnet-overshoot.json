@@ -1,0 +1,343 @@
+{
+  "run": "2026-11-03-17-23-sonnet-overshoot",
+  "model": "claude-sonnet-5-5",
+  "date": "2026-11-03T17:26:14.898Z",
+  "skill": false,
+  "branches": "on",
+  "relations": "on",
+  "runsPerTask": 3,
+  "passed": 6,
+  "tasks": 6,
+  "toolCalls": 12,
+  "costUsd": 1.83,
+  "byModel": {
+    "claude-sonnet-5-5": {
+      "runs": 6,
+      "passed": 6,
+      "successRate": 1,
+      "toolCalls": 12,
+      "toolErrors": 0,
+      "inputTokens": 1588399,
+      "outputTokens": 7632,
+      "costUsd": 1.83,
+      "tasks": {
+        "overshoot-lift": {
+          "runs": 3,
+          "passed": 3,
+          "successRate": 1,
+          "toolCalls": 6,
+          "toolErrors": 0,
+          "inputTokens": 795528,
+          "outputTokens": 4002,
+          "costUsd": 0.92
+        },
+        "overshoot-lift-plain": {
+          "runs": 3,
+          "passed": 3,
+          "successRate": 1,
+          "toolCalls": 6,
+          "toolErrors": 0,
+          "inputTokens": 792871,
+          "outputTokens": 3630,
+          "costUsd": 0.91
+        }
+      }
+    }
+  },
+  "records": [
+    {
+      "task": "overshoot-lift",
+      "attempt": 1,
+      "pass": true,
+      "passed": 2,
+      "total": 2,
+      "failed": [],
+      "model": "claude-sonnet-5-5",
+      "toolCalls": 2,
+      "toolErrors": 0,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_create": 1,
+        "scene_export_recipe": 1
+      },
+      "branchCalls": 0,
+      "relationCalls": 0,
+      "pathQueries": 0,
+      "features": {
+        "geometryTypes": [
+          "box"
+        ],
+        "meshOperations": [],
+        "motionIk": [],
+        "motionTracks": 1
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 1,
+            "side": 1,
+            "three-quarter": 1
+          },
+          "mean": 1
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-11-03-17-23-sonnet-overshoot/look/1/overshoot-lift-front.png",
+          "artifacts/agent-modeling/2026-11-03-17-23-sonnet-overshoot/look/1/overshoot-lift-side.png",
+          "artifacts/agent-modeling/2026-11-03-17-23-sonnet-overshoot/look/1/overshoot-lift-three-quarter.png"
+        ]
+      },
+      "turns": 4,
+      "costUsd": 0.30452719999999994,
+      "inputTokens": 263740,
+      "outputTokens": 1409,
+      "wallSeconds": 22,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "overshoot-lift-plain",
+      "attempt": 1,
+      "pass": true,
+      "passed": 2,
+      "total": 2,
+      "failed": [],
+      "model": "claude-sonnet-5-5",
+      "toolCalls": 2,
+      "toolErrors": 0,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_create": 1,
+        "scene_export_recipe": 1
+      },
+      "branchCalls": 0,
+      "relationCalls": 0,
+      "pathQueries": 0,
+      "features": {
+        "geometryTypes": [
+          "box"
+        ],
+        "meshOperations": [],
+        "motionIk": [],
+        "motionTracks": 1
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 1,
+            "side": 1,
+            "three-quarter": 1
+          },
+          "mean": 1
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-11-03-17-23-sonnet-overshoot/look/1/overshoot-lift-plain-front.png",
+          "artifacts/agent-modeling/2026-11-03-17-23-sonnet-overshoot/look/1/overshoot-lift-plain-side.png",
+          "artifacts/agent-modeling/2026-11-03-17-23-sonnet-overshoot/look/1/overshoot-lift-plain-three-quarter.png"
+        ]
+      },
+      "turns": 4,
+      "costUsd": 0.3000212,
+      "inputTokens": 263273,
+      "outputTokens": 1073,
+      "wallSeconds": 22,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "overshoot-lift",
+      "attempt": 2,
+      "pass": true,
+      "passed": 2,
+      "total": 2,
+      "failed": [],
+      "model": "claude-sonnet-5-5",
+      "toolCalls": 2,
+      "toolErrors": 0,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_create": 1,
+        "scene_export_recipe": 1
+      },
+      "branchCalls": 0,
+      "relationCalls": 0,
+      "pathQueries": 0,
+      "features": {
+        "geometryTypes": [
+          "box"
+        ],
+        "meshOperations": [],
+        "motionIk": [],
+        "motionTracks": 1
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 1,
+            "side": 1,
+            "three-quarter": 1
+          },
+          "mean": 1
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-11-03-17-23-sonnet-overshoot/look/2/overshoot-lift-front.png",
+          "artifacts/agent-modeling/2026-11-03-17-23-sonnet-overshoot/look/2/overshoot-lift-side.png",
+          "artifacts/agent-modeling/2026-11-03-17-23-sonnet-overshoot/look/2/overshoot-lift-three-quarter.png"
+        ]
+      },
+      "turns": 4,
+      "costUsd": 0.3070874,
+      "inputTokens": 265976,
+      "outputTokens": 1341,
+      "wallSeconds": 23,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "overshoot-lift-plain",
+      "attempt": 2,
+      "pass": true,
+      "passed": 2,
+      "total": 2,
+      "failed": [],
+      "model": "claude-sonnet-5-5",
+      "toolCalls": 2,
+      "toolErrors": 0,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_create": 1,
+        "scene_export_recipe": 1
+      },
+      "branchCalls": 0,
+      "relationCalls": 0,
+      "pathQueries": 0,
+      "features": {
+        "geometryTypes": [
+          "box"
+        ],
+        "meshOperations": [],
+        "motionIk": [],
+        "motionTracks": 1
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 1,
+            "side": 1,
+            "three-quarter": 1
+          },
+          "mean": 1
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-11-03-17-23-sonnet-overshoot/look/2/overshoot-lift-plain-front.png",
+          "artifacts/agent-modeling/2026-11-03-17-23-sonnet-overshoot/look/2/overshoot-lift-plain-side.png",
+          "artifacts/agent-modeling/2026-11-03-17-23-sonnet-overshoot/look/2/overshoot-lift-plain-three-quarter.png"
+        ]
+      },
+      "turns": 4,
+      "costUsd": 0.3028204,
+      "inputTokens": 263672,
+      "outputTokens": 1264,
+      "wallSeconds": 22,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "overshoot-lift",
+      "attempt": 3,
+      "pass": true,
+      "passed": 2,
+      "total": 2,
+      "failed": [],
+      "model": "claude-sonnet-5-5",
+      "toolCalls": 2,
+      "toolErrors": 0,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_create": 1,
+        "scene_export_recipe": 1
+      },
+      "branchCalls": 0,
+      "relationCalls": 0,
+      "pathQueries": 0,
+      "features": {
+        "geometryTypes": [
+          "box"
+        ],
+        "meshOperations": [],
+        "motionIk": [],
+        "motionTracks": 1
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 1,
+            "side": 1,
+            "three-quarter": 1
+          },
+          "mean": 1
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-11-03-17-23-sonnet-overshoot/look/3/overshoot-lift-front.png",
+          "artifacts/agent-modeling/2026-11-03-17-23-sonnet-overshoot/look/3/overshoot-lift-side.png",
+          "artifacts/agent-modeling/2026-11-03-17-23-sonnet-overshoot/look/3/overshoot-lift-three-quarter.png"
+        ]
+      },
+      "turns": 4,
+      "costUsd": 0.30587960000000003,
+      "inputTokens": 265812,
+      "outputTokens": 1252,
+      "wallSeconds": 22,
+      "exitCode": 0,
+      "stopped": "success"
+    },
+    {
+      "task": "overshoot-lift-plain",
+      "attempt": 3,
+      "pass": true,
+      "passed": 2,
+      "total": 2,
+      "failed": [],
+      "model": "claude-sonnet-5-5",
+      "toolCalls": 2,
+      "toolErrors": 0,
+      "toolsByName": {
+        "ToolSearch": 1,
+        "scene_create": 1,
+        "scene_export_recipe": 1
+      },
+      "branchCalls": 0,
+      "relationCalls": 0,
+      "pathQueries": 0,
+      "features": {
+        "geometryTypes": [
+          "box"
+        ],
+        "meshOperations": [],
+        "motionIk": [],
+        "motionTracks": 1
+      },
+      "look": {
+        "silhouette": {
+          "views": {
+            "front": 1,
+            "side": 1,
+            "three-quarter": 1
+          },
+          "mean": 1
+        },
+        "images": [
+          "artifacts/agent-modeling/2026-11-03-17-23-sonnet-overshoot/look/3/overshoot-lift-plain-front.png",
+          "artifacts/agent-modeling/2026-11-03-17-23-sonnet-overshoot/look/3/overshoot-lift-plain-side.png",
+          "artifacts/agent-modeling/2026-11-03-17-23-sonnet-overshoot/look/3/overshoot-lift-plain-three-quarter.png"
+        ]
+      },
+      "turns": 4,
+      "costUsd": 0.3063998,
+      "inputTokens": 265926,
+      "outputTokens": 1293,
+      "wallSeconds": 24,
+      "exitCode": 0,
+      "stopped": "success"
+    }
+  ]
+}

@@ -9,6 +9,7 @@ import packageMetadata from '../package.json' with { type: 'json' };
 import { MODIFIER_OPERATIONS } from '../src/mesh-operations.js';
 import { MATERIAL_PATTERN_TYPES, MATERIAL_MAPPINGS, LIGHTING_SETUP_NAMES, RENDER_PASS_NAMES, VIDEO_ENCODERS, MAXIMUM_JOB_SIDE, MAXIMUM_MEMORY_MIB } from '../src/agent-scene-capabilities.js';
 import { MATERIAL_LAYER_SCALAR_RANGES, MATERIAL_LAYER_COLOR_RANGES } from '../src/material-layers.js';
+import { SUBSURFACE_RANGES } from '../src/subsurface-limits.js';
 
 const finite = z.number().min(-3.4028234663852886e38).max(3.4028234663852886e38);
 const positive = finite.positive();
@@ -28,10 +29,12 @@ const skinSpec = z.strictObject({
   maxDistance: positive.optional().describe('Metres from the nearest bone beyond which a vertex counts as unweighted in scene_inspect rig. Defaults to a quarter of the rig size.'),
 }).describe('Bind this mesh node to an armature with automatic weights: each vertex follows its nearest bones, by distance to the bone segments. Needs the armature at rest where the mesh is.');
 const relationList = z.array(z.record(z.string(), z.unknown())).max(8).describe('Relations against other mesh nodes; fields in scene_capabilities relations. [] removes them.').meta({ id: 'Relations' });
-const placedAsset = z.record(z.string(), z.unknown()).describe('Catalog GLB placed at this group node: {id,materials,clip}; see scene_capabilities placedAssets.').meta({ id: 'PlacedAsset' });
+const placedAsset = z.record(z.string(), z.unknown()).describe('Catalog GLB placed at this group node: {id,materials,clip,drive}; see scene_capabilities placedAssets.').meta({ id: 'PlacedAsset' });
+const placedVegetation = z.record(z.string(), z.unknown()).describe('Trees at this group node: {species} for one, or {mix, scatter:{ground,...}} over a terrain node; see scene_capabilities vegetation.').meta({ id: 'PlacedVegetation' });
 const nodeFields = {
   relations: relationList.optional(),
   asset: placedAsset.optional(),
+  vegetation: placedVegetation.optional(),
   skin: skinSpec.optional(),
   label: z.string().max(256).optional().describe('Human-readable label. Identity remains the node ID.'),
   parent: identifier.nullable().optional().describe('Parent node ID, or null for a root. Local transforms stay unchanged.'),
@@ -106,10 +109,18 @@ const waterFields = {
   absorption: z.array(z.number().min(0).max(20)).length(3).optional().describe('Water tag: RGB per metre.'),
   turbidity: unit.optional().describe('Water tag: 0 clear to 1 murky.'),
 };
+const subsurfaceTriple = ([minimum, maximum]) => z.tuple([0, 1, 2].map(() => z.number().min(minimum).max(maximum)));
+const subsurface = z.strictObject({
+  weight: z.number().min(SUBSURFACE_RANGES.weight[0]).max(SUBSURFACE_RANGES.weight[1]).optional(),
+  radius: subsurfaceTriple(SUBSURFACE_RANGES.radius).optional().describe('RGB mean free path in scale units.'),
+  scale: z.number().min(SUBSURFACE_RANGES.scale[0]).max(SUBSURFACE_RANGES.scale[1]).optional().describe('Metres per radius unit.'),
+  color: subsurfaceTriple(SUBSURFACE_RANGES.color).optional(),
+}).describe('Subsurface scattering (skin, wax, leaves) as Blender Principled BSDF; details in scene_capabilities materialSubsurface.');
 
 const materialFields = {
   ...waterFields,
   ...materialLayerFields,
+  subsurface: subsurface.optional(),
   pattern: materialPattern.optional(),
   color: color.optional().describe('Linear RGB base color, each component between zero and one.'),
   metallic: unit.optional(),
@@ -120,7 +131,7 @@ const materialFields = {
   alphaMode: z.enum(['opaque', 'blend']).optional().describe('blend draws after opaque geometry, sorted back to front.'),
   doubleSided: z.boolean().optional().describe('Draw and light both faces (thin sheets, leaves, cloth).'),
 };
-const materialTag = z.enum(['surface', 'unlit', 'liquid', 'foam', 'water']).optional().describe('liquid refracts what lies behind it and absorbs by thickness: color is the light one metre lets through. foam is soft blended whitewater. water is a flat mirror sheet; scene_capabilities water has its fields.');
+const materialTag = z.enum(['surface', 'unlit', 'liquid', 'foam', 'foliage', 'grass', 'water']).optional().describe('liquid refracts what lies behind it and absorbs by thickness: color is the light one metre lets through. foam is soft blended whitewater. foliage and grass sway in environment.wind. water is a flat mirror sheet; scene_capabilities water has its fields.');
 const liquidOptics = z.strictObject({
   thickness: z.number().min(0).max(100).optional().describe('Metres of liquid where it faces the camera.'),
   ior: z.number().min(1).max(3).optional(),
@@ -207,6 +218,7 @@ const environment = z.strictObject({
   volumeFog: volumeFog.optional().describe('Directional scattering; needs HDR.'),
   liquid: liquidOptics.optional().describe('Optics for materials tagged liquid or foam.'),
   lines: lines.nullable().optional(),
+  wind: z.strictObject({ strength: bounded(0, 4).optional(), direction: bounded(-360, 360).optional().describe('Degrees: 0 toward +x, 90 toward +z.') }).optional().describe('Sway of foliage and grass materials; strength defaults to 0.3.'),
 });
 const effects = z.strictObject({
   exposure: bounded(0.01, 16).optional(),
@@ -519,7 +531,7 @@ const cloth = z.strictObject({
 }).describe('Baked at 60 fps, seeked by motionTime. Units, defaults: scene_capabilities cloth.');
 // The full motion schema (tracks, ik, constraints, drivers) is in scene_create's recipe. scene_apply and asset recipes
 // take the same object, validated by the backend, without repeating about 35 KB of schema in each tool.
-const recipeMotionReference = z.record(z.string(), z.unknown()).describe('The same object as recipe.motion in scene_create: duration, loop, tracks, ik, constraints, drivers. Read that tool for the fields. On an imported asset it also takes layers, up to 8 clips played at motion time before tracks and ik: { clip (scene_inspect animations id), mask: { joints, descendants, exclude } of node IDs, weight, speed, offset, loop, additive, reference, bones: { clip node: asset node } to retarget by name, morph } or from: { asset, clip } for a clip of another catalog asset retargeted onto this humanoid (scale, rootMotion). motion also takes footLock (true or { contactHeight, contactSpeed, blend, ground }) and { kind: "morph", id: target name, property: "weight" } tracks. A masked layer waves while another walks.');
+const recipeMotionReference = z.record(z.string(), z.unknown()).describe('The same object as recipe.motion in scene_create: duration, loop, tracks, ik, constraints, drivers. Read that tool for the fields. On an imported asset it also takes layers, up to 8 clips played at motion time before tracks and ik: { clip (scene_inspect animations id), mask: { joints, descendants, exclude } of node IDs, weight, speed, offset, loop, additive, reference, bones: { clip node: asset node } to retarget by name, morph } or from: { asset, clip } for a clip of another catalog asset retargeted onto this humanoid (scale, rootMotion). motion also takes drive (a car along a path, see scene_capabilities motionDrive) and footLock (true or { contactHeight, contactSpeed, blend, ground }) and { kind: "morph", id: target name, property: "weight" } tracks. A masked layer waves while another walks.');
 const boneRecord = z.strictObject({
   name: z.string().min(1).max(64).describe('Unique within the armature. Humanoid rigs use the canonical names (hips, spine, chest, neck, head, leftUpperArm, leftLowerArm, leftHand, leftUpperLeg, leftLowerLeg, leftFoot, leftToes, and right...) so retarget works.'),
   parent: z.string().min(1).max(64).nullable().optional().describe('Parent bone name, or null for a root bone.'),

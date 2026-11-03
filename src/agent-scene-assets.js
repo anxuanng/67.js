@@ -1,4 +1,5 @@
 import { mat4 } from 'gl-matrix';
+import { normalizeDrive } from './agent-drive-schema.js';
 
 // Placing decoded glTF assets inside a procedural recipe scene. A node with an `asset` field is a group: the scene
 // turns each mesh part of the asset into a generated child node, so terrain, lights, procedural meshes and any number of
@@ -9,11 +10,13 @@ import { mat4 } from 'gl-matrix';
 export const ASSET_PLACEMENT_LIMITS = Object.freeze({ maxPlacements: 512, maxAssets: 16, maxAnimatedPlacements: 16, maxOverrides: 32 });
 
 const ASSET_ID = /^[a-f0-9]{64}$/;
-const PLACEMENT_FIELDS = ['id', 'materials', 'clip'];
+const PLACEMENT_FIELDS = ['id', 'materials', 'clip', 'drive'];
 const CLIP_FIELDS = ['index', 'start', 'speed', 'loop'];
 const COLOR_FIELDS = ['color', 'emissiveColor'];
 const UNIT_FIELDS = ['metallic', 'roughness', 'opacity'];
-const OVERRIDE_FIELDS = ['name', ...COLOR_FIELDS, ...UNIT_FIELDS, 'emission'];
+const OVERRIDE_FIELDS = ['name', 'tag', ...COLOR_FIELDS, ...UNIT_FIELDS, 'emission'];
+// A tag an override may set: foliage and grass make an imported tree sway in the wind and shade like a grown one.
+const OVERRIDE_TAGS = ['surface', 'foliage', 'grass'];
 
 function knownKeys(value, allowed, label) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
@@ -39,6 +42,10 @@ function normalizeMaterialOverride(override) {
     throw new TypeError('An asset material override needs the source material name. scene_inspect lists the names under assets.');
   }
   const result = { name: override.name };
+  if (override.tag !== undefined) {
+    if (!OVERRIDE_TAGS.includes(override.tag)) throw new RangeError(`asset material override tag must be one of ${OVERRIDE_TAGS.join(', ')}.`);
+    result.tag = override.tag;
+  }
   for (const field of COLOR_FIELDS) {
     if (override[field] !== undefined) result[field] = colorVector(override[field], field);
   }
@@ -85,6 +92,13 @@ export function normalizeAssetPlacement(value) {
     if (typeof loop !== 'boolean') throw new TypeError('asset clip loop must be boolean.');
     result.clip = { index, start, speed, loop };
   }
+  if (value.drive !== undefined) {
+    if (value.clip !== undefined) throw new TypeError('An asset placement plays a clip or drives along a path, not both.');
+    result.drive = normalizeDrive(value.drive);
+    if (result.drive.lights?.tailLights) {
+      throw new RangeError('Placed assets share their materials, so tail lights glow only in an asset recipe (motion.drive). Headlight and brake signals are still reported by scene_inspect.');
+    }
+  }
   return result;
 }
 
@@ -114,7 +128,7 @@ export function recipeAssetNeeds(value) {
   for (const placement of placements) {
     const id = placement.id.toLowerCase();
     const need = needs.get(id) ?? { id, copies: 1 };
-    if (placement.clip) need.copies++;
+    if (placement.clip || placement.drive) need.copies++;
     needs.set(id, need);
   }
   return [...needs.values()];
@@ -138,6 +152,7 @@ function jsonMaterial(source) {
 
 function overrideFields(override) {
   const fields = {};
+  if (override?.tag !== undefined) fields.tag = override.tag;
   for (const field of [...COLOR_FIELDS, ...UNIT_FIELDS, 'emission']) {
     if (override?.[field] !== undefined) fields[field] = override[field];
   }
@@ -157,9 +172,9 @@ function materialOutput(source, fields) {
 
 /**
  * Generate the geometries, materials and child nodes of every placement into a normalized recipe, in place.
- * `assets` maps assetCopyKey(id, copy) to a decoded parseGltf asset. Returns what the scene keeps outside the recipe JSON.
+ * `assets` maps assetCopyKey(id, copy) to a decoded parseGltf asset; `createAssetDrive` is the loaded drive module's builder. Returns what the scene keeps outside the recipe JSON.
  */
-export function expandAssetPlacements(recipe, assets, limits, outputCache = new Map()) {
+export function expandAssetPlacements(recipe, assets, limits, outputCache = new Map(), createAssetDrive = null) {
   const placed = recipe.nodes.filter(node => node.asset);
   const runtime = { placements: [], geometryParts: new Map(), materialOutputs: new Map(), partExtras: new Map(), animators: [] };
   if (!placed.length) return runtime;
@@ -167,7 +182,7 @@ export function expandAssetPlacements(recipe, assets, limits, outputCache = new 
     throw new Error('This recipe places catalog assets, which a host loads and decodes first. Pass them as the assets option of createAgentScene; MCP does this for scene_create.');
   }
   const distinct = new Set(placed.map(node => node.asset.id));
-  const animated = placed.filter(node => node.asset.clip);
+  const animated = placed.filter(node => node.asset.clip || node.asset.drive);
   if (placed.length > ASSET_PLACEMENT_LIMITS.maxPlacements || distinct.size > ASSET_PLACEMENT_LIMITS.maxAssets ||
       animated.length > ASSET_PLACEMENT_LIMITS.maxAnimatedPlacements) {
     throw new RangeError(`A scene places at most ${ASSET_PLACEMENT_LIMITS.maxPlacements} assets, ${ASSET_PLACEMENT_LIMITS.maxAssets} different ones, ${ASSET_PLACEMENT_LIMITS.maxAnimatedPlacements} of them playing a clip; this recipe places ${placed.length}, ${distinct.size} and ${animated.length}.`);
@@ -177,9 +192,9 @@ export function expandAssetPlacements(recipe, assets, limits, outputCache = new 
   const materialIds = new Map();
   const generatedNodes = [];
   for (const node of placed) {
-    const { id: assetId, materials: overrides = [], clip } = node.asset;
+    const { id: assetId, materials: overrides = [], clip, drive } = node.asset;
     let copy = 0;
-    if (clip) {
+    if (clip || drive) {
       copy = (copyCounter.get(assetId) ?? 0) + 1;
       copyCounter.set(assetId, copy);
     }
@@ -230,15 +245,25 @@ export function expandAssetPlacements(recipe, assets, limits, outputCache = new 
         ...(part.castShadow !== undefined ? { castShadow: part.castShadow } : {}),
       });
     });
-    const record = { node: node.id, assetId, copy, asset, partNodeIds, clip: clip ?? null };
+    const record = { node: node.id, assetId, copy, asset, partNodeIds, clip: clip ?? null, drive: drive ? createDrive(node.id, createAssetDrive, asset, drive) : null, drivePose: null };
     runtime.placements.push(record);
-    if (clip) runtime.animators.push(record);
+    if (clip || drive) runtime.animators.push(record);
   }
   if (recipe.nodes.length + generatedNodes.length > limits.maxNodes) {
     throw new RangeError(`Placed assets expand to ${generatedNodes.length} part nodes, which with the ${recipe.nodes.length} authored nodes exceeds maxNodes ${limits.maxNodes}. Place fewer copies or simpler assets.`);
   }
   recipe.nodes.push(...generatedNodes);
   return runtime;
+}
+
+function createDrive(nodeId, createAssetDrive, asset, drive) {
+  if (!createAssetDrive) throw new Error('This recipe drives a placed asset, which needs the drive code: await loadAgentSceneModules(recipe) before createAgentScene or apply.');
+  try {
+    return createAssetDrive(asset, drive);
+  } catch (error) {
+    error.message = `Node ${nodeId} drive: ${error.message}`;
+    throw error;
+  }
 }
 
 /** The time inside a clip for a scene time: held at the first frame before `start`, then looped or held at the end. */
@@ -257,8 +282,15 @@ export function stageAssetClips(runtime, graph, time) {
   const matrices = new Map();
   try {
     for (const record of runtime.animators) {
-      const duration = record.asset.animations[record.clip.index].duration;
-      const transaction = record.asset.stagePose({ animation: { clip: record.clip.index, time: clipTimeAt(record.clip, duration, time) }, nodeOverrides: [] });
+      let transaction;
+      if (record.drive) {
+        const driven = record.drive.sample(time ?? 0);
+        record.drivePose = driven.pose;
+        transaction = record.asset.stagePose({ nodeOverrides: driven.nodeOverrides });
+      } else {
+        const duration = record.asset.animations[record.clip.index].duration;
+        transaction = record.asset.stagePose({ animation: { clip: record.clip.index, time: clipTimeAt(record.clip, duration, time) }, nodeOverrides: [] });
+      }
       transactions.push(transaction);
       const placement = graph.getNode(record.node).worldMatrix;
       record.partNodeIds.forEach((id, index) => {
@@ -300,6 +332,7 @@ export function describeAssetPlacements(runtime, graph, geometryBounds) {
       clips: record.asset.animations.map((animation, index) => ({ index, name: animation.name ?? `clip ${index}`, duration: animation.duration })),
       materials: [...new Set(record.asset.parts.map(part => part.material.name).filter(Boolean))],
       ...(record.clip ? { playing: record.clip } : {}),
+      ...(record.drive ? { drive: record.drive.describe(record.drivePose ?? undefined) } : {}),
     };
   });
 }

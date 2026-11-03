@@ -2,7 +2,8 @@
 // Each builder returns parts, a camera and lighting. render-blender.py builds the same scene from a dump of this data.
 import { box, cylinder, sphere, torus } from '/src/geometry.js';
 import { createEnvironmentMap, parseRadianceHdr } from '/src/hdri.js';
-import { parseGltf } from '/src/gltf.js';
+import { parseGltf, loadGltf, ktx2WorkerConfigFor } from '/src/gltf.js';
+import { KTX2Loader } from 'three/addons/loaders/KTX2Loader.js';
 import { createTree, scatterVegetation, selectLevels, vegetationParts } from '/src/vegetation.js';
 import { createNoiseHeight, createTerrain } from '/src/terrain.js';
 import { createAgentScene, loadAgentSceneModules } from '/src/agent-scene.js';
@@ -158,11 +159,8 @@ function cameraAroundBounds({ minimum, maximum }) {
   return { center, radius, camera: { eye, target: center, up: [0, 1, 0], fov: KHRONOS_FIELD_OF_VIEW, near: distance / 100, far: distance * 10 } };
 }
 
-async function khronosAssetScene(name) {
+async function khronosSceneFromAsset(asset, file) {
   const lighting = await skyLighting();
-  const file = `artifacts/khronos/${name}/${name}.glb`;
-  const response = await fetch(`/${file}`);
-  const asset = await parseGltf(await response.arrayBuffer());
   const { center, radius, camera } = cameraAroundBounds(worldBounds(asset.parts));
   return {
     parts: asset.parts, glb: file, blenderWorld: lighting.blenderWorld,
@@ -170,6 +168,12 @@ async function khronosAssetScene(name) {
     camera,
     shadow: shadowAlongSun(DEFAULT_SUN_DIRECTION, { target: center, distance: radius * Math.sqrt(6), extent: radius * 1.5, near: radius * 0.1, far: radius * 8 }),
   };
+}
+
+async function khronosAssetScene(name) {
+  const file = `artifacts/khronos/${name}/${name}.glb`;
+  const response = await fetch(`/${file}`);
+  return khronosSceneFromAsset(await parseGltf(await response.arrayBuffer()), file);
 }
 
 export const KHRONOS_SCENES = Object.fromEntries(KHRONOS_ASSET_NAMES.map(name => [name, () => khronosAssetScene(name)]));
@@ -652,7 +656,37 @@ async function emissiveSignScene() {
   };
 }
 
+// Subsurface scattering against Cycles (issue #283): a wax candle, a skin sphere and a leaf slab with the sun behind and to the side,
+// so the shadow edge and the light through the thin parts show. 'subsurface-off' is the same scene at weight 0, the control that
+// 'subsurface' must score better than.
+const SUBSURFACE_SUN_DIRECTION = [4, 3, -2];
+const SUBSURFACE_LAYERS = {
+  wax: { radius: [1, 0.6, 0.3], scale: 0.04 },
+  skin: { radius: [1, 0.2, 0.1], scale: 0.05 },
+  leaf: { radius: [0.5, 1, 0.3], scale: 0.02 },
+};
+
+async function subsurfaceScene(weight) {
+  const lighting = await skyLighting();
+  const layer = name => ({ subsurface: { weight, ...SUBSURFACE_LAYERS[name] } });
+  const parts = [
+    floor([0.2, 0.2, 0.22]),
+    part('wax-candle', cylinder(64, 0, 1), [-1.1, 0.4, 0], [0.3, 0.8, 0.3], { color: [0.85, 0.72, 0.5], roughness: 0.45, ...layer('wax') }),
+    part('skin-sphere', sphere(96, 64), [0.2, 0.45, 0], [0.9, 0.9, 0.9], { color: [0.8, 0.45, 0.35], roughness: 0.5, ...layer('skin') }),
+    part('leaf-slab', box(0, 1), [1.5, 0.55, 0], [0.7, 0.9, 0.012], { color: [0.12, 0.3, 0.04], roughness: 0.5, ...layer('leaf') }),
+  ];
+  return {
+    parts, blenderWorld: lighting.blenderWorld,
+    environment: environment(lighting, { keyColor: SUN_COLOR, lightDirection: SUBSURFACE_SUN_DIRECTION }),
+    camera: { eye: [0, 1.6, 6], target: [0, 0.5, 0], up: [0, 1, 0], fov: 35, near: 0.1, far: 200 },
+    shadow: shadowAlongSun(SUBSURFACE_SUN_DIRECTION, { target: [0, 0.5, 0], distance: 13, extent: 4, near: 0.1, far: 40 }),
+  };
+}
+
 export const REFERENCE_SCENES = {
+  subsurface: () => subsurfaceScene(1),
+  'subsurface-off': () => subsurfaceScene(0),
+
   'emissive-sign': emissiveSignScene,
   'mountain-valley': mountainValleyScene,
   'temple-hall': templeHallScene,
@@ -1060,4 +1094,37 @@ export const CLOTH_SCENES = {
   'drape-0.5s': () => clothScene({ kind: 'drape', seconds: 0.5 }),
   'drape-1s': () => clothScene({ kind: 'drape', seconds: 1 }),
   'drape-2s': () => clothScene({ kind: 'drape', seconds: 2 }),
+};
+
+// Issue #304: the same AnisotropyBarnLamp as the suite's GLB, as the separate-file glTF with PNG textures and as the
+// KHR_texture_basisu variant (bench/ktx2/measure.mjs downloads both into artifacts/ktx2/). Drawn through the Khronos
+// framing, so they score against the suite's stored Cycles array. They are a set of their own and never reach baseline.json.
+const KTX2_ASSET_DIRECTORY = 'artifacts/ktx2/AnisotropyBarnLamp';
+const BASIS_TRANSCODER_PATH = '/node_modules/three/examples/jsm/libs/basis/';
+
+// Loads one variant the way an app does and returns the asset with the format of the context that decoded it.
+export async function loadBarnLampVariant(directoryName) {
+  const url = `/${KTX2_ASSET_DIRECTORY}/${directoryName}/AnisotropyBarnLamp.gltf`;
+  const decoders = {};
+  let loader = null;
+  let workerConfig = null;
+  if (directoryName === 'ktx2') {
+    loader = new KTX2Loader().setTranscoderPath(BASIS_TRANSCODER_PATH);
+    workerConfig = ktx2WorkerConfigFor(document.createElement('canvas').getContext('webgl2'));
+    loader.workerConfig = workerConfig;
+    decoders.ktx2 = loader;
+  }
+  const asset = await loadGltf(url, { decoders });
+  loader?.dispose();
+  return { asset, workerConfig, url };
+}
+
+async function ktx2VariantScene(directoryName) {
+  const { asset, url } = await loadBarnLampVariant(directoryName);
+  return khronosSceneFromAsset(asset, url.slice(1));
+}
+
+export const KTX2_SCENES = {
+  'AnisotropyBarnLamp-png': () => ktx2VariantScene('png'),
+  'AnisotropyBarnLamp-ktx2': () => ktx2VariantScene('ktx2'),
 };

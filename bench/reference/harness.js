@@ -1,6 +1,6 @@
 // Runs in the page: draws one reference scene, and describes it as plain data for Blender.
 import { Renderer67 } from '/src/renderer.js';
-import { REFERENCE_SCENES, KHRONOS_SCENES, CLOTH_SCENES } from './scenes.js';
+import { REFERENCE_SCENES, KHRONOS_SCENES, KTX2_SCENES, loadBarnLampVariant, CLOTH_SCENES } from './scenes.js';
 import { GRAND_SCENES } from './grand-scenes.js';
 import { LOOK_OPTIONS } from './look-options.js';
 import { skinnedGeometry } from '/src/path-tracer-scene.js';
@@ -9,6 +9,7 @@ import '/src/material-layer-shaders.js';
 import '/src/view-transform-shader.js';
 import '/src/liquid-shader.js';
 import '/src/splat-shader.js';
+import '/src/subsurface-shader.js';
 import { skyOpenness } from '/src/closed-room.js';
 import { fogSkyVisibility } from '/src/fog-sky-visibility.js';
 import { createCascadedShadows } from '/src/cascaded-shadows.js';
@@ -16,6 +17,7 @@ import { applyLightLinks } from '/src/light-linking.js';
 import { applyWaterReflection, attachWaterReflection } from '/src/water-reflection.js';
 import { attachScreenSpaceWater } from './ssr-water.js';
 import { groundBounceEnvironment } from '/src/ground-bounce.js';
+import { installReversedDepth } from '/src/reversed-depth.js';
 
 // Water reflection is on the way a recipe gets it: found from the materials, no field. ?water=off draws the scenes without it, ?water=ssr with the screen-space reflection it was compared with.
 // Ground bounce is on the way a recipe gets it: found from the floor part, no field. ?groundBounce=off draws the scenes without it.
@@ -26,11 +28,14 @@ function withDerivedGroundBounce(scene, drawnParts) {
   return GROUND_BOUNCE ? groundBounceEnvironment(drawnParts, scene.environment) : scene.environment;
 }
 
+// ?reversedDepth=on draws with reversed-Z (issue #310); the scenes draw with the standard depth buffer otherwise.
+const REVERSED_DEPTH = new URLSearchParams(location.search).get('reversedDepth') === 'on';
+
 const WATER_REFLECTION = { off: false, ssr: 'ssr' }[new URLSearchParams(location.search).get('water')] ?? 'planar';
 
 // ?set=khronos draws the Khronos sample assets (npm run reference -- --khronos) and ?set=cloth the cloth scenes
 // (npm run reference -- --cloth) instead of the fixed scenes.
-const SCENE_SETS = { khronos: KHRONOS_SCENES, cloth: CLOTH_SCENES, grand: GRAND_SCENES, look: LOOK_OPTIONS };
+const SCENE_SETS = { khronos: KHRONOS_SCENES, ktx2: KTX2_SCENES, cloth: CLOTH_SCENES, grand: GRAND_SCENES, look: LOOK_OPTIONS };
 const SCENES = SCENE_SETS[new URLSearchParams(location.search).get('set')] ?? REFERENCE_SCENES;
 
 function encodeBytes(typedArray) {
@@ -155,6 +160,7 @@ function createSceneRenderer(parts, scene, cascades, { water = WATER_REFLECTION 
     ground: false, hdr: true, depth: true, samples: 4, pixelRatio: 1, memoryBudgetMiB: 1024, world: true,
     environment: scene.environment, shadowBounds: scene.shadow, shadowCascades: cascades ? createCascadedShadows({ count: cascades }) : null, skyOpenness, fogSkyVisibility,
   });
+  if (REVERSED_DEPTH) installReversedDepth(renderer, true);
   attachWaterReflection(renderer, reflecting.surface);
   if (water === 'ssr') {
     attachScreenSpaceWater(renderer, parts);
@@ -300,5 +306,6 @@ async function renderRecipePathTraced(recipe, options) {
 
 window.renderRecipePathTraced = renderRecipePathTraced;
 window.renderReferenceScene = renderReferenceScene;
+window.loadBarnLampVariant = loadBarnLampVariant;
 window.renderReferencePathTraced = renderReferencePathTraced;
 window.referenceSceneIds = Object.keys(SCENES);
