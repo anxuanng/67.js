@@ -39,6 +39,6 @@
     { "model": "Technician poses (Universal Animation Library [Standard])", "author": "Quaternius", "licence": "CC0", "source": "https://quaternius.itch.io" },
     { "model": "Asphalt026B, Concrete034, PaintedMetal009, Gravel022, Fingerprints003, Smear007 (PBR textures)", "author": "ambientCG", "licence": "CC0", "source": "https://ambientcg.com" },
     { "model": "Industrial Sunset 02 (HDRI)", "author": "Poly Haven", "licence": "CC0", "source": "https://polyhaven.com/a/industrial_sunset_02" },
-    { "model": "Racks, busways, cooling, pipework, hall shell and swap cart", "author": "Nguyen Xuan An (CodePawl)", "licence": "Original work", "source": "https://github.com/anxuanng/67.js" }
+    { "model": "Racks, busways, cooling, pipework, hall shell and swap cart", "author": "CodePawl", "licence": "MIT", "source": "https://github.com/anxuanng/67.js" }
   ]
 }
