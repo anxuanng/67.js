@@ -24,7 +24,6 @@ import { requireDeformationSupport, textureUpdateSupport } from './shader-regist
 const SHADOW_MAP_SIZE = 2048;
 // Liquid and foam see the resolved opaque scene, so they draw in their own pass after it.
 const TRANSLUCENT_TAGS = new Set(['liquid', 'foam']);
-const DEFAULT_LIQUID = Object.freeze({ thickness: 0.5, ior: 1.33, refraction: 1, scattering: 1, foamOpacity: 0.55, foamSoftness: 1 });
 const INSTANCE_STRIDE = 41;
 // Shaders get this in place of an infinite attenuation distance, which is not a safe uniform value.
 const MAX_FINITE_DISTANCE = 3e38;
@@ -108,14 +107,6 @@ function batchPass(batch) {
   return batch.pass ?? 'opaque';
 }
 
-export function resolveLiquidOptics(options = {}) {
-  const optics = { ...DEFAULT_LIQUID, ...options };
-  for (const [name, minimum, maximum] of [['thickness', 0, 100], ['ior', 1, 3], ['refraction', 0, 4], ['scattering', 0, 10], ['foamOpacity', 0, 1], ['foamSoftness', 0, 1]]) {
-    const value = optics[name];
-    if (typeof value !== 'number' || !Number.isFinite(value) || value < minimum || value > maximum) throw new RangeError(`liquid.${name} must be between ${minimum} and ${maximum}.`);
-  }
-  return optics;
-}
 const SKIN_UNIFORMS = ['skinEnabled', 'skinInfluences', 'jointPalette', 'crowdEnabled'];
 const ALPHA_UNIFORMS = ['alphaMode', 'alphaCutoff', 'materialOpacity', 'alphaToCoverage', 'doubleSided'];
 const DEPTH_ALPHA_UNIFORMS = ['alphaMasked', 'alphaCutoff', 'materialOpacity', 'hasBaseMap', 'baseMap'];
@@ -1636,22 +1627,11 @@ export class Renderer67 {
     return map;
   }
 
-  // A map's `bounce` (the light a lit room's walls send back, ground-bounce.js) is a constant diffuse light: it adds to the
-  // first irradiance coefficient, which the map's intensity scales again in the shader.
-  irradianceWithBounce(map) {
-    const irradiance = this.environmentResources.irradiance;
-    if (!map.bounce) return irradiance;
-    this.bouncedIrradiance ??= new Float32Array(irradiance.length);
-    this.bouncedIrradiance.set(irradiance);
-    for (let channel = 0; channel < 3; channel++) this.bouncedIrradiance[channel] += map.bounce[channel] / Math.max(map.intensity, 1e-6);
-    return this.bouncedIrradiance;
-  }
-
   applyEnvironmentUniforms(map, uniforms = this.uniforms) {
     const context = this.context;
     context.uniform1f(uniforms.environmentEnabled, map ? 1 : 0);
     if (!map) return;
-    if (uniforms['environmentIrradiance[0]']) context.uniform3fv(uniforms['environmentIrradiance[0]'], this.irradianceWithBounce(map));
+    if (uniforms['environmentIrradiance[0]']) context.uniform3fv(uniforms['environmentIrradiance[0]'], map.irradianceWithBounce?.(this.environmentResources.irradiance) ?? this.environmentResources.irradiance);
     context.uniform1f(uniforms.environmentIntensity, map.intensity);
     context.uniform2f(uniforms.environmentRotation, Math.cos(map.rotation), Math.sin(map.rotation));
     context.uniform1f(uniforms.environmentLevelMax, this.environmentResources.levelCount - 1);
@@ -1823,8 +1803,7 @@ export class Renderer67 {
     const liquids = this.batches.filter(batch => batchPass(batch) === 'liquid');
     const foams = this.batches.filter(batch => batchPass(batch) === 'foam');
     if (liquids.length === 0 && foams.length === 0) return;
-    const optics = resolveLiquidOptics({ ...environment.liquid, ...frame.liquid });
-    liquidPassDrawer()(this, { frame, environment, assemblyAmount, environmentMap, liquids, foams, optics, environmentSpecularUnit: ENVIRONMENT_SPECULAR_UNIT, maximumDistance: MAX_FINITE_DISTANCE, vertexSource: vertexShader, fragmentSource: liquidFragmentSource() });
+    liquidPassDrawer()(this, { frame, environment, assemblyAmount, environmentMap, liquids, foams, environmentSpecularUnit: ENVIRONMENT_SPECULAR_UNIT, maximumDistance: MAX_FINITE_DISTANCE, vertexSource: vertexShader, fragmentSource: liquidFragmentSource() });
   }
 
   // Allocated on the first frame that asks for bloom, so scenes without it pay nothing.
