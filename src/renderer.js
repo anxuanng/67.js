@@ -976,7 +976,8 @@ export class Renderer67 {
     return selectInstances(batch.selection, {
       instanceData: batch.instanceData, instanceCount: batch.instanceCount, stride: INSTANCE_STRIDE, bounds: batch.bounds, margin: batch.swayReach * Math.abs(this.windState.strength),
       levelErrors: batch.levelErrors, planes: this.frustumPlanes, viewProjection: this.viewProjection,
-      pixelsPerUnit: this.canvas.height / 2 * this.projection[5], pixelError: this.lodPixelError,
+      pixelsPerUnit: this.canvas.height / 2 * this.projection[5], pixelError: this.lodPixelError * (this.mirrorCulling?.lodScale ?? 1),
+      belowHeight: this.mirrorCulling?.belowHeight, minimumPixelRadius: this.mirrorCulling?.minimumPixelRadius,
     });
   }
 
@@ -2117,7 +2118,13 @@ export class Renderer67 {
     mat4.invert(this.inverseViewProjection, this.viewProjection);
     extractFrustumPlanes(this.viewProjection, this.frustumPlanes);
     this.viewForward = [-this.view[2], -this.view[6], -this.view[10]];
-    this.shadowCascades?.update(this, casterChanged);
+    // The water mirror is a cheap draw: it reuses the cascades of the last lit frame and leaves their redraw to the lit frame that follows.
+    if (frame.reflectionTarget && this.shadowCascades?.texture) {
+      this.cascadeCastersChanged ||= casterChanged;
+    } else {
+      this.shadowCascades?.update(this, casterChanged || Boolean(this.cascadeCastersChanged));
+      this.cascadeCastersChanged = false;
+    }
     // The water reflection addon draws the scene a second time into its own smaller target (frame.reflectionTarget).
     const mirrorTarget = frame.reflectionTarget;
     context.bindFramebuffer(context.FRAMEBUFFER, mirrorTarget ? mirrorTarget.framebuffer : passMode ? this.passSupport.framebuffer : this.benchmark ? null : this.multisampleFramebuffer);
@@ -2147,11 +2154,11 @@ export class Renderer67 {
     context.uniform1f(this.uniforms.exposure, exposure);
     context.uniform1f(this.uniforms.inspection, inspection ? 1 : 0);
     context.uniform1f(this.uniforms.hdrEnabled, this.hdr ? 1 : 0);
-    context.uniform1i(this.uniforms.pointLightCount, this.lighting.pointCount);
+    context.uniform1i(this.uniforms.pointLightCount, frame.reflectionTarget ? 0 : this.lighting.pointCount);
     context.uniform4fv(this.uniforms['pointLightPositions[0]'], this.lighting.positions);
     context.uniform4fv(this.uniforms['pointLightColors[0]'], this.lighting.colors);
     context.uniform1fv(this.uniforms['pointLightRadii[0]'], this.lighting.radii);
-    this.applyLocalLightUniforms();
+    this.applyLocalLightUniforms(Boolean(frame.reflectionTarget));
     context.uniform3fv(this.uniforms.keyColor, this.lighting.keyColor);
     context.uniform1f(this.uniforms.fillIntensity, this.lighting.fillIntensity);
     context.uniform1f(this.uniforms.ambientIntensity, this.lighting.ambientIntensity);
@@ -2216,17 +2223,18 @@ export class Renderer67 {
     this.gpuMilliseconds = this.gpuTimer.collect();
   }
 
-  applyLocalLightUniforms() {
+  // The water mirror draws without local lights: it is blurred and rippled, and the sun, sky and fog colour carry the picture.
+  applyLocalLightUniforms(withoutLights = false) {
     const context = this.context;
     const lighting = this.lighting;
     const uniforms = this.uniforms;
     context.uniform1fv(uniforms['pointLightShadowTiles[0]'], lighting.pointShadows);
-    context.uniform1i(uniforms.spotLightCount, lighting.spotCount);
+    context.uniform1i(uniforms.spotLightCount, withoutLights ? 0 : lighting.spotCount);
     context.uniform4fv(uniforms['spotLightPositions[0]'], lighting.spotPositions);
     context.uniform4fv(uniforms['spotLightColors[0]'], lighting.spotColors);
     context.uniform4fv(uniforms['spotLightDirections[0]'], lighting.spotDirections);
     context.uniform4fv(uniforms['spotLightParameters[0]'], lighting.spotParameters);
-    context.uniform1i(uniforms.areaLightCount, lighting.areaCount);
+    context.uniform1i(uniforms.areaLightCount, withoutLights ? 0 : lighting.areaCount);
     context.uniform4fv(uniforms['areaLightPositions[0]'], lighting.areaPositions);
     context.uniform4fv(uniforms['areaLightColors[0]'], lighting.areaColors);
     context.uniform4fv(uniforms['areaLightNormals[0]'], lighting.areaNormals);

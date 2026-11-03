@@ -24,12 +24,12 @@ function instanceData(positions, scale = 1) {
   return data;
 }
 
-function selectionFor(positions, { levelErrors = [0], bounds = { center: [0, 0, 0], radius: 1 }, eye, scale } = {}) {
+function selectionFor(positions, { levelErrors = [0], bounds = { center: [0, 0, 0], radius: 1 }, eye, scale, ...extra } = {}) {
   const { projection, viewProjection, planes } = cameraMatrices(eye);
   const selection = new InstanceSelection(positions.length, levelErrors.length);
   return selectInstances(selection, {
     instanceData: instanceData(positions, scale), instanceCount: positions.length, stride: STRIDE, bounds, levelErrors, planes, viewProjection,
-    pixelsPerUnit: CANVAS_HEIGHT / 2 * projection[5],
+    pixelsPerUnit: CANVAS_HEIGHT / 2 * projection[5], ...extra,
   });
 }
 
@@ -211,4 +211,36 @@ test('swaying foliage is culled and given shadow levels, with a bound that grows
   };
   assert.equal(select(0), 0);
   assert.equal(select(4), 1);
+});
+
+test('an instance wholly under belowHeight is culled and one that reaches above it stays', () => {
+  const positions = [[0, -3, 0], [1, 0.5, 0], [-1, -0.5, 0]];
+  assert.equal(selectionFor(positions).visibleCount, 3);
+  const selection = selectionFor(positions, { belowHeight: 0 });
+  assert.deepEqual([...selection.indices[0].subarray(0, selection.counts[0])], [1, 2]);
+  assert.equal(selectionFor(positions, { belowHeight: 0, scale: 4 }).visibleCount, 3, 'a larger sphere reaches the plane');
+});
+
+test('an instance smaller than minimumPixelRadius on screen is culled, and a near one stays', () => {
+  const positions = [[0, 0, 0], [0, 0, -80]];
+  assert.equal(selectionFor(positions).visibleCount, 2);
+  const selection = selectionFor(positions, { minimumPixelRadius: 10 });
+  assert.deepEqual([...selection.indices[0].subarray(0, selection.counts[0])], [0]);
+});
+
+test('the renderer lets the water mirror widen the level error, and a normal frame is unchanged', () => {
+  const { projection, viewProjection, planes } = cameraMatrices();
+  const renderer = Object.create(Renderer67.prototype);
+  Object.assign(renderer, { culling: true, canvas: { height: CANVAS_HEIGHT }, projection, viewProjection, frustumPlanes: planes, lodPixelError: 1, windState: { strength: 0 } });
+  const batch = { cullable: true, selection: new InstanceSelection(2, 2), instanceData: instanceData([[0, -5, 0], [0, 1, 0]]), instanceCount: 2, bounds: { center: [0, 0, 0], radius: 1 }, swayReach: 0, levelErrors: [0, 0.02] };
+  const levelOfSecond = () => {
+    const selection = renderer.selectBatchInstances(batch);
+    return selection.indices[1][0] === 1 ? 1 : 0;
+  };
+  assert.equal(renderer.selectBatchInstances(batch).visibleCount, 2);
+  assert.equal(levelOfSecond(), 0);
+  renderer.mirrorCulling = { belowHeight: 0, lodScale: 100, minimumPixelRadius: 0 };
+  const mirrored = renderer.selectBatchInstances(batch);
+  assert.equal(mirrored.visibleCount, 1);
+  assert.equal(levelOfSecond(), 1);
 });
