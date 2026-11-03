@@ -1186,6 +1186,34 @@ Which scenes the bounce skips (a temporary log of the reason in the harness, not
 Nothing moved, so `baseline.json` is unchanged. `foliage` is still 0.0979 against EEVEE 0.0888, and the issue stays open.
 Bundle size: `entry:ground-bounce` is 9451 bytes gzip (9318 before the texture mean, which adds 133 bytes), so its budget rose from 9330 to 9460.
 
+## One bounce and the sky in object probes (2026-11-03, part of issue #167)
+
+`OBJECT_PROBE_BOUNCES` went from 0 to 1, and a probe hit on a non-metal surface now adds the sky that surface mirrors toward the probe. Measured on SwiftShader first, then the GPU (FLIP against Cycles, `baseline.json` rows of `metal`, `metal-room`, `brushed-film`, `car-paint` and `material-spheres` updated; mountain-valley moved 0.1769 to 0.1820 on this machine's run with no probe in the scene, so its baseline row and the other 17 rows were kept as they were).
+
+The earlier bounce try (#209, 0.1246 at 64 samples) was measuring a bug: `directIrradiance` returns one shared array, the gatherer calls it again for every neighbour it hits, and `traceProbeMaps` read `direct` after that call, so each probe pixel got the direct light of the last neighbour the gatherer visited (usually in shadow). The floor's mean in the probe fell from 0.25 to 0.15 with one bounce. With a copy of the direct light first, one bounce adds a little light and no longer darkens.
+
+| SwiftShader, `metal` | FLIP | probe trace |
+| --- | --- | --- |
+| Main | 0.0962 | 0.12 s |
+| One bounce, bug as it was | 0.1098 | 0.24 s |
+| One bounce, direct light copied | 0.0955 | 0.25 s |
+| Plus dielectric sky reflection (Fresnel, F0 0.04, capped by gloss, sky blurred to a cosine lobe, one shadow ray) | 0.0942 | 0.25 s |
+| Same, Fresnel not capped by gloss | 0.0938 (`brushed-film` 0.1019) | |
+| Same, plus metal parts mirroring the sky too | 0.0939 | |
+| Two bounces | 0.0941 | 0.28 s |
+
+Kept: one bounce, the copy, the capped Fresnel sky reflection. The uncapped Fresnel, the metal reflection and the second bounce are worth 0.0003 or less and cost code or time. GPU result against Cycles:
+
+| Scene | Main | Now | EEVEE |
+| --- | --- | --- | --- |
+| `metal` | 0.0964 | 0.0944 | 0.0916 |
+| `metal-room` | 0.5071 | 0.5045 | 0.5262 |
+| `material-spheres` | 0.0956 | 0.0954 | 0.1053 |
+| `car-paint` | 0.0979 | 0.0978 | 0.0844 |
+| `brushed-film` | 0.1017 | 0.1019 | 0.0984 |
+
+`brushed-film` is 0.0002 worse (the sky reflection; it was 0.1015 with the bounce alone on SwiftShader). Probe trace time on this machine (SwiftShader run, JS, so the same on the GPU run): `metal` 0.12 to 0.25 s, `brushed-film` 0.09 to 0.20 s, `car-paint` 0.06 to 0.10 s, `material-spheres` 0.19 to 0.37 s, `metal-room` 0.06 to 0.41 s; the trace runs when parts, lights or materials change, and a scene without a reflective part never loads it. `metal` is still 0.0028 above EEVEE: the cylinder's floor reflection is the closest gap left (probe 0.567 against Cycles 0.578 in the region, mean display luminance), the rest is light between metal parts that a diffuse bounce does not carry. The room probe trace (`PROBE_BOUNCES` 2) had the same overwritten `direct` and now reads the right light; no baseline scene uses it.
+
 ## Ground bounce occluded by the parts above it, measured and not kept (2026-11-03, part of issue #197)
 
 Idea, from the shadow depth remeasure (#252): the ground bounce counts the ground as lit, but under and beside a caster it is in shadow, and Cycles darkens the bounce there. Change tried: `groundOpenness(parts)` in `src/ground-bounce.js` traced 24 upward rays from an 8 by 8 grid over the ground around the non-floor parts (their footprint widened by the tallest part's height) with `skyVisibilityGrid`, took the mean share that escapes (1 is open ground), and multiplied the lower half of the diffuse copy by it. Derived from the scene, once per parts array, no cost per frame, and nothing in core. `closed-room.js` only gained an optional grid size.
@@ -1223,3 +1251,32 @@ Idea, from the two notes above: a scene-wide scalar can not darken shadowed floo
 - Not measured, because the change was reverted: the gzip bytes, the frame cost and the ray time at 16384 cells. One run with 100000 cells (to resolve the street) did not finish all 23 scenes in 10 minutes, so the ray build is the limit on a finer volume.
 
 Engine code reverted; `baseline.json` is unchanged. Next idea, if this is taken up again: sky visibility traced from the floor texels themselves (a 2D map of the floor, one value per texel, 64 or more rays) instead of a coarse volume.
+
+## Where the rest of `metal` sits, and a metal mirror in the probe trace, measured and not kept (2026-11-03, part of issue #167)
+
+`bench/reference/region-errors.py <scene> [gpu|cpu]` splits the FLIP error map of a scene by what each pixel shows. It draws each part's triangles back to front with the scene's camera (the floor quad reaches behind the camera, so the floor is the uncovered pixels below the horizon), then prints share, mean error and luminance per region for 67js and EEVEE against Cycles. GPU render, same arrays as the baseline (67js 0.0944, EEVEE 0.0916); the shares of the error are of the error map's own total (its mean is 0.1053, a little above the 0.0944 of the scorer, so use the shares and not the absolute values):
+
+| Region | Frame share | FLIP 67js | FLIP EEVEE | Share of 67js error | Display luminance 67js / Cycles / EEVEE |
+| --- | --- | --- | --- | --- | --- |
+| Floor, open | 0.632 | 0.0883 | 0.0745 | 53% | 0.677 / 0.679 / 0.677 |
+| Chrome sphere | 0.059 | 0.2430 | 0.2056 | 13% | 0.654 / 0.627 / 0.629 |
+| Gold torus | 0.053 | 0.2331 | 0.3045 | 12% | 0.633 / 0.646 / 0.601 |
+| Copper cube | 0.060 | 0.2085 | 0.3082 | 12% | 0.611 / 0.638 / 0.571 |
+| Steel cylinder | 0.029 | 0.2531 | 0.1894 | 7% | 0.556 / 0.573 / 0.544 |
+| Sky | 0.161 | 0.0148 | 0.0098 | 2% | 0.860 / 0.860 / 0.860 |
+| Floor front edge | 0.006 | 0.1200 | 0.0838 | 1% | 0.672 / 0.687 / 0.683 |
+
+67js already beats EEVEE on the gold torus (0.0124 against 0.0162 of the frame mean) and the copper cube (0.0125 against 0.0185). EEVEE leads on the open floor (0.0087 of the frame), the chrome sphere (0.0022), the steel cylinder (0.0019) and the sky (0.0008). The floor has the largest gap and no luminance gap (0.677 against 0.679), so what is left there is structure (the shadow shapes and the halo of bounced light around the parts), as #241 found. The steel cylinder is 0.017 too dark and the chrome sphere 0.027 too bright.
+
+Change tried: in the probe trace, a hit on a metal part returns what that part mirrors toward the probe, times the metal's colour: the environment when the mirrored ray leaves the scene, else the direct and sky light of the part it meets (no further bounce). Either added to the diffuse term or in place of its metallic share. SwiftShader, `metal`, same Cycles arrays:
+
+| Variant | FLIP | chrome / steel luminance | probe trace |
+| --- | --- | --- | --- |
+| Main | 0.0942 | 0.654 / 0.556 | 0.24 s |
+| Mirror added, gain 1 | 0.0942 | 0.662 / 0.590 | 0.25 s |
+| Mirror added, gain 0.4 | 0.0938 | 0.658 / not read | 0.25 s |
+| Mirror replacing the metallic share of the diffuse term | 0.0953 | 0.654 / 0.559 | 0.25 s |
+
+The best of them is 0.0004 better, which is inside what the choice of gain alone moves, and 0.0022 short of EEVEE. At gain 1 it overshoots the steel cylinder (0.556 to 0.590, Cycles 0.573) and brightens the chrome sphere, which is already too bright; the sphere's error is the structure of the reflection (the cloud pattern and the floor under its base), not its level. This agrees with the earlier "metal parts mirroring the sky too" row (0.0939). Not kept; no engine file, scene or `baseline.json` row changed, and the first box of #167 stays open: `metal` 0.0944 against EEVEE 0.0916. A scene without a reflective part never loads the trace, so its frame cost is as before.
+
+Next idea: the open floor is more than half of the error and the largest gap, and a surface-level cause there needs a new input (light the metal parts reflect onto the floor, which a diffuse bounce leaves out), for example a few traced caustic-like patches stamped into the ground bounce.
