@@ -8,6 +8,7 @@ import { brotliCompressSync, gzipSync } from 'node:zlib';
 import { build } from 'esbuild';
 import { budgetsFrom, compareToBudgets, formatRows, initialOutputPaths } from './size-budget.mjs';
 import { compareToBase, formatGrowthRows } from './size-growth.mjs';
+import { measureArchiveBytes } from './measure-archive.mjs';
 import { DEFAULT_BASE_REF, baseRefExists, measureBase, readAcceptedBundles } from './size-base.mjs';
 
 const BUDGETS_PATH = 'bench/size/budgets.json';
@@ -188,7 +189,10 @@ const budgetFile = await readJson(BUDGETS_PATH);
 const baselineFile = await readJson(BASELINE_PATH);
 
 // Budgets and the baseline move at release, never in a feature pull request.
-if (flags.has('--set-budgets')) budgetFile.budgets = budgetsFrom(measured);
+if (flags.has('--set-budgets')) {
+  budgetFile.budgets = budgetsFrom(measured);
+  budgetFile.archiveBytes = Math.ceil(measureArchiveBytes() * 1.02);
+}
 if (flags.has('--set-budgets') || flags.has('--update-baseline')) {
   const threeManifest = await readJson('node_modules/three/package.json');
   await writeJson(BUDGETS_PATH, budgetFile);

@@ -50,6 +50,9 @@ export function readAcceptedBundles(baseRef, cwd = process.cwd()) {
   return accepted;
 }
 
+// The archive: the base branch is built and packed in its own checkout by this checkout's script.
+export const ARCHIVE_METHOD = { script: join(SCRIPTS_FOLDER, 'measure-archive.mjs'), runInBase: false, files: ['measure-archive.mjs', 'size-base.mjs', '../vite.lib.config.js', 'build-mcp.mjs'] };
+
 // The cache key holds everything that decides the base numbers: the base commit, the measuring method and the lock file.
 function cacheFileFor(baseRef, method) {
   const hash = createHash('sha256');
@@ -89,4 +92,9 @@ export async function measureBase(baseRef, method = SIZE_METHOD) {
   mkdirSync(BASE_CACHE_FOLDER, { recursive: true });
   writeFileSync(cacheFile, JSON.stringify(measured));
   return measured;
+}
+
+// The size in bytes of the npm archive of the base branch, cached by base commit like the bundle sizes.
+export async function measureBaseArchive(baseRef) {
+  return (await measureBase(baseRef, ARCHIVE_METHOD)).archiveBytes;
 }

@@ -33,7 +33,7 @@ jobs:
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: node_modules/.cache/size-base
-          key: size-base-${{ steps.base.outputs.sha }}-${{ hashFiles('scripts/measure-size.mjs', 'scripts/size-*.mjs', 'scripts/*tool-cost*.mjs', 'package-lock.json') }}
+          key: size-base-${{ steps.base.outputs.sha }}-${{ hashFiles('scripts/measure-size.mjs', 'scripts/size-*.mjs', 'scripts/*tool-cost*.mjs', 'scripts/measure-archive.mjs', 'scripts/build-mcp.mjs', 'vite.lib.config.js', 'package-lock.json') }}
       - run: npm run size -- --base "$SIZE_BASE_REF"
       - run: npm run tool-cost -- --base "$SIZE_BASE_REF"
       - run: npm test
