@@ -351,6 +351,29 @@ attachWaterReflection(renderer, water.surface);
 
 `water.surface` is null when no part qualifies, and `attachWaterReflection` then does nothing. A recipe scene does not place it yet: the recipe path has no hook that loads the addon from the materials, and that is the next piece of work. `npm run reference -- --no-water` draws the harness scenes without it.
 
+## Why the river did not move (2026-11-03, issue #195)
+
+`megacity-dusk-a` was picked up by `findWaterSurface` and the mirror image was drawn: the river is one flat box at 0.2 percent of the scene's footprint, roughness 0.04, and the pixels it covers changed (20 percent of the frame). The score did not move because the reflection was drawn too soft. In the changed pixels FLIP against Cycles was 0.536 with no reflection and 0.462 with an unblurred reflection, but the blurred one had given back almost all of it (the whole frame went 0.2084 to 0.2072). The towers' window bands are one to three pixels tall; a picture at a quarter of the pixels, smeared 6 pixels up and down, loses them, and Cycles keeps them. `megacity-dusk-b` is the opposite: its far skyline aliases at half size, and blur hid that. Ripple strength made no difference to any score (0.1972 with and without ripples).
+
+Whole frame FLIP against Cycles, GPU, the three water options (the Cycles arrays are those of the earlier runs; the scenes are drawn from the current main, so the first row differs from the table above):
+
+| Reflection picture, blur (across, down in screen share) | `megacity-dusk-a` | `megacity-dusk-b` | `mountain-valley-a` |
+| --- | --- | --- | --- |
+| No reflection | 0.2084 | 0.1593 | 0.2949 |
+| Half size, 0.004 and 0.012 (#202) | 0.2072 | 0.1459 | 0.1946 |
+| Half size, none | 0.1972 | 0.1556 | 0.1925 |
+| Full size, none | 0.1952 | 0.1444 | 0.1919 |
+| Full size, 0.004 and 0.012 | 0.2077 | 0.1371 | 0.1943 |
+| Three quarters, 0.0015 and 0.0045 (shipped) | 0.1999 | 0.1242 | 0.1924 |
+| Three quarters, 0.001 and 0.003 | 0.1980 | 0.1290 | 0.1922 |
+| Three quarters, 0.0015 and 0.0045, gain 0.7 | 0.1800 | 0.1835 | 0.2055 |
+
+The shipped picture is three quarters of the canvas in each direction with a blur of 0.0015 across and 0.0045 down. Every option that helps the river hurts the bay by about as much, so the pick is the one that gives the largest total gain (0.0073, 0.0217 and 0.0022 against #202); the river is 0.0085 better than no reflection, not the 0.03 of the unblurred full-size picture. GPU `megacity-dusk-a` 0.2072 to 0.1999 and CPU 0.2066 to 0.1992. Frame time on the RTX 3060 (`frame-time.mjs <id> gpu --water --grand`, one run each, shared with other jobs; the machine's spread is about 0.2 ms) shows no cost for the larger picture: `megacity-dusk-a` 0.8 ms off, 1.32 ms with the half-size picture and 1.35 ms with three quarters; `megacity-dusk-b` 2.39, 3.84 and 3.56 ms; `mountain-valley-a` 3.96, 6.35 and 6.30 ms. `grand.json` holds the new GPU and CPU scores against Cycles for these three rows; its EEVEE columns are the old ones, because the EEVEE renders of these scenes are not in the folder.
+
+Still open, and not fixed here: the river's water is brighter than Cycles'. Scaling the reflection by 0.7 takes `megacity-dusk-a` to 0.1800 and costs the other two, so it is not a global gain: in Cycles the stretch of water between the towers is dark where 67js shows a light patch of sky. Nothing in the mirror image explains it, so it is likely the Fresnel curve or the haze on the Cycles side (the `FRESNEL_BASE` of 0 scores 0.1947, 0.1294 and 0.1925). The water's body colour and depth near the shore are untouched. The issue stays open.
+
+The default suite does not hold a water scene any more on this main: `foliage` and `mountain-valley` draw the same pixels with and without the reflection (identical PNGs), and a full `--skip-blender` run before and after the change scored all 23 rows the same to four digits, GPU and CPU.
+
 ## Fog on two more scenes, and a seam in baked rooms (2026-11-02, issues #164 and #165)
 
 **New scenes.** `fog-valley` is open ground under the HDRI sky with a low sun ahead of the camera, 48 blocks from 25 m to 400 m away and `volumeFog` density 0.005 over the whole field. `fog-room` is a 5 m square room with a window, density 0.2, a constant 0.05 world and the sun coming through the window as a shaft; it declares a `brightRegion` (24.3 percent of the frame). Both are built from engine code, so Blender gets the same geometry. Scores against Cycles on 2026-11-02 (RTX 3060):

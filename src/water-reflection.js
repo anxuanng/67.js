@@ -13,15 +13,15 @@ export const WATER_MAXIMUM_THICKNESS_RATIO = 0.02;
 /** The surface is large when its footprint covers at least this share of the scene's footprint. */
 export const WATER_MINIMUM_SCENE_SHARE = 0.002;
 /** The reflection target is this share of the canvas in each direction. */
-export const WATER_REFLECTION_SCALE = 0.5;
+export const WATER_REFLECTION_SCALE = 0.75;
 // How the picture is treated before it reaches the surface (see afterEmission). Fresnel starts at the reflectance of water.
 const FRESNEL_BASE = '0.02';
 const REFLECTION_GAIN = '1.0';
 const RIPPLE_SLOPE = '0.012';
 const RIPPLE_REACH = '0.004';
 const BLUR_TAPS = 8;
-const BLUR_ACROSS = '0.004';
-const BLUR_DOWN = '0.012';
+const BLUR_ACROSS = '0.0015';
+const BLUR_DOWN = '0.0045';
 // Geometry below this height above the water plane is left out of the reflection, so the lake bed never covers the sky.
 const CLIP_MARGIN = 0.05;
 const WATER_BATCH_FLAG = 'waterReflection';
@@ -235,7 +235,7 @@ layerTextureSupport.bind = (renderer, mapState) => {
 /**
  * Draws the mirror image before each frame of a renderer built from the parts `applyWaterReflection` marked. Wraps
  * `renderer.render` and `renderer.dispose`; the returned function undoes both. Does nothing when `surface` is null.
- * `scale` is the target's size against the canvas in each direction (default 0.5).
+ * `scale` is the target's size against the canvas in each direction (default 0.75).
  */
 export function attachWaterReflection(renderer, surface, { scale = WATER_REFLECTION_SCALE } = {}) {
   if (!surface) {
