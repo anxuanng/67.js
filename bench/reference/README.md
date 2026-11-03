@@ -374,6 +374,30 @@ Still open, and not fixed here: the river's water is brighter than Cycles'. Scal
 
 The default suite does not hold a water scene any more on this main: `foliage` and `mountain-valley` draw the same pixels with and without the reflection (identical PNGs), and a full `--skip-blender` run before and after the change scored all 23 rows the same to four digits, GPU and CPU.
 
+## The Fresnel curve is not why the river is bright (2026-11-03, issue #195)
+
+Tried and not kept. The Cycles water in these scenes is a plain Principled BSDF (`WATER` in `grand-scenes.js`: colour 0.02, 0.05, 0.08, roughness 0.04, nothing else). `render-blender.py` leaves IOR at the default 1.5 and the specular level at 0.5, so it reflects 4 percent head on with the exact dielectric curve (inferred from those inputs). It has no transmission, no volume absorption and no body colour beyond that diffuse colour, and 67js gives the surface the same colour, so there is no body or shore depth term to add. The reflection's weight was Schlick from 0.02. Computed numerically, the exact curve for IOR 1.5 and that Schlick weight differ by under 0.04 at every angle in frame (elevation 1, 3, 5, 12 and 30 degrees: 0.904 against 0.917, 0.742 against 0.769, 0.613 against 0.641, 0.326 against 0.326, 0.089 against 0.051), so a curve cannot explain a river that is 60 to 70 percent brighter.
+
+Whole frame / water pixels FLIP against Cycles (water pixels are the ones the shipped reflection changes: 25, 31 and 16 percent of the frame), GPU, one change at a time:
+
+| Fresnel weight | `megacity-dusk-a` | `megacity-dusk-b` | `mountain-valley-a` | Total, whole frame |
+| --- | --- | --- | --- | --- |
+| Schlick from 0.02 (shipped) | 0.1999 / 0.3429 | 0.1242 / 0.1926 | 0.1924 / 0.1442 | 0.5165 |
+| Exact, IOR 1.5 (Blender's) | 0.2056 / 0.3662 | 0.1148 / 0.1670 | 0.1933 / 0.1502 | 0.5137 |
+| Exact, IOR 1.33 | 0.1944 / 0.3219 | 0.1420 / 0.2317 | 0.1957 / 0.1652 | 0.5322 |
+
+Blender's own curve helps the bay and costs the river 0.0057, over the 0.002 allowed; real water's curve does the opposite and costs the bay 0.0178. The two scenes ask for opposite weights from the same code, so the weight is not the cause, nothing was kept, and `src/water-reflection.js` is unchanged.
+
+Where the brightness comes from: mean display luminance over the river pixels of `megacity-dusk-a` in six horizontal bands (rows 305, 344, 383, 422, 461, 500 on), Cycles against 67js. In the lower bands the reflection adds almost nothing, so they do not depend on it.
+
+| Rows from | 305 | 344 | 383 | 422 | 461 | 500 |
+| --- | --- | --- | --- | --- | --- | --- |
+| Cycles | 0.216 | 0.180 | 0.129 | 0.121 | 0.103 | 0.099 |
+| 67js, no reflection | 0.423 | 0.345 | 0.288 | 0.226 | 0.182 | 0.149 |
+| 67js, shipped | 0.354 | 0.326 | 0.215 | 0.226 | 0.180 | 0.154 |
+
+The bay and the valley are within 0.02 of Cycles in the same bands, so it is specific to the canyon. In the picture the sidewalks and tower faces that the river mirrors are lighter in 67js than in Cycles too. The reading (inferred, not isolated): the towers stand close together and Cycles lets only a slice of the sky reach them, while 67js lights them with the whole sky. With `--ambient 0` the river bands fall to 0.298, 0.259, 0.146, 0.169, 0.126 and 0.111, towards Cycles. Haze is not it, since the nearest band is as far off as the farthest. So the remaining gap is the light on the mirrored city (sky occlusion in narrow streets), and a reflection gain of 0.7 only trades one scene's error for another's. #195's done-when for the three water options was already met by #202 and #230 (all three scores moved towards Cycles, scenes without water unchanged), so this adds no change and closes nothing by itself.
+
 ## Fog on two more scenes, and a seam in baked rooms (2026-11-02, issues #164 and #165)
 
 **New scenes.** `fog-valley` is open ground under the HDRI sky with a low sun ahead of the camera, 48 blocks from 25 m to 400 m away and `volumeFog` density 0.005 over the whole field. `fog-room` is a 5 m square room with a window, density 0.2, a constant 0.05 world and the sun coming through the window as a shaft; it declares a `brightRegion` (24.3 percent of the frame). Both are built from engine code, so Blender gets the same geometry. Scores against Cycles on 2026-11-02 (RTX 3060):
