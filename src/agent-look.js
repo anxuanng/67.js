@@ -6,6 +6,9 @@ import { resolveLiquidOptics } from './renderer.js';
 import { createLightingSetupMap, lightingSetupFields } from './lighting-setups.js';
 import { DEFAULT_LIGHTING_SETUP, LIGHTING_SETUP_NAMES, DEFAULT_AMBIENT_OCCLUSION } from './agent-scene-capabilities.js';
 
+// The longest list in a look is the longest light list.
+const MAX_LOOK_ARRAY_ENTRIES = Math.max(MAX_POINT_LIGHTS, MAX_SPOT_LIGHTS, MAX_AREA_LIGHTS);
+
 const ENVIRONMENT_FIELDS = [
   'world', 'ground', 'setup', 'environmentIntensity', 'environmentRotation', 'lightDirection', 'keyColor', 'keyIntensity', 'fillIntensity', 'ambientIntensity',
   'daylight', 'pointLights', 'spotLights', 'areaLights', 'skyTop', 'skyBottom', 'fogColor', 'fogDensity', 'volumeFog', 'liquid', 'shadowCascades', 'keyAffects', 'objectReflections',
@@ -84,8 +87,8 @@ function copiedJson(input, depth = 0, ancestors = new Set()) {
     throw new TypeError('Look must contain acyclic plain JSON data.');
   }
   const array = Array.isArray(input);
-  if (array && (Object.getPrototypeOf(input) !== Array.prototype || input.length > MAX_POINT_LIGHTS)) {
-    throw new TypeError(`Look JSON arrays must be ordinary arrays with at most ${MAX_POINT_LIGHTS} entries.`);
+  if (array && (Object.getPrototypeOf(input) !== Array.prototype || input.length > MAX_LOOK_ARRAY_ENTRIES)) {
+    throw new TypeError(`Look JSON arrays must be ordinary arrays with at most ${MAX_LOOK_ARRAY_ENTRIES} entries.`);
   }
   if (!array) {
     plainObject(input, 'Look');

@@ -1,3 +1,4 @@
+import { MAX_POINT_LIGHTS, MAX_SPOT_LIGHTS, MAX_AREA_LIGHTS } from './light-limits.js';
 import { buildTriangleBvh } from './triangle-bvh.js';
 import { readTriangle } from './triangle-math.js';
 import { createTracer, pointLightFalloff } from './ray-query.js';
@@ -23,9 +24,9 @@ export const MAX_BAKE_RAY_WORK = 400_000_000;
 export const MAX_BAKE_TEXELS = 1_000_000;
 export const MAX_BAKE_TRIANGLES = 200_000;
 export const MAX_BAKE_PARTS = 256;
-export const MAX_BAKE_POINT_LIGHTS = 8;
-export const MAX_BAKE_SPOT_LIGHTS = 8;
-export const MAX_BAKE_AREA_LIGHTS = 4;
+export const MAX_BAKE_POINT_LIGHTS = MAX_POINT_LIGHTS;
+export const MAX_BAKE_SPOT_LIGHTS = MAX_SPOT_LIGHTS;
+export const MAX_BAKE_AREA_LIGHTS = MAX_AREA_LIGHTS;
 // A part that sees at least this share of the sky keeps its live sky light as it is.
 const SKY_VISIBLE_ENOUGH = 0.98;
 // The renderer's own soft edge for a spot light that gives none.
