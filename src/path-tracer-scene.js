@@ -1,5 +1,6 @@
 import { buildTriangleBvh } from './triangle-bvh.js';
 import { createTracer } from './ray-query.js';
+import { SUN_BIT, POINT_FIRST_BIT, SPOT_FIRST_BIT, AREA_FIRST_BIT } from './light-link-bits.js';
 import { boxProjectedGeometry, columnLengths } from './export-box-uv.js';
 
 // The scene a path trace reads: every part flattened into one world-space triangle soup with per-vertex normals, UVs
@@ -78,6 +79,9 @@ function resolveTexture(descriptor) {
   };
 }
 
+// A part without a mask is lit by every light.
+const ALL_LIGHTS = -1;
+
 function resolveMaterial(material) {
   const emissionColor = material.emissiveColor ?? material.color;
   const emissionStrength = material.emission ?? 0;
@@ -94,6 +98,7 @@ function resolveMaterial(material) {
     normalTexture: resolveTexture(material.normalMap),
     normalScale: material.normalScale ?? [1, 1],
     surfaceTexture: resolveTexture(material.metallicRoughnessMap),
+    lightMask: material.lightMask ?? ALL_LIGHTS,
     alphaCutoff: material.alphaMode === 'mask' ? material.alphaCutoff ?? 0.5 : 0,
   };
 }
@@ -195,20 +200,20 @@ function resolveLights(environment) {
   const lightCount = (environment.pointLights?.length ?? 0) + (environment.spotLights?.length ?? 0) + (environment.areaLights?.length ?? 0);
   if (lightCount > MAX_TRACE_LIGHTS) throw new RangeError(`A path trace takes at most ${MAX_TRACE_LIGHTS} point, spot and area lights.`);
   return {
-    sun: sunPower > 0 ? { direction: normalized(environment.lightDirection ?? [0, 1, 0]), color: environment.keyColor } : null,
-    points: (environment.pointLights ?? []).map(light => ({ position: light.position, color: light.color, intensity: light.intensity, radius: light.radius ?? 0, range: light.range ?? 0 })),
-    spots: (environment.spotLights ?? []).map(light => ({
-      position: light.position, color: light.color, intensity: light.intensity, radius: light.radius ?? 0, range: light.range ?? 0,
+    sun: sunPower > 0 ? { bit: SUN_BIT, direction: normalized(environment.lightDirection ?? [0, 1, 0]), color: environment.keyColor } : null,
+    points: (environment.pointLights ?? []).map((light, index) => ({ bit: POINT_FIRST_BIT + index, position: light.position, color: light.color, intensity: light.intensity, radius: light.radius ?? 0, range: light.range ?? 0 })),
+    spots: (environment.spotLights ?? []).map((light, index) => ({
+      bit: SPOT_FIRST_BIT + index, position: light.position, color: light.color, intensity: light.intensity, radius: light.radius ?? 0, range: light.range ?? 0,
       direction: normalized(light.direction),
       cosineHalfAngle: Math.cos(light.angle),
       blend: (1 - Math.cos(light.angle)) * (light.penumbra ?? 0),
     })),
-    areas: (environment.areaLights ?? []).map(light => {
+    areas: (environment.areaLights ?? []).map((light, index) => {
       const normal = normalized(light.direction);
       const guide = normalized(light.up ?? [0, 1, 0]);
       const across = normalized([guide[1] * normal[2] - guide[2] * normal[1], guide[2] * normal[0] - guide[0] * normal[2], guide[0] * normal[1] - guide[1] * normal[0]]);
       const along = [normal[1] * across[2] - normal[2] * across[1], normal[2] * across[0] - normal[0] * across[2], normal[0] * across[1] - normal[1] * across[0]];
-      return { position: light.position, color: light.color, intensity: light.intensity, width: light.width, height: light.height, normal, across, along };
+      return { bit: AREA_FIRST_BIT + index, position: light.position, color: light.color, intensity: light.intensity, width: light.width, height: light.height, normal, across, along };
     }),
   };
 }

@@ -1,18 +1,16 @@
 import { registerShaderFeatureCode } from './shaders.js';
 import { ALL_LIGHTS_MASK } from './material-layers.js';
+import { SUN_BIT, POINT_FIRST_BIT, SPOT_FIRST_BIT, AREA_FIRST_BIT } from './light-link-bits.js';
 
 // Light linking: a light can be limited to the parts it lights, as Blender's receiver collection does. A part carries
 // a bit mask in `material.lightMask`; the shader skips a light whose bit is clear. The code lives here, not in the
 // renderer, so a scene without linking never downloads it and its shader has no mask test.
 // Bit 0 is the sun (the key light), bits 1 to 8 the point lights, 9 to 16 the spot lights and 17 to 20 the area lights,
 // in the order of the environment lists. Linking changes what a light adds, not what it shadows: a part that a light
-// does not reach still blocks that light for the others. The path tracer ignores linking and says so in its report; the light bake honours it.
+// does not reach still blocks that light for the others. The path tracer and the light bake honour it too.
 // The GLSL has no comments, because comments ship to every page.
 
-export const SUN_BIT = 0;
-export const POINT_FIRST_BIT = 1;
-export const SPOT_FIRST_BIT = 9;
-export const AREA_FIRST_BIT = 17;
+export { SUN_BIT, POINT_FIRST_BIT, SPOT_FIRST_BIT, AREA_FIRST_BIT };
 
 registerShaderFeatureCode('lightLinking', {
   declarations: `uniform int lightLinkMask;

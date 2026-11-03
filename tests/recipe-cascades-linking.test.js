@@ -106,11 +106,9 @@ test('scene_capabilities says recipes reach linking and cascades', () => {
   assert.deepEqual([...AGENT_SCENE_CAPABILITIES.shadowCascades.counts], [0, 1, 2, 3, 4]);
 });
 
-test('the path tracer names linking as not traced', async () => {
+test('the path tracer traces linking, so its report does not list it', async () => {
   const scene = await sceneFrom(sceneRecipe({ keyAffects: ['left'] }));
-  assert.ok(describeIgnoredFeatures(scene.parts, {}).some(note => /Light linking/.test(note)));
-  const plain = await sceneFrom(sceneRecipe());
-  assert.ok(!describeIgnoredFeatures(plain.parts, {}).some(note => /Light linking/.test(note)));
+  assert.ok(!describeIgnoredFeatures(scene.parts, {}).some(note => /Light linking/.test(note)));
 });
 
 function bakeRoom() {

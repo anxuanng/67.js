@@ -3,42 +3,42 @@
  "scores": {
   "brick-flat": {
    "pathtracer-vs-cycles": 0.0246,
-   "seconds": 28.2,
+   "seconds": 24.1,
    "samples": 64,
    "averageSamples": 64,
    "ignored": []
   },
   "brick-graph": {
    "pathtracer-vs-cycles": 0.0805,
-   "seconds": 24.3,
+   "seconds": 23.9,
    "samples": 64,
    "averageSamples": 64,
    "ignored": []
   },
   "brick-room": {
    "pathtracer-vs-cycles": 0.2587,
-   "seconds": 98.1,
+   "seconds": 98.5,
    "samples": 64,
    "averageSamples": 64,
    "ignored": []
   },
   "brushed-film": {
    "pathtracer-vs-cycles": 0.0599,
-   "seconds": 36.1,
+   "seconds": 35.9,
    "samples": 64,
    "averageSamples": 64,
    "ignored": []
   },
   "car-paint": {
    "pathtracer-vs-cycles": 0.0324,
-   "seconds": 35.8,
+   "seconds": 36.4,
    "samples": 64,
    "averageSamples": 64,
    "ignored": []
   },
   "character": {
    "pathtracer-vs-cycles": 0.0287,
-   "seconds": 28.1,
+   "seconds": 29,
    "samples": 64,
    "averageSamples": 64,
    "ignored": [
@@ -47,7 +47,7 @@
   },
   "fog": {
    "pathtracer-vs-cycles": 0.5333,
-   "seconds": 24,
+   "seconds": 24.1,
    "samples": 64,
    "averageSamples": 64,
    "ignored": [
@@ -56,7 +56,7 @@
   },
   "foliage": {
    "pathtracer-vs-cycles": 0.1001,
-   "seconds": 61.5,
+   "seconds": 63.4,
    "samples": 64,
    "averageSamples": 64,
    "ignored": [
@@ -65,35 +65,35 @@
   },
   "glass": {
    "pathtracer-vs-cycles": 0.0385,
-   "seconds": 30.7,
+   "seconds": 31.9,
    "samples": 64,
    "averageSamples": 64,
    "ignored": []
   },
   "light-linking": {
-   "pathtracer-vs-cycles": 0.6518,
-   "seconds": 35.2,
+   "pathtracer-vs-cycles": 0.0213,
+   "seconds": 29.2,
    "samples": 64,
    "averageSamples": 64,
    "ignored": []
   },
   "lit-interior": {
    "pathtracer-vs-cycles": 0.0769,
-   "seconds": 78.5,
+   "seconds": 78.3,
    "samples": 64,
    "averageSamples": 64,
    "ignored": []
   },
   "long-street": {
    "pathtracer-vs-cycles": 0.0291,
-   "seconds": 40.9,
+   "seconds": 43.9,
    "samples": 64,
    "averageSamples": 64,
    "ignored": []
   },
   "material-spheres": {
    "pathtracer-vs-cycles": 0.0449,
-   "seconds": 45.1,
+   "seconds": 45.6,
    "samples": 64,
    "averageSamples": 64,
    "ignored": []
@@ -107,14 +107,14 @@
   },
   "outdoor-hdri": {
    "pathtracer-vs-cycles": 0.0226,
-   "seconds": 19.5,
+   "seconds": 19.6,
    "samples": 64,
    "averageSamples": 64,
    "ignored": []
   },
   "spot-area": {
    "pathtracer-vs-cycles": 0.0261,
-   "seconds": 26.4,
+   "seconds": 26.9,
    "samples": 64,
    "averageSamples": 64,
    "ignored": []
