@@ -116,6 +116,11 @@ When `changed` is true, build a new renderer from the new parts. Grass switches 
 
 `vegetationParts(variant, matrix, level, name)` places one tree or clump yourself.
 
+## Recipes and MCP
+
+A recipe node with a `vegetation` field grows and scatters these trees, with wind, seasons and imported trees; see "Vegetation" in [Agent scenes](/agent-scene.md). `scatterVegetation` is called with the terrain's own `heightAt`, so the instances match the addon for the same options.
+`levelForDistance(distance, variant, { distanceScale, cullDistance })` is the stateless form of `selectLevels`: no hysteresis, so the level is a pure function of the distance.
+
 ## Measured
 
 On the demo clearing (125 trees and bushes, 1,941 grass clumps and 129 flower patches, camera at the clearing edge), headless Chrome with GPU:
@@ -126,4 +131,5 @@ Meshes and textures are built in plain JavaScript, so tests run in Node.
 
 - Cards need the renderer's alpha mask to look right. Without `leafTextures` the leaf textures are 128 px procedural sprigs that look flat from under a few metres; the scanned cards hold up to about 1 m. Palm fronds have no scanned card yet. The conifer card is a cedar spray, so it reads as a flat branch tip rather than separate needles.
 - Level changes pop; there is no cross-fade. Level 2 crowns are blobs or crossed cards, not baked imposters.
-- Species are fixed presets; there is no seasonal color, wind-bent skeleton or collision with other trees.
+- Species are fixed presets; there is no wind-bent skeleton or collision with other trees. Seasonal colour exists only in recipes (the `season` field), not in the addon call.
+- In recipes, tags `foliage` and `grass` accept a `tag` override on placed assets, so an imported tree sways; its leaf shading and alpha coverage stay those of the renderer.

@@ -16,10 +16,15 @@ export const worldMaterialSlots = {
   worldVertexWind: `
 // Grass bends by how far up the blade a vertex is (uv.y is 1 at the root), so it ignores terrain height.
 // Gusts roll across the field as a travelling wave along the wind direction, like the rolling bands in a meadow.
+// windHeading turns the wind about the vertical axis, in radians; 0 is the default heading toward +x.
+uniform float windHeading;
+
 vec3 grassWind(vec3 worldPoint, vec2 leafUv, float seconds, float strength) {
   float tip = clamp(1.0 - leafUv.y, 0.0, 1.0);
   float bendWeight = tip * tip;
-  vec2 windDirection = vec2(0.94, 0.34);
+  float headingCos = cos(windHeading);
+  float headingSin = sin(windHeading);
+  vec2 windDirection = vec2(0.94 * headingCos - 0.34 * headingSin, 0.94 * headingSin + 0.34 * headingCos);
   float along = dot(worldPoint.xz, windDirection);
   float gust = 0.5 + 0.5 * sin(along * 0.32 - seconds * 1.7 + 2.0 * sin(worldPoint.x * 0.05 - worldPoint.z * 0.04 + seconds * 0.23));
   float push = (0.3 + 0.7 * gust * gust) * strength;
@@ -37,7 +42,9 @@ vec3 windOffset(vec3 localPosition, vec3 worldPoint, vec2 leafUv, float surfaceT
   float sway = sin(seconds * 1.2 + worldPoint.z * 0.31 + worldPoint.x * 0.17) * strength * 0.10 * heightReach * branchReach;
   float tip = clamp(1.0 - leafUv.y, 0.0, 1.0);
   float flutter = sin(seconds * 3.1 + worldPoint.x * 1.7 + worldPoint.z * 1.3 + localPosition.y * 2.0) * strength * 0.08 * tip;
-  return vec3(sway + flutter, 0.0, flutter * 0.6);
+  vec2 heading = vec2(cos(windHeading), sin(windHeading));
+  vec2 push = heading * (sway + flutter) + vec2(-heading.y, heading.x) * (flutter * 0.6);
+  return vec3(push.x, 0.0, push.y);
 }
 `,
   worldFunctions: `float terrainHash(vec2 position) {

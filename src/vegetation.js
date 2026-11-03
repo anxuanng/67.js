@@ -767,6 +767,11 @@ export function selectLevels(instances, eye, { distanceScale = 1, hysteresis = 0
   return { parts, changed, levelCounts: Array.from(levelCounts, count => count ?? 0), culled, triangles };
 }
 
+/** The level of detail for one distance, without hysteresis: a pure function of the distance, or -1 past cullDistance. */
+export function levelForDistance(distance, variant, { distanceScale = 1, cullDistance = Infinity } = {}) {
+  return nextLevel(-1, distance, variant.distances.map(threshold => threshold * distanceScale), 0, cullDistance);
+}
+
 /** Renderer parts for one tree (or clump) placed by `matrix`, at a level of detail. */
 export function vegetationParts(variant, matrix, levelIndex = 0, name = variant.species) {
   return variant.levels[levelIndex].parts.map(part => ({ name: `${name} ${part.role}`, geometry: part.geometry, shadowLods: part.shadowLods, matrix, material: part.material }));

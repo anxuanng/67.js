@@ -173,7 +173,7 @@ function draw(record, time = 0, camera = record.scene.camera, frameOptions = {})
     record.shadowKey = shadowKey;
   }
   record.renderer.world = environment.world;
-  record.renderer.render({ ...camera, environment: litEnvironment(record.scene.parts, environment, Boolean(record.renderer.groundPart)), effects, exposure: effects.exposure, time, lines: environment.lines, ...frameOptions });
+  record.renderer.render({ ...camera, environment: litEnvironment(record.scene.parts, environment, Boolean(record.renderer.groundPart)), effects, exposure: effects.exposure, time, lines: environment.lines, ...windFrame(environment), ...frameOptions });
   const error = record.renderer.context.getError();
   if (error !== 0) {
     throw new Error(`WebGL render failed with error ${error}.`);
@@ -231,6 +231,12 @@ function resetCanvas() {
 // The cascade code is a loaded module, so a scene with one shadow map never runs it.
 function cascadeCountFor(scene) {
   return agentSceneModule('cascades').effectiveShadowCascades(scene.environment, scene.shadow);
+}
+
+// Wind strength and heading (degrees, 0 toward +x, turning toward +z) of the recipe; absent keeps the renderer default.
+function windFrame(environment) {
+  if (!environment.wind) return {};
+  return { wind: environment.wind.strength, windHeading: environment.wind.direction * Math.PI / 180 };
 }
 
 function cascadesFor(scene) {

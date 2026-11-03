@@ -23,7 +23,7 @@ const MAX_MESH_REPORTS = 16;
 // Terrain meshes carry one more float for each vertex (sky visibility) than the 56 bytes the budget estimates.
 const TERRAIN_SKY_VISIBILITY_BYTES = 4;
 const CAMERA_DEFAULTS = Object.freeze({ eye: [4, 3, 5], target: [0, 0, 0], up: [0, 1, 0], fov: 45, near: 0.1, far: 1000 });
-const NODE_FIELDS = ['translation', 'rotation', 'scale', 'parent', 'label', 'geometry', 'material', 'skin', 'relations', 'asset', 'decal', 'depthLayer'];
+const NODE_FIELDS = ['translation', 'rotation', 'scale', 'parent', 'label', 'geometry', 'material', 'skin', 'relations', 'asset', 'vegetation', 'decal', 'depthLayer'];
 const MATERIAL_FIELDS = ['color', 'metallic', 'roughness', 'emission', 'emissiveColor', 'opacity', 'alphaMode', 'doubleSided', 'pattern', ...MATERIAL_LAYER_FIELDS];
 const PATTERN_TEXTURE_FIELDS = ['map', 'normalMap', 'metallicRoughnessMap', 'emissiveMap', 'boxMapScale', 'boxMapAxis'];
 const CAMERA_FIELDS = Object.keys(CAMERA_DEFAULTS);
@@ -290,6 +290,12 @@ function nodeFrom(value) {
       throw new TypeError(`Node ${value.id}: a node that places an asset is a group; drop geometry, material and skin.`);
     }
     result.asset = agentSceneModule('assets').normalizeAssetPlacement(value.asset);
+  }
+  if (value.vegetation !== undefined) {
+    if (value.geometry !== undefined || value.skin !== undefined || value.asset !== undefined) {
+      throw new TypeError(`Node ${value.id}: a node that grows vegetation is a group; drop geometry, material, skin and asset.`);
+    }
+    result.vegetation = agentSceneModule('vegetation').normalizeVegetation(value.vegetation);
   }
   if (value.decal !== undefined && typeof value.decal !== 'boolean') {
     throw new TypeError('decal must be boolean.');
@@ -794,6 +800,15 @@ function assetMaterialHandle(snapshot, output, ...candidates) {
   return reusable ?? { holder: { snapshot }, output };
 }
 
+function mergedRuntime(placed, vegetation) {
+  return {
+    ...placed,
+    geometryParts: new Map([...placed.geometryParts, ...vegetation.geometryParts]),
+    materialOutputs: new Map([...placed.materialOutputs, ...vegetation.materialOutputs]),
+    partExtras: new Map([...placed.partExtras, ...vegetation.partExtras]),
+  };
+}
+
 function retainedMatrices(parts) {
   for (const part of parts) {
     if (part.matrix.length !== 16 || part.matrix.byteLength !== 64) {
@@ -962,6 +977,7 @@ function removeNode(candidate, operation) {
 export function createAgentScene(input, inputLimits = {}, options = {}) {
   const limits = resolveLimits(inputLimits);
   const assetOutputCache = new Map();
+  let vegetationCache = null;
   let state = null;
   let revision = 0;
   let topologyRevision = 0;
@@ -1015,9 +1031,14 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
 
   function stage(inputRecipe, preferred = null, removedNodes = new Set(), removedMaterials = new Set()) {
     const recipe = normalizeRecipe(inputRecipe, limits);
-    const assetRuntime = recipe.nodes.some(node => node.asset)
+    const placedRuntime = recipe.nodes.some(node => node.asset)
       ? agentSceneModule('assets').expandAssetPlacements(recipe, options.assets, limits, assetOutputCache)
       : NO_ASSETS;
+    // Grown vegetation travels the placed-asset channel: generated geometries, materials and part nodes.
+    const vegetationRuntime = recipe.nodes.some(node => node.vegetation)
+      ? agentSceneModule('vegetation').expandVegetation(recipe, limits, vegetationCache ??= agentSceneModule('vegetation').createVegetationCache())
+      : null;
+    const assetRuntime = vegetationRuntime ? mergedRuntime(placedRuntime, vegetationRuntime) : placedRuntime;
     if (state) {
       retainedMatrices(state.parts);
     }
@@ -1137,6 +1158,7 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
       stats: geometryStats(geometryRecords.values()),
     };
     stagedState.assetRuntime = assetRuntime;
+    stagedState.vegetationReport = vegetationRuntime?.report ?? [];
     stagedState.localBounds = localBounds;
     stagedState.skinBindings = skinBindings;
     stagedState.skinStages = createSkinStages(skinBindings);
@@ -1595,6 +1617,7 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
         physics: state.physicsSampler ? state.physicsSampler.report() : null,
         ...(state.clothSampler ? { cloth: state.clothSampler.report() } : {}),
         ...(state.particleSampler ? { particles: state.particleSampler.report() } : {}),
+        ...(state.vegetationReport?.length ? { vegetation: state.vegetationReport } : {}),
         ...(state.assetRuntime.placements.length ? { assets: agentSceneModule('assets').describeAssetPlacements(state.assetRuntime, state.graph, geometry => state.localBounds.get(geometry)) } : {}),
         ...(state.bakeReport ? { bake: state.bakeReport } : {}),
         ...(state.reflectionReport ? { reflections: state.reflectionReport } : {}),
