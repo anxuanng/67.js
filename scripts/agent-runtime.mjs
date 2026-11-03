@@ -6,6 +6,7 @@ import { dirname, isAbsolute, join } from 'node:path';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import packageMetadata from '../package.json' with { type: 'json' };
+import { VEGETATION_CAPABILITY_NOTE } from '../src/agent-vegetation-notes.js';
 import { AGENT_SCENE_CAPABILITIES, AGENT_SCENE_DEFAULT_LIMITS, RENDER_PASS_NAMES, RENDER_PASS_DEPTH_RANGE, VIDEO_ENCODERS, MAXIMUM_VIDEO_SECONDS, MAXIMUM_JOB_SIDE, MAXIMUM_JOB_PIXELS, MAXIMUM_MEMORY_MIB, BAKE_WORKER_MAXIMUM_SECONDS } from '../src/agent-scene-capabilities.js';
 import { PATH_TRACER_CAPABILITIES } from '../src/path-tracer-capabilities.js';
 import { chooseDenoiser, finishWithOidn } from './agent-path-trace-denoise.mjs';
@@ -373,7 +374,7 @@ export function createAgentRuntime({ kernelWorkers = true, backend = 'gpu', brow
       await jobPage.goto(origin);
       await jobPage.waitForFunction(() => Boolean(window.__agentPreview));
       const input = { sessionId: jobId, recipe: snapshot.recipe, memoryBudgetMiB: memory, backend,
-        ...(snapshot.assetBytes ? { data: snapshot.assetBytes.toString('base64'), ...(await motionSources([snapshot.recipe.motion])) } : {}) };
+        ...(snapshot.assetBytes ? { data: snapshot.assetBytes.toString('base64'), ...(await motionSources([snapshot.recipe.motion])) } : await placedAssetData(snapshot.recipe)) };
       const created = await jobPage.evaluate(({ method, input }) => window.__agentPreview[method](input),
         { method: snapshot.assetBytes ? 'createAsset' : 'create', input });
       const width = settings.kind === 'video' ? Math.floor(created.render.width / 2) * 2 : created.render.width;
@@ -562,7 +563,7 @@ export function createAgentRuntime({ kernelWorkers = true, backend = 'gpu', brow
   return Object.freeze({
     async capabilities() {
       return {
-        scene: AGENT_SCENE_CAPABILITIES,
+        scene: { ...AGENT_SCENE_CAPABILITIES, vegetation: VEGETATION_CAPABILITY_NOTE },
         sceneLimits: SCENE_LIMITS,
         preview: { backend, memoryBudgetMiB: memory, maximumWidth: 1024, maximumHeight: 1024, maximumImageBytes: MAXIMUM_IMAGE_BYTES, maximumActiveScenes: 1, maximumQueuedCalls: MAXIMUM_QUEUED_CALLS, evaluationTimeoutMs: EVALUATION_TIMEOUT_MS },
         review: { ...REVIEW_LIMITS, backend, memoryBudgetMiB: memory, evaluationTimeoutMs: EVALUATION_TIMEOUT_MS,
@@ -853,9 +854,6 @@ export function createAgentRuntime({ kernelWorkers = true, backend = 'gpu', brow
         }
         const snapshot = await invoke('snapshot', { sessionId, expectedRevision });
         const assetBytes = snapshot.recipe.format === '67js.asset' ? await (await catalog()).read(snapshot.recipe.assetId) : undefined;
-        if (recipeAssetNeeds(snapshot.recipe).length) {
-          throw new Error('Render jobs do not yet render scenes that place catalog assets. Use scene_look for stills of this scene.');
-        }
         phase = 'rendering';
         try {
           return await controller.submit({ sourceRevision: snapshot.sourceRevision,

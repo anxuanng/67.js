@@ -332,13 +332,15 @@ function diagonalOfPart(part) {
  * Adds the coplanar-overlap warning to `renderer.diagnostics`. The check is bounded (see findCoplanarOverlaps) and runs once
  * per layout, when the renderer's batches change, not per frame, so parts that move later are not rechecked.
  */
-export function installCoplanarDiagnostics(renderer) {
+export function installCoplanarDiagnostics(renderer, onOverlaps = null) {
   let checkedBatches = null;
   let problems = null;
   renderer.coplanarDiagnostics = batches => {
     if (batches !== checkedBatches) {
       checkedBatches = batches;
-      problems = coplanarOverlapDiagnostics(findCoplanarOverlaps(batches.flatMap(batch => batch.parts)));
+      const found = findCoplanarOverlaps(batches.flatMap(batch => batch.parts));
+      problems = coplanarOverlapDiagnostics(found);
+      onOverlaps?.(found.overlaps);
     }
     return problems;
   };

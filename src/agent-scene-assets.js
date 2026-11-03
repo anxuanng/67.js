@@ -14,7 +14,9 @@ const PLACEMENT_FIELDS = ['id', 'materials', 'clip', 'drive'];
 const CLIP_FIELDS = ['index', 'start', 'speed', 'loop'];
 const COLOR_FIELDS = ['color', 'emissiveColor'];
 const UNIT_FIELDS = ['metallic', 'roughness', 'opacity'];
-const OVERRIDE_FIELDS = ['name', ...COLOR_FIELDS, ...UNIT_FIELDS, 'emission'];
+const OVERRIDE_FIELDS = ['name', 'tag', ...COLOR_FIELDS, ...UNIT_FIELDS, 'emission'];
+// A tag an override may set: foliage and grass make an imported tree sway in the wind and shade like a grown one.
+const OVERRIDE_TAGS = ['surface', 'foliage', 'grass'];
 
 function knownKeys(value, allowed, label) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
@@ -40,6 +42,10 @@ function normalizeMaterialOverride(override) {
     throw new TypeError('An asset material override needs the source material name. scene_inspect lists the names under assets.');
   }
   const result = { name: override.name };
+  if (override.tag !== undefined) {
+    if (!OVERRIDE_TAGS.includes(override.tag)) throw new RangeError(`asset material override tag must be one of ${OVERRIDE_TAGS.join(', ')}.`);
+    result.tag = override.tag;
+  }
   for (const field of COLOR_FIELDS) {
     if (override[field] !== undefined) result[field] = colorVector(override[field], field);
   }
@@ -146,6 +152,7 @@ function jsonMaterial(source) {
 
 function overrideFields(override) {
   const fields = {};
+  if (override?.tag !== undefined) fields.tag = override.tag;
   for (const field of [...COLOR_FIELDS, ...UNIT_FIELDS, 'emission']) {
     if (override?.[field] !== undefined) fields[field] = override[field];
   }

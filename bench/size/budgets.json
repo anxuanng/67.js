@@ -53,6 +53,7 @@
   "scene:agent-scene": 112573,
   "scene:agent-scene+lazy": 300582,
   "entry:coplanar-overlap": 2960,
+  "entry:reversed-depth": 10600,
   "entry:view-transform": 2120,
   "entry:view-transform-shader": 21213,
   "entry:liquid-shader": 16892,

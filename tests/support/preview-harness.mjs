@@ -4,7 +4,7 @@ import { mat4 } from 'gl-matrix';
 import { createAgentScene, needsMeshBooleans, loadMeshBooleans, meshBooleansLoaded, needsPhysics, loadPhysicsEngine, physicsEngineLoaded, loadAllAgentSceneModules, allAgentSceneModulesLoaded } from '../../src/agent-scene.js';
 import { applyProjection } from '../../src/camera.js';
 import { resolveAgentShadow, agentEnvironmentMap } from '../../src/agent-look.js';
-import { agentSceneModule } from '../../src/agent-scene-modules.js';
+import { agentSceneModule, agentSceneModuleLoaded } from '../../src/agent-scene-modules.js';
 import { createAgentAssetScene } from '../../src/agent-asset.js';
 import { parseGltf } from '../../src/gltf.js';
 import { assetCopyKey, recipeAssetNeeds } from '../../src/agent-scene-assets.js';
@@ -77,12 +77,12 @@ export function previewHarness() {
     parseGltf, Uint8Array, atob, sessionProblem, assetCopyKey, recipeAssetNeeds,
     applyProjection, mat4, resolveAgentShadow, agentEnvironmentMap, BRANCH_LIMITS,
     // Line art needs a real renderer with render passes, so the fault-injected one gets a no-op install.
-    agentSceneModule: name => (name === 'lineArt' ? { installLineArt: renderer => renderer } : agentSceneModule(name)), createBranchStore, printableLabel,
+    agentSceneModule: name => (name === 'lineArt' ? { installLineArt: renderer => renderer } : agentSceneModule(name)), agentSceneModuleLoaded, createBranchStore, printableLabel,
     Renderer67: FaultInjectedRenderer, skyOpenness: () => 1, fogSkyVisibility: () => null,
     // The fault-injected renderer has no floor part; the automatic floor is covered by agent-ground.test.js and the live smokes.
     agentGroundPlacement: () => null, createAgentGround: () => null, placeAgentGround: () => {}, FLOOR_COLOR: [0.22, 0.22, 0.21], groundBounceEnvironment: (parts, environment) => environment,
     // The optional addons only plug stages into a real renderer; the fault-injected one needs none.
-    installCameraEffects: renderer => renderer, installRenderPasses: renderer => renderer, installCoplanarDiagnostics: renderer => renderer,
+    installCameraEffects: renderer => renderer, installRenderPasses: renderer => renderer, installDepthPrecision: renderer => renderer,
   });
   // Evaluate only trusted repository adapter code; inject the driver boundary for failure cases.
   new Script(source).runInContext(context);
