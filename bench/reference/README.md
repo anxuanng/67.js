@@ -1280,3 +1280,20 @@ Change tried: in the probe trace, a hit on a metal part returns what that part m
 The best of them is 0.0004 better, which is inside what the choice of gain alone moves, and 0.0022 short of EEVEE. At gain 1 it overshoots the steel cylinder (0.556 to 0.590, Cycles 0.573) and brightens the chrome sphere, which is already too bright; the sphere's error is the structure of the reflection (the cloud pattern and the floor under its base), not its level. This agrees with the earlier "metal parts mirroring the sky too" row (0.0939). Not kept; no engine file, scene or `baseline.json` row changed, and the first box of #167 stays open: `metal` 0.0944 against EEVEE 0.0916. A scene without a reflective part never loads the trace, so its frame cost is as before.
 
 Next idea: the open floor is more than half of the error and the largest gap, and a surface-level cause there needs a new input (light the metal parts reflect onto the floor, which a diffuse bounce leaves out), for example a few traced caustic-like patches stamped into the ground bounce.
+
+## Where `foliage` loses to EEVEE, by region (2026-11-03, part of issue #191)
+
+Nothing in the engine changed; `baseline.json` is unchanged. The GPU was held for the whole session by a long Blender render (`gpu-lock.sh` queue), so only the stored arrays were analysed and no fix was tried on a render. Method: `bench/reference/region-errors.py foliage gpu` (67js 0.0979, EEVEE 0.0888, against Cycles), then the same FLIP error map cut finer (distance from the silhouette, Cycles luminance of the pixel). The shares are of the frame; the gap is the contribution of 67js minus the contribution of EEVEE to the frame mean:
+
+| Region | Frame share | FLIP 67js / EEVEE | Gap to EEVEE | Display luminance 67js / Cycles / EEVEE |
+| --- | --- | --- | --- | --- |
+| Crown (`broadleaf foliage`) | 0.167 | 0.3037 / 0.2805 | +0.0039 | 0.395 / 0.377 / 0.427 |
+| Open floor | 0.459 | 0.0988 / 0.0931 | +0.0026 | 0.735 / 0.730 / 0.736 |
+| Sky | 0.364 | 0.0157 / 0.0101 | +0.0020 | 0.829 / 0.829 / 0.829 |
+| Bark and the floor part | 0.010 | 0.2016 / 0.1792 | +0.0002 | |
+
+The sky and the open floor have the same luminance as Cycles, and their gap is almost all 8-bit rounding. The 67js frame is an 8-bit PNG while the Cycles and EEVEE arrays are floats: in the flat sky 67js differs from Cycles by 0.0010 per channel (mean absolute, the value of uniform rounding) and EEVEE by 0.0002, and the sky error is 0.0157 against 0.0101. The floor lit by the sun (Cycles luminance 0.7 to 0.8) shows the same offset (0.0854 against 0.0796). Rounding the EEVEE array to 8 bits and rescoring: EEVEE 0.0888 becomes 0.0924, so 0.0036 of the 0.0091 gap is the format of the comparison, not a rendering error, and no shader can remove it. The remaining gap is 0.0055.
+
+Inside the crown, by the Cycles luminance of the pixel (contribution to the frame mean, 67js / EEVEE): pixels under 0.15 (share 0.063) 0.0227 / 0.0261, 67js better; 0.15 to 0.5 (0.047) 0.0187 / 0.0170; over 0.5 (0.057, sunlit leaves) 0.0094 / 0.0038. The mean crown luminance is closer to Cycles in 67js (+0.019) than in EEVEE (+0.050). So the level is right and the loss is where individual bright leaves sit: in pixels Cycles draws as lit leaf, 67js has error 0.167 against 0.067, while its shaded leaves beat EEVEE. This is the leaf shape and placement cause #191 already named; the edge of the silhouette (3 px) is only 0.0007 of the frame.
+
+Next idea: the crown needs a per-card measurement, for example the Cycles array against 67js with the same leaf card in each pixel (a card id image from the harness), to see whether the bright-leaf error is cards missing, shifted or too dark; and the scorer could report the 8-bit EEVEE figure beside the float one so "beats EEVEE" compares like with like. Neither was tried. The first box of #191 stays open.
