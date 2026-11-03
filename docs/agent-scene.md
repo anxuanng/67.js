@@ -102,7 +102,7 @@ Shared resource IDs generate geometry once, regardless of the number of mesh nod
 
 Materials contain `id`, `tag`, `color`, `metallic`, `roughness`, `emission`, optional `emissiveColor`, `opacity`, `alphaMode`, `doubleSided` and `pattern`.
 The defaults are `surface`, `[0.5, 0.5, 0.5]`, `0`, `0.5`, `0`, opacity `1`, `opaque` and `false`.
-The tag can be `surface`, `unlit`, `liquid` or `foam` and remains fixed during editing.
+The tag can be `surface`, `unlit`, `liquid`, `foam`, `foliage` or `grass` (the last two sway in `environment.wind`) and remains fixed during editing.
 `liquid` refracts and tints what lies behind it: its color is the light one metre lets through, so `[0.56, 0.84, 0.88]` is clear water. `foam` draws soft blended droplets.
 Any `opacity` below one draws the material blended after opaque geometry, which suits glass, windows and visors. `alphaMode` accepts `opaque` or `blend`; cutout masking needs a texture and is not available in procedural recipes.
 `doubleSided` draws and lights both faces of thin sheets.
