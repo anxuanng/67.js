@@ -9,7 +9,7 @@ import { MAX_MORPH_TARGETS, createMorphPose, validateMorphGeometry, validateMorp
 
 export const GLTF_CAPABILITIES = Object.freeze({
   formats: ['glb', 'gltf'],
-  supported: ['triangle meshes', 'world transforms', 'rigid node animations', 'four-influence skeletal skinning', 'joint node animations', 'relative POSITION/NORMAL morph targets', 'morph weight animations', 'PNG/JPEG base color textures', 'normal/occlusion/emissive/metallic-roughness textures', 'TEXCOORD_0', 'TEXCOORD_1 for occlusion, emissive and metallic-roughness textures', 'clearcoat, clearcoat roughness, clearcoat normal, anisotropy, sheen color and sheen roughness textures', 'linear RGB vertex colors', 'metallic roughness factors', 'emissive factors', 'alpha mask and blend modes', 'double-sided materials', 'KHR_mesh_quantization', 'KHR_materials_emissive_strength', 'KHR_materials_clearcoat, transmission, volume, ior, specular, sheen, anisotropy and iridescence factors', 'KHR_texture_transform baked into UVs, with a normal map that differs by scale and offset applied in the shader', 'EXT_mesh_gpu_instancing expanded into parts', 'KHR_draco_mesh_compression with options.decoders.draco', 'EXT_meshopt_compression with options.decoders.meshopt', 'KHR_texture_basisu with options.decoders.ktx2'],
+  supported: ['triangle meshes', 'world transforms', 'rigid node animations', 'four-influence skeletal skinning', 'joint node animations', 'relative POSITION/NORMAL morph targets', 'morph weight animations', 'PNG/JPEG/WebP base color textures', 'normal/occlusion/emissive/metallic-roughness textures', 'TEXCOORD_0', 'TEXCOORD_1 for occlusion, emissive and metallic-roughness textures', 'clearcoat, clearcoat roughness, clearcoat normal, anisotropy, sheen color and sheen roughness textures', 'linear RGB vertex colors', 'metallic roughness factors', 'emissive factors', 'alpha mask and blend modes', 'double-sided materials', 'KHR_mesh_quantization', 'KHR_materials_emissive_strength', 'KHR_materials_clearcoat, transmission, volume, ior, specular, sheen, anisotropy and iridescence factors', 'KHR_texture_transform baked into UVs, with a normal map that differs by scale and offset applied in the shader', 'EXT_mesh_gpu_instancing expanded into parts', 'KHR_draco_mesh_compression with options.decoders.draco', 'EXT_meshopt_compression with options.decoders.meshopt', 'KHR_texture_basisu with options.decoders.ktx2', 'EXT_texture_webp, with the PNG or JPEG fallback source when the browser cannot decode WebP'],
   // The primitive's own material is drawn; the other variants are not selectable.
   ignoredExtensions: ['KHR_materials_variants'],
   unsupported: ['more than four skin influences', 'singular weighted skin transforms', 'reflected skin transforms', 'TANGENT morph targets', 'morph targets without authored base normals', 'vertex alpha below one', 'different texture transforms on one material, except a normal map that differs by scale and offset', 'skinned or morphed GPU instancing', 'transmission, iridescence and specular textures (their factors are used)', 'texture transforms on TEXCOORD_1'],
@@ -30,7 +30,7 @@ const DEFAULT_MAX_INSTANCES = 4096;
 // KHR_xmp_json_ld and its earlier name KHR_xmp only carry metadata (authors, licences) and change nothing drawn: the
 // Khronos sample assets list them, and a file must not be refused for them.
 const METADATA_EXTENSIONS = ['KHR_xmp_json_ld', 'KHR_xmp'];
-const ALLOWED_EXTENSIONS = new Set(['KHR_mesh_quantization', 'KHR_materials_emissive_strength', 'KHR_texture_transform', 'EXT_mesh_gpu_instancing', ...METADATA_EXTENSIONS, ...GLTF_LAYER_EXTENSIONS]);
+const ALLOWED_EXTENSIONS = new Set(['KHR_mesh_quantization', 'KHR_materials_emissive_strength', 'KHR_texture_transform', 'EXT_mesh_gpu_instancing', 'EXT_texture_webp', ...METADATA_EXTENSIONS, ...GLTF_LAYER_EXTENSIONS]);
 const DECODER_BY_EXTENSION = { KHR_draco_mesh_compression: 'draco', EXT_meshopt_compression: 'meshopt', KHR_texture_basisu: 'ktx2' };
 // Accepted when optional, because 67js does not render them. Rejected when listed in extensionsRequired.
 const IGNORED_EXTENSIONS = new Set(GLTF_CAPABILITIES.ignoredExtensions);
@@ -489,6 +489,28 @@ function dataUriBytes(uri) {
   return Uint8Array.from(binary, character => character.charCodeAt(0));
 }
 
+const RIFF_TAG = 0x52494646;
+const WEBP_TAG = 0x57454250;
+
+/** Read the size from a WebP header: the extended (VP8X), lossy (VP8) or lossless (VP8L) layout. */
+function webpImageSize(bytes, header) {
+  if (bytes.length < 30 || header.getUint32(0) !== RIFF_TAG || header.getUint32(8) !== WEBP_TAG) return null;
+  const chunk = String.fromCharCode(bytes[12], bytes[13], bytes[14], bytes[15]);
+  if (chunk === 'VP8X') {
+    const width = 1 + (bytes[24] | (bytes[25] << 8) | (bytes[26] << 16));
+    const height = 1 + (bytes[27] | (bytes[28] << 8) | (bytes[29] << 16));
+    return { width, height };
+  }
+  if (chunk === 'VP8 ' && bytes[23] === 0x9d && bytes[24] === 0x01 && bytes[25] === 0x2a) {
+    return { width: header.getUint16(26, true) & 0x3fff, height: header.getUint16(28, true) & 0x3fff };
+  }
+  if (chunk === 'VP8L' && bytes[20] === 0x2f) {
+    const bits = header.getUint32(21, true);
+    return { width: (bits & 0x3fff) + 1, height: ((bits >>> 14) & 0x3fff) + 1 };
+  }
+  return null;
+}
+
 function validateImage(bytes, maxImagePixels) {
   const header = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   let width;
@@ -515,13 +537,18 @@ function validateImage(bytes, maxImagePixels) {
       offset += length;
     }
   }
+  if (!width) {
+    const webpSize = webpImageSize(bytes, header);
+    width = webpSize?.width;
+    height = webpSize?.height;
+  }
   const ktx2Identifier = [0xab, 0x4b, 0x54, 0x58, 0x20, 0x32, 0x30, 0xbb, 0x0d, 0x0a, 0x1a, 0x0a];
   if (!width && bytes.length >= 28 && ktx2Identifier.every((value, index) => bytes[index] === value)) {
     width = header.getUint32(20, true);
     height = header.getUint32(24, true);
     scalable = false;
   }
-  if (!width || !height) throw new Error('Only valid PNG, JPEG and KTX2 texture images are supported.');
+  if (!width || !height) throw new Error('Only valid PNG, JPEG, WebP and KTX2 texture images are supported.');
   if (width * height > maxImagePixels) throw new Error('Texture image exceeds maxTextureImagePixels before decoding.');
   return { width, height, scalable };
 }

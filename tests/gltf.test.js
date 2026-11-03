@@ -561,3 +561,85 @@ test('normalized integer skin weights import correctly and skinned mesh node tra
   assert.ok(skinPosition(part, 4).x < 0.1);
   asset.dispose();
 });
+
+function webpLosslessUri(width, height) {
+  const bytes = new Uint8Array(30);
+  const view = new DataView(bytes.buffer);
+  bytes.set([0x52, 0x49, 0x46, 0x46], 0);
+  view.setUint32(4, 22, true);
+  bytes.set([0x57, 0x45, 0x42, 0x50, 0x56, 0x50, 0x38, 0x4c], 8);
+  view.setUint32(16, 10, true);
+  bytes[20] = 0x2f;
+  view.setUint32(21, (width - 1) | ((height - 1) << 14), true);
+  return `data:image/webp;base64,${Buffer.from(bytes).toString('base64')}`;
+}
+
+function webpExtendedUri(width, height) {
+  const bytes = new Uint8Array(30);
+  const view = new DataView(bytes.buffer);
+  bytes.set([0x52, 0x49, 0x46, 0x46], 0);
+  view.setUint32(4, 22, true);
+  bytes.set([0x57, 0x45, 0x42, 0x50, 0x56, 0x50, 0x38, 0x58], 8);
+  view.setUint32(16, 10, true);
+  for (const [offset, value] of [[24, width - 1], [27, height - 1]]) {
+    bytes[offset] = value & 0xff;
+    bytes[offset + 1] = (value >> 8) & 0xff;
+    bytes[offset + 2] = (value >> 16) & 0xff;
+  }
+  return `data:image/webp;base64,${Buffer.from(bytes).toString('base64')}`;
+}
+
+function mockImageBitmapByType(context, decodable) {
+  const previousBitmap = globalThis.createImageBitmap;
+  const previousSelf = globalThis.self;
+  globalThis.self = globalThis;
+  const decodedTypes = [];
+  globalThis.createImageBitmap = async blob => {
+    if (!decodable(blob.type)) throw new Error(`cannot decode ${blob.type}`);
+    decodedTypes.push(blob.type);
+    return { width: 4, height: 4, close() {} };
+  };
+  context.after(() => {
+    if (previousBitmap) globalThis.createImageBitmap = previousBitmap;
+    else delete globalThis.createImageBitmap;
+    if (previousSelf) globalThis.self = previousSelf;
+    else delete globalThis.self;
+  });
+  return decodedTypes;
+}
+
+function useWebpTexture(document, images, texture) {
+  document.images = images;
+  document.textures = [texture];
+  document.extensionsUsed = ['EXT_texture_webp'];
+  document.materials[0].pbrMetallicRoughness.baseColorTexture = { index: 0 };
+}
+
+test('EXT_texture_webp textures decode as WebP', async context => {
+  const decodedTypes = mockImageBitmapByType(context, () => true);
+  const asset = await parseGltf(triangleAsset(document => {
+    useWebpTexture(document, [{ uri: webpLosslessUri(4, 4) }], { extensions: { EXT_texture_webp: { source: 0 } } });
+    document.extensionsRequired = ['EXT_texture_webp'];
+  }));
+  assert.ok(asset.parts[0].material.map);
+  assert.deepEqual(decodedTypes, ['image/webp']);
+  assert.ok(GLTF_CAPABILITIES.supported.some(entry => entry.includes('EXT_texture_webp')));
+  asset.dispose();
+});
+
+test('a WebP texture falls back to its PNG source when the browser cannot decode WebP', async context => {
+  const decodedTypes = mockImageBitmapByType(context, type => type !== 'image/webp');
+  const asset = await parseGltf(triangleAsset(document => {
+    useWebpTexture(document, [{ uri: webpLosslessUri(4, 4) }, { uri: PNG_IMAGE }], { source: 1, extensions: { EXT_texture_webp: { source: 0 } } });
+  }));
+  assert.ok(asset.parts[0].material.map);
+  assert.deepEqual(decodedTypes, ['image/png']);
+  asset.dispose();
+});
+
+test('WebP image sizes count toward the texture budgets before decoding', async () => {
+  const oversized = triangleAsset(document => {
+    useWebpTexture(document, [{ uri: webpExtendedUri(10000, 10000) }], { extensions: { EXT_texture_webp: { source: 0 } } });
+  });
+  await assert.rejects(parseGltf(oversized), /maxTextureImagePixels before decoding/);
+});
