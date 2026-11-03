@@ -7,6 +7,7 @@ import { planRenderSize, estimateTextureBytes, estimateFrameBytes } from './budg
 import { applyProjection } from './camera.js';
 import { resolveEffects } from './effects.js';
 import { frameDiagnostics } from './frame-diagnostics.js';
+import { depthLayerOf, findCoplanarOverlaps, MAXIMUM_DEPTH_LAYER } from './coplanar-overlap.js';
 import { createLightingState, updateLightingState } from './lighting.js';
 import { SHADOW_ATLAS_WIDTH, SHADOW_ATLAS_HEIGHT, tileViewport, writeShadowTile } from './local-shadows.js';
 import { resolveVolumeFog, volumeShadowAmbient } from './volumetric.js';
@@ -204,6 +205,17 @@ function materialAlphaState(material) {
   return [alphaMode, alphaCutoff, opacity, material.doubleSided === true];
 }
 
+// A decal or depth layer draws with a scoped polygon offset so it wins against the surface it lies on (z-fighting).
+// Larger layers win over smaller ones; geometry never moves.
+const DEPTH_LAYER_UNITS = 4;
+
+function validateDepthLayer(part) {
+  if (part.decal !== undefined && typeof part.decal !== 'boolean') throw new TypeError('decal must be a boolean');
+  if (part.depthLayer !== undefined && (!Number.isInteger(part.depthLayer) || part.depthLayer < 0 || part.depthLayer > MAXIMUM_DEPTH_LAYER)) {
+    throw new RangeError(`depthLayer must be an integer from 0 to ${MAXIMUM_DEPTH_LAYER}`);
+  }
+}
+
 // Translucent glass is not a shadow caster unless the part asks for it.
 function castsShadow(part) {
   return part.castShadow ?? (part.material.alphaMode ?? 'opaque') !== 'blend';
@@ -320,6 +332,7 @@ export function groupParts(parts, batching = true) {
   const morphInfos = new Map();
   for (const part of parts) {
     validateTransform(part);
+    validateDepthLayer(part);
     if (part.castShadow !== undefined && typeof part.castShadow !== 'boolean') throw new TypeError('castShadow must be a boolean');
     validateSkinGeometry(part.geometry, part.skin);
     if (part.skin) validateSkinPose(part.skin, part.geometry, part.matrix);
@@ -331,7 +344,7 @@ export function groupParts(parts, batching = true) {
     const key = batching ? part.geometry : part;
     if (!groups.has(key)) groups.set(key, new Map());
     let maps = groups.get(key);
-    for (const value of [...materialMapState(part.material), ...materialLayerState(part.material), part.skin ?? null, part.morph ?? null, castsShadow(part), renderPass(part.material), part.lods ?? null, part.shadowLods ?? null, ...materialAlphaState(part.material)]) {
+    for (const value of [...materialMapState(part.material), ...materialLayerState(part.material), part.skin ?? null, part.morph ?? null, castsShadow(part), depthLayerOf(part), renderPass(part.material), part.lods ?? null, part.shadowLods ?? null, ...materialAlphaState(part.material)]) {
       if (!maps.has(value)) maps.set(value, new Map());
       maps = maps.get(value);
     }
@@ -1023,7 +1036,7 @@ export class Renderer67 {
     const [alphaMode, alphaCutoff, opacity, doubleSided] = materialAlphaState(parts[0].material);
     const layerState = materialLayerState(parts[0].material);
     const culling = this.createCullingState(parts);
-    const batch = { ...culling, alphaMode, alphaCutoff, opacity, doubleSided, layerState, parts: [...parts], vertexArray, instanceBuffer, instanceData, textures, mapState, splat, lightMapTexture, texture: textures[0], map, skin, skinTexture, influenceTexture, morph, morphTexture, morphWeights, indexCount: geometry.indices.length, instanceCount: parts.length, floor: parts[0].material.tag === 'floor', castShadow: castsShadow(parts[0]), pass: renderPass(parts[0].material) };
+    const batch = { ...culling, alphaMode, alphaCutoff, opacity, doubleSided, layerState, parts: [...parts], vertexArray, instanceBuffer, instanceData, textures, mapState, splat, lightMapTexture, texture: textures[0], map, skin, skinTexture, influenceTexture, morph, morphTexture, morphWeights, indexCount: geometry.indices.length, instanceCount: parts.length, floor: parts[0].material.tag === 'floor', castShadow: castsShadow(parts[0]), depthLayer: depthLayerOf(parts[0]), pass: renderPass(parts[0].material) };
     if (parts[0].lods) culling.levelGeometries.forEach((geometryOfLevel, level) => this.levelDraw(batch, level));
     culling.shadowLevels?.levelGeometries.forEach((geometryOfLevel, level) => this.levelDraw(batch, level, batch.shadowLevels));
     parts.forEach((part, index) => this.partLocations.set(part, { batch, index, geometry: part.geometry, map, mapState, layerState, skin, jointMatrices: skin?.jointMatrices, skinIndices: geometry.skinIndices, skinWeights: geometry.skinWeights, morph, morphWeights: morph?.weights, morphTargets: geometry.morphTargets, normalMatrix: mat3.create(), committedMatrix: batch.instanceData.subarray(index * INSTANCE_STRIDE, index * INSTANCE_STRIDE + 16) }));
@@ -1050,7 +1063,7 @@ export class Renderer67 {
       const mapState = materialMapState(first.material);
       const sameParts = batch?.parts.length === group.length && batch.parts.every((part, index) => part === group[index]);
       const alphaState = materialAlphaState(first.material);
-      const sameState = location?.geometry === first.geometry && batch?.castShadow === castsShadow(first) &&
+      const sameState = location?.geometry === first.geometry && batch?.castShadow === castsShadow(first) && (batch.depthLayer ?? 0) === depthLayerOf(first) &&
         batch.floor === (first.material.tag === 'floor') && batchPass(batch) === renderPass(first.material) &&
         [batch.alphaMode, batch.alphaCutoff, batch.opacity, batch.doubleSided].every((value, index) => value === alphaState[index]) &&
         batch.mapState.every((value, index) => value === mapState[index]) &&
@@ -1141,6 +1154,7 @@ export class Renderer67 {
     this.triangles = parts.reduce((total, part) => total + part.geometry.indices.length / 3, 0);
     this.updateBatches.clear();
     this.shadowsDirty = true;
+    if (this.coplanarState) this.coplanarState.dirty = true;
     this.updateParts(renderParts);
     return parts.length;
   }
@@ -1203,6 +1217,8 @@ export class Renderer67 {
       if (part.skin || part.morph) this.updatePartIdentities.add(part);
       if (part.castShadow !== undefined && typeof part.castShadow !== 'boolean') throw new TypeError('castShadow must be a boolean');
       if (castsShadow(part) !== location.batch.castShadow) throw new Error(`Shadow casting changes require a new renderer: ${part.name}`);
+      validateDepthLayer(part);
+      if (depthLayerOf(part) !== (location.batch.depthLayer ?? 0)) throw new Error(`Decal and depthLayer changes require replaceParts or a new renderer: ${part.name}`);
       // A material whose fields still equal the ones that passed the full checks below needs none of them again.
       const materialUnchanged = location.materialSnapshot?.matches(part.material) === true;
       if (!materialUnchanged) {
@@ -1365,6 +1381,7 @@ export class Renderer67 {
       this.drawBatch(batch, false, selection, levelSet);
     }
     context.disable(context.POLYGON_OFFSET_FILL);
+    this.activeDepthLayer = 0;
     context.enable(context.CULL_FACE);
   }
 
@@ -1913,6 +1930,7 @@ export class Renderer67 {
       }
       return;
     }
+    this.applyDepthLayer(batch.depthLayer);
     const useCoverage = masked && this.samples > 1 && !this.benchmark && !this.renderingPass;
     if (useCoverage) {
       context.enable(context.SAMPLE_ALPHA_TO_COVERAGE);
@@ -1925,6 +1943,32 @@ export class Renderer67 {
     context.uniform1f(uniforms.materialOpacity, batch.opacity);
     context.uniform1f(uniforms.alphaToCoverage, useCoverage ? 1 : 0);
     context.uniform1f(uniforms.doubleSided, batch.doubleSided ? 1 : 0);
+  }
+
+  /** Sets the scoped polygon offset of a depth layer for the colour pass; layer 0 is the plain depth test. */
+  applyDepthLayer(layer) {
+    if (layer === (this.activeDepthLayer ?? 0)) return;
+    const context = this.context;
+    if (layer > 0) {
+      context.enable(context.POLYGON_OFFSET_FILL);
+      context.polygonOffset(-layer, -layer * DEPTH_LAYER_UNITS);
+    } else {
+      context.disable(context.POLYGON_OFFSET_FILL);
+    }
+    this.activeDepthLayer = layer;
+  }
+
+  /**
+   * Coplanar-overlap warnings for the parts as first laid out or last replaced. The check is bounded (src/coplanar-overlap.js)
+   * and runs once per layout, not per frame, so parts that move later are not rechecked.
+   */
+  coplanarOverlapReport() {
+    const state = this.coplanarState ??= { dirty: true, result: null };
+    if (state.dirty) {
+      state.result = findCoplanarOverlaps(this.batches.flatMap(batch => batch.parts));
+      state.dirty = false;
+    }
+    return state.result;
   }
 
   /** Reorders a blend batch's instances back to front for this eye; translation columns stand in for object centers. */
@@ -1975,6 +2019,7 @@ export class Renderer67 {
       this.drawAlphaBatch(batch, true);
     }
     context.depthMask(true);
+    this.applyDepthLayer(0);
     context.disable(context.BLEND);
     context.disable(context.SAMPLE_ALPHA_TO_COVERAGE);
     context.enable(context.CULL_FACE);
@@ -2073,7 +2118,7 @@ export class Renderer67 {
     // The shadow view follows the sun, so a moved sun redraws the map.
     const lightChanged = String(this.activeLightDirection) !== String(environment.lightDirection);
     this.activeLightDirection = environment.lightDirection;
-    this.diagnostics = frameDiagnostics({ world: this.world, depth: this.depth, effects, lightDirection: environment.lightDirection, shadowBounds: this.shadowBounds });
+    this.diagnostics = frameDiagnostics({ world: this.world, depth: this.depth, effects, lightDirection: environment.lightDirection, shadowBounds: this.shadowBounds, coplanarOverlaps: this.benchmark ? null : this.coplanarOverlapReport() });
     const start = performance.now();
     const context = this.context;
     this.beginGpuTiming();
@@ -2164,6 +2209,7 @@ export class Renderer67 {
         this.drawAlphaBatch(batch, true, passMode !== OBJECT_ID_PASS_MODE);
       }
     }
+    this.applyDepthLayer(0);
     context.disable(context.SAMPLE_ALPHA_TO_COVERAGE);
     context.enable(context.CULL_FACE);
     context.bindVertexArray(null);

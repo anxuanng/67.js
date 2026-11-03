@@ -11,7 +11,7 @@ const MAX_LOOK_ARRAY_ENTRIES = Math.max(MAX_POINT_LIGHTS, MAX_SPOT_LIGHTS, MAX_A
 
 const ENVIRONMENT_FIELDS = [
   'world', 'ground', 'setup', 'environmentIntensity', 'environmentRotation', 'lightDirection', 'keyColor', 'keyIntensity', 'fillIntensity', 'ambientIntensity',
-  'daylight', 'pointLights', 'spotLights', 'areaLights', 'skyTop', 'skyBottom', 'fogColor', 'fogDensity', 'volumeFog', 'liquid', 'shadowCascades', 'keyAffects', 'objectReflections',
+  'daylight', 'pointLights', 'spotLights', 'areaLights', 'skyTop', 'skyBottom', 'fogColor', 'fogDensity', 'volumeFog', 'liquid', 'shadowCascades', 'keyAffects', 'objectReflections', 'resolveCoplanar',
 ];
 const LIQUID_FIELDS = ['thickness', 'ior', 'refraction', 'scattering', 'foamOpacity', 'foamSoftness'];
 const EFFECT_FIELDS = ['exposure', 'saturation', 'contrast', 'temperature', 'vignette', 'grain', 'ambientOcclusion', 'ambientOcclusionRadius', 'bloom', 'depthOfField', 'motionBlur'];
@@ -270,6 +270,12 @@ function environmentFrom(input = {}) {
       throw new TypeError('environment.objectReflections must be a boolean.');
     }
     environment.objectReflections = input.objectReflections;
+  }
+  if (input.resolveCoplanar !== undefined) {
+    if (input.resolveCoplanar !== 'offset' && input.resolveCoplanar !== false) {
+      throw new TypeError("environment.resolveCoplanar must be 'offset' or false.");
+    }
+    environment.resolveCoplanar = input.resolveCoplanar;
   }
   if (input.spotLights !== undefined) {
     environment.spotLights = lightListFrom(input.spotLights, MAX_SPOT_LIGHTS, 'spotLights').map(spotLightFrom);

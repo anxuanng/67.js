@@ -8,6 +8,7 @@ import { MESH_SMOOTH_ANGLE_DEFAULT, CURVE_TEXT_LIMITS, AGENT_SCENE_CAPABILITIES,
 import { ALL_LIGHTS_MASK, MATERIAL_LAYER_FIELDS, validateMaterialLayers } from './material-layers.js';
 import { recipeDiagnostics, closedRoomDiagnostic } from './agent-diagnostics.js';
 import { closedRoomShare, CLOSED_ROOM_SHARE } from './closed-room.js';
+import { coplanarOverlapDiagnostics, depthLayerOf, findCoplanarOverlaps, MAXIMUM_DEPTH_LAYER, resolveCoplanarParts } from './coplanar-overlap.js';
 import { armatureNodes, bakeRigExport, bindSkins, createSkinStages, normalizeArmatures, publishSkinPoses, restWorldMatrix, rigReport, stageSkinPoses, transformedBounds, withoutArmatureNodes } from './rig.js';
 export { AGENT_SCENE_CAPABILITIES, AGENT_SCENE_DEFAULT_LIMITS };
 export { normalizeAgentLook, resolveAgentShadow } from './agent-look.js';
@@ -22,7 +23,7 @@ const MAX_MESH_REPORTS = 16;
 // Terrain meshes carry one more float for each vertex (sky visibility) than the 56 bytes the budget estimates.
 const TERRAIN_SKY_VISIBILITY_BYTES = 4;
 const CAMERA_DEFAULTS = Object.freeze({ eye: [4, 3, 5], target: [0, 0, 0], up: [0, 1, 0], fov: 45, near: 0.1, far: 1000 });
-const NODE_FIELDS = ['translation', 'rotation', 'scale', 'parent', 'label', 'geometry', 'material', 'skin', 'relations'];
+const NODE_FIELDS = ['translation', 'rotation', 'scale', 'parent', 'label', 'geometry', 'material', 'skin', 'relations', 'decal', 'depthLayer'];
 const MATERIAL_FIELDS = ['color', 'metallic', 'roughness', 'emission', 'emissiveColor', 'opacity', 'alphaMode', 'doubleSided', 'pattern', ...MATERIAL_LAYER_FIELDS];
 const PATTERN_TEXTURE_FIELDS = ['map', 'normalMap', 'metallicRoughnessMap', 'emissiveMap', 'boxMapScale', 'boxMapAxis'];
 const CAMERA_FIELDS = Object.keys(CAMERA_DEFAULTS);
@@ -282,6 +283,12 @@ function nodeFrom(value) {
   if (value.geometry !== undefined) {
     identifier(value.geometry);
     identifier(value.material);
+  }
+  if (value.decal !== undefined && typeof value.decal !== 'boolean') {
+    throw new TypeError('decal must be boolean.');
+  }
+  if (value.depthLayer !== undefined) {
+    integer(value.depthLayer, 0, MAXIMUM_DEPTH_LAYER, 'depthLayer');
   }
   if (value.skin !== undefined) {
     if (value.geometry === undefined) {
@@ -1050,9 +1057,10 @@ export function createAgentScene(input, inputLimits = {}) {
       const material = materialHandles.get(node.material).output;
       const activePart = removedNodes.has(node.id) ? null : activeParts.get(node.id);
       const existing = [activePart, preferredParts.get(node.id)]
-        .find(part => part?.geometry === geometry && part.material === material && part.skin === binding?.skin);
+        .find(part => part?.geometry === geometry && part.material === material && part.skin === binding?.skin && depthLayerOf(part) === depthLayerOf(node));
       return existing ?? Object.freeze({
         name: node.id, geometry, material,
+        ...(depthLayerOf(node) ? { depthLayer: depthLayerOf(node) } : {}),
         matrix: new Float32Array(graph.getNode(node.id).worldMatrix),
         ...(binding ? { skin: binding.skin } : {}),
       });
@@ -1063,7 +1071,7 @@ export function createAgentScene(input, inputLimits = {}) {
     const sourceRestParts = sameParts ? state.sourceRestParts : Object.freeze(nextParts);
     const lightBakeResult = stageLightBake(recipe, sourceRestParts, graph);
     const reflected = stageObjectReflections(recipe, sourceRestParts, lightBakeResult ? lightBakeResult.parts : sourceRestParts, graph);
-    const restParts = stageLightLinks(recipe, reflected ? reflected.parts : lightBakeResult ? lightBakeResult.parts : sourceRestParts);
+    const restParts = stageCoplanarOffsets(recipe, stageLightLinks(recipe, reflected ? reflected.parts : lightBakeResult ? lightBakeResult.parts : sourceRestParts));
     const stagedState = {
       recipe, geometryRecords, geometries, graph, materialHandles,
       // Part identity decides what the next stage reuses, so it compares the parts as built, before any bake.
@@ -1157,6 +1165,30 @@ export function createAgentScene(input, inputLimits = {}) {
     }
     const { share } = closedRoomCache;
     return share !== null && share >= CLOSED_ROOM_SHARE ? [closedRoomDiagnostic(share)] : [];
+  }
+
+  // environment.resolveCoplanar 'offset' puts the smaller part of each coplanar pair on the next depth layer, so the
+  // renderer draws it with a polygon offset. Geometry never moves. The result is kept while the parts are the same objects.
+  let coplanarCache = null;
+  function stageCoplanarOffsets(recipe, parts) {
+    if (recipe.environment.resolveCoplanar !== 'offset') {
+      return parts;
+    }
+    if (coplanarCache?.parts === parts) {
+      return coplanarCache.resolved;
+    }
+    const resolved = Object.freeze(resolveCoplanarParts(parts));
+    coplanarCache = { parts, resolved };
+    return resolved;
+  }
+
+  // scene_inspect names coplanar pairs: the check is bounded, runs on inspect only and is kept until the scene changes.
+  let coplanarReportCache = null;
+  function coplanarProblems() {
+    if (coplanarReportCache?.revision !== revision) {
+      coplanarReportCache = { revision, problems: coplanarOverlapDiagnostics(findCoplanarOverlaps(state.parts)) };
+    }
+    return coplanarReportCache.problems;
   }
 
   // A bake costs a solver run, so an unchanged section on unchanged geometry reuses the last one.
@@ -1347,7 +1379,7 @@ export function createAgentScene(input, inputLimits = {}) {
           knownKeys(operation, ['type', lookField], 'operation');
           const patch = operation[lookField];
           // Spot and area lights, cascades and sun links are absent from a recipe until it sets them.
-          const optionalFields = lookField === 'environment' ? ['spotLights', 'areaLights', 'shadowCascades', 'keyAffects', 'objectReflections'] : [];
+          const optionalFields = lookField === 'environment' ? ['spotLights', 'areaLights', 'shadowCascades', 'keyAffects', 'objectReflections', 'resolveCoplanar'] : [];
           knownKeys(patch, [...Object.keys(candidate[lookField]), ...optionalFields], lookField);
           const nestedField = lookField === 'environment' ? 'volumeFog' : lookField === 'effects' ? 'bloom' : null;
           const merged = { ...candidate[lookField], ...(lookField === 'environment' ? environmentPatchWithSetup(patch) : patch) };
@@ -1496,7 +1528,7 @@ export function createAgentScene(input, inputLimits = {}) {
         return result;
       });
       const resident = geometryStats(ownedGeometryRecords());
-      const diagnostics = [...recipeDiagnostics(state.recipe), ...closedRoomProblems()];
+      const diagnostics = [...recipeDiagnostics(state.recipe), ...closedRoomProblems(), ...coplanarProblems()];
       return {
         revision, topologyRevision,
         ...(state.recipe.motion?.ik?.length ? { motionIk: agentSceneModule('motion').compileAgentMotion(state.recipe.motion, state.recipe).sweepIk() } : {}),

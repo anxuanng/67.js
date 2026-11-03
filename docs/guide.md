@@ -196,7 +196,7 @@ The `surfaces` mode finds triangle contact. The `closed-solids` mode also tests 
 An index also supports `raycast(matrix, ray)` for a triangle number, hit point and barycentric coordinates.
 The [mesh query contract](https://github.com/codepawl/67.js/blob/main/docs/mesh-query.md) describes results, solid validation, numerical limits and budget errors.
 Rebuild indices after geometry edits. Queries reject skin and morph channels.
-Contact results do not measure penetration depth, resolve collisions or diagnose z-fighting.
+Contact results do not measure penetration depth or resolve collisions. Z-fighting has its own check: `renderer.diagnostics` and `scene_inspect` report `coplanar-overlap` for two parts that draw the same plane (within 1 mm, same facing, at least 1 cm2 shared). Fix it with `decal: true` on the smaller part (layer 1; `depthLayer` 0 to 4 orders stacked decals), or `environment.resolveCoplanar: 'offset'` to bias the smaller part of every flagged pair. Both draw with a scoped polygon offset in the colour pass and render passes, and never move geometry. Use a real offset along the normal when the gap should be visible in exports or the path tracer. Reversed-Z depth is not implemented yet (#310).
 
 ## Shrinkwrap and surface patches
 
