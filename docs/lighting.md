@@ -130,6 +130,10 @@ Luminance of the 67js picture over Cycles (linear, whole frame and 20th percenti
 
 The two `temple-hall` p20 values differ only by the rescaling of the picture (the scene has a sun, so no bounce is added). The outdoor shadow fill of the issue is not done.
 
+## Sky seen from the floor
+
+`applyFloorSkyVisibility(parts, { strength, includeClosedRooms })` (`67js/addons/floor-sky-visibility`) is opt-in and returns `{ parts, report }`. It cuts the floor parts into texels, shoots 64 cosine-weighted rays from each against the other opaque parts and stores the share that escapes as the floor's `skyVisibility`, so the world and sky light on a floor under a roof or between walls is scaled down and open ground is not. Pass the returned parts to the renderer. `strength` 1 uses the traced share, 0.5 keeps half of what it hides. A closed room is left alone unless `includeClosedRooms` is `true`, and a scene that is too large (over 200,000 triangles), has no floor or runs past `maxSeconds` (20) comes back unchanged with `report.reason`. It is not on by default: it moves the dark end of halls and studio floors toward Cycles, and makes sunlit streets too dark (`long-street` +0.0135 FLIP at 0.5). The trace takes 0.5 to 1.7 s, and the floor grows to about 66,000 triangles, which adds 0.1 to 0.3 ms per frame in the reference scenes. Numbers: `bench/reference/README.md`, "Sky visibility traced from the floor texels".
+
 ## Local shadows
 
 `castShadow: true` on a point or spot light draws that light's depth into one shared atlas of 2048 x 3072 texels: 24 tiles of 512 x 512, a 24 MiB depth texture allocated on first use. A spot light takes one tile with a perspective view of `2 * angle + 4` degrees (170 at most). A point light takes six tiles, one per cube face, each 92 degrees wide. Lights are given tiles in order: point lights, then spot lights. A request for more than 24 tiles, for example five shadowed point lights, throws `RangeError` and changes nothing. So the most is four shadowed point lights, or for example two point lights and eight spot lights.
