@@ -414,7 +414,7 @@ renderer.updateParts(parts);
 renderer.render({ eye: [3,2,4], target: [0,0,0], time: 1 });
 ```
 
-Tracks target unique part names. Supported transform tracks are translation, rotation (quaternion XYZW) and scale. Material tracks include metallic, roughness and emission. Interpolation supports `LINEAR`, `STEP`, `SMOOTH` and `CUBICSPLINE`.
+Tracks target unique part names. Supported transform tracks are translation, rotation (quaternion XYZW) and scale. Material tracks include metallic, roughness and emission. Interpolation supports `LINEAR`, `STEP`, `SMOOTH` and `CUBICSPLINE`. A keyframe can add `easing` (`easeOutBack`, `easeInOutCubic`, `cubic-bezier(...)`) to shape its segment.
 
 `sampleAnimationClip(clip, time)` returns samples without binding parts. Preserve the original graph and apply absolute time so seeking backwards reproduces the scene. Use `requestAnimationFrame` for playback, pause when hidden, and use a fixed sample time for export.
 

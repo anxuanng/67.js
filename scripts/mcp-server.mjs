@@ -362,6 +362,8 @@ const geometry = z.discriminatedUnion('type', [
   z.strictObject({ id: identifier, type: z.literal('grid'), segments: detail(1, 64) }),
   z.strictObject({ id: identifier, type: z.literal('mesh'), base: z.discriminatedUnion('type', primitiveGeometries(false)).describe('Starting shape, converted to welded quads with axis face tags.'), edits: recipeMeshEdits.optional().describe('Replayable edit log, applied in order. Each item has the shape of one mesh_edit edit; read that tool for every op and field.'), stack: recipeMeshStack.optional().describe('Non-destructive modifier stack evaluated after the edits. Each item has the shape of one mesh_stack node; read that tool for the ops.'), smoothAngle: bounded(0, 180).optional().describe('Edges bending more than this many degrees render hard. Defaults to 30.') }),
 ]);
+// No description: this field repeats in every motion track schema. A wrong name fails with every valid form, and docs/agent-motion.md lists them.
+const easingField = z.string().max(80).optional();
 function motionTrack(kind, property, value, tangent) {
   return z.strictObject({
     kind: z.literal(kind),
@@ -371,6 +373,7 @@ function motionTrack(kind, property, value, tangent) {
     keyframes: z.array(z.strictObject({
       time: z.number().min(0).max(30), value,
       inTangent: tangent.optional(), outTangent: tangent.optional(),
+      easing: easingField,
     })).min(1).max(64),
   });
 }

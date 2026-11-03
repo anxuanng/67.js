@@ -36,6 +36,19 @@ Keyframe rotation values retain the existing normalization behavior. Tangents re
 `LINEAR` and `SMOOTH` rotations retain shortest-arc spherical interpolation.
 `STEP` holds the preceding keyframe. Endpoints clamp, and looping wraps negative times and exact clip boundaries.
 
+## Easing
+
+A keyframe on a `LINEAR` or `SMOOTH` track can carry `easing`, which shapes the segment that starts at that keyframe.
+Without it, `LINEAR` is a straight ramp and `SMOOTH` is smoothstep. With it, the easing replaces both.
+The value is `linear`, `cubic-bezier(x1, y1, x2, y2)`, or `ease<In|Out|InOut><Family>`, where Family is `Sine`, `Quad`, `Cubic`, `Quart`, `Quint`, `Expo`, `Circ`, `Back`, `Bounce` or `Elastic`: `easeOutBack`, `easeInOutCubic`, `easeOutBounce`.
+These are Blender's easing types (Sine, Quadratic, Cubic, Quartic, Quintic, Exponential, Circular, Back, Bounce, Elastic) with the CSS names. Every name matches Blender 5.2 within 1e-4 at 20 sample times (`tests/easing.test.js`, `scripts/blender-easing-golden.py`).
+An unknown name throws a `RangeError` that lists the valid forms and suggests the right case.
+
+`cubic-bezier` follows CSS: `x1` and `x2` stay in 0 to 1, `y1` and `y2` may leave 0 to 1 (from -4 to 5) to overshoot.
+`easeInBack`, `easeOutBack` and `easeInOutBack` take an overshoot as `easeOutBack(3)` (0 to 10, default 1.70158). The Elastic easings take an amplitude and a period as `easeOutElastic(1.5, 0.4)`: the amplitude is a multiple of the change (1 to 10, default 1) and the period a fraction of the segment (0.05 to 2, default 0.3, or 0.45 for in-out). Blender stores both in absolute units, which are these numbers over a one-unit change in one frame. Arguments on any other easing throw.
+Easing on `STEP` or `CUBICSPLINE` tracks throws. Rotations ease the slerp angle. Easing on the last keyframe is accepted and has no effect.
+Camera channels and material tracks take the same fields. glTF has no easing, so GLB export writes an eased track as 32 linear samples per segment.
+
 ## Output constraints
 
 Spline overshoot clamps emission to zero or greater and metallic to `[0, 1]`.

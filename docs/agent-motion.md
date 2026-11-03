@@ -78,6 +78,23 @@ Quaternion values normalize through the existing animation core.
 Quaternion tangents retain their authored values.
 Other interpolation modes reject tangents.
 
+### Easing
+
+A keyframe on a `LINEAR` or `SMOOTH` track takes `easing` for the segment that starts there, so a hit, a settle or an overshoot needs two keyframes instead of several:
+
+```json
+{ "kind": "node", "id": "lid", "property": "translation", "keyframes": [
+  { "time": 0, "value": [0, 0.2, 0], "easing": "easeOutBack" },
+  { "time": 1, "value": [0, 1.2, 0] }
+] }
+```
+
+Values: `linear`, `cubic-bezier(x1, y1, x2, y2)` (x from 0 to 1, y from -4 to 5), or `ease` + `In`, `Out` or `InOut` + `Sine`, `Quad`, `Cubic`, `Quart`, `Quint`, `Expo`, `Circ`, `Back`, `Bounce` or `Elastic`.
+`easeOutBack` is the overshoot and `easeOutBounce` the drop; they match Blender's easings of the same family.
+`easeOutBack(overshoot)` takes 0 to 10 (default 1.70158). `easeOutElastic(amplitude, period)` takes an amplitude of 1 to 10 times the change (default 1) and a period of 0.05 to 2 of the segment (default 0.3, or 0.45 for `easeInOutElastic`); either argument can be left out from the right. Other easings take no arguments.
+An unknown name, a parameter on the wrong family, or easing on `STEP` or `CUBICSPLINE` is an error that says what to use instead.
+Camera and material tracks take the same fields. GLB export bakes an eased track to linear samples.
+
 ## Inverse kinematics
 
 `motion.ik` computes node rotations from a goal, so a recipe can say where a hand should be without any quaternions. It
