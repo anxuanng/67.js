@@ -872,8 +872,8 @@ function convertVertexColors(attribute, vertexCount, onIgnoredVertexAlpha) {
  * KTX2 textures arrive either as GPU-compressed mip levels, which the renderer uploads as they are,
  * or as RGBA8 pixel data, which it uploads as an ImageData.
  */
-function decodedTextureImage(texture, field) {
-  if (texture.isCompressedTexture) return describeCompressedImage(texture.format, texture.mipmaps, field).image;
+function decodedTextureImage(texture, field, colorSpace) {
+  if (texture.isCompressedTexture) return describeCompressedImage(texture.format, texture.mipmaps, field, colorSpace);
   const image = texture.image;
   if (!image?.data) return image;
   const { width, height, data } = image;
@@ -887,7 +887,7 @@ function textureDescriptorFor(texture, field, { colorSpace, uvChannel, uvTransfo
   const descriptors = maps.get(texture);
   const key = `${colorSpace}:${uvChannel}:${uvTransform ?? ''}`;
   if (!descriptors.has(key)) {
-    const image = decodedTextureImage(texture, field);
+    const image = decodedTextureImage(texture, field, colorSpace);
     if (!image || image.width * image.height > limits.maxTextureImagePixels) throw new Error(`${field} image is missing or exceeds maxTextureImagePixels.`);
     const descriptor = {
       image,

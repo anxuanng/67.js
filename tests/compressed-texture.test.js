@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { ktx2WorkerConfigFor, describeCompressedImage, uploadCompressedImage } from '../src/compressed-texture.js';
+import { ktx2WorkerConfigFor, describeCompressedImage } from '../src/compressed-texture.js';
 import { Renderer67, textureDescriptorInfo } from '../src/renderer.js';
 
 const BC7 = 0x8e8c;
@@ -18,6 +18,10 @@ function fakeContext(extensionNames) {
     texStorage2D: (...args) => calls.push(['texStorage2D', ...args]),
     compressedTexSubImage2D: (target, level, x, y, width, height, format, data) => calls.push(['compressedTexSubImage2D', level, width, height, format, data.length]),
   };
+}
+
+function uploadLevels(context, image) {
+  Renderer67.prototype.uploadCompressedLevels.call({ context }, image.compressed);
 }
 
 function bc7Levels() {
@@ -39,9 +43,9 @@ test('the KTX2 worker config follows the extensions the context exposes', () => 
 });
 
 test('a compressed image uploads each mip level into immutable storage', () => {
-  const { image } = describeCompressedImage(BC7, bc7Levels(), 'map');
+  const image = describeCompressedImage(BC7, bc7Levels(), 'map', 'srgb');
   const context = fakeContext(['EXT_texture_compression_bptc']);
-  uploadCompressedImage(context, image.compressed, 'srgb');
+  uploadLevels(context, image);
   assert.deepEqual(context.calls[0], ['texStorage2D', 3553, 4, BC7_SRGB, 8, 8]);
   assert.deepEqual(context.calls.slice(1).map(call => call.slice(0, 5)), [
     ['compressedTexSubImage2D', 0, 8, 8, BC7_SRGB],
@@ -52,22 +56,23 @@ test('a compressed image uploads each mip level into immutable storage', () => {
 });
 
 test('a linear map uploads the linear format', () => {
-  const { image } = describeCompressedImage(BC7, bc7Levels(), 'normalMap');
+  const image = describeCompressedImage(BC7, bc7Levels(), 'normalMap', 'linear');
   const context = fakeContext(['EXT_texture_compression_bptc']);
-  uploadCompressedImage(context, image.compressed, 'linear');
+  uploadLevels(context, image);
   assert.equal(context.calls[0][3], BC7);
 });
 
 test('a context without the extension refuses the upload and names it', () => {
-  const { image } = describeCompressedImage(BC7, bc7Levels(), 'map');
-  assert.throws(() => uploadCompressedImage(fakeContext([]), image.compressed, 'srgb'), /EXT_texture_compression_bptc/);
+  const image = describeCompressedImage(BC7, bc7Levels(), 'map', 'srgb');
+  assert.throws(() => uploadLevels(fakeContext([]), image), /EXT_texture_compression_bptc/);
 });
 
 test('an sRGB DXT map needs the sRGB S3TC extension', () => {
   const levels = [{ width: 4, height: 4, data: new Uint8Array(16) }];
-  const { image } = describeCompressedImage(BC3, levels, 'map');
-  assert.throws(() => uploadCompressedImage(fakeContext(['WEBGL_compressed_texture_s3tc']), image.compressed, 'srgb'), /s3tc_srgb/);
-  uploadCompressedImage(fakeContext(['WEBGL_compressed_texture_s3tc']), image.compressed, 'linear');
+  const srgb = describeCompressedImage(BC3, levels, 'map', 'srgb');
+  assert.throws(() => uploadLevels(fakeContext(['WEBGL_compressed_texture_s3tc']), srgb), /s3tc_srgb/);
+  const linear = describeCompressedImage(BC3, levels, 'map', 'linear');
+  uploadLevels(fakeContext(['WEBGL_compressed_texture_s3tc']), linear);
 });
 
 test('block compressed levels must match their size and DXT must be a multiple of four', () => {
@@ -77,12 +82,12 @@ test('block compressed levels must match their size and DXT must be a multiple o
 });
 
 test('compressed bytes feed the renderer texture budget and a single level drops mip filtering', () => {
-  const full = describeCompressedImage(BC7, bc7Levels(), 'map').image;
+  const full = describeCompressedImage(BC7, bc7Levels(), 'map', 'srgb');
   const info = textureDescriptorInfo({ image: full });
   assert.equal(info.bytes, 112);
   assert.equal(info.mipmaps, false);
   assert.equal(info.minFilter, 9987);
-  const single = describeCompressedImage(BC7, bc7Levels().slice(0, 1), 'map').image;
+  const single = describeCompressedImage(BC7, bc7Levels().slice(0, 1), 'map', 'srgb');
   assert.equal(textureDescriptorInfo({ image: single }).minFilter, 9729);
   assert.equal(textureDescriptorInfo({ image: single, minFilter: 9984 }).minFilter, 9728);
 });
@@ -110,8 +115,8 @@ test('createTexture uploads a compressed image without generating mips', () => {
     texStorage2D: () => calls.push('texStorage2D'),
     compressedTexSubImage2D: () => calls.push('compressedTexSubImage2D'),
   };
-  const map = { image: describeCompressedImage(BC7, bc7Levels(), 'map').image, colorSpace: 'srgb' };
-  const renderer = { context, textures: new Map(), applyAnisotropy: () => calls.push('anisotropy') };
+  const map = { image: describeCompressedImage(BC7, bc7Levels(), 'map', 'srgb'), colorSpace: 'srgb' };
+  const renderer = { context, textures: new Map(), applyAnisotropy: () => calls.push('anisotropy'), uploadCompressedLevels: Renderer67.prototype.uploadCompressedLevels };
   Renderer67.prototype.createTexture.call(renderer, map);
   assert.deepEqual(calls, ['texStorage2D', 'compressedTexSubImage2D', 'compressedTexSubImage2D', 'compressedTexSubImage2D', 'compressedTexSubImage2D']);
 });

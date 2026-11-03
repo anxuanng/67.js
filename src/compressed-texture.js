@@ -1,5 +1,5 @@
-// GPU-compressed texture formats that a KTX2 loader can hand over, and how the renderer uploads them.
-// A compressed image descriptor looks like { width, height, compressed: { glFormat, levels: [{ data, width, height }] } }.
+// GPU-compressed texture formats that a KTX2 loader can hand over. Only the glTF addon imports this file.
+// It hands the renderer a generic image: { width, height, compressed: { internalFormat, extension, levels: [{ data, width, height }], bytes } }.
 
 const BPTC = 'EXT_texture_compression_bptc';
 const S3TC = 'WEBGL_compressed_texture_s3tc';
@@ -41,7 +41,7 @@ export function compressedFormatInfo(glFormat) {
  * Validate the mip levels of a compressed image and keep the ones a complete chain needs.
  * A partial chain is cut to its first level, because a texture with missing mips is incomplete.
  */
-export function describeCompressedImage(glFormat, levels, field) {
+export function describeCompressedImage(glFormat, levels, field, colorSpace) {
   const info = compressedFormatInfo(glFormat);
   if (!info) throw new Error(`${field} decoded to GPU format ${glFormat}, which 67js does not upload. Use BC7, BC1, BC3, ASTC 4x4 or ETC2, or transcode to RGBA8 (see docs/gltf.md).`);
   if (!Array.isArray(levels) || !levels.length) throw new Error(`${field} compressed texture has no mip levels.`);
@@ -56,28 +56,10 @@ export function describeCompressedImage(glFormat, levels, field) {
     }
   }
   const bytes = usable.reduce((sum, level) => sum + level.data.length, 0);
-  return { image: { width: base.width, height: base.height, compressed: { glFormat, name: info.name, levels: usable, bytes } }, name: info.name, bytes };
-}
-
-/** Throw when the context lacks the extension for a compressed image. Returns the internal format to upload. */
-function resolveInternalFormat(context, compressed, colorSpace) {
-  const info = compressedFormatInfo(compressed.glFormat);
   const srgb = colorSpace !== 'linear';
   const extension = srgb && info.srgbExtension ? info.srgbExtension : info.extension;
-  if (!context.getExtension(extension)) {
-    throw new Error(`This context lacks ${extension}, which the ${info.name} texture needs. Transcode KTX2 for this context with ktx2WorkerConfigFor(context) (see docs/gltf.md).`);
-  }
-  return srgb ? info.srgbFormat : compressed.glFormat;
-}
-
-/** Upload every mip level of a compressed image into the bound TEXTURE_2D with immutable storage. */
-export function uploadCompressedImage(context, compressed, colorSpace) {
-  const internalFormat = resolveInternalFormat(context, compressed, colorSpace);
-  const [base] = compressed.levels;
-  context.texStorage2D(context.TEXTURE_2D, compressed.levels.length, internalFormat, base.width, base.height);
-  compressed.levels.forEach((level, index) => {
-    context.compressedTexSubImage2D(context.TEXTURE_2D, index, 0, 0, level.width, level.height, internalFormat, level.data);
-  });
+  const internalFormat = srgb ? info.srgbFormat : glFormat;
+  return { width: base.width, height: base.height, compressed: { internalFormat, extension, name: info.name, levels: usable, bytes } };
 }
 
 /**
