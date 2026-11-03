@@ -294,7 +294,7 @@ function checkOne(check, measures) {
       return checkWalkPath(check, measures);
     case 'renderedLook': {
       const look = measures.renderedLook;
-      if (!look) return { pass: false, detail: 'the recipe could not be drawn' };
+      if (!look || look.drawError) return { pass: false, detail: `the recipe could not be drawn${look?.drawError ? `: ${look.drawError}` : ''}` };
       const [lowest, highest] = check.brightness;
       const problems = [];
       if (look.meanBrightness < lowest) problems.push('too dim');
@@ -441,7 +441,8 @@ export async function gradeRecipe(task, recipe) {
   }
   if (task.checks.some(check => check.kind === 'renderedLook')) {
     const { measureRenderedLook } = await import('./look.mjs');
-    measures.renderedLook = await measureRenderedLook(recipe).catch(() => null);
+    // Keep the reason: a browser or page error must show in the check's detail, not read as a dim picture.
+    measures.renderedLook = await measureRenderedLook(recipe).catch(error => ({ drawError: error.message }));
   }
   const results = task.checks.map(check => ({ kind: check.kind, ...(check.label ? { label: check.label } : {}), ...checkOne(check, measures) }));
   const passed = results.filter(result => result.pass).length;
