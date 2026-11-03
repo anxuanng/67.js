@@ -1,0 +1,55 @@
+{
+  "id": "airport",
+  "title": "Airport ramp",
+  "blurb": "A 787 on its stand at dusk with the turnaround crew, fuel truck, loaders and light towers, drawn by 67js.",
+  "glb": "/showcase/airport/scene.glb",
+  "hdri": "/showcase/airport/sky.hdr",
+  "hdriOptions": { "intensity": 0.8, "rotation": -0.323, "showBackground": true, "backgroundBlur": 0 },
+  "exposure": 1.0,
+  "eye": [138, 64, 36],
+  "target": [1, 3, -13],
+  "renderer": {
+    "ground": false,
+    "world": false,
+    "hdr": true,
+    "samples": 4,
+    "pixelRatio": 1,
+    "memoryBudgetMiB": 512,
+    "shadowBounds": { "target": [0, 0, -6], "eye": [241, 60, -175], "extent": 150, "near": 20, "far": 700 },
+    "shadowCascades": { "count": 3, "maximumDistance": 400 },
+    "environment": {
+      "lightDirection": [0.803, 0.2, -0.562],
+      "keyIntensity": 1,
+      "keyColor": [9, 3.6, 1.3],
+      "fogDensity": 0,
+      "fillIntensity": 0.15,
+      "ambientIntensity": 0.65
+    }
+  },
+  "frame": {
+    "fov": 20,
+    "near": 5,
+    "far": 1500,
+    "exposure": 1.0,
+    "effects": {
+      "bloom": { "strength": 0.15, "threshold": 1.0, "radius": 1.2 },
+      "saturation": 1.1,
+      "contrast": 1.12,
+      "vignette": 0.3,
+      "grain": 0
+    }
+  },
+  "credits": [
+    { "model": "Boeing 787-9 Singapore Airlines (livery repainted)", "author": "mudkipz321", "licence": "CC BY 4.0", "source": "https://sketchfab.com/models/d383b7e3b858407e8cff7365820cc4dd" },
+    { "model": "Airport Catering Truck", "author": "spot1studios", "licence": "CC BY 4.0", "source": "https://sketchfab.com/models/289f4e2cfa3f4722b0476b1fc37681d8" },
+    { "model": "Tanker Truck", "author": "ezbreneman", "licence": "CC BY 4.0", "source": "https://sketchfab.com/models/0bfeafdb2eb94612ad89ea2e794cf249" },
+    { "model": "Airport Tug", "author": "flightmaster177", "licence": "CC BY 4.0", "source": "https://sketchfab.com/models/388e668f8143432fb82c1268e1f9ab81" },
+    { "model": "Worn Traffic Cone", "author": "kuuttisiitonen", "licence": "CC BY 4.0", "source": "https://sketchfab.com/models/1cbffb4169684e5a84ba186882bd55d7" },
+    { "model": "Light Tower", "author": "krambulini", "licence": "CC BY 4.0", "source": "https://sketchfab.com/models/9addea6a4129438b83a1fc3ed4a784ec" },
+    { "model": "Universal Base Characters (ground crew)", "author": "Quaternius", "licence": "CC0", "source": "https://quaternius.itch.io/universal-base-characters" },
+    { "model": "Concrete Floor Worn 001 texture", "author": "Poly Haven", "licence": "CC0", "source": "https://polyhaven.com/a/concrete_floor_worn_001" },
+    { "model": "Asphalt026B texture", "author": "ambientCG (Lennart Demes)", "licence": "CC0", "source": "https://ambientcg.com/view?id=Asphalt026B" },
+    { "model": "DiamondPlate008A and Metal032 textures (pushback tug)", "author": "ambientCG (Lennart Demes)", "licence": "CC0", "source": "https://ambientcg.com" },
+    { "model": "Industrial Sunset (Pure Sky) HDRI", "author": "Poly Haven", "licence": "CC0", "source": "https://polyhaven.com/a/industrial_sunset_puresky" }
+  ]
+}

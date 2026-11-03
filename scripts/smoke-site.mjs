@@ -66,62 +66,17 @@ try {
     if (route === '/') {
       assert.equal(await page.locator('video').count(), 0, 'Homepage still embeds video');
       assert.equal(await page.locator('#downloads').count(), 1, 'Homepage install controls are missing');
-      const scenePaths = await page.locator('.gallery .example').evaluateAll(links => links.map(link => new URL(link.href).pathname));
+      const scenePaths = await page.locator('.gallery .example').evaluateAll(links => links.map(link => { const url = new URL(link.href); return url.pathname + url.search; }));
       assert.equal(new Set(scenePaths).size, scenePaths.length, 'Showcase repeats the same scene');
-      await page.locator('#home-preview').scrollIntoViewIfNeeded();
-      await page.waitForFunction(() => window.__homePreview?.renderer && window.__homePreview.state.visible);
-      const initialDistance = await page.evaluate(() => window.__homePreview.state.distance);
-      await page.locator('#home-preview').focus();
-      await page.keyboard.press('+');
-      assert.ok(await page.evaluate(() => window.__homePreview.state.distance) < initialDistance);
-      await page.locator('#home-preview').focus();
-      await page.keyboard.press('ArrowRight');
-      assert.ok(await page.evaluate(() => window.__homePreview.state.yaw) > 0.6);
-      await page.keyboard.press('Home');
-      assert.equal(await page.evaluate(() => window.__homePreview.state.yaw), 0.6);
-      assert.equal(await page.locator('.preview-tools, .showcase-caption').count(), 0);
-      assert.equal(await page.evaluate(() => window.__homePreview.state.playing), false);
-      await page.emulateMedia({ reducedMotion:'no-preference' });
-      await page.waitForFunction(() => window.__homePreview.state.time > 0.1);
-      await page.locator('#preview-assembly').evaluate(slider => {
-        slider.value = '100';
-        slider.dispatchEvent(new Event('input', { bubbles:true }));
-        slider.dispatchEvent(new Event('change', { bubbles:true }));
-      });
-      assert.equal(await page.evaluate(() => window.__homePreview.state.assemblyTarget), 1);
-      assert.ok(await page.evaluate(() => window.__homePreview.state.assembly) < 1, 'Assembly jumped to the target');
-      assert.equal(await page.evaluate(() => window.__homePreview.state.playing), false);
-      const frozenTime = await page.evaluate(() => window.__homePreview.state.time);
-      await page.waitForTimeout(150);
-      assert.equal(await page.evaluate(() => window.__homePreview.state.time), frozenTime);
-      await page.waitForFunction(() => window.__homePreview.state.assembly === 1);
-      await page.locator('#home-preview').focus();
-      await page.keyboard.press('Space');
-      assert.equal(await page.evaluate(() => window.__homePreview.state.playing), false, 'Exploded model resumes from Space');
-      await page.locator('#preview-assembly').evaluate(slider => {
-        slider.value = '0';
-        slider.dispatchEvent(new Event('input', { bubbles:true }));
-        slider.dispatchEvent(new Event('change', { bubbles:true }));
-      });
-      assert.equal(await page.evaluate(() => window.__homePreview.state.playing), false, 'Drive resumed before reassembly completed');
-      await page.waitForFunction(() => window.__homePreview.state.playing);
-      assert.ok(await page.evaluate(() => window.__homePreview.state.speed) < 0.4, 'Drive restarts at full speed');
-      await page.waitForFunction(() => window.__homePreview.state.speed === 1);
-      await page.emulateMedia({ reducedMotion:'reduce' });
-      await page.waitForFunction(() => !window.__homePreview.state.playing);
-      assert.equal(await page.evaluate(() => window.__homePreview.state.playing), false);
-      const backgroundAlpha = await page.evaluate(() => {
-        window.__homePreview.draw();
-        const context = window.__homePreview.renderer.context;
-        const pixel = new Uint8Array(4);
-        context.readPixels(0, 0, 1, 1, context.RGBA, context.UNSIGNED_BYTE, pixel);
-        return pixel[3];
-      });
-      assert.equal(backgroundAlpha, 0, 'Preview background is opaque');
-      assert.equal(await page.evaluate(() => window.__homePreview.renderer.context.getError()), 0);
-      assert.ok(await page.evaluate(() => window.__homePreview.renderer.memoryPlan.estimatedBytes) <= 192 * 1048576);
-      await page.screenshot({ path:'artifacts/home-live-preview.png' });
-      report.interactions.push('Live WALL·E, keyboard orbit, transparent render and paused assembly with gradual drive restart');
+      assert.equal(new URL(await page.locator('.hero-shot').evaluate(link => link.href)).search, '?scene=airport');
+      const showcase = await browser.newPage({ viewport:{ width:1440,height:900 }, reducedMotion:'reduce' });
+      showcase.on('pageerror', error => errors.push(error.message));
+      await showcase.goto(origin + '/showcase.html?scene=datacenter');
+      await showcase.waitForFunction(() => window.__showcase?.renderer, null, { timeout:60000 });
+      assert.equal(await showcase.evaluate(() => window.__showcase.renderer.context.getError()), 0);
+      assert.equal(await showcase.locator('#showcase-tabs button').count(), 3);
+      await showcase.close();
+      report.interactions.push('Hero links to the live airport scene, and the showcase opens the data center scene');
     }
     if (['/', '/downloads.html'].includes(route)) {
       if (route === '/downloads.html') assert.match(page.url(), /\/#downloads$/);

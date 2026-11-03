@@ -1,0 +1,331 @@
+{
+  "id": "datacenter",
+  "title": "AI data center",
+  "blurb": "A cutaway hall of 72 racks, busways, cooling and a substation, serviced by two technicians.",
+  "glb": "/showcase/datacenter/scene.glb",
+  "gltfOptions": {
+    "maxTexturePixels": 33554432
+  },
+  "hdri": "/showcase/datacenter/sky.hdr",
+  "hdriOptions": {
+    "intensity": 0.42,
+    "rotation": 0,
+    "showBackground": false,
+    "backgroundBlur": 0.5
+  },
+  "exposure": 0.9,
+  "eye": [
+    17,
+    26,
+    38
+  ],
+  "target": [
+    4,
+    0.4,
+    0.5
+  ],
+  "renderer": {
+    "ground": false,
+    "hdr": true,
+    "samples": 4,
+    "pixelRatio": 1,
+    "memoryBudgetMiB": 512,
+    "environment": {
+      "lightDirection": [
+        -0.37,
+        0.79,
+        0.58
+      ],
+      "keyColor": [
+        1.9,
+        2.3,
+        3.7
+      ],
+      "keyIntensity": 1,
+      "fillIntensity": 0.1,
+      "ambientIntensity": 0.18,
+      "fogColor": [
+        0.0015,
+        0.002,
+        0.0037
+      ],
+      "fogDensity": 0.006,
+      "areaLights": [
+        {
+          "position": [
+            0,
+            3,
+            -4.8
+          ],
+          "direction": [
+            0,
+            -1,
+            0
+          ],
+          "up": [
+            0,
+            0,
+            1
+          ],
+          "width": 8,
+          "height": 0.5,
+          "color": [
+            0.81,
+            0.88,
+            1
+          ],
+          "intensity": 24.6
+        },
+        {
+          "position": [
+            0,
+            3,
+            -2.4
+          ],
+          "direction": [
+            0,
+            -1,
+            0
+          ],
+          "up": [
+            0,
+            0,
+            1
+          ],
+          "width": 8,
+          "height": 0.5,
+          "color": [
+            0.81,
+            0.88,
+            1
+          ],
+          "intensity": 24.6
+        },
+        {
+          "position": [
+            0,
+            3,
+            0
+          ],
+          "direction": [
+            0,
+            -1,
+            0
+          ],
+          "up": [
+            0,
+            0,
+            1
+          ],
+          "width": 8,
+          "height": 0.5,
+          "color": [
+            0.81,
+            0.88,
+            1
+          ],
+          "intensity": 24.6
+        },
+        {
+          "position": [
+            0,
+            3,
+            2.4
+          ],
+          "direction": [
+            0,
+            -1,
+            0
+          ],
+          "up": [
+            0,
+            0,
+            1
+          ],
+          "width": 8,
+          "height": 0.5,
+          "color": [
+            0.81,
+            0.88,
+            1
+          ],
+          "intensity": 24.6
+        }
+      ],
+      "pointLights": [
+        {
+          "position": [
+            0,
+            3,
+            4.8
+          ],
+          "color": [
+            0.81,
+            0.88,
+            1
+          ],
+          "intensity": 17.6,
+          "radius": 0.3,
+          "range": 12
+        },
+        {
+          "position": [
+            0,
+            3,
+            7.2
+          ],
+          "color": [
+            0.81,
+            0.88,
+            1
+          ],
+          "intensity": 9.8,
+          "radius": 0.3,
+          "range": 12
+        },
+        {
+          "position": [
+            0,
+            3,
+            -7.2
+          ],
+          "color": [
+            0.81,
+            0.88,
+            1
+          ],
+          "intensity": 9.8,
+          "radius": 0.3,
+          "range": 12
+        }
+      ],
+      "spotLights": [
+        {
+          "position": [
+            20.2,
+            7.4,
+            -8
+          ],
+          "direction": [
+            -7.2,
+            -7.4,
+            4
+          ],
+          "angle": 1.05,
+          "penumbra": 0.8,
+          "color": [
+            1,
+            0.58,
+            0.25
+          ],
+          "intensity": 170,
+          "range": 34
+        },
+        {
+          "position": [
+            20.2,
+            7.4,
+            9
+          ],
+          "direction": [
+            -7.2,
+            -7.4,
+            -3
+          ],
+          "angle": 1.05,
+          "penumbra": 0.8,
+          "color": [
+            1,
+            0.58,
+            0.25
+          ],
+          "intensity": 170,
+          "range": 34
+        }
+      ]
+    },
+    "shadowBounds": {
+      "target": [
+        2,
+        0,
+        0
+      ],
+      "eye": [
+        -12,
+        30,
+        22
+      ],
+      "extent": 32,
+      "near": 1,
+      "far": 140
+    }
+  },
+  "frame": {
+    "fov": 30,
+    "near": 1,
+    "far": 400,
+    "exposure": 0.9,
+    "effects": {
+      "bloom": {
+        "strength": 0.42,
+        "threshold": 1,
+        "radius": 1
+      },
+      "ambientOcclusion": 0.6,
+      "vignette": 0.5,
+      "saturation": 1.08,
+      "grain": 0.012
+    }
+  },
+  "credits": [
+    {
+      "model": "Substation Transformer",
+      "author": "HalfCarrot",
+      "licence": "CC BY",
+      "source": "https://sketchfab.com/3d-models/3a033547daaa4ec8b7b0426a3ecac987"
+    },
+    {
+      "model": "street_lamp_01",
+      "author": "Poly Haven",
+      "licence": "CC0",
+      "source": "https://polyhaven.com/a/street_lamp_01"
+    },
+    {
+      "model": "power_box_01",
+      "author": "Poly Haven",
+      "licence": "CC0",
+      "source": "https://polyhaven.com/a/power_box_01"
+    },
+    {
+      "model": "Technician body, eyes, eyebrows and hair (Universal Base Characters [Standard])",
+      "author": "Quaternius",
+      "licence": "CC0",
+      "source": "https://quaternius.itch.io"
+    },
+    {
+      "model": "Technician poses (Universal Animation Library [Standard])",
+      "author": "Quaternius",
+      "licence": "CC0",
+      "source": "https://quaternius.itch.io"
+    },
+    {
+      "model": "Asphalt026B, Concrete034, PaintedMetal009, Gravel022, Fingerprints003, Smear007 (PBR textures)",
+      "author": "ambientCG",
+      "licence": "CC0",
+      "source": "https://ambientcg.com"
+    },
+    {
+      "model": "Rooftop Night (HDRI)",
+      "author": "Poly Haven",
+      "licence": "CC0",
+      "source": "https://polyhaven.com/a/rooftop_night"
+    },
+    {
+      "model": "Racks, busways, cooling, pipework, hall shell and swap cart",
+      "author": "CodePawl",
+      "licence": "MIT",
+      "source": "https://github.com/anxuanng/67.js"
+    }
+  ],
+  "waterReflection": true
+}

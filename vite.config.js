@@ -24,6 +24,7 @@ export default defineConfig({
         assets: 'assets.html',
         guide: 'getting-started.html',
         docs: 'docs.html',
+        showcase: 'showcase.html',
       },
     },
   },
