@@ -5,6 +5,7 @@ import { Renderer67 } from './renderer.js';
 import { loadGltf } from './gltf.js';
 import { loadHdri } from './hdri.js';
 import { createCascadedShadows } from './cascaded-shadows.js';
+import { applyWaterReflection, attachWaterReflection } from './water-reflection.js';
 
 // Each scene lives in public/showcase/<id>/scene.json: its GLB, sky, camera, renderer and frame options, and credits.
 const SCENE_LABELS = { airport: 'Airport ramp', datacenter: 'AI data center', port: 'Container port' };
@@ -104,12 +105,15 @@ async function selectScene(id) {
     const rendererOptions = description.renderer ?? {};
     // scene.json stores cascades as plain options; the renderer takes the cascade object built from them.
     const shadowCascades = rendererOptions.shadowCascades ? createCascadedShadows(rendererOptions.shadowCascades) : undefined;
-    renderer = new Renderer67(canvas, asset.parts, {
+    // A scene that sets waterReflection mirrors itself in its largest flat, smooth surface (water or a polished floor).
+    const reflection = description.waterReflection ? applyWaterReflection(asset.parts) : { parts: asset.parts, surface: null };
+    renderer = new Renderer67(canvas, reflection.parts, {
       ground: false, hdr: true, samples: 4, memoryBudgetMiB: 384,
       ...rendererOptions,
       shadowCascades,
       environment: { ...(rendererOptions.environment ?? {}), map },
     });
+    attachWaterReflection(renderer, reflection.surface);
     scene = { frame: { exposure: description.exposure ?? 1, ...(description.frame ?? {}) } };
     orbitFromCamera(description.eye, description.target);
     window.__showcase = { renderer, scene, orbit, draw };
