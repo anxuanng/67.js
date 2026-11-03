@@ -33,10 +33,10 @@
   "entry:light-bake": 28500,
   "entry:path-tracer": 14600,
   "entry:texture-set": 900,
-  "entry:agent-scene": 77300,
-  "entry:agent-scene+lazy": 259200,
-  "entry:agent-asset": 108600,
-  "entry:agent-asset+lazy": 270800,
+  "entry:agent-scene": 77600,
+  "entry:agent-scene+lazy": 259500,
+  "entry:agent-asset": 108900,
+  "entry:agent-asset+lazy": 271100,
   "entry:hdri": 3300,
   "entry:camera-effects": 8600,
   "entry:water-reflection": 26000,
@@ -44,10 +44,10 @@
   "entry:material-layer-shaders": 20700,
   "entry:light-linking": 19000,
   "entry:cascaded-shadows": 27700,
-  "scene:lit-box": 62800,
+  "scene:lit-box": 62900,
   "scene:gltf-box": 84200,
   "scene:gltf-box+lazy": 87600,
-  "scene:agent-scene": 104400,
-  "scene:agent-scene+lazy": 286300
+  "scene:agent-scene": 104700,
+  "scene:agent-scene+lazy": 286600
  }
 }

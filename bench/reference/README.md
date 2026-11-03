@@ -769,3 +769,21 @@ Every other scene keeps its score to four digits. Tried and not kept, on `temple
 | Emission and lamps, 64 rays, weight 0.5 | 0.0644 | 0.2450 |
 
 The sun's bounce helps `fog` (0.2240 to 0.1065) and `temple-hall` but breaks `dark-shaft`, whose ambient already stands in for it, so it stays out. The whole-frame score of `temple-hall` without a bake is 0.0007 worse (0.0640 to 0.0647): the grid is isotropic and the fog has `anisotropy` 0.6, so the light cannot follow the forward lobe toward the window, and a weight that lifts the whole frame back to 0.0640 leaves the region at 0.2450, 0.0005 under EEVEE. A baked first attempt read the lightmap in the emissive slot as a source and scored 0.50 to 0.69; baked parts are skipped now. Cost: the grid takes 0.3 s for `temple-hall` and 0.07 s for `dark-shaft` (measured in the page, 64 rays, on a loaded machine), after the sky rays (1.7 s and 0.03 s). `entry:core` grows 28 bytes gzip (85,260 to 85,288); no budget changed. `baseline.json` and the images were not rewritten.
+
+## The sun shadow follows the sun (2026-11-03, part of issue #206)
+
+Several scenes aimed their shadow map along a hand-set eye that sat a few degrees off the sun the shading and Blender use (`foliage`: map along (-6, 11, 8), sun (-3, 6, 4)). Every scene now builds its shadow eye with `shadowAlongSun` from its own sun direction, at the old distance, keeping extent, near and far. The renderer does the same when `shadowBounds` gives no `eye` (`src/shadow-light.js`, also used by the cascaded shadows), and redraws the map when `environment.lightDirection` changes.
+
+Measured with `npm run reference -- --skip-blender`, before and after on the same Cycles and EEVEE arrays, GPU against Cycles (EEVEE in brackets). Scenes not listed keep their score to four digits.
+
+| Scene | before | after |
+| --- | --- | --- |
+| `foliage` | 0.1023 (EEVEE 0.0888) | 0.0989 |
+| `long-street` | 0.1407 (EEVEE 0.0976) | 0.1267 |
+| `character` | 0.0799 (EEVEE 0.0622) | 0.0717 |
+| `fog` | 0.2240 | 0.2256 |
+| `brick-graph` | 0.1602 (EEVEE 0.1221) | 0.1637 |
+| `brick-flat` | 0.1272 (EEVEE 0.1099) | 0.1346 |
+| `outdoor-hdri` | 0.0462 | 0.0460 |
+
+`foliage` improves by 0.0034 but still trails EEVEE. The two brick wall scenes get worse (0.0074 and 0.0035), and this was isolated. The wedge of floor the wall shades beside it now has the shape Cycles draws; the loss comes from a faint stipple the shadow map puts on the wall itself. With the sun at (-3, 6, 4) the wall faces the light at N.L 0.51, the 9 tap filter spans about 3.5 texels (about 46 mm of depth) and the bias is about 39 mm. `brick-flat` against Cycles: shadow off 0.1277, old eye 0.1272, aligned eye 0.1346, aligned eye with a constant bias of 0.004 0.1260. So the old eye was hiding a depth bias that ignores slope and the map depth range (issue #225). A slope scaled bias (0.0025 x min(tan, 4)) fixed both brick scenes and improved long-street, fog and megacity-dusk, but moved `temple-hall` from 0.0646 to 0.0752 and `foliage` from 0.0989 to 0.1007, because the bias is in units of far minus near, so it was not kept. `fog` is 0.0016 worse, inside the limit.
