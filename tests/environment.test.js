@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createEnvironmentMap, computeIrradianceCoefficients, evaluateIrradiance, estimateEnvironmentBytes, environmentSpecularLayout, ENVIRONMENT_BRDF_SIZE, environmentShadingGlsl } from '../src/environment.js';
+import { createFragmentShader } from '../src/shaders.js';
 import { parseRadianceHdr, loadHdri } from '../src/hdri.js';
 
 function filledMap(width, height, fillPixel, extra = {}) {
@@ -123,5 +124,13 @@ test('environment memory accounting counts the half-float chain and the BRDF loo
 
 test('environment specular adds the energy a rough surface scatters a second time', () => {
   assert.match(environmentShadingGlsl, /missingEnergy/);
-  assert.match(environmentShadingGlsl, /singleScatter \/ \(1\.0 - missingEnergy \* averageFresnel\)/);
+  assert.match(environmentShadingGlsl, /return 1\.0 \/ \(1\.0 - missingEnergy \* averageFresnel\)/);
+  assert.match(environmentShadingGlsl, /singleScatter \* multipleScatterGain\(lookup, baseReflectance\)/);
+});
+
+test('direct light specular takes the same multiple scatter gain once per fragment', () => {
+  const source = createFragmentShader(['environmentMap']);
+  assert.match(source, /specular \*= directSpecularGain;/);
+  assert.equal(source.match(/directSpecularGain = multipleScatterGain/g).length, 1);
+  assert.equal(source.match(/texture\(environmentBrdf/g).length, 2);
 });

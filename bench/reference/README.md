@@ -952,3 +952,21 @@ Both water boxes now stand 1 cm above the ground. Cycles is re-rendered for `meg
 | `megacity-dusk-b` GPU / CPU | 0.1242 / 0.1258 | 0.1108 / 0.1120 |
 
 Mean linear luminance of 67js over Cycles after the change, `megacity-dusk-a`: towers 0.92, street 0.90, river middle 0.82, river sides 0.82. The river is now slightly dark in 67js instead of 2.4 times bright. The scores of `mountain-valley-a` and the default suite are not touched: no engine file changed, and neither scene uses these boxes (inferred; not re-run). The measuring switch `render-gpu.mjs --water off|ssr` is new. Done-when 1 of #232 holds (the cause is measured); the sky visibility grid of its scope is not needed, and the issue's second item is moot.
+
+## Multiple scattering on direct light (2026-11-03, issue #167)
+
+`environmentLighting` added back the energy a rough microfacet loses on its first bounce (PR #236), but a sun or lamp's specular did not. `illuminate` now scales each light's specular by the same gain, `1 / (1 - (1 - scale - offset) * averageFresnel)`, taken from the BRDF table once per fragment (a global `directSpecularGain` set after the normal is final), so a fragment with five lights still samples the table twice (the environment term and the gain), not once per light. It applies only where an environment map is bound, since the table exists only then. A studio or outdoor-sky scene without a map is unchanged.
+
+Scores against Cycles, GPU, `--skip-blender` on the stored Cycles and EEVEE arrays of the #236 worker (main reproduced `baseline.json` to four digits on them first, `mountain-valley` included):
+
+| Scene | Before | After | EEVEE |
+| --- | --- | --- | --- |
+| `metal` | 0.0974 | 0.0962 | 0.0916 |
+| `material-spheres` | 0.1234 | 0.1185 | 0.1053 |
+| `character` | 0.0715 | 0.0712 | 0.0622 |
+| `brick-flat` | 0.1267 | 0.1264 | 0.1099 |
+| `spot-area` | 0.1242 | 0.1244 | 0.1935 |
+
+No scene got worse by more than 0.0002 (`spot-area`, `fog-valley` 0.1855 to 0.1859). Frame cost on the RTX 3060 (`frame-time.mjs`, median of three runs): `brick-flat` 0.375 to 0.39 ms before and 0.375 to 0.38 after, `metal` 0.44 to 0.45 before and 0.44 after, so the extra lookup is below the timer's resolution. SwiftShader `transparency` in `bench/runtime`: 345.9 ms before, 347.5 after (15 frames; that scene has no environment map, so the shader path is the same).
+
+`metal` is still 0.0046 above EEVEE, so the first box of #167 stays open. Where the rest is, by 6 by 8 block of the FLIP map (measured): the largest error is the lower half of the chrome sphere, where 67js is 0.062 brighter in display luminance than Cycles (EEVEE 0.022). Cycles shows the floor there darkened by the sphere's own contact shadow, and the sphere's probe traces the scene without the sphere, so the floor it shows is lit all the way to its base (inferred; the "seeing through the part itself" try above, 0.1117, was the attempt at that and was not kept). The rest of the frame is 67js 0.01 to 0.03 darker than Cycles, and EEVEE is darker still, so there is little left to gain from the direct specular. The floor holds over half of the error (0.0639 of 0.1147 in the table above) and is not a reflector.
