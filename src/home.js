@@ -1,6 +1,5 @@
-import './home.css';
+import './site.css';
 import './brand.js';
-import './site-theme.css';
 import './site-motion.js';
 
 const copyControls = [];

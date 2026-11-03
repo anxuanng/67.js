@@ -17,14 +17,15 @@
     <title>67js · a 3D engine agents can drive</title>
     <link rel="icon" href="/favicon.svg" />
   </head>
-  <body>
+  <body class="site">
     <a class="skip-link" href="#content">Skip to content</a>
     <header class="navigation">
-      <a class="brand" href="/" aria-label="67js home">67<span>.js</span></a>
+      <a class="brand" href="/" aria-label="67js home">67js</a>
       <span class="version" data-release-version>Loading release</span>
       <nav aria-label="Library">
         <a href="/docs.html">Docs</a>
       </nav>
+      <a class="site-nav-cta" href="https://github.com/anxuanng/67.js"><span class="package-logo package-logo-github" aria-hidden="true"></span>GitHub</a>
     </header>
     <main id="content">
       <section class="hero" aria-label="67js introduction and live preview">
@@ -32,6 +33,10 @@
           <div>
             <h1>A 3D engine<br />agents can drive</h1>
             <p>WebGL2 rendering, deterministic animation and an MCP server in one package.</p>
+            <div class="hero-actions">
+              <a href="/docs.html#getting-started" data-icon="book">Get started</a>
+              <a href="https://www.npmjs.com/package/@codepawlhq/67js"><span class="package-logo package-logo-npm brand-npm" aria-hidden="true"></span>npm</a>
+            </div>
             <section id="downloads" class="home-install" aria-label="Install 67js">
               <div class="package-install">
                 <div class="package-managers" role="group" aria-label="Package manager">
@@ -44,11 +49,6 @@
                 <div class="release-feedback" hidden><p data-release-status role="status">Loading release information</p><button data-release-retry hidden>Retry</button></div>
               </div>
             </section>
-            <div class="hero-actions">
-              <a href="/docs.html#getting-started" data-icon="book">Get started</a>
-              <a href="https://github.com/anxuanng/67.js"><span class="package-logo package-logo-github" aria-hidden="true"></span>GitHub</a>
-              <a href="https://www.npmjs.com/package/@codepawlhq/67js"><span class="package-logo package-logo-npm brand-npm" aria-hidden="true"></span>npm</a>
-            </div>
           </div>
         </header>
 
@@ -133,8 +133,8 @@ renderer.render({
       </section>
     </main>
     <footer class="site-footer" aria-label="Site footer">
-      <div class="footer-introduction"><a class="brand" href="/" aria-label="67js home">67<span>.js</span></a><p>Made by <a href="https://codepawl.com">CodePawl</a>.</p></div>
-      <div class="footer-links"><a href="https://github.com/anxuanng/67.js"><span class="package-logo package-logo-github" aria-hidden="true"></span>GitHub</a><a href="https://www.npmjs.com/package/@codepawlhq/67js"><span class="package-logo package-logo-npm brand-npm" aria-hidden="true"></span>npm</a><a data-release-commit href="https://github.com/anxuanng/67.js">Release commit</a><a href="/changelog.md">Changelog</a><a href="/license.txt">MIT license</a><a href="/logo.svg" download>Logo SVG</a></div>
+      <p><a class="brand" href="/" aria-label="67js home">67js</a> by <a href="https://codepawl.com">CodePawl</a></p>
+      <nav class="footer-links" aria-label="Project links"><a href="https://github.com/anxuanng/67.js">GitHub</a><a href="https://www.npmjs.com/package/@codepawlhq/67js">npm</a><a data-release-commit href="https://github.com/anxuanng/67.js">Release commit</a><a href="/changelog.md">Changelog</a><a href="/license.txt">MIT license</a><a href="/logo.svg" download>Logo SVG</a></nav>
     </footer>
 <script type="module" src="/src/home.js"></script>
   </body>
