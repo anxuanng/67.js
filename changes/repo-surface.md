@@ -1,0 +1,1 @@
+- Point the package, site and docs at the new `codepawl/67.js` repository, rewrite the README around the showcase worlds and drop the preview images that only the old README used.

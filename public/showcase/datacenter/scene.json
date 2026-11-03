@@ -325,7 +325,7 @@
       "model": "Racks, busways, cooling, pipework, hall shell and swap cart",
       "author": "CodePawl",
       "licence": "MIT",
-      "source": "https://github.com/anxuanng/67.js"
+      "source": "https://github.com/codepawl/67.js"
     },
     {
       "model": "Metal029, Metal027, Metal038 (rack frames, steel, panels, cowls)",
@@ -349,7 +349,7 @@
       "model": "Texture sets packed and resized from the maps above (colour, normal, roughness and metalness)",
       "author": "CodePawl",
       "licence": "MIT",
-      "source": "https://github.com/anxuanng/67.js"
+      "source": "https://github.com/codepawl/67.js"
     }
   ],
   "waterReflection": true
