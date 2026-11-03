@@ -44,7 +44,7 @@ function carveDisc(center, radii, depth) {
 
 function carveRiver(centreAt, depth, halfWidth) {
   return (x, z, height, rise) => {
-    const channel = (1 - smoothBetween(halfWidth * 0.3, halfWidth, Math.abs(x - centreAt(z)))) * (1 - smoothBetween(0.05, 0.3, rise));
+    const channel = (1 - smoothBetween(halfWidth * 0.3, halfWidth, Math.abs(x - centreAt(z)))) * (1 - smoothBetween(0, 0.08, rise));
     return height * (1 - channel) + depth * channel;
   };
 }
@@ -134,8 +134,8 @@ function mountainValleyDawn() {
   return lookValleyScene({
     sky: skyGradient({ zenith: [0.14, 0.24, 0.55], horizon: [1, 0.66, 0.55], ground: [0.2, 0.17, 0.2], power: 0.4, intensity: 1.1 }),
     key: [6.2, 3.7, 2.4], sunDirection: [0.45, 0.24, -0.85],
-    height: lookValleyHeight({ ridgeMix: 0.2, floorScale: 0.6, floorOffset: 3, hero: { x: 80, z: -1250, radius: 380, height: 700 }, carve: carveRiver(DAWN_RIVER, -6, 60) }),
-    palette: ALPINE, water: { level: -1, center: [0, -400], size: [3000, 3000] },
+    height: lookValleyHeight({ ridgeMix: 0.2, floorScale: 0.6, floorOffset: 9, hero: { x: 80, z: -1250, radius: 380, height: 700 }, carve: carveRiver(DAWN_RIVER, -6, 60) }),
+    palette: { ...ALPINE, snowLine: 820 }, water: { level: -1, center: [0, -400], size: [3000, 3000] },
     haze: { color: [0.75, 0.62, 0.64], start: 900, end: 4200, amount: 0.55 },
     eyeGround: [-200, 430], eyeLift: 45, target: [60, 330, -1500], fov: 52, forestDensity: 0.002,
     forestMix: { conifer: 1, birch: 0.12 },
@@ -153,11 +153,11 @@ function mountainValleyTarn() {
     sky: skyGradient({ zenith: [0.08, 0.28, 0.72], horizon: [0.62, 0.78, 0.95], ground: [0.2, 0.22, 0.2], power: 0.5, intensity: 1 }),
     key: [4.8, 4.4, 3.8], sunDirection: [-0.3, 0.8, 0.3],
     height: lookValleyHeight({ ridgeMix: 0.3, rimScale: 0.92, carve: carveDisc([TARN.x, TARN.z], [420, 260], -14) }),
-    palette: { ...ALPINE, snowLine: 520, treeLine: 560 },
+    palette: { ...ALPINE, snowLine: 900, treeLine: 560 },
     water: { level: -1.2, center: [TARN.x, TARN.z], size: [1000, 1000], material: { color: [0.02, 0.17, 0.2], roughness: 0.03 } },
-    haze: { color: [0.62, 0.74, 0.9], start: 700, end: 3600, amount: 0.7 },
+    haze: { color: [0.62, 0.74, 0.9], start: 900, end: 4200, amount: 0.45 },
     eyeGround: [-130, 140], eyeLift: 3.2, target: [60, 260, -1500], fov: 55, forestDensity: 0.0021,
-    boulders: { innerRadius: 4, outerRadius: 70, count: 70, size: [0.5, 3.2], seed: 14, facing: 0.1 },
+    boulders: { innerRadius: 4, outerRadius: 70, count: 40, size: [0.4, 2], seed: 14, facing: 0.1 },
     treeExclusion: (x, z, eye) => Math.hypot(x - eye[0], z - eye[2]) < 30,
   });
 }
@@ -165,10 +165,10 @@ function mountainValleyTarn() {
 // Meadow at sunset: a low orange sun from the left throws long tree shadows across wildflower drifts, one massif lit pink.
 function mountainValleySunset() {
   return lookValleyScene({
-    sky: skyGradient({ zenith: [0.09, 0.14, 0.42], horizon: [1, 0.45, 0.2], ground: [0.22, 0.12, 0.1], power: 0.42, intensity: 0.7 }),
+    sky: skyGradient({ zenith: [0.09, 0.14, 0.42], horizon: [1, 0.45, 0.2], ground: [0.22, 0.12, 0.1], power: 0.42, intensity: 1 }),
     key: [7.4, 3.5, 1.4], sunDirection: [-0.85, 0.2, -0.15],
     height: lookValleyHeight({ ridgeMix: 0.4, hero: { x: 140, z: -1100, radius: 340, height: 650 }, floorScale: 1.4 }),
-    palette: { ...ALPINE, grassLight: [0.2, 0.28, 0.07], flowers: [[0.6, 0.5, 0.05], [0.55, 0.15, 0.25], [0.45, 0.45, 0.5]], snowLine: 470, snow: [0.95, 0.85, 0.82] },
+    palette: { ...ALPINE, grassLight: [0.2, 0.28, 0.07], flowers: [[0.6, 0.5, 0.05], [0.55, 0.15, 0.25], [0.45, 0.45, 0.5]], snowLine: 820, snow: [0.95, 0.85, 0.82] },
     haze: { color: [0.8, 0.45, 0.35], start: 600, end: 3400, amount: 0.65 },
     eyeGround: [-300, 400], eyeLift: 2.4, target: [100, 330, -1400], fov: 50, forestDensity: 0.0026,
     forestMix: { conifer: 1, birch: 0.2 },
@@ -183,6 +183,15 @@ function mountainValleySunset() {
 const SANDSTONE = { color: [0.74, 0.62, 0.46], roughness: 0.8 };
 const SANDSTONE_FLOOR = { color: [0.55, 0.46, 0.34], roughness: 0.55 };
 const GOLD = { color: [0.85, 0.62, 0.2], metallic: 0.9, roughness: 0.3 };
+
+// The reference nave's stone is dark; the options that need a lit hall get sandstone, swapped by colour identity.
+function lightenStone(parts) {
+  for (const { material } of parts) {
+    if (material.color === STONE.color) material.color = SANDSTONE.color;
+    else if (material.color === FLOOR_STONE.color) material.color = SANDSTONE_FLOOR.color;
+  }
+  return parts;
+}
 
 function glowPart(name, translation, scale, color, emission) {
   return part(name, HALL_BLOCK, translation, scale, { color, roughness: 1, emission });
@@ -220,10 +229,10 @@ function candleParts(spots) {
 // Rose window: the nave seen down its axis toward a wall of stained glass, sun shafts through the roof openings, candles along
 // the carpet and people for scale.
 function templeHallRose() {
-  const lighting = constantLighting(0.16);
+  const lighting = constantLighting(0.3);
   const sunDirection = [0.3, 0.82, 0.25];
-  const parts = closedNaveParts().filter(({ name }) => name !== 'roof');
-  hallRoofParts(parts, STONE);
+  const parts = lightenStone(closedNaveParts().filter(({ name }) => name !== 'roof'));
+  hallRoofParts(parts, SANDSTONE);
   parts.push(
     part('wall-left', HALL_BLOCK, [-HALL.halfWidth - 1, HALL.roofHeight / 2, NAVE_MIDDLE], [2, HALL.roofHeight + 1, NAVE_LENGTH], STONE),
     part('wall-far', HALL_BLOCK, [0, HALL.roofHeight / 2, HALL.back - 1], [HALL.halfWidth * 2 + 4, HALL.roofHeight + 1, 2], STONE),
@@ -261,7 +270,7 @@ function colossusParts(prefix, x, z, scale, material) {
 function templeHallCourt() {
   const lighting = constantLighting(0.42);
   const sunDirection = [0.42, 0.78, 0.3];
-  const parts = closedNaveParts().filter(({ name }) => name !== 'roof');
+  const parts = lightenStone(closedNaveParts().filter(({ name }) => name !== 'roof'));
   const aisleWidth = HALL.halfWidth - 17;
   for (const side of [-1, 1]) {
     parts.push(part(`roof-aisle-${side}`, HALL_BLOCK, [side * (17 + aisleWidth / 2 + 2), HALL.roofHeight, NAVE_MIDDLE], [aisleWidth + 4, 2, NAVE_LENGTH], SANDSTONE));
@@ -293,6 +302,7 @@ function facadeMaterial({ wall, glass, lit, litShare, warm, cool, seed }) {
   const along = { smoothstep: [0.18, 0.3, { wave: { frequency: 10, direction: 'v', shape: 'triangle' } }] };
   const pane = { min: [across, along] };
   const litPane = { mul: [pane, { smoothstep: [1 - litShare, 1 - litShare + 0.02, { voronoi: { scale: 8, seed, output: 'cell' } }] }] };
+  // A cell of the voronoi is about a window across, so each window is lit or dark as a whole.
   const tint = { ramp: { value: { noise: { scale: 4, seed: seed + 5 } }, stops: [[0, warm], [1, cool]] } };
   const graph = { color: { mix: [wall, glass, pane] }, emission: { mix: [[0, 0, 0], tint, litPane] } };
   const pattern = normalizeMaterialPattern({ type: 'graph', graph, size: 36, bump: 0, resolution: 512 });
@@ -372,8 +382,8 @@ function cityTowers(sites, seed, materials, shopMaterial) {
 function megacityGoldenAvenue() {
   const lighting = skyGradient({ zenith: [0.15, 0.3, 0.62], horizon: [1, 0.62, 0.35], ground: [0.2, 0.15, 0.12], power: 0.42, intensity: 0.8 });
   const sunDirection = [-0.7, 0.16, 0.5];
-  const materials = facadePalette(0.22, 0.8);
-  const shop = facadeMaterial({ wall: [0.3, 0.25, 0.2], glass: [0.08, 0.07, 0.06], lit: 1.4, litShare: 0.6, warm: WARM, cool: [1, 0.85, 0.6], seed: 30 });
+  const materials = facadePalette(0.3, 0.55);
+  const shop = facadeMaterial({ wall: [0.3, 0.25, 0.2], glass: [0.08, 0.07, 0.06], lit: 0.8, litShare: 0.45, warm: WARM, cool: [1, 0.85, 0.6], seed: 30 });
   const parts = [
     part('city-ground', UNIT_BOX, [0, -1, -500], [9000, 2, 9000], GROUND),
     part('avenue', UNIT_BOX, [0, 0.05, -500], [60, 0.1, 2600], ROAD),
@@ -403,8 +413,8 @@ function megacityGoldenAvenue() {
 // and a warm band on the horizon. Parkland trees on the near bank.
 function megacityBlueHour() {
   const lighting = skyGradient({ zenith: [0.02, 0.07, 0.3], horizon: [0.8, 0.45, 0.35], ground: [0.05, 0.06, 0.1], power: 0.35, intensity: 0.65 });
-  const materials = facadePalette(0.5, 1);
-  const shop = facadeMaterial({ wall: [0.3, 0.25, 0.2], glass: [0.08, 0.07, 0.06], lit: 1.6, litShare: 0.7, warm: WARM, cool: [1, 0.85, 0.6], seed: 31 });
+  const materials = facadePalette(0.42, 0.6);
+  const shop = facadeMaterial({ wall: [0.3, 0.25, 0.2], glass: [0.08, 0.07, 0.06], lit: 0.9, litShare: 0.5, warm: WARM, cool: [1, 0.85, 0.6], seed: 31 });
   const parts = [
     part('far-land', UNIT_BOX, [0, -1.5, -1400], [9000, 2, 2400], GROUND),
     part('river', UNIT_BOX, [0, -1.19, 0], [9000, 1.4, 1500], WATER),
@@ -436,8 +446,8 @@ function megacityBlueHour() {
 // magenta on the tower faces.
 function megacityNightGrid() {
   const lighting = skyGradient({ zenith: [0.004, 0.008, 0.03], horizon: [0.07, 0.05, 0.1], power: 0.4, intensity: 1 });
-  const materials = facadePalette(0.6, 1.2);
-  const shop = facadeMaterial({ wall: [0.25, 0.22, 0.2], glass: [0.06, 0.05, 0.05], lit: 1.8, litShare: 0.8, warm: WARM, cool: [1, 0.85, 0.6], seed: 32 });
+  const materials = facadePalette(0.5, 0.7);
+  const shop = facadeMaterial({ wall: [0.25, 0.22, 0.2], glass: [0.06, 0.05, 0.05], lit: 1, litShare: 0.55, warm: WARM, cool: [1, 0.85, 0.6], seed: 32 });
   const parts = [part('city-ground', UNIT_BOX, [0, -1.5, -400], [9000, 2, 9000], GROUND)];
   for (const x of range(-500, 500, 125)) {
     parts.push(part(`avenue-x-${x}`, UNIT_BOX, [x, 0.05, -350], [26, 0.1, 1700], ROAD));
