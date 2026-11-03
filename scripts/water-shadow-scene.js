@@ -70,14 +70,20 @@ export function measureBed(canvas, depth, water) {
 }
 
 const GRAZING = { eye: [4, 0.8, 6], target: [0, -0.05, 0.5] };
+const STEEP = { eye: [1.5, 9, 3], target: [0, -0.05, 0.5] };
 
-/** Linear RGB of an opaque water surface in and out of the post's shadow, from a grazing and from a steep view. */
+/** Linear RGB of one point of an opaque water surface, with the post (shadowed) and without it (lit), from a grazing and a steep view. */
 export function measureSurface(canvas, water) {
   const result = {};
-  for (const [label, view] of [['grazing', GRAZING], ['steep', { eye: [1.5, 9, 3], target: [0, -0.05, 0.5] }]]) {
-    const renderer = drawFrame(canvas, poolParts(1, water, { visible: true }), { ...view, fov: 30 });
-    result[label] = { lit: readLinear(renderer, canvas, [LIT_OFFSET, -0.05, 2]), shadowed: readLinear(renderer, canvas, [SHADOW_OFFSET, -0.05, 0]) };
-    renderer.dispose?.();
+  for (const [label, view] of [['grazing', GRAZING], ['steep', STEEP]]) {
+    const read = parts => {
+      const renderer = drawFrame(canvas, parts, { ...view, fov: 30 });
+      const color = readLinear(renderer, canvas, [SHADOW_OFFSET, -0.05, 0]);
+      renderer.dispose?.();
+      return color;
+    };
+    const parts = poolParts(1, water, { visible: true });
+    result[label] = { lit: read(parts.filter(part => part.name !== 'post')), shadowed: read(parts) };
   }
   return result;
 }

@@ -1534,3 +1534,20 @@ Fix: `harness.js` renders the reference frame with `wind: 0`. Re-run with 67js o
 | mountain-valley-c (grand) | 0.1836 to 0.1775 | 0.223 to 0.2182 | 0.1522 |
 
 `foliage` now sits 0.0086 under EEVEE against Cycles (was 0.0055 over). Every other default and grand scene has no leaf cards and was not re-rendered; the only score that rose is a GPU against CPU difference (`gpu-vs-cpu` of `foliage` 0.0095 to 0.0097, `mountain-valley-b` 0.0158 to 0.0164). The Cycles and EEVEE columns did not move, so this is a change on the 67js side of the comparison and not a new reference. The score no longer includes the wind, which a real scene still has by default (`wind` 0.3); that is by design and is not scored here.
+
+## Water shadows (2026-11-03, part of issue #349)
+
+A post stands in a 12 m pool and the camera looks straight down (`scripts/water-shadow-scene.js`, run by `node scripts/measure-water-shadows.mjs`). Shadow contrast is the lit minus the shadowed bed, per channel, against the same pool dry, so the absorption of the column is what is left. Measured in Chrome with 8 bit output, inverted to linear:
+
+| Preset | Depth | Red | Green | Blue | `exp(-absorption * depth)` for the clear lake (red, green, blue) |
+| --- | --- | --- | --- | --- | --- |
+| lake | 0.2 m | 0.928 | 0.978 | 1.010 | 0.932, 0.986, 0.992 |
+| lake | 1 m | 0.699 | 0.907 | 0.948 | 0.705, 0.932, 0.961 |
+| lake | 4 m | 0.227 | 0.694 | 0.785 | 0.247, 0.756, 0.852 |
+| sea | 4 m | 0.139 | 0.520 | 0.619 | |
+| river | 1 m | 0.204 | 0.190 | 0.087 | |
+| river | 4 m | 0.005 | 0.005 | 0.000 | |
+
+The clear lake stays within 10 percent of the formula (the largest gap, 8 percent at 4 m, is the in-scatter of turbidity 0.02). `RENDER_TESTS=1 node --test tests/water-shadows-render.test.js` checks it. On an opaque water surface the post's shadow darkened the steep view by 9.5 to 14 percent before and darkens it by 3 to 4 percent now (river 1.5 percent); the grazing view, which is nearly all reflection, shows 0 percent both times, so the shadow never reaches the mirrored sky.
+
+The reference scenes draw their water as a smooth `surface` part with the planar reflection, not the `water` tag, and the shader code they run is unchanged, so they were not rescored. The Blender Cycles reference of the pool (volume absorption and scatter) and its FLIP score are not taken yet; they wait for a look at the preview.

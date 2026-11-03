@@ -129,10 +129,14 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
     await composePreview(beforeCells, afterCells, previewPath);
     console.log(`wrote ${previewPath}`);
   } else {
-    const report = await measureWaterShadows();
+    const report = await measureWaterShadows(option('--root') ?? process.cwd());
     for (const row of report.rows) {
       console.log(row.preset, row.depth, 'contrast', row.contrast.map(value => value.toFixed(3)).join(' '));
     }
-    console.log(JSON.stringify(report.surface));
+    for (const [preset, views] of Object.entries(report.surface)) {
+      for (const [view, { lit, shadowed }] of Object.entries(views)) {
+        console.log(preset, view, 'surface shadow darkening', lit.map((value, channel) => (1 - shadowed[channel] / value).toFixed(3)).join(' '));
+      }
+    }
   }
 }
