@@ -1,6 +1,6 @@
 import { createEnvironmentMap, createEnvironmentResources } from './environment.js';
 import { fullscreenVertex } from './gl-program.js';
-import { layerTextureSupport, registerShaderFeatureCode } from './shaders.js';
+import { layerTextureSupport, registerShaderFeatureCode } from './shader-registry.js';
 import { boundsCentre, traceProbes, worldBounds } from './probe-trace.js';
 
 // Reflection probes: the room around a point, traced once and prefiltered like an environment map, so a glossy part

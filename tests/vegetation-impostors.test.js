@@ -97,13 +97,13 @@ test('a fade draws both levels with complementary coverage and repeats for a cam
   const eye = [instance.position[0] + 38, instance.position[1], instance.position[2]];
   const direct = selectBlendedLevels([instance], eye, { fade: 0.06 });
   assert.equal(direct.fading, 1);
-  const outgoing = direct.parts.filter(part => part.material.alphaMode === 'dither' && !part.material.ditherIncoming);
-  const incoming = direct.parts.filter(part => part.material.ditherIncoming);
+  const outgoing = direct.parts.filter(part => part.material.opacityBias > 0 && part.material.opacityBias < 1);
+  const incoming = direct.parts.filter(part => part.material.opacityBias > 1);
   assert.ok(outgoing.length > 0 && incoming.length > 0);
-  assert.ok(Math.abs(outgoing[0].material.opacity + incoming[0].material.opacity - 1) < 1e-9);
+  assert.ok(Math.abs(outgoing[0].material.opacityBias + incoming[0].material.opacityBias - 1 - 1) < 1e-9);
   selectBlendedLevels([instance], [instance.position[0] + 300, 0, instance.position[2]], { fade: 0.06 });
   const after = selectBlendedLevels([instance], eye, { fade: 0.06 });
-  assert.deepEqual(after.parts.map(part => [part.name, part.material.opacity, part.material.ditherIncoming]), direct.parts.map(part => [part.name, part.material.opacity, part.material.ditherIncoming]));
+  assert.deepEqual(after.parts.map(part => [part.name, part.material.opacityBias]), direct.parts.map(part => [part.name, part.material.opacityBias]));
   assert.equal(selectBlendedLevels([instance], eye, { fade: 0.06 }).changed, false);
   assert.equal(selectBlendedLevels([instance], eye, { fade: 0.06 }).parts[0], direct.parts[0], 'unchanged parts keep their identity');
 });
@@ -113,7 +113,7 @@ test('selectLevels keeps its hysteresis path unless fade or impostors are asked 
   const eye = [0, 2, 0];
   const plain = selectLevels(forest.instances, eye, {});
   assert.equal(plain.impostors, undefined);
-  assert.ok(plain.parts.every(part => part.material.tag !== 'impostor' && part.material.alphaMode !== 'dither'));
+  assert.ok(plain.parts.every(part => part.material.tag !== 'impostor' && part.material.opacityBias === undefined));
 });
 
 test('impostors replace the last level only beyond its fade band', () => {
@@ -145,9 +145,8 @@ test('a 5,000 tree forest draws far fewer triangles with impostors', () => {
 });
 
 test('the shaders carry the card code only where a pass needs it', () => {
-  assert.match(createVertexShader(['impostor']), /#define USES_IMPOSTOR \(true\)/);
-  assert.match(createVertexShader([]), /#define USES_IMPOSTOR false/);
+  assert.match(createVertexShader([]), /impostorCard\(position, uv, instanceMatrix, viewProjection/);
   assert.match(createDepthVertexShader(), /impostorCard\(position, uv, instanceMatrix, lightProjection/);
   assert.match(impostorShader, new RegExp(`floor\\(square \\* ${IMPOSTOR_FRAMES}\\.0\\)`));
-  assert.match(createFragmentShader(['alphaMode', 'impostor']), /incoming \? coverage < 1\.0 - threshold : coverage <= threshold/);
+  assert.match(createFragmentShader(['alphaMode']), /incoming \? coverage < 1\.0 - threshold : coverage <= threshold/);
 });

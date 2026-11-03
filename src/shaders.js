@@ -1,7 +1,9 @@
 import { MAX_MORPH_TARGETS } from './morph.js';
 import { MAX_POINT_LIGHTS, MAX_SPOT_LIGHTS, MAX_AREA_LIGHTS } from './light-limits.js';
-import { environmentLookupGlsl, environmentShadingGlsl } from './environment-shading.js';
-import { impostorGlsl } from './impostor-slots.js';
+import { addonGlsl } from './shader-registry.js';
+import { registeredFeatureCode, requireFeatureCode, registerShaderFeatureCode, registerSplatSupport, requireSplatSupport, layerTextureSupport, viewTransformShader, SPLAT_UNITS } from './shader-registry.js';
+
+export { registerShaderFeatureCode, registerSplatSupport, requireSplatSupport, layerTextureSupport, viewTransformShader, SPLAT_UNITS };
 
 const morphingShader = `
 uniform float morphEnabled;
@@ -67,40 +69,18 @@ mat4 skinTransform() {
 }
 `;
 
-// Wind for the foliage (4) and grass (7) tags, shared by the colour and shadow vertex shaders so both
-// move identically. It depends only on local position, the card's uv, world position and time.
-// The slow sway grows with height and with distance from the model's vertical axis (branch tips swing
-// more than the crown centre) but is capped, because bark never moves and leaves must stay near their twigs.
-// uv.y is 1 at a leaf's base and 0 at its tip, which drives the faster flutter.
-const windShader = `
-// Grass bends by how far up the blade a vertex is (uv.y is 1 at the root), so it ignores terrain height.
-// Gusts roll across the field as a travelling wave along the wind direction, like the rolling bands in a meadow.
-vec3 grassWind(vec3 worldPoint, vec2 leafUv, float seconds, float strength) {
-  float tip = clamp(1.0 - leafUv.y, 0.0, 1.0);
-  float bendWeight = tip * tip;
-  vec2 windDirection = vec2(0.94, 0.34);
-  float along = dot(worldPoint.xz, windDirection);
-  float gust = 0.5 + 0.5 * sin(along * 0.32 - seconds * 1.7 + 2.0 * sin(worldPoint.x * 0.05 - worldPoint.z * 0.04 + seconds * 0.23));
-  float push = (0.3 + 0.7 * gust * gust) * strength;
-  float flutter = sin(seconds * 4.7 + worldPoint.x * 2.3 + worldPoint.z * 1.9) * strength;
-  vec2 offset = windDirection * (push * 0.42 + flutter * 0.05) + vec2(-windDirection.y, windDirection.x) * flutter * 0.04;
-  return vec3(offset.x, -push * 0.14, offset.y) * bendWeight;
-}
-
-vec3 windOffset(vec3 localPosition, vec3 worldPoint, vec2 leafUv, float surfaceTag, float seconds, float strength) {
-  // Grass without UVs (uv is (-1, -1)) has no blade coordinate, so it keeps the height-based sway below.
-  if (surfaceTag == 7.0 && leafUv.x > -0.5) return grassWind(worldPoint, leafUv, seconds, strength);
-  if (surfaceTag != 4.0 && surfaceTag != 7.0) return vec3(0.0);
-  float heightReach = min(max(localPosition.y + 0.5, 0.0), 2.5);
-  float branchReach = 1.0 + 0.3 * min(length(localPosition.xz), 3.0);
-  float sway = sin(seconds * 1.2 + worldPoint.z * 0.31 + worldPoint.x * 0.17) * strength * 0.10 * heightReach * branchReach;
-  float tip = clamp(1.0 - leafUv.y, 0.0, 1.0);
-  float flutter = sin(seconds * 3.1 + worldPoint.x * 1.7 + worldPoint.z * 1.3 + localPosition.y * 2.0) * strength * 0.08 * tip;
-  return vec3(sway + flutter, 0.0, flutter * 0.6);
-}
+// Wind lives in world-material-shader.js; a vertex shader without wind parts gets this stub.
+const WIND_STUB = `
+vec3 windOffset(vec3 localPosition, vec3 worldPoint, vec2 leafUv, float surfaceTag, float seconds, float strength) { return vec3(0.0); }
 `;
 
-function vertexShaderSource(definitions) {
+// Wind for the foliage and grass tags: shared by the colour and shadow vertex shaders so both get the same code.
+function windShader(features) {
+  const enabled = new Set(features);
+  return enabled.has('foliage') || enabled.has('grass') ? requireFeatureCode('worldMaterials').worldVertexWind : WIND_STUB;
+}
+
+function vertexShaderSource(definitions, features) {
   return `#version 300 es
 ${definitions}
 precision highp float;
@@ -138,15 +118,15 @@ out vec3 boxNormal;
 flat out mat3 boxNormalMatrix;
 ${skinningShader()}
 ${morphingShader}
-${windShader}
-${impostorGlsl.declarations}
+${windShader(features)}
+${addonGlsl.declarations}
 void main() {
   // A crowd batch reads its joints and weights from the UV and colour attributes, which then carry no texture or tint.
   vec2 uv = USES_CROWD ? vec2(-1.0) : uvSets.xy;
   mat4 deformation = USES_CROWD ? crowdTransform() : (USES_SKIN ? skinTransform() : mat4(1.0));
   vec4 world = instanceMatrix * deformation * vec4(USES_MORPH ? morphedPosition(position) : position, 1.0);
   world.xyz += USES_CROWD ? vec3(0.0) : assemblyOffset * assemblyAmount + assemblyDetailOffset * smoothstep(0.3, 1.0, assemblyAmount);
-${impostorGlsl.colorHook}  if (USES_WIND) world.xyz += windOffset(position, world.xyz, uv, instanceSurface.w, time, wind);
+${addonGlsl.colorHook}  if (USES_WIND) world.xyz += windOffset(position, world.xyz, uv, instanceSurface.w, time, wind);
   if (USES_WAVES && instanceSurface.w == 3.0) {
     world.y += sin(world.x * 1.4 + time * 0.8) * 0.025 + sin(world.z * 1.8 - time) * 0.02;
   }
@@ -157,7 +137,7 @@ ${impostorGlsl.colorHook}  if (USES_WIND) world.xyz += windOffset(position, worl
   vec3 localNormal = USES_MORPH ? morphedNormal(normal) : normal;
   vec3 deformedNormal = (USES_SKIN || USES_CROWD) ? transpose(inverse(mat3(deformation))) * localNormal : localNormal;
   worldNormal = normalize(instanceNormal * deformedNormal);
-${impostorGlsl.normalHook}  // Metres along the object's own axes, so a pattern follows a moving node and is not stretched by its scale.
+${addonGlsl.normalHook}  // Metres along the object's own axes, so a pattern follows a moving node and is not stretched by its scale.
   boxPosition = (USES_MORPH ? morphedPosition(position) : position) * vec3(length(instanceMatrix[0].xyz), length(instanceMatrix[1].xyz), length(instanceMatrix[2].xyz));
   boxNormal = deformedNormal;
   boxNormalMatrix = instanceNormal;
@@ -193,8 +173,8 @@ uniform float wind;
 out vec2 textureUV;
 ${skinningShader()}
 ${morphingShader}
-${windShader}
-${impostorGlsl.declarations}
+${windShader(features)}
+${addonGlsl.declarations}
 void main() {
   vec2 uv = USES_CROWD ? vec2(-1.0) : uvSets.xy;
   vec4 world = instanceMatrix * (USES_CROWD ? crowdTransform() : skinTransform()) * vec4(morphedPosition(position), 1.0);
@@ -202,7 +182,7 @@ void main() {
   // Same displacement as the colour pass, so shadows follow the swaying leaves.
   world.xyz += windOffset(position, world.xyz, uv, instanceSurface.w, time, wind);
   vec2 shadowUv = uv;
-${impostorGlsl.depthHook}  textureUV = shadowUv;
+${addonGlsl.depthHook}  textureUV = shadowUv;
   gl_Position = lightProjection * world;
 }`;
 }
@@ -336,29 +316,7 @@ uniform float doubleSided;
 out vec4 outputColor;
 const float PI = 3.14159265359;
 
-float terrainHash(vec2 position) {
-  vec3 seed = fract(vec3(position.xyx) * 0.1031);
-  seed += dot(seed, seed.yzx + 33.33);
-  return fract((seed.x + seed.y) * seed.z);
-}
-
-// Value noise and its analytic gradient avoid extra texture fetches for sand relief.
-vec3 terrainNoise(vec2 position) {
-  vec2 cell = floor(position);
-  vec2 fraction = fract(position);
-  vec2 blend = fraction * fraction * (3.0 - 2.0 * fraction);
-  vec2 derivative = 6.0 * fraction * (1.0 - fraction);
-  float lowerLeft = terrainHash(cell);
-  float lowerRight = terrainHash(cell + vec2(1.0, 0.0));
-  float upperLeft = terrainHash(cell + vec2(0.0, 1.0));
-  float upperRight = terrainHash(cell + vec2(1.0, 1.0));
-  float lower = mix(lowerLeft, lowerRight, blend.x);
-  float upper = mix(upperLeft, upperRight, blend.x);
-  return vec3(mix(lower, upper, blend.y),
-    mix(lowerRight - lowerLeft, upperRight - upperLeft, blend.y) * derivative.x,
-    (upper - lower) * derivative.y);
-}
-
+${featureCode("worldFunctions")}
 vec3 fresnel(float cosine, vec3 reflectance) {
   // The light shading preset uses the spherical Gaussian fit of Schlick's power, which needs no logarithm.
   float weight = LIGHT_SHADING ? exp2((-5.55473 * cosine - 6.98316) * cosine) : pow(1.0 - cosine, 5.0);
@@ -431,9 +389,7 @@ vec3 studio(vec3 direction, float roughness) {
   float strip = exp(-pow((direction.x + 0.6) / (0.035 + blur), 2.0)) * smoothstep(-0.1, 0.6, direction.y);
   return color + key * vec3(2.8, 2.2, 1.6) + rim * vec3(0.5, 1.6, 1.5) + strip * vec3(0.7);
 }
-${environmentLookupGlsl}
-${environmentShadingGlsl}
-
+${featureCode("environmentShading")}
 // Set once per fragment from the environment's BRDF table; every light's specular scales by it.
 vec3 directSpecularGain = vec3(1.0);
 
@@ -539,31 +495,11 @@ vec3 mappedNormal(vec3 normal) {
 
 ${featureCode("libraries")}
 
-// Moss is its own material over the base, not a tint: fully rough, a soft sheen at grazing angles and light that wraps
-// through it. Two masks, as in offline moss shading: a sharp one decides where moss is shaded, and a blurred one lifts
-// it into cushions, so its relief never turns into needles. Coverage favours up-facing surfaces.
-void mossMasks(vec3 normal, float amount, out float sharpMask, out float softMask) {
-  float facing = smoothstep(0.1, 0.7, normal.y);
-  vec2 position = worldPosition.xz * 6.0 + worldPosition.y * vec2(2.3, -1.7);
-  float patches = terrainNoise(position).x * 0.6 + terrainNoise(position * 2.7 + 5.1).x * 0.4;
-  float threshold = 1.0 - amount;
-  sharpMask = facing * smoothstep(threshold - 0.035, threshold + 0.035, patches);
-  softMask = facing * smoothstep(threshold - 0.22, threshold + 0.18, patches);
-}
-
-// Opaque draws 1, mask resolves to a cutout (smooth coverage with MSAA) and blend keeps the fraction.
+${featureCode("worldMossFunction")}// Opaque draws 1, mask resolves to a cutout (smooth coverage with MSAA) and blend keeps the fraction.
 float surfaceAlpha(float textureAlpha) {
   if (!USES_ALPHA_MODE) return 1.0;
   float alpha = materialOpacity * textureAlpha;
-  if (alphaMode > 2.5) {
-    // Screen-door fade: opacity above 1 marks the incoming side, which keeps the pixels the outgoing side drops.
-    bool incoming = materialOpacity > 1.0;
-    float coverage = incoming ? materialOpacity - 1.0 : materialOpacity;
-    float threshold = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
-    if (textureAlpha < alphaCutoff || (incoming ? coverage < 1.0 - threshold : coverage <= threshold)) discard;
-    return 1.0;
-  }
-  if (alphaMode > 1.5) return alpha;
+${addonGlsl.alphaCoverage}  if (alphaMode > 1.5) return alpha;
   if (alphaToCoverage > 0.5) {
     float softness = max(fwidth(alpha), 0.0001);
     alpha = clamp((alpha - alphaCutoff) / softness + 0.5, 0.0, 1.0);
@@ -670,52 +606,9 @@ void main() {
   roughness = clamp(roughness, 0.075, 1.0);
   vec3 normalChange = max(abs(dFdx(normal)), abs(dFdy(normal)));
   roughness = clamp(sqrt(roughness * roughness + dot(normalChange, normalChange) * 0.3), 0.075, 1.0);
-  if (TAG_WATER) {
-    normal = normalize(vec3(-cos(worldPosition.x * 1.4 + time * 0.8) * 0.035, 1.0, -cos(worldPosition.z * 1.8 - time) * 0.036));
-    float radius = length(worldPosition.xz - waterRipple.xz);
-    float age = time - rippleTime;
-    float wave = sin(radius * 11.0 - age * 8.0) * exp(-abs(radius - age * 1.4) * 1.5) * exp(-age * 0.7) * step(0.0, age);
-    normal.xz += normalize(worldPosition.xz - waterRipple.xz + 0.001) * wave * 0.07;
-    normal = normalize(normal);
-    color = mix(color, vec3(0.10, 0.23, 0.25), pow(1.0 - max(dot(normal, viewDirection), 0.0), 4.0));
-    roughness = 0.16;
-  }
-  if (CANOPY_TAG) {
-    float leaves = sin(worldPosition.x * 13.0 + sin(worldPosition.y * 9.0)) * sin(worldPosition.z * 11.0 - worldPosition.y * 5.0);
-    color *= 0.78 + leaves * 0.16;
-    normal = normalize(normal + vec3(sin(worldPosition.z * 12.0), sin(worldPosition.x * 9.0), cos(worldPosition.y * 11.0)) * 0.06);
-  }
-  if (TAG_TERRAIN) {
-    vec2 terrainPosition = worldPosition.xz + worldPosition.y * vec2(0.31, 0.43);
-    float footprint = max(fwidth(terrainPosition.x), fwidth(terrainPosition.y));
-    vec3 broad = terrainNoise(terrainPosition * 0.32);
-    vec3 ridges = terrainNoise(terrainPosition * 3.2 + vec2(5.2, 11.7));
-    vec3 grains = terrainNoise(terrainPosition * 32.0 + vec2(17.1, 4.3));
-    float ridgeWeight = 1.0 - smoothstep(0.25, 0.8, footprint * 3.2);
-    float grainWeight = 1.0 - smoothstep(0.2, 0.7, footprint * 32.0);
-    float ridgeColor = 1.0 - abs(ridges.x * 2.0 - 1.0);
-    color *= 0.82 + broad.x * 0.26 + (ridgeColor - 0.5) * 0.12 * ridgeWeight + (grains.x - 0.5) * 0.1 * grainWeight;
-    vec2 relief = ridges.yz * 0.08 * ridgeWeight + grains.yz * 0.11 * grainWeight;
-    vec3 perturbation = vec3(-relief.x, 0.0, -relief.y);
-    normal = normalize(normal + perturbation - normal * dot(perturbation, normal));
-    roughness = clamp(roughness + (grains.x - 0.5) * 0.06 * grainWeight, 0.075, 1.0);
-  }
   float mossCover = 0.0;
   vec3 mossTone = vec3(0.0);
-  if (USES_MOSS) {
-    float mossSoft;
-    mossMasks(normal, materialMoss.x, mossCover, mossSoft);
-    float mossFootprint = length(fwidth(worldPosition));
-    vec3 cushion = terrainNoise(worldPosition.xz * 40.0 + worldPosition.y * 13.0);
-    float cushionDetail = 1.0 - smoothstep(0.004, 0.03, mossFootprint);
-    vec3 cushionTilt = vec3(-cushion.y, 0.0, -cushion.z) * 0.07 * mossSoft * cushionDetail;
-    normal = normalize(normal + cushionTilt - normal * dot(cushionTilt, normal));
-    mossTone = materialMoss.yzw * (0.7 + 0.6 * cushion.x);
-    color = mix(color, mossTone, mossCover);
-    roughness = mix(roughness, 1.0, mossCover);
-    metallic = mix(metallic, 0.0, mossCover);
-  }
-  vec3 specularNormal = normal;
+${featureCode("worldSurface")}  vec3 specularNormal = normal;
   vec3 baseReflectance = mix(materialDielectric, color, metallic);
 ${featureCode("mainSetup")}  if (ENVIRONMENT_ENABLED && !LIGHT_SHADING) {
     vec2 brdfLookup = texture(environmentBrdf, vec2(clamp(dot(normal, viewDirection), 0.001, 1.0), roughness)).rg;
@@ -808,44 +701,16 @@ ${featureCode("probeSurroundings")}    radiance += surroundings * reflectance * 
   if (USES_LIGHT_MAP) radiance += color * (1.0 - metallic) * texture(lightMap, lightmapUV).rgb * lightMapScale;
   vec3 keyResponse = keyColor / mix(vec3(5.2, 4.7, 4.1), vec3(3.7, 3.4, 2.9), worldMode);
   keyResponse *= mix(daylight, 1.0, worldMode);
-  if (CANOPY_TAG) radiance += color * max(dot(-normal, normalize(lightDirection)), 0.0) * 0.3 * keyResponse * visibility;
-  if (mossCover > 0.001) {
-    float sheen = pow(1.0 - max(dot(normal, viewDirection), 0.0), 4.0);
-    float wrap = max(dot(normal, normalize(lightDirection)) + 0.5, 0.0) / 1.5;
-    radiance += mossTone * (sheen * 0.8 + wrap * 0.35) * keyResponse * visibility * mossCover;
-  }
-  if (TAG_GRASS) {
-    // Sun through thin blades: they glow yellow-green when the camera looks toward the light, most at the thin tips
-    // (uv.y runs 1 at the root to 0 at the tip; grass without UVs gets a middle value).
-    float towardSun = pow(max(dot(-viewDirection, normalize(lightDirection)), 0.0), 3.0);
-    float thinness = textureUV.x > -0.5 ? 1.0 - textureUV.y * 0.8 : 0.6;
-    radiance += color * vec3(1.1, 1.25, 0.55) * towardSun * thinness * 1.4 * keyResponse * visibility;
-  }
-  if (USES_SHEEN) radiance = sheenLayer(radiance, normal, viewDirection, visibility);
+${featureCode("worldLight")}  if (USES_SHEEN) radiance = sheenLayer(radiance, normal, viewDirection, visibility);
   if (USES_CLEARCOAT) radiance = clearCoatLayer(radiance, normal, viewDirection, visibility);
   radiance += emission;
-${featureCode("afterEmission")}  if (TAG_WATER) {
-    float reflectivity = 0.20 + 0.65 * pow(1.0 - max(dot(normal, viewDirection), 0.0), 3.0);
-    vec3 reflection = mix(vec3(0.12, 0.24, 0.28), vec3(0.40, 0.63, 0.78), clamp(reflect(-viewDirection, normal).y, 0.0, 1.0));
-    radiance = mix(radiance * 0.6, reflection * daylight * ambientIntensity, reflectivity);
-    radiance += vec3(1.0, 0.85, 0.55) * pow(max(dot(reflect(-normalize(lightDirection), normal), viewDirection), 0.0), 220.0) * 2.0 * keyResponse;
-  }
-  if (TAG_FLOOR) {
+${featureCode("afterEmission")}${featureCode("worldAfterEmission")}  if (TAG_FLOOR) {
     float contact = 1.0 - 0.45 * exp(-dot(worldPosition.xz, worldPosition.xz) * 1.4);
     radiance = vec3(0.034, 0.041, 0.046) * (0.4 + visibility * 0.6) * contact;
     float fog = 1.0 - exp(-length(worldPosition.xz) * 0.05);
     radiance = mix(radiance, vec3(0.018, 0.022, 0.026), fog);
   }
-  if (TAG_FIRE) {
-    float turbulence = sin(worldPosition.x * 3.0 + time * 4.0) * sin(worldPosition.y * 4.2 - time * 3.0) * sin(worldPosition.z * 3.7);
-    float heat = pow(clamp(0.55 + turbulence * 0.5 - explosionProgress * 0.12, 0.0, 1.0), 3.0);
-    radiance = mix(vec3(0.22, 0.003, 0.0002), vec3(8.0, 2.8, 0.15), heat) * max(0.2, surface.z * 0.10);
-  }
-  if (TAG_SMOKE) {
-    float turbulence = sin(worldPosition.x * 2.0 + time) * sin(worldPosition.y * 3.3 - time * 0.6);
-    radiance = color * (0.22 + turbulence * 0.12) + vec3(0.35, 0.05, 0.005) * max(0.0, 1.0 - explosionProgress) * max(0.0, -normal.y);
-  }
-  float fog = 1.0 - exp(-length(worldPosition - eye) * fogDensity);
+${featureCode("worldFinal")}  float fog = 1.0 - exp(-length(worldPosition - eye) * fogDensity);
   radiance = mix(radiance, fogColor, fog * worldMode);
   if (inspection > 0.5) radiance = normal * 0.5 + 0.5;
   outputColor = vec4(hdrEnabled > 0.5 ? clamp(radiance * exposure, vec3(0), vec3(65504.0)) : pow(toneMap(radiance * exposure), vec3(1.0 / 2.2)), alpha);
@@ -899,7 +764,7 @@ export const LIGHT_SHADING_MAXIMUM_SAMPLES = 2;
 export const ENVIRONMENT_FEATURES =Object.freeze(['environmentMap', 'studioLighting']);
 
 // Features that only the vertex shader reads: a part with a skeleton or morph targets.
-const VERTEX_ONLY_FEATURES = Object.freeze(['skin', 'morph', 'crowd', 'impostor']);
+const VERTEX_ONLY_FEATURES = Object.freeze(['skin', 'morph', 'crowd']);
 
 function environmentCondition(enabled) {
   const hasMap = enabled.has('environmentMap');
@@ -909,61 +774,30 @@ function environmentCondition(enabled) {
   return '(environmentEnabled > 0.5)';
 }
 
-// A feature that is not in the list above has its GLSL in another module, so a scene that never uses it does not carry
-// it. That module calls registerShaderFeatureCode on import, with blocks of GLSL that createFragmentShader splices in:
-// declarations, illuminateReflectance, illuminateSpecular, coatReset and mainSetup, each ending in a newline, normalUv
-// (a suffix on the normal map's UV, as in `textureUV * scale + offset`), and the
-// one-line linkSun (a factor on the sun) with linkPoint, linkSpot and linkArea (statements that skip a light for a part).
-// A feature that replaces the sun shadow defines shadowVisibility as a macro in its declarations.
-const registeredFeatureCode = new Map();
-
-// material-layer-shaders.js sets bind(renderer, layerMaps): it binds the textures of material.layerMaps for one batch.
-export const layerTextureSupport = {};
-
-// view-transform-shader.js sets apply(source, kind, viewTransform, hasLook), bindLook(renderer, program) and dispose(renderer).
-export const viewTransformShader = {};
-// splat-shader.js sets the JavaScript half of the splat ground material: validate, textureBytes, resolveSize,
-// packParameters and buildPixels. The renderer calls them only for a material with layers.
-const splatSupport = {};
-
-/** The texture units of the splat samplers. */
-export const SPLAT_UNITS = Object.freeze({ splatColor: 11, splatNormal: 12, splatPacked: 13, splatMask: 14 });
-
-export function registerSplatSupport(functions) {
-  Object.assign(splatSupport, functions);
-}
-
-export function requireSplatSupport() {
-  if (!splatSupport.validate) {
-    throw new Error("Splat layers need their code: add import '@codepawlhq/67js/addons/splat-shader'.");
-  }
-  return splatSupport;
-}
-
-/** Register the GLSL of an optional feature. Called by the module that holds it, on import. */
-export function registerShaderFeatureCode(feature, slots) {
-  registeredFeatureCode.set(feature, slots);
-}
-
 // Features that main still names, because a macro guards the call, but whose GLSL is in an addon module. A renderer
 // without the feature gets the stub, which keeps the program compiling; a renderer with it needs the module imported.
+// The environment map code is also optional, but a shader never throws without it: the renderer asks for the map's own
+// code first, and a shader built without it (studio lighting only) gets this stub, which the compiler drops as dead code.
+const ENVIRONMENT_STUB = {
+  environmentShading: `
+uniform sampler2D environmentBrdf;
+uniform float environmentEnabled;
+uniform float environmentLevelMax;
+vec3 environmentRadiance(vec3 direction, float level) { return vec3(0.0); }
+vec3 environmentDiffuse(vec3 normal) { return vec3(0.0); }
+vec3 multipleScatterGain(vec2 lookup, vec3 baseReflectance) { return vec3(1.0); }
+vec3 environmentLighting(vec3 normal, vec3 specularNormal, vec3 baseReflectance, vec3 viewDirection, vec3 reflected, vec3 color, float metallic, float roughness, float occlusion, float ambient, float specularWeight) { return vec3(0.0); }
+`,
+};
+
+// The world materials share one block of code in world-material-shader.js. A shader that draws none of them gets empty slots.
+const WORLD_MATERIAL_FEATURES = Object.freeze(['water', 'foliage', 'grass', 'terrain', 'moss', 'fire', 'smoke']);
+
 const MODULE_FEATURES = {
   splat: {
     stub: { libraries: 'void applySplat(inout vec3 color, inout vec3 normal, inout float roughness, inout float cavity) {}\n' },
   },
 };
-
-// The addon that registers each feature's code; a feature not listed here is registered by material-layer-shaders.
-const FEATURE_ADDONS = { splat: 'splat-shader', liquid: 'liquid-shader' };
-
-function requireFeatureCode(feature) {
-  const slots = registeredFeatureCode.get(feature);
-  if (!slots) {
-    const addon = FEATURE_ADDONS[feature] ?? 'material-layer-shaders';
-    throw new Error(`The ${feature} feature needs its shader code: add import '@codepawlhq/67js/addons/${addon}' (a recipe: await loadAgentSceneModules(recipe)).`);
-  }
-  return slots;
-}
 
 /** The fragment shader of the liquid and foam pass. It throws until liquid-shader.js is imported. */
 export function liquidFragmentSource() {
@@ -987,10 +821,12 @@ function featureCodeSplicer(features) {
   for (const [feature, { stub }] of Object.entries(MODULE_FEATURES)) {
     if (!enabled.has(feature)) codes.push(stub);
   }
+  if (WORLD_MATERIAL_FEATURES.some(feature => enabled.has(feature))) codes.push(requireFeatureCode('worldMaterials'));
+  codes.push(enabled.has('environmentMap') ? registeredFeatureCode.get('environmentMap') ?? ENVIRONMENT_STUB : ENVIRONMENT_STUB);
   return slot => codes.map(code => code[slot] ?? '').join('');
 }
 
-export const SHADER_FEATURES = Object.freeze([...Object.keys(SHADER_FEATURE_CONDITIONS), ...ENVIRONMENT_FEATURES, ...VERTEX_ONLY_FEATURES].filter(feature => !(feature in MODULE_FEATURES)));
+export const SHADER_FEATURES = Object.freeze([...Object.keys(SHADER_FEATURE_CONDITIONS), ...ENVIRONMENT_FEATURES, ...VERTEX_ONLY_FEATURES].filter(feature => !(feature in MODULE_FEATURES) && !WORLD_MATERIAL_FEATURES.includes(feature)));
 
 // The vertex shader pays on every vertex for skinning, morphing, wind, waves and the explosion, and SwiftShader runs a
 // choice between them whether or not the uniform picks it, so a renderer without those parts compiles them out.
@@ -1000,7 +836,6 @@ function vertexDefinitions(enabled) {
     `#define USES_SKIN ${condition(enabled.has('skin'), 'skinEnabled > 0.5')}`,
     `#define USES_CROWD ${condition(enabled.has('crowd'), 'crowdEnabled > 0.5')}`,
     `#define USES_MORPH ${condition(enabled.has('morph'), 'morphEnabled > 0.5')}`,
-    `#define USES_IMPOSTOR ${condition(enabled.has('impostor') && impostorGlsl.colorHook !== '', 'true')}`,
     `#define USES_WIND ${condition(enabled.has('foliage') || enabled.has('grass'), 'true')}`,
     `#define USES_WAVES ${condition(enabled.has('water'), 'true')}`,
     `#define USES_EXPLOSION ${condition(enabled.has('fire') || enabled.has('smoke'), 'true')}`,
@@ -1009,7 +844,7 @@ function vertexDefinitions(enabled) {
 
 /** The vertex shader for a set of features, listed as for createFragmentShader. */
 export function createVertexShader(features = SHADER_FEATURES) {
-  return vertexShaderSource(vertexDefinitions(new Set(features)));
+  return vertexShaderSource(vertexDefinitions(new Set(features)), features);
 }
 
 export const vertexShader = createVertexShader(SHADER_FEATURES.filter(feature => feature !== 'crowd'));

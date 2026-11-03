@@ -4,7 +4,7 @@
 // extra attribute. The same function runs in the colour and shadow vertex shaders: in the shadow pass the "eye" is
 // the light, so the card shows the tree as the sun sees it.
 
-import { registerImpostorShaderCode } from './impostor-slots.js';
+import { registerAddonGlsl } from './impostor-slots.js';
 
 /** Frames per side of the hemi-octahedral atlas (the atlas holds this many squared views). */
 export const IMPOSTOR_FRAMES = 8;
@@ -44,10 +44,24 @@ vec3 impostorCard(vec3 localPosition, vec2 corner, mat4 modelMatrix, mat4 clipMa
 `;
 
 // The hooks sit in main() of the colour and shadow vertex shaders (shaders.js); importing this module installs them.
-registerImpostorShaderCode({
+materialTags.impostor = IMPOSTOR_TAG;
+
+// A fade carries its coverage in the opacity: 1 plus the coverage for the outgoing side, 2 plus it for the incoming side.
+const ALPHA_COVERAGE = `  if (materialOpacity > 1.0) {
+    float biased = materialOpacity - 1.0;
+    bool incoming = biased > 1.0;
+    float coverage = incoming ? biased - 1.0 : biased;
+    float threshold = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
+    if (textureAlpha < alphaCutoff || (incoming ? coverage < 1.0 - threshold : coverage <= threshold)) discard;
+    return 1.0;
+  }
+`;
+
+registerAddonGlsl({
+  alphaCoverage: ALPHA_COVERAGE,
   declarations: impostorShader,
   colorHook: `  vec3 impostorNormal = vec3(0.0, 1.0, 0.0);
-  bool isImpostor = USES_IMPOSTOR && instanceSurface.w == ${IMPOSTOR_TAG}.0;
+  bool isImpostor = instanceSurface.w == ${IMPOSTOR_TAG}.0;
   if (isImpostor) {
     vec2 atlasUv;
     world.xyz = impostorCard(position, uv, instanceMatrix, viewProjection, time, wind, atlasUv, impostorNormal);

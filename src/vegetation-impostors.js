@@ -324,8 +324,9 @@ function tintedMaterial(material, tintable, tint) {
   return tintable ? { ...material, color: material.color.map((channel, axis) => channel * tint[axis]) } : material;
 }
 
-function fadedMaterial(material, opacity, incoming) {
-  return { ...material, alphaMode: 'dither', alphaCutoff: material.alphaMode === 'mask' ? material.alphaCutoff ?? 0.5 : 0.5, opacity, ditherIncoming: incoming };
+// A fade is a mask material whose opacity bias carries the dither coverage (see ALPHA_COVERAGE in impostor-shader.js).
+function fadedMaterial(material, coverage, incoming) {
+  return { ...material, alphaMode: 'mask', alphaCutoff: material.alphaMode === 'mask' ? material.alphaCutoff ?? 0.5 : 0.5, opacityBias: incoming ? 1 + coverage : coverage };
 }
 
 function blendParts(instance, level, useImpostor, fade, options) {
