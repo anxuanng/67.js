@@ -374,7 +374,7 @@ export function createAgentRuntime({ kernelWorkers = true, backend = 'gpu', brow
       await jobPage.goto(origin);
       await jobPage.waitForFunction(() => Boolean(window.__agentPreview));
       const input = { sessionId: jobId, recipe: snapshot.recipe, memoryBudgetMiB: memory, backend,
-        ...(snapshot.assetBytes ? { data: snapshot.assetBytes.toString('base64'), ...(await motionSources([snapshot.recipe.motion])) } : {}) };
+        ...(snapshot.assetBytes ? { data: snapshot.assetBytes.toString('base64'), ...(await motionSources([snapshot.recipe.motion])) } : await placedAssetData(snapshot.recipe)) };
       const created = await jobPage.evaluate(({ method, input }) => window.__agentPreview[method](input),
         { method: snapshot.assetBytes ? 'createAsset' : 'create', input });
       const width = settings.kind === 'video' ? Math.floor(created.render.width / 2) * 2 : created.render.width;
@@ -854,9 +854,6 @@ export function createAgentRuntime({ kernelWorkers = true, backend = 'gpu', brow
         }
         const snapshot = await invoke('snapshot', { sessionId, expectedRevision });
         const assetBytes = snapshot.recipe.format === '67js.asset' ? await (await catalog()).read(snapshot.recipe.assetId) : undefined;
-        if (recipeAssetNeeds(snapshot.recipe).length) {
-          throw new Error('Render jobs do not yet render scenes that place catalog assets. Use scene_look for stills of this scene.');
-        }
         phase = 'rendering';
         try {
           return await controller.submit({ sourceRevision: snapshot.sourceRevision,
