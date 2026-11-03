@@ -128,8 +128,8 @@ It also supports `KHR_mesh_quantization` and `KHR_materials_emissive_strength`.
 
 Alpha masking, alpha blending and double-sided materials import onto `alphaMode`, `alphaCutoff`, `opacity` and `doubleSided` (see the material maps guide). Vertex alpha is not drawn: an RGBA `COLOR_0` loads with its RGB, and `warnings` names the meshes whose alpha was below one and was dropped.
 It supports base-color, normal, metallic-roughness, occlusion and emissive texture channels.
-It rejects unknown extensions, including optional ones.
-Line and point primitives are unsupported.
+An optional extension that 67js does not read is ignored and named in `warnings`, as the glTF specification allows. An extension listed in `extensionsRequired` that 67js does not read still fails the load with `Unsupported glTF extension`.
+POINTS, LINES, LINE_LOOP and LINE_STRIP primitives are skipped with a warning that names the mesh and their count. Drawing them is not supported. TRIANGLE_STRIP and TRIANGLE_FAN primitives are still refused.
 
 ## Extensions
 
@@ -138,6 +138,9 @@ Line and point primitives are unsupported.
 | `KHR_mesh_quantization`, `KHR_materials_emissive_strength` | Supported. |
 | `KHR_texture_transform` | Offset, rotation and scale are baked into `geometry.uvs`. All maps of one material must share one transform, except the normal map: it may differ by an offset and a positive scale (same rotation), which the shader applies on top of the baked UVs (`normalMapTransform` in `material-layer-shaders`). Any other difference fails the import. `texCoord` overrides are rejected. |
 | `EXT_mesh_gpu_instancing` | The node expands into one part per instance and primitive. Parts of one primitive share one geometry object, so the renderer batches them. Skinned or morphed instancing is rejected. |
+| `KHR_materials_unlit` | The material gets the renderer's `unlit` tag and shows its base color and base color map alone. Emissive, normal, occlusion and metallic-roughness maps and layers are dropped. |
+| `KHR_lights_punctual` | Point and spot lights (up to the renderer limits of 16 point and 8 spot lights, in candela like the renderer) and the first directional light become `asset.lights`, a partial `environment`: `pointLights`, `spotLights`, and `keyColor` (color times lux), `lightDirection` and `keyIntensity` for the key light. Pass it as `Renderer67`'s `environment` option or a `frame.environment`. A spot's `penumbra` is `(outer - inner) / outer`. A light over the limits, a second directional light and an invalid light are skipped with a warning. The renderer has no calibrated photometric units, so judge the level by eye. |
+| `KHR_materials_variants`, `KHR_materials_dispersion`, `KHR_materials_diffuse_roughness`, `EXT_materials_bump`, `EXT_texture_avif` and any other optional extension | Ignored, named in `warnings`. |
 | `KHR_draco_mesh_compression` | Needs `options.decoders.draco`. |
 | `EXT_meshopt_compression` | Needs `options.decoders.meshopt`. |
 | `KHR_texture_basisu` | Needs `options.decoders.ktx2`. |
@@ -175,8 +178,8 @@ KTX2 dimensions count toward `maxTexturePixels` before decoding. KTX2 images are
 
 `maxInstances` (default 4,096) caps the instances of one node, and `maxParts` still caps the total number of parts.
 Both are checked from the accessor counts before any data is decoded.
-The bridge does not import cameras, lights or scene environments into Renderer67.
-The caller supplies its own camera and lighting.
+The bridge does not import cameras or scene environments into Renderer67. The caller supplies its own camera and base lighting.
+Lights from `KHR_lights_punctual` come back in `asset.lights` and are applied only when the caller passes them on (see the extension table).
 
 ## Verification
 

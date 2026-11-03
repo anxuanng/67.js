@@ -198,6 +198,7 @@ export const AGENT_SCENE_CAPABILITIES = Object.freeze({
     rejects: 'On a skinned or morphed part an edit farther than maxTransferFraction of the part bounds diagonal from the original surface; booleans on open parts (fill_holes first).',
   }),
   fixedResources: false, dynamicTopology: true, checkpoints: true, positiveScaleOnly: true,
+  gltfImport: 'Optional extensions and line primitives load with a warning; unlit and punctual lights are read.',
   authoredLook: true, maxPointLights: MAX_POINT_LIGHTS,
   lightingSetups: LIGHTING_SETUP_NAMES, defaultLightingSetup: DEFAULT_LIGHTING_SETUP,
   ambientOcclusion: Object.freeze({ default: DEFAULT_AMBIENT_OCCLUSION, defaultRadius: 0.5, off: 0 }),

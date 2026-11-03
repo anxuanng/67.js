@@ -268,8 +268,8 @@ test('metadata extensions such as KHR_xmp_json_ld and the earlier KHR_xmp do not
 });
 
 test('required material extensions, bad layer values and missing decoders are rejected', async () => {
-  const required = triangleDocument({ edit: document => { document.extensionsRequired = ['KHR_materials_unlit']; } });
-  await assert.rejects(parseGltf(required), /Unsupported glTF extension: KHR_materials_unlit/);
+  const required = triangleDocument({ edit: document => { document.extensionsRequired = ['KHR_materials_made_up']; } });
+  await assert.rejects(parseGltf(required), /Unsupported glTF extension: KHR_materials_made_up/);
   const badIridescence = triangleDocument({ edit: document => { document.materials[0].extensions = { KHR_materials_iridescence: { iridescenceFactor: 2 } }; } });
   await assert.rejects(parseGltf(badIridescence), /iridescence must be between 0 and 1/);
   const badTransmission = triangleDocument({ edit: document => { document.materials[0].extensions = { KHR_materials_transmission: { transmissionFactor: 2 } }; } });
