@@ -164,11 +164,12 @@ async function probeScene(scene, id, drawnParts, mode) {
   return { parts: placed.parts, report: placed.report, seconds: (performance.now() - started) / 1000 };
 }
 
-async function renderReferenceScene(id, { describe, ambientOcclusion = 0, ambientOcclusionRadius = 0.5, bake = null, cascades = 0, backgroundOnly = false, probes = false, ambient = null, fill = null }) {
+async function renderReferenceScene(id, { describe, ambientOcclusion = 0, ambientOcclusionRadius = 0.5, bake = null, cascades = 0, backgroundOnly = false, probes = false, ambient = null, fill = null, key = null }) {
   const scene = await SCENES[id]();
   // A measurement switch: 0 removes the world's light from every surface, to show how much of a picture comes from it.
   if (ambient !== null) scene.environment = { ...scene.environment, ambientIntensity: ambient };
   if (fill !== null) scene.environment = { ...scene.environment, fillIntensity: fill };
+  if (key !== null) scene.environment = { ...scene.environment, keyIntensity: key };
   const baked = bake ? await bakeScene(scene, bake) : null;
   const probed = probes ? await probeScene(scene, id, baked ? baked.parts : scene.parts, probes) : null;
   const canvas = document.querySelector('canvas');
