@@ -1616,11 +1616,22 @@ export class Renderer67 {
     return map;
   }
 
+  // A map's `bounce` (the light a lit room's walls send back, ground-bounce.js) is a constant diffuse light: it adds to the
+  // first irradiance coefficient, which the map's intensity scales again in the shader.
+  irradianceWithBounce(map) {
+    const irradiance = this.environmentResources.irradiance;
+    if (!map.bounce) return irradiance;
+    this.bouncedIrradiance ??= new Float32Array(irradiance.length);
+    this.bouncedIrradiance.set(irradiance);
+    for (let channel = 0; channel < 3; channel++) this.bouncedIrradiance[channel] += map.bounce[channel] / Math.max(map.intensity, 1e-6);
+    return this.bouncedIrradiance;
+  }
+
   applyEnvironmentUniforms(map, uniforms = this.uniforms) {
     const context = this.context;
     context.uniform1f(uniforms.environmentEnabled, map ? 1 : 0);
     if (!map) return;
-    if (uniforms['environmentIrradiance[0]']) context.uniform3fv(uniforms['environmentIrradiance[0]'], this.environmentResources.irradiance);
+    if (uniforms['environmentIrradiance[0]']) context.uniform3fv(uniforms['environmentIrradiance[0]'], this.irradianceWithBounce(map));
     context.uniform1f(uniforms.environmentIntensity, map.intensity);
     context.uniform2f(uniforms.environmentRotation, Math.cos(map.rotation), Math.sin(map.rotation));
     context.uniform1f(uniforms.environmentLevelMax, this.environmentResources.levelCount - 1);

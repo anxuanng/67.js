@@ -142,6 +142,155 @@ function groundOf(parts, automaticAlbedo) {
   return ground
 }
 
+// A closed room lit by lamps. A wall a lamp lights becomes a dim lamp itself, and the walls light each other again. With a
+// lamp of intensity I (flux 4 pi I), exposed wall area A and mean albedo rho, the light that reaches an average point after
+// all the bounces is E = flux * rho / (A * (1 - rho)); a white surface sends back E / pi, the unit of an environment map's
+// diffuse light. Each colour channel uses its own albedo, so a room of red walls bounces red light.
+const ROOM_UNKNOWN_ALBEDO = 0.5
+const ROOM_MAXIMUM_ALBEDO = 0.95
+const FULL_SPHERE = 4 * Math.PI
+// What the estimate keeps of the average bounce: furniture and open sides take some of it, and a flat fill has no gradient to
+// make up for it. Fitted on `lit-interior`, `metal-room` and `brick-room` against Cycles (see docs/lighting.md).
+const ROOM_BOUNCE_GAIN = 0.8
+const KEY_LIGHT_THRESHOLD = 1e-3
+
+function transformPoint(matrix, positions, vertexIndex, out) {
+  for (let axis = 0; axis < 3; axis++) {
+    out[axis] = matrix[axis] * positions[vertexIndex * 3] + matrix[4 + axis] * positions[vertexIndex * 3 + 1] + matrix[8 + axis] * positions[vertexIndex * 3 + 2] + matrix[12 + axis]
+  }
+  return out
+}
+
+// The area of a part's triangles whose front face looks at `viewpoint`: the walls of a room face its middle, and the outer
+// side of a wall, which no light reaches, does not count.
+function areaFacing(part, viewpoint) {
+  const { positions, indices } = part.geometry
+  const first = [0, 0, 0]
+  const second = [0, 0, 0]
+  const third = [0, 0, 0]
+  let area = 0
+  for (let corner = 0; corner < indices.length; corner += 3) {
+    transformPoint(part.matrix, positions, indices[corner], first)
+    transformPoint(part.matrix, positions, indices[corner + 1], second)
+    transformPoint(part.matrix, positions, indices[corner + 2], third)
+    const normalX = (second[1] - first[1]) * (third[2] - first[2]) - (second[2] - first[2]) * (third[1] - first[1])
+    const normalY = (second[2] - first[2]) * (third[0] - first[0]) - (second[0] - first[0]) * (third[2] - first[2])
+    const normalZ = (second[0] - first[0]) * (third[1] - first[1]) - (second[1] - first[1]) * (third[0] - first[0])
+    const facing = normalX * (viewpoint[0] - first[0]) + normalY * (viewpoint[1] - first[1]) + normalZ * (viewpoint[2] - first[2])
+    if (facing > 0) {
+      area += 0.5 * Math.hypot(normalX, normalY, normalZ)
+    }
+  }
+  return area
+}
+
+function partDiffuseAlbedo(material) {
+  const known = groundAlbedo(material)
+  if (known) {
+    return known
+  }
+  return (material.metallic ?? 0) > GROUND_MAXIMUM_METALLIC ? [0, 0, 0] : [ROOM_UNKNOWN_ALBEDO, ROOM_UNKNOWN_ALBEDO, ROOM_UNKNOWN_ALBEDO]
+}
+
+/**
+ * The surfaces of a closed room as `{ minimum, maximum, area, albedo }`: the scene's bounds, the area of the faces that look
+ * at its middle and their area-weighted mean linear albedo. Null when the scene is not a closed room, or is drawn with a
+ * bake (its light map holds the bounce).
+ */
+export function findRoomSurface(parts) {
+  if (parts.length === 0 || isDrawnWithBakedLight(parts) || !isClosedRoom(parts)) {
+    return null
+  }
+  const { minimum, maximum } = sceneBoundsOf(parts.map(part => worldBounds(part)))
+  const middle = minimum.map((low, axis) => (low + maximum[axis]) / 2)
+  let area = 0
+  const albedoSum = [0, 0, 0]
+  for (const part of parts) {
+    if (part.material?.alphaMode === 'blend') {
+      continue
+    }
+    const partArea = areaFacing(part, middle)
+    const albedo = partDiffuseAlbedo(part.material ?? {})
+    area += partArea
+    for (let channel = 0; channel < 3; channel++) {
+      albedoSum[channel] += partArea * albedo[channel]
+    }
+  }
+  return area > 0 ? { minimum, maximum, area, albedo: albedoSum.map(sum => sum / area) } : null
+}
+
+function isInside(position, { minimum, maximum }) {
+  return position.every((value, axis) => value >= minimum[axis] && value <= maximum[axis])
+}
+
+// The flux of each local light inside the room, per colour channel, in intensity times steradians: a point light spreads over
+// the whole sphere, a spot light over its cone, an area light over one side as a Lambert emitter (pi).
+function lightFlux(environment, room) {
+  const flux = [0, 0, 0]
+  const add = (light, steradians) => {
+    if (!isInside(light.position, room)) {
+      return
+    }
+    const color = light.color ?? [1, 1, 1]
+    for (let channel = 0; channel < 3; channel++) {
+      flux[channel] += color[channel] * (light.intensity ?? 1) * steradians
+    }
+  }
+  for (const light of environment.pointLights ?? []) add(light, FULL_SPHERE)
+  for (const light of environment.spotLights ?? []) add(light, 2 * Math.PI * (1 - Math.cos(light.angle ?? Math.PI / 4)))
+  for (const light of environment.areaLights ?? []) add(light, Math.PI)
+  return flux
+}
+
+/**
+ * The diffuse light the walls of `room` bounce back at an average point, linear RGB in the unit of an environment map's
+ * diffuse light (what `environmentDiffuse` returns): the flux of the local lights in `environment`, the room's area and its
+ * mean albedo give flux / pi * rho / (area * (1 - rho)) in each channel.
+ */
+export function roomBounceRadiance(room, environment) {
+  return lightFlux(environment, room).map((flux, channel) => {
+    const albedo = Math.min(room.albedo[channel], ROOM_MAXIMUM_ALBEDO)
+    return ROOM_BOUNCE_GAIN * (flux / Math.PI) * albedo / (room.area * (1 - albedo))
+  })
+}
+
+// A sun that reaches the room (a window, a skylight) is light the estimate does not count, and such a scene already reads as
+// light as Cycles in its shadows (`temple-hall`, `dark-shaft`): only a room lit by its lamps alone gets the bounce.
+function hasKeyLight(environment) {
+  const keyColor = environment.keyColor
+  if (!keyColor) {
+    return true
+  }
+  return (environment.keyIntensity ?? 1) * (keyColor[0] + keyColor[1] + keyColor[2]) > KEY_LIGHT_THRESHOLD
+}
+
+const roomOfParts = new WeakMap()
+
+function roomOf(parts) {
+  const remembered = roomOfParts.get(parts)
+  if (remembered?.length === parts.length) {
+    return remembered.room
+  }
+  const room = findRoomSurface(parts)
+  roomOfParts.set(parts, { length: parts.length, room })
+  return room
+}
+
+// The map gets a `bounce` colour that the renderer adds to its diffuse light. The map's data stays shared, so a lamp whose
+// power changes every frame costs no new prefilter.
+function roomBounceEnvironment(parts, environment) {
+  if (environment.roomBounce === false || hasKeyLight(environment)) {
+    return environment
+  }
+  const room = roomOf(parts)
+  if (!room) {
+    return environment
+  }
+  const bounce = roomBounceRadiance(room, environment)
+  return bounce.some(channel => channel > 0) ? { ...environment, map: { ...environment.map, bounce } } : environment
+}
+
+
 // The term knows the sun and the sky only. A scene lit by point, spot or area lights has a floor those lights brighten, which
 // it would not count, so it would take the sky's own light away from the lower half and darken the scene (measured on
 // `light-linking` and `spot-area`).
@@ -152,11 +301,18 @@ function hasLocalLights(environment) {
 /**
  * The environment with the ground's bounce in its map, found from the parts: the same environment when the scene has no
  * plain floor, a baked part (its light map already holds the bounce), a closed room (a bake or the room's own walls
- * give that light), a point, spot or area light, or no map. `automaticAlbedo` is the colour of a floor the preview adds when no part forms one.
+ * give that light), a point, spot or area light, or no map. A closed room lit by point, spot or area lights gets its walls'
+ * bounced light instead, as a `bounce` colour on the map (`environment.roomBounce: false` turns that off). `automaticAlbedo` is the colour of a floor the preview adds when no part forms one.
  * `environment.groundBounce: false` turns it off.
  */
 export function groundBounceEnvironment(parts, environment, { automaticAlbedo = null } = {}) {
-  if (!environment.map || environment.groundBounce === false || hasLocalLights(environment)) {
+  if (!environment.map) {
+    return environment
+  }
+  if (hasLocalLights(environment)) {
+    return roomBounceEnvironment(parts, environment)
+  }
+  if (environment.groundBounce === false) {
     return environment
   }
   const ground = groundOf(parts, automaticAlbedo)
