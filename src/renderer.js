@@ -1810,7 +1810,9 @@ export class Renderer67 {
   /** Culling, cutout and opacity state for one batch, in the color pass (textured) or the shadow depth pass. */
   applyAlphaState(batch, textured) {
     const context = this.context;
-    if (batch.doubleSided) {
+    // The shadow depth pass (not textured) draws both faces. A single-sided terrain edge, leaf card or open shell seen from
+    // behind would otherwise write no depth, and the sun would pass through it.
+    if (batch.doubleSided || !textured) {
       context.disable(context.CULL_FACE);
     } else {
       context.enable(context.CULL_FACE);

@@ -503,3 +503,22 @@ test('color, benchmark and shadow passes bind the same skin textures and disable
   assert.ok(uniforms.some(([name, value]) => name === 'shadow enabled' && value === 1));
   assert.deepEqual(uniforms.at(-1), ['shadow enabled', 0]);
 });
+
+test('the shadow depth pass draws both faces of a single-sided batch, so the sun cannot pass through an open surface seen from behind', () => {
+  const renderer = Object.create(Renderer67.prototype);
+  const culling = [];
+  renderer.depthAlphaUniforms = {};
+  renderer.uniforms = {};
+  renderer.context = {
+    CULL_FACE: 2884,
+    enable(capability) { culling.push(['enable', capability]); },
+    disable(capability) { culling.push(['disable', capability]); },
+    uniform1f() {}, activeTexture() {}, bindTexture() {},
+  };
+  const singleSided = { doubleSided: false, alphaMode: 'opaque', alphaCutoff: 0, opacity: 1, mapState: [null], textures: [] };
+  renderer.applyAlphaState(singleSided, false);
+  assert.deepEqual(culling, [['disable', 2884]]);
+  culling.length = 0;
+  renderer.applyAlphaState(singleSided, true);
+  assert.equal(culling[0][0], 'enable', 'the colour pass still culls back faces of a single-sided batch');
+});
