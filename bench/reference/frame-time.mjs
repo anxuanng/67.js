@@ -27,7 +27,15 @@ try {
   // --plain measures only the plain frame, for scenes with more parts than the light bake takes.
   // --objects measures the plain frame against the frame with one probe for each reflective part.
   // --water measures a frame without water reflection, with the planar one and with the screen-space one.
-  const variants = process.argv.includes('--water')
+  // --bake-cost measures the plain frame against the frame with the scene's light bake. --glow-mips measures the frame with the fog's
+  // glow mip chain generated every frame against the same frame with the generation skipped. --repetitions=N sets the rounds (3 by default).
+  const repetitionsArgument = process.argv.find(argument => argument.startsWith('--repetitions='));
+  const rounds = Array.from({ length: repetitionsArgument ? Number(repetitionsArgument.split('=')[1]) : 3 }, (_, index) => index + 1);
+  const variants = process.argv.includes('--bake-cost')
+    ? rounds.flatMap(round => (round % 2 ? [false, true] : [true, false]).map(bake => ({ bake, probes: false })))
+    : process.argv.includes('--glow-mips')
+    ? rounds.flatMap(round => (round % 2 ? [true, false] : [false, true]).map(glowMipChain => ({ bake: false, probes: false, glowMipChain })))
+    : process.argv.includes('--water')
     ? [1, 2, 3].flatMap(round => (round % 2 ? ['off', 'planar', 'ssr'] : ['ssr', 'planar', 'off']).map(water => ({ bake: false, probes: false, water: water === 'off' ? false : water })))
     : process.argv.includes('--plain')
     ? [1, 2, 3].map(() => ({ bake: false, probes: false }))
@@ -42,11 +50,12 @@ try {
   const medianOf = values => values.sort((first, second) => first - second)[Math.floor(values.length / 2)];
   const summary = {};
   for (const result of results) {
-    const key = process.argv.includes('--water') ? (result.water || 'off') : result.baked ? (result.probes ? 'bake+probes' : 'bake') : (result.probes ? 'probes' : 'plain');
+    const key = process.argv.includes('--glow-mips') ? (result.glowMipChain ? 'mips generated' : 'mips skipped') : process.argv.includes('--water') ? (result.water || 'off') : result.baked ? (result.probes ? 'bake+probes' : 'bake') : (result.probes ? 'probes' : 'plain');
     (summary[key] ??= []).push(result.medianMilliseconds);
   }
   const medianByVariant = Object.fromEntries(Object.entries(summary).map(([key, values]) => [key, Number(medianOf(values).toFixed(3))]));
-  console.log(JSON.stringify({ sceneId, backend, medianMillisecondsByVariant: medianByVariant, results }, null, 1));
+  const rangeByVariant = Object.fromEntries(Object.entries(summary).map(([key, values]) => [key, [Math.min(...values), Math.max(...values)].map(value => Number(value.toFixed(3)))]));
+  console.log(JSON.stringify({ sceneId, backend, medianMillisecondsByVariant: medianByVariant, rangeMillisecondsByVariant: rangeByVariant, results }, null, 1));
 } finally {
   await browser.close();
   await server.close();

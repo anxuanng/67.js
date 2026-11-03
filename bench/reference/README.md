@@ -589,7 +589,34 @@ What the table shows:
 - The 20 s inline limit and the budget agree on large rooms: `temple-hall`, the largest scene (167 parts, 304,480 texels), bakes in 5.7 s at the budget, and the slowest cell above is 6.0 s, so the budget leaves room under the limit on this machine.
 - `draft` is a rough preset: one bounce leaves the lit rooms at 0.29 to 0.32, still well under the unbaked 0.51.
 
-Frame costs from the issue (a baked closed room, and the fog glow mip chain on `dark-shaft`) were not measured: `nvidia-smi` showed 14 to 48 percent utilization and 6 to 7 GB in use over 24 seconds while another worker held the GPU, so a number would be a loaded one. The ranges above in this file stay ranges.
+### Presets again on a quiet machine (2026-11-03, issue #170)
+
+Same command, `npm run reference -- --skip-blender --bake <five ids> --bake-preset <name> --probes <five ids>`, one run per cell, at below-normal priority, one GPU job at a time, against the stored Cycles renders. `nvidia-smi` showed 0 percent GPU and 1,028 MiB (the desktop) before each of the three runs. Whole frame FLIP against Cycles (lower is better), bake seconds from the harness, and `bake.used` (samples, bounces, texels per unit; `reduced` is true when the preset shrank to its budget):
+
+| Scene | `draft` | `standard` and `fine` |
+| --- | --- | --- |
+| `lit-interior` | 0.2975, 0.3 s, 8,000 texels (32, 1, 3) | 0.1342, 3.4 s, 19,360 texels (81, 3, 4.86, reduced) |
+| `brick-room` | 0.3266, 1.2 s, 37,136 texels (32, 1, 3) | 0.1448, 1.7 s, 42,576 texels (32, 3, 3.19, reduced) |
+| `dark-shaft` | 0.0638, 0.7 s, 28,208 texels (32, 1, 3) | 0.0547, 2.8 s, 40,336 texels (40, 3, 3.54, reduced) |
+| `temple-hall` | 0.0656, 3.1 s, 285,376 texels (16, 1, 1.29, reduced) | 0.0655, 3.6 s, 304,480 texels (16, 1, 1.37, reduced) |
+| `metal-room` | 0.3244, 0.6 s, 8,816 texels (32, 1, 3) | 0.1631, 3.0 s, 15,936 texels (64, 3, 4.37, reduced) |
+
+`fine` came out identical to `standard` in every cell (same score, same `used`; the bake seconds differ by 0.1 s, which is noise), so it is still an alias and the table shows one column for both. Every `standard` and `fine` bake was reduced, so an agent that names the preset gets fewer samples and a lower density than the preset asks for on all five rooms, and `bake.reduction` says so. Scores moved by up to 0.008 from the table above (for example `lit-interior` 0.1270 to 0.1342, `dark-shaft` 0.0610 to 0.0547) because `main` changed since then; the order of the presets did not.
+
+### Frame costs on a quiet machine (2026-11-03, issue #170)
+
+`node bench/reference/frame-time.mjs <scene> gpu --bake-cost` (a bake against the plain frame) and `--glow-mips` (the fog's glow mip chain generated every frame against the same frame with `generateMipmap` skipped after warm-up, so the sampling cost is the same and the difference is the chain), both with `--repetitions=5`. Each repetition is the median of 200 frames at 960 x 540, wall clock around `readPixels` (not GPU timer queries: `harness.js` times the frame on the CPU after reading a pixel back), and the two sides alternate order each round. The script sets itself to below-normal priority, so these ran at below-normal, not normal. Idle check before each run, from `nvidia-smi` (GPU utilization, memory, any process over 1 GB) and `Win32_Processor.LoadPercentage`: no process held more than 1 GB, the GPU memory was the desktop's 1.0 GB, utilization 0 percent and CPU load as below. The numbers right after a run (10 to 67 percent GPU) include the run's own tail and are not machine load.
+
+| Measurement | CPU load before | Plain or skipped, median (range) | Baked or generated, median (range) | Cost, paired by round |
+| --- | --- | --- | --- | --- |
+| Baked `lit-interior`, run 1 | 19 percent | 0.835 ms (0.55 to 0.845) | 1.010 ms (0.99 to 1.02) | +0.155 to +0.18 ms in four of five rounds, +0.47 in the first (a 0.55 ms first plain frame) |
+| Baked `lit-interior`, run 2 | 3 percent | 0.855 ms (0.555 to 1.03) | 1.260 ms (0.995 to 2.00) | +0.14 to +0.97 ms, median +0.41 |
+| Glow mip chain, `dark-shaft`, run 1 | 9 percent | 1.70 ms (1.415 to 1.785) | 1.56 ms (1.40 to 2.015) | -0.39 to +0.24 ms, median +0.12 |
+| Glow mip chain, `dark-shaft`, run 2 | 14 percent | 1.72 ms (1.395 to 2.33) | 1.515 ms (1.385 to 2.37) | -0.34 to +0.26 ms, median -0.01 |
+
+- A baked closed room costs about +0.2 to +0.4 ms a frame (all ten paired rounds: +0.14 to +0.97 ms, median +0.29 ms), under the +0.6 to +1.4 ms ranges from a loaded GPU. The first run, with the steadier machine, gives +0.17 ms. Measured.
+- The glow mip chain is not separable from noise: 10 paired rounds went from -0.39 to +0.26 ms, median +0.05 ms, so the earlier +0.5 ms is not reproduced. It was a plain frame of the new commit against numbers from the commit before, on a shared machine; the old commit also changed the glow taps (inferred, not rerun). Within a run the frame time drifts by up to 0.9 ms (1.4 to 2.3 ms on `dark-shaft`, no other process visible), so a cost under about 0.3 ms at this size cannot be read from one run; a bound is that the chain costs less than 0.4 ms at 960 x 540. Measured, with the drift unexplained (GPU clock changes are a guess).
+- The machine was idle by the stated thresholds (GPU under 10 percent, CPU under 20 percent, no process over 1 GB) before every run, apart from CPU at 19 percent in the first bake run.
 
 ## Sky visibility in crowns and under the valley rim, what is left (2026-11-03, issue #191)
 
