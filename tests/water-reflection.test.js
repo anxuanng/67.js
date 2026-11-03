@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { box, sphere } from '../src/geometry.js';
 import { applyWaterReflection, attachWaterReflection, findWaterSurface } from '../src/water-reflection.js';
 import { createFragmentShader } from '../src/shaders.js';
+import { Renderer67 } from '../src/renderer.js';
 
 const cube = box(0, 1);
 
@@ -127,4 +128,16 @@ test('a render pass frame skips the mirror image and the next lit frame draws it
   renderer.render(camera);
   assert.equal(mirrorDraws(), 1);
   detach();
+});
+
+test('the mirror draw leaves out spot and area lights and the lit frame sends them again', () => {
+  const counts = {};
+  const context = new Proxy({}, { get: (_, name) => (name === 'uniform1i' ? (location, value) => { counts[location] = value; } : () => {}) });
+  const renderer = Object.create(Renderer67.prototype);
+  const lighting = { spotCount: 3, areaCount: 2, shadowCasters: [], pointShadows: [], spotPositions: [], spotColors: [], spotDirections: [], spotParameters: [], areaPositions: [], areaColors: [], areaNormals: [], areaTangents: [] };
+  Object.assign(renderer, { context, lighting, uniforms: { spotLightCount: 'spot', areaLightCount: 'area' } });
+  renderer.applyLocalLightUniforms(true);
+  assert.deepEqual(counts, { spot: 0, area: 0 });
+  renderer.applyLocalLightUniforms();
+  assert.deepEqual(counts, { spot: 3, area: 2 });
 });
