@@ -1,1 +1,0 @@
-- Take the sky light below the surface plane out of the ambient term for a mapped normal, as Cycles does, so the edges of a bump read as dark as Cycles draws them (part of issue #50). `brick-graph` goes from 0.1584 to 0.1518 against Cycles (EEVEE 0.0875 to 0.0844) and no other scene changes.

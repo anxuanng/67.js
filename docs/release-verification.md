@@ -1,6 +1,6 @@
 # Release verification
 
-## Unreleased: preview shares the package chunks (measured 2026-10-31)
+## 0.15.0: preview shares the package chunks (measured 2026-10-31)
 
 The MCP preview page no longer bundles its own engine copy; it imports the chunks of the package build.
 Source checks used Windows Node.js, installed Chrome and CPU SwiftShader. Registry publication was not checked.
@@ -15,7 +15,7 @@ Source checks used Windows Node.js, installed Chrome and CPU SwiftShader. Regist
 | Real character | `npm run smoke:character` passed on the GPU. |
 | First scene | Median of runtime launch, page load and first scene on SwiftShader: 981 ms before (7 runs), 974 ms after (11 runs). |
 
-## 0.10.0 to 0.14.0
+## 0.10.0 to 0.15.0
 
 This file has no per-release tables for these versions. The `Test` workflow ran `npm test`, `npm run prepare:release`, `npm run smoke:package` and `npm run smoke:mcp-package` on each pull request. [CHANGELOG.md](../CHANGELOG.md) lists what each release changed and measured.
 
