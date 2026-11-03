@@ -101,8 +101,8 @@ function checkShell(check, measures) {
   return { pass: problems.length === 0, detail: problems.join('; ') || `${check.node} between ${round(nearest)} and ${round(farthest)} m of the centre` };
 }
 
-const PAINTING_SAMPLES_ACROSS = 5;
-const PAINTING_SAMPLES_UP = 3;
+const PAINTING_SAMPLES_ACROSS = 41;
+const PAINTING_SAMPLES_UP = 21;
 const AIM_TOLERANCE = 0.05;
 const POSITION_TOLERANCE = 0.05;
 
@@ -131,11 +131,32 @@ const angleBetween = (first, second) => {
 };
 
 // The one spotlight must sit at an offered place, aim at the painting with a cone that reaches all of it and cast
-// shadows, and no ray from it to the front face of the painting may meet the blocker.
+// shadows. With `blocker` (one node) no ray from it to the front face of the painting may meet that node. With
+// `blockers` (several nodes) and `least: true`, the share of painting points in shadow at the chosen place must be the
+// smallest over all offered places, which only a render or a long trace tells.
+function shadowedPoints(position, painting, blockerBounds) {
+  const frontZ = painting.max[2];
+  let shadowed = 0;
+  let total = 0;
+  for (let across = 0; across < PAINTING_SAMPLES_ACROSS; across++) {
+    for (let up = 0; up < PAINTING_SAMPLES_UP; up++) {
+      const point = [
+        painting.min[0] + (painting.max[0] - painting.min[0]) * across / (PAINTING_SAMPLES_ACROSS - 1),
+        painting.min[1] + (painting.max[1] - painting.min[1]) * up / (PAINTING_SAMPLES_UP - 1),
+        frontZ,
+      ];
+      total++;
+      if (blockerBounds.some(blocker => segmentHitsBox(position, point, blocker.min, blocker.max))) shadowed++;
+    }
+  }
+  return { shadowed, total };
+}
+
 function checkLitPainting(check, measures) {
   const painting = measures.nodeBounds(check.painting);
-  const blocker = measures.nodeBounds(check.blocker);
-  if (!painting || !blocker) return { pass: false, detail: `no drawn node ${check.painting} or ${check.blocker}` };
+  const blockerIds = check.blockers ?? [check.blocker];
+  const blockerBounds = blockerIds.map(id => measures.nodeBounds(id));
+  if (!painting || blockerBounds.some(bounds => !bounds)) return { pass: false, detail: `no drawn node ${check.painting} or ${blockerIds.join(', ')}` };
   const lights = measures.spotLights;
   if (lights.length !== 1) return { pass: false, detail: `${lights.length} spot lights, need exactly 1` };
   const [light] = lights;
@@ -151,19 +172,14 @@ function checkLitPainting(check, measures) {
   if (aimError > AIM_TOLERANCE) problems.push(`aimed ${round(aimError)} rad off the centre`);
   if (light.angle < reach || light.angle > check.maxAngle) problems.push(`cone ${round(light.angle)} rad, needs ${round(reach)} to ${check.maxAngle}`);
   if (light.castShadow !== true) problems.push('shadows are off');
-  let shadowed = 0;
-  for (let across = 0; across < PAINTING_SAMPLES_ACROSS; across++) {
-    for (let up = 0; up < PAINTING_SAMPLES_UP; up++) {
-      const point = [
-        painting.min[0] + (painting.max[0] - painting.min[0]) * across / (PAINTING_SAMPLES_ACROSS - 1),
-        painting.min[1] + (painting.max[1] - painting.min[1]) * up / (PAINTING_SAMPLES_UP - 1),
-        frontZ,
-      ];
-      if (segmentHitsBox(light.position, point, blocker.min, blocker.max)) shadowed++;
-    }
+  const { shadowed, total } = shadowedPoints(light.position, painting, blockerBounds);
+  if (check.least) {
+    const shares = check.positions.map(place => shadowedPoints(place, painting, blockerBounds).shadowed);
+    if (shadowed > Math.min(...shares)) problems.push(`place ${placeIndex + 1} shades ${shadowed} of ${total} points, place ${shares.indexOf(Math.min(...shares)) + 1} shades ${Math.min(...shares)}`);
+  } else if (shadowed > 0) {
+    problems.push(`${shadowed} of ${total} painting points are in shadow`);
   }
-  if (shadowed > 0) problems.push(`${shadowed} of ${PAINTING_SAMPLES_ACROSS * PAINTING_SAMPLES_UP} painting points are in shadow`);
-  return { pass: problems.length === 0, detail: problems.join('; ') || `place ${placeIndex + 1}, no shadow on the painting` };
+  return { pass: problems.length === 0, detail: problems.join('; ') || `place ${placeIndex + 1}, ${shadowed} of ${total} points in shadow` };
 }
 
 function checkOne(check, measures) {
