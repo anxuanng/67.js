@@ -1,0 +1,243 @@
+import { FRAGMENT_SOURCE, VERTEX_SOURCE } from './path-tracer-gpu-shader.js';
+import { packAtlas, packEnvironment, packLights, packMaterials, packNodes, packTriangles } from './path-tracer-gpu-pack.js';
+
+// The GPU backend of the path tracer: one WebGL2 fragment pass per sample draws every pixel of a band, and four float
+// targets add the samples up. It needs a page with WebGL2 (a canvas), EXT_color_buffer_float and EXT_float_blend. The
+// CPU tracer stays the reference: the same scene, camera, options and random numbers go in, the same buffers come out.
+
+const TARGET_COUNT = 4;
+const DRAW_SECONDS_TARGET = 0.08;
+const MINIMUM_BAND_ROWS = 4;
+const YIELD_SECONDS = 0.25;
+
+function createCanvas() {
+  if (typeof OffscreenCanvas === 'function') return new OffscreenCanvas(1, 1);
+  if (typeof document !== 'undefined') return document.createElement('canvas');
+  return null;
+}
+
+/** True when this page can run the GPU tracer. */
+export function isGpuTracerAvailable() {
+  const canvas = createCanvas();
+  const context = canvas?.getContext('webgl2');
+  if (!context) return false;
+  return Boolean(context.getExtension('EXT_color_buffer_float') && context.getExtension('EXT_float_blend'));
+}
+
+function compileShader(gl, type, source) {
+  const shader = gl.createShader(type);
+  gl.shaderSource(shader, source);
+  gl.compileShader(shader);
+  if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+    throw new Error(`The GPU path tracer shader did not compile: ${gl.getShaderInfoLog(shader)}`);
+  }
+  return shader;
+}
+
+function createProgram(gl) {
+  const program = gl.createProgram();
+  gl.attachShader(program, compileShader(gl, gl.VERTEX_SHADER, VERTEX_SOURCE));
+  gl.attachShader(program, compileShader(gl, gl.FRAGMENT_SHADER, FRAGMENT_SOURCE));
+  gl.linkProgram(program);
+  if (!gl.getProgramParameter(program, gl.LINK_STATUS)) throw new Error(`The GPU path tracer program did not link: ${gl.getProgramInfoLog(program)}`);
+  return program;
+}
+
+// Textures and targets of the render in progress; the context and program outlive it (compiling the kernel takes seconds).
+const resources = [];
+let session = null;
+
+function createTexture(gl, unit, internalFormat, format, type, width, height, data) {
+  const texture = gl.createTexture();
+  resources.push(texture);
+  gl.activeTexture(gl.TEXTURE0 + unit);
+  gl.bindTexture(gl.TEXTURE_2D, texture);
+  gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+  gl.texImage2D(gl.TEXTURE_2D, 0, internalFormat, width, height, 0, format, type, data);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  return texture;
+}
+
+function uploadScene(gl, program, scene) {
+  const atlas = packAtlas(scene.materials);
+  const lights = packLights(scene.lights);
+  const environment = packEnvironment(scene.environment);
+  const nodes = packNodes(scene.bvh);
+  const triangles = packTriangles(scene);
+  const materials = packMaterials(scene.materials, atlas);
+  const floatTables = [['uNodes', nodes], ['uTriangles', triangles], ['uMaterials', materials], ['uLights', lights.table]];
+  let unit = 0;
+  const bind = (name) => gl.uniform1i(gl.getUniformLocation(program, name), unit++);
+  for (const [name, table] of floatTables) {
+    createTexture(gl, unit, gl.RGBA32F, gl.RGBA, gl.FLOAT, table.width, table.height, table.data);
+    bind(name);
+  }
+  createTexture(gl, unit, gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, atlas.width, atlas.height, atlas.data);
+  bind('uAtlas');
+  const colors = environment?.colors ?? new Float32Array(4);
+  createTexture(gl, unit, gl.RGBA32F, gl.RGBA, gl.FLOAT, environment?.width ?? 1, environment?.height ?? 1, colors);
+  bind('uEnvironment');
+  const empty = { width: 1, height: 1, data: new Float32Array(1) };
+  for (const [name, table] of [['uEnvironmentRows', environment?.rows ?? empty], ['uEnvironmentPixels', environment?.pixels ?? empty]]) {
+    createTexture(gl, unit, gl.R32F, gl.RED, gl.FLOAT, table.width, table.height, table.data);
+    bind(name);
+  }
+  return { lightCount: lights.count };
+}
+
+function setSceneUniforms(gl, program, scene, camera, options, lightCount) {
+  const location = name => gl.getUniformLocation(program, name);
+  const { sun } = scene.lights;
+  const { environment, volume } = scene;
+  gl.uniform3fv(location('uEye'), camera.eye);
+  gl.uniform3fv(location('uForward'), camera.forward);
+  gl.uniform3fv(location('uRight'), camera.right);
+  gl.uniform3fv(location('uAbove'), camera.above);
+  gl.uniform2f(location('uHalfSize'), camera.halfWidth, camera.halfHeight);
+  gl.uniform2i(location('uSize'), options.width, options.height);
+  gl.uniform1ui(location('uSeed'), options.seed >>> 0);
+  gl.uniform1i(location('uBounces'), options.bounces);
+  gl.uniform1f(location('uFireflyClamp'), options.fireflyClamp);
+  gl.uniform1f(location('uSurfaceOffset'), scene.surfaceOffset);
+  gl.uniform1f(location('uFarDistance'), scene.farDistance);
+  gl.uniform1i(location('uLightCount'), lightCount);
+  gl.uniform1i(location('uEmitterCount'), (sun ? 1 : 0) + lightCount + (environment ? 1 : 0));
+  gl.uniform1i(location('uHasSun'), sun ? 1 : 0);
+  gl.uniform3fv(location('uSunDirection'), sun?.direction ?? [0, 1, 0]);
+  gl.uniform3fv(location('uSunColor'), sun?.color ?? [0, 0, 0]);
+  gl.uniform1f(location('uSunCosineMax'), Math.cos(Math.PI / 360));
+  gl.uniform1i(location('uHasEnvironment'), environment ? 1 : 0);
+  gl.uniform4f(location('uEnvironmentShape'), environment?.width ?? 1, environment?.height ?? 1, environment?.intensity ?? 1, environment?.total ?? 1);
+  gl.uniform2f(location('uEnvironmentRotation'), environment?.cosine ?? 1, environment?.sine ?? 0);
+  gl.uniform1i(location('uHasVolume'), volume ? 1 : 0);
+  gl.uniform3fv(location('uVolumeMinimum'), volume?.minimum ?? [0, 0, 0]);
+  gl.uniform3fv(location('uVolumeMaximum'), volume?.maximum ?? [0, 0, 0]);
+  gl.uniform3fv(location('uVolumeAlbedo'), volume?.albedo ?? [1, 1, 1]);
+  gl.uniform3f(location('uVolumeShape'), volume?.density ?? 0, volume?.anisotropy ?? 0, volume?.maxDistance ?? 0);
+}
+
+function createTargets(gl, width, height) {
+  const framebuffer = gl.createFramebuffer();
+  resources.push(framebuffer);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
+  const attachments = [];
+  for (let index = 0; index < TARGET_COUNT; index++) {
+    const texture = gl.createTexture();
+    resources.push(texture);
+    gl.activeTexture(gl.TEXTURE15);
+    gl.bindTexture(gl.TEXTURE_2D, texture);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, width, height, 0, gl.RGBA, gl.FLOAT, null);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0 + index, gl.TEXTURE_2D, texture, 0);
+    attachments.push(gl.COLOR_ATTACHMENT0 + index);
+  }
+  gl.drawBuffers(attachments);
+  if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) throw new Error('The GPU path tracer cannot render to float targets here.');
+  gl.clearBufferfv(gl.COLOR, 0, [0, 0, 0, 0]);
+  for (let index = 1; index < TARGET_COUNT; index++) gl.clearBufferfv(gl.COLOR, index, [0, 0, 0, 0]);
+  return attachments;
+}
+
+function readTarget(gl, index, width, height) {
+  const pixels = new Float32Array(width * height * 4);
+  gl.readBuffer(gl.COLOR_ATTACHMENT0 + index);
+  gl.readPixels(0, 0, width, height, gl.RGBA, gl.FLOAT, pixels);
+  return pixels;
+}
+
+function averageBuffers(gl, width, height, samples) {
+  const pixelCount = width * height;
+  const radiance = readTarget(gl, 0, width, height);
+  const albedo = readTarget(gl, 1, width, height);
+  const normal = readTarget(gl, 2, width, height);
+  const statistics = readTarget(gl, 3, width, height);
+  const buffers = {
+    color: new Float32Array(pixelCount * 3), albedo: new Float32Array(pixelCount * 3), normal: new Float32Array(pixelCount * 3),
+    depth: new Float32Array(pixelCount), variance: new Float32Array(pixelCount), samplesTaken: new Uint16Array(pixelCount).fill(samples),
+  };
+  for (let pixel = 0; pixel < pixelCount; pixel++) {
+    for (let channel = 0; channel < 3; channel++) {
+      buffers.color[pixel * 3 + channel] = radiance[pixel * 4 + channel] / samples;
+      buffers.albedo[pixel * 3 + channel] = albedo[pixel * 4 + channel] / samples;
+      buffers.normal[pixel * 3 + channel] = normal[pixel * 4 + channel] / samples;
+    }
+    buffers.depth[pixel] = radiance[pixel * 4 + 3] / samples;
+    const mean = statistics[pixel * 4] / samples;
+    buffers.variance[pixel] = Math.max(0, statistics[pixel * 4 + 1] / samples - mean * mean) / Math.max(samples - 1, 1);
+  }
+  return buffers;
+}
+
+const nextTask = () => new Promise(resolve => setTimeout(resolve, 0));
+
+/**
+ * Traces `options.samples` paths for every pixel and resolves with the same buffers as the CPU tracer
+ * (color, albedo, normal, depth, variance, samplesTaken) plus a `gpu` note. `noiseThreshold` is not used: every pixel
+ * draws all its samples. `shouldStop` throws when the time limit passes.
+ */
+function getSession() {
+  if (session) return session;
+  const canvas = createCanvas();
+  const gl = canvas?.getContext('webgl2', { antialias: false, depth: false, stencil: false, alpha: false, powerPreference: 'high-performance' });
+  if (!gl) throw new Error('The GPU path tracer needs WebGL2.');
+  if (!gl.getExtension('EXT_color_buffer_float') || !gl.getExtension('EXT_float_blend')) throw new Error('The GPU path tracer needs float render targets with blending.');
+  const started = performance.now();
+  const program = createProgram(gl);
+  gl.getProgramParameter(program, gl.LINK_STATUS);
+  const debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
+  session = { gl, program, compileSeconds: (performance.now() - started) / 1000, gpu: debugInfo ? gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL) : 'unknown' };
+  return session;
+}
+
+function releaseResources(gl) {
+  for (const resource of resources) {
+    if (resource instanceof WebGLFramebuffer) gl.deleteFramebuffer(resource);
+    else gl.deleteTexture(resource);
+  }
+  resources.length = 0;
+}
+
+export async function traceOnGpu(scene, camera, options, shouldStop) {
+  const { gl, program, compileSeconds, gpu } = getSession();
+  const { width, height, samples } = options;
+  gl.useProgram(program);
+  const { lightCount } = uploadScene(gl, program, scene);
+  setSceneUniforms(gl, program, scene, camera, options, lightCount);
+  createTargets(gl, width, height);
+  gl.viewport(0, 0, width, height);
+  gl.enable(gl.BLEND);
+  gl.blendFunc(gl.ONE, gl.ONE);
+  gl.enable(gl.SCISSOR_TEST);
+  const sampleLocation = gl.getUniformLocation(program, 'uSample');
+  let bandRows = Math.min(height, 32);
+  let lastYield = performance.now();
+  for (let sample = 0; sample < samples; sample++) {
+    gl.uniform1i(sampleLocation, sample);
+    let rowStart = 0;
+    while (rowStart < height) {
+      const rows = Math.min(bandRows, height - rowStart);
+      const firstRow = rowStart;
+      rowStart += rows;
+      const started = performance.now();
+      gl.scissor(0, firstRow, width, rows);
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+      gl.finish();
+      const seconds = (performance.now() - started) / 1000;
+      const scale = Math.min(2, DRAW_SECONDS_TARGET / Math.max(seconds, 1e-4));
+      bandRows = Math.max(MINIMUM_BAND_ROWS, Math.min(height, Math.round(rows * scale)));
+      shouldStop();
+      if ((performance.now() - lastYield) / 1000 > YIELD_SECONDS) {
+        await nextTask();
+        lastYield = performance.now();
+      }
+    }
+  }
+  gl.disable(gl.SCISSOR_TEST);
+  const buffers = averageBuffers(gl, width, height, samples);
+  releaseResources(gl);
+  return Object.assign(buffers, { gpu, compileSeconds });
+}

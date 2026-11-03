@@ -1230,6 +1230,13 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
 
   // A scene that asks for no bake and looks like a closed room gets one diagnostic naming the bake. The ray test costs a
   // few milliseconds, so it runs for scene_inspect only and is kept until the scene changes.
+  function isLitByLampsOnly(environment) {
+    const lampCount = (environment.pointLights?.length ?? 0) + (environment.spotLights?.length ?? 0) + (environment.areaLights?.length ?? 0);
+    const keyColor = environment.keyColor ?? [1, 1, 1];
+    const keyLight = (environment.keyIntensity ?? 1) * (keyColor[0] + keyColor[1] + keyColor[2]);
+    return lampCount > 0 && keyLight === 0;
+  }
+
   let closedRoomCache = null;
   function closedRoomProblems() {
     if (state.recipe.bake) {
@@ -1240,7 +1247,7 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
       closedRoomCache = { revision, share: closedRoomShare(state.parts, worldMatrices) };
     }
     const { share } = closedRoomCache;
-    return share !== null && share >= CLOSED_ROOM_SHARE ? [closedRoomDiagnostic(share)] : [];
+    return share !== null && share >= CLOSED_ROOM_SHARE ? [closedRoomDiagnostic(share, isLitByLampsOnly(state.recipe.environment))] : [];
   }
 
   // environment.resolveCoplanar 'offset' puts the smaller part of each coplanar pair on the next depth layer, so the
