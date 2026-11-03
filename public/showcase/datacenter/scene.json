@@ -1,10 +1,10 @@
 {
   "id": "datacenter",
   "title": "AI data center",
-  "blurb": "A cutaway hall of 72 racks, busways, cooling and a substation, serviced by two technicians.",
+  "blurb": "A night campus around a cutaway hall of 72 racks: two more halls, a cooling yard, a substation, generators and fuel tanks, parking and a gated road.",
   "glb": "/showcase/datacenter/scene.glb",
   "gltfOptions": {
-    "maxTexturePixels": 33554432
+    "maxTexturePixels": 41943040
   },
   "hdri": "/showcase/datacenter/sky.hdr",
   "hdriOptions": {
@@ -24,6 +24,20 @@
     0.4,
     0.5
   ],
+  "bounds": {
+    "min": [
+      -68,
+      0.5,
+      -58
+    ],
+    "max": [
+      68,
+      90,
+      46
+    ]
+  },
+  "minDistance": 1,
+  "maxDistance": 160,
   "renderer": {
     "ground": false,
     "hdr": true,
@@ -322,7 +336,55 @@
       "source": "https://polyhaven.com/a/rooftop_night"
     },
     {
-      "model": "Racks, busways, cooling, pipework, hall shell and swap cart",
+      "model": "Grass001 (lawn PBR textures)",
+      "author": "ambientCG",
+      "licence": "CC0",
+      "source": "https://ambientcg.com/a/Grass001"
+    },
+    {
+      "model": "Compact '07 - Low poly model (parked cars)",
+      "author": "Daniel Zhabotinsky",
+      "licence": "CC BY 4.0",
+      "source": "https://sketchfab.com/3d-models/compact-07-low-poly-model-25c6874d173a4f6ca63e150bbd505686"
+    },
+    {
+      "model": "concrete_road_barrier (gate barriers)",
+      "author": "Poly Haven",
+      "licence": "CC0",
+      "source": "https://polyhaven.com/a/concrete_road_barrier"
+    },
+    {
+      "model": "large_iron_gate (gate leaves)",
+      "author": "Poly Haven",
+      "licence": "CC0",
+      "source": "https://polyhaven.com/a/large_iron_gate"
+    },
+    {
+      "model": "security_camera_01 (hall cameras)",
+      "author": "Poly Haven",
+      "licence": "CC0",
+      "source": "https://polyhaven.com/a/security_camera_01"
+    },
+    {
+      "model": "fire_hydrant",
+      "author": "Poly Haven",
+      "licence": "CC0",
+      "source": "https://polyhaven.com/a/fire_hydrant"
+    },
+    {
+      "model": "utility_box_01",
+      "author": "Poly Haven",
+      "licence": "CC0",
+      "source": "https://polyhaven.com/a/utility_box_01"
+    },
+    {
+      "model": "rocky_trail (verges), aerial_grass_rock (hills) (PBR textures)",
+      "author": "Poly Haven",
+      "licence": "CC0",
+      "source": "https://polyhaven.com/a/aerial_grass_rock"
+    },
+    {
+      "model": "Racks, busways, cooling, pipework, hall shell, swap cart, the surrounding campus (halls with facade detail and signs, substation yard, generators, fuel tanks, fence, gate pillars, roads, parking and hills), perforated rack panels and lamp pools",
       "author": "CodePawl",
       "licence": "MIT",
       "source": "https://github.com/anxuanng/67.js"
