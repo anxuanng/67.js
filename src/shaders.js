@@ -646,11 +646,8 @@ ${featureCode("linkArea")}      vec3 lightNormal = areaLightNormals[index].xyz;
   if (USES_OCCLUSION_MAP) occlusion = mix(1.0, texture(occlusionMap, mapUV(hasOcclusionMap)).r, occlusionStrength);
   // Trees and terrain bake how much sky each vertex sees; everything else carries 1.
   occlusion *= splatCavity * vertexSkyVisibility;
-  if (USES_NORMAL_MAP) {
-    // Squared: Cycles also drops the sky lobe below the surface, so a tilt reads darker than the linear share.
-    float horizon = 0.5 + 0.5 * dot(normal, geometricNormal);
-    occlusion *= horizon * horizon;
-  }
+  // Squared: Cycles also drops the sky lobe below the surface, so a tilt reads darker than the linear share.
+  if (USES_NORMAL_MAP) occlusion *= pow(0.5 + 0.5 * dot(normal, geometricNormal), 2.0);
   if (ENVIRONMENT_ENABLED) {
     float room = 1.0 - smoothstep(0.01, 0.06, dot(environmentDiffuse(vec3(0, 1, 0)), vec3(1)) / max(dot(keyColor, vec3(1)), 0.003));
     occlusion *= mix(1.0, mix(0.25, 1.0, visibility), room * (1.0 - metallic));
