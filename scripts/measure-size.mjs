@@ -139,15 +139,21 @@ async function writeJson(path, value) {
   await writeFile(path, `${JSON.stringify(value, null, 1)}\n`);
 }
 
-function printComparisonWithThree(measured, three, goals) {
+function printComparisonWithThree(measured, three) {
   console.log('\nThe same scene in both engines, in bytes gzip:');
   for (const [name, threeSize] of Object.entries(three)) {
-    const engineSize = measured[`scene:${name}`].gzip;
-    const goal = goals[name] === undefined ? '' : `, goal ${goals[name]}`;
-    console.log(`  ${name.padEnd(14)} 67js ${engineSize}, three.js ${threeSize.gzip}${goal}`);
+    console.log(`  ${name.padEnd(14)} 67js ${measured[`scene:${name}`].gzip}, three.js ${threeSize.gzip}`);
   }
+}
+
+// A positive distance is bytes over the goal. A budget raised to fit a change shows here as the distance growing.
+function printGoals(measured, goals, budgets) {
+  console.log('\nGoal scenes against their goals, in bytes gzip:');
   for (const [name, goal] of Object.entries(goals)) {
-    if (!three[name]) console.log(`  ${name.padEnd(14)} 67js ${measured[`scene:${name}`].gzip}, no three.js equivalent, goal ${goal}`);
+    const size = measured[`scene:${name}`].gzip;
+    const distance = size - goal;
+    const status = distance <= 0 ? 'met' : `${distance} over`;
+    console.log(`  ${name.padEnd(14)} ${String(size).padStart(7)} of goal ${goal}: ${status} (budget ${budgets[`scene:${name}`]}, ${budgets[`scene:${name}`] - goal} over the goal)`);
   }
 }
 
@@ -206,7 +212,8 @@ if (checkGrowth) {
 // The absolute budgets are the release ceilings. They are reported on a pull request and enforced with --absolute.
 console.log('\nAgainst the release budgets:');
 console.log(formatRows(rows));
-printComparisonWithThree(measured, three, budgetFile.goals);
+printComparisonWithThree(measured, three);
+printGoals(measured, budgetFile.goals, budgetFile.budgets);
 if (ceilingProblems.length) {
   if (flags.has('--absolute')) {
     problems.push(...ceilingProblems);

@@ -1,5 +1,5 @@
 import { MATERIAL_GRAPH_LIMITS, MATERIAL_GRAPH_OUTPUTS, MATERIAL_GRAPH_OPERATORS } from './agent-scene-capabilities.js';
-import { clampUnit, smoothStep, fractalNoise, cellularNoise, linearToSrgbByte, createImage, normalMapFromHeights } from './material-texture-kit.js';
+import { clampUnit, smoothStep, fractalNoise, cellularNoise, linearToSrgbByte, createImage, normalMapFromHeightFunction } from './material-texture-kit.js';
 
 // A bounded material node graph. Like a field expression (src/mesh-fields.js), a graph is data and never code: it is
 // walked as plain objects against a fixed table of operators, checked against its limits before any pixel is
@@ -338,7 +338,6 @@ export function bakeMaterialGraph(graph, { resolution, bump }) {
   const colorData = color ? new Uint8ClampedArray(pixelCount * 4) : null;
   const emissionData = emission ? new Uint8ClampedArray(pixelCount * 4) : null;
   const surfaceData = roughness || metallic ? new Uint8ClampedArray(pixelCount * 4) : null;
-  const heights = height ? new Float32Array(pixelCount) : null;
   for (let row = 0; row < resolution; row++) {
     for (let column = 0; column < resolution; column++) {
       const pixel = row * resolution + column;
@@ -347,7 +346,6 @@ export function bakeMaterialGraph(graph, { resolution, bump }) {
       const offset = pixel * 4;
       if (color) writeColor(colorData, offset, sampleChannels(color, u, v));
       if (emission) writeColor(emissionData, offset, sampleChannels(emission, u, v));
-      if (heights) heights[pixel] = finiteOrZero(height.evaluate(u, v));
       if (surfaceData) {
         surfaceData[offset] = 255;
         surfaceData[offset + 1] = roughness ? Math.round(clampUnit(finiteOrZero(roughness.evaluate(u, v))) * 255) : 255;
@@ -361,6 +359,6 @@ export function bakeMaterialGraph(graph, { resolution, bump }) {
     map: descriptor(colorData, 'srgb'),
     emissiveMap: descriptor(emissionData, 'srgb'),
     metallicRoughnessMap: descriptor(surfaceData, 'linear'),
-    normalMap: descriptor(heights ? normalMapFromHeights(heights, resolution, bump) : null, 'linear'),
+    normalMap: descriptor(height ? normalMapFromHeightFunction((u, v) => finiteOrZero(height.evaluate(u, v)), resolution, bump) : null, 'linear'),
   };
 }

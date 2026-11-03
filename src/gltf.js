@@ -22,10 +22,12 @@ export const GLTF_CAPABILITIES = Object.freeze({
 
 const LAYER_SHADER_EXTENSIONS = Object.freeze(['KHR_materials_anisotropy', 'KHR_materials_iridescence']);
 
-// The shader code for anisotropy and iridescence is not in the core bundle; a file that uses either brings it in.
+// The shader code for anisotropy, iridescence and transmission is not in the core bundle; a file that uses one brings it in.
 async function loadLayerShadersFor(document) {
   const usesLayerShaders = (document.materials ?? []).some(material => LAYER_SHADER_EXTENSIONS.some(extension => material?.extensions?.[extension]) || layerTextureReferences(material).length > 0 || materialUvTransforms(material ?? {}).normalRelative);
   if (usesLayerShaders) await import('./material-layer-shaders.js');
+  const usesLiquidShader = (document.materials ?? []).some(material => material?.extensions?.KHR_materials_transmission);
+  if (usesLiquidShader) await import('./liquid-shader.js');
 }
 
 const DEFAULT_MAX_BYTES = 32 * 1024 * 1024;

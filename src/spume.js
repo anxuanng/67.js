@@ -1,4 +1,5 @@
 import { mat4 } from 'gl-matrix';
+import './liquid-shader.js';
 
 // Plays back a liquid bake from Spume (https://github.com/codepawl/spume).
 // Spume bakes offline on an NVIDIA GPU; this addon only reads its cache folder:
