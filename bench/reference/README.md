@@ -1039,6 +1039,25 @@ Oracle ceilings (Cycles pixels pasted into one region of the 67js frame, whole f
 Where EEVEE beats 67js on the floor is the mid band (46% of the gap) and the open and far floor (30%), where the means are within 0.002 to 0.007 and the difference is spread thin (FLIP is also reading Cycles' own noise there); the one concentrated piece, the halo at the chrome sphere, is bounced light. No engine file, scene, baseline row or budget changed, and the first box of #167 stays open: `metal` 0.0957 against EEVEE 0.0916. The floor has no single cause left that a measured change reaches; what is left sits in the parts (the chrome sphere's lower half and the steel cylinder) and in bounce light.
 
 
+## Depth parallax, floor occlusion and a probe gain for object probes, measured and nothing kept (2026-11-03, part of issue #167)
+
+Three changes to the probes of `metal` were tried one at a time on current main. These runs used SwiftShader (`--use-angle=swiftshader`, a CPU render of the same harness scene, so no GPU time), scored with `score.py`'s FLIP against the stored Cycles arrays. Main scores 0.0962 there for `metal` (EEVEE 0.0916; `baseline.json` has 0.0957 from the GPU). An empty cell was not measured. The engine is unchanged by this note, so frame cost and the bundle sizes are too.
+
+| Variant | `metal` | `car-paint` | `brushed-film` | `material-spheres` | `metal-room` |
+| --- | --- | --- | --- | --- | --- |
+| Main | 0.0962 | 0.0977 | 0.1015 | 0.0951 | 0.5067 |
+| Depth parallax | 0.0957 | | | | |
+| Depth parallax, plus the part's shadow on the probe's floor | 0.0995 | | | | |
+| Sky occlusion of the probe's floor, part included as a blocker | 0.1051 | | | | |
+| Sky occlusion of the probe's floor, other parts only | 0.0982 | | | | |
+| Every probe hit 1.15 times brighter | 0.0922 | 0.0977 | 0.1037 | 0.0953 | 0.5060 |
+
+Depth parallax. The trace stored the distance to what each probe ray hit in the alpha channel of the probe map, the sharpest level of the prefiltered map passed the alpha through, and the shader looked up where the reflected ray from the shaded point meets what the probe saw (four rounds of: read the depth in the direction of the guess, move the guess to that hit point projected on the ray). It replaces the floor plane with a lookup that also finds the neighbouring parts. The gain is 0.0005, and the picture gets worse to the eye: a 128 by 64 probe holds one depth per 2.8 degrees, so the depth lookup steps at the edge of each part and the top of the steel cylinder shows a notch and the lower rim of the chrome sphere a staircase. Keeping the floor plane as a cap on the travel did not remove them. A finer probe or a filtered depth would be needed, at a cost in trace time and memory that 0.0005 does not pay for.
+
+Floor occlusion. Eight cosine rays from each floor point decide how much of the sky it sees, with and without the probed part as a blocker. Both are worse (0.1051 and 0.0982). The mean display luminance of the probe's floor in the picture is already below Cycles, not above it: lower half of the sphere 0.593 against Cycles 0.614, steel cylinder 0.541 against 0.570 (mean of the red channel, same boxes in every variant), so any darkening moves the wrong way. This is why the contact shadow of the previous section made `metal` worse too.
+
+Probe gain. Because the floor is too dark in the probe, the hit radiance was multiplied by 1.15. `metal` goes from 0.0962 to 0.0922 (EEVEE 0.0916), the sphere's lower half to 0.632 and the cylinder to 0.567, but every other scene is flat or worse (`brushed-film` 0.1015 to 0.1037), so the number is a fit to one scene and not a correction, and it is not kept. It does show where the rest of `metal` is: the probe's lit surfaces are about 15% darker than Cycles shows them, and that is light the probe trace does not carry (the bounce between the floor and the metal parts, and the floor's own sky reflection), not a lookup problem. A principled version is the one bounce that #209 tried at 64 samples (0.1246) and that has not been retried with the trace seeing the sky, the parallax lookup and the multiple scattering of the later changes. That is the next thing to try, and it is a trace-time cost.
+
 ## Bump edges and the sky light below the surface (2026-11-03, part of issue #50)
 
 Main reproduced `baseline.json` first on the stored arrays (`brick-flat` 0.1264, `brick-graph` 0.1584, EEVEE against Cycles 0.1099 and 0.1221, GPU). The Cycles arrays came from a worktree whose flat wall matched to 4 digits; one other worktree's arrays gave 0.1301 for the flat wall's EEVEE gap and were not used. Regions come from projecting the wall back to UV (mortar `body` under 0.05, edge 0.05 to 0.95, brick over 0.95), FLIP per pixel against Cycles.
