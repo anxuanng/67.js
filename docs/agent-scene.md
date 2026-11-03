@@ -102,7 +102,7 @@ Shared resource IDs generate geometry once, regardless of the number of mesh nod
 
 Materials contain `id`, `tag`, `color`, `metallic`, `roughness`, `emission`, optional `emissiveColor`, `opacity`, `alphaMode`, `doubleSided` and `pattern`.
 The defaults are `surface`, `[0.5, 0.5, 0.5]`, `0`, `0.5`, `0`, opacity `1`, `opaque` and `false`.
-The tag can be `surface`, `unlit`, `liquid` or `foam` and remains fixed during editing.
+The tag can be `surface`, `unlit`, `liquid`, `foam`, `foliage` or `grass` (the last two sway in `environment.wind`) and remains fixed during editing.
 `liquid` refracts and tints what lies behind it: its color is the light one metre lets through, so `[0.56, 0.84, 0.88]` is clear water. `foam` draws soft blended droplets.
 Any `opacity` below one draws the material blended after opaque geometry, which suits glass, windows and visors. `alphaMode` accepts `opaque` or `blend`; cutout masking needs a texture and is not available in procedural recipes.
 `doubleSided` draws and lights both faces of thin sheets.
@@ -249,12 +249,28 @@ A node with an `asset` field places a GLB from the `--assets` catalog inside the
   "clip": { "index": 0, "start": 0.5, "speed": 1, "loop": true } } }
 ```
 
-- `id` is an id from `scene_asset_catalog`. `materials` override source materials by glTF material name (`color`, `metallic`, `roughness`, `opacity`, `emission`, `emissiveColor`); `scene_inspect` lists the names. Placements with the same overrides share one material.
+- `id` is an id from `scene_asset_catalog`. `materials` override source materials by glTF material name (`color`, `metallic`, `roughness`, `opacity`, `emission`, `emissiveColor`, and `tag`: `foliage` or `grass` makes the leaves of an imported tree sway in `environment.wind` and cast moving shadows, like grown ones); `scene_inspect` lists the names. Placements with the same overrides share one material.
 - Placements of the same asset share geometry and materials, so they draw as one instanced batch per material (`drawBatches` in the render status stays flat as copies are added). Skins and morphs keep working.
 - `clip` plays that clip, held at its first frame until scene time `start`, then at `speed`, looping unless `loop` is false. Each placement that plays a clip gets a decoded copy of its own (its geometry is not shared), because a pose is state of one decoded asset. A seek gives the same frame as playing to that time. `set-motion` tracks still move the node itself, so a walking figure is a clip plus a motion track on the same node.
 - Bounds: 512 placements, 16 different assets, 16 placements playing a clip, and `maxNodes` for the generated parts. Placed geometry does not count against `maxVertices`; each asset keeps the decoder limits of the catalog.
 - `scene_inspect` adds `assets`: per placement the asset id, part count, world bounds, clips (index, name, duration), material names and the playing clip.
 - Not yet: render jobs refuse a scene with placed assets (`scene_look` draws them), and a scene created without any placed asset cannot add the first one with `scene_apply`.
+
+### Vegetation
+
+A node with a `vegetation` field is a group that grows trees from the addon in [Vegetation](https://67js.codepawl.com/vegetation.md). Its parts become generated child nodes like placed assets (`<node>/<instance>/<bark|foliage>`), left out of `scene_inspect` nodes and `scene_export_recipe`.
+
+```json
+{ "id": "forest", "vegetation": { "mix": { "broadleaf": 3, "conifer": 2, "bush": 2 }, "seed": 11, "season": 0.4,
+  "scatter": { "ground": "hills", "density": 0.014, "slopeLimit": 30, "exclude": [{ "center": [0, 0], "radius": 8 }, { "node": "cabin", "radius": 3 }] } } }
+```
+
+- One tree: `{ "species": "conifer", "seed": 2, "height": 9, "leaves": "cards" }` grows at the node transform. A scatter takes `mix` (species weights, also `grass` and `flowers`) and `scatter`: `ground` (a node drawing a terrain geometry; give the group the same transform), `density` per square metre, `slopeLimit` degrees, `area` `{min,max}` in `[x,z]`, `exclude` (circles, boxes or a node and radius; terrain holes always stay clear), `variants` and `scale`.
+- The same options give the same instances as `scatterVegetation` from `67js/addons/vegetation`: the recipe path calls it with the terrain's `heightAt` and `isHole`.
+- Levels of detail come from the recipe camera `eye` when the scene is built or edited (`distanceScale`, `cullDistance`), never from the frame being drawn, so a seek, a camera track or a shot cannot change them. Edit the camera with `set-camera` to regrow the levels for another viewpoint.
+- `season` runs 0 summer, 0.35 gold, 0.6 orange, 0.85 brown; 0.9 and above drops the leaves of broadleaf, birch and bush, while conifer and palm stay green. Cards recolour their leaf sprite and mesh leaves and grass blades recolour the material.
+- Materials with tag `foliage` or `grass` sway. `environment.wind` is `{ "strength": 0.3, "direction": 0 }` (strength 0 to 4; direction in degrees, 0 toward +x and 90 toward +z, turning the sway and the grass gusts). The wind clock is the render time, so a render job or `scene_review` `rendererTime` gives the same frame at the same time.
+- At most 1000 instances (a scatter whose area times density is above 4000 is refused first), and `maxNodes` for the generated parts. `scene_inspect` adds `vegetation`: per node the instances, culled count, triangles, and per species the instances and the count at each level.
 
 ### Relations between parts
 

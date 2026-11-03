@@ -26,6 +26,7 @@ const MODULE_LOADERS = {
   lightLinking: () => import('./light-linking.js'),
   cascades: () => import('./cascaded-shadows.js'),
   assets: () => import('./agent-scene-assets.js'),
+  vegetation: () => import('./agent-vegetation.js'),
   lineArt: () => import('./line-art.js'),
   viewTransform: () => import('./view-transform-shader.js'),
   coplanar: () => import('./coplanar-overlap.js'),
@@ -55,13 +56,14 @@ const MODULE_MARKERS = {
   layerShaders: ['"anisotropy"', '"iridescence"'],
   liquidShader: ['"transmission"', '"liquid"', '"foam"'],
   subsurfaceShader: ['"subsurface"'],
-  worldMaterials: ['"tag":"water"', '"tag":"foliage"', '"tag":"grass"', '"tag":"terrain"', '"tag":"fire"', '"tag":"smoke"', '"moss"'],
+  worldMaterials: ['"tag":"water"', '"vegetation":{', '"tag":"foliage"', '"tag":"grass"', '"tag":"terrain"', '"tag":"fire"', '"tag":"smoke"', '"moss"'],
   terrain: ['"type":"terrain"'],
   // No recipe text asks for it, only the path option of scene_inspect does, so a host loads it with loadAllAgentSceneModules.
   navigation: [],
   lightLinking: ['"affects"', '"keyAffects"'],
   cascades: ['"shadowCascades"'],
   assets: ['"asset":{'],
+  vegetation: ['"vegetation":{', '"wind":{'],
   lineArt: ['"lines":{', '"toon":'],
   viewTransform: ['"viewTransform":"agx"', '"viewTransform":"neutral"', '"look":"'],
   // The coplanar-overlap warning in scene_inspect appears only once this is loaded, which loadAllAgentSceneModules does; a recipe with resolveCoplanar needs it.

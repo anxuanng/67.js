@@ -38,13 +38,11 @@ export function terrainVertexEstimate(value) {
   return (resolution + 1) * (resolution + 1);
 }
 
-/** Render geometry of a terrain record: ground from -size / 2 to size / 2 on X and Z, hills of the given amplitude, holes cut out. */
-export function generateTerrainGeometry(value, maxVertices) {
-  const vertices = terrainVertexEstimate(value);
-  if (vertices > maxVertices) throw new RangeError(`Terrain needs ${vertices} vertices, exceeding maxVertices ${maxVertices}. Lower resolution.`);
+/** The terrain addon object of a terrain record: render parts plus heightAt, isHole and bounds. Vegetation scatters over the same ground. */
+export function createRecipeTerrain(value) {
   const size = value.size ?? TERRAIN_LIMITS.defaultSize;
   const seed = Number.isInteger(value.seed) ? value.seed : 1;
-  const terrain = createTerrain({
+  return createTerrain({
     size,
     chunks: 1,
     levels: 1,
@@ -58,5 +56,11 @@ export function generateTerrainGeometry(value, maxVertices) {
       mountainMask: () => 0,
     },
   });
-  return terrain.parts[0].geometry;
+}
+
+/** Render geometry of a terrain record: ground from -size / 2 to size / 2 on X and Z, hills of the given amplitude, holes cut out. */
+export function generateTerrainGeometry(value, maxVertices) {
+  const vertices = terrainVertexEstimate(value);
+  if (vertices > maxVertices) throw new RangeError(`Terrain needs ${vertices} vertices, exceeding maxVertices ${maxVertices}. Lower resolution.`);
+  return createRecipeTerrain(value).parts[0].geometry;
 }
