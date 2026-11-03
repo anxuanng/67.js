@@ -1,4 +1,4 @@
-import { registerShaderFeatureCode, registerSplatSupport } from './shaders.js';
+import { registerShaderFeatureCode, registerSplatSupport } from './shader-registry.js';
 import { initializeSplatPlaceholders, createSplatResources, bindSplat, disposeSplatResources } from './splat-renderer.js';
 import { validateSplatMaterial, splatTextureBytes, resolveSplatSize, packSplatParameters, buildSplatPixels } from './splat.js';
 

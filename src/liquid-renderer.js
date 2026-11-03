@@ -1,4 +1,3 @@
-import { vertexShader, liquidFragmentSource } from './shaders.js';
 import { startProgram, finishProgram } from './gl-program.js';
 
 // The renderer's liquid and foam pass, kept apart from renderer.js so a scene without liquid or foam does not carry it.
@@ -14,10 +13,10 @@ const LIQUID_UNIFORMS = [
 ];
 
 // The program compiles when the first liquid or foam batch draws, so a renderer without them never builds it.
-function ensureLiquidProgram(renderer, environmentSpecularUnit) {
+function ensureLiquidProgram(renderer, environmentSpecularUnit, vertexSource, fragmentSource) {
   if (renderer.liquidProgram) return;
   const context = renderer.context;
-  renderer.liquidProgram = finishProgram(context, startProgram(context, vertexShader, renderer.withViewTransform(liquidFragmentSource(), 'liquid')));
+  renderer.liquidProgram = finishProgram(context, startProgram(context, vertexSource, renderer.withViewTransform(fragmentSource, 'liquid')));
   renderer.liquidUniforms = Object.fromEntries(LIQUID_UNIFORMS.map(name => [name, context.getUniformLocation(renderer.liquidProgram, name)]));
   context.useProgram(renderer.liquidProgram);
   context.uniform1i(renderer.liquidUniforms.skinInfluences, 6);
@@ -26,8 +25,8 @@ function ensureLiquidProgram(renderer, environmentSpecularUnit) {
   context.uniform1i(renderer.liquidUniforms.environmentSpecular, environmentSpecularUnit);
 }
 
-export function drawLiquidPass(renderer, { frame, environment, assemblyAmount, environmentMap, liquids, foams, optics, environmentSpecularUnit, maximumDistance }) {
-  ensureLiquidProgram(renderer, environmentSpecularUnit);
+export function drawLiquidPass(renderer, { frame, environment, assemblyAmount, environmentMap, liquids, foams, optics, environmentSpecularUnit, maximumDistance, vertexSource, fragmentSource }) {
+  ensureLiquidProgram(renderer, environmentSpecularUnit, vertexSource, fragmentSource);
   const context = renderer.context;
   const width = renderer.canvas.width;
   const height = renderer.canvas.height;

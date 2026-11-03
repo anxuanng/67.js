@@ -23,7 +23,7 @@ test('a layer without registered code fails with the import to add', async () =>
   assert.doesNotMatch(fragmentShader, /anisotropicSpecular|filmReflectance/);
   assert.throws(() => createFragmentShader(['anisotropy']), /anisotropy feature needs its shader code.*addons\/material-layer-shaders/);
   assert.throws(() => createFragmentShader(['iridescence']), /iridescence feature needs its shader code.*addons\/material-layer-shaders/);
-  assert.doesNotThrow(() => createFragmentShader(['water']));
+  assert.doesNotThrow(() => createFragmentShader(['floor']));
 });
 
 test('importing the layer shader module registers the code for the shader that asked for it', async () => {

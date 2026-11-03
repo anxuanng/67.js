@@ -4,6 +4,7 @@
 // (its own rough, sheened material with cushion relief), so moss is shaded as moss rather than painted on.
 // Everything is vertex-coloured and untextured, so tiles stream with `renderer.replaceParts`.
 
+import './world-material-shader.js';
 import {
   FULL_TURN, addTube, clamp, createMeshBuilder, createRandom, crossProduct, lerp, lerpVectors, normalized, valueNoise,
 } from './vegetation-geometry.js';

@@ -56,6 +56,7 @@
   "entry:view-transform": 2120,
   "entry:view-transform-shader": 21213,
   "entry:liquid-shader": 16892,
+  "entry:world-material-shader": 2391,
   "entry:splat-shader": 20897
  }
 }

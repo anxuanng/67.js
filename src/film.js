@@ -1,3 +1,4 @@
+import './world-material-shader.js';
 import { mat4, quat, vec3 } from 'gl-matrix';
 import { createCameraPath } from './camera-path.js';
 import { createFilmActorRig } from './film-rig.js';

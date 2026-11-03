@@ -7,6 +7,7 @@
 // before growing. Space colonization needs attractor clouds and many iterations for the
 // same silhouette and is harder to budget.
 
+import './world-material-shader.js';
 import { mat4, quat } from 'gl-matrix';
 import {
   FULL_TURN, WORLD_UP, addLeafSurface, addScaled, addTube, addVectors, clamp, createFrame, createLeafFrame,

@@ -1,4 +1,4 @@
-import { SPLAT_UNITS } from './shaders.js';
+import { SPLAT_UNITS } from './shader-registry.js';
 
 // The renderer's splat ground code, kept apart from renderer.js so a scene without splat layers does not carry it.
 // splat-shader.js registers these functions; each takes the renderer as its first argument.

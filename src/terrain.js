@@ -2,6 +2,7 @@
 // The finest grid is sampled once. Every mesh vertex reads that grid, and heightAt() interpolates it over the same
 // triangles as the finest mesh, so vegetation and vehicles sit on the rendered surface.
 
+import './world-material-shader.js';
 import { createSkyVisibilitySampler } from './terrain-sky.js';
 
 const DEFAULT_NOISE = Object.freeze({
