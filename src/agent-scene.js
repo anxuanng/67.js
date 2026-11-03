@@ -1016,7 +1016,7 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
   function stage(inputRecipe, preferred = null, removedNodes = new Set(), removedMaterials = new Set()) {
     const recipe = normalizeRecipe(inputRecipe, limits);
     const assetRuntime = recipe.nodes.some(node => node.asset)
-      ? agentSceneModule('assets').expandAssetPlacements(recipe, options.assets, limits, assetOutputCache)
+      ? agentSceneModule('assets').expandAssetPlacements(recipe, options.assets, limits, assetOutputCache, recipe.nodes.some(node => node.asset?.drive) ? agentSceneModule('drive').createAssetDrive : null)
       : NO_ASSETS;
     if (state) {
       retainedMatrices(state.parts);

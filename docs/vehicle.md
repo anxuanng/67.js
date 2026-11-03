@@ -137,11 +137,62 @@ Use the headlight poses to place spot lights; the pose carries no renderer state
 For imported GLBs, wheel and body nodes must be editable (positive translation, rotation, scale), and children of a moved node follow it.
 Skinned vehicles are not driven by this addon.
 
+## Driving through MCP
+
+An agent drives a car GLB without code. The same entry works in two places.
+
+- An asset recipe (`scene_create_asset`) takes `motion.drive`. `motion.duration` may be left out and becomes the drive time; the car holds the end of its path afterwards.
+- A placed asset in a recipe scene takes `asset: { id, drive }`, with the path in the placement's own frame and scene time as drive time. The placement gets its own decoded copy, like one that plays a clip. Tail-light glow is not available there.
+
+```json
+{
+  "motion": {
+    "drive": {
+      "legs": [
+        { "path": [[0, 0, 0], [0, 0, 10], [4, 0, 16]] },
+        { "path": [[4, 0, 16], [4, 0, 12]], "direction": "reverse", "pause": 0.5 }
+      ],
+      "cruiseSpeed": 6, "acceleration": 3, "braking": 4,
+      "wheels": "auto",
+      "lights": {
+        "headlights": [{ "id": "left", "position": [0.5, 0.7, 2] }],
+        "tailLights": [{ "material": "material-1", "signal": "brake", "off": 0.2, "on": 6 }]
+      }
+    }
+  }
+}
+```
+
+| Field | Meaning |
+| --- | --- |
+| `path` or `legs` | Exactly one. A path is `[x, y, z]` points or a camera path `{ duration, eye: { keyframes } }`. A leg is `{ path, direction: 'forward' \| 'reverse', pause }` |
+| `speed` or `cruiseSpeed` | As in `driveAlongPath`, with `acceleration`, `braking`, `startSpeed`, `endSpeed`, `maxLateralAcceleration`, `startTime`, `fullBrakeDeceleration` |
+| `wheels` | `'auto'` (default) or `[{ id, node \| nodes, side, axle, radius, center, steerable, spinSign }]`, where nodes are labels or `node-N` ids |
+| `body`, `forwardAxis`, `wheelbase`, `maxSteerAngle`, `steering`, `rollGain`, `pitchGain` | As in `createVehicleRig` and `driveAlongPath` (angles in radians) |
+| `lights.headlights` | `[{ id, position, direction }]` in model space; poses are reported, place a spot light from them |
+| `lights.tailLights` | `[{ material, signal: 'brake' \| 'reverse', off, on }]`: the material id (the lamp needs an `emissiveColor`) gets `emission` from `off` to `on` with the signal |
+
+Nodes that the drive moves (the body roots and the wheels) must not also be keyed by `tracks`.
+Sampling is a pure function of time, so `scene_review`, renders and seeks in any order show the same pose.
+
+`scene_inspect kind: "hierarchy"` on an asset recipe returns `motionDrive`; on a recipe scene each entry of `assets` has `drive`:
+
+```json
+{ "wheels": [{ "id": "front-left", "side": "left", "axle": "front", "radius": 0.35, "steerable": true, "nodes": ["Wheel_FL"] }],
+  "rejectedNames": [{ "index": 7, "name": "Steering_Wheel_Cover", "reason": "contains \"steering\", which does not roll with the wheel" }],
+  "wheelbase": 2.4, "trackWidth": 1.4, "duration": 6.67, "length": 34.7,
+  "lights": { "brake": 0, "reverse": 0, "headlights": [{ "id": "left", "position": [0.5, 0.7, 2], "direction": [0, 0, 1] }] },
+  "speed": 0, "direction": 1 }
+```
+
+`wheels`, `rejectedNames`, `wheelbase`, `trackWidth`, `duration` and `length` describe the rig; `lights`, `speed` and `direction` are read at the current motion time.
+Check `wheels` and `rejectedNames` before trusting `'auto'` on an unfamiliar model.
+
 ## Limits
 
 - Kinematic only: no collisions, tire slip or jumps. Heading follows the path tangent (plus a half turn while reversing).
 - Ground is sampled under the wheels as a plane fit, so sharp bumps narrower than the wheelbase show as suspension offsets, clamped to `suspensionTravel`.
 - Rear-steered wheels get no Ackermann angle: the split is measured from the rear axle.
-- The MCP `motion.drive` field is not wired yet; the addon is code-only for now.
+- Through MCP the tail lights drive materials of an asset recipe only (placed assets share their materials), and `groundHeight` is not available: the car follows the path heights.
 - Nodes with a nonzero scene-graph `pivot` are rejected.
 - Wheel radius from geometry assumes the wheel is round in the plane across its axle.
