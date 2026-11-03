@@ -1,6 +1,7 @@
 import './site.css';
 import './brand.js';
 import './site-motion.js';
+import { highlightElement } from './code-highlight.js';
 
 const copyControls = [];
 const packageControls = [];
@@ -58,6 +59,7 @@ function renderRelease() {
   document.querySelectorAll('[data-release-status]').forEach(element => { element.dataset.status = state.status; });
   setText('[data-release-version]', release ? `v${release.version}` : state.status === 'error' ? 'Release unavailable' : 'Loading release');
   setText('[data-install-command]', release ? installCommand() : state.status === 'error' ? 'Release information is unavailable' : 'Loading the release command…');
+  if (release) document.querySelectorAll('[data-install-command]').forEach(element => highlightElement(element, 'shell'));
   packageControls.forEach(({ name, control }) => control.update({ 'aria-pressed':String(name === state.packageManager) }));
   document.querySelectorAll('.release-feedback').forEach(element => { element.hidden = state.status !== 'error'; });
   setText('[data-release-status]', state.status === 'error' ? 'Release information could not load. Retry to get the current files.' : '');
@@ -135,6 +137,7 @@ function mountCodeCopyButton(button) {
 }
 
 document.querySelectorAll('[data-copy-code]').forEach(mountCodeCopyButton);
+document.querySelectorAll('code[data-language]').forEach(element => highlightElement(element, element.dataset.language));
 
 document.querySelectorAll('.example img').forEach(image => {
   image.addEventListener('error', () => {
