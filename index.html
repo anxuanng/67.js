@@ -10,21 +10,22 @@
     <meta property="og:title" content="67js · a 3D engine agents can drive" />
     <meta property="og:description" content="WebGL2 rendering, deterministic animation and an MCP server in one npm package." />
     <meta property="og:url" content="https://67js.codepawl.com/" />
-    <meta property="og:image" content="https://67js.codepawl.com/previews/wall-e.png" />
-    <meta property="og:image:alt" content="WALL·E rendered by 67js" />
+    <meta property="og:image" content="https://67js.codepawl.com/previews/showcase-airport.webp" />
+    <meta property="og:image:alt" content="An airport ramp rendered by 67js" />
     <meta name="twitter:card" content="summary_large_image" />
     <link rel="canonical" href="https://67js.codepawl.com/" />
     <title>67js · a 3D engine agents can drive</title>
     <link rel="icon" href="/favicon.svg" />
   </head>
-  <body>
+  <body class="site">
     <a class="skip-link" href="#content">Skip to content</a>
     <header class="navigation">
-      <a class="brand" href="/" aria-label="67js home">67<span>.js</span></a>
+      <a class="brand" href="/" aria-label="67js home">67js</a>
       <span class="version" data-release-version>Loading release</span>
       <nav aria-label="Library">
         <a href="/docs.html">Docs</a>
       </nav>
+      <a class="site-nav-cta" href="https://github.com/anxuanng/67.js"><span class="package-logo package-logo-github" aria-hidden="true"></span>GitHub</a>
     </header>
     <main id="content">
       <section class="hero" aria-label="67js introduction and live preview">
@@ -32,6 +33,10 @@
           <div>
             <h1>A 3D engine<br />agents can drive</h1>
             <p>WebGL2 rendering, deterministic animation and an MCP server in one package.</p>
+            <div class="hero-actions">
+              <a href="/docs.html#getting-started" data-icon="book">Get started</a>
+              <a href="https://www.npmjs.com/package/@codepawlhq/67js"><span class="package-logo package-logo-npm brand-npm" aria-hidden="true"></span>npm</a>
+            </div>
             <section id="downloads" class="home-install" aria-label="Install 67js">
               <div class="package-install">
                 <div class="package-managers" role="group" aria-label="Package manager">
@@ -44,22 +49,13 @@
                 <div class="release-feedback" hidden><p data-release-status role="status">Loading release information</p><button data-release-retry hidden>Retry</button></div>
               </div>
             </section>
-            <div class="hero-actions">
-              <a href="/docs.html#getting-started" data-icon="book">Get started</a>
-              <a href="https://github.com/anxuanng/67.js"><span class="package-logo package-logo-github" aria-hidden="true"></span>GitHub</a>
-              <a href="https://www.npmjs.com/package/@codepawlhq/67js"><span class="package-logo package-logo-npm brand-npm" aria-hidden="true"></span>npm</a>
-            </div>
           </div>
         </header>
 
-        <section class="feature-showcase live-showcase" aria-label="Interactive 3D preview">
-          <canvas id="home-preview" tabindex="0" aria-label="WALL·E 3D model. Drag or use arrow keys to rotate. Use plus and minus to zoom. Press Space to pause or resume animation."></canvas>
-          <p id="home-preview-status" role="status">Loading 3D preview…</p>
-          <div class="preview-assembly">
-            <div class="preview-assembly-label"><label for="preview-assembly">Take it apart</label><output id="preview-assembly-value" for="preview-assembly">Assembled</output></div>
-            <input id="preview-assembly" type="range" min="0" max="100" step="1" value="0" aria-valuetext="Assembled" />
-          </div>
-        </section>
+        <a class="hero-shot" href="./showcase.html?scene=airport" aria-label="Open the airport ramp as a live 3D scene">
+          <img src="./previews/showcase-airport.webp" alt="An airport ramp with a 787 at its stand and the turnaround crew, rendered by 67js" width="1280" height="720" fetchpriority="high" />
+          <span class="hero-shot-label">Open the live scene</span>
+        </a>
       </section>
 
       <section id="code" class="code-section" aria-labelledby="code-title">
@@ -67,42 +63,33 @@
           <h2 id="code-title">A scene in a few lines</h2>
           <div class="code-block">
             <pre><code id="home-code">import { Renderer67 } from '67js';
-import { createModel } from '67js/addons/model';
+import { loadGltf } from '67js/addons/gltf';
+import { loadHdri } from '67js/addons/hdri';
 
-const renderer = new Renderer67(canvas, createModel(), {
-  samples: 4,
-  memoryBudgetMiB: 256,
+const { parts } = await loadGltf('/airport.glb');
+const map = await loadHdri('/sky.hdr');
+const renderer = new Renderer67(canvas, parts, {
+  hdr: true,
+  ground: false,
+  environment: { map },
 });
 
-renderer.render({
-  eye: [4, 3, 7],
-  target: [0, 1.5, 0],
-  assemblyAmount: 0.5,
-});</code></pre>
+renderer.render({ eye: [58, 31, 84], target: [-8, 3, -18] });</code></pre>
             <button data-copy-code="home-code" aria-label="Copy the code example">Copy</button>
           </div>
         </div>
-        <img class="code-result" src="./previews/wall-e-exploded.webp" alt="WALL·E pulled apart into its 574 parts, rendered by the code on the left" width="1280" height="720" loading="lazy" />
+        <img class="code-result" src="./previews/showcase-datacenter.webp" alt="A cutaway AI data center hall rendered by 67js from a GLB and an HDRI" width="1280" height="720" loading="lazy" />
       </section>
 
       <section id="examples" class="examples" aria-labelledby="examples-title">
-        <h2 id="examples-title">Rendered by the engine</h2>
+        <div class="section-heading"><h2 id="examples-title">Showcase</h2><a href="./showcase.html">Open the live scenes</a></div>
         <ul class="capability-list" aria-label="Engine capabilities">
           <li>PBR materials</li><li>Shadows</li><li>HDR and bloom</li><li>MSAA</li><li>Volumetric fog</li><li>Skinning and morphs</li><li>Physics</li><li>Spume liquid</li><li>Glass and leaf cutouts</li><li>HDRI lighting</li><li>Textured terrain</li><li>Trees and grass</li><li>Vehicles</li><li>Humanoid retargeting</li><li>GLB import and export</li><li>PNG and MP4 export</li>
         </ul>
         <div class="gallery">
-          <a class="example" href="./object.html"><img src="./previews/wall-e.webp" alt="WALL·E model rendered in 67js" width="1280" height="720" loading="lazy" /><div class="example-caption"><h3>WALL·E</h3></div><p>574 parts you can pull apart</p></a>
-          <a class="example" href="./nature.html"><img src="./previews/nature.webp" alt="A winding stream through Silverwater valley" width="1280" height="720" loading="lazy" /><div class="example-caption"><h3>Silverwater valley</h3></div><p>Light, wind and fog in a landscape</p></a>
-          <a class="example" href="./film.html"><img src="./previews/film-contact.webp" alt="Scenes from the Oppenheimer 3D trailer study rendered in 67js" width="1280" height="720" loading="lazy" /><div class="example-caption"><h3>Oppenheimer</h3></div><p>A short film on one timeline</p></a>
-          <a class="example" href="./modeling.html"><img src="./previews/modeling.webp" alt="A porcelain and brass lantern built with profile, extrusion and curve tools" width="1280" height="720" loading="lazy" /><div class="example-caption"><h3>Aster lantern</h3></div><p>Modeling from profiles and curves</p></a>
-          <a class="example" href="./view2d.html"><img src="./previews/view2d.webp" alt="A flat orbital poster rendered through an orthographic camera" width="960" height="540" loading="lazy" /><div class="example-caption"><h3>Orbital field</h3></div><p>Orthographic and 2D views</p></a>
-          <a class="example" href="./assets.html"><img src="./previews/assets.webp" alt="An imported geometric study displayed in the asset viewer" width="960" height="540" loading="lazy" /><div class="example-caption"><h3>Your models</h3></div><p>Open a GLB and play its clips</p></a>
-          <a class="example" href="./terrain.md"><img src="./previews/terrain.webp" alt="Rolling hills of scanned grass and mud rising to rocky ridges under a cloudy sky" width="1280" height="720" loading="lazy" /><div class="example-caption"><h3>Terrain</h3></div><p>Scanned ground layers blended by slope and height</p></a>
-          <a class="example" href="./vegetation.md"><img src="./previews/forest.webp" alt="Birch, beech and fir trees with scanned leaves over a grassy slope" width="1280" height="720" loading="lazy" /><div class="example-caption"><h3>Forest</h3></div><p>Seeded trees with scanned leaves and bark</p></a>
-          <a class="example" href="./grass.md"><img src="./previews/grass.webp" alt="A meadow of clumped grass blades with a path, in front of a tree line" width="1280" height="720" loading="lazy" /><div class="example-caption"><h3>Grass</h3></div><p>Clumped blades that roll in the wind</p></a>
-          <a class="example" href="./spume.md"><img src="./previews/spume.webp" alt="A jet of baked liquid hitting a concrete slab, refracting the columns behind it" width="1280" height="720" loading="lazy" /><div class="example-caption"><h3>Spume liquid</h3></div><p>Baked water that refracts and sprays</p></a>
-          <a class="example" href="./vehicle.md"><img src="./previews/vehicle.webp" alt="A jeep leaning into a bend as it follows a marked path" width="1280" height="720" loading="lazy" /><div class="example-caption"><h3>Vehicles</h3></div><p>Steering, roll and wheels on a path</p></a>
-          <a class="example" href="./lighting.md"><img src="./previews/lighting.webp" alt="Metal spheres of rising roughness lit by an HDR environment" width="1280" height="720" loading="lazy" /><div class="example-caption"><h3>HDRI lighting</h3></div><p>Reflections that blur with roughness</p></a>
+          <a class="example" href="./showcase.html?scene=airport"><img src="./previews/showcase-airport.webp" alt="Airport ramp, rendered by 67js" width="1280" height="720" loading="lazy" /><div class="example-caption"><h3>Airport ramp</h3></div><p>A widebody at the stand with its service trucks</p></a>
+          <a class="example" href="./showcase.html?scene=datacenter"><img src="./previews/showcase-datacenter.webp" alt="AI data center, rendered by 67js" width="1280" height="720" loading="lazy" /><div class="example-caption"><h3>AI data center</h3></div><p>Rows of racks, power and cooling, cut open</p></a>
+          <a class="example" href="./showcase.html?scene=port"><img src="./previews/showcase-port.webp" alt="Container port, rendered by 67js" width="1280" height="720" loading="lazy" /><div class="example-caption"><h3>Container port</h3></div><p>A ship at berth under the quay cranes</p></a>
         </div>
       </section>
 
@@ -133,8 +120,8 @@ renderer.render({
       </section>
     </main>
     <footer class="site-footer" aria-label="Site footer">
-      <div class="footer-introduction"><a class="brand" href="/" aria-label="67js home">67<span>.js</span></a><p>Made by <a href="https://codepawl.com">CodePawl</a>.</p></div>
-      <div class="footer-links"><a href="https://github.com/anxuanng/67.js"><span class="package-logo package-logo-github" aria-hidden="true"></span>GitHub</a><a href="https://www.npmjs.com/package/@codepawlhq/67js"><span class="package-logo package-logo-npm brand-npm" aria-hidden="true"></span>npm</a><a data-release-commit href="https://github.com/anxuanng/67.js">Release commit</a><a href="/changelog.md">Changelog</a><a href="/license.txt">MIT license</a><a href="/logo.svg" download>Logo SVG</a></div>
+      <p><a class="brand" href="/" aria-label="67js home">67js</a> by <a href="https://codepawl.com">CodePawl</a></p>
+      <nav class="footer-links" aria-label="Project links"><a href="https://github.com/anxuanng/67.js">GitHub</a><a href="https://www.npmjs.com/package/@codepawlhq/67js">npm</a><a data-release-commit href="https://github.com/anxuanng/67.js">Release commit</a><a href="/changelog.md">Changelog</a><a href="/license.txt">MIT license</a><a href="/logo.svg" download>Logo SVG</a></nav>
     </footer>
 <script type="module" src="/src/home.js"></script>
   </body>

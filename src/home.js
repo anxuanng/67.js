@@ -1,6 +1,5 @@
-import './home.css';
+import './site.css';
 import './brand.js';
-import './site-theme.css';
 import './site-motion.js';
 
 const copyControls = [];
@@ -145,9 +144,3 @@ document.querySelectorAll('.example img').forEach(image => {
 window.__home = { state, loadRelease };
 loadRelease();
 window.addEventListener('pageshow', event => { if (event.persisted) loadRelease(); });
-
-if (document.querySelector('#home-preview')) {
-  import('./home-preview.js').catch(() => {
-    document.querySelector('#home-preview-status').textContent = '3D preview could not load. Reload the page to retry.';
-  });
-}

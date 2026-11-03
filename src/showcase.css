@@ -1,0 +1,18 @@
+/* The showcase page: one live scene at a time, picked with quiet text tabs. */
+.showcase-stage { display: grid; gap: 16px; }
+.showcase-head { display: flex; align-items: flex-end; justify-content: space-between; flex-wrap: wrap; gap: 16px 24px; }
+.showcase-head > div:first-child { display: grid; gap: 10px; }
+.showcase-head p { color: var(--muted); font-size: 17px; }
+.showcase-tabs { display: flex; flex-wrap: wrap; gap: 4px; }
+.site .showcase-tabs button { min-height: 36px; padding: 6px 14px; background: transparent; color: var(--muted); font-size: 14px; }
+.site .showcase-tabs button:hover { background: var(--bg); color: var(--text); }
+.site .showcase-tabs button[aria-pressed=true] { background: var(--surface); color: var(--text); }
+.showcase-frame { position: relative; overflow: hidden; border-radius: var(--panel-radius); background: var(--surface); }
+#showcase-viewport { display: block; width: 100%; height: clamp(360px, 62vh, 760px); touch-action: none; cursor: grab; }
+#showcase-viewport:active { cursor: grabbing; }
+#showcase-status { position: absolute; inset: auto 16px 16px 16px; margin: 0; color: var(--muted); font-size: 14px; pointer-events: none; }
+#showcase-status[data-failed=true] { color: var(--error); }
+.showcase-credits { color: var(--muted); font-size: 14px; }
+.showcase-credits summary { cursor: pointer; width: max-content; }
+.showcase-credits ul { margin: 10px 0 0; padding-left: 18px; display: grid; gap: 4px; }
+.showcase-credits a { color: var(--text); text-decoration: underline; }
