@@ -86,8 +86,7 @@ export function addImpostorCode(source) {
   if (!source.includes('uniform float wind;') || !source.includes('void main() {')) return source;
   const withDefinitions = insertBefore(source, 'void main() {', impostorShader);
   if (withDefinitions.includes('worldNormal = normalize(')) return insertBefore(withDefinitions, "  // Metres along the object's own axes", COLOR_HOOK);
-  return insertBefore(withDefinitions, '  textureUV = uv;
-  gl_Position = lightProjection * world;', DEPTH_HOOK);
+  return insertBefore(withDefinitions, '  textureUV = uv;\n  gl_Position = lightProjection * world;', DEPTH_HOOK);
 }
 
 shaderTransforms.push(addImpostorCode);
