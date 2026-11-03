@@ -35,7 +35,7 @@ Run `npm run smoke` or the `smoke:*` script for the area that you changed, and l
 A change to skinning, glTF loading, poses or IK also needs `npm run smoke:character`, which takes a real character through the MCP server. Run `npm run prepare:release` first.
 Screenshots and other output go to `artifacts/`, which Git ignores.
 
-Every pull request runs `npm audit`, `npm run size`, `npm test`, `npm run test:isolated` (each test file in its own process), `prepare:release`, `smoke:package` and `smoke:mcp-package` in the `Test` workflow. `smoke:mcp-package` draws through the MCP server on SwiftShader in Chrome. `bench/size/README.md` says what to do when a size budget fails.
+Every pull request runs `npm audit`, `npm run size`, `npm test`, `npm run test:isolated` (each test file in its own process), `prepare:release`, `smoke:package` and `smoke:mcp-package` in the `Test` workflow. `smoke:mcp-package` draws through the MCP server on SwiftShader in Chrome. `npm run size` compares every bundle with `origin/main`. If a bundle grows past its allowance (64 bytes gzip for core and the scenes), add `changes/<issue>.size.md` with the line `- entry:core: <why it is worth the bytes>` and say why in the pull request. Never edit `bench/size/budgets.json` or `baseline.json` in a pull request. `bench/size/README.md` has the details.
 
 Branch protection on `main` requires the `test` check to pass before a merge. Merge a pull request only when `GitGuardian Security Checks` also passes.
 
@@ -74,11 +74,12 @@ Keep site assets out of the npm package: the `files` list in `package.json` deci
 
 Maintainers make releases. `package.json` holds the version, and the publish workflow runs when it changes on `main`.
 
-1. Update the version in `package.json` and in `src/version.js`, then run `npm run changes:fold`. It writes the files in `changes/` into `CHANGELOG.md` as that version's section and deletes them. Read `npm run changes` first to see what it will fold.
-2. Run `npm test`, `npm run build` and `npm run smoke:package`.
-3. Commit and push to `main`.
-4. Wait for the `Publish 67js` workflow. It tests the package and publishes the new version through the npm trusted publisher.
-5. Run `npm run deploy`. It checks that the tree is clean and pushed, builds the site and verifies the live `/release.json`.
+1. Update the version in `package.json` and in `src/version.js`, then run `npm run changes:fold`. It writes the files in `changes/` into `CHANGELOG.md` as that version's section and deletes them. Read `npm run changes` first to see what it will fold. It also deletes the `changes/*.size.md` notes.
+2. Run `npm run size:release`. It resets the size budgets and the baseline to the release sizes. Read the diff of `bench/size/budgets.json`.
+3. Run `npm test`, `npm run build` and `npm run smoke:package`.
+4. Commit and push to `main`.
+5. Wait for the `Publish 67js` workflow. It tests the package and publishes the new version through the npm trusted publisher.
+6. Run `npm run deploy`. It checks that the tree is clean and pushed, builds the site and verifies the live `/release.json`.
 
 ## License
 

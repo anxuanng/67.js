@@ -1,0 +1,93 @@
+import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import test from 'node:test';
+import { readAcceptedBundles } from '../scripts/size-base.mjs';
+import { archiveProblem, compareToBase, growthAllowance, parseSizeNote } from '../scripts/size-growth.mjs';
+
+const size = gzip => ({ min: gzip * 3, gzip });
+
+test('core and the scenes get a small fixed allowance, other entries a percentage', () => {
+  assert.equal(growthAllowance('entry:core', 80000), 64);
+  assert.equal(growthAllowance('scene:lit-box+lazy', 60000), 64);
+  assert.equal(growthAllowance('entry:water-reflection', 27000), 540);
+  assert.equal(growthAllowance('entry:texture-set', 800), 64);
+});
+
+test('a pull request that grows core past the allowance fails with the accept instruction', () => {
+  const { problems } = compareToBase({ 'entry:core': size(80100) }, { 'entry:core': size(80000) });
+  assert.equal(problems.length, 1);
+  assert.match(problems[0], /entry:core grew by 100 bytes gzip against the base branch \(80000 to 80100\), over its allowance of 64/);
+  assert.match(problems[0], /Reduce it, or accept it: add changes\/<issue>\.size\.md/);
+  assert.match(problems[0], /- entry:core: <why it is worth the bytes>/);
+});
+
+test('growth inside the allowance, a shrink and a new bundle all pass', () => {
+  const measured = { 'entry:core': size(80064), 'entry:model': size(14000), 'entry:fresh': size(500) };
+  const base = { 'entry:core': size(80000), 'entry:model': size(14500) };
+  const { rows, problems } = compareToBase(measured, base);
+  assert.deepEqual(problems, []);
+  assert.deepEqual(rows.map(row => row.growth), [64, -500, null]);
+});
+
+test('a size note accepts only the bundles it names', () => {
+  const accepted = parseSizeNote('- entry:core: the new lighting pass is worth it\r\nentry:gltf: loads KHR_lights\n\nNo colon here\n- entry:model:\n');
+  assert.deepEqual([...accepted.keys()], ['entry:core', 'entry:gltf']);
+  const measured = { 'entry:core': size(81000), 'scene:lit-box': size(70000) };
+  const base = { 'entry:core': size(80000), 'scene:lit-box': size(66000) };
+  const { problems } = compareToBase(measured, base, accepted);
+  assert.equal(problems.length, 1);
+  assert.match(problems[0], /scene:lit-box grew by 4000/);
+});
+
+test('the archive fails over its ceiling unless a note names it', () => {
+  assert.match(archiveProblem(741000, 740000), /over its archive ceiling of 740000 in bench\/size\/budgets\.json by 1000\. Reduce it, or accept it/);
+  assert.equal(archiveProblem(739000, 740000), null);
+  assert.equal(archiveProblem(741000, 740000, new Map([['archive', 'ships the new guide']])), null);
+});
+
+function git(folder, ...args) {
+  const result = spawnSync('git', ['-c', 'user.name=Test', '-c', 'user.email=test@example.com', '-c', 'commit.gpgsign=false', '-c', 'core.autocrlf=false', ...args], { cwd: folder, encoding: 'utf8' });
+  assert.equal(result.status, 0, `${args.join(' ')}: ${result.stderr}`);
+  return result.stdout;
+}
+
+function commitFile(folder, path, text, message) {
+  mkdirSync(join(folder, path, '..'), { recursive: true });
+  writeFileSync(join(folder, path), text);
+  git(folder, 'add', '.');
+  git(folder, 'commit', '-q', '-m', message);
+}
+
+test('two pull requests that grow different entries merge in sequence without touching each other', () => {
+  const folder = mkdtempSync(join(tmpdir(), 'size-sim-'));
+  try {
+    git(folder, 'init', '-q', '-b', 'main');
+    commitFile(folder, 'src/model.js', 'export const model = 1;\n', 'base');
+    commitFile(folder, 'src/nature.js', 'export const nature = 1;\n', 'base files');
+    commitFile(folder, 'changes/100.size.md', '- entry:other: an earlier pull request, already merged\n', 'earlier note');
+    git(folder, 'update-ref', 'refs/remotes/origin/main', 'HEAD');
+
+    git(folder, 'checkout', '-q', '-b', 'grow-model');
+    commitFile(folder, 'src/model.js', 'export const model = 2;\n', 'grow model');
+    commitFile(folder, 'changes/201.size.md', '- entry:model: new joints\n', 'accept model');
+    git(folder, 'checkout', '-q', 'main');
+    git(folder, 'checkout', '-q', '-b', 'grow-nature');
+    commitFile(folder, 'src/nature.js', 'export const nature = 2;\n', 'grow nature');
+    commitFile(folder, 'changes/202.size.md', '- entry:nature: new trees\n', 'accept nature');
+
+    assert.deepEqual([...readAcceptedBundles('origin/main', folder).keys()], ['entry:nature']);
+    git(folder, 'checkout', '-q', 'grow-model');
+    assert.deepEqual([...readAcceptedBundles('origin/main', folder).keys()], ['entry:model']);
+
+    git(folder, 'checkout', '-q', 'main');
+    git(folder, 'merge', '-q', '--no-ff', '-m', 'merge model', 'grow-model');
+    git(folder, 'merge', '-q', '--no-ff', '-m', 'merge nature', 'grow-nature');
+    assert.equal(readFileSync(join(folder, 'src/model.js'), 'utf8'), 'export const model = 2;\n');
+    assert.equal(readFileSync(join(folder, 'src/nature.js'), 'utf8'), 'export const nature = 2;\n');
+  } finally {
+    rmSync(folder, { recursive: true, force: true });
+  }
+});
