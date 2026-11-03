@@ -149,6 +149,8 @@
     "reference": "node bench/reference/run.mjs",
     "size": "node scripts/measure-size.mjs",
     "size:release": "node scripts/measure-size.mjs --set-budgets",
+    "tool-cost": "node scripts/check-tool-cost.mjs",
+    "tool-cost:release": "node scripts/check-tool-cost.mjs --set-budgets",
     "benchmark:runtime": "node bench/runtime/run.mjs",
     "benchmark:crowd": "node scripts/benchmark-crowd.mjs",
     "check:tool-schemas": "node scripts/check-tool-schemas.mjs",

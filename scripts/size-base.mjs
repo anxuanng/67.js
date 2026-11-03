@@ -3,7 +3,7 @@ import { execFile, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { basename, join, resolve } from 'node:path';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import { parseSizeNote } from './size-growth.mjs';
@@ -11,8 +11,9 @@ import { parseSizeNote } from './size-growth.mjs';
 export const DEFAULT_BASE_REF = 'origin/main';
 const SIZE_NOTE_PATTERN = /^changes\/[^/]+\.size\.md$/;
 const SCRIPTS_FOLDER = fileURLToPath(new URL('.', import.meta.url));
-const MEASURE_SCRIPT = join(SCRIPTS_FOLDER, 'measure-size.mjs');
-const METHOD_FILES = ['measure-size.mjs', 'size-base.mjs', 'size-budget.mjs', 'size-growth.mjs'];
+// A measuring method names the script that prints JSON for --json and the files that decide its numbers. A script that imports
+// the source relative to itself runs from the base checkout (runInBase), so it measures the base source.
+export const SIZE_METHOD = { script: join(SCRIPTS_FOLDER, 'measure-size.mjs'), runInBase: false, files: ['measure-size.mjs', 'size-base.mjs', 'size-budget.mjs', 'size-growth.mjs'] };
 // CI caches this folder, keyed by the base commit, so a run on an unchanged base skips the second measurement.
 export const BASE_CACHE_FOLDER = 'node_modules/.cache/size-base';
 const MAX_OUTPUT_BYTES = 256 * 1024 * 1024;
@@ -50,15 +51,16 @@ export function readAcceptedBundles(baseRef, cwd = process.cwd()) {
 }
 
 // The cache key holds everything that decides the base numbers: the base commit, the measuring method and the lock file.
-function cacheFileFor(baseRef) {
+function cacheFileFor(baseRef, method) {
   const hash = createHash('sha256');
   hash.update(mergeBaseOf(baseRef));
-  for (const file of METHOD_FILES) hash.update(readFileSync(join(SCRIPTS_FOLDER, file)));
+  hash.update(basename(method.script));
+  for (const file of method.files) hash.update(readFileSync(join(SCRIPTS_FOLDER, file)));
   if (existsSync('package-lock.json')) hash.update(readFileSync('package-lock.json'));
   return join(BASE_CACHE_FOLDER, `${hash.digest('hex').slice(0, 24)}.json`);
 }
 
-async function measureCheckout(baseRef) {
+async function measureCheckout(baseRef, method) {
   const folder = mkdtempSync(join(tmpdir(), 'size-base-'));
   const checkout = join(folder, 'base');
   try {
@@ -70,7 +72,7 @@ async function measureCheckout(baseRef) {
     const extracted = spawnSync('git', ['checkout-index', '--all', '--force', `--prefix=${checkout}/`], { encoding: 'utf8', windowsHide: true, env: environment });
     if (extracted.status !== 0) throw new Error(`Could not unpack ${baseRef}: ${extracted.stderr}`);
     if (existsSync('node_modules')) symlinkSync(resolve('node_modules'), join(checkout, 'node_modules'), 'junction');
-    const { stdout } = await execFileAsync(process.execPath, [MEASURE_SCRIPT, '--json'], { cwd: checkout, maxBuffer: MAX_OUTPUT_BYTES, windowsHide: true });
+    const { stdout } = await execFileAsync(process.execPath, [method.runInBase ? join(checkout, 'scripts', basename(method.script)) : method.script, '--json'], { cwd: checkout, maxBuffer: MAX_OUTPUT_BYTES, windowsHide: true });
     return JSON.parse(stdout);
   } finally {
     rmSync(join(checkout, 'node_modules'), { force: true });
@@ -80,10 +82,10 @@ async function measureCheckout(baseRef) {
 
 // Measures the base branch with this checkout's script, so both sides use the same method. It runs beside the
 // measurement of the pull request, and a cached result for the same base commit skips it.
-export async function measureBase(baseRef) {
-  const cacheFile = cacheFileFor(baseRef);
+export async function measureBase(baseRef, method = SIZE_METHOD) {
+  const cacheFile = cacheFileFor(baseRef, method);
   if (existsSync(cacheFile)) return JSON.parse(readFileSync(cacheFile, 'utf8'));
-  const measured = await measureCheckout(baseRef);
+  const measured = await measureCheckout(baseRef, method);
   mkdirSync(BASE_CACHE_FOLDER, { recursive: true });
   writeFileSync(cacheFile, JSON.stringify(measured));
   return measured;
