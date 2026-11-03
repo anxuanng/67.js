@@ -1483,7 +1483,7 @@ What is left is not in the bake. On the bump-only wall across the dark side of a
 
 ## The graph noise node is Blender's Noise Texture (2026-11-04, part of issue #50, RTX 3060 960 x 540)
 
-The brick-tone error of `brick-graph` was a pattern error: the `noise` node was a periodic gradient noise with its own hash, so its blotches sat in other places than Cycles' and EEVEE's. Blender 5.2.2 headless baked its Noise Texture (2D, Fac) over the unit square to float arrays (Cycles on the CPU, 1 sample, filter 0.01, `Geometry > Position` as the vector), and the 67js node was evaluated at the same pixel centres, 256 x 256.
+The brick-tone error of `brick-graph` was a pattern error: the `noise` node was a periodic gradient noise with its own hash, so its blotches sat in other places than Cycles' and EEVEE's. Blender 5.2.2 headless baked its Noise Texture (2D, Fac) over the unit square to float arrays (Cycles on the CPU, 1 sample, filter 0.01, `Geometry > Position` as the vector), and the 67js node (`tile: false`) was evaluated at the same pixel centres, 256 x 256.
 
 | Property | Before | Blender 5.2 | Now |
 | --- | --- | --- | --- |
@@ -1492,7 +1492,7 @@ The brick-tone error of `brick-graph` was a pattern error: the `noise` node was 
 | Output scale | `1.5 * gradient`, range about -1 to 1 | `0.6616 * perlin` | the same |
 | Octaves | cells doubled per octave inside a wrapped period, gain 0.5, own seed per octave | Detail `n - 1`: `n` octaves, Roughness 0.5, Lacunarity 2, same lattice shifted by the frequency | the same |
 | Normalize and offset | `value * 0.5 + 0.5` of the amplitude-normalised sum | `0.5 * sum / amplitude sum + 0.5` | the same |
-| Tiling | wrapped over the unit square | none | none by default, `"tile": true` wraps it |
+| Tiling | wrapped over the unit square | none | wrapped by default; `"tile": false` is Blender's endless lattice (exact, does not repeat) |
 | Seed | per-octave seed in the hash | none | moves the lattice by whole cells; Blender's side adds the same shift |
 
 Node output against the Cycles bake: scale 10, detail 2: max 0.000048, mean 0.000011 over 65,536 pixels (both ranges 0.120 to 0.831); scale 7, detail 5 (6 octaves): max 0.000052, mean 0.000010. That is float precision, so the match is per pixel; `tests/material-graph.test.js` keeps six Cycles values. The colour ramp (LINEAR in RGB, stops in linear colour) and the Map Range smoothstep were read and need no change. Not touched: `voronoi`, which no reference scene uses and which Blender computes with its own jittered-point hash; it still differs from Blender's Voronoi Texture.

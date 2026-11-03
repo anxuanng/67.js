@@ -94,7 +94,7 @@ test('the slope of a sharp joint edge stays within one texel of the edge instead
 });
 
 test('every graph texture node tiles across the seam', () => {
-  const nodes = [{ noise: { scale: 6, tile: true } }, { voronoi: { scale: 5, output: 'edge' } }, { wave: { frequency: 3, direction: 'diagonal' } }, { checker: { count: 8 } }];
+  const nodes = [{ noise: { scale: 6 } }, { voronoi: { scale: 5, output: 'edge' } }, { wave: { frequency: 3, direction: 'diagonal' } }, { checker: { count: 8 } }];
   for (const node of nodes) {
     const { outputs } = compileMaterialGraph({ height: node });
     const evaluate = outputs.height.evaluate;
@@ -117,15 +117,15 @@ test('the noise node returns the values of Blender 5.2 Noise Texture (2D, scale 
     [0.998046875, 0.998046875, 0.511450],
     [0.978515625, 0.013671875, 0.487824],
   ];
-  const { outputs } = compileMaterialGraph({ height: { noise: { scale: 10, octaves: 3 } } });
+  const { outputs } = compileMaterialGraph({ height: { noise: { scale: 10, octaves: 3, tile: false } } });
   for (const [u, v, expected] of golden) {
     assert.ok(Math.abs(outputs.height.evaluate(u, v) - expected) < 1e-4, `noise at ${u}, ${v}`);
   }
 });
 
-test('a tiled noise repeats over the unit square and differs from the endless one only near the far edges', () => {
-  const endless = compileMaterialGraph({ height: { noise: { scale: 10, octaves: 3 } } }).outputs.height.evaluate;
-  const tiled = compileMaterialGraph({ height: { noise: { scale: 10, octaves: 3, tile: true } } }).outputs.height.evaluate;
+test('a noise tiles by default and differs from the endless one (tile false) only near the far edges', () => {
+  const endless = compileMaterialGraph({ height: { noise: { scale: 10, octaves: 3, tile: false } } }).outputs.height.evaluate;
+  const tiled = compileMaterialGraph({ height: { noise: { scale: 10, octaves: 3 } } }).outputs.height.evaluate;
   assert.ok(Math.abs(tiled(0.4, 0.3) - endless(0.4, 0.3)) < 1e-12);
   assert.ok(Math.abs(tiled(0.4, 0.3) - tiled(1.4, 2.3)) < 1e-9);
   assert.throws(() => compileMaterialGraph({ height: { noise: { tile: 'yes' } } }), /tile/);

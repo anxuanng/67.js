@@ -209,7 +209,7 @@ function compileNoise(node, state, depth) {
   const seed = integerInRange(settings.seed ?? 0, 0, MAX_SEED, 'noise seed');
   const octaves = integerInRange(settings.octaves ?? 4, 1, NOISE_OCTAVE_LIMIT, 'noise octaves');
   if (settings.tile !== undefined && typeof settings.tile !== 'boolean') throw graphError('noise tile must be true or false.');
-  const tileCells = settings.tile ? scale : 0;
+  const tileCells = settings.tile === false ? 0 : scale;
   const shiftX = (seed * SEED_SHIFT_X) % SEED_SHIFT_RANGE;
   const shiftY = (seed * SEED_SHIFT_Y) % SEED_SHIFT_RANGE;
   state.cost += octaves * NOISE_COST_PER_OCTAVE;

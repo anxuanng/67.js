@@ -234,7 +234,7 @@ GRAPH_MATH_OPERATIONS = {
     "pow": "POWER", "abs": "ABSOLUTE", "floor": "FLOOR", "fract": "FRACT", "sqrt": "SQRT",
 }
 # The graph noise node of 67js is Blender's Noise Texture (2D, fBm, Roughness 0.5, Lacunarity 2, Normalize), value for
-# value (bench/reference/README.md, 2026-11-04). A graph noise with "tile": true wraps its lattice and is not translated.
+# value (bench/reference/README.md, 2026-11-04) when it says "tile": false. A tiling noise (the default) wraps its lattice.
 GRAPH_BUMP_DISTANCE = 0.15
 
 
@@ -319,8 +319,8 @@ class GraphTranslator:
         return node.outputs["Result"]
 
     def noise(self, settings):
-        if settings.get("tile"):
-            raise NotImplementedError("Blender's noise lattice does not wrap, so a tiled noise has no Blender node.")
+        if settings.get("tile", True):
+            raise NotImplementedError("Blender's noise lattice does not wrap: a reference noise needs \"tile\": false.")
         node = self.nodes.new("ShaderNodeTexNoise")
         node.noise_dimensions = "2D"
         node.inputs["Scale"].default_value = settings.get("scale", 4)
