@@ -86,7 +86,16 @@ The outer asset root transform applies last.
 Tracks replace specified components rather than adding rotations or translations.
 IK then solves on that pose.
 
-Imported morph animation remains attached to its clip.
+Imported morph animation remains attached to its clip. To key a face by hand, add `{ "kind": "morph", "id": "jawOpen",
+"property": "weight", "keyframes": [...] }` tracks: the id is a morph target name from `morphTargetNames` in `scene_inspect`.
+
+### Clips from another character
+
+A layer with `from: { "asset": "<catalog ID>", "clip": 0 }` plays a clip of another humanoid file on this one, corrected for
+the difference in rest pose and leg length (`retargetClip`). Add `footLock` to the motion to plant the feet, with a `ground`
+plane and normal on a slope. Fields, limits and what `scene_inspect` reports (`retargets`, `footLock`) are in
+[the motion contract](agent-motion.md#a-clip-from-another-catalog-asset); the library side is in [retargeting](https://67js.codepawl.com/retarget.md).
+The foot lock reads the layers, then your tracks and IK apply on top.
 
 `scene_look.motionTime` and `scene.sampleMotion(time)` sample motion without changing the recipe, revision or checkpoints.
 Explicit `null` restores the authored pose without procedural tracks.
@@ -134,5 +143,5 @@ Candidate buffers belong to the decoder. Their contents expire at the next stagi
 The asset must remain exclusively owned by its adapter while transactions are active.
 
 This feature does not create a rig for a flat mesh collection.
-Imported asset recipes do not have retargeting, facial morph authoring or topology changes. For a hand reaching or a head looking at a point, use [`motion.ik`](agent-motion.md#inverse-kinematics) instead of writing rotations. In code, [skeleton pose layers](skeleton-pose.md) mix clips with masks and [retargeting](https://67js.codepawl.com/retarget.md) moves clips between rigs.
+Imported asset recipes do not change topology. For a hand reaching or a head looking at a point, use [`motion.ik`](agent-motion.md#inverse-kinematics) instead of writing rotations. In code, [skeleton pose layers](skeleton-pose.md) mix clips with masks and [retargeting](https://67js.codepawl.com/retarget.md) moves clips between rigs.
 The current WALL·E asset has separate mesh roots and no skeleton. It supports rigid part movement through source-node tracks.
