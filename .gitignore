@@ -61,3 +61,4 @@ public/gaussian-splats.md
 
 # Optional denoiser binaries fetched by packages/denoise-oidn/fetch-oidn.mjs
 packages/denoise-oidn/vendor/
+__pycache__/
