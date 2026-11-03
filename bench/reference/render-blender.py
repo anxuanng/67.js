@@ -2,6 +2,8 @@
 #   blender -b --factory-startup --python bench/reference/render-blender.py -- <work directory> [scene ids]
 #   ... -- <work directory> --world-strength <scale> [scene ids]  renders Cycles only, with the world's light multiplied by <scale>
 #   (0 leaves the sun and the point lights), into <id>-cycles-world<scale>.npy. The EEVEE render and the timings are left alone.
+#   ... -- <work directory> --sun-strength <scale> [scene ids]  the same for the sun: Cycles only, the sun times <scale> (0 leaves the world and
+#   the point lights), into <id>-cycles-sun<scale>.npy. Both switches together write <id>-cycles-world<a>-sun<b>.npy.
 # Light units were measured on a white plane: sun strength equals irradiance, a point or spot light has 4 pi watts for each
 # unit of 67js intensity, and an area light has pi watts for each unit.
 import base64
@@ -850,6 +852,13 @@ def scale_world_light(scene, scale):
     background.inputs[1].default_value *= scale
 
 
+def scale_sun_light(scene, scale):
+    """A measurement switch: the sun's strength times scale, like --key on the 67js side."""
+    for light in scene.collection.all_objects:
+        if light.type == "LIGHT" and light.data.type == "SUN":
+            light.data.energy *= scale
+
+
 def build_scene(description, root):
     clear_scene()
     scene_images[:] = description.get("images", [])
@@ -878,6 +887,11 @@ def main():
         flag_index = arguments.index("--world-strength")
         world_scale = float(arguments[flag_index + 1])
         del arguments[flag_index:flag_index + 2]
+    sun_scale = None
+    if "--sun-strength" in arguments:
+        flag_index = arguments.index("--sun-strength")
+        sun_scale = float(arguments[flag_index + 1])
+        del arguments[flag_index:flag_index + 2]
     only = set(arguments[1:])
     root = os.getcwd()
     timings = {}
@@ -889,11 +903,17 @@ def main():
         with open(os.path.join(scene_directory, file_name), encoding="utf-8") as file:
             description = json.load(file)
         scene = build_scene(description, root)
-        if world_scale is not None:
-            scale_world_light(scene, world_scale)
+        if world_scale is not None or sun_scale is not None:
+            suffix = ""
+            if world_scale is not None:
+                scale_world_light(scene, world_scale)
+                suffix += f"-world{world_scale:g}"
+            if sun_scale is not None:
+                scale_sun_light(scene, sun_scale)
+                suffix += f"-sun{sun_scale:g}"
             configure_cycles(scene)
-            seconds = render_to_numpy(scene, work_directory, f"{scene_id}-cycles-world{world_scale:g}")
-            print(f"RENDERED {scene_id} with the world at {world_scale:g}: {seconds:.1f} s")
+            seconds = render_to_numpy(scene, work_directory, f"{scene_id}-cycles{suffix}")
+            print(f"RENDERED {scene_id} as cycles{suffix}: {seconds:.1f} s")
             continue
         configure_cycles(scene)
         cycles_seconds = render_to_numpy(scene, work_directory, f"{scene_id}-cycles")

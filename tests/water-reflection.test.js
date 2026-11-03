@@ -80,3 +80,26 @@ test('the shader of a scene without the feature is the shader it was', () => {
   assert.ok(withWater.includes('waterReflectionMatrix'));
   assert.ok(withWater.includes('discard'));
 });
+
+test('the mirror image is drawn at three quarters of the canvas in each direction', () => {
+  const textureSizes = [];
+  const context = new Proxy({}, {
+    get: (_, name) => {
+      if (name === 'texImage2D') {
+        return (...callArguments) => textureSizes.push([callArguments[3], callArguments[4]]);
+      }
+      if (name === 'checkFramebufferStatus') {
+        return () => 1;
+      }
+      if (name === 'FRAMEBUFFER_COMPLETE') {
+        return 1;
+      }
+      return typeof name === 'string' && name === name.toUpperCase() ? 0 : () => ({});
+    },
+  });
+  const renderer = { context, canvas: { width: 960, height: 540 }, hdr: false, viewProjection: new Float32Array(16), render() {}, dispose() {} };
+  const detach = attachWaterReflection(renderer, findWaterSurface(lakeScene()));
+  renderer.render({ eye: [0, 20, 100], target: [0, 0, 0] });
+  assert.deepEqual(textureSizes, [[720, 405]]);
+  detach();
+});

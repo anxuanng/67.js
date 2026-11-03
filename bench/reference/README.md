@@ -351,6 +351,53 @@ attachWaterReflection(renderer, water.surface);
 
 `water.surface` is null when no part qualifies, and `attachWaterReflection` then does nothing. A recipe scene does not place it yet: the recipe path has no hook that loads the addon from the materials, and that is the next piece of work. `npm run reference -- --no-water` draws the harness scenes without it.
 
+## Why the river did not move (2026-11-03, issue #195)
+
+`megacity-dusk-a` was picked up by `findWaterSurface` and the mirror image was drawn: the river is one flat box at 0.2 percent of the scene's footprint, roughness 0.04, and the pixels it covers changed (20 percent of the frame). The score did not move because the reflection was drawn too soft. In the changed pixels FLIP against Cycles was 0.536 with no reflection and 0.462 with an unblurred reflection, but the blurred one had given back almost all of it (the whole frame went 0.2084 to 0.2072). The towers' window bands are one to three pixels tall; a picture at a quarter of the pixels, smeared 6 pixels up and down, loses them, and Cycles keeps them. `megacity-dusk-b` is the opposite: its far skyline aliases at half size, and blur hid that. Ripple strength made no difference to any score (0.1972 with and without ripples).
+
+Whole frame FLIP against Cycles, GPU, the three water options (the Cycles arrays are those of the earlier runs; the scenes are drawn from the current main, so the first row differs from the table above):
+
+| Reflection picture, blur (across, down in screen share) | `megacity-dusk-a` | `megacity-dusk-b` | `mountain-valley-a` |
+| --- | --- | --- | --- |
+| No reflection | 0.2084 | 0.1593 | 0.2949 |
+| Half size, 0.004 and 0.012 (#202) | 0.2072 | 0.1459 | 0.1946 |
+| Half size, none | 0.1972 | 0.1556 | 0.1925 |
+| Full size, none | 0.1952 | 0.1444 | 0.1919 |
+| Full size, 0.004 and 0.012 | 0.2077 | 0.1371 | 0.1943 |
+| Three quarters, 0.0015 and 0.0045 (shipped) | 0.1999 | 0.1242 | 0.1924 |
+| Three quarters, 0.001 and 0.003 | 0.1980 | 0.1290 | 0.1922 |
+| Three quarters, 0.0015 and 0.0045, gain 0.7 | 0.1800 | 0.1835 | 0.2055 |
+
+The shipped picture is three quarters of the canvas in each direction with a blur of 0.0015 across and 0.0045 down. Every option that helps the river hurts the bay by about as much, so the pick is the one that gives the largest total gain (0.0073, 0.0217 and 0.0022 against #202); the river is 0.0085 better than no reflection, not the 0.03 of the unblurred full-size picture. GPU `megacity-dusk-a` 0.2072 to 0.1999 and CPU 0.2066 to 0.1992. Frame time on the RTX 3060 (`frame-time.mjs <id> gpu --water --grand`, one run each, shared with other jobs; the machine's spread is about 0.2 ms) shows no cost for the larger picture: `megacity-dusk-a` 0.8 ms off, 1.32 ms with the half-size picture and 1.35 ms with three quarters; `megacity-dusk-b` 2.39, 3.84 and 3.56 ms; `mountain-valley-a` 3.96, 6.35 and 6.30 ms. `grand.json` holds the new GPU and CPU scores against Cycles for these three rows; its EEVEE columns are the old ones, because the EEVEE renders of these scenes are not in the folder.
+
+Still open, and not fixed here: the river's water is brighter than Cycles'. Scaling the reflection by 0.7 takes `megacity-dusk-a` to 0.1800 and costs the other two, so it is not a global gain: in Cycles the stretch of water between the towers is dark where 67js shows a light patch of sky. Nothing in the mirror image explains it, so it is likely the Fresnel curve or the haze on the Cycles side (the `FRESNEL_BASE` of 0 scores 0.1947, 0.1294 and 0.1925). The water's body colour and depth near the shore are untouched. The issue stays open.
+
+The default suite does not hold a water scene any more on this main: `foliage` and `mountain-valley` draw the same pixels with and without the reflection (identical PNGs), and a full `--skip-blender` run before and after the change scored all 23 rows the same to four digits, GPU and CPU.
+
+## The Fresnel curve is not why the river is bright (2026-11-03, issue #195)
+
+Tried and not kept. The Cycles water in these scenes is a plain Principled BSDF (`WATER` in `grand-scenes.js`: colour 0.02, 0.05, 0.08, roughness 0.04, nothing else). `render-blender.py` leaves IOR at the default 1.5 and the specular level at 0.5, so it reflects 4 percent head on with the exact dielectric curve (inferred from those inputs). It has no transmission, no volume absorption and no body colour beyond that diffuse colour, and 67js gives the surface the same colour, so there is no body or shore depth term to add. The reflection's weight was Schlick from 0.02. Computed numerically, the exact curve for IOR 1.5 and that Schlick weight differ by under 0.04 at every angle in frame (elevation 1, 3, 5, 12 and 30 degrees: 0.904 against 0.917, 0.742 against 0.769, 0.613 against 0.641, 0.326 against 0.326, 0.089 against 0.051), so a curve cannot explain a river that is 60 to 70 percent brighter.
+
+Whole frame / water pixels FLIP against Cycles (water pixels are the ones the shipped reflection changes: 25, 31 and 16 percent of the frame), GPU, one change at a time:
+
+| Fresnel weight | `megacity-dusk-a` | `megacity-dusk-b` | `mountain-valley-a` | Total, whole frame |
+| --- | --- | --- | --- | --- |
+| Schlick from 0.02 (shipped) | 0.1999 / 0.3429 | 0.1242 / 0.1926 | 0.1924 / 0.1442 | 0.5165 |
+| Exact, IOR 1.5 (Blender's) | 0.2056 / 0.3662 | 0.1148 / 0.1670 | 0.1933 / 0.1502 | 0.5137 |
+| Exact, IOR 1.33 | 0.1944 / 0.3219 | 0.1420 / 0.2317 | 0.1957 / 0.1652 | 0.5322 |
+
+Blender's own curve helps the bay and costs the river 0.0057, over the 0.002 allowed; real water's curve does the opposite and costs the bay 0.0178. The two scenes ask for opposite weights from the same code, so the weight is not the cause, nothing was kept, and `src/water-reflection.js` is unchanged.
+
+Where the brightness comes from: mean display luminance over the river pixels of `megacity-dusk-a` in six horizontal bands (rows 305, 344, 383, 422, 461, 500 on), Cycles against 67js. In the lower bands the reflection adds almost nothing, so they do not depend on it.
+
+| Rows from | 305 | 344 | 383 | 422 | 461 | 500 |
+| --- | --- | --- | --- | --- | --- | --- |
+| Cycles | 0.216 | 0.180 | 0.129 | 0.121 | 0.103 | 0.099 |
+| 67js, no reflection | 0.423 | 0.345 | 0.288 | 0.226 | 0.182 | 0.149 |
+| 67js, shipped | 0.354 | 0.326 | 0.215 | 0.226 | 0.180 | 0.154 |
+
+The bay and the valley are within 0.02 of Cycles in the same bands, so it is specific to the canyon. In the picture the sidewalks and tower faces that the river mirrors are lighter in 67js than in Cycles too. The reading (inferred, not isolated): the towers stand close together and Cycles lets only a slice of the sky reach them, while 67js lights them with the whole sky. With `--ambient 0` the river bands fall to 0.298, 0.259, 0.146, 0.169, 0.126 and 0.111, towards Cycles. Haze is not it, since the nearest band is as far off as the farthest. So the remaining gap is the light on the mirrored city (sky occlusion in narrow streets), and a reflection gain of 0.7 only trades one scene's error for another's. #195's done-when for the three water options was already met by #202 and #230 (all three scores moved towards Cycles, scenes without water unchanged), so this adds no change and closes nothing by itself.
+
 ## Fog on two more scenes, and a seam in baked rooms (2026-11-02, issues #164 and #165)
 
 **New scenes.** `fog-valley` is open ground under the HDRI sky with a low sun ahead of the camera, 48 blocks from 25 m to 400 m away and `volumeFog` density 0.005 over the whole field. `fog-room` is a 5 m square room with a window, density 0.2, a constant 0.05 world and the sun coming through the window as a shaft; it declares a `brightRegion` (24.3 percent of the frame). Both are built from engine code, so Blender gets the same geometry. Scores against Cycles on 2026-11-02 (RTX 3060):
@@ -839,3 +886,18 @@ Measured with `npm run reference -- --skip-blender`, same Cycles and EEVEE array
 | `foliage` | 0.0989 (EEVEE 0.0811) | 0.0990 (0.0809) |
 
 Both brick scenes are back under their scores before the aligned eye (0.1272 and 0.1602). The slope scaled bias in depth-range units that was tried first made `temple-hall` and `foliage` worse; in world units neither moves. `foliage` against EEVEE was 0.0888 with the old off-sun eye, 0.0811 after the aligned eye and is 0.0809 now, so the bias leaves the crown gap of issue #191 as it was. `fog` against EEVEE is 0.0074 worse while it is 0.0048 better against Cycles; the gate is Cycles.
+
+## Sky light in the canyon of `megacity-dusk-a` is not the cause of the bright river (2026-11-03, part of issue #232)
+
+Issue #231 inferred that surfaces between the towers get the whole sky in 67js while Cycles lets only a slice in. This measures it with the sun off on both sides. `render-blender.py` has a new `--sun-strength <scale>` switch beside `--world-strength` (Cycles only, the sun times the scale, into `<id>-cycles-sun<scale>.npy`): `blender -b --factory-startup -t 6 --python bench/reference/render-blender.py -- artifacts/reference-grand --sun-strength 0 megacity-dusk-a`. The 67js side is `render-gpu.mjs <directory> megacity-dusk-a --key 0`, and again with `--ambient 0` to take the sky's diffuse light away. Both arrays are tone mapped with the curve of `src/post.js` and compared as mean luminance over image regions (960 x 540, GPU).
+
+| Region | Cycles, sun off | 67js, sun off | 67js, sun and ambient off | excess | of it, ambient |
+| --- | --- | --- | --- | --- | --- |
+| towers (rows 100 to 340) | 0.2157 | 0.2024 | 0.1868 | -0.0132 | 0.0156 |
+| quay and street (rows 340 to 400) | 0.1096 | 0.1023 | 0.0917 | -0.0073 | 0.0106 |
+| river, middle (rows 420 to 540, columns 280 to 680) | 0.0063 | 0.0274 | 0.0204 | +0.0211 | 0.0070 |
+| river, sides (rows 400 to 540, columns 0 to 280) | 0.0158 | 0.0528 | 0.0429 | +0.0370 | 0.0099 |
+
+Row bands of 60 rows, 67js over Cycles with the sun off: 0.99, 0.98, 0.96, 0.94, 0.92, 0.90 down to row 360, then 1.55, 3.31 and 3.65 over the river. Full light gives the same bottom bands (1.75, 3.13, 3.37).
+
+The towers and the quay are slightly darker in 67js than in Cycles with only the sky, not brighter, so the canyon walls and the street do not get too much sky light. The river is 3 to 4 times brighter, but taking all the sky's diffuse light away (`--ambient 0`) removes only 0.007 to 0.010 of an excess of 0.021 to 0.037, so 67js stays 2.6 to 2.8 times over Cycles with no ambient at all. Even a perfect occlusion of the sky light in the river could close about a third of the gap, and the walls give no sign that the occlusion is missing. The rest comes from what the water draws besides diffuse sky: the reflection of the lit windows and the lamps (`src/water-reflection.js`), which is the part #195 works on. No sky visibility grid was built.

@@ -45,17 +45,17 @@
  },
  "scores": {
   "megacity-dusk-a": {
-   "gpu-vs-cycles": 0.1985,
+   "gpu-vs-cycles": 0.1999,
    "gpu-vs-eevee": 0.1688,
-   "cpu-vs-cycles": 0.198,
+   "cpu-vs-cycles": 0.1992,
    "cpu-vs-eevee": 0.1703,
    "eevee-vs-cycles": 0.1404,
    "gpu-vs-cpu": 0.0229
   },
   "megacity-dusk-b": {
-   "gpu-vs-cycles": 0.1377,
+   "gpu-vs-cycles": 0.1242,
    "gpu-vs-eevee": 0.1307,
-   "cpu-vs-cycles": 0.1371,
+   "cpu-vs-cycles": 0.1258,
    "cpu-vs-eevee": 0.1317,
    "eevee-vs-cycles": 0.1041,
    "gpu-vs-cpu": 0.0428
@@ -69,9 +69,9 @@
    "gpu-vs-cpu": 0.0419
   },
   "mountain-valley-a": {
-   "gpu-vs-cycles": 0.2562,
+   "gpu-vs-cycles": 0.1924,
    "gpu-vs-eevee": 0.1856,
-   "cpu-vs-cycles": 0.2567,
+   "cpu-vs-cycles": 0.1924,
    "cpu-vs-eevee": 0.186,
    "eevee-vs-cycles": 0.1756,
    "gpu-vs-cpu": 0.0109
