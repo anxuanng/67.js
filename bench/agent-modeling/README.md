@@ -337,4 +337,17 @@ Result (measured, 3 runs per cell): branches did not save calls where the task w
 
 ## An overshoot with one easing (2026-11-03, issue #286)
 
-`overshoot-lift` asks for a 0.4 m block that rises from 0.2 m to 1.2 m in 1 s, peaks between 1.25 m and 1.45 m and settles on 1.2 m. The `overshoot` check samples the exported recipe 41 times: the start and end heights within 0.02 m, a peak in the range, and a settle after the peak. The reference uses `easeOutBack` on a `LINEAR` track: 2 keyframes. `EASING_PLAIN_SOLUTION` does the same with plain `SMOOTH` keyframes and needs 3, because the peak and the settle have to be placed by hand (its peak at t = 0.55 and 1.32 m came from trying values until the check passed, which an agent would also need a retry to do). Both pass the check and a recipe without the easing fails it (`tests/agent-modeling-suite.test.js`). Not measured: live agent runs, so the tool call counts of an agent doing the task with and without the easing are still open. Only the keyframe counts are compared here.
+`overshoot-lift` asks for a 0.4 m block that rises from 0.2 m to 1.2 m in 1 s, peaks between 1.25 m and 1.45 m and settles on 1.2 m. The `overshoot` check samples the exported recipe 41 times: the start and end heights within 0.02 m, a peak in the range, and a settle after the peak. The reference uses `easeOutBack` on a `LINEAR` track: 2 keyframes. `EASING_PLAIN_SOLUTION` does the same with plain `SMOOTH` keyframes and needs 3, because the peak and the settle have to be placed by hand (its peak at t = 0.55 and 1.32 m came from trying values until the check passed, which an agent would also need a retry to do). Both pass the check and a recipe without the easing fails it (`tests/agent-modeling-suite.test.js`). Live runs are in the next section.
+
+### Live runs of the overshoot pair (2026-11-03, issue #286)
+
+`overshoot-lift-plain` is the same task with one added clause: use only plain keyframes and no `easing` field. The prompt of `overshoot-lift` does not mention easings, so the agent finds them or not in the tool schema. Three runs each, Sonnet through Claude Code on a subscription (no API key), CPU backend, budget $1 per run: `node bench/agent-modeling/run.mjs --claude <claude executable> --model sonnet --tasks overshoot-lift,overshoot-lift-plain --runs 3 --backend cpu --label overshoot`. The harness already drove Claude Code headless, so no new driver was needed. `--backend cpu|gpu` is new and defaults to `gpu`. Results: `results/2026-11-03-17-23-sonnet-overshoot.json`.
+
+| Task | Pass | Tool calls (runs) | Turns | Time | Keyframes (runs) | Easing used |
+| --- | --- | --- | --- | --- | --- | --- |
+| overshoot-lift | 3/3 | 2, 2, 2 | 4, 4, 4 | 22 to 23 s | 6, 6, 6 | 0 of 3 |
+| overshoot-lift-plain | 3/3 | 2, 2, 2 | 4, 4, 4 | 22 to 24 s | 4, 5, 5 | not allowed |
+
+Tool calls exclude `ToolSearch`. Each run was `scene_create` with the motion inside it and one `scene_export_recipe`, with no errors and no retry.
+
+Result (measured, 3 runs per task): the call count is the same with and without the easing, because Sonnet never used one. In the free arm all 3 runs wrote 6 plain keyframes on a `LINEAR` track with the peak at 1.35 m and passed on the first try. The 2-keyframe `easeOutBack` version in the reference was not found or not chosen. So the issue's condition is met as a comparison, and the answer is no difference in calls, 2 against 2. It does not show that the easing saves calls when an agent is told to use it, and the plain arm needed no retry, unlike the hand search that placed the reference peak. Not measured: Haiku, a prompt that names easings, or a harder curve.

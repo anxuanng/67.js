@@ -112,7 +112,7 @@ export function dielectricReflectance(material) {
 
 /**
  * Plain values the renderer batches by: dielectric F0 (3), coat (2), sheen (4), transmission (4), attenuation colour (3),
- * anisotropy strength and rotation (2), iridescence factor, film IOR and film thickness in nanometres (3), light mask (1), toon bands (1).
+ * anisotropy strength and rotation (2), iridescence factor, film IOR and film thickness in nanometres (3), light mask (1), toon bands (1), and the subsurface block as JSON, or '' (1; subsurface-limits.js and the addon read it).
  */
 export function materialLayerState(material) {
   validateMaterialLayers(material);
@@ -134,7 +134,8 @@ export function materialLayerState(material) {
     materialLayerValue(material, 'iridescenceThickness'),
     material.lightMask ?? ALL_LIGHTS_MASK,
     materialLayerValue(material, 'toon'),
+    material.subsurface ? JSON.stringify(material.subsurface) : '',
   ];
 }
 
-export const MATERIAL_LAYER_STATE_LENGTH = 23;
+export const MATERIAL_LAYER_STATE_LENGTH = 24;
