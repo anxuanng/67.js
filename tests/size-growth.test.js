@@ -168,9 +168,20 @@ test('a bundle note for the scene does not accept crossing its goal', () => {
   assert.equal(problems.length, 1);
 });
 
-test('a goal scene already over its goal on the base, or still under it, does not fail the goal check', () => {
+test('a goal scene over its goal on the base may shrink or stay, and one under its goal may grow inside it', () => {
   const goals = { 'lit-box': 50000, 'gltf-box': 80000 };
   const base = { 'scene:lit-box': size(50189), 'scene:gltf-box': size(77000) };
-  const measured = { 'scene:lit-box': size(50200), 'scene:gltf-box': size(79000) };
-  assert.deepEqual(goalProblems(measured, base, goals), []);
+  assert.deepEqual(goalProblems({ 'scene:lit-box': size(50150), 'scene:gltf-box': size(79000) }, base, goals), []);
+  assert.deepEqual(goalProblems({ 'scene:lit-box': size(50189), 'scene:gltf-box': size(77000) }, base, goals), []);
+});
+
+test('a goal scene over its goal on the base fails when it grows, unless a goal line accepts it', () => {
+  const goals = { 'lit-box': 50000 };
+  const base = { 'scene:lit-box': size(50127) };
+  const measured = { 'scene:lit-box': size(50183) };
+  const problems = goalProblems(measured, base, goals);
+  assert.equal(problems.length, 1);
+  assert.match(problems[0], /scene:lit-box grew from 50127 to 50183 bytes gzip while it is over its goal of 50000/);
+  assert.deepEqual(goalProblems(measured, base, goals, new Map([['goal:lit-box', 'approved by An']])), []);
+  assert.equal(goalProblems(measured, base, goals, new Map([['scene:lit-box', 'worth it']])).length, 1);
 });

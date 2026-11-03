@@ -1,0 +1,1 @@
+- A goal scene that is already over its goal on the base branch now fails `npm run size` when a pull request grows it by any byte; only a `- goal:<scene>:` line approved by An accepts it.
