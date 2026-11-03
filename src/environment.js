@@ -387,11 +387,12 @@ export function createEnvironmentResources(context, map, { compileProgram, fulls
   context.finish();
   return {
     data: map.data,
+    irradianceSource: map.irradianceSource,
     specularTexture,
     brdfTexture,
     levelCount: layout.levelCount,
     bytes: layout.bytes,
-    irradiance: computeIrradianceCoefficients(map),
+    irradiance: computeIrradianceCoefficients(map.irradianceSource ?? map),
     prefilterMilliseconds: performance.now() - started,
     dispose() {
       context.deleteTexture(specularTexture);

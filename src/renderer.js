@@ -1546,10 +1546,10 @@ export class Renderer67 {
     context.bindTexture(context.TEXTURE_2D, brdfTexture);
   }
 
-  // Prefilters a map the first time it is seen; maps spread from one created map share its data and reuse the GPU textures. Returns true when new textures were built.
+  // Prefilters a map the first time it is seen; maps spread from one created map share its data and reuse the GPU textures (an `irradianceSource` map, which only the diffuse light reads, counts as part of the map). Returns true when new textures were built.
   prepareEnvironment(map) {
     assertEnvironmentMap(map);
-    if (this.environmentResources?.data === map.data) return false;
+    if (this.environmentResources?.data === map.data && this.environmentResources.irradianceSource === map.irradianceSource) return false;
     estimateEnvironmentBytes(map, this.capabilities.maximumTextureSize);
     const resources = createEnvironmentResources(this.context, map, { compileProgram: (context, vertexSource, fragmentSource) => this.compileEnvironmentProgram(context, vertexSource, fragmentSource), fullscreenVertex });
     this.environmentResources?.dispose();

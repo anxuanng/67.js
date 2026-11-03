@@ -9,7 +9,8 @@ import { applyProjection } from '../src/camera.js';
 import { mat4 } from 'gl-matrix';
 import { resolveAgentShadow, agentEnvironmentMap } from '../src/agent-look.js';
 import { agentSceneModule } from '../src/agent-scene-modules.js';
-import { agentGroundPlacement, createAgentGround, placeAgentGround } from '../src/agent-ground.js';
+import { agentGroundPlacement, createAgentGround, placeAgentGround, FLOOR_COLOR } from '../src/agent-ground.js';
+import { groundBounceEnvironment } from '../src/ground-bounce.js';
 import { createAgentAssetScene } from '../src/agent-asset.js';
 import { parseGltf } from '../src/gltf.js';
 import { exportGlb } from '../src/export.js';
@@ -101,6 +102,12 @@ function syncAutomaticGround(record) {
   }
 }
 
+// The scene's environment lit by the sky map, with the light its floor bounces (src/ground-bounce.js): a floor part of the
+// recipe gives its own colour, and the automatic floor gives its own.
+function litEnvironment(parts, environment, hasAutomaticGround) {
+  return groundBounceEnvironment(parts, { ...environment, map: agentEnvironmentMap(environment) }, { automaticAlbedo: hasAutomaticGround ? FLOOR_COLOR : null });
+}
+
 // A renderer takes its cascades at construction, so a change of the count (or of the extent that picks it) rebuilds.
 function syncShadowCascades(record) {
   const count = cascadeCountFor(record.scene);
@@ -143,7 +150,7 @@ function draw(record, time = 0, camera = record.scene.camera, frameOptions = {})
     record.shadowKey = shadowKey;
   }
   record.renderer.world = environment.world;
-  record.renderer.render({ ...camera, environment: { ...environment, map: agentEnvironmentMap(environment) }, effects, exposure: effects.exposure, time, ...frameOptions });
+  record.renderer.render({ ...camera, environment: litEnvironment(record.scene.parts, environment, Boolean(record.renderer.groundPart)), effects, exposure: effects.exposure, time, ...frameOptions });
   const error = record.renderer.context.getError();
   if (error !== 0) {
     throw new Error(`WebGL render failed with error ${error}.`);
@@ -215,7 +222,7 @@ function initializeRenderer(scene, { memoryBudgetMiB, backend }) {
     hdr: true,
     depth: true,
     world: scene.environment.world,
-    environment: { ...scene.environment, map: agentEnvironmentMap(scene.environment) },
+    environment: litEnvironment(scene.parts, scene.environment, Boolean(placement)),
     shadowBounds: resolveAgentShadow(scene.shadow, scene.environment.lightDirection),
     shadowCascades: cascadesFor(scene),
     skyOpenness,
