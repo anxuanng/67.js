@@ -1233,6 +1233,25 @@ The shadow floors move toward Cycles (mostly by 0.02 to 0.2) but five scenes get
 
 Next idea: occlude per surface, not per scene: a sky and sun visibility lookup for the ground next to each caster, which needs a texture in the core shader and is a size cost; or darken only the floor-facing lower part of casters, which the shader would need a height above the floor for.
 
+## A sky visibility volume read by every surface, measured and not kept (2026-11-03, part of issue #197)
+
+Idea, from the two notes above: a scene-wide scalar can not darken shadowed floors without hurting lit ground, so scale the world light of each surface by how much sky its place sees. Change tried: `skyVisibilityGrid` (24 upward rays per cell, the grid of the fog) over the bounds of all parts at up to 16384 cells, uploaded once as an `R8` 3D texture; a registered shader feature (`surfaceSky`, off unless the renderer is given the option, so no core code for other scenes) multiplied `occlusion` by the lookup at `worldPosition + normal * half a cell`, skipping surfaces that carry baked sky visibility (`vertexSkyVisibility` below 1) or a light map, and scenes with morph targets (the volume took the morph texture's unit). Main at `763e7fe`, GPU, 960 x 540, FLIP against Cycles with the stored arrays; change from the committed `baseline.json` (all 23 scenes; `mountain-valley` and `character` do not change in any row).
+
+| Variant | Better than -0.002 | Worse than +0.002 | Worst |
+| --- | --- | --- | --- |
+| Strength 1, all normals | none | 21 of 23 | `long-street` +0.0804, `metal-room` +0.0631, `lit-interior` +0.0545, `temple-hall` +0.0119 |
+| Strength 0.5, all normals | `temple-hall` -0.0051, `fog-room` -0.0065, `brushed-film` -0.0039, `car-paint` -0.0025 | 12 | `metal-room` +0.0314, `lit-interior` +0.0268, `brick-room` +0.0264, `long-street` +0.0164 |
+| Strength 1, weighted by the upward share of the normal | `brick-flat` -0.0079, `brick-graph` -0.0083, `car-paint` -0.0038 | 14 | `long-street` +0.0373, `dark-shaft` +0.0177, `temple-hall` +0.0113, `metal-room` +0.0209 |
+| Strength 0.5, weighted by the upward share of the normal | `brick-flat` -0.0042, `brick-graph` -0.0044, `car-paint` -0.0054, `brushed-film` -0.0022, `material-spheres` -0.0026, `temple-hall` -0.0030 | 10 | `long-street` +0.0138, `metal-room` +0.0104, `brick-room` +0.0092, `lit-interior` +0.0080, `dark-shaft` +0.0073 |
+
+
+- The lookup is isotropic, a cell sees a whole sphere. Beside a wall about half of the upward rays hit the wall itself (inferred), so a surface that faces the wall is darkened by its own plane as well, which its cosine term already counts: strength 1 on all normals made `brick-flat` worse by 0.0323. Weighting by the upward share of the normal removes that (measured: `brick-flat` -0.0079) and turns the brick scenes and `car-paint` better, so the term is usable for floors only.
+- With floors only, the targets split. `temple-hall` improves at strength 0.5 (-0.0030) and worsens at 1 (+0.0113); `material-spheres` and `car-paint` improve at 0.5 (-0.0026, -0.0054); `long-street` worsens at every strength (+0.0138 at 0.5); `mountain-valley` does not change (its terrain carries baked sky visibility, which the term skips). Cause for the street (guessed, not isolated): the sun-lit street is under narrow sky as well, and the cells of a volume over a street that long are coarse.
+- Ten scenes fail the 0.002 limit at the best variant, so nothing is kept. Guess: the gap is light that comes back from the lit surfaces the blocked rays hit, which a visibility alone does not hold.
+- Not measured, because the change was reverted: the gzip bytes, the frame cost and the ray time at 16384 cells. One run with 100000 cells (to resolve the street) did not finish all 23 scenes in 10 minutes, so the ray build is the limit on a finer volume.
+
+Engine code reverted; `baseline.json` is unchanged. Next idea, if this is taken up again: sky visibility traced from the floor texels themselves (a 2D map of the floor, one value per texel, 64 or more rays) instead of a coarse volume.
+
 ## Where the rest of `metal` sits, and a metal mirror in the probe trace, measured and not kept (2026-11-03, part of issue #167)
 
 `bench/reference/region-errors.py <scene> [gpu|cpu]` splits the FLIP error map of a scene by what each pixel shows. It draws each part's triangles back to front with the scene's camera (the floor quad reaches behind the camera, so the floor is the uncovered pixels below the horizon), then prints share, mean error and luminance per region for 67js and EEVEE against Cycles. GPU render, same arrays as the baseline (67js 0.0944, EEVEE 0.0916); the shares of the error are of the error map's own total (its mean is 0.1053, a little above the 0.0944 of the scorer, so use the shares and not the absolute values):
