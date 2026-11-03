@@ -111,6 +111,23 @@ A point light costs about 0.04 to 0.05 ms and an area light about 0.04 ms at thi
 
 `node bench/lighting/frame-time.mjs gpu --each-light` draws the hall with 12 point and 7 area lights and again without each light in turn; every removal changes the picture (checked on the software rasterizer).
 
+## Bounced light in a lamp-lit room
+
+A closed room lit by point, spot or area lights gets the light its walls bounce without a bake and at no cost per frame. `groundBounceEnvironment(parts, environment)` (`67js/addons/ground-bounce`, the same call that adds the floor's bounce) finds the room with the closed-room ray test, measures the area of the faces that look at the middle of the scene and their mean albedo (colour times texture mean, per channel), and sets `bounce` on the environment map. With lamp flux `F` (point `4 pi I`, spot `2 pi (1 - cos angle) I`, area `pi I`, summed over the lamps inside the room), area `A` and albedo `rho`, the bounce is `0.8 * F / pi * rho / (A * (1 - rho))` in each colour channel, so red walls bounce red light. The renderer adds it to the diffuse light: it is one constant in the first irradiance coefficient, the map's data is shared, and a lamp that changes every frame rebuilds nothing. The 0.8 is fitted: at 1.0 `lit-interior` came out 10 percent brighter than Cycles.
+
+It is left out when the scene has a bake (its light map holds the bounce), a sun (`keyColor` above zero or unset, as in `temple-hall` and `dark-shaft`, which already read lighter than Cycles in their shadows), no map, or `environment.roomBounce` is `false`. It is one average colour for the whole room, with no brighter corner beside a lamp and no colour bleeding next to a wall; a bake gives those, and `scene_inspect` names it (`closed-room-without-bake`, with the `standard` preset) for a closed room lit by lamps only.
+
+Luminance of the 67js picture over Cycles (linear, whole frame and 20th percentile, `bench/reference/luminance-ratio.py`, GPU renders against the committed Cycles panels):
+
+| Scene | Mean before | Mean after | p20 before | p20 after |
+| --- | --- | --- | --- | --- |
+| `lit-interior` | 0.51 | 0.98 | 0.33 | 1.00 |
+| `metal-room` | 0.49 | 0.88 | 0.32 | 0.85 |
+| `brick-room` | 0.57 | 0.86 | 0.37 | 0.95 |
+| `temple-hall` | 0.97 | 0.97 | 1.62 | 1.64 |
+
+The two `temple-hall` p20 values differ only by the rescaling of the picture (the scene has a sun, so no bounce is added). The outdoor shadow fill of the issue is not done.
+
 ## Local shadows
 
 `castShadow: true` on a point or spot light draws that light's depth into one shared atlas of 2048 x 3072 texels: 24 tiles of 512 x 512, a 24 MiB depth texture allocated on first use. A spot light takes one tile with a perspective view of `2 * angle + 4` degrees (170 at most). A point light takes six tiles, one per cube face, each 92 degrees wide. Lights are given tiles in order: point lights, then spot lights. A request for more than 24 tiles, for example five shadowed point lights, throws `RangeError` and changes nothing. So the most is four shadowed point lights, or for example two point lights and eight spot lights.

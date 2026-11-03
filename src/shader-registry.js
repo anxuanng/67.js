@@ -54,6 +54,12 @@ export function requireFeatureCode(feature) {
 }
 
 
+/** Value of `material.tag` in the instance data; the vegetation addon adds `impostor`. */
+export const materialTags = { armor: 1, floor: 2, water: 3, foliage: 4, terrain: 5, grass: 7, fire: 8, smoke: 9, unlit: 10, liquid: 11, foam: 12 };
+
+// GLSL the vegetation addon splices into the shaders: `defs` and `color` in the colour vertex shader, `defs` and `depth` in the shadow vertex shader and `alpha` in the fragment shader's surfaceAlpha.
+export const addonGlsl = { defs: '', color: '', depth: '', alpha: '' };
+
 /** The most morph targets one geometry carries; the morph shader's weight array has this length. */
 export const MAX_MORPH_TARGETS = 64;
 

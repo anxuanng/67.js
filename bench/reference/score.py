@@ -117,16 +117,16 @@ def side_by_side(cycles, eevee, gpu, scores):
     return sheet
 
 
-def score_path_tracer(work_directory, output_directory):
+def score_path_tracer(work_directory, output_directory, backend_suffix=""):
     """FLIP of each path traced render against the Cycles render of the same scene, with the time it took."""
-    timings = json.loads((work_directory / "pathtracer-timings.json").read_text(encoding="utf-8"))
+    timings = json.loads((work_directory / f"pathtracer{backend_suffix}-timings.json").read_text(encoding="utf-8"))
     results = {}
     for scene_id in sorted(timings):
         cycles = tone_map_like_67js(np.load(work_directory / f"{scene_id}-cycles.npy"))
-        traced = load_png(work_directory / f"{scene_id}-pathtracer.png")
+        traced = load_png(work_directory / f"{scene_id}-pathtracer{backend_suffix}.png")
         results[scene_id] = {"pathtracer-vs-cycles": flip_score(cycles, traced), **timings[scene_id]}
     report = {"metric": "FLIP (LDR), mean error against Cycles, lower is better", "scores": results}
-    (output_directory / "path-tracer.json").write_text(json.dumps(report, indent=1) + "\n", encoding="utf-8")
+    (output_directory / f"path-tracer{backend_suffix}.json").write_text(json.dumps(report, indent=1) + "\n", encoding="utf-8")
     print("scene".ljust(20) + "pathtracer-vs-cycles".rjust(22) + "seconds".rjust(10))
     for scene_id, entry in results.items():
         print(scene_id.ljust(20) + f"{entry['pathtracer-vs-cycles']:.4f}".rjust(22) + f"{entry['seconds']:.1f}".rjust(10))
@@ -177,7 +177,7 @@ def main():
         score_baked(Path(sys.argv[1]), Path(sys.argv[2]), sys.argv[sys.argv.index("--bake") + 1].split(","))
         return
     if "--path-tracer" in sys.argv:
-        score_path_tracer(Path(sys.argv[1]), Path(sys.argv[2]))
+        score_path_tracer(Path(sys.argv[1]), Path(sys.argv[2]), "-gpu" if "--gpu-tracer" in sys.argv else "")
         return
     # Khronos assets and cloth sheets sit in front of a sky that both sides draw alike, so they also get a score over the
     # pixels the scene covers.
