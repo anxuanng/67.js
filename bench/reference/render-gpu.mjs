@@ -16,6 +16,8 @@ const outputDirectory = resolve(argumentsGiven[0]);
 const sceneIds = argumentsGiven[1].split(',');
 // Ids of the grand options end in -a, -b or -c and live in their own scene set.
 const setOf = id => (/-[abc]$/.test(id) ? 'grand' : null);
+const waterIndex = argumentsGiven.indexOf('--water');
+const waterOption = waterIndex >= 0 ? argumentsGiven[waterIndex + 1] : null;
 
 function numberAfter(flag) {
   const index = argumentsGiven.indexOf(flag);
@@ -40,7 +42,7 @@ try {
   const page = await browser.newPage({ viewport: { width: WIDTH, height: HEIGHT } });
   page.on('pageerror', error => console.log('PAGE ERROR', error.message));
   for (const id of sceneIds) {
-    await page.goto(`${serverUrl}/bench/reference/harness.html${setOf(id) ? `?set=${setOf(id)}` : ''}`, { timeout: 180000 });
+    await page.goto(`${serverUrl}/bench/reference/harness.html?${[setOf(id) ? `set=${setOf(id)}` : '', waterOption ? `water=${waterOption}` : ''].filter(Boolean).join('&')}`, { timeout: 180000 });
     await page.waitForFunction(() => window.renderReferenceScene, null, { timeout: 180000 });
     const result = await page.evaluate(([sceneId, renderOptions]) => window.renderReferenceScene(sceneId, { describe: false, ...renderOptions }), [id, options]);
     if (result.glError !== 0) throw new Error(`${id} gave WebGL error ${result.glError}.`);

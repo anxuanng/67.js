@@ -902,6 +902,7 @@ Row bands of 60 rows, 67js over Cycles with the sun off: 0.99, 0.98, 0.96, 0.94,
 
 The towers and the quay are slightly darker in 67js than in Cycles with only the sky, not brighter, so the canyon walls and the street do not get too much sky light. The river is 3 to 4 times brighter, but taking all the sky's diffuse light away (`--ambient 0`) removes only 0.007 to 0.010 of an excess of 0.021 to 0.037, so 67js stays 2.6 to 2.8 times over Cycles with no ambient at all. Even a perfect occlusion of the sky light in the river could close about a third of the gap, and the walls give no sign that the occlusion is missing. The rest comes from what the water draws besides diffuse sky: the reflection of the lit windows and the lamps (`src/water-reflection.js`), which is the part #195 works on. No sky visibility grid was built.
 
+<<<<<<< HEAD
 ## Multiple scattering in the environment specular (2026-11-03, part of issue #167)
 
 Re-measured on current main, `metal` was still 0.1036 against Cycles (EEVEE 0.0916), `car-paint` 0.1037 and `brushed-film` 0.1029, so the object probes of #209 had held. FLIP over screen regions of `metal` (GPU against Cycles, EEVEE in brackets, mean luminance difference to Cycles in the last column, regions cut from the projected bounds of each part):
@@ -927,3 +928,29 @@ The rough metals (copper, gold, steel) were darker than Cycles by 0.03 to 0.06 i
 | `brushed-film` | 0.1029 | 0.1027 |
 
 Every other scene moves by 0.0006 or less, none worse than 0.0002. Per region after the change: copper 0.2289 (was 0.2957), gold 0.1963 (was 0.2109), steel 0.3003, chrome 0.2127, floor 0.0994. Copper and gold are now past EEVEE; the remaining gap to EEVEE (0.0058) sits in the floor (50% of the error, 0.0994 against 0.0884: light bounced from the metal parts onto it, which the earlier one bounce probe test did not fix), the chrome sphere (0.021 too bright) and the steel cylinder. The direct light specular (`illuminate`) has no multiple scattering yet; it needs the BRDF lookup in the per light path, so it is the next thing to measure. Box 1 of #167 (metal reaches EEVEE) stays open.
+=======
+Correction to the table above: the sun was never on in `megacity-dusk-a` (`keyColor` is 0, 0, 0 in `grand-scenes.js`), so `--key 0` and `--sun-strength 0` change nothing there. The two Cycles arrays are the same render and the 67js `--key 0` image equals the full one pixel for pixel. The "sky only" numbers above are the plain comparison, and the sky was the only light all along.
+
+## The Cycles river was dark, not the 67js river bright (2026-11-03, issue #232)
+
+The cause of the bright river and street bands is measured, and it is on the reference side. In `grand-scenes.js` the `river` box (centre y -1.2, height 1.4) and the `city-ground` box (centre y -1.5, height 2) both have their top at y = -0.5. Two surfaces in one plane: Cycles picks one of them at random per ray, so part of the rays that should mirror the sky and the towers hit the dark ground instead. `megacity-dusk-b` has the same pair for its bay. 67js draws the same scene without that noise.
+
+Mean linear luminance over the river of `megacity-dusk-a` (960 x 540, GPU, no sun, river middle rows 420 to 540 and columns 280 to 680, sides rows 400 to 540 and columns 0 to 280):
+
+| Render | River, middle | River, sides |
+| --- | --- | --- |
+| Cycles, as it was (coplanar) | 0.0130 | 0.0212 |
+| Cycles, river 1 cm higher | 0.0385 | 0.0584 |
+| 67js, shipped (reflection and sky specular) | 0.0317 | 0.0476 |
+
+One term at a time in 67js (river middle, linear): reflection gain 0 gives 0.0032 (the diffuse sky light on the body colour and nothing else); gain 0 and body colour 0 gives 0.0000; reflection on with body colour 0 gives 0.0285; reflection off with body colour 0 (only the sky's specular) gives 0.0224; reflection off with body colour 0.02, 0.05, 0.08 gives 0.0256; with `--ambient 0` as well the reflection alone gives 0.0248 and with the reflection off the river is 0.0000, so there is no emission, no sun and no direct term on the water. The 67js river is the reflection weighted by Fresnel and nothing else. In the middle band 67js equals the exact Fresnel for IOR 1.5 times the picture at the mirrored row to within 3 percent (row 430: 0.0363 against 0.0351; row 538: 0.0124 against 0.0128). Cycles with the river as a pure mirror (Metallic 1, white) returns 0.0488 in the middle band, and the stored Cycles river was 0.267 of it, where the exact Fresnel at these angles (12 to 27 percent) says about 0.2 plus the diffuse part. A river raised 1 cm gives the Cycles values above. So the Fresnel curve, the double counting of reflection and sky, the exposure of the reflected windows and the diffuse colour are not the cause; the earlier tables of #195 and #232 compared 67js with a Cycles river that was dim by an artefact.
+
+Both water boxes now stand 1 cm above the ground. Cycles is re-rendered for `megacity-dusk-a` and `-b` (the other scenes are unchanged), `grand.json` and the two images hold the new rows:
+
+| FLIP against Cycles | before | now |
+| --- | --- | --- |
+| `megacity-dusk-a` GPU / CPU | 0.1999 / 0.1992 | 0.1507 / 0.1502 |
+| `megacity-dusk-b` GPU / CPU | 0.1242 / 0.1258 | 0.1108 / 0.1120 |
+
+Mean linear luminance of 67js over Cycles after the change, `megacity-dusk-a`: towers 0.92, street 0.90, river middle 0.82, river sides 0.82. The river is now slightly dark in 67js instead of 2.4 times bright. The scores of `mountain-valley-a` and the default suite are not touched: no engine file changed, and neither scene uses these boxes (inferred; not re-run). The measuring switch `render-gpu.mjs --water off|ssr` is new. Done-when 1 of #232 holds (the cause is measured); the sky visibility grid of its scope is not needed, and the issue's second item is moot.
+>>>>>>> origin/main
