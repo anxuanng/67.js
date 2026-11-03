@@ -51,6 +51,7 @@ export default defineConfig({
         'water-reflection': 'src/water-reflection.js',
         'render-passes': 'src/render-passes.js',
         'line-art': 'src/line-art.js',
+        'coplanar-overlap': 'src/coplanar-overlap.js',
         'material-layer-shaders': 'src/material-layer-shaders.js',
         'light-linking': 'src/light-linking.js',
         'cascaded-shadows': 'src/cascaded-shadows.js',

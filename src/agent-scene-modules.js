@@ -22,6 +22,7 @@ const MODULE_LOADERS = {
   lightLinking: () => import('./light-linking.js'),
   cascades: () => import('./cascaded-shadows.js'),
   lineArt: () => import('./line-art.js'),
+  coplanar: () => import('./coplanar-overlap.js'),
 };
 
 const loadedModules = {};
@@ -51,6 +52,8 @@ const MODULE_MARKERS = {
   lightLinking: ['"affects"', '"keyAffects"'],
   cascades: ['"shadowCascades"'],
   lineArt: ['"lines":{', '"toon":'],
+  // The coplanar-overlap warning in scene_inspect appears only once this is loaded, which loadAllAgentSceneModules does; a recipe with resolveCoplanar needs it.
+  coplanar: ['"resolveCoplanar"'],
 };
 
 /** Whether a recipe, operation list or edit list contains a boolean edit, which needs loadMeshBooleans() first. */
