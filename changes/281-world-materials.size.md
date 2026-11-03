@@ -4,3 +4,4 @@
 - entry:clutter: the moss shading moved out of the core bundle into world-material-shader, which clutter imports itself (about 2.3 KB gzip).
 - entry:hdri: the HDRI entry registers the shader registry and the environment GLSL, which left the core bundle.
 - entry:ground-bounce: the ground bounce registers the shader registry and the environment GLSL, which left the core bundle.
+- scene:agent-scene+lazy: the world materials, liquid and environment code load as their own chunks, so the total with every lazy chunk grows by the registration and stub text (1.9 KB) while the first load shrinks by 1.2 KB.
