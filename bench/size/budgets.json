@@ -1,12 +1,12 @@
 {
- "archiveBytes": 743370,
+ "archiveBytes": 744230,
  "goals": {
   "lit-box": 50000,
   "gltf-box": 80000,
   "agent-scene": 100000
  },
  "budgets": {
-  "entry:core": 89220,
+  "entry:core": 89870,
   "entry:model": 14400,
   "entry:nature": 13200,
   "entry:motion": 15260,
@@ -35,9 +35,9 @@
   "entry:path-tracer": 15960,
   "entry:texture-set": 900,
   "entry:agent-scene": 81310,
-  "entry:agent-scene+lazy": 266850,
+  "entry:agent-scene+lazy": 266920,
   "entry:agent-asset": 112690,
-  "entry:agent-asset+lazy": 278200,
+  "entry:agent-asset+lazy": 278280,
   "entry:hdri": 3300,
   "entry:camera-effects": 8600,
   "entry:water-reflection": 27030,
@@ -45,12 +45,12 @@
   "entry:gaussian-splats": 11023,
   "entry:material-layer-shaders": 21400,
   "entry:light-linking": 19720,
-  "entry:cascaded-shadows": 28530,
-  "scene:lit-box": 66210,
-  "scene:gltf-box": 90480,
-  "scene:gltf-box+lazy": 93810,
-  "scene:agent-scene": 110490,
-  "scene:agent-scene+lazy": 296040,
+  "entry:cascaded-shadows": 28595,
+  "scene:lit-box": 66840,
+  "scene:gltf-box": 91140,
+  "scene:gltf-box+lazy": 94470,
+  "scene:agent-scene": 111090,
+  "scene:agent-scene+lazy": 296710,
   "entry:coplanar-overlap": 2960
  }
 }

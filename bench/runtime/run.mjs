@@ -94,6 +94,7 @@ function summarize({ image: _image, repeatable: _repeatable, glError: _glError, 
     triangles: rounded(result.triangles, 0),
     gpuMegabytes: rounded(result.gpuBytes / 1048576, 2),
     heapMegabytes: result.heapBytes === null ? null : rounded(result.heapBytes / 1048576, 1),
+    renderTargets: result.renderTargets,
   };
 }
 
@@ -119,7 +120,8 @@ async function runBackend(backendName, serverUrl, report) {
         report.results[backendName][sceneId] ??= {};
         report.results[backendName][sceneId][engine] = { ...summarize(result), gpuBusyBefore };
         const summary = report.results[backendName][sceneId][engine];
-        console.log(`${backendName} ${sceneId.padEnd(20)} ${engine.padEnd(16)} first ${summary.firstFrameMilliseconds} ms, render ${summary.renderCpuMilliseconds} ms, frame ${summary.fullFrameMilliseconds} ms, ${summary.drawCalls} draws, ${summary.triangles} tris, gpu mem ${summary.gpuMegabytes} MB, heap ${summary.heapMegabytes} MB, busy ${gpuBusyBefore}%`);
+        console.log(`${backendName} ${sceneId.padEnd(20)} ${engine.padEnd(16)} first ${summary.firstFrameMilliseconds} ms, render ${summary.renderCpuMilliseconds} ms, frame ${summary.fullFrameMilliseconds} ms, ${summary.drawCalls} draws, ${summary.triangles} tris, gpu mem ${summary.gpuMegabytes} MB, heap ${summary.heapMegabytes} MB, busy ${gpuBusyBefore}%${summary.renderTargets ? `
+  targets: ${summary.renderTargets.map(target => `${target.name} ${target.megabytes} MB`).join(", ")}` : ""}`);
       }
     }
   } finally {

@@ -9,7 +9,8 @@ import { resolveEffects } from './effects.js';
 import { frameDiagnostics } from './frame-diagnostics.js';
 import { depthLayerOf } from './depth-layer.js';
 import { createLightingState, updateLightingState } from './lighting.js';
-import { SHADOW_ATLAS_WIDTH, SHADOW_ATLAS_HEIGHT, tileViewport, writeShadowTile } from './local-shadows.js';
+import { RenderTargetLedger } from './render-target-ledger.js';
+import { SHADOW_ATLAS_WIDTH, SHADOW_TILE_SIZE, SHADOW_TILES_PER_ROW, tileViewport, writeShadowTile } from './local-shadows.js';
 import { resolveVolumeFog, volumeShadowAmbient } from './volumetric.js';
 import { assertEnvironmentMap, createEnvironmentResources, environmentBackgroundFragment, environmentBrdfFragment, environmentPrefilterFragment, estimateEnvironmentBytes } from './environment.js';
 import { validateSkinGeometry, validateSkinPose, skinTextureLayout, packSkinInfluences } from './skinning.js';
@@ -483,6 +484,7 @@ export class Renderer67 {
     this.diagnostics = [];
     this.activeLightDirection = environment.lightDirection ?? [-3, 6, 4];
     this.shadowCascades = shadowCascades;
+    this.renderTargets = new RenderTargetLedger();
     this.memoryBudgetMiB = memoryBudgetMiB;
     this.hdr = Boolean(hdr && !benchmark && this.context.getExtension('EXT_color_buffer_float'));
     if (volume.density > 0 && !this.hdr) throw new Error('Volume fog requires EXT_color_buffer_float for HDR rendering');
@@ -1303,10 +1305,16 @@ export class Renderer67 {
   createShadowMap() {
     const context = this.context;
     const allocateShadow = !this.shadowTexture;
+    // A scene with nothing to cast keeps a one texel map that stays cleared to the far depth, so every point reads as lit.
+    this.shadowMapSize ??= this.batches.some(batch => !batch.floor && batch.castShadow) ? SHADOW_MAP_SIZE : 1;
+    const mapSize = this.shadowMapSize;
     if (allocateShadow) this.shadowTexture = context.createTexture();
     context.activeTexture(context.TEXTURE0);
     context.bindTexture(context.TEXTURE_2D, this.shadowTexture);
-    if (allocateShadow) context.texImage2D(context.TEXTURE_2D, 0, context.DEPTH_COMPONENT24, SHADOW_MAP_SIZE, SHADOW_MAP_SIZE, 0, context.DEPTH_COMPONENT, context.UNSIGNED_INT, null);
+    if (allocateShadow) {
+      context.texImage2D(context.TEXTURE_2D, 0, context.DEPTH_COMPONENT24, mapSize, mapSize, 0, context.DEPTH_COMPONENT, context.UNSIGNED_INT, null);
+      this.renderTargets.record('shadowMap', { width: mapSize, height: mapSize, format: 'DEPTH_COMPONENT24' });
+    }
     // Compare on fetch (the default function is LEQUAL) with linear filtering gives a 2 x 2 percentage-closer result from one fetch.
     context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MIN_FILTER, context.LINEAR);
     context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MAG_FILTER, context.LINEAR);
@@ -1323,12 +1331,12 @@ export class Renderer67 {
     const lightView = mat4.lookAt(mat4.create(), light.eye, light.target, light.up ?? [0, 1, 0]);
     mat4.ortho(this.lightProjection, -light.extent, light.extent, -light.extent, light.extent, light.near, light.far);
     mat4.multiply(this.lightProjection, this.lightProjection, lightView);
-    context.viewport(0, 0, SHADOW_MAP_SIZE, SHADOW_MAP_SIZE);
+    context.viewport(0, 0, mapSize, mapSize);
     context.enable(context.DEPTH_TEST);
     context.enable(context.CULL_FACE);
     context.clear(context.DEPTH_BUFFER_BIT);
     this.shadowBiasPerSlope = shadowBiasPerSlope(light, SHADOW_MAP_SIZE);
-    this.drawShadowCasters(this.lightProjection, SHADOW_MAP_SIZE);
+    this.drawShadowCasters(this.lightProjection, mapSize);
     context.bindFramebuffer(context.FRAMEBUFFER, null);
     this.shadowsDirty = false;
   }
@@ -1376,12 +1384,17 @@ export class Renderer67 {
     context.enable(context.CULL_FACE);
   }
 
-  allocateLocalShadowAtlas() {
+  // The atlas has one row of tiles per four shadow tiles in use. The shader fetches by texel, so the height is free.
+  allocateLocalShadowAtlas(tileCount) {
     const context = this.context;
+    if (this.localShadowTexture) context.deleteTexture(this.localShadowTexture);
+    if (this.localShadowFramebuffer) context.deleteFramebuffer(this.localShadowFramebuffer);
+    this.localShadowAtlasHeight = Math.ceil(tileCount / SHADOW_TILES_PER_ROW) * SHADOW_TILE_SIZE;
     this.localShadowTexture = context.createTexture();
     context.activeTexture(context.TEXTURE0 + LOCAL_SHADOW_UNIT);
     context.bindTexture(context.TEXTURE_2D, this.localShadowTexture);
-    context.texImage2D(context.TEXTURE_2D, 0, context.DEPTH_COMPONENT24, SHADOW_ATLAS_WIDTH, SHADOW_ATLAS_HEIGHT, 0, context.DEPTH_COMPONENT, context.UNSIGNED_INT, null);
+    context.texImage2D(context.TEXTURE_2D, 0, context.DEPTH_COMPONENT24, SHADOW_ATLAS_WIDTH, this.localShadowAtlasHeight, 0, context.DEPTH_COMPONENT, context.UNSIGNED_INT, null);
+    this.renderTargets.record('localShadowAtlas', { width: SHADOW_ATLAS_WIDTH, height: this.localShadowAtlasHeight, format: 'DEPTH_COMPONENT24' });
     context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MIN_FILTER, context.NEAREST);
     context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MAG_FILTER, context.NEAREST);
     context.texParameteri(context.TEXTURE_2D, context.TEXTURE_WRAP_S, context.CLAMP_TO_EDGE);
@@ -1412,9 +1425,9 @@ export class Renderer67 {
     previous.set(matrices);
     this.localShadowTileCount = casters.length;
     const context = this.context;
-    if (!this.localShadowTexture) this.allocateLocalShadowAtlas();
+    if (!this.localShadowTexture || Math.ceil(casters.length / SHADOW_TILES_PER_ROW) * SHADOW_TILE_SIZE > this.localShadowAtlasHeight) this.allocateLocalShadowAtlas(casters.length);
     context.bindFramebuffer(context.FRAMEBUFFER, this.localShadowFramebuffer);
-    context.viewport(0, 0, SHADOW_ATLAS_WIDTH, SHADOW_ATLAS_HEIGHT);
+    context.viewport(0, 0, SHADOW_ATLAS_WIDTH, this.localShadowAtlasHeight);
     context.enable(context.DEPTH_TEST);
     context.clear(context.DEPTH_BUFFER_BIT);
     for (let tile = 0; tile < casters.length; tile++) {
@@ -1446,6 +1459,11 @@ export class Renderer67 {
     this.projection[8] = !this.benchmark && !this.world && this.canvas.clientWidth > 700 ? -0.25 : 0;
   }
 
+  /** Every GPU render target this renderer holds: name, size, format, samples and bytes, largest first, with the total. */
+  memoryReport() {
+    return this.renderTargets.report();
+  }
+
   releaseFrameTargets() {
     const context = this.context;
     if (this.multisampleFramebuffer) context.deleteFramebuffer(this.multisampleFramebuffer);
@@ -1459,6 +1477,7 @@ export class Renderer67 {
       context.deleteFramebuffer(target.framebuffer);
     }
     this.bloomTargets = [];
+    this.renderTargets.release('multisampleColor', 'multisampleDepth', 'frameColor', 'sceneDepth', 'bloomA', 'bloomB');
     this.releaseOcclusionTarget();
     this.passSupport?.releaseTargets(context);
     for (const stage of this.postStages ?? []) stage.releaseTargets(context);
@@ -1474,6 +1493,7 @@ export class Renderer67 {
     if (!this.occlusionTarget) return;
     this.context.deleteTexture(this.occlusionTarget.texture);
     this.context.deleteFramebuffer(this.occlusionTarget.framebuffer);
+    this.renderTargets.release('ambientOcclusion');
     this.occlusionTarget = null;
   }
 
@@ -1496,6 +1516,7 @@ export class Renderer67 {
     const texture = context.createTexture();
     context.bindTexture(context.TEXTURE_2D, texture);
     context.texImage2D(context.TEXTURE_2D, 0, context.R8, width, height, 0, context.RED, context.UNSIGNED_BYTE, null);
+    this.renderTargets.record('ambientOcclusion', { width, height, format: 'R8' });
     context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MIN_FILTER, context.LINEAR);
     context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MAG_FILTER, context.LINEAR);
     context.texParameteri(context.TEXTURE_2D, context.TEXTURE_WRAP_S, context.CLAMP_TO_EDGE);
@@ -1542,6 +1563,9 @@ export class Renderer67 {
     context.renderbufferStorageMultisample(context.RENDERBUFFER, this.multisampleSamples, context.DEPTH_COMPONENT24, width, height);
     context.framebufferRenderbuffer(context.FRAMEBUFFER, context.DEPTH_ATTACHMENT, context.RENDERBUFFER, this.multisampleDepth);
     if (context.checkFramebufferStatus(context.FRAMEBUFFER) !== context.FRAMEBUFFER_COMPLETE) throw new Error('Multisample framebuffer allocation failed. Choose a lower quality preset.');
+    this.renderTargets.record('multisampleColor', { width, height, format: this.hdr ? 'RGBA16F' : 'RGBA8', samples: this.multisampleSamples });
+    this.renderTargets.record('multisampleDepth', { width, height, format: 'DEPTH_COMPONENT24', samples: this.multisampleSamples });
+    this.renderTargets.record('frameColor', { width, height, format: this.hdr ? 'RGBA16F' : 'RGBA8' });
     this.frameTexture = context.createTexture();
     context.bindTexture(context.TEXTURE_2D, this.frameTexture);
     context.texImage2D(context.TEXTURE_2D, 0, this.hdr ? context.RGBA16F : context.RGBA8, width, height, 0, context.RGBA, this.hdr ? context.HALF_FLOAT : context.UNSIGNED_BYTE, null);
@@ -1561,24 +1585,11 @@ export class Renderer67 {
       context.texParameteri(context.TEXTURE_2D, context.TEXTURE_WRAP_S, context.CLAMP_TO_EDGE);
       context.texParameteri(context.TEXTURE_2D, context.TEXTURE_WRAP_T, context.CLAMP_TO_EDGE);
       context.framebufferTexture2D(context.FRAMEBUFFER, context.DEPTH_ATTACHMENT, context.TEXTURE_2D, this.depthTexture, 0);
+      this.renderTargets.record('sceneDepth', { width, height, format: 'DEPTH_COMPONENT24' });
     }
     if (context.checkFramebufferStatus(context.FRAMEBUFFER) !== context.FRAMEBUFFER_COMPLETE) throw new Error('Resolve framebuffer allocation failed. Choose a lower quality preset.');
     this.bloomWidth = Math.max(1, Math.ceil(width / 2));
     this.bloomHeight = Math.max(1, Math.ceil(height / 2));
-    for (let index = 0; index < 2; index++) {
-      const texture = context.createTexture();
-      const framebuffer = context.createFramebuffer();
-      this.bloomTargets.push({ texture, framebuffer });
-      context.bindTexture(context.TEXTURE_2D, texture);
-      context.texImage2D(context.TEXTURE_2D, 0, this.hdr ? context.RGBA16F : context.RGBA8, this.bloomWidth, this.bloomHeight, 0, context.RGBA, this.hdr ? context.HALF_FLOAT : context.UNSIGNED_BYTE, null);
-      context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MIN_FILTER, context.LINEAR);
-      context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MAG_FILTER, context.LINEAR);
-      context.texParameteri(context.TEXTURE_2D, context.TEXTURE_WRAP_S, context.CLAMP_TO_EDGE);
-      context.texParameteri(context.TEXTURE_2D, context.TEXTURE_WRAP_T, context.CLAMP_TO_EDGE);
-      context.bindFramebuffer(context.FRAMEBUFFER, framebuffer);
-      context.framebufferTexture2D(context.FRAMEBUFFER, context.COLOR_ATTACHMENT0, context.TEXTURE_2D, texture, 0);
-      if (context.checkFramebufferStatus(context.FRAMEBUFFER) !== context.FRAMEBUFFER_COMPLETE) throw new Error('Bloom framebuffer allocation failed. Choose a lower quality preset.');
-    }
     context.bindFramebuffer(context.FRAMEBUFFER, null);
   }
 
@@ -1879,8 +1890,32 @@ export class Renderer67 {
     context.bindVertexArray(null);
   }
 
+  // Allocated on the first frame that asks for bloom, so scenes without it pay nothing.
+  ensureBloomTargets() {
+    if (this.bloomTargets.length > 0) return;
+    const context = this.context;
+    for (let index = 0; index < 2; index++) {
+      const texture = context.createTexture();
+      const framebuffer = context.createFramebuffer();
+      this.bloomTargets.push({ texture, framebuffer });
+      context.bindTexture(context.TEXTURE_2D, texture);
+      context.texImage2D(context.TEXTURE_2D, 0, this.hdr ? context.RGBA16F : context.RGBA8, this.bloomWidth, this.bloomHeight, 0, context.RGBA, this.hdr ? context.HALF_FLOAT : context.UNSIGNED_BYTE, null);
+      context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MIN_FILTER, context.LINEAR);
+      context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MAG_FILTER, context.LINEAR);
+      context.texParameteri(context.TEXTURE_2D, context.TEXTURE_WRAP_S, context.CLAMP_TO_EDGE);
+      context.texParameteri(context.TEXTURE_2D, context.TEXTURE_WRAP_T, context.CLAMP_TO_EDGE);
+      context.bindFramebuffer(context.FRAMEBUFFER, framebuffer);
+      context.framebufferTexture2D(context.FRAMEBUFFER, context.COLOR_ATTACHMENT0, context.TEXTURE_2D, texture, 0);
+      if (context.checkFramebufferStatus(context.FRAMEBUFFER) !== context.FRAMEBUFFER_COMPLETE) throw new Error('Bloom framebuffer allocation failed. Choose a lower quality preset.');
+    }
+    context.bindFramebuffer(context.FRAMEBUFFER, null);
+    this.renderTargets.record('bloomA', { width: this.bloomWidth, height: this.bloomHeight, format: this.hdr ? 'RGBA16F' : 'RGBA8' });
+    this.renderTargets.record('bloomB', { width: this.bloomWidth, height: this.bloomHeight, format: this.hdr ? 'RGBA16F' : 'RGBA8' });
+  }
+
   drawBloom(bloom, sourceTexture = this.frameTexture) {
     const context = this.context;
+    this.ensureBloomTargets();
     context.disable(context.DEPTH_TEST);
     context.disable(context.CULL_FACE);
     context.bindVertexArray(null);
@@ -2250,7 +2285,7 @@ export class Renderer67 {
 
   dispose() {
     this.releaseFrameTargets();
-    this.shadowCascades?.dispose(this.context);
+    this.shadowCascades?.dispose(this.context, this.renderTargets);
     if (this.localShadowTexture) this.context.deleteTexture(this.localShadowTexture);
     if (this.localShadowFramebuffer) this.context.deleteFramebuffer(this.localShadowFramebuffer);
     this.batches.forEach((batch) => {
