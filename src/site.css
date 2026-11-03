@@ -354,7 +354,8 @@ body.site > main > section { scroll-margin-top: 96px; }
 
 /* Docs: the reading page keeps its own layout (documentation.css) on these tokens. */
 .documentation.site { --page: min(1320px, calc(100% - 40px)); }
-.documentation.site > main { width: var(--page); padding-top: 12px; }
+.documentation.site > main { width: var(--page); padding-top: 32px; }
+.documentation.site .navigation { width: min(1060px, calc(100% - 40px)); }
 .site .table-scroll { overflow-x: auto; }
 .site table { width: 100%; border-collapse: collapse; }
 .site td, .site th { text-align: left; vertical-align: top; }
