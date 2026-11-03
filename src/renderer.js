@@ -84,6 +84,7 @@ function shaderFeaturesOfParts(parts) {
     if (material.anisotropy > 0) features.add('anisotropy');
     if (material.lightMask !== undefined) features.add('lightLinking');
     if (material.iridescence > 0) features.add('iridescence');
+    if (material.toon > 0) features.add('toon');
     if ((material.alphaMode ?? 'opaque') !== 'opaque') features.add('alphaMode');
     if (materialLayerValue(material, 'clearcoat') > 0) features.add('clearcoat');
     if (materialLayerValue(material, 'sheenColor').some(channel => channel !== 0)) features.add('sheen');
@@ -2029,6 +2030,7 @@ export class Renderer67 {
       this.context.uniform2f(this.uniforms.materialAnisotropy, layers[16], layers[17]);
       this.context.uniform3f(this.uniforms.materialIridescence, layers[18], layers[19], layers[20]);
       this.context.uniform1i(this.uniforms.lightLinkMask, layers[21]);
+      this.context.uniform1f(this.uniforms.materialToon, layers[22]);
       this.context.uniform1f(this.uniforms.boxMapScale, batch.mapState[12]);
       this.context.uniform1i(this.uniforms.boxMapAxis, batch.mapState[13]);
       this.bindSplat(batch.splat);

@@ -21,6 +21,7 @@ const MODULE_LOADERS = {
   navigation: () => import('./agent-navigation.js'),
   lightLinking: () => import('./light-linking.js'),
   cascades: () => import('./cascaded-shadows.js'),
+  lineArt: () => import('./line-art.js'),
 };
 
 const loadedModules = {};
@@ -49,6 +50,7 @@ const MODULE_MARKERS = {
   navigation: [],
   lightLinking: ['"affects"', '"keyAffects"'],
   cascades: ['"shadowCascades"'],
+  lineArt: ['"lines":{', '"toon":'],
 };
 
 /** Whether a recipe, operation list or edit list contains a boolean edit, which needs loadMeshBooleans() first. */
