@@ -1,3 +1,4 @@
 - entry:surface-attachment: it imports skinning.js, which now holds the skin shader code and its registration (about 1.2 KB gzip) that left the core bundle.
 - entry:retarget: it imports skinning.js, which now holds the skin shader code and its registration (about 1.2 KB gzip) that left the core bundle.
 - entry:skeleton-pose: it imports skinning.js, which now holds the skin shader code and its registration (about 1.2 KB gzip) that left the core bundle.
+- entry:crowd-skinning: it imports skinning.js, which now holds the skin shader code and its registration (about 1.1 KB gzip) that left the core bundle.
