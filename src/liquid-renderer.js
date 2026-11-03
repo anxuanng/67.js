@@ -1,4 +1,5 @@
 import { startProgram, finishProgram } from './gl-program.js';
+import { resolveLiquidOptics } from './liquid-optics.js';
 
 // The renderer's liquid and foam pass, kept apart from renderer.js so a scene without liquid or foam does not carry it.
 // liquid-shader.js registers drawLiquidPass; the renderer calls it with the frame state it needs.
@@ -25,7 +26,8 @@ function ensureLiquidProgram(renderer, environmentSpecularUnit, vertexSource, fr
   context.uniform1i(renderer.liquidUniforms.environmentSpecular, environmentSpecularUnit);
 }
 
-export function drawLiquidPass(renderer, { frame, environment, assemblyAmount, environmentMap, liquids, foams, optics, environmentSpecularUnit, maximumDistance, vertexSource, fragmentSource }) {
+export function drawLiquidPass(renderer, { frame, environment, assemblyAmount, environmentMap, liquids, foams, environmentSpecularUnit, maximumDistance, vertexSource, fragmentSource }) {
+  const optics = resolveLiquidOptics({ ...environment.liquid, ...frame.liquid });
   ensureLiquidProgram(renderer, environmentSpecularUnit, vertexSource, fragmentSource);
   const context = renderer.context;
   const width = renderer.canvas.width;
@@ -40,7 +42,7 @@ export function drawLiquidPass(renderer, { frame, environment, assemblyAmount, e
   context.enable(context.CULL_FACE);
   context.useProgram(renderer.liquidProgram);
   const uniforms = renderer.liquidUniforms;
-  context.uniformMatrix4fv(uniforms.viewProjection, false, renderer.viewProjection);
+  context.uniformMatrix4fv(uniforms.viewProjection, false, renderer.rasterViewProjection ?? renderer.viewProjection);
   context.uniformMatrix4fv(uniforms.lightProjection, false, renderer.lightProjection);
   context.uniform3fv(uniforms.eye, frame.eye);
   context.uniform2f(uniforms.resolution, width, height);

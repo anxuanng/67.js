@@ -5,7 +5,7 @@ import { skyOpenness } from '../src/closed-room.js';
 import { fogSkyVisibility } from '../src/fog-sky-visibility.js';
 import { installCameraEffects } from '../src/camera-effects.js';
 import { installRenderPasses } from '../src/render-passes.js';
-import { installCoplanarDiagnostics } from '../src/coplanar-overlap.js';
+import { installDepthPrecision } from '../src/reversed-depth.js';
 import { applyProjection } from '../src/camera.js';
 import { mat4 } from 'gl-matrix';
 import { resolveAgentShadow, agentEnvironmentMap } from '../src/agent-look.js';
@@ -253,7 +253,7 @@ function cascadesFor(scene) {
 
 function initializeRenderer(scene, { memoryBudgetMiB, backend }) {
   const placement = agentGroundPlacement(scene.parts, scene.environment);
-  const renderer = installCoplanarDiagnostics(installRenderPasses(installCameraEffects(new Renderer67(canvas, scene.parts, {
+  const renderer = installDepthPrecision(installRenderPasses(installCameraEffects(new Renderer67(canvas, scene.parts, {
     ground: placement ? createAgentGround(placement) : false,
     hdr: true,
     depth: true,

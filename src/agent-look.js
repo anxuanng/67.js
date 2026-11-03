@@ -2,7 +2,7 @@ import { mat4 } from 'gl-matrix';
 import { createLightingState, updateLightingState, MAX_POINT_LIGHTS, MAX_SPOT_LIGHTS, MAX_AREA_LIGHTS } from './lighting.js';
 import { resolveEffects } from './effects.js';
 import { resolveVolumeFog } from './volumetric.js';
-import { resolveLiquidOptics } from './renderer.js';
+import { LIQUID_OPTICS, resolveLiquidOptics } from './liquid-optics.js';
 import { createLightingSetupMap, lightingSetupFields } from './lighting-setups.js';
 import { agentSceneModule } from './agent-scene-modules.js';
 import { VIEW_TRANSFORM_NAMES, LOOK_NAMES } from './view-transform-names.js';
@@ -15,7 +15,6 @@ const ENVIRONMENT_FIELDS = [
   'world', 'ground', 'setup', 'environmentIntensity', 'environmentRotation', 'lightDirection', 'keyColor', 'keyIntensity', 'fillIntensity', 'ambientIntensity',
   'daylight', 'pointLights', 'spotLights', 'areaLights', 'skyTop', 'skyBottom', 'fogColor', 'fogDensity', 'volumeFog', 'liquid', 'shadowCascades', 'keyAffects', 'objectReflections', 'lines', 'resolveCoplanar', 'viewTransform', 'look', 'wind',
 ];
-const LIQUID_FIELDS = ['thickness', 'ior', 'refraction', 'scattering', 'foamOpacity', 'foamSoftness'];
 const EFFECT_FIELDS = ['exposure', 'saturation', 'contrast', 'temperature', 'vignette', 'grain', 'ambientOcclusion', 'ambientOcclusionRadius', 'bloom', 'depthOfField', 'motionBlur'];
 const SHADOW_FIELDS = ['target', 'extent', 'distance', 'near', 'far'];
 const POINT_LIGHT_FIELDS = ['position', 'color', 'intensity', 'radius', 'range', 'castShadow', 'affects'];
@@ -309,7 +308,7 @@ function environmentFrom(input = {}) {
     environment.keyAffects = affectsFrom({ affects: input.keyAffects }, 'environment keyAffects').affects;
   }
   if (input.liquid !== undefined) {
-    knownKeys(input.liquid, LIQUID_FIELDS, 'liquid');
+    knownKeys(input.liquid, Object.keys(LIQUID_OPTICS), 'liquid');
     environment.liquid = copiedJson(resolveLiquidOptics(copiedJson(input.liquid)));
   }
   updateLightingState(createLightingState(), environment, { world });

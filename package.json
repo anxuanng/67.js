@@ -87,6 +87,7 @@
     "./addons/render-passes": "./build/render-passes.js",
     "./addons/line-art": "./build/line-art.js",
     "./addons/coplanar-overlap": "./build/coplanar-overlap.js",
+    "./addons/reversed-depth": "./build/reversed-depth.js",
     "./addons/material-layer-shaders": "./build/material-layer-shaders.js",
     "./addons/view-transform-shader": "./build/view-transform-shader.js",
     "./addons/view-transform": "./build/view-transform.js",
