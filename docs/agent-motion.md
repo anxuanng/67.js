@@ -180,7 +180,7 @@ matched), `unmapped` (joints no bone claimed, up to 24, with `unmappedCount`) an
 
 `motion.drive` (imported assets only; a placed asset takes `asset.drive`) drives a car GLB along a path: wheels found by name and geometry roll and steer with Ackermann angles, the body leans with the speed profile, legs can reverse, and tail lights glow with the brake.
 `motion.duration` may be left out and becomes the drive time.
-Fields, the `motionDrive` report of `scene_inspect` and the limits are in [vehicle.md](vehicle.md#driving-through-mcp).
+Fields, the `motionDrive` report of `scene_inspect` and the limits are in [vehicle.md](https://67js.codepawl.com/vehicle.md#driving-through-mcp).
 
 ### Foot lock
 
