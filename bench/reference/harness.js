@@ -5,6 +5,7 @@ import { GRAND_SCENES } from './grand-scenes.js';
 import { skinnedGeometry } from '/src/path-tracer-scene.js';
 import { boxProjectedGeometry } from '/src/export-box-uv.js';
 import '/src/material-layer-shaders.js';
+import '/src/view-transform-shader.js';
 import { skyOpenness } from '/src/closed-room.js';
 import { fogSkyVisibility } from '/src/fog-sky-visibility.js';
 import { createCascadedShadows } from '/src/cascaded-shadows.js';
@@ -173,8 +174,10 @@ async function probeScene(scene, id, drawnParts, mode) {
   return { parts: placed.parts, report: placed.report, seconds: (performance.now() - started) / 1000 };
 }
 
-async function renderReferenceScene(id, { describe, ambientOcclusion = 0, ambientOcclusionRadius = 0.5, bake = null, cascades = 0, backgroundOnly = false, probes = false, ambient = null, fill = null, key = null }) {
+async function renderReferenceScene(id, { describe, ambientOcclusion = 0, ambientOcclusionRadius = 0.5, bake = null, cascades = 0, backgroundOnly = false, probes = false, ambient = null, fill = null, key = null, viewTransform = null }) {
   const scene = await SCENES[id]();
+  // A view transform (agx, neutral) replaces the ACES fit in the shaders, as environment.viewTransform does in a recipe.
+  if (viewTransform) scene.environment = { ...scene.environment, viewTransform };
   // A measurement switch: 0 removes the world's light from every surface, to show how much of a picture comes from it.
   if (ambient !== null) scene.environment = { ...scene.environment, ambientIntensity: ambient };
   if (fill !== null) scene.environment = { ...scene.environment, fillIntensity: fill };

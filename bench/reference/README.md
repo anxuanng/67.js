@@ -58,6 +58,29 @@ The mean of the 23 baseline scenes is 0.1746 for 67js and 0.1986 for EEVEE. The 
 
 Dated notes below, kept where they explain a decision. Numbers in them are from the date they name, and those before 2026-11-01 use the sky with two suns.
 
+## AgX and Khronos PBR Neutral against Blender 5.2.2 (2026-11-03, part of issue #282)
+
+`environment.viewTransform: 'agx' | 'neutral'` (#319) against Blender's AgX and Khronos PBR Neutral view transforms.
+
+Colour ramp (`scripts/blender-view-transform-golden.py`, rerun on 5.2.2: the output matches the committed `tests/fixtures/blender/view-transform-golden.json` byte for byte). 27 patches: 15 greys from 0 to 16 and 12 colours up to 5.0. Each is an emissive plane; the error is |67js - Blender| per channel in sRGB-encoded display units (0 to 1; 0.01 is 2.6 of 255 steps). `tests/view-transform.test.js` fails above the threshold.
+
+| Transform | Threshold (max) | Max error | Mean error | Max per channel R, G, B | Within |
+| --- | --- | --- | --- | --- | --- |
+| `neutral` | 0.010 | 0.0079 | 0.0013 | 0.0079, 0.0052, 0.0079 | yes |
+| `agx` | 0.090 | 0.0885 | 0.0252 | 0.0714, 0.0756, 0.0885 | yes, but loose |
+
+`agx` is within its threshold only because the threshold was set at the measured error. 67js uses the Filament/three.js polynomial for the AgX contrast, and Blender 5.2.2 is darker in the mid-tones: grey 0.18 maps to 0.461 in Blender and 0.501 in 67js (0.09 gives 0.320 against 0.374, 0.03 gives 0.165 against 0.198); the worst patch is the saturated red 0.8, 0.1, 0.05. `neutral` follows Blender to within 2 steps of 255 (the Khronos formula is the same). Closing the `agx` gap needs Blender's own contrast curve; no change was made to `src/` here.
+
+Scenes: `npm run reference -- --view-transform agx --scene <id>,<id>` draws 67js with `viewTransform: 'agx'`, renders Cycles with the AgX view transform (same samples, denoising and scene description as the suite; 8-bit sRGB PNG, so both sides are quantised), and scores them with FLIP. Blender's sRGB picture is decoded and encoded with the 2.2 power 67js uses, so the score measures the curve and the lighting, not the transfer function. The standard column is the suite's own score (Cycles with the `Raw` transform, then the ACES fit on both sides, `baseline.json`).
+
+| Scene | 67js `agx` against Cycles AgX | Standard (ACES fit both sides) | Change |
+| --- | --- | --- | --- |
+| `outdoor-hdri` | 0.0997 | 0.0462 | +0.0535 |
+| `material-spheres` | 0.1467 | 0.1293 | +0.0174 |
+| `character` | 0.1238 | 0.0799 | +0.0439 |
+
+AgX scores worse than the standard row on all three. The mid-tone gap measured on the ramp (67js `agx` is brighter than Blender's) is the likely cause (inferred, not isolated by an experiment). The scores are in `view-transform.json`; Cycles ran on OptiX as in the suite, 67js on the RTX 3060.
+
 ## One sun (2026-11-01)
 
 The HDRI holds its own sun: 6 of its 524,288 pixels carry 48.1 percent of the sky light, at 48 degrees of elevation. Most scenes also add a sun light. Cycles and EEVEE therefore drew two shadows of each object, and 67js drew one because its environment casts no shadow. `scenes.js` and `render-blender.py` now cap the image at radiance 16 on both sides, which removes the sun and its halo and keeps the clouds. The sky keeps 49.2 percent of its light. A scene with a sky now has only its own sun light.

@@ -4,6 +4,7 @@
 #   (0 leaves the sun and the point lights), into <id>-cycles-world<scale>.npy. The EEVEE render and the timings are left alone.
 #   ... -- <work directory> --sun-strength <scale> [scene ids]  the same for the sun: Cycles only, the sun times <scale> (0 leaves the world and
 #   the point lights), into <id>-cycles-sun<scale>.npy. Both switches together write <id>-cycles-world<a>-sun<b>.npy.
+#   ... -- <work directory> --view-transform <AgX|Khronos PBR Neutral|...> [scene ids]  Cycles only, with that Blender view transform, into <id>-cycles-<name>.png (16-bit sRGB).
 #   ... -- <work directory> --max-bounces <n> [--floor-color <v>] [scene ids]  Cycles only, with at most n light bounces (0 is direct light only)
 #   and/or the part named "floor" painted a grey of v (0 is black), into <id>-cycles-bounces<n>-floor<v>.npy. They show how much light the ground bounces.
 # Light units were measured on a white plane: sun strength equals irradiance, a point or spot light has 4 pi watts for each
@@ -863,6 +864,19 @@ def render_to_numpy(scene, work_directory, name):
     return seconds
 
 
+def render_with_view_transform(scene, work_directory, name, view_transform):
+    """Cycles with a Blender view transform (for example AgX) applied, saved as an 8-bit sRGB PNG, like the 67js picture: the picture a Blender user gets."""
+    scene.view_settings.view_transform = view_transform
+    scene.display_settings.display_device = "sRGB"
+    scene.render.image_settings.file_format = "PNG"
+    scene.render.image_settings.color_depth = "8"
+    scene.render.image_settings.color_mode = "RGB"
+    scene.render.filepath = os.path.join(work_directory, f"{name}.png")
+    started = time.perf_counter()
+    bpy.ops.render.render(write_still=True)
+    return time.perf_counter() - started
+
+
 def import_glb(root, glb_file):
     """A Khronos sample asset goes through Blender's own glTF importer, so Cycles shades the file as its authors meant."""
     bpy.ops.import_scene.gltf(filepath=os.path.join(root, glb_file))
@@ -942,6 +956,11 @@ def main():
         flag_index = arguments.index("--floor-color")
         floor_grey = float(arguments[flag_index + 1])
         del arguments[flag_index:flag_index + 2]
+    view_transform = None
+    if "--view-transform" in arguments:
+        flag_index = arguments.index("--view-transform")
+        view_transform = arguments[flag_index + 1]
+        del arguments[flag_index:flag_index + 2]
     only = set(arguments[1:])
     root = os.getcwd()
     timings = {}
@@ -953,6 +972,11 @@ def main():
         with open(os.path.join(scene_directory, file_name), encoding="utf-8") as file:
             description = json.load(file)
         scene = build_scene(description, root)
+        if view_transform is not None:
+            configure_cycles(scene)
+            seconds = render_with_view_transform(scene, work_directory, f"{scene_id}-cycles-{view_transform.lower().replace(' ', '-')}", view_transform)
+            print(f"RENDERED {scene_id} as cycles with {view_transform}: {seconds:.1f} s")
+            continue
         if world_scale is not None or sun_scale is not None or bounces is not None or floor_grey is not None:
             suffix = ""
             if bounces is not None:
