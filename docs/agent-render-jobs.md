@@ -36,6 +36,9 @@ The source revision, pose and checkpoints survive completion or cancellation.
 Cancellation becomes terminal after the owned encoder and job page stop and the preview recovers.
 
 Video uses H.264 (CPU by default, see `settings.encoder`), even dimensions and one streamed frame at a time.
+With `settings.encoder` `nvenc`, MCP video frames are encoded in the page by the browser's hardware H.264 encoder in the same task as the draw, and only the encoded chunks travel to Node over one binary WebSocket on the preview server port, where `ffmpeg -c copy` muxes them with the audio (issue #301). Without NVENC, or when the browser cannot encode the size, frames are JPEG screenshots encoded by ffmpeg.
+PNG stills and render passes still use a DevTools screenshot, byte for byte as before.
+`metrics.captureSeconds` and `metrics.renderSeconds` report the two costs, and `metrics.videoEncoder` is `browser-h264`, `h264_nvenc` or `libx264`. On the 4,488 frame film at 1280 by 720 on an RTX 3060 (loaded machine, one evening), in-page encoding took 20.6 s in all with 2.2 ms a frame of capture and 2.0 ms of draw, screenshots took 139.6 s (25.1 ms a frame of capture) and reading raw pixels over a WebSocket took 405.1 s (84.8 ms a frame), so pixels never travel to Node.
 The render backend can use GPU or CPU. Memory limits can reduce the actual output dimensions.
 Results report actual dimensions and measured timings. They do not embed video bytes.
 
