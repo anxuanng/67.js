@@ -5,7 +5,8 @@
 // --probes [<id>,<id>] adds reflection probes (src/reflection-probes.js) to the named scenes, on top of --bake when both are given.
 // --ambient <scale> multiplies the light the world gives every surface (0 removes it); with --skip-blender it measures what the world adds.
 // --path-tracer [--samples <n>] [--noise-threshold <n>] [--scene <id>] draws the scenes with the offline path tracer (src/path-tracer.js) instead, keeps the
-// Cycles renders of an earlier run, and scores them into path-tracer.json. Nothing in baseline.json or images/ changes.
+// Cycles renders of an earlier run, and scores them into path-tracer.json (--path-tracer-backend gpu draws them with the GPU tracer and
+// writes path-tracer-gpu.json instead). Nothing in baseline.json or images/ changes.
 // Use --score-only to score existing renders, --skip-blender to keep them, and --scene <id> for one scene.
 import { spawnSync } from 'node:child_process';
 import { mkdir, writeFile } from 'node:fs/promises';
@@ -89,6 +90,8 @@ const pathTracerFlag = argumentsGiven.includes('--path-tracer');
 const samplesFlag = argumentsGiven.indexOf('--samples');
 const pathTracerSamples = samplesFlag >= 0 ? Number(argumentsGiven[samplesFlag + 1]) : 64;
 const noiseThresholdFlag = argumentsGiven.indexOf('--noise-threshold');
+const pathTracerBackendFlag = argumentsGiven.indexOf('--path-tracer-backend');
+const pathTracerBackend = pathTracerBackendFlag >= 0 ? argumentsGiven[pathTracerBackendFlag + 1] : 'cpu';
 const pathTracerNoiseThreshold = noiseThresholdFlag >= 0 ? Number(argumentsGiven[noiseThresholdFlag + 1]) : undefined;
 // --scene takes one id or several separated by commas.
 const sceneIdsGiven = lookIds ?? (sceneFlag >= 0 ? argumentsGiven[sceneFlag + 1].split(',') : null);
@@ -149,7 +152,7 @@ async function renderBackend(backend, serverUrl, graphics) {
 }
 
 async function renderPathTracerScenes(serverUrl) {
-  const browser = await chromium.launch({ executablePath: CHROME, headless: true, args: BACKEND_ARGUMENTS.cpu });
+  const browser = await chromium.launch({ executablePath: CHROME, headless: true, args: BACKEND_ARGUMENTS[pathTracerBackend === 'gpu' ? 'gpu' : 'cpu'] });
   const timings = {};
   try {
     const page = await browser.newPage({ viewport: { width: WIDTH, height: HEIGHT } });
@@ -159,16 +162,16 @@ async function renderPathTracerScenes(serverUrl) {
     const sceneIds = await page.evaluate(() => window.referenceSceneIds);
     for (const id of sceneIds) {
       if (onlyScenes && !onlyScenes.includes(id)) continue;
-      const options = { width: WIDTH, height: HEIGHT, samples: pathTracerSamples, maxSeconds: 1800, ...(pathTracerNoiseThreshold === undefined ? {} : { noiseThreshold: pathTracerNoiseThreshold }) };
+      const options = { width: WIDTH, height: HEIGHT, samples: pathTracerSamples, maxSeconds: 1800, backend: pathTracerBackend, ...(pathTracerNoiseThreshold === undefined ? {} : { noiseThreshold: pathTracerNoiseThreshold }) };
       const result = await page.evaluate(([sceneId, tracerOptions]) => window.renderReferencePathTraced(sceneId, tracerOptions), [id, options]);
-      await writeFile(`${WORK_DIRECTORY}/${id}-pathtracer.png`, Buffer.from(result.image, 'base64'));
+      await writeFile(`${WORK_DIRECTORY}/${id}-pathtracer${pathTracerBackend === 'gpu' ? '-gpu' : ''}.png`, Buffer.from(result.image, 'base64'));
       timings[id] = { seconds: Number(result.report.seconds.toFixed(1)), samples: result.report.samples, averageSamples: Number(result.report.averageSamples.toFixed(1)), ignored: result.report.ignored };
       console.log(`${id} path traced: ${timings[id].seconds} s at ${timings[id].samples} samples`);
     }
   } finally {
     await browser.close();
   }
-  await writeFile(`${WORK_DIRECTORY}/pathtracer-timings.json`, JSON.stringify(timings, null, 1));
+  await writeFile(`${WORK_DIRECTORY}/pathtracer${pathTracerBackend === 'gpu' ? '-gpu' : ''}-timings.json`, JSON.stringify(timings, null, 1));
 }
 
 function runChecked(command, commandArguments) {
@@ -220,7 +223,7 @@ if (viewTransform) {
 if ((!onlyScenes && !skipCpu) || pathTracerFlag || bakeScoreRun) {
   runChecked('uv', [
     'run', '--no-project', '--python', '3.12', '--with', 'flip-evaluator', '--with', 'pillow', '--with', 'numpy',
-    'python', '-I', 'bench/reference/score.py', WORK_DIRECTORY, bakeScoreRun && !bakeScoreIsBaseline ? WORK_DIRECTORY : OUTPUT_DIRECTORY, ...(pathTracerFlag ? ['--path-tracer'] : []), ...(bakeScoreRun ? ['--bake', bakedSceneIds.join(',')] : []), ...(sceneSet ? [`--${sceneSet}`] : []),
+    'python', '-I', 'bench/reference/score.py', WORK_DIRECTORY, bakeScoreRun && !bakeScoreIsBaseline ? WORK_DIRECTORY : OUTPUT_DIRECTORY, ...(pathTracerFlag ? ['--path-tracer', ...(pathTracerBackend === 'gpu' ? ['--gpu-tracer'] : [])] : []), ...(bakeScoreRun ? ['--bake', bakedSceneIds.join(',')] : []), ...(sceneSet ? [`--${sceneSet}`] : []),
   ]);
   if (bakeScoreRun && !bakeScoreIsBaseline && !bakeVariantFlags.some(flag => argumentsGiven.includes(flag))) {
     const comparison = spawnSync('node', ['bench/reference/compare-scores.mjs', `${WORK_DIRECTORY}/bake.json`], { stdio: 'inherit' });

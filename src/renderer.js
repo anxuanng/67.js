@@ -1,3 +1,4 @@
+import { materialTags } from './shader-registry.js';
 import { mat4, mat3 } from 'gl-matrix';
 import { SPLAT_UNITS, requireSplatSupport, layerTextureSupport, LIGHT_SHADING_FEATURE, SHADING_MODES, LIGHT_SHADING_MAXIMUM_SAMPLES, createVertexShader, vertexShader, liquidFragmentSource, createFragmentShader, liquidPassDrawer, depthFragmentShader, benchmarkVertexShader, benchmarkFragmentShader, viewTransformShader, createDepthVertexShader } from './shaders.js';
 import { postFragment, createPostFragment, POST_STEPS, skyFragment, bloomFragment } from './post.js';
@@ -21,7 +22,6 @@ import { resolveShadowLight, shadowBiasPerSlope } from './shadow-light.js';
 import { requireDeformationSupport } from './shader-registry.js';
 
 const SHADOW_MAP_SIZE = 2048;
-const MATERIAL_TAGS = { armor: 1, floor: 2, water: 3, foliage: 4, terrain: 5, grass: 7, fire: 8, smoke: 9, unlit: 10, liquid: 11, foam: 12 };
 // Liquid and foam see the resolved opaque scene, so they draw in their own pass after it.
 const TRANSLUCENT_TAGS = new Set(['liquid', 'foam']);
 const DEFAULT_LIQUID = Object.freeze({ thickness: 0.5, ior: 1.33, refraction: 1, scattering: 1, foamOpacity: 0.55, foamSoftness: 1 });
@@ -198,7 +198,7 @@ function materialAlphaState(material) {
   validateAlphaMaterial(material);
   const alphaMode = material.alphaMode ?? 'opaque';
   const alphaCutoff = alphaMode === 'mask' ? material.alphaCutoff ?? 0.5 : 0;
-  const opacity = alphaMode === 'opaque' ? 1 : material.opacity ?? 1;
+  const opacity = alphaMode === 'opaque' ? 1 : (material.opacity ?? 1) + (material.opacityBias ?? 0);
   return [alphaMode, alphaCutoff, opacity, material.doubleSided === true];
 }
 
@@ -263,7 +263,7 @@ function packInstance(data, index, part, normalMatrix) {
   data[offset + 28] = material.metallic;
   data[offset + 29] = material.roughness;
   data[offset + 30] = material.emission ?? 0;
-  data[offset + 31] = MATERIAL_TAGS[material.tag] ?? 0;
+  data[offset + 31] = materialTags[material.tag] ?? 0;
   copyVector3(data, offset + 32, part.assembly?.offset ?? ZERO_VECTOR);
   copyVector3(data, offset + 35, part.assembly?.detailOffset ?? ZERO_VECTOR);
   copyVector3(data, offset + 38, material.emissiveColor ?? material.color);
@@ -1628,11 +1628,22 @@ export class Renderer67 {
     return map;
   }
 
+  // A map's `bounce` (the light a lit room's walls send back, ground-bounce.js) is a constant diffuse light: it adds to the
+  // first irradiance coefficient, which the map's intensity scales again in the shader.
+  irradianceWithBounce(map) {
+    const irradiance = this.environmentResources.irradiance;
+    if (!map.bounce) return irradiance;
+    this.bouncedIrradiance ??= new Float32Array(irradiance.length);
+    this.bouncedIrradiance.set(irradiance);
+    for (let channel = 0; channel < 3; channel++) this.bouncedIrradiance[channel] += map.bounce[channel] / Math.max(map.intensity, 1e-6);
+    return this.bouncedIrradiance;
+  }
+
   applyEnvironmentUniforms(map, uniforms = this.uniforms) {
     const context = this.context;
     context.uniform1f(uniforms.environmentEnabled, map ? 1 : 0);
     if (!map) return;
-    if (uniforms['environmentIrradiance[0]']) context.uniform3fv(uniforms['environmentIrradiance[0]'], this.environmentResources.irradiance);
+    if (uniforms['environmentIrradiance[0]']) context.uniform3fv(uniforms['environmentIrradiance[0]'], this.irradianceWithBounce(map));
     context.uniform1f(uniforms.environmentIntensity, map.intensity);
     context.uniform2f(uniforms.environmentRotation, Math.cos(map.rotation), Math.sin(map.rotation));
     context.uniform1f(uniforms.environmentLevelMax, this.environmentResources.levelCount - 1);

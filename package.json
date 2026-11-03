@@ -110,6 +110,7 @@
     "test:isolated": "node scripts/test-each-file.mjs",
     "smoke": "node scripts/smoke.mjs",
     "smoke:scenes": "node scripts/smoke-scenes.mjs",
+    "smoke:vegetation-impostors": "node scripts/smoke-vegetation-impostors.mjs",
     "smoke:transport": "node scripts/smoke-film-transport.mjs",
     "render": "node scripts/render-media.mjs",
     "score": "node scripts/score.mjs",
