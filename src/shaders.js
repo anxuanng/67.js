@@ -410,6 +410,7 @@ uniform vec3 waterRipple;
 uniform float rippleTime;
 uniform float explosionProgress;
 uniform sampler2D shadowMap;
+uniform float shadowBiasPerSlope;
 uniform sampler2D baseMap;
 uniform float hasBaseMap;
 uniform sampler2D normalMap;
@@ -483,7 +484,8 @@ float filteredShadow(vec2 coordinates, float receiverDepth, ivec2 dimensions) {
 float shadowVisibility(vec3 normal) {
   vec3 projected = shadowPosition.xyz / shadowPosition.w * 0.5 + 0.5;
   if (projected.z > 1.0 || projected.z < 0.0 || any(lessThan(projected.xy, vec2(0.0))) || any(greaterThan(projected.xy, vec2(1.0)))) return 1.0;
-  float bias = max(0.0006, 0.002 * (1.0 - dot(normal, normalize(lightDirection))));
+  float cosine = max(dot(normal, normalize(lightDirection)), 0.05);
+  float bias = shadowBiasPerSlope * clamp(sqrt(1.0 - cosine * cosine) / cosine, 0.25, 4.0);
   float visibility = 0.0;
   ivec2 dimensions = textureSize(shadowMap, 0);
   vec2 texel = 1.0 / vec2(dimensions);

@@ -787,3 +787,22 @@ Measured with `npm run reference -- --skip-blender`, before and after on the sam
 | `outdoor-hdri` | 0.0462 | 0.0460 |
 
 `foliage` improves by 0.0034 but still trails EEVEE. The two brick wall scenes get worse (0.0074 and 0.0035), and this was isolated. The wedge of floor the wall shades beside it now has the shape Cycles draws; the loss comes from a faint stipple the shadow map puts on the wall itself. With the sun at (-3, 6, 4) the wall faces the light at N.L 0.51, the 9 tap filter spans about 3.5 texels (about 46 mm of depth) and the bias is about 39 mm. `brick-flat` against Cycles: shadow off 0.1277, old eye 0.1272, aligned eye 0.1346, aligned eye with a constant bias of 0.004 0.1260. So the old eye was hiding a depth bias that ignores slope and the map depth range (issue #225). A slope scaled bias (0.0025 x min(tan, 4)) fixed both brick scenes and improved long-street, fog and megacity-dusk, but moved `temple-hall` from 0.0646 to 0.0752 and `foliage` from 0.0989 to 0.1007, because the bias is in units of far minus near, so it was not kept. `fog` is 0.0016 worse, inside the limit.
+
+## The sun shadow bias in world units (2026-11-03, issue #225)
+
+`shadowVisibility` used `max(0.0006, 0.002 * (1 - N.L))` in the shadow map's 0 to 1 depth, so it ignored the slope against the sun and grew with `far - near`. It is now `shadowBiasPerSlope * clamp(tan, 0.25, 4)`, where tan is the angle between normal and sun and `shadowBiasPerSlope` (`src/shadow-light.js`, a uniform set from the light that drew the map) is `2 * extent / mapSize * 3.5 / (far - near)`: the world distance the depth changes across the 9 tap filter (taps 2.5 texels apart plus the bilinear blend, 3.5 texels) on a 45 degree slope. The same scene gets the same bias in metres for any depth range; a texel of the 2048 map is 7.8 mm in a 16 m wide map. The cascaded shadows already used a texel size over a depth range in metres, and the local shadow atlas pushes the receiver off the surface in angle units, so both stay. There is no CPU shadow bias.
+
+Measured with `npm run reference -- --skip-blender`, same Cycles and EEVEE arrays, GPU against Cycles (EEVEE in brackets), against the state after the sun-aligned shadow. Scenes not listed move by less than 0.002.
+
+| Scene | aligned shadow | world units bias |
+| --- | --- | --- |
+| `brick-flat` | 0.1346 (EEVEE 0.0581) | 0.1267 (0.0467) |
+| `brick-graph` | 0.1637 (EEVEE 0.0910) | 0.1585 (0.0868) |
+| `long-street` | 0.1267 | 0.1152 |
+| `dark-shaft` | 0.0619 | 0.0559 |
+| `fog` | 0.2256 (EEVEE 0.1016) | 0.2208 (0.1090) |
+| `megacity-dusk` | 0.1627 | 0.1594 |
+| `temple-hall` | 0.0659 | 0.0640 |
+| `foliage` | 0.0989 (EEVEE 0.0811) | 0.0990 (0.0809) |
+
+Both brick scenes are back under their scores before the aligned eye (0.1272 and 0.1602). The slope scaled bias in depth-range units that was tried first made `temple-hall` and `foliage` worse; in world units neither moves. `foliage` against EEVEE was 0.0888 with the old off-sun eye, 0.0811 after the aligned eye and is 0.0809 now, so the bias leaves the crown gap of issue #191 as it was. `fog` against EEVEE is 0.0074 worse while it is 0.0048 better against Cycles; the gate is Cycles.

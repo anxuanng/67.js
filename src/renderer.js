@@ -14,7 +14,7 @@ import { validateSkinGeometry, validateSkinPose, skinTextureLayout, packSkinInfl
 import { validateSplatMaterial, splatBatchState, splatTextureBytes, resolveSplatSize, packSplatParameters, buildSplatPixels } from './splat.js';
 import { materialLayerState, materialLayerValue } from './material-layers.js';
 import { InstanceSelection, extractFrustumPlanes, geometryBoundingSphere, selectInstances } from './render-culling.js';
-import { resolveShadowLight } from './shadow-light.js';
+import { resolveShadowLight, shadowBiasPerSlope } from './shadow-light.js';
 import { validateMorphGeometry, validateMorphPose, validateMorphTransform, packMorphTargets } from './morph.js';
 
 const SHADOW_MAP_SIZE = 2048;
@@ -537,6 +537,7 @@ export class Renderer67 {
     this.projection = mat4.create();
     this.viewProjection = mat4.create();
     this.lightProjection = mat4.create();
+    this.shadowBiasPerSlope = 0;
     this.inverseViewProjection = mat4.create();
     this.shaderFeatures = shaderFeaturesOfParts(groups.flat());
     this.shaderFeatures.add(environment.map ? 'environmentMap' : 'studioLighting');
@@ -611,7 +612,7 @@ export class Renderer67 {
 
   finishMainProgram(pendingProgram) {
     this.program = finishProgram(this.context, pendingProgram);
-    this.uniforms = Object.fromEntries(['materialDielectric', 'materialCoat', 'materialSheen', 'materialAnisotropy', 'materialIridescence', 'lightLinkMask', 'boxMapScale', 'boxMapAxis', 'lightMap', 'lightMapScale', 'hasLightMap', 'viewProjection', 'lightProjection', 'eye', 'armorColor', 'armorSurface', 'exposure', 'inspection', 'shadowMap', ...MAP_UNIFORMS, ...MAP_FLAGS, ...SKIN_UNIFORMS, ...MORPH_UNIFORMS, 'normalScale', 'occlusionStrength', 'materialMoss', ...SPLAT_UNIFORMS, 'hdrEnabled', 'time', 'wind', 'worldMode', 'daylight', 'fogColor', 'lightDirection', 'fogDensity', 'waterRipple', 'rippleTime', 'explosionProgress', 'explosionCenter', 'assemblyAmount', 'renderPassMode', 'renderPassDepthRange', 'renderPassObjectBase', ...ALPHA_UNIFORMS].map((name) => [name, this.context.getUniformLocation(this.program, name)]));
+    this.uniforms = Object.fromEntries(['materialDielectric', 'materialCoat', 'materialSheen', 'materialAnisotropy', 'materialIridescence', 'lightLinkMask', 'boxMapScale', 'boxMapAxis', 'lightMap', 'lightMapScale', 'hasLightMap', 'viewProjection', 'lightProjection', 'eye', 'armorColor', 'armorSurface', 'exposure', 'inspection', 'shadowMap', 'shadowBiasPerSlope', ...MAP_UNIFORMS, ...MAP_FLAGS, ...SKIN_UNIFORMS, ...MORPH_UNIFORMS, 'normalScale', 'occlusionStrength', 'materialMoss', ...SPLAT_UNIFORMS, 'hdrEnabled', 'time', 'wind', 'worldMode', 'daylight', 'fogColor', 'lightDirection', 'fogDensity', 'waterRipple', 'rippleTime', 'explosionProgress', 'explosionCenter', 'assemblyAmount', 'renderPassMode', 'renderPassDepthRange', 'renderPassObjectBase', ...ALPHA_UNIFORMS].map((name) => [name, this.context.getUniformLocation(this.program, name)]));
     for (const name of LIGHT_UNIFORMS) {
       this.uniforms[name] = this.context.getUniformLocation(this.program, name);
     }
@@ -1238,6 +1239,7 @@ export class Renderer67 {
     context.enable(context.DEPTH_TEST);
     context.enable(context.CULL_FACE);
     context.clear(context.DEPTH_BUFFER_BIT);
+    this.shadowBiasPerSlope = shadowBiasPerSlope(light, SHADOW_MAP_SIZE);
     this.drawShadowCasters(this.lightProjection, SHADOW_MAP_SIZE);
     context.bindFramebuffer(context.FRAMEBUFFER, null);
     this.shadowsDirty = false;
@@ -2035,6 +2037,7 @@ export class Renderer67 {
     context.useProgram(this.program);
     context.uniformMatrix4fv(this.uniforms.viewProjection, false, this.viewProjection);
     context.uniformMatrix4fv(this.uniforms.lightProjection, false, this.lightProjection);
+    context.uniform1f(this.uniforms.shadowBiasPerSlope, this.shadowBiasPerSlope);
     context.uniform3fv(this.uniforms.eye, eye);
     this.shadowCascades?.bindUniforms(this);
     context.uniform3fv(this.uniforms.armorColor, armorColor);
