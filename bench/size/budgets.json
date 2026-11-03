@@ -46,6 +46,8 @@
   "entry:material-layer-shaders": 21400,
   "entry:light-linking": 19720,
   "entry:cascaded-shadows": 28530,
+  "entry:view-transform-shader": 20650,
+  "entry:view-transform": 2120,
   "scene:lit-box": 65870,
   "scene:gltf-box": 90150,
   "scene:gltf-box+lazy": 93480,

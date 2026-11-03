@@ -84,6 +84,8 @@
     "./addons/water-reflection": "./build/water-reflection.js",
     "./addons/render-passes": "./build/render-passes.js",
     "./addons/material-layer-shaders": "./build/material-layer-shaders.js",
+    "./addons/view-transform-shader": "./build/view-transform-shader.js",
+    "./addons/view-transform": "./build/view-transform.js",
     "./addons/light-linking": "./build/light-linking.js",
     "./addons/cascaded-shadows": "./build/cascaded-shadows.js",
     "./addons/gaussian-splats": "./build/gaussian-splats.js",
