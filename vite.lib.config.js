@@ -50,6 +50,7 @@ export default defineConfig({
         'camera-effects': 'src/camera-effects.js',
         'water-reflection': 'src/water-reflection.js',
         'render-passes': 'src/render-passes.js',
+        'coplanar-overlap': 'src/coplanar-overlap.js',
         'material-layer-shaders': 'src/material-layer-shaders.js',
         'view-transform-shader': 'src/view-transform-shader.js',
         'view-transform': 'src/view-transform.js',

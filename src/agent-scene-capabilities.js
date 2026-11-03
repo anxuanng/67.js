@@ -213,6 +213,8 @@ export const AGENT_SCENE_CAPABILITIES = Object.freeze({
     field: 'environment.viewTransform', names: VIEW_TRANSFORM_NAMES, default: 'aces', look: 'environment.look', looks: LOOK_NAMES,
     choose: 'agx for lit scenes and Blender comparisons, neutral for product and brand colour, aces for contrast; needs loadAgentSceneModules',
   }),
+  // Flush surfaces flicker (z-fighting). scene_inspect and renderer.diagnostics warn with coplanar-overlap; these fix it at draw time.
+  depthBias: Object.freeze({ nodeFields: Object.freeze(['decal', 'depthLayer']), maxDepthLayer: 4, environment: 'environment.resolveCoplanar', modes: Object.freeze(['offset']), warning: 'coplanar-overlap', note: 'decal wins over the surface below; depthLayer stacks decals; resolveCoplanar offset biases the smaller part of a flagged pair.' }),
   proceduralMotion: true,
   motionIk: Object.freeze(['two-bone', 'aim']),
   // Authored rigs: armatures expand into bone nodes, and a node `skin` binds a mesh with automatic weights (four influences).
