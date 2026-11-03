@@ -4,6 +4,7 @@ import { gradeRecipe } from '../bench/agent-modeling/check.mjs';
 import { TASKS, taskById, taskPrompt } from '../bench/agent-modeling/tasks.mjs';
 import { REFERENCES } from '../bench/agent-modeling/references.mjs';
 import { GALLERY_LIGHT_POSITIONS } from '../bench/agent-modeling/gallery.mjs';
+import { COLONNADE_BEST_PLACE, COLONNADE_LIGHT_POSITIONS } from '../bench/agent-modeling/colonnade.mjs';
 
 const failedKinds = grade => grade.results.filter(result => !result.pass).map(result => result.label ?? result.kind);
 
@@ -219,4 +220,38 @@ test('the render pick passes the unshadowed light and fails the two shadowed pla
   const movedPillar = structuredClone(REFERENCES['render-pick']);
   movedPillar.nodes.find(node => node.id === 'pillar').translation = [3, 1.3, -0.5];
   assert.ok(failedKinds(await gradeRecipe(task, movedPillar)).includes('centreAt'));
+});
+
+test('the hard light pick passes the least shadowed place and fails every other place and shortcut', async () => {
+  const task = taskById('light-pick-hard');
+  assert.deepEqual(failedKinds(await gradeRecipe(task, structuredClone(REFERENCES['light-pick-hard']))), []);
+
+  for (const [index, place] of COLONNADE_LIGHT_POSITIONS.entries()) {
+    if (index === COLONNADE_BEST_PLACE) continue;
+    const wrongPlace = structuredClone(REFERENCES['light-pick-hard']);
+    const [light] = wrongPlace.environment.spotLights;
+    light.position = place;
+    const toCentre = [0 - place[0], 1.5 - place[1], -1.98 - place[2]];
+    const length = Math.hypot(...toCentre);
+    light.direction = toCentre.map(value => value / length);
+    const grade = await gradeRecipe(task, wrongPlace);
+    assert.deepEqual(failedKinds(grade), ['litPainting'], `place ${index + 1}`);
+    assert.match(grade.results.at(-1).detail, /shades \d+ of 861 points/);
+  }
+
+  const shadowsOff = structuredClone(REFERENCES['light-pick-hard']);
+  shadowsOff.environment.spotLights[0].castShadow = false;
+  assert.deepEqual(failedKinds(await gradeRecipe(task, shadowsOff)), ['litPainting']);
+
+  const offeredPlaceMissed = structuredClone(REFERENCES['light-pick-hard']);
+  offeredPlaceMissed.environment.spotLights[0].position = [1.7, 2.6, 1.5];
+  assert.deepEqual(failedKinds(await gradeRecipe(task, offeredPlaceMissed)), ['litPainting']);
+
+  const twoLights = structuredClone(REFERENCES['light-pick-hard']);
+  twoLights.environment.spotLights.push(structuredClone(twoLights.environment.spotLights[0]));
+  assert.deepEqual(failedKinds(await gradeRecipe(task, twoLights)), ['litPainting']);
+
+  const movedPost = structuredClone(REFERENCES['light-pick-hard']);
+  movedPost.nodes.find(node => node.id === 'post-3').translation[0] = 3;
+  assert.ok(failedKinds(await gradeRecipe(task, movedPost)).includes('centreAt'));
 });
