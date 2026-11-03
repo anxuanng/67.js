@@ -115,6 +115,7 @@
     "smoke:kernel-workers": "node scripts/smoke-kernel-workers.mjs",
     "smoke:agent-topology": "node scripts/smoke-agent-topology.mjs",
     "smoke:agent-look": "node scripts/smoke-agent-look.mjs",
+    "smoke:view-transform": "node scripts/smoke-view-transform.mjs",
     "smoke:agent-assets": "node scripts/smoke-agent-assets.mjs",
     "smoke:agent-render-jobs": "node scripts/smoke-agent-render-jobs.mjs",
     "smoke:render-passes": "node scripts/smoke-render-passes.mjs",

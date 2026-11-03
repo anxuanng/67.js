@@ -477,9 +477,13 @@ export class Renderer67 {
     this.diagnostics = [];
     this.activeLightDirection = environment.lightDirection ?? [-3, 6, 4];
     this.shadowCascades = shadowCascades;
-    this.viewTransform = viewTransform;
-    this.look = look;
-    if ((viewTransform !== 'aces' || look) && !viewTransformShader.apply) throw new Error("viewTransform and look need their shader code: add import '@codepawlhq/67js/addons/view-transform-shader' (a recipe: await loadAgentSceneModules(recipe)).");
+    // The constructor options are the default; a frame's environment (a recipe's viewTransform and look) overrides them.
+    this.defaultViewTransform = viewTransform;
+    this.defaultLook = look;
+    this.viewTransform = 'aces';
+    this.look = null;
+    this.lookSource = null;
+    this.selectViewTransform(viewTransform, look);
     this.memoryBudgetMiB = memoryBudgetMiB;
     this.hdr = Boolean(hdr && !benchmark && this.context.getExtension('EXT_color_buffer_float'));
     if (volume.density > 0 && !this.hdr) throw new Error('Volume fog requires EXT_color_buffer_float for HDR rendering');
@@ -635,6 +639,41 @@ export class Renderer67 {
     this.createShadowMap();
     this.resize();
     if (!this.benchmark && !this.multisampleFramebuffer) this.allocateFrameTargets(this.canvas.width, this.canvas.height);
+  }
+
+  selectViewTransform(viewTransform, lookSource) {
+    if ((viewTransform !== 'aces' || lookSource) && !viewTransformShader.apply) throw new Error("viewTransform and look need their shader code: add import '@codepawlhq/67js/addons/view-transform-shader' (a recipe: await loadAgentSceneModules(recipe)).");
+    this.viewTransform = viewTransform;
+    this.lookSource = lookSource;
+    this.look = lookSource ? viewTransformShader.resolveLook(lookSource) : null;
+  }
+
+  // A recipe's environment.viewTransform and environment.look reach the renderer in each frame; a change recompiles the
+  // programs that carry the display curve (main, liquid, environment background, post) before the frame is drawn.
+  syncViewTransform(environment) {
+    const viewTransform = environment.viewTransform ?? this.defaultViewTransform;
+    const lookSource = environment.look ?? this.defaultLook;
+    if (viewTransform === this.viewTransform && lookSource === this.lookSource) return;
+    viewTransformShader.dispose?.(this);
+    this.selectViewTransform(viewTransform, lookSource);
+    if (this.benchmark) return;
+    const context = this.context;
+    this.rebuildMainProgram();
+    for (const variant of this.postVariants.values()) context.deleteProgram(variant.pending ? finishProgram(context, variant.pending) : variant.program);
+    this.postVariants.clear();
+    context.deleteProgram(this.postProgram);
+    this.postProgram = finishProgram(context, startProgram(context, fullscreenVertex, this.withViewTransform(postFragment, 'post')));
+    this.postUniforms = postUniformLocations(context, this.postProgram);
+    const liquidNames = Object.keys(this.liquidUniforms);
+    context.deleteProgram(this.liquidProgram);
+    this.liquidProgram = finishProgram(context, startProgram(context, vertexShader, this.withViewTransform(liquidFragmentShader, 'liquid')));
+    this.liquidUniforms = Object.fromEntries(liquidNames.map(name => [name, context.getUniformLocation(this.liquidProgram, name)]));
+    context.useProgram(this.liquidProgram);
+    context.uniform1i(this.liquidUniforms.skinInfluences, 6);
+    context.uniform1i(this.liquidUniforms.jointPalette, 7);
+    context.uniform1i(this.liquidUniforms.morphTargets, 8);
+    if (this.environmentBackgroundProgram) context.deleteProgram(this.environmentBackgroundProgram);
+    this.environmentBackgroundProgram = null;
   }
 
   // The display curve and look of this renderer, spliced into one of its programs (view-transform-shader.js); the default curve changes nothing.
@@ -2080,6 +2119,7 @@ export class Renderer67 {
       if (!Number.isFinite(lightLength) || lightLength < 1e-6 || !Array.from(direction).every(component => typeof component === 'number' && Math.abs(component) <= 1e6)) throw new RangeError('Volume light direction must have a finite nonzero length and bounded components');
     }
     updateLightingState(this.lighting, environment, { world: this.world });
+    this.syncViewTransform(environment);
     // The shadow view follows the sun, so a moved sun redraws the map.
     const lightChanged = String(this.activeLightDirection) !== String(environment.lightDirection);
     this.activeLightDirection = environment.lightDirection;

@@ -1,5 +1,5 @@
 import { viewTransformShader } from './shaders.js';
-import { AGX_CONSTANTS, NEUTRAL_CONSTANTS } from './view-transform.js';
+import { AGX_CONSTANTS, NEUTRAL_CONSTANTS, namedLook } from './view-transform.js';
 import { VIEW_TRANSFORM_NAMES } from './view-transform-names.js';
 
 // The GLSL of the AgX and Khronos PBR Neutral view transforms and of the look LUT. It lives outside shaders.js so a
@@ -76,6 +76,14 @@ function apply(source, kind, viewTransform, hasLook) {
 }
 
 const lookTextures = new WeakMap();
+const namedLooks = new Map();
+
+/** A look as the renderer draws it: a name from LOOK_NAMES is built once, a parsed .cube look is used as is. */
+function resolveLook(look) {
+  if (typeof look !== 'string') return look;
+  if (!namedLooks.has(look)) namedLooks.set(look, namedLook(look));
+  return namedLooks.get(look);
+}
 
 function createLookTexture(context, look) {
   const { size, data } = look;
@@ -107,6 +115,6 @@ function dispose(renderer) {
   lookTextures.delete(renderer);
 }
 
-Object.assign(viewTransformShader, { apply, bindLook, dispose });
+Object.assign(viewTransformShader, { apply, bindLook, dispose, resolveLook });
 
 export { apply as applyViewTransformToShader };
