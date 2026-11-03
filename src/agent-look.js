@@ -4,6 +4,7 @@ import { resolveEffects } from './effects.js';
 import { resolveVolumeFog } from './volumetric.js';
 import { resolveLiquidOptics } from './renderer.js';
 import { createLightingSetupMap, lightingSetupFields } from './lighting-setups.js';
+import { agentSceneModule } from './agent-scene-modules.js';
 import { VIEW_TRANSFORM_NAMES, LOOK_NAMES } from './view-transform-names.js';
 import { DEFAULT_LIGHTING_SETUP, LIGHTING_SETUP_NAMES, DEFAULT_AMBIENT_OCCLUSION } from './agent-scene-capabilities.js';
 
@@ -12,7 +13,7 @@ const MAX_LOOK_ARRAY_ENTRIES = Math.max(MAX_POINT_LIGHTS, MAX_SPOT_LIGHTS, MAX_A
 
 const ENVIRONMENT_FIELDS = [
   'world', 'ground', 'setup', 'environmentIntensity', 'environmentRotation', 'lightDirection', 'keyColor', 'keyIntensity', 'fillIntensity', 'ambientIntensity',
-  'daylight', 'pointLights', 'spotLights', 'areaLights', 'skyTop', 'skyBottom', 'fogColor', 'fogDensity', 'volumeFog', 'liquid', 'shadowCascades', 'keyAffects', 'objectReflections', 'resolveCoplanar', 'viewTransform', 'look',
+  'daylight', 'pointLights', 'spotLights', 'areaLights', 'skyTop', 'skyBottom', 'fogColor', 'fogDensity', 'volumeFog', 'liquid', 'shadowCascades', 'keyAffects', 'objectReflections', 'lines', 'resolveCoplanar', 'viewTransform', 'look',
 ];
 const LIQUID_FIELDS = ['thickness', 'ior', 'refraction', 'scattering', 'foamOpacity', 'foamSoftness'];
 const EFFECT_FIELDS = ['exposure', 'saturation', 'contrast', 'temperature', 'vignette', 'grain', 'ambientOcclusion', 'ambientOcclusionRadius', 'bloom', 'depthOfField', 'motionBlur'];
@@ -271,6 +272,10 @@ function environmentFrom(input = {}) {
       throw new TypeError('environment.objectReflections must be a boolean.');
     }
     environment.objectReflections = input.objectReflections;
+  }
+  // Outlines and line geometry; null clears them. The module checks the fields and loads on demand.
+  if (input.lines !== undefined && input.lines !== null) {
+    environment.lines = copiedJson(agentSceneModule('lineArt').resolveLineArt(input.lines));
   }
   if (input.resolveCoplanar !== undefined) {
     if (input.resolveCoplanar !== 'offset' && input.resolveCoplanar !== false) {
