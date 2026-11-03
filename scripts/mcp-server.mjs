@@ -9,6 +9,7 @@ import packageMetadata from '../package.json' with { type: 'json' };
 import { MODIFIER_OPERATIONS } from '../src/mesh-operations.js';
 import { MATERIAL_PATTERN_TYPES, MATERIAL_MAPPINGS, LIGHTING_SETUP_NAMES, RENDER_PASS_NAMES, VIDEO_ENCODERS, MAXIMUM_JOB_SIDE, MAXIMUM_MEMORY_MIB } from '../src/agent-scene-capabilities.js';
 import { MATERIAL_LAYER_SCALAR_RANGES, MATERIAL_LAYER_COLOR_RANGES } from '../src/material-layers.js';
+import { SUBSURFACE_RANGES } from '../src/subsurface-limits.js';
 
 const finite = z.number().min(-3.4028234663852886e38).max(3.4028234663852886e38);
 const positive = finite.positive();
@@ -101,8 +102,17 @@ const materialLayerFields = {
 };
 
 
+const subsurfaceColor = (field, [minimum, maximum]) => z.tuple([0, 1, 2].map(() => z.number().min(minimum, `subsurface.${field} components must be at least ${minimum}.`).max(maximum, `subsurface.${field} components must be at most ${maximum}.`)));
+const subsurface = z.strictObject({
+  weight: z.number().min(SUBSURFACE_RANGES.weight[0]).max(SUBSURFACE_RANGES.weight[1]).optional().describe('Share of light that scatters under the surface; 0 is off.'),
+  radius: subsurfaceColor('radius', SUBSURFACE_RANGES.radius).optional().describe('Red, green, blue mean free path in units of scale. Default [1, 0.2, 0.1] (skin).'),
+  scale: z.number().min(SUBSURFACE_RANGES.scale[0]).max(SUBSURFACE_RANGES.scale[1]).optional().describe('Metres per radius unit. Default 0.05.'),
+  color: subsurfaceColor('color', SUBSURFACE_RANGES.color).optional().describe('Linear RGB scatter colour; the base color when left out.'),
+}).describe('Light scattered under the surface (skin, wax, leaves), as Blender Principled BSDF Subsurface. Rasterizer only; the path tracer ignores it.');
+
 const materialFields = {
   ...materialLayerFields,
+  subsurface: subsurface.optional(),
   pattern: materialPattern.optional(),
   color: color.optional().describe('Linear RGB base color, each component between zero and one.'),
   metallic: unit.optional(),

@@ -87,6 +87,7 @@ function shaderFeaturesOfParts(parts) {
     if (material.iridescence > 0) features.add('iridescence');
     if (material.toon > 0) features.add('toon');
     if ((material.alphaMode ?? 'opaque') !== 'opaque') features.add('alphaMode');
+    if (material.subsurface?.weight > 0) features.add('subsurface');
     if (materialLayerValue(material, 'clearcoat') > 0) features.add('clearcoat');
     if (materialLayerValue(material, 'sheenColor').some(channel => channel !== 0)) features.add('sheen');
     if (TAG_SHADER_FEATURES.has(material.tag)) features.add(material.tag);
@@ -2012,7 +2013,7 @@ export class Renderer67 {
       this.context.uniform1f(this.uniforms.boxMapScale, batch.mapState[12]);
       this.context.uniform1i(this.uniforms.boxMapAxis, batch.mapState[13]);
       if (this.shaderFeatures?.has('splat')) requireSplatSupport().bind(this, batch.splat);
-      layerTextureSupport.bind?.(this, batch.mapState);
+      layerTextureSupport.bind?.(this, batch.mapState, layers);
       this.context.uniform1f(this.uniforms.hasLightMap, batch.lightMapTexture ? 1 : 0);
       if (batch.lightMapTexture) {
         this.context.activeTexture(this.context.TEXTURE0 + LIGHT_MAP_UNIT);

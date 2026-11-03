@@ -9,6 +9,7 @@ import '/src/material-layer-shaders.js';
 import '/src/view-transform-shader.js';
 import '/src/liquid-shader.js';
 import '/src/splat-shader.js';
+import '/src/subsurface-shader.js';
 import { skyOpenness } from '/src/closed-room.js';
 import { fogSkyVisibility } from '/src/fog-sky-visibility.js';
 import { createCascadedShadows } from '/src/cascaded-shadows.js';

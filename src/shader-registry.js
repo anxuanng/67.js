@@ -39,7 +39,7 @@ export function registerShaderFeatureCode(feature, slots) {
 }
 
 // The addon that registers each feature's code; a feature not listed here is registered by material-layer-shaders.
-const FEATURE_ADDONS = { splat: 'splat-shader', liquid: 'liquid-shader', worldMaterials: 'world-material-shader' };
+const FEATURE_ADDONS = { splat: 'splat-shader', liquid: 'liquid-shader', worldMaterials: 'world-material-shader', subsurface: 'subsurface-shader' };
 
 export function requireFeatureCode(feature) {
   const slots = registeredFeatureCode.get(feature);
