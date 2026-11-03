@@ -53,7 +53,7 @@ export function parseRenderOptions(values) {
   const start = numberOption('start', 0, 0, 3600);
   const memory = numberOption('memory', preset.memoryBudgetMiB, 32, 1024);
   const assembly = numberOption('assembly', 0, 0, 1);
-  const captureFormat = options.capture ?? (kind === 'video' ? 'jpeg' : 'png');
+  const captureFormat = options.capture ?? (kind === 'video' ? 'raw' : 'png');
   if (!['jpeg', 'png', 'raw'].includes(captureFormat)) throw new Error('Capture must be raw, jpeg or png.');
   if (captureFormat === 'raw' && kind !== 'video') throw new Error('Raw capture is for video only. Stills are PNG or JPEG screenshots.');
   const jpegQuality = numberOption('jpeg-quality', 95, 1, 100);
@@ -193,15 +193,15 @@ export async function renderMedia(values = process.argv.slice(2)) {
     }, { memory, width, height, samples: backend === 'cpu' ? 1 : preset.samples, scene, assembly });
     const session = await page.context().newCDPSession(page);
     if (captureFormat === 'raw') {
-      await installFrameReaderInPage(page);
-      frameReceiver = createFrameReceiver({ maximumBytes: width * height * 4, crossOrigin: true });
+      frameReceiver = createFrameReceiver({ maximumBytes: width * height * 4 });
       frameServer = await startFrameServer(frameReceiver);
+      await installFrameReaderInPage(page, frameServer.url);
     }
     // A raw frame is read from the drawing buffer in the same task as the draw. The round trip beyond the draw is capture.
     const render = async (seconds) => {
       if (errors.length) throw new Error(`Browser render errors: ${errors.join('; ')}`);
       const renderStarted = performance.now();
-      const drawn = await page.evaluate(async ({ value, readFrame, receiverUrl }) => {
+      const drawn = await page.evaluate(async ({ value, readFrame }) => {
         const drawStarted = performance.now();
         if (window.__scene) window.__scene.renderAt(value);
         else if (window.renderAt) window.renderAt(value);
@@ -211,8 +211,8 @@ export async function renderMedia(values = process.argv.slice(2)) {
         if (glError !== 0) throw new Error(`WebGL render error ${glError}.`);
         if (readFrame) window.__finishDraw();
         const drawMilliseconds = performance.now() - drawStarted;
-        return { rendererPlan: renderer.memoryPlan, drawMilliseconds, frame: readFrame ? await window.__readFrame(receiverUrl) : undefined };
-      }, { value: seconds, readFrame: captureFormat === 'raw', receiverUrl: frameServer?.url });
+        return { rendererPlan: renderer.memoryPlan, drawMilliseconds, frame: readFrame ? await window.__readFrame() : undefined };
+      }, { value: seconds, readFrame: captureFormat === 'raw' });
       const rendererPlan = drawn.rendererPlan;
       const roundTripSeconds = (performance.now() - renderStarted) / 1000;
       const drawSeconds = drawn.frame ? drawn.drawMilliseconds / 1000 : roundTripSeconds;

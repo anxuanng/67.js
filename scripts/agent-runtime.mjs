@@ -12,6 +12,7 @@ import { chooseDenoiser, finishWithOidn } from './agent-path-trace-denoise.mjs';
 import { createAgentAssetCatalog } from './agent-asset-catalog.mjs';
 import { createAgentRenderJobs, EXPORT_DIRECTORY_NAME } from './agent-render-jobs.mjs';
 import { createFrameEncoder } from './frame-encoder.mjs';
+import { createFrameReceiver, installFrameReaderInPage } from './gpu-frame-reader.mjs';
 import { audioInputArguments, createAudioLibrary, measureStreamSeconds } from './job-audio.mjs';
 import { filmTimelineDuration, filmTimelineShotStarts, sampleFilmTimeline } from '../src/film-timeline.js';
 import { isPreviewHost } from './preview-host.mjs';
@@ -82,6 +83,8 @@ export function createAgentRuntime({ kernelWorkers = true, backend = 'gpu', brow
   let phase = 'idle';
   let browserInstance;
   let httpServer;
+  // The job that is capturing video frames, if any. Its socket path is secret and lives only as long as the job.
+  let activeFrameReceiver;
   let page;
   let reviewPage;
   let cancelReview;
@@ -230,6 +233,11 @@ export function createAgentRuntime({ kernelWorkers = true, backend = 'gpu', brow
         response.setHeader('Content-Type', request.url === '/' ? 'text/html; charset=utf-8' : 'application/javascript; charset=utf-8');
         response.end(request.url === '/' ? html : code);
       });
+      httpServer.on('upgrade', (request, socket, head) => {
+        const accepted = isPreviewHost(request.headers.host, httpServer.address().port)
+          && activeFrameReceiver?.handleUpgrade(request, socket, head);
+        if (!accepted) socket.destroy();
+      });
       await new Promise((resolve, reject) => {
         httpServer.once('error', reject);
         httpServer.listen(0, '127.0.0.1', resolve);
@@ -314,6 +322,7 @@ export function createAgentRuntime({ kernelWorkers = true, backend = 'gpu', brow
   async function runJob({ jobId, directory, snapshot, settings, signal, progress }) {
     let jobPage;
     let encoder;
+    let frameReceiver;
     let suspended = false;
     const sessionId = activeSessionId;
     const started = performance.now();
@@ -348,8 +357,12 @@ export function createAgentRuntime({ kernelWorkers = true, backend = 'gpu', brow
       const timeline = settings.timeline ? snapshot.recipe.timeline : undefined;
       const audio = settings.audio ? await prepareAudio(settings) : undefined;
       if (settings.kind === 'video') {
+        // Video frames are read from the drawing buffer and sent over a socket on the preview's own port (issue #301).
+        frameReceiver = createFrameReceiver({ maximumBytes: width * height * 4 });
+        activeFrameReceiver = frameReceiver;
+        await installFrameReaderInPage(jobPage, `ws://127.0.0.1:${httpServer.address().port}${frameReceiver.path}`);
         encoder = createFrameEncoder({ executable: ffmpeg, output: join(directory, 'render.mp4.partial'),
-          fps: settings.fps, format: 'jpeg', signal, maximumFrameBytes: MAXIMUM_JOB_FRAME_BYTES, backend: settings.encoder === 'nvenc' ? 'gpu' : 'cpu',
+          fps: settings.fps, format: 'rawvideo', width, height, signal, maximumFrameBytes: MAXIMUM_JOB_FRAME_BYTES, backend: settings.encoder === 'nvenc' ? 'gpu' : 'cpu',
           audioArguments: settings.audio ? audioInputArguments(audio.path, settings.audio.offset) : [] });
         metrics.videoEncoder = settings.encoder === 'nvenc' ? 'h264_nvenc' : 'libx264';
       }
@@ -388,14 +401,29 @@ export function createAgentRuntime({ kernelWorkers = true, backend = 'gpu', brow
           await progress({ frames: 1, maximumPendingFrames: 1 });
           continue;
         }
-        const rendered = await jobPage.evaluate(input => window.__agentPreview.frame(input), frameInput);
-        metrics.renderSeconds += (performance.now() - renderStarted) / 1000;
+        // A video frame is read in the same task as its draw, because the browser clears the drawing buffer after presenting.
+        const rendered = await jobPage.evaluate(async ({ input, readFrame }) => {
+          const drawStarted = performance.now();
+          const result = await window.__agentPreview.frame(input);
+          if (!readFrame) return result;
+          window.__finishDraw();
+          const drawMilliseconds = performance.now() - drawStarted;
+          return { ...result, drawMilliseconds, rawFrame: await window.__readFrame() };
+        }, { input: frameInput, readFrame: settings.kind === 'video' });
+        const roundTripSeconds = (performance.now() - renderStarted) / 1000;
+        const drawSeconds = rendered.rawFrame ? rendered.drawMilliseconds / 1000 : roundTripSeconds;
+        metrics.renderSeconds += drawSeconds;
+        metrics.captureSeconds += roundTripSeconds - drawSeconds;
         if (backend === 'cpu' && !/swiftshader/i.test(rendered.graphics)) throw new Error('CPU job did not select SwiftShader.');
         metrics.graphics = rendered.graphics;
         metrics.width = width;
         metrics.height = height;
         metrics.estimatedBytes = rendered.estimatedBytes;
         async function captureFrameBytes() {
+          if (rendered.rawFrame) {
+            signal.throwIfAborted();
+            return frameReceiver.take({ width, height }, rendered.rawFrame);
+          }
           const captureStarted = performance.now();
           const captured = await session.send('Page.captureScreenshot', { fromSurface: true,
             format: settings.kind === 'video' ? 'jpeg' : 'png',
@@ -444,6 +472,8 @@ export function createAgentRuntime({ kernelWorkers = true, backend = 'gpu', brow
       return { artifacts, metrics };
     } finally {
       signal.removeEventListener('abort', abort);
+      activeFrameReceiver = undefined;
+      frameReceiver?.close();
       try { await encoder?.close(); }
       finally {
         try {
