@@ -1,0 +1,44 @@
+{
+  "id": "datacenter",
+  "title": "AI data center",
+  "blurb": "A cutaway hall of 72 racks, busways, cooling and a substation, serviced by two technicians.",
+  "glb": "/showcase/datacenter/scene.glb",
+  "hdri": "/showcase/datacenter/sky.hdr",
+  "hdriOptions": { "intensity": 1, "rotation": 0, "showBackground": true, "backgroundBlur": 0.15 },
+  "exposure": 0.72,
+  "eye": [15, 26, 36],
+  "target": [4, 0, -0.5],
+  "renderer": {
+    "ground": false,
+    "hdr": true,
+    "samples": 4,
+    "pixelRatio": 1,
+    "memoryBudgetMiB": 512,
+    "environment": {
+      "lightDirection": [-0.6, 0.5, 0.5],
+      "keyColor": [3.7, 2.5, 1.5],
+      "keyIntensity": 1,
+      "fillIntensity": 0.2,
+      "ambientIntensity": 0.8,
+      "fogDensity": 0
+    },
+    "shadowBounds": { "target": [2, 0, 0], "eye": [-36, 30, 30], "extent": 32, "near": 1, "far": 140 }
+  },
+  "frame": {
+    "fov": 26,
+    "near": 1,
+    "far": 400,
+    "exposure": 0.72,
+    "effects": { "bloom": { "strength": 0.25, "threshold": 0.9 }, "ambientOcclusion": 0.6 }
+  },
+  "credits": [
+    { "model": "Substation Transformer", "author": "HalfCarrot", "licence": "CC BY", "source": "https://sketchfab.com/3d-models/3a033547daaa4ec8b7b0426a3ecac987" },
+    { "model": "street_lamp_01", "author": "Poly Haven", "licence": "CC0", "source": "https://polyhaven.com/a/street_lamp_01" },
+    { "model": "power_box_01", "author": "Poly Haven", "licence": "CC0", "source": "https://polyhaven.com/a/power_box_01" },
+    { "model": "Technician body, eyes, eyebrows and hair (Universal Base Characters [Standard])", "author": "Quaternius", "licence": "CC0", "source": "https://quaternius.itch.io" },
+    { "model": "Technician poses (Universal Animation Library [Standard])", "author": "Quaternius", "licence": "CC0", "source": "https://quaternius.itch.io" },
+    { "model": "Asphalt026B, Concrete034, PaintedMetal009, Gravel022, Fingerprints003, Smear007 (PBR textures)", "author": "ambientCG", "licence": "CC0", "source": "https://ambientcg.com" },
+    { "model": "Industrial Sunset 02 (HDRI)", "author": "Poly Haven", "licence": "CC0", "source": "https://polyhaven.com/a/industrial_sunset_02" },
+    { "model": "Racks, busways, cooling, pipework, hall shell and swap cart", "author": "Nguyen Xuan An (CodePawl)", "licence": "Original work", "source": "https://github.com/anxuanng/67.js" }
+  ]
+}
