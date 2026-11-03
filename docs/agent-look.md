@@ -178,6 +178,16 @@ Range values between zero and `0.001` reject.
 The existing directional shadow map remains the source of shadows.
 Point lights can illuminate through opaque walls.
 
+## Outlines and toon light
+
+`environment.lines` draws outlines, an optional banded light and screen-width polylines. One edit turns it on:
+
+```json
+{ "type": "set-environment", "environment": { "lines": { "width": 2, "toon": 3 } } }
+```
+
+`"lines": null` turns it off. A material can also set `toon` (0 to 8) for its own bands. The fields, limits and costs are in [line art](line-art.md). `scene_capabilities` reports `lineArt` and the `toon` layer field.
+
 ## Volume fog
 
 Active volume fog requires an opaque renderer with `{ hdr: true, depth: true }` and negotiated HDR support.

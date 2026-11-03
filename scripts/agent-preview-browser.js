@@ -152,7 +152,7 @@ function draw(record, time = 0, camera = record.scene.camera, frameOptions = {})
     record.shadowKey = shadowKey;
   }
   record.renderer.world = environment.world;
-  record.renderer.render({ ...camera, environment: litEnvironment(record.scene.parts, environment, Boolean(record.renderer.groundPart)), effects, exposure: effects.exposure, time, ...frameOptions });
+  record.renderer.render({ ...camera, environment: litEnvironment(record.scene.parts, environment, Boolean(record.renderer.groundPart)), effects, exposure: effects.exposure, time, lines: environment.lines, ...frameOptions });
   const error = record.renderer.context.getError();
   if (error !== 0) {
     throw new Error(`WebGL render failed with error ${error}.`);
@@ -219,7 +219,7 @@ function cascadesFor(scene) {
 
 function initializeRenderer(scene, { memoryBudgetMiB, backend }) {
   const placement = agentGroundPlacement(scene.parts, scene.environment);
-  return installCoplanarDiagnostics(installRenderPasses(installCameraEffects(new Renderer67(canvas, scene.parts, {
+  const renderer = installCoplanarDiagnostics(installRenderPasses(installCameraEffects(new Renderer67(canvas, scene.parts, {
     ground: placement ? createAgentGround(placement) : false,
     hdr: true,
     depth: true,
@@ -233,6 +233,8 @@ function initializeRenderer(scene, { memoryBudgetMiB, backend }) {
     samples: backend === 'cpu' ? 1 : 4,
     memoryBudgetMiB,
   }))));
+  // Outlines, toon light and polylines draw only for a frame that carries environment.lines.
+  return agentSceneModule('lineArt').installLineArt(renderer);
 }
 
 // Camera fields from a timeline shot on top of the sampled camera, checked with the scene's own camera rules.
