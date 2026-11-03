@@ -1144,3 +1144,31 @@ Which scenes the bounce skips (a temporary log of the reason in the harness, not
 
 Nothing moved, so `baseline.json` is unchanged. `foliage` is still 0.0979 against EEVEE 0.0888, and the issue stays open.
 Bundle size: `entry:ground-bounce` is 9451 bytes gzip (9318 before the texture mean, which adds 133 bytes), so its budget rose from 9330 to 9460.
+
+## One bounce and the sky in object probes (2026-11-03, part of issue #167)
+
+`OBJECT_PROBE_BOUNCES` went from 0 to 1, and a probe hit on a non-metal surface now adds the sky that surface mirrors toward the probe. Measured on SwiftShader first, then the GPU (FLIP against Cycles, `baseline.json` rows of `metal`, `metal-room`, `brushed-film`, `car-paint` and `material-spheres` updated; mountain-valley moved 0.1769 to 0.1820 on this machine's run with no probe in the scene, so its baseline row and the other 17 rows were kept as they were).
+
+The earlier bounce try (#209, 0.1246 at 64 samples) was measuring a bug: `directIrradiance` returns one shared array, the gatherer calls it again for every neighbour it hits, and `traceProbeMaps` read `direct` after that call, so each probe pixel got the direct light of the last neighbour the gatherer visited (usually in shadow). The floor's mean in the probe fell from 0.25 to 0.15 with one bounce. With a copy of the direct light first, one bounce adds a little light and no longer darkens.
+
+| SwiftShader, `metal` | FLIP | probe trace |
+| --- | --- | --- |
+| Main | 0.0962 | 0.12 s |
+| One bounce, bug as it was | 0.1098 | 0.24 s |
+| One bounce, direct light copied | 0.0955 | 0.25 s |
+| Plus dielectric sky reflection (Fresnel, F0 0.04, capped by gloss, sky blurred to a cosine lobe, one shadow ray) | 0.0942 | 0.25 s |
+| Same, Fresnel not capped by gloss | 0.0938 (`brushed-film` 0.1019) | |
+| Same, plus metal parts mirroring the sky too | 0.0939 | |
+| Two bounces | 0.0941 | 0.28 s |
+
+Kept: one bounce, the copy, the capped Fresnel sky reflection. The uncapped Fresnel, the metal reflection and the second bounce are worth 0.0003 or less and cost code or time. GPU result against Cycles:
+
+| Scene | Main | Now | EEVEE |
+| --- | --- | --- | --- |
+| `metal` | 0.0964 | 0.0944 | 0.0916 |
+| `metal-room` | 0.5071 | 0.5045 | 0.5262 |
+| `material-spheres` | 0.0956 | 0.0954 | 0.1053 |
+| `car-paint` | 0.0979 | 0.0978 | 0.0844 |
+| `brushed-film` | 0.1017 | 0.1019 | 0.0984 |
+
+`brushed-film` is 0.0002 worse (the sky reflection; it was 0.1015 with the bounce alone on SwiftShader). Probe trace time on this machine (SwiftShader run, JS, so the same on the GPU run): `metal` 0.12 to 0.25 s, `brushed-film` 0.09 to 0.20 s, `car-paint` 0.06 to 0.10 s, `material-spheres` 0.19 to 0.37 s, `metal-room` 0.06 to 0.41 s; the trace runs when parts, lights or materials change, and a scene without a reflective part never loads it. `metal` is still 0.0028 above EEVEE: the cylinder's floor reflection is the closest gap left (probe 0.567 against Cycles 0.578 in the region, mean display luminance), the rest is light between metal parts that a diffuse bounce does not carry. The room probe trace (`PROBE_BOUNCES` 2) had the same overwritten `direct` and now reads the right light; no baseline scene uses it.

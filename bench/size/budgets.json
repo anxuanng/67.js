@@ -35,9 +35,9 @@
   "entry:path-tracer": 14600,
   "entry:texture-set": 900,
   "entry:agent-scene": 77810,
-  "entry:agent-scene+lazy": 259980,
+  "entry:agent-scene+lazy": 260280,
   "entry:agent-asset": 109170,
-  "entry:agent-asset+lazy": 271380,
+  "entry:agent-asset+lazy": 271680,
   "entry:hdri": 3300,
   "entry:camera-effects": 8600,
   "entry:water-reflection": 26000,
@@ -49,6 +49,6 @@
   "scene:gltf-box": 84380,
   "scene:gltf-box+lazy": 87710,
   "scene:agent-scene": 105160,
-  "scene:agent-scene+lazy": 287330
+  "scene:agent-scene+lazy": 287630
  }
 }

@@ -22,7 +22,7 @@ const LEVEL_FLOOR_NORMAL = 0.99;
 export const MAXIMUM_OBJECT_PROBES = 8;
 const OBJECT_PROBE_WIDTH = 128;
 const OBJECT_PROBE_SAMPLES = 16;
-const OBJECT_PROBE_BOUNCES = 0;
+const OBJECT_PROBE_BOUNCES = 1;
 const OBJECT_PROBE_MINIMUM_METALLIC = 0.5;
 const OBJECT_PROBE_MAXIMUM_ROUGHNESS = 0.6;
 
@@ -56,12 +56,14 @@ export function traceProbeMaps(parts, lighting, positions, { width = 64, samples
   const albedoOfPart = parts.map(part => probeAlbedo(part.material));
   const emissionOfPart = parts.map(part => emittedRadiance(part.material));
   const gather = createGatherer({ world, tracer, albedoOfPart, emissionOfPart, directIrradiance, offset, samples, bounces });
+  const skyReflection = skyIrradiance ? createSkyReflection({ tracer, offset, skyIrradiance, parts }) : null;
   const started = performance.now();
   const rotationCosine = Math.cos(rotation);
   const rotationSine = Math.sin(rotation);
   const direction = [0, 0, 0];
   const point = [0, 0, 0];
   const normal = [0, 0, 0];
+  const direct = [0, 0, 0];
   const bounced = [0, 0, 0];
   const missed = [0, 0, 0];
   return positions.map((position, probeIndex) => {
@@ -90,18 +92,48 @@ export function traceProbeMaps(parts, lighting, positions, { width = 64, samples
         for (let axis = 0; axis < 3; axis++) point[axis] = position[axis] + direction[axis] * hit.nearestDistance;
         hitNormal(world, hit.nearestTriangle, direction, normal);
         const owner = world.triangleOwner[hit.nearestTriangle];
-        const direct = directIrradiance(point, normal, owner);
+        // The direct light function reuses one result array, and the gatherer calls it again for every neighbour it hits.
+        const shared = directIrradiance(point, normal, owner);
+        direct[0] = shared[0];
+        direct[1] = shared[1];
+        direct[2] = shared[2];
         gather(point, normal, (probeIndex + 7777) * 1_000_003 + row * width + column, bounced);
         // An open scene's surfaces are lit by the sky too, and the room trace leaves that to the environment map.
         const sky = skyIrradiance ? skyIrradiance(normal) : null;
+        const reflected = skyReflection ? skyReflection(point, normal, direction, owner) : null;
         for (let channel = 0; channel < 3; channel++) {
           const skyLight = sky ? sky[channel] : 0;
-          data[target + channel] = emissionOfPart[owner][channel] + albedoOfPart[owner][channel] * (direct[channel] / Math.PI + bounced[channel] + skyLight);
+          const reflectedLight = reflected ? reflected[channel] : 0;
+          data[target + channel] = emissionOfPart[owner][channel] + albedoOfPart[owner][channel] * (direct[channel] / Math.PI + bounced[channel] + skyLight) + reflectedLight;
         }
       }
     }
     return { data, width, height, hitFraction: hits / (width * height), floorHeight: floorBelow(world, tracer, position) };
   });
+}
+
+// The sky a dielectric surface mirrors toward the probe: Fresnel (Schlick, F0 0.04, capped by gloss) times the sky light of
+// the mirror direction, blurred to a cosine lobe, and only where that direction leaves the scene.
+function createSkyReflection({ tracer, offset, skyIrradiance, parts }) {
+  const result = [0, 0, 0];
+  const mirror = [0, 0, 0];
+  return function skyReflection(point, normal, incoming, owner) {
+    const material = parts[owner].material;
+    const dielectric = 1 - (material.metallic ?? 0);
+    const cosine = -(incoming[0] * normal[0] + incoming[1] * normal[1] + incoming[2] * normal[2]);
+    result[0] = 0;
+    result[1] = 0;
+    result[2] = 0;
+    if (dielectric <= 0 || cosine <= 0) return result;
+    for (let axis = 0; axis < 3; axis++) mirror[axis] = incoming[axis] + 2 * cosine * normal[axis];
+    const escapes = tracer.trace(point[0] + normal[0] * offset, point[1] + normal[1] * offset, point[2] + normal[2] * offset, mirror[0], mirror[1], mirror[2], Infinity, true).nearestTriangle < 0;
+    if (!escapes) return result;
+    const gloss = 1 - (material.roughness ?? 0.5);
+    const fresnel = Math.min(0.04 + 0.96 * (1 - cosine) ** 5, Math.max(gloss, 0.04)) * dielectric;
+    const light = skyIrradiance(mirror);
+    for (let channel = 0; channel < 3; channel++) result[channel] = fresnel * light[channel] / Math.PI;
+    return result;
+  };
 }
 
 // The height of the horizontal surface straight under a probe, or null when the ground there is not level. A reflected ray
