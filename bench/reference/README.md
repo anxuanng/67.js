@@ -1381,3 +1381,18 @@ One 67js column moved by more than 0.002: `long-street` `cpu-vs-cycles`, 0.115 t
 | temple-hall-c | 0.2746 to 0.1177 | 0.2749 to 0.118 | 0.0028 to 0.0025 | 0.3989 to 0.3992 | 0.2216 to 0.3682 | 0.2213 to 0.3679 |
 
 The EEVEE-against-Cycles column barely moves (at most 0.0037), so the references are the ones the old numbers used. The 67js columns moved a lot: 17 cells by more than 0.002, up to 0.21 (`temple-hall-b` against Cycles 0.3642 to 0.1564, `megacity-dusk-a` 0.1507 to 0.1989). That is not the scorer, which changes only the EEVEE columns by a few thousandths. It is 67js drawing these scenes differently from the run that wrote the old `grand.json`, which was written before the water and river commits (#195, #232) and other work on main (inferred from the commit history; the individual cause of each scene was not isolated). These are the numbers of main as of this run.
+
+## Sampling the base map one mip finer for alpha cutouts, measured and not kept (2026-11-03, part of issue #191)
+
+Hypothesis from the region analysis above: 67js draws leaves where Cycles has sky along card edges and tips, because the averaged alpha of a coarse mip level can sit above the cutoff on a thin leaflet. The change: `texture(baseMap, textureUV, -1.0)` in the base-map sample, for `alphaMode` mask only (opaque and blend untouched).
+
+Measured with the stored Cycles and EEVEE arrays, `npm run reference -- --skip-blender --scene foliage` on the GPU, then `--score-only` for the whole default suite:
+
+| Scene | Before (gpu-vs-cycles) | After | cpu-vs-cycles before / after |
+| --- | --- | --- | --- |
+| foliage | 0.0979 | 0.0982 | 0.0976 / 0.0977 |
+| other 22 scenes | unchanged | unchanged | unchanged |
+
+`foliage` got slightly worse (+0.0003, on both GPU and CPU renders) and no other scene has a mask material, so the change was reverted before the grand suite, the size budget and the frame cost were measured. A finer mip makes cutout edges sharper, which is not what Cycles shows: its leaves are softly filtered, so the coverage error is not mip averaging. The leaf-mask mismatch count (6,073 against 2,864) was not re-counted because the score already moved the wrong way.
+
+Not tried: preserving alpha coverage across mips at load, and alpha to coverage on the leaf material. The per-card measurement named in the section above is still the next step, and the first box of #191 stays open.
