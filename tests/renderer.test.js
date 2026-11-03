@@ -297,10 +297,12 @@ test('texture budgets count every channel and charge shared descriptors once bef
   assert.throws(() => textureDescriptorInfo({ ...shared, rotation: 1 }), /transforms/);
 });
 
-test('GPU uploads use descriptor color spaces, cache shared maps, and dispose every cached texture', () => {
+test('GPU uploads use descriptor color spaces, filter anisotropically, cache shared maps, and dispose every cached texture', () => {
   const renderer = Object.create(Renderer67.prototype);
   const uploaded = [];
   const deleted = [];
+  const anisotropyLevels = [];
+  const anisotropyExtension = { TEXTURE_MAX_ANISOTROPY_EXT: 34046, MAX_TEXTURE_MAX_ANISOTROPY_EXT: 34047 };
   renderer.textures = new Map();
   renderer.buffers = [];
   renderer.batches = [];
@@ -308,7 +310,13 @@ test('GPU uploads use descriptor color spaces, cache shared maps, and dispose ev
   renderer.releaseFrameTargets = () => {};
   renderer.context = {
     RGBA8: 32856, SRGB8_ALPHA8: 35907, MAX_TEXTURE_SIZE: 3379,
-    getParameter(parameter) { return parameter === this.MAX_TEXTURE_SIZE ? 8192 : 0; },
+    getParameter(parameter) {
+      if (parameter === this.MAX_TEXTURE_SIZE) return 8192;
+      if (parameter === anisotropyExtension.MAX_TEXTURE_MAX_ANISOTROPY_EXT) return 16;
+      return 0;
+    },
+    getExtension(name) { return name === 'EXT_texture_filter_anisotropic' ? anisotropyExtension : null; },
+    texParameterf(target, name, value) { if (name === anisotropyExtension.TEXTURE_MAX_ANISOTROPY_EXT) anisotropyLevels.push(value); },
     createTexture() { return {}; }, bindTexture() {}, pixelStorei() {}, texParameteri() {}, generateMipmap() {},
     texImage2D(...arguments_) { uploaded.push(arguments_[2]); },
     deleteTexture(texture) { if (texture) deleted.push(texture); }, deleteFramebuffer() {}, deleteProgram() {},
@@ -319,6 +327,7 @@ test('GPU uploads use descriptor color spaces, cache shared maps, and dispose ev
   const second = renderer.createTexture(data);
   assert.equal(renderer.createTexture(data), second);
   assert.deepEqual(uploaded, [35907, 32856]);
+  assert.deepEqual(anisotropyLevels, [8, 8], 'Mipmapped maps take 8x anisotropic filtering, capped below the hardware limit');
   renderer.dispose();
   assert.deepEqual(deleted, [first, second]);
   assert.equal(renderer.textures.size, 0);

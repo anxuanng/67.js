@@ -31,6 +31,8 @@ const MATERIAL_MAPS = ['map', 'normalMap', 'metallicRoughnessMap', 'occlusionMap
 const MAP_UNIFORMS = ['baseMap', 'normalMap', 'metallicRoughnessMap', 'occlusionMap', 'emissiveMap'];
 const MAP_FLAGS = ['hasBaseMap', 'hasNormalMap', 'hasMetallicRoughnessMap', 'hasOcclusionMap', 'hasEmissiveMap'];
 const DEFAULT_NORMAL_SCALE = [1, 1];
+// The most texture taps a mipmapped texture may take along a grazing axis (16 is the usual hardware ceiling, 8 costs less).
+const MAX_TEXTURE_ANISOTROPY = 8;
 const PROCEDURAL_MATERIAL_TAGS = new Set(['water', 'foliage', 'grass', 'terrain', 'floor', 'fire', 'smoke', 'liquid', 'foam']);
 
 // Tags whose vertices sway in the wind; the shadow pass must be redrawn when time moves.
@@ -649,6 +651,16 @@ export class Renderer67 {
     return buffer;
   }
 
+  // Without anisotropic filtering a mipmapped texture seen at a grazing angle (a floor, a road, an apron) falls to a
+  // blurred level long before its detail is gone. Applies to the texture bound to `target`.
+  applyAnisotropy(target) {
+    const context = this.context;
+    const extension = context.getExtension('EXT_texture_filter_anisotropic');
+    if (!extension) return;
+    const supported = context.getParameter(extension.MAX_TEXTURE_MAX_ANISOTROPY_EXT);
+    context.texParameterf(target, extension.TEXTURE_MAX_ANISOTROPY_EXT, Math.min(MAX_TEXTURE_ANISOTROPY, supported));
+  }
+
   createTexture(map) {
     if (this.textures.has(map)) return this.textures.get(map);
     const context = this.context;
@@ -666,7 +678,10 @@ export class Renderer67 {
         context.texParameteri(context.TEXTURE_2D, context.TEXTURE_WRAP_T, info.wrapT);
         context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MIN_FILTER, info.minFilter);
         context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MAG_FILTER, info.magFilter);
-        if (info.mipmaps) context.generateMipmap(context.TEXTURE_2D);
+        if (info.mipmaps) {
+          context.generateMipmap(context.TEXTURE_2D);
+          this.applyAnisotropy(context.TEXTURE_2D);
+        }
       } else {
         context.texImage2D(context.TEXTURE_2D, 0, context.RGBA8, 1, 1, 0, context.RGBA, context.UNSIGNED_BYTE, new Uint8Array([255, 255, 255, 255]));
         context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MIN_FILTER, context.LINEAR);
@@ -718,8 +733,7 @@ export class Renderer67 {
     context.texParameteri(context.TEXTURE_2D_ARRAY, context.TEXTURE_WRAP_T, context.REPEAT);
     context.texParameteri(context.TEXTURE_2D_ARRAY, context.TEXTURE_MIN_FILTER, context.LINEAR_MIPMAP_LINEAR);
     context.texParameteri(context.TEXTURE_2D_ARRAY, context.TEXTURE_MAG_FILTER, context.LINEAR);
-    const anisotropy = context.getExtension('EXT_texture_filter_anisotropic');
-    if (anisotropy) context.texParameterf(context.TEXTURE_2D_ARRAY, anisotropy.TEXTURE_MAX_ANISOTROPY_EXT, Math.min(8, context.getParameter(anisotropy.MAX_TEXTURE_MAX_ANISOTROPY_EXT)));
+    this.applyAnisotropy(context.TEXTURE_2D_ARRAY);
     return texture;
   }
 

@@ -6,7 +6,7 @@
   "agent-scene": 100000
  },
  "budgets": {
-  "entry:core": 86800,
+  "entry:core": 86840,
   "entry:model": 14400,
   "entry:nature": 13200,
   "entry:motion": 13600,
@@ -45,10 +45,10 @@
   "entry:material-layer-shaders": 21360,
   "entry:light-linking": 19680,
   "entry:cascaded-shadows": 28480,
-  "scene:lit-box": 64170,
-  "scene:gltf-box": 85190,
-  "scene:gltf-box+lazy": 88520,
-  "scene:agent-scene": 105980,
+  "scene:lit-box": 64210,
+  "scene:gltf-box": 85240,
+  "scene:gltf-box+lazy": 88570,
+  "scene:agent-scene": 106030,
   "scene:agent-scene+lazy": 288460
  }
 }
