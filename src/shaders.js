@@ -536,6 +536,9 @@ vec3 studio(vec3 direction, float roughness) {
 ${environmentLookupGlsl}
 ${environmentShadingGlsl}
 
+// Set once per fragment from the environment's BRDF table; every light's specular scales by it.
+vec3 directSpecularGain = vec3(1.0);
+
 ${featureCode("declarations")}vec3 illuminate(vec3 normal, vec3 viewDirection, vec3 lightDirection, vec3 radiance, vec3 color, float metallic, float roughness) {
   float normalLight = max(dot(normal, lightDirection), 0.0);
   if (normalLight == 0.0) return vec3(0);
@@ -551,6 +554,7 @@ ${featureCode("declarations")}vec3 illuminate(vec3 normal, vec3 viewDirection, v
   vec3 baseReflectance = mix(materialDielectric, color, metallic);
 ${featureCode("illuminateReflectance")}  vec3 reflectance = fresnel(max(dot(halfway, viewDirection), 0.0), baseReflectance);
   vec3 specular = distribution * geometry * reflectance / max(4.0 * normalView * normalLight, 0.001);
+  specular *= directSpecularGain;
 ${featureCode("illuminateSpecular")}  vec3 diffuse = (1.0 - reflectance) * (1.0 - metallic) * color / PI;
   return (diffuse + specular) * radiance * normalLight;
 }
@@ -796,7 +800,11 @@ void main() {
   }
   vec3 specularNormal = normal;
   vec3 baseReflectance = mix(materialDielectric, color, metallic);
-${featureCode("mainSetup")}  float visibility = shadowVisibility(normal);
+${featureCode("mainSetup")}  if (ENVIRONMENT_ENABLED) {
+    vec2 brdfLookup = texture(environmentBrdf, vec2(clamp(dot(normal, viewDirection), 0.001, 1.0), roughness)).rg;
+    directSpecularGain = multipleScatterGain(brdfLookup, baseReflectance);
+  }
+  float visibility = shadowVisibility(normal);
   vec3 radiance = illuminate(normal, viewDirection, normalize(lightDirection), keyColor * visibility${featureCode("linkSun")}, color, metallic, roughness);
   if (FILL_ON) {
   radiance += illuminate(normal, viewDirection, normalize(vec3(4.0, 2.0, -3.0)), mix(vec3(0.8, 2.0, 1.8), vec3(0.12, 0.17, 0.20) * daylight, worldMode) * fillIntensity * mix(1.0, vertexSkyVisibility, worldMode), color, metallic, roughness);
