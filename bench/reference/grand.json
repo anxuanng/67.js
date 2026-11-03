@@ -69,28 +69,28 @@
    "gpu-vs-cpu": 0.0424
   },
   "mountain-valley-a": {
-   "gpu-vs-cycles": 0.1671,
-   "gpu-vs-eevee": 0.2392,
-   "cpu-vs-cycles": 0.1671,
-   "cpu-vs-eevee": 0.2389,
+   "gpu-vs-cycles": 0.1653,
+   "gpu-vs-eevee": 0.2373,
+   "cpu-vs-cycles": 0.1653,
+   "cpu-vs-eevee": 0.2371,
    "eevee-vs-cycles": 0.176,
-   "gpu-vs-cpu": 0.0088
+   "gpu-vs-cpu": 0.0092
   },
   "mountain-valley-b": {
-   "gpu-vs-cycles": 0.2096,
-   "gpu-vs-eevee": 0.2645,
-   "cpu-vs-cycles": 0.2088,
-   "cpu-vs-eevee": 0.2638,
+   "gpu-vs-cycles": 0.2019,
+   "gpu-vs-eevee": 0.2567,
+   "cpu-vs-cycles": 0.202,
+   "cpu-vs-eevee": 0.2567,
    "eevee-vs-cycles": 0.1306,
-   "gpu-vs-cpu": 0.0158
+   "gpu-vs-cpu": 0.0164
   },
   "mountain-valley-c": {
-   "gpu-vs-cycles": 0.1836,
-   "gpu-vs-eevee": 0.223,
-   "cpu-vs-cycles": 0.1819,
-   "cpu-vs-eevee": 0.2215,
+   "gpu-vs-cycles": 0.1775,
+   "gpu-vs-eevee": 0.2182,
+   "cpu-vs-cycles": 0.1767,
+   "cpu-vs-eevee": 0.217,
    "eevee-vs-cycles": 0.1522,
-   "gpu-vs-cpu": 0.0156
+   "gpu-vs-cpu": 0.0154
   },
   "temple-hall-a": {
    "gpu-vs-cycles": 0.1642,
