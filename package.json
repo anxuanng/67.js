@@ -154,6 +154,7 @@
     "benchmark:update-parts": "node scripts/benchmark-update-parts.mjs",
     "smoke:imported-topology": "node scripts/smoke-imported-topology.mjs",
     "smoke:agent-character": "node scripts/smoke-agent-character.mjs",
+    "smoke:agent-retarget": "node scripts/smoke-agent-retarget.mjs",
     "smoke:agent-review": "node scripts/smoke-agent-review.mjs",
     "smoke:agent-branches": "node scripts/smoke-agent-branches.mjs",
     "parity": "node scripts/parity-report.mjs",
