@@ -192,7 +192,7 @@ async function renderReferenceScene(id, { describe, ambientOcclusion = 0, ambien
 }
 
 // Frame time of one scene with and without the light bake: a bake only adds an emissive map to each part, so this shows what it costs to draw.
-async function measureReferenceFrameTime(id, { bake, probes = false, cascades = 0, orbit = false, water = WATER_REFLECTION, warmupFrames = 20, measuredFrames = 200 }) {
+async function measureReferenceFrameTime(id, { bake, probes = false, cascades = 0, orbit = false, water = WATER_REFLECTION, glowMipChain = true, warmupFrames = 20, measuredFrames = 200 }) {
   const scene = await SCENES[id]();
   const baked = bake ? await bakeScene(scene, {}) : null;
   const probed = probes ? await probeScene(scene, id, baked ? baked.parts : scene.parts, probes) : null;
@@ -208,6 +208,11 @@ async function measureReferenceFrameTime(id, { bake, probes = false, cascades = 
     renderer.render(orbit ? { ...frame, eye: orbitedEye(index) } : frame);
     finishDrawing();
   }
+  // glowMipChain false stops the fog from rebuilding the frame's mip chain after warm-up. The mips stay as the last warm-up frame
+  // left them, so sampling costs the same and the difference is the cost of generating them.
+  if (!glowMipChain) {
+    renderer.context.generateMipmap = () => {};
+  }
   const frameMilliseconds = [];
   for (let index = 0; index < measuredFrames; index++) {
     const started = performance.now();
@@ -218,7 +223,7 @@ async function measureReferenceFrameTime(id, { bake, probes = false, cascades = 
   renderer.dispose();
   frameMilliseconds.sort((first, second) => first - second);
   const total = frameMilliseconds.reduce((sum, value) => sum + value, 0);
-  return { baked: Boolean(bake), probes: Boolean(probes), water, frames: measuredFrames, meanMilliseconds: total / measuredFrames,
+  return { baked: Boolean(bake), probes: Boolean(probes), water, glowMipChain, frames: measuredFrames, meanMilliseconds: total / measuredFrames,
     medianMilliseconds: frameMilliseconds[Math.floor(measuredFrames / 2)], p95Milliseconds: frameMilliseconds[Math.floor(measuredFrames * 0.95)] };
 }
 
