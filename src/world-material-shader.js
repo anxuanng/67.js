@@ -197,7 +197,8 @@ vec3 refractedBackground(vec3 fallback, vec3 surfacePosition, vec3 normal, vec3 
     seenColor += waterDecode(sampled.rgb) * below;
     seen += below;
   }
-  return mix(fallback, seenColor / max(seen, 1.0), seen / 16.0);
+  // Average only the taps that saw something below the water: a tap past the bed edge must not pull the blur toward the water colour.
+  return seen > 0.5 ? seenColor / seen : fallback;
 }
 #ifndef shadowVisibility
 float softShadowVisibility(vec3 normal, float radiusTexels) {

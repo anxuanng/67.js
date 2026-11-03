@@ -58,3 +58,9 @@ test('the shader keeps the sun shadow off the reflection and applies the column 
   assert.ok(source.includes('exp(-waterAbsorption * waterDepth)'));
   assert.ok(!createFragmentShader([]).includes('waterBody'));
 });
+
+test('the refraction blur averages only the taps that saw the bed, so the bed edge does not fade into a haze', () => {
+  const source = createFragmentShader(['water']);
+  assert.ok(source.includes('return seen > 0.5 ? seenColor / seen : fallback;'));
+  assert.ok(!source.includes('seen / 16.0'), 'a share of missed taps must not mix the water colour into the blur');
+});
