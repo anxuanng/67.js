@@ -45,13 +45,20 @@
     "gltf materials are traced as plain surfaces."
    ]
   },
+  "emissive-sign": {
+   "pathtracer-vs-cycles": 0.08,
+   "seconds": 62.9,
+   "samples": 64,
+   "averageSamples": 64,
+   "ignored": []
+  },
   "fog": {
-   "pathtracer-vs-cycles": 0.5333,
-   "seconds": 24.1,
+   "pathtracer-vs-cycles": 0.0312,
+   "seconds": 85.3,
    "samples": 64,
    "averageSamples": 64,
    "ignored": [
-    "volumeFog is not traced."
+    "volumeFog.ambient is not added: the fog is lit by the traced lights and sky."
    ]
   },
   "foliage": {

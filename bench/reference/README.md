@@ -588,6 +588,8 @@ Path tracer (issue #57): `npm run reference -- --path-tracer [--samples 32]` dra
 
 The tracer is worse than the rasterizer on `outdoor-hdri` and `character`: in the images the floor is darker than in Cycles (the cause is not found), and `fog` shows the missing volume. The denoiser blurs some soft shadows. Cycles used 256 samples. See `docs/path-tracer.md` for what the tracer draws and skips.
 
+Path tracer, emissive maps and fog (issue #284, 2026-11-03, 64 samples, one run each, shared machine): `fog` goes from 0.5333 to 0.0312 against Cycles now that the tracer draws the volume (the rasterizer scores 0.2021), in 85.3 s. The new scene `emissive-sign` is a dark wall with a panel whose `emissiveMap` is a strip of colour bars with scan lines, over a pale floor under a faint sky; `render-blender.py` multiplies the panel's emissive colour by the same map (`add_emissive_map`). The path tracer scores 0.0800 (62.9 s) and the rasterizer 0.2372, since the rasterizer does not light the floor from the panel. The rasterizer figure was taken with `--scene emissive-sign --skip-cpu` and scored on the GPU render alone, so `baseline.json` has no row for the scene yet; `path-tracer.json` was merged by hand with the other 15 scenes unchanged.
+
 Path tracer, second pass (issue #129, 2026-11-01): 64 samples at most, `noiseThreshold` 0.03, four threads, 960 by 540; seconds are wall time and include scene setup. The scores are in "Scores now".
 
 `light-linking` scores 0.0213 against Cycles, ahead of the rasterizer (0.0998): the tracer honours light linking, so a light adds nothing at a part it skips.

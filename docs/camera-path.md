@@ -32,6 +32,7 @@ renderer.render(path.sample(3));
 `eye` and `target` accept a three-component vector or a keyframe channel.
 `fov` and `roll` accept a number or a keyframe channel.
 Channels support `LINEAR`, `STEP`, `SMOOTH` and `CUBICSPLINE`, using the existing animation sampler.
+A keyframe on a `LINEAR` or `SMOOTH` channel can add `easing`, such as `easeInOutCubic` or `cubic-bezier(0.2, 0, 0, 1)`; see [animation curves](animation-curves.md#easing).
 
 Cubic tangents use units per second. `fov` uses degrees, and `roll` uses radians around the viewing direction.
 `up` is a constant vector. `near` and `far` are constant positive clipping distances.

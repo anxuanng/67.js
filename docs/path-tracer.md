@@ -20,13 +20,15 @@ Unidirectional path tracing against the triangle BVH that the [light bake](light
 - Surfaces: diffuse, GGX specular with metals, clear coat, glass (`transmission`, `ior`, rough glass), emission, image maps (`map`, with `alphaMode: "mask"` cutouts, `normalMap` with `normalScale`, and `metallicRoughnessMap`, whose green channel scales roughness and blue scales metallic as in the rasterizer; box-projected materials read all of them through the UVs of their projection, the same ones the glTF export writes) and vertex colour. Skinned parts are drawn at their current pose.
 - Lights: the sun (`keyColor`, `lightDirection`, as a 1 degree disk), point lights with a radius, spot lights with a soft cone, rectangular area lights, and the environment map with its rotation. All of them cast soft shadows, whatever their `castShadow` says, as in Cycles. Light linking is honoured: a light with `affects` (or the sun with `environment.keyAffects`) adds nothing at a part it skips, as a direct light or as a bounce source, and still shadows the other lights.
 - Light that bounces between surfaces, and the sky seen in mirrors and through glass.
+- Emission: `emission` times `emissiveColor` (the base colour when none is given) times the `emissiveMap` texel at the hit, so a screen or a sign glows with its picture and lights what is near it. An emissive surface is found by the paths that hit it, not sampled as a light, so a small bright panel is noisy at low sample counts.
+- Volume fog: `environment.volumeFog` is traced as a homogeneous medium inside its box, with its `density`, `color` (the scattering albedo), `anisotropy` (Henyey-Greenstein) and `maxDistance`. The distance to each scattering event is drawn from the exact free-flight distribution, so there is no step count and no banding. Every event is lit by next-event estimation (sun, point, spot, area lights and the sky, with shadow rays) and light reaching a surface through the fog is dimmed by it. Fog events count as bounces. `noiseAmount`, `noiseScale`, `drift`, `steps` and the `ambient` glow are rasterizer tricks and are not used.
 
 ## What it does not draw
 
-`report.ignored` lists the ones this scene asks for.
+`report.ignored` lists the ones this scene asks for; a render job returns it as `metrics.pathTracer.ignored`. It names occlusion maps, anisotropy, iridescence, sheen, moss, splat layers, baked `lightMap`s, tagged materials (foliage, liquid, water and the like, traced as plain surfaces), blended transparency, and the fog fields above.
 
-- Volume fog (`volumeFog`), and the procedural sky when there is no environment map (the sky is black).
-- Occlusion maps and emissive maps. Normal and metallic-roughness maps are drawn on UV-mapped and on box-projected materials. Material graphs and patterns are drawn through the colour map they bake.
+- The procedural sky when there is no environment map (the sky is black).
+- Occlusion maps. Normal and metallic-roughness maps are drawn on UV-mapped and on box-projected materials. Material graphs and patterns are drawn through the colour map they bake.
 - Translucent leaves (foliage looks darker than in the rasterizer), liquids, foam and blended transparency (traced as plain or opaque surfaces).
 - Lights seen in mirrors (area lights and spot lights are lit but not visible), caustics, subsurface scattering, motion blur, depth of field, bloom and colour grade.
 - Multiple-scattering GGX: rough metal is a little darker than in Blender.

@@ -48,6 +48,7 @@ These checks need a GPU or a person's eyes, so they do not run on a pull request
 | `npm run reference` | Shaders, lighting or materials |
 | `npm run benchmark:runtime` | The renderer's frame path |
 | `scripts/blender-golden.py` | A case in `tests/fixtures/blender/cases.json`, or the Blender version |
+| `scripts/blender-easing-golden.py` | An easing curve, or the Blender version |
 
 Do not weaken a test to make it pass. If a test is flaky, find the cause and fix the test or the code.
 

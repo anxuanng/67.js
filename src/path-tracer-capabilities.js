@@ -13,6 +13,7 @@ export const PATH_TRACER_JOB_LIMITS = Object.freeze({
 export const PATH_TRACER_CAPABILITIES = Object.freeze({
   setting: 'settings.renderer { type: "pathTracer", samples, bounces, denoise, seed, maxSeconds, noiseThreshold }; image jobs only, no passes. Past maxSeconds the job fails.',
   noiseThreshold: 'Default 0 draws every sample. Above 0 a pixel stops once its standard error relative to its mean is under the value, checked from 16 samples on: faster and noisier, and it cost quality on spot-area (score 0.0658 at 0, 0.0900 at 0.03). docs/path-tracer.md has the table.',
-  skips: 'volume fog, occlusion and emissive maps, translucent leaves, liquids, caustics, depth of field, bloom; the job result lists what the scene asked for.',
+  traces: 'emissive maps and strength; volume fog as a uniform medium (density, colour, anisotropy, box; noise, drift and ambient are not used).',
+  skips: 'occlusion maps, translucent leaves, liquids, anisotropy, iridescence, sheen, caustics, depth of field, bloom; metrics.pathTracer.ignored in the job result lists what the scene asked for.',
   limits: PATH_TRACER_JOB_LIMITS,
 });
