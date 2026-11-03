@@ -22,11 +22,13 @@ const TEXTURE_SLOTS = [
   ['emissiveMap', 'emissiveTexture', false],
 ];
 const PNG_SIGNATURE = [0x89, 0x50, 0x4e, 0x47];
+// "RIFF", four size bytes that vary, then "WEBP".
+const WEBP_SIGNATURE = [0x52, 0x49, 0x46, 0x46, null, null, null, null, 0x57, 0x45, 0x42, 0x50];
 const LINEAR_SRGB = 'srgb-linear';
 const COMPONENT_CODES = new Map(Object.entries(COMPONENT_TYPES).map(([code, ArrayType]) => [ArrayType, Number(code)]));
 
 export function textureSourceIndex(texture) {
-  return texture.extensions?.KHR_texture_basisu?.source ?? texture.source;
+  return texture.extensions?.KHR_texture_basisu?.source ?? texture.extensions?.EXT_texture_webp?.source ?? texture.source;
 }
 
 function sanitizeNodeName(name) {
@@ -35,7 +37,9 @@ function sanitizeNodeName(name) {
 
 function mimeTypeOf(imageDefinition, bytes) {
   if (imageDefinition.mimeType) return imageDefinition.mimeType;
-  return PNG_SIGNATURE.every((value, index) => bytes[index] === value) ? 'image/png' : 'image/jpeg';
+  if (PNG_SIGNATURE.every((value, index) => bytes[index] === value)) return 'image/png';
+  if (WEBP_SIGNATURE.every((value, index) => value === null || bytes[index] === value)) return 'image/webp';
+  return 'image/jpeg';
 }
 
 async function decodeImage(bytes, mimeType, target) {
@@ -149,11 +153,25 @@ export async function decodeGltf({ document, glbBinary, resourceBytes, decoders,
     return loaded;
   }
 
+  // A WebP source with a PNG or JPEG fallback falls back when this browser cannot decode WebP.
+  async function loadTextureImage(definition) {
+    const isKtx2 = Boolean(definition.extensions?.KHR_texture_basisu);
+    const sourceIndex = textureSourceIndex(definition);
+    const fallbackIndex = definition.source;
+    const hasWebpFallback = !isKtx2 && definition.extensions?.EXT_texture_webp && Number.isInteger(fallbackIndex) && fallbackIndex !== sourceIndex;
+    if (!hasWebpFallback) return loadImage(sourceIndex, isKtx2);
+    try {
+      return await loadImage(sourceIndex, false);
+    } catch {
+      return loadImage(fallbackIndex, false);
+    }
+  }
+
   async function loadTexture(textureIndex) {
     if (textures.has(textureIndex)) return textures.get(textureIndex);
     const definition = document.textures[textureIndex];
     const sampler = document.samplers?.[definition.sampler] ?? {};
-    const { image, isCompressedTexture } = await loadImage(textureSourceIndex(definition), Boolean(definition.extensions?.KHR_texture_basisu));
+    const { image, isCompressedTexture } = await loadTextureImage(definition);
     const texture = {
       image,
       isCompressedTexture,
@@ -185,7 +203,7 @@ export async function decodeGltf({ document, glbBinary, resourceBytes, decoders,
       try {
         material[field] = await loadTexture(reference.index);
       } catch (error) {
-        throw new Error(`${sourceField} failed to decode. Use a valid PNG or JPEG image. ${error.message}`);
+        throw new Error(`${sourceField} failed to decode. Use a valid PNG, JPEG or WebP image. ${error.message}`);
       }
     }
     const layerTextures = {};
@@ -193,7 +211,7 @@ export async function decodeGltf({ document, glbBinary, resourceBytes, decoders,
       try {
         layerTextures[name] = await loadTexture(reference.index);
       } catch (error) {
-        throw new Error(`${name} failed to decode. Use a valid PNG or JPEG image. ${error.message}`);
+        throw new Error(`${name} failed to decode. Use a valid PNG, JPEG or WebP image. ${error.message}`);
       }
     }
     if (Object.keys(layerTextures).length > 0) material.layerTextures = layerTextures;

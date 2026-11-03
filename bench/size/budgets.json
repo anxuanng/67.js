@@ -11,8 +11,8 @@
   "entry:nature": 13200,
   "entry:motion": 13600,
   "entry:canvas2d": 9400,
-  "entry:gltf": 54590,
-  "entry:gltf+lazy": 57920,
+  "entry:gltf": 55020,
+  "entry:gltf+lazy": 58350,
   "entry:modeling": 8700,
   "entry:sculpt": 2500,
   "entry:surface": 10100,
@@ -46,8 +46,8 @@
   "entry:light-linking": 19680,
   "entry:cascaded-shadows": 28480,
   "scene:lit-box": 64890,
-  "scene:gltf-box": 86430,
-  "scene:gltf-box+lazy": 89760,
+  "scene:gltf-box": 86880,
+  "scene:gltf-box+lazy": 90200,
   "scene:agent-scene": 106710,
   "scene:agent-scene+lazy": 289120
  }
