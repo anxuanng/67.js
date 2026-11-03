@@ -9,6 +9,8 @@
   "exposure": 1.0,
   "eye": [138, 64, 36],
   "target": [1, 3, -13],
+  "bounds": { "min": [-400, 0.8, -390], "max": [400, 220, 350] },
+  "maxDistance": 700,
   "renderer": {
     "ground": false,
     "world": false,
@@ -29,8 +31,8 @@
   },
   "frame": {
     "fov": 20,
-    "near": 5,
-    "far": 1500,
+    "near": 1,
+    "far": 7000,
     "exposure": 1.0,
     "effects": {
       "bloom": { "strength": 0.15, "threshold": 1.0, "radius": 1.2 },
@@ -56,7 +58,12 @@
     { "model": "Concrete034 texture (terminal base)", "author": "ambientCG (Lennart Demes)", "licence": "CC0", "source": "https://ambientcg.com/view?id=Concrete034" },
     { "model": "Painted Plaster Wall texture (terminal interior)", "author": "Poly Haven", "licence": "CC0", "source": "https://polyhaven.com/a/painted_plaster_wall" },
     { "model": "Floor Tiles 06 texture (terminal interior)", "author": "Poly Haven", "licence": "CC0", "source": "https://polyhaven.com/a/floor_tiles_06" },
-    { "model": "Scene assembly, ramp ground and material setup", "author": "CodePawl", "licence": "MIT", "source": "https://67js.codepawl.com" },
+    { "model": "Grass004 texture (airfield grass)", "author": "ambientCG (Lennart Demes)", "licence": "CC0", "source": "https://ambientcg.com/view?id=Grass004" },
+    { "model": "Airport Tower (control tower)", "author": "hosein hajipour", "licence": "CC BY 4.0", "source": "https://sketchfab.com/models/c5fa752238a54a2dbe8ac6f768a785e5" },
+    { "model": "Hangar", "author": "nermin", "licence": "CC BY 4.0", "source": "https://sketchfab.com/models/64f7d287f5274029bc29755a9839ebbf" },
+    { "model": "Fir Sapling (trees)", "author": "Poly Haven", "licence": "CC0", "source": "https://polyhaven.com/a/fir_sapling" },
+    { "model": "Island Tree 01 (trees)", "author": "Poly Haven", "licence": "CC0", "source": "https://polyhaven.com/a/island_tree_01" },
+    { "model": "Scene assembly, terrain and hills, roads, runway, taxiways, terminal piers, equipment parking, fence and material setup", "author": "CodePawl", "licence": "MIT", "source": "https://67js.codepawl.com" },
     { "model": "Industrial Sunset (Pure Sky) HDRI", "author": "Poly Haven", "licence": "CC0", "source": "https://polyhaven.com/a/industrial_sunset_puresky" }
   ]
 }
