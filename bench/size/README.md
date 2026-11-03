@@ -24,16 +24,16 @@ The values on 2026-10-30 (issue 23) were 48,758, 159,422 and 185,422. `bench/siz
 
 ## What is in the lit box
 
-A box drawn by `Renderer67` with no addon, minified, before gzip (module sizes from the esbuild metafile; the sum is 191 KB, 54.8 KB gzip). The numbers are what the module adds to the bundle, not what it gzips to alone.
+A box drawn by `Renderer67` with no addon, minified, before gzip (module sizes from the esbuild metafile; the sum is 187 KB, 52.9 KB gzip). The numbers are what the module adds to the bundle, not what it gzips to alone.
 
 | Module | Bytes minified | What it is |
 | --- | --- | --- |
-| `src/renderer.js` | about 77,000 | the renderer: batching, shadows, post, diagnostics, skin and morph upload, all draw passes |
-| `src/shaders.js` | about 43,000 | vertex, depth, benchmark and main fragment GLSL (comments in GLSL ship), skin and morph GLSL |
-| `gl-matrix` mat4 and mat3 | about 22,000 | matrix functions the renderer and camera use |
-| `src/post.js` | 14,200 | post, sky and bloom fragment shaders |
-| `src/environment.js` | not in a lit box | the environment map builder; `environment-shading.js` (about 4,000) keeps the lookup GLSL that main names |
-| `src/lighting.js`, `morph.js`, `skinning.js`, `material-layers.js`, `effects.js`, `geometry.js`, `budget.js`, `ambient-occlusion.js`, others | 1,000 to 5,000 each | smaller parts |
+| `src/renderer.js` | about 79,800 | the renderer: batching, shadows, post, diagnostics, skin and morph upload, all draw passes |
+| `src/shaders.js` | about 33,900 | vertex, depth, benchmark and main fragment GLSL (GLSL line comments are stripped at build), skin and morph GLSL |
+| `gl-matrix` mat4 and mat3 | about 22,300 | matrix functions the renderer and camera use |
+| `src/post.js` | about 14,100 | post, sky and bloom fragment shaders |
+| `src/environment.js` | not in a lit box | the environment map builder; `environment-shading.js` keeps only a stub for main, and the lookup GLSL registers with the builder |
+| `src/lighting.js` (5,200), `morph.js` (4,800), `skinning.js` (2,800), `material-snapshot.js`, `material-layers.js`, `effects.js`, `geometry.js`, `budget.js`, `ambient-occlusion.js`, others | 1,000 to 5,000 each | smaller parts |
 
 Moved out of the core bundle in this work, each loaded only by a scene that uses it (the pattern of `material-layer-shaders.js`):
 
@@ -41,13 +41,14 @@ Moved out of the core bundle in this work, each loaded only by a scene that uses
 | --- | --- | --- |
 | `liquid-shader` | liquid and foam GLSL, program and draw pass | 4,900 together with the splat GLSL, measured in steps |
 | `splat-shader` | splat ground GLSL, validation, texture arrays, binding | included above, plus 2,700 for its JavaScript |
-| `environment.js` (loads with `createEnvironmentMap`) | environment map builder, prefilter, BRDF and background shaders | 2,600 |
+| `environment.js` (loads with `createEnvironmentMap`) | environment map builder, prefilter, BRDF and background shaders, and the lookup and shading GLSL | 2,600 plus about 400 for the GLSL |
+| `world-material-shader` | water, foliage, grass, terrain, moss, fire and smoke GLSL, and the vertex wind; `terrain`, `vegetation`, `grass`, `clutter`, `film` and recipes load it | about 1,500 |
 
-Still in the lit box and worth moving next, with rough gzip sizes: skin and morph GLSL plus `skinning.js` and `morph.js` (about 3,500; the depth and benchmark vertex shaders call them unconditionally), the tag code in main for terrain, moss, foliage, grass, fire, smoke and water (about 2,000), the environment lookup and shading GLSL (about 1,800, needs stubs in main), comments inside GLSL (about 2,000, a build step would strip them), and the post pass volume, occlusion and explosion steps.
+Still in the lit box and worth moving next, with rough gzip sizes: skin and morph GLSL plus `skinning.js` and `morph.js` (about 3,500; the depth and benchmark vertex shaders call them unconditionally), and the post pass volume, occlusion and explosion steps. The other splice slots (`worldFunctions`, `worldSurface`, `worldLight`, `worldAfterEmission`, `worldFinal`, `worldVertexWind`, `environmentShading`) show the pattern: a block of GLSL registered by an addon, and a stub in `shaders.js` for a renderer without it.
 
 ## How the check decides
 
-The check measures the base branch with the same script, then compares each bundle. In CI the base is the branch that the pull request targets. On your machine it is `origin/main`, from the commit where your branch left it. The base numbers are cached by base commit in `node_modules/.cache/size-base`, and CI caches that folder, so a run on an unchanged base skips the second measurement. The base is measured beside your own bundles, so a cold run costs little more than one measurement.
+The check measures the base branch with the same script, then compares each bundle. In CI the tested tree is the merge of the pull request into the target branch, and the base is the first parent of that merge. It is not the newest tip of the target branch, which may hold work that the tree lacks and would charge the pull request for it. `scripts/ci-base-sha.mjs` prints it, and the tool cost and archive checks use the same base. On your machine it is `origin/main`, from the commit where your branch left it. The base numbers are cached by base commit in `node_modules/.cache/size-base`, and CI caches that folder, so a run on an unchanged base skips the second measurement. The base is measured beside your own bundles, so a cold run costs little more than one measurement.
 
 A bundle fails when it grows by more than its allowance:
 
@@ -81,7 +82,9 @@ Release steps in `CONTRIBUTING.md` run `npm run changes:fold`, which deletes the
 
 ## Package archive
 
-`archiveBytes` in `budgets.json` caps the npm archive that `npm pack` makes. `npm run smoke:package` checks it, after `npm run prepare:release`. The archive has a ceiling and not a base measurement, because measuring the base archive needs a full build. A pull request that pushes the archive over the ceiling accepts it with an `archive` line in its size note. Only a release edits `archiveBytes`. The archive was 904,975 bytes before the MCP preview shared the package's engine chunks and 666,214 after; features then grew it to 802,581, and one-line notices in each built file plus a stub for the SDK's unused Ajv shim brought it to 695,041. The budget is now 740,000 bytes (measured 2026-11-02 against `budgets.json`: lower it when the archive shrinks). Lower `archiveBytes` when work shrinks it.
+`npm run smoke:package` checks the npm archive that `npm pack` makes, after `npm run prepare:release`. It measures the archive of the base branch the same way as the bundles. It unpacks the base, builds the library and the MCP server there, and asks `npm pack --dry-run` for the size. That takes about ten seconds, and CI caches the result by base with the bundle sizes. The archive may grow by 2% of the base archive. A pull request that grows it more accepts it with an `archive` line in its size note. Two pull requests that each stay inside 2% never fail each other, because each one is compared with its own base.
+
+`archiveBytes` in `budgets.json` is the release ceiling. `smoke:package` reports it, and `npm run smoke:package -- --absolute` enforces it. `npm run size:release` resets it to 2% over the archive of the current build. A pull request never edits it. The archive was 904,975 bytes before the MCP preview shared the package's engine chunks and 666,214 after; features then grew it to 802,581, and one-line notices in each built file plus a stub for the SDK's unused Ajv shim brought it to 695,041. The budget is now 740,000 bytes (measured 2026-11-02 against `budgets.json`: lower it when the archive shrinks). Lower `archiveBytes` when work shrinks it.
 
 Moving code into installed dependencies would shrink the archive further but adds install size to every consumer, including library users who never run MCP. Making `@modelcontextprotocol/server` and `zod` dependencies saved about 125 KB of archive for about 14.5 MB on disk, so it was not kept.
 

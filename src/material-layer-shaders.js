@@ -1,4 +1,4 @@
-import { layerTextureSupport, registerShaderFeatureCode } from './shaders.js';
+import { layerTextureSupport, registerShaderFeatureCode } from './shader-registry.js';
 
 // Shader code for the anisotropy and iridescence material layers. It lives outside shaders.js so that a scene that
 // uses neither layer never downloads it: the renderer asks for it only when a part uses a layer, and importing this

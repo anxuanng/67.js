@@ -1,4 +1,4 @@
-import { layerTextureSupport, registerShaderFeatureCode } from './shaders.js';
+import { layerTextureSupport, registerShaderFeatureCode } from './shader-registry.js';
 import { worldBounds } from './probe-trace.js';
 
 // Water reflection: a large, flat, smooth surface (a lake, a river, a polished floor) shows the scene around it. The scene is

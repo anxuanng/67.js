@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { GRASS_LEVELS, GRASS_PRESETS, createGrass } from '../src/grass.js';
-import { fragmentShader, vertexShader } from '../src/shaders.js';
+import { createFragmentShader, createVertexShader } from '../src/shaders.js';
 
 const smallArea = { minX: -6, maxX: 6, minZ: -6, maxZ: 6 };
 // A light density keeps the suite fast; blade shape and level rules do not depend on it.
@@ -130,8 +130,8 @@ test('groundColor sits between the root and tip colours', () => {
 });
 
 test('grass wind bends by blade height (uv) and rolls across the field as gusts', () => {
-  assert.match(vertexShader, /vec3 grassWind\(/);
-  assert.match(vertexShader, /if \(surfaceTag == 7\.0 && leafUv\.x > -0\.5\) return grassWind\(/, 'grass without UVs keeps the height-based sway');
-  assert.match(vertexShader, /float gust = /);
-  assert.match(fragmentShader, /float towardSun = pow\(max\(dot\(-viewDirection, normalize\(lightDirection\)\)/, 'blades glow when backlit');
+  assert.match(createVertexShader(['grass']), /vec3 grassWind\(/);
+  assert.match(createVertexShader(['grass']), /if \(surfaceTag == 7\.0 && leafUv\.x > -0\.5\) return grassWind\(/, 'grass without UVs keeps the height-based sway');
+  assert.match(createVertexShader(['grass']), /float gust = /);
+  assert.match(createFragmentShader(['grass']), /float towardSun = pow\(max\(dot\(-viewDirection, normalize\(lightDirection\)\)/, 'blades glow when backlit');
 });

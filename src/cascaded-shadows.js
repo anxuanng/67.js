@@ -1,5 +1,5 @@
 import { mat4, vec3 } from 'gl-matrix';
-import { registerShaderFeatureCode } from './shaders.js';
+import { registerShaderFeatureCode } from './shader-registry.js';
 import { resolveShadowLight } from './shadow-light.js';
 
 // Cascaded sun shadows. The camera frustum is cut into up to four slices by view depth; each slice gets its own depth

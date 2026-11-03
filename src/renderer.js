@@ -1,5 +1,5 @@
 import { mat4, mat3 } from 'gl-matrix';
-import { SPLAT_UNITS, requireSplatSupport, layerTextureSupport, LIGHT_SHADING_FEATURE, SHADING_MODES, LIGHT_SHADING_MAXIMUM_SAMPLES, createVertexShader, createFragmentShader, liquidPassDrawer, depthFragmentShader, benchmarkVertexShader, benchmarkFragmentShader, viewTransformShader, createDepthVertexShader } from './shaders.js';
+import { SPLAT_UNITS, requireSplatSupport, layerTextureSupport, LIGHT_SHADING_FEATURE, SHADING_MODES, LIGHT_SHADING_MAXIMUM_SAMPLES, createVertexShader, vertexShader, liquidFragmentSource, createFragmentShader, liquidPassDrawer, depthFragmentShader, benchmarkVertexShader, benchmarkFragmentShader, viewTransformShader, createDepthVertexShader } from './shaders.js';
 import { postFragment, createPostFragment, POST_STEPS, skyFragment, bloomFragment } from './post.js';
 import { fullscreenVertex, startProgram, finishProgram, compileProgram } from './gl-program.js';
 import { ambientOcclusionFragment } from './ambient-occlusion.js';
@@ -1804,7 +1804,7 @@ export class Renderer67 {
     const foams = this.batches.filter(batch => batchPass(batch) === 'foam');
     if (liquids.length === 0 && foams.length === 0) return;
     const optics = resolveLiquidOptics({ ...environment.liquid, ...frame.liquid });
-    liquidPassDrawer()(this, { frame, environment, assemblyAmount, environmentMap, liquids, foams, optics, environmentSpecularUnit: ENVIRONMENT_SPECULAR_UNIT, maximumDistance: MAX_FINITE_DISTANCE });
+    liquidPassDrawer()(this, { frame, environment, assemblyAmount, environmentMap, liquids, foams, optics, environmentSpecularUnit: ENVIRONMENT_SPECULAR_UNIT, maximumDistance: MAX_FINITE_DISTANCE, vertexSource: vertexShader, fragmentSource: liquidFragmentSource() });
   }
 
   // Allocated on the first frame that asks for bloom, so scenes without it pay nothing.

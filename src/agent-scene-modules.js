@@ -18,6 +18,7 @@ const MODULE_LOADERS = {
   timeline: () => import('./film-timeline.js'),
   layerShaders: () => import('./material-layer-shaders.js'),
   liquidShader: () => import('./liquid-shader.js'),
+  worldMaterials: () => import('./world-material-shader.js'),
   terrain: () => import('./agent-terrain.js'),
   navigation: () => import('./agent-navigation.js'),
   lightLinking: () => import('./light-linking.js'),
@@ -49,6 +50,7 @@ const MODULE_MARKERS = {
   timeline: ['"timeline":{'],
   layerShaders: ['"anisotropy"', '"iridescence"'],
   liquidShader: ['"transmission"', '"liquid"', '"foam"'],
+  worldMaterials: ['"tag":"water"', '"tag":"foliage"', '"tag":"grass"', '"tag":"terrain"', '"tag":"fire"', '"tag":"smoke"', '"moss"'],
   terrain: ['"type":"terrain"'],
   // No recipe text asks for it, only the path option of scene_inspect does, so a host loads it with loadAllAgentSceneModules.
   navigation: [],

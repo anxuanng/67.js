@@ -6,8 +6,10 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { relative, resolve } from 'node:path';
 import { brotliCompressSync, gzipSync } from 'node:zlib';
 import { build } from 'esbuild';
+import { glslCommentStripperForEsbuild } from './strip-glsl-comments.mjs';
 import { budgetsFrom, compareToBudgets, formatRows, initialOutputPaths } from './size-budget.mjs';
 import { compareToBase, formatGrowthRows } from './size-growth.mjs';
+import { measureArchiveBytes } from './measure-archive.mjs';
 import { DEFAULT_BASE_REF, baseRefExists, measureBase, readAcceptedBundles } from './size-base.mjs';
 
 const BUDGETS_PATH = 'bench/size/budgets.json';
@@ -75,7 +77,7 @@ async function measureSource(contents) {
   const result = await build({
     stdin: { contents, resolveDir: process.cwd(), loader: 'js' },
     bundle: true, minify: true, format: 'esm', write: false, treeShaking: true, metafile: true,
-    splitting: true, outdir: 'size-output',
+    splitting: true, outdir: 'size-output', plugins: [glslCommentStripperForEsbuild()],
     external: EXTERNAL_PACKAGES, logLevel: 'silent', target: 'es2022',
     loader: { '.css': 'empty', '.json': 'json' },
     define: { 'process.env.NODE_ENV': '"production"' },
@@ -188,7 +190,10 @@ const budgetFile = await readJson(BUDGETS_PATH);
 const baselineFile = await readJson(BASELINE_PATH);
 
 // Budgets and the baseline move at release, never in a feature pull request.
-if (flags.has('--set-budgets')) budgetFile.budgets = budgetsFrom(measured);
+if (flags.has('--set-budgets')) {
+  budgetFile.budgets = budgetsFrom(measured);
+  budgetFile.archiveBytes = Math.ceil(measureArchiveBytes() * 1.02);
+}
 if (flags.has('--set-budgets') || flags.has('--update-baseline')) {
   const threeManifest = await readJson('node_modules/three/package.json');
   await writeJson(BUDGETS_PATH, budgetFile);
