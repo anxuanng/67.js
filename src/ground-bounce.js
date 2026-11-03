@@ -298,6 +298,45 @@ function hasLocalLights(environment) {
   return [environment.pointLights, environment.spotLights, environment.areaLights].some(lights => lights?.length > 0)
 }
 
+// Under a low sun a shadow is lit by more than the sky and the level ground: slopes, walls and roofs that face the sun send
+// it back too, and the ground term above does not see them (`mountain-valley` has no level ground at all). The sky's own light
+// is already in the map. The fill is a constant diffuse light, a `bounce` colour like the room's: the sun on a surface of the
+// ground's albedo (at least 0.2) over pi, times a fitted gain, and times how much more a vertical face gets than the ground,
+// squared: nothing for a high sun, whose ground bounce is the whole story (the studio scenes, `long-street`), most for a sun
+// near the horizon (`mountain-valley`, `megacity-dusk`). A closed room, a bake or no sun gets none, so `temple-hall` and
+// `dark-shaft` keep their shadows.
+const OUTDOOR_FILL_GAIN = 0.4
+const OUTDOOR_MINIMUM_ALBEDO = 0.2
+
+const openAirOfParts = new WeakMap()
+
+function isOpenAir(parts) {
+  const remembered = openAirOfParts.get(parts)
+  if (remembered?.length === parts.length) {
+    return remembered.openAir
+  }
+  const openAir = !isDrawnWithBakedLight(parts) && !isClosedRoom(parts)
+  openAirOfParts.set(parts, { length: parts.length, openAir })
+  return openAir
+}
+
+function outdoorFillEnvironment(parts, environment, ground) {
+  if (environment.outdoorFill === false || !environment.keyColor || !hasKeyLight(environment) || !isOpenAir(parts)) {
+    return environment
+  }
+  const { lightDirection } = environment
+  const sunLength = Math.hypot(...lightDirection)
+  const sunOnGround = Math.max(lightDirection[1] / sunLength, 0)
+  const sunOnWall = Math.hypot(lightDirection[0], lightDirection[2]) / sunLength
+  const lowSun = Math.max(sunOnWall - sunOnGround, 0) ** 2
+  if (lowSun === 0) {
+    return environment
+  }
+  const albedo = (ground?.albedo ?? [0, 0, 0]).map(channel => Math.max(channel, OUTDOOR_MINIMUM_ALBEDO))
+  const bounce = albedo.map((channel, index) => (OUTDOOR_FILL_GAIN * channel * environment.keyColor[index] * (environment.keyIntensity ?? 1) * lowSun) / Math.PI)
+  return { ...environment, map: { ...environment.map, bounce } }
+}
+
 /**
  * The environment with the ground's bounce in its map, found from the parts: the same environment when the scene has no
  * plain floor, a baked part (its light map already holds the bounce), a closed room (a bake or the room's own walls
@@ -316,8 +355,9 @@ export function groundBounceEnvironment(parts, environment, { automaticAlbedo = 
     return environment
   }
   const ground = groundOf(parts, automaticAlbedo)
+  const fill = outdoorFillEnvironment(parts, environment, ground)
   if (!ground) {
-    return environment
+    return fill
   }
   const { lightDirection } = environment
   const keyColor = environment.keyColor.map(channel => channel * (environment.keyIntensity ?? 1))
@@ -327,5 +367,5 @@ export function groundBounceEnvironment(parts, environment, { automaticAlbedo = 
   if (!byInputs.has(key)) {
     byInputs.set(key, withGroundBounce(environment.map, { albedo: ground.albedo, keyColor, lightDirection }))
   }
-  return { ...environment, map: byInputs.get(key) }
+  return { ...fill, map: { ...byInputs.get(key), ...(fill.map.bounce && { bounce: fill.map.bounce }) } }
 }

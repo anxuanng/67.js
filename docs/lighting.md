@@ -126,7 +126,22 @@ Luminance of the 67js picture over Cycles (linear, whole frame and 20th percenti
 | `brick-room` | 0.57 | 0.86 | 0.37 | 0.95 |
 | `temple-hall` | 0.97 | 0.97 | 1.62 | 1.64 |
 
-The two `temple-hall` p20 values differ only by the rescaling of the picture (the scene has a sun, so no bounce is added). The outdoor shadow fill of the issue is not done.
+The two `temple-hall` p20 values differ only by the rescaling of the picture (the scene has a sun, so no bounce is added).
+
+## Sun shadows fill under a low sun
+
+A scene with a sun that is not a closed room or a bake gets one more constant diffuse light under a low sun, the same `bounce` colour the room uses, so it costs nothing per frame and changes no shader. Slopes, walls and roofs that face a low sun send its light back into the shadows, and the ground term does not see them (`mountain-valley` has no level ground at all). The fill is `0.4 * albedo * sun colour / pi * (wall - ground)^2`, where `ground` is the sun's vertical share on a level surface, `wall` its horizontal share on a vertical one and `albedo` the floor's (at least 0.2). A high sun gives zero, so the studio scenes and `long-street` are unchanged, and so are `temple-hall` and `dark-shaft`. `environment.outdoorFill: false` turns it off.
+
+Measured on SwiftShader against the committed Cycles panels (960 x 540 picture scaled to the panel, FLIP of the panel pair):
+
+| Scene | Mean before | Mean after | p20 before | p20 after | FLIP before | FLIP after |
+| --- | --- | --- | --- | --- | --- | --- |
+| `mountain-valley` | 0.90 | 0.99 | 0.60 | 0.79 | 0.1699 | 0.1259 |
+| `megacity-dusk` | 0.93 | 0.97 | 0.59 | 0.85 | 0.1686 | 0.1431 |
+| `fog-valley` | 1.07 | 1.09 | 0.86 | 0.92 | 0.1906 | 0.1810 |
+| `temple-hall`, `dark-shaft` | | | | unchanged | | unchanged |
+
+The other 19 reference scenes drew the same pixels (mean, p20 and FLIP identical).
 
 ## Local shadows
 
