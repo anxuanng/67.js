@@ -73,6 +73,7 @@ export async function create67Adapter(canvas, scene, characters, { culling = tru
   const frame = { eye: scene.camera.eye, target: scene.camera.target, up: [0, 1, 0], fov: scene.camera.fov, near: scene.camera.near, far: scene.camera.far, environment, time: 0, exposure: 1, effects: {} };
   return {
     context: renderer.context,
+    memoryReport: () => renderer.memoryReport(),
     update(time) {
       if (scene.update) {
         scene.update(time);

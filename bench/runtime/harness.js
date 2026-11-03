@@ -183,6 +183,7 @@ async function runBenchmark(sceneId, engine, frames) {
     fullFrameMilliseconds: median(fullFrameTimes),
     drawCalls, triangles,
     gpuBytes: watcher.gpuBytes(),
+    renderTargets: adapter.memoryReport?.().targets ?? null,
     heapBytes: heapBefore === null ? null : heapBytes() - heapBefore,
     glError: adapter.context.getError(),
     // The frame at time 0 after many frames must match the first frame drawn: nothing may depend on what came before.
