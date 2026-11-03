@@ -886,3 +886,18 @@ Measured with `npm run reference -- --skip-blender`, same Cycles and EEVEE array
 | `foliage` | 0.0989 (EEVEE 0.0811) | 0.0990 (0.0809) |
 
 Both brick scenes are back under their scores before the aligned eye (0.1272 and 0.1602). The slope scaled bias in depth-range units that was tried first made `temple-hall` and `foliage` worse; in world units neither moves. `foliage` against EEVEE was 0.0888 with the old off-sun eye, 0.0811 after the aligned eye and is 0.0809 now, so the bias leaves the crown gap of issue #191 as it was. `fog` against EEVEE is 0.0074 worse while it is 0.0048 better against Cycles; the gate is Cycles.
+
+## Sky light in the canyon of `megacity-dusk-a` is not the cause of the bright river (2026-11-03, part of issue #232)
+
+Issue #231 inferred that surfaces between the towers get the whole sky in 67js while Cycles lets only a slice in. This measures it with the sun off on both sides. `render-blender.py` has a new `--sun-strength <scale>` switch beside `--world-strength` (Cycles only, the sun times the scale, into `<id>-cycles-sun<scale>.npy`): `blender -b --factory-startup -t 6 --python bench/reference/render-blender.py -- artifacts/reference-grand --sun-strength 0 megacity-dusk-a`. The 67js side is `render-gpu.mjs <directory> megacity-dusk-a --key 0`, and again with `--ambient 0` to take the sky's diffuse light away. Both arrays are tone mapped with the curve of `src/post.js` and compared as mean luminance over image regions (960 x 540, GPU).
+
+| Region | Cycles, sun off | 67js, sun off | 67js, sun and ambient off | excess | of it, ambient |
+| --- | --- | --- | --- | --- | --- |
+| towers (rows 100 to 340) | 0.2157 | 0.2024 | 0.1868 | -0.0132 | 0.0156 |
+| quay and street (rows 340 to 400) | 0.1096 | 0.1023 | 0.0917 | -0.0073 | 0.0106 |
+| river, middle (rows 420 to 540, columns 280 to 680) | 0.0063 | 0.0274 | 0.0204 | +0.0211 | 0.0070 |
+| river, sides (rows 400 to 540, columns 0 to 280) | 0.0158 | 0.0528 | 0.0429 | +0.0370 | 0.0099 |
+
+Row bands of 60 rows, 67js over Cycles with the sun off: 0.99, 0.98, 0.96, 0.94, 0.92, 0.90 down to row 360, then 1.55, 3.31 and 3.65 over the river. Full light gives the same bottom bands (1.75, 3.13, 3.37).
+
+The towers and the quay are slightly darker in 67js than in Cycles with only the sky, not brighter, so the canyon walls and the street do not get too much sky light. The river is 3 to 4 times brighter, but taking all the sky's diffuse light away (`--ambient 0`) removes only 0.007 to 0.010 of an excess of 0.021 to 0.037, so 67js stays 2.6 to 2.8 times over Cycles with no ambient at all. Even a perfect occlusion of the sky light in the river could close about a third of the gap, and the walls give no sign that the occlusion is missing. The rest comes from what the water draws besides diffuse sky: the reflection of the lit windows and the lamps (`src/water-reflection.js`), which is the part #195 works on. No sky visibility grid was built.
