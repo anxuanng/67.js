@@ -58,6 +58,29 @@ The mean of the 23 baseline scenes is 0.1746 for 67js and 0.1986 for EEVEE. The 
 
 Dated notes below, kept where they explain a decision. Numbers in them are from the date they name, and those before 2026-11-01 use the sky with two suns.
 
+## AgX and Khronos PBR Neutral against Blender 5.2.2 (2026-11-03, part of issue #282)
+
+`environment.viewTransform: 'agx' | 'neutral'` (#319) against Blender's AgX and Khronos PBR Neutral view transforms.
+
+Colour ramp (`scripts/blender-view-transform-golden.py`, rerun on 5.2.2: the output matches the committed `tests/fixtures/blender/view-transform-golden.json` byte for byte). 27 patches: 15 greys from 0 to 16 and 12 colours up to 5.0. Each is an emissive plane; the error is |67js - Blender| per channel in sRGB-encoded display units (0 to 1; 0.01 is 2.6 of 255 steps). `tests/view-transform.test.js` fails above the threshold.
+
+| Transform | Threshold (max) | Max error | Mean error | Max per channel R, G, B | Within |
+| --- | --- | --- | --- | --- | --- |
+| `neutral` | 0.010 | 0.0079 | 0.0013 | 0.0079, 0.0052, 0.0079 | yes |
+| `agx` | 0.026 | 0.0247 | 0.0026 | 0.0168, 0.0247, 0.0072 | yes |
+
+`agx` was 0.0885 at most (mean 0.0252) before 2026-11-03, measured the same way. Blender 5.2's AgX is the EaryChow version, not the Troy Sobotka one the Filament/three.js polynomial copies: E-Gamut input, log2 over -12.47393 to +4.026 EV (the same range as before), a per-channel sigmoid with pivot at 0.18 grey (output 0.488, slope 2.39, toe and shoulder power about 1.5), a 2.4 power, then a matrix back to Rec.709 applied to the linear value. The differing steps were the sigmoid (the 6th-degree polynomial was too bright in the mid-tones: grey 0.18 gave 0.501 against Blender's 0.461), the matrices (Rec.2020 inset and outset against Blender's gamut-specific LUT) and the output power (2.2 against 2.4 before the matrix). `src/view-transform.js` now holds a fit of `AgX_Base_sRGB.cube`: the sigmoid is fitted to the LUT's grey diagonal (within 0.0013 in the 2.4-encoded value), the two matrices to random colours. Grey 0.18 maps to 0.460 (Blender 0.461); the grey patches are within 0.0012. The rest of the error is saturated colour (worst patch 2.0, 0.8, 0.1, green channel), which a per-channel sigmoid and two matrices cannot follow exactly, so the threshold is 0.026. `neutral` follows Blender to within 2 steps of 255 (the Khronos formula is the same).
+
+Scenes: `npm run reference -- --view-transform agx --scene <id>,<id>` draws 67js with `viewTransform: 'agx'`, renders Cycles with the AgX view transform (same samples, denoising and scene description as the suite; 8-bit sRGB PNG, so both sides are quantised), and scores them with FLIP. Blender's sRGB picture is decoded and encoded with the 2.2 power 67js uses, so the score measures the curve and the lighting, not the transfer function. The standard column is the suite's own score (Cycles with the `Raw` transform, then the ACES fit on both sides, `baseline.json`).
+
+| Scene | `agx` before (2026-11-03, #343) | `agx` after (2026-11-03) | Standard (ACES fit both sides) |
+| --- | --- | --- | --- |
+| `outdoor-hdri` | 0.0997 | 0.0425 | 0.0462 |
+| `material-spheres` | 0.1467 | 0.0903 | 0.1293 |
+| `character` | 0.1238 | 0.0581 | 0.0799 |
+
+AgX now scores better than the standard row on all three (the mid-tone gap was the cause; the Cycles pictures were reused, only 67js was redrawn). The scores are in `view-transform.json`; Cycles ran on OptiX as in the suite, 67js on the RTX 3060.
+
 ## One sun (2026-11-01)
 
 The HDRI holds its own sun: 6 of its 524,288 pixels carry 48.1 percent of the sky light, at 48 degrees of elevation. Most scenes also add a sun light. Cycles and EEVEE therefore drew two shadows of each object, and 67js drew one because its environment casts no shadow. `scenes.js` and `render-blender.py` now cap the image at radiance 16 on both sides, which removes the sun and its halo and keeps the clouds. The sky keeps 49.2 percent of its light. A scene with a sky now has only its own sun light.

@@ -28,7 +28,14 @@ const grand = process.argv.includes('--grand');
 const optionFlag = process.argv.indexOf('--option');
 const lookIds = optionFlag >= 0 ? process.argv[optionFlag + 1].split(',').map(name => name.replace(':', '-')) : null;
 const sceneSet = khronos ? 'khronos' : cloth ? 'cloth' : grand ? 'grand' : lookIds ? 'look' : null;
-const WORK_DIRECTORY = resolve(sceneSet ? `artifacts/reference-${sceneSet}` : 'artifacts/reference');
+// --view-transform <agx|neutral> draws the scenes with that environment.viewTransform and renders Cycles with the matching Blender view
+// transform (AgX, Khronos PBR Neutral), then scores the pair with view-transform-score.py into view-transform.json (issue #282).
+// Use it with --scene <id>,<id>; the work directory is separate and baseline.json stays as it is.
+const viewTransformFlag = process.argv.indexOf('--view-transform');
+const viewTransform = viewTransformFlag >= 0 ? process.argv[viewTransformFlag + 1] : null;
+const BLENDER_VIEW_TRANSFORMS = { agx: 'AgX', neutral: 'Khronos PBR Neutral' };
+if (viewTransform && !BLENDER_VIEW_TRANSFORMS[viewTransform]) throw new Error(`--view-transform must be one of ${Object.keys(BLENDER_VIEW_TRANSFORMS).join(', ')}.`);
+const WORK_DIRECTORY = resolve(viewTransform ? `artifacts/reference-view-${viewTransform}` : sceneSet ? `artifacts/reference-${sceneSet}` : 'artifacts/reference');
 const OUTPUT_DIRECTORY = resolve('bench/reference');
 const CHROME = process.env.CHROME_PATH ?? 'C:/Program Files/Google/Chrome/Application/chrome.exe';
 const BLENDER = process.env.BLENDER_PATH ?? 'C:/Program Files/Blender Foundation/Blender 5.2/blender.exe';
@@ -94,7 +101,7 @@ const bakeScoreRun = bakedSceneIds !== null && !sceneSet && !pathTracerFlag;
 const bakeVariantFlags = ['--sky-only', '--bake-preset', '--probes', '--ambient', '--ambient-occlusion', '--cascades', '--no-object-probes', '--object-probes', '--no-water', '--ssr-water', '--no-ground-bounce'];
 const bakeScoreIsBaseline = bakeScoreRun && argumentsGiven.includes('--update-baseline') && !bakeVariantFlags.some(flag => argumentsGiven.includes(flag));
 const onlyScenes = sceneIdsGiven ?? (bakeScoreRun ? bakedSceneIds : null);
-const skipCpu = skipCpuFlag || bakeScoreRun;
+const skipCpu = skipCpuFlag || bakeScoreRun || Boolean(viewTransform);
 
 async function renderBackend(backend, serverUrl, graphics) {
   const browser = await chromium.launch({ executablePath: CHROME, headless: true, args: BACKEND_ARGUMENTS[backend] });
@@ -122,7 +129,7 @@ async function renderBackend(backend, serverUrl, graphics) {
       const objectProbesThisScene = !argumentsGiven.includes('--no-object-probes') && (objectProbeSceneIds === null || objectProbeSceneIds.includes(id));
       const probes = probesThisScene || (objectProbesThisScene ? 'objects' : false);
       const bake = bakesThisScene ? { ...skyOnlyOptions, ...(bakePreset ? { preset: bakePreset } : {}) } : null;
-      const result = await page.evaluate(([sceneId, shouldDescribe, ambientOcclusion, ambientOcclusionRadius, bakeOptions, cascadeCount, withProbes, ambientScale]) => window.renderReferenceScene(sceneId, { describe: shouldDescribe, ambientOcclusion, ambientOcclusionRadius, bake: bakeOptions, cascades: cascadeCount, probes: withProbes, ambient: ambientScale }), [id, describe, ambientOcclusion, ambientOcclusionRadius, bake, cascades, probes, ambient]);
+      const result = await page.evaluate(([sceneId, shouldDescribe, ambientOcclusion, ambientOcclusionRadius, bakeOptions, cascadeCount, withProbes, ambientScale, selectedViewTransform]) => window.renderReferenceScene(sceneId, { describe: shouldDescribe, ambientOcclusion, ambientOcclusionRadius, bake: bakeOptions, cascades: cascadeCount, probes: withProbes, ambient: ambientScale, viewTransform: selectedViewTransform }), [id, describe, ambientOcclusion, ambientOcclusionRadius, bake, cascades, probes, ambient, viewTransform]);
       if (result.glError !== 0) throw new Error(`${id} on ${backend} gave WebGL error ${result.glError}.`);
       graphics[backend] = result.graphics;
       await writeFile(`${WORK_DIRECTORY}/${id}-${backend}.png`, Buffer.from(result.image, 'base64'));
@@ -198,8 +205,16 @@ if (!scoreOnly && !pathTracerFlag) {
   await writeFile(`${WORK_DIRECTORY}/graphics.json`, JSON.stringify(graphics, null, 1));
   if (!skipBlender) {
     const sceneArguments = onlyScenes ?? [];
-    runChecked(BLENDER, ['-b', '--factory-startup', '--python', 'bench/reference/render-blender.py', '--', WORK_DIRECTORY, ...sceneArguments]);
+    const viewTransformArguments = viewTransform ? ['--view-transform', BLENDER_VIEW_TRANSFORMS[viewTransform]] : [];
+    runChecked(BLENDER, ['-b', '--factory-startup', '-t', '6', '--python', 'bench/reference/render-blender.py', '--', WORK_DIRECTORY, ...viewTransformArguments, ...sceneArguments]);
   }
+}
+
+if (viewTransform) {
+  runChecked('uv', [
+    'run', '--no-project', '--python', '3.12', '--with', 'flip-evaluator', '--with', 'pillow', '--with', 'numpy',
+    'python', '-I', 'bench/reference/view-transform-score.py', WORK_DIRECTORY, OUTPUT_DIRECTORY, viewTransform, ...(onlyScenes ?? []),
+  ]);
 }
 
 if ((!onlyScenes && !skipCpu) || pathTracerFlag || bakeScoreRun) {

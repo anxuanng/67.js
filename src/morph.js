@@ -1,4 +1,7 @@
-export const MAX_MORPH_TARGETS = 64;
+import { MAX_MORPH_TARGETS, registerShaderFeatureCode, registerDeformationSupport } from './shader-registry.js';
+import { skinTextureLayout } from './skinning.js';
+
+export { MAX_MORPH_TARGETS };
 
 const validatedMetadata = new WeakSet();
 const MIN_NORMAL_FLOAT32 = 2 ** -126;
@@ -188,3 +191,40 @@ export function packMorphTargets(geometry, layout) {
   }
   return data;
 }
+
+// The vertex GLSL of morphed parts, spliced by shaders.js. Morph targets sit in one texture, on its own unit.
+registerShaderFeatureCode('morph', {
+  vertex: `
+uniform float morphEnabled;
+uniform int morphVertexCount;
+uniform int morphTargetCount;
+uniform float morphWeights[${MAX_MORPH_TARGETS}];
+uniform highp sampler2D morphTargets;
+vec3 morphDelta(int target, int channel) {
+  int index = (target * morphVertexCount + gl_VertexID) * 2 + channel;
+  int width = textureSize(morphTargets, 0).x;
+  return texelFetch(morphTargets, ivec2(index % width, index / width), 0).xyz;
+}
+vec3 morphedPosition(vec3 base) {
+  if (morphEnabled < 0.5) return base;
+  vec3 result = base;
+  for (int target = 0; target < ${MAX_MORPH_TARGETS}; target++) {
+    if (target >= morphTargetCount) break;
+    if (morphWeights[target] != 0.0) result += morphDelta(target, 0) * morphWeights[target];
+  }
+  return result;
+}
+vec3 morphedNormal(vec3 base) {
+  if (morphEnabled < 0.5) return base;
+  vec3 result = base;
+  for (int target = 0; target < ${MAX_MORPH_TARGETS}; target++) {
+    if (target >= morphTargetCount) break;
+    if (morphWeights[target] != 0.0) result += morphDelta(target, 1) * morphWeights[target];
+  }
+  float largest = max(max(abs(result.x), abs(result.y)), abs(result.z));
+  return largest > 0.0 ? normalize(result / largest) : base;
+}
+`
+});
+
+registerDeformationSupport({ validateMorphGeometry, validateMorphPose, validateMorphTransform, packMorphTargets, skinTextureLayout });

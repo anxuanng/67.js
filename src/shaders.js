@@ -1,41 +1,8 @@
-import { MAX_MORPH_TARGETS } from './morph.js';
 import { MAX_POINT_LIGHTS, MAX_SPOT_LIGHTS, MAX_AREA_LIGHTS } from './light-limits.js';
 import { addonGlsl } from './shader-registry.js';
 import { registeredFeatureCode, requireFeatureCode, registerShaderFeatureCode, registerSplatSupport, requireSplatSupport, layerTextureSupport, viewTransformShader, SPLAT_UNITS } from './shader-registry.js';
 
 export { registerShaderFeatureCode, registerSplatSupport, requireSplatSupport, layerTextureSupport, viewTransformShader, SPLAT_UNITS };
-
-const morphingShader = `
-uniform float morphEnabled;
-uniform int morphVertexCount;
-uniform int morphTargetCount;
-uniform float morphWeights[${MAX_MORPH_TARGETS}];
-uniform highp sampler2D morphTargets;
-vec3 morphDelta(int target, int channel) {
-  int index = (target * morphVertexCount + gl_VertexID) * 2 + channel;
-  int width = textureSize(morphTargets, 0).x;
-  return texelFetch(morphTargets, ivec2(index % width, index / width), 0).xyz;
-}
-vec3 morphedPosition(vec3 base) {
-  if (morphEnabled < 0.5) return base;
-  vec3 result = base;
-  for (int target = 0; target < ${MAX_MORPH_TARGETS}; target++) {
-    if (target >= morphTargetCount) break;
-    if (morphWeights[target] != 0.0) result += morphDelta(target, 0) * morphWeights[target];
-  }
-  return result;
-}
-vec3 morphedNormal(vec3 base) {
-  if (morphEnabled < 0.5) return base;
-  vec3 result = base;
-  for (int target = 0; target < ${MAX_MORPH_TARGETS}; target++) {
-    if (target >= morphTargetCount) break;
-    if (morphWeights[target] != 0.0) result += morphDelta(target, 1) * morphWeights[target];
-  }
-  float largest = max(max(abs(result.x), abs(result.y)), abs(result.z));
-  return largest > 0.0 ? normalize(result / largest) : base;
-}
-`;
 
 // The GPU crowd path (src/crowd-skinning.js) replaces this stub with its own code when that addon is imported, so the core pays for two lines.
 const CROWD_SHADER_STUB = 'uniform float crowdEnabled;\nmat4 crowdTransform() { return mat4(1.0); }';
@@ -46,28 +13,30 @@ export function installCrowdShader(code) {
   crowdShaderCode = code;
 }
 
-const skinningShader = () => `
-uniform float skinEnabled;
-uniform highp sampler2D skinInfluences;
-uniform highp sampler2D jointPalette;
-vec4 skinTexel(sampler2D source, int index) {
-  int width = textureSize(source, 0).x;
-  return texelFetch(source, ivec2(index % width, index / width), 0);
+// The skin and morph GLSL registers from skinning.js and morph.js. A vertex shader for a renderer without those parts gets these stubs,
+// which keep the depth and benchmark shaders (they call the functions unconditionally) compiling.
+const SKIN_STUB = 'mat4 skinTransform() { return mat4(1.0); }';
+const MORPH_STUB = 'vec3 morphedPosition(vec3 base) { return base; }\nvec3 morphedNormal(vec3 base) { return base; }';
+
+function requireDeformationCode(feature, file) {
+  const code = registeredFeatureCode.get(feature);
+  if (!code) throw new Error(`The ${feature} feature needs its shader code: import ${file} (any module that makes a ${feature} pose, such as the glTF loader, does).`);
+  return code;
 }
-mat4 jointMatrix(int joint) {
-  int offset = joint * 4;
-  return mat4(skinTexel(jointPalette, offset), skinTexel(jointPalette, offset + 1),
-    skinTexel(jointPalette, offset + 2), skinTexel(jointPalette, offset + 3));
+
+// The crowd path reads the joint palette that the skin code declares, so a crowd renderer carries it too.
+function skinningShader(features) {
+  const enabled = new Set(features);
+  if (!enabled.has('skin') && !enabled.has('crowd')) return `${CROWD_SHADER_STUB}
+${SKIN_STUB}`;
+  const { vertexHead, vertexTail } = requireDeformationCode('skin', 'skinning.js');
+  return `${vertexHead}${crowdShaderCode}
+${vertexTail}`;
 }
-${crowdShaderCode}
-mat4 skinTransform() {
-  if (skinEnabled < 0.5) return mat4(1.0);
-  ivec4 joints = ivec4(skinTexel(skinInfluences, gl_VertexID * 2));
-  vec4 weights = skinTexel(skinInfluences, gl_VertexID * 2 + 1);
-  return jointMatrix(joints.x) * weights.x + jointMatrix(joints.y) * weights.y
-    + jointMatrix(joints.z) * weights.z + jointMatrix(joints.w) * weights.w;
+
+function morphingShader(features) {
+  return new Set(features).has('morph') ? requireDeformationCode('morph', 'morph.js').vertex : MORPH_STUB;
 }
-`;
 
 // Wind lives in world-material-shader.js; a vertex shader without wind parts gets this stub.
 const WIND_STUB = `
@@ -116,8 +85,8 @@ flat out float instanceOrdinal;
 out vec3 boxPosition;
 out vec3 boxNormal;
 flat out mat3 boxNormalMatrix;
-${skinningShader()}
-${morphingShader}
+${skinningShader(features)}
+${morphingShader(features)}
 ${windShader(features)}
 ${addonGlsl.defs}
 void main() {
@@ -171,8 +140,8 @@ uniform float assemblyAmount;
 uniform float time;
 uniform float wind;
 out vec2 textureUV;
-${skinningShader()}
-${morphingShader}
+${skinningShader(features)}
+${morphingShader(features)}
 ${windShader(features)}
 ${addonGlsl.defs}
 void main() {
@@ -212,8 +181,8 @@ layout(location=2) in mat4 instanceMatrix;
 layout(location=9) in vec3 instanceColor;
 uniform mat4 viewProjection;
 out vec3 color;
-${skinningShader()}
-${morphingShader}
+${skinningShader([])}
+${morphingShader([])}
 void main() {
   color = instanceColor;
   gl_Position = viewProjection * instanceMatrix * skinTransform() * vec4(morphedPosition(position), 1.0);
@@ -846,7 +815,8 @@ export function createVertexShader(features = SHADER_FEATURES) {
   return vertexShaderSource(vertexDefinitions(new Set(features)), features);
 }
 
-export const vertexShader = createVertexShader(SHADER_FEATURES.filter(feature => feature !== 'crowd'));
+// Without skin and morph, which need their modules; the liquid pass draws rigid parts only.
+export const vertexShader = createVertexShader(SHADER_FEATURES.filter(feature => !['crowd', 'skin', 'morph'].includes(feature)));
 
 /** The fragment shader for a set of features. A feature with separate code throws until its module is imported. */
 export function createFragmentShader(features = SHADER_FEATURES) {

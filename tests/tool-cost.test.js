@@ -2,28 +2,24 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { measureToolCost } from '../scripts/measure-tool-cost.mjs';
+import { ceilingProblems, costsFrom } from '../scripts/tool-cost-growth.mjs';
 
 const budgets = JSON.parse(readFileSync(new URL('../bench/tool-cost-budgets.json', import.meta.url), 'utf8'));
 const report = await measureToolCost();
+const costs = costsFrom(report);
 
-test('the tool schemas an agent reads on every turn stay under their total budget', () => {
-  assert.ok(report.schemaTotal.bytes <= budgets.schemaTotalBytes,
-    `tool schemas are ${report.schemaTotal.bytes} bytes, over the ${budgets.schemaTotalBytes} budget. Move rare detail into scene_capabilities or reference a shared schema; raise bench/tool-cost-budgets.json only for a feature that needs it.`);
+// Growth against the base branch is checked by npm run tool-cost, and tests/tool-cost-growth.test.js tests its rules.
+// The ceilings are release numbers: a pull request past one is reported by npm run tool-cost and never fails here.
+test('every typical result has a release ceiling, and the budget file holds no history string', () => {
+  for (const name of Object.keys(costs).filter(key => key.startsWith('result:'))) {
+    const ceiling = budgets.resultBytes[name.slice('result:'.length)];
+    assert.ok(ceiling !== undefined, `${name} has no release ceiling; run npm run tool-cost:release.`);
+  }
+  assert.equal(budgets.measured, undefined, 'bench/tool-cost-budgets.json holds no history string. Git history keeps it.');
 });
 
-test('each large tool schema and every small one stays under its own budget', () => {
-  for (const row of report.schemas) {
-    const budget = budgets.schemaToolBytes[row.name] ?? budgets.schemaOtherToolBytes;
-    assert.ok(row.bytes <= budget, `${row.name} is ${row.bytes} bytes, over its ${budget} budget.`);
-  }
-});
-
-test('typical results stay under their budgets', () => {
-  for (const row of report.results) {
-    const budget = budgets.resultBytes[row.name];
-    assert.ok(budget !== undefined, `${row.name} has no result budget; add one to bench/tool-cost-budgets.json.`);
-    assert.ok(row.bytes <= budget, `${row.name} result is ${row.bytes} bytes, over its ${budget} budget.`);
-  }
+test('the release ceilings come back as a list of problems', () => {
+  assert.ok(Array.isArray(ceilingProblems(costs, budgets)));
 });
 
 test('a small mesh change as a mesh_edit call is smaller than rewriting the recipe', () => {

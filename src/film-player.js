@@ -1,6 +1,7 @@
 import './film-style.css';
 import './brand.js';
 import { Renderer67 } from './renderer.js';
+import './explosion-shader.js';
 import { createFilmScenes, FILM_DURATION, sampleFilm } from './film.js';
 
 const query = new URLSearchParams(window.location.search);

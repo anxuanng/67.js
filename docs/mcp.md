@@ -60,6 +60,7 @@ Using Node directly also avoids shell-specific npm launcher behavior in MCP clie
 The asset catalog reads regular files directly inside that directory, with limits of 64 files and 16 MiB per file.
 Asset IDs bind file contents through SHA-256. Changed files require a runtime restart before they receive refreshed IDs.
 Catalog imports retain supported textures, skins, morphs and animation clips.
+The catalog takes self-contained GLB only. Poly Haven and similar sites ship a glTF folder (`.gltf`, `.bin` and textures): bundle it first with one command, then put the result in the catalog directory: `npx @gltf-transform/cli copy tree_01_1k.gltf tree_01.glb`. A recipe places a catalog asset with an `asset` node field (see [the scene guide](agent-scene.md#placed-catalog-assets)).
 
 These launch options remain outside tool arguments.
 The process runs below normal priority to reduce interference with other work.
@@ -149,7 +150,7 @@ Every error an agent can reach names what failed and what to do next. `tests/too
 
 ### Tool cost and diagnostics
 
-Every tool schema is read on every turn, so `node scripts/measure-tool-cost.mjs` reports the bytes and estimated tokens of each schema and of each typical result, and `tests/tool-cost.test.js` fails when one passes `bench/tool-cost-budgets.json`. The schemas total 173,216 bytes (about 49,500 tokens). To save space, a mesh geometry's `edits` and `stack` in a recipe, and `motion` in `scene_apply` and asset recipes, are advertised as plain objects: the full field list is in `mesh_edit`, `mesh_stack` and `scene_create`, and the backend still validates every field and names the valid choices when one is wrong. A small mesh change is far cheaper as `mesh_edit` (187 bytes in the measured case) than as a whole recipe rewrite (1,254 bytes with the dispose).
+Every tool schema is read on every turn, so `node scripts/measure-tool-cost.mjs` reports the bytes and estimated tokens of each schema and of each typical result, and `npm run tool-cost` fails a pull request when one grows past its allowance against the base branch (`bench/tool-cost/README.md`). The schemas total 173,216 bytes (about 49,500 tokens). To save space, a mesh geometry's `edits` and `stack` in a recipe, and `motion` in `scene_apply` and asset recipes, are advertised as plain objects: the full field list is in `mesh_edit`, `mesh_stack` and `scene_create`, and the backend still validates every field and names the valid choices when one is wrong. A small mesh change is far cheaper as `mesh_edit` (187 bytes in the measured case) than as a whole recipe rewrite (1,254 bytes with the dispose).
 
 `mesh_inspect` lint adds warnings for `intersecting-parts`, `self-intersection`, `thin-wall`, `floating-part` and `asymmetric`. They never set `ok` to false, run within face budgets, and list any check they skipped in `skippedChecks`. `scene_inspect` returns a `diagnostics` list only when there is something to say: ignored material fields, blended transmission, unused materials or geometries, and for imported assets the decoder's not-drawn features, rigs with no joints or no skin, and assets with no clips. Each item has `kind`, `severity`, `target`, `message` and `fix`.
 

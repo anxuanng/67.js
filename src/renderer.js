@@ -14,13 +14,12 @@ import { RenderTargetLedger } from './render-target-ledger.js';
 import { SHADOW_ATLAS_WIDTH, SHADOW_TILE_SIZE, SHADOW_TILES_PER_ROW, tileViewport, writeShadowTile } from './local-shadows.js';
 import { resolveVolumeFog, volumeShadowAmbient } from './volumetric.js';
 import { requireEnvironmentSupport } from './environment-shading.js';
-import { validateSkinGeometry, validateSkinPose, skinTextureLayout, packSkinInfluences } from './skinning.js';
 import { materialLayerState, materialLayerValue } from './material-layers.js';
 import { MaterialSnapshot } from './material-snapshot.js';
 import { fittedFogDensity } from './fog-fit.js';
 import { InstanceSelection, extractFrustumPlanes, geometryBoundingSphere, selectInstances } from './render-culling.js';
 import { resolveShadowLight, shadowBiasPerSlope } from './shadow-light.js';
-import { validateMorphGeometry, validateMorphPose, validateMorphTransform, packMorphTargets } from './morph.js';
+import { requireDeformationSupport } from './shader-registry.js';
 
 const SHADOW_MAP_SIZE = 2048;
 // Liquid and foam see the resolved opaque scene, so they draw in their own pass after it.
@@ -316,6 +315,13 @@ function groundPart() {
   };
 }
 
+// The skin and morph code loads with skinning.js and morph.js (any module that makes a pose imports them), so a part without
+// a skin or morph targets never reaches it.
+const skinSupport = () => requireDeformationSupport('validateSkinGeometry', 'skinning.js');
+const morphSupport = () => requireDeformationSupport('validateMorphGeometry', 'morph.js');
+const hasSkinData = part => Boolean(part.skin || part.geometry.skinIndices || part.geometry.skinWeights);
+const hasMorphData = part => Boolean(part.morph || part.geometry.morphTargets !== undefined);
+
 export function groupParts(parts, batching = true) {
   const groups = new Map();
   const batches = [];
@@ -323,13 +329,19 @@ export function groupParts(parts, batching = true) {
   for (const part of parts) {
     validateTransform(part);
     if (part.castShadow !== undefined && typeof part.castShadow !== 'boolean') throw new TypeError('castShadow must be a boolean');
-    validateSkinGeometry(part.geometry, part.skin);
-    if (part.skin) validateSkinPose(part.skin, part.geometry, part.matrix);
+    if (hasSkinData(part)) {
+      const { validateSkinGeometry, validateSkinPose } = skinSupport();
+      validateSkinGeometry(part.geometry, part.skin);
+      if (part.skin) validateSkinPose(part.skin, part.geometry, part.matrix);
+    }
     if (part.skin && PROCEDURAL_MATERIAL_TAGS.has(part.material.tag)) throw new Error('Skinned parts require a standard material tag.');
-    if (!morphInfos.has(part.geometry)) morphInfos.set(part.geometry, validateMorphGeometry(part.geometry, part.morph));
-    else if (part.morph || part.geometry.morphTargets) validateMorphPose(part.morph, morphInfos.get(part.geometry));
+    if (hasMorphData(part)) {
+      const { validateMorphGeometry, validateMorphPose, validateMorphTransform } = morphSupport();
+      if (!morphInfos.has(part.geometry)) morphInfos.set(part.geometry, validateMorphGeometry(part.geometry, part.morph));
+      else validateMorphPose(part.morph, morphInfos.get(part.geometry));
+      if (part.morph) validateMorphTransform(part.morph, morphInfos.get(part.geometry), part.matrix, part.skin);
+    }
     if (part.morph && PROCEDURAL_MATERIAL_TAGS.has(part.material.tag)) throw new Error('Morphed parts require a standard material tag.');
-    if (part.morph) validateMorphTransform(part.morph, morphInfos.get(part.geometry), part.matrix, part.skin);
     const key = batching ? part.geometry : part;
     if (!groups.has(key)) groups.set(key, new Map());
     let maps = groups.get(key);
@@ -529,7 +541,7 @@ export class Renderer67 {
       const part = group[0];
       if (!part.morph || morphGeometries.has(part.geometry)) continue;
       const texelCount = part.geometry.positions.length / 3 * part.geometry.morphTargets.length * 2;
-      this.textureBytes += skinTextureLayout(texelCount, textureLimit, 2).bytes;
+      this.textureBytes += morphSupport().skinTextureLayout(texelCount, textureLimit, 2).bytes;
       morphGeometries.add(part.geometry);
     }
     const poses = new Set();
@@ -537,12 +549,12 @@ export class Renderer67 {
     for (const group of groups) {
       const part = group[0];
       if (part.crowd && !poses.has(part.crowd)) {
-        this.textureBytes += skinTextureLayout(part.crowd.data.length / 4, textureLimit, 4).bytes;
+        this.textureBytes += skinSupport().skinTextureLayout(part.crowd.data.length / 4, textureLimit, 4).bytes;
         poses.add(part.crowd);
       }
       if (!part.skin) continue;
-      if (!poses.has(part.skin)) this.textureBytes += skinTextureLayout(part.skin.jointMatrices.length / 4, textureLimit, 4).bytes;
-      if (!skinGeometries.has(part.geometry)) this.textureBytes += skinTextureLayout(part.geometry.positions.length / 3 * 2, textureLimit, 2).bytes;
+      if (!poses.has(part.skin)) this.textureBytes += skinSupport().skinTextureLayout(part.skin.jointMatrices.length / 4, textureLimit, 4).bytes;
+      if (!skinGeometries.has(part.geometry)) this.textureBytes += skinSupport().skinTextureLayout(part.geometry.positions.length / 3 * 2, textureLimit, 2).bytes;
       poses.add(part.skin);
       skinGeometries.add(part.geometry);
     }
@@ -1120,8 +1132,8 @@ export class Renderer67 {
     if (cache.has(identity)) return cache.get(identity);
     const context = this.context;
     const texelCount = matrices ? matrices.length / 4 : identity.positions.length / 3 * 2;
-    const layout = skinTextureLayout(texelCount, context.getParameter(context.MAX_TEXTURE_SIZE), groupSize);
-    const data = matrices ? new Float32Array(layout.width * layout.height * 4) : packSkinInfluences(identity, layout);
+    const layout = skinSupport().skinTextureLayout(texelCount, context.getParameter(context.MAX_TEXTURE_SIZE), groupSize);
+    const data = matrices ? new Float32Array(layout.width * layout.height * 4) : skinSupport().packSkinInfluences(identity, layout);
     if (matrices) data.set(matrices);
     const record = this.createPackedTexture(layout, data);
     record.pose = matrices ? identity : null;
@@ -1131,9 +1143,9 @@ export class Renderer67 {
 
   createMorphTexture(geometry, pose) {
     if (this.morphTextures.has(geometry)) return this.morphTextures.get(geometry);
-    const info = validateMorphGeometry(geometry, pose);
-    const layout = skinTextureLayout(info.vertexCount * info.targetCount * 2, this.context.getParameter(this.context.MAX_TEXTURE_SIZE), 2);
-    const record = this.createPackedTexture(layout, packMorphTargets(geometry, layout));
+    const info = morphSupport().validateMorphGeometry(geometry, pose);
+    const layout = morphSupport().skinTextureLayout(info.vertexCount * info.targetCount * 2, this.context.getParameter(this.context.MAX_TEXTURE_SIZE), 2);
+    const record = this.createPackedTexture(layout, morphSupport().packMorphTargets(geometry, layout));
     record.info = info;
     this.morphTextures.set(geometry, record);
     return record;
@@ -1187,13 +1199,13 @@ export class Renderer67 {
       if ((part.skin ?? null) !== location.skin || part.skin?.jointMatrices !== location.jointMatrices || part.geometry.skinIndices !== location.skinIndices || part.geometry.skinWeights !== location.skinWeights) throw new Error(`Skin identity changes require a new renderer: ${part.name}`);
       if (part.skin) {
         if (PROCEDURAL_MATERIAL_TAGS.has(part.material.tag)) throw new Error('Skinned parts require a standard material tag.');
-        validateSkinPose(part.skin, part.geometry, part.matrix);
+        skinSupport().validateSkinPose(part.skin, part.geometry, part.matrix);
         this.updateSkins.add(location.batch.skinTexture);
       }
       if ((part.morph ?? null) !== (location.morph ?? null) || part.morph?.weights !== location.morphWeights || part.geometry.morphTargets !== location.morphTargets) throw new Error(`Morph identity changes require a new renderer: ${part.name}`);
       if (part.morph) {
         if (PROCEDURAL_MATERIAL_TAGS.has(part.material.tag)) throw new Error('Morphed parts require a standard material tag.');
-        validateMorphTransform(part.morph, location.batch.morphTexture.info, part.matrix, part.skin);
+        morphSupport().validateMorphTransform(part.morph, location.batch.morphTexture.info, part.matrix, part.skin);
         this.updateMorphs.add(part.morph);
       }
       if (materialUnchanged) {
@@ -1218,7 +1230,7 @@ export class Renderer67 {
       for (const [part, location] of this.partLocations) {
         if (!location.skin || !this.updateSkins.has(location.batch.skinTexture) || this.updatePartIdentities.has(part)) continue;
         const committedMatrix = location.committedMatrix ?? location.batch.instanceData.subarray(location.index * INSTANCE_STRIDE, location.index * INSTANCE_STRIDE + 16);
-        validateSkinPose(location.skin, location.geometry, committedMatrix);
+        skinSupport().validateSkinPose(location.skin, location.geometry, committedMatrix);
       }
     }
     // Shared weights also affect batches absent from the submitted part list.
@@ -1228,7 +1240,7 @@ export class Renderer67 {
         if (!location.morph || this.updatePartIdentities.has(part)) continue;
         if (!this.updateMorphs.has(location.morph) && !this.updateSkins.has(location.batch.skinTexture)) continue;
         const committedMatrix = location.committedMatrix ?? location.batch.instanceData.subarray(location.index * INSTANCE_STRIDE, location.index * INSTANCE_STRIDE + 16);
-        validateMorphTransform(location.morph, location.batch.morphTexture.info, committedMatrix, location.skin);
+        morphSupport().validateMorphTransform(location.morph, location.batch.morphTexture.info, committedMatrix, location.skin);
       }
     }
     this.updateBatches.clear();
@@ -1698,7 +1710,7 @@ export class Renderer67 {
     }
     if (variant.pending) {
       const parallelCompile = this.context.getExtension('KHR_parallel_shader_compile');
-      const building = parallelCompile && !steps.includes('sky') && !this.context.getProgramParameter(variant.pending.program, parallelCompile.COMPLETION_STATUS_KHR);
+      const building = parallelCompile && !steps.includes('sky') && !steps.includes('explosion') && !this.context.getProgramParameter(variant.pending.program, parallelCompile.COMPLETION_STATUS_KHR);
       if (building) return { program: this.postProgram, uniforms: this.postUniforms };
       variant.program = finishProgram(this.context, variant.pending);
       variant.uniforms = postUniformLocations(this.context, variant.program);

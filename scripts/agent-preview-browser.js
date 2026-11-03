@@ -14,6 +14,7 @@ import { agentGroundPlacement, createAgentGround, placeAgentGround, FLOOR_COLOR 
 import { groundBounceEnvironment } from '../src/ground-bounce.js';
 import { createAgentAssetScene } from '../src/agent-asset.js';
 import { parseGltf } from '../src/gltf.js';
+import { assetCopyKey, recipeAssetNeeds } from '../src/agent-scene-assets.js';
 import { exportGlb } from '../src/export.js';
 import { weightTracksFromGltfAnimation } from '../src/export-skeleton.js';
 import { clipFromGltfAnimation } from '../src/skeleton-pose.js';
@@ -275,7 +276,7 @@ function previousCameraFor(record, motionTime) {
   return previousCamera;
 }
 
-function createPreview(scene, { sessionId, memoryBudgetMiB, backend }, asset) {
+function createPreview(scene, { sessionId, memoryBudgetMiB, backend }, asset, placedAssets) {
   if (active) {
     throw new Error('Dispose the current scene before creating another.');
   }
@@ -283,7 +284,7 @@ function createPreview(scene, { sessionId, memoryBudgetMiB, backend }, asset) {
   let renderer;
   try {
     renderer = initializeRenderer(scene, { memoryBudgetMiB, backend });
-    const record = { scene, renderer, asset, sessionId, options: { memoryBudgetMiB, backend },
+    const record = { scene, renderer, asset, placedAssets, sessionId, options: { memoryBudgetMiB, backend },
       checkpoints: new Map(), branches: createBranchStore(), rendererTopology: scene.topologyRevision, rendererTextured: hasPatternTextures(scene.parts) };
     draw(record);
     const result = status(record);
@@ -307,6 +308,27 @@ setPhysicsModuleLoader(() => import(/* @vite-ignore */ new URL('/vendor/rapier.j
 
 // The preview bundle is one file, so the on-demand scene modules load together on the first call and later calls stay
 // synchronous. The boolean engine is WebAssembly and loads asynchronously, once, only for calls that need it.
+
+const ASSET_DECODE_LIMITS = { maxBytes: 16 * 1024 * 1024, maxVertices: 250000, maxParts: 4096, maxTexturePixels: 4194304, maxJoints: 1024 };
+
+function disposePlacedAssets(pool) {
+  for (const asset of pool?.values() ?? []) asset.dispose();
+  pool?.clear();
+}
+
+// A recipe that places catalog assets arrives with their bytes, keyed by asset id. Copy 0 serves every still placement and
+// each placement that plays a clip takes a copy of its own, since a pose is state of one decoded asset.
+async function loadPlacedAssets(pool, value, assetData) {
+  for (const { id, copies } of recipeAssetNeeds(value)) {
+    for (let copy = 0; copy < copies; copy++) {
+      const key = assetCopyKey(id, copy);
+      if (pool.has(key)) continue;
+      if (!assetData?.[id]) throw new Error(`Asset ${id.slice(0, 12)} was not supplied. Check asset_catalog for its id.`);
+      pool.set(key, await parseGltf(bytesFromBase64(assetData[id]).buffer, ASSET_DECODE_LIMITS));
+    }
+  }
+}
+
 function afterMeshBooleans(value, run) {
   if (!allAgentSceneModulesLoaded()) return loadAllAgentSceneModules().then(() => afterMeshBooleans(value, run));
   const loads = [];
@@ -654,8 +676,27 @@ window.__agentPreview = {
     tracedFeatures = undefined;
     return { data: encodeTracedPng(toneMapToRgba8(pixels, width, height), width, height) };
   },
+  async createWithAssets(input) {
+    const pool = new Map();
+    try {
+      await loadAllAgentSceneModules();
+      await loadPlacedAssets(pool, input.recipe, input.assetData);
+      // Placed assets are decoded on this thread, so the scene is built here and not on the kernel worker.
+      return await afterMeshBooleans(input.recipe, () => {
+        startBuildReport();
+        const startedAt = performance.now();
+        const scene = createAgentScene(input.recipe, {}, { assets: pool });
+        finishBuildReport(startedAt);
+        return createPreview(scene, input, undefined, pool);
+      });
+    } catch (error) {
+      disposePlacedAssets(pool);
+      throw error;
+    }
+  },
   create(input) {
     if (active) throw new Error('Dispose the current scene before creating another.');
+    if (recipeAssetNeeds(input.recipe).length) return this.createWithAssets(input);
     return afterMeshBooleans(input.recipe, () => {
       startBuildReport();
       const startedAt = performance.now();
@@ -703,6 +744,16 @@ window.__agentPreview = {
         return afterMeshBooleans(input.operations, () => this.applyLoaded(input));
       });
     }
+    if (recipeAssetNeeds(input.operations).length) return this.applyWithAssets(input);
+    return afterMeshBooleans(input.operations, () => this.applyLoaded(input));
+  },
+  async applyWithAssets(input) {
+    const record = requireSession(input.sessionId);
+    if (!record.placedAssets) {
+      throw new Error('This scene was created without placed assets. Recreate it with an asset node in scene_create, then add more.');
+    }
+    await loadAllAgentSceneModules();
+    await loadPlacedAssets(record.placedAssets, input.operations, input.assetData);
     return afterMeshBooleans(input.operations, () => this.applyLoaded(input));
   },
   applyLoaded({ sessionId, operations, expectedRevision }) {
@@ -840,6 +891,7 @@ window.__agentPreview = {
       record.renderer?.dispose();
     } finally {
       record.asset?.dispose();
+      disposePlacedAssets(record.placedAssets);
     }
     record.checkpoints.clear();
     record.branches.clear();
