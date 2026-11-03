@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { BufferGeometry, DataTexture, Float32BufferAttribute } from 'three';
+import { BufferGeometry, CompressedTexture, DataTexture, Float32BufferAttribute } from 'three';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { parseGltf } from '../src/gltf.js';
 
@@ -382,4 +382,78 @@ test('KHR_texture_basisu textures arrive as RGBA8 pixels from the supplied KTX2 
   assert.equal(image.height, 2);
   assert.deepEqual(Array.from(image.data), Array.from(pixels));
   await assert.rejects(parseGltf(data, { decoders: { ktx2: ktx2Loader }, maxTexturePixels: 3 }), /maxTexturePixels/);
+});
+
+const BPTC_RGBA = 0x8e8c;
+const ETC1_RGB = 36196;
+
+/** A CompressedTexture shaped like the KTX2Loader result: BC7 mips of a square image, 16 bytes a 4x4 block. */
+function compressedKtx2Texture(size, format = BPTC_RGBA, { levelCount = Infinity } = {}) {
+  const mipmaps = [];
+  for (let width = size; width >= 1 && mipmaps.length < levelCount; width >>= 1) {
+    const blocks = Math.ceil(width / 4) ** 2;
+    mipmaps.push({ data: new Uint8Array(blocks * 16), width, height: width });
+  }
+  return new CompressedTexture(mipmaps, size, size, format);
+}
+
+function ktx2BaseColorDocument(size) {
+  const header = new Uint8Array(80);
+  header.set([0xab, 0x4b, 0x54, 0x58, 0x20, 0x32, 0x30, 0xbb, 0x0d, 0x0a, 0x1a, 0x0a]);
+  new DataView(header.buffer).setUint32(20, size, true);
+  new DataView(header.buffer).setUint32(24, size, true);
+  return triangleDocument({
+    extraChunks: [header],
+    edit: document => {
+      document.images = [{ bufferView: 2, mimeType: 'image/ktx2' }];
+      document.textures = [{ extensions: { KHR_texture_basisu: { source: 0 } } }];
+      document.materials[0].pbrMetallicRoughness.baseColorTexture = { index: 0 };
+      document.extensionsUsed = ['KHR_texture_basisu'];
+      document.extensionsRequired = ['KHR_texture_basisu'];
+    },
+  });
+}
+
+function ktx2LoaderReturning(texture, workerConfig) {
+  return { workerConfig, load: (url, onLoad) => onLoad(texture) };
+}
+
+test('KHR_texture_basisu keeps a GPU-compressed texture and records its format and bytes', async context => {
+  mockImageBitmap(context);
+  const loader = ktx2LoaderReturning(compressedKtx2Texture(8), { bptcSupported: true });
+  const asset = await parseGltf(ktx2BaseColorDocument(8), { decoders: { ktx2: loader } });
+  const { image } = asset.parts[0].material.map;
+  assert.equal(image.compressed.name, 'bc7');
+  assert.equal(image.compressed.levels.length, 4);
+  assert.equal(image.compressed.bytes, 64 + 16 + 16 + 16);
+  assert.deepEqual(asset.textureFormats, [{ format: 'bc7', width: 8, height: 8, colorSpace: 'srgb', bytes: 112 }]);
+});
+
+test('a compressed KTX2 image counts a quarter of its RGBA8 pixels toward maxTexturePixels', async context => {
+  mockImageBitmap(context);
+  const texture = compressedKtx2Texture(8);
+  const unconfigured = ktx2LoaderReturning(texture, null);
+  const configured = ktx2LoaderReturning(texture, { bptcSupported: true });
+  await assert.rejects(parseGltf(ktx2BaseColorDocument(8), { decoders: { ktx2: unconfigured }, maxTexturePixels: 20 }), /maxTexturePixels/);
+  await parseGltf(ktx2BaseColorDocument(8), { decoders: { ktx2: configured }, maxTexturePixels: 20 });
+});
+
+test('a KTX2 loader that transcoded to RGBA8 reports the rgba8 format', async context => {
+  mockImageBitmap(context);
+  const loader = ktx2LoaderReturning(new DataTexture(new Uint8Array(4 * 2 * 2), 2, 2), { bptcSupported: false });
+  const asset = await parseGltf(ktx2BaseColorDocument(2), { decoders: { ktx2: loader } });
+  assert.equal(asset.textureFormats[0].format, 'rgba8');
+});
+
+test('a compressed KTX2 texture with a partial mip chain keeps its first level', async context => {
+  mockImageBitmap(context);
+  const loader = ktx2LoaderReturning(compressedKtx2Texture(8, BPTC_RGBA, { levelCount: 2 }), { bptcSupported: true });
+  const asset = await parseGltf(ktx2BaseColorDocument(8), { decoders: { ktx2: loader } });
+  assert.equal(asset.parts[0].material.map.image.compressed.levels.length, 1);
+});
+
+test('a compressed KTX2 format 67js does not upload fails with a clear message', async context => {
+  mockImageBitmap(context);
+  const loader = ktx2LoaderReturning(compressedKtx2Texture(8, ETC1_RGB), { bptcSupported: true });
+  await assert.rejects(parseGltf(ktx2BaseColorDocument(8), { decoders: { ktx2: loader } }), /does not upload/);
 });

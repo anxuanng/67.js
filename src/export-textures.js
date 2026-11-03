@@ -12,6 +12,7 @@ function pixelsOf(image, channel) {
   if (!Number.isInteger(width) || !Number.isInteger(height) || width < 1 || height < 1) {
     throw new TypeError(`GLB ${channel} needs an image with a whole width and height.`);
   }
+  if (image?.compressed) throw new TypeError(`GLB ${channel} is a GPU-compressed texture, which export cannot read back. Transcode KTX2 to RGBA8 to export it.`);
   if (image.data) {
     if (image.data.length < width * height * 4) throw new RangeError(`GLB ${channel} image data must hold RGBA8 pixels for every texel.`);
     return { width, height, pixels: image.data };

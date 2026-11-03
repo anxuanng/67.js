@@ -337,6 +337,9 @@ export function textureDescriptorInfo(map, maximumSize = Infinity) {
   const magFilter = map.magFilter ?? 9729;
   if (![10497, 33071, 33648].includes(wrapS) || ![10497, 33071, 33648].includes(wrapT)) throw new Error('Unsupported texture wrap mode.');
   if (![9728, 9729, 9984, 9985, 9986, 9987].includes(minFilter) || ![9728, 9729].includes(magFilter)) throw new Error('Unsupported texture filtering mode.');
+  const compressed = map.image.compressed;
+  // Precompressed mips come with the image and are never generated. The image supplies its own filter and byte count.
+  if (compressed) return { width, height, wrapS, wrapT, minFilter: compressed.minFilter(minFilter), magFilter, mipmaps: false, bytes: compressed.bytes };
   const mipmaps = minFilter >= 9984;
   return { width, height, wrapS, wrapT, minFilter, magFilter, mipmaps, bytes: estimateTextureBytes(width, height, { mipmaps }) };
 }
@@ -678,7 +681,8 @@ export class Renderer67 {
       context.pixelStorei(context.UNPACK_COLORSPACE_CONVERSION_WEBGL, context.NONE);
       if (map) {
         const info = textureDescriptorInfo(map, context.getParameter(context.MAX_TEXTURE_SIZE));
-        context.texImage2D(context.TEXTURE_2D, 0, map.colorSpace === 'linear' ? context.RGBA8 : context.SRGB8_ALPHA8, context.RGBA, context.UNSIGNED_BYTE, map.image);
+        if (map.image.compressed) map.image.compressed.upload(context);
+        else context.texImage2D(context.TEXTURE_2D, 0, map.colorSpace === 'linear' ? context.RGBA8 : context.SRGB8_ALPHA8, context.RGBA, context.UNSIGNED_BYTE, map.image);
         context.texParameteri(context.TEXTURE_2D, context.TEXTURE_WRAP_S, info.wrapS);
         context.texParameteri(context.TEXTURE_2D, context.TEXTURE_WRAP_T, info.wrapT);
         context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MIN_FILTER, info.minFilter);

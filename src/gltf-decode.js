@@ -147,11 +147,11 @@ export async function decodeGltf({ document, glbBinary, resourceBytes, decoders,
     let loaded;
     if (isKtx2) {
       const texture = await loadKtx2Image(bytes);
-      loaded = { image: texture.image, isCompressedTexture: texture.isCompressedTexture === true };
+      loaded = { image: texture.image, isCompressedTexture: texture.isCompressedTexture === true, format: texture.format, mipmaps: texture.mipmaps };
       releasers.push(() => texture.dispose?.());
     } else {
       const image = await decodeImage(bytes, mimeTypeOf(document.images[sourceIndex], bytes), imageTargets.get(sourceIndex));
-      loaded = { image, isCompressedTexture: false };
+      loaded = { image, isCompressedTexture: false, format: undefined, mipmaps: undefined };
       releasers.push(() => image.close?.());
     }
     images.set(key, loaded);
@@ -176,10 +176,12 @@ export async function decodeGltf({ document, glbBinary, resourceBytes, decoders,
     if (textures.has(textureIndex)) return textures.get(textureIndex);
     const definition = document.textures[textureIndex];
     const sampler = document.samplers?.[definition.sampler] ?? {};
-    const { image, isCompressedTexture } = await loadTextureImage(definition);
+    const { image, isCompressedTexture, format, mipmaps } = await loadTextureImage(definition);
     const texture = {
       image,
       isCompressedTexture,
+      format,
+      mipmaps,
       wrapS: sampler.wrapS ?? 10497,
       wrapT: sampler.wrapT ?? 10497,
       minFilter: sampler.minFilter ?? 9987,
