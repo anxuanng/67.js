@@ -78,17 +78,34 @@ export function findWaterBody(parts) {
     const footprint = (maximum[0] - minimum[0]) * (maximum[2] - minimum[2]);
     const flat = wider > 0 && maximum[1] - minimum[1] <= wider * WATER_MAXIMUM_THICKNESS_RATIO;
     if (flat && (!best || footprint > best.footprint)) {
-      best = { footprint, level: maximum[1], material: part.material };
+      best = { footprint, level: maximum[1], material: part.material, refractive: part.material.alphaMode === 'blend' };
     }
   }
   if (!best) {
     return null;
   }
   const { absorption, turbidity } = resolveWaterMaterial(best.material);
-  return { level: best.level, absorption, turbidity };
+  return { level: best.level, absorption, turbidity, refractive: best.refractive };
 }
 
 const waterLocations = new WeakMap();
+// The texture unit that holds the opaque scene for refraction (the splat mask unit: a scene with water and a splat ground never
+// draws both in one batch).
+const WATER_SCENE_UNIT = 14;
+
+// The opaque scene is resolved into the renderer's frame texture the first time a blended batch of the frame draws, as the liquid
+// pass does, and the water samples it.
+function resolveOpaqueScene(renderer, locations) {
+  const context = renderer.context;
+  const { width, height } = renderer.canvas;
+  context.bindFramebuffer(context.READ_FRAMEBUFFER, renderer.multisampleFramebuffer);
+  context.bindFramebuffer(context.DRAW_FRAMEBUFFER, renderer.resolveFramebuffer);
+  context.blitFramebuffer(0, 0, width, height, 0, 0, width, height, context.COLOR_BUFFER_BIT, context.NEAREST);
+  context.bindFramebuffer(context.FRAMEBUFFER, renderer.multisampleFramebuffer);
+  context.activeTexture(context.TEXTURE0 + WATER_SCENE_UNIT);
+  context.bindTexture(context.TEXTURE_2D, renderer.frameTexture);
+  context.uniform1i(locations.scene, WATER_SCENE_UNIT);
+}
 
 function bindWaterBody(renderer) {
   if (!renderer.shaderFeatures?.has('water')) {
@@ -97,15 +114,23 @@ function bindWaterBody(renderer) {
   const context = renderer.context;
   let locations = waterLocations.get(renderer);
   if (locations?.program !== renderer.program) {
-    locations = { program: renderer.program, body: context.getUniformLocation(renderer.program, 'waterBody'), absorption: context.getUniformLocation(renderer.program, 'waterAbsorption') };
+    locations = { program: renderer.program, body: context.getUniformLocation(renderer.program, 'waterBody'), absorption: context.getUniformLocation(renderer.program, 'waterAbsorption'), scene: context.getUniformLocation(renderer.program, 'waterScene'), resolved: false };
     waterLocations.set(renderer, locations);
   }
   const waterParts = renderer.batches.flatMap(batch => (batch.parts[0].material.tag === 'water' ? batch.parts : []));
   const body = findWaterBody(waterParts);
   // The mirror and the render passes skip the underwater look: the mirror is clipped above the water, a pass reads raw surface data.
   const active = Boolean(body) && !renderer.renderingPass && !renderer.mirrorCulling;
-  context.uniform4f(locations.body, active ? body.level : 0, active ? body.turbidity : 0, active ? 1 : 0, 0);
+  // Refraction needs the frame texture, so it is off for a transparent canvas, whose alpha is the picture's own.
+  const refracts = active && body.refractive && !renderer.transparent && !renderer.benchmark && Boolean(renderer.frameTexture);
+  context.uniform4f(locations.body, active ? body.level : 0, active ? body.turbidity : 0, active ? 1 : 0, refracts ? 1 : 0);
   context.uniform3f(locations.absorption, ...(active ? body.absorption : [0, 0, 0]));
+  if (!context.isEnabled(context.BLEND)) {
+    locations.resolved = false;
+  } else if (refracts && !locations.resolved) {
+    resolveOpaqueScene(renderer, locations);
+    locations.resolved = true;
+  }
 }
 
 const previousBind = layerTextureSupport.bind;
@@ -131,6 +156,49 @@ export const worldMaterialSlots = {
   // its own macro and keeps its filter.
   declarations: `uniform vec4 waterBody;
 uniform vec3 waterAbsorption;
+uniform sampler2D waterScene;
+uniform mat4 viewProjection;
+// The frame texture holds the picture as it leaves the shader: scaled by exposure and, outside HDR, tone mapped and encoded.
+vec3 waterDecode(vec3 encoded) {
+  vec3 linear = encoded;
+  if (hdrEnabled < 0.5) {
+    vec3 curve = pow(encoded, vec3(2.2));
+    vec3 quadratic = 2.51 - 2.43 * curve;
+    vec3 slope = 0.03 - 0.59 * curve;
+    linear = (-slope + sqrt(max(slope * slope + 4.0 * quadratic * 0.14 * curve, 0.0))) / (2.0 * quadratic);
+  }
+  return linear / max(exposure, 0.0001);
+}
+// Refraction (n = 1.33): the view ray bends at the surface and meets the bed at the depth the opaque pass left in the alpha
+// channel of everything below the level. The picture around that point is blurred by turbidity times depth. Where nothing
+// below the level is seen, the water keeps its own colour (fallback).
+vec3 refractedBackground(vec3 fallback, vec3 surfacePosition, vec3 normal, vec3 viewDirection) {
+  vec2 size = vec2(textureSize(waterScene, 0));
+  vec3 bent = refract(-viewDirection, normal, 0.7519);
+  vec2 uv = gl_FragCoord.xy / size;
+  float depth = 0.0;
+  for (int pass = 0; pass < 2; pass++) {
+    float stored = textureLod(waterScene, uv, 0.0).a;
+    depth = stored < 0.999 ? (stored - 0.5) / 0.498 * 8.0 : 0.0;
+    vec4 clip = viewProjection * vec4(surfacePosition + bent * (depth / max(-bent.y, 0.1)), 1.0);
+    uv = clip.xy / clip.w * 0.5 + 0.5;
+  }
+  float radius = min(waterBody.y * depth * 0.02 * size.y, 48.0);
+  vec3 seenColor = vec3(0.0);
+  float seen = 0.0;
+  for (int tap = 0; tap < 16; tap++) {
+    float angle = float(tap) * 2.39996;
+    vec2 offset = vec2(cos(angle), sin(angle)) * sqrt((float(tap) + 0.5) / 16.0) * radius / size;
+    vec2 position = uv + offset;
+    vec4 sampled = textureLod(waterScene, position, 0.0);
+    // A lookup that leaves the picture has nothing to show, so the water keeps its own colour there.
+    float inside = all(greaterThan(position, vec2(0.0))) && all(lessThan(position, vec2(1.0))) ? 1.0 : 0.0;
+    float below = sampled.a < 0.999 ? inside : 0.0;
+    seenColor += waterDecode(sampled.rgb) * below;
+    seen += below;
+  }
+  return mix(fallback, seenColor / max(seen, 1.0), seen / 16.0);
+}
 #ifndef shadowVisibility
 float softShadowVisibility(vec3 normal, float radiusTexels) {
   vec3 projected = shadowPosition.xyz / shadowPosition.w * 0.5 + 0.5;
@@ -293,18 +361,24 @@ void mossMasks(vec3 normal, float amount, out float sharpMask, out float softMas
   }
 `,
   worldAfterEmission: `  if (waterDepth > 0.0) {
-    // The bed's light reaches the eye through the column, dimmed; murky water adds the daylight it scattered toward the eye.
+    // The bed's light reaches the eye through the column, dimmed; the water adds the daylight it scattered toward the eye (clear water a little, murky water more), so deep objects fade into the water colour instead of going black.
     vec3 scatteredLight = (keyColor * max(normalize(lightDirection).y, 0.0) * 0.1 + vec3(0.04) * ambientIntensity) * exp(-waterAbsorption * 1.5);
-    radiance = radiance * waterTransmittance + scatteredLight * (vec3(1.0) - waterTransmittance) * waterBody.y;
+    radiance = radiance * waterTransmittance + scatteredLight * (vec3(1.0) - waterTransmittance) * (0.25 + waterBody.y);
   }
   if (TAG_WATER) {
     float reflectivity = 0.20 + 0.65 * pow(1.0 - max(dot(normal, viewDirection), 0.0), 3.0);
     vec3 reflection = mix(vec3(0.12, 0.24, 0.28), vec3(0.40, 0.63, 0.78), clamp(reflect(-viewDirection, normal).y, 0.0, 1.0));
     radiance = mix(radiance * 0.6, reflection * daylight * ambientIntensity, reflectivity);
     radiance += vec3(1.0, 0.85, 0.55) * pow(max(dot(reflect(-normalize(lightDirection), normal), viewDirection), 0.0), 220.0) * 2.0 * keyResponse;
+    if (waterBody.w > 0.5 && alphaMode > 1.5) {
+      // Blended water draws its own background: the opaque scene refracted and blurred, not the one behind it unbent.
+      radiance = radiance * alpha + refractedBackground(radiance, worldPosition, normal, viewDirection) * (1.0 - alpha);
+      alpha = 1.0;
+    }
   }
 `,
-  worldFinal: `  if (TAG_FIRE) {
+  worldFinal: `  if (waterDepth > 0.0 && waterBody.w > 0.5 && alphaMode < 0.5) alpha = 0.5 + 0.498 * clamp(waterDepth / 8.0, 0.0, 1.0);
+  if (TAG_FIRE) {
     float turbulence = sin(worldPosition.x * 3.0 + time * 4.0) * sin(worldPosition.y * 4.2 - time * 3.0) * sin(worldPosition.z * 3.7);
     float heat = pow(clamp(0.55 + turbulence * 0.5 - explosionProgress * 0.12, 0.0, 1.0), 3.0);
     radiance = mix(vec3(0.22, 0.003, 0.0002), vec3(8.0, 2.8, 0.15), heat) * max(0.2, surface.z * 0.10);

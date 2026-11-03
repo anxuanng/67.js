@@ -11,10 +11,10 @@ export const WATER_DEPTHS = [0.2, 1, 4];
 const PRESETS = { lake: { waterPreset: 'lake' }, sea: { waterPreset: 'sea' }, river: { waterPreset: 'river' } };
 const CELL = { width: 213, height: 120 };
 
-async function openPage(root) {
+export async function openPage(root) {
   const server = await createServer({ root, server: { host: '127.0.0.1', port: 0 }, logLevel: 'silent' });
   await server.listen();
-  const browser = await chromium.launch({ executablePath: process.env.CHROME_PATH ?? 'C:/Program Files/Google/Chrome/Application/chrome.exe', headless: true, args: ['--enable-webgl', '--ignore-gpu-blocklist', '--use-angle=d3d11'] });
+  const browser = await chromium.launch({ executablePath: process.env.CHROME_PATH ?? 'C:/Program Files/Google/Chrome/Application/chrome.exe', headless: true, args: ['--enable-webgl', '--ignore-gpu-blocklist', ...(process.env.SOFTWARE_GL === '1' ? ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] : ['--use-angle=d3d11'])] });
   const page = await browser.newPage({ viewport: { width: 1400, height: 800 } });
   await page.route('**/water-shadow-page.html', route => route.fulfill({ contentType: 'text/html', body: '<body style="margin:0;background:#222"></body>' }));
   await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/water-shadow-page.html`);
@@ -59,7 +59,8 @@ async function drawSide(root) {
   const { page, close } = await openPage(root);
   try {
     return await page.evaluate(async ({ depths, cell }) => {
-      const scene = await import('/scripts/water-shadow-scene.js');
+      const scene = await import('/scripts/water-preview-scene.js');
+      const assets = await scene.loadPreviewAssets('/out/assets');
       const cells = [];
       const capture = (drawer) => {
         const canvas = document.createElement('canvas');
@@ -73,13 +74,35 @@ async function drawSide(root) {
         canvas.remove();
       };
       for (const water of [{ waterPreset: 'lake' }, { waterPreset: 'river' }]) {
-        for (const depth of depths) capture(canvas => scene.drawPool(canvas, depth, water, { eye: [-4.5, 4, 5.5], target: [0.4, -depth * 0.5, 0] }));
+        for (const depth of depths) capture(canvas => scene.drawPreviewPool(canvas, assets, depth, water, { eye: [-4.5, 4, 5.5], target: [0.4, -depth * 0.5, 0] }));
       }
       for (const view of [{ eye: [1.5, 9, 3], target: [0, -0.05, 0.5] }, { eye: [4, 0.8, 6], target: [0, -0.05, 0.5] }]) {
-        capture(canvas => scene.drawPool(canvas, 1, { waterPreset: 'sea' }, view, true));
+        capture(canvas => scene.drawPreviewPool(canvas, assets, 1, { waterPreset: 'sea' }, view, 1));
       }
       return cells;
     }, { depths: WATER_DEPTHS, cell: CELL });
+  } finally {
+    await close();
+  }
+}
+
+/** One large frame of the pool, for looking at a detail. */
+export async function drawStill(root, outputPath, { depth, water, view }) {
+  const { page, close } = await openPage(root);
+  try {
+    const dataUrl = await page.evaluate(async ({ depth, water, view }) => {
+      const scene = await import('/scripts/water-preview-scene.js');
+      const assets = await scene.loadPreviewAssets('/out/assets');
+      const canvas = document.createElement('canvas');
+      canvas.width = 960;
+      canvas.height = 540;
+      canvas.style.cssText = 'width:960px;height:540px;display:block';
+      document.body.append(canvas);
+      scene.drawPreviewPool(canvas, assets, depth, water, view);
+      return canvas.toDataURL('image/png');
+    }, { depth, water, view });
+    await mkdir(dirname(outputPath), { recursive: true });
+    await writeFile(outputPath, Buffer.from(dataUrl.split(',')[1], 'base64'));
   } finally {
     await close();
   }
@@ -101,7 +124,7 @@ async function composePreview(beforeCells, afterCells, outputPath) {
       context.fillRect(0, 0, canvas.width, canvas.height);
       context.font = '14px sans-serif';
       context.fillStyle = '#e8eaf0';
-      context.fillText('before: lake, river by depth 0.2 / 1 / 4 m, opaque surface steep and grazing', 4, 16);
+      context.fillText('before (main). Rows: lake, river at 0.2 / 1 / 4 m; sea 1 m opaque, steep and grazing', 4, 16);
       context.fillText('after', sideWidth + gap + 4, 16);
       for (const [side, cells] of [[0, beforeCells], [1, afterCells]]) {
         for (let index = 0; index < cells.length; index++) {
@@ -123,6 +146,13 @@ async function composePreview(beforeCells, afterCells, outputPath) {
 if (import.meta.url === pathToFileURL(process.argv[1]).href) {
   const option = name => (process.argv.includes(name) ? process.argv[process.argv.indexOf(name) + 1] : null);
   const previewPath = option('--preview');
+  const stillPath = option('--still');
+  if (stillPath) {
+    const depth = Number(option('--depth') ?? 1);
+    await drawStill(option('--root') ?? process.cwd(), stillPath, { depth, water: { waterPreset: option('--preset') ?? 'lake' }, view: { eye: (option('--eye') ?? '-4.5,4,5.5').split(',').map(Number), target: (option('--target') ?? `0.4,${-depth * 0.5},0`).split(',').map(Number), up: option('--eye') ? [0, 0, -1] : [0, 1, 0] } });
+    console.log(`wrote ${stillPath}`);
+    process.exit(0);
+  }
   if (previewPath) {
     const beforeFolder = option('--before');
     const [beforeCells, afterCells] = [await drawSide(beforeFolder), await drawSide(process.cwd())];

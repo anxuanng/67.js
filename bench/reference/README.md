@@ -1551,3 +1551,11 @@ A post stands in a 12 m pool and the camera looks straight down (`scripts/water-
 The clear lake stays within 10 percent of the formula (the largest gap, 8 percent at 4 m, is the in-scatter of turbidity 0.02). `RENDER_TESTS=1 node --test tests/water-shadows-render.test.js` checks it. On an opaque water surface the post's shadow darkened the steep view by 9.5 to 14 percent before and darkens it by 3 to 4 percent now (river 1.5 percent); the grazing view, which is nearly all reflection, shows 0 percent both times, so the shadow never reaches the mirrored sky.
 
 The reference scenes draw their water as a smooth `surface` part with the planar reflection, not the `water` tag, and the shader code they run is unchanged, so they were not rescored. The Blender Cycles reference of the pool (volume absorption and scatter) and its FLIP score are not taken yet; they wait for a look at the preview.
+
+### Refraction and a dark band (2026-11-04, part of issue #349)
+
+Blended water (a `water` part with opacity below one) now draws its own background: the opaque pass leaves the depth below the water level in the alpha channel of every submerged surface, the water bends the view ray at the surface (n = 1.33, with the wave normal), reads the frame texture where the bent ray meets the bed, and blurs it with a disc of radius turbidity times depth. Where nothing submerged is seen it keeps its own colour. A submerged surface also gets a share of the daylight the water scattered toward the eye, so it fades into the water colour instead of going dark. The bed contrast numbers above hold (lake 4 m: 0.226, 0.688, 0.787 against 0.247, 0.756, 0.852).
+
+The dark band at the foot of a shadow in the first preview was not a doubled shadow: the bed point takes its sun visibility once and the surface lift applies only to water fragments. Along the shadow the bed is even (green channel 0.178 to 0.173 at 1 m, 0.157 to 0.152 at 4 m, seen from above), and a close render shows no band. The band was the shaded side of the submerged post, which got darker with depth and had no scattered light, so it joined the shadow. The scattered light fixes it.
+
+The new preview uses Poly Haven CC0 assets (boulder_01, rock_07, modular_wooden_pier and the gravel_ground_01 material) read from `out/assets`, which is ignored by Git.

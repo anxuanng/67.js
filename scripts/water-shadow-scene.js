@@ -59,12 +59,12 @@ const SHADOW_OFFSET = 0.65;
 const LIT_OFFSET = -1.4;
 
 /** Linear RGB of the lit and the shadowed bed at the bottom of a pool, seen from above. `water` null draws the pool dry. */
-export function measureBed(canvas, depth, water) {
+export function measureBed(canvas, depth, water, shadowOffset = SHADOW_OFFSET, view = OVERHEAD) {
   const parts = water ? poolParts(depth, water) : poolParts(depth, { tag: 'surface' }).filter(part => part.name !== 'water');
-  const renderer = drawFrame(canvas, parts, OVERHEAD);
+  const renderer = drawFrame(canvas, parts, view);
   const lit = readLinear(renderer, canvas, [LIT_OFFSET, -depth, 0]);
-  renderer.render({ ...OVERHEAD, fov: 30, time: 0, environment: { lightDirection: SUN_DIRECTION } });
-  const shadowed = readLinear(renderer, canvas, [SHADOW_OFFSET, -depth, 0]);
+  renderer.render({ ...view, fov: 30, time: 0, environment: { lightDirection: SUN_DIRECTION } });
+  const shadowed = readLinear(renderer, canvas, [shadowOffset, -depth, 0]);
   renderer.dispose?.();
   return { lit, shadowed };
 }
