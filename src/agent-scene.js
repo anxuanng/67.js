@@ -1383,7 +1383,7 @@ export function createAgentScene(input, inputLimits = {}) {
           knownKeys(operation, ['type', lookField], 'operation');
           const patch = operation[lookField];
           // Spot and area lights, cascades and sun links are absent from a recipe until it sets them.
-          const optionalFields = lookField === 'environment' ? ['spotLights', 'areaLights', 'shadowCascades', 'keyAffects', 'objectReflections', 'resolveCoplanar'] : [];
+          const optionalFields = lookField === 'environment' ? ['spotLights', 'areaLights', 'shadowCascades', 'keyAffects', 'objectReflections', 'resolveCoplanar', 'viewTransform', 'look'] : [];
           knownKeys(patch, [...Object.keys(candidate[lookField]), ...optionalFields], lookField);
           const nestedField = lookField === 'environment' ? 'volumeFog' : lookField === 'effects' ? 'bloom' : null;
           const merged = { ...candidate[lookField], ...(lookField === 'environment' ? environmentPatchWithSetup(patch) : patch) };
