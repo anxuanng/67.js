@@ -1,6 +1,4 @@
-import packageMetadata from '../package.json' with { type: 'json' };
-
-export const VERSION = packageMetadata.version;
+export { VERSION } from './version.js';
 export { Renderer67 } from './renderer.js';
 export { box, cylinder, sphere, torus } from './geometry.js';
 export { exportGlb } from './export.js';

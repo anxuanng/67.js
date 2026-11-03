@@ -3,12 +3,15 @@
   "version": "0.15.0",
   "private": false,
   "type": "module",
-  "description": "JavaScript tools for agent-driven 3D authoring, browser previews and memory-aware CPU/GPU rendering",
+  "description": "A WebGL2 3D engine that AI agents drive: an MCP server, PNG previews and CPU or GPU export to images and video",
   "license": "MIT",
   "homepage": "https://67js.codepawl.com",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/anxuanng/67.js.git"
+    "url": "git+https://github.com/codepawl/67.js.git"
+  },
+  "bugs": {
+    "url": "https://github.com/codepawl/67.js/issues"
   },
   "files": [
     "build",

@@ -1,13 +1,13 @@
 <p align="center">
   <a href="https://67js.codepawl.com">
     <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="https://67js.codepawl.com/brand/wordmark-dark.svg?v=0.10.0" />
-      <img src="https://67js.codepawl.com/brand/wordmark-light.svg?v=0.10.0" alt="67js" width="260" />
+      <source media="(prefers-color-scheme: dark)" srcset="https://67js.codepawl.com/brand/wordmark-dark.svg" />
+      <img src="https://67js.codepawl.com/brand/wordmark-light.svg" alt="67js" width="260" />
     </picture>
   </a>
 </p>
 
-<p align="center"><strong>A WebGL2 engine for 3D scenes that people and agents can build, inspect and render.</strong></p>
+<p align="center"><strong>A WebGL2 3D engine that AI agents drive.</strong></p>
 
 <p align="center">
   <a href="https://www.npmjs.com/package/@codepawlhq/67js"><img src="https://img.shields.io/npm/v/@codepawlhq/67js?color=3b6e22&label=npm" alt="npm version" /></a>
@@ -16,33 +16,25 @@
 </p>
 
 <p align="center">
-  <a href="https://67js.codepawl.com">Showcase</a> ·
+  <a href="https://67js.codepawl.com/showcase.html">Showcase</a> ·
   <a href="https://67js.codepawl.com/docs.html">Documentation</a> ·
   <a href="https://67js.codepawl.com/llms.txt">Guide for agents</a> ·
-  <a href="https://github.com/anxuanng/67.js/blob/main/CHANGELOG.md">Changelog</a>
+  <a href="https://github.com/codepawl/67.js/blob/main/CHANGELOG.md">Changelog</a>
 </p>
 
 <p align="center">
-  <img src="https://67js.codepawl.com/previews/forest.webp?v=0.10.0" alt="Birch, beech and fir trees with scanned leaves over a grassy slope, rendered by 67js" width="100%" />
+  <a href="https://67js.codepawl.com/showcase.html?scene=airport"><img src="https://67js.codepawl.com/previews/showcase-airport.webp" alt="An airport ramp with an airliner at its stand and the turnaround crew, rendered by 67js" width="100%" /></a>
 </p>
 
-67js is a custom WebGL2 renderer with addons for terrain, vegetation, liquid, vehicles, characters and media export.
-Every scene is plain data: geometry, a matrix and a material for each part.
-The renderer batches parts that share geometry into instanced draws, and it plans GPU memory before it allocates.
-An MCP server lets an agent author a scene as a JSON recipe, look at PNG previews and render images or video.
+67js is a WebGL2 renderer with addons for terrain, vegetation, characters, liquid, vehicles and media export.
+A scene is plain data: each part has a geometry, a matrix and a material.
+An agent builds and changes a scene through an MCP server, looks at PNG previews and renders stills or MP4 video.
+The goal is to be as capable as Blender and as light as three.js. [Issue #23](https://github.com/codepawl/67.js/issues/23) tracks the work.
 
 <table>
   <tr>
-    <td width="50%"><a href="https://67js.codepawl.com/terrain.md"><img src="https://67js.codepawl.com/previews/terrain.webp" alt="Rolling hills of scanned grass and mud rising to rocky ridges" /></a><br /><b>Terrain</b>: chunked heightfield, four scanned ground layers</td>
-    <td width="50%"><a href="https://67js.codepawl.com/spume.md"><img src="https://67js.codepawl.com/previews/spume.webp" alt="A jet of baked liquid hitting a concrete slab" /></a><br /><b>Spume liquid</b>: baked water that refracts and sprays</td>
-  </tr>
-  <tr>
-    <td><a href="https://67js.codepawl.com/vehicle.md"><img src="https://67js.codepawl.com/previews/vehicle.webp" alt="A jeep leaning into a bend on a marked path" /></a><br /><b>Vehicles</b>: steering, body roll and wheels on a path</td>
-    <td><a href="docs/lighting.md"><img src="https://67js.codepawl.com/previews/lighting.webp" alt="Metal spheres of rising roughness lit by an HDR environment" /></a><br /><b>HDRI lighting</b>: reflections that blur with roughness</td>
-  </tr>
-  <tr>
-    <td><a href="https://67js.codepawl.com/object.html"><img src="https://67js.codepawl.com/previews/wall-e-exploded.webp" alt="An exploded robot study with 574 separate parts" /></a><br /><b>Assembly studio</b>: 574 parts that explode apart</td>
-    <td><a href="https://67js.codepawl.com/nature.html"><img src="https://67js.codepawl.com/previews/nature.webp" alt="A valley with a river, a wooden bridge and stylized trees" /></a><br /><b>Nature world</b>: viewpoints, daylight, wind and water</td>
+    <td width="50%"><a href="https://67js.codepawl.com/showcase.html?scene=datacenter"><img src="https://67js.codepawl.com/previews/showcase-datacenter.webp" alt="A cutaway AI data center hall rendered by 67js" /></a><br /><b>AI data center</b></td>
+    <td width="50%"><a href="https://67js.codepawl.com/showcase.html?scene=port"><img src="https://67js.codepawl.com/previews/showcase-port.webp" alt="A container port with cranes and stacked containers rendered by 67js" /></a><br /><b>Container port</b></td>
   </tr>
 </table>
 
@@ -53,7 +45,7 @@ npm install 67js@npm:@codepawlhq/67js
 ```
 
 The registry name is `@codepawlhq/67js`. The command installs it under the alias `67js`, so imports stay short.
-The package is ESM and bundles its runtime dependencies. It needs Node.js 20.19 or later for the tools, and a WebGL2 browser for rendering.
+The package is ESM. The tools need Node.js 20.19 or later, and rendering needs a WebGL2 browser.
 
 ## Quick start
 
@@ -84,72 +76,46 @@ const renderer = new Renderer67(canvas, parts, { samples: 4, memoryBudgetMiB: 25
 renderer.render({ eye: [4, 3, 6], target: [0, 1, 0] });
 ```
 
-To save a PNG from a script without a browser window or an MCP client, use the [render-from-a-script recipe](docs/guide.md#render-a-png-from-a-script-without-mcp).
-
+Call `renderer.updateParts(parts)` to move or recolour parts without a new upload.
 Call `renderer.resize()` after the canvas changes size, and `renderer.dispose()` before you replace the renderer.
-Use `renderer.updateParts(parts)` to move or recolour parts without a new upload.
 The [guide](docs/guide.md) covers cameras, lights, effects and every material field.
-
-A forest on scanned terrain takes a few more lines:
-
-```js
-import { createTerrain } from '67js/addons/terrain';
-import { loadLeafTextures } from '67js/addons/texture-set';
-import { scatterVegetation, selectLevels } from '67js/addons/vegetation';
-
-const eye = [0, 4, 22];
-const terrain = createTerrain({ size: 400, chunks: 8, seed: 11 });
-const forest = scatterVegetation({
-  area: { minX: -60, maxX: 60, minZ: -80, maxZ: 20 },
-  terrainHeight: terrain.heightAt,
-  leafTextures: await loadLeafTextures('https://67js.codepawl.com/textures/leaves'),
-  seed: 23,
-});
-const trees = selectLevels(forest.instances, eye, { cullDistance: 160 }).parts;
-```
-
-The scanned textures are not in the npm package. The site serves them with open CORS, or you can copy `public/textures` from this repository to your own host.
-
-## What is in the box
-
-The core export is the renderer with geometry primitives, cameras, lights, effects and GLB export.
-Each addon is a separate import, so a page loads only what it uses.
-
-| Area | Import | What it does |
-| --- | --- | --- |
-| Rendering | `67js` | Instanced PBR renderer, shadows, MSAA, HDR, bloom, alpha masks and blending, render budgets. See [lighting](docs/lighting.md) and [material maps](docs/material-maps.md). |
-| Environment | `67js/addons/hdri` | Image-based lighting from Radiance `.hdr` files, with blurred reflections. |
-| Terrain | `67js/addons/terrain`, `67js/addons/texture-set` | [Chunked terrain](https://67js.codepawl.com/terrain.md) with level of detail and a four-layer splat material from scanned textures. |
-| Grass | `67js/addons/grass` | [Grass fields](https://67js.codepawl.com/grass.md) of clumped, curved blades with rolling wind gusts, paths and level of detail. |
-| Clutter | `67js/addons/clutter` | [Pebbles, rocks, twigs and fallen leaves](https://67js.codepawl.com/clutter.md) scattered over terrain in streamed tiles. |
-| Path tracer | `67js/addons/path-tracer` | [Offline stills that follow Cycles](https://67js.codepawl.com/path-tracer.md): bounced light, glass and soft shadows on the CPU. |
-| Light bake | `67js/addons/light-bake` | [Bounced light baked into one lightmap per part](https://67js.codepawl.com/light-bake.md), drawn through the emissive map. |
-| Vegetation | `67js/addons/vegetation` | [Seeded trees, bushes and grass](https://67js.codepawl.com/vegetation.md) with scanned leaves and bark, wind and level of detail. |
-| Liquid | `67js/addons/spume` | [Baked liquid playback](https://67js.codepawl.com/spume.md) with refraction and spray from the Spume solver. |
-| Vehicles | `67js/addons/vehicle` | [Wheeled vehicles on a path](https://67js.codepawl.com/vehicle.md): wheel spin, steering, roll, pitch and ground following. |
-| Characters | `67js/addons/gltf`, `67js/addons/retarget`, `67js/addons/skeleton-pose` | [glTF import](docs/gltf.md) with skins, morphs and compressed meshes, [clip retargeting](https://67js.codepawl.com/retarget.md) between rigs, and [pose layers with IK](docs/skeleton-pose.md). |
-| Physics | `67js/addons/physics` | [Rapier contacts and joints](docs/physics.md) recorded into a timeline for repeatable seeks. |
-| Modeling | `67js/addons/modeling`, `sculpt`, `surface`, `shrinkwrap`, `mesh-query` | [Modeling](docs/modeling.md), [sculpt brushes](https://67js.codepawl.com/sculpt.md), [surface patches](https://67js.codepawl.com/surface.md), [shrinkwrap](https://67js.codepawl.com/shrinkwrap.md) and [mesh queries](https://67js.codepawl.com/mesh-query.md). |
-| Polygon mesh | `67js/addons/mesh` | [Mesh editing for agents](docs/mesh.md): tagged faces, extrude, inset, bevel, loop cut, booleans, a modifier stack and UV unwrap. |
-| Agents | `67js/addons/agent-scene`, `67js/addons/agent-asset` | [Scene sessions](docs/agent-scene.md) with revisions, checkpoints and atomic edits. |
-
-The full list of guides is on the [documentation page](https://67js.codepawl.com/docs.html).
+To save a PNG from a script, use the [render-from-a-script recipe](docs/guide.md#render-a-png-from-a-script-without-mcp).
 
 ## For agents
 
 The package includes an MCP server that connects an agent to a persistent browser renderer.
+The server needs a local Chrome installation.
 
 ```sh
 npx 67js-mcp --backend gpu --memory 192
 ```
 
-The server needs Node.js 20.19 or later and a local Chrome installation.
-Agents author [JSON recipes](docs/agent-scene.md), set [lights and fog](docs/agent-look.md), import [GLB assets](docs/agent-asset.md) and author [motion](docs/agent-motion.md).
-They get PNG previews back, compare up to four views in one [review grid](docs/agent-review.md) and run [render jobs](docs/agent-render-jobs.md) for stills and MP4 video.
+Use `--backend cpu` on a machine without a GPU.
+An agent authors a [JSON recipe](docs/agent-scene.md), sets [lights and fog](docs/agent-look.md), imports [GLB assets](docs/agent-asset.md) and adds [motion](docs/agent-motion.md).
+It gets PNG previews back, compares up to four views in a [review grid](docs/agent-review.md) and runs [render jobs](docs/agent-render-jobs.md) for stills and MP4 video.
 The server accepts no arbitrary code and no remote asset URLs. The [MCP reference](docs/mcp.md) lists its tools.
 
 Two skills teach an agent the engine: [build-67js-scene](skills/build-67js-scene/SKILL.md) for scenes and materials, and [render-67js-media](skills/render-67js-media/SKILL.md) for image and video export.
-Give an agent [llms.txt](https://67js.codepawl.com/llms.txt) for the plain-text guide.
+For a plain-text guide, give the agent [llms.txt](https://67js.codepawl.com/llms.txt).
+
+## Addons
+
+Each addon is a separate import, so a page loads only what it uses.
+
+| Area | Import | Guide |
+| --- | --- | --- |
+| Lighting | `67js/addons/hdri` | [Image-based lighting](docs/lighting.md) from `.hdr` files |
+| Terrain | `67js/addons/terrain`, `67js/addons/texture-set` | [Chunked terrain](https://67js.codepawl.com/terrain.md) with scanned ground layers |
+| Vegetation | `67js/addons/vegetation`, `67js/addons/grass`, `67js/addons/clutter` | [Trees](https://67js.codepawl.com/vegetation.md), [grass](https://67js.codepawl.com/grass.md) and [ground clutter](https://67js.codepawl.com/clutter.md) with wind and level of detail |
+| Characters | `67js/addons/gltf`, `67js/addons/retarget`, `67js/addons/skeleton-pose` | [glTF import](docs/gltf.md), [clip retargeting](https://67js.codepawl.com/retarget.md) and [pose layers with IK](docs/skeleton-pose.md) |
+| Liquid | `67js/addons/spume` | [Baked liquid playback](https://67js.codepawl.com/spume.md) with refraction and spray |
+| Vehicles | `67js/addons/vehicle` | [Wheeled vehicles on a path](https://67js.codepawl.com/vehicle.md) |
+| Physics | `67js/addons/physics` | [Rapier contacts and joints](docs/physics.md) recorded into a timeline |
+| Modeling | `67js/addons/mesh`, `67js/addons/modeling`, `67js/addons/sculpt` | [Mesh editing](docs/mesh.md), [modeling](docs/modeling.md) and [sculpt brushes](https://67js.codepawl.com/sculpt.md) |
+| Offline light | `67js/addons/path-tracer`, `67js/addons/light-bake` | [Path-traced stills](https://67js.codepawl.com/path-tracer.md) and [baked lightmaps](https://67js.codepawl.com/light-bake.md) |
+| Agents | `67js/addons/agent-scene`, `67js/addons/agent-asset` | [Scene sessions](docs/agent-scene.md) with revisions and checkpoints |
+
+The [documentation page](https://67js.codepawl.com/docs.html) lists every guide.
 
 ## Render images and video
 
@@ -157,45 +123,31 @@ The render command exports a scene to PNG or MP4 through headless Chrome, on the
 
 ```sh
 npm run render -- --kind image --scene nature --backend gpu --preset high --output artifacts/nature.png
-npm run render -- --kind video --scene motion --aspect portrait --backend gpu --encoder gpu --output artifacts/short.mp4
 ```
 
-Video export streams one frame at a time and waits for encoder backpressure, so a film never sits in memory.
-NVENC is used when its preflight succeeds, with libx264 as the fallback.
-Each export writes a JSON report with render, capture and encoder time and peak memory.
+Video export streams one frame at a time, so a film never sits in memory.
 The [render skill](skills/render-67js-media/SKILL.md) lists every preset and flag.
 
-## Run the showcase locally
+## Run the site locally
 
 1. Install Node.js 22.12 or later.
 2. Run `npm ci`.
 3. Run `npm run dev`. Vite prints the local URL.
 
-| Page | What you see |
-| --- | --- |
-| `/` | Home page with examples, install commands and release data. |
-| `/object.html` | Assembly studio with orbit, explosion, layers, finishes and GLB export. |
-| `/nature.html` | A valley with viewpoints, daylight, wind and water ripples. |
-| `/film.html` | A 187-second procedural trailer with playback controls. |
-| `/motion.html` | A 12-second keyframe animation with HDR. |
-| `/view2d.html` | Flat vector scenes and orthographic model views. |
-| `/assets.html` | A GLB viewer with textures, clips and PNG capture. |
-
 ## Performance claims
 
-Measured results and their limits are in [verification.md](docs/verification.md).
-They compare matching scenes on the same hardware. They do not show a general speed advantage over Three.js or visual parity with Blender.
+[verification.md](docs/verification.md) has the measured results and their limits.
+They compare matching scenes on the same hardware. They do not show a general speed advantage over three.js or visual parity with Blender.
 
 ## Contributing
 
-Read [CONTRIBUTING.md](https://github.com/anxuanng/67.js/blob/main/CONTRIBUTING.md) before you open a pull request. It covers setup, checks, code style and the release flow.
+Read [CONTRIBUTING.md](https://github.com/codepawl/67.js/blob/main/CONTRIBUTING.md) before you open a pull request. It covers setup, checks, code style and the release flow.
 
 ## Credits
 
 - [gl-matrix](https://github.com/toji/gl-matrix) supplies the matrix math.
-- The glTF addon has its own parser and does not depend on [Three.js](https://threejs.org/). The Draco, meshopt and KTX2 decoders are Three.js loaders that you pass in.
-- Textures, leaf atlases and the HDRI on the site are CC0 scans from [Poly Haven](https://polyhaven.com) and [ambientCG](https://ambientcg.com). See [the texture credits](https://github.com/anxuanng/67.js/blob/main/public/textures/CREDITS.md).
-- WALL·E is a Disney/Pixar character. The study is procedural geometry with no external model assets.
-- The trailer study follows the shot order of [a Universal Pictures trailer](https://www.youtube.com/watch?v=uYPbbksJxIg) with procedural sets and an original score. It contains no film footage or soundtrack samples.
+- The glTF addon has its own parser. The Draco, meshopt and KTX2 decoders are [three.js](https://threejs.org/) loaders that you pass in.
+- The textures and the HDRI on the site are CC0 scans from [Poly Haven](https://polyhaven.com) and [ambientCG](https://ambientcg.com). See [the texture credits](https://github.com/codepawl/67.js/blob/main/public/textures/CREDITS.md).
+- The showcase models and their sources are listed in each world's `scene.json` under `public/showcase/`.
 
 [MIT](LICENSE) © CodePawl

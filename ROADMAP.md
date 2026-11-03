@@ -33,7 +33,7 @@ Version `0.10.0` adds terrain, texture sets, vegetation, liquid playback, vehicl
 Version `0.11.0` adds `addons/mesh` for polygon editing, with booleans, bevel, loop cuts, UV unwrapping and a modifier stack. It adds the `mesh_edit`, `mesh_stack` and `mesh_inspect` tools, plus grass, clutter and moss.
 Version `0.12.0` adds seeded procedural material patterns.
 Version `0.13.0` adds `addons/skeleton-pose` with clip layers, masks and IK, and `0.13.1` and `0.14.0` make it work on real imported characters, including through MCP.
-[CHANGELOG.md](https://github.com/anxuanng/67.js/blob/main/CHANGELOG.md) lists every change, including work on `main` that is not released yet.
+[CHANGELOG.md](https://github.com/codepawl/67.js/blob/main/CHANGELOG.md) lists every change, including work on `main` that is not released yet.
 
 The stdio MCP server supplies twenty-two schema-backed tools and persistent CPU/GPU image previews.
 Recipes retain lighting, volumetric fog, grading and directional shadow coverage with atomic edits and undo.
