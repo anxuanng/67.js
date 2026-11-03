@@ -47,6 +47,21 @@ export function compareToBase(measured, baseMeasured, accepted = new Map()) {
   return { rows, problems };
 }
 
+// A goal scene that was at or under its goal on the base branch may not cross it. Only a "- goal:<scene>:" line accepts that,
+// and An approves those lines, so a bundle note for the scene does not count.
+export function goalProblems(measured, baseMeasured, goals, accepted = new Map()) {
+  const problems = [];
+  for (const [scene, goal] of Object.entries(goals)) {
+    const size = measured[`scene:${scene}`]?.gzip;
+    const baseSize = baseMeasured[`scene:${scene}`]?.gzip;
+    if (size === undefined || baseSize === undefined) continue;
+    const crossed = baseSize <= goal && size > goal;
+    if (!crossed || accepted.has(`goal:${scene}`)) continue;
+    problems.push(`scene:${scene} is ${size} bytes gzip, over its goal of ${goal}, which the base branch met (${baseSize}). Move code out of the core bundle, or ask An to accept it with the line "- goal:${scene}: <why>" in changes/<issue>.size.md.`);
+  }
+  return problems;
+}
+
 function noteFor(row) {
   if (row.growth === null) return 'new, reported only';
   if (row.growth <= row.allowance) return '';
