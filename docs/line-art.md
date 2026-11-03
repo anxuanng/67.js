@@ -61,7 +61,7 @@ A recipe host loads the code with `await loadAgentSceneModules(recipe)`. The pre
 
 `npm run reference:line-art` draws `bench/reference/line-art-scene.json` (unbevelled boxes, a three-step block, a sphere, two touching parts on a slab) with `lines.width` 2, and draws the same scene in Blender 5.2.2 with Freestyle (silhouette, border and crease edges, crease angle 35, 2 px). Blender's Line Art modifier gave 0 strokes in background mode, with or without a camera, so Freestyle is the reference. Each side is drawn with and without lines, and the difference of the two is the line mask.
 
-![67js outlines on the left, Blender Freestyle on the right](../bench/reference/images/line-art-67js-vs-blender-freestyle.webp)
+![67js outlines on the left, Blender Freestyle on the right](https://raw.githubusercontent.com/codepawl/67.js/main/bench/reference/images/line-art-67js-vs-blender-freestyle.webp)
 
 - Silhouettes, creases and the boundary between the two touching parts appear in both. Every Blender line pixel lies within 2 px of a 67js line (100%).
 - The edge masks overlap with an IoU of 0.50 at 960x540. 64% of the 67js line pixels lie within 2 px of a Blender line. In the side-by-side the lines only 67js draws are the contact lines where a block stands on the slab or one step sits on the next (Freestyle draws no edge there, probably because the edge lies in the surface below it).
