@@ -1,5 +1,5 @@
 import { mat4, mat3 } from 'gl-matrix';
-import { layerTextureSupport, viewTransformShader, LIGHT_SHADING_FEATURE, SHADING_MODES, LIGHT_SHADING_MAXIMUM_SAMPLES, vertexShader, createVertexShader, createFragmentShader, liquidFragmentShader, createDepthVertexShader, depthFragmentShader, benchmarkVertexShader, benchmarkFragmentShader } from './shaders.js';
+import { SPLAT_UNITS, requireSplatSupport, layerTextureSupport, LIGHT_SHADING_FEATURE, SHADING_MODES, LIGHT_SHADING_MAXIMUM_SAMPLES, createVertexShader, createFragmentShader, liquidPassDrawer, depthFragmentShader, benchmarkVertexShader, benchmarkFragmentShader, viewTransformShader, createDepthVertexShader } from './shaders.js';
 import { postFragment, createPostFragment, POST_STEPS, skyFragment, bloomFragment } from './post.js';
 import { fullscreenVertex, startProgram, finishProgram, compileProgram } from './gl-program.js';
 import { ambientOcclusionFragment } from './ambient-occlusion.js';
@@ -12,9 +12,8 @@ import { createLightingState, updateLightingState } from './lighting.js';
 import { RenderTargetLedger } from './render-target-ledger.js';
 import { SHADOW_ATLAS_WIDTH, SHADOW_TILE_SIZE, SHADOW_TILES_PER_ROW, tileViewport, writeShadowTile } from './local-shadows.js';
 import { resolveVolumeFog, volumeShadowAmbient } from './volumetric.js';
-import { assertEnvironmentMap, createEnvironmentResources, environmentBackgroundFragment, environmentBrdfFragment, environmentPrefilterFragment, estimateEnvironmentBytes } from './environment.js';
+import { requireEnvironmentSupport } from './environment-shading.js';
 import { validateSkinGeometry, validateSkinPose, skinTextureLayout, packSkinInfluences } from './skinning.js';
-import { validateSplatMaterial, splatBatchState, splatTextureBytes, resolveSplatSize, packSplatParameters, buildSplatPixels } from './splat.js';
 import { materialLayerState, materialLayerValue } from './material-layers.js';
 import { MaterialSnapshot } from './material-snapshot.js';
 import { fittedFogDensity } from './fog-fit.js';
@@ -87,6 +86,7 @@ function shaderFeaturesOfParts(parts) {
     if (material.anisotropy > 0) features.add('anisotropy');
     if (material.lightMask !== undefined) features.add('lightLinking');
     if (material.iridescence > 0) features.add('iridescence');
+    if (material.toon > 0) features.add('toon');
     if ((material.alphaMode ?? 'opaque') !== 'opaque') features.add('alphaMode');
     if (materialLayerValue(material, 'clearcoat') > 0) features.add('clearcoat');
     if (materialLayerValue(material, 'sheenColor').some(channel => channel !== 0)) features.add('sheen');
@@ -126,10 +126,6 @@ const ENVIRONMENT_UNIFORMS = [...ENVIRONMENT_LOOKUP_UNIFORMS, 'environmentBrdf',
 const LIGHT_MAP_UNIT = 6;
 const ENVIRONMENT_SPECULAR_UNIT = 9;
 const ENVIRONMENT_BRDF_UNIT = 10;
-const SPLAT_COLOR_UNIT = 11;
-const SPLAT_NORMAL_UNIT = 12;
-const SPLAT_PACKED_UNIT = 13;
-const SPLAT_MASK_UNIT = 14;
 const LOCAL_SHADOW_UNIT = 15;
 const LIGHT_UNIFORMS = ['pointLightCount', 'pointLightPositions[0]', 'pointLightColors[0]', 'pointLightRadii[0]', 'pointLightShadowTiles[0]',
   'spotLightCount', 'spotLightPositions[0]', 'spotLightColors[0]', 'spotLightDirections[0]', 'spotLightParameters[0]',
@@ -174,9 +170,9 @@ function materialMapState(material) {
   validateMaterialMaps(material);
   const normalScale = material.normalScale ?? DEFAULT_NORMAL_SCALE;
   const occlusionStrength = material.occlusionStrength ?? 1;
-  validateSplatMaterial(material);
+  if (material.layers || material.splat) requireSplatSupport().validate(material);
   if (material.layers && PROCEDURAL_MATERIAL_TAGS.has(material.tag)) throw new Error('Splat layers require a standard PBR material tag.');
-  return [...MATERIAL_MAPS.map(field => material[field] ?? null), normalScale[0], normalScale[1], occlusionStrength, ...mossState(material), material.boxMapScale ?? 0, material.boxMapAxis ?? 1, ...lightMapState(material), ...splatBatchState(material), material.layerMaps ?? null, material.environmentProbe ?? null, material.waterReflection ?? null];
+  return [...MATERIAL_MAPS.map(field => material[field] ?? null), normalScale[0], normalScale[1], occlusionStrength, ...mossState(material), material.boxMapScale ?? 0, material.boxMapAxis ?? 1, ...lightMapState(material), material.layers ?? null, material.splat ?? null, material.layerMaps ?? null, material.environmentProbe ?? null, material.waterReflection ?? null];
 }
 
 // A baked light map reads the second UV set, so it is only drawn for parts that cannot be skinned or morphed.
@@ -568,13 +564,13 @@ export class Renderer67 {
       const material = group[0].material;
       if (!material.layers || splatLayerSets.has(material.layers)) continue;
       splatLayerSets.add(material.layers);
-      this.splatBytes += splatTextureBytes(resolveSplatSize(material, textureLimit), material.layers.length) + (material.splat?.maskMap ? textureDescriptorInfo(material.splat.maskMap, textureLimit).bytes : 0);
+      this.splatBytes += requireSplatSupport().textureBytes(requireSplatSupport().resolveSize(material, textureLimit), material.layers.length) + (material.splat?.maskMap ? textureDescriptorInfo(material.splat.maskMap, textureLimit).bytes : 0);
     }
     this.textureBytes += this.splatBytes;
     this.capabilities.maximumTextureSize = textureLimit;
     this.environmentResources = null;
     this.environmentBackgroundProgram = null;
-    this.environmentBytes = !benchmark && environment.map ? estimateEnvironmentBytes(environment.map, textureLimit) : 0;
+    this.environmentBytes = !benchmark && environment.map ? requireEnvironmentSupport().estimateBytes(environment.map, textureLimit) : 0;
     this.textureBytes += this.environmentBytes;
     for (const group of groups) {
       const geometry = group[0].geometry;
@@ -606,7 +602,6 @@ export class Renderer67 {
       pending.post = startProgram(this.context, fullscreenVertex, this.withViewTransform(postFragment, 'post'));
       pending.sky = startProgram(this.context, fullscreenVertex, skyFragment);
       pending.bloom = startProgram(this.context, fullscreenVertex, bloomFragment);
-      pending.liquid = startProgram(this.context, vertexShader, this.withViewTransform(liquidFragmentShader, 'liquid'));
       if (environment.map) this.startEnvironmentPrograms();
     }
     this.finishMainProgram(pending.main);
@@ -621,8 +616,6 @@ export class Renderer67 {
       this.bloomProgram = finishProgram(this.context, pending.bloom);
       this.bloomUniforms = Object.fromEntries(['sourceTexture', 'texelDirection', 'threshold', 'extract'].map(name => [name, this.context.getUniformLocation(this.bloomProgram, name)]));
       this.skyUniforms = Object.fromEntries(['skyTop', 'skyBottom', 'sunDirection', 'inverseViewProjection', 'eye', 'time', 'daylight', 'hdrEnabled'].map((name) => [name, this.context.getUniformLocation(this.skyProgram, name)]));
-      this.liquidProgram = finishProgram(this.context, pending.liquid);
-      this.liquidUniforms = Object.fromEntries(['viewProjection', 'lightProjection', 'eye', 'sceneColor', 'resolution', 'exposure', 'hdrEnabled', 'worldMode', 'daylight', 'lightDirection', 'keyColor', 'ambientIntensity', 'fogColor', 'fogDensity', 'glassState', 'glassTint', 'liquidOptics', 'foamShape', ...ENVIRONMENT_LOOKUP_UNIFORMS, 'time', 'wind', 'explosionProgress', 'explosionCenter', 'assemblyAmount', ...SKIN_UNIFORMS, ...MORPH_UNIFORMS].map((name) => [name, this.context.getUniformLocation(this.liquidProgram, name)]));
     }
     this.depthAlphaUniforms = Object.fromEntries(DEPTH_ALPHA_UNIFORMS.map(name => [name, this.context.getUniformLocation(this.depthProgram, name)]));
     this.depthUniform = this.context.getUniformLocation(this.depthProgram, 'lightProjection');
@@ -632,13 +625,12 @@ export class Renderer67 {
     this.triangles = parts.reduce((total, part) => total + part.geometry.indices.length / 3, 0);
     this.whiteTexture = this.createTexture(null);
     // Disabled skin samplers still need distinct units from the depth sampler.
-    const liquidPrograms = this.liquidProgram ? [[this.liquidProgram, this.liquidUniforms]] : [];
-    for (const [program, uniforms] of [[this.program, this.uniforms], [this.depthProgram, this.depthSkinUniforms], ...liquidPrograms]) {
+    for (const [program, uniforms] of [[this.program, this.uniforms], [this.depthProgram, this.depthSkinUniforms]]) {
       this.context.useProgram(program);
       this.context.uniform1i(uniforms.skinInfluences, 6);
       this.context.uniform1i(uniforms.jointPalette, 7);
     }
-    for (const [program, uniforms] of [[this.program, this.uniforms], [this.depthProgram, this.depthMorphUniforms], ...liquidPrograms]) {
+    for (const [program, uniforms] of [[this.program, this.uniforms], [this.depthProgram, this.depthMorphUniforms]]) {
       this.context.useProgram(program);
       this.context.uniform1i(uniforms.morphTargets, 8);
     }
@@ -646,7 +638,7 @@ export class Renderer67 {
       this.context.activeTexture(this.context.TEXTURE0 + unit);
       this.context.bindTexture(this.context.TEXTURE_2D, this.whiteTexture);
     }
-    this.initializeSplatPlaceholders();
+    if (this.shaderFeatures.has('splat')) requireSplatSupport().initializePlaceholders(this);
     this.initializeEnvironment(environment.map);
     groups.forEach((group) => this.batches.push(this.uploadBatch(group)));
     this.createShadowMap();
@@ -677,14 +669,9 @@ export class Renderer67 {
     context.deleteProgram(this.postProgram);
     this.postProgram = finishProgram(context, startProgram(context, fullscreenVertex, this.withViewTransform(postFragment, 'post')));
     this.postUniforms = postUniformLocations(context, this.postProgram);
-    const liquidNames = Object.keys(this.liquidUniforms);
-    context.deleteProgram(this.liquidProgram);
-    this.liquidProgram = finishProgram(context, startProgram(context, vertexShader, this.withViewTransform(liquidFragmentShader, 'liquid')));
-    this.liquidUniforms = Object.fromEntries(liquidNames.map(name => [name, context.getUniformLocation(this.liquidProgram, name)]));
-    context.useProgram(this.liquidProgram);
-    context.uniform1i(this.liquidUniforms.skinInfluences, 6);
-    context.uniform1i(this.liquidUniforms.jointPalette, 7);
-    context.uniform1i(this.liquidUniforms.morphTargets, 8);
+    // The liquid pass builds its program on its next draw, with the new curve (liquid-renderer.js).
+    if (this.liquidProgram) context.deleteProgram(this.liquidProgram);
+    this.liquidProgram = null;
     if (this.environmentBackgroundProgram) context.deleteProgram(this.environmentBackgroundProgram);
     this.environmentBackgroundProgram = null;
   }
@@ -789,95 +776,6 @@ export class Renderer67 {
     return texture;
   }
 
-  initializeSplatPlaceholders() {
-    const context = this.context;
-    this.splatPlaceholder = context.createTexture();
-    context.bindTexture(context.TEXTURE_2D_ARRAY, this.splatPlaceholder);
-    context.texImage3D(context.TEXTURE_2D_ARRAY, 0, context.RGBA8, 1, 1, 1, 0, context.RGBA, context.UNSIGNED_BYTE, new Uint8Array([128, 128, 128, 255]));
-    context.texParameteri(context.TEXTURE_2D_ARRAY, context.TEXTURE_MIN_FILTER, context.LINEAR);
-    context.texParameteri(context.TEXTURE_2D_ARRAY, context.TEXTURE_MAG_FILTER, context.LINEAR);
-    context.useProgram(this.program);
-    const units = [['splatColor', SPLAT_COLOR_UNIT], ['splatNormal', SPLAT_NORMAL_UNIT], ['splatPacked', SPLAT_PACKED_UNIT]];
-    for (const [name, unit] of units) {
-      context.uniform1i(this.uniforms[name], unit);
-      context.activeTexture(context.TEXTURE0 + unit);
-      context.bindTexture(context.TEXTURE_2D_ARRAY, this.splatPlaceholder);
-    }
-    context.uniform1i(this.uniforms.splatMask, SPLAT_MASK_UNIT);
-    context.activeTexture(context.TEXTURE0 + SPLAT_MASK_UNIT);
-    context.bindTexture(context.TEXTURE_2D, this.whiteTexture);
-    context.uniform1f(this.uniforms.splatEnabled, 0);
-  }
-
-  createTextureArray(internalFormat, size, layerCount, pixels) {
-    const context = this.context;
-    const texture = context.createTexture();
-    context.bindTexture(context.TEXTURE_2D_ARRAY, texture);
-    const levels = Math.floor(Math.log2(size)) + 1;
-    context.texStorage3D(context.TEXTURE_2D_ARRAY, levels, internalFormat, size, size, layerCount);
-    context.pixelStorei(context.UNPACK_FLIP_Y_WEBGL, false);
-    context.pixelStorei(context.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
-    context.pixelStorei(context.UNPACK_COLORSPACE_CONVERSION_WEBGL, context.NONE);
-    context.texSubImage3D(context.TEXTURE_2D_ARRAY, 0, 0, 0, 0, size, size, layerCount, context.RGBA, context.UNSIGNED_BYTE, pixels);
-    context.generateMipmap(context.TEXTURE_2D_ARRAY);
-    context.texParameteri(context.TEXTURE_2D_ARRAY, context.TEXTURE_WRAP_S, context.REPEAT);
-    context.texParameteri(context.TEXTURE_2D_ARRAY, context.TEXTURE_WRAP_T, context.REPEAT);
-    context.texParameteri(context.TEXTURE_2D_ARRAY, context.TEXTURE_MIN_FILTER, context.LINEAR_MIPMAP_LINEAR);
-    context.texParameteri(context.TEXTURE_2D_ARRAY, context.TEXTURE_MAG_FILTER, context.LINEAR);
-    this.applyAnisotropy(context.TEXTURE_2D_ARRAY);
-    return texture;
-  }
-
-  createSplatResources(material) {
-    if (this.splatResources.has(material.layers)) return this.splatResources.get(material.layers);
-    const context = this.context;
-    const size = resolveSplatSize(material, context.getParameter(context.MAX_TEXTURE_SIZE));
-    const layerCount = material.layers.length;
-    const pixels = buildSplatPixels(material.layers, size);
-    const resources = {
-      size,
-      layerCount,
-      color: this.createTextureArray(context.SRGB8_ALPHA8, size, layerCount, pixels.color),
-      normal: this.createTextureArray(context.RGBA8, size, layerCount, pixels.normal),
-      packed: this.createTextureArray(context.RGBA8, size, layerCount, pixels.packed),
-      mask: material.splat?.maskMap ? this.createTexture(material.splat.maskMap) : this.whiteTexture,
-      parameters: packSplatParameters(material),
-    };
-    this.splatResources.set(material.layers, resources);
-    return resources;
-  }
-
-  bindSplat(splat) {
-    const context = this.context;
-    const uniforms = this.uniforms;
-    context.uniform1f(uniforms.splatEnabled, splat ? 1 : 0);
-    if (!splat) return;
-    const bindings = [[SPLAT_COLOR_UNIT, context.TEXTURE_2D_ARRAY, splat.color], [SPLAT_NORMAL_UNIT, context.TEXTURE_2D_ARRAY, splat.normal], [SPLAT_PACKED_UNIT, context.TEXTURE_2D_ARRAY, splat.packed], [SPLAT_MASK_UNIT, context.TEXTURE_2D, splat.mask]];
-    for (const [unit, target, texture] of bindings) {
-      context.activeTexture(context.TEXTURE0 + unit);
-      context.bindTexture(target, texture);
-    }
-    const parameters = splat.parameters;
-    context.uniform4fv(uniforms['splatLayer[0]'], parameters.layer);
-    context.uniform4fv(uniforms['splatTint[0]'], parameters.tint);
-    context.uniform4fv(uniforms['splatSlope[0]'], parameters.slope);
-    context.uniform4fv(uniforms['splatHeightRange[0]'], parameters.height);
-    context.uniform1fv(uniforms['splatMaskChannel[0]'], parameters.mask);
-    context.uniform1fv(uniforms['splatMaskInvert[0]'], parameters.maskInvert);
-    context.uniform4fv(uniforms.splatBlend, parameters.blend);
-    context.uniform4fv(uniforms.splatOptions, parameters.options);
-    context.uniform4fv(uniforms.splatMaskBounds, parameters.maskBounds);
-    context.uniform4fv(uniforms.splatVariation, parameters.variation);
-  }
-
-  disposeSplatResources() {
-    for (const resources of this.splatResources?.values() ?? []) {
-      for (const texture of [resources.color, resources.normal, resources.packed]) this.context.deleteTexture(texture);
-    }
-    this.splatResources?.clear();
-    if (this.splatPlaceholder) this.context.deleteTexture(this.splatPlaceholder);
-  }
-
   // Parts can arrive after construction (replaceParts) or change their tag (updateParts). When one needs a shader feature
   // that the program left out, the program is compiled again with that feature added.
   requireShaderFeatures(parts) {
@@ -898,10 +796,11 @@ export class Renderer67 {
     this.buildMainProgram();
     context.deleteProgram(previousProgram);
     context.useProgram(this.program);
-    for (const [name, unit] of [['skinInfluences', 6], ['jointPalette', 7], ['morphTargets', 8], ['splatColor', SPLAT_COLOR_UNIT], ['splatNormal', SPLAT_NORMAL_UNIT], ['splatPacked', SPLAT_PACKED_UNIT], ['splatMask', SPLAT_MASK_UNIT], ['environmentSpecular', ENVIRONMENT_SPECULAR_UNIT], ['environmentBrdf', ENVIRONMENT_BRDF_UNIT]]) {
+    for (const [name, unit] of [['skinInfluences', 6], ['jointPalette', 7], ['morphTargets', 8], ...Object.entries(SPLAT_UNITS), ['environmentSpecular', ENVIRONMENT_SPECULAR_UNIT], ['environmentBrdf', ENVIRONMENT_BRDF_UNIT]]) {
       context.uniform1i(this.uniforms[name], unit);
     }
     context.uniform1f(this.uniforms.splatEnabled, 0);
+    if (this.shaderFeatures.has('splat') && !this.splatPlaceholder) requireSplatSupport().initializePlaceholders(this);
   }
 
   uploadBatch(parts) {
@@ -1081,7 +980,7 @@ export class Renderer67 {
     const map = parts[0].material.map ?? null;
     const mapState = materialMapState(parts[0].material);
     const textures = mapState.slice(0, 5).map(descriptor => this.createTexture(descriptor));
-    const splat = parts[0].material.layers ? this.createSplatResources(parts[0].material) : null;
+    const splat = parts[0].material.layers ? requireSplatSupport().createResources(this, parts[0].material, requireSplatSupport()) : null;
     const lightMapTexture = mapState[14] ? this.createTexture(mapState[14]) : null;
     if (lightMapTexture && (parts[0].skin || parts[0].morph || !geometry.lightUvs)) throw new Error('A light map needs lightUvs on rigid geometry, with no skin or morph.');
     const skin = parts[0].skin ?? null;
@@ -1659,7 +1558,7 @@ export class Renderer67 {
   // The prefilter and BRDF programs build while the other programs do, instead of after them.
   startEnvironmentPrograms() {
     this.pendingEnvironmentPrograms = new Map();
-    for (const fragmentSource of [environmentPrefilterFragment, environmentBrdfFragment]) {
+    for (const fragmentSource of [requireEnvironmentSupport().prefilterFragment, requireEnvironmentSupport().brdfFragment]) {
       this.pendingEnvironmentPrograms.set(fragmentSource, startProgram(this.context, fullscreenVertex, fragmentSource));
     }
   }
@@ -1694,10 +1593,10 @@ export class Renderer67 {
 
   // Prefilters a map the first time it is seen; maps spread from one created map share its data and reuse the GPU textures (an `irradianceSource` map, which only the diffuse light reads, counts as part of the map). Returns true when new textures were built.
   prepareEnvironment(map) {
-    assertEnvironmentMap(map);
+    requireEnvironmentSupport().assertMap(map);
     if (this.environmentResources?.data === map.data && this.environmentResources.irradianceSource === map.irradianceSource) return false;
-    estimateEnvironmentBytes(map, this.capabilities.maximumTextureSize);
-    const resources = createEnvironmentResources(this.context, map, { compileProgram: (context, vertexSource, fragmentSource) => this.compileEnvironmentProgram(context, vertexSource, fragmentSource), fullscreenVertex });
+    requireEnvironmentSupport().estimateBytes(map, this.capabilities.maximumTextureSize);
+    const resources = requireEnvironmentSupport().createResources(this.context, map, { compileProgram: (context, vertexSource, fragmentSource) => this.compileEnvironmentProgram(context, vertexSource, fragmentSource), fullscreenVertex });
     this.environmentResources?.dispose();
     this.environmentResources = resources;
     this.textureBytes += resources.bytes - this.environmentBytes;
@@ -1731,7 +1630,7 @@ export class Renderer67 {
     if (!map?.showBackground || this.transparent) return false;
     const context = this.context;
     if (!this.environmentBackgroundProgram) {
-      this.environmentBackgroundProgram = compileProgram(context, fullscreenVertex, this.withViewTransform(environmentBackgroundFragment, 'background'));
+      this.environmentBackgroundProgram = compileProgram(context, fullscreenVertex, this.withViewTransform(requireEnvironmentSupport().backgroundFragment, 'background'));
       const names = ['inverseViewProjection', 'eye', 'backgroundLevel', 'exposure', 'hdrEnabled', 'environmentSpecular', 'environmentRotation', 'environmentIntensity', 'environmentLevelMax'];
       this.environmentBackgroundUniforms = Object.fromEntries(names.map(name => [name, context.getUniformLocation(this.environmentBackgroundProgram, name)]));
     }
@@ -1894,64 +1793,7 @@ export class Renderer67 {
     const foams = this.batches.filter(batch => batchPass(batch) === 'foam');
     if (liquids.length === 0 && foams.length === 0) return;
     const optics = resolveLiquidOptics({ ...environment.liquid, ...frame.liquid });
-    const context = this.context;
-    const width = this.canvas.width;
-    const height = this.canvas.height;
-    // Liquids refract the opaque scene, so resolve it into frameTexture before drawing them on top.
-    context.bindFramebuffer(context.READ_FRAMEBUFFER, this.multisampleFramebuffer);
-    context.bindFramebuffer(context.DRAW_FRAMEBUFFER, this.resolveFramebuffer);
-    context.blitFramebuffer(0, 0, width, height, 0, 0, width, height, context.COLOR_BUFFER_BIT, context.NEAREST);
-    context.bindFramebuffer(context.FRAMEBUFFER, this.multisampleFramebuffer);
-    context.viewport(0, 0, width, height);
-    context.enable(context.DEPTH_TEST);
-    context.enable(context.CULL_FACE);
-    context.useProgram(this.liquidProgram);
-    const uniforms = this.liquidUniforms;
-    context.uniformMatrix4fv(uniforms.viewProjection, false, this.viewProjection);
-    context.uniformMatrix4fv(uniforms.lightProjection, false, this.lightProjection);
-    context.uniform3fv(uniforms.eye, frame.eye);
-    context.uniform2f(uniforms.resolution, width, height);
-    context.uniform1f(uniforms.exposure, frame.exposure ?? 1);
-    context.uniform1f(uniforms.hdrEnabled, this.hdr ? 1 : 0);
-    context.uniform1f(uniforms.worldMode, this.world ? 1 : 0);
-    context.uniform1f(uniforms.daylight, environment.daylight);
-    context.uniform3fv(uniforms.lightDirection, environment.lightDirection);
-    context.uniform3fv(uniforms.keyColor, this.lighting.keyColor);
-    context.uniform1f(uniforms.ambientIntensity, this.lighting.ambientIntensity);
-    context.uniform3fv(uniforms.fogColor, environment.fogColor);
-    context.uniform1f(uniforms.fogDensity, environment.fogDensity);
-    context.uniform4f(uniforms.liquidOptics, optics.thickness, optics.ior, optics.refraction, optics.scattering);
-    context.uniform2f(uniforms.foamShape, optics.foamOpacity, optics.foamSoftness);
-    this.applyEnvironmentUniforms(environmentMap, uniforms);
-    context.uniform1f(uniforms.time, frame.time ?? 0);
-    context.uniform1f(uniforms.wind, frame.wind ?? 0.3);
-    context.uniform1f(uniforms.explosionProgress, frame.explosionProgress ?? 1);
-    context.uniform3fv(uniforms.explosionCenter, environment.explosionCenter);
-    context.uniform1f(uniforms.assemblyAmount, assemblyAmount);
-    if (uniforms.skinEnabled) context.uniform1f(uniforms.skinEnabled, 0);
-    if (uniforms.morphEnabled) context.uniform1f(uniforms.morphEnabled, 0);
-    context.activeTexture(context.TEXTURE0);
-    context.bindTexture(context.TEXTURE_2D, this.frameTexture);
-    context.uniform1i(uniforms.sceneColor, 0);
-    for (const batch of liquids) {
-      const layers = batch.layerState;
-      context.uniform4f(uniforms.glassState, layers[9], layers[10], layers[11], Math.min(layers[12], MAX_FINITE_DISTANCE));
-      context.uniform3f(uniforms.glassTint, layers[13], layers[14], layers[15]);
-      context.bindVertexArray(batch.vertexArray);
-      context.drawElementsInstanced(context.TRIANGLES, batch.indexCount, context.UNSIGNED_INT, 0, batch.instanceCount);
-    }
-    if (foams.length > 0) {
-      context.enable(context.BLEND);
-      context.blendFuncSeparate(context.SRC_ALPHA, context.ONE_MINUS_SRC_ALPHA, context.ONE, context.ONE_MINUS_SRC_ALPHA);
-      context.depthMask(false);
-      for (const batch of foams) {
-        context.bindVertexArray(batch.vertexArray);
-        context.drawElementsInstanced(context.TRIANGLES, batch.indexCount, context.UNSIGNED_INT, 0, batch.instanceCount);
-      }
-      context.depthMask(true);
-      context.disable(context.BLEND);
-    }
-    context.bindVertexArray(null);
+    liquidPassDrawer()(this, { frame, environment, assemblyAmount, environmentMap, liquids, foams, optics, environmentSpecularUnit: ENVIRONMENT_SPECULAR_UNIT, maximumDistance: MAX_FINITE_DISTANCE });
   }
 
   // Allocated on the first frame that asks for bloom, so scenes without it pay nothing.
@@ -2154,9 +1996,10 @@ export class Renderer67 {
       this.context.uniform2f(this.uniforms.materialAnisotropy, layers[16], layers[17]);
       this.context.uniform3f(this.uniforms.materialIridescence, layers[18], layers[19], layers[20]);
       this.context.uniform1i(this.uniforms.lightLinkMask, layers[21]);
+      this.context.uniform1f(this.uniforms.materialToon, layers[22]);
       this.context.uniform1f(this.uniforms.boxMapScale, batch.mapState[12]);
       this.context.uniform1i(this.uniforms.boxMapAxis, batch.mapState[13]);
-      this.bindSplat(batch.splat);
+      if (this.shaderFeatures?.has('splat')) requireSplatSupport().bind(this, batch.splat);
       layerTextureSupport.bind?.(this, batch.mapState);
       this.context.uniform1f(this.uniforms.hasLightMap, batch.lightMapTexture ? 1 : 0);
       if (batch.lightMapTexture) {
@@ -2380,7 +2223,7 @@ export class Renderer67 {
     if (this.environmentBackgroundProgram) this.context.deleteProgram(this.environmentBackgroundProgram);
     this.environmentResources?.dispose();
     for (const texture of this.textures.values()) this.context.deleteTexture(texture);
-    this.disposeSplatResources();
+    if (this.splatPlaceholder) requireSplatSupport().dispose(this);
     this.textures.clear();
     for (const cache of [this.skinTextures, this.influenceTextures, this.morphTextures]) {
       for (const record of cache?.values() ?? []) this.context.deleteTexture(record.texture);

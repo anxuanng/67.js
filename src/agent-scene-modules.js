@@ -17,10 +17,12 @@ const MODULE_LOADERS = {
   relations: () => import('./agent-relations.js'),
   timeline: () => import('./film-timeline.js'),
   layerShaders: () => import('./material-layer-shaders.js'),
+  liquidShader: () => import('./liquid-shader.js'),
   terrain: () => import('./agent-terrain.js'),
   navigation: () => import('./agent-navigation.js'),
   lightLinking: () => import('./light-linking.js'),
   cascades: () => import('./cascaded-shadows.js'),
+  lineArt: () => import('./line-art.js'),
   viewTransform: () => import('./view-transform-shader.js'),
   coplanar: () => import('./coplanar-overlap.js'),
 };
@@ -46,11 +48,13 @@ const MODULE_MARKERS = {
   relations: ['"relations":'],
   timeline: ['"timeline":{'],
   layerShaders: ['"anisotropy"', '"iridescence"'],
+  liquidShader: ['"transmission"', '"liquid"', '"foam"'],
   terrain: ['"type":"terrain"'],
   // No recipe text asks for it, only the path option of scene_inspect does, so a host loads it with loadAllAgentSceneModules.
   navigation: [],
   lightLinking: ['"affects"', '"keyAffects"'],
   cascades: ['"shadowCascades"'],
+  lineArt: ['"lines":{', '"toon":'],
   viewTransform: ['"viewTransform":"agx"', '"viewTransform":"neutral"', '"look":"'],
   // The coplanar-overlap warning in scene_inspect appears only once this is loaded, which loadAllAgentSceneModules does; a recipe with resolveCoplanar needs it.
   coplanar: ['"resolveCoplanar"'],

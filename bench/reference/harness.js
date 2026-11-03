@@ -2,9 +2,12 @@
 import { Renderer67 } from '/src/renderer.js';
 import { REFERENCE_SCENES, KHRONOS_SCENES, CLOTH_SCENES } from './scenes.js';
 import { GRAND_SCENES } from './grand-scenes.js';
+import { LOOK_OPTIONS } from './look-options.js';
 import { skinnedGeometry } from '/src/path-tracer-scene.js';
 import { boxProjectedGeometry } from '/src/export-box-uv.js';
 import '/src/material-layer-shaders.js';
+import '/src/liquid-shader.js';
+import '/src/splat-shader.js';
 import { skyOpenness } from '/src/closed-room.js';
 import { fogSkyVisibility } from '/src/fog-sky-visibility.js';
 import { createCascadedShadows } from '/src/cascaded-shadows.js';
@@ -26,7 +29,7 @@ const WATER_REFLECTION = { off: false, ssr: 'ssr' }[new URLSearchParams(location
 
 // ?set=khronos draws the Khronos sample assets (npm run reference -- --khronos) and ?set=cloth the cloth scenes
 // (npm run reference -- --cloth) instead of the fixed scenes.
-const SCENE_SETS = { khronos: KHRONOS_SCENES, cloth: CLOTH_SCENES, grand: GRAND_SCENES };
+const SCENE_SETS = { khronos: KHRONOS_SCENES, cloth: CLOTH_SCENES, grand: GRAND_SCENES, look: LOOK_OPTIONS };
 const SCENES = SCENE_SETS[new URLSearchParams(location.search).get('set')] ?? REFERENCE_SCENES;
 
 function encodeBytes(typedArray) {
