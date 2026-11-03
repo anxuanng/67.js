@@ -220,7 +220,10 @@ export class CascadedShadows {
   /** Redraws the slice maps when the camera, the light or a caster moved. Call once a frame after the camera is set. */
   update(renderer, casterChanged) {
     const context = renderer.context;
-    if (!this.texture) this.allocate(context);
+    if (!this.texture) {
+      this.allocate(context);
+      renderer.renderTargets.record('cascadedShadowMaps', { width: this.resolution, height: this.resolution, layers: this.count, format: 'DEPTH_COMPONENT24' });
+    }
     const moved = this.fitToCamera(renderer);
     if (!moved && !casterChanged && this.drawCount > 0) return;
     this.previousMatrices.set(this.matrices);
@@ -258,7 +261,8 @@ export class CascadedShadows {
     context.uniform4fv(this.locations.cascadeFrame, this.forward);
   }
 
-  dispose(context) {
+  dispose(context, renderTargets = null) {
+    renderTargets?.release('cascadedShadowMaps');
     if (this.texture) context.deleteTexture(this.texture);
     if (this.framebuffer) context.deleteFramebuffer(this.framebuffer);
     this.texture = null;
