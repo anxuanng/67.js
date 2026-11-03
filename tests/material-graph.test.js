@@ -94,7 +94,7 @@ test('the slope of a sharp joint edge stays within one texel of the edge instead
 });
 
 test('every graph texture node tiles across the seam', () => {
-  const nodes = [{ noise: { scale: 6 } }, { voronoi: { scale: 5, output: 'edge' } }, { wave: { frequency: 3, direction: 'diagonal' } }, { checker: { count: 8 } }];
+  const nodes = [{ noise: { scale: 6, tile: true } }, { voronoi: { scale: 5, output: 'edge' } }, { wave: { frequency: 3, direction: 'diagonal' } }, { checker: { count: 8 } }];
   for (const node of nodes) {
     const { outputs } = compileMaterialGraph({ height: node });
     const evaluate = outputs.height.evaluate;
@@ -105,6 +105,30 @@ test('every graph texture node tiles across the seam', () => {
       assert.ok(seam < 0.2 + interior, `${Object.keys(node)[0]} seam ${seam}`);
     }
   }
+});
+
+test('the noise node returns the values of Blender 5.2 Noise Texture (2D, scale 10, detail 2, roughness 0.5, normalized)', () => {
+  // Fac read back from a Cycles bake at these positions (bench/reference/README.md, 2026-11-04).
+  const golden = [
+    [0.080078125, 0.041015625, 0.439068],
+    [0.783203125, 0.236328125, 0.398615],
+    [0.501953125, 0.501953125, 0.495776],
+    [0.130859375, 0.783203125, 0.461263],
+    [0.998046875, 0.998046875, 0.511450],
+    [0.978515625, 0.013671875, 0.487824],
+  ];
+  const { outputs } = compileMaterialGraph({ height: { noise: { scale: 10, octaves: 3 } } });
+  for (const [u, v, expected] of golden) {
+    assert.ok(Math.abs(outputs.height.evaluate(u, v) - expected) < 1e-4, `noise at ${u}, ${v}`);
+  }
+});
+
+test('a tiled noise repeats over the unit square and differs from the endless one only near the far edges', () => {
+  const endless = compileMaterialGraph({ height: { noise: { scale: 10, octaves: 3 } } }).outputs.height.evaluate;
+  const tiled = compileMaterialGraph({ height: { noise: { scale: 10, octaves: 3, tile: true } } }).outputs.height.evaluate;
+  assert.ok(Math.abs(tiled(0.4, 0.3) - endless(0.4, 0.3)) < 1e-12);
+  assert.ok(Math.abs(tiled(0.4, 0.3) - tiled(1.4, 2.3)) < 1e-9);
+  assert.throws(() => compileMaterialGraph({ height: { noise: { tile: 'yes' } } }), /tile/);
 });
 
 test('patterns with mapping uv use the geometry UVs from uv_unwrap instead of box projection', () => {

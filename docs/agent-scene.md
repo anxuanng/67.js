@@ -175,7 +175,10 @@ Nodes: `uv` (`"u"`, `"v"` or `"both"`), `noise`, `voronoi` (`output`: `distance`
 (2 to 8 stops of numbers or colours), `vec`, and the maths nodes `add`, `sub`, `mul`, `div`, `min`, `max`, `pow`, `abs`, `floor`,
 `fract`, `sqrt`, `invert`, `clamp`, `smoothstep` and `mix`. Maths nodes work on each component of a vector. Every texture
 node takes `at`, a vector expression such as `{ "add": [{ "uv": "both" }, { "mul": [{ "vec": [0.1, 0, 0] }, 1] }] }`, to warp
-it. Scales and counts are whole numbers (1 to 64, even for `checker`), so every texture node tiles.
+it. Scales and counts are whole numbers (1 to 64, even for `checker`), so every texture node tiles, except `noise`: it is
+Blender's Noise Texture node value for value (2D, detail `octaves - 1`, roughness 0.5, lacunarity 2, normalized; `seed` moves the
+lattice by whole cells), whose lattice does not wrap. Add `"tile": true` to a `noise` that must repeat, at the cost of a different
+last cell row and column.
 
 Limits, checked while the recipe is read: at most 64 nodes in all outputs, depth 12 (the field expression limits), at most 8 ramp
 stops, `resolution` of 256, 512 or 1024, and a work budget of 30 million units, where a plain node costs 1, a `noise` octave 3

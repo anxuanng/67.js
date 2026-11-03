@@ -233,8 +233,8 @@ GRAPH_MATH_OPERATIONS = {
     "add": "ADD", "sub": "SUBTRACT", "mul": "MULTIPLY", "div": "DIVIDE", "min": "MINIMUM", "max": "MAXIMUM",
     "pow": "POWER", "abs": "ABSOLUTE", "floor": "FLOOR", "fract": "FRACT", "sqrt": "SQRT",
 }
-# 67js noise has no seed in Blender, and Blender's noise function differs from the one in src/material-texture-kit.js,
-# so a graph with noise only matches in how it looks, not pixel for pixel.
+# The graph noise node of 67js is Blender's Noise Texture (2D, fBm, Roughness 0.5, Lacunarity 2, Normalize), value for
+# value (bench/reference/README.md, 2026-11-04). A graph noise with "tile": true wraps its lattice and is not translated.
 GRAPH_BUMP_DISTANCE = 0.15
 
 
@@ -319,14 +319,20 @@ class GraphTranslator:
         return node.outputs["Result"]
 
     def noise(self, settings):
+        if settings.get("tile"):
+            raise NotImplementedError("Blender's noise lattice does not wrap, so a tiled noise has no Blender node.")
         node = self.nodes.new("ShaderNodeTexNoise")
         node.noise_dimensions = "2D"
         node.inputs["Scale"].default_value = settings.get("scale", 4)
         node.inputs["Detail"].default_value = settings.get("octaves", 4) - 1
         node.inputs["Roughness"].default_value = 0.5
+        seed = settings.get("seed", 0)
+        scale = settings.get("scale", 4)
+        # 67js moves the lattice by whole cells per seed (NOISE seed shifts in src/material-graph.js), in scaled units.
+        shifts = ((seed * 7919) % 1024 / scale, (seed * 104729) % 1024 / scale)
         combine = self.nodes.new("ShaderNodeCombineXYZ")
         for index, part in enumerate(self.position(settings)):
-            self.connect(combine.inputs[index], part)
+            self.connect(combine.inputs[index], self.math("ADD", part, shifts[index]) if index < 2 and shifts[index] else part)
         self.links.new(combine.outputs[0], node.inputs["Vector"])
         return node.outputs["Fac"]
 

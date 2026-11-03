@@ -1481,6 +1481,31 @@ After the change: `brick-graph` 0.0933 (GPU) and 0.0930 (CPU) against Cycles, 0.
 
 What is left is not in the bake. On the bump-only wall across the dark side of a joint, luminance (display space) is 0.25 at the darkest pixel in Cycles, 0.34 in EEVEE and 0.37 in 67js, against 0.62 on the flat wall: EEVEE and 67js agree with each other and Cycles is darker. That is a shading difference on a normal tilted about 70 degrees from the surface, in the lighting of `src/shaders.js`, which this change does not touch; it needs the engine session.
 
+## The graph noise node is Blender's Noise Texture (2026-11-04, part of issue #50, RTX 3060 960 x 540)
+
+The brick-tone error of `brick-graph` was a pattern error: the `noise` node was a periodic gradient noise with its own hash, so its blotches sat in other places than Cycles' and EEVEE's. Blender 5.2.2 headless baked its Noise Texture (2D, Fac) over the unit square to float arrays (Cycles on the CPU, 1 sample, filter 0.01, `Geometry > Position` as the vector), and the 67js node was evaluated at the same pixel centres, 256 x 256.
+
+| Property | Before | Blender 5.2 | Now |
+| --- | --- | --- | --- |
+| Lattice hash | `hashCell` (xxHash-style mix of the cell and the seed) | Jenkins lookup3 `hash_uint2` of the corner | the same as Blender |
+| Corner gradient | one angle per corner, unit vector | 8 gradients picked by the low 3 hash bits, `(x, y)` mixed with `2 * (y, x)` | the same |
+| Output scale | `1.5 * gradient`, range about -1 to 1 | `0.6616 * perlin` | the same |
+| Octaves | cells doubled per octave inside a wrapped period, gain 0.5, own seed per octave | Detail `n - 1`: `n` octaves, Roughness 0.5, Lacunarity 2, same lattice shifted by the frequency | the same |
+| Normalize and offset | `value * 0.5 + 0.5` of the amplitude-normalised sum | `0.5 * sum / amplitude sum + 0.5` | the same |
+| Tiling | wrapped over the unit square | none | none by default, `"tile": true` wraps it |
+| Seed | per-octave seed in the hash | none | moves the lattice by whole cells; Blender's side adds the same shift |
+
+Node output against the Cycles bake: scale 10, detail 2: max 0.000048, mean 0.000011 over 65,536 pixels (both ranges 0.120 to 0.831); scale 7, detail 5 (6 octaves): max 0.000052, mean 0.000010. That is float precision, so the match is per pixel; `tests/material-graph.test.js` keeps six Cycles values. The colour ramp (LINEAR in RGB, stops in linear colour) and the Map Range smoothstep were read and need no change. Not touched: `voronoi`, which no reference scene uses and which Blender computes with its own jittered-point hash; it still differs from Blender's Voronoi Texture.
+
+Suite on the GPU through `raster-only.mjs` (26 scenes, before on main, after on this branch), scored by FLIP against the stored Cycles arrays: 24 scenes are byte-identical PNGs (no other scene reads a graph), so the worst delta there is 0.0000. The two that changed:
+
+| Scene | Before | After |
+| --- | --- | --- |
+| `brick-graph` | 0.0871 | 0.0734 |
+| `brick-flat` (its colour is the average of the graph map, which moved) | 0.0547 | 0.0556 |
+
+The excess of the graph wall over the flat wall is 0.0178 (was 0.0324), against EEVEE's 0.0120, so the first Done-when box of #50 stays open, by 0.0058. The wall luminance mean is 0.5455 (Cycles 0.5495) and the darkest pixel 0.210 (Cycles 0.218). In the error map of the wall the brick tones now agree; what is left is a thin line along the lit and dark edges of every brick (the bump at the joint), not the tone. The scene's noise seed of 2 became the default 0 because Cycles never had it (the stored Cycles and EEVEE arrays stay valid).
+
 ## The sky share of a tilted normal, squared (2026-11-04, part of issue #50, SwiftShader 960 x 540)
 
 Rendered on SwiftShader (`run.mjs --no-gpu --skip-blender --skip-cpu --scene brick-graph,brick-flat`, no GPU) and scored by FLIP against the stored Cycles and EEVEE arrays (`brick-graph` and `brick-flat` rows reproduce the committed 0.0933 and 0.0547 to within 0.0004). Only `brick-graph` has a normal map in the suite, so the change cannot move any other scene (the line is behind `USES_NORMAL_MAP`); `brick-flat` was rendered again and stayed 0.0543. Wall pixels are rows 110 to 430, columns 230 to 730, display luminance.
