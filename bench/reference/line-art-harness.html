@@ -1,0 +1,52 @@
+<!doctype html>
+<html>
+<head>
+<style>html,body{margin:0;height:100%}canvas{width:100vw;height:100vh;display:block}</style>
+</head>
+<body>
+<canvas></canvas>
+<script type="module">
+// Draws bench/reference/line-art-scene.json once, with or without lines, at the viewport size.
+import { createAgentScene, loadAllAgentSceneModules } from '/src/agent-scene.js';
+import { resolveAgentShadow } from '/src/agent-look.js';
+import { Renderer67 } from '/src/renderer.js';
+import { installRenderPasses } from '/src/render-passes.js';
+import { installLineArt, resolveLineArt } from '/src/line-art.js';
+
+await loadAllAgentSceneModules();
+const recipe = await (await fetch('/bench/reference/line-art-scene.json')).json();
+const session = createAgentScene(recipe);
+const canvas = document.querySelector('canvas');
+const baseRenderer = new Renderer67(canvas, session.parts, { ground: false, hdr: true, depth: true, samples: 1, pixelRatio: 1, memoryBudgetMiB: 512 });
+const renderer = installLineArt(installRenderPasses(baseRenderer));
+const context = renderer.context;
+
+// lineWidth 0 draws the scene without lines. Returns the frame as a PNG data URL.
+window.drawLineArtScene = function drawLineArtScene(lineWidth) {
+  const environment = session.environment;
+  const effects = session.effects;
+  renderer.shadowBounds = resolveAgentShadow(session.shadow, environment.lightDirection);
+  renderer.shadowsDirty = true;
+  renderer.world = environment.world;
+  renderer.resize();
+  renderer.updateParts(session.parts);
+  const lines = lineWidth > 0 ? resolveLineArt({ width: lineWidth }) : undefined;
+  renderer.render({ ...session.camera, environment, effects, exposure: effects.exposure, time: 0, lines });
+  const width = context.drawingBufferWidth;
+  const height = context.drawingBufferHeight;
+  const rows = new Uint8ClampedArray(width * height * 4);
+  context.readPixels(0, 0, width, height, context.RGBA, context.UNSIGNED_BYTE, rows);
+  const flipped = new Uint8ClampedArray(rows.length);
+  for (let row = 0; row < height; row++) {
+    flipped.set(rows.subarray((height - 1 - row) * width * 4, (height - row) * width * 4), row * width * 4);
+  }
+  const flatCanvas = document.createElement('canvas');
+  flatCanvas.width = width;
+  flatCanvas.height = height;
+  flatCanvas.getContext('2d').putImageData(new ImageData(flipped, width, height), 0, 0);
+  return { width, height, glError: context.getError(), png: flatCanvas.toDataURL('image/png') };
+};
+window.lineArtReady = true;
+</script>
+</body>
+</html>

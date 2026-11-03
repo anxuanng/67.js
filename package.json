@@ -154,6 +154,7 @@
     "smoke:agent-branches": "node scripts/smoke-agent-branches.mjs",
     "parity": "node scripts/parity-report.mjs",
     "reference": "node bench/reference/run.mjs",
+    "reference:line-art": "node bench/reference/line-art.mjs",
     "size": "node scripts/measure-size.mjs",
     "size:release": "node scripts/measure-size.mjs --set-budgets",
     "tool-cost": "node scripts/check-tool-cost.mjs",
