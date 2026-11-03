@@ -1456,6 +1456,23 @@ After the change: `brick-graph` 0.0933 (GPU) and 0.0930 (CPU) against Cycles, 0.
 
 What is left is not in the bake. On the bump-only wall across the dark side of a joint, luminance (display space) is 0.25 at the darkest pixel in Cycles, 0.34 in EEVEE and 0.37 in 67js, against 0.62 on the flat wall: EEVEE and 67js agree with each other and Cycles is darker. That is a shading difference on a normal tilted about 70 degrees from the surface, in the lighting of `src/shaders.js`, which this change does not touch; it needs the engine session.
 
+## Named looks for the grand scenes (2026-11-03, part of issue #168)
+
+`look-options.js` holds a second round of options for the three grand scenes, each a named variant: `node bench/reference/run.mjs --option mountain-valley:dawn` (several separated by commas) draws it with the GPU only into `artifacts/reference-look/<scene>-<option>-gpu.png`, with no Blender, no score and no baseline change. Sheets: `uv run --no-project --with pillow python -I bench/reference/look-sheets.py artifacts/reference-look artifacts/look-168` copies each frame to `artifacts/look-168/<scene>/<option>.png` and writes one contact sheet per scene. The default scenes and the letters of `grand-scenes.js` are unchanged. Blender would get the same geometry and materials: ground cover is vertex colour, facades are material graphs (Emission through the graph), halls use Emission panels and volume fog. An picks; no option is claimed to match anyone's taste.
+
+| Option | What changes |
+| --- | --- |
+| `mountain-valley:dawn` | Cool dawn, sun behind the far massif, a river down a flat floor, a mist layer, ridges fading into haze, a snowy hero peak |
+| `mountain-valley:tarn` | Midday on the shore of a turquoise lake, forest across the water, rounded snow massifs, boulders at the camera |
+| `mountain-valley:sunset` | Low orange sun from the left, long tree shadows over wildflower drifts, one peak lit pink |
+| `temple-hall:rose` | The nave seen down its axis toward a stained glass rose window and five lancets (all Emission), roof openings with sun shafts, candles along the carpet |
+| `temple-hall:court` | Hall open to the sky over the nave, high sun and blue sky light, pale floor, two colossi and a glowing door at the far end |
+| `megacity-dusk:golden-avenue` | Street level on a broad avenue at sunset, the right-hand towers lit gold, lines of car lights, street trees |
+| `megacity-dusk:blue-hour` | Elevated bank over a river, a 560 m landmark tower, windows lit in drifts, lit bridges, parkland trees |
+| `megacity-dusk:night-grid` | High night view of avenue grids, dense towers with most windows lit, cyan and magenta signs |
+
+Terrain shape: the rim is rounded massifs (erosion noise) with a little ridged noise for crags, in place of the reference's needle ridges. Towers have a lit podium, one to three setbacks and a crown (plant, stepped or spire), and a facade graph gives panes in a wall with lit panes in drifts instead of full-width stripes. No downloaded textures or models are used: the terrain chunks and tower boxes carry no UV sets in the export, so a scanned texture would not reach Blender the same way.
+
 ## The reference harness drew `foliage` in a breeze (2026-11-03, part of issue #191)
 
 Found by comparing the leaf cards of the two sides. No engine code changed and no Blender render changed: the Cycles and EEVEE arrays are the ones of the earlier runs.
