@@ -101,7 +101,14 @@ const materialLayerFields = {
 };
 
 
+const waterFields = {
+  waterPreset: z.enum(['lake', 'sea', 'river']).optional().describe('Water tag.'),
+  absorption: z.array(z.number().min(0).max(20)).length(3).optional().describe('Water tag: RGB per metre.'),
+  turbidity: unit.optional().describe('Water tag: 0 clear to 1 murky.'),
+};
+
 const materialFields = {
+  ...waterFields,
   ...materialLayerFields,
   pattern: materialPattern.optional(),
   color: color.optional().describe('Linear RGB base color, each component between zero and one.'),
@@ -113,7 +120,7 @@ const materialFields = {
   alphaMode: z.enum(['opaque', 'blend']).optional().describe('blend draws after opaque geometry, sorted back to front.'),
   doubleSided: z.boolean().optional().describe('Draw and light both faces (thin sheets, leaves, cloth).'),
 };
-const materialTag = z.enum(['surface', 'unlit', 'liquid', 'foam']).optional().describe('liquid refracts what lies behind it and absorbs by thickness: color is the light one metre lets through. foam is soft blended whitewater.');
+const materialTag = z.enum(['surface', 'unlit', 'liquid', 'foam', 'water']).optional().describe('liquid refracts what lies behind it and absorbs by thickness: color is the light one metre lets through. foam is soft blended whitewater. water is a flat mirror sheet; scene_capabilities water has its fields.');
 const liquidOptics = z.strictObject({
   thickness: z.number().min(0).max(100).optional().describe('Metres of liquid where it faces the camera.'),
   ior: z.number().min(1).max(3).optional(),

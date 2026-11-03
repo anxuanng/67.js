@@ -1,4 +1,118 @@
-import { registerShaderFeatureCode } from './shader-registry.js';
+import { layerTextureSupport, registerShaderFeatureCode } from './shader-registry.js';
+
+// Water bodies. A material with the water tag can carry `absorption` (RGB per metre: how fast each colour fades going down) and
+// `turbidity` (0 clear to 1 murky: how much light the water scatters into shadows). The largest flat water part of a scene sets
+// the water level. Every surface below it is dimmed by Beer-Lambert absorption of the column above it, and its shadows are lifted
+// by in-scatter and widened with depth times turbidity (worldVisibility below). Absorption folds the way down and the way back up
+// into one coefficient, so a bed `depth` metres down keeps exp(-absorption * depth) of its light.
+/** Water the way people name it: where the light goes and how far a shadow stays sharp. */
+export const WATER_PRESETS = Object.freeze({
+  lake: Object.freeze({ absorption: Object.freeze([0.35, 0.07, 0.04]), turbidity: 0.02 }),
+  sea: Object.freeze({ absorption: Object.freeze([0.4, 0.06, 0.02]), turbidity: 0.1 }),
+  river: Object.freeze({ absorption: Object.freeze([0.8, 0.9, 1.6]), turbidity: 0.75 }),
+});
+export const WATER_DEFAULT_PRESET = 'lake';
+export const WATER_MAXIMUM_ABSORPTION = 20;
+// A water part counts as one level when it is this flat: thickness against its wider side.
+const WATER_MAXIMUM_THICKNESS_RATIO = 0.02;
+
+/** Resolves a material's water fields: an explicit absorption or turbidity beats the preset, which beats the default lake. */
+export function resolveWaterMaterial({ waterPreset, absorption, turbidity } = {}) {
+  const preset = waterPreset ?? WATER_DEFAULT_PRESET;
+  if (!Object.hasOwn(WATER_PRESETS, preset)) {
+    throw new RangeError(`waterPreset must be one of ${Object.keys(WATER_PRESETS).join(', ')}.`);
+  }
+  const resolvedAbsorption = absorption ?? WATER_PRESETS[preset].absorption;
+  const absorptionValid = Array.isArray(resolvedAbsorption) && resolvedAbsorption.length === 3
+    && resolvedAbsorption.every(channel => Number.isFinite(channel) && channel >= 0 && channel <= WATER_MAXIMUM_ABSORPTION);
+  if (!absorptionValid) {
+    throw new RangeError(`absorption must be three numbers from 0 to ${WATER_MAXIMUM_ABSORPTION} (per metre).`);
+  }
+  const resolvedTurbidity = turbidity ?? WATER_PRESETS[preset].turbidity;
+  if (!Number.isFinite(resolvedTurbidity) || resolvedTurbidity < 0 || resolvedTurbidity > 1) {
+    throw new RangeError('turbidity must be within zero and one.');
+  }
+  return { waterPreset: preset, absorption: [...resolvedAbsorption], turbidity: resolvedTurbidity };
+}
+
+function partBounds(part) {
+  const { positions } = part.geometry;
+  const { matrix } = part;
+  const minimum = [Infinity, Infinity, Infinity];
+  const maximum = [-Infinity, -Infinity, -Infinity];
+  for (let vertex = 0; vertex < positions.length; vertex += 3) {
+    for (let axis = 0; axis < 3; axis++) {
+      const value = matrix[axis] * positions[vertex] + matrix[4 + axis] * positions[vertex + 1] + matrix[8 + axis] * positions[vertex + 2] + matrix[12 + axis];
+      minimum[axis] = Math.min(minimum[axis], value);
+      maximum[axis] = Math.max(maximum[axis], value);
+    }
+  }
+  return { minimum, maximum };
+}
+
+const boundsCache = new WeakMap();
+
+// A part's bounds are read again only when its matrix changed.
+function cachedBounds(part) {
+  const cached = boundsCache.get(part);
+  if (cached && cached.matrix.every((value, index) => value === part.matrix[index])) {
+    return cached.bounds;
+  }
+  const bounds = partBounds(part);
+  boundsCache.set(part, { matrix: Float32Array.from(part.matrix), bounds });
+  return bounds;
+}
+
+/**
+ * The water body of a set of parts, or null: the largest flat part with the water tag sets the level (its top) and the optics.
+ * A water mesh that is not flat (a stream following the terrain) has no single level, so it sets none.
+ */
+export function findWaterBody(parts) {
+  let best = null;
+  for (const part of parts) {
+    if (part.material.tag !== 'water') {
+      continue;
+    }
+    const { minimum, maximum } = cachedBounds(part);
+    const wider = Math.max(maximum[0] - minimum[0], maximum[2] - minimum[2]);
+    const footprint = (maximum[0] - minimum[0]) * (maximum[2] - minimum[2]);
+    const flat = wider > 0 && maximum[1] - minimum[1] <= wider * WATER_MAXIMUM_THICKNESS_RATIO;
+    if (flat && (!best || footprint > best.footprint)) {
+      best = { footprint, level: maximum[1], material: part.material };
+    }
+  }
+  if (!best) {
+    return null;
+  }
+  const { absorption, turbidity } = resolveWaterMaterial(best.material);
+  return { level: best.level, absorption, turbidity };
+}
+
+const waterLocations = new WeakMap();
+
+function bindWaterBody(renderer) {
+  if (!renderer.shaderFeatures?.has('water')) {
+    return;
+  }
+  const context = renderer.context;
+  let locations = waterLocations.get(renderer);
+  if (locations?.program !== renderer.program) {
+    locations = { program: renderer.program, body: context.getUniformLocation(renderer.program, 'waterBody'), absorption: context.getUniformLocation(renderer.program, 'waterAbsorption') };
+    waterLocations.set(renderer, locations);
+  }
+  const waterParts = renderer.batches.flatMap(batch => (batch.parts[0].material.tag === 'water' ? batch.parts : []));
+  const body = findWaterBody(waterParts);
+  // The mirror and the render passes skip the underwater look: the mirror is clipped above the water, a pass reads raw surface data.
+  const active = Boolean(body) && !renderer.renderingPass && !renderer.mirrorCulling;
+  context.uniform4f(locations.body, active ? body.level : 0, active ? body.turbidity : 0, active ? 1 : 0, 0);
+  context.uniform3f(locations.absorption, ...(active ? body.absorption : [0, 0, 0]));
+}
+
+const previousBind = layerTextureSupport.bind;
+layerTextureSupport.bind = (renderer, mapState) => {
+  previousBind?.(renderer, mapState);
+  bindWaterBody(renderer);
+};
 
 // Wind for the foliage (4) and grass (7) tags, shared by the colour and shadow vertex shaders so both
 // move identically. It depends only on local position, the card's uv, world position and time.
@@ -12,6 +126,50 @@ import { registerShaderFeatureCode } from './shader-registry.js';
 // (water's reflection) and worldFinal (fire and smoke, which replace the lit colour). Other optional features can use the
 // same slots, or stub them out in shaders.js, to leave their code out of renderers that do not draw them.
 export const worldMaterialSlots = {
+  // The water body (level, turbidity, 1 when a flat water part sets one) and its absorption per metre, sent by bindWaterBody.
+  // Shadow of a surface under murky water: the classic shadow map read over a wider disc. A cascaded map is read through
+  // its own macro and keeps its filter.
+  declarations: `uniform vec4 waterBody;
+uniform vec3 waterAbsorption;
+#ifndef shadowVisibility
+float softShadowVisibility(vec3 normal, float radiusTexels) {
+  vec3 projected = shadowPosition.xyz / shadowPosition.w * 0.5 + 0.5;
+  if (projected.z > 1.0 || projected.z < 0.0 || any(lessThan(projected.xy, vec2(0.0))) || any(greaterThan(projected.xy, vec2(1.0)))) return 1.0;
+  float cosine = max(dot(normal, normalize(lightDirection)), 0.05);
+  float bias = shadowBiasPerSlope * clamp(sqrt(1.0 - cosine * cosine) / cosine, 0.25, 4.0);
+  vec2 texel = 1.0 / vec2(textureSize(shadowMap, 0));
+  float lit = 0.0;
+  for (int tap = 0; tap < 12; tap++) {
+    float angle = float(tap) * 2.39996;
+    vec2 offset = vec2(cos(angle), sin(angle)) * sqrt((float(tap) + 0.5) / 12.0) * radiusTexels;
+    lit += texture(shadowMap, vec3(projected.xy + offset * texel, projected.z - bias));
+  }
+  return lit / 12.0;
+}
+#endif
+// Sunlight under water: in-scatter lifts the shadow (the water scatters light into it) and widens its edge, both with
+// turbidity times the depth of the column above the surface.
+float underwaterVisibility(float visibility, vec3 normal, float depth) {
+  float scattering = waterBody.y * depth;
+  float filtered = visibility;
+#ifndef shadowVisibility
+  if (scattering > 0.03) filtered = softShadowVisibility(normal, 1.5 + min(scattering * 6.0, 8.0));
+#endif
+  return mix(filtered, 1.0, (1.0 - exp(-scattering * 1.2)) * 0.9);
+}
+`,
+  worldVisibility: `  float waterDepth = 0.0;
+  vec3 waterTransmittance = vec3(1.0);
+  if (TAG_WATER) {
+    // Only the light that enters the water and comes back is shadowed, and most of what the eye sees comes from deeper than
+    // the shadow reaches, so a shadow on the surface is faint. The reflection mixed in later never sees the shadow.
+    visibility = mix(visibility, 1.0, 0.7 + 0.2 * waterBody.y);
+  } else if (waterBody.z > 0.5 && worldPosition.y < waterBody.x) {
+    waterDepth = waterBody.x - worldPosition.y;
+    waterTransmittance = exp(-waterAbsorption * waterDepth);
+    visibility = underwaterVisibility(visibility, normal, waterDepth);
+  }
+`,
   // Spliced into the colour and shadow vertex shaders by shaders.js.
   worldVertexWind: `
 // Grass bends by how far up the blade a vertex is (uv.y is 1 at the root), so it ignores terrain height.
@@ -134,7 +292,12 @@ void mossMasks(vec3 normal, float amount, out float sharpMask, out float softMas
     radiance += color * vec3(1.1, 1.25, 0.55) * towardSun * thinness * 1.4 * keyResponse * visibility;
   }
 `,
-  worldAfterEmission: `  if (TAG_WATER) {
+  worldAfterEmission: `  if (waterDepth > 0.0) {
+    // The bed's light reaches the eye through the column, dimmed; murky water adds the daylight it scattered toward the eye.
+    vec3 scatteredLight = (keyColor * max(normalize(lightDirection).y, 0.0) * 0.1 + vec3(0.04) * ambientIntensity) * exp(-waterAbsorption * 1.5);
+    radiance = radiance * waterTransmittance + scatteredLight * (vec3(1.0) - waterTransmittance) * waterBody.y;
+  }
+  if (TAG_WATER) {
     float reflectivity = 0.20 + 0.65 * pow(1.0 - max(dot(normal, viewDirection), 0.0), 3.0);
     vec3 reflection = mix(vec3(0.12, 0.24, 0.28), vec3(0.40, 0.63, 0.78), clamp(reflect(-viewDirection, normal).y, 0.0, 1.0));
     radiance = mix(radiance * 0.6, reflection * daylight * ambientIntensity, reflectivity);
