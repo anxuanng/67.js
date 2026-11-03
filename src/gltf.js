@@ -9,10 +9,10 @@ import { MAX_MORPH_TARGETS, createMorphPose, validateMorphGeometry, validateMorp
 
 export const GLTF_CAPABILITIES = Object.freeze({
   formats: ['glb', 'gltf'],
-  supported: ['triangle meshes', 'world transforms', 'rigid node animations', 'four-influence skeletal skinning', 'joint node animations', 'relative POSITION/NORMAL morph targets', 'morph weight animations', 'PNG/JPEG/WebP base color textures', 'normal/occlusion/emissive/metallic-roughness textures', 'TEXCOORD_0', 'TEXCOORD_1 for occlusion, emissive and metallic-roughness textures', 'clearcoat, clearcoat roughness, clearcoat normal, anisotropy, sheen color and sheen roughness textures', 'linear RGB vertex colors', 'metallic roughness factors', 'emissive factors', 'alpha mask and blend modes', 'double-sided materials', 'KHR_mesh_quantization', 'KHR_materials_emissive_strength', 'KHR_materials_clearcoat, transmission, volume, ior, specular, sheen, anisotropy and iridescence factors', 'KHR_texture_transform baked into UVs, with a normal map that differs by scale and offset applied in the shader', 'EXT_mesh_gpu_instancing expanded into parts', 'KHR_draco_mesh_compression with options.decoders.draco', 'EXT_meshopt_compression with options.decoders.meshopt', 'KHR_texture_basisu with options.decoders.ktx2', 'EXT_texture_webp, with the PNG or JPEG fallback source when the browser cannot decode WebP'],
+  supported: ['triangle meshes', 'world transforms', 'rigid node animations', 'four-influence skeletal skinning', 'joint node animations', 'relative POSITION/NORMAL morph targets', 'morph weight animations', 'PNG/JPEG/WebP base color textures', 'normal/occlusion/emissive/metallic-roughness textures', 'TEXCOORD_0', 'TEXCOORD_1 for occlusion, emissive and metallic-roughness textures', 'clearcoat, clearcoat roughness, clearcoat normal, anisotropy, sheen color and sheen roughness textures', 'linear RGB vertex colors, with the alpha of RGBA colors ignored and reported in warnings','metallic roughness factors', 'emissive factors', 'alpha mask and blend modes', 'double-sided materials', 'KHR_mesh_quantization', 'KHR_materials_emissive_strength', 'KHR_materials_clearcoat, transmission, volume, ior, specular, sheen, anisotropy and iridescence factors', 'KHR_texture_transform baked into UVs, with a normal map that differs by scale and offset applied in the shader', 'EXT_mesh_gpu_instancing expanded into parts', 'KHR_draco_mesh_compression with options.decoders.draco', 'EXT_meshopt_compression with options.decoders.meshopt', 'KHR_texture_basisu with options.decoders.ktx2', 'EXT_texture_webp, with the PNG or JPEG fallback source when the browser cannot decode WebP'],
   // The primitive's own material is drawn; the other variants are not selectable.
   ignoredExtensions: ['KHR_materials_variants'],
-  unsupported: ['more than four skin influences', 'singular weighted skin transforms', 'reflected skin transforms', 'TANGENT morph targets', 'morph targets without authored base normals', 'vertex alpha below one', 'different texture transforms on one material, except a normal map that differs by scale and offset', 'skinned or morphed GPU instancing', 'transmission, iridescence and specular textures (their factors are used)', 'texture transforms on TEXCOORD_1'],
+  unsupported: ['more than four skin influences', 'singular weighted skin transforms', 'reflected skin transforms', 'TANGENT morph targets', 'morph targets without authored base normals', 'drawing vertex alpha (it is ignored with a warning)','different texture transforms on one material, except a normal map that differs by scale and offset', 'skinned or morphed GPU instancing', 'transmission, iridescence and specular textures (their factors are used)', 'texture transforms on TEXCOORD_1'],
 });
 
 const LAYER_SHADER_EXTENSIONS = Object.freeze(['KHR_materials_anisotropy', 'KHR_materials_iridescence']);
@@ -688,7 +688,7 @@ function computeVertexNormals(positions, indices) {
   return normals;
 }
 
-function convertGeometry(source, mirrored, primitive, secondUvSet) {
+function convertGeometry(source, mirrored, primitive, secondUvSet, onIgnoredVertexAlpha) {
   const { position, normal, uv, uv1, color, skinIndex, skinWeight } = source.attributes;
   const positions = copyAttribute(position, 3);
   const indices = new Uint32Array(source.index?.count ?? position.count);
@@ -719,7 +719,7 @@ function convertGeometry(source, mirrored, primitive, secondUvSet) {
     if (!uv1 || uv1.count !== position.count) throw new Error('TEXCOORD_1 and POSITION counts must match.');
     geometry.lightUvs = copyAttribute(uv1, 2);
   }
-  if (color) geometry.colors = convertVertexColors(color, position.count);
+  if (color) geometry.colors = convertVertexColors(color, position.count, onIgnoredVertexAlpha);
   if (skinIndex) geometry.skinIndices = new Uint16Array(copyAttribute(skinIndex, 4));
   if (skinWeight) geometry.skinWeights = copyAttribute(skinWeight, 4);
   if (primitive.targets?.length) {
@@ -805,23 +805,24 @@ function worldMatrixOf(node, instanceMatrix, target) {
   return instanceMatrix ? target.multiplyMatrices(node.matrixWorld, instanceMatrix) : target.copy(node.matrixWorld);
 }
 
-function convertVertexColors(attribute, vertexCount) {
+/** Keeps the RGB of COLOR_0. The alpha of an RGBA attribute is dropped, and onIgnoredVertexAlpha hears of it when it is below one. */
+function convertVertexColors(attribute, vertexCount, onIgnoredVertexAlpha) {
   if (attribute.count !== vertexCount || ![3, 4].includes(attribute.itemSize)) {
     throw new Error('COLOR_0 requires matching RGB or RGBA vertex values.');
   }
   const values = copyAttribute(attribute, attribute.itemSize);
   const colors = new Float32Array(vertexCount * 3);
+  let alphaBelowOne = false;
   for (let vertex = 0; vertex < vertexCount; vertex++) {
     const offset = vertex * attribute.itemSize;
-    if (attribute.itemSize === 4 && values[offset + 3] !== 1) {
-      throw new Error('Vertex alpha is unsupported. Every COLOR_0 alpha value must equal one.');
-    }
+    if (attribute.itemSize === 4 && values[offset + 3] < 1) alphaBelowOne = true;
     for (let component = 0; component < 3; component++) {
       const value = values[offset + component];
       if (value < 0 || value > 1) throw new Error('COLOR_0 RGB values must be within zero and one.');
       colors[vertex * 3 + component] = value;
     }
   }
+  if (alphaBelowOne) onIgnoredVertexAlpha();
   return colors;
 }
 
@@ -920,6 +921,8 @@ export async function parseGltf(data, options = {}) {
     const materials = new Map();
     const maps = new Map();
     const nodes = [];
+    const meshNamesWithIgnoredAlpha = new Set();
+    const lightNodes = [];
     const pendingTransform = new Matrix4();
     const pendingNodeMatrix = new Float32Array(16);
     let actualVertices = 0;
@@ -945,7 +948,7 @@ export async function parseGltf(data, options = {}) {
         if (!geometries.has(geometryKey)) {
           actualVertices += node.geometry.attributes.position.count * (1 + (primitive.targets?.length ?? 0));
           if (actualVertices > limits.maxVertices) throw new Error('Decoded geometry exceeds maxVertices.');
-          const converted = convertGeometry(node.geometry, geometryMirrored, primitive, secondUvSet);
+          const converted = convertGeometry(node.geometry, geometryMirrored, primitive, secondUvSet, () => meshNamesWithIgnoredAlpha.add(node.name));
           if (converted.uvs) bakeUvTransform(converted.uvs, uvTransform);
           geometries.set(geometryKey, converted);
         }
@@ -979,6 +982,9 @@ export async function parseGltf(data, options = {}) {
     });
     validateNodeTransforms(nodes, pendingNodeMatrix, pendingTransform);
     if (!parts.length) throw new Error('glTF scene contains no supported triangle meshes.');
+    if (meshNamesWithIgnoredAlpha.size) {
+      warnings.push(`Ignored the alpha of RGBA COLOR_0 vertex colors in ${[...meshNamesWithIgnoredAlpha].join(', ')}; only the RGB is used.`);
+    }
     const sourceNodes = new Map();
     for (const node of nodes) {
       const index = node.association.nodes;

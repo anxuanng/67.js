@@ -126,7 +126,7 @@ Disposal is idempotent, and subsequent animation calls fail explicitly.
 The bridge supports triangle meshes, PNG/JPEG base color textures, rigid animations, and metallic-roughness material factors.
 It also supports `KHR_mesh_quantization` and `KHR_materials_emissive_strength`.
 
-Alpha masking, alpha blending and double-sided materials import onto `alphaMode`, `alphaCutoff`, `opacity` and `doubleSided` (see the material maps guide). Vertex transparency is still rejected.
+Alpha masking, alpha blending and double-sided materials import onto `alphaMode`, `alphaCutoff`, `opacity` and `doubleSided` (see the material maps guide). Vertex alpha is not drawn: an RGBA `COLOR_0` loads with its RGB, and `warnings` names the meshes whose alpha was below one and was dropped.
 It supports base-color, normal, metallic-roughness, occlusion and emissive texture channels.
 It rejects unknown extensions, including optional ones.
 Line and point primitives are unsupported.
