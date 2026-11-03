@@ -1144,3 +1144,22 @@ Which scenes the bounce skips (a temporary log of the reason in the harness, not
 
 Nothing moved, so `baseline.json` is unchanged. `foliage` is still 0.0979 against EEVEE 0.0888, and the issue stays open.
 Bundle size: `entry:ground-bounce` is 9451 bytes gzip (9318 before the texture mean, which adds 133 bytes), so its budget rose from 9330 to 9460.
+
+## Ground bounce occluded by the parts above it, measured and not kept (2026-11-03, part of issue #197)
+
+Idea, from the shadow depth remeasure (#252): the ground bounce counts the ground as lit, but under and beside a caster it is in shadow, and Cycles darkens the bounce there. Change tried: `groundOpenness(parts)` in `src/ground-bounce.js` traced 24 upward rays from an 8 by 8 grid over the ground around the non-floor parts (their footprint widened by the tallest part's height) with `skyVisibilityGrid`, took the mean share that escapes (1 is open ground), and multiplied the lower half of the diffuse copy by it. Derived from the scene, once per parts array, no cost per frame, and nothing in core. `closed-room.js` only gained an optional grid size.
+
+Measured on the same Cycles arrays as main (GPU, 960 x 540; `brick-flat` redrawn as well, the other scenes have no part above the floor, so the term is 1 and their rows are unchanged by construction):
+
+| Scene | floor before | floor after | FLIP before | FLIP after | change |
+| --- | --- | --- | --- | --- | --- |
+| `material-spheres` | 2.01 | 1.81 | 0.0956 | 0.1049 | +0.0093 |
+| `car-paint` | 2.61 | 2.57 | 0.0979 | 0.0995 | +0.0016 |
+| `long-street` | 1.68 | 1.66 | 0.1121 | 0.1134 | +0.0013 |
+| `outdoor-hdri` | 2.42 | 2.28 | 0.0333 | 0.0350 | +0.0017 |
+| `brick-flat` | | | 0.0547 | 0.0608 | +0.0061 |
+| `character` | 1.27 | 1.23 | 0.0567 | 0.0567 | 0.0000 |
+
+The shadow floors move toward Cycles (mostly by 0.02 to 0.2) but five scenes get worse and two pass the 0.002 limit (`material-spheres` +0.0093, `brick-flat` +0.0061; worst regression). Cause (inferred): the term cuts the bounce that reaches the sides of objects and walls, where Cycles still has all of it, more than it cuts the light in the shadowed floor tiles; `material-spheres` lit-level 1.09 after. The shadowed floor itself gets no bounce from the lower-half copy in the first place (a level surface sees none of a lower hemisphere), so the floor ratio gap is not mostly this term: removing the whole bounce took `material-spheres` only from 2.01 to 1.51. Not kept; `baseline.json` is unchanged.
+
+Next idea: occlude per surface, not per scene: a sky and sun visibility lookup for the ground next to each caster, which needs a texture in the core shader and is a size cost; or darken only the floor-facing lower part of casters, which the shader would need a height above the floor for.
