@@ -44,10 +44,10 @@
   "entry:material-layer-shaders": 20700,
   "entry:light-linking": 19000,
   "entry:cascaded-shadows": 27700,
-  "scene:lit-box": 63100,
+  "scene:lit-box": 63150,
   "scene:gltf-box": 84200,
   "scene:gltf-box+lazy": 87600,
-  "scene:agent-scene": 104900,
-  "scene:agent-scene+lazy": 286800
+  "scene:agent-scene": 104940,
+  "scene:agent-scene+lazy": 286860
  }
 }

@@ -269,6 +269,7 @@ vec3 environmentRadiance(vec3 direction, float level) {
 }
 `;
 
+// environmentLighting adds back the light a rough microfacet surface bounces a second time, as Cycles' multiscatter GGX does (Fdez-Aguera 2019).
 export const environmentShadingGlsl = `
 uniform sampler2D environmentBrdf;
 uniform float environmentEnabled;
@@ -290,7 +291,10 @@ vec3 environmentDiffuse(vec3 normal) {
 vec3 environmentLighting(vec3 normal, vec3 specularNormal, vec3 baseReflectance, vec3 viewDirection, vec3 color, float metallic, float roughness, float occlusion, float ambient, float specularWeight) {
   float normalView = clamp(dot(normal, viewDirection), 0.001, 1.0);
   vec2 lookup = texture(environmentBrdf, vec2(normalView, roughness)).rg;
-  vec3 specularColor = (baseReflectance * lookup.x + lookup.y) * specularWeight;
+  vec3 singleScatter = baseReflectance * lookup.x + lookup.y;
+  float missingEnergy = 1.0 - (lookup.x + lookup.y);
+  vec3 averageFresnel = baseReflectance + (1.0 - baseReflectance) / 21.0;
+  vec3 specularColor = singleScatter / (1.0 - missingEnergy * averageFresnel) * specularWeight;
   vec3 specular = environmentRadiance(reflect(-viewDirection, specularNormal), roughness * environmentLevelMax) * specularColor;
   vec3 diffuse = environmentDiffuse(normal) * color * (1.0 - metallic) * (1.0 - specularColor);
   return (specular + diffuse) * occlusion * ambient;
