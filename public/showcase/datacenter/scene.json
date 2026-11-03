@@ -258,7 +258,8 @@
       "extent": 32,
       "near": 1,
       "far": 140
-    }
+    },
+    "depth": true
   },
   "frame": {
     "fov": 30,
@@ -322,6 +323,30 @@
     },
     {
       "model": "Racks, busways, cooling, pipework, hall shell and swap cart",
+      "author": "CodePawl",
+      "licence": "MIT",
+      "source": "https://github.com/anxuanng/67.js"
+    },
+    {
+      "model": "Metal029, Metal027, Metal038 (rack frames, steel, panels, cowls)",
+      "author": "ambientCG",
+      "licence": "CC0",
+      "source": "https://ambientcg.com/a/Metal029"
+    },
+    {
+      "model": "SheetMetal002 (busways, cable trays, struts)",
+      "author": "ambientCG",
+      "licence": "CC0",
+      "source": "https://ambientcg.com/a/SheetMetal002"
+    },
+    {
+      "model": "PaintedMetal004 (red and blue pipework and hoses)",
+      "author": "ambientCG",
+      "licence": "CC0",
+      "source": "https://ambientcg.com/a/PaintedMetal004"
+    },
+    {
+      "model": "Texture sets packed and resized from the maps above (colour, normal, roughness and metalness)",
       "author": "CodePawl",
       "licence": "MIT",
       "source": "https://github.com/anxuanng/67.js"
