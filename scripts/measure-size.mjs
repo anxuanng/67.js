@@ -1,11 +1,14 @@
 // Measures what an app pays for each package entry, and for small scenes against three.js: npm run size
-// It fails when a bundle passes its budget in bench/size/budgets.json. --update-baseline rewrites the baseline after a
-// merge-ready change, and --set-budgets also resets each budget to 2% over its current size.
+// A pull request fails when a bundle grows past its allowance against the base branch (--base, default origin/main) unless
+// its own changes/*.size.md accepts it. --absolute also enforces the release budgets in bench/size/budgets.json.
+// --update-baseline and --set-budgets refresh the baseline and the budgets at release.
 import { readFile, writeFile } from 'node:fs/promises';
 import { relative, resolve } from 'node:path';
 import { brotliCompressSync, gzipSync } from 'node:zlib';
 import { build } from 'esbuild';
 import { budgetsFrom, compareToBudgets, formatRows, initialOutputPaths } from './size-budget.mjs';
+import { compareToBase, formatGrowthRows } from './size-growth.mjs';
+import { DEFAULT_BASE_REF, baseRefExists, measureBase, readAcceptedBundles } from './size-base.mjs';
 
 const BUDGETS_PATH = 'bench/size/budgets.json';
 const BASELINE_PATH = 'bench/size/baseline.json';
@@ -93,13 +96,31 @@ function addMeasured(measured, name, sizes) {
 }
 
 async function measureAll() {
-  const measured = {};
-  for (const [name, path] of Object.entries(await packageEntries())) {
+  const jobs = Object.entries(await packageEntries()).map(([name, path]) => {
     const absolute = resolve(path).replace(/\\/g, '/');
-    addMeasured(measured, `entry:${name}`, await measureSource(`export * from '${absolute}';`));
-  }
-  for (const [name, scene] of Object.entries(SCENES)) addMeasured(measured, `scene:${name}`, await measureSource(scene.engine));
+    return { label: `entry:${name}`, source: `export * from '${absolute}';` };
+  });
+  for (const [name, scene] of Object.entries(SCENES)) jobs.push({ label: `scene:${name}`, source: scene.engine });
+  const sizes = await mapWithLimit(jobs, job => measureSource(job.source));
+  const measured = {};
+  jobs.forEach((job, index) => addMeasured(measured, job.label, sizes[index]));
   return measured;
+}
+
+// A few builds at once use the cores of a CI runner without holding every build in memory together.
+const BUILDS_AT_ONCE = 4;
+
+async function mapWithLimit(items, work) {
+  const results = new Array(items.length);
+  let next = 0;
+  const lane = async () => {
+    while (next < items.length) {
+      const index = next++;
+      results[index] = await work(items[index]);
+    }
+  };
+  await Promise.all(Array.from({ length: BUILDS_AT_ONCE }, lane));
+  return results;
 }
 
 async function measureThree() {
@@ -118,24 +139,55 @@ async function writeJson(path, value) {
   await writeFile(path, `${JSON.stringify(value, null, 1)}\n`);
 }
 
-function printComparisonWithThree(measured, three, goals) {
+function printComparisonWithThree(measured, three) {
   console.log('\nThe same scene in both engines, in bytes gzip:');
   for (const [name, threeSize] of Object.entries(three)) {
-    const engineSize = measured[`scene:${name}`].gzip;
-    const goal = goals[name] === undefined ? '' : `, goal ${goals[name]}`;
-    console.log(`  ${name.padEnd(14)} 67js ${engineSize}, three.js ${threeSize.gzip}${goal}`);
-  }
-  for (const [name, goal] of Object.entries(goals)) {
-    if (!three[name]) console.log(`  ${name.padEnd(14)} 67js ${measured[`scene:${name}`].gzip}, no three.js equivalent, goal ${goal}`);
+    console.log(`  ${name.padEnd(14)} 67js ${measured[`scene:${name}`].gzip}, three.js ${threeSize.gzip}`);
   }
 }
 
-const flags = new Set(process.argv.slice(2));
+// A positive distance is bytes over the goal. A budget raised to fit a change shows here as the distance growing.
+function printGoals(measured, goals, budgets) {
+  console.log('\nGoal scenes against their goals, in bytes gzip:');
+  for (const [name, goal] of Object.entries(goals)) {
+    const size = measured[`scene:${name}`].gzip;
+    const distance = size - goal;
+    const status = distance <= 0 ? 'met' : `${distance} over`;
+    console.log(`  ${name.padEnd(14)} ${String(size).padStart(7)} of goal ${goal}: ${status} (budget ${budgets[`scene:${name}`]}, ${budgets[`scene:${name}`] - goal} over the goal)`);
+  }
+}
+
+const argumentsGiven = process.argv.slice(2);
+const flags = new Set(argumentsGiven);
+
+function valueAfter(flag) {
+  const index = argumentsGiven.indexOf(flag);
+  return index === -1 ? undefined : argumentsGiven[index + 1];
+}
+
+// A child run for the base branch: print the measurement and stop.
+if (flags.has('--json')) {
+  process.stdout.write(JSON.stringify(await measureAll()));
+  process.exit(0);
+}
+
+// The gate: growth against the base branch. An explicit --base must resolve. Without one, origin/main is used when it exists.
+// The base is measured beside the pull request, and not at all when the run only refreshes the release numbers.
+const requestedBase = valueAfter('--base');
+const baseRef = requestedBase ?? DEFAULT_BASE_REF;
+if (requestedBase && !baseRefExists(baseRef)) {
+  console.error(`The base ref ${baseRef} does not exist. Fetch it first, for example: git fetch origin main`);
+  process.exit(1);
+}
+const refreshing = flags.has('--set-budgets') || flags.has('--update-baseline');
+const checkGrowth = baseRefExists(baseRef) && !refreshing;
+const baseMeasurement = checkGrowth ? measureBase(baseRef) : null;
 const measured = await measureAll();
 const three = await measureThree();
 const budgetFile = await readJson(BUDGETS_PATH);
 const baselineFile = await readJson(BASELINE_PATH);
 
+// Budgets and the baseline move at release, never in a feature pull request.
 if (flags.has('--set-budgets')) budgetFile.budgets = budgetsFrom(measured);
 if (flags.has('--set-budgets') || flags.has('--update-baseline')) {
   const threeManifest = await readJson('node_modules/three/package.json');
@@ -143,12 +195,36 @@ if (flags.has('--set-budgets') || flags.has('--update-baseline')) {
   await writeJson(BASELINE_PATH, { threeVersion: threeManifest.version, three, bundles: measured });
 }
 
-const { rows, problems } = compareToBudgets(measured, budgetFile.budgets, baselineFile.bundles);
+const { rows, problems: ceilingProblems } = compareToBudgets(measured, budgetFile.budgets, baselineFile.bundles);
+const problems = [];
+
+if (checkGrowth) {
+  const accepted = readAcceptedBundles(baseRef);
+  const growth = compareToBase(measured, await baseMeasurement, accepted);
+  console.log(`Growth against ${baseRef}, in bytes gzip:`);
+  console.log(formatGrowthRows(growth.rows));
+  for (const [name, reason] of accepted) console.log(`Accepted: ${name}, ${reason}`);
+  problems.push(...growth.problems);
+} else if (!refreshing) {
+  console.log(`No ${baseRef} to compare with, so the growth check is skipped. Fetch it, or pass --base <ref>.`);
+}
+
+// The absolute budgets are the release ceilings. They are reported on a pull request and enforced with --absolute.
+console.log('\nAgainst the release budgets:');
 console.log(formatRows(rows));
-printComparisonWithThree(measured, three, budgetFile.goals);
+printComparisonWithThree(measured, three);
+printGoals(measured, budgetFile.goals, budgetFile.budgets);
+if (ceilingProblems.length) {
+  if (flags.has('--absolute')) {
+    problems.push(...ceilingProblems);
+  } else {
+    console.log(`\n${ceilingProblems.length} bundle(s) are past their release budget. A release refreshes the budgets with npm run size:release. List them with npm run size -- --absolute.`);
+  }
+}
 if (problems.length) {
   console.error(`\n${problems.length} size problem(s):`);
   for (const problem of problems) console.error(`- ${problem}`);
   process.exit(1);
 }
-console.log('\nEvery bundle is within its budget.');
+console.log('\nNo bundle grew past its allowance.');
+

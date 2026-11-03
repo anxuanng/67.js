@@ -8,7 +8,7 @@ const changelogPath = resolve(root, 'CHANGELOG.md');
 const semver = /^\d+\.\d+\.\d+(?:-[a-z0-9.-]+)?$/;
 
 function isFragmentName(name) {
-  return name.endsWith('.md') && name.toLowerCase() !== 'readme.md';
+  return name.endsWith('.md') && !name.endsWith('.size.md') && name.toLowerCase() !== 'readme.md';
 }
 
 function trimBlankLines(text) {
@@ -48,7 +48,10 @@ async function main() {
     const changelog = await readFile(changelogPath, 'utf8');
     await writeFile(changelogPath, foldIntoChangelog(changelog, version, fragments));
     for (const fragment of fragments) await rm(resolve(fragmentsFolder, fragment.name));
-    console.log(`Folded ${fragments.length} fragments into CHANGELOG.md as ${version}.`);
+    // Size notes only matter to the pull request that adds them. The release refreshes the size numbers instead.
+    const sizeNotes = (await readdir(fragmentsFolder)).filter((name) => name.endsWith('.size.md'));
+    for (const name of sizeNotes) await rm(resolve(fragmentsFolder, name));
+    console.log(`Folded ${fragments.length} fragments into CHANGELOG.md as ${version}, and removed ${sizeNotes.length} size notes. Run npm run size:release next.`);
     return;
   }
   if (fragments.length === 0) {

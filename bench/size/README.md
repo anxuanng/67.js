@@ -1,6 +1,6 @@
 # Bundle size budgets
 
-`npm run size` bundles each package entry with esbuild, minified and tree-shaken, and compares its gzip size with a budget. The `Test` workflow runs it on every pull request.
+`npm run size` bundles each package entry with esbuild, minified and tree-shaken, and compares its gzip size with the same bundle on the base branch. The `Test` workflow runs it on every pull request. A pull request never edits a size number, so two pull requests do not conflict over one.
 
 ## What it measures
 
@@ -10,36 +10,78 @@
 
 `manifold-3d` and `@dimforge/rapier3d-compat` are optional peers that load separately, so no bundle counts them.
 
-## Baseline
+## Where the goal scenes stand
 
-Measured on 2026-10-31 with three.js 0.186.1. Sizes are bytes gzip.
+Measured 2026-11-03 with three.js 0.186.1. Sizes are bytes gzip. `npm run size` prints this table's 67js column and its distance to the goal on every run.
 
-| Scene | 67js | three.js | Goal |
-| --- | --- | --- | --- |
-| `lit-box` | 48,762 | 133,652 | 50,000 |
-| `gltf-box` | 159,422 | 155,814 | 80,000 |
-| `agent-scene` | 185,592 | no equivalent | 100,000 |
+| Scene | Before (base at 2026-11-03) | Now | three.js | Goal |
+| --- | --- | --- | --- | --- |
+| `lit-box` | 66,497 | 56,343 | 133,652 | 50,000 (6,343 over) |
+| `gltf-box` | 90,790 | 80,866 | 155,814 | 80,000 (866 over) |
+| `agent-scene` | 110,277 | 103,794 | no equivalent | 100,000 (3,794 over) |
 
-`bench/size/baseline.json` holds every size. The goals are proposals from issue 23.
+The values on 2026-10-30 (issue 23) were 48,758, 159,422 and 185,422. `bench/size/baseline.json` holds every size. The goals are proposals from issue 23.
+
+## What is in the lit box
+
+A box drawn by `Renderer67` with no addon, minified, before gzip (module sizes from the esbuild metafile; the sum is 191 KB, 54.8 KB gzip). The numbers are what the module adds to the bundle, not what it gzips to alone.
+
+| Module | Bytes minified | What it is |
+| --- | --- | --- |
+| `src/renderer.js` | about 77,000 | the renderer: batching, shadows, post, diagnostics, skin and morph upload, all draw passes |
+| `src/shaders.js` | about 43,000 | vertex, depth, benchmark and main fragment GLSL (comments in GLSL ship), skin and morph GLSL |
+| `gl-matrix` mat4 and mat3 | about 22,000 | matrix functions the renderer and camera use |
+| `src/post.js` | 14,200 | post, sky and bloom fragment shaders |
+| `src/environment.js` | not in a lit box | the environment map builder; `environment-shading.js` (about 4,000) keeps the lookup GLSL that main names |
+| `src/lighting.js`, `morph.js`, `skinning.js`, `material-layers.js`, `effects.js`, `geometry.js`, `budget.js`, `ambient-occlusion.js`, others | 1,000 to 5,000 each | smaller parts |
+
+Moved out of the core bundle in this work, each loaded only by a scene that uses it (the pattern of `material-layer-shaders.js`):
+
+| Addon | Holds | Saved in a lit box |
+| --- | --- | --- |
+| `liquid-shader` | liquid and foam GLSL, program and draw pass | 4,900 together with the splat GLSL, measured in steps |
+| `splat-shader` | splat ground GLSL, validation, texture arrays, binding | included above, plus 2,700 for its JavaScript |
+| `environment.js` (loads with `createEnvironmentMap`) | environment map builder, prefilter, BRDF and background shaders | 2,600 |
+
+Still in the lit box and worth moving next, with rough gzip sizes: skin and morph GLSL plus `skinning.js` and `morph.js` (about 3,500; the depth and benchmark vertex shaders call them unconditionally), the tag code in main for terrain, moss, foliage, grass, fire, smoke and water (about 2,000), the environment lookup and shading GLSL (about 1,800, needs stubs in main), comments inside GLSL (about 2,000, a build step would strip them), and the post pass volume, occlusion and explosion steps.
+
+## How the check decides
+
+The check measures the base branch with the same script, then compares each bundle. In CI the base is the branch that the pull request targets. On your machine it is `origin/main`, from the commit where your branch left it. The base numbers are cached by base commit in `node_modules/.cache/size-base`, and CI caches that folder, so a run on an unchanged base skips the second measurement. The base is measured beside your own bundles, so a cold run costs little more than one measurement.
+
+A bundle fails when it grows by more than its allowance:
+
+- `entry:core` and every `scene:*` bundle, with their `+lazy` rows: 64 bytes gzip.
+- Every other entry: 2% of its size on the base, and at least 64 bytes.
+
+A bundle that the base does not have is reported and never fails. A bundle that shrinks never fails.
+
+The table in the output shows each bundle, the base size, the growth and the allowance. The release budgets in `budgets.json` and the goals are printed as a report. They do not fail a pull request.
 
 ## When a check fails
 
-The output names the bundle, its size and its budget.
+The output names the bundle, how much it grew and its allowance.
 
 1. Find out why the bundle grew. A new import of a large module is the usual cause.
 2. If the growth is a mistake, remove it.
-3. If the growth is worth its cost, raise the number in `bench/size/budgets.json`.
-4. State the reason in the pull request. The budget change is then visible in the diff.
+3. If the growth is worth its cost, accept it. Add `changes/<issue>.size.md` to your pull request, with one line for each bundle that you accept:
 
-## After a change lands
+```md
+- entry:core: the lighting pass costs 180 bytes and replaces two shaders
+- archive: the new guide ships in the package
+```
 
-Run `node scripts/measure-size.mjs --update-baseline` to record the new sizes, so the next pull request shows its own change. The budget does not move.
+4. State the same reason in the pull request.
 
-Use `--set-budgets` to reset every budget to 2% over the current size. Use it after work that makes bundles smaller, so that the saving stays. A reset also hides any growth since the last reset, so check the diff.
+A line needs a bundle name, a colon, a space and a reason. A bundle with no line still fails. The check reads only the size notes that your branch adds, so a note from another pull request never accepts your growth. Your note is a new file, so it conflicts with nobody. Use `archive` for the package archive.
+
+## At release
+
+Release steps in `CONTRIBUTING.md` run `npm run changes:fold`, which deletes the size notes. Then run `npm run size:release`. It resets every budget to 2% over the current size and rewrites `baseline.json`. Run `npm run size -- --absolute` before it to see which bundles are past their release budget. Check the diff of `budgets.json`, because a reset hides growth since the last reset. Also review the sizes of the accepted bundles, since each accepted increase is small alone and they add up.
 
 ## Package archive
 
-`archiveBytes` in `budgets.json` caps the npm archive that `npm pack` makes. `npm run smoke:package` checks it, after `npm run prepare:release`. The archive was 904,975 bytes before the MCP preview shared the package's engine chunks and 666,214 after; features then grew it to 802,581, and one-line notices in each built file plus a stub for the SDK's unused Ajv shim brought it to 695,041. The budget is now 740,000 bytes (measured 2026-11-02 against `budgets.json`: lower it when the archive shrinks). Lower `archiveBytes` when work shrinks it.
+`archiveBytes` in `budgets.json` caps the npm archive that `npm pack` makes. `npm run smoke:package` checks it, after `npm run prepare:release`. The archive has a ceiling and not a base measurement, because measuring the base archive needs a full build. A pull request that pushes the archive over the ceiling accepts it with an `archive` line in its size note. Only a release edits `archiveBytes`. The archive was 904,975 bytes before the MCP preview shared the package's engine chunks and 666,214 after; features then grew it to 802,581, and one-line notices in each built file plus a stub for the SDK's unused Ajv shim brought it to 695,041. The budget is now 740,000 bytes (measured 2026-11-02 against `budgets.json`: lower it when the archive shrinks). Lower `archiveBytes` when work shrinks it.
 
 Moving code into installed dependencies would shrink the archive further but adds install size to every consumer, including library users who never run MCP. Making `@modelcontextprotocol/server` and `zod` dependencies saved about 125 KB of archive for about 14.5 MB on disk, so it was not kept.
 

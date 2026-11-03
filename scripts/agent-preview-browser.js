@@ -5,6 +5,7 @@ import { skyOpenness } from '../src/closed-room.js';
 import { fogSkyVisibility } from '../src/fog-sky-visibility.js';
 import { installCameraEffects } from '../src/camera-effects.js';
 import { installRenderPasses } from '../src/render-passes.js';
+import { installCoplanarDiagnostics } from '../src/coplanar-overlap.js';
 import { applyProjection } from '../src/camera.js';
 import { mat4 } from 'gl-matrix';
 import { resolveAgentShadow, agentEnvironmentMap } from '../src/agent-look.js';
@@ -27,6 +28,26 @@ function requireSession(sessionId) {
     throw new Error(sessionProblem(sessionId, active?.sessionId));
   }
   return active;
+}
+
+function bytesFromBase64(data) {
+  if (typeof Uint8Array.fromBase64 === 'function') return Uint8Array.fromBase64(data);
+  const binary = atob(data);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index++) bytes[index] = binary.charCodeAt(index);
+  return bytes;
+}
+
+// Other catalog assets whose clips a motion layer retargets: only their clips and nodes are kept, so the decoded
+// meshes and textures are released at once.
+async function decodeMotionSources(encoded = {}) {
+  const decoded = {};
+  for (const [assetId, data] of Object.entries(encoded)) {
+    const source = await parseGltf(bytesFromBase64(data).buffer, { maxBytes: 16 * 1024 * 1024, maxVertices: 250000, maxParts: 4096, maxTexturePixels: 4194304, maxJoints: 1024 });
+    decoded[assetId] = { animations: source.animations, nodes: source.nodes };
+    source.dispose();
+  }
+  return decoded;
 }
 
 function validatePreviewCamera(camera) {
@@ -151,7 +172,7 @@ function draw(record, time = 0, camera = record.scene.camera, frameOptions = {})
     record.shadowKey = shadowKey;
   }
   record.renderer.world = environment.world;
-  record.renderer.render({ ...camera, environment: litEnvironment(record.scene.parts, environment, Boolean(record.renderer.groundPart)), effects, exposure: effects.exposure, time, ...frameOptions });
+  record.renderer.render({ ...camera, environment: litEnvironment(record.scene.parts, environment, Boolean(record.renderer.groundPart)), effects, exposure: effects.exposure, time, lines: environment.lines, ...frameOptions });
   const error = record.renderer.context.getError();
   if (error !== 0) {
     throw new Error(`WebGL render failed with error ${error}.`);
@@ -218,7 +239,7 @@ function cascadesFor(scene) {
 
 function initializeRenderer(scene, { memoryBudgetMiB, backend }) {
   const placement = agentGroundPlacement(scene.parts, scene.environment);
-  return installRenderPasses(installCameraEffects(new Renderer67(canvas, scene.parts, {
+  const renderer = installCoplanarDiagnostics(installRenderPasses(installCameraEffects(new Renderer67(canvas, scene.parts, {
     ground: placement ? createAgentGround(placement) : false,
     hdr: true,
     depth: true,
@@ -231,7 +252,9 @@ function initializeRenderer(scene, { memoryBudgetMiB, backend }) {
     pixelRatio: 1,
     samples: backend === 'cpu' ? 1 : 4,
     memoryBudgetMiB,
-  })));
+  }))));
+  // Outlines, toon light and polylines draw only for a frame that carries environment.lines.
+  return agentSceneModule('lineArt').installLineArt(renderer);
 }
 
 // Camera fields from a timeline shot on top of the sampled camera, checked with the scene's own camera rules.
@@ -649,20 +672,13 @@ window.__agentPreview = {
   },
   async createAsset(input) {
     if (active) throw new Error('Dispose the current scene before creating another.');
-    let bytes;
-    if (typeof Uint8Array.fromBase64 === 'function') {
-      bytes = Uint8Array.fromBase64(input.data);
-    } else {
-      const binary = atob(input.data);
-      bytes = new Uint8Array(binary.length);
-      for (let index = 0; index < binary.length; index++) bytes[index] = binary.charCodeAt(index);
-    }
+    const bytes = bytesFromBase64(input.data);
     let asset;
     try {
       // Labels, mesh reports and motion read the on-demand modules on any asset, not only one with mesh edits.
       await loadAllAgentSceneModules();
       asset = await parseGltf(bytes.buffer, { maxBytes: 16 * 1024 * 1024, maxVertices: 250000, maxParts: 4096, maxTexturePixels: 4194304, maxJoints: 1024 });
-      return createPreview(createAgentAssetScene(asset, input.recipe), input, asset);
+      return createPreview(createAgentAssetScene(asset, input.recipe, { sources: await decodeMotionSources(input.sources) }), input, asset);
     } catch (error) {
       asset?.dispose();
       throw error;
@@ -680,6 +696,13 @@ window.__agentPreview = {
     return { sessionId, ...scene.inspectMeshes(options) };
   },
   apply(input) {
+    if (input.sources) {
+      const { scene } = requireSession(input.sessionId);
+      return decodeMotionSources(input.sources).then(decoded => {
+        scene.provideMotionSources?.(decoded);
+        return afterMeshBooleans(input.operations, () => this.applyLoaded(input));
+      });
+    }
     return afterMeshBooleans(input.operations, () => this.applyLoaded(input));
   },
   applyLoaded({ sessionId, operations, expectedRevision }) {

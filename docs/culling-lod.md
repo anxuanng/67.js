@@ -8,7 +8,7 @@ On by default, with no schema and no option to set. Each frame the renderer test
 
 What is not culled, because its bounding sphere would not hold or because it draws in another pass:
 
-- Skinned and morphed parts.
+- Skinned and morphed parts. A crowd part (a character baked to a palette, see [Crowds](retarget.md#crowds)) is the exception: its instances are culled by a bound that covers every pose of the clip, and it takes `lods` whose levels carry the same joints.
 - `water`, `fire` and `smoke` materials, whose vertex shader moves vertices.
 
 `foliage` and `grass` sway in the wind but by a known amount, so they are culled and take levels like rigid parts: the bound of each instance grows by 0.56 times the wind strength (the farthest `windOffset` in the vertex shader moves a vertex per unit of strength).

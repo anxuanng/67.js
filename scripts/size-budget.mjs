@@ -31,7 +31,7 @@ export function compareToBudgets(measured, budgets, baseline = {}) {
   return { rows, problems };
 }
 
-function signedBytes(change) {
+export function signedBytes(change) {
   if (change === null) return 'new';
   return change > 0 ? `+${change}` : String(change);
 }

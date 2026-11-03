@@ -1,19 +1,35 @@
-import { mat4 } from 'gl-matrix';
+import { mat4, vec3 } from 'gl-matrix';
 import { runKernel } from './kernel-offload.js';
-import { bakeCloth, sampleClothFrames, weldVertices } from './cloth.js';
+import { bakeCloth, sampleClothFrames, weldVertices, CLOTH_LIMITS } from './cloth.js';
 import { recomputeNormals } from './geometry-normals.js';
 import { bakingContext, boundedArray, finiteNumber, knownKeys, rootNodeWithGeometry, vectorOfThree } from './agent-recipe-checks.js';
+import { boneNodeId, boneTails, restWorldMatrix } from './rig.js';
+// Matches the ragdoll's bone capsule radius (src/ragdoll.js), without loading the ragdoll for one number.
+const RADIUS_OF_LENGTH = 0.2;
 
 const FRAMES_PER_SECOND = 60;
 const MAX_DURATION_SECONDS = 10;
 const MAX_SHEETS = 8;
 const MAX_COLLIDERS = 16;
+// Moving balls and capsules, counting every bone capsule a fitted armature expands to.
+const MAX_MOVING_COLLIDERS = 64;
+const MIN_MOVING_RADIUS = 0.001;
+const MAX_MOVING_RADIUS = 10;
+const OFFSET_LIMIT = 100;
+const MIN_BONE_LENGTH = 1e-4;
 const PIN_EDGES = ['top', 'bottom', 'left', 'right', 'topLeft', 'topRight', 'bottomLeft', 'bottomRight'];
 const COLLIDER_SHAPES = ['ball', 'box'];
+const MOVING_SHAPES = ['ball', 'capsule'];
 const CLOTH_FIELDS = ['duration', 'gravity', 'wind', 'sheets', 'colliders'];
-const SHEET_FIELDS = ['node', 'pin', 'stiffness', 'bend', 'density', 'damping', 'friction', 'thickness'];
-const COLLIDER_FIELDS = ['node', 'shape'];
+const SHEET_FIELDS = ['node', 'pin', 'pinTo', 'stiffness', 'bend', 'density', 'damping', 'friction', 'thickness'];
+const PIN_TO_FIELDS = ['node', 'weight'];
+const FIXED_COLLIDER_FIELDS = ['node', 'shape'];
+// A ball or capsule that rides on a node: the capsule runs from `attach` (plus offset) to `to` (plus toOffset).
+const MOVING_COLLIDER_FIELDS = ['attach', 'shape', 'radius', 'offset', 'to', 'toOffset'];
+// One capsule per bone of an armature, radius a fraction of the bone length as the ragdoll fits it.
+const FITTED_COLLIDER_FIELDS = ['armature', 'radiusFraction', 'exclude'];
 const PIN_TOLERANCE = 1e-4;
+const NO_PATCHES = new Map();
 
 function normalizeSheet(input, context) {
   knownKeys(input, SHEET_FIELDS, 'cloth sheet');
@@ -28,6 +44,17 @@ function normalizeSheet(input, context) {
     }
     sheet.pin = [...new Set(edges)];
   }
+  if (input.pinTo !== undefined) {
+    knownKeys(input.pinTo, PIN_TO_FIELDS, 'cloth pinTo');
+    if (!sheet.pin?.length) {
+      throw new RangeError('Cloth pinTo moves the pinned edges, so the sheet needs pin too.');
+    }
+    const target = existingNode(input.pinTo.node, context, 'Cloth pinTo');
+    if (target === input.node) {
+      throw new RangeError('Cloth pinTo cannot name the sheet itself.');
+    }
+    sheet.pinTo = { node: target, weight: input.pinTo.weight === undefined ? 1 : finiteNumber(input.pinTo.weight, 'Cloth pinTo weight', 0.01, 1) };
+  }
   const ranges = { stiffness: [0.01, 1], bend: [0, 1], density: [0.01, 10], damping: [0, 100], friction: [0, 1], thickness: [0, 0.5] };
   for (const [field, [minimum, maximum]] of Object.entries(ranges)) {
     if (input[field] !== undefined) sheet[field] = finiteNumber(input[field], `Cloth ${field}`, minimum, maximum);
@@ -35,8 +62,62 @@ function normalizeSheet(input, context) {
   return sheet;
 }
 
-function normalizeCollider(input, context) {
-  knownKeys(input, COLLIDER_FIELDS, 'cloth collider');
+function existingNode(nodeId, context, label) {
+  if (typeof nodeId !== 'string' || !context.recipeNodes.has(nodeId)) {
+    throw new RangeError(`${label} node was not found: ${String(nodeId).slice(0, 64)}.`);
+  }
+  return nodeId;
+}
+
+function normalizeMovingCollider(input, context) {
+  knownKeys(input, MOVING_COLLIDER_FIELDS, 'cloth moving collider');
+  const shape = input.shape ?? 'ball';
+  if (!MOVING_SHAPES.includes(shape)) {
+    throw new RangeError(`Cloth moving collider shape must be one of ${MOVING_SHAPES.join(', ')}.`);
+  }
+  if ((shape === 'capsule') !== (input.to !== undefined)) {
+    throw new RangeError('A capsule collider needs to (the node its other end rides on); a ball takes no to.');
+  }
+  const collider = {
+    attach: existingNode(input.attach, context, 'Cloth collider attach'), shape,
+    radius: finiteNumber(input.radius, 'Cloth collider radius', MIN_MOVING_RADIUS, MAX_MOVING_RADIUS),
+  };
+  if (input.offset !== undefined) collider.offset = vectorOfThree(input.offset, 'Cloth collider offset', OFFSET_LIMIT);
+  if (shape === 'capsule') {
+    collider.to = existingNode(input.to, context, 'Cloth collider to');
+    if (input.toOffset !== undefined) collider.toOffset = vectorOfThree(input.toOffset, 'Cloth collider toOffset', OFFSET_LIMIT);
+  } else if (input.toOffset !== undefined) {
+    throw new RangeError('A ball collider takes no toOffset.');
+  }
+  return collider;
+}
+
+function normalizeFittedCollider(input, recipe) {
+  knownKeys(input, FITTED_COLLIDER_FIELDS, 'cloth fitted collider');
+  const armature = (recipe.armatures ?? []).find(candidate => candidate.id === input.armature);
+  if (!armature) {
+    throw new RangeError(`Cloth collider armature was not found: ${JSON.stringify(String(input.armature).slice(0, 48))}. Add it to the recipe armatures.`);
+  }
+  const collider = { armature: armature.id };
+  if (input.radiusFraction !== undefined) collider.radiusFraction = finiteNumber(input.radiusFraction, 'Cloth collider radiusFraction', 0.02, 0.5);
+  if (input.exclude !== undefined) {
+    const names = new Set(armature.bones.map(bone => bone.name));
+    collider.exclude = [...new Set(boundedArray(input.exclude, MAX_MOVING_COLLIDERS, 'Cloth collider exclude'))];
+    for (const name of collider.exclude) {
+      if (!names.has(name)) throw new RangeError(`Cloth collider exclude names a bone that ${armature.id} does not have: ${JSON.stringify(String(name).slice(0, 48))}.`);
+    }
+  }
+  return collider;
+}
+
+function normalizeCollider(input, context, recipe) {
+  if (input !== null && typeof input === 'object' && Object.hasOwn(input, 'attach')) {
+    return normalizeMovingCollider(input, context);
+  }
+  if (input !== null && typeof input === 'object' && Object.hasOwn(input, 'armature')) {
+    return normalizeFittedCollider(input, recipe);
+  }
+  knownKeys(input, FIXED_COLLIDER_FIELDS, 'cloth collider');
   rootNodeWithGeometry(input.node, context.recipeNodes, context.claimedNodes, context.motionNodeIds, context.physicsNodeIds, 'Cloth collider');
   const shape = input.shape ?? 'box';
   if (!COLLIDER_SHAPES.includes(shape)) {
@@ -60,7 +141,13 @@ export function normalizeAgentCloth(input, recipe) {
   if (input.gravity !== undefined) result.gravity = vectorOfThree(input.gravity, 'Cloth gravity', 1000);
   if (input.wind !== undefined) result.wind = vectorOfThree(input.wind, 'Cloth wind', 100);
   if (input.colliders !== undefined) {
-    result.colliders = boundedArray(input.colliders, MAX_COLLIDERS, 'Cloth colliders').map(collider => normalizeCollider(collider, context));
+    const entries = boundedArray(input.colliders, MAX_COLLIDERS + MAX_MOVING_COLLIDERS, 'Cloth colliders');
+    boundedArray(entries.filter(entry => !Object.hasOwn(entry ?? {}, 'attach') && !Object.hasOwn(entry ?? {}, 'armature')), MAX_COLLIDERS, 'Cloth colliders on fixed nodes');
+    result.colliders = entries.map(collider => normalizeCollider(collider, context, recipe));
+    const movingCount = movingColliderSpecs(result, recipe).length;
+    if (movingCount > MAX_MOVING_COLLIDERS) {
+      throw new RangeError(`Cloth moving colliders are limited to ${MAX_MOVING_COLLIDERS} balls and capsules, counting one per armature bone; this has ${movingCount}.`);
+    }
   }
   return result;
 }
@@ -122,7 +209,134 @@ function pinnedParticles(localPositions, representatives, pin) {
   return pinned;
 }
 
-function bakeSheet(sheet, cloth, node, geometry, colliders, frameCount) {
+/**
+ * Balls and capsules that ride on nodes, as plain specs: a ball is { node, offset, radius }, a capsule runs from
+ * { startNode, startOffset } to { endNode, endOffset }. A fitted armature expands to one capsule per bone, from its head to
+ * its tail, with the radius the ragdoll would give that bone. Offsets are in the owning node's own space.
+ */
+export function movingColliderSpecs(cloth, recipe) {
+  const nodesById = new Map(recipe.nodes.map(node => [node.id, node]));
+  const specs = [];
+  for (const collider of cloth.colliders ?? []) {
+    if (collider.attach !== undefined) {
+      const zero = [0, 0, 0];
+      specs.push(collider.shape === 'ball'
+        ? { kind: 'ball', node: collider.attach, offset: collider.offset ?? zero, radius: collider.radius }
+        : { kind: 'capsule', startNode: collider.attach, startOffset: collider.offset ?? zero, endNode: collider.to, endOffset: collider.toOffset ?? zero, radius: collider.radius });
+    } else if (collider.armature !== undefined) {
+      specs.push(...armatureCapsuleSpecs(collider, recipe, nodesById));
+    }
+  }
+  return specs;
+}
+
+function armatureCapsuleSpecs(collider, recipe, nodesById) {
+  const armature = recipe.armatures.find(candidate => candidate.id === collider.armature);
+  const armatureWorld = restWorldMatrix(armature.id, nodesById);
+  const tails = boneTails(armature);
+  const excluded = new Set(collider.exclude ?? []);
+  const specs = [];
+  armature.bones.forEach((bone, index) => {
+    if (excluded.has(bone.name)) return;
+    const boneId = boneNodeId(armature, bone.name);
+    const boneWorld = restWorldMatrix(boneId, nodesById);
+    const head = vec3.transformMat4(vec3.create(), [0, 0, 0], boneWorld);
+    const tail = vec3.transformMat4(vec3.create(), tails[index], armatureWorld);
+    const length = vec3.distance(head, tail);
+    if (length < MIN_BONE_LENGTH) return;
+    const tailInBone = vec3.transformMat4(vec3.create(), tail, mat4.invert(mat4.create(), boneWorld));
+    specs.push({
+      kind: 'capsule', startNode: boneId, startOffset: [0, 0, 0], endNode: boneId, endOffset: Array.from(tailInBone),
+      radius: length * (collider.radiusFraction ?? RADIUS_OF_LENGTH),
+    });
+  });
+  return specs;
+}
+
+// World matrices of recipe nodes at a time: the recipe's local transforms with the motion tracks laid over them.
+function createNodePoses(recipe, motionSampler) {
+  const nodesById = new Map(recipe.nodes.map(node => [node.id, node]));
+  return function worldMatricesAt(time) {
+    const patches = motionSampler ? motionSampler.sample(time).nodes : NO_PATCHES;
+    const worlds = new Map();
+    const worldOf = nodeId => {
+      let world = worlds.get(nodeId);
+      if (!world) {
+        const node = nodesById.get(nodeId);
+        const patch = patches.get(nodeId);
+        world = mat4.fromRotationTranslationScale(mat4.create(), patch?.rotation ?? node.rotation, patch?.translation ?? node.translation, patch?.scale ?? node.scale);
+        if (node.parent !== null) mat4.multiply(world, worldOf(node.parent), world);
+        worlds.set(nodeId, world);
+      }
+      return world;
+    };
+    return worldOf;
+  };
+}
+
+// Time of each solver substep after the first frame, so the same frame always meets the same colliders and anchors.
+function substepTimes(frameCount) {
+  const times = [];
+  for (let frame = 1; frame < frameCount; frame++) {
+    for (let substep = 1; substep <= CLOTH_LIMITS.substeps; substep++) {
+      times.push((frame - 1 + substep / CLOTH_LIMITS.substeps) / FRAMES_PER_SECOND);
+    }
+  }
+  return times;
+}
+
+// Every moving collider at every substep as a capsule (a ball has both ends at its centre): start, end, radius.
+function sampleColliderTrack(specs, worldMatricesAt, times) {
+  const track = new Float64Array(times.length * specs.length * 7);
+  const point = vec3.create();
+  const place = (index, worldOf, nodeId, offset) => {
+    vec3.transformMat4(point, offset, worldOf(nodeId));
+    track.set(point, index);
+  };
+  times.forEach((time, step) => {
+    const worldOf = worldMatricesAt(time);
+    specs.forEach((spec, collider) => {
+      const base = (step * specs.length + collider) * 7;
+      const ball = spec.kind === 'ball';
+      place(base, worldOf, ball ? spec.node : spec.startNode, ball ? spec.offset : spec.startOffset);
+      place(base + 3, worldOf, ball ? spec.node : spec.endNode, ball ? spec.offset : spec.endOffset);
+      track[base + 6] = spec.radius;
+    });
+  });
+  return track;
+}
+
+// Where the pinned particles go at every substep: their rest offset in the node's space carried by the node's pose.
+function sampleAnchorTrack(pinTo, particles, worldPositions, worldMatricesAt, times) {
+  const toNode = mat4.invert(mat4.create(), worldMatricesAt(0)(pinTo.node));
+  const offsets = particles.map(particle => vec3.transformMat4(vec3.create(), worldPositions.subarray(particle * 3, particle * 3 + 3), toNode));
+  const track = new Float64Array(times.length * particles.length * 3);
+  const target = vec3.create();
+  times.forEach((time, step) => {
+    const matrix = worldMatricesAt(time)(pinTo.node);
+    offsets.forEach((offset, anchor) => {
+      vec3.transformMat4(target, offset, matrix);
+      track.set(target, (step * particles.length + anchor) * 3);
+    });
+  });
+  return track;
+}
+
+function createMovingBodies(sheet, pinned, worldPositions, movingSetup, frameCount) {
+  const { specs, worldMatricesAt } = movingSetup;
+  const times = substepTimes(frameCount);
+  movingSetup.colliderTrack ??= sampleColliderTrack(specs, worldMatricesAt, times);
+  const anchorParticles = Uint32Array.from(sheet.pinTo ? pinned : []);
+  return {
+    anchorParticles,
+    anchorWeights: new Float64Array(anchorParticles.length).fill(sheet.pinTo?.weight ?? 1),
+    anchorTrack: sheet.pinTo ? sampleAnchorTrack(sheet.pinTo, pinned, worldPositions, worldMatricesAt, times) : new Float64Array(0),
+    colliderCount: specs.length,
+    colliderTrack: movingSetup.colliderTrack,
+  };
+}
+
+function bakeSheet(sheet, cloth, node, geometry, colliders, frameCount, movingSetup) {
   const welded = weldVertices(geometry.positions, geometry.indices);
   const matrix = nodeMatrix(node);
   const worldPositions = new Float64Array(welded.representatives.length * 3);
@@ -134,8 +348,11 @@ function bakeSheet(sheet, cloth, node, geometry, colliders, frameCount) {
     }
     worldPositions.set(world, particle * 3);
   });
+  const pinned = pinnedParticles(geometry.positions, welded.representatives, sheet.pin);
+  const needsMoving = Boolean(movingSetup && (sheet.pinTo || movingSetup.specs.length));
+  const moving = needsMoving ? createMovingBodies(sheet, pinned, worldPositions, movingSetup, frameCount) : null;
   const recording = Object.freeze({ ...runKernel('cloth', [worldPositions, welded.triangles, {
-    pinned: pinnedParticles(geometry.positions, welded.representatives, sheet.pin),
+    pinned: sheet.pinTo ? [] : pinned, moving,
     gravity: cloth.gravity, wind: cloth.wind, stiffness: sheet.stiffness, bend: sheet.bend,
     density: sheet.density, damping: sheet.damping, friction: sheet.friction, thickness: sheet.thickness,
     colliders, frameCount, framesPerSecond: FRAMES_PER_SECOND,
@@ -181,13 +398,16 @@ function sheetReport(baked, node, sheet) {
  * Bake the cloth section. The result is a pure function of time: `sample(t)` returns the deformed geometry of each
  * sheet node (null at time zero, where the sheet is at rest), and a seek never runs the solver again.
  */
-export function bakeAgentCloth(cloth, recipe, geometries) {
+export function bakeAgentCloth(cloth, recipe, geometries, motionSampler = null) {
   const nodes = new Map(recipe.nodes.map(node => [node.id, node]));
   const frameCount = Math.round(cloth.duration * FRAMES_PER_SECOND) + 1;
-  const colliders = (cloth.colliders ?? []).map(collider => colliderFor(collider, nodes.get(collider.node), geometries.get(nodes.get(collider.node).geometry)));
+  const specs = movingColliderSpecs(cloth, recipe);
+  const usesMotion = specs.length > 0 || cloth.sheets.some(sheet => sheet.pinTo);
+  const movingSetup = usesMotion ? { specs, worldMatricesAt: createNodePoses(recipe, motionSampler) } : null;
+  const colliders = (cloth.colliders ?? []).filter(collider => collider.node !== undefined).map(collider => colliderFor(collider, nodes.get(collider.node), geometries.get(nodes.get(collider.node).geometry)));
   const baked = new Map(cloth.sheets.map(sheet => {
     const node = nodes.get(sheet.node);
-    return [sheet.node, bakeSheet(sheet, cloth, node, geometries.get(node.geometry), colliders, frameCount)];
+    return [sheet.node, bakeSheet(sheet, cloth, node, geometries.get(node.geometry), colliders, frameCount, movingSetup)];
   }));
   let reportCache = null;
   return Object.freeze({

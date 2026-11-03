@@ -9,3 +9,5 @@ Each pull request adds one file here, such as `changes/issue-199.md`, with its c
 Do not edit `CHANGELOG.md` in a pull request. Two pull requests then never touch the same file, so GitHub has nothing to conflict on.
 
 `npm run changes` prints the pending notes. At release time `npm run changes:fold` writes them into `CHANGELOG.md` as the section for the version in `package.json` and deletes the files.
+
+A size note, `changes/<issue>.size.md`, is not a changelog bullet. It accepts a bundle size increase, and `bench/size/README.md` says how. `changes:fold` leaves it out of the changelog and deletes it.

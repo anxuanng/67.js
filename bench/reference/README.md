@@ -21,7 +21,7 @@ All of them are against the Blender 5.2.2 renders taken on 2026-11-03 with the s
 | Scene | 67js against Cycles | EEVEE against Cycles | 67js against EEVEE | Baked 67js against Cycles | Path tracer against Cycles |
 | --- | --- | --- | --- | --- | --- |
 | `brick-flat` | 0.0547 | 0.1098 | 0.0961 |  | 0.1152 |
-| `brick-graph` | 0.0982 | 0.1221 | 0.1001 |  | 0.1476 |
+| `brick-graph` | 0.0933 | 0.1221 | 0.0994 |  | 0.1476 |
 | `brick-room` | 0.5102 | 0.5020 | 0.0710 | 0.1423 | 0.2727 |
 | `brushed-film` | 0.1029 | 0.0984 | 0.0855 |  | 0.1524 |
 | `car-paint` | 0.1038 | 0.0844 | 0.0650 |  | 0.1343 |
@@ -1432,3 +1432,82 @@ The second option was tried: for alpha-mask materials only, the base map got its
 | EEVEE against Cycles | 0.0924 | 0.0924 |
 
 Worse by 0.0002 against Cycles, so the default suite and `--grand` were not run and the code was reverted. Reading (inferred): the lost coverage is at full-size edges, not at coarse mips, since the crown is seen at about one texel per pixel; keeping more coverage in the coarse levels cannot reach it. Same direction as the one mip finer attempt (0.0979 to 0.0982). Next idea: match Cycles' edge softness at level 0 (a slightly blurred alpha, or the leaf alpha edge drawn with a ramp wider than a texel) instead of changing the mips.
+
+## Graph bump slope read at a point, and where the graph excess comes from (2026-11-03, part of issue #50)
+
+Main (merged with `origin/main` of the day) on the stored Cycles and EEVEE arrays, GPU, 960 x 540. Before: `brick-graph` 0.0967 against Cycles in a fresh render (0.0982 in the committed row), `brick-flat` 0.0547, so the excess of the graph wall over the flat wall was 0.0420 (0.0435 by the committed rows) against EEVEE's 0.0120 (0.1249 against 0.1129).
+
+The split, with Blender renders of each variant too (temporary scene variants, not committed; each row is 67js against Cycles of the same variant, FLIP, lower is better; the flat wall is the average colour of the graph):
+
+| Variant | 67js | EEVEE | 67js over flat | EEVEE over flat |
+| --- | --- | --- | --- | --- |
+| flat wall | 0.0547 | 0.1129 | | |
+| colour only (bump off) | 0.0735 | 0.1194 | +0.0188 | +0.0065 |
+| bump only (flat albedo) | 0.0827 | 0.1214 | +0.0280 | +0.0085 |
+| both (`brick-graph`) | 0.0967 | 0.1249 | +0.0420 | +0.0120 |
+
+Colour is about +0.019 and bump about +0.028; the earlier split (+0.010 and +0.023) was taken when the flat wall scored 0.1999. The flat wall has since improved by more than 0.07 (ground bounce and sky terms), so a flat wall that matches Cycles almost exactly leaves the graph's detail error fully visible, while EEVEE's flat wall is already 0.113 away from Cycles (luminance 0.559 against 0.616 on the plain wall) and FLIP does not add detail error on top of a brightness offset one for one. Part of the gap is the metric: the excess moved from 0.0254 to 0.042 because the flat wall got better, not because the graph got worse.
+
+Parity of the Blender material with the graph, checked line by line: Bump node Distance 0.15 times `graphBump`, strength 1, not inverted, height into Bump (not Displacement), normal into the Principled Normal; Colour Ramp linear with linear stop colours; the bake writes `linearToSrgbByte` and the map is sampled as sRGB, so mix and ramp are evaluated linearly on both sides; the UVs agree (v flipped in the mesh, undone in the translator). The slope is bump / 32 per UV unit in the bake and `0.15 * bump` per world unit in Blender, which is 0.8 and 1.2 of it along U and V on the 6 by 4 wall and was measured to be worth about 0.0003 earlier. No mismatch in the export, so the Blender side and its renders are unchanged.
+
+The mismatch that is in the compiler: the bake read the slope by a central difference over two baked texels, so a joint edge a texel thin became three texels wide, and the bands of a bevel were wider than Blender's, whose Bump node reads a footprint of 0.1 pixel. `bakeMaterialGraph` now evaluates the height function half a texel either side of each texel centre (`normalMapFromHeightFunction`), with the same slope scale per UV unit. Step in texels against 67js GPU, FLIP of `brick-graph` against Cycles (against EEVEE): 2 texels 0.1060 (0.0978), 1 texel (the old bake) 0.0967 (0.0973), 0.5 texel 0.0933 (0.0994), 0.25 texel 0.0931 (0.1010). The half texel is kept: the quarter texel gains 0.0002 and moves the render further from EEVEE.
+
+After the change: `brick-graph` 0.0933 (GPU) and 0.0930 (CPU) against Cycles, 0.0994 against EEVEE; `brick-flat` 0.0547. Excess over the flat wall 0.0386, was 0.0420 on the same renders, against EEVEE's 0.0120, so the first Done-when box of #50 stays open (gap 0.0266). Only `brick-graph` reads a graph. The full default run and the `--grand` run scored every other scene within 0.002 of main or better (`mountain-valley` 0.1769 to 0.1693 and the grand mountain-valley rows improved from other work on main; none is worse). The bundle budgets of the three `agent-scene` and `agent-asset` lazy entries were raised to the measured size plus 20 bytes (3 lines of `bench/size/budgets.json`). `emissive-sign` (new on main) had no Cycles render in the stored arrays and was rendered here to complete the run (0.2372 against Cycles); its row is not committed in this change.
+
+What is left is not in the bake. On the bump-only wall across the dark side of a joint, luminance (display space) is 0.25 at the darkest pixel in Cycles, 0.34 in EEVEE and 0.37 in 67js, against 0.62 on the flat wall: EEVEE and 67js agree with each other and Cycles is darker. That is a shading difference on a normal tilted about 70 degrees from the surface, in the lighting of `src/shaders.js`, which this change does not touch; it needs the engine session.
+
+## Named looks for the grand scenes (2026-11-03, part of issue #168)
+
+`look-options.js` holds a second round of options for the three grand scenes, each a named variant: `node bench/reference/run.mjs --option mountain-valley:dawn` (several separated by commas) draws it with the GPU only into `artifacts/reference-look/<scene>-<option>-gpu.png`, with no Blender, no score and no baseline change. Sheets: `uv run --no-project --with pillow python -I bench/reference/look-sheets.py artifacts/reference-look artifacts/look-168` copies each frame to `artifacts/look-168/<scene>/<option>.png` and writes one contact sheet per scene. The default scenes and the letters of `grand-scenes.js` are unchanged. Blender would get the same geometry and materials: ground cover is vertex colour, facades are material graphs (Emission through the graph), halls use Emission panels and volume fog. An picks; no option is claimed to match anyone's taste.
+
+| Option | What changes |
+| --- | --- |
+| `mountain-valley:dawn` | Cool dawn, sun behind the far massif, a river down a flat floor, a mist layer, ridges fading into haze, a snowy hero peak |
+| `mountain-valley:tarn` | Midday on the shore of a turquoise lake, forest across the water, rounded snow massifs, boulders at the camera |
+| `mountain-valley:sunset` | Low orange sun from the left, long tree shadows over wildflower drifts, one peak lit pink |
+| `temple-hall:rose` | The nave seen down its axis toward a stained glass rose window and five lancets (all Emission), roof openings with sun shafts, candles along the carpet |
+| `temple-hall:court` | Hall open to the sky over the nave, high sun and blue sky light, pale floor, two colossi and a glowing door at the far end |
+| `megacity-dusk:golden-avenue` | Street level on a broad avenue at sunset, the right-hand towers lit gold, lines of car lights, street trees |
+| `megacity-dusk:blue-hour` | Elevated bank over a river, a 560 m landmark tower, windows lit in drifts, lit bridges, parkland trees |
+| `megacity-dusk:night-grid` | High night view of avenue grids, dense towers with most windows lit, cyan and magenta signs |
+
+Terrain shape: the rim is rounded massifs (erosion noise) with a little ridged noise for crags, in place of the reference's needle ridges. Towers have a lit podium, one to three setbacks and a crown (plant, stepped or spire), and a facade graph gives panes in a wall with lit panes in drifts instead of full-width stripes. No downloaded textures or models are used: the terrain chunks and tower boxes carry no UV sets in the export, so a scanned texture would not reach Blender the same way.
+
+## The reference harness drew `foliage` in a breeze (2026-11-03, part of issue #191)
+
+Found by comparing the leaf cards of the two sides. No engine code changed and no Blender render changed: the Cycles and EEVEE arrays are the ones of the earlier runs.
+
+| Property | 67js (scene JSON) | Blender (`render-blender.py`) | Same |
+| --- | --- | --- | --- |
+| Cards | 558 in one geometry, 2,232 vertices, UVs 0 to 1 | the same arrays, `build_mesh` | yes |
+| Transform | identity part matrix, Y-up to Z-up | `Y_UP_TO_Z_UP @ matrix` | yes |
+| Winding / back faces | `doubleSided: true`, no culling | Principled has no culling, back face keeps the stored normal | yes |
+| UV orientation | v as stored | image rows reversed and v flipped, net data row = v * height | yes |
+| Alpha mode, cutoff | `mask`, 0.5 | `GREATER_THAN` 0.5 on the texture alpha, then a transparent mix | yes |
+| Filtering | linear, trilinear mips | linear, no mips (Cycles) | differs by design (tried in #191, not kept) |
+| Wrap | clamp | repeat, but the card texture has alpha 0 on all four edges | no effect |
+| Leaf texture | 128 by 128, 22.5 percent of texels above 127 | the same pixels | yes |
+| Wind | renderer default `wind: 0.3` at `time: 0` | a still scene | **no** |
+
+The last row is the mismatch. The foliage vertex shader (`windOffset` in `src/shaders.js`) sways and flutters the cards even at time 0, up to 0.14 m of sway and 0.02 m of flutter at strength 0.3. At the camera distance of 12 m a pixel is 0.016 m, so crown cards were drawn up to about 4 px away from where Blender draws them (the shadow pass moves with them). `harness.js` built its frame without `wind`, so every vegetation scene paid for it.
+
+Measured with a CPU rasteriser of the cards (Python, bilinear alpha above 0.5 at mip 0, 4 by 4 samples per pixel, bark as occluder), over the crown rows of the 960 by 540 frame; mismatch is pixels whose "sky or not" differs between that mask and each render:
+
+| Render | Mismatch before | Best shift of the mask before | Mismatch with `wind: 0` |
+| --- | --- | --- | --- |
+| EEVEE | 1,036 | none | n/a |
+| Cycles | 2,523 | none | n/a |
+| 67js (GPU) | 3,228 | 1.5 px right, 0.5 px down (2,558) | 1,607 |
+| 67js (CPU) | 3,178 | 1.5 px right, 0.5 px down (2,492) | 1,493 |
+
+Fix: `harness.js` renders the reference frame with `wind: 0`. Re-run with 67js only (`--skip-blender`, GPU lock), then `--score-only`; only scenes with leaf cards moved. FLIP against Cycles (GPU), before to after:
+
+| Scene | 67js against Cycles | 67js against EEVEE | EEVEE against Cycles |
+| --- | --- | --- | --- |
+| foliage | 0.0979 to 0.0838 | 0.0771 to 0.0613 | 0.0924 |
+| mountain-valley | 0.1769 to 0.1691 | 0.2668 to 0.2613 | 0.1895 |
+| mountain-valley-a (grand) | 0.1671 to 0.1653 | 0.2392 to 0.2373 | 0.176 |
+| mountain-valley-b (grand) | 0.2096 to 0.2019 | 0.2645 to 0.2567 | 0.1306 |
+| mountain-valley-c (grand) | 0.1836 to 0.1775 | 0.223 to 0.2182 | 0.1522 |
+
+`foliage` now sits 0.0086 under EEVEE against Cycles (was 0.0055 over). Every other default and grand scene has no leaf cards and was not re-rendered; the only score that rose is a GPU against CPU difference (`gpu-vs-cpu` of `foliage` 0.0095 to 0.0097, `mountain-valley-b` 0.0158 to 0.0164). The Cycles and EEVEE columns did not move, so this is a change on the 67js side of the comparison and not a new reference. The score no longer includes the wind, which a real scene still has by default (`wind` 0.3); that is by design and is not scored here.

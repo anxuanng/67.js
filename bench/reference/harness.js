@@ -2,9 +2,12 @@
 import { Renderer67 } from '/src/renderer.js';
 import { REFERENCE_SCENES, KHRONOS_SCENES, CLOTH_SCENES } from './scenes.js';
 import { GRAND_SCENES } from './grand-scenes.js';
+import { LOOK_OPTIONS } from './look-options.js';
 import { skinnedGeometry } from '/src/path-tracer-scene.js';
 import { boxProjectedGeometry } from '/src/export-box-uv.js';
 import '/src/material-layer-shaders.js';
+import '/src/liquid-shader.js';
+import '/src/splat-shader.js';
 import { skyOpenness } from '/src/closed-room.js';
 import { fogSkyVisibility } from '/src/fog-sky-visibility.js';
 import { createCascadedShadows } from '/src/cascaded-shadows.js';
@@ -26,7 +29,7 @@ const WATER_REFLECTION = { off: false, ssr: 'ssr' }[new URLSearchParams(location
 
 // ?set=khronos draws the Khronos sample assets (npm run reference -- --khronos) and ?set=cloth the cloth scenes
 // (npm run reference -- --cloth) instead of the fixed scenes.
-const SCENE_SETS = { khronos: KHRONOS_SCENES, cloth: CLOTH_SCENES, grand: GRAND_SCENES };
+const SCENE_SETS = { khronos: KHRONOS_SCENES, cloth: CLOTH_SCENES, grand: GRAND_SCENES, look: LOOK_OPTIONS };
 const SCENES = SCENE_SETS[new URLSearchParams(location.search).get('set')] ?? REFERENCE_SCENES;
 
 function encodeBytes(typedArray) {
@@ -186,7 +189,8 @@ async function renderReferenceScene(id, { describe, ambientOcclusion = 0, ambien
   // backgroundOnly draws the sky alone, so a score can be limited to the pixels the asset covers.
   const renderer = createSceneRenderer(backgroundOnly ? [] : probed ? probed.parts : baked ? baked.parts : scene.parts, scene, cascades);
   renderer.resize();
-  const frame = { ...scene.camera, environment: scene.environment, time: 0, exposure: 1, effects: { ambientOcclusion, ambientOcclusionRadius } };
+  // Blender draws a still scene. The renderer's default wind (0.3) would move the leaf cards by up to four pixels at time 0.
+  const frame = { ...scene.camera, environment: scene.environment, time: 0, wind: 0, exposure: 1, effects: { ambientOcclusion, ambientOcclusionRadius } };
   renderer.render(frame);
   renderer.render(frame);
   const debug = renderer.context.getExtension('WEBGL_debug_renderer_info');
