@@ -1,5 +1,7 @@
 // Shader program helpers shared by the renderer and its optional addons, kept apart so an addon does not pull in the renderer.
 
+import { shaderTransforms } from './shader-registry.js';
+
 export const fullscreenVertex = `#version 300 es
 precision highp float;
 out vec2 textureCoordinate;
@@ -16,7 +18,7 @@ export function startProgram(context, vertexSource, fragmentSource) {
   const shaders = [];
   for (const [kind, source] of [[context.VERTEX_SHADER, vertexSource], [context.FRAGMENT_SHADER, fragmentSource]]) {
     const shader = context.createShader(kind);
-    context.shaderSource(shader, source);
+    context.shaderSource(shader, shaderTransforms.reduce((text, transform) => transform(text), source));
     context.compileShader(shader);
     context.attachShader(program, shader);
     shaders.push(shader);
