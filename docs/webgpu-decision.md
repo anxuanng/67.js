@@ -8,7 +8,7 @@ The trigger named below ("a feature measured as too slow on the CPU") was met by
 
 Why WebGL2 fragment (measured on this machine, 2026-11-03, RTX 3060 shared with other sessions, Chrome with ANGLE on Direct3D 11, headless):
 
-- It reached the target without compute. The 1920 by 1080 still of `tests/fixtures/demo-room.recipe.json` (181,708 triangles, 64 samples, 8 bounces, the 8-thread CPU tracer took 585.9 s) took 55.8 s end to end on the GPU in the first full run, of which 13.0 s was compiling the kernel and about 12 s was the denoiser and the BVH build (the log of that run: `seconds` 55.81, `tracedSeconds` 43.80, `compileSeconds` 13.03).
+- It reached the target without compute. The 1920 by 1080 still of `tests/fixtures/demo-room.recipe.json` (181,708 triangles, 64 samples, 8 bounces, the 8-thread CPU tracer took 585.9 s) took 58.15 s end to end on the GPU (`seconds` 58.15, `tracedSeconds` 40.67, `compileSeconds` 10.32, warm shader cache; the rest is the BVH build and the denoiser).
 - The same kernel, in the same random-number order as the CPU tracer, gives the same picture: GPU against CPU FLIP (LDR, mean) was 0.0001 to 0.0018 on all 16 path tracer reference scenes at 480 by 270 and 32 samples (measured; `bench/reference/gpu-compare.mjs` and `flip-compare.py`). Float32 against float64 and a 24-bit random value are the only differences.
 - On those 16 scenes the GPU tracer took 0.5 to 1.8 s against 1.6 to 9.0 s for the CPU tracer on 8 threads, both including the denoiser (measured).
 - It needs no new API surface: WebGL2 is what the job pages already use, `EXT_color_buffer_float` and `EXT_float_blend` are present on the RTX 3060 in headless Chrome, and a page without them falls back to the CPU tracer by choosing `backend: "cpu"` (the default).
