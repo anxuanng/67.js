@@ -374,7 +374,7 @@ async function megacityDuskA() {
   const riverHalf = 70;
   const parts = [
     part('city-ground', UNIT_BOX, [0, -1.5, -500], [9000, 2, 9000], GROUND),
-    part('river', UNIT_BOX, [0, -1.2, -500], [riverHalf * 2, 1.4, 3200], WATER),
+    part('river', UNIT_BOX, [0, -1.19, -500], [riverHalf * 2, 1.4, 3200], WATER),
   ];
   for (const side of [-1, 1]) {
     parts.push(part(`quay-${side}`, UNIT_BOX, [side * (riverHalf + 18), 0.1, -500], [36, 0.3, 3200], ROAD));
@@ -414,7 +414,7 @@ async function megacityDuskB() {
   const sunDirection = [0.18, 0.1, -0.98];
   const parts = [
     part('land', UNIT_BOX, [0, -1.5, -1600], [6000, 2, 2400], GROUND),
-    part('bay', UNIT_BOX, [0, -1.2, 150], [6000, 1.4, 1100], WATER),
+    part('bay', UNIT_BOX, [0, -1.19, 150], [6000, 1.4, 1100], WATER),
     part('harbour-quay', UNIT_BOX, [0, 0.1, -400], [6000, 0.5, 40], ROAD),
   ];
   parts.push(part('pier', UNIT_BOX, [0, 1.6, 300], [6, 0.5, 420], { color: [0.4, 0.3, 0.22], roughness: 0.7 }));

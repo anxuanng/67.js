@@ -3,11 +3,11 @@
  "blenderVersion": "5.2.2 LTS",
  "seconds": {
   "megacity-dusk-a": {
-   "cycles": 28.9,
+   "cycles": 8.9,
    "eevee": 42.4
   },
   "megacity-dusk-b": {
-   "cycles": 33.2,
+   "cycles": 10.8,
    "eevee": 27.7
   },
   "megacity-dusk-c": {
@@ -36,7 +36,7 @@
   },
   "mountain-valley-a": {
    "cycles": 26.3,
-   "eevee": 20.0
+   "eevee": 20
   }
  },
  "graphics": {
@@ -45,20 +45,20 @@
  },
  "scores": {
   "megacity-dusk-a": {
-   "gpu-vs-cycles": 0.1999,
-   "gpu-vs-eevee": 0.1688,
-   "cpu-vs-cycles": 0.1992,
-   "cpu-vs-eevee": 0.1703,
-   "eevee-vs-cycles": 0.1404,
-   "gpu-vs-cpu": 0.0229
+   "gpu-vs-cycles": 0.1507,
+   "gpu-vs-eevee": 0.1141,
+   "cpu-vs-cycles": 0.1502,
+   "cpu-vs-eevee": 0.1152,
+   "eevee-vs-cycles": 0.1455,
+   "gpu-vs-cpu": 0.0224
   },
   "megacity-dusk-b": {
-   "gpu-vs-cycles": 0.1242,
-   "gpu-vs-eevee": 0.1307,
-   "cpu-vs-cycles": 0.1258,
-   "cpu-vs-eevee": 0.1317,
+   "gpu-vs-cycles": 0.1108,
+   "gpu-vs-eevee": 0.1246,
+   "cpu-vs-cycles": 0.112,
+   "cpu-vs-eevee": 0.1268,
    "eevee-vs-cycles": 0.1041,
-   "gpu-vs-cpu": 0.0428
+   "gpu-vs-cpu": 0.0368
   },
   "megacity-dusk-c": {
    "gpu-vs-cycles": 0.1149,
