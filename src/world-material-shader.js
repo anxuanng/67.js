@@ -161,3 +161,20 @@ void mossMasks(vec3 normal, float amount, out float sharpMask, out float softMas
 };
 
 registerShaderFeatureCode('worldMaterials', worldMaterialSlots);
+
+/**
+ * Turns the foliage and grass wind to `radians` about the vertical axis (0 is the default heading toward +x).
+ * The renderer never sets windHeading, so the value stays on the main and shadow programs between frames; call this
+ * before each render, because a rebuilt program starts at 0. A turned heading marks the shadow map stale.
+ */
+export function applyWindHeading(renderer, radians) {
+  const context = renderer.context;
+  for (const program of [renderer.program, renderer.depthProgram]) {
+    const location = context.getUniformLocation(program, 'windHeading');
+    if (!location) continue;
+    context.useProgram(program);
+    context.uniform1f(location, radians);
+  }
+  if (renderer.windHeading !== radians) renderer.shadowsDirty = true;
+  renderer.windHeading = radians;
+}

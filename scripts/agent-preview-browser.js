@@ -9,7 +9,7 @@ import { installCoplanarDiagnostics } from '../src/coplanar-overlap.js';
 import { applyProjection } from '../src/camera.js';
 import { mat4 } from 'gl-matrix';
 import { resolveAgentShadow, agentEnvironmentMap } from '../src/agent-look.js';
-import { agentSceneModule } from '../src/agent-scene-modules.js';
+import { agentSceneModule, agentSceneModuleLoaded } from '../src/agent-scene-modules.js';
 import { agentGroundPlacement, createAgentGround, placeAgentGround, FLOOR_COLOR } from '../src/agent-ground.js';
 import { groundBounceEnvironment } from '../src/ground-bounce.js';
 import { createAgentAssetScene } from '../src/agent-asset.js';
@@ -173,6 +173,7 @@ function draw(record, time = 0, camera = record.scene.camera, frameOptions = {})
     record.shadowKey = shadowKey;
   }
   record.renderer.world = environment.world;
+  applyRecipeWindHeading(record.renderer, environment);
   record.renderer.render({ ...camera, environment: litEnvironment(record.scene.parts, environment, Boolean(record.renderer.groundPart)), effects, exposure: effects.exposure, time, lines: environment.lines, ...windFrame(environment), ...frameOptions });
   const error = record.renderer.context.getError();
   if (error !== 0) {
@@ -233,10 +234,16 @@ function cascadeCountFor(scene) {
   return agentSceneModule('cascades').effectiveShadowCascades(scene.environment, scene.shadow);
 }
 
-// Wind strength and heading (degrees, 0 toward +x, turning toward +z) of the recipe; absent keeps the renderer default.
+// Wind strength of the recipe; absent keeps the renderer default. The heading is applied by applyRecipeWindHeading.
 function windFrame(environment) {
   if (!environment.wind) return {};
-  return { wind: environment.wind.strength, windHeading: environment.wind.direction * Math.PI / 180 };
+  return { wind: environment.wind.strength };
+}
+
+// The heading lives in the on-demand world material code, so the core renderer carries nothing for it.
+function applyRecipeWindHeading(renderer, environment) {
+  if (!agentSceneModuleLoaded('worldMaterials')) return;
+  agentSceneModule('worldMaterials').applyWindHeading(renderer, (environment.wind?.direction ?? 0) * Math.PI / 180);
 }
 
 function cascadesFor(scene) {

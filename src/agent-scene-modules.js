@@ -52,7 +52,7 @@ const MODULE_MARKERS = {
   timeline: ['"timeline":{'],
   layerShaders: ['"anisotropy"', '"iridescence"'],
   liquidShader: ['"transmission"', '"liquid"', '"foam"'],
-  worldMaterials: ['"tag":"water"', '"tag":"foliage"', '"tag":"grass"', '"tag":"terrain"', '"tag":"fire"', '"tag":"smoke"', '"moss"'],
+  worldMaterials: ['"tag":"water"', '"vegetation":{', '"tag":"foliage"', '"tag":"grass"', '"tag":"terrain"', '"tag":"fire"', '"tag":"smoke"', '"moss"'],
   terrain: ['"type":"terrain"'],
   // No recipe text asks for it, only the path option of scene_inspect does, so a host loads it with loadAllAgentSceneModules.
   navigation: [],

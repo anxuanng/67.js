@@ -527,7 +527,7 @@ export class Renderer67 {
     this.splatResources = new Map();
     this.textureBytes = 4;
     this.shadowsDirty = true;
-    this.windState = { time: 0, strength: 0.3, heading: 0 };
+    this.windState = { time: 0, strength: 0.3 };
     // The shadow map the constructor draws uses no assembly, so a first frame with none does not draw it again.
     this.assemblyAmount = 0;
     const groups = groupParts(this.groundPart ? [...parts, this.groundPart] : parts, batching);
@@ -632,7 +632,7 @@ export class Renderer67 {
     this.depthAlphaUniforms = Object.fromEntries(DEPTH_ALPHA_UNIFORMS.map(name => [name, this.context.getUniformLocation(this.depthProgram, name)]));
     this.depthUniform = this.context.getUniformLocation(this.depthProgram, 'lightProjection');
     this.depthAssemblyUniform = this.context.getUniformLocation(this.depthProgram, 'assemblyAmount');
-    this.depthWindUniforms = { time: this.context.getUniformLocation(this.depthProgram, 'time'), wind: this.context.getUniformLocation(this.depthProgram, 'wind'), heading: this.context.getUniformLocation(this.depthProgram, 'windHeading') };
+    this.depthWindUniforms = { time: this.context.getUniformLocation(this.depthProgram, 'time'), wind: this.context.getUniformLocation(this.depthProgram, 'wind') };
     this.partCount = parts.length;
     this.triangles = parts.reduce((total, part) => total + part.geometry.indices.length / 3, 0);
     this.whiteTexture = this.createTexture(null);
@@ -707,7 +707,7 @@ export class Renderer67 {
 
   finishMainProgram(pendingProgram) {
     this.program = finishProgram(this.context, pendingProgram);
-    this.uniforms = Object.fromEntries(['materialDielectric', 'materialCoat', 'materialSheen', 'materialAnisotropy', 'materialIridescence', 'lightLinkMask', 'boxMapScale', 'boxMapAxis', 'lightMap', 'lightMapScale', 'hasLightMap', 'viewProjection', 'lightProjection', 'eye', 'armorColor', 'armorSurface', 'exposure', 'inspection', 'shadowMap', 'shadowBiasPerSlope', ...MAP_UNIFORMS, ...MAP_FLAGS, ...SKIN_UNIFORMS, ...MORPH_UNIFORMS, 'normalScale', 'occlusionStrength', 'materialMoss', ...SPLAT_UNIFORMS, 'hdrEnabled', 'time', 'wind', 'windHeading', 'worldMode', 'daylight', 'fogColor', 'lightDirection', 'fogDensity', 'waterRipple', 'rippleTime', 'explosionProgress', 'explosionCenter', 'assemblyAmount', 'renderPassMode', 'renderPassDepthRange', 'renderPassObjectBase', ...ALPHA_UNIFORMS].map((name) => [name, this.context.getUniformLocation(this.program, name)]));
+    this.uniforms = Object.fromEntries(['materialDielectric', 'materialCoat', 'materialSheen', 'materialAnisotropy', 'materialIridescence', 'lightLinkMask', 'boxMapScale', 'boxMapAxis', 'lightMap', 'lightMapScale', 'hasLightMap', 'viewProjection', 'lightProjection', 'eye', 'armorColor', 'armorSurface', 'exposure', 'inspection', 'shadowMap', 'shadowBiasPerSlope', ...MAP_UNIFORMS, ...MAP_FLAGS, ...SKIN_UNIFORMS, ...MORPH_UNIFORMS, 'normalScale', 'occlusionStrength', 'materialMoss', ...SPLAT_UNIFORMS, 'hdrEnabled', 'time', 'wind', 'worldMode', 'daylight', 'fogColor', 'lightDirection', 'fogDensity', 'waterRipple', 'rippleTime', 'explosionProgress', 'explosionCenter', 'assemblyAmount', 'renderPassMode', 'renderPassDepthRange', 'renderPassObjectBase', ...ALPHA_UNIFORMS].map((name) => [name, this.context.getUniformLocation(this.program, name)]));
     for (const name of LIGHT_UNIFORMS) {
       this.uniforms[name] = this.context.getUniformLocation(this.program, name);
     }
@@ -1349,7 +1349,6 @@ export class Renderer67 {
     context.uniform1f(this.depthAssemblyUniform, this.assemblyAmount ?? 0);
     context.uniform1f(this.depthWindUniforms.time, this.windState.time);
     context.uniform1f(this.depthWindUniforms.wind, this.windState.strength);
-    context.uniform1f(this.depthWindUniforms.heading, this.windState.heading);
     // The base map sampler must not alias the shadow texture on unit 0 while that texture is the render target.
     context.uniform1i(this.depthAlphaUniforms.baseMap, 1);
     context.enable(context.POLYGON_OFFSET_FILL);
@@ -1421,10 +1420,10 @@ export class Renderer67 {
 
   /** Stores the wind time and strength the shadow pass must use; true when swaying batches need a new shadow map. */
   updateWindState(frame) {
-    const next = { time: frame.time ?? 0, strength: frame.wind ?? 0.3, heading: frame.windHeading ?? 0 };
+    const next = { time: frame.time ?? 0, strength: frame.wind ?? 0.3 };
     const previous = this.windState;
     this.windState = next;
-    if (previous.time === next.time && previous.strength === next.strength && previous.heading === next.heading) return false;
+    if (previous.time === next.time && previous.strength === next.strength) return false;
     return this.batches.some(batch => batch.castShadow && SWAYING_TAGS.has(batch.parts[0].material.tag));
   }
 
@@ -2143,7 +2142,6 @@ export class Renderer67 {
     context.uniform1f(this.uniforms.ambientIntensity, this.lighting.ambientIntensity);
     context.uniform1f(this.uniforms.time, frame.time ?? 0);
     context.uniform1f(this.uniforms.wind, frame.wind ?? 0.3);
-    context.uniform1f(this.uniforms.windHeading, frame.windHeading ?? 0);
     context.uniform1f(this.uniforms.worldMode, this.world ? 1 : 0);
     context.uniform1f(this.uniforms.daylight, environment.daylight);
     context.uniform3fv(this.uniforms.lightDirection, environment.lightDirection);
