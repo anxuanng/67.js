@@ -1334,7 +1334,7 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
         throw new RangeError('Motion time must be null or within zero and 3600 seconds.');
       }
       if (time !== null && !state.motionSampler && !state.physicsSampler && !state.clothSampler && !state.particleSampler && !state.assetRuntime.animators.length) {
-        throw new RangeError('This procedural recipe has no motion, physics, cloth, particles or placed asset clip.');
+        throw new RangeError('This procedural recipe has no motion, physics, cloth or particles, and no placed asset clip.');
       }
       if (publishPose(state, stagePose(state, time))) {
         topologyRevision++;
