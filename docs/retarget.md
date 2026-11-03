@@ -69,7 +69,11 @@ Assumptions and limits:
 - The clip is resampled at `frameRate`, so cubic-spline and step curves are baked to linear keys.
 - Source scale and non-hips translation tracks are ignored. Finger and toe bones transfer only when mapped in both rigs.
 - The source and target rest pose must be the bind pose (the node pose equals the inverse bind pose). A file that animates away from it is not detected.
-- No foot-lock, no IK, no retargeting of rotation limits. Different proportions can make feet slide or arms intersect the body.
+- No IK and no retargeting of rotation limits. Different proportions can make feet slide or arms intersect the body.
+- Through MCP, an asset recipe plays a clip of another catalog asset with `motion.layers[].from`, and `motion.footLock` plants
+  the feet afterwards (two-bone IK with the sole turned to a ground normal); see "A clip from another catalog asset" and
+  "Foot lock" in [agent-motion.md](agent-motion.md). In code, `createFootLock` in `src/foot-lock.js` does the same over an
+  asset's nodes.
 
 `createSkinClipPlayer(skin, clip, { rig, meshWorldMatrix })` applies a clip to a skin: `apply(seconds)` samples the clip, composes joint
 world matrices and calls `updateSkinPose`. The renderer still needs `updateParts` afterwards.

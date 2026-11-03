@@ -263,8 +263,12 @@ function createSolver(definition, position, prepared, resolveJoint) {
     if (definition.pole !== undefined && typeof definition.pole !== 'function') checkedVector(definition.pole, `${label} pole`);
     const limits = createJointLimits(definition.limits, label, { root, middle }, prepared);
     const bendToward = definition.bendToward === undefined ? null : vec3.normalize(new Float64Array(3), checkedVector(definition.bendToward, `${label} bendToward`));
+    if (definition.groundNormal !== undefined && typeof definition.groundNormal !== 'function') checkedVector(definition.groundNormal, `${label} groundNormal`);
     return {
       type: 'two-bone', label, weight, root, middle, end, target: definition.target, pole: definition.pole, limits, bendToward,
+      groundNormal: definition.groundNormal,
+      // A foot's sole faces up at rest, so this is where "up" sits in the end joint's own frame.
+      endUp: vec3.transformQuat(new Float64Array(3), [0, 1, 0], quat.invert(new Float64Array(4), prepared.restWorld.rotations[end])),
       restBend: restBendInParentFrame(prepared, root, middle, end),
       keepEndRotation: definition.keepEndRotation !== false,
     };
@@ -371,6 +375,13 @@ function solveTwoBone(solver, time, context) {
   const limited = applyJointLimits(solver.limits, prepared, localRotations);
   if (limited.length) update();
   if (solver.keepEndRotation) setWorldRotation(solver.end, endRotation, weight);
+  if (solver.groundNormal !== undefined) {
+    // Turn the end joint so its sole lies on the ground: its up axis goes to the normal by the shortest rotation.
+    const normal = vec3.normalize(new Float64Array(3), resolvedPoint(solver.groundNormal, time, [0, 1, 0], `${solver.label} groundNormal`));
+    const upNow = vec3.transformQuat(new Float64Array(3), solver.endUp, state.rotations[solver.end]);
+    const turn = quat.rotationTo(new Float64Array(4), upNow, normal);
+    setWorldRotation(solver.end, quat.multiply(new Float64Array(4), turn, state.rotations[solver.end]), weight);
+  }
   const error = vec3.distance(state.positions[solver.end], target);
   return { reached: error <= margin * 2 + NEAR_ZERO, error, warnings: bendWarnings(solver, state, prepared), limited };
 }
@@ -532,11 +543,13 @@ function evaluateMorphLayers(morphLayers, time) {
   return [...blended].map(([part, weights]) => ({ part, weights }));
 }
 
-function rigFromAssetNodes(nodes) {
+/** A rig from an asset's decoded nodes. Joints are named as the nodes are; `rootMatrix` places the asset in the world. */
+export function rigFromAssetNodes(nodes, { rootMatrix } = {}) {
   const indexById = new Map(nodes.map((node, index) => [node.id, index]));
   const jointNames = nodes.filter(node => node.joint).map(node => node.name);
   return {
     mapping: mapHumanoidBones(jointNames).mapping,
+    ...(rootMatrix ? { rootMatrix } : {}),
     joints: nodes.map(node => ({
       name: node.name,
       parent: node.parent === null ? -1 : indexById.get(node.parent),

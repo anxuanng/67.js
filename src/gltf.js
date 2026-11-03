@@ -118,6 +118,14 @@ function documentFrom(data, maxBytes) {
   return JSON.parse(new TextDecoder().decode(new Uint8Array(data, 20, jsonLength)));
 }
 
+/** Morph target names the file gives (extras.targetNames), in target order, or null when it names none. */
+function morphTargetNamesOf(document, node, count) {
+  const names = document.meshes?.[document.nodes?.[node.association?.nodes]?.mesh]?.extras?.targetNames;
+  const valid = Array.isArray(names) && names.length === count && new Set(names).size === count &&
+    names.every(name => typeof name === 'string' && name.length > 0 && name.length <= 128);
+  return valid ? [...names] : null;
+}
+
 function morphCount(mesh) {
   return mesh?.primitives?.[0]?.targets?.length ?? 0;
 }
@@ -1032,6 +1040,8 @@ export async function parseGltf(data, options = {}) {
         if (geometry.morphTargets) {
           const binding = makeMorphBinding(node, geometry, morphMetadata);
           part.morph = binding.pose;
+          const targetNames = morphTargetNamesOf(document, node, binding.pose.weights.length);
+          if (targetNames) part.morphTargetNames = targetNames;
           validateMorphTransform(binding.pose, binding.metadata, part.matrix, part.skin);
           morphBindings.push({ ...binding, part, pendingMatrix: transformBinding.pendingMatrix, pendingSkin });
         }
