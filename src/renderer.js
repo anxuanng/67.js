@@ -1,5 +1,5 @@
 import { mat4, mat3 } from 'gl-matrix';
-import { layerTextureSupport, LIGHT_SHADING_FEATURE, SHADING_MODES, LIGHT_SHADING_MAXIMUM_SAMPLES, vertexShader, createVertexShader, createFragmentShader, liquidFragmentShader, depthVertexShader, depthFragmentShader, benchmarkVertexShader, benchmarkFragmentShader } from './shaders.js';
+import { layerTextureSupport, LIGHT_SHADING_FEATURE, SHADING_MODES, LIGHT_SHADING_MAXIMUM_SAMPLES, vertexShader, createVertexShader, createFragmentShader, liquidFragmentShader, createDepthVertexShader, depthFragmentShader, benchmarkVertexShader, benchmarkFragmentShader } from './shaders.js';
 import { postFragment, createPostFragment, POST_STEPS, skyFragment, bloomFragment } from './post.js';
 import { fullscreenVertex, startProgram, finishProgram, compileProgram } from './gl-program.js';
 import { ambientOcclusionFragment } from './ambient-occlusion.js';
@@ -68,8 +68,9 @@ function shaderFeaturesOfLighting(lighting) {
 
 function shaderFeaturesOfParts(parts) {
   const features = new Set();
-  for (const { material, skin, morph } of parts) {
+  for (const { material, skin, morph, crowd } of parts) {
     if (skin) features.add('skin');
+    if (crowd) features.add('crowd');
     if (morph) features.add('morph');
     MATERIAL_MAPS.forEach((field, index) => {
       if (material[field]) features.add(MAP_SHADER_FEATURES[index]);
@@ -113,7 +114,7 @@ export function resolveLiquidOptics(options = {}) {
   }
   return optics;
 }
-const SKIN_UNIFORMS = ['skinEnabled', 'skinInfluences', 'jointPalette'];
+const SKIN_UNIFORMS = ['skinEnabled', 'skinInfluences', 'jointPalette', 'crowdEnabled'];
 const ALPHA_UNIFORMS = ['alphaMode', 'alphaCutoff', 'materialOpacity', 'alphaToCoverage', 'doubleSided'];
 const DEPTH_ALPHA_UNIFORMS = ['alphaMasked', 'alphaCutoff', 'materialOpacity', 'hasBaseMap', 'baseMap'];
 const MORPH_UNIFORMS = ['morphEnabled', 'morphVertexCount', 'morphTargetCount', 'morphWeights[0]', 'morphTargets'];
@@ -276,7 +277,7 @@ function isCullable(parts) {
   if (first.skin || first.morph) return false;
   if (DEFORMING_TAGS.has(first.material.tag) && !SWAYING_TAGS.has(first.material.tag)) return false;
   if (renderPass(first.material) !== 'opaque' || materialAlphaState(first.material)[0] === 'blend') return false;
-  return parts.every(part => !part.assembly);
+  return parts.every(part => !part.assembly || part.crowd);
 }
 
 function validateLods(part, levels) {
@@ -331,7 +332,7 @@ export function groupParts(parts, batching = true) {
     const key = batching ? part.geometry : part;
     if (!groups.has(key)) groups.set(key, new Map());
     let maps = groups.get(key);
-    for (const value of [...materialMapState(part.material), ...materialLayerState(part.material), part.skin ?? null, part.morph ?? null, castsShadow(part), renderPass(part.material), part.lods ?? null, part.shadowLods ?? null, ...materialAlphaState(part.material)]) {
+    for (const value of [...materialMapState(part.material), ...materialLayerState(part.material), part.skin ?? null, part.crowd ?? null, part.morph ?? null, castsShadow(part), renderPass(part.material), part.lods ?? null, part.shadowLods ?? null, ...materialAlphaState(part.material)]) {
       if (!maps.has(value)) maps.set(value, new Map());
       maps = maps.get(value);
     }
@@ -508,7 +509,7 @@ export class Renderer67 {
     this.assemblyAmount = 0;
     const groups = groupParts(this.groundPart ? [...parts, this.groundPart] : parts, batching);
     const textureLimit = this.context.getParameter(this.context.MAX_TEXTURE_SIZE);
-    this.hasSkins = groups.some(group => group[0].skin);
+    this.hasSkins = groups.some(group => group[0].skin || group[0].crowd);
     this.hasMorphs = groups.some(group => group[0].morph);
     if (this.hasSkins && (this.context.getParameter(this.context.MAX_VERTEX_TEXTURE_IMAGE_UNITS) < 2 || this.context.getParameter(this.context.MAX_COMBINED_TEXTURE_IMAGE_UNITS) < 8)) throw new Error('GPU skinning requires two vertex texture units and eight combined texture units.');
     if (this.hasMorphs && (this.context.getParameter(this.context.MAX_VERTEX_TEXTURE_IMAGE_UNITS) < (this.hasSkins ? 3 : 1) || this.context.getParameter(this.context.MAX_COMBINED_TEXTURE_IMAGE_UNITS) < 9)) throw new Error('GPU morphing requires one additional vertex texture unit and nine combined texture units.');
@@ -524,6 +525,10 @@ export class Renderer67 {
     const skinGeometries = new Set();
     for (const group of groups) {
       const part = group[0];
+      if (part.crowd && !poses.has(part.crowd)) {
+        this.textureBytes += skinTextureLayout(part.crowd.data.length / 4, textureLimit, 4).bytes;
+        poses.add(part.crowd);
+      }
       if (!part.skin) continue;
       if (!poses.has(part.skin)) this.textureBytes += skinTextureLayout(part.skin.jointMatrices.length / 4, textureLimit, 4).bytes;
       if (!skinGeometries.has(part.geometry)) this.textureBytes += skinTextureLayout(part.geometry.positions.length / 3 * 2, textureLimit, 2).bytes;
@@ -580,7 +585,7 @@ export class Renderer67 {
     if (shadowCascades) this.shaderFeatures.add(shadowCascades.shaderFeature);
     const pending = {
       main: this.startMainProgram(),
-      depth: startProgram(this.context, depthVertexShader, depthFragmentShader),
+      depth: startProgram(this.context, createDepthVertexShader(this.shaderFeatures), depthFragmentShader),
     };
     if (!benchmark) {
       pending.post = startProgram(this.context, fullscreenVertex, postFragment);
@@ -862,7 +867,7 @@ export class Renderer67 {
     let geometryBuffers = this.geometryBuffers.get(geometry);
     if (!geometryBuffers) {
       geometryBuffers = new Map();
-      for (const field of ['positions', 'normals', 'uvs', 'colors', 'indices']) {
+      for (const field of ['positions', 'normals', 'uvs', 'colors', 'indices', 'crowdJoints', 'crowdWeights']) {
         if (geometry[field]) {
           const target = field === 'indices' ? context.ELEMENT_ARRAY_BUFFER : context.ARRAY_BUFFER;
           const values = field === 'uvs' && geometry.lightUvs ? interleaveUvSets(geometry) : geometry[field];
@@ -900,6 +905,14 @@ export class Renderer67 {
       context.disableVertexAttribArray(14);
       context.vertexAttrib3f(14, 1, 1, 1);
     }
+    // A crowd geometry keeps four joint ids and four weights per vertex where textures and tints would sit.
+    if (geometry.crowdJoints) {
+      for (const [location, field] of [[13, 'crowdJoints'], [14, 'crowdWeights']]) {
+        context.bindBuffer(context.ARRAY_BUFFER, geometryBuffers.get(field));
+        context.enableVertexAttribArray(location);
+        context.vertexAttribPointer(location, 4, context.FLOAT, false, 0, 0);
+      }
+    }
     context.bindBuffer(context.ELEMENT_ARRAY_BUFFER, geometryBuffers.get('indices'));
   }
 
@@ -927,7 +940,7 @@ export class Renderer67 {
       if (!cullable) throw new RangeError(`shadowLods need rigid or swaying, opaque parts without assembly motion: ${first.name}`);
     }
     const levels = first.lods ?? [{ geometry: first.geometry, error: 0 }];
-    const sphere = geometryBoundingSphere(first.geometry);
+    const sphere = first.crowd?.bounds ?? geometryBoundingSphere(first.geometry);
     const bounds = { center: sphere.center, radius: sphere.radius + Math.max(...levels.map(level => level.error)) };
     const shadowLevels = first.shadowLods ? createLevelSet(first.shadowLods, parts.length) : null;
     const swayReach = SWAYING_TAGS.has(first.material.tag) ? SWAY_REACH_PER_STRENGTH : 0;
@@ -1017,13 +1030,15 @@ export class Renderer67 {
     const skin = parts[0].skin ?? null;
     const skinTexture = skin ? this.createSkinTexture(this.skinTextures, skin, skin.jointMatrices, 4) : null;
     const influenceTexture = skin ? this.createSkinTexture(this.influenceTextures, geometry, null, 2) : null;
+    const crowd = parts[0].crowd ?? null;
+    const crowdTexture = crowd ? this.createSkinTexture(this.skinTextures, crowd, crowd.data, 4) : null;
     const morph = parts[0].morph ?? null;
     const morphTexture = morph ? this.createMorphTexture(geometry, morph) : null;
     const morphWeights = morph ? new Float32Array(morph.weights) : null;
     const [alphaMode, alphaCutoff, opacity, doubleSided] = materialAlphaState(parts[0].material);
     const layerState = materialLayerState(parts[0].material);
     const culling = this.createCullingState(parts);
-    const batch = { ...culling, alphaMode, alphaCutoff, opacity, doubleSided, layerState, parts: [...parts], vertexArray, instanceBuffer, instanceData, textures, mapState, splat, lightMapTexture, texture: textures[0], map, skin, skinTexture, influenceTexture, morph, morphTexture, morphWeights, indexCount: geometry.indices.length, instanceCount: parts.length, floor: parts[0].material.tag === 'floor', castShadow: castsShadow(parts[0]), pass: renderPass(parts[0].material) };
+    const batch = { ...culling, alphaMode, alphaCutoff, opacity, doubleSided, layerState, parts: [...parts], vertexArray, instanceBuffer, instanceData, textures, mapState, splat, lightMapTexture, texture: textures[0], map, skin, skinTexture, influenceTexture, crowd, crowdTexture, morph, morphTexture, morphWeights, indexCount: geometry.indices.length, instanceCount: parts.length, floor: parts[0].material.tag === 'floor', castShadow: castsShadow(parts[0]), pass: renderPass(parts[0].material) };
     if (parts[0].lods) culling.levelGeometries.forEach((geometryOfLevel, level) => this.levelDraw(batch, level));
     culling.shadowLevels?.levelGeometries.forEach((geometryOfLevel, level) => this.levelDraw(batch, level, batch.shadowLevels));
     parts.forEach((part, index) => this.partLocations.set(part, { batch, index, geometry: part.geometry, map, mapState, layerState, skin, jointMatrices: skin?.jointMatrices, skinIndices: geometry.skinIndices, skinWeights: geometry.skinWeights, morph, morphWeights: morph?.weights, morphTargets: geometry.morphTargets, normalMatrix: mat3.create(), committedMatrix: batch.instanceData.subarray(index * INSTANCE_STRIDE, index * INSTANCE_STRIDE + 16) }));
@@ -2002,8 +2017,13 @@ export class Renderer67 {
     }
     if (this.hasSkins) {
       const uniforms = textured ? this.uniforms : this.depthSkinUniforms;
+      this.context.uniform1f(uniforms.crowdEnabled, batch.crowd ? 1 : 0);
       this.context.uniform1f(uniforms.skinEnabled, batch.skin ? 1 : 0);
-      if (batch.skin) {
+      if (batch.crowd) {
+        this.context.activeTexture(this.context.TEXTURE0 + 7);
+        this.context.bindTexture(this.context.TEXTURE_2D, batch.crowdTexture.texture);
+        this.context.uniform1i(uniforms.jointPalette, 7);
+      } else if (batch.skin) {
         this.context.activeTexture(this.context.TEXTURE0 + 6);
         this.context.bindTexture(this.context.TEXTURE_2D, batch.influenceTexture.texture);
         this.context.uniform1i(uniforms.skinInfluences, 6);
