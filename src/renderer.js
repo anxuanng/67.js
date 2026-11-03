@@ -617,6 +617,19 @@ export class Renderer67 {
       this.uniforms[name] = this.context.getUniformLocation(this.program, name);
     }
     for (const name of ENVIRONMENT_UNIFORMS) this.uniforms[name] = this.context.getUniformLocation(this.program, name);
+    this.keepSamplerTypesApart();
+  }
+
+  // A sampler nobody has set reads texture unit 0, which holds the shadow map as a comparison sampler. One unit may not serve
+  // two sampler types, so every 2D sampler starts on unit 1 until a draw sets it.
+  keepSamplerTypesApart() {
+    const context = this.context;
+    context.useProgram(this.program);
+    const count = context.getProgramParameter(this.program, context.ACTIVE_UNIFORMS);
+    for (let index = 0; index < count; index++) {
+      const uniform = context.getActiveUniform(this.program, index);
+      if (uniform.type === context.SAMPLER_2D) context.uniform1iv(context.getUniformLocation(this.program, uniform.name), new Int32Array(uniform.size).fill(1));
+    }
   }
 
   get samples() {
@@ -1221,8 +1234,10 @@ export class Renderer67 {
     context.activeTexture(context.TEXTURE0);
     context.bindTexture(context.TEXTURE_2D, this.shadowTexture);
     if (allocateShadow) context.texImage2D(context.TEXTURE_2D, 0, context.DEPTH_COMPONENT24, SHADOW_MAP_SIZE, SHADOW_MAP_SIZE, 0, context.DEPTH_COMPONENT, context.UNSIGNED_INT, null);
-    context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MIN_FILTER, context.NEAREST);
-    context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MAG_FILTER, context.NEAREST);
+    // Compare on fetch (the default function is LEQUAL) with linear filtering gives a 2 x 2 percentage-closer result from one fetch.
+    context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MIN_FILTER, context.LINEAR);
+    context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MAG_FILTER, context.LINEAR);
+    context.texParameteri(context.TEXTURE_2D, context.TEXTURE_COMPARE_MODE, context.COMPARE_REF_TO_TEXTURE);
     context.texParameteri(context.TEXTURE_2D, context.TEXTURE_WRAP_S, context.CLAMP_TO_EDGE);
     context.texParameteri(context.TEXTURE_2D, context.TEXTURE_WRAP_T, context.CLAMP_TO_EDGE);
     if (!this.shadowFramebuffer) this.shadowFramebuffer = context.createFramebuffer();

@@ -23,7 +23,7 @@ uniform float explosionProgress;
 uniform mat4 inverseViewProjection;
 uniform vec3 eye;
 uniform sampler2D sceneDepth;
-uniform sampler2D volumeShadowMap;
+uniform highp sampler2DShadow volumeShadowMap;
 uniform mat4 volumeLightProjection;
 uniform vec3 volumeLightDirection;
 uniform vec3 volumeLightColor;
@@ -136,7 +136,7 @@ vec3 volumeFog(vec3 background) {
     vec3 shadow = lightPosition.xyz / lightPosition.w * 0.5 + 0.5;
     float visibility = 1.0;
     if (all(greaterThanEqual(shadow, vec3(0))) && all(lessThanEqual(shadow, vec3(1)))) {
-      visibility = step(shadow.z - 0.0008, texture(volumeShadowMap, shadow.xy).r);
+      visibility = texture(volumeShadowMap, vec3(shadow.xy, shadow.z - 0.0008));
     }
     vec4 skyCell = POST_SKY ? texture(fogSkyVisibility, (position - volumeMinimum) / (volumeMaximum - volumeMinimum)) : vec4(0);
     float shadowShare = POST_SKY ? 0.1 + 0.9 * min(1.0, 30.0 * skyCell.r) : volumeShadowAmbient;
