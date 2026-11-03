@@ -103,3 +103,28 @@ test('the mirror image is drawn at three quarters of the canvas in each directio
   assert.deepEqual(textureSizes, [[720, 405]]);
   detach();
 });
+
+test('a render pass frame skips the mirror image and the next lit frame draws it again', () => {
+  const context = new Proxy({}, {
+    get: (_, name) => {
+      if (name === 'checkFramebufferStatus') {
+        return () => 1;
+      }
+      if (name === 'FRAMEBUFFER_COMPLETE') {
+        return 1;
+      }
+      return typeof name === 'string' && name === name.toUpperCase() ? 0 : () => ({});
+    },
+  });
+  const renderedFrames = [];
+  const renderer = { context, canvas: { width: 960, height: 540 }, hdr: false, viewProjection: new Float32Array(16), render: frame => renderedFrames.push(frame), dispose() {} };
+  const detach = attachWaterReflection(renderer, findWaterSurface(lakeScene()));
+  const camera = { eye: [0, 20, 100], target: [0, 0, 0] };
+  const mirrorDraws = () => renderedFrames.filter(frame => frame.reflectionTarget).length;
+  renderer.render({ ...camera, pass: 'objectId' });
+  assert.equal(mirrorDraws(), 0);
+  assert.equal(renderedFrames.length, 1);
+  renderer.render(camera);
+  assert.equal(mirrorDraws(), 1);
+  detach();
+});

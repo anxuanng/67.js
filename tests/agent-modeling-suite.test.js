@@ -6,10 +6,12 @@ import { REFERENCES } from '../bench/agent-modeling/references.mjs';
 import { GALLERY_LIGHT_POSITIONS } from '../bench/agent-modeling/gallery.mjs';
 import { COLONNADE_BEST_PLACE, COLONNADE_LIGHT_POSITIONS } from '../bench/agent-modeling/colonnade.mjs';
 import { DUSK_GRADES } from '../bench/agent-modeling/dusk.mjs';
+import { EASING_PLAIN_SOLUTION } from '../bench/agent-modeling/easing.mjs';
 
 test('the look pick passes the golden grade and fails the dim, the pale and a moved scene', async () => {
   const task = taskById('look-pick');
-  assert.deepEqual(failedKinds(await gradeRecipe(task, structuredClone(REFERENCES['look-pick']))), []);
+  const golden = await gradeRecipe(task, structuredClone(REFERENCES['look-pick']));
+  assert.deepEqual(failedKinds(golden), [], failedDetails(golden));
 
   for (const [name, reason] of [['dusk', /too dim/], ['airy', /too pale/]]) {
     const wrongGrade = structuredClone(REFERENCES['look-pick']);
@@ -29,6 +31,7 @@ test('the look pick passes the golden grade and fails the dim, the pale and a mo
 });
 
 const failedKinds = grade => grade.results.filter(result => !result.pass).map(result => result.label ?? result.kind);
+const failedDetails = grade => JSON.stringify(grade.results.filter(result => !result.pass));
 
 test('every task has a reference solution that passes all its checks', async () => {
   assert.deepEqual(Object.keys(REFERENCES).sort(), TASKS.map(task => task.id).sort());
@@ -276,4 +279,16 @@ test('the hard light pick passes the least shadowed place and fails every other 
   const movedPost = structuredClone(REFERENCES['light-pick-hard']);
   movedPost.nodes.find(node => node.id === 'post-3').translation[0] = 3;
   assert.ok(failedKinds(await gradeRecipe(task, movedPost)).includes('centreAt'));
+});
+
+test('the overshoot lift passes with one named easing or with hand-placed keyframes, and fails without an overshoot', async () => {
+  const task = taskById('overshoot-lift');
+  assert.deepEqual(failedKinds(await gradeRecipe(task, structuredClone(REFERENCES['overshoot-lift']))), []);
+  assert.deepEqual(failedKinds(await gradeRecipe(task, structuredClone(EASING_PLAIN_SOLUTION))), []);
+  const keyframeCount = recipe => recipe.motion.tracks[0].keyframes.length;
+  assert.ok(keyframeCount(REFERENCES['overshoot-lift']) < keyframeCount(EASING_PLAIN_SOLUTION));
+
+  const noOvershoot = structuredClone(REFERENCES['overshoot-lift']);
+  delete noOvershoot.motion.tracks[0].keyframes[0].easing;
+  assert.deepEqual(failedKinds(await gradeRecipe(task, noOvershoot)), ['overshoot']);
 });

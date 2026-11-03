@@ -1,6 +1,8 @@
 import { applyClip } from './gltf-animation.js';
 import { GLTF_LAYER_EXTENSIONS, layerTextureReferences, materialLayersFromGltf } from './gltf-layers.js';
 import { attributeFloats } from './gltf-accessors.js';
+import { describeCompressedImage } from './compressed-texture.js';
+export { ktx2WorkerConfigFor } from './compressed-texture.js';
 import { decodeGltf, isLinePrimitive, textureSourceIndex } from './gltf-decode.js';
 import { readPunctualLights } from './gltf-lights.js';
 import { Matrix4 } from './gltf-nodes.js';
@@ -538,11 +540,12 @@ function webpImageSize(bytes, header) {
   return null;
 }
 
-function validateImage(bytes, maxImagePixels) {
+function validateImage(bytes, maxImagePixels, ktx2Weight) {
   const header = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   let width;
   let height;
   let scalable = true;
+  let weight = 1;
   if (bytes.length >= 24 && header.getUint32(0) === 0x89504e47 && header.getUint32(4) === 0x0d0a1a0a && header.getUint32(12) === 0x49484452) {
     width = header.getUint32(16);
     height = header.getUint32(20);
@@ -574,10 +577,21 @@ function validateImage(bytes, maxImagePixels) {
     width = header.getUint32(20, true);
     height = header.getUint32(24, true);
     scalable = false;
+    weight = ktx2Weight;
   }
   if (!width || !height) throw new Error('Only valid PNG, JPEG, WebP and KTX2 texture images are supported.');
   if (width * height > maxImagePixels) throw new Error('Texture image exceeds maxTextureImagePixels before decoding.');
-  return { width, height, scalable };
+  return { width, height, scalable, weight };
+}
+
+/**
+ * A KTX2 image counts as a quarter of its RGBA8 size when the supplied loader will transcode to a GPU-compressed format.
+ * One byte a texel is the largest compressed size (BC7, ASTC 4x4, BC3), against four for RGBA8.
+ */
+function ktx2BudgetWeight(ktx2Loader) {
+  const support = ktx2Loader?.workerConfig;
+  const compressed = support && (support.bptcSupported || support.astcSupported || support.dxtSupported || support.etc2Supported);
+  return compressed ? 0.25 : 1;
 }
 
 function binaryChunk(data) {
@@ -648,6 +662,7 @@ async function prepareResources(document, data, dataBytes, options, limits) {
     resourceBytes.set(uri, resource.bytes);
   }
   const imageSizes = [];
+  const ktx2Weight = ktx2BudgetWeight(options.decoders?.ktx2);
   for (const image of document.images ?? []) {
     let bytes = resourceBytes.get(image.uri);
     if (!bytes && image.bufferView !== undefined) {
@@ -661,18 +676,18 @@ async function prepareResources(document, data, dataBytes, options, limits) {
       bytes = source.subarray(offset, offset + view.byteLength);
     }
     if (!bytes) throw new Error('glTF image has no supported source.');
-    imageSizes.push(validateImage(bytes, limits.maxTextureImagePixels));
+    imageSizes.push(validateImage(bytes, limits.maxTextureImagePixels, ktx2Weight));
   }
   return { resourceBytes, textureScaling: planTextureScaling(document.images ?? [], imageSizes, limits.maxTexturePixels) };
 }
 
 /**
  * Fit the combined texture pixels into the budget by halving the largest images together, so equal maps stay equal.
- * KTX2 images cannot be resized before transcoding; they count toward the budget and are never scaled.
+ * KTX2 images cannot be resized before transcoding; they count toward the budget (compressed ones at their weight) and are never scaled.
  */
 function planTextureScaling(imageDefinitions, imageSizes, maxTexturePixels) {
   const targets = imageSizes.map(({ width, height }) => ({ width, height }));
-  const totalPixels = () => targets.reduce((sum, { width, height }) => sum + width * height, 0);
+  const totalPixels = () => targets.reduce((sum, { width, height }, index) => sum + width * height * imageSizes[index].weight, 0);
   while (totalPixels() > maxTexturePixels) {
     const scalable = targets.filter((target, index) => imageSizes[index].scalable && target.width * target.height > 1);
     if (!scalable.length) throw new Error('Texture images exceed maxTexturePixels and cannot be scaled down further.');
@@ -853,9 +868,12 @@ function convertVertexColors(attribute, vertexCount, onIgnoredVertexAlpha) {
   return colors;
 }
 
-/** KTX2 textures arrive as RGBA8 pixel data, which the renderer uploads as an ImageData. */
-function decodedTextureImage(texture, field) {
-  if (texture.isCompressedTexture) throw new Error(`${field} decoded to a GPU-compressed KTX2 format. Configure the KTX2 loader to transcode to RGBA8 (see docs/gltf.md).`);
+/**
+ * KTX2 textures arrive either as GPU-compressed mip levels, which the renderer uploads as they are,
+ * or as RGBA8 pixel data, which it uploads as an ImageData.
+ */
+function decodedTextureImage(texture, field, colorSpace) {
+  if (texture.isCompressedTexture) return describeCompressedImage(texture.format, texture.mipmaps, field, colorSpace);
   const image = texture.image;
   if (!image?.data) return image;
   const { width, height, data } = image;
@@ -869,7 +887,7 @@ function textureDescriptorFor(texture, field, { colorSpace, uvChannel, uvTransfo
   const descriptors = maps.get(texture);
   const key = `${colorSpace}:${uvChannel}:${uvTransform ?? ''}`;
   if (!descriptors.has(key)) {
-    const image = decodedTextureImage(texture, field);
+    const image = decodedTextureImage(texture, field, colorSpace);
     if (!image || image.width * image.height > limits.maxTextureImagePixels) throw new Error(`${field} image is missing or exceeds maxTextureImagePixels.`);
     const descriptor = {
       image,
@@ -886,6 +904,14 @@ function textureDescriptorFor(texture, field, { colorSpace, uvChannel, uvTransfo
     descriptors.set(key, descriptor);
   }
   return descriptors.get(key);
+}
+
+/** One entry per texture descriptor: the GPU format it uploads in, its size and bytes of GPU memory. */
+function textureFormatsOf(maps) {
+  return [...maps.values()].flatMap(descriptors => [...descriptors.values()]).map(descriptor => {
+    const { width, height, compressed } = descriptor.image;
+    return { format: compressed?.name ?? 'rgba8', width, height, colorSpace: descriptor.colorSpace, bytes: textureDescriptorInfo(descriptor).bytes };
+  });
 }
 
 function convertMaterial(source, limits, maps, definition = {}) {
@@ -1362,7 +1388,7 @@ export async function parseGltf(data, options = {}) {
       }
       return stagePose({ animation: { clip: clipIndex, time: Math.max(0, Math.min(time, clip.duration)) } }).commit();
     }
-    return { parts, warnings, lights, scaledTextures: textureScaling.scaledTextures, skins: skinBindings.map(binding => binding.skin), animations: gltf.animations,
+    return { parts, warnings, lights, scaledTextures: textureScaling.scaledTextures, textureFormats: textureFormatsOf(maps), skins: skinBindings.map(binding => binding.skin), animations: gltf.animations,
       get nodes() { return structuredClone(nodeMetadata); }, stagePose, applyAnimation, dispose, capabilities: GLTF_CAPABILITIES };
   } catch (error) {
     gltf?.release();

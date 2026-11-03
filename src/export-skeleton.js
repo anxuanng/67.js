@@ -1,4 +1,8 @@
 import { mat4, quat, vec3 } from 'gl-matrix';
+import { bakeEasedKeyframes } from './animation.js';
+
+// glTF has no easing, so an eased segment is written as this many linear pieces.
+const EASING_BAKE_STEPS_PER_SEGMENT = 32;
 
 const GLTF_PATHS = { translation: 'translation', rotation: 'rotation', scale: 'scale', weights: 'weights' };
 const COMPONENTS_BY_PATH = { translation: 3, rotation: 4, scale: 3 };
@@ -168,7 +172,9 @@ function trackOutput(track) {
 
 const GLTF_INTERPOLATION = { LINEAR: 'LINEAR', STEP: 'STEP', SMOOTH: 'CUBICSPLINE', CUBICSPLINE: 'CUBICSPLINE' };
 
-function writeTrack(writer, animation, track, nodeIndex) {
+function writeTrack(writer, animation, sourceTrack, nodeIndex) {
+  const bakedKeyframes = bakeEasedKeyframes(sourceTrack, EASING_BAKE_STEPS_PER_SEGMENT);
+  const track = bakedKeyframes === sourceTrack.keyframes ? sourceTrack : { ...sourceTrack, keyframes: bakedKeyframes, interpolation: 'LINEAR' };
   const path = GLTF_PATHS[track.property];
   if (!path) {
     throw new RangeError(`GLB export cannot write ${track.property} tracks (target ${track.target}). Only translation, rotation, scale and weights tracks are exported; remove the others from the clip.`);

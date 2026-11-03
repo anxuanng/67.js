@@ -411,6 +411,17 @@ function bytesToBase64(bytes) {
   return btoa(binary);
 }
 
+// The feature images of the last denoise "oidn" trace, kept until finishPathTrace draws it.
+let tracedFeatures;
+
+function encodeTracedPng(rgba, width, height) {
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  canvas.getContext('2d').putImageData(new ImageData(rgba, width, height), 0, 0);
+  return canvas.toDataURL('image/png').split(',')[1];
+}
+
 // The review grid outlives the private scenes drawn into it, because each branch in a review is its own scene.
 let reviewGrid;
 
@@ -591,11 +602,34 @@ window.__agentPreview = {
       environment: { ...environment, map: agentEnvironmentMap(environment) },
       camera: record.scene.camera,
     }, options);
-    const traced = document.createElement('canvas');
-    traced.width = result.width;
-    traced.height = result.height;
-    traced.getContext('2d').putImageData(new ImageData(result.rgba, result.width, result.height), 0, 0);
-    return { data: traced.toDataURL('image/png').split(',')[1], report: result.report };
+    // An external denoiser (denoise "oidn") works on the traced features outside the page; finishPathTrace then draws its result.
+    if (result.report.denoiser === 'oidn') {
+      tracedFeatures = result.features;
+      const features = {};
+      for (const name of ['color', 'albedo', 'normal']) {
+        const values = result.features[name];
+        features[name] = bytesToBase64(new Uint8Array(values.buffer, values.byteOffset, values.byteLength));
+      }
+      return { features, report: result.report };
+    }
+    return { data: encodeTracedPng(result.rgba, result.width, result.height), report: result.report };
+  },
+  // The PNG of linear pixels (three floats each, base64) that a denoiser outside the page returned, or of the wavelet
+  // filter over the kept features when none came back.
+  async finishPathTrace({ width, height, linear }) {
+    const { toneMapToRgba8 } = await import('../src/path-tracer.js');
+    let pixels;
+    if (linear) {
+      const binary = atob(linear);
+      const bytes = new Uint8Array(binary.length);
+      for (let index = 0; index < binary.length; index++) bytes[index] = binary.charCodeAt(index);
+      pixels = new Float32Array(bytes.buffer);
+    } else {
+      const { denoiseRadiance } = await import('../src/path-tracer-denoise.js');
+      pixels = denoiseRadiance({ width, height, ...tracedFeatures });
+    }
+    tracedFeatures = undefined;
+    return { data: encodeTracedPng(toneMapToRgba8(pixels, width, height), width, height) };
   },
   create(input) {
     if (active) throw new Error('Dispose the current scene before creating another.');

@@ -160,19 +160,35 @@ A Draco loader needs `decodeDracoFile(buffer, onLoad, attributeIds, attributeTyp
 ```js
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 import { KTX2Loader } from 'three/addons/loaders/KTX2Loader.js';
+import { loadGltf, ktx2WorkerConfigFor } from '67js/addons/gltf';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 
 const draco = new DRACOLoader().setDecoderPath('/vendor/draco/');   // copy three/examples/jsm/libs/draco/
 const ktx2 = new KTX2Loader().setTranscoderPath('/vendor/basis/');  // copy three/examples/jsm/libs/basis/
-// Transcode to RGBA8 only: the renderer uploads plain pixels, not GPU-compressed formats.
-ktx2.workerConfig = { astcSupported: false, astcHDRSupported: false, etc1Supported: false, etc2Supported: false, dxtSupported: false, bptcSupported: false, pvrtcSupported: false };
+// Transcode to a GPU-compressed format the renderer's context takes, or to RGBA8 where it takes none.
+ktx2.workerConfig = ktx2WorkerConfigFor(renderer.context);
 
 const asset = await loadGltf('/models/car.glb', { decoders: { draco, ktx2, meshopt: MeshoptDecoder } });
 ```
 
 Any subset works. Draco and KTX2 decode in browser workers. Dispose the loaders yourself when done (`draco.dispose()`, `ktx2.dispose()`).
-A KTX2 texture that decodes to a GPU-compressed format fails with a message that points back to this setting.
-KTX2 dimensions count toward `maxTexturePixels` before decoding. KTX2 images are never scaled, so a KTX2-heavy file over the budget fails.
+
+### KTX2 texture formats
+
+`ktx2WorkerConfigFor(context)` (exported next to `loadGltf`) reads the extensions of a WebGL2 context and returns the `workerConfig` for the loader. The loader then picks one format per file.
+The renderer uploads these GPU-compressed formats as they are, with `texStorage2D` and `compressedTexSubImage2D` for each mip:
+
+| Format | Needs | Bytes a texel |
+| --- | --- | --- |
+| BC7 | `EXT_texture_compression_bptc` | 1 |
+| BC1 or BC3 | `WEBGL_compressed_texture_s3tc` and `WEBGL_compressed_texture_s3tc_srgb` | 0.5 or 1 |
+| ASTC 4x4 | `WEBGL_compressed_texture_astc` | 1 |
+| ETC2 | `WEBGL_compressed_texture_etc` | 0.5 or 1 |
+
+A context with none of these, such as SwiftShader, gets RGBA8 (4 bytes a texel). Set `workerConfig` before the first load. A loader that you leave without a config throws.
+Color maps upload as sRGB and data maps as linear. A file with a partial mip chain keeps only its first level. A compressed texture cannot be exported to GLB or read by the path tracer, so transcode to RGBA8 for those.
+`asset.textureFormats` lists `{ format, width, height, colorSpace, bytes }` for each texture, with `format` set to `bc7`, `bc1-rgb`, `bc1-rgba`, `bc3`, `astc-4x4`, `etc2-rgb`, `etc2-rgba` or `rgba8`.
+KTX2 dimensions count toward `maxTexturePixels` before decoding. KTX2 images are never scaled. When the loader's `workerConfig` allows a compressed format, a KTX2 image counts a quarter of its pixels, because it takes at most one byte a texel on the GPU. A KTX2-heavy file over the budget still fails.
 
 ### Instancing limits
 
