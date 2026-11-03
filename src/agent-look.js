@@ -2,7 +2,7 @@ import { mat4 } from 'gl-matrix';
 import { createLightingState, updateLightingState, MAX_POINT_LIGHTS, MAX_SPOT_LIGHTS, MAX_AREA_LIGHTS } from './lighting.js';
 import { resolveEffects } from './effects.js';
 import { resolveVolumeFog } from './volumetric.js';
-import { resolveLiquidOptics } from './renderer.js';
+import { resolveLiquidOptics } from './liquid-optics.js';
 import { createLightingSetupMap, lightingSetupFields } from './lighting-setups.js';
 import { agentSceneModule } from './agent-scene-modules.js';
 import { VIEW_TRANSFORM_NAMES, LOOK_NAMES } from './view-transform-names.js';
