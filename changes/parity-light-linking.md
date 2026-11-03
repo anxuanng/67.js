@@ -1,0 +1,1 @@
+- Bring the light linking and path tracer rows of `docs/parity.md` up to date with issue #215: recipes reach light linking, the path tracer honours it, and the darker floor was the diffuse layer at grazing angles.
