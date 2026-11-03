@@ -39,6 +39,7 @@ export default defineConfig({
         grass: 'src/grass.js',
         clutter: 'src/clutter.js',
         'light-bake': 'src/light-bake.js',
+        'ground-bounce': 'src/ground-bounce.js',
         'path-tracer': 'src/path-tracer.js',
         'path-tracer-worker': 'src/path-tracer-worker.js',
         'kernel-worker': 'src/kernel-worker.js',

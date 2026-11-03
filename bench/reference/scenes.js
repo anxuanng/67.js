@@ -6,6 +6,7 @@ import { parseGltf } from '/src/gltf.js';
 import { createTree, scatterVegetation, selectLevels, vegetationParts } from '/src/vegetation.js';
 import { createNoiseHeight, createTerrain } from '/src/terrain.js';
 import { createAgentScene, loadAgentSceneModules } from '/src/agent-scene.js';
+import { withGroundBounce } from '/src/ground-bounce.js';
 import { materialPatternTextures, normalizeMaterialPattern } from '/src/material-patterns.js';
 
 const HDRI_FILE = 'public/hdri/kloofendal_48d_partly_cloudy_puresky_1k.hdr';
@@ -106,8 +107,12 @@ function averageLinearColor(colorImage) {
   return sums.map(sum => sum / pixelCount);
 }
 
+const BRICK_FLOOR_COLOR = [0.4, 0.38, 0.32];
+
 async function brickWallScene({ withGraph }) {
-  const lighting = await skyLighting();
+  const sky = await skyLighting();
+  const bouncedMap = withGroundBounce(sky.map, { albedo: BRICK_FLOOR_COLOR, keyColor: SUN_COLOR, lightDirection: DEFAULT_SUN_DIRECTION });
+  const lighting = { ...sky, map: bouncedMap };
   const pattern = normalizeMaterialPattern({ type: 'graph', graph: brickGraph(), mapping: 'uv', bump: 1, resolution: 512 });
   const { map, normalMap, boxMapScale, boxMapAxis } = materialPatternTextures(pattern);
   const wall = withGraph
@@ -118,7 +123,7 @@ async function brickWallScene({ withGraph }) {
     wall.material.graphBump = pattern.bump;
   }
   return {
-    parts: [floor([0.4, 0.38, 0.32]), wall], blenderWorld: lighting.blenderWorld,
+    parts: [floor(BRICK_FLOOR_COLOR), wall], blenderWorld: lighting.blenderWorld,
     environment: environment(lighting, { keyColor: SUN_COLOR }),
     camera: { eye: [0, 2, 8.5], target: [0, 2, 0], up: [0, 1, 0], fov: 40, near: 0.1, far: 100 },
     shadow: shadowAlongSun(DEFAULT_SUN_DIRECTION, { target: [0, 1, 0], distance: 13.45, extent: 8, near: 0.1, far: 40 }),

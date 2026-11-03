@@ -20,8 +20,8 @@ All of them are against the Blender 5.2.2 renders taken on 2026-11-03 with the s
 
 | Scene | 67js against Cycles | EEVEE against Cycles | 67js against EEVEE | Baked 67js against Cycles | Path tracer against Cycles |
 | --- | --- | --- | --- | --- | --- |
-| `brick-flat` | 0.1272 | 0.1098 | 0.0462 |  | 0.1152 |
-| `brick-graph` | 0.1602 | 0.1221 | 0.0896 |  | 0.1476 |
+| `brick-flat` | 0.0636 | 0.1098 | 0.1117 |  | 0.1152 |
+| `brick-graph` | 0.1109 | 0.1221 | 0.1162 |  | 0.1476 |
 | `brick-room` | 0.5102 | 0.5020 | 0.0710 | 0.1423 | 0.2727 |
 | `brushed-film` | 0.1029 | 0.0984 | 0.0855 |  | 0.1524 |
 | `car-paint` | 0.1038 | 0.0844 | 0.0650 |  | 0.1343 |
@@ -1056,3 +1056,26 @@ Main reproduced `baseline.json` first on the stored arrays (`brick-flat` 0.1264,
 - Change: for a mapped normal the ambient and reflected sky term is scaled by `0.5 + 0.5 * dot(mapped, geometric)`, the share of an even sky lobe that stays above the surface. `brick-graph` 0.1584 to 0.1518 (EEVEE 0.0875 to 0.0844, CPU the same); all 22 other scenes reproduce their rows to 4 digits (none uses a normal map). Excess over its flat wall: 67js 0.0320 to 0.0254, EEVEE 0.0122.
 - Still open: the sun is not clipped against the surface plane (the wall faces the sun, so it changes nothing here), the colour gap on the brick faces (Cycles 0.524, EEVEE 0.476, 67js 0.466 in luminance), and a bump scale per world unit instead of per UV unit (Blender's Distance 0.15 is 0.025 per UV unit across and 0.0375 up on this 6 by 4 wall, the bake gives 0.031 both ways). Whether the condition of #50 can be met is still An's decision.
 Bundle size: the two shader lines add 9 to 18 bytes gzip to eight bundles that carry the main fragment shader (ntry:core, ntry:agent-scene, ntry:agent-asset, ntry:cascaded-shadows, scene:lit-box, scene:gltf-box, scene:gltf-box+lazy, scene:agent-scene); their budgets rose by 20 to 30 bytes.
+## Ground bounce (2026-11-03, issue #244)
+
+Cause of the 10.7 percent gap on `brick-flat`, measured: light the ground bounces onto the wall. Main reproduced `baseline.json` first (GPU columns to 4 digits after a fresh render of every scene; `brick-flat` 0.1264, `brick-graph` 0.1518). Cycles of `brick-flat`, 256 samples, RTX 3060, mean display luminance over the wall (rows 110 to 430, columns 230 to 730; same tone map as 67js):
+
+| Cycles setting | wall luminance | linear |
+| --- | --- | --- |
+| normal (stored) | 0.6150 | 0.2389 |
+| floor painted black (`--floor-color 0`) | 0.5466 | 0.1854 |
+| light bounces limited to 0 (`--max-bounces 0`, sun and sky only) | 0.5370 | 0.1791 |
+| 67js before | 0.5558 | |
+
+The ground adds 0.0535 linear (22 percent of the wall's light) in Cycles. With bounces off, Cycles is 0.019 below 67js (display), so the sun units and colour, the sky irradiance on a vertical wall, Lambert against Principled diffuse and the tone map are not the cause: they leave 67js slightly bright, not dark. 67js showed the lower half of the sky HDRI to the wall, where Cycles has the floor.
+
+Fix: `withGroundBounce(map, { albedo, keyColor, lightDirection })` (`src/ground-bounce.js`, `67js/addons/ground-bounce`) replaces the lower half of the environment map with `albedo * (sun * max(l.y, 0) / pi + sky irradiance on a level surface)` once, when the scene is built. Nothing in the renderer or a shader changes, and a frame costs the same. The suite hands the brick scenes a map with the floor's colour `[0.4, 0.38, 0.32]`; Blender still gets the plain HDRI. Wall luminance 0.5558 to 0.6125 (Cycles 0.6149).
+
+| Scene (GPU, against Cycles) | before | after |
+| --- | --- | --- |
+| `brick-flat` | 0.1264 | 0.0636 |
+| `brick-graph` | 0.1518 | 0.1109 |
+
+Both are now closer to Cycles than EEVEE is (0.1098, 0.1221); against EEVEE they score 0.1117 and 0.1162 because EEVEE has no ground bounce on the wall. Every other scene is unchanged by construction: only `brickWallScene` calls the helper, and the full GPU run on main before the change gave the committed rows. Only these two scenes got the helper: the other scenes with a floor (`material-spheres`, `metal`, `character`, `outdoor-hdri` ...) were not tried, and their floors are not the infinite flat plane the term assumes. The floor's shadow under the wall is ignored, which is why a lower albedo is the way to correct a mostly shaded floor.
+
+`render-blender.py` gained `--max-bounces <n>` and `--floor-color <v>` (Cycles only, like `--world-strength`). Bundle size: `entry:ground-bounce` is new (2832 bytes gzip, budget 2850). `entry:core` measured 85952 on main with or without the new entry, so its budget rose by 5 bytes to 85955.

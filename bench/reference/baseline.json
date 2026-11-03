@@ -101,20 +101,20 @@
  },
  "scores": {
   "brick-flat": {
-   "gpu-vs-cycles": 0.1264,
-   "gpu-vs-eevee": 0.0465,
-   "cpu-vs-cycles": 0.1261,
-   "cpu-vs-eevee": 0.0462,
+   "gpu-vs-cycles": 0.0636,
+   "gpu-vs-eevee": 0.1117,
+   "cpu-vs-cycles": 0.0633,
+   "cpu-vs-eevee": 0.112,
    "eevee-vs-cycles": 0.1099,
-   "gpu-vs-cpu": 0.0065
+   "gpu-vs-cpu": 0.0066
   },
   "brick-graph": {
-   "gpu-vs-cycles": 0.1518,
-   "gpu-vs-eevee": 0.0844,
-   "cpu-vs-cycles": 0.1518,
-   "cpu-vs-eevee": 0.0844,
+   "gpu-vs-cycles": 0.1109,
+   "gpu-vs-eevee": 0.1162,
+   "cpu-vs-cycles": 0.1109,
+   "cpu-vs-eevee": 0.1162,
    "eevee-vs-cycles": 0.1221,
-   "gpu-vs-cpu": 0.0077
+   "gpu-vs-cpu": 0.0072
   },
   "brick-room": {
    "gpu-vs-cycles": 0.5096,

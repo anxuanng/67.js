@@ -71,6 +71,7 @@
     "./addons/grass": "./build/grass.js",
     "./addons/clutter": "./build/clutter.js",
     "./addons/light-bake": "./build/light-bake.js",
+    "./addons/ground-bounce": "./build/ground-bounce.js",
     "./addons/path-tracer": "./build/path-tracer.js",
     "./addons/texture-set": "./build/texture-set.js",
     "./addons/agent-scene": "./build/agent-scene.js",
