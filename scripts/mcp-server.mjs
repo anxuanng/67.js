@@ -494,9 +494,11 @@ const physics = z.strictObject({
   bodies: z.array(physicsBody).min(1).max(64),
   joints: z.array(physicsJoint).max(64).optional().describe('Joint bodies are the node IDs of physics bodies.'),
 }).describe('Rigid bodies recorded offline with Rapier (optional peer) at 60 fps and seeked by motionTime. scene_inspect reports contacts and resting state. A node cannot have a body and a motion translation or rotation track.');
+const looseRecord = z.record(z.string(), z.unknown()).meta({ id: 'LooseRecord' });
 const clothSheet = z.strictObject({
-  node: identifier.describe('Root mesh node that stays put, such as a grid.'),
+  node: identifier.describe('Root mesh node.'),
   pin: z.array(z.enum(['top', 'bottom', 'left', 'right', 'topLeft', 'topRight', 'bottomLeft', 'bottomRight'])).max(8).optional(),
+  pinTo: looseRecord.optional(),
   stiffness: unit.optional(), bend: unit.optional(), density: positive.optional(), damping: nonnegative.optional(), friction: unit.optional(), thickness: nonnegative.optional(),
 });
 const cloth = z.strictObject({
@@ -504,8 +506,8 @@ const cloth = z.strictObject({
   gravity: vector3.optional(),
   wind: vector3.optional(),
   sheets: z.array(clothSheet).min(1).max(8),
-  colliders: z.array(z.strictObject({ node: identifier, shape: z.enum(['ball', 'box']).optional() })).max(16).optional(),
-}).describe('Cloth baked at 60 fps and seeked by motionTime. Units and defaults: scene_capabilities cloth.');
+  colliders: z.array(looseRecord).max(80).optional().describe('Fields: scene_capabilities cloth.'),
+}).describe('Baked at 60 fps, seeked by motionTime. Units, defaults: scene_capabilities cloth.');
 // The full motion schema (tracks, ik, constraints, drivers) is in scene_create's recipe. scene_apply and asset recipes
 // take the same object, validated by the backend, without repeating about 35 KB of schema in each tool.
 const recipeMotionReference = z.record(z.string(), z.unknown()).describe('The same object as recipe.motion in scene_create: duration, loop, tracks, ik, constraints, drivers. Read that tool for the fields. On an imported asset it also takes layers, up to 8 clips played at motion time before tracks and ik: { clip (scene_inspect animations id), mask: { joints, descendants, exclude } of node IDs, weight, speed, offset, loop, additive, reference, bones: { clip node: asset node } to retarget by name, morph }. A masked layer waves while another walks.');

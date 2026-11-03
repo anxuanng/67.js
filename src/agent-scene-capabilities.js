@@ -248,8 +248,8 @@ export const AGENT_SCENE_CAPABILITIES = Object.freeze({
   cloth: Object.freeze({
     sheetGeometry: 'grid { segments 1-64 }: unit sheet in XY facing +Z, sized by node scale; any triangle mesh works',
     defaults: Object.freeze({ stiffness: 0.9, bend: 0.1, density: 0.2, damping: 0.3, friction: 0.3, thickness: 0.01, colliderShape: 'box' }),
-    notes: 'density kg/m2, damping 1/s, thickness m, wind m/s steady. Pin edges are of the local bounds. Colliders are fixed ball or box fits to geometry bounds. No self collision, no soft bodies. Sheets and colliders are root nodes with no motion track or physics body.',
-    limits: Object.freeze({ maxSheets: 8, maxColliders: 16, maxDuration: 10, maxParticles: 5000, framesPerSecond: 60, substeps: 4, iterations: 8 }),
+    notes: 'density kg/m2, damping 1/s, thickness m, wind m/s steady. Pin edges are of the local bounds. Colliders { node, shape ball|box } are fixed fits to geometry bounds and, like sheets, root nodes with no motion track or physics body. Moving: { attach, shape ball|capsule, radius, offset, to, toOffset } or { armature, radiusFraction, exclude } (a capsule per bone). Sheet pinTo { node, weight } rides the pinned edges on a node. No self collision.',
+    limits: Object.freeze({ maxSheets: 8, maxColliders: 16, maxMovingColliders: 64, maxDuration: 10, maxParticles: 5000, framesPerSecond: 60, substeps: 4, iterations: 8 }),
   }),
   // Recipe particles: closed-form from seeded launch values, so any time is computed directly and a seek never replays.
   particles: Object.freeze({
