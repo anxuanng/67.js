@@ -40,7 +40,7 @@ The renderer does not silently replace a failed hardware export with a lower-qua
 Video capture cost (measured on an RTX 3060 at 1280x720 on a loaded machine, 20 s of the film, 480 frames, NVENC).
 Screenshots (`--capture jpeg`) cost 28.8 ms a frame to capture and 7.4 ms to draw, 21.5 s for the clip.
 Every report has `stageTimings.captureSeconds` and `renderSeconds`.
-`--capture raw`, the default for video, reads the drawing buffer with `readPixels` (3.3 ms a frame) and sends it to Node over a binary WebSocket, one frame in flight, acknowledged by one byte. The full 4,488 frame film at 1280 by 720 on the RTX 3060 survived raw capture (measured once, loaded machine): 405 s in all, draw 2.9 ms and readPixels 4.4 ms a frame, but 85 ms a frame in capture, so the WebSocket round trip is too slow and the 40 s and 5 ms targets are not met.
+`--capture raw`, the default for video, reads the drawing buffer with `readPixels` (3.3 ms a frame) and sends it to Node over a binary WebSocket, one frame in flight, acknowledged by one byte. The full 4,488 frame film at 1280 by 720 on the RTX 3060 survived raw capture (measured once, loaded machine): 405 s in all, draw 2.9 ms and readPixels 4.4 ms a frame, but 85 ms a frame in capture, so the WebSocket round trip is too slow and the 40 s and 5 ms targets are not met. The same job with screenshots took 140 s (draw 20 s, capture 113 s, 25 ms a frame), so raw is about 3 times slower today and stays opt in with --capture raw.
 Returning the pixels through Playwright instead cost 55 ms a frame, and a fetch with a Blob body failed after about 100 frames, so neither is used.
 A decoded raw frame matches the PNG seek of the same time at 41.0 dB PSNR on SwiftShader (`npm run smoke:capture-parity`).
 

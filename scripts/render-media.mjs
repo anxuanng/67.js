@@ -53,7 +53,7 @@ export function parseRenderOptions(values) {
   const start = numberOption('start', 0, 0, 3600);
   const memory = numberOption('memory', preset.memoryBudgetMiB, 32, 1024);
   const assembly = numberOption('assembly', 0, 0, 1);
-  const captureFormat = options.capture ?? (kind === 'video' ? 'raw' : 'png');
+  const captureFormat = options.capture ?? (kind === 'video' ? 'jpeg' : 'png');
   if (!['jpeg', 'png', 'raw'].includes(captureFormat)) throw new Error('Capture must be raw, jpeg or png.');
   if (captureFormat === 'raw' && kind !== 'video') throw new Error('Raw capture is for video only. Stills are PNG or JPEG screenshots.');
   const jpegQuality = numberOption('jpeg-quality', 95, 1, 100);
