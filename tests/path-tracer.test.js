@@ -113,6 +113,16 @@ test('a floor lit by an overhead sun matches the diffuse closed form', async () 
   assert.ok(Math.abs(linear[centre] - expected) / expected < 0.05, `got ${linear[centre]}, expected near ${expected}`);
 });
 
+test('a rough floor keeps its diffuse light when seen at a grazing angle', async () => {
+  const GRAZING = { eye: [0, 0.3, 6], target: [0, 0, 0], up: [0, 1, 0], fov: 10 };
+  const options = { width: 16, height: 16, samples: 32, bounces: 1, denoise: false, threads: 1 };
+  const down = await renderPathTracedImage({ parts: FLOOR_ONLY, environment: OVERHEAD_SUN, camera: LOOKING_DOWN }, options);
+  const grazing = await renderPathTracedImage({ parts: FLOOR_ONLY, environment: OVERHEAD_SUN, camera: GRAZING }, options);
+  const centre = (8 * 16 + 8) * 3;
+  // Cycles does not dim a rough dielectric's diffuse layer toward the horizon: its specular layer reflects little there.
+  assert.ok(grazing.linear[centre] > 0.9 * down.linear[centre], `grazing ${grazing.linear[centre]} against ${down.linear[centre]} looking down`);
+});
+
 test('a block between the sun and the floor leaves a shadow', async () => {
   const blocker = { name: 'block', geometry: box(0, 1), matrix: placed([0, 1, 0], [2, 0.2, 2]), material: surface([0.5, 0.5, 0.5]) };
   // Sun from +x at 45 degrees: the block (x from -1 to 1, 1 m up) shades the floor from x = -2 to 0. Seen from above,

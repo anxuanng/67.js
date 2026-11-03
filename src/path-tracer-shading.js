@@ -204,6 +204,19 @@ export function createSurface() {
 }
 
 /**
+ * The share of light a dielectric's GGX specular layer reflects from a view direction (Karis's analytic fit of the
+ * split-sum environment BRDF). A rough layer reflects far less than the mirror Fresnel term at a grazing view, so the
+ * diffuse layer below keeps more of its light, as Cycles' Principled BSDF does.
+ */
+function dielectricSpecularAlbedo(normalReflectance, roughness, viewCosine) {
+  const smoothness = 1 - roughness;
+  const slope = Math.min(smoothness * smoothness, 2 ** (-9.28 * viewCosine)) * smoothness + (0.0425 - 0.0275 * roughness);
+  const scale = 1.04 - 0.572 * roughness - 1.04 * slope;
+  const offset = 1.04 * slope + 0.022 * roughness - 0.04;
+  return Math.min(1, Math.max(0, normalReflectance * scale + offset));
+}
+
+/**
  * Sets the lobes of a hit. `view` points from the surface toward the viewer and `normal` faces it. A dielectric keeps
  * the light its reflection did not take, so the diffuse colour shrinks with the Fresnel term, and a clear coat takes
  * its share from both lobes below it.
@@ -217,7 +230,7 @@ export function prepareSurface(surface, material, metallic, roughness, baseColor
   surface.viewCosine = viewCosine;
   const ratio = (material.ior - 1) / (material.ior + 1);
   const dielectricNormalReflectance = ratio * ratio;
-  const dielectricFresnel = schlick(dielectricNormalReflectance, viewCosine);
+  const dielectricFresnel = dielectricSpecularAlbedo(dielectricNormalReflectance, roughness, viewCosine);
   surface.coatWeight = material.clearcoat > 0 ? material.clearcoat * schlick(DIELECTRIC_COAT_REFLECTANCE, viewCosine) : 0;
   const underCoat = 1 - surface.coatWeight;
   const diffuseShare = (1 - metallic) * (1 - dielectricFresnel) * underCoat;
