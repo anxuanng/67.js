@@ -136,6 +136,20 @@ def add_texture(material, principled, description, has_vertex_colors):
         links.new(cutoff.outputs[0], principled.inputs["Alpha"])
 
 
+def add_emissive_map(material, principled, description, emission_color):
+    """67js multiplies the emissive colour and strength by the emissive map (sRGB), so the map drives the Emission Color socket."""
+    nodes = material.node_tree.nodes
+    links = material.node_tree.links
+    texture = nodes.new("ShaderNodeTexImage")
+    texture.image = build_image(f"{material.name}-emissive", description["emissiveMap"])
+    multiply = nodes.new("ShaderNodeMixRGB")
+    multiply.blend_type = "MULTIPLY"
+    multiply.inputs[0].default_value = 1
+    set_linear_color(multiply.inputs[2], emission_color)
+    links.new(texture.outputs["Color"], multiply.inputs[1])
+    links.new(multiply.outputs["Color"], principled.inputs["Emission Color"])
+
+
 def add_vertex_colors(material, principled, description):
     nodes = material.node_tree.nodes
     links = material.node_tree.links
@@ -501,6 +515,8 @@ def build_material(name, description, has_vertex_colors):
         emission_color = description.get("emissiveColor", description["color"])
         set_linear_color(principled.inputs["Emission Color"], emission_color)
         principled.inputs["Emission Strength"].default_value = description["emission"]
+        if "emissiveMap" in description:
+            add_emissive_map(material, principled, description, emission_color)
     if "graph" in description:
         add_graph(material, principled, description)
     elif "map" in description:
