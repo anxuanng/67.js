@@ -167,7 +167,7 @@ function bindProbe(renderer, mapState) {
 }
 
 const previousBind = layerTextureSupport.bind;
-layerTextureSupport.bind = (renderer, mapState) => {
-  previousBind?.(renderer, mapState);
+layerTextureSupport.bind = (renderer, mapState, layerState) => {
+  previousBind?.(renderer, mapState, layerState);
   bindProbe(renderer, mapState);
 };

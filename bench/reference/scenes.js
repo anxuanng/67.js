@@ -652,7 +652,37 @@ async function emissiveSignScene() {
   };
 }
 
+// Subsurface scattering against Cycles (issue #283): a wax candle, a skin sphere and a leaf slab with the sun behind and to the side,
+// so the shadow edge and the light through the thin parts show. 'subsurface-off' is the same scene at weight 0, the control that
+// 'subsurface' must score better than.
+const SUBSURFACE_SUN_DIRECTION = [4, 3, -2];
+const SUBSURFACE_LAYERS = {
+  wax: { radius: [1, 0.6, 0.3], scale: 0.04 },
+  skin: { radius: [1, 0.2, 0.1], scale: 0.05 },
+  leaf: { radius: [0.5, 1, 0.3], scale: 0.02 },
+};
+
+async function subsurfaceScene(weight) {
+  const lighting = await skyLighting();
+  const layer = name => ({ subsurface: { weight, ...SUBSURFACE_LAYERS[name] } });
+  const parts = [
+    floor([0.2, 0.2, 0.22]),
+    part('wax-candle', cylinder(64, 0, 1), [-1.1, 0.4, 0], [0.3, 0.8, 0.3], { color: [0.85, 0.72, 0.5], roughness: 0.45, ...layer('wax') }),
+    part('skin-sphere', sphere(96, 64), [0.2, 0.45, 0], [0.9, 0.9, 0.9], { color: [0.8, 0.45, 0.35], roughness: 0.5, ...layer('skin') }),
+    part('leaf-slab', box(0, 1), [1.5, 0.55, 0], [0.7, 0.9, 0.012], { color: [0.12, 0.3, 0.04], roughness: 0.5, ...layer('leaf') }),
+  ];
+  return {
+    parts, blenderWorld: lighting.blenderWorld,
+    environment: environment(lighting, { keyColor: SUN_COLOR, lightDirection: SUBSURFACE_SUN_DIRECTION }),
+    camera: { eye: [0, 1.6, 6], target: [0, 0.5, 0], up: [0, 1, 0], fov: 35, near: 0.1, far: 200 },
+    shadow: shadowAlongSun(SUBSURFACE_SUN_DIRECTION, { target: [0, 0.5, 0], distance: 13, extent: 4, near: 0.1, far: 40 }),
+  };
+}
+
 export const REFERENCE_SCENES = {
+  subsurface: () => subsurfaceScene(1),
+  'subsurface-off': () => subsurfaceScene(0),
+
   'emissive-sign': emissiveSignScene,
   'mountain-valley': mountainValleyScene,
   'temple-hall': templeHallScene,
