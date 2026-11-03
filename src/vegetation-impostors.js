@@ -320,6 +320,20 @@ export function blendLevels(distance, thresholds, band) {
   return { level: thresholds.length, next: thresholds.length, step: 0 };
 }
 
+// The default switch distances hold for a 4 pixel error on a 1080 pixel high view with a 60 degree vertical field of view.
+const REFERENCE_PIXELS_PER_RADIAN = 1080 / (2 * Math.tan(Math.PI / 6));
+const REFERENCE_PIXEL_ERROR = 4;
+
+/**
+ * The factor on the default switch distances for a level to show an error of at most `pixels` on screen
+ * (`{ pixels = 4, height, fov }`: the view's height in pixels and its vertical field of view in degrees).
+ * A finer error or a taller view switches later; an instance's own scale multiplies the distance too, since its errors grow with it.
+ */
+export function pixelErrorScale({ pixels = REFERENCE_PIXEL_ERROR, height = 1080, fov = 60 } = {}) {
+  const pixelsPerRadian = height / (2 * Math.tan(fov * Math.PI / 360));
+  return pixelsPerRadian / REFERENCE_PIXELS_PER_RADIAN * REFERENCE_PIXEL_ERROR / pixels;
+}
+
 function tintedMaterial(material, tintable, tint) {
   return tintable ? { ...material, color: material.color.map((channel, axis) => channel * tint[axis]) } : material;
 }
@@ -354,7 +368,8 @@ function blendParts(instance, level, useImpostor, fade, options) {
  * `fade` (a fraction of a threshold, either side) two levels draw with complementary dither coverage.
  * `impostors` is `true` or `{ from, frameSize, level }`: levels from `from` (default 3, the last) draw the baked card.
  */
-export function selectBlendedLevels(instances, eye, { distanceScale = 1, fade = 0.06, cullDistance = Infinity, impostors = false } = {}) {
+export function selectBlendedLevels(instances, eye, { distanceScale = 1, fade = 0.06, cullDistance = Infinity, impostors = false, pixelError = null } = {}) {
+  const pixelScale = pixelError ? pixelErrorScale(pixelError) : 1;
   const impostorOptions = impostors && typeof impostors === 'object' ? impostors : {};
   const firstImpostorLevel = impostors ? impostorOptions.from ?? 3 : Infinity;
   const parts = [];
@@ -367,7 +382,7 @@ export function selectBlendedLevels(instances, eye, { distanceScale = 1, fade = 
   for (const instance of instances) {
     const distance = Math.hypot(eye[0] - instance.position[0], eye[1] - instance.position[1], eye[2] - instance.position[2]);
     const culledNow = distance > cullDistance;
-    const thresholds = instance.variant.distances.map(threshold => threshold * distanceScale);
+    const thresholds = instance.variant.distances.map(threshold => threshold * distanceScale * pixelScale * (pixelError ? instance.scale : 1));
     const blend = culledNow ? { level: -1, next: -1, step: 0 } : blendLevels(distance, thresholds, fade);
     const usesCard = level => instance.variant.kind === 'tree' && level >= firstImpostorLevel;
     const bothCards = blend.step > 0 && usesCard(blend.level) && usesCard(blend.next);

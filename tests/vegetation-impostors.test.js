@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { createTree, scatterVegetation, selectLevels } from '../src/vegetation.js';
 import {
-  bakeImpostorAtlas, blendLevels, FADE_STEPS, getImpostor, impostorCardBasis, impostorCellOf, impostorFrameDirection, selectBlendedLevels,
+  bakeImpostorAtlas, blendLevels, FADE_STEPS, getImpostor, impostorCardBasis, impostorCellOf, impostorFrameDirection, pixelErrorScale, selectBlendedLevels,
 } from '../src/vegetation-impostors.js';
 import { addImpostorCode, IMPOSTOR_FRAMES, impostorShader } from '../src/impostor-shader.js';
 import { createDepthVertexShader, createFragmentShader, createVertexShader, depthFragmentShader } from '../src/shaders.js';
@@ -149,8 +149,23 @@ test('the impostor code is added to the three shaders it hooks into and to nothi
   assert.ok(colour.includes("impostorCard(position, uv, instanceMatrix, viewProjection"));
   assert.ok(colour.includes("worldNormal = cardNormal"));
   assert.ok(addImpostorCode(createDepthVertexShader()).includes("impostorCard(position, uv, instanceMatrix, lightProjection"));
-  assert.ok(impostorShader.includes(`floor(square * ${IMPOSTOR_FRAMES}.0)`));
+  assert.ok(impostorShader.includes(`square * ${IMPOSTOR_FRAMES}.0 - 0.5`));
+  assert.ok(addImpostorCode(createFragmentShader(["alphaMode"])).includes("textureGrad(baseMap, cardUV"));
   assert.ok(addImpostorCode(createFragmentShader(["alphaMode"])).includes("incoming ? coverage < 1.0 - threshold : coverage <= threshold"));
   assert.equal(addImpostorCode(depthFragmentShader), depthFragmentShader);
   assert.equal(createVertexShader([]).includes('impostorCard'), false, 'the core shaders carry none of it');
+});
+
+test('a pixel error moves the switch distances with the view and the tree size', () => {
+  assert.ok(Math.abs(pixelErrorScale({}) - 1) < 1e-9, 'the defaults are the reference view');
+  assert.ok(Math.abs(pixelErrorScale({ pixels: 2 }) - 2) < 1e-9, 'half the error switches twice as far');
+  assert.ok(pixelErrorScale({ height: 2160 }) > 1.99 && pixelErrorScale({ height: 2160 }) < 2.01);
+  assert.ok(pixelErrorScale({ fov: 30 }) > pixelErrorScale({ fov: 60 }), 'a narrower view magnifies, so levels switch later');
+  const forest = createForest(300);
+  const eye = [0, 2, 0];
+  const reference = selectLevels(forest.instances, eye, { impostors: { ...FAST_BAKE } });
+  const sameView = selectLevels(forest.instances, eye, { impostors: { ...FAST_BAKE }, pixelError: { pixels: 4, height: 1080, fov: 60 } });
+  const finer = selectLevels(forest.instances, eye, { impostors: { ...FAST_BAKE }, pixelError: { pixels: 1, height: 1080, fov: 60 } });
+  assert.ok(sameView.triangles >= reference.triangles * 0.5 && sameView.triangles <= reference.triangles * 2);
+  assert.ok(finer.triangles > sameView.triangles, 'a finer error keeps more triangles');
 });
