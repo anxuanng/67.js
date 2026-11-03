@@ -1,8 +1,8 @@
 <p align="center">
   <a href="https://67js.codepawl.com">
     <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="public/brand/wordmark-dark.svg" />
-      <img src="public/brand/wordmark-light.svg" alt="67js" width="260" />
+      <source media="(prefers-color-scheme: dark)" srcset="https://67js.codepawl.com/brand/wordmark-dark.svg" />
+      <img src="https://67js.codepawl.com/brand/wordmark-light.svg" alt="67js" width="260" />
     </picture>
   </a>
 </p>
@@ -19,11 +19,11 @@
   <a href="https://67js.codepawl.com/showcase.html">Showcase</a> ·
   <a href="https://67js.codepawl.com/docs.html">Documentation</a> ·
   <a href="https://67js.codepawl.com/llms.txt">Guide for agents</a> ·
-  <a href="CHANGELOG.md">Changelog</a>
+  <a href="https://github.com/codepawl/67.js/blob/main/CHANGELOG.md">Changelog</a>
 </p>
 
 <p align="center">
-  <a href="https://67js.codepawl.com/showcase.html?scene=airport"><img src="public/previews/showcase-airport.webp" alt="An airport ramp with an airliner at its stand and the turnaround crew, rendered by 67js" width="100%" /></a>
+  <a href="https://67js.codepawl.com/showcase.html?scene=airport"><img src="https://67js.codepawl.com/previews/showcase-airport.webp" alt="An airport ramp with an airliner at its stand and the turnaround crew, rendered by 67js" width="100%" /></a>
 </p>
 
 67js is a WebGL2 renderer with addons for terrain, vegetation, characters, liquid, vehicles and media export.
@@ -33,8 +33,8 @@ The goal is to be as capable as Blender and as light as three.js. [Issue #23](ht
 
 <table>
   <tr>
-    <td width="50%"><a href="https://67js.codepawl.com/showcase.html?scene=datacenter"><img src="public/previews/showcase-datacenter.webp" alt="A cutaway AI data center hall rendered by 67js" /></a><br /><b>AI data center</b></td>
-    <td width="50%"><a href="https://67js.codepawl.com/showcase.html?scene=port"><img src="public/previews/showcase-port.webp" alt="A container port with cranes and stacked containers rendered by 67js" /></a><br /><b>Container port</b></td>
+    <td width="50%"><a href="https://67js.codepawl.com/showcase.html?scene=datacenter"><img src="https://67js.codepawl.com/previews/showcase-datacenter.webp" alt="A cutaway AI data center hall rendered by 67js" /></a><br /><b>AI data center</b></td>
+    <td width="50%"><a href="https://67js.codepawl.com/showcase.html?scene=port"><img src="https://67js.codepawl.com/previews/showcase-port.webp" alt="A container port with cranes and stacked containers rendered by 67js" /></a><br /><b>Container port</b></td>
   </tr>
 </table>
 
@@ -105,14 +105,14 @@ Each addon is a separate import, so a page loads only what it uses.
 | Area | Import | Guide |
 | --- | --- | --- |
 | Lighting | `67js/addons/hdri` | [Image-based lighting](docs/lighting.md) from `.hdr` files |
-| Terrain | `67js/addons/terrain`, `67js/addons/texture-set` | [Chunked terrain](docs/terrain.md) with scanned ground layers |
-| Vegetation | `67js/addons/vegetation`, `67js/addons/grass`, `67js/addons/clutter` | [Trees](docs/vegetation.md), [grass](docs/grass.md) and [ground clutter](docs/clutter.md) with wind and level of detail |
-| Characters | `67js/addons/gltf`, `67js/addons/retarget`, `67js/addons/skeleton-pose` | [glTF import](docs/gltf.md), [clip retargeting](docs/retarget.md) and [pose layers with IK](docs/skeleton-pose.md) |
-| Liquid | `67js/addons/spume` | [Baked liquid playback](docs/spume.md) with refraction and spray |
-| Vehicles | `67js/addons/vehicle` | [Wheeled vehicles on a path](docs/vehicle.md) |
+| Terrain | `67js/addons/terrain`, `67js/addons/texture-set` | [Chunked terrain](https://67js.codepawl.com/terrain.md) with scanned ground layers |
+| Vegetation | `67js/addons/vegetation`, `67js/addons/grass`, `67js/addons/clutter` | [Trees](https://67js.codepawl.com/vegetation.md), [grass](https://67js.codepawl.com/grass.md) and [ground clutter](https://67js.codepawl.com/clutter.md) with wind and level of detail |
+| Characters | `67js/addons/gltf`, `67js/addons/retarget`, `67js/addons/skeleton-pose` | [glTF import](docs/gltf.md), [clip retargeting](https://67js.codepawl.com/retarget.md) and [pose layers with IK](docs/skeleton-pose.md) |
+| Liquid | `67js/addons/spume` | [Baked liquid playback](https://67js.codepawl.com/spume.md) with refraction and spray |
+| Vehicles | `67js/addons/vehicle` | [Wheeled vehicles on a path](https://67js.codepawl.com/vehicle.md) |
 | Physics | `67js/addons/physics` | [Rapier contacts and joints](docs/physics.md) recorded into a timeline |
-| Modeling | `67js/addons/mesh`, `67js/addons/modeling`, `67js/addons/sculpt` | [Mesh editing](docs/mesh.md), [modeling](docs/modeling.md) and [sculpt brushes](docs/sculpt.md) |
-| Offline light | `67js/addons/path-tracer`, `67js/addons/light-bake` | [Path-traced stills](docs/path-tracer.md) and [baked lightmaps](docs/light-bake.md) |
+| Modeling | `67js/addons/mesh`, `67js/addons/modeling`, `67js/addons/sculpt` | [Mesh editing](docs/mesh.md), [modeling](docs/modeling.md) and [sculpt brushes](https://67js.codepawl.com/sculpt.md) |
+| Offline light | `67js/addons/path-tracer`, `67js/addons/light-bake` | [Path-traced stills](https://67js.codepawl.com/path-tracer.md) and [baked lightmaps](https://67js.codepawl.com/light-bake.md) |
 | Agents | `67js/addons/agent-scene`, `67js/addons/agent-asset` | [Scene sessions](docs/agent-scene.md) with revisions and checkpoints |
 
 The [documentation page](https://67js.codepawl.com/docs.html) lists every guide.
@@ -141,13 +141,13 @@ They compare matching scenes on the same hardware. They do not show a general sp
 
 ## Contributing
 
-Read [CONTRIBUTING.md](CONTRIBUTING.md) before you open a pull request. It covers setup, checks, code style and the release flow.
+Read [CONTRIBUTING.md](https://github.com/codepawl/67.js/blob/main/CONTRIBUTING.md) before you open a pull request. It covers setup, checks, code style and the release flow.
 
 ## Credits
 
 - [gl-matrix](https://github.com/toji/gl-matrix) supplies the matrix math.
 - The glTF addon has its own parser. The Draco, meshopt and KTX2 decoders are [three.js](https://threejs.org/) loaders that you pass in.
-- The textures and the HDRI on the site are CC0 scans from [Poly Haven](https://polyhaven.com) and [ambientCG](https://ambientcg.com). See [the texture credits](public/textures/CREDITS.md).
+- The textures and the HDRI on the site are CC0 scans from [Poly Haven](https://polyhaven.com) and [ambientCG](https://ambientcg.com). See [the texture credits](https://github.com/codepawl/67.js/blob/main/public/textures/CREDITS.md).
 - The showcase models and their sources are listed in each world's `scene.json` under `public/showcase/`.
 
 [MIT](LICENSE) © CodePawl
