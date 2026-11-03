@@ -9,6 +9,7 @@
 // the same frame reached by playing.
 import { mat4 } from 'gl-matrix';
 import { installCrowdShader } from './shaders.js';
+import './skinning.js';
 
 const FLOATS_PER_MATRIX = 16;
 const TEXELS_PER_MATRIX = 4;

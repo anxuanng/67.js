@@ -16,24 +16,24 @@ Measured 2026-11-03 with three.js 0.186.1. Sizes are bytes gzip. `npm run size` 
 
 | Scene | Before (base at 2026-11-03) | Now | three.js | Goal |
 | --- | --- | --- | --- | --- |
-| `lit-box` | 66,497 | 56,343 | 133,652 | 50,000 (6,343 over) |
-| `gltf-box` | 90,790 | 80,866 | 155,814 | 80,000 (866 over) |
-| `agent-scene` | 110,277 | 103,794 | no equivalent | 100,000 (3,794 over) |
+| `lit-box` | 66,497 | 49,934 | 133,652 | 50,000 (met) |
+| `gltf-box` | 90,790 | 77,122 | 155,814 | 80,000 (met) |
+| `agent-scene` | 110,277 | 100,769 | no equivalent | 100,000 (769 over) |
 
 The values on 2026-10-30 (issue 23) were 48,758, 159,422 and 185,422. `bench/size/baseline.json` holds every size. The goals are proposals from issue 23.
 
 ## What is in the lit box
 
-A box drawn by `Renderer67` with no addon, minified, before gzip (module sizes from the esbuild metafile; the sum is 187 KB, 52.9 KB gzip). The numbers are what the module adds to the bundle, not what it gzips to alone.
+A box drawn by `Renderer67` with no addon, minified, before gzip (module sizes from the esbuild metafile; the sum is 177 KB, 49.9 KB gzip). The numbers are what the module adds to the bundle, not what it gzips to alone.
 
 | Module | Bytes minified | What it is |
 | --- | --- | --- |
-| `src/renderer.js` | about 79,800 | the renderer: batching, shadows, post, diagnostics, skin and morph upload, all draw passes |
-| `src/shaders.js` | about 33,900 | vertex, depth, benchmark and main fragment GLSL (GLSL line comments are stripped at build), skin and morph GLSL |
+| `src/renderer.js` | about 80,500 | the renderer: batching, shadows, post, diagnostics, all draw passes |
+| `src/shaders.js` | about 32,500 | vertex, depth, benchmark and main fragment GLSL (GLSL line comments are stripped at build), with stubs for the skin and morph code |
 | `gl-matrix` mat4 and mat3 | about 22,300 | matrix functions the renderer and camera use |
-| `src/post.js` | about 14,100 | post, sky and bloom fragment shaders |
+| `src/post.js` | about 12,000 | post, sky and bloom fragment shaders |
 | `src/environment.js` | not in a lit box | the environment map builder; `environment-shading.js` keeps only a stub for main, and the lookup GLSL registers with the builder |
-| `src/lighting.js` (5,200), `morph.js` (4,800), `skinning.js` (2,800), `material-snapshot.js`, `material-layers.js`, `effects.js`, `geometry.js`, `budget.js`, `ambient-occlusion.js`, others | 1,000 to 5,000 each | smaller parts |
+| `src/lighting.js` (5,200), `material-snapshot.js`, `material-layers.js`, `effects.js`, `geometry.js`, `budget.js`, `ambient-occlusion.js`, others | 1,000 to 5,000 each | smaller parts |
 
 Moved out of the core bundle in this work, each loaded only by a scene that uses it (the pattern of `material-layer-shaders.js`):
 
@@ -43,8 +43,10 @@ Moved out of the core bundle in this work, each loaded only by a scene that uses
 | `splat-shader` | splat ground GLSL, validation, texture arrays, binding | included above, plus 2,700 for its JavaScript |
 | `environment.js` (loads with `createEnvironmentMap`) | environment map builder, prefilter, BRDF and background shaders, and the lookup and shading GLSL | 2,600 plus about 400 for the GLSL |
 | `world-material-shader` | water, foliage, grass, terrain, moss, fire and smoke GLSL, and the vertex wind; `terrain`, `vegetation`, `grass`, `clutter`, `film` and recipes load it | about 1,500 |
+| `skinning.js`, `morph.js` | skin and morph GLSL, validation, texture layout and packing; they register on import, and every module that makes a pose (`createSkinPose`, `createMorphPose`, the glTF loader, rigs, the crowd addon) imports them | about 2,500, measured in steps (the depth and benchmark vertex shaders get stubs) |
+| `explosion-shader` | the volumetric explosion step of the post pass (the film's ignition scene); the film player imports it | about 550, measured in steps |
 
-Still in the lit box and worth moving next, with rough gzip sizes: skin and morph GLSL plus `skinning.js` and `morph.js` (about 3,500; the depth and benchmark vertex shaders call them unconditionally), and the post pass volume, occlusion and explosion steps. The other splice slots (`worldFunctions`, `worldSurface`, `worldLight`, `worldAfterEmission`, `worldFinal`, `worldVertexWind`, `environmentShading`) show the pattern: a block of GLSL registered by an addon, and a stub in `shaders.js` for a renderer without it.
+Still in the lit box and worth moving next, with rough gzip sizes: the post pass volume fog and occlusion steps (the volume fog GLSL is about 1,300). The other splice slots (`worldFunctions`, `worldSurface`, `worldLight`, `worldAfterEmission`, `worldFinal`, `worldVertexWind`, `environmentShading`) show the pattern: a block of GLSL registered by an addon, and a stub in `shaders.js` for a renderer without it.
 
 ## How the check decides
 

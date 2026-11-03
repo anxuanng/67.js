@@ -50,3 +50,21 @@ export function requireFeatureCode(feature) {
   return slots;
 }
 
+
+/** The most morph targets one geometry carries; the morph shader's weight array has this length. */
+export const MAX_MORPH_TARGETS = 64;
+
+// skinning.js and morph.js set the JavaScript half of skinned and morphed parts: validation, texture layout and packing.
+// The renderer calls them only for a part with a skin or morph targets, so a renderer without those parts never carries them.
+const deformationSupport = {};
+
+export function registerDeformationSupport(functions) {
+  Object.assign(deformationSupport, functions);
+}
+
+export function requireDeformationSupport(requiredFunction, file) {
+  if (!deformationSupport[requiredFunction]) {
+    throw new Error(`Skinned and morphed parts need their code: import ${file}, or a module that makes the pose (createSkinPose, createMorphPose, the glTF loader).`);
+  }
+  return deformationSupport;
+}

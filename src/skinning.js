@@ -1,4 +1,5 @@
 import { mat4 } from 'gl-matrix';
+import { registerShaderFeatureCode, registerDeformationSupport } from './shader-registry.js';
 
 const poseWorkspaces = new WeakMap();
 const IDENTITY_MATRIX = mat4.create();
@@ -156,3 +157,31 @@ export function packSkinInfluences(geometry, layout) {
   }
   return data;
 }
+
+// The vertex GLSL of skinned parts, spliced by shaders.js around the crowd code, which reads skinTexel and jointPalette.
+registerShaderFeatureCode('skin', {
+  vertexHead: `
+uniform float skinEnabled;
+uniform highp sampler2D skinInfluences;
+uniform highp sampler2D jointPalette;
+vec4 skinTexel(sampler2D source, int index) {
+  int width = textureSize(source, 0).x;
+  return texelFetch(source, ivec2(index % width, index / width), 0);
+}
+mat4 jointMatrix(int joint) {
+  int offset = joint * 4;
+  return mat4(skinTexel(jointPalette, offset), skinTexel(jointPalette, offset + 1),
+    skinTexel(jointPalette, offset + 2), skinTexel(jointPalette, offset + 3));
+}
+`,
+  vertexTail: `mat4 skinTransform() {
+  if (skinEnabled < 0.5) return mat4(1.0);
+  ivec4 joints = ivec4(skinTexel(skinInfluences, gl_VertexID * 2));
+  vec4 weights = skinTexel(skinInfluences, gl_VertexID * 2 + 1);
+  return jointMatrix(joints.x) * weights.x + jointMatrix(joints.y) * weights.y
+    + jointMatrix(joints.z) * weights.z + jointMatrix(joints.w) * weights.w;
+}
+`,
+});
+
+registerDeformationSupport({ validateSkinGeometry, validateSkinPose, skinTextureLayout, packSkinInfluences });
