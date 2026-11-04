@@ -100,10 +100,11 @@ Modeling point inputs have a maximum of 4096 points.
 An extrusion has at most 128 holes and 4096 total contour points.
 Shared resource IDs generate geometry once, regardless of the number of mesh nodes.
 
-Materials contain `id`, `tag`, `color`, `metallic`, `roughness`, `emission`, optional `emissiveColor`, `opacity`, `alphaMode`, `doubleSided` and `pattern`.
+Materials contain `id`, `tag`, `color`, `metallic`, `roughness`, `emission`, optional `emissiveColor`, `opacity`, `alphaMode`, `doubleSided`, `pattern` and `map`.
 The defaults are `surface`, `[0.5, 0.5, 0.5]`, `0`, `0.5`, `0`, opacity `1`, `opaque` and `false`.
-The tag can be `surface`, `unlit`, `liquid` or `foam` and remains fixed during editing.
+The tag can be `surface`, `unlit`, `liquid`, `foam`, `water`, `foliage` or `grass` (the last two sway in `environment.wind`) and remains fixed during editing.
 `liquid` refracts and tints what lies behind it: its color is the light one metre lets through, so `[0.56, 0.84, 0.88]` is clear water. `foam` draws soft blended droplets.
+`water` is a flat mirror sheet (a plane or thin box). The largest one sets the water level: everything below it fades by `exp(-absorption * depth)` per colour channel (`absorption` is RGB per metre), and its shadows are lifted and softened with depth times `turbidity` (0 clear to 1 murky). `waterPreset` fills both: `lake` (default), `sea` or `river`. A shadow on the surface is faint and never darkens the reflection; give the sheet an `opacity` below one when the bed should show.
 Any `opacity` below one draws the material blended after opaque geometry, which suits glass, windows and visors. `alphaMode` accepts `opaque` or `blend`; cutout masking needs a texture and is not available in procedural recipes.
 `doubleSided` draws and lights both faces of thin sheets.
 Changing the tag, opacity, blending, sidedness or pattern replaces the affected parts in the renderer; color, metallic, roughness and emission edits keep them.
@@ -175,7 +176,9 @@ Nodes: `uv` (`"u"`, `"v"` or `"both"`), `noise`, `voronoi` (`output`: `distance`
 (2 to 8 stops of numbers or colours), `vec`, and the maths nodes `add`, `sub`, `mul`, `div`, `min`, `max`, `pow`, `abs`, `floor`,
 `fract`, `sqrt`, `invert`, `clamp`, `smoothstep` and `mix`. Maths nodes work on each component of a vector. Every texture
 node takes `at`, a vector expression such as `{ "add": [{ "uv": "both" }, { "mul": [{ "vec": [0.1, 0, 0] }, 1] }] }`, to warp
-it. Scales and counts are whole numbers (1 to 64, even for `checker`), so every texture node tiles.
+it. Scales and counts are whole numbers (1 to 64, even for `checker`), so every texture node tiles. `noise` is Blender's Noise Texture
+(2D, detail `octaves - 1`, roughness 0.5, lacunarity 2, normalized; `seed` moves the lattice by whole cells) with the lattice
+wrapped so it repeats. `"tile": false` matches Blender's Noise Texture exactly, does not repeat.
 
 Limits, checked while the recipe is read: at most 64 nodes in all outputs, depth 12 (the field expression limits), at most 8 ramp
 stops, `resolution` of 256, 512 or 1024, and a work budget of 30 million units, where a plain node costs 1, a `noise` octave 3
@@ -190,6 +193,21 @@ geometry's UVs, so a mesh with a `uv_unwrap` stack node (or `geometry.uvs`) carr
 texture repeats outside 0 to 1 and tiles. `size` and `axis` only apply to `box`. A `uv` pattern on geometry without UVs
 fails at render and at `scene_export_glb` with a message that names `uv_unwrap`. GLB export writes the baked graph textures
 and the geometry UVs.
+
+### Image sequence maps
+
+`map: { sequence: { frames, fps, loop } }` gives a `surface` material a colour map that plays a list of images, such as the output of a video or a simulation. It covers the colour map only (`map`; normal, roughness and emissive maps stay with `pattern`), needs geometry with UVs (`grid`, `box`, a `uv_unwrap`ped mesh), and does not combine with `pattern`. `color` defaults to white and tints the frames.
+
+```json
+{ "id": "screen", "map": { "sequence": { "frames": ["<catalog image id>", "<catalog image id>"], "fps": 12 } } }
+```
+
+- `frames` lists 2 to 64 IDs from `scene_asset_catalog`. The `--assets` folder takes PNG, JPEG and WebP files next to GLBs, with the same 16 MiB file budget, content-bound SHA-256 IDs and no links. An extension that does not match the file signature rejects the catalog. Entries report `kind: "image"` and `mimeType`; GLBs report `kind: "glb"`. No remote URLs are read.
+- All frames share one size, at most 1024 pixels a side, and a scene decodes at most 64 MiB of frames. Frames are read without colour conversion and should be opaque.
+- `fps` is above 0 and at most 60. The frame at scene time `t` is `floor(t * fps)`: wrapped around the list when `loop` is true (the default), held on the last frame when `loop` is false. Frame 0 shows before any motion time is set.
+- The clock is `motionTime`, the one `scene_look`, `scene_review` and `motion` use. A seek is deterministic: the same time gives the same frame and the same PNG bytes. `scene_render_submit` reads it from `settings.motion.start` plus the elapsed time (or a timeline shot), so a still or video frame shows the frame that `scene_look` shows at that time. A recipe with a sequence and no authored `motion` accepts `settings.motion`.
+- The renderer uploads a frame with `updateTexture` only when the frame index changes. `scene_inspect` reports `textureSequences`: material, frame count, `fps`, `loop`, current `index` and its asset ID.
+- `set-material` and `add-material` take `map`; the frames must be catalog images, which the host decodes before the edit.
 
 Nodes contain `id`, optional `label`, `parent`, `translation`, `rotation`, and `scale`.
 Mesh nodes also require both `geometry` and `material` resource IDs.
@@ -249,12 +267,39 @@ A node with an `asset` field places a GLB from the `--assets` catalog inside the
   "clip": { "index": 0, "start": 0.5, "speed": 1, "loop": true } } }
 ```
 
-- `id` is an id from `scene_asset_catalog`. `materials` override source materials by glTF material name (`color`, `metallic`, `roughness`, `opacity`, `emission`, `emissiveColor`); `scene_inspect` lists the names. Placements with the same overrides share one material.
+- `id` is an id from `scene_asset_catalog`. `materials` override source materials by glTF material name (`color`, `metallic`, `roughness`, `opacity`, `emission`, `emissiveColor`, and `tag`: `foliage` or `grass` makes the leaves of an imported tree sway in `environment.wind` and cast moving shadows, like grown ones); `scene_inspect` lists the names. Placements with the same overrides share one material.
 - Placements of the same asset share geometry and materials, so they draw as one instanced batch per material (`drawBatches` in the render status stays flat as copies are added). Skins and morphs keep working.
 - `clip` plays that clip, held at its first frame until scene time `start`, then at `speed`, looping unless `loop` is false. Each placement that plays a clip gets a decoded copy of its own (its geometry is not shared), because a pose is state of one decoded asset. A seek gives the same frame as playing to that time. `set-motion` tracks still move the node itself, so a walking figure is a clip plus a motion track on the same node.
 - Bounds: 512 placements, 16 different assets, 16 placements playing a clip, and `maxNodes` for the generated parts. Placed geometry does not count against `maxVertices`; each asset keeps the decoder limits of the catalog.
 - `scene_inspect` adds `assets`: per placement the asset id, part count, world bounds, clips (index, name, duration), material names and the playing clip.
-- Not yet: render jobs refuse a scene with placed assets (`scene_look` draws them), and a scene created without any placed asset cannot add the first one with `scene_apply`.
+- Not yet: a scene created without any placed asset cannot add the first one with `scene_apply`. Render jobs draw placed assets and play their clips on scene time (`settings.motion.start`).
+
+### Vegetation
+
+A node with a `vegetation` field is a group that grows trees from the addon in [Vegetation](https://67js.codepawl.com/vegetation.md). Its parts become generated child nodes like placed assets (`<node>/<instance>/<bark|foliage>`), left out of `scene_inspect` nodes and `scene_export_recipe`.
+
+```json
+{ "id": "forest", "vegetation": { "mix": { "broadleaf": 3, "conifer": 2, "bush": 2 }, "seed": 11, "season": 0.4,
+  "scatter": { "ground": "hills", "density": 0.014, "slopeLimit": 30, "exclude": [{ "center": [0, 0], "radius": 8 }, { "node": "cabin", "radius": 3 }] } } }
+```
+
+- One tree: `{ "species": "conifer", "seed": 2, "height": 9, "leaves": "cards" }` grows at the node transform. A scatter takes `mix` (species weights, also `grass` and `flowers`) and `scatter`: `ground` (a node drawing a terrain geometry; give the group the same transform), `density` per square metre, `slopeLimit` degrees, `area` `{min,max}` in `[x,z]`, `exclude` (circles, boxes or a node and radius; terrain holes always stay clear), `variants` and `scale`.
+- The same options give the same instances as `scatterVegetation` from `67js/addons/vegetation`: the recipe path calls it with the terrain's `heightAt` and `isHole`.
+- Levels of detail come from the recipe camera `eye` when the scene is built or edited (`distanceScale`, `cullDistance`), never from the frame being drawn, so a seek, a camera track or a shot cannot change them. Edit the camera with `set-camera` to regrow the levels for another viewpoint.
+- `season` runs 0 summer, 0.35 gold, 0.6 orange, 0.85 brown; 0.9 and above drops the leaves of broadleaf, birch and bush, while conifer and palm stay green. Cards recolour their leaf sprite and mesh leaves and grass blades recolour the material.
+- Materials with tag `foliage` or `grass` sway. `environment.wind` is `{ "strength": 0.3, "direction": 0 }` (strength 0 to 4; direction in degrees, 0 toward +x and 90 toward +z, turning the sway and the grass gusts). The wind clock is the render time, so a render job or `scene_review` `rendererTime` gives the same frame at the same time.
+- At most 1000 instances (a scatter whose area times density is above 4000 is refused first), and `maxNodes` for the generated parts. `scene_inspect` adds `vegetation`: per node the instances, culled count, triangles, and per species the instances and the count at each level.
+
+### Crowds
+
+An asset placement with a `crowd` field fills its group node with `count` (1 to 1000) copies of one catalog character playing one clip, each at its own time offset and rate, drawn as one batch per material. Options and measurements are in [Crowds](https://67js.codepawl.com/retarget.md).
+
+```json
+{ "id": "people", "asset": { "id": "<catalog asset id>", "crowd": { "clip": 3, "count": 200, "seed": 7, "spacing": 2, "farDistance": 25, "farRate": 6 } } }
+```
+
+- `clip` is a clip index, `layout` is `grid` or `scatter`, and the pose is a pure function of scene time, `seed` and the recipe camera, so a render at a time equals the frame reached by playing. People farther than `farDistance` from the recipe camera hold each pose for `1 / farRate` seconds.
+- The crowd takes one decoded copy of the asset, the generated part nodes (count times materials) count against `maxNodes`, and `scene_inspect` lists it under `assets` with `kind: "crowd"`, `instances`, `batches`, `frames`, `paletteBytes` and `boundsRadius`.
 
 ### Relations between parts
 
@@ -302,7 +347,7 @@ Final resource references and hierarchy must be valid before publication.
 | Operation | Fields |
 | --- | --- |
 | `set-node` | `id`, optional `translation`, `rotation`, `scale`, `parent`, `label`, `geometry`, `material` |
-| `set-material` | `id`, optional `color`, `metallic`, `roughness`, `emission`, `emissiveColor`, `pattern` |
+| `set-material` | `id`, optional `color`, `metallic`, `roughness`, `emission`, `emissiveColor`, `pattern`, `map` |
 | `set-camera` | Optional `eye`, `target`, `up`, `fov`, `near`, `far` directly on the command |
 | `add-geometry` | `geometry`, containing a complete geometry record |
 | `remove-geometry` | `id` |

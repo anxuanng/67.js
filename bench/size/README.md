@@ -16,7 +16,7 @@ Measured 2026-11-03 with three.js 0.186.1. Sizes are bytes gzip. `npm run size` 
 
 | Scene | Before (base at 2026-11-03) | Now | three.js | Goal |
 | --- | --- | --- | --- | --- |
-| `lit-box` | 66,497 | 49,934 | 133,652 | 50,000 (met) |
+| `lit-box` | 66,497 | 49,858 | 133,652 | 50,000 (met) |
 | `gltf-box` | 90,790 | 77,122 | 155,814 | 80,000 (met) |
 | `agent-scene` | 110,277 | 100,769 | no equivalent | 100,000 (769 over) |
 
@@ -28,7 +28,7 @@ A box drawn by `Renderer67` with no addon, minified, before gzip (module sizes f
 
 | Module | Bytes minified | What it is |
 | --- | --- | --- |
-| `src/renderer.js` | about 80,500 | the renderer: batching, shadows, post, diagnostics, all draw passes |
+| `src/renderer.js` | about 80,200 | the renderer: batching, shadows, post, diagnostics, all draw passes |
 | `src/shaders.js` | about 32,500 | vertex, depth, benchmark and main fragment GLSL (GLSL line comments are stripped at build), with stubs for the skin and morph code |
 | `gl-matrix` mat4 and mat3 | about 22,300 | matrix functions the renderer and camera use |
 | `src/post.js` | about 12,000 | post, sky and bloom fragment shaders |
@@ -44,6 +44,7 @@ Moved out of the core bundle in this work, each loaded only by a scene that uses
 | `environment.js` (loads with `createEnvironmentMap`) | environment map builder, prefilter, BRDF and background shaders, and the lookup and shading GLSL | 2,600 plus about 400 for the GLSL |
 | `world-material-shader` | water, foliage, grass, terrain, moss, fire and smoke GLSL, and the vertex wind; `terrain`, `vegetation`, `grass`, `clutter`, `film` and recipes load it | about 1,500 |
 | `skinning.js`, `morph.js` | skin and morph GLSL, validation, texture layout and packing; they register on import, and every module that makes a pose (`createSkinPose`, `createMorphPose`, the glTF loader, rigs, the crowd addon) imports them | about 2,500, measured in steps (the depth and benchmark vertex shaders get stubs) |
+| `liquid-optics.js`, `ground-bounce.js` | the liquid optics check (the liquid pass and the recipe look import it) and a lamp-lit room's bounce method, which the map carries to the renderer | about 670 together, measured in steps |
 | `explosion-shader` | the volumetric explosion step of the post pass (the film's ignition scene); the film player imports it | about 550, measured in steps |
 
 Still in the lit box and worth moving next, with rough gzip sizes: the post pass volume fog and occlusion steps (the volume fog GLSL is about 1,300). The other splice slots (`worldFunctions`, `worldSurface`, `worldLight`, `worldAfterEmission`, `worldFinal`, `worldVertexWind`, `environmentShading`) show the pattern: a block of GLSL registered by an addon, and a stub in `shaders.js` for a renderer without it.
@@ -61,7 +62,7 @@ A bundle that the base does not have is reported and never fails. A bundle that 
 
 The table in the output shows each bundle, the base size, the growth and the allowance. The release budgets in `budgets.json` are printed as a report and do not fail a pull request.
 
-The goals in `budgets.json` (`lit-box`, `gltf-box`, `agent-scene`) also gate: a goal scene that was at or under its goal on the base and goes over it fails, even inside its allowance, because many small accepted increases otherwise add up past the goal. Only a `- goal:<scene>: <why>` line accepts that, and An approves those lines. A `scene:<name>` line does not. A scene already over its goal on the base is held by its allowance only, until work brings it back under.
+The goals in `budgets.json` (`lit-box`, `gltf-box`, `agent-scene`) also gate: a goal scene that was at or under its goal on the base and goes over it fails, even inside its allowance, because many small accepted increases otherwise add up past the goal. Only a `- goal:<scene>: <why>` line accepts that, and An approves those lines. A `scene:<name>` line does not. A scene already over its goal on the base may not grow by more than 8 bytes (two builds of the same source differ by a few bytes gzip), even inside its allowance, until work brings it back under; the same `- goal:<scene>:` line is the only way past.
 
 ## When a check fails
 

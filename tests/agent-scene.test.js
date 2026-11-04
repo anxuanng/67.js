@@ -93,7 +93,7 @@ test('shader arithmetic rejects cancelling product overflow and nonfinite emissi
 });
 
 test('recipes author liquid, foam and blended glass with batch-safe material handles', () => {
-  assert.deepEqual(AGENT_SCENE_CAPABILITIES.materialTags, ['surface', 'unlit', 'liquid', 'foam']);
+  assert.deepEqual(AGENT_SCENE_CAPABILITIES.materialTags, ['surface', 'unlit', 'liquid', 'foam', 'foliage', 'grass', 'water']);
   const input = recipe();
   input.materials.push({ id: 'water', tag: 'liquid', color: [0.56, 0.84, 0.88], roughness: 0.05 });
   input.materials.push({ id: 'glass', color: [0.9, 0.95, 1], opacity: 0.3, doubleSided: true });

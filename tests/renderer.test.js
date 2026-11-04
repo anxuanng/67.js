@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mat4, mat3 } from 'gl-matrix';
-import { Renderer67, groupParts, resolveLiquidOptics, textureDescriptorInfo } from '../src/renderer.js';
+import { Renderer67, groupParts, textureDescriptorInfo } from '../src/renderer.js';
+import { resolveLiquidOptics } from '../src/liquid-optics.js';
 import { createSkinPose } from '../src/skinning.js';
 import { materialLayerState } from '../src/material-layers.js';
 

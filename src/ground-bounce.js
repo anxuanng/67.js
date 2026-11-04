@@ -276,8 +276,24 @@ function roomOf(parts) {
   return room
 }
 
-// The map gets a `bounce` colour that the renderer adds to its diffuse light. The map's data stays shared, so a lamp whose
-// power changes every frame costs no new prefilter.
+// The renderer calls this method of a bounced map with the map's irradiance coefficients. The bounce is a constant diffuse
+// light: it adds to the first coefficient, which the map's intensity scales again in the shader. The result is one shared
+// scratch array, which the renderer uploads at once.
+let bouncedIrradiance = null
+
+function irradianceWithBounce(irradiance) {
+  if (bouncedIrradiance?.length !== irradiance.length) {
+    bouncedIrradiance = new Float32Array(irradiance.length)
+  }
+  bouncedIrradiance.set(irradiance)
+  for (let channel = 0; channel < 3; channel++) {
+    bouncedIrradiance[channel] += this.bounce[channel] / Math.max(this.intensity, 1e-6)
+  }
+  return bouncedIrradiance
+}
+
+// The map gets a `bounce` colour and the method that adds it to its diffuse light. The map's data stays shared, so a lamp
+// whose power changes every frame costs no new prefilter.
 function roomBounceEnvironment(parts, environment) {
   if (environment.roomBounce === false || hasKeyLight(environment)) {
     return environment
@@ -287,7 +303,7 @@ function roomBounceEnvironment(parts, environment) {
     return environment
   }
   const bounce = roomBounceRadiance(room, environment)
-  return bounce.some(channel => channel > 0) ? { ...environment, map: { ...environment.map, bounce } } : environment
+  return bounce.some(channel => channel > 0) ? { ...environment, map: { ...environment.map, bounce, irradianceWithBounce } } : environment
 }
 
 

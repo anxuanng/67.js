@@ -5,17 +5,19 @@ import { skyOpenness } from '../src/closed-room.js';
 import { fogSkyVisibility } from '../src/fog-sky-visibility.js';
 import { installCameraEffects } from '../src/camera-effects.js';
 import { installRenderPasses } from '../src/render-passes.js';
-import { installCoplanarDiagnostics } from '../src/coplanar-overlap.js';
+import { installDepthPrecision } from '../src/reversed-depth.js';
 import { applyProjection } from '../src/camera.js';
 import { mat4 } from 'gl-matrix';
 import { resolveAgentShadow, agentEnvironmentMap } from '../src/agent-look.js';
-import { agentSceneModule } from '../src/agent-scene-modules.js';
+import { agentSceneModule, agentSceneModuleLoaded } from '../src/agent-scene-modules.js';
 import { agentGroundPlacement, createAgentGround, placeAgentGround, FLOOR_COLOR } from '../src/agent-ground.js';
 import { groundBounceEnvironment } from '../src/ground-bounce.js';
 import { createAgentAssetScene } from '../src/agent-asset.js';
 import { parseGltf } from '../src/gltf.js';
 import { assetCopyKey, recipeAssetNeeds } from '../src/agent-scene-assets.js';
 import { exportGlb } from '../src/export.js';
+import '../src/texture-update.js';
+import { TEXTURE_SEQUENCE_LIMITS } from '../src/texture-sequence-limits.js';
 import { weightTracksFromGltfAnimation } from '../src/export-skeleton.js';
 import { clipFromGltfAnimation } from '../src/skeleton-pose.js';
 import { sessionProblem } from '../src/agent-errors.js';
@@ -97,6 +99,59 @@ function renderInfo(renderer) {
   };
 }
 
+// Sequence frames arrive as catalog image bytes keyed by asset id. They are decoded here, without colour conversion or
+// premultiplication, so the same file gives the same pixels in a preview and in a render job.
+async function decodeSequenceFrame(id, base64) {
+  const bitmap = await createImageBitmap(new Blob([bytesFromBase64(base64)]), { premultiplyAlpha: 'none', colorSpaceConversion: 'none' });
+  try {
+    if (bitmap.width > TEXTURE_SEQUENCE_LIMITS.maxSide || bitmap.height > TEXTURE_SEQUENCE_LIMITS.maxSide) {
+      throw new RangeError(`Sequence frame ${id.slice(0, 12)} is ${bitmap.width}x${bitmap.height}; frames are at most ${TEXTURE_SEQUENCE_LIMITS.maxSide} pixels on a side.`);
+    }
+    const surface = new OffscreenCanvas(bitmap.width, bitmap.height);
+    const context = surface.getContext('2d', { willReadFrequently: true });
+    context.drawImage(bitmap, 0, 0);
+    const { data } = context.getImageData(0, 0, bitmap.width, bitmap.height);
+    return { width: bitmap.width, height: bitmap.height, data };
+  } finally {
+    bitmap.close();
+  }
+}
+
+async function loadSequenceFrames(pool, sequenceData) {
+  for (const [id, base64] of Object.entries(sequenceData ?? {})) {
+    if (pool.has(id)) continue;
+    try {
+      pool.set(id, await decodeSequenceFrame(id, base64));
+    } catch (error) {
+      if (error instanceof RangeError) throw error;
+      throw new Error(`Sequence frame ${id.slice(0, 12)} is not a PNG, JPEG or WebP image the browser can decode.`);
+    }
+    const decodedBytes = [...pool.values()].reduce((total, frame) => total + frame.data.length, 0);
+    if (decodedBytes > TEXTURE_SEQUENCE_LIMITS.maxDecodedBytes) {
+      pool.delete(id);
+      throw new RangeError(`Sequence frames decode to more than ${TEXTURE_SEQUENCE_LIMITS.maxDecodedBytes / 1048576} MiB. Use fewer or smaller frames.`);
+    }
+  }
+  return pool;
+}
+
+// Each frame change is one updateTexture per renderer. A renderer starts on frame 0, the image its descriptor holds.
+const uploadedFrames = new WeakMap();
+function syncSequenceTextures(record) {
+  const uploaded = uploadedFrames.get(record.renderer) ?? new Map();
+  uploadedFrames.set(record.renderer, uploaded);
+  for (const { descriptor, index, image } of record.scene.sequenceTextures?.() ?? []) {
+    if ((uploaded.get(descriptor) ?? 0) === index) continue;
+    if (!record.renderer.textures.has(descriptor)) continue;
+    record.renderer.updateTexture(descriptor, { image });
+    uploaded.set(descriptor, index);
+  }
+}
+
+function sceneIsTextured(scene) {
+  return hasPatternTextures(scene.parts) || (scene.sequenceTextures?.().length ?? 0) > 0;
+}
+
 function hasPatternTextures(parts) {
   return parts.some(part => part.material.boxMapScale || part.material.emissiveMap);
 }
@@ -148,7 +203,7 @@ function draw(record, time = 0, camera = record.scene.camera, frameOptions = {})
   // Shrink the existing target first so a smaller look can recover a staging-budget failure.
   record.renderer.resize();
   if (record.rendererTopology !== record.scene.topologyRevision) {
-    const textured = hasPatternTextures(record.scene.parts);
+    const textured = sceneIsTextured(record.scene);
     // replaceParts refuses skinned and morphed parts, so an edited imported part takes a new renderer as well.
     if (textured || record.rendererTextured || record.asset) {
       rebuildRenderer(record);
@@ -163,6 +218,7 @@ function draw(record, time = 0, camera = record.scene.camera, frameOptions = {})
   }
   syncAutomaticGround(record);
   syncShadowCascades(record);
+  syncSequenceTextures(record);
   const environment = record.scene.environment;
   const effects = record.scene.effects;
   const shadow = record.scene.shadow;
@@ -173,7 +229,8 @@ function draw(record, time = 0, camera = record.scene.camera, frameOptions = {})
     record.shadowKey = shadowKey;
   }
   record.renderer.world = environment.world;
-  record.renderer.render({ ...camera, environment: litEnvironment(record.scene.parts, environment, Boolean(record.renderer.groundPart)), effects, exposure: effects.exposure, time, lines: environment.lines, ...frameOptions });
+  applyRecipeWindHeading(record.renderer, environment);
+  record.renderer.render({ ...camera, environment: litEnvironment(record.scene.parts, environment, Boolean(record.renderer.groundPart)), effects, exposure: effects.exposure, time, lines: environment.lines, ...windFrame(environment), ...frameOptions });
   const error = record.renderer.context.getError();
   if (error !== 0) {
     throw new Error(`WebGL render failed with error ${error}.`);
@@ -233,6 +290,18 @@ function cascadeCountFor(scene) {
   return agentSceneModule('cascades').effectiveShadowCascades(scene.environment, scene.shadow);
 }
 
+// Wind strength of the recipe; absent keeps the renderer default. The heading is applied by applyRecipeWindHeading.
+function windFrame(environment) {
+  if (!environment.wind) return {};
+  return { wind: environment.wind.strength };
+}
+
+// The heading lives in the on-demand world material code, so the core renderer carries nothing for it.
+function applyRecipeWindHeading(renderer, environment) {
+  if (!agentSceneModuleLoaded('worldMaterials') || (!environment.wind && !renderer.windHeading)) return;
+  agentSceneModule('worldMaterials').applyWindHeading(renderer, (environment.wind?.direction ?? 0) * Math.PI / 180);
+}
+
 function cascadesFor(scene) {
   const count = cascadeCountFor(scene);
   return count > 0 ? agentSceneModule('cascades').createCascadedShadows({ count }) : null;
@@ -240,7 +309,7 @@ function cascadesFor(scene) {
 
 function initializeRenderer(scene, { memoryBudgetMiB, backend }) {
   const placement = agentGroundPlacement(scene.parts, scene.environment);
-  const renderer = installCoplanarDiagnostics(installRenderPasses(installCameraEffects(new Renderer67(canvas, scene.parts, {
+  const renderer = installDepthPrecision(installRenderPasses(installCameraEffects(new Renderer67(canvas, scene.parts, {
     ground: placement ? createAgentGround(placement) : false,
     hdr: true,
     depth: true,
@@ -276,7 +345,7 @@ function previousCameraFor(record, motionTime) {
   return previousCamera;
 }
 
-function createPreview(scene, { sessionId, memoryBudgetMiB, backend }, asset, placedAssets) {
+function createPreview(scene, { sessionId, memoryBudgetMiB, backend }, asset, placedAssets, sequenceFrames) {
   if (active) {
     throw new Error('Dispose the current scene before creating another.');
   }
@@ -285,7 +354,7 @@ function createPreview(scene, { sessionId, memoryBudgetMiB, backend }, asset, pl
   try {
     renderer = initializeRenderer(scene, { memoryBudgetMiB, backend });
     const record = { scene, renderer, asset, placedAssets, sessionId, options: { memoryBudgetMiB, backend },
-      checkpoints: new Map(), branches: createBranchStore(), rendererTopology: scene.topologyRevision, rendererTextured: hasPatternTextures(scene.parts) };
+      checkpoints: new Map(), branches: createBranchStore(), rendererTopology: scene.topologyRevision, rendererTextured: sceneIsTextured(scene), sequenceFrames };
     draw(record);
     const result = status(record);
     if (backend === 'gpu' && /swiftshader|llvmpipe|software/i.test(result.render.graphics)) {
@@ -388,9 +457,9 @@ function useKernelWorkers() {
   return kernelWorkersAvailable() && globalThis.__67jsKernelWorkers !== 'off';
 }
 
-function buildSceneOffMainThread(recipe) {
+function buildSceneOffMainThread(recipe, options) {
   return buildWithKernels(() => {
-    const scene = createAgentScene(recipe);
+    const scene = createAgentScene(recipe, {}, options);
     for (const part of scene.parts) {
       void part.material.map;
     }
@@ -596,7 +665,7 @@ window.__agentPreview = {
     try {
       record.renderer = initializeRenderer(record.scene, record.options);
       record.rendererTopology = record.scene.topologyRevision;
-      record.rendererTextured = hasPatternTextures(record.scene.parts);
+      record.rendererTextured = sceneIsTextured(record.scene);
       record.shadowKey = null;
       draw(record);
       return status(record);
@@ -681,13 +750,14 @@ window.__agentPreview = {
     try {
       await loadAllAgentSceneModules();
       await loadPlacedAssets(pool, input.recipe, input.assetData);
+      const sequenceFrames = await loadSequenceFrames(new Map(), input.sequenceData);
       // Placed assets are decoded on this thread, so the scene is built here and not on the kernel worker.
       return await afterMeshBooleans(input.recipe, () => {
         startBuildReport();
         const startedAt = performance.now();
-        const scene = createAgentScene(input.recipe, {}, { assets: pool });
+        const scene = createAgentScene(input.recipe, {}, { assets: pool, sequenceFrames });
         finishBuildReport(startedAt);
-        return createPreview(scene, input, undefined, pool);
+        return createPreview(scene, input, undefined, pool, sequenceFrames);
       });
     } catch (error) {
       disposePlacedAssets(pool);
@@ -697,19 +767,21 @@ window.__agentPreview = {
   create(input) {
     if (active) throw new Error('Dispose the current scene before creating another.');
     if (recipeAssetNeeds(input.recipe).length) return this.createWithAssets(input);
-    return afterMeshBooleans(input.recipe, () => {
+    // Only a recipe with image sequences waits for its frames to decode; any other create stays synchronous.
+    const build = sequenceFrames => {
       startBuildReport();
       const startedAt = performance.now();
       if (!useKernelWorkers()) {
-        const scene = createAgentScene(input.recipe);
+        const scene = createAgentScene(input.recipe, {}, { sequenceFrames });
         finishBuildReport(startedAt);
-        return createPreview(scene, input);
+        return createPreview(scene, input, undefined, undefined, sequenceFrames);
       }
-      return buildSceneOffMainThread(input.recipe).then(scene => {
+      return buildSceneOffMainThread(input.recipe, { sequenceFrames }).then(scene => {
         finishBuildReport(startedAt);
-        return createPreview(scene, input);
+        return createPreview(scene, input, undefined, undefined, sequenceFrames);
       });
-    });
+    };
+    return afterMeshBooleans(input.recipe, () => (input.sequenceData ? loadSequenceFrames(new Map(), input.sequenceData).then(build) : build(new Map())));
   },
   async createAsset(input) {
     if (active) throw new Error('Dispose the current scene before creating another.');
@@ -737,6 +809,11 @@ window.__agentPreview = {
     return { sessionId, ...scene.inspectMeshes(options) };
   },
   apply(input) {
+    if (input.sequenceData) {
+      const { sequenceFrames } = requireSession(input.sessionId);
+      if (!sequenceFrames) throw new Error('This scene was created from an imported asset and has no image sequences.');
+      return loadSequenceFrames(sequenceFrames, input.sequenceData).then(() => this.apply({ ...input, sequenceData: undefined }));
+    }
     if (input.sources) {
       const { scene } = requireSession(input.sessionId);
       return decodeMotionSources(input.sources).then(decoded => {

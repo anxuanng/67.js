@@ -292,3 +292,9 @@ test('the overshoot lift passes with one named easing or with hand-placed keyfra
   delete noOvershoot.motion.tracks[0].keyframes[0].easing;
   assert.deepEqual(failedKinds(await gradeRecipe(task, noOvershoot)), ['overshoot']);
 });
+
+test('the plain overshoot task forbids easings in its prompt and grades the hand-placed keyframes', async () => {
+  const task = taskById('overshoot-lift-plain');
+  assert.match(task.prompt, /do not use the easing field/);
+  assert.deepEqual(failedKinds(await gradeRecipe(task, structuredClone(REFERENCES['overshoot-lift-plain']))), []);
+});

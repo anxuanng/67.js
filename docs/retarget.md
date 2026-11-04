@@ -117,9 +117,28 @@ any seek time equals the one reached by playing. `crowdVertexAt(palette, geometr
   outside the frustum are not drawn, and an instance far enough away uses a coarser level.
 - **Levels** come from `createCrowdLods(geometry, { cells })` (on by default in `createCrowdParts`, `lods: false` turns them off): vertices that
   share a grid cell and a dominant joint merge, and keep the joints and weights of one of them, so every level skins with the same palette.
-- Limits: morph targets are not applied; materials with maps are not supported (the geometry's UV and colour attributes carry joints and weights);
-  an `assemblyAmount` does not move a crowd; a clip is baked once, so another clip is another palette and another batch. Lowering the pose rate
-  for far instances is not done yet.
+- **Maps and morph targets.** `createCrowdRig` keeps UVs, so materials with maps draw on a crowd (the joints and weights travel packed in the colour
+  attribute, 12 bits of joint and weight each). `createCrowdRig(parts, { morphs: true })` keeps a part with morph targets as its own rig part:
+  it draws with the weights it has when the rig is made, the same for every instance, at full detail (no levels, and no culling of that part).
+  Without the option morph targets are not applied.
+- **Far pose rate.** `createCrowdParts({ ..., farPose: { distance, rate } })` and `setTimes(times, eye)`: an instance more than `distance` from
+  `eye` holds each pose for `1 / rate` seconds. The pose is still a pure function of the clip time and the eye, so a seek equals playing.
+- Limits: at most 4096 joints in a rig; an `assemblyAmount` does not move a crowd; a clip is baked once, so another clip is another palette and
+  another batch.
+
+### Recipe crowds
+
+An agent asks for a crowd in a recipe (`scene_create`, `scene_apply`) with the `crowd` field of an asset placement:
+
+```json
+{ "id": "people", "asset": { "id": "<catalog asset id>", "crowd": { "clip": 3, "count": 200, "seed": 7, "spacing": 2, "farDistance": 25, "farRate": 6 } } }
+```
+
+`clip` is the clip index (`scene_inspect` lists them), `count` is 1 to 1000, and `layout`, `spacing`, `columns`, `size`, `rateJitter`, `randomYaw`, `speed`,
+`frameRate`, `lods`, `morphs`, `farDistance` and `farRate` are the options above. The crowd is a group node of generated part nodes (count times the
+materials, which count against `maxNodes`), placed by the node transform. The pose depends on the scene time, the seed and the recipe camera, so
+a frame rendered at a time equals the one reached by playing to it. `scene_inspect` lists the crowd under `assets` with `kind: "crowd"`, its instances, batches, clip, baked frames,
+palette bytes and bound. It loads on demand with the `"crowd":{` marker, so recipes without one pay nothing.
 
 ### Measured cost
 
@@ -127,8 +146,21 @@ any seek time equals the one reached by playing. `crowdVertexAt(palette, geometr
 (19 parts, 3 materials, 187 joints, 29 baked frames, 7,214 vertices) walking, 1280 by 720, no multisampling, a ground and one shadow map.
 It is a real humanoid made of rigid parts on bones and four skinned hands, merged into the rig.
 
-SwiftShader (the path a headless agent has), the median frame of 5 after warm-up, update and render included. The machine was running other jobs,
-so two runs a few minutes apart are given as a range (in the last run, 500 crowd instances and 50 plain ones both took 208 ms):
+RTX 3060 (measured, one run each, default benchmark settings, 10 frames, update and render included, 7 draw calls and 1,564 instance draws after culling for 500 instances):
+
+| Shader | Instances | Median ms | Best ms |
+| --- | --- | --- | --- |
+| Joints and weights in two attributes (first GPU crowds) | 500 | 5.75 | 4.51 |
+| Joints and weights packed in one attribute (maps and morph targets) | 500 | 8.27 | 6.44 |
+
+The second run shared the card with other jobs, so read the two as a range of about 5 to 8 ms rather than a cost of the packing.
+
+That is under the 16.7 ms of 60 fps with room for a scene around it. The plain path (a skin pose and a batch per instance) cost about 0.26 ms of
+JavaScript per instance on a synthetic 3,000-vertex chain, so about 50 instances fit 60 fps; the crowd path does not grow with a draw call and a
+palette upload per instance.
+
+SwiftShader (the path a headless agent has), the median frame of 5 after warm-up. The machine was running other jobs, so two runs a few minutes
+apart are given as a range (in the last run, 500 crowd instances and 50 plain ones both took 208 ms):
 
 | Path | Instances | Draw calls per frame | Frame ms |
 | --- | --- | --- | --- |
@@ -137,16 +169,12 @@ so two runs a few minutes apart are given as a range (in the last run, 500 crowd
 | One asset per instance | 20 | 632 | 102 to 156 |
 | One asset per instance | 50 | 1,407 | 139 to 208 |
 
-On SwiftShader most of a crowd frame is fill and vertex work that a CPU rasteriser does slowly, so these numbers say that the cost no longer grows with
-a draw call and a palette upload per instance, not how fast a GPU is. The 7 calls are 3 materials in the colour pass, 3 in the shadow pass and the
-ground, for 20, 100 and 500 instances alike. In a 400-instance field seen from one corner, 340 instance draws were issued across the 7 calls, where
-every instance would give 1,200 per pass.
+On SwiftShader most of a crowd frame is fill and vertex work that a CPU rasteriser does slowly, so these numbers say that the cost no longer grows
+with a draw call and a palette upload per instance, not how fast a GPU is. The 7 calls are 3 materials in the colour pass, 3 in the shadow pass and
+the ground, for 20, 100 and 500 instances alike. In a 400-instance field seen from one corner, 340 instance draws were issued across the 7 calls,
+where every instance would give 1,200 per pass.
 
 Pictures (SwiftShader): one crowd instance against the same robot drawn through the renderer's own rigid and skinned paths at the same pose differs by a
 mean of 0.07 of 255, with 0.2 percent of pixels more than 8 levels apart. A crowd of 24 seeked straight to a time and the same crowd played up to it give
-identical pixels. The unit tests check the CPU skinning against per-instance joint matrices at frame times and between frames, and that every
-vertex stays inside `palette.bounds`.
-
-RTX 3060: not measured yet. Run `bash ~/.agents/tools/gpu-lock.sh npm run benchmark:crowd -- --counts 100,500` (or add the scene to
-`npm run benchmark:runtime`) and record the 500-instance frame here; the target is under 16.7 ms at 1280 by 720. The old table (0.26 ms per plain
-instance, 26.5 ms at 100) was measured on a synthetic 3,000-vertex chain and stays the reference for the plain path.
+identical pixels. The unit tests check the CPU skinning against per-instance joint matrices at frame times and between frames, that every vertex stays
+inside `palette.bounds`, and that the frame offsets of a crowd (with a far pose rate) reached by seeking equal those reached by playing.

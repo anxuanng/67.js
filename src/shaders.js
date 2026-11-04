@@ -88,8 +88,8 @@ ${skinningShader(features)}
 ${morphingShader(features)}
 ${windShader(features)}
 void main() {
-  // A crowd batch reads its joints and weights from the UV and colour attributes, which then carry no texture or tint.
-  vec2 uv = USES_CROWD ? vec2(-1.0) : uvSets.xy;
+  // A crowd batch reads its joints and weights from the colour attribute, which then carries no tint.
+  vec2 uv = uvSets.xy;
   mat4 deformation = USES_CROWD ? crowdTransform() : (USES_SKIN ? skinTransform() : mat4(1.0));
   vec4 world = instanceMatrix * deformation * vec4(USES_MORPH ? morphedPosition(position) : position, 1.0);
   world.xyz += USES_CROWD ? vec3(0.0) : assemblyOffset * assemblyAmount + assemblyDetailOffset * smoothstep(0.3, 1.0, assemblyAmount);
@@ -142,7 +142,7 @@ ${skinningShader(features)}
 ${morphingShader(features)}
 ${windShader(features)}
 void main() {
-  vec2 uv = USES_CROWD ? vec2(-1.0) : uvSets.xy;
+  vec2 uv = uvSets.xy;
   vec4 world = instanceMatrix * (USES_CROWD ? crowdTransform() : skinTransform()) * vec4(morphedPosition(position), 1.0);
   world.xyz += USES_CROWD ? vec3(0.0) : assemblyOffset * assemblyAmount + assemblyDetailOffset * smoothstep(0.3, 1.0, assemblyAmount);
   // Same displacement as the colour pass, so shadows follow the swaying leaves.
@@ -580,7 +580,7 @@ ${featureCode("mainSetup")}  if (ENVIRONMENT_ENABLED && !LIGHT_SHADING) {
     directSpecularGain = multipleScatterGain(brdfLookup, baseReflectance);
   }
   float visibility = shadowVisibility(normal);
-  vec3 radiance = illuminate(normal, viewDirection, normalize(lightDirection), keyColor * visibility${featureCode("linkSun")}, color, metallic, roughness);
+${featureCode("worldVisibility")}  vec3 radiance = illuminate(normal, viewDirection, normalize(lightDirection), keyColor * visibility${featureCode("linkSun")}, color, metallic, roughness);
   if (FILL_ON) {
   radiance += illuminate(normal, viewDirection, normalize(vec3(4.0, 2.0, -3.0)), mix(vec3(0.8, 2.0, 1.8), vec3(0.12, 0.17, 0.20) * daylight, worldMode) * fillIntensity * mix(1.0, vertexSkyVisibility, worldMode), color, metallic, roughness);
   radiance += illuminate(normal, viewDirection, normalize(vec3(1.0, 2.0, 5.0)), vec3(0.6, 0.7, 0.8) * mix(1.0, 0.25 * daylight, worldMode) * fillIntensity * mix(1.0, vertexSkyVisibility, worldMode), color, metallic, roughness);
@@ -646,7 +646,8 @@ ${featureCode("linkArea")}      vec3 lightNormal = areaLightNormals[index].xyz;
   if (USES_OCCLUSION_MAP) occlusion = mix(1.0, texture(occlusionMap, mapUV(hasOcclusionMap)).r, occlusionStrength);
   // Trees and terrain bake how much sky each vertex sees; everything else carries 1.
   occlusion *= splatCavity * vertexSkyVisibility;
-  if (USES_NORMAL_MAP) occlusion *= 0.5 + 0.5 * dot(normal, geometricNormal);
+  // Squared: Cycles also drops the sky lobe below the surface, so a tilt reads darker than the linear share.
+  if (USES_NORMAL_MAP) occlusion *= pow(0.5 + 0.5 * dot(normal, geometricNormal), 2.0);
   if (ENVIRONMENT_ENABLED) {
     float room = 1.0 - smoothstep(0.01, 0.06, dot(environmentDiffuse(vec3(0, 1, 0)), vec3(1)) / max(dot(keyColor, vec3(1)), 0.003));
     occlusion *= mix(1.0, mix(0.25, 1.0, visibility), room * (1.0 - metallic));

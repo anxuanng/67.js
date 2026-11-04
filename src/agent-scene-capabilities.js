@@ -16,6 +16,14 @@ export const AGENT_SCENE_DEFAULT_LIMITS = Object.freeze({
   maxOperations: 256, maxCheckpoints: 8, maxRecipeBytes: 1024 * 1024,
 });
 
+// The values of the water presets (src/world-material-shader.js holds the same numbers; a test keeps them in step), written out
+// here so the capabilities do not pull the shader addon into every agent scene.
+const WATER_PRESETS_SUMMARY = Object.freeze({
+  lake: Object.freeze({ absorption: Object.freeze([0.35, 0.07, 0.04]), turbidity: 0.02 }),
+  sea: Object.freeze({ absorption: Object.freeze([0.4, 0.06, 0.02]), turbidity: 0.1 }),
+  river: Object.freeze({ absorption: Object.freeze([0.8, 0.9, 1.6]), turbidity: 0.75 }),
+});
+
 // What each recipe material layer does, beside its range; the MCP schema keeps one short line per field.
 const MATERIAL_LAYER_NOTES = Object.freeze({
   clearcoat: 'Lacquer lobe over the base, surface tag.',
@@ -155,7 +163,7 @@ export const AGENT_SCENE_CAPABILITIES = Object.freeze({
   format: '67js.scene', schemaVersion: 1,
   geometryTypes: Object.freeze(['box', 'cylinder', 'sphere', 'torus', 'lathe', 'extrude', 'tube', 'curve', 'text', 'grid', 'terrain', 'mesh']),
   terrain: 'One mesh, x and z from -size/2 to size/2, hills about y = 0. size 40 m (1-2000), resolution 64 cells (2-256), seed 1, amplitude 1 m (0-200), holes up to 16 of {center:[x,z],radius} with no surface inside; radius a few cells or more.',
-  placedAssets: 'Node field asset:{id,materials?,clip?} turns a group node into a catalog GLB (id from asset_catalog; scene_create_asset is one asset alone). Its transform places it. materials:[{name,color,metallic,roughness,opacity,emission,emissiveColor}] override source materials by name. clip:{index,start=0,speed=1,loop=true} plays that clip from scene time start, on a decoded copy of its own; scene_apply set-motion tracks move the node as usual and scene time seeks the clip. Copies of one asset share geometry and materials and draw as one batch. scene_inspect assets lists id, bounds, clips and material names. At most 512 placements, 16 assets, 16 playing a clip. Render jobs do not draw placed assets yet; scene_look does.',
+  placedAssets: 'Node field asset:{id,materials?,clip?,drive?} turns a group node into a catalog GLB (id from asset_catalog; scene_create_asset is one asset alone). Its transform places it. materials:[{name,color,metallic,roughness,opacity,emission,emissiveColor}] override source materials by name. clip:{index,start=0,speed=1,loop=true} plays that clip from scene time start, on a decoded copy of its own; scene_apply set-motion tracks move the node as usual and scene time seeks the clip. Copies of one asset share geometry and materials and draw as one batch. drive:{path | legs, cruiseSpeed | speed, wheels, lights} drives a car along a path in the placement frame on a decoded copy of its own (fields as motion.drive in an asset recipe, docs/vehicle.md; no tail-light glow). scene_inspect assets adds its wheels, rejectedNames and light signals. At most 512 placements, 16 assets, 16 playing a clip or driving. Render jobs do not draw placed assets yet; scene_look does.',
   navigation: 'scene_inspect path:{ground,from:[x,z],to:[x,z]} returns a route over the ground node around its holes, steep slopes and the nodes in avoid:[ids] (box footprints), as keyframes [{time,value:[x,y,z]}] for a node translation track with interpolation LINEAR. radius 0.3 m is how far the walker position stays from holes and avoided nodes; maxSlope 40 degrees; cellSize defaults to radius; give seconds for the whole walk or speed (1.4 m/s); lift raises y, such as half the walker height. Ground and avoided nodes are read at their authored pose. Errors name an unwalkable start or goal, or one that cannot be reached.',
   meshEdits: Object.freeze({ operations: Object.freeze(Object.keys(MESH_EDIT_OPERATIONS)), maxEdits: MAX_MESH_EDITS }),
   meshStack: Object.freeze({ operations: STACK_OPERATIONS, maxNodes: MAX_STACK_NODES }),
@@ -171,11 +179,14 @@ export const AGENT_SCENE_CAPABILITIES = Object.freeze({
     'add-geometry', 'remove-geometry', 'add-material', 'remove-material',
     'set-environment', 'set-effects', 'set-shadow', 'set-motion', 'set-armatures', 'set-physics', 'set-cloth', 'set-timeline', 'set-particles', 'set-bake', 'edit-mesh', 'set-mesh-stack',
   ]),
-  materialTags: Object.freeze(['surface', 'unlit', 'liquid', 'foam']),
+  materialTags: Object.freeze(['surface', 'unlit', 'liquid', 'foam', 'foliage', 'grass', 'water']),
+  // A flat water sheet; the largest sets the level. A bed d metres down keeps exp(-absorption * d) per channel (RGB per metre).
+  water: Object.freeze({ presets: WATER_PRESETS_SUMMARY, default: 'lake', note: 'absorption 0..20, turbidity 0..1 softens shadows below; opacity under 1 shows the bed.' }),
   materialLayers: Object.freeze(Object.fromEntries(MATERIAL_LAYER_FIELDS.map(field => [field, Object.freeze({
     range: MATERIAL_LAYER_SCALAR_RANGES[field] ?? MATERIAL_LAYER_COLOR_RANGES[field] ?? 'above 0',
     note: MATERIAL_LAYER_NOTES[field],
   })]))),
+  materialSubsurface: 'material.subsurface { weight, radius, scale, color } as Blender Principled BSDF Subsurface; surface tag, rasterizer only. Ranges in scene_create.',
   alphaModes: RECIPE_ALPHA_MODES,
   materialPatterns: MATERIAL_PATTERN_TYPES, maxMaterialPatterns: MAX_MATERIAL_PATTERNS,
   materialMappings: MATERIAL_MAPPINGS,

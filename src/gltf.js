@@ -30,6 +30,21 @@ async function loadLayerShadersFor(document) {
   if (usesLiquidShader) await import('./liquid-shader.js');
 }
 
+// Spec-gloss materials and textures on primitives without UVs are rewritten by a module that only a file needing it loads.
+function needsFallbacks(document) {
+  const materials = document.materials ?? [];
+  if (materials.some(material => material?.extensions?.KHR_materials_pbrSpecularGlossiness)) return true;
+  return (document.meshes ?? []).some(mesh => (mesh.primitives ?? []).some(primitive => {
+    return primitive.attributes?.TEXCOORD_0 === undefined && JSON.stringify(materials[primitive.material] ?? {}).includes('"index"');
+  }));
+}
+
+async function applyFallbacksTo(document) {
+  if (!needsFallbacks(document)) return [];
+  const { applyGltfFallbacks } = await import('./gltf-fallbacks.js');
+  return applyGltfFallbacks(document);
+}
+
 const DEFAULT_MAX_BYTES = 32 * 1024 * 1024;
 const DEFAULT_MAX_VERTICES = 2_000_000;
 const GLTF_ALPHA_MODES = { OPAQUE: 'opaque', MASK: 'mask', BLEND: 'blend' };
@@ -968,10 +983,11 @@ function convertMaterial(source, limits, maps, definition = {}) {
 export async function parseGltf(data, options = {}) {
   const limits = limitsFor(options);
   const document = documentFrom(data, limits.maxBytes);
+  const fallbackWarnings = await applyFallbacksTo(document);
   const decoders = options.decoders ?? {};
   const { ignoredExtensions } = validateDocument(document, limits, allowedExtensionsFor(decoders));
   await loadLayerShadersFor(document);
-  const warnings = [...ignoredExtensions.map(extension => `${extension} is accepted but not rendered.`), ...skippedPrimitiveWarnings(document)];
+  const warnings = [...fallbackWarnings, ...ignoredExtensions.map(extension => `${extension} is accepted but not rendered.`), ...skippedPrimitiveWarnings(document)];
   const dataBytes = typeof data === 'string' ? new TextEncoder().encode(data).byteLength : data.byteLength;
   const { resourceBytes, textureScaling } = await prepareResources(document, data, dataBytes, options, limits);
   if (textureScaling.scaledTextures.length) {

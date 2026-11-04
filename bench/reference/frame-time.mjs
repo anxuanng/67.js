@@ -1,5 +1,5 @@
 // Frame time of a reference scene: plain, with the light bake, with reflection probes, and with both.
-// node bench/reference/frame-time.mjs [scene-id] [gpu|cpu] [--grand]
+// node bench/reference/frame-time.mjs [scene-id] [gpu|cpu] [--grand] [--floor-sky=<strength> [--floor-sky-rooms]]
 import { constants, setPriority } from 'node:os';
 import { chromium } from 'playwright';
 import { createServer } from 'vite';
@@ -19,7 +19,9 @@ const serverUrl = `http://127.0.0.1:${server.httpServer.address().port}`;
 const browser = await chromium.launch({ executablePath: CHROME, headless: true, args: BACKEND_ARGUMENTS[backend] });
 try {
   const page = await browser.newPage({ viewport: { width: 960, height: 540 } });
-  await page.goto(`${serverUrl}/bench/reference/harness.html${process.argv.includes('--grand') ? '?set=grand' : ''}`, { timeout: PAGE_LOAD_TIMEOUT });
+  const floorSkyArgument = process.argv.find(argument => argument.startsWith('--floor-sky='));
+  const harnessQuery = [process.argv.includes('--grand') ? 'set=grand' : null, floorSkyArgument ? `floorSky=${floorSkyArgument.split('=')[1]}` : null, process.argv.includes('--floor-sky-rooms') ? 'floorSkyRooms=1' : null].filter(Boolean).join('&');
+  await page.goto(`${serverUrl}/bench/reference/harness.html${harnessQuery ? `?${harnessQuery}` : ''}`, { timeout: PAGE_LOAD_TIMEOUT });
   await page.waitForFunction(() => window.measureReferenceFrameTime, null, { timeout: PAGE_LOAD_TIMEOUT });
   const results = [];
   // Alternate the order so a drifting machine load does not favor one side. --cascades measures one map and three

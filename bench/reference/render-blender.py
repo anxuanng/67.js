@@ -190,6 +190,17 @@ def add_thin_film(principled, description):
     principled.inputs["Thin Film IOR"].default_value = description.get("iridescenceIor", 1.3)
 
 
+def add_subsurface(principled, description):
+    """Maps the 67js subsurface block onto the Principled BSDF subsurface inputs (random walk). Blender 4 and later takes the base color as the scatter color."""
+    block = description.get("subsurface")
+    if not block or block.get("weight", 0) <= 0:
+        return
+    principled.subsurface_method = "RANDOM_WALK"
+    principled.inputs["Subsurface Weight"].default_value = block["weight"]
+    principled.inputs["Subsurface Radius"].default_value = block.get("radius", [1, 0.2, 0.1])
+    principled.inputs["Subsurface Scale"].default_value = block.get("scale", 0.05)
+
+
 def add_material_layers(material, principled, description):
     """Maps the 67js material layers onto the Principled BSDF inputs of the same meaning."""
     principled.inputs["Coat Weight"].default_value = description.get("clearcoat", 0)
@@ -206,6 +217,7 @@ def add_material_layers(material, principled, description):
     set_linear_color(principled.inputs["Specular Tint"], description.get("specularColor", [1, 1, 1]))
     add_anisotropy(principled, description)
     add_thin_film(principled, description)
+    add_subsurface(principled, description)
     attenuation_distance = description.get("attenuationDistance")
     if attenuation_distance:
         absorption = material.node_tree.nodes.new("ShaderNodeVolumeAbsorption")
@@ -221,8 +233,8 @@ GRAPH_MATH_OPERATIONS = {
     "add": "ADD", "sub": "SUBTRACT", "mul": "MULTIPLY", "div": "DIVIDE", "min": "MINIMUM", "max": "MAXIMUM",
     "pow": "POWER", "abs": "ABSOLUTE", "floor": "FLOOR", "fract": "FRACT", "sqrt": "SQRT",
 }
-# 67js noise has no seed in Blender, and Blender's noise function differs from the one in src/material-texture-kit.js,
-# so a graph with noise only matches in how it looks, not pixel for pixel.
+# The graph noise node of 67js is Blender's Noise Texture (2D, fBm, Roughness 0.5, Lacunarity 2, Normalize), value for
+# value (bench/reference/README.md, 2026-11-04) when it says "tile": false. A tiling noise (the default) wraps its lattice.
 GRAPH_BUMP_DISTANCE = 0.15
 
 
@@ -307,14 +319,20 @@ class GraphTranslator:
         return node.outputs["Result"]
 
     def noise(self, settings):
+        if settings.get("tile", True):
+            raise NotImplementedError("Blender's noise lattice does not wrap: a reference noise needs \"tile\": false.")
         node = self.nodes.new("ShaderNodeTexNoise")
         node.noise_dimensions = "2D"
         node.inputs["Scale"].default_value = settings.get("scale", 4)
         node.inputs["Detail"].default_value = settings.get("octaves", 4) - 1
         node.inputs["Roughness"].default_value = 0.5
+        seed = settings.get("seed", 0)
+        scale = settings.get("scale", 4)
+        # 67js moves the lattice by whole cells per seed (NOISE seed shifts in src/material-graph.js), in scaled units.
+        shifts = ((seed * 7919) % 1024 / scale, (seed * 104729) % 1024 / scale)
         combine = self.nodes.new("ShaderNodeCombineXYZ")
         for index, part in enumerate(self.position(settings)):
-            self.connect(combine.inputs[index], part)
+            self.connect(combine.inputs[index], self.math("ADD", part, shifts[index]) if index < 2 and shifts[index] else part)
         self.links.new(combine.outputs[0], node.inputs["Vector"])
         return node.outputs["Fac"]
 

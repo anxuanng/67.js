@@ -23,8 +23,8 @@ const MAX_MESH_REPORTS = 16;
 // Terrain meshes carry one more float for each vertex (sky visibility) than the 56 bytes the budget estimates.
 const TERRAIN_SKY_VISIBILITY_BYTES = 4;
 const CAMERA_DEFAULTS = Object.freeze({ eye: [4, 3, 5], target: [0, 0, 0], up: [0, 1, 0], fov: 45, near: 0.1, far: 1000 });
-const NODE_FIELDS = ['translation', 'rotation', 'scale', 'parent', 'label', 'geometry', 'material', 'skin', 'relations', 'asset', 'decal', 'depthLayer'];
-const MATERIAL_FIELDS = ['color', 'metallic', 'roughness', 'emission', 'emissiveColor', 'opacity', 'alphaMode', 'doubleSided', 'pattern', ...MATERIAL_LAYER_FIELDS];
+const NODE_FIELDS = ['translation', 'rotation', 'scale', 'parent', 'label', 'geometry', 'material', 'skin', 'relations', 'asset', 'vegetation', 'decal', 'depthLayer'];
+const MATERIAL_FIELDS = ['color', 'metallic', 'roughness', 'emission', 'emissiveColor', 'opacity', 'alphaMode', 'doubleSided', 'pattern', 'map', 'subsurface', 'waterPreset', 'absorption', 'turbidity', ...MATERIAL_LAYER_FIELDS];
 const PATTERN_TEXTURE_FIELDS = ['map', 'normalMap', 'metallicRoughnessMap', 'emissiveMap', 'boxMapScale', 'boxMapAxis'];
 const CAMERA_FIELDS = Object.keys(CAMERA_DEFAULTS);
 const LOOK_OPERATION_FIELDS = Object.freeze({
@@ -193,6 +193,7 @@ function copyMaterialLayers(value, result) {
     result[field] = Array.isArray(value[field]) ? vector(value[field], 3, field) : value[field];
   }
   validateMaterialLayers(result);
+  if (value.subsurface !== undefined) result.subsurface = agentSceneModule('subsurfaceShader').copySubsurface(value.subsurface, result.tag);
   if (result.anisotropy > 0 || result.iridescence > 0) agentSceneModule('layerShaders');
   if (result.toon > 0) agentSceneModule('lineArt');
 }
@@ -209,6 +210,7 @@ function materialFrom(value) {
   if (!AGENT_SCENE_CAPABILITIES.materialTags.includes(result.tag)) {
     throw new RangeError(`Material tag must be one of ${AGENT_SCENE_CAPABILITIES.materialTags.join(', ')}.`);
   }
+  if (value.map !== undefined) agentSceneModule('assets').applyMapSequence(value, result);
   if (value.pattern !== undefined) {
     if (result.tag !== 'surface') throw new RangeError('Material pattern needs the surface tag.');
     result.pattern = agentSceneModule('patterns').normalizeMaterialPattern(value.pattern);
@@ -245,6 +247,9 @@ function materialFrom(value) {
     }
   }
   copyMaterialLayers(value, result);
+  if (agentSceneModuleLoaded('worldMaterials')) {
+    agentSceneModule('worldMaterials').copyWaterFields(value, result, vector);
+  }
   const emissiveColor = result.emissiveColor ?? result.color;
   for (const component of emissiveColor) {
     const radiance = Math.fround(component) * Math.fround(result.emission);
@@ -287,10 +292,11 @@ function nodeFrom(value) {
   }
   if (value.asset !== undefined) {
     if (value.geometry !== undefined || value.skin !== undefined) {
-      throw new TypeError(`Node ${value.id}: a node that places an asset is a group; drop geometry, material and skin.`);
+      throw new TypeError(`Node ${value.id}: an asset node is a group; drop geometry, material and skin.`);
     }
     result.asset = agentSceneModule('assets').normalizeAssetPlacement(value.asset);
   }
+  if (value.vegetation !== undefined) result.vegetation = agentSceneModule('vegetation').normalizeVegetation(value.vegetation, value);
   if (value.decal !== undefined && typeof value.decal !== 'boolean') {
     throw new TypeError('decal must be boolean.');
   }
@@ -512,7 +518,7 @@ function compile(recipe, geometries, localBounds, limits) {
   const materials = new Map(recipe.materials.map(material => [material.id, material]));
   const graph = createSceneGraph(recipe.nodes.map(node => {
     if (node.geometry !== undefined && (!geometries.has(node.geometry) || !materials.has(node.material))) {
-      throw new RangeError(`Node ${node.id} uses ${geometries.has(node.geometry) ? `material ${node.material}` : `geometry ${node.geometry}`}, which does not exist. Add it to the recipe, or point the node at one of: ${(geometries.has(node.geometry) ? [...materials.keys()] : [...geometries.keys()]).join(', ')}.`);
+      throw new RangeError(`Node ${node.id} uses ${geometries.has(node.geometry) ? `material ${node.material}` : `geometry ${node.geometry}`}, which does not exist. Use one of: ${(geometries.has(node.geometry) ? [...materials.keys()] : [...geometries.keys()]).join(', ')}.`);
     }
     return { name: node.id, parent: node.parent,
       matrix: node.assetPart ? mat4.clone(node.assetPart.matrix) : mat4.fromRotationTranslationScale(mat4.create(), node.rotation, node.translation, node.scale),
@@ -627,7 +633,7 @@ function checkLightLinkNames(recipe) {
   }
   const unknown = agentSceneModule('lightLinking').unknownLightLinkNames(recipe.environment, recipe.nodes);
   if (unknown.length > 0) {
-    throw new RangeError(`Light links name nodes that do not exist (${unknown.slice(0, 4).join('; ')}). List node IDs with scene_inspect, then fix the affects list or add the node.`);
+    throw new RangeError(`Light links name nodes that do not exist (${unknown.slice(0, 4).join('; ')}). scene_inspect lists node IDs.`);
   }
 }
 
@@ -679,7 +685,7 @@ function normalizeRecipe(input, limits) {
   recipe.materials = resources(withDefaultMaterial(recipe), limits.maxMaterials, 'materials', materialFrom);
   const distinctPatterns = new Set(recipe.materials.filter(material => material.pattern).map(material => JSON.stringify(material.pattern)));
   if (distinctPatterns.size > MAX_MATERIAL_PATTERNS) {
-    throw new RangeError(`A scene holds at most ${MAX_MATERIAL_PATTERNS} different material patterns; it has ${distinctPatterns.size}. Reuse a pattern and tint it with color.`);
+    throw new RangeError(`A scene holds at most ${MAX_MATERIAL_PATTERNS} different material patterns; it has ${distinctPatterns.size}. Reuse one; tint with color.`);
   }
   recipe.nodes = withoutArmatureNodes(recipe.nodes);
   if (hasInstancedNodes(recipe.nodes)) recipe.nodes = agentSceneModule('mesh').expandInstancedNodes(recipe.nodes, {
@@ -751,15 +757,16 @@ function geometryStats(records) {
 function batchSignature(material) {
   // Textures are fixed per renderer, so a changed pattern rebuilds it like a changed tag does.
   // Transmission moves a material to the pass that sees the opaque scene, which is fixed per renderer.
-  return `${material.tag}|${material.alphaMode}|${material.opacity}|${material.transmission > 0}|${material.doubleSided}|${JSON.stringify(material.pattern ?? null)}`;
+  return `${material.tag}|${material.alphaMode}|${material.opacity}|${material.transmission > 0}|${material.doubleSided}|${JSON.stringify(material.pattern ?? material.map ?? null)}`;
 }
 
-function materialHandle(snapshot) {
-  const holder = { snapshot };
+function materialHandle(snapshot, sequence) {
+  const holder = { snapshot, sequence };
   const output = {};
   for (const field of ['tag', ...MATERIAL_FIELDS]) {
     Object.defineProperty(output, field, {
       enumerable: true,
+      configurable: true,
       get() {
         return holder.snapshot[field];
       },
@@ -770,6 +777,7 @@ function materialHandle(snapshot) {
       enumerable: true,
       // Baked on first read, so validating or inspecting a recipe never pays for it.
       get() {
+        if (field === 'map' && holder.sequence) return holder.sequence.descriptor;
         return holder.snapshot.pattern ? agentSceneModule('patterns').materialPatternTextures(holder.snapshot.pattern)[field] : undefined;
       },
     });
@@ -778,7 +786,7 @@ function materialHandle(snapshot) {
 }
 
 function immutableMaterial(snapshot) {
-  for (const field of ['color', 'emissiveColor']) {
+  for (const field of ['color', 'emissiveColor', 'absorption']) {
     if (snapshot[field]) {
       Object.freeze(snapshot[field]);
     }
@@ -906,6 +914,7 @@ function publishPose(stagedState, pose) {
       if (matrix) Float32Array.prototype.set.call(part.matrix, matrix);
     }
   }
+  for (const sequence of stagedState.sequences) sequence.seek(pose.time);
   stagedState.renderCamera = pose.camera;
   stagedState.motionTime = pose.time;
   const nextParts = partsWithCloth(stagedState.restParts, pose.clothGeometries);
@@ -931,7 +940,7 @@ function removeNode(candidate, operation) {
     throw new TypeError('recursive must be boolean.');
   }
   if (!candidate.nodes.some(node => node.id === operation.id)) {
-    throw new RangeError(`${operation.type} target was not found: ${operation.id}. List current IDs with scene_inspect, or add it first with add-node, add-geometry or add-material.`);
+    throw new RangeError(`${operation.type} target was not found: ${operation.id}. scene_inspect lists the IDs.`);
   }
   const children = new Map();
   for (const node of candidate.nodes) {
@@ -983,25 +992,7 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
   }
 
   // The route is computed over the authored pose of the ground and of the nodes to avoid, like the bounds in scene_inspect.
-  function pathQuery(query) {
-    if (query === null || typeof query !== 'object' || Array.isArray(query)) throw new TypeError('path must be an object.');
-    const navigation = agentSceneModule('navigation');
-    knownKeys(query, navigation.NAVIGATION_FIELDS, 'path');
-    if (query.avoid !== undefined && (!Array.isArray(query.avoid) || query.avoid.length > 64)) throw new RangeError('path avoid must list at most 64 node IDs.');
-    const { geometry, worldMatrix } = drawnNodeGeometry(query.ground, 'ground');
-    const positions = new Float32Array(geometry.positions.length);
-    for (let offset = 0; offset < positions.length; offset += 3) {
-      for (let axis = 0; axis < 3; axis++) {
-        positions[offset + axis] = worldMatrix[axis] * geometry.positions[offset] + worldMatrix[4 + axis] * geometry.positions[offset + 1]
-          + worldMatrix[8 + axis] * geometry.positions[offset + 2] + worldMatrix[12 + axis];
-      }
-    }
-    const avoidBounds = (query.avoid ?? []).map(id => {
-      const avoided = drawnNodeGeometry(id, 'avoid');
-      return boundsFor(avoided.geometry, avoided.worldMatrix);
-    });
-    return navigation.queryAgentPath(query, { positions, indices: geometry.indices }, avoidBounds);
-  }
+  const pathQuery = query => agentSceneModule('navigation').resolvePathQuery(query, drawnNodeGeometry, boundsFor);
 
   function ownedGeometryRecords() {
     const records = new Set(state?.geometryRecords.values() ?? []);
@@ -1015,9 +1006,13 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
 
   function stage(inputRecipe, preferred = null, removedNodes = new Set(), removedMaterials = new Set()) {
     const recipe = normalizeRecipe(inputRecipe, limits);
-    const assetRuntime = recipe.nodes.some(node => node.asset)
-      ? agentSceneModule('assets').expandAssetPlacements(recipe, options.assets, limits, assetOutputCache)
+    const placedRuntime = recipe.nodes.some(node => node.asset)
+      ? agentSceneModule('assets').expandAssetPlacements(recipe, options.assets, limits, assetOutputCache, recipe.nodes.some(node => node.asset?.drive) ? agentSceneModule('drive').createAssetDrive : null)
       : NO_ASSETS;
+    // Grown vegetation travels the placed-asset channel; its module returns the placed runtime with its own parts added.
+    const assetRuntime = recipe.nodes.some(node => node.vegetation)
+      ? agentSceneModule('vegetation').expandVegetation(recipe, limits, assetOutputCache, placedRuntime)
+      : placedRuntime;
     if (state) {
       retainedMatrices(state.parts);
     }
@@ -1039,7 +1034,7 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
     const pendingVertices = pendingPlans.reduce((total, plan) => total + plan.estimatedVertices, 0);
     if (residentStats.vertices + pendingVertices > limits.maxVertices ||
         residentStats.geometryBytes + pendingVertices * 56 > limits.maxGeometryBytes) {
-      throw new RangeError('Geometry preflight exceeds peak maxVertices or maxGeometryBytes across active, checkpoint, and staged resources. Reduce detail or release checkpoints.');
+      throw new RangeError('Geometry preflight exceeds peak maxVertices or maxGeometryBytes across active, checkpoint and staged resources. Reduce detail or release checkpoints');
     }
 
     // Validate references, hierarchy and matrix arithmetic before generating any new resource.
@@ -1097,7 +1092,7 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
       // The renderer keeps tag, blending, opacity and sidedness per batch, so a handle is reused only when all match.
       const existing = [preferredHandle, activeHandle].find(handle => handle && batchSignature(handle.holder.snapshot) === batchSignature(material));
       const assetOutput = assetRuntime.materialOutputs.get(material.id);
-      const handle = assetOutput ? assetMaterialHandle(snapshot, assetOutput, preferredHandle, activeHandle) : existing ?? materialHandle(snapshot);
+      const handle = assetOutput ? assetMaterialHandle(snapshot, assetOutput, preferredHandle, activeHandle) : existing ?? materialHandle(snapshot, material.map && agentSceneModule('assets').createTextureSequence(material.id, material.map, options.sequenceFrames));
       materialHandles.set(material.id, handle);
     }
     const activeParts = new Map(state?.sourceRestParts.map(part => [part.name, part]) ?? []);
@@ -1137,6 +1132,7 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
       stats: geometryStats(geometryRecords.values()),
     };
     stagedState.assetRuntime = assetRuntime;
+    stagedState.sequences = [...materialHandles.values()].map(handle => handle.holder.sequence).filter(Boolean);
     stagedState.localBounds = localBounds;
     stagedState.skinBindings = skinBindings;
     stagedState.skinStages = createSkinStages(skinBindings);
@@ -1337,11 +1333,14 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
     get motionTime() {
       return state.motionTime;
     },
+    sequenceTextures() {
+      return state.sequences;
+    },
     sampleMotion(time) {
       if (time !== null && (!Number.isFinite(time) || time < 0 || time > 3600)) {
         throw new RangeError('Motion time must be null or within zero and 3600 seconds.');
       }
-      if (time !== null && !state.motionSampler && !state.physicsSampler && !state.clothSampler && !state.particleSampler && !state.assetRuntime.animators.length) {
+      if (time !== null && !state.motionSampler && !state.physicsSampler && !state.clothSampler && !state.particleSampler && !state.assetRuntime.animators.length && !state.sequences.length) {
         throw new RangeError('This procedural recipe has no motion, physics, cloth or particles, and no placed asset clip.');
       }
       if (publishPose(state, stagePose(state, time))) {
@@ -1529,7 +1528,7 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
           identifier(operation.id);
           const index = candidate[removal].findIndex(record => record.id === operation.id);
           if (index < 0) {
-            throw new RangeError(`${operation.type} target was not found: ${operation.id}. List current IDs with scene_inspect, or add it first with add-node, add-geometry or add-material.`);
+            throw new RangeError(`${operation.type} target was not found: ${operation.id}. scene_inspect lists the IDs; add it first with an add operation.`);
           }
           candidate[removal].splice(index, 1);
           if (operation.type === 'remove-material') {
@@ -1543,17 +1542,17 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
           fields = NODE_FIELDS;
           target = candidate.nodes.find(node => node.id === operation.id);
         } else if (operation.type === 'set-material') {
-          fields = MATERIAL_FIELDS;
+          fields = [...MATERIAL_FIELDS, 'map'];
           target = candidate.materials.find(material => material.id === operation.id);
         } else if (operation.type === 'set-camera') {
           fields = CAMERA_FIELDS;
           target = candidate.camera;
         } else {
-          throw new TypeError(`Unsupported operation type: ${operation.type}. Use one of set-node, set-material, set-camera, set-motion, set-physics, set-cloth, set-timeline, set-particles, set-bake, set-environment, set-effects, set-shadow, add-node, add-geometry, add-material, remove-node, remove-geometry, remove-material, edit-mesh, set-mesh-stack.`);
+          throw new TypeError(`Unsupported operation type: ${operation.type}. Use one of ${AGENT_SCENE_CAPABILITIES.operations.join(', ')}.`);
         }
         knownKeys(operation, ['type', ...(operation.type === 'set-camera' ? [] : ['id']), ...fields], 'operation');
         if (!target) {
-          throw new RangeError(`${operation.type} target was not found: ${operation.id}. List current IDs with scene_inspect, or add it first with add-node, add-geometry or add-material.`);
+          throw new RangeError(`${operation.type} target was not found: ${operation.id}. scene_inspect lists the IDs; add it first with an add operation.`);
         }
         for (const field of fields) {
           if (Object.hasOwn(operation, field)) {
@@ -1602,7 +1601,9 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
         physics: state.physicsSampler ? state.physicsSampler.report() : null,
         ...(state.clothSampler ? { cloth: state.clothSampler.report() } : {}),
         ...(state.particleSampler ? { particles: state.particleSampler.report() } : {}),
+        ...(state.assetRuntime.vegetation ? { vegetation: state.assetRuntime.vegetation } : {}),
         ...(state.assetRuntime.placements.length ? { assets: agentSceneModule('assets').describeAssetPlacements(state.assetRuntime, state.graph, geometry => state.localBounds.get(geometry)) } : {}),
+        ...(state.sequences.length ? { textureSequences: state.sequences.map(sequence => sequence.describe()) } : {}),
         ...(state.bakeReport ? { bake: state.bakeReport } : {}),
         ...(state.reflectionReport ? { reflections: state.reflectionReport } : {}),
         ...(state.recipe.armatures ? { rig: rigReport(state.recipe, state.skinBindings) } : {}),

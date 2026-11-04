@@ -73,8 +73,8 @@ test('a material toon value is a layer field with its own range and shows in the
   assert.throws(() => createAgentScene({ ...recipe, materials: [{ id: 'gray', toon: 9 }] }), /toon must be between 0 and 8/);
   const state = materialLayerState({ tag: 'surface', toon: 4 });
   assert.equal(state.length, MATERIAL_LAYER_STATE_LENGTH);
-  assert.equal(state.at(-1), 4);
-  assert.equal(materialLayerState({ tag: 'surface' }).at(-1), 0);
+  assert.equal(state[22], 4);
+  assert.equal(materialLayerState({ tag: 'surface' })[22], 0);
 });
 
 test('the toon feature splices its light steps into illuminate, and no other shader mentions it', () => {

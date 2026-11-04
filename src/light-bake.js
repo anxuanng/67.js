@@ -284,7 +284,7 @@ export function sceneScale(positions) {
 }
 
 /** Integer hash to [0, 1): the only source of randomness, so a bake repeats exactly. */
-function hashUnit(first, second, third) {
+export function hashUnit(first, second, third) {
   let value = Math.imul(first ^ 0x9e3779b9, 0x85ebca6b) ^ Math.imul(second + 0x7f4a7c15, 0xc2b2ae35) ^ Math.imul(third + 0x165667b1, 0x27d4eb2f);
   value = Math.imul(value ^ (value >>> 15), 0x2c1b3c6d);
   value = Math.imul(value ^ (value >>> 12), 0x297a2d39);
@@ -292,7 +292,7 @@ function hashUnit(first, second, third) {
   return (value >>> 0) / 4294967296;
 }
 
-function radicalInverse(index) {
+export function radicalInverse(index) {
   let bits = index;
   let result = 0;
   let scale = 0.5;
@@ -305,7 +305,7 @@ function radicalInverse(index) {
 }
 
 /** A cosine-weighted direction about `normal`, written into `out`. */
-function cosineDirection(normal, firstUnit, secondUnit, out) {
+export function cosineDirection(normal, firstUnit, secondUnit, out) {
   const radius = Math.sqrt(firstUnit);
   const angle = 2 * Math.PI * secondUnit;
   const localX = radius * Math.cos(angle);

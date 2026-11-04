@@ -129,6 +129,7 @@ It also supports `KHR_mesh_quantization` and `KHR_materials_emissive_strength`.
 Alpha masking, alpha blending and double-sided materials import onto `alphaMode`, `alphaCutoff`, `opacity` and `doubleSided` (see the material maps guide). Vertex alpha is not drawn: an RGBA `COLOR_0` loads with its RGB, and `warnings` names the meshes whose alpha was below one and was dropped.
 It supports base-color, normal, metallic-roughness, occlusion and emissive texture channels.
 An optional extension that 67js does not read is ignored and named in `warnings`, as the glTF specification allows. An extension listed in `extensionsRequired` that 67js does not read still fails the load with `Unsupported glTF extension`.
+`KHR_materials_pbrSpecularGlossiness` (also when listed in `extensionsRequired`) is converted to metallic-roughness: the diffuse color and texture become the base color, metallic is 0, roughness is 1 minus `glossinessFactor`. The specular color and `specularGlossinessTexture` are not read, and `warnings` says so. A texture on a primitive without `TEXCOORD_0` is dropped from that primitive with a warning instead of failing the load.
 POINTS, LINES, LINE_LOOP and LINE_STRIP primitives are skipped with a warning that names the mesh and their count. Drawing them is not supported. TRIANGLE_STRIP and TRIANGLE_FAN primitives are still refused.
 
 ## Extensions
@@ -189,6 +190,20 @@ A context with none of these, such as SwiftShader, gets RGBA8 (4 bytes a texel).
 Color maps upload as sRGB and data maps as linear. A file with a partial mip chain keeps only its first level. A compressed texture cannot be exported to GLB or read by the path tracer, so transcode to RGBA8 for those.
 `asset.textureFormats` lists `{ format, width, height, colorSpace, bytes }` for each texture, with `format` set to `bc7`, `bc1-rgb`, `bc1-rgba`, `bc3`, `astc-4x4`, `etc2-rgb`, `etc2-rgba` or `rgba8`.
 KTX2 dimensions count toward `maxTexturePixels` before decoding. KTX2 images are never scaled. When the loader's `workerConfig` allows a compressed format, a KTX2 image counts a quarter of its pixels, because it takes at most one byte a texel on the GPU. A KTX2-heavy file over the budget still fails.
+
+three's KTX2Loader picks the format from the context. For this file it chose ASTC 4x4 where ASTC is available and BC7 where it is not, and the renderer falls back to RGBA8 when the context offers none of the formats above. On the RTX 3060 (Direct3D 11 through ANGLE) the Khronos `AnisotropyBarnLamp` KTX2 variant loads as `bc7`. On Chrome's SwiftShader it loads as `astc-4x4`, because SwiftShader advertises ASTC, ETC2, S3TC and BPTC and decodes them on the CPU. Only a context with none of these extensions gets `rgba8`; the table above is the list.
+
+#### Measured 2026-11-04 (issue #304, `bench/ktx2/measure.mjs`)
+
+`AnisotropyBarnLamp` from [glTF-Sample-Assets](https://github.com/KhronosGroup/glTF-Sample-Assets) (CC BY 4.0, Analytical Graphics, Inc. and Wayfair, LLC), four 2048 x 2048 maps (base color, anisotropy, normal, occlusion-roughness-metal), PNG against `glTF-KTX-BasisU`, median of three loads:
+
+| | PNG, `rgba8` | KTX2, `bc7` |
+| --- | --- | --- |
+| Texture bytes the engine accounts for (computed from block size and mip count, not read from the driver) | 89,478,480 (85.3 MiB, with mips) | 16,777,216 (16.0 MiB, one level) |
+| Load time on the RTX 3060 | 0.12 s | 0.27 s |
+| Load time on SwiftShader | 0.15 s | 0.21 s |
+
+The Khronos KTX2 files hold no mip chain, so the 5.3x saving mixes the format (4 bytes to 1 a texel) with the missing mips; with a full chain BC7 would take 21.3 MiB, 4.2x less. WebGL does not report driver memory, so these are not driver readings. KTX2 loads slower because of the Basis transcode. Drawn through the reference suite's Khronos framing and scored against the stored Cycles array, the PNG variant gets FLIP 0.0386 over the whole frame and 0.3341 over the pixels the lamp covers; the KTX2 variant gets 0.0385 and 0.3330, a difference of 0.0001 and 0.0011.
 
 ### Instancing limits
 

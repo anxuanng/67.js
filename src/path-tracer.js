@@ -5,8 +5,9 @@ import { acesChannel, displayColor } from './view-transform.js';
 import { VIEW_TRANSFORM_NAMES } from './view-transform-names.js';
 import {
   buildFrame, createSurface, environmentPdf, environmentRadiance, evaluateSurface, luminance, mirrorWeight, prepareSurface,
-  roughnessToAlpha, sampleEnvironment, sampleGlass, sampleSurface,
+  roughnessToAlpha, sampleEnvironment, sampleGlass, sampleSurface, setWhiteDiffuse, splitSubsurface,
 } from './path-tracer-shading.js';
+import { createRandomWalk, WALK_OUTCOME } from './path-tracer-subsurface.js';
 import { henyeyGreensteinPhase, sampleHenyeyGreensteinCosine, volumeInterval } from './path-tracer-volume.js';
 
 // Offline still renderer: unidirectional path tracing on the CPU with next-event estimation for every light, the
@@ -693,6 +694,37 @@ function createPathTracer(scene, options) {
     return henyeyGreensteinPhase(volume.anisotropy, cosine);
   }
 
+  const walkSubsurface = createRandomWalk(scene, random, intersect);
+  const walkWeight = new Float64Array(3);
+
+  /**
+   * Sends the diffuse light of the hit through its subsurface random walk. On success the path stands where the walk left (or,
+   * for a card with nothing behind it, on the near or far face), `normal` faces out of that point, `surface` is a white diffuse
+   * lobe there with its lights added, and the throughput carries the walk. False when the walk ended inside the part.
+   */
+  function enterSubsurface(depth, subsurface) {
+    const color = subsurface.color ?? hit.color;
+    walkWeight.fill(1);
+    const outcome = walkSubsurface(subsurface, color, hit.point[0], hit.point[1], hit.point[2], normal, hit.material, shadowHit, walkWeight);
+    if (outcome === WALK_OUTCOME.lost) return false;
+    const entryScale = surface.diffuseShare * subsurface.weight / surface.subsurfaceChance;
+    if (outcome === WALK_OUTCOME.exit) {
+      const facing = shadowHit.normal[0] * walkSubsurface.direction[0] + shadowHit.normal[1] * walkSubsurface.direction[1] + shadowHit.normal[2] * walkSubsurface.direction[2] < 0 ? -1 : 1;
+      for (let axis = 0; axis < 3; axis++) {
+        hit.point[axis] = shadowHit.point[axis];
+        normal[axis] = shadowHit.normal[axis] * facing;
+      }
+      for (let channel = 0; channel < 3; channel++) throughput[channel] *= walkWeight[channel] * entryScale;
+    } else {
+      // A card: half of the colour is reflected on the side the ray came from and half is transmitted diffusely through it.
+      if (random.next() < 0.5) for (let axis = 0; axis < 3; axis++) normal[axis] = -normal[axis];
+      for (let channel = 0; channel < 3; channel++) throughput[channel] *= color[channel] * entryScale;
+    }
+    setWhiteDiffuse(surface, normal);
+    addLights(depth, normal);
+    return true;
+  }
+
   /** Follows one camera ray. Leaves the radiance in `radiance` and the first-hit features in `features`. */
   function trace(originX, originY, originZ, directionX, directionY, directionZ, pixel, sample) {
     random.reset(pixel, sample, options.seed);
@@ -759,8 +791,18 @@ function createPathTracer(scene, options) {
         afterMirror = true;
       } else {
         prepareSurface(surface, material, hit.metallic, hit.roughness, hit.color, normal, viewX, viewY, viewZ);
+        const subsurface = material.subsurface;
+        if (subsurface) splitSubsurface(surface, subsurface.weight);
         addLights(depth, normal);
-        const lobeUnit = random.next();
+        let lobeUnit = random.next();
+        if (subsurface) {
+          if (lobeUnit < surface.subsurfaceChance) {
+            if (!enterSubsurface(depth, subsurface)) break;
+            lobeUnit = 0;
+          } else {
+            lobeUnit -= surface.subsurfaceChance;
+          }
+        }
         const isMirror = sampleSurface(surface, lobeUnit, random.next(), random.next(), direction);
         const cosine = direction[0] * normal[0] + direction[1] * normal[1] + direction[2] * normal[2];
         if (cosine <= 0) break;

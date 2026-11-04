@@ -1,6 +1,6 @@
 // Runs in the page: draws one reference scene, and describes it as plain data for Blender.
 import { Renderer67 } from '/src/renderer.js';
-import { REFERENCE_SCENES, KHRONOS_SCENES, CLOTH_SCENES } from './scenes.js';
+import { REFERENCE_SCENES, KHRONOS_SCENES, KTX2_SCENES, loadBarnLampVariant, CLOTH_SCENES } from './scenes.js';
 import { GRAND_SCENES } from './grand-scenes.js';
 import { LOOK_OPTIONS } from './look-options.js';
 import { skinnedGeometry } from '/src/path-tracer-scene.js';
@@ -9,6 +9,7 @@ import '/src/material-layer-shaders.js';
 import '/src/view-transform-shader.js';
 import '/src/liquid-shader.js';
 import '/src/splat-shader.js';
+import '/src/subsurface-shader.js';
 import { skyOpenness } from '/src/closed-room.js';
 import { fogSkyVisibility } from '/src/fog-sky-visibility.js';
 import { createCascadedShadows } from '/src/cascaded-shadows.js';
@@ -16,6 +17,8 @@ import { applyLightLinks } from '/src/light-linking.js';
 import { applyWaterReflection, attachWaterReflection } from '/src/water-reflection.js';
 import { attachScreenSpaceWater } from './ssr-water.js';
 import { groundBounceEnvironment } from '/src/ground-bounce.js';
+import { applyFloorSkyVisibility } from '/src/floor-sky-visibility.js';
+import { installReversedDepth } from '/src/reversed-depth.js';
 
 // Water reflection is on the way a recipe gets it: found from the materials, no field. ?water=off draws the scenes without it, ?water=ssr with the screen-space reflection it was compared with.
 // Ground bounce is on the way a recipe gets it: found from the floor part, no field. ?groundBounce=off draws the scenes without it.
@@ -26,11 +29,25 @@ function withDerivedGroundBounce(scene, drawnParts) {
   return GROUND_BOUNCE ? groundBounceEnvironment(drawnParts, scene.environment) : scene.environment;
 }
 
+// ?reversedDepth=on draws with reversed-Z (issue #310); the scenes draw with the standard depth buffer otherwise.
+const REVERSED_DEPTH = new URLSearchParams(location.search).get('reversedDepth') === 'on';
+
 const WATER_REFLECTION = { off: false, ssr: 'ssr' }[new URLSearchParams(location.search).get('water')] ?? 'planar';
+
+// ?floorSky=<strength> traces the sky each floor texel sees (src/floor-sky-visibility.js) and scales the world light there by it; the scenes draw without it otherwise.
+const FLOOR_SKY_STRENGTH = Number(new URLSearchParams(location.search).get('floorSky')) || 0;
+const floorSkyReports = {};
+
+function withFloorSky(id, parts) {
+  if (!FLOOR_SKY_STRENGTH) return parts;
+  const result = applyFloorSkyVisibility(parts, { strength: FLOOR_SKY_STRENGTH, includeClosedRooms: new URLSearchParams(location.search).get('floorSkyRooms') === '1' });
+  floorSkyReports[id] = result.report;
+  return result.parts;
+}
 
 // ?set=khronos draws the Khronos sample assets (npm run reference -- --khronos) and ?set=cloth the cloth scenes
 // (npm run reference -- --cloth) instead of the fixed scenes.
-const SCENE_SETS = { khronos: KHRONOS_SCENES, cloth: CLOTH_SCENES, grand: GRAND_SCENES, look: LOOK_OPTIONS };
+const SCENE_SETS = { khronos: KHRONOS_SCENES, ktx2: KTX2_SCENES, cloth: CLOTH_SCENES, grand: GRAND_SCENES, look: LOOK_OPTIONS };
 const SCENES = SCENE_SETS[new URLSearchParams(location.search).get('set')] ?? REFERENCE_SCENES;
 
 function encodeBytes(typedArray) {
@@ -155,6 +172,7 @@ function createSceneRenderer(parts, scene, cascades, { water = WATER_REFLECTION 
     ground: false, hdr: true, depth: true, samples: 4, pixelRatio: 1, memoryBudgetMiB: 1024, world: true,
     environment: scene.environment, shadowBounds: scene.shadow, shadowCascades: cascades ? createCascadedShadows({ count: cascades }) : null, skyOpenness, fogSkyVisibility,
   });
+  if (REVERSED_DEPTH) installReversedDepth(renderer, true);
   attachWaterReflection(renderer, reflecting.surface);
   if (water === 'ssr') {
     attachScreenSpaceWater(renderer, parts);
@@ -190,7 +208,7 @@ async function renderReferenceScene(id, { describe, ambientOcclusion = 0, ambien
   scene.environment = withDerivedGroundBounce(scene, probed ? probed.parts : baked ? baked.parts : scene.parts);
   const canvas = document.querySelector('canvas');
   // backgroundOnly draws the sky alone, so a score can be limited to the pixels the asset covers.
-  const renderer = createSceneRenderer(backgroundOnly ? [] : probed ? probed.parts : baked ? baked.parts : scene.parts, scene, cascades);
+  const renderer = createSceneRenderer(backgroundOnly ? [] : withFloorSky(id, probed ? probed.parts : baked ? baked.parts : scene.parts), scene, cascades);
   renderer.resize();
   // Blender draws a still scene. The renderer's default wind (0.3) would move the leaf cards by up to four pixels at time 0.
   const frame = { ...scene.camera, environment: scene.environment, time: 0, wind: 0, exposure: 1, effects: { ambientOcclusion, ambientOcclusionRadius } };
@@ -204,6 +222,7 @@ async function renderReferenceScene(id, { describe, ambientOcclusion = 0, ambien
     description: describe ? describeScene(id, scene) : null,
     bake: baked ? { seconds: baked.seconds, report: baked.report } : null,
     probes: probed ? { seconds: probed.seconds, report: probed.report } : null,
+    floorSky: floorSkyReports[id] ?? null,
   };
   renderer.dispose();
   return result;
@@ -215,7 +234,7 @@ async function measureReferenceFrameTime(id, { bake, probes = false, cascades = 
   const baked = bake ? await bakeScene(scene, {}) : null;
   const probed = probes ? await probeScene(scene, id, baked ? baked.parts : scene.parts, probes) : null;
   scene.environment = withDerivedGroundBounce(scene, probed ? probed.parts : baked ? baked.parts : scene.parts);
-  const renderer = createSceneRenderer(probed ? probed.parts : baked ? baked.parts : scene.parts, scene, cascades, { water });
+  const renderer = createSceneRenderer(withFloorSky(id, probed ? probed.parts : baked ? baked.parts : scene.parts), scene, cascades, { water });
   renderer.resize();
   const frame = { ...scene.camera, environment: scene.environment, time: 0, exposure: 1, effects: { ambientOcclusion: 0, ambientOcclusionRadius: 0.5 } };
   // With orbit the camera moves a little every frame, so cascaded maps have to be redrawn each time, as in a camera move.
@@ -300,5 +319,6 @@ async function renderRecipePathTraced(recipe, options) {
 
 window.renderRecipePathTraced = renderRecipePathTraced;
 window.renderReferenceScene = renderReferenceScene;
+window.loadBarnLampVariant = loadBarnLampVariant;
 window.renderReferencePathTraced = renderReferencePathTraced;
 window.referenceSceneIds = Object.keys(SCENES);

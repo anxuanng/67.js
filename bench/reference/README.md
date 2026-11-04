@@ -8,6 +8,8 @@ Run `npm run reference`. It prints one row for each scene, and it rewrites `base
 
 The run needs Chrome, Blender 5.2, `uv` and an NVIDIA GPU, and it took 751 s on an RTX 3060 with other jobs on the machine (2026-11-01). Use `--scene <id>,<id>` to render some scenes, then `--score-only` to score the scenes in the work directory; that also rewrites `baseline.json` with only those scenes. Use `CHROME_PATH` and `BLENDER_PATH` to change the program paths.
 
+`raster-only.mjs <out-directory> <gpu|cpu> <scene-id>,<scene-id>` draws scenes with the rasterizer only, without Blender or scoring, to look at a change before the Cycles queue has a turn.
+
 The other sets: `--khronos` (download the five GLB files from [glTF-Sample-Assets](https://github.com/KhronosGroup/glTF-Sample-Assets) into the gitignored `artifacts/khronos/<name>/<name>.glb` first, see below), `--path-tracer --scene <ids>` (needs the Cycles renders of an earlier plain run, for example `--skip-cpu`, which renders without scoring), and `--bake <id>,<id> --skip-blender`, which draws and scores only those scenes baked, against the Cycles renders of an earlier plain run.
 
 A baked run writes `artifacts/reference/bake.json` and compares it with the committed `bake.json` (`compare-scores.mjs`): it exits with an error when a score is worse by more than 0.01 FLIP. `--update-baseline` replaces `bake.json` and `images/<id>-baked.jpg`. The bake is deterministic on one machine (two runs gave the same four digits), so 0.01 is a margin for other GPUs and drivers, and well under the 0.047 that went unnoticed in #160.
@@ -1479,6 +1481,64 @@ After the change: `brick-graph` 0.0933 (GPU) and 0.0930 (CPU) against Cycles, 0.
 
 What is left is not in the bake. On the bump-only wall across the dark side of a joint, luminance (display space) is 0.25 at the darkest pixel in Cycles, 0.34 in EEVEE and 0.37 in 67js, against 0.62 on the flat wall: EEVEE and 67js agree with each other and Cycles is darker. That is a shading difference on a normal tilted about 70 degrees from the surface, in the lighting of `src/shaders.js`, which this change does not touch; it needs the engine session.
 
+## The graph noise node is Blender's Noise Texture (2026-11-04, part of issue #50, RTX 3060 960 x 540)
+
+The brick-tone error of `brick-graph` was a pattern error: the `noise` node was a periodic gradient noise with its own hash, so its blotches sat in other places than Cycles' and EEVEE's. Blender 5.2.2 headless baked its Noise Texture (2D, Fac) over the unit square to float arrays (Cycles on the CPU, 1 sample, filter 0.01, `Geometry > Position` as the vector), and the 67js node (`tile: false`) was evaluated at the same pixel centres, 256 x 256.
+
+| Property | Before | Blender 5.2 | Now |
+| --- | --- | --- | --- |
+| Lattice hash | `hashCell` (xxHash-style mix of the cell and the seed) | Jenkins lookup3 `hash_uint2` of the corner | the same as Blender |
+| Corner gradient | one angle per corner, unit vector | 8 gradients picked by the low 3 hash bits, `(x, y)` mixed with `2 * (y, x)` | the same |
+| Output scale | `1.5 * gradient`, range about -1 to 1 | `0.6616 * perlin` | the same |
+| Octaves | cells doubled per octave inside a wrapped period, gain 0.5, own seed per octave | Detail `n - 1`: `n` octaves, Roughness 0.5, Lacunarity 2, same lattice shifted by the frequency | the same |
+| Normalize and offset | `value * 0.5 + 0.5` of the amplitude-normalised sum | `0.5 * sum / amplitude sum + 0.5` | the same |
+| Tiling | wrapped over the unit square | none | wrapped by default; `"tile": false` is Blender's endless lattice (exact, does not repeat) |
+| Seed | per-octave seed in the hash | none | moves the lattice by whole cells; Blender's side adds the same shift |
+
+Node output against the Cycles bake: scale 10, detail 2: max 0.000048, mean 0.000011 over 65,536 pixels (both ranges 0.120 to 0.831); scale 7, detail 5 (6 octaves): max 0.000052, mean 0.000010. That is float precision, so the match is per pixel; `tests/material-graph.test.js` keeps six Cycles values. The colour ramp (LINEAR in RGB, stops in linear colour) and the Map Range smoothstep were read and need no change. Not touched: `voronoi`, which no reference scene uses and which Blender computes with its own jittered-point hash; it still differs from Blender's Voronoi Texture.
+
+Suite on the GPU through `raster-only.mjs` (26 scenes, before on main, after on this branch), scored by FLIP against the stored Cycles arrays: 24 scenes are byte-identical PNGs (no other scene reads a graph), so the worst delta there is 0.0000. The two that changed:
+
+| Scene | Before | After |
+| --- | --- | --- |
+| `brick-graph` | 0.0871 | 0.0734 |
+| `brick-flat` (its colour is the average of the graph map, which moved) | 0.0547 | 0.0556 |
+
+The excess of the graph wall over the flat wall is 0.0178 (was 0.0324), against EEVEE's 0.0120, so the first Done-when box of #50 stays open, by 0.0058. The wall luminance mean is 0.5455 (Cycles 0.5495) and the darkest pixel 0.210 (Cycles 0.218). In the error map of the wall the brick tones now agree; what is left is a thin line along the lit and dark edges of every brick (the bump at the joint), not the tone. The scene's noise seed of 2 became the default 0 because Cycles never had it (the stored Cycles and EEVEE arrays stay valid).
+
+## The sky share of a tilted normal, squared (2026-11-04, part of issue #50, SwiftShader 960 x 540)
+
+Rendered on SwiftShader (`run.mjs --no-gpu --skip-blender --skip-cpu --scene brick-graph,brick-flat`, no GPU) and scored by FLIP against the stored Cycles and EEVEE arrays (`brick-graph` and `brick-flat` rows reproduce the committed 0.0933 and 0.0547 to within 0.0004). Only `brick-graph` has a normal map in the suite, so the change cannot move any other scene (the line is behind `USES_NORMAL_MAP`); `brick-flat` was rendered again and stayed 0.0543. Wall pixels are rows 110 to 430, columns 230 to 730, display luminance.
+
+| Variant of the horizon share `h = 0.5 + 0.5 * dot(mapped, geometric)` | `brick-graph` against Cycles | darkest pixel | 1st percentile | mean |
+| --- | --- | --- | --- | --- |
+| Cycles | | 0.218 | 0.253 | 0.5495 |
+| EEVEE (0.1249 against Cycles) | | 0.218 | 0.266 | 0.5199 |
+| `h` (before) | 0.0930 | 0.289 | 0.326 | 0.5591 |
+| `h^1.5` | 0.0893 | 0.252 | 0.283 | 0.5521 |
+| `h^2` (kept) | 0.0866 | 0.210 | 0.240 | 0.5459 |
+| `h^3` | 0.0884 | 0.144 | 0.170 | 0.5355 |
+| `h^2`, and the shadow lookup with the geometric normal | 0.0909 | 0.210 | 0.240 | 0.5493 |
+
+Excess over the flat wall (0.0543): 0.0387 before, 0.0323 after, against EEVEE's 0.0120, so the first Done-when box of #50 stays open. The dark side moves from 0.289 to 0.210 where Cycles has 0.218, and the wall mean from 0.5591 to 0.5459 (Cycles 0.5495). The shadow lookup with the geometric normal made it worse and was not kept. The change is one line of `src/shaders.js`; `scene:lit-box` grows 16 bytes gzip (50127 to 50143, over the 50,000 goal already on main by 127).
+
+## The dark side of a tilted normal, next levers measured and none kept (2026-11-04, part of issue #50, RTX 3060 960 x 540)
+
+Scored on the GPU through `raster-only.mjs` and FLIP against the Cycles and EEVEE arrays of the 2026-11-03 run (same scorer maths as `score.py`; wall pixels rows 110 to 430, columns 230 to 730, display luminance). Main with the squared horizon share of #365: `brick-flat` 0.0547, `brick-graph` 0.0871 against Cycles (EEVEE 0.1249 and 0.1129), so the excess is 0.0324 against EEVEE's 0.0120. The darkest wall pixel is already 0.210 (Cycles 0.218, EEVEE 0.218), and the wall mean is 0.5462 (Cycles 0.5495); the SwiftShader round of #365 and the GPU agree.
+
+| Variant, `brick-graph` only (`brick-flat` stayed 0.0547 in each) | against Cycles | excess over the flat wall | darkest pixel |
+| --- | --- | --- | --- |
+| main, `h^2` | 0.0871 | 0.0324 | 0.210 |
+| `h^1.75` | 0.0883 | 0.0336 | 0.231 |
+| `h^2.5` | 0.0869 | 0.0322 | 0.174 |
+| `h^3` (the cube) | 0.0890 | 0.0343 | 0.145 |
+| sun diffuse times `max(dot(geometric, L), 0)` | 0.1613 | 0.1066 | 0.210 |
+| sun diffuse times `smoothstep(0, 0.25, dot(geometric, L))` | 0.0871 | 0.0324 | 0.210 |
+
+Not scored, because the result is known without a render: the fill lights (`fillIntensity` is 0 in this scene, so the term is zero) and the sky and environment specular (`occlusion`, which already carries the horizon share, multiplies the environment diffuse and the environment specular together, so that clip is already there). The wall faces the sun, so a soft terminator clip is a no-op and the literal product only darkens the whole lit wall.
+
+Nothing is kept: `h^2.5` is 0.0002 better, inside the spread between runs, and pushes the darkest pixel past Cycles, so the exponent is at its optimum between 2 and 2.5. The remaining 0.0324 is not shading at the joint. The FLIP error map of 67js on the wall is the blotchy low-frequency brick tone inside each brick (inferred from the error map, not isolated: the noise through the colour ramp, which the two renderers may evaluate differently), while EEVEE's error is an almost uniform offset of its darker flat wall (0.560 against 0.615), which FLIP charges less than misplaced detail. The excess over the flat wall therefore compares a pattern error with a brightness offset, and a shader change at the joint cannot close it. No source file changed, so no size or suite number moved.
+
 ## Named looks for the grand scenes (2026-11-03, part of issue #168)
 
 `look-options.js` holds a second round of options for the three grand scenes, each a named variant: `node bench/reference/run.mjs --option mountain-valley:dawn` (several separated by commas) draws it with the GPU only into `artifacts/reference-look/<scene>-<option>-gpu.png`, with no Blender, no score and no baseline change. Sheets: `uv run --no-project --with pillow python -I bench/reference/look-sheets.py artifacts/reference-look artifacts/look-168` copies each frame to `artifacts/look-168/<scene>/<option>.png` and writes one contact sheet per scene. The default scenes and the letters of `grand-scenes.js` are unchanged. Blender would get the same geometry and materials: ground cover is vertex colour, facades are material graphs (Emission through the graph), halls use Emission panels and volume fog. An picks; no option is claimed to match anyone's taste.
@@ -1534,3 +1594,85 @@ Fix: `harness.js` renders the reference frame with `wind: 0`. Re-run with 67js o
 | mountain-valley-c (grand) | 0.1836 to 0.1775 | 0.223 to 0.2182 | 0.1522 |
 
 `foliage` now sits 0.0086 under EEVEE against Cycles (was 0.0055 over). Every other default and grand scene has no leaf cards and was not re-rendered; the only score that rose is a GPU against CPU difference (`gpu-vs-cpu` of `foliage` 0.0095 to 0.0097, `mountain-valley-b` 0.0158 to 0.0164). The Cycles and EEVEE columns did not move, so this is a change on the 67js side of the comparison and not a new reference. The score no longer includes the wind, which a real scene still has by default (`wind` 0.3); that is by design and is not scored here.
+
+## Subsurface scattering (2026-11-04, part of issue #283)
+
+`subsurface` (wax candle, skin sphere, leaf slab, weight 1) and `subsurface-off` (the same scene at weight 0 in both renderers) are scored each against its own Cycles render: the rasterizer scores 0.1180 with subsurface on and 0.0940 off, and EEVEE scores 0.1028 and 0.0764, so the scene with subsurface is the harder one for both, and the on scene does not score better than the off scene. Scored against the same Cycles render with subsurface, the weight 0 picture of 67js scores 0.1229 and the weight 1 picture 0.1180 (0.1211 with back translucency 0.5), so the block moves the picture toward Cycles by 0.005. The leaf is the part that stays dark (signed mean luminance error of -0.05, wax and skin +0.01). Frame cost with `frame-time.mjs <scene> gpu --plain`: 0.45 to 0.49 ms on, 0.455 to 0.485 ms off, the same within noise.
+
+## Reversed-Z depth (2026-11-03, issue #310)
+
+`installReversedDepth(renderer, mode)` (`src/reversed-depth.js`, an addon: the renderer core carries none of it, so a scene that does not install it pays nothing in size) makes the colour pass draw with reversed-Z where `EXT_clip_control` exists. `mode` is `true` (on at once), `false` (off) or `'auto'`, which switches it on, once, at the start of a frame, when that frame's far / near passes 10,000, or when `renderer.requestReversedDepth()` is called; `installDepthPrecision(renderer, { reversedDepth })` installs it together with the coplanar warning and calls that request when the coplanar check finds a flush pair more than 40 units from the eye (a 24-bit buffer with a 0.1 near plane cannot separate a 1 mm gap much beyond that). Switching on respecifies the two depth stores as float and adds one stage that turns the resolved depth back to standard depth for the passes that read it. What it does: clip depth 0 to 1 with the near plane at 1, depth cleared to 0, `GREATER`, and a `DEPTH_COMPONENT32F` multisample buffer and scene depth texture. Everything else keeps the standard path: shadow maps (the sun, cascades and the local atlas), the sky and environment backgrounds and the post passes switch clip control back before they draw, so their projections do not change. The reversed projection is the standard one with its third row replaced by `(w - z) / 2` (`src/reversed-depth.js`), used only by the draw (`renderer.rasterProjection`, `rasterViewProjection`); culling, fog, inverse matrices and the CPU rasterizer keep the standard matrices. The passes that read the depth texture (ambient occlusion, depth of field and the other camera effects, volume fog, line art outlines and lines) are unchanged: a stage right after the resolve copies the depth and writes `1 - depth` back with `gl_FragDepth`, which is exactly the standard 0 to 1 value. The water mirror, render passes (their depth pass is eye distance, not buffer depth), liquid and foam, blended parts and Gaussian splats run inside the reversed window. A decal's polygon offset flips sign with it. `installReversedDepth(renderer, false)`, benchmark mode and a browser without the extension keep the old path (`renderer.reversedDepth` and `renderer.capabilities.reversedDepth` say which one is in use).
+
+Measured by `node bench/reference/depth-precision.mjs [gpu|cpu]` (scene in `depth-precision.js`): two 2.2-times-distance-wide planes at 1, 50 and 500 m, the near one `gap` closer (0, 0.1 and 1 mm), seen at about 30 degrees from their normal with the default near 0.1 and far 600, 8 camera positions about 1 to 10 cm apart per case. The number is the share of the red or blue pixels where the far (blue) plane wins, mean of the 8; 0 is right. Before is the renderer as it is, after is `installReversedDepth(renderer, true)`, same build. GPU is the RTX 3060 through Chrome (ANGLE), where the extension is present; the run was made without the GPU queue lock because it was busy and takes seconds, and is to be repeated through `gpu-lock.sh`.
+
+| Distance | Gap | Before (24-bit) | After (reversed, float) |
+| --- | --- | --- | --- |
+| 1 m | 0, 0.1, 1 mm | 0, 0, 0 | 0, 0, 0 |
+| 50 m | 0 mm | 0 | 0 |
+| 50 m | 0.1 mm | 0.150 | 0.009 |
+| 50 m | 1 mm | 0.079 | 0.000 |
+| 500 m | 0 mm | 0 | 0 |
+| 500 m | 0.1 mm | 0.190 | 0.134 |
+| 500 m | 1 mm | 0.188 | 0.015 |
+
+The gap-0 pair is two identical boxes, so every pixel ties and the first one drawn keeps it; it never flickers, and a coplanar pair of different size is what `decal` and `resolveCoplanar` are for. The wrong share falls to 1 percent or less at 50 m (0.1 and 1 mm) and at 500 m with a 1 mm gap, but not to zero: at 500 m the 0.1 mm case is still wrong on 13 percent of pixels, because a Float32 world position has a step of 0.03 mm there and the vertex transform adds more, which no depth buffer format removes. The next step, not done here, is a camera-relative vertex transform (the view translation applied to the instance matrix in double precision before the projection). SwiftShader also has the extension (the same page ran there). Its numbers are noisier and are not a precision measure: before 0.20 and 0.10 (50 m, 0.1 and 1 mm), 0.10 and 0.41 (500 m); after 0, 0.16, 0 and 0, with whole frames wrong in some jitters at 50 m and 1 mm. Both sets are 8 frames per case and move with the camera positions.
+
+Pictures: `glass`, `brick-flat`, `outdoor-hdri` and `mountain-valley` drawn by SwiftShader with `render-gpu.mjs --cpu` (standard depth, then reversed through the installed addon), with and without `--reversed-depth`: the first three are byte for byte the same; `mountain-valley` differs on 0.055 percent of its pixels by more than 2 of 255 (largest step 31), the edges of far trees where the depth test breaks a tie differently. With `--ambient-occlusion 1` (which reads the depth texture) `brick-flat` is identical and `mountain-valley` differs on 0.13 percent, largest step 28. The GPU renders of the same four scenes are queued behind a path-tracer job and are not in these numbers.
+
+## Sky visibility traced from the floor texels, measured and kept opt-in (2026-11-04, issue #197)
+
+The attempt the volume section named: trace the sky from the floor itself. `applyFloorSkyVisibility(parts, options)` (`src/floor-sky-visibility.js`, `67js/addons/floor-sky-visibility`, nothing in core) finds the floor parts (thin, at least 2 percent of the scene's footprint, opaque, plain, at least 30 percent of the area facing up, no light map and no baked `skyVisibility`), cuts their upward triangles by the longest edge to about 24,000 texels in total, and from each texel shoots 64 cosine-weighted rays (a fixed set, so the same scene gives the same bytes) against every other opaque part with the bake's BVH tracer. The share that escapes goes into the geometry's `skyVisibility`, which the shader already multiplies into the world and sky light of that surface, so the shader and the core entry are unchanged. `strength` blends the share toward 1 (`1 - strength * (1 - share)`). The trace is capped at 20 s and leaves the parts as they were past it, above 200,000 triangles, or when the scene has no floor. A closed room (the ray test of the ground bounce) is left alone unless `includeClosedRooms` is set. Harness: `npm run reference -- --floor-sky [<strength>] [--floor-sky-rooms]`, `frame-time.mjs --floor-sky=<strength>`.
+
+Main at `8153626`, GPU, 960 x 540, FLIP against the stored Cycles arrays, 24 scenes of the default suite and the nine grand options; change from a fresh render of main on the same machine (it reproduces the committed rows: `long-street` 0.1121, `material-spheres` 0.0954, `metal` 0.0944). Scoring is the `score.py` FLIP of each GPU frame; no `baseline.json` row is rewritten.
+
+| Variant | Better than -0.002 | Worse than +0.002 | Worst |
+| --- | --- | --- | --- |
+| Strength 1, rooms traced too | `brick-flat` -0.0067, `brick-graph` -0.0073, `brushed-film` -0.0090, `car-paint` -0.0143, `material-spheres` -0.0103 | 13 | `lit-interior` +0.1207, `brick-room` +0.1157, `metal-room` +0.1044, `long-street` +0.0368, `dark-shaft` +0.0176 |
+| Strength 0.5, closed rooms left alone | `brick-flat` -0.0041, `brick-graph` -0.0039, `brushed-film` -0.0063, `car-paint` -0.0090, `material-spheres` -0.0099 | 4 | `long-street` +0.0135, `megacity-dusk` +0.0032, `emissive-sign` +0.0027, `light-linking` +0.0023 |
+| Strength 0.5, rooms traced too | the five above and `temple-hall` -0.0030 | 8 | `brick-room` +0.0561, `lit-interior` +0.0532, `metal-room` +0.0510, `long-street` +0.0135, `dark-shaft` +0.0073 |
+
+Grand options (strength 0.5): `megacity-dusk-b` +0.0033, `-c` +0.0017, `-a` -0.0002; the three valley options are untouched (`mountain-valley-a` and `-b` pass the triangle limit, `-c` has no floor part); the three temple options are closed rooms and unchanged, and traced as rooms they improve: `temple-hall-a` 0.1642 to 0.1536, `-b` 0.1564 to 0.1355, `-c` 0.1177 to 0.1016.
+
+Box 2 (`shadow-depth.py`, display luminance, 67js before > after / Cycles; strength 0.5, rooms traced):
+
+| Scene | p1 | p5 | p25 | contrast (log2) |
+| --- | --- | --- | --- | --- |
+| `dark-shaft` | 0.0437 > 0.0322 / 0.0293 | 0.0437 > 0.0350 / 0.0313 | 0.0468 > 0.0400 / 0.0430 | 2.46 > 2.51 / 1.96 |
+| `temple-hall-a` | 0.0487 > 0.0423 / 0.0334 | 0.0557 > 0.0507 / 0.0363 | 0.0669 > 0.0555 / 0.0466 | 1.16 > 1.17 / 1.33 |
+| `temple-hall-b` | 0.0709 > 0.0555 / 0.0339 | 0.0717 > 0.0583 / 0.0370 | 0.0787 > 0.0661 / 0.0449 | 0.78 > 0.78 / 1.80 |
+| `temple-hall-c` | 0.0386 > 0.0282 / 0.0163 | 0.0394 > 0.0319 / 0.0184 | 0.0552 > 0.0398 / 0.0222 | 1.33 > 1.34 / 2.02 |
+| `megacity-dusk-a` (not a room) | 0.0494 > 0.0494 / 0.0461 | 0.0628 > 0.0600 / 0.0603 | 0.1124 > 0.1124 / 0.1082 | 2.74 > 2.76 / 2.32 |
+| `long-street` (not a room) | 0.2006 > 0.2006 / 0.1378 | 0.3642 > 0.2986 / 0.3223 | 0.5072 > 0.5072 / 0.4793 | 1.11 > 1.20 / 1.59 |
+
+The dark end moves toward Cycles in every hall (p1 down by 0.006 to 0.015, p25 down by 0.007 to 0.015) and in `dark-shaft`, but the contrast does not: it moves by at most 0.1 log2 step, and `temple-hall-b` stays at 0.78 against 1.80. Reading (inferred): the light is lowered everywhere on the floor, lit and shadowed tiles alike, because the sky light does not separate them; the contrast needs the sun's shadow to be deeper, which a sky term can not give.
+
+Which scenes fail, and why (inferred, not isolated): `long-street` (+0.0135 at 0.5) and `megacity-dusk` (+0.0032) are lit by the sun and by light that comes back from the walls and the lit street; the term removes sky from a floor that Cycles still lights from the facades, so the street gets too dark. The rooms lit by lamps alone (`lit-interior`, `brick-room`, `metal-room`) lose their whole ambient floor light, which the lamps' bounce gave; they are why closed rooms are skipped.
+
+Cost, measured (GPU, `frame-time.mjs --plain`, median of 3 runs in two rounds): the trace takes 0.5 to 1.7 s for the usual 33,000 to 56,000 texels (2.1 to 3.6 million rays, 64 per texel; `brick-room` 6.4 s for 253,000 texels because its floor part is large). Frame time rises because the floor goes from 2 triangles to about 66,000: `long-street` 0.40 to 0.61 ms, `material-spheres` 0.52 to 0.63 ms, `temple-hall-a` 1.50 to 1.80 ms (+0.1 to +0.3 ms; the shadow pass draws the triangles too). A 2D texture read in the shader would avoid that and needs a core hook; it was not tried.
+
+Box 4 fails: four default scenes pass the 0.002 limit at the best variant (`long-street` +0.0135 is the worst), so the term is not on by default. It stays as an opt-in addon, off unless a scene calls `applyFloorSkyVisibility` or the harness flag is given, so the default frames, `baseline.json` and `grand.json` are unchanged. It helps `car-paint`, `brick-flat`, `brick-graph`, `brushed-film`, `material-spheres` (-0.004 to -0.010) and the three temple options (-0.011 to -0.021), and costs the street and city scenes. Next idea, if taken up: a per-texel map that also carries the light that comes back from the lit walls (the sun-lit side of the facades seen from the floor texel), so a street is darkened by the sky it loses and lit by what the facades give, instead of by sky visibility alone.
+
+## Water shadows (2026-11-03, part of issue #349)
+
+A post stands in a 12 m pool and the camera looks straight down (`scripts/water-shadow-scene.js`, run by `node scripts/measure-water-shadows.mjs`). Shadow contrast is the lit minus the shadowed bed, per channel, against the same pool dry, so the absorption of the column is what is left. Measured in Chrome with 8 bit output, inverted to linear:
+
+| Preset | Depth | Red | Green | Blue | `exp(-absorption * depth)` for the clear lake (red, green, blue) |
+| --- | --- | --- | --- | --- | --- |
+| lake | 0.2 m | 0.928 | 0.978 | 1.010 | 0.932, 0.986, 0.992 |
+| lake | 1 m | 0.699 | 0.907 | 0.948 | 0.705, 0.932, 0.961 |
+| lake | 4 m | 0.227 | 0.694 | 0.785 | 0.247, 0.756, 0.852 |
+| sea | 4 m | 0.139 | 0.520 | 0.619 | |
+| river | 1 m | 0.204 | 0.190 | 0.087 | |
+| river | 4 m | 0.005 | 0.005 | 0.000 | |
+
+The clear lake stays within 10 percent of the formula (the largest gap, 8 percent at 4 m, is the in-scatter of turbidity 0.02). `RENDER_TESTS=1 node --test tests/water-shadows-render.test.js` checks it. On an opaque water surface the post's shadow darkened the steep view by 9.5 to 14 percent before and darkens it by 3 to 4 percent now (river 1.5 percent); the grazing view, which is nearly all reflection, shows 0 percent both times, so the shadow never reaches the mirrored sky.
+
+The reference scenes draw their water as a smooth `surface` part with the planar reflection, not the `water` tag, and the shader code they run is unchanged, so they were not rescored. The Blender Cycles reference of the pool (volume absorption and scatter) and its FLIP score are not taken yet; they wait for a look at the preview.
+
+### Refraction and a dark band (2026-11-04, part of issue #349)
+
+Blended water (a `water` part with opacity below one) now draws its own background: the opaque pass leaves the depth below the water level in the alpha channel of every submerged surface, the water bends the view ray at the surface (n = 1.33, with the wave normal), reads the frame texture where the bent ray meets the bed, and blurs it with a disc of radius turbidity times depth. Where nothing submerged is seen it keeps its own colour. A submerged surface also gets a share of the daylight the water scattered toward the eye, so it fades into the water colour instead of going dark. The bed contrast numbers above hold (lake 4 m: 0.226, 0.688, 0.787 against 0.247, 0.756, 0.852).
+
+The dark band at the foot of a shadow in the first preview was not a doubled shadow: the bed point takes its sun visibility once and the surface lift applies only to water fragments. Along the shadow the bed is even (green channel 0.178 to 0.173 at 1 m, 0.157 to 0.152 at 4 m, seen from above), and a close render shows no band. The band was the shaded side of the submerged post, which got darker with depth and had no scattered light, so it joined the shadow. The scattered light fixes it.
+
+The new preview uses Poly Haven CC0 assets (boulder_01, rock_07, modular_wooden_pier and the gravel_ground_01 material) read from `out/assets`, which is ignored by Git.
