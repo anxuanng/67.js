@@ -39,6 +39,8 @@ jobs:
           key: size-base-${{ steps.base.outputs.sha }}-${{ hashFiles('scripts/measure-size.mjs', 'scripts/size-*.mjs', 'scripts/*tool-cost*.mjs', 'scripts/measure-archive.mjs', 'scripts/build-mcp.mjs', 'vite.lib.config.js', 'package-lock.json') }}
       - run: npm run size -- --base "$SIZE_BASE_REF"
       - run: npm run tool-cost -- --base "$SIZE_BASE_REF"
+      # The size check packs from its own staging folder, so build/ and build/mcp come from here; the live MCP tests need them.
+      - run: npm run build:lib
       - run: npm test
       - run: npm run test:isolated
       - run: npm run prepare:release
