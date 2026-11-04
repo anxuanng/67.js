@@ -1556,6 +1556,22 @@ Nothing is kept: `h^2.5` is 0.0002 better, inside the spread between runs, and p
 
 Terrain shape: the rim is rounded massifs (erosion noise) with a little ridged noise for crags, in place of the reference's needle ridges. Towers have a lit podium, one to three setbacks and a crown (plant, stepped or spire), and a facade graph gives panes in a wall with lit panes in drifts instead of full-width stripes. No downloaded textures or models are used: the terrain chunks and tower boxes carry no UV sets in the export, so a scanned texture would not reach Blender the same way.
 
+## The three picked looks are the grand scenes (2026-11-04, issue #168)
+
+An picked `mountain-valley:dawn`, `temple-hall:rose` and `megacity-dusk:blue-hour`. `GRAND_PICKS` in `look-options.js` adds them to the grand set (`?set=grand`), so `node bench/reference/run.mjs --grand --scene mountain-valley-dawn,temple-hall-rose,megacity-dusk-blue-hour` draws them and Blender renders them; the option names still work. Their entries sit in `grand.json` beside the letter variants, which are unchanged, and the old plain scenes are replaced by these picks (no old against new comparison is kept). `final-sheet.py` writes the contact sheet of the 67js and Cycles frames.
+
+Facade fix: the lit windows of `facadeMaterial` came from a voronoi, whose cells cut the 6 by 10 window grid into shards. A noise read at the centre of each window cell now lights a window as a whole, in drifts, and both noises use `"tile": false` so `render-blender.py` builds the same nodes.
+
+FLIP mean error, lower is better (measured, one run, Blender 5.2.2, 960 by 540):
+
+| Scene | 67js GPU vs Cycles | 67js GPU vs EEVEE | EEVEE vs Cycles |
+| --- | --- | --- | --- |
+| `mountain-valley-dawn` | 0.2008 | 0.3720 | 0.3039 |
+| `temple-hall-rose` | 0.5652 | 0.5727 | 0.8878 |
+| `megacity-dusk-blue-hour` | 0.1128 | 0.1081 | 0.0688 |
+
+Known gaps shown on purpose, not hidden by a per-scene setting: the dark band of mid-distance trees in the dawn frame is a 67js defect (the lower tree levels shade near black under sky light and a low sun, issue #394); the temple hall is lit flat in 67js while Cycles leaves it dark, the closed-room-without-bake gap (an open roof is not a bake).
+
 ## The reference harness drew `foliage` in a breeze (2026-11-03, part of issue #191)
 
 Found by comparing the leaf cards of the two sides. No engine code changed and no Blender render changed: the Cycles and EEVEE arrays are the ones of the earlier runs.
