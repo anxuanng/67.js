@@ -127,3 +127,12 @@ test('weight 0 and no block both leave the kernel without the random walk', () =
   }
   assert.equal(withWalk.includes('const int WALK_STEPS = 32;'), true);
 });
+
+test('the texel kernel starts paths at lightmap texels, and the camera kernel does not carry its samplers', () => {
+  const texelKernel = buildFragmentSource({ texelBake: true });
+  const cameraKernel = buildFragmentSource();
+  assert.match(texelKernel, /uniform sampler2D uTexelPoints;/);
+  assert.match(texelKernel, /texelFetch\(uTexelNormals/);
+  assert.doesNotMatch(cameraKernel, /uTexelPoints/);
+  assert.match(cameraKernel, /vec3 rayDirection = normalize\(uForward/);
+});
