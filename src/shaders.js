@@ -533,19 +533,19 @@ void main() {
   bool canopyShaded = CANOPY_TAG;
   if (doubleSided > 0.5 && !gl_FrontFacing && !canopyShaded) normal = -normal;
   vec3 geometricNormal = normal;
-  if (USES_NORMAL_MAP) normal = boxMapScale > 0.0 ? boxMappedNormal(normal) : mappedNormal(normal);
+  if (USES_NORMAL_MAP) normal = BOX_MAPPED ? boxMappedNormal(normal) : mappedNormal(normal);
   vec3 viewDirection = normalize(eye - worldPosition);
   vec3 color = mix(baseColor, armorColor, step(0.5, surface.w) * (1.0 - step(1.5, surface.w)));
   if (!USES_SPLAT) color *= vertexTint;
   float textureAlpha = 1.0;
   if (USES_BASE_MAP) {
-    vec4 sampledBase = boxMapScale > 0.0 ? sampleBox(baseMap) : texture(baseMap, textureUV);
+    vec4 sampledBase = BOX_MAPPED ? sampleBox(baseMap) : texture(baseMap, textureUV);
     color *= sampledBase.rgb;
     textureAlpha = sampledBase.a;
   }
   float alpha = surfaceAlpha(textureAlpha);
   vec3 emission = emissionColor * surface.z;
-  if (USES_EMISSIVE_MAP) emission *= (boxMapScale > 0.0 ? sampleBox(emissiveMap) : texture(emissiveMap, mapUV(hasEmissiveMap))).rgb;
+  if (USES_EMISSIVE_MAP) emission *= (BOX_MAPPED ? sampleBox(emissiveMap) : texture(emissiveMap, mapUV(hasEmissiveMap))).rgb;
   if (USES_RENDER_PASS) {
     outputColor = vec4(renderPassValue(color, normal, emission), 1.0);
     return;
@@ -562,7 +562,7 @@ void main() {
     roughness = armorSurface.y;
   }
   if (USES_METALLIC_ROUGHNESS_MAP) {
-    vec4 sampled = boxMapScale > 0.0 ? sampleBox(metallicRoughnessMap) : texture(metallicRoughnessMap, mapUV(hasMetallicRoughnessMap));
+    vec4 sampled = BOX_MAPPED ? sampleBox(metallicRoughnessMap) : texture(metallicRoughnessMap, mapUV(hasMetallicRoughnessMap));
     metallic *= sampled.b;
     roughness *= sampled.g;
   }
@@ -699,6 +699,7 @@ const SHADER_FEATURE_CONDITIONS = {
   occlusionMap: ['USES_OCCLUSION_MAP', 'hasOcclusionMap > 0.5'],
   emissiveMap: ['USES_EMISSIVE_MAP', 'hasEmissiveMap > 0.5'],
   lightMap: ['USES_LIGHT_MAP', 'hasLightMap > 0.5'],
+  boxMapScale: ['BOX_MAPPED', 'boxMapScale > 0.0'],
   splat: ['USES_SPLAT', 'splatEnabled > 0.5'],
   moss: ['USES_MOSS', 'materialMoss.x > 0.0'],
   alphaMode: ['USES_ALPHA_MODE', 'alphaMode > 0.5'],
