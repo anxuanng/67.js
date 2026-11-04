@@ -1768,3 +1768,24 @@ The fill lights are zero in this scene, so that term cannot carry anything. Read
 - Environment specular is the only term that improved when cut like Cycles does: a reflection that points below the geometric plane should see no sky. `skyReflection *= step(0.0, dot(reflected, geometricNormal))` (guarded by `USES_NORMAL_MAP`, next to the squared share) takes `brick-graph` from 0.0734 to 0.0721 and the excess over the flat wall from 0.0178 to 0.0165, still above EEVEE's 0.0120. The gain is the steepest bump edges: at column 392 the pixels on the lit side of a joint (normal.y 0.87 to 1.0) are 0.03 to 0.05 too bright and the ones on the dark side (normal.y -0.35 to -0.72) 0.06 to 0.12 too dark, one to three pixels wide, which is a footprint difference (Cycles averages the bump over the pixel) that no lobe change reaches.
 - Not kept. The line costs 16 bytes of `scene:lit-box` (49957 to 49973) and 22 of `scene:agent-scene` (102827 to 102849), against 8 allowed there; merging it with the squared share into one `if` block did not change that (+16 and +22), the `smoothstep` form costs 5 bytes more, and removing trailing zeros from the shader's literals made the gzip larger (+48 / +34). The change is ready to take when a budget allows it: one line of GLSL, no other scene has a normal map in the suite, so no other reference scene could move. The full suite was not run because nothing changed.
 - Where the rest of the 0.0165 is, in order: the sun's tilt response (above), the one-to-three pixel footprint at steep joints, and the environment diffuse of up ledges. The sun's response is what a next worker should isolate with a per-pixel comparison against a Cycles Diffuse-only bake.
+
+
+## The sky reflection of a tilted normal, kept with its size cost accepted (2026-11-04, part of issue #50, RTX 3060 960 x 540)
+
+The one-line change that the section above measured and left out: for a normal-mapped surface the sky reflection is multiplied by `smoothstep(-0.05, 0.05, dot(reflected, geometricNormal))` (`src/shaders.js`, behind `USES_NORMAL_MAP`, next to the squared horizon share). A reflection that points under the geometric plane sees no sky, as in Cycles. The soft edge scored the same as the hard `step` (0.0721).
+
+Main reproduced `brick-flat` 0.0556 and `brick-graph` 0.0734 on the stored arrays first. Against Cycles, GPU, before and after on the same arrays:
+
+| Scene | before | after | change |
+| --- | --- | --- | --- |
+| `brick-graph` | 0.0734 | 0.0721 | -0.0013 (excess over the flat wall 0.0178 to 0.0165, EEVEE 0.0120) |
+| `material-spheres` | 0.0975 | 0.0954 | -0.0021 |
+| `brick-room`, `character`, `mountain-valley` | | | 0.0000 (`character` and `mountain-valley` identical pixels) |
+
+The full GPU suite was drawn once through the lock (`--skip-blender --skip-cpu`, 26 scenes); the shader line is compiled in only when a material has a normal map, so every other scene runs the same shader code as before. No scene is worse. The box "excess no larger than EEVEE's" of #50 stays open: 0.0165 against 0.0120.
+
+Tried this round and dropped (`brick-graph` against Cycles, same arrays; the flat wall stayed 0.0556):
+
+- Normal length kept from the filtered map (`mapped / max(length(mapped), 1.0)` instead of `normalize`, the Toksvig-style darkening of a mip-averaged normal): 0.0744, worse. At about one texel per pixel the filtered length only drops on the 2 or 3 pixels of a bevel, and shrinking the tilt there lights the dark side too much.
+- A Cycles pixel filter (a Gaussian of 0.3, 0.45 and 0.6 pixels on the 67js frame, to see whether the film filter of 1.5 pixels explains the ledges): 0.0716, 0.0725 and 0.0742 against 0.0716 unblurred, so the filter is not the gap.
+- Where the excess sits, measured: of the 0.0585 FLIP difference between the graph wall and the flat wall over the wall rectangle, the pixels within 2 of a Cycles edge (half of the wall's pixels) carry the whole excess (0.168 against 0.059 on the flat wall), and the interior carries 0.068 against 0.059. The mean luminance residual on the edges is -0.0015, so it is shape, not brightness: across a joint's dark side 67js stays 0.02 to 0.03 lighter in the tail (columns 426 to 429 of row 168) and on the lit side's shoulder 0.03 to 0.04 lighter, so 67js leaves a bevel more softly than Cycles does. Bake resolution (#401) and a sharper height derivative are the levers that touch that, not the lighting terms.

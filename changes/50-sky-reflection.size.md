@@ -1,0 +1,2 @@
+- entry:core: one GLSL line in the main fragment shader (sky reflection faded below the geometric plane for normal-mapped surfaces), about 20 bytes gzip
+- goal:agent-scene: the same line, 29 bytes gzip (102822 to 102851), for 0.0013 FLIP on `brick-graph` and 0.0021 on `material-spheres` against Cycles; An to accept

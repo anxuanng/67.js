@@ -655,6 +655,8 @@ ${featureCode("linkArea")}      vec3 lightNormal = areaLightNormals[index].xyz;
   // Leaf and grass cards keep a faint sheen; full sky reflection washed grazing cards grey-blue.
   float skyReflection = canopyShaded ? 0.3 : 1.0;
   vec3 reflected = reflect(-viewDirection, specularNormal);
+  // Cycles lets no sky in below the geometric plane, so a tilted bump normal reflects nothing from there.
+  if (USES_NORMAL_MAP) skyReflection *= smoothstep(-0.05, 0.05, dot(reflected, geometricNormal));
 ${featureCode("probeReflection")}  if (ENVIRONMENT_ENABLED) {
     radiance += environmentLighting(normal, specularNormal, baseReflectance, viewDirection, reflected, color, metallic, roughness, occlusion, ambientIntensity, skyReflection);
   } else {
