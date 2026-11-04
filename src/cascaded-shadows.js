@@ -5,14 +5,14 @@ import { resolveShadowLight } from './shadow-light.js';
 // Cascaded sun shadows. The camera frustum is cut into up to four slices by view depth; each slice gets its own depth
 // map, fitted to a bounding sphere of the slice, so a shadow near the camera is sharp and a far one is coarse. Pass
 // `shadowCascades: createCascadedShadows({ count: 3 })` to the Renderer. The code lives here, not in the renderer, so a
-// scene without cascades never downloads it. The classic single map is still drawn for volume fog and water.
+// scene without cascades never downloads it. The classic single map shrinks to one texel unless volume fog or subsurface still reads it.
 // The GLSL has no comments, because comments ship to every page:
 // - cascadeMatrices take a world position to the clip space of each slice, cascadeSplits holds the view depth where each
 //   slice ends, cascadeTexels the world size of one shadow texel and cascadeRanges the depth range in metres, and
 //   cascadeFrame the camera forward axis with the slice count.
 // - The receiver is pushed off its surface by 1.5 texels and the depth bias is one texel, as the local shadows do.
 // - The last tenth of each slice blends into the next, so no seam shows.
-// - The final #define makes the main shader's shadowVisibility(normal) call read the cascades; the classic map stays unused.
+// - The final #define makes the main shader's shadowVisibility(normal) call read the cascades; the classic map is not read.
 
 export const MAXIMUM_CASCADES = 4;
 const AUTOMATIC_CASCADE_EXTENT = 40;
@@ -215,6 +215,11 @@ export class CascadedShadows {
     });
     this.forward.set([...renderer.viewForward, this.count]);
     return this.matrices.some((value, index) => value !== this.previousMatrices[index]);
+  }
+
+  /** Whether the main shader reads the cascades alone: volume fog and subsurface thickness still read the single map. */
+  replacesSingleMap(renderer) {
+    return !renderer.volumeShadowWanted && !renderer.shaderFeatures.has('subsurface');
   }
 
   /** Redraws the slice maps when the camera, the light or a caster moved. Call once a frame after the camera is set. */

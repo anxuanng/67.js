@@ -11,7 +11,7 @@ import { IMPOSTOR_FRAMES } from './impostor-shader.js';
 export const FADE_STEPS = 8;
 export const IMPOSTOR_CARD_TRIANGLES = 2;
 const DEFAULT_FRAME_SIZE = 96;
-const DEFAULT_BAKE_LEVEL = 1;
+const DEFAULT_BAKE_LEVEL = 3;
 const FRAME_MARGIN_PIXELS = 2;
 const EMPTY_BAND = 1e-6;
 
@@ -105,12 +105,22 @@ function drawFrame(parts, view, extent, size, buffers) {
       const maximumX = Math.min(size - 1, Math.ceil(Math.max(screenX[a], screenX[b], screenX[c])));
       const minimumY = Math.max(0, Math.floor(Math.min(screenY[a], screenY[b], screenY[c])));
       const maximumY = Math.min(size - 1, Math.ceil(Math.max(screenY[a], screenY[b], screenY[c])));
+      // Both barycentric weights are linear in the pixel position, so a step along a row adds a constant.
+      const inverseArea = 1 / area;
+      const weightAAcross = (screenY[b] - screenY[c]) * inverseArea;
+      const weightBAcross = (screenY[c] - screenY[a]) * inverseArea;
+      const weightADown = (screenX[c] - screenX[b]) * inverseArea;
+      const weightBDown = (screenX[a] - screenX[c]) * inverseArea;
+      const firstSampleX = minimumX + 0.5;
+      const weightAAtOrigin = (screenX[b] * screenY[c] - screenX[c] * screenY[b]) * inverseArea;
+      const weightBAtOrigin = (screenX[c] * screenY[a] - screenX[a] * screenY[c]) * inverseArea;
       for (let pixelY = minimumY; pixelY <= maximumY; pixelY++) {
+        const sampleY = pixelY + 0.5;
+        let weightA = weightAAtOrigin + firstSampleX * weightAAcross + sampleY * weightADown - weightAAcross;
+        let weightB = weightBAtOrigin + firstSampleX * weightBAcross + sampleY * weightBDown - weightBAcross;
         for (let pixelX = minimumX; pixelX <= maximumX; pixelX++) {
-          const sampleX = pixelX + 0.5;
-          const sampleY = pixelY + 0.5;
-          const weightA = ((screenX[b] - sampleX) * (screenY[c] - sampleY) - (screenX[c] - sampleX) * (screenY[b] - sampleY)) / area;
-          const weightB = ((screenX[c] - sampleX) * (screenY[a] - sampleY) - (screenX[a] - sampleX) * (screenY[c] - sampleY)) / area;
+          weightA += weightAAcross;
+          weightB += weightBAcross;
           const weightC = 1 - weightA - weightB;
           if (weightA < 0 || weightB < 0 || weightC < 0) continue;
           const pixelDepth = weightA * depth[a] + weightB * depth[b] + weightC * depth[c];
@@ -177,28 +187,36 @@ function sampleTexel(map, u, v, wrap) {
   return sampledTexel;
 }
 
+const NEIGHBOR_OFFSETS = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+let filledPairs = new Int32Array(0);
+
 // Empty pixels take the colour of a covered neighbour (alpha stays 0), so mip levels and filtering never pull in black.
 function bleedColors(colorPixels, size, frameColumn, frameRow, atlasWidth) {
   const rowStride = atlasWidth * 4;
   const origin = frameRow * size * rowStride + frameColumn * size * 4;
+  if (filledPairs.length < size * size * 2) filledPairs = new Int32Array(size * size * 2);
   for (let pass = 0; pass < 3; pass++) {
-    const filled = [];
+    let filledCount = 0;
     for (let pixelY = 0; pixelY < size; pixelY++) {
       for (let pixelX = 0; pixelX < size; pixelX++) {
         const index = origin + pixelY * rowStride + pixelX * 4;
         if (colorPixels[index + 3] !== 0) continue;
-        for (const [stepX, stepY] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        for (const [stepX, stepY] of NEIGHBOR_OFFSETS) {
           const neighborX = pixelX + stepX;
           const neighborY = pixelY + stepY;
           if (neighborX < 0 || neighborY < 0 || neighborX >= size || neighborY >= size) continue;
           const neighbor = origin + neighborY * rowStride + neighborX * 4;
           if (colorPixels[neighbor + 3] === 0) continue;
-          filled.push([index, neighbor]);
+          filledPairs[filledCount * 2] = index;
+          filledPairs[filledCount * 2 + 1] = neighbor;
+          filledCount++;
           break;
         }
       }
     }
-    for (const [index, neighbor] of filled) {
+    for (let pair = 0; pair < filledCount; pair++) {
+      const index = filledPairs[pair * 2];
+      const neighbor = filledPairs[pair * 2 + 1];
       colorPixels[index] = colorPixels[neighbor];
       colorPixels[index + 1] = colorPixels[neighbor + 1];
       colorPixels[index + 2] = colorPixels[neighbor + 2];

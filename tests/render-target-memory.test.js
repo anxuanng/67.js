@@ -2,6 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Renderer67 } from '../src/renderer.js';
 import { RenderTargetLedger } from '../src/render-target-ledger.js';
+import { useCompactColor } from '../src/compact-color.js';
+import { CascadedShadows } from '../src/cascaded-shadows.js';
 
 const BYTES_PER_MEGABYTE = 1048576;
 
@@ -89,4 +91,68 @@ test('the multisampled depth uses 16 bits unless a depth texture needs the same 
   const textureDepth = withTexture.memoryReport().targets.find(target => target.name === 'multisampleDepth');
   assert.equal(textureDepth.format, 'DEPTH_COMPONENT24');
   assert.equal(textureDepth.bytes, 960 * 540 * 4 * 4);
+});
+
+test('the single shadow map follows the casters: it grows when casters arrive and shrinks when they leave', () => {
+  const batches = [{ floor: true, castShadow: true }];
+  const { renderer, sizes } = shadowRenderer(batches);
+  renderer.createShadowMap();
+  batches.push({ castShadow: true });
+  renderer.createShadowMap();
+  batches.pop();
+  renderer.createShadowMap();
+  assert.deepEqual(sizes.map(size => size[0]), [1, 2048, 1]);
+  assert.equal(renderer.memoryReport().totalBytes, 4);
+});
+
+test('with cascades the single shadow map stays one texel unless volume fog or subsurface reads it', () => {
+  const cascaded = shadowRenderer([{ castShadow: true }]);
+  cascaded.renderer.shadowCascades = { replacesSingleMap: CascadedShadows.prototype.replacesSingleMap };
+  cascaded.renderer.shaderFeatures = new Set();
+  cascaded.renderer.createShadowMap();
+  assert.equal(cascaded.sizes[0][0], 1);
+  cascaded.renderer.volumeShadowWanted = true;
+  cascaded.renderer.createShadowMap();
+  assert.equal(cascaded.sizes[1][0], 2048);
+  const subsurface = shadowRenderer([{ castShadow: true }]);
+  subsurface.renderer.shadowCascades = { replacesSingleMap: CascadedShadows.prototype.replacesSingleMap };
+  subsurface.renderer.shaderFeatures = new Set(['subsurface']);
+  subsurface.renderer.createShadowMap();
+  assert.equal(subsurface.sizes[0][0], 2048);
+});
+
+function supportingSamples(renderer, samples) {
+  const base = renderer.context;
+  renderer.context = new Proxy(base, { get: (target, name) => (name === 'getInternalformatParameter' ? () => samples : target[name]) });
+}
+
+test('without the compact colour addon the frame and multisample colour stay RGBA16F', () => {
+  const renderer = frameTargetRenderer(false);
+  renderer.allocateFrameTargets(1920, 1080);
+  const byName = Object.fromEntries(renderer.memoryReport().targets.map(target => [target.name, target]));
+  assert.equal(byName.multisampleColor.format, 'RGBA16F');
+  assert.equal(byName.frameColor.format, 'RGBA16F');
+});
+
+test('compact colour halves the frame and multisample colour and keeps the other targets', () => {
+  const renderer = frameTargetRenderer(false);
+  renderer.canvas = { width: 1920, height: 1080 };
+  supportingSamples(renderer, [4, 8]);
+  renderer.allocateFrameTargets(1920, 1080);
+  const before = Object.fromEntries(renderer.memoryReport().targets.map(target => [target.name, target]));
+  useCompactColor(renderer);
+  const after = Object.fromEntries(renderer.memoryReport().targets.map(target => [target.name, target]));
+  assert.equal(after.multisampleColor.format, 'R11F_G11F_B10F');
+  assert.equal(after.frameColor.format, 'R11F_G11F_B10F');
+  assert.equal(after.multisampleColor.bytes * 2, before.multisampleColor.bytes);
+  assert.equal(after.frameColor.bytes * 2, before.frameColor.bytes);
+  assert.equal(after.multisampleDepth.bytes, before.multisampleDepth.bytes);
+});
+
+test('compact colour needs HDR, an opaque canvas and a sample count the format supports', () => {
+  assert.throws(() => useCompactColor({ hdr: false }), /needs hdr: true/);
+  assert.throws(() => useCompactColor({ hdr: true, transparent: true }), /needs hdr: true/);
+  const unsupported = frameTargetRenderer(false);
+  supportingSamples(unsupported, [2]);
+  assert.throws(() => useCompactColor(unsupported), /does not support 4 samples/);
 });

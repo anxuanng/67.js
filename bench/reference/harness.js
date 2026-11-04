@@ -1,4 +1,5 @@
 // Runs in the page: draws one reference scene, and describes it as plain data for Blender.
+import { useCompactColor } from '/src/compact-color.js';
 import { Renderer67 } from '/src/renderer.js';
 import { REFERENCE_SCENES, KHRONOS_SCENES, KTX2_SCENES, loadBarnLampVariant, CLOTH_SCENES } from './scenes.js';
 import { GRAND_SCENES } from './grand-scenes.js';
@@ -30,6 +31,7 @@ function withDerivedGroundBounce(scene, drawnParts) {
 }
 
 // ?reversedDepth=on draws with reversed-Z (issue #310); the scenes draw with the standard depth buffer otherwise.
+const COMPACT_COLOR = new URLSearchParams(location.search).get('compactColor') === 'on';
 const REVERSED_DEPTH = new URLSearchParams(location.search).get('reversedDepth') === 'on';
 
 const WATER_REFLECTION = { off: false, ssr: 'ssr' }[new URLSearchParams(location.search).get('water')] ?? 'planar';
@@ -178,6 +180,7 @@ function createSceneRenderer(parts, scene, cascades, { water = WATER_REFLECTION 
     ground: false, hdr: true, depth: true, samples: 4, pixelRatio: 1, memoryBudgetMiB: 1024, world: true,
     environment: scene.environment, shadowBounds: scene.shadow, shadowCascades: cascades ? createCascadedShadows({ count: cascades }) : null, skyOpenness, fogSkyVisibility,
   });
+  if (COMPACT_COLOR) useCompactColor(renderer);
   if (REVERSED_DEPTH) installReversedDepth(renderer, true);
   attachWaterReflection(renderer, reflecting.surface);
   if (water === 'ssr') {

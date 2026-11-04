@@ -19,7 +19,7 @@ import { MaterialSnapshot } from './material-snapshot.js';
 import { fittedFogDensity } from './fog-fit.js';
 import { InstanceSelection, extractFrustumPlanes, geometryBoundingSphere, selectInstances } from './render-culling.js';
 import { resolveShadowLight, shadowBiasPerSlope } from './shadow-light.js';
-import { requireDeformationSupport, textureUpdateSupport } from './shader-registry.js';
+import { requireDeformationSupport, texturedReplaceSupport, textureUpdateSupport } from './shader-registry.js';
 
 const SHADOW_MAP_SIZE = 2048;
 // Liquid and foam see the resolved opaque scene, so they draw in their own pass after it.
@@ -102,7 +102,7 @@ function renderPass(material) {
 }
 
 function partNeedsFullUpload(part) {
-  return Boolean(part.skin || part.morph || part.geometry.morphTargets || part.geometry.skinIndices || hasMaterialMap(part.material));
+  return Boolean(part.skin || part.morph || part.geometry.morphTargets || part.geometry.skinIndices || hasMaterialMap(part.material) && !texturedReplaceSupport.begin);
 }
 
 function batchPass(batch) {
@@ -1044,15 +1044,15 @@ export class Renderer67 {
       }
       return { group, batch: null };
     });
-    // Textured, skinned and morphed batches stay valid only while retained unchanged; uploading or dropping them is not supported here.
+    // Skinned and morphed batches stay valid only while retained unchanged. Textured ones need the replace-textured-parts addon to be added or dropped.
     for (const item of replacements) {
       if (!item.batch && item.group.some(partNeedsFullUpload)) {
-        throw new Error('replaceParts can add or change only rigid, untextured parts. Keep textured, skinned and morphed parts unchanged so their batches are retained.');
+        throw new Error('replaceParts can add or change only rigid, untextured parts. Keep textured, skinned and morphed parts unchanged, or import replace-textured-parts to add textured ones.');
       }
     }
     for (const [part, location] of this.partLocations) {
       if (retained.has(location.batch)) continue;
-      if (location.skin || location.morph || location.morphTargets || location.skinIndices || location.mapState.slice(0, 5).some(Boolean)) {
+      if (location.skin || location.morph || location.morphTargets || location.skinIndices || (location.mapState.slice(0, 5).some(Boolean) && !texturedReplaceSupport.begin)) {
         throw new Error(`replaceParts can remove or regroup only existing rigid, untextured parts; ${part.name} is textured, skinned or morphed and needs a new renderer.`);
       }
     }
@@ -1067,6 +1067,7 @@ export class Renderer67 {
     const previousBuffers = [...this.buffers];
     const previousGeometryBytes = this.geometryBytes;
     const previousGeometryBuffers = new Map(this.geometryBuffers);
+    const settleTextures = texturedReplaceSupport.begin?.(this);
     const stagedLocations = new Map();
     const stagedBatches = [];
     this.partLocations = stagedLocations;
@@ -1099,6 +1100,7 @@ export class Renderer67 {
       this.buffers = previousBuffers;
       this.geometryBytes = previousGeometryBytes;
       this.geometryBuffers = previousGeometryBuffers;
+      settleTextures?.();
       this.partLocations = previousLocations;
       throw error;
     }
@@ -1118,6 +1120,7 @@ export class Renderer67 {
     }
     for (const buffer of releasedBuffers) this.context.deleteBuffer(buffer);
     this.buffers = this.buffers.filter(buffer => !releasedBuffers.has(buffer));
+    settleTextures?.(this.batches, stagedBatches);
     this.geometryBytes = [...geometries].reduce((total, geometry) => total + geometryBufferBytes(geometry), 0) + renderParts.length * INSTANCE_STRIDE * 4;
     this.batches = stagedBatches;
     this.partCount = parts.length;
@@ -1276,16 +1279,21 @@ export class Renderer67 {
     this.context.vertexAttribDivisor(location, 1);
   }
 
+  // A one texel map stays cleared to the far depth, so every point reads as lit. That is exact when nothing casts, and when
+  // cascades replace the main shader's lookup and nothing else (volume fog, subsurface thickness) still reads this map.
+  shadowMapSizeWanted() {
+    const casts = this.batches.some(batch => !batch.floor && batch.castShadow);
+    return casts && !this.shadowCascades?.replacesSingleMap(this) ? SHADOW_MAP_SIZE : 1;
+  }
+
   createShadowMap() {
     const context = this.context;
-    const allocateShadow = !this.shadowTexture;
-    // A scene with nothing to cast keeps a one texel map that stays cleared to the far depth, so every point reads as lit.
-    this.shadowMapSize ??= this.batches.some(batch => !batch.floor && batch.castShadow) ? SHADOW_MAP_SIZE : 1;
-    const mapSize = this.shadowMapSize;
-    if (allocateShadow) this.shadowTexture = context.createTexture();
+    const mapSize = this.shadowMapSizeWanted();
+    this.shadowTexture ??= context.createTexture();
     context.activeTexture(context.TEXTURE0);
     context.bindTexture(context.TEXTURE_2D, this.shadowTexture);
-    if (allocateShadow) {
+    if (mapSize !== this.shadowMapSize) {
+      this.shadowMapSize = mapSize;
       context.texImage2D(context.TEXTURE_2D, 0, context.DEPTH_COMPONENT24, mapSize, mapSize, 0, context.DEPTH_COMPONENT, context.UNSIGNED_INT, null);
       this.renderTargets.record('shadowMap', { width: mapSize, height: mapSize, format: 'DEPTH_COMPONENT24' });
     }
@@ -2072,7 +2080,8 @@ export class Renderer67 {
     this.requireFeatureNames(shaderFeaturesOfLighting(this.lighting));
     const passMode = this.preparePass(frame);
     this.renderingPass = passMode > 0;
-    if (casterChanged) {
+    this.volumeShadowWanted = volume.density > 0;
+    if (casterChanged || this.shadowMapSizeWanted() !== this.shadowMapSize) {
       this.assemblyAmount = assemblyAmount;
       this.createShadowMap();
     }
