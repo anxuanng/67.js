@@ -124,7 +124,8 @@ test('passes: count, names, fields, scale and the entry function', () => {
 });
 
 test('the documented example passes the validator and builds a scene', async () => {
-  const documentation = readFileSync(new URL('../docs/user-passes.md', import.meta.url), 'utf8');
+  // A Windows checkout may turn the doc's line endings into CRLF.
+  const documentation = readFileSync(new URL('../docs/user-passes.md', import.meta.url), 'utf8').replaceAll('\r\n', '\n');
   const recipeText = documentation.match(/```json\n(\{"postPasses".*)\n```/)[1];
   const { postPasses } = JSON.parse(recipeText);
   const [pass] = normalizeUserPasses(postPasses);

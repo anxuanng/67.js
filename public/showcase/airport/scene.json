@@ -3,6 +3,8 @@
   "title": "Airport ramp",
   "blurb": "A 787 on its stand at dusk with the turnaround crew, fuel truck, loaders and light towers, drawn by 67js.",
   "glb": "/showcase/airport/scene.glb",
+  "glbRest": ["/showcase/airport/scene.rest.glb"],
+  "hdriPreview": "/showcase/airport/sky.preview.hdr",
   "hdri": "/showcase/airport/sky.hdr",
   "hdriOptions": { "intensity": 0.8, "rotation": -0.323, "showBackground": true, "backgroundBlur": 0 },
   "gltfOptions": { "maxTexturePixels": 33554432 },
