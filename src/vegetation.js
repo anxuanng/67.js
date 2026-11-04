@@ -27,6 +27,7 @@ export { SPECIES };
 const BARK_TILE_SIZE = 0.6;
 const SCANNED_BARK_TILE_SIZE = 0.8;
 const LEAF_MODES = ['cards', 'mesh'];
+const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
 const GRASS_LEVEL_DISTANCES = [24];
 const LEAF_COLOR_BASE = [0.85, 0.95, 0.8];
 const LEAF_COLOR_TIP = [1.1, 1.05, 0.9];
@@ -324,8 +325,14 @@ function addCrownClumps(builder, skeleton, spec, mode, random, widthScale = 1) {
     if (!cells.has(key)) cells.set(key, []);
     cells.get(key).push(site);
   }
+  // Two cards of a clump lie about flat and the third stands along the vertical. Each clump rolls its standing card by the
+  // golden angle from the last, so the standing cards of a crown face every way evenly and the crown looks as bright from every
+  // side (issue #432). Unrolled, they all faced one world direction, and the far levels were three times darker from one side.
+  let clumpIndex = 0;
   for (const sites of cells.values()) {
     const center = scaleVector(sites.reduce((sum, site) => addVectors(sum, site.position), [0, 0, 0]), 1 / sites.length);
+    const yaw = clumpIndex * GOLDEN_ANGLE;
+    clumpIndex++;
     const shading = crownShading(skeleton, center);
     const radius = cellSize * (0.55 + 0.1 * Math.min(sites.length, 5)) * widthScale * (spec.clumpScale ?? 1);
     if (mode === 'mesh') {
@@ -336,7 +343,7 @@ function addCrownClumps(builder, skeleton, spec, mode, random, widthScale = 1) {
       const direction = card === 2 ? WORLD_UP : [Math.cos(card * 1.9 + center[0]), 0.15, Math.sin(card * 1.9 + center[2])];
       addLeafSurface(builder, {
         origin: addScaled(center, normalized(direction), -radius),
-        frame: createLeafFrame(normalized(direction), 0),
+        frame: createLeafFrame(normalized(direction), card === 2 ? yaw : 0),
         length: radius * 2,
         width: radius * 2,
         rows: [[0, 1], [1, 1]],
