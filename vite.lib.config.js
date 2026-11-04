@@ -55,6 +55,7 @@ export default defineConfig({
         'camera-effects': 'src/camera-effects.js',
         'water-reflection': 'src/water-reflection.js',
         'render-passes': 'src/render-passes.js',
+        'user-pass': 'src/user-pass.js',
         'line-art': 'src/line-art.js',
         'coplanar-overlap': 'src/coplanar-overlap.js',
         'reversed-depth': 'src/reversed-depth.js',

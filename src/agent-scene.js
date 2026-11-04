@@ -32,6 +32,11 @@ const LOOK_OPERATION_FIELDS = Object.freeze({
   'set-effects': 'effects',
   'set-shadow': 'shadow',
 });
+// Each of these replaces one recipe section whole; null clears it.
+const NULLABLE_SECTION_OPERATIONS = Object.freeze({
+  'set-motion': 'motion', 'set-physics': 'physics', 'set-timeline': 'timeline', 'set-cloth': 'cloth',
+  'set-bake': 'bake', 'set-particles': 'particles', 'set-post-passes': 'postPasses', 'set-armatures': 'armatures',
+});
 const ADDITION_FIELDS = Object.freeze({
   'add-geometry': ['geometries', 'geometry'],
   'add-material': ['materials', 'material'],
@@ -661,7 +666,7 @@ function linkedMaterial(liveMaterial, lightMask, wrappers) {
 
 function normalizeRecipe(input, limits) {
   let recipe = copiedJson(input, limits.maxRecipeBytes);
-  knownKeys(recipe, ['format', 'schemaVersion', 'geometries', 'materials', 'nodes', 'armatures', 'camera', 'environment', 'effects', 'shadow', 'motion', 'physics', 'cloth', 'timeline', 'particles', 'bake'], 'recipe');
+  knownKeys(recipe, ['format', 'schemaVersion', 'geometries', 'materials', 'nodes', 'armatures', 'camera', 'environment', 'effects', 'shadow', 'motion', 'physics', 'cloth', 'timeline', 'particles', 'bake', 'postPasses'], 'recipe');
   if (recipe.format !== '67js.scene' || recipe.schemaVersion !== 1) {
     throw new RangeError('Expected 67js.scene schemaVersion 1.');
   }
@@ -732,6 +737,7 @@ function normalizeRecipe(input, limits) {
   if (Object.hasOwn(recipe, 'bake')) {
     recipe.bake = recipe.bake === null ? null : agentSceneModule('bake').normalizeAgentBake(recipe.bake);
   }
+  if (Object.hasOwn(recipe, 'postPasses')) recipe.postPasses = agentSceneModule('userPass').normalizeUserPasses(recipe.postPasses ?? []);
   recipe = copiedJson(recipe, limits.maxRecipeBytes);
   return recipe;
 }
@@ -930,6 +936,19 @@ function authoredRecipe(recipe) {
   authored.geometries = authored.geometries.filter(geometry => geometry.type !== 'asset');
   authored.materials = authored.materials.filter(material => !material.assetSource);
   return authored;
+}
+
+// The mesh geometry an edit names; `remedy` tells what to do when it is another type.
+function meshGeometryTarget(candidate, operation, remedy) {
+  identifier(operation.geometry);
+  const target = candidate.geometries.find(geometry => geometry.id === operation.geometry);
+  if (!target) {
+    throw new RangeError(`Geometry ID was not found: ${operation.geometry}. Known geometry IDs: ${[...candidate.geometries.map(known => known.id)].join(', ')}.`);
+  }
+  if (target.type !== 'mesh') {
+    throw new TypeError(`Geometry ${operation.geometry} is a ${target.type}. ${remedy(target.type)}`);
+  }
+  return target;
 }
 
 function removeNode(candidate, operation) {
@@ -1351,6 +1370,9 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
     get environment() {
       return structuredClone(state.recipe.environment);
     },
+    get postPasses() {
+      return structuredClone(state.recipe.postPasses ?? []);
+    },
     get effects() {
       return structuredClone(state.recipe.effects);
     },
@@ -1379,64 +1401,14 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
       const removedNodes = new Set();
       const removedMaterials = new Set();
       for (const operation of operations) {
-        if (operation.type === 'set-motion') {
-          knownKeys(operation, ['type', 'motion'], 'operation');
-          if (!Object.hasOwn(operation, 'motion')) {
-            throw new TypeError('set-motion requires motion; use null to clear it.');
+        const section = Object.hasOwn(NULLABLE_SECTION_OPERATIONS, operation.type) ? NULLABLE_SECTION_OPERATIONS[operation.type] : null;
+        if (section) {
+          knownKeys(operation, ['type', section], 'operation');
+          if (!Object.hasOwn(operation, section)) {
+            throw new TypeError(`${operation.type} requires ${section}; use null to clear it.`);
           }
-          candidate.motion = operation.motion;
-          continue;
-        }
-        if (operation.type === 'set-armatures') {
-          knownKeys(operation, ['type', 'armatures'], 'operation');
-          if (!Object.hasOwn(operation, 'armatures')) {
-            throw new TypeError('set-armatures requires armatures; use null to clear them.');
-          }
-          if (operation.armatures === null) {
-            delete candidate.armatures;
-          } else {
-            candidate.armatures = operation.armatures;
-          }
-          continue;
-        }
-        if (operation.type === 'set-physics') {
-          knownKeys(operation, ['type', 'physics'], 'operation');
-          if (!Object.hasOwn(operation, 'physics')) {
-            throw new TypeError('set-physics requires physics; use null to clear it.');
-          }
-          candidate.physics = operation.physics;
-          continue;
-        }
-        if (operation.type === 'set-timeline') {
-          knownKeys(operation, ['type', 'timeline'], 'operation');
-          if (!Object.hasOwn(operation, 'timeline')) {
-            throw new TypeError('set-timeline requires timeline; use null to clear it.');
-          }
-          candidate.timeline = operation.timeline;
-          continue;
-        }
-        if (operation.type === 'set-cloth') {
-          knownKeys(operation, ['type', 'cloth'], 'operation');
-          if (!Object.hasOwn(operation, 'cloth')) {
-            throw new TypeError('set-cloth requires cloth; use null to clear it.');
-          }
-          candidate.cloth = operation.cloth;
-          continue;
-        }
-        if (operation.type === 'set-bake') {
-          knownKeys(operation, ['type', 'bake'], 'operation');
-          if (!Object.hasOwn(operation, 'bake')) {
-            throw new TypeError('set-bake requires bake; use null to clear it.');
-          }
-          candidate.bake = operation.bake;
-          continue;
-        }
-        if (operation.type === 'set-particles') {
-          knownKeys(operation, ['type', 'particles'], 'operation');
-          if (!Object.hasOwn(operation, 'particles')) {
-            throw new TypeError('set-particles requires particles; use null to clear it.');
-          }
-          candidate.particles = operation.particles;
+          candidate[section] = operation[section];
+          if (candidate.armatures === null) delete candidate.armatures;
           continue;
         }
         const lookField = Object.hasOwn(LOOK_OPERATION_FIELDS, operation.type) ? LOOK_OPERATION_FIELDS[operation.type] : null;
@@ -1476,14 +1448,7 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
         }
         if (operation.type === 'edit-mesh') {
           knownKeys(operation, ['type', 'geometry', 'edits', 'replace'], 'operation');
-          identifier(operation.geometry);
-          const target = candidate.geometries.find(geometry => geometry.id === operation.geometry);
-          if (!target) {
-            throw new RangeError(`Geometry ID was not found: ${operation.geometry}. Known geometry IDs: ${[...candidate.geometries.map(known => known.id)].join(', ')}.`);
-          }
-          if (target.type !== 'mesh') {
-            throw new TypeError(`Geometry ${operation.geometry} is a ${target.type}. Add a mesh geometry with base: { type: '${target.type}', ... } to edit it.`);
-          }
+          const target = meshGeometryTarget(candidate, operation, type => `Add a mesh geometry with base: { type: '${type}', ... } to edit it.`);
           if (operation.replace !== undefined && typeof operation.replace !== 'boolean') {
             throw new TypeError('replace must be boolean.');
           }
@@ -1496,14 +1461,7 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
         }
         if (operation.type === 'set-mesh-stack') {
           knownKeys(operation, ['type', 'geometry', 'stack', 'apply'], 'operation');
-          identifier(operation.geometry);
-          const target = candidate.geometries.find(geometry => geometry.id === operation.geometry);
-          if (!target) {
-            throw new RangeError(`Geometry ID was not found: ${operation.geometry}. Known geometry IDs: ${[...candidate.geometries.map(known => known.id)].join(', ')}.`);
-          }
-          if (target.type !== 'mesh') {
-            throw new TypeError(`Geometry ${operation.geometry} is a ${target.type}. Only mesh geometries have a modifier stack.`);
-          }
+          const target = meshGeometryTarget(candidate, operation, () => 'Only mesh geometries have a modifier stack.');
           const stack = operation.stack ?? target.stack ?? [];
           agentSceneModule('mesh').normalizeMeshStack(stack);
           const applied = operation.apply ?? 0;
@@ -1605,6 +1563,7 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
         ...(state.assetRuntime.placements.length ? { assets: agentSceneModule('assets').describeAssetPlacements(state.assetRuntime, state.graph, geometry => state.localBounds.get(geometry)) } : {}),
         ...(state.sequences.length ? { textureSequences: state.sequences.map(sequence => sequence.describe()) } : {}),
         ...(state.bakeReport ? { bake: state.bakeReport } : {}),
+        ...(state.recipe.postPasses?.length ? { postPasses: agentSceneModule('userPass').describeUserPasses(state.recipe.postPasses) } : {}),
         ...(state.reflectionReport ? { reflections: state.reflectionReport } : {}),
         ...(state.recipe.armatures ? { rig: rigReport(state.recipe, state.skinBindings) } : {}),
         boundsSpace: 'authored-base-world',
