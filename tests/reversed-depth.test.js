@@ -102,3 +102,25 @@ test('a flush pair far from the eye asks for reversed depth, a near one does not
   assert.equal(hasFarOverlap(pairAt(-100), view), true);
   assert.equal(hasFarOverlap([], view), false);
 });
+
+test('the main vertex shader is compiled camera-relative only through the addon, and only that program', async () => {
+  const { createVertexShader, SHADER_FEATURES } = await import('../src/shaders.js');
+  const { shaderTransforms } = await import('../src/shader-registry.js');
+  const compile = source => shaderTransforms.reduce((text, transform) => transform(text), source);
+  const mainSource = createVertexShader(SHADER_FEATURES.filter(feature => !['crowd', 'skin', 'morph'].includes(feature)));
+  assert.equal(compile(mainSource), mainSource);
+
+  const { renderer } = fakeRenderer();
+  const compiled = [];
+  renderer.shaderFeatures = new Set();
+  renderer.startMainProgram = () => compiled.push(compile(mainSource));
+  renderer.rebuildMainProgram = function rebuild() {
+    this.startMainProgram();
+  };
+  installReversedDepth(renderer, true);
+  const [cameraRelative] = compiled;
+  assert.match(cameraRelative, /uniform vec4 cameraOffset;/);
+  assert.match(cameraRelative, /gl_Position = viewProjection \* vec4\(world\.xyz - cameraOffset\.xyz, 1\.0 - cameraOffset\.w\) \+ cameraShift;/);
+  assert.doesNotMatch(cameraRelative, /gl_Position = viewProjection \* world;/);
+  assert.equal(compile(mainSource), mainSource);
+});

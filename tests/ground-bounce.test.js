@@ -150,6 +150,11 @@ test('a low sun adds a bounce colour to the map, a high sun, no sun or outdoorFi
   const filled = groundBounceEnvironment(parts, lowSun);
   assert.ok(filled.map.irradianceSource);
   assert.ok(filled.map.bounce.every(channel => channel > 0));
+  // The renderer adds a bounce through this method; without it the colour is never drawn (issue #392).
+  const coefficients = computeIrradianceCoefficients(filled.map);
+  const lit = filled.map.irradianceWithBounce(coefficients);
+  assert.ok(lit[0] > coefficients[0] && lit[1] > coefficients[1] && lit[2] > coefficients[2]);
+  assert.ok(groundBounceEnvironment(parts.slice(1), lowSun).map.irradianceWithBounce);
   assert.equal(groundBounceEnvironment(parts, lowSun).map, filled.map);
   assert.equal(groundBounceEnvironment(parts, environmentOf(uniformSky(0.5))).map.bounce, undefined);
   assert.equal(groundBounceEnvironment(parts, { ...lowSun, keyColor: [0, 0, 0] }).map.bounce, undefined);

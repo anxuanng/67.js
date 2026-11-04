@@ -533,7 +533,8 @@ def build_material(name, description, has_vertex_colors):
         # 67js adds emissiveColor (the base colour when none is given) times emission to the pixel.
         emission_color = description.get("emissiveColor", description["color"])
         set_linear_color(principled.inputs["Emission Color"], emission_color)
-        principled.inputs["Emission Strength"].default_value = description["emission"]
+        # NO_EMISSION=1 draws the scene without its emission, to measure how much of a Cycles picture is light from emissive parts (issue #392).
+        principled.inputs["Emission Strength"].default_value = 0.0 if os.environ.get("NO_EMISSION") else description["emission"]
         if "emissiveMap" in description:
             add_emissive_map(material, principled, description, emission_color)
     if "graph" in description:
