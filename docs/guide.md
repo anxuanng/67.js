@@ -567,7 +567,7 @@ The session keeps existing renderer-facing parts and matrices for transform, mat
 Agents can build from an empty recipe with `add-geometry`, `add-material` and `add-node` commands.
 Explicit removal and rebinding use the same atomic batch contract.
 Checkpoints retain shared geometry under the session budget. Release unused snapshots before increasing scene detail.
-The preview reconciles rigid, untextured topology while keeping unchanged geometry buffers and draw batches.
+The preview reconciles rigid topology, textured or not, while keeping unchanged geometry buffers and draw batches.
 
 The CPU addon owns recipe state. The separate Node MCP server connects it to browser rendering. Background render jobs remain unsupported.
 

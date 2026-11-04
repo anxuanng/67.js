@@ -155,7 +155,7 @@ Read `docs/agent-scene.md` for schema version one, immutable resources and atomi
 Start with capabilities and bounded inspection. Edit stable IDs through one `apply` batch with the current `expectedRevision`.
 
 Checkpoint before uncertain changes, inspect and render the result, then restore or release the checkpoint.
-For rigid, untextured scenes, compare `session.topologyRevision` with the uploaded revision after successful edits.
+For rigid scenes (textured parts are fine; skinned, morphed and layered parts need a new renderer), compare `session.topologyRevision` with the uploaded revision after successful edits.
 Call `renderer.replaceParts(session.parts)` for changed topology or `renderer.updateParts(session.parts)` for retained parts, then render the detached camera.
 
 Use add/remove commands for nodes and shared resources, and `set-node` geometry/material fields for rebinding.

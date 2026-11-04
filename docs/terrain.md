@@ -34,7 +34,7 @@ const renderer = new Renderer67(canvas, [...terrain.parts, ...treeParts], { worl
 ```
 
 Each frame, `if (terrain.update(eye).length) renderer.replaceParts(sceneParts)` swaps the chunks whose level of detail changed.
-Textured parts such as leaf cards must stay unchanged in `replaceParts`, so rebuild the renderer when the vegetation levels change.
+Textured parts such as leaf cards can be added and removed in `replaceParts`; their textures are freed once no part uses them.
 
 ## loadTextureSet
 

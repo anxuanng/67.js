@@ -102,7 +102,13 @@ function renderPass(material) {
 }
 
 function partNeedsFullUpload(part) {
-  return Boolean(part.skin || part.morph || part.geometry.morphTargets || part.geometry.skinIndices || hasMaterialMap(part.material));
+  return Boolean(part.skin || part.morph || part.crowd || part.material.layers || part.geometry.morphTargets || part.geometry.skinIndices);
+}
+
+// The texture descriptors a batch binds. Layer and splat maps are included so a texture they share is never freed.
+function batchTextureDescriptors(batch) {
+  const state = batch.mapState;
+  return [...state.slice(0, 5), state[14], ...Object.values(state[18] ?? {}), state[17]?.maskMap].filter(Boolean);
 }
 
 function batchPass(batch) {
@@ -1013,7 +1019,7 @@ export class Renderer67 {
     return batch;
   }
 
-  /** Reconcile immutable rigid, untextured geometry without rebuilding programs or render targets. */
+  /** Reconcile immutable rigid geometry, textured or not, without rebuilding programs or render targets. */
   replaceParts(parts) {
     if (!Array.isArray(parts) || new Set(parts).size !== parts.length) {
       throw new TypeError('Scene parts must be an array with distinct object identities.');
@@ -1044,16 +1050,16 @@ export class Renderer67 {
       }
       return { group, batch: null };
     });
-    // Textured, skinned and morphed batches stay valid only while retained unchanged; uploading or dropping them is not supported here.
+    // Skinned, morphed, crowd and splat-layer batches own pose and layer resources that are not reconciled here; they stay valid only while retained unchanged.
     for (const item of replacements) {
       if (!item.batch && item.group.some(partNeedsFullUpload)) {
-        throw new Error('replaceParts can add or change only rigid, untextured parts. Keep textured, skinned and morphed parts unchanged so their batches are retained.');
+        throw new Error('replaceParts can add or change only rigid parts. Keep skinned, morphed, crowd and layered parts unchanged so their batches are retained.');
       }
     }
     for (const [part, location] of this.partLocations) {
       if (retained.has(location.batch)) continue;
-      if (location.skin || location.morph || location.morphTargets || location.skinIndices || location.mapState.slice(0, 5).some(Boolean)) {
-        throw new Error(`replaceParts can remove or regroup only existing rigid, untextured parts; ${part.name} is textured, skinned or morphed and needs a new renderer.`);
+      if (location.skin || location.morph || location.morphTargets || location.skinIndices || location.batch.crowd || location.batch.splat) {
+        throw new Error(`replaceParts can remove or regroup only existing rigid parts; ${part.name} is skinned, morphed or layered and needs a new renderer.`);
       }
     }
     const newGeometryBytes = [...geometries].filter(geometry => !this.geometryBuffers.has(geometry)).reduce((total, geometry) => total + geometryBufferBytes(geometry), 0);
@@ -1067,6 +1073,7 @@ export class Renderer67 {
     const previousBuffers = [...this.buffers];
     const previousGeometryBytes = this.geometryBytes;
     const previousGeometryBuffers = new Map(this.geometryBuffers);
+    const previousTextures = new Map(this.textures);
     const stagedLocations = new Map();
     const stagedBatches = [];
     this.partLocations = stagedLocations;
@@ -1099,6 +1106,7 @@ export class Renderer67 {
       this.buffers = previousBuffers;
       this.geometryBytes = previousGeometryBytes;
       this.geometryBuffers = previousGeometryBuffers;
+      this.dropTextures([...this.textures.keys()].filter(descriptor => !previousTextures.has(descriptor)));
       this.partLocations = previousLocations;
       throw error;
     }
@@ -1118,6 +1126,10 @@ export class Renderer67 {
     }
     for (const buffer of releasedBuffers) this.context.deleteBuffer(buffer);
     this.buffers = this.buffers.filter(buffer => !releasedBuffers.has(buffer));
+    const bound = new Set(stagedBatches.flatMap(batchTextureDescriptors));
+    const added = [...this.textures.keys()].filter(descriptor => descriptor && !previousTextures.has(descriptor));
+    const unbound = this.batches.flatMap(batchTextureDescriptors).filter(descriptor => !bound.has(descriptor) && this.textures.has(descriptor));
+    this.textureBytes += added.reduce((total, descriptor) => total + textureDescriptorInfo(descriptor).bytes, 0) - this.dropTextures(unbound);
     this.geometryBytes = [...geometries].reduce((total, geometry) => total + geometryBufferBytes(geometry), 0) + renderParts.length * INSTANCE_STRIDE * 4;
     this.batches = stagedBatches;
     this.partCount = parts.length;
@@ -1126,6 +1138,17 @@ export class Renderer67 {
     this.shadowsDirty = true;
     this.updateParts(renderParts);
     return parts.length;
+  }
+
+  // Deletes textures no batch binds any more and returns the bytes they held.
+  dropTextures(descriptors) {
+    let bytes = 0;
+    for (const descriptor of new Set(descriptors)) {
+      this.context.deleteTexture(this.textures.get(descriptor));
+      this.textures.delete(descriptor);
+      bytes += textureDescriptorInfo(descriptor).bytes;
+    }
+    return bytes;
   }
 
   createSkinTexture(cache, identity, matrices, groupSize) {

@@ -13,6 +13,7 @@ function allocationRenderer() {
   const liveBuffers = new Set();
   const liveArrays = new Set();
   const uploads = [];
+  const liveTextures = new Set();
   let driverError = 0;
   let throwingUpload = false;
   renderer.context = {
@@ -29,6 +30,8 @@ function allocationRenderer() {
       return array;
     },
     deleteVertexArray(array) { liveArrays.delete(array); },
+    deleteTexture(texture) { liveTextures.delete(texture); },
+    getParameter() { return 4096; },
     bindBuffer() {}, bindVertexArray() {}, enableVertexAttribArray() {}, disableVertexAttribArray() {},
     vertexAttribPointer() {}, vertexAttribDivisor() {}, vertexAttrib2f() {}, vertexAttrib3f() {},
     bufferData(target, data, usage) {
@@ -56,8 +59,16 @@ function allocationRenderer() {
   renderer.updateBatches = new Set();
   renderer.updateSkins = new Set();
   renderer.updateMorphs = new Set();
-  renderer.createTexture = () => null;
-  return { renderer, liveBuffers, liveArrays, uploads,
+  renderer.textures = new Map();
+  renderer.createTexture = descriptor => {
+    if (!renderer.textures.has(descriptor)) {
+      const texture = { descriptor };
+      liveTextures.add(texture);
+      renderer.textures.set(descriptor, texture);
+    }
+    return renderer.textures.get(descriptor);
+  };
+  return { renderer, liveBuffers, liveArrays, liveTextures, uploads,
     failDriver() { driverError = 1285; },
     failUpload(value) { throwingUpload = value; },
   };
@@ -157,12 +168,13 @@ test('retained textured batches survive while streamed rigid parts change around
   state.renderer.replaceParts([textured, secondFrame]);
   assert.equal(state.renderer.batches[0], texturedBatch, 'the textured batch is retained, not reuploaded');
   assert.equal(state.renderer.partCount, 2);
-  assert.throws(() => state.renderer.replaceParts([secondFrame]), /existing rigid, untextured/);
-  const changedTexture = part('new textured', box());
-  changedTexture.material.map = textured.material.map;
-  changedTexture.geometry.uvs = new Float32Array(changedTexture.geometry.positions.length / 3 * 2);
-  assert.throws(() => state.renderer.replaceParts([textured, secondFrame, changedTexture]), /only rigid, untextured/);
-  assert.equal(state.renderer.batches[0], texturedBatch);
+  const addedTexture = part('new textured', box());
+  addedTexture.material.map = textured.material.map;
+  addedTexture.geometry.uvs = new Float32Array(addedTexture.geometry.positions.length / 3 * 2);
+  state.renderer.replaceParts([textured, secondFrame, addedTexture]);
+  assert.equal(state.renderer.partCount, 3);
+  state.renderer.replaceParts([secondFrame]);
+  assert.equal(state.renderer.partLocations.has(textured), false);
 });
 
 test('committed uploaded resource ownership rejects replacement even when callers mutate live handles', () => {
@@ -171,15 +183,76 @@ test('committed uploaded resource ownership rejects replacement even when caller
   state.renderer.replaceParts([first]);
   const location = state.renderer.partLocations.get(first);
   const originalBatch = state.renderer.batches[0];
-  const allocations = state.uploads.length;
-  location.mapState[0] = { image: {} };
-  first.material.map = undefined;
-  assert.throws(() => state.renderer.replaceParts([]), /existing rigid/);
-  assert.equal(state.renderer.batches[0], originalBatch);
-  assert.equal(state.uploads.length, allocations);
-  location.mapState[0] = null;
   location.skin = { jointMatrices: new Float32Array(16) };
   first.skin = undefined;
   assert.throws(() => state.renderer.replaceParts([]), /existing rigid/);
   assert.equal(state.renderer.partCount, 1);
+});
+
+function texturedPart(name, geometry, map) {
+  const textured = part(name, { ...geometry, uvs: new Float32Array(geometry.positions.length / 3 * 2) });
+  textured.material.map = map;
+  return textured;
+}
+
+function descriptor(size = 8) {
+  return { image: { width: size, height: size }, colorSpace: 'srgb' };
+}
+
+test('replaceParts adds a textured part and uploads its texture once', () => {
+  const state = allocationRenderer();
+  const plain = part('plain', box());
+  state.renderer.replaceParts([plain]);
+  const bytesBefore = state.renderer.textureBytes;
+  const map = descriptor();
+  const textured = texturedPart('textured', sphere(12, 8), map);
+  state.renderer.replaceParts([plain, textured]);
+  const batch = state.renderer.partLocations.get(textured).batch;
+  assert.equal(batch.textures[0], state.renderer.textures.get(map));
+  assert.equal(batch.textures[0].descriptor, map);
+  assert.ok(state.renderer.textureBytes > bytesBefore);
+});
+
+test('replaceParts removes a textured part and deletes its batch, buffers and texture', () => {
+  const state = allocationRenderer();
+  const plain = part('plain', box());
+  const map = descriptor();
+  const textured = texturedPart('textured', sphere(12, 8), map);
+  state.renderer.replaceParts([plain, textured]);
+  const texture = state.renderer.textures.get(map);
+  assert.ok(state.liveTextures.has(texture));
+  const bytesWithTexture = state.renderer.textureBytes;
+  state.renderer.replaceParts([plain]);
+  assert.equal(state.renderer.batches.length, 1);
+  assert.equal(state.renderer.partLocations.has(textured), false);
+  assert.equal(state.liveTextures.has(texture), false);
+  assert.equal(state.renderer.textures.has(map), false);
+  assert.equal(state.liveArrays.size, 1);
+  assert.equal(state.liveBuffers.size, 4);
+  assert.ok(state.renderer.textureBytes < bytesWithTexture);
+  assert.equal(state.renderer.textureBytes, 4);
+});
+
+test('a texture shared by two parts survives removing one of them', () => {
+  const state = allocationRenderer();
+  const map = descriptor();
+  const cube = texturedPart('cube', box(), map);
+  const ball = texturedPart('ball', sphere(12, 8), map);
+  state.renderer.replaceParts([cube, ball]);
+  const texture = state.renderer.textures.get(map);
+  const bytes = state.renderer.textureBytes;
+  state.renderer.replaceParts([cube]);
+  assert.equal(state.liveTextures.has(texture), true);
+  assert.equal(state.renderer.textures.get(map), texture);
+  assert.equal(state.renderer.textureBytes, bytes);
+  state.renderer.replaceParts([]);
+  assert.equal(state.liveTextures.has(texture), false);
+  assert.equal(state.renderer.textureBytes, 4);
+});
+
+test('replaceParts no longer rejects textured parts', () => {
+  const state = allocationRenderer();
+  const textured = texturedPart('textured', box(), descriptor());
+  assert.doesNotThrow(() => state.renderer.replaceParts([textured]));
+  assert.doesNotThrow(() => state.renderer.replaceParts([]));
 });
