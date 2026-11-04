@@ -1,5 +1,6 @@
 import { mat4, quat } from 'gl-matrix';
 import { box, cylinder, sphere } from './geometry.js';
+import './world-material-shader.js';
 
 const FULL_TURN = Math.PI * 2;
 const DETAIL_PRESETS = {

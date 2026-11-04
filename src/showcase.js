@@ -7,9 +7,13 @@ import { loadGltf } from './gltf.js';
 import { loadHdri } from './hdri.js';
 import { createCascadedShadows } from './cascaded-shadows.js';
 import { applyWaterReflection, attachWaterReflection } from './water-reflection.js';
+import { createDownloadMeter, downloadBlob, readByteLength, readPartRanks } from './showcase-download.js';
 
 // Each scene lives in public/showcase/<id>/scene.json: its GLB, sky, camera, renderer and frame options, and credits.
 // Optional fields: "bounds" ({ min, max } the camera target stays inside), "minDistance" and "maxDistance".
+// A world can load in stages (scripts/split-showcase-glb.mjs): "glb" is then the first part, the ground and the hero the opening
+// camera frames, "glbRest" lists the other parts and "hdriPreview" is a small sky for the first frame. The page draws the first
+// frame from those two, then streams the rest in and swaps in the full sky.
 const SCENE_LABELS = { airport: 'Airport ramp', datacenter: 'AI data center', port: 'Container port' };
 const SCENE_GLOWS = { airport: '#ff6a2b', datacenter: '#3b82f6', port: '#f59e0b' };
 const SCENE_IDS = Object.keys(SCENE_LABELS);
@@ -43,6 +47,7 @@ let scene = null;
 let currentId = null;
 let loadingId = null;
 let loadingRequest = 0;
+let loadingAbort = null;
 let scheduledFrame = 0;
 let dragMode = 'orbit';
 let keyFrame = 0;
@@ -66,9 +71,11 @@ function showStatus(kind, message) {
   status.append(text);
 }
 
-function showProgress(id, fraction) {
-  const percent = fraction === null ? '' : ` ${Math.round(fraction * 100)}%`;
-  showStatus('loading', `Loading ${SCENE_LABELS[id]}…${percent}`);
+// Real bytes fetched so far; the total appears once every file's size is known, so the figure never shrinks.
+function showProgress(label, meter) {
+  const { received, total } = meter.summary();
+  const megabytes = bytes => (bytes / 1e6).toFixed(1);
+  showStatus('loading', `${label}…  ${total ? `${megabytes(received)} of ${megabytes(total)} MB` : `${megabytes(received)} MB`}`);
 }
 
 function dot(a, b) {
@@ -132,16 +139,17 @@ function boundsOfParts(parts) {
   return minimum.every(Number.isFinite) ? { min: minimum, max: maximum } : null;
 }
 
-function applyLimits(description, parts) {
+// The limits follow the opening view, so working them out again once every part has loaded gives the same result as a one-piece load.
+function applyLimits(description, parts, view = orbit) {
   const bounds = description.bounds ?? boundsOfParts(parts) ?? {
-    min: orbit.target.map(value => value - orbit.distance),
-    max: orbit.target.map(value => value + orbit.distance),
+    min: view.target.map(value => value - view.distance),
+    max: view.target.map(value => value + view.distance),
   };
   const margin = bounds.max.map((value, axis) => (value - bounds.min[axis]) * BOUNDS_MARGIN);
-  limits.boundsMin = bounds.min.map((value, axis) => Math.min(value - margin[axis], orbit.target[axis]));
-  limits.boundsMax = bounds.max.map((value, axis) => Math.max(value + margin[axis], orbit.target[axis]));
-  limits.minDistance = description.minDistance ?? orbit.distance * DEFAULT_MIN_DISTANCE_FACTOR;
-  limits.maxDistance = description.maxDistance ?? orbit.distance * DEFAULT_MAX_DISTANCE_FACTOR;
+  limits.boundsMin = bounds.min.map((value, axis) => Math.min(value - margin[axis], view.target[axis]));
+  limits.boundsMax = bounds.max.map((value, axis) => Math.max(value + margin[axis], view.target[axis]));
+  limits.minDistance = description.minDistance ?? view.distance * DEFAULT_MIN_DISTANCE_FACTOR;
+  limits.maxDistance = description.maxDistance ?? view.distance * DEFAULT_MAX_DISTANCE_FACTOR;
 }
 
 function draw() {
@@ -209,23 +217,10 @@ async function readDescription(id) {
   return response.json();
 }
 
-// Streams the GLB so the loading chip can show real progress; Content-Length may be missing or compressed.
-async function downloadWithProgress(url, onProgress) {
-  const response = await fetch(url);
-  if (!response.ok) throw new Error(`model is not available (${response.status})`);
-  const total = Number(response.headers.get('content-length')) || 0;
-  if (!response.body?.getReader) return response.blob();
-  const reader = response.body.getReader();
-  const chunks = [];
-  let received = 0;
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    chunks.push(value);
-    received += value.length;
-    onProgress(total ? Math.min(0.99, received / total) : null);
-  }
-  return new Blob(chunks, { type: 'model/gltf-binary' });
+// Showcase GLBs may use EXT_meshopt_compression; the decoder is a small chunk fetched beside the model download.
+async function loadDecoders() {
+  const { MeshoptDecoder } = await import('three/addons/libs/meshopt_decoder.module.js');
+  return { meshopt: MeshoptDecoder };
 }
 
 function showCredits(credits = []) {
@@ -243,21 +238,91 @@ function markPressedTab(id) {
   for (const button of tabs.querySelectorAll('button')) button.setAttribute('aria-pressed', String(button.dataset.scene === id));
 }
 
+// Puts the parts of every file back in the order a one-piece load gives them, because the order sets how the renderer batches and
+// draws them. Each file lists the rank of its parts in that order (the split script writes it); without ranks the files join as they are.
+function inWholeWorldOrder(files) {
+  if (files.some(file => !file.ranks || file.ranks.length !== file.parts.length)) return files.flatMap(file => file.parts);
+  const ranked = files.flatMap(file => file.parts.map((part, index) => ({ part, rank: file.ranks[index] })));
+  return ranked.sort((first, second) => first.rank - second.rank).map(entry => entry.part);
+}
+
+// Adds the other parts of a staged world once they have downloaded, then swaps the first frame's small sky for the full one.
+async function finishWorld(world) {
+  const { request, description, asset, detachReflection, remainingDownloads, abort } = world;
+  const isCurrent = () => request === loadingRequest;
+  try {
+    const [remainingModels, fullMap] = await remainingDownloads;
+    if (!isCurrent()) return;
+    const files = [{ parts: asset.parts, ranks: world.ranks }];
+    for (const [index, model] of remainingModels.entries()) {
+      const baseUrl = new URL('.', new URL(description.glbRest[index], location.href)).href;
+      const remaining = await loadGltf(model, { baseUrl, decoders: world.decoders, ...(description.gltfOptions ?? {}) });
+      files.push({ parts: remaining.parts, ranks: await readPartRanks(model) });
+    }
+    if (!isCurrent()) return;
+    // The renderer adds textured parts through this opt-in addon, which stays out of the core bundle.
+    await import('./replace-textured-parts.js');
+    if (!isCurrent()) return;
+    const allParts = inWholeWorldOrder(files);
+    // The reflecting surface is found over the whole world, as in a one-piece load, so a part that arrives late can take the mirror.
+    const reflection = description.waterReflection ? applyWaterReflection(allParts) : { parts: allParts, surface: null };
+    renderer.replaceParts(reflection.parts);
+    detachReflection();
+    attachWaterReflection(renderer, reflection.surface);
+    applyLimits(description, allParts, homeView);
+    if (fullMap) scene.frame = { ...scene.frame, environment: { map: fullMap } };
+    window.__showcase.complete = true;
+    status.hidden = true;
+    requestDraw();
+  } catch (error) {
+    if (!isCurrent() || abort.signal.aborted) return;
+    showStatus('error', `Could not finish loading ${SCENE_LABELS[world.id]}: ${error.message}`);
+  }
+}
+
 // The old scene stays on screen and interactive until the new one is ready.
 async function selectScene(id) {
   const request = ++loadingRequest;
+  loadingAbort?.abort();
+  const abort = new AbortController();
+  loadingAbort = abort;
   document.documentElement.style.setProperty('--glow', SCENE_GLOWS[id]);
   setLoadingState(id);
   markPressedTab(id);
-  showProgress(id, null);
+  let progressLabel = `Loading ${SCENE_LABELS[id]}`;
+  const meter = createDownloadMeter(() => { if (request === loadingRequest) showProgress(progressLabel, meter); });
+  showProgress(progressLabel, meter);
   try {
     const description = await readDescription(id);
     const glbUrl = new URL(description.glb, location.href);
-    const [model, map] = await Promise.all([
-      downloadWithProgress(glbUrl.href, fraction => { if (request === loadingRequest) showProgress(id, fraction); }),
-      loadHdri(description.hdri, description.hdriOptions ?? {}),
+    const skyUrl = new URL(description.hdri, location.href).href;
+    const previewUrl = description.hdriPreview ? new URL(description.hdriPreview, location.href).href : null;
+    const remainingUrls = (description.glbRest ?? []).map(path => new URL(path, location.href).href);
+    const download = (url, type) => downloadBlob(url, { meter, name: url, type, signal: abort.signal });
+    const loadSky = async url => {
+      const blob = await download(url, 'image/vnd.radiance');
+      return loadHdri(url, { ...(description.hdriOptions ?? {}), fetchImplementation: async () => new Response(blob) });
+    };
+    meter.register(glbUrl.href);
+    meter.register(previewUrl ?? skyUrl);
+    // Files that load after the first frame register now with their sizes from a header request, so the total is known early.
+    const laterUrls = [...remainingUrls, ...(previewUrl ? [skyUrl] : [])];
+    for (const url of laterUrls) {
+      meter.register(url);
+      readByteLength(url, abort.signal).then(total => meter.setTotal(url, total), () => {});
+    }
+    const [model, map, decoders] = await Promise.all([
+      download(glbUrl.href, 'model/gltf-binary'),
+      loadSky(previewUrl ?? skyUrl),
+      loadDecoders(),
     ]);
-    const asset = await loadGltf(model, { baseUrl: new URL('.', glbUrl).href, ...(description.gltfOptions ?? {}) });
+    // The rest starts the moment the first part is in, so the link stays busy while the page decodes and draws it.
+    const remainingDownloads = Promise.all([
+      Promise.all(remainingUrls.map(url => download(url, 'model/gltf-binary'))),
+      previewUrl ? loadSky(skyUrl) : null,
+    ]);
+    remainingDownloads.catch(() => {});
+    const asset = await loadGltf(model, { baseUrl: new URL('.', glbUrl).href, decoders, ...(description.gltfOptions ?? {}) });
     if (request !== loadingRequest) return;
     renderer?.dispose();
     const rendererOptions = description.renderer ?? {};
@@ -271,7 +336,7 @@ async function selectScene(id) {
       shadowCascades,
       environment: { ...(rendererOptions.environment ?? {}), map },
     });
-    attachWaterReflection(renderer, reflection.surface);
+    const detachReflection = attachWaterReflection(renderer, reflection.surface);
     scene = { frame: { exposure: description.exposure ?? 1, ...(description.frame ?? {}) } };
     orbitFromCamera(description.eye, description.target);
     applyLimits(description, asset.parts);
@@ -281,10 +346,17 @@ async function selectScene(id) {
     title.textContent = description.title;
     blurb.textContent = description.blurb;
     showCredits(description.credits);
-    window.__showcase = { renderer, scene, orbit, draw, limits };
-    status.hidden = true;
+    const staged = remainingUrls.length > 0 || previewUrl !== null;
+    window.__showcase = { renderer, scene, orbit, draw, limits, complete: !staged };
     setLoadingState(null);
     requestDraw();
+    if (!staged) {
+      status.hidden = true;
+      return;
+    }
+    progressLabel = `Loading the rest of ${SCENE_LABELS[id]}`;
+    showProgress(progressLabel, meter);
+    finishWorld({ id, request, description, asset, ranks: await readPartRanks(model), detachReflection, remainingDownloads, decoders, abort });
   } catch (error) {
     if (request !== loadingRequest) return;
     markPressedTab(currentId);

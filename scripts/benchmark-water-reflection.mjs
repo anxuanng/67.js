@@ -1,6 +1,6 @@
 // Times a lit frame of a large sea with dense terrain and many small parts, with the water reflection off and on, and counts
 // what the mirror pass draws. GPU time comes from a native timer query, so run it through the GPU lock:
-//   bash ~/.agents/tools/gpu-lock.sh node scripts/benchmark-water-reflection.mjs [--width 1920] [--height 1080] [--parts 20000] [--stills folder]
+//   bash ~/.agents/tools/gpu-lock.sh node scripts/benchmark-water-reflection.mjs [--width 1920] [--height 1080] [--parts 20000] [--mirror-levels N] [--rounds 3] [--stills folder]
 // --counts-only skips the timer and runs on SwiftShader, so it needs no GPU lock and prints draw counts only.
 // --stills writes a PNG of the lit frame for the off, on and half-scale variants, for a side-by-side check.
 // The draw counts (calls, instances, triangles in the mirror pass) do not need the GPU and stay valid when the lock is busy.
@@ -18,7 +18,8 @@ const width = argument('width', 1920);
 const height = argument('height', 1080);
 const smallPartCount = argument('parts', 20000);
 const SAMPLES = argument('samples', 20);
-const mirrorLevels = argument('mirror-levels', 0);
+const ROUNDS = argument('rounds', 3);
+const mirrorLevels = argument('mirror-levels', undefined);
 const countsOnly = process.argv.includes('--counts-only');
 const stillsFolder =process.argv.includes('--stills') ? process.argv[process.argv.indexOf('--stills') + 1] : null;
 
@@ -30,7 +31,7 @@ try {
   const page = await browser.newPage({ viewport: { width, height } });
   await page.route('**/water-benchmark.html', route => route.fulfill({ contentType: 'text/html', body: `<canvas style="width:${width}px;height:${height}px;display:block"></canvas>` }));
   await page.goto(`${serverUrl}/water-benchmark.html`);
-  const results = await page.evaluate(async ({ smallPartCount, samples, wantStills, countsOnly, mirrorLevels }) => {
+  const results = await page.evaluate(async ({ smallPartCount, samples, rounds, wantStills, countsOnly, mirrorLevels }) => {
     const { Renderer67 } = await import('/src/renderer.js');
     const { box } = await import('/src/geometry.js');
     const { createTerrain } = await import('/src/terrain.js');
@@ -50,7 +51,10 @@ try {
       smallParts.push({ name: `pebble-${index}`, geometry: pebble, matrix: new Float32Array([size, 0, 0, 0, 0, size, 0, 0, 0, 0, size, 0, x, y, z, 1]), material: { tag: 'surface', color: [0.4, 0.38, 0.34], metallic: 0, roughness: 0.8, emission: 0 } });
     }
     const sea = { name: 'sea', geometry: box(0, 1), matrix: new Float32Array([4000, 0, 0, 0, 0, 1, 0, 0, 0, 0, 4000, 0, 0, -0.5, 0, 1]), material: { tag: 'surface', color: [0.02, 0.06, 0.1], metallic: 0, roughness: 0.04, emission: 0 } };
+    const applyStarted = performance.now();
     const marked = applyWaterReflection([...terrain.parts, ...smallParts, sea]);
+    const applyMilliseconds = performance.now() - applyStarted;
+    const mirrorMeshBytes = terrain.parts.reduce((sum, part) => sum + (part.lods ?? []).filter(lod => lod.mirrorOnly).reduce((inner, lod) => inner + lod.geometry.positions.byteLength + lod.geometry.normals.byteLength + lod.geometry.uvs.byteLength + lod.geometry.skyVisibility.byteLength + lod.geometry.indices.byteLength, 0), 0);
     const renderer = new Renderer67(canvas, marked.parts, { hdr: true, depth: true, world: true, ground: false, pixelRatio: 1, samples: 4 });
     const context = renderer.context;
     const timer = context.getExtension('EXT_disjoint_timer_query_webgl2');
@@ -117,7 +121,7 @@ try {
         context.deleteQuery(query);
       }
       timings.sort((first, second) => first - second);
-      const output = { label, medianMilliseconds: timings[Math.floor(timings.length / 2)], minimumMilliseconds: timings[0], maximumMilliseconds: timings[timings.length - 1], mirrorDraw: { ...phases.mirror }, mainDraw: { ...phases.main }, glError: context.getError() };
+      const output = { label, rawTimings: timings, medianMilliseconds: timings[Math.floor(timings.length / 2)], minimumMilliseconds: timings[0], maximumMilliseconds: timings[timings.length - 1], mirrorDraw: { ...phases.mirror }, mainDraw: { ...phases.main }, glError: context.getError() };
       if (wantStills) {
         renderer.render(frame);
         output.image = canvas.toDataURL('image/png');
@@ -126,14 +130,44 @@ try {
       return output;
     }
     const report = { canvas: [canvas.width, canvas.height], terrainVertices: terrain.parts.reduce((sum, part) => sum + part.geometry.positions.length / 3, 0), smallParts: smallPartCount };
-    report.reflectionOff = await measure('off', false);
-    report.reflectionOld = await withoutMirrorCulling(() => measure('old (no mirror culling), scale 0.75', true, { scale: 0.75 }));
-    report.reflectionOn = await measure('on', true);
-    report.updateEvery2 = await measure('updateEvery 2', true, { updateEvery: 2 });
-    if (wantStills) report.halfScale = await measure('scale 0.5', true, { scale: 0.5 });
-    report.stillCamera = await measure('still camera', true, {}, true);
+    // The variants run in rounds, in turn, and each variant pools its timings from every round, so a loaded machine drifts
+    // the same way for all of them instead of favouring whichever ran in a quiet moment.
+    const variants = {
+      reflectionOff: () => measure('off', false),
+      reflectionOld: () => withoutMirrorCulling(() => measure('old (no mirror culling), scale 0.75', true, { scale: 0.75 })),
+      reflectionOn: () => measure('on', true),
+      updateEvery2: () => measure('updateEvery 2', true, { updateEvery: 2 }),
+      ...(wantStills ? { halfScale: () => measure('scale 0.5', true, { scale: 0.5 }) } : {}),
+      stillCamera: () => measure('still camera', true, {}, true),
+    };
+    for (let round = 0; round < (countsOnly ? 1 : rounds); round++) {
+      for (const [name, run] of Object.entries(variants)) {
+        const result = await run();
+        const pooled = [...(report[name]?.rawTimings ?? []), ...result.rawTimings].sort((first, second) => first - second);
+        report[name] = { ...result, rawTimings: pooled, medianMilliseconds: pooled[Math.floor(pooled.length / 2)], minimumMilliseconds: pooled[0], maximumMilliseconds: pooled[pooled.length - 1] };
+      }
+    }
+    for (const entry of Object.values(report)) {
+      if (entry?.rawTimings) delete entry.rawTimings;
+    }
+    report.applyWaterReflectionMilliseconds = applyMilliseconds;
+    report.mirrorMeshMegabytes = mirrorMeshBytes / 1048576;
+    if (!countsOnly) {
+      // The first frame after attaching, on a camera the mirror has not seen: GPU time and wall time, against the "on" median above.
+      const detachFirst = attachWaterReflection(renderer, marked.surface);
+      const query = context.createQuery();
+      const wallStarted = performance.now();
+      context.beginQuery(timer.TIME_ELAPSED_EXT, query);
+      renderer.render({ ...frame, eye: [50, 70, 380], time: 5 });
+      context.endQuery(timer.TIME_ELAPSED_EXT);
+      const wallMilliseconds = performance.now() - wallStarted;
+      context.flush();
+      while (!context.getQueryParameter(query, context.QUERY_RESULT_AVAILABLE)) await new Promise(resolve => setTimeout(resolve, 2));
+      report.attachFrame = { gpuMilliseconds: context.getQueryParameter(query, context.QUERY_RESULT) / 1e6, wallMilliseconds };
+      detachFirst();
+    }
     return report;
-  }, { smallPartCount, samples: SAMPLES, wantStills: stillsFolder !== null, countsOnly, mirrorLevels });
+  }, { smallPartCount, samples: SAMPLES, rounds: ROUNDS, wantStills: stillsFolder !== null, countsOnly, mirrorLevels });
   if (stillsFolder) {
     await mkdir(stillsFolder, { recursive: true });
     for (const [name, entry] of Object.entries(results)) {

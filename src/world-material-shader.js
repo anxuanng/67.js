@@ -147,8 +147,8 @@ function bindWaterBody(renderer) {
 }
 
 const previousBind = layerTextureSupport.bind;
-layerTextureSupport.bind = (renderer, mapState) => {
-  previousBind?.(renderer, mapState);
+layerTextureSupport.bind = (renderer, mapState, layerState, batch) => {
+  previousBind?.(renderer, mapState, layerState, batch);
   bindWaterBody(renderer);
 };
 

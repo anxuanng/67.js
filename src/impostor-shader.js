@@ -107,12 +107,12 @@ vec2 pickCardUV() {
 `;
 
 function addViewBlend(source) {
-  if (!source.includes('in vec2 textureUV;') || !source.includes('void main() {')) return source;
+  if (!source.includes('in vec2 textureUV, lightmapUV;') || !source.includes('void main() {')) return source;
   const gradients = 'dFdx(textureUV), dFdy(textureUV)';
   return source
     .replace('texture(baseMap, textureUV)', () => `textureGrad(baseMap, cardUV, ${gradients})`)
     .replace(/texture\(normalMap, textureUV([^)]*)\)/, (match, transform) => `textureGrad(normalMap, cardUV${transform}, ${gradients})`)
-    .replace('in vec2 textureUV;', () => `in vec2 textureUV;\n${VIEW_BLEND_FRAGMENT}`)
+    .replace('in vec2 textureUV, lightmapUV;', () => `in vec2 textureUV, lightmapUV;\n${VIEW_BLEND_FRAGMENT}`)
     .replace('void main() {', () => 'void main() {\n  cardUV = pickCardUV();');
 }
 
