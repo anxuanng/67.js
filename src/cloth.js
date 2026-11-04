@@ -73,12 +73,16 @@ function buildConstraints(positions, triangles, particleCount, bendStiffness, st
   for (const [, entry] of orderedEntries) {
     add(entry.first, entry.second, stretchStiffness);
   }
+  const stretchCount = firsts.length;
+  // The bend constraint across an edge, so tearing the edge can drop it too (-1 where the edge has none).
+  const bendOfEdge = new Int32Array(stretchCount).fill(-1);
   if (bendStiffness > 0) {
-    for (const [, entry] of orderedEntries) {
+    orderedEntries.forEach(([, entry], edge) => {
       if (entry.opposites.length === 2 && entry.opposites[0] !== entry.opposites[1]) {
+        bendOfEdge[edge] = firsts.length;
         add(entry.opposites[0], entry.opposites[1], bendStiffness);
       }
-    }
+    });
   }
   const restLengths = new Float64Array(firsts.length);
   for (let constraint = 0; constraint < firsts.length; constraint++) {
@@ -86,7 +90,7 @@ function buildConstraints(positions, triangles, particleCount, bendStiffness, st
     const b = seconds[constraint] * 3;
     restLengths[constraint] = Math.hypot(positions[a] - positions[b], positions[a + 1] - positions[b + 1], positions[a + 2] - positions[b + 2]);
   }
-  return { count: firsts.length, firsts: Uint32Array.from(firsts), seconds: Uint32Array.from(seconds), stiffnesses: Float64Array.from(stiffnesses), restLengths };
+  return { count: firsts.length, stretchCount, bendOfEdge, firsts: Uint32Array.from(firsts), seconds: Uint32Array.from(seconds), stiffnesses: Float64Array.from(stiffnesses), restLengths };
 }
 
 // Rest area each particle represents (a third of its triangles), used to turn wind pressure into acceleration.
@@ -152,9 +156,12 @@ function applyWind(state, wind, areas, triangles, secondsPerSubstep, density) {
   }
 }
 
-function solveDistances(positions, inverseMasses, constraints) {
+// Also adds up what each constraint pushed (impulses, kg m per unit particle mass) and what a pinned particle was pulled
+// with (pinImpulses), because a particle with no inverse mass takes no correction but still feels the pull.
+function solveDistances(positions, inverseMasses, constraints, impulses, pinImpulses) {
   const { count, firsts, seconds, stiffnesses, restLengths } = constraints;
   for (let constraint = 0; constraint < count; constraint++) {
+    if (stiffnesses[constraint] === 0) continue;
     const first = firsts[constraint];
     const second = seconds[constraint];
     const weightSum = inverseMasses[first] + inverseMasses[second];
@@ -166,7 +173,19 @@ function solveDistances(positions, inverseMasses, constraints) {
     const dz = positions[b + 2] - positions[a + 2];
     const length = Math.sqrt(dx * dx + dy * dy + dz * dz);
     if (length < 1e-12) continue;
-    const correction = stiffnesses[constraint] * (length - restLengths[constraint]) / (length * weightSum);
+    const impulse = stiffnesses[constraint] * (length - restLengths[constraint]) / weightSum;
+    const correction = impulse / length;
+    impulses[constraint] += impulse;
+    if (inverseMasses[first] === 0) {
+      pinImpulses[a] += dx * correction;
+      pinImpulses[a + 1] += dy * correction;
+      pinImpulses[a + 2] += dz * correction;
+    }
+    if (inverseMasses[second] === 0) {
+      pinImpulses[b] -= dx * correction;
+      pinImpulses[b + 1] -= dy * correction;
+      pinImpulses[b + 2] -= dz * correction;
+    }
     positions[a] += dx * correction * inverseMasses[first];
     positions[a + 1] += dy * correction * inverseMasses[first];
     positions[a + 2] += dz * correction * inverseMasses[first];
@@ -326,6 +345,217 @@ function checkWork(particleCount, constraintCount, triangleCount, colliderCount,
   }
 }
 
+function setParticleInverseMass(cloth, particle) {
+  const { inverseMasses, pinned, trackFixed, extraMasses, baseMass } = cloth;
+  inverseMasses[particle] = pinned[particle] || trackFixed[particle] ? 0 : baseMass / (baseMass + extraMasses[particle]);
+}
+
+// Breaks a stretch constraint and the bend constraint across the same edge; both stop pulling at once.
+function breakEdge(cloth, edge) {
+  const { constraints, broken } = cloth;
+  if (constraints.stiffnesses[edge] === 0) return;
+  const bend = constraints.bendOfEdge[edge];
+  for (const [constraint, kind] of [[edge, 'stretch'], [bend, 'bend']]) {
+    if (constraint < 0 || constraints.stiffnesses[constraint] === 0) continue;
+    constraints.stiffnesses[constraint] = 0;
+    broken.push(Object.freeze({ constraint, first: constraints.firsts[constraint], second: constraints.seconds[constraint], kind }));
+  }
+}
+
+function tearOverstretched(cloth, substepSeconds) {
+  const { constraints, positions, tearStretch, tearForce, baseMass, impulses } = cloth;
+  const { firsts, seconds, stiffnesses, restLengths, stretchCount } = constraints;
+  const forceScale = baseMass / (substepSeconds * substepSeconds);
+  for (let edge = 0; edge < stretchCount; edge++) {
+    if (stiffnesses[edge] === 0) continue;
+    const a = firsts[edge] * 3;
+    const b = seconds[edge] * 3;
+    const length = Math.hypot(positions[b] - positions[a], positions[b + 1] - positions[a + 1], positions[b + 2] - positions[a + 2]);
+    if (length > restLengths[edge] * tearStretch || impulses[edge] * forceScale > tearForce) {
+      breakEdge(cloth, edge);
+    }
+  }
+}
+
+/**
+ * A sheet that steps one frame at a time, so pins, wind and colliders can change while it runs. It is the solver
+ * `bakeCloth` records from: the same positions and options step to the same frames. Arguments and options are those of
+ * `bakeCloth`, plus:
+ * - tearStretch: a stretch constraint breaks when its length passes this multiple of its rest length (default never).
+ * - tearForce: a stretch constraint breaks when the tension it carries passes this many newtons (default never).
+ * Returns { positions, step(deltaSeconds, { wind, colliders }), pin(index, position), unpin(index), isPinned(index),
+ * pinForce(index, out), setExtraMass(index, kilograms), breakConstraint(edge), broken, constraintCount, particleCount,
+ * particleMass }. `positions` is a Float32Array of 3 numbers per particle, updated in place by every step.
+ */
+export function createCloth(positions, triangles, options = {}) {
+  const particleCount = positions.length / 3;
+  const colliders = options.colliders ?? [];
+  const moving = options.moving ?? null;
+  const constraints = buildConstraints(positions, triangles, particleCount, options.bend ?? 0.1, options.stiffness ?? 0.9);
+  checkWork(particleCount, constraints.count, triangles.length / 3, colliders.length + (moving?.colliderCount ?? 0), options.frameCount ?? 1);
+  const density = options.density ?? 0.2;
+  const areas = particleAreas(positions, triangles, particleCount);
+  const totalArea = areas.reduce((sum, area) => sum + area, 0);
+  const cloth = {
+    constraints, baseMass: Math.max(totalArea * density / particleCount, 1e-9),
+    inverseMasses: new Float64Array(particleCount).fill(1), extraMasses: new Float64Array(particleCount),
+    pinned: new Uint8Array(particleCount), trackFixed: new Uint8Array(particleCount),
+    pinTargets: Float64Array.from(positions), pinForces: new Float64Array(positions.length),
+    impulses: new Float64Array(constraints.count), broken: [],
+    positions: Float64Array.from(positions),
+    tearStretch: options.tearStretch ?? Infinity, tearForce: options.tearForce ?? Infinity,
+  };
+  for (const particle of options.pinned ?? []) {
+    cloth.pinned[particle] = 1;
+  }
+  moving?.anchorParticles.forEach((particle, anchor) => {
+    if (moving.anchorWeights[anchor] >= 1) cloth.trackFixed[particle] = 1;
+  });
+  for (let particle = 0; particle < particleCount; particle++) {
+    setParticleInverseMass(cloth, particle);
+  }
+  const state = {
+    particleCount, inverseMasses: cloth.inverseMasses, positions: cloth.positions,
+    velocities: new Float64Array(positions.length), windScratch: new Float64Array(positions.length),
+  };
+  const gravity = options.gravity ?? GRAVITY_DEFAULT;
+  const damping = options.damping ?? 0.3;
+  const friction = options.friction ?? 0.3;
+  const thickness = options.thickness ?? 0.01;
+  const previous = new Float64Array(positions.length);
+  const stepStart = new Float64Array(positions.length);
+  const pinImpulses = new Float64Array(positions.length);
+  const publicPositions = Float32Array.from(positions);
+  const anchorStride = (moving?.anchorParticles.length ?? 0) * 3;
+  const colliderStride = (moving?.colliderCount ?? 0) * MOVING_COLLIDER_NUMBERS;
+  let substepsDone = 0;
+
+  function step(deltaSeconds, frame = {}) {
+    const wind = frame.wind ?? options.wind ?? [0, 0, 0];
+    const hasWind = wind.some(component => component !== 0);
+    const stepColliders = frame.colliders ?? colliders;
+    const substeps = CLOTH_LIMITS.substeps;
+    const substepSeconds = deltaSeconds / substeps;
+    const dampingFactor = Math.exp(-damping * substepSeconds);
+    const tears = cloth.tearStretch !== Infinity || cloth.tearForce !== Infinity;
+    const { inverseMasses, pinned, pinTargets } = cloth;
+    stepStart.set(state.positions);
+    pinImpulses.fill(0);
+    for (let substep = 0; substep < substeps; substep++) {
+      if (hasWind) applyWind(state, wind, areas, triangles, substepSeconds, density);
+      previous.set(state.positions);
+      let activeColliders = stepColliders;
+      let anchorTargets = null;
+      if (moving) {
+        anchorTargets = moving.anchorTrack.subarray(substepsDone * anchorStride, (substepsDone + 1) * anchorStride);
+        activeColliders = stepColliders.concat(movingColliders(moving.colliderTrack, substepsDone * colliderStride, moving.colliderCount));
+        followAnchors(state.positions, moving, anchorTargets, false);
+      }
+      // A pin travels to its target in even strides, so a fast gripper drags the cloth instead of teleporting.
+      const progress = (substep + 1) / substeps;
+      for (let particle = 0; particle < particleCount; particle++) {
+        if (pinned[particle]) {
+          for (let axis = 0; axis < 3; axis++) {
+            const index = particle * 3 + axis;
+            state.positions[index] = stepStart[index] + (pinTargets[index] - stepStart[index]) * progress;
+          }
+        }
+        if (inverseMasses[particle] === 0) continue;
+        for (let axis = 0; axis < 3; axis++) {
+          const index = particle * 3 + axis;
+          state.velocities[index] += gravity[axis] * substepSeconds;
+          state.positions[index] += state.velocities[index] * substepSeconds;
+        }
+      }
+      for (let iteration = 0; iteration < CLOTH_LIMITS.iterations; iteration++) {
+        solveDistances(state.positions, inverseMasses, constraints, cloth.impulses, pinImpulses);
+        if (moving) followAnchors(state.positions, moving, anchorTargets, true);
+        collide(state, previous, activeColliders, thickness, friction);
+      }
+      if (tears) tearOverstretched(cloth, substepSeconds);
+      cloth.impulses.fill(0);
+      for (let index = 0; index < positions.length; index++) {
+        state.velocities[index] = (state.positions[index] - previous[index]) / substepSeconds * dampingFactor;
+      }
+      substepsDone++;
+    }
+    if (!state.positions.every(Number.isFinite)) {
+      throw new RangeError('Cloth became unstable (non-finite positions). Lower the wind, raise density or use a finer grid.');
+    }
+    // An impulse (kg m) over a substep divided by the substep time is a force; average it over the substeps of this step.
+    const forceScale = cloth.baseMass / (substeps * substepSeconds * substepSeconds);
+    for (let index = 0; index < positions.length; index++) {
+      cloth.pinForces[index] = pinImpulses[index] * forceScale;
+    }
+    publicPositions.set(state.positions);
+  }
+
+  function checkIndex(index) {
+    if (!Number.isInteger(index) || index < 0 || index >= particleCount) {
+      throw new RangeError(`Cloth particle ${index} does not exist; there are ${particleCount}.`);
+    }
+  }
+
+  return {
+    positions: publicPositions,
+    particleCount,
+    constraintCount: constraints.count,
+    /** Mass of one particle in kilograms (density times area, shared evenly); `setExtraMass` adds to it. */
+    particleMass: cloth.baseMass,
+    /** Constraints that tore, in the order they broke: { constraint, first, second, kind: 'stretch' | 'bend' }. */
+    broken: cloth.broken,
+    step,
+    /**
+     * Hold a particle at `position` (default: where it is now). A pinned particle follows its target in even strides
+     * over the next step, and the target can move again before every step.
+     */
+    pin(index, position) {
+      checkIndex(index);
+      const source = position ?? [state.positions[index * 3], state.positions[index * 3 + 1], state.positions[index * 3 + 2]];
+      cloth.pinTargets[index * 3] = source[0];
+      cloth.pinTargets[index * 3 + 1] = source[1];
+      cloth.pinTargets[index * 3 + 2] = source[2];
+      cloth.pinned[index] = 1;
+      setParticleInverseMass(cloth, index);
+    },
+    /** Let go: the particle keeps the velocity it had and falls with the rest. */
+    unpin(index) {
+      checkIndex(index);
+      cloth.pinned[index] = 0;
+      setParticleInverseMass(cloth, index);
+    },
+    isPinned(index) {
+      checkIndex(index);
+      return cloth.pinned[index] === 1;
+    },
+    /**
+     * The force the cloth pulls on a pinned particle with during the last step, in newtons, written to `out`
+     * (x, y, z). Its length is the load the pin carries; a still sheet hung by its pins puts its weight on them.
+     * It is an estimate from the constraint corrections of the solver, not a measurement.
+     */
+    pinForce(index, out = [0, 0, 0]) {
+      checkIndex(index);
+      out[0] = cloth.pinForces[index * 3];
+      out[1] = cloth.pinForces[index * 3 + 1];
+      out[2] = cloth.pinForces[index * 3 + 2];
+      return out;
+    },
+    /** Hang `kilograms` on a particle on top of its own mass (0 removes it). */
+    setExtraMass(index, kilograms) {
+      checkIndex(index);
+      cloth.extraMasses[index] = Math.max(kilograms, 0);
+      setParticleInverseMass(cloth, index);
+    },
+    /** Tear one stretch constraint (and the bend across it) by hand; `constraint` counts from 0 over the edges. */
+    breakConstraint(constraint) {
+      if (!Number.isInteger(constraint) || constraint < 0 || constraint >= constraints.stretchCount) {
+        throw new RangeError(`Cloth stretch constraint ${constraint} does not exist; there are ${constraints.stretchCount}.`);
+      }
+      breakEdge(cloth, constraint);
+    },
+  };
+}
+
 /**
  * Simulate one sheet. `positions` are world-space rest positions (3 numbers per particle), `triangles` index them.
  * Options: pinned (particle indices that stay put), gravity, wind (m/s), stiffness and bend (0 to 1), density (kg/m2),
@@ -339,73 +569,15 @@ function checkWork(particleCount, constraintCount, triangleCount, colliderCount,
  * Returns the recorded frames: Float32Array of frameCount * particleCount * 3.
  */
 export function bakeCloth(positions, triangles, options) {
-  const particleCount = positions.length / 3;
-  const colliders = options.colliders ?? [];
-  const moving = options.moving ?? null;
-  const constraints = buildConstraints(positions, triangles, particleCount, options.bend ?? 0.1, options.stiffness ?? 0.9);
-  checkWork(particleCount, constraints.count, triangles.length / 3, colliders.length + (moving?.colliderCount ?? 0), options.frameCount);
-  const gravity = options.gravity ?? GRAVITY_DEFAULT;
-  const wind = options.wind ?? [0, 0, 0];
-  const density = options.density ?? 0.2;
-  const damping = options.damping ?? 0.3;
-  const friction = options.friction ?? 0.3;
-  const thickness = options.thickness ?? 0.01;
-  const hasWind = wind.some(component => component !== 0);
-  const frameSeconds = 1 / (options.framesPerSecond ?? 60);
-  const substepSeconds = frameSeconds / CLOTH_LIMITS.substeps;
-  const dampingFactor = Math.exp(-damping * substepSeconds);
-  const areas = hasWind ? particleAreas(positions, triangles, particleCount) : null;
-  const inverseMasses = new Float64Array(particleCount).fill(1);
-  for (const particle of options.pinned ?? []) {
-    inverseMasses[particle] = 0;
-  }
-  const anchorStride = (moving?.anchorParticles.length ?? 0) * 3;
-  const colliderStride = (moving?.colliderCount ?? 0) * MOVING_COLLIDER_NUMBERS;
-  moving?.anchorParticles.forEach((particle, anchor) => {
-    if (moving.anchorWeights[anchor] >= 1) inverseMasses[particle] = 0;
-  });
-  const state = {
-    particleCount, inverseMasses, positions: Float64Array.from(positions),
-    velocities: new Float64Array(positions.length), windScratch: new Float64Array(positions.length),
-  };
-  const previous = new Float64Array(positions.length);
+  const cloth = createCloth(positions, triangles, options);
+  const framesPerSecond = options.framesPerSecond ?? 60;
   const frames = new Float32Array(options.frameCount * positions.length);
   frames.set(Float32Array.from(positions), 0);
   for (let frame = 1; frame < options.frameCount; frame++) {
-    for (let substep = 0; substep < CLOTH_LIMITS.substeps; substep++) {
-      if (hasWind) applyWind(state, wind, areas, triangles, substepSeconds, density);
-      previous.set(state.positions);
-      let activeColliders = colliders;
-      let anchorTargets = null;
-      if (moving) {
-        const substepIndex = (frame - 1) * CLOTH_LIMITS.substeps + substep;
-        anchorTargets = moving.anchorTrack.subarray(substepIndex * anchorStride, (substepIndex + 1) * anchorStride);
-        activeColliders = colliders.concat(movingColliders(moving.colliderTrack, substepIndex * colliderStride, moving.colliderCount));
-        followAnchors(state.positions, moving, anchorTargets, false);
-      }
-      for (let particle = 0; particle < particleCount; particle++) {
-        if (inverseMasses[particle] === 0) continue;
-        for (let axis = 0; axis < 3; axis++) {
-          const index = particle * 3 + axis;
-          state.velocities[index] += gravity[axis] * substepSeconds;
-          state.positions[index] += state.velocities[index] * substepSeconds;
-        }
-      }
-      for (let iteration = 0; iteration < CLOTH_LIMITS.iterations; iteration++) {
-        solveDistances(state.positions, inverseMasses, constraints);
-        if (moving) followAnchors(state.positions, moving, anchorTargets, true);
-        collide(state, previous, activeColliders, thickness, friction);
-      }
-      for (let index = 0; index < positions.length; index++) {
-        state.velocities[index] = (state.positions[index] - previous[index]) / substepSeconds * dampingFactor;
-      }
-    }
-    if (!state.positions.every(Number.isFinite)) {
-      throw new RangeError('Cloth became unstable (non-finite positions). Lower the wind, raise density or use a finer grid.');
-    }
-    frames.set(Float32Array.from(state.positions), frame * positions.length);
+    cloth.step(1 / framesPerSecond);
+    frames.set(cloth.positions, frame * positions.length);
   }
-  return Object.freeze({ particleCount, frameCount: options.frameCount, framesPerSecond: options.framesPerSecond ?? 60, frames, constraintCount: constraints.count });
+  return Object.freeze({ particleCount: cloth.particleCount, frameCount: options.frameCount, framesPerSecond, frames, constraintCount: cloth.constraintCount });
 }
 
 /** Write the particle positions at `time` into `target`, a linear blend of the two nearest recorded frames. */
