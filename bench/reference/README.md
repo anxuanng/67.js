@@ -1829,3 +1829,20 @@ Whole frame FLIP of 67js against Cycles (Cycles tone mapped like 67js), and the 
 | river 4 m | 0.5408 | 0.4834 | -0.042, -0.036, -0.035 | 0.254, 0.247, 0.159 | 0.041, 0.027, 0.002 |
 
 Reading it: the FLIP of the dry pool is already 0.34 to 0.48, so most of the score is the dry pool (the bed, the post, the sun's penumbra and the sky are not the same picture in the two renderers), and water adds 0.0 to 0.2 on top. The shadow contrast agrees in trend. Cycles fades the clear lake faster than the formula because the sun's path to the bed is longer than the eye's (slant of 1/cos 59 degrees), which `exp(-absorption * depth)` does not count: the shadow difference is lit (two paths) against shadowed (the eye's path only). The murky river is where the two differ most: Cycles keeps 0.25 of the contrast at 4 m, where scattered light still reaches the shadow, and 67js reaches zero (slightly negative, -0.04: the lift overshoots the lit side). A river that clears to nothing at 4 m is a known simplification of the in-scatter lift; it is recorded here and not changed.
+
+### The sun's path and the murky floor (2026-11-04, closes issue #438)
+
+Two gaps in the table above, fixed in the world material chunk. The sun leg to the bed is now absorbed over the refracted path, `depth / cos(theta_t)` with Snell n = 1.33, so a shadowed bed keeps the eye's vertical leg and a lit bed adds the longer sun leg (the clear lake at 4 m was 0.227 red against 0.064 in Cycles). The turbidity lift that pulled the shadow toward the lit side is gone; the murky water instead adds a positive term, the scattered sunlight the post also shadows, so the contrast never goes below 0 and keeps a floor at depth (about a quarter at 4 m in a river). The sun leg also carries an extinction of `0.9 * turbidity * (1 - turbidity)` per metre, the part of the scatter that is not returned.
+
+The contrast is now read at x = 0.9 m, not 0.65 m, for both renderers: at 4 m the post's foot puts 0.65 m on the edge of the shadow, where the wider murky penumbra and refraction blur make the number depend on the edge, in Cycles as much as in 67js. The Cycles renders are the ones of the section above, not re-rendered (their scene is unchanged). `node scripts/score-water-shadows.mjs --skip-blender` rescores against them. Contrast (red, green, blue) against Cycles, and whole frame FLIP:
+
+| Pool | Before | After | Cycles | FLIP before | FLIP after |
+| --- | --- | --- | --- | --- | --- |
+| lake 0.2 m | 0.939, 0.971, 0.999 | 0.874, 0.974, 0.970 | 0.861, 0.969, 0.983 | 0.3027 | 0.3170 |
+| lake 1 m | 0.698, 0.917, 0.931 | 0.493, 0.853, 0.894 | 0.465, 0.845, 0.903 | 0.4530 | 0.3634 |
+| lake 4 m | 0.226, 0.696, 0.792 | 0.061, 0.520, 0.673 | 0.063, 0.523, 0.673 | 0.5628 | 0.4653 |
+| river 0.2 m | 0.734, 0.723, 0.627 | 0.739, 0.706, 0.526 | 0.706, 0.679, 0.512 | 0.4654 | 0.3993 |
+| river 1 m | 0.206, 0.179, 0.090 | 0.312, 0.280, 0.119 | 0.284, 0.264, 0.159 | 0.5890 | 0.4795 |
+| river 4 m | -0.001, -0.002, -0.006 | 0.211, 0.210, 0.120 | 0.251, 0.242, 0.156 | 0.5408 | 0.4491 |
+
+Every row is within 0.05 of Cycles in each channel (largest gap 0.040, river 4 m red). The dry pool scores 0.34 to 0.48 by itself, so FLIP moves less than the contrast. `tests/water-shadows-render.test.js` now expects the clear lake to follow `exp(-absorption * depth * (1 + 1 / cos(theta_t)))` and every preset's contrast to stay at or above 0; the river at 4 m, which it expected below 0.05, is expected between 0.1 and 0.35.

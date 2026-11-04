@@ -237,11 +237,14 @@ float underwaterVisibility(float visibility, vec3 normal, float depth) {
 #ifndef shadowVisibility
   if (scattering > 0.03) filtered = softShadowVisibility(normal, 1.5 + min(scattering * 6.0, 8.0));
 #endif
-  return mix(filtered, 1.0, (1.0 - exp(-scattering * 1.2)) * 0.9);
+  return filtered;
 }
 `,
   worldVisibility: `  float waterDepth = 0.0;
   vec3 waterTransmittance = vec3(1.0);
+  vec3 waterSunTransmittance = vec3(1.0);
+  float waterScatterShare = 0.0;
+  float waterShadowVisibility = 1.0;
   if (TAG_WATER) {
     // Only the light that enters the water and comes back is shadowed, and most of what the eye sees comes from deeper than
     // the shadow reaches, so a shadow on the surface is faint. The reflection mixed in later never sees the shadow.
@@ -250,7 +253,13 @@ float underwaterVisibility(float visibility, vec3 normal, float depth) {
     waterDepth = waterBody.x - worldPosition.y;
     waterTransmittance = exp(-waterAbsorption * waterDepth);
     visibility = underwaterVisibility(visibility, normal, waterDepth);
+    waterShadowVisibility = visibility;
+    // The sun reaches the bed along the refracted ray, depth / cos(theta) with Snell n = 1.33, so its leg is absorbed over a longer path than the eye's.
+    float sunSine = sqrt(max(1.0 - pow(normalize(lightDirection).y, 2.0), 0.0)) / 1.33;
+    waterSunTransmittance = exp(-(waterAbsorption + 0.9 * waterBody.y * (1.0 - waterBody.y)) * waterDepth / sqrt(1.0 - sunSine * sunSine));
+    waterScatterShare = waterBody.y * (1.0 - exp(-0.4 * waterBody.y * waterDepth));
   }
+  vec3 keyColor = keyColor * waterSunTransmittance;
 `,
   // Spliced into the colour and shadow vertex shaders by shaders.js.
   worldVertexWind: `
@@ -385,6 +394,8 @@ void mossMasks(vec3 normal, float amount, out float sharpMask, out float softMas
     // The bed's light reaches the eye through the column, dimmed; the water adds the daylight it scattered toward the eye (clear water a little, murky water more), so deep objects fade into the water colour instead of going black.
     vec3 scatteredLight = (keyColor * max(normalize(lightDirection).y, 0.0) * 0.1 + vec3(0.04) * ambientIntensity) * exp(-waterAbsorption * 1.5);
     radiance = radiance * waterTransmittance + scatteredLight * (vec3(1.0) - waterTransmittance) * (0.25 + waterBody.y);
+    // Murky water scatters sunlight toward the eye from the column above the bed, and the post shadows that column too, so a shadow keeps a floor of contrast at depth (Cycles keeps about a quarter at 4 m in a river). It never subtracts: the lit side only gains.
+    radiance += color * keyResponse / max(waterSunTransmittance, vec3(0.0001)) * max(dot(normal, normalize(lightDirection)), 0.0) * waterShadowVisibility * waterScatterShare * 3.4 * exp(-waterAbsorption);
   }
   if (TAG_WATER) {
     float reflectivity = 0.20 + 0.65 * pow(1.0 - max(dot(normal, viewDirection), 0.0), 3.0);

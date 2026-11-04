@@ -12,7 +12,7 @@ from PIL import Image
 
 GAMMA = 2.2
 LIT_X = -1.4
-SHADOW_X = 0.65
+SHADOW_X = 0.9
 FOV = 40
 
 
