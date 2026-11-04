@@ -1,6 +1,7 @@
 // Times a lit frame of a large sea with dense terrain and many small parts, with the water reflection off and on, and counts
 // what the mirror pass draws. GPU time comes from a native timer query, so run it through the GPU lock:
 //   bash ~/.agents/tools/gpu-lock.sh node scripts/benchmark-water-reflection.mjs [--width 1920] [--height 1080] [--parts 20000] [--stills folder]
+// --counts-only skips the timer and runs on SwiftShader, so it needs no GPU lock and prints draw counts only.
 // --stills writes a PNG of the lit frame for the off, on and half-scale variants, for a side-by-side check.
 // The draw counts (calls, instances, triangles in the mirror pass) do not need the GPU and stay valid when the lock is busy.
 import { mkdir, writeFile } from 'node:fs/promises';
@@ -17,17 +18,18 @@ const width = argument('width', 1920);
 const height = argument('height', 1080);
 const smallPartCount = argument('parts', 20000);
 const SAMPLES = argument('samples', 20);
-const stillsFolder = process.argv.includes('--stills') ? process.argv[process.argv.indexOf('--stills') + 1] : null;
+const countsOnly = process.argv.includes('--counts-only');
+const stillsFolder =process.argv.includes('--stills') ? process.argv[process.argv.indexOf('--stills') + 1] : null;
 
 const server = await createServer({ server: { host: '127.0.0.1', port: 0 }, logLevel: 'silent' });
 await server.listen();
-const browser = await chromium.launch({ executablePath: process.env.CHROME_PATH ?? 'C:/Program Files/Google/Chrome/Application/chrome.exe', headless: true, args: ['--enable-webgl', '--ignore-gpu-blocklist'] });
+const browser = await chromium.launch({ executablePath: process.env.CHROME_PATH ?? 'C:/Program Files/Google/Chrome/Application/chrome.exe', headless: true, args: countsOnly ? ['--enable-webgl', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'] : ['--enable-webgl', '--ignore-gpu-blocklist'] });
 try {
   const serverUrl = `http://127.0.0.1:${server.httpServer.address().port}`;
   const page = await browser.newPage({ viewport: { width, height } });
   await page.route('**/water-benchmark.html', route => route.fulfill({ contentType: 'text/html', body: `<canvas style="width:${width}px;height:${height}px;display:block"></canvas>` }));
   await page.goto(`${serverUrl}/water-benchmark.html`);
-  const results = await page.evaluate(async ({ smallPartCount, samples, wantStills }) => {
+  const results = await page.evaluate(async ({ smallPartCount, samples, wantStills, countsOnly }) => {
     const { Renderer67 } = await import('/src/renderer.js');
     const { box } = await import('/src/geometry.js');
     const { createTerrain } = await import('/src/terrain.js');
@@ -51,7 +53,7 @@ try {
     const renderer = new Renderer67(canvas, marked.parts, { hdr: true, depth: true, world: true, ground: false, pixelRatio: 1, samples: 4 });
     const context = renderer.context;
     const timer = context.getExtension('EXT_disjoint_timer_query_webgl2');
-    if (!timer) throw new Error('Native GPU timer unavailable');
+    if (!timer && !countsOnly) throw new Error('Native GPU timer unavailable');
 
     // Draw counts per phase: the prototype wrapper sees both the lit frame and the mirror frame.
     const phases = { main: { calls: 0, instances: 0, triangles: 0 }, mirror: { calls: 0, instances: 0, triangles: 0 } };
@@ -76,12 +78,24 @@ try {
     };
 
     const frame = { eye: [0, 70, 380], target: [0, 0, 0], time: 1 };
+    // The old mirror draw: every part through the whole scene, with no CPU culling and no coarser levels. The renderer
+    // reads `mirrorCulling` when it selects instances, so a setter that drops the addon's value leaves the draw uncut.
+    function withoutMirrorCulling(run) {
+      Object.defineProperty(renderer, 'mirrorCulling', { configurable: true, get: () => null, set: () => {} });
+      return run().finally(() => { delete renderer.mirrorCulling; });
+    }
     async function measure(label, reflect, options = {}, still = false) {
       const detachNow = reflect ? attachWaterReflection(renderer, marked.surface, options) : () => {};
       for (const tally of Object.values(phases)) Object.assign(tally, { calls: 0, instances: 0, triangles: 0 });
       for (let index = 0; index < 4; index++) renderer.render(still ? frame : { ...frame, time: 1 + index * 0.001 });
       const timings = [];
-      for (let index = 0; index < samples; index++) {
+      for (let index = 0; index < (countsOnly ? 1 : samples); index++) {
+        if (countsOnly) {
+          for (const tally of Object.values(phases)) Object.assign(tally, { calls: 0, instances: 0, triangles: 0 });
+          renderer.render(still ? frame : { ...frame, eye: [index * 0.2, 70, 380], time: 1 + index * 0.01 });
+          timings.push(NaN);
+          continue;
+        }
         for (const tally of Object.values(phases)) Object.assign(tally, { calls: 0, instances: 0, triangles: 0 });
         const query = context.createQuery();
         context.beginQuery(timer.TIME_ELAPSED_EXT, query);
@@ -109,12 +123,13 @@ try {
     }
     const report = { canvas: [canvas.width, canvas.height], terrainVertices: terrain.parts.reduce((sum, part) => sum + part.geometry.positions.length / 3, 0), smallParts: smallPartCount };
     report.reflectionOff = await measure('off', false);
+    report.reflectionOld = await withoutMirrorCulling(() => measure('old (no mirror culling), scale 0.75', true, { scale: 0.75 }));
     report.reflectionOn = await measure('on', true);
     report.updateEvery2 = await measure('updateEvery 2', true, { updateEvery: 2 });
     if (wantStills) report.halfScale = await measure('scale 0.5', true, { scale: 0.5 });
     report.stillCamera = await measure('still camera', true, {}, true);
     return report;
-  }, { smallPartCount, samples: SAMPLES, wantStills: stillsFolder !== null });
+  }, { smallPartCount, samples: SAMPLES, wantStills: stillsFolder !== null, countsOnly });
   if (stillsFolder) {
     await mkdir(stillsFolder, { recursive: true });
     for (const [name, entry] of Object.entries(results)) {
