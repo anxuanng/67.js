@@ -105,6 +105,30 @@ test('the mirror image is drawn at three quarters of the canvas in each directio
   detach();
 });
 
+test('a mirrorOnly level is hidden from every draw but the mirror, and detaching puts the renderer back', () => {
+  const context = new Proxy({}, {
+    get: (_, name) => (name === 'checkFramebufferStatus' ? () => 1 : name === 'FRAMEBUFFER_COMPLETE' ? 1 : typeof name === 'string' && name === name.toUpperCase() ? 0 : () => ({})),
+  });
+  const coarse = { positions: new Float32Array(9), indices: new Uint32Array(3), mirrorOnly: true };
+  const batch = { levelErrors: [0, 0.01], levelGeometries: [{ positions: new Float32Array(9), indices: new Uint32Array(3) }, coarse] };
+  const seen = [];
+  const renderer = {
+    context, canvas: { width: 960, height: 540 }, hdr: false, viewProjection: new Float32Array(16), batches: [batch], dispose() {},
+    selectBatchInstances: chosen => seen.push([...chosen.levelErrors]),
+    render(frame) {
+      renderer.selectBatchInstances(batch);
+      seen.push(frame.reflectionTarget ? 'mirror' : 'lit');
+    },
+  };
+  const original = renderer.selectBatchInstances;
+  const detach = attachWaterReflection(renderer, findWaterSurface(lakeScene()));
+  renderer.render({ eye: [0, 20, 100], target: [0, 0, 0] });
+  assert.deepEqual(seen, [[0, 0.01], 'mirror', [0, Infinity], 'lit'], 'the mirror draw sees the true errors, the lit frame an infinite one');
+  assert.deepEqual(batch.levelErrors, [0, Infinity]);
+  detach();
+  assert.equal(renderer.selectBatchInstances, original);
+});
+
 test('a render pass frame skips the mirror image and the next lit frame draws it again', () => {
   const context = new Proxy({}, {
     get: (_, name) => {
