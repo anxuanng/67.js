@@ -228,6 +228,12 @@ async function downloadWithProgress(url, onProgress) {
   return new Blob(chunks, { type: 'model/gltf-binary' });
 }
 
+// Showcase GLBs may use EXT_meshopt_compression; the decoder is a small chunk fetched beside the model download.
+async function loadDecoders() {
+  const { MeshoptDecoder } = await import('three/addons/libs/meshopt_decoder.module.js');
+  return { meshopt: MeshoptDecoder };
+}
+
 function showCredits(credits = []) {
   creditList.replaceChildren(...credits.map(credit => {
     const item = document.createElement('li');
@@ -253,11 +259,12 @@ async function selectScene(id) {
   try {
     const description = await readDescription(id);
     const glbUrl = new URL(description.glb, location.href);
-    const [model, map] = await Promise.all([
+    const [model, map, decoders] = await Promise.all([
       downloadWithProgress(glbUrl.href, fraction => { if (request === loadingRequest) showProgress(id, fraction); }),
       loadHdri(description.hdri, description.hdriOptions ?? {}),
+      loadDecoders(),
     ]);
-    const asset = await loadGltf(model, { baseUrl: new URL('.', glbUrl).href, ...(description.gltfOptions ?? {}) });
+    const asset = await loadGltf(model, { baseUrl: new URL('.', glbUrl).href, decoders, ...(description.gltfOptions ?? {}) });
     if (request !== loadingRequest) return;
     renderer?.dispose();
     const rendererOptions = description.renderer ?? {};
