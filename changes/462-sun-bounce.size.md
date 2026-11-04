@@ -1,0 +1,4 @@
+- scene:agent-scene: +54 bytes gzip against #434 (103529 to 103583; +353 against main's 103230) for the `sunBounce` entry in the environment field lists and its number check. Still over its goal of 100000, so the lead decides; no acceptance is written here.
+- scene:agent-scene+lazy: +1997 bytes gzip against #434 (367325 to 369322) for the sun bounce module, loaded only by a recipe that names its sun.
+- scene:lit-box, scene:gltf-box: no change (0 bytes).
+- tool:scene_create: +105 bytes against #434 (67582 to 67687; +224 against main) for the `sunBounce` field and its one-line description, which the schema test needs.

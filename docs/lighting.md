@@ -117,7 +117,7 @@ A point light costs about 0.04 to 0.05 ms and an area light about 0.04 ms at thi
 
 A closed room lit by point, spot or area lights gets the light its walls bounce without a bake and at no cost per frame. `groundBounceEnvironment(parts, environment)` (`67js/addons/ground-bounce`, the same call that adds the floor's bounce) finds the room with the closed-room ray test, measures the area of the faces that look at the middle of the scene and their mean albedo (colour times texture mean, per channel), and sets `bounce` on the environment map. With lamp flux `F` (point `4 pi I`, spot `2 pi (1 - cos angle) I`, area `pi I`, summed over the lamps inside the room), area `A` and albedo `rho`, the bounce is `0.8 * F / pi * rho / (A * (1 - rho))` in each colour channel, so red walls bounce red light. The renderer adds it to the diffuse light: it is one constant in the first irradiance coefficient, the map's data is shared, and a lamp that changes every frame rebuilds nothing. The 0.8 is fitted: at 1.0 `lit-interior` came out 10 percent brighter than Cycles.
 
-It is left out when the scene has a bake (its light map holds the bounce), a sun (`keyColor` above zero or unset, as in `temple-hall` and `dark-shaft`, which already read lighter than Cycles in their shadows), no map, or `environment.roomBounce` is `false`. It is one average colour for the whole room, with no brighter corner beside a lamp and no colour bleeding next to a wall; a bake gives those, and `scene_inspect` names it (`closed-room-without-bake`, with the `standard` preset) for a closed room lit by lamps only.
+It is left out when the scene has a bake (its light map holds the bounce), a sun (`keyColor` above zero or unset; a sun-lit room gets the light of its sunlit patches instead, see "Sunlit patches bounce light into a closed room"), no map, or `environment.roomBounce` is `false`. It is one average colour for the whole room, with no brighter corner beside a lamp and no colour bleeding next to a wall; a bake gives those, and `scene_inspect` names it (`closed-room-without-bake`, with the `standard` preset) for a closed room lit by lamps only.
 
 Luminance of the 67js picture over Cycles (linear, whole frame and 20th percentile, `bench/reference/luminance-ratio.py`, GPU renders against the committed Cycles panels):
 
@@ -129,6 +129,27 @@ Luminance of the 67js picture over Cycles (linear, whole frame and 20th percenti
 | `temple-hall` | 0.97 | 0.97 | 1.62 | 1.64 |
 
 The two `temple-hall` p20 values differ only by the rescaling of the picture (the scene has a sun, so no bounce is added).
+
+## Sunlit patches bounce light into a closed room
+
+A closed room a sun lights gets the light its sunlit patches send on, so the floor, walls and pillars around a patch are lit and the far end of the room is not (`temple-hall`, `dark-shaft`; before this, everything outside the patch was nearly black next to Cycles). `withSunBounce(parts, environment)` (a lazy module that loads with the floor sky trace, `src/sun-bounce.js`) finds the patches once when the scene is prepared: about 20 000 samples of the room's surfaces get a shadow ray to the sun and a fan of 16 rays that must mostly hit something (a roof's outer side is not inside the room), the lit ones are grouped into at most 6 patches by position and facing, and each patch becomes an unshadowed point light one patch radius above it. Its intensity is `0.3 * sunBounce * flux / (2 pi)` per channel, with flux = sun irradiance x lit area x albedo (so a red carpet bounces red). The lights add to the scene's own point lights (16 in all, never more), cost no shader code and one more point light each in every frame. Open scenes, rooms with no sun, baked scenes and `sunBounce: 0` come back unchanged.
+
+`environment.sunBounce` is a number of 0 or more: 0 is off (the look before this change, byte for byte), 1 is the default, above 1 is stronger. The 0.3 is fitted: at 0.6 `dark-shaft` came out brighter than Cycles around its patch (mean 1.19 times) and FLIP got worse by 0.01.
+
+Luminance of the 67js picture over Cycles in the ring around the lit patch (mean and 20th percentile, linear, 480 x 270, patch = Cycles pixels above 0.35 of its 99.5th percentile, ring from 3 to 25 pixels away), and FLIP against Cycles of the whole frame (RTX 3060, `bench/reference`):
+
+| Scene | Ring mean 0 / 1 / 2 | Ring p20 0 / 1 / 2 | FLIP 0 / 1 / 2 |
+| --- | --- | --- | --- |
+| `temple-hall` | 0.67 / 0.72 / 0.77 | 0.72 / 0.75 / 0.82 | 0.0617 / 0.0633 / 0.0651 |
+| `dark-shaft` | 0.77 / 0.97 / 1.19 | 0.56 / 0.83 / 1.05 | 0.0576 / 0.0583 / 0.0676 |
+| `temple-hall-a` | 0.37 / 0.40 / 0.44 | 0.58 / 0.64 / 0.69 | 0.1590 / 0.1596 / 0.1601 |
+| `temple-hall-b` | 0.53 / 0.61 / 0.69 | 1.29 / 1.38 / 1.47 | 0.1468 / 0.1424 / 0.1402 |
+| `temple-hall-c` | 0.97 / 0.98 / 1.00 | 1.09 / 1.12 / 1.14 | 0.1116 / 0.1138 / 0.1170 |
+| `long-street` (open) | unchanged | unchanged | 0.1121 / 0.1121 / 0.1121 |
+
+Frame cost (median of 5 plain frames, RTX 3060, machine busy): `temple-hall` 2.205 to 2.385 ms, `dark-shaft` 2.04 to 2.125 ms for `sunBounce` 1 against 0. The patch search runs once when the scene is prepared; its build time on the halls was not measured separately.
+
+FLIP is a little worse at 1 on four of five scenes (by 0.0007 to 0.0022) and better on `temple-hall-b` (by 0.0044): the rooms get lighter near the patch where Cycles does, but the point lights give a rounder pool than Cycles' bounce.
 
 ## Sun shadows fill under a low sun
 

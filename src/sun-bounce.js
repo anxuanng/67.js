@@ -14,15 +14,15 @@ import { MAX_POINT_LIGHTS } from './light-limits.js';
 
 export const SUN_BOUNCE_PATCH_LIGHTS = 6;
 export const SUN_BOUNCE_SAMPLES = 20_000;
-const ROOM_RAYS = 8;
+const ROOM_RAYS = 16;
 // Share of the room rays that must hit something for a lit sample to count as inside the room (a roof's outer side hits nothing).
-const ENCLOSED_SHARE = 0.5;
+const ENCLOSED_SHARE = 0.75;
 const CLUSTER_PASSES = 6;
 // The light stands this many patch radii above its patch: close enough to light the patch's own surroundings, high enough not to
 // brighten the patch itself much.
 const LIFT_IN_RADII = 1;
 // Fitted against Cycles on the reference halls (docs/lighting.md); environment.sunBounce multiplies it.
-export const SUN_BOUNCE_GAIN = 1;
+export const SUN_BOUNCE_GAIN = 0.3;
 const KEY_THRESHOLD = 1e-3;
 const EXCLUDED_TAGS = new Set(['liquid', 'foam', 'unlit', 'fire', 'smoke']);
 

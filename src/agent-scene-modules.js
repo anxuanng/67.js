@@ -32,7 +32,6 @@ const MODULE_LOADERS = {
   viewTransform: () => import('./view-transform-shader.js'),
   coplanar: () => import('./coplanar-overlap.js'),
   floorSky: () => import('./floor-sky-visibility.js'),
-  sunBounce: () => import('./sun-bounce.js'),
   userPass: () => import('./user-pass.js'),
   materialSnippet: () => import('./material-snippet.js'),
 };
@@ -76,7 +75,6 @@ const MODULE_MARKERS = {
   coplanar: ['"resolveCoplanar"'],
   // A closed room a sun lights gets the floor sky trace by default. The recipe text can not say whether a room is closed, so a recipe that names its sun loads it and the module skips an open scene.
   floorSky: ['"keyColor"', '"keyIntensity"'],
-  sunBounce: ['"keyColor"', '"keyIntensity"'],
   userPass: ['"postPasses"'],
   materialSnippet: ['"snippet":{'],
 };

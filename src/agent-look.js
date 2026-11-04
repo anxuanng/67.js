@@ -281,7 +281,7 @@ function environmentFrom(input = {}) {
   }
   // Scales the light the sunlit patches of a sun-lit closed room bounce on (src/sun-bounce.js); 0 turns it off.
   if (input.sunBounce !== undefined) {
-    if (typeof input.sunBounce !== 'number' || !Number.isFinite(input.sunBounce) || input.sunBounce < 0) {
+    if (!Number.isFinite(input.sunBounce) || input.sunBounce < 0) {
       throw new TypeError('environment.sunBounce must be a number of 0 or more.');
     }
     environment.sunBounce = input.sunBounce;

@@ -3,6 +3,9 @@ import { buildWorld, cosineDirection, radicalInverse, sceneScale } from './light
 import { worldBounds } from './probe-trace.js';
 import { createTracer } from './ray-query.js';
 
+// The sunlit patches' lights (src/sun-bounce.js) load with the floor sky trace: both are for a closed room a sun lights.
+export { withSunBounce } from './sun-bounce.js';
+
 // Sky visibility traced from the texels of the floor itself. A floor part is cut into small triangles, every vertex shoots
 // cosine-weighted rays up into the scene's other parts, and the share that escapes goes into the geometry's `skyVisibility`,
 // which the shader already multiplies into the light the world gives that surface. A narrow street or a hall then darkens
