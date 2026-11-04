@@ -1,0 +1,2 @@
+- scene:agent-scene: +23 bytes gzip (103,230 to 103,253): a cloth seek reuses the previous parts when their geometry is unchanged, so the renderer sees no topology change; the rest of the logic lives in the lazy cloth module.
+- goal:agent-scene: lead approved: the in-place cloth seek removes the per-seek re-upload (0.238 to 0.026 ms), a functional gain for agents.
