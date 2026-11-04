@@ -64,8 +64,18 @@ function groundAlbedo(material) {
  * texture's albedo is its mean in linear space times the material colour.
  */
 export function findGroundSurface(parts) {
-  if (parts.length < 2) {
+  const index = findGroundIndex(parts)
+  if (index < 0) {
     return null
+  }
+  const albedo = groundAlbedo(parts[index].material)
+  return albedo ? { albedo } : null
+}
+
+// The index of the lowest, thin part that spans the scene, or -1.
+function findGroundIndex(parts) {
+  if (parts.length < 2) {
+    return -1
   }
   const boundsList = parts.map(part => worldBounds(part))
   const scene = sceneBoundsOf(boundsList)
@@ -79,11 +89,10 @@ export function findGroundSurface(parts) {
     const isThin = partHeight <= GROUND_THINNESS * Math.max(partX, partZ)
     const isLowest = bounds.minimum[1] <= scene.minimum[1] + GROUND_LOWEST_TOLERANCE
     if (spansScene && isThin && isLowest) {
-      const albedo = groundAlbedo(parts[index].material)
-      return albedo ? { albedo } : null
+      return index
     }
   }
-  return null
+  return -1
 }
 
 /**
@@ -322,6 +331,99 @@ function hasLocalLights(environment) {
  * `environment.groundBounce: false` turns it off.
  */
 export function groundBounceEnvironment(parts, environment, { automaticAlbedo = null } = {}) {
+  const bounced = surfaceBounceEnvironment(parts, environment, automaticAlbedo)
+  return bounced.map ? emissiveSpillEnvironment(parts, bounced) : bounced
+}
+
+// Emissive parts of an open scene light the surfaces around them: windows light facades, lamps light the street. Their
+// emitted power, radiance L over area A, is exitance pi * L, so the light that reaches an average surface of the scene after
+// one bounce is L * A_emissive * rho / (A * (1 - rho)) in the unit of an environment map's diffuse light, as in the room term.
+// The open sky takes most of it, which the gain stands for (fitted on `megacity-dusk` against Cycles with its emission set to 0
+// and on, and checked on the other reference scenes). A closed room or a baked scene has this light already, and a scene with
+// next to no emission keeps its environment.
+const SPILL_GAIN = 1.6
+const SPILL_MINIMUM = 2e-3
+
+function surfaceArea(part) {
+  const { positions, indices } = part.geometry
+  if (!positions) {
+    return 0
+  }
+  const count = indices ? indices.length : positions.length / 3
+  const first = [0, 0, 0]
+  const second = [0, 0, 0]
+  const third = [0, 0, 0]
+  let area = 0
+  for (let corner = 0; corner + 2 < count; corner += 3) {
+    transformPoint(part.matrix, positions, indices ? indices[corner] : corner, first)
+    transformPoint(part.matrix, positions, indices ? indices[corner + 1] : corner + 1, second)
+    transformPoint(part.matrix, positions, indices ? indices[corner + 2] : corner + 2, third)
+    const normalX = (second[1] - first[1]) * (third[2] - first[2]) - (second[2] - first[2]) * (third[1] - first[1])
+    const normalY = (second[2] - first[2]) * (third[0] - first[0]) - (second[0] - first[0]) * (third[2] - first[2])
+    const normalZ = (second[0] - first[0]) * (third[1] - first[1]) - (second[1] - first[1]) * (third[0] - first[0])
+    area += 0.5 * Math.hypot(normalX, normalY, normalZ)
+  }
+  return area
+}
+
+/**
+ * The light the emissive parts of an open scene send to the rest of it, as a linear colour in the unit of an environment
+ * map's diffuse light, or null: none of it for a scene with a bake, a closed room, no emissive part or a negligible one.
+ */
+export function emissiveSpill(parts) {
+  if (isDrawnWithBakedLight(parts) || isClosedRoom(parts)) {
+    return null
+  }
+  const emitted = [0, 0, 0]
+  const reflected = [0, 0, 0]
+  let totalArea = 0
+  const groundIndex = findGroundIndex(parts)
+  for (const [index, part] of parts.entries()) {
+    const material = part.material ?? {}
+    if (index === groundIndex || material.alphaMode === 'blend' || !part.geometry?.positions) {
+      continue
+    }
+    const area = surfaceArea(part)
+    totalArea += area
+    if (material.emission > 0 && !material.emissiveMap) {
+      const color = material.emissiveColor ?? material.color ?? [1, 1, 1]
+      for (let channel = 0; channel < 3; channel++) {
+        emitted[channel] += color[channel] * material.emission * area
+      }
+    } else {
+      const albedo = partDiffuseAlbedo(material)
+      for (let channel = 0; channel < 3; channel++) {
+        reflected[channel] += albedo[channel] * area
+      }
+    }
+  }
+  if (totalArea === 0) {
+    return null
+  }
+  const spill = emitted.map((power, channel) => {
+    const albedo = Math.min(reflected[channel] / totalArea, ROOM_MAXIMUM_ALBEDO)
+    return SPILL_GAIN * power * albedo / (totalArea * (1 - albedo))
+  })
+  return spill.some(channel => channel >= SPILL_MINIMUM) ? spill : null
+}
+
+const spillOfParts = new WeakMap()
+
+function emissiveSpillEnvironment(parts, environment) {
+  if (environment.emissiveSpill === false) {
+    return environment
+  }
+  const remembered = spillOfParts.get(parts)
+  const spill = remembered?.length === parts.length ? remembered.spill : emissiveSpill(parts)
+  spillOfParts.set(parts, { length: parts.length, spill })
+  if (!spill) {
+    return environment
+  }
+  const bounce = environment.map.bounce ? environment.map.bounce.map((channel, index) => channel + spill[index]) : spill
+  return { ...environment, map: { ...environment.map, bounce, irradianceWithBounce } }
+}
+
+function surfaceBounceEnvironment(parts, environment, automaticAlbedo) {
   if (!environment.map) {
     return environment
   }

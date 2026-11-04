@@ -119,6 +119,8 @@ A closed room lit by point, spot or area lights gets the light its walls bounce 
 
 It is left out when the scene has a bake (its light map holds the bounce), a sun (`keyColor` above zero or unset, as in `temple-hall` and `dark-shaft`, which already read lighter than Cycles in their shadows), no map, or `environment.roomBounce` is `false`. It is one average colour for the whole room, with no brighter corner beside a lamp and no colour bleeding next to a wall; a bake gives those, and `scene_inspect` names it (`closed-room-without-bake`, with the `standard` preset) for a closed room lit by lamps only.
 
+Emissive parts light their surroundings too (issue #392). In an open scene without a bake, `groundBounceEnvironment` adds their emitted power (emissive colour times `emission` times area, per channel) over the area of everything but the ground, times the mean albedo over one minus it, times a gain of 1.6, to the same `bounce` colour. Mapped emission, a closed room and a faint emitter (under 0.002) add nothing, and `environment.emissiveSpill: false` turns it off. On `megacity-dusk` against a Cycles render with its own emission on, the facades are 0.96 to 1.07 of Cycles' luminance where they were 0.75 to 0.77, and FLIP goes from 0.1580 to 0.1364 (SwiftShader). One colour for the whole scene cannot follow the fall-off from a window, so the darkest fifth of the picture ends 1.4 times too light; a per-position grid would fix that.
+
 Luminance of the 67js picture over Cycles (linear, whole frame and 20th percentile, `bench/reference/luminance-ratio.py`, GPU renders against the committed Cycles panels):
 
 | Scene | Mean before | Mean after | p20 before | p20 after |
