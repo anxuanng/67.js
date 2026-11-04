@@ -7,6 +7,7 @@ import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import packageMetadata from '../package.json' with { type: 'json' };
 import { MODIFIER_OPERATIONS } from '../src/mesh-operations.js';
+import { VIEW_TRANSFORM_NAMES, LOOK_NAMES } from '../src/view-transform-names.js';
 import { MATERIAL_PATTERN_TYPES, MATERIAL_MAPPINGS, LIGHTING_SETUP_NAMES, RENDER_PASS_NAMES, VIDEO_ENCODERS, MAXIMUM_JOB_SIDE, MAXIMUM_MEMORY_MIB } from '../src/agent-scene-capabilities.js';
 import { MATERIAL_LAYER_SCALAR_RANGES, MATERIAL_LAYER_COLOR_RANGES } from '../src/material-layers.js';
 import { SUBSURFACE_RANGES } from '../src/subsurface-limits.js';
@@ -223,6 +224,10 @@ const environment = z.strictObject({
   volumeFog: volumeFog.optional().describe('Directional scattering; needs HDR.'),
   liquid: liquidOptics.optional().describe('Optics for materials tagged liquid or foam.'),
   lines: lines.nullable().optional(),
+  objectReflections: z.boolean().optional().describe("false turns off reflection probes on smooth metal parts."),
+  resolveCoplanar: z.union([z.literal('offset'), z.literal(false)]).optional().describe("'offset' biases the smaller part of each coplanar pair at draw time; false clears."),
+  viewTransform: z.enum(VIEW_TRANSFORM_NAMES).optional().describe('Display transform, for example agx to compare with Blender.'),
+  look: z.enum(LOOK_NAMES).nullable().optional().describe('Named look preset; null clears.'),
   wind: z.strictObject({ strength: bounded(0, 4).optional(), direction: bounded(-360, 360).optional().describe('Degrees: 0 toward +x, 90 toward +z.') }).optional().describe('Sway of foliage and grass materials; strength defaults to 0.3.'),
 });
 const effects = z.strictObject({
