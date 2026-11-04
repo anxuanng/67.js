@@ -908,7 +908,8 @@ export class Renderer67 {
     }
     const levels = first.lods ?? [{ geometry: first.geometry, error: 0 }];
     const sphere = first.crowd?.bounds ?? geometryBoundingSphere(first.geometry);
-    const bounds = { center: sphere.center, radius: sphere.radius + Math.max(...levels.map(level => level.error)) };
+    const largestError = Math.max(...levels.map(level => level.error));
+    const bounds = { center: sphere.center, radius: sphere.radius + largestError, halfExtents: largestError ? null : sphere.halfExtents };
     const shadowLevels = first.shadowLods ? createLevelSet(first.shadowLods, parts.length) : null;
     const swayReach = SWAYING_TAGS.has(first.material.tag) ? SWAY_REACH_PER_STRENGTH : 0;
     return { cullable, bounds, swayReach, ...createLevelSet(levels, parts.length), shadowLevels };

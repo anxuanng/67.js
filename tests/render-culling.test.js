@@ -221,6 +221,15 @@ test('an instance wholly under belowHeight is culled and one that reaches above 
   assert.equal(selectionFor(positions, { belowHeight: 0, scale: 4 }).visibleCount, 3, 'a larger sphere reaches the plane');
 });
 
+test('a wide flat instance under belowHeight is culled by its box although its sphere reaches above', () => {
+  const chunk = { center: [0, 0, 0], radius: 71, halfExtents: [50, 0.5, 50] };
+  const positions = [[0, -1, 0], [0, 0.2, 0], [0, -0.4, 0]];
+  const selection = selectionFor(positions, { bounds: chunk, belowHeight: 0 });
+  assert.deepEqual([...selection.indices[0].subarray(0, selection.counts[0])], [1, 2], 'the box top at -0.5 is culled, -0.4 and 0.7 stay');
+  assert.equal(selectionFor(positions, { bounds: { center: chunk.center, radius: chunk.radius }, belowHeight: 0 }).visibleCount, 3, 'without extents the sphere decides');
+  assert.deepEqual([...geometryBoundingSphere(box(0, 1)).halfExtents], [0.5, 0.5, 0.5]);
+});
+
 test('an instance smaller than minimumPixelRadius on screen is culled, and a near one stays', () => {
   const positions = [[0, 0, 0], [0, 0, -80]];
   assert.equal(selectionFor(positions).visibleCount, 2);

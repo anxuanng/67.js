@@ -33,7 +33,7 @@ export function geometryBoundingSphere(geometry) {
     const dz = positions[index + 2] - center[2];
     radiusSquared = Math.max(radiusSquared, dx * dx + dy * dy + dz * dz);
   }
-  const sphere = Object.freeze({ center: Object.freeze(center), radius: Math.sqrt(radiusSquared) });
+  const sphere = Object.freeze({ center: Object.freeze(center), radius: Math.sqrt(radiusSquared), halfExtents: Object.freeze(minimum.map((value, axis) => maximum[axis] - center[axis])) });
   boundingSpheres.set(geometry, sphere);
   return sphere;
 }
@@ -113,7 +113,10 @@ export function selectInstances(selection, { instanceData, instanceCount, stride
     const z = instanceData[offset + 2] * centerX + instanceData[offset + 6] * centerY + instanceData[offset + 10] * centerZ + instanceData[offset + 14];
     const worldScale = largestColumnLength(instanceData, offset);
     const reach = bounds.radius * worldScale + margin;
-    if (y + reach < belowHeight || isOutsideFrustum(planes, x, y, z, reach)) continue;
+    // A wide, flat part (a terrain chunk) is far lower by its box than by its sphere.
+    const [halfX, halfY, halfZ] = bounds.halfExtents ?? [bounds.radius, bounds.radius, bounds.radius];
+    const top = y + Math.min(reach, margin + Math.abs(instanceData[offset + 1]) * halfX + Math.abs(instanceData[offset + 5]) * halfY + Math.abs(instanceData[offset + 9]) * halfZ);
+    if (top < belowHeight || isOutsideFrustum(planes, x, y, z, reach)) continue;
     let level = 0;
     if (hasLevels || minimumPixelRadius > 0) {
       const depth = viewProjection[3] * x + viewProjection[7] * y + viewProjection[11] * z + viewProjection[15];

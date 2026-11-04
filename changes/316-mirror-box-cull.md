@@ -1,0 +1,1 @@
+- The water mirror draw drops a part whose bounding box, not only its bounding sphere, lies wholly under the water plane. A wide, flat terrain chunk has a large sphere that reaches above the plane long after its box is under it, so those chunks were drawn and then discarded in the shader. Pixels are unchanged (part of #316). `geometryBoundingSphere` also returns `halfExtents`.

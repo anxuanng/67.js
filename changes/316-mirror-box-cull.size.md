@@ -1,0 +1,8 @@
+- entry:core: the water mirror culls a part by its bounding box as well as its sphere, 91 bytes: a terrain chunk is wide and flat, so its sphere reaches above the water long after the chunk is under it. Measured on the water benchmark, the mirror draws 1.47 M triangles instead of 1.67 M (#316).
+- scene:lit-box: the same 90 bytes of box culling in the render-culling core, for the same reason.
+- scene:gltf-box: the same 92 bytes.
+- scene:gltf-box+lazy: the same 92 bytes.
+- scene:agent-scene: the same culling code, 106 bytes on this scene's bundle.
+- scene:agent-scene+lazy: the same 106 bytes.
+- goal:lit-box: asks An to accept 90 bytes over the 50 KB goal; the bytes buy about 12 percent fewer mirror triangles on a terrain scene with no pixel change.
+- goal:agent-scene: asks An to accept 106 bytes over the 100 KB goal, the same code.
