@@ -13,3 +13,6 @@
 - tool:scene_apply: set-material takes the same `snippet` field in two operation shapes.
 - tool:scene_create_asset: it shares the material schema.
 - result:scene_capabilities: the new materialSnippet section lists the function signature, the inputs, the limits and the notes; the rules point at postPasses.
+- goal:agent-scene: lead approved +168 B gzip; a per-material shader hook (dissolve, discard, custom colour) is an agent-facing capability that also works in the shadow and pick passes, and its code stays lazy.
+- goal:lit-box: lead approved +101 B gzip for the same core seams.
+- goal:gltf-box: lead approved +107 B gzip for the same core seams.
