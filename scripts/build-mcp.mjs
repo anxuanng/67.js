@@ -157,12 +157,20 @@ async function reachablePreviewChunks(build, libraryDirectory) {
   return chunks;
 }
 
-export async function buildMcp({ outDir = join(root, 'build', 'mcp') } = {}) {
-  const destination = resolve(root, outDir);
-  const offset = relative(root, destination);
+function requireProjectSubdirectory(directory, label) {
+  const absolute = resolve(root, directory);
+  const offset = relative(root, absolute);
   if (!offset || offset === '..' || offset.startsWith(`..`) || isAbsolute(offset)) {
-    throw new Error('MCP output must be a dedicated subdirectory of the project root.');
+    throw new Error(`${label} must be a dedicated subdirectory of the project root.`);
   }
+  return absolute;
+}
+
+// libraryDir is the folder the library build wrote, which holds the preview chunks; measure-archive.mjs points both
+// folders at its own staging package so it never rewrites build/ while something else reads it.
+export async function buildMcp({ outDir = join(root, 'build', 'mcp'), libraryDir = join(root, 'build') } = {}) {
+  const destination = requireProjectSubdirectory(outDir, 'MCP output');
+  const libraryDirectory = requireProjectSubdirectory(libraryDir, 'The library build folder');
   setPriority(0, constants.priority.PRIORITY_BELOW_NORMAL);
   const { build } = await import('vite');
   const metadata = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'));
@@ -178,7 +186,7 @@ export async function buildMcp({ outDir = join(root, 'build', 'mcp') } = {}) {
     build: { write: false, copyPublicDir: false, emptyOutDir: false, outDir: destination, sourcemap: false, minify: true },
   };
   const legalBanner = '/*! 67js MCP bundle. Complete license texts and notices: ./LICENSES.md */';
-  const previewChunks = await reachablePreviewChunks(build, join(root, 'build'));
+  const previewChunks = await reachablePreviewChunks(build, libraryDirectory);
   const server = singleModule(await build({
     ...configuration,
     resolve: {
@@ -249,11 +257,19 @@ export async function buildMcp({ outDir = join(root, 'build', 'mcp') } = {}) {
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
   const argumentsList = process.argv.slice(2);
-  if (argumentsList.length && (argumentsList.length !== 2 || argumentsList[0] !== '--out-dir')) {
-    console.error('Use node scripts/build-mcp.mjs [--out-dir <project subdirectory>].');
+  const optionNames = { '--out-dir': 'outDir', '--library-dir': 'libraryDir' };
+  const options = {};
+  let valid = argumentsList.length % 2 === 0;
+  for (let index = 0; valid && index < argumentsList.length; index += 2) {
+    const name = optionNames[argumentsList[index]];
+    if (!name || name in options) valid = false;
+    else options[name] = argumentsList[index + 1];
+  }
+  if (!valid) {
+    console.error('Use node scripts/build-mcp.mjs [--out-dir <project subdirectory>] [--library-dir <project subdirectory>].');
     process.exitCode = 1;
   } else {
-    buildMcp(argumentsList.length ? { outDir: argumentsList[1] } : {}).catch(error => {
+    buildMcp(options).catch(error => {
       console.error(error.message);
       process.exitCode = 1;
     });

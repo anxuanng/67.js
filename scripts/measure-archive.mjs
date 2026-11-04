@@ -1,15 +1,17 @@
 // Packs the library the way a release does and prints the archive size: node scripts/measure-archive.mjs --json
 // The base measurement of the size check runs it inside a checkout of the base branch, so the numbers come from the base source.
 // It builds the library and the MCP server like prepare-release.mjs, then asks npm for the size of the archive without writing one.
+// Each run builds into its own staging package under build/ and packs that, so it never rewrites build/ or build/mcp while
+// another process (a live MCP test, a preview) reads them. build/ is ignored by git, so the MCP manifest still sees a clean tree.
 import { spawnSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { existsSync, mkdirSync, mkdtempSync, copyFileSync, rmSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 const MAX_OUTPUT_BYTES = 64 * 1024 * 1024;
 
-function run(arguments_, capture = false) {
-  const result = spawnSync(process.execPath, arguments_, { encoding: 'utf8', windowsHide: true, stdio: capture ? 'pipe' : ['ignore', 2, 2], maxBuffer: MAX_OUTPUT_BYTES });
+function run(arguments_, { capture = false, cwd } = {}) {
+  const result = spawnSync(process.execPath, arguments_, { cwd, encoding: 'utf8', windowsHide: true, stdio: capture ? 'pipe' : ['ignore', 2, 2], maxBuffer: MAX_OUTPUT_BYTES });
   if (result.status !== 0) throw new Error(`${arguments_.join(' ')} failed: ${result.stderr ?? ''}`);
   return result.stdout;
 }
@@ -25,14 +27,36 @@ function ensureRepository() {
   }
 }
 
+function packedFiles(npmCli, cwd) {
+  const packResult = JSON.parse(run([npmCli, 'pack', '--ignore-scripts', '--dry-run', '--json'], { capture: true, cwd }));
+  return Array.isArray(packResult) ? packResult[0] : Object.values(packResult)[0];
+}
+
+// The staging package holds package.json, every packed file outside build/ and its own fresh build/, so npm applies the same
+// files list, exclusions included, to the same contents a release would pack.
+function copyPackageSources(npmCli, stagingRoot) {
+  for (const { path } of packedFiles(npmCli, '.').files) {
+    if (path.startsWith('build/')) continue;
+    const destination = join(stagingRoot, path);
+    mkdirSync(dirname(destination), { recursive: true });
+    copyFileSync(path, destination);
+  }
+}
+
 export function measureArchiveBytes() {
   ensureRepository();
-  run(['node_modules/vite/bin/vite.js', 'build', '--config', 'vite.lib.config.js']);
-  run(['scripts/build-mcp.mjs']);
   const npmCli = process.env.npm_execpath ?? resolve(dirname(process.execPath), 'node_modules/npm/bin/npm-cli.js');
-  const packResult = JSON.parse(run([npmCli, 'pack', '--ignore-scripts', '--dry-run', '--json'], true));
-  const packed = Array.isArray(packResult) ? packResult[0] : Object.values(packResult)[0];
-  return packed.size;
+  mkdirSync('build', { recursive: true });
+  const stagingRoot = mkdtempSync(join('build', '.archive-'));
+  try {
+    const stagingBuild = join(stagingRoot, 'build');
+    run(['node_modules/vite/bin/vite.js', 'build', '--config', 'vite.lib.config.js', '--outDir', stagingBuild, '--emptyOutDir']);
+    run(['scripts/build-mcp.mjs', '--out-dir', join(stagingBuild, 'mcp'), '--library-dir', stagingBuild]);
+    copyPackageSources(npmCli, stagingRoot);
+    return packedFiles(npmCli, stagingRoot).size;
+  } finally {
+    rmSync(stagingRoot, { recursive: true, force: true });
+  }
 }
 
 // Only when this file is the script that runs: measure-size.mjs imports it and has its own --json output.
