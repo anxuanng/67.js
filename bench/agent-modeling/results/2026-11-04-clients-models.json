@@ -1,0 +1,488 @@
+{
+  "date": "2026-11-04",
+  "suite": "agent-modeling 5-task sample (crate, bolt, window, table, mug), 2 runs each, CPU backend",
+  "protocol": [
+    {
+      "client": "MCP Inspector CLI",
+      "version": "2.13.0",
+      "result": "tools/list shows 22 tools and scene_create works; scene_look in a second command fails because the CLI starts a new server for each command, so no scene exists (client behaviour, not a defect)"
+    },
+    {
+      "client": "MCP Python SDK",
+      "version": "2.3.0",
+      "result": "initialize, tools/list (22 tools), scene_create and scene_look all pass; the preview is a 20480 byte PNG"
+    }
+  ],
+  "claudeCode": [
+    {
+      "client": "claude-code-mcp",
+      "modelAlias": "haiku",
+      "model": "claude-haiku-5-5",
+      "runs": 10,
+      "passed": 10,
+      "meanToolCalls": 7,
+      "meanTurns": 9,
+      "costUsd": 1.51,
+      "tasks": [
+        {
+          "task": "crate",
+          "runs": 2,
+          "passed": 2,
+          "meanToolCalls": 6.5,
+          "meanTurns": 8.5
+        },
+        {
+          "task": "bolt",
+          "runs": 2,
+          "passed": 2,
+          "meanToolCalls": 11,
+          "meanTurns": 13
+        },
+        {
+          "task": "window",
+          "runs": 2,
+          "passed": 2,
+          "meanToolCalls": 6,
+          "meanTurns": 8
+        },
+        {
+          "task": "table",
+          "runs": 2,
+          "passed": 2,
+          "meanToolCalls": 5.5,
+          "meanTurns": 7.5
+        },
+        {
+          "task": "mug",
+          "runs": 2,
+          "passed": 2,
+          "meanToolCalls": 6,
+          "meanTurns": 8
+        }
+      ],
+      "records": [
+        {
+          "task": "crate",
+          "attempt": 1,
+          "pass": true,
+          "passed": 8,
+          "total": 8,
+          "failed": [],
+          "toolCalls": 7,
+          "toolErrors": 1,
+          "turns": 9,
+          "costUsd": 0.15819959999999997,
+          "wallSeconds": 47
+        },
+        {
+          "task": "bolt",
+          "attempt": 1,
+          "pass": true,
+          "passed": 7,
+          "total": 7,
+          "failed": [],
+          "toolCalls": 8,
+          "toolErrors": 2,
+          "turns": 10,
+          "costUsd": 0.14608125,
+          "wallSeconds": 30
+        },
+        {
+          "task": "window",
+          "attempt": 1,
+          "pass": true,
+          "passed": 5,
+          "total": 5,
+          "failed": [],
+          "toolCalls": 6,
+          "toolErrors": 0,
+          "turns": 8,
+          "costUsd": 0.14025845,
+          "wallSeconds": 34
+        },
+        {
+          "task": "table",
+          "attempt": 1,
+          "pass": true,
+          "passed": 6,
+          "total": 6,
+          "failed": [],
+          "toolCalls": 5,
+          "toolErrors": 0,
+          "turns": 7,
+          "costUsd": 0.11627955000000002,
+          "wallSeconds": 24
+        },
+        {
+          "task": "mug",
+          "attempt": 1,
+          "pass": true,
+          "passed": 7,
+          "total": 7,
+          "failed": [],
+          "toolCalls": 6,
+          "toolErrors": 0,
+          "turns": 8,
+          "costUsd": 0.17300064999999998,
+          "wallSeconds": 78
+        },
+        {
+          "task": "crate",
+          "attempt": 2,
+          "pass": true,
+          "passed": 8,
+          "total": 8,
+          "failed": [],
+          "toolCalls": 6,
+          "toolErrors": 0,
+          "turns": 8,
+          "costUsd": 0.14595139999999998,
+          "wallSeconds": 37
+        },
+        {
+          "task": "bolt",
+          "attempt": 2,
+          "pass": true,
+          "passed": 7,
+          "total": 7,
+          "failed": [],
+          "toolCalls": 14,
+          "toolErrors": 1,
+          "turns": 16,
+          "costUsd": 0.19055564999999997,
+          "wallSeconds": 60
+        },
+        {
+          "task": "window",
+          "attempt": 2,
+          "pass": true,
+          "passed": 5,
+          "total": 5,
+          "failed": [],
+          "toolCalls": 6,
+          "toolErrors": 0,
+          "turns": 8,
+          "costUsd": 0.14460429999999996,
+          "wallSeconds": 49
+        },
+        {
+          "task": "table",
+          "attempt": 2,
+          "pass": true,
+          "passed": 6,
+          "total": 6,
+          "failed": [],
+          "toolCalls": 6,
+          "toolErrors": 0,
+          "turns": 8,
+          "costUsd": 0.13450725000000002,
+          "wallSeconds": 26
+        },
+        {
+          "task": "mug",
+          "attempt": 2,
+          "pass": true,
+          "passed": 7,
+          "total": 7,
+          "failed": [],
+          "toolCalls": 6,
+          "toolErrors": 0,
+          "turns": 8,
+          "costUsd": 0.16062745,
+          "wallSeconds": 67
+        }
+      ]
+    },
+    {
+      "client": "claude-code-mcp",
+      "modelAlias": "sonnet",
+      "model": "claude-sonnet-5-5",
+      "runs": 10,
+      "passed": 9,
+      "meanToolCalls": 3.2,
+      "meanTurns": 5.3,
+      "costUsd": 4.39,
+      "tasks": [
+        {
+          "task": "crate",
+          "runs": 2,
+          "passed": 1,
+          "meanToolCalls": 2,
+          "meanTurns": 4
+        },
+        {
+          "task": "bolt",
+          "runs": 2,
+          "passed": 2,
+          "meanToolCalls": 2,
+          "meanTurns": 4
+        },
+        {
+          "task": "window",
+          "runs": 2,
+          "passed": 2,
+          "meanToolCalls": 3.5,
+          "meanTurns": 6
+        },
+        {
+          "task": "table",
+          "runs": 2,
+          "passed": 2,
+          "meanToolCalls": 2,
+          "meanTurns": 4
+        },
+        {
+          "task": "mug",
+          "runs": 2,
+          "passed": 2,
+          "meanToolCalls": 6.5,
+          "meanTurns": 8.5
+        }
+      ],
+      "records": [
+        {
+          "task": "crate",
+          "attempt": 1,
+          "pass": false,
+          "passed": 5,
+          "total": 8,
+          "failed": [
+            "volume: 0.2235 m3",
+            "recessed panel on +X: 1 loops at x = 0.29",
+            "recessed panel on -Z: 1 loops at z = -0.29"
+          ],
+          "toolCalls": 2,
+          "toolErrors": 0,
+          "turns": 4,
+          "costUsd": 0.41402540000000004,
+          "wallSeconds": 23
+        },
+        {
+          "task": "bolt",
+          "attempt": 1,
+          "pass": true,
+          "passed": 7,
+          "total": 7,
+          "failed": [],
+          "toolCalls": 2,
+          "toolErrors": 0,
+          "turns": 4,
+          "costUsd": 0.41078580000000003,
+          "wallSeconds": 21
+        },
+        {
+          "task": "window",
+          "attempt": 1,
+          "pass": true,
+          "passed": 5,
+          "total": 5,
+          "failed": [],
+          "toolCalls": 4,
+          "toolErrors": 0,
+          "turns": 6,
+          "costUsd": 0.458918,
+          "wallSeconds": 21
+        },
+        {
+          "task": "table",
+          "attempt": 1,
+          "pass": true,
+          "passed": 6,
+          "total": 6,
+          "failed": [],
+          "toolCalls": 2,
+          "toolErrors": 0,
+          "turns": 4,
+          "costUsd": 0.38984240000000003,
+          "wallSeconds": 17
+        },
+        {
+          "task": "mug",
+          "attempt": 1,
+          "pass": true,
+          "passed": 7,
+          "total": 7,
+          "failed": [],
+          "toolCalls": 6,
+          "toolErrors": 1,
+          "turns": 8,
+          "costUsd": 0.521204,
+          "wallSeconds": 41
+        },
+        {
+          "task": "crate",
+          "attempt": 2,
+          "pass": true,
+          "passed": 8,
+          "total": 8,
+          "failed": [],
+          "toolCalls": 2,
+          "toolErrors": 0,
+          "turns": 4,
+          "costUsd": 0.41737079999999993,
+          "wallSeconds": 20
+        },
+        {
+          "task": "bolt",
+          "attempt": 2,
+          "pass": true,
+          "passed": 7,
+          "total": 7,
+          "failed": [],
+          "toolCalls": 2,
+          "toolErrors": 0,
+          "turns": 4,
+          "costUsd": 0.40829260000000006,
+          "wallSeconds": 22
+        },
+        {
+          "task": "window",
+          "attempt": 2,
+          "pass": true,
+          "passed": 5,
+          "total": 5,
+          "failed": [],
+          "toolCalls": 3,
+          "toolErrors": 0,
+          "turns": 6,
+          "costUsd": 0.4602924,
+          "wallSeconds": 24
+        },
+        {
+          "task": "table",
+          "attempt": 2,
+          "pass": true,
+          "passed": 6,
+          "total": 6,
+          "failed": [],
+          "toolCalls": 2,
+          "toolErrors": 0,
+          "turns": 4,
+          "costUsd": 0.38937520000000003,
+          "wallSeconds": 18
+        },
+        {
+          "task": "mug",
+          "attempt": 2,
+          "pass": true,
+          "passed": 7,
+          "total": 7,
+          "failed": [],
+          "toolCalls": 7,
+          "toolErrors": 0,
+          "turns": 9,
+          "costUsd": 0.5163774000000001,
+          "wallSeconds": 34
+        }
+      ]
+    },
+    {
+      "client": "claude-code-llms-only",
+      "modelAlias": "haiku",
+      "model": "claude-haiku-5-5",
+      "runs": 2,
+      "passed": 2,
+      "meanToolCalls": 14,
+      "meanTurns": 15,
+      "costUsd": 0.04,
+      "tasks": [
+        {
+          "task": "llms-only-png",
+          "runs": 2,
+          "passed": 2,
+          "meanToolCalls": 14,
+          "meanTurns": 15
+        }
+      ],
+      "records": [
+        {
+          "task": "llms-only-png",
+          "attempt": 1,
+          "pass": true,
+          "detail": "512x512, 18069 colours, 85% differ from the corner",
+          "toolCalls": 15,
+          "toolErrors": 1,
+          "turns": 16,
+          "costUsd": 0.024062040000000003,
+          "wallSeconds": 65
+        },
+        {
+          "task": "llms-only-png",
+          "attempt": 2,
+          "pass": true,
+          "detail": "512x512, 7916 colours, 84% differ from the corner",
+          "toolCalls": 13,
+          "toolErrors": 0,
+          "turns": 14,
+          "costUsd": 0.01483305,
+          "wallSeconds": 47
+        }
+      ]
+    },
+    {
+      "client": "claude-code-llms-only",
+      "modelAlias": "sonnet",
+      "model": "claude-sonnet-5-5",
+      "runs": 2,
+      "passed": 2,
+      "meanToolCalls": 10.5,
+      "meanTurns": 11.5,
+      "costUsd": 0.46,
+      "tasks": [
+        {
+          "task": "llms-only-png",
+          "runs": 2,
+          "passed": 2,
+          "meanToolCalls": 10.5,
+          "meanTurns": 11.5
+        }
+      ],
+      "records": [
+        {
+          "task": "llms-only-png",
+          "attempt": 1,
+          "pass": true,
+          "detail": "512x512, 12232 colours, 77% differ from the corner",
+          "toolCalls": 10,
+          "toolErrors": 2,
+          "turns": 11,
+          "costUsd": 0.28118660000000006,
+          "wallSeconds": 31
+        },
+        {
+          "task": "llms-only-png",
+          "attempt": 2,
+          "pass": true,
+          "detail": "512x512, 13179 colours, 78% differ from the corner",
+          "toolCalls": 11,
+          "toolErrors": 2,
+          "turns": 12,
+          "costUsd": 0.18302639999999998,
+          "wallSeconds": 31
+        }
+      ]
+    }
+  ],
+  "notRun": [
+    {
+      "client": "Non-Anthropic models",
+      "reason": "No free non-Anthropic model is available here: a hosted one needs an API key and spend, and a local LLM is not installed on this machine on purpose."
+    },
+    {
+      "client": "Cursor",
+      "reason": "Needs an interactive desktop client and its own account or subscription; no headless mode to drive."
+    },
+    {
+      "client": "Gemini CLI",
+      "reason": "Needs a Google sign-in or API key, which this setup does not have."
+    },
+    {
+      "client": "VS Code",
+      "reason": "An interactive client with Copilot behind a subscription that is not set up here; no headless mode."
+    },
+    {
+      "client": "Claude Desktop",
+      "reason": "A GUI app that cannot be driven without computer use, which is only used on request."
+    }
+  ]
+}

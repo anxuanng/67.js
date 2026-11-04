@@ -351,3 +351,42 @@ Result (measured, 3 runs per cell): branches did not save calls where the task w
 Tool calls exclude `ToolSearch`. Each run was `scene_create` with the motion inside it and one `scene_export_recipe`, with no errors and no retry.
 
 Result (measured, 3 runs per task): the call count is the same with and without the easing, because Sonnet never used one. In the free arm all 3 runs wrote 6 plain keyframes on a `LINEAR` track with the peak at 1.35 m and passed on the first try. The 2-keyframe `easeOutBack` version in the reference was not found or not chosen. So the issue's condition is met as a comparison, and the answer is no difference in calls, 2 against 2. It does not show that the easing saves calls when an agent is told to use it, and the plain arm needed no retry, unlike the hand search that placed the reference peak. Not measured: Haiku, a prompt that names easings, or a harder curve.
+
+## Other clients and models (2026-11-04, issue #69)
+
+`results/2026-11-04-clients-models.json`. Claude Code runs used the 5-task sample `crate,bolt,window,table,mug`, 2 runs each, on the CPU backend, with `--model haiku` and `--model sonnet`. Pass rate and means are per run.
+
+| Client and model | Task | Pass | Mean tool calls | Mean turns |
+| --- | --- | --- | --- | --- |
+| MCP Inspector CLI 2.13.0 | `tools/list`, `scene_create` | pass, 22 tools | | |
+| MCP Python SDK 2.3.0 | `initialize`, `tools/list`, `scene_create`, `scene_look` | pass, 20480 byte PNG | | |
+| Claude Code, haiku | all five MCP tasks | 10 of 10 | 7.0 | 9.0 |
+| Claude Code, sonnet | all five MCP tasks | 9 of 10 | 3.2 | 5.3 |
+| Claude Code, haiku | `llms.txt` and the package, no MCP | 2 of 2 | 14.0 | 15.0 |
+| Claude Code, sonnet | `llms.txt` and the package, no MCP | 2 of 2 | 10.5 | 11.5 |
+
+By task (pass of 2, mean tool calls):
+
+| Task | haiku | sonnet |
+| --- | --- | --- |
+| crate | 2, 6.5 | 1, 2.0 |
+| bolt | 2, 11.0 | 2, 2.0 |
+| window | 2, 6.0 | 2, 3.5 |
+| table | 2, 5.5 | 2, 2.0 |
+| mug | 2, 6.0 | 2, 6.5 |
+
+- Haiku passed everything but needed about twice the tool calls. Sonnet used fewer calls and failed one `crate` run: it wrote a single `inset_region` over four faces in 2 calls, never inspected the mesh, and got one loop per panel instead of two. That is a model shortcut, not a schema defect, and one failure in ten is within the noise of this sample.
+- The no-MCP task is `llms-only.mjs`: a fresh folder with the package installed from a packed archive and a copy of `llms.txt`, no web access, no MCP. The agent writes a script that renders a red sphere on a ground plane to `scene.png`; `png-check.mjs` requires a real 512 px PNG with many colours. Both models pass.
+- Friction found: in both sonnet runs the first `cd node_modules/67js` failed, because the guide's script assumes the `67js` alias install and the task installed `@codepawlhq/67js` plainly. Fixed in `docs/guide.md` and `public/llms.txt`, which now state both install names. These two sonnet runs predate that fix.
+- The Inspector CLI starts a new server per command, so it cannot show a preview image; that is the client, not the server.
+- Every page that `llms.txt` and the README link to is checked against the package and the site by `tests/other-clients.test.js`.
+
+Not run:
+
+| Client | Reason |
+| --- | --- |
+| Non-Anthropic models | None is free here: a hosted model needs an API key and spend, and a local LLM is deliberately not installed |
+| Cursor | Interactive desktop client with its own account; no headless mode to drive |
+| Gemini CLI | Needs a Google sign-in or API key, which this setup does not have |
+| VS Code | Interactive client behind a Copilot subscription that is not set up here |
+| Claude Desktop | A GUI app that cannot be driven without computer use |

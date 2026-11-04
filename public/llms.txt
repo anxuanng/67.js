@@ -28,6 +28,7 @@ Keep renderer-facing geometry immutable. Call `renderer.updateParts(session.part
 This addon does not expose an MCP server or a render job queue.
 
 The npm package includes a prebuilt stdio MCP server. After alias installation, run `npx 67js-mcp --backend gpu --memory 192` with Node.js 20.19+ and installed Chrome.
+Install with `npm install 67js@npm:@codepawlhq/67js` so imports stay `67js`. A plain `npm install @codepawlhq/67js` puts the package in `node_modules/@codepawlhq/67js` instead.
 For MCP clients, invoke Node directly with the absolute path to `node_modules/67js/bin/67js-mcp.mjs`. Read `/mcp.md` for configuration.
 The browser starts only when creating a scene. No source checkout, Vite build or browser download is required.
 
