@@ -469,6 +469,54 @@ The implementation uses `@dimforge/rapier3d-compat` version `0.21.0`, licensed u
 
 Sources: [Rapier JavaScript setup](https://rapier.rs/docs/user_guides/javascript/getting_started_js/), [Rapier joints](https://rapier.rs/docs/user_guides/javascript/joints/) and [Rapier determinism](https://rapier.rs/docs/user_guides/javascript/determinism/).
 
+## Live cloth
+
+A game steps cloth one frame at a time, with pins that move and change while it runs. `createCloth(positions, triangles, options)` is the solver `bakeCloth` records from (`bakeCloth` is now a loop over it), so a live run and a baked recording of the same input give the same numbers, frame for frame. It lives in `src/cloth.js`; the recipe `cloth` section above still bakes ahead of time.
+
+```js
+import { createCloth } from '@codepawlhq/67js/addons/cloth';
+
+// A 1 m square sheet, 33 x 33 particles, with two grippers holding two corners.
+const cloth = createCloth(positions, triangles, { density: 0.2, bend: 0.1 });
+const leftCorner = 0;
+const rightCorner = 32;
+cloth.pin(leftCorner, leftGripper.position);
+cloth.pin(rightCorner, rightGripper.position);
+
+function frame(deltaSeconds) {
+  // Move the grippers first, then hand the targets to the sheet. Each step carries the pins there in even strides.
+  cloth.pin(leftCorner, leftGripper.position);
+  cloth.pin(rightCorner, rightGripper.position);
+  cloth.step(deltaSeconds, { wind: [0, 0, 1] });
+  const pull = cloth.pinForce(leftCorner);
+  if (Math.hypot(...pull) > gripStrength) cloth.unpin(leftCorner); // the grip slips and the sheet falls on that side
+  sheetGeometryPositions.set(cloth.positions);
+}
+```
+
+- `step(deltaSeconds, { wind, colliders })` runs 4 substeps of 8 constraint passes. `wind` (m/s) and `colliders` replace the ones in the options for this step only; the other options are fixed at creation. `cloth.positions` is one `Float32Array`, 3 numbers a particle, rewritten in place by every step.
+- `pin(index, position)` holds a particle at `position`, or where it is now when none is given. Calling it again moves the target, so a gripper that follows a hand calls it every frame. `unpin(index)` lets go; the particle keeps its velocity. `isPinned(index)` reads the state.
+- `pinForce(index, out)` writes the force the cloth pulls the pinned particle with, in newtons, averaged over the last step: `out = [x, y, z]`, so its length is the load. It is an estimate taken from the corrections the solver made, not a measurement: a sheet hanging still from its top row loads the pins with roughly its weight (`cloth.particleMass * particleCount * 9.81`).
+- `setExtraMass(index, kilograms)` hangs mass on a particle on top of `cloth.particleMass` (density times area, shared evenly). A heavy particle moves less when the constraints pull, so the sheet sags around it.
+- Tearing: `tearStretch` (a stretch constraint breaks when its length passes this multiple of its rest length) and `tearForce` (it breaks when it carries more than this many newtons) are options; both default to never. The bend constraint across a broken edge breaks with it. `cloth.broken` lists them in order as `{ constraint, first, second, kind }`, where `first` and `second` are particle indices and `kind` is `'stretch'` or `'bend'`; `breakConstraint(edge)` tears one by hand. A broken constraint never heals, and the triangles are not removed: hide a triangle whose edge is in the list to show the tear.
+- A particle index is a welded particle (`weldVertices` maps mesh vertices to them), as in `bakeCloth`.
+
+## Deforming a drawn part in place
+
+`updatePartVertices(renderer, part, positions, normals)` writes new vertex positions, and normals when given, into the buffers a rigid part already uses, with `bufferSubData`. It needs no `replaceParts`, no new geometry object and no new draw batch. It comes from `@codepawlhq/67js/addons/update-part-vertices`, takes the renderer as its first argument and imports nothing from the renderer, so a scene that never deforms a mesh does not carry it.
+
+```js
+import { updatePartVertices } from '@codepawlhq/67js/addons/update-part-vertices';
+
+updatePartVertices(renderer, sheetPart, sheetPositions, sheetNormals);
+renderer.render(frame);
+```
+
+- The vertex count cannot change, and the arrays are `Float32Array`s of 3 numbers a vertex. The values are copied into the part's geometry, so the geometry stays the truth, and every part that uses the same geometry deforms with it.
+- It refuses skinned, morphed, crowd and level-of-detail parts. A textured part works, since only positions and normals move.
+- The culling bounds and the shadow map follow the new positions.
+- Per vertex a cloth steps on welded particles, so copy each vertex from its particle (`weldVertices(...).particleOfVertex`) and recompute normals (`recomputeNormals`) before the call.
+
 ## Recipe particles and hair
 
 A recipe `particles` section holds up to 4 systems (`src/particles.js`, `src/hair.js`, `src/agent-particles.js`). It needs no peer dependency and loads on demand with the `particles` module, so a scene without particles pays nothing. Blender's particle system has the same two kinds, Emitter and Hair.
