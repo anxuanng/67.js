@@ -122,6 +122,7 @@ const materialFields = {
   ...waterFields,
   ...materialLayerFields,
   subsurface: subsurface.optional(),
+  snippet: z.record(z.string(), z.unknown()).nullable().optional().describe('GLSL fragment hook; scene_capabilities materialSnippet.'),
   pattern: materialPattern.optional(),
   map: z.strictObject({ sequence: z.strictObject({
     frames: z.array(z.string().regex(/^[a-f0-9]{64}$/)).min(2).max(64),
@@ -171,14 +172,14 @@ const volumeFog = z.strictObject({
   shadowAmbient: unit.optional(),
 });
 const affects = z.array(z.string()).optional();
-const lines = z.record(z.string(), z.unknown()).describe('Line art JSON; see scene_capabilities lineArt. null clears.');
+const lines = z.record(z.string(), z.unknown()).describe('Outlines, toon light and polylines as plain JSON; fields and limits in scene_capabilities lineArt. null clears.');
 const environment = z.strictObject({
   world: z.boolean().optional().describe('Draw the sky and apply surface fog.'),
   ground: z.boolean().optional().describe('false: no automatic floor.'),
-  setup: z.enum(LIGHTING_SETUP_NAMES).optional().describe('Named lighting; resets key, fill, ambient.'),
-  environmentIntensity: bounded(0, 100).optional().describe('Scales environment light.'),
-  environmentRotation: bounded(-100, 100).optional().describe('Radians about vertical.'),
-  lightDirection: boundedVector(-1e6, 1e6).optional().describe('Toward the key light.'),
+  setup: z.enum(LIGHTING_SETUP_NAMES).optional().describe('Named lighting; resets key, fill and ambient fields. Default daylight.'),
+  environmentIntensity: bounded(0, 100).optional().describe('Scales the setup environment light and its reflections.'),
+  environmentRotation: bounded(-100, 100).optional().describe('Turns the setup environment around the vertical axis, in radians.'),
+  lightDirection: boundedVector(-1e6, 1e6).optional().describe('Direction toward the key light; shadows follow.'),
   keyColor: boundedVector(0, 1000).optional(),
   keyIntensity: bounded(0, 100).optional(),
   fillIntensity: bounded(0, 100).optional(),
@@ -192,12 +193,12 @@ const environment = z.strictObject({
     intensity: bounded(0, 1e5).optional(),
     radius: bounded(0.001, 1e6).optional(),
     range: z.union([z.literal(0), bounded(0.001, 1e6)]).optional(),
-    castShadow: z.boolean().optional().describe('6 atlas tiles.'),
+    castShadow: z.boolean().optional().describe('Casts a shadow; 6 atlas tiles.'),
     affects,
-  })).max(8).optional().describe('Replaces the list; [] clears. Candela.'),
+  })).max(8).optional().describe('Replaces the list; [] clears. Intensity in candela.'),
   spotLights: z.array(z.strictObject({
     position: boundedVector(-1e6, 1e6),
-    direction: boundedVector(-1e6, 1e6).describe('Nonzero cone direction.'),
+    direction: boundedVector(-1e6, 1e6).describe('Nonzero direction the cone points along.'),
     angle: bounded(0.01, Math.PI / 2 - 0.01).optional().describe('Outer half angle, radians; default pi/4.'),
     penumbra: unit.optional().describe('Soft edge, 0 hard; default 0.15.'),
     color: color.optional(),
@@ -209,8 +210,8 @@ const environment = z.strictObject({
   })).max(8).optional().describe('Replaces the list; [] clears.'),
   areaLights: z.array(z.strictObject({
     position: boundedVector(-1e6, 1e6).describe('Center of the rectangle.'),
-    direction: boundedVector(-1e6, 1e6).describe('Facing direction; one side emits.'),
-    up: boundedVector(-1e6, 1e6).optional().describe('Height axis; default up.'),
+    direction: boundedVector(-1e6, 1e6).describe('Direction the rectangle faces; emits that side only.'),
+    up: boundedVector(-1e6, 1e6).optional().describe('Height axis direction; default world up.'),
     width: bounded(0.001, 1e4),
     height: bounded(0.001, 1e4),
     color: color.optional(),
@@ -222,14 +223,20 @@ const environment = z.strictObject({
   fogColor: color.optional(),
   fogDensity: bounded(0, 10).optional(),
   volumeFog: volumeFog.optional().describe('Directional scattering; needs HDR.'),
-  liquid: liquidOptics.optional().describe('For liquid or foam materials.'),
+  liquid: liquidOptics.optional().describe('Optics for materials tagged liquid or foam.'),
   lines: lines.nullable().optional(),
-  objectReflections: z.boolean().optional(),
-  resolveCoplanar: z.union([z.literal('offset'), z.literal(false)]).optional(),
-  viewTransform: z.enum(VIEW_TRANSFORM_NAMES).optional(),
-  look: z.enum(LOOK_NAMES).nullable().optional(),
-  wind: z.strictObject({ strength: bounded(0, 4).optional(), direction: bounded(-360, 360).optional().describe('Degrees; 0 is +x, 90 is +z.') }).optional().describe('Foliage and grass sway; strength default 0.3.'),
+  objectReflections: z.boolean().optional().describe("false turns off reflection probes on smooth metal parts."),
+  resolveCoplanar: z.union([z.literal('offset'), z.literal(false)]).optional().describe("'offset' biases the smaller part of each coplanar pair at draw time; false clears."),
+  viewTransform: z.enum(VIEW_TRANSFORM_NAMES).optional().describe('Display transform, for example agx to compare with Blender.'),
+  look: z.enum(LOOK_NAMES).nullable().optional().describe('Named look preset; null clears.'),
+  wind: z.strictObject({ strength: bounded(0, 4).optional(), direction: bounded(-360, 360).optional().describe('Degrees: 0 toward +x, 90 toward +z.') }).optional().describe('Sway of foliage and grass materials; strength defaults to 0.3.'),
 });
+// The full environment schema is published once, in scene_create. A JSON Schema $ref can not point from one tool's
+// inputSchema into another's, so scene_apply and scene_create_asset publish a plain object that names it and still
+// check every field against the same schema here, with the same error paths.
+const environmentReference = z.record(z.string(), z.unknown())
+  .describe('Same fields as recipe.environment in scene_create.')
+  .pipe(environment);
 const effects = z.strictObject({
   exposure: bounded(0.01, 16).optional(),
   saturation: bounded(0, 2).optional(),
@@ -587,7 +594,7 @@ const assetRecipe = z.strictObject({
   schemaVersion: z.literal(1),
   assetId: z.string().regex(/^[a-f0-9]{64}$/).describe('SHA-256 asset ID from scene_asset_catalog.'),
   camera: z.strictObject(cameraFields).optional(),
-  environment: environment.optional(),
+  environment: environmentReference.optional(),
   effects: effects.optional(),
   shadow: shadow.optional(),
   root: z.strictObject({
@@ -621,7 +628,7 @@ const otherOperations = [
   z.strictObject({ type: z.literal('set-particles'), particles: z.record(z.string(), z.unknown()).nullable() }),
   z.strictObject({ type: z.literal('set-bake'), bake: z.record(z.string(), z.unknown()).nullable() }),
   z.strictObject({ type: z.literal('set-post-passes'), postPasses: z.array(z.record(z.string(), z.unknown())).nullable() }),
-  z.strictObject({ type: z.literal('set-environment'), environment }),
+  z.strictObject({ type: z.literal('set-environment'), environment: environmentReference }),
   z.strictObject({ type: z.literal('set-effects'), effects }),
   z.strictObject({ type: z.literal('set-shadow'), shadow }),
   z.strictObject({ type: z.literal('set-root'), translation: vector3.optional(), rotation: quaternion.optional(), scale: z.tuple([positive, positive, positive]).optional() }),
