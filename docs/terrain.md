@@ -90,6 +90,10 @@ Memory: three `TEXTURE_2D_ARRAY`s on units 11 to 13 (sRGB colour, normal, roughn
 
 In a recipe, the same ground is the `terrain` geometry (`size`, `resolution`, `seed`, `amplitude`, `holes`): see [agent-scene](agent-scene.md).
 
+## Terrain near water
+
+`createTerrain({ mirrorLevels: 2 })` builds two extra coarse meshes for each chunk that only the water reflection draws (`attachWaterReflection` hides them from every other draw). Set it for terrain that a reflecting surface will mirror; it stays 0 otherwise because the terrain knows nothing of the water, which a scene adds afterwards. Measured on a 900 m terrain at resolution 128 with 8 by 8 chunks: it adds about 22 MB of mesh data (the finest level is 61 MB) and raises the build time from about 410 ms to 740 ms (median of 5). In return the mirror frame of the water benchmark (960 by 540, RTX 3060, median of 240 samples) costs +25% over reflection off instead of +40%.
+
 ## Heightfield from rasters
 
 `67js/addons/heightfield` builds a mesh from georeferenced rasters (heights, a mask, a photo) when `createTerrain` does not fit, such as a shoreline cut from a sea mask. A raster is `{ values, width, height, box: { x_min, x_max, y_min, y_max } }`, pixel centres on the box, row 0 at the north edge.
