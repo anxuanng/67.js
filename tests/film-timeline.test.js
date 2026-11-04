@@ -8,6 +8,7 @@ import { createAgentScene, AGENT_SCENE_CAPABILITIES } from '../src/agent-scene.j
 import { filmTimelineDuration, filmTimelineShotStarts, normalizeFilmTimeline, sampleFilmTimeline } from '../src/film-timeline.js';
 import { createAgentRenderJobs } from '../scripts/agent-render-jobs.mjs';
 import { createAudioLibrary } from '../scripts/job-audio.mjs';
+import { audioCodecArguments } from '../scripts/frame-encoder.mjs';
 
 function recipeWith(extra = {}) {
   return {
@@ -157,9 +158,24 @@ test('encoder is a bounded enum and audio is a plain file name, both video only'
   await assert.rejects(controller.submit(submission({ audio: { file: 'score.wav', gain: 2 } })), /Unknown audio field/);
   await assert.rejects(controller.submit(submission({ audio: { file: 'score.wav', offset: -1 } })), /audio offset/);
   await assert.rejects(controller.submit(submission({ kind: 'image', audio: { file: 'score.wav' } })), /audio needs kind video/);
+  for (const track of ['wav', 'AAC', '', null, 7, ['pcm']]) {
+    await assert.rejects(controller.submit(submission({ audio: { file: 'score.wav', track } })), /audio.track/);
+  }
   const accepted = await controller.submit(submission({ encoder: 'nvenc', audio: { file: 'score.wav', offset: 1.5 } }));
-  assert.deepEqual(controller.status(accepted.jobId).settings.audio, { file: 'score.wav', offset: 1.5 });
+  assert.deepEqual(controller.status(accepted.jobId).settings.audio, { file: 'score.wav', offset: 1.5, track: 'aac' });
   assert.equal(controller.status(accepted.jobId).settings.encoder, 'nvenc');
+});
+
+test('audio.track pcm is kept on the job for parts that will be joined', async context => {
+  const controller = await controllerFor(context);
+  const accepted = await controller.submit(submission({ audio: { file: 'score.wav', offset: 30, track: 'pcm' } }));
+  assert.deepEqual(controller.status(accepted.jobId).settings.audio, { file: 'score.wav', offset: 30, track: 'pcm' });
+});
+
+test('audio codec arguments: AAC by default, PCM for parts that will be joined, nothing else', () => {
+  assert.deepEqual(audioCodecArguments('aac'), ['-c:a', 'aac', '-b:a', '192k']);
+  assert.deepEqual(audioCodecArguments('pcm'), ['-c:a', 'pcm_s16le']);
+  assert.throws(() => audioCodecArguments('libmp3lame'), /aac or pcm/);
 });
 
 test('the audio library resolves plain files only and refuses links, empty files and wrong names', async context => {
