@@ -17,7 +17,6 @@ flat in vec4 surface;
 in vec4 shadowPosition;
 in vec2 textureUV;
 in vec3 vertexTint;
-flat in vec3 emissionColor;
 uniform vec3 eye;
 uniform mat4 viewProjection;
 uniform sampler2D sceneColor;

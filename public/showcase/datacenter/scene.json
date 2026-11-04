@@ -3,6 +3,8 @@
   "title": "AI data center",
   "blurb": "A night campus around a cutaway hall of 72 racks: two more halls, a cooling yard, a substation, generators and fuel tanks, parking and a gated road.",
   "glb": "/showcase/datacenter/scene.glb",
+  "glbRest": ["/showcase/datacenter/scene.rest.glb"],
+  "hdriPreview": "/showcase/datacenter/sky.preview.hdr",
   "gltfOptions": {
     "maxTexturePixels": 41943040
   },
