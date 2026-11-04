@@ -39,7 +39,7 @@ function copyElements(source, offset, stride, count, elementBytes) {
 
 /**
  * Reads accessors as tightly packed typed arrays, with sparse substitution and meshopt buffer views.
- * `bufferBytes(index)` returns the bytes of a glTF buffer. `meshoptDecoder` is only needed for compressed views.
+ * `bufferBytes(index)` returns the bytes of a glTF buffer. `meshoptDecoder` replaces the built-in decoder of compressed views.
  */
 export function createAccessorReader(document, bufferBytes, meshoptDecoder) {
   const viewCache = new Map();
@@ -54,23 +54,12 @@ export function createAccessorReader(document, bufferBytes, meshoptDecoder) {
     return source.subarray(offset, offset + length);
   }
 
-  async function decodeMeshoptView(view) {
-    const extension = view.extensions.EXT_meshopt_compression;
-    const source = bufferBytes(extension.buffer);
-    const offset = extension.byteOffset ?? 0;
-    if (!source || offset + extension.byteLength > source.length) throw new Error('Meshopt buffer view exceeds its buffer.');
-    await meshoptDecoder.ready;
-    const decoded = new Uint8Array(extension.count * extension.byteStride);
-    meshoptDecoder.decodeGltfBuffer(decoded, extension.count, extension.byteStride, source.subarray(offset, offset + extension.byteLength), extension.mode, extension.filter ?? 'NONE');
-    return decoded;
-  }
-
-  /** Decode every meshopt view before any accessor is read, so reading stays synchronous. */
+  /** Decode every meshopt view before any accessor is read, so reading stays synchronous. The decoder loads only for a file that has one. */
   async function prepare() {
     const views = document.bufferViews ?? [];
-    for (let index = 0; index < views.length; index++) {
-      if (views[index].extensions?.EXT_meshopt_compression) viewCache.set(index, await decodeMeshoptView(views[index]));
-    }
+    if (!views.some(view => view.extensions?.EXT_meshopt_compression)) return;
+    const { decodeMeshoptViews } = await import('./gltf-meshopt.js');
+    for (const [index, bytes] of await decodeMeshoptViews(views, bufferBytes, meshoptDecoder)) viewCache.set(index, bytes);
   }
 
   function viewBytes(index) {

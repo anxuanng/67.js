@@ -12,7 +12,7 @@ import { MAX_MORPH_TARGETS, createMorphPose, validateMorphGeometry, validateMorp
 
 export const GLTF_CAPABILITIES = Object.freeze({
   formats: ['glb', 'gltf'],
-  supported: ['triangle meshes', 'world transforms', 'rigid node animations', 'four-influence skeletal skinning', 'joint node animations', 'relative POSITION/NORMAL morph targets', 'morph weight animations', 'PNG/JPEG/WebP base color textures', 'normal/occlusion/emissive/metallic-roughness textures', 'TEXCOORD_0', 'TEXCOORD_1 for occlusion, emissive and metallic-roughness textures', 'clearcoat, clearcoat roughness, clearcoat normal, anisotropy, sheen color and sheen roughness textures', 'linear RGB vertex colors, with the alpha of RGBA colors ignored and reported in warnings','metallic roughness factors', 'emissive factors', 'alpha mask and blend modes', 'double-sided materials', 'KHR_mesh_quantization', 'KHR_materials_emissive_strength', 'KHR_materials_clearcoat, transmission, volume, ior, specular, sheen, anisotropy and iridescence factors', 'KHR_texture_transform baked into UVs, with a normal map that differs by scale and offset applied in the shader', 'EXT_mesh_gpu_instancing expanded into parts', 'KHR_draco_mesh_compression with options.decoders.draco', 'EXT_meshopt_compression with options.decoders.meshopt', 'KHR_texture_basisu with options.decoders.ktx2', 'EXT_texture_webp, with the PNG or JPEG fallback source when the browser cannot decode WebP', 'KHR_materials_unlit as the unlit material tag, with a base color map only', 'KHR_lights_punctual point and spot lights (up to eight each) and the first directional light, returned in lights as environment options'],
+  supported: ['triangle meshes', 'world transforms', 'rigid node animations', 'four-influence skeletal skinning', 'joint node animations', 'relative POSITION/NORMAL morph targets', 'morph weight animations', 'PNG/JPEG/WebP base color textures', 'normal/occlusion/emissive/metallic-roughness textures', 'TEXCOORD_0', 'TEXCOORD_1 for occlusion, emissive and metallic-roughness textures', 'clearcoat, clearcoat roughness, clearcoat normal, anisotropy, sheen color and sheen roughness textures', 'linear RGB vertex colors, with the alpha of RGBA colors ignored and reported in warnings','metallic roughness factors', 'emissive factors', 'alpha mask and blend modes', 'double-sided materials', 'KHR_mesh_quantization', 'KHR_materials_emissive_strength', 'KHR_materials_clearcoat, transmission, volume, ior, specular, sheen, anisotropy and iridescence factors', 'KHR_texture_transform baked into UVs, with a normal map that differs by scale and offset applied in the shader', 'EXT_mesh_gpu_instancing expanded into parts', 'KHR_draco_mesh_compression with options.decoders.draco', 'EXT_meshopt_compression', 'KHR_texture_basisu with options.decoders.ktx2', 'EXT_texture_webp, with the PNG or JPEG fallback source when the browser cannot decode WebP', 'KHR_materials_unlit as the unlit material tag, with a base color map only', 'KHR_lights_punctual point and spot lights (up to eight each) and the first directional light, returned in lights as environment options'],
   // The primitive's own material is drawn; the other variants are not selectable.
   ignoredExtensions: ['KHR_materials_variants', 'KHR_materials_dispersion', 'KHR_materials_diffuse_roughness', 'EXT_materials_bump', 'EXT_texture_avif'],
   optionalExtensions: 'Any other optional extension is ignored and named in warnings. One listed in extensionsRequired that 67js does not read is refused.',
@@ -52,8 +52,8 @@ const DEFAULT_MAX_INSTANCES = 4096;
 // KHR_xmp_json_ld and its earlier name KHR_xmp only carry metadata (authors, licences) and change nothing drawn: the
 // Khronos sample assets list them, and a file must not be refused for them.
 const METADATA_EXTENSIONS = ['KHR_xmp_json_ld', 'KHR_xmp'];
-const ALLOWED_EXTENSIONS = new Set(['KHR_mesh_quantization', 'KHR_materials_emissive_strength', 'KHR_texture_transform', 'EXT_mesh_gpu_instancing', 'EXT_texture_webp', 'KHR_materials_unlit', 'KHR_lights_punctual', ...METADATA_EXTENSIONS, ...GLTF_LAYER_EXTENSIONS]);
-const DECODER_BY_EXTENSION = { KHR_draco_mesh_compression: 'draco', EXT_meshopt_compression: 'meshopt', KHR_texture_basisu: 'ktx2' };
+const ALLOWED_EXTENSIONS = new Set(['KHR_mesh_quantization', 'KHR_materials_emissive_strength', 'KHR_texture_transform', 'EXT_mesh_gpu_instancing', 'EXT_meshopt_compression', 'EXT_texture_webp', 'KHR_materials_unlit', 'KHR_lights_punctual', ...METADATA_EXTENSIONS, ...GLTF_LAYER_EXTENSIONS]);
+const DECODER_BY_EXTENSION = { KHR_draco_mesh_compression: 'draco', KHR_texture_basisu: 'ktx2' };
 const IDENTITY_UV_TRANSFORM = Object.freeze({ offset: [0, 0], rotation: 0, scale: [1, 1] });
 const IDENTITY_UV_TRANSFORM_KEY = JSON.stringify([IDENTITY_UV_TRANSFORM.offset, IDENTITY_UV_TRANSFORM.rotation, IDENTITY_UV_TRANSFORM.scale]);
 const MATERIAL_TEXTURES = [
@@ -331,7 +331,8 @@ function validateDocument(document, limits, allowedExtensions) {
   let declaredBytes = 0;
   for (const buffer of document.buffers ?? []) {
     if (!Number.isSafeInteger(buffer.byteLength) || buffer.byteLength < 0) throw new Error('Invalid glTF buffer length.');
-    declaredBytes += buffer.byteLength;
+    // A meshopt fallback buffer holds the uncompressed copy of data that is decoded from the compressed buffer; it is never read.
+    if (!buffer.extensions?.EXT_meshopt_compression?.fallback) declaredBytes += buffer.byteLength;
   }
   if (declaredBytes > limits.maxBytes) throw new Error('glTF buffers exceed maxBytes.');
   let vertices = 0;
@@ -669,7 +670,7 @@ async function boundedFetch(url, maxBytes, signal) {
 
 async function prepareResources(document, data, dataBytes, options, limits) {
   const resourceBytes = new Map();
-  const definitions = [...(document.buffers ?? []), ...(document.images ?? [])];
+  const definitions = [...(document.buffers ?? []).filter(buffer => !buffer.extensions?.EXT_meshopt_compression?.fallback), ...(document.images ?? [])];
   const uris = new Set(definitions.map(resource => resource.uri).filter(uri => uri !== undefined));
   if (uris.size > limits.maxResources) throw new Error('glTF resources exceed maxResources.');
   let usedBytes = dataBytes;
@@ -979,7 +980,7 @@ function convertMaterial(source, limits, maps, definition = {}) {
   return material;
 }
 
-/** Parse a bounded glTF 2.0 asset into Renderer67 parts. Draco, meshopt and KTX2 decoders come from options.decoders. */
+/** Parse a bounded glTF 2.0 asset into Renderer67 parts. Draco and KTX2 decoders come from options.decoders; meshopt decodes in a chunk that loads on demand, unless options.decoders.meshopt replaces it. */
 export async function parseGltf(data, options = {}) {
   const limits = limitsFor(options);
   const document = documentFrom(data, limits.maxBytes);

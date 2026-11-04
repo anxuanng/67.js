@@ -276,7 +276,7 @@ test('required material extensions, bad layer values and missing decoders are re
   await assert.rejects(parseGltf(badTransmission), /transmission must be between 0 and 1.*Use a number inside that range/);
   const badIor = triangleDocument({ edit: document => { document.materials[0].extensions = { KHR_materials_ior: { ior: 0.5 } }; } });
   await assert.rejects(parseGltf(badIor), /ior must be between 1 and 2.5/);
-  for (const [extension, decoder] of [['KHR_draco_mesh_compression', 'draco'], ['EXT_meshopt_compression', 'meshopt'], ['KHR_texture_basisu', 'ktx2']]) {
+  for (const [extension, decoder] of [['KHR_draco_mesh_compression', 'draco'], ['KHR_texture_basisu', 'ktx2']]) {
     const data = triangleDocument({ edit: document => { document.extensionsRequired = [extension]; } });
     await assert.rejects(parseGltf(data), new RegExp(`options\\.decoders\\.${decoder}`));
   }

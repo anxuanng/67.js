@@ -143,7 +143,7 @@ POINTS, LINES, LINE_LOOP and LINE_STRIP primitives are skipped with a warning th
 | `KHR_lights_punctual` | Point and spot lights (up to the renderer limits of 16 point and 8 spot lights, in candela like the renderer) and the first directional light become `asset.lights`, a partial `environment`: `pointLights`, `spotLights`, and `keyColor` (color times lux), `lightDirection` and `keyIntensity` for the key light. Pass it as `Renderer67`'s `environment` option or a `frame.environment`. A spot's `penumbra` is `(outer - inner) / outer`. A light over the limits, a second directional light and an invalid light are skipped with a warning. The renderer has no calibrated photometric units, so judge the level by eye. |
 | `KHR_materials_variants`, `KHR_materials_dispersion`, `KHR_materials_diffuse_roughness`, `EXT_materials_bump`, `EXT_texture_avif` and any other optional extension | Ignored, named in `warnings`. |
 | `KHR_draco_mesh_compression` | Needs `options.decoders.draco`. |
-| `EXT_meshopt_compression` | Needs `options.decoders.meshopt`. |
+| `EXT_meshopt_compression` | Decoded by 67js: attribute, triangle and index modes with the NONE, OCTAHEDRAL, QUATERNION and EXPONENTIAL filters. The decoder is a separate chunk that loads only when `extensionsUsed` or `extensionsRequired` lists the extension. The fallback buffer is never read, so it may be absent, zero-filled or an unreachable `uri`, and it does not count against `maxBytes`. A buffer view that fails to decode throws a named error. `options.decoders.meshopt` still replaces the built-in decoder. |
 | `KHR_texture_basisu` | Needs `options.decoders.ktx2`. |
 | `EXT_texture_webp` | The WebP source is decoded by the browser like PNG and JPEG. When the texture also has a PNG or JPEG `source` and the browser cannot decode WebP, that source is used instead. |
 | `KHR_materials_clearcoat`, `_transmission`, `_ior`, `_specular`, `_sheen`, `_volume`, `_anisotropy`, `_iridescence` | Read as factors and rendered as material layers, see `docs/material-maps.md`. The textures `clearcoatTexture`, `clearcoatRoughnessTexture`, `clearcoatNormalTexture`, `anisotropyTexture`, `sheenColorTexture` and `sheenRoughnessTexture` are read too, into `material.layerMaps` (their GLSL loads with `material-layer-shaders`); a renderer draws at most three different ones, and none beside splat layers. The transmission, iridescence and specular textures are not read: their factors are used. `occlusionTexture`, `emissiveTexture` and `metallicRoughnessTexture` may use TEXCOORD_1 (the mesh's `lightUvs`, which a light bake also uses); base color and normal textures must use TEXCOORD_0, and a texture on TEXCOORD_1 cannot carry `KHR_texture_transform`. Their textures are ignored, and an iridescent film takes the thickness maximum. Export writes them back. |
@@ -151,25 +151,24 @@ POINTS, LINES, LINE_LOOP and LINE_STRIP primitives are skipped with a warning th
 `KHR_materials_transmission` with a factor above zero sets `material.transmission` to that factor.
 It is a hint only: the renderer does not draw transmission yet.
 
-Without the matching decoder, a file that uses a compression extension fails with `Unsupported glTF extension` and the option name.
+Without the matching decoder, a file that uses Draco or KTX2 fails with `Unsupported glTF extension` and the option name. Meshopt needs no option.
 
 ### Decoders
 
-The decoders are the Three.js loaders, and they stay yours: only an application that passes one imports Three.js. 67js does not bundle or fetch their wasm files, so you choose where they are served.
-A Draco loader needs `decodeDracoFile(buffer, onLoad, attributeIds, attributeTypes, colorSpace, onError)`, a meshopt decoder needs `ready` and `decodeGltfBuffer`, and a KTX2 loader needs `load(url, onLoad, onProgress, onError)`.
+The Draco and KTX2 decoders are the Three.js loaders, and they stay yours: only an application that passes one imports Three.js. 67js does not bundle or fetch their wasm files, so you choose where they are served.
+A Draco loader needs `decodeDracoFile(buffer, onLoad, attributeIds, attributeTypes, colorSpace, onError)`, and a KTX2 loader needs `load(url, onLoad, onProgress, onError)`.
 
 ```js
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 import { KTX2Loader } from 'three/addons/loaders/KTX2Loader.js';
 import { loadGltf, ktx2WorkerConfigFor } from '67js/addons/gltf';
-import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 
 const draco = new DRACOLoader().setDecoderPath('/vendor/draco/');   // copy three/examples/jsm/libs/draco/
 const ktx2 = new KTX2Loader().setTranscoderPath('/vendor/basis/');  // copy three/examples/jsm/libs/basis/
 // Transcode to a GPU-compressed format the renderer's context takes, or to RGBA8 where it takes none.
 ktx2.workerConfig = ktx2WorkerConfigFor(renderer.context);
 
-const asset = await loadGltf('/models/car.glb', { decoders: { draco, ktx2, meshopt: MeshoptDecoder } });
+const asset = await loadGltf('/models/car.glb', { decoders: { draco, ktx2 } });
 ```
 
 Any subset works. Draco and KTX2 decode in browser workers. Dispose the loaders yourself when done (`draco.dispose()`, `ktx2.dispose()`).
@@ -219,7 +218,7 @@ The tests cover parent transforms, missing normals, UVs, shared geometry, PBR fa
 The tests also cover input limits, unsupported features, compressed image dimensions, and oversized fetch cancellation.
 
 `node --test tests/gltf-extensions.test.js` covers texture transform baking, instancing, ignored material extensions and the decoder options.
-The meshopt test decodes a real encoded buffer with the Three.js decoder.
+The meshopt tests decode real encoded buffers (all modes and filters, a fixture encoded in the test) without any option.
 The Draco and KTX2 tests use stand-in loaders, because no encoder is installed: they prove the wiring, not the wasm decoders.
 
 `tests/fixtures/textured-triangle.gltf` contains an original triangle and a generated two-pixel-square PNG.
