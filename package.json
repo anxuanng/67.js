@@ -107,7 +107,7 @@
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "build": "node scripts/prepare-release.mjs && vite build",
-    "build:lib": "vite build --config vite.lib.config.js && node scripts/build-mcp.mjs",
+    "build:lib": "vite build --config vite.lib.config.js",
     "prepare:release": "node scripts/prepare-release.mjs",
     "prepack": "npm run build:lib",
     "deploy": "node scripts/deploy.mjs",
