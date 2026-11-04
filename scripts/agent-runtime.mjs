@@ -408,7 +408,8 @@ export function createAgentRuntime({ kernelWorkers = true, backend = 'gpu', brow
         }
         encoder = createFrameEncoder({ executable: ffmpeg, output: join(directory, 'render.mp4.partial'),
           fps: settings.fps, format: pageEncodes ? 'h264' : 'jpeg', width, height, signal, maximumFrameBytes: MAXIMUM_JOB_FRAME_BYTES, backend: settings.encoder === 'nvenc' ? 'gpu' : 'cpu',
-          audioArguments: settings.audio ? audioInputArguments(audio.path, settings.audio.offset) : [] });
+          audioArguments: settings.audio ? audioInputArguments(audio.path, settings.audio.offset) : [],
+          audioCodec: settings.audio?.track === 'pcm' ? 'pcm' : 'aac' });
         if (pageEncodes) frameReceiver.onChunk(chunk => encoder.writeChunk(chunk));
         metrics.videoEncoder = pageEncodes ? 'browser-h264' : settings.encoder === 'nvenc' ? 'h264_nvenc' : 'libx264';
       }

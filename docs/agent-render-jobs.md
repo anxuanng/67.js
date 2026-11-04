@@ -88,6 +88,16 @@ A job whose file is shorter than the video after its offset fails before renderi
 (`videoSeconds`, `audioSeconds`, `differenceSeconds`); a difference over 50 ms fails the job.
 ffmpeg only receives the resolved path with `-protocol_whitelist file`; no URL, argument or output path comes from the agent.
 
+**Joining parts.** A film longer than one job (60 s, 900 frames) is rendered as several video jobs. Do not join AAC parts: each carries encoder priming and padding, which leaves a dropout of about 5 ms at every join (issue #389).
+Give every part `audio: { file, offset, track: 'pcm' }` (`offset` = the part's start in the sound), which writes lossless audio with no priming. Then copy the video of the parts and lay the sound once:
+
+```
+ffmpeg -f concat -safe 0 -i parts.txt -c copy joined.mp4
+ffmpeg -i joined.mp4 -map 0:v -map 0:a -c:v copy -c:a aac -b:a 192k film.mp4
+```
+
+Or skip the sound in the parts' join and lay the source file instead: `ffmpeg -i joined.mp4 -i score.wav -map 0:v -map 1:a -c:v copy -c:a aac -shortest film.mp4`.
+
 **Encoder.** `settings.encoder` is `cpu` (libx264, default) or `nvenc` (h264_nvenc). A machine without NVENC fails the job with the ffmpeg error and never falls back.
 
 `npm run smoke:film-timeline` proves it through MCP on SwiftShader (`cpu` backend): 9 PNG seeks over 8 stills across three shots and a dip are identical to the byte,
