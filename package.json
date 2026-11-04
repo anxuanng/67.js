@@ -76,6 +76,7 @@
     "./addons/grass": "./build/grass.js",
     "./addons/clutter": "./build/clutter.js",
     "./addons/light-bake": "./build/light-bake.js",
+    "./addons/light-bake-gpu": "./build/light-bake-gpu.js",
     "./addons/ground-bounce": "./build/ground-bounce.js",
     "./addons/floor-sky-visibility": "./build/floor-sky-visibility.js",
     "./addons/path-tracer": "./build/path-tracer.js",

@@ -78,6 +78,14 @@ const skyOnlyOptions = skyOnlyFlag >= 0 ? { skyOnly: true, texelsPerUnit: skyTex
 // texel density, scaled down to the preset's path work budget, and the scene's own `bakeOptions` are ignored. Needs --bake.
 const bakePresetFlag = argumentsGiven.indexOf('--bake-preset');
 const bakePreset = bakePresetFlag >= 0 ? argumentsGiven[bakePresetFlag + 1] : null;
+// --bake-backend <cpu|gpu> picks the tracer of the --bake rows (the GPU path tracer's kernel; the default is the CPU reference),
+// and --bake-samples <n> and --bake-density <texels per unit> set those on top of the scene's own bake options.
+const bakeBackendFlag = argumentsGiven.indexOf('--bake-backend');
+const bakeBackend = bakeBackendFlag >= 0 ? argumentsGiven[bakeBackendFlag + 1] : null;
+const bakeSamplesFlag = argumentsGiven.indexOf('--bake-samples');
+const bakeSamples = bakeSamplesFlag >= 0 ? Number(argumentsGiven[bakeSamplesFlag + 1]) : null;
+const bakeDensityFlag = argumentsGiven.indexOf('--bake-density');
+const bakeDensity = bakeDensityFlag >= 0 ? Number(argumentsGiven[bakeDensityFlag + 1]) : null;
 const probesFlag =argumentsGiven.indexOf('--probes');
 const probesValue = probesFlag >= 0 ? argumentsGiven[probesFlag + 1] : undefined;
 const probedSceneIds = probesFlag >= 0 && probesValue && !probesValue.startsWith('--') ? probesValue.split(',') : null;
@@ -105,7 +113,7 @@ const sceneIdsGiven = lookIds ?? (sceneFlag >= 0 ? argumentsGiven[sceneFlag + 1]
 // The fresh bake.json lands in the work directory and is checked against the committed one (compare-scores.mjs); --update-baseline replaces
 // the committed bake.json and images/<id>-baked.jpg with it.
 const bakeScoreRun = bakedSceneIds !== null && !sceneSet && !pathTracerFlag;
-const bakeVariantFlags = ['--sky-only', '--bake-preset', '--probes', '--ambient', '--ambient-occlusion', '--cascades', '--no-object-probes', '--object-probes', '--no-water', '--ssr-water', '--no-ground-bounce', '--floor-sky', '--floor-sky-rooms'];
+const bakeVariantFlags = ['--sky-only', '--bake-preset', '--bake-backend', '--bake-samples', '--bake-density', '--probes', '--ambient', '--ambient-occlusion', '--cascades', '--no-object-probes', '--object-probes', '--no-water', '--ssr-water', '--no-ground-bounce', '--floor-sky', '--floor-sky-rooms'];
 const bakeScoreIsBaseline = bakeScoreRun && argumentsGiven.includes('--update-baseline') && !bakeVariantFlags.some(flag => argumentsGiven.includes(flag));
 const onlyScenes = sceneIdsGiven ?? (bakeScoreRun ? bakedSceneIds : null);
 const skipCpu = skipCpuFlag || bakeScoreRun || Boolean(viewTransform);
@@ -135,7 +143,7 @@ async function renderBackend(backend, serverUrl, graphics) {
       // Object probes are on by default, as in a recipe, so the baseline scores what a user gets.
       const objectProbesThisScene = !argumentsGiven.includes('--no-object-probes') && (objectProbeSceneIds === null || objectProbeSceneIds.includes(id));
       const probes = probesThisScene || (objectProbesThisScene ? 'objects' : false);
-      const bake = bakesThisScene ? { ...skyOnlyOptions, ...(bakePreset ? { preset: bakePreset } : {}) } : null;
+      const bake = bakesThisScene ? { ...skyOnlyOptions, ...(bakePreset ? { preset: bakePreset } : {}), ...(bakeBackend ? { backend: bakeBackend } : {}), ...(bakeSamples ? { samples: bakeSamples } : {}), ...(bakeDensity ? { texelsPerUnit: bakeDensity } : {}) } : null;
       const result = await page.evaluate(([sceneId, shouldDescribe, ambientOcclusion, ambientOcclusionRadius, bakeOptions, cascadeCount, withProbes, ambientScale, selectedViewTransform]) => window.renderReferenceScene(sceneId, { describe: shouldDescribe, ambientOcclusion, ambientOcclusionRadius, bake: bakeOptions, cascades: cascadeCount, probes: withProbes, ambient: ambientScale, viewTransform: selectedViewTransform }), [id, describe, ambientOcclusion, ambientOcclusionRadius, bake, cascades, probes, ambient, viewTransform]);
       if (result.glError !== 0) throw new Error(`${id} on ${backend} gave WebGL error ${result.glError}.`);
       graphics[backend] = result.graphics;

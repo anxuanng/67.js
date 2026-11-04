@@ -141,11 +141,11 @@ async function bakeScene(scene, bakeOptions) {
   if (bakeOptions.preset) {
     return bakeScenePreset(scene, bakeOptions.preset);
   }
-  const { bakeLightmaps } = await import('/src/light-bake.js');
+  const { bakeLightmapsAsync } = await import('/src/light-bake-gpu.js');
   const { pointLights, keyColor, lightDirection } = scene.environment;
   const started = performance.now();
   // A scene as large as a hall can need its own texel density to stay under the bake's texel limit.
-  const baked = bakeLightmaps(scene.parts, { pointLights, keyColor, lightDirection }, { ...scene.bakeOptions, ...bakeOptions });
+  const baked = await bakeLightmapsAsync(scene.parts, { pointLights, keyColor, lightDirection }, { ...scene.bakeOptions, ...bakeOptions });
   return { parts: baked.parts, report: baked.report, seconds: (performance.now() - started) / 1000 };
 }
 
@@ -266,7 +266,53 @@ async function measureReferenceFrameTime(id, { bake, probes = false, cascades = 
     medianMilliseconds: frameMilliseconds[Math.floor(measuredFrames / 2)], p95Milliseconds: frameMilliseconds[Math.floor(measuredFrames * 0.95)] };
 }
 
+// The light each baked part holds, in linear radiance: the lightmap bytes decoded from sRGB and multiplied by the map's peak.
+function lightmapRadiance(part) {
+  const texture = part.material.lightMap ?? part.material.emissiveMap;
+  if (!texture) return null;
+  const peak = part.material.lightMap ? part.material.lightMapScale : part.material.emission;
+  const bytes = texture.image.data;
+  const radiance = new Float32Array((bytes.length / 4) * 3);
+  for (let texel = 0; texel < bytes.length / 4; texel++) {
+    for (let channel = 0; channel < 3; channel++) {
+      const encoded = bytes[texel * 4 + channel] / 255;
+      radiance[texel * 3 + channel] = (encoded <= 0.04045 ? encoded / 12.92 : ((encoded + 0.055) / 1.055) ** 2.4) * peak;
+    }
+  }
+  return radiance;
+}
+
+// Bakes a scene once per named variant of options (each may set `backend`) and compares every lightmap with the first variant's:
+// seconds, and the mean of the gaps between lightmaps as a share of the first one's light. The GPU kernel is compiled by a
+// one-sample bake before the first GPU variant, so the seconds measured are the trace.
+async function compareBakeBackends(id, variants) {
+  const scene = await SCENES[id]();
+  const results = {};
+  let reference = null;
+  for (const [name, bakeOptions] of Object.entries(variants)) {
+    if (bakeOptions.backend === 'gpu') await bakeScene(scene, { ...bakeOptions, samples: 1 });
+    const baked = await bakeScene(scene, bakeOptions);
+    const radiance = baked.parts.map(lightmapRadiance);
+    reference ??= radiance;
+    let referenceSum = 0;
+    let bakedSum = 0;
+    let differenceSum = 0;
+    radiance.forEach((partRadiance, index) => {
+      if (!partRadiance || !reference[index]) return;
+      for (let value = 0; value < partRadiance.length; value++) {
+        referenceSum += reference[index][value];
+        bakedSum += partRadiance[value];
+        differenceSum += Math.abs(partRadiance[value] - reference[index][value]);
+      }
+    });
+    const { texels, rayWork, used, gpu, gpuCompileSeconds } = baked.report;
+    results[name] = { seconds: baked.seconds, texels, rayWork, used, gpu, gpuCompileSeconds, meanRatioToFirst: bakedSum / referenceSum, meanGapShareOfFirst: differenceSum / referenceSum };
+  }
+  return results;
+}
+
 window.measureReferenceFrameTime = measureReferenceFrameTime;
+window.compareBakeBackends = compareBakeBackends;
 
 async function renderReferencePathTraced(id, options) {
   const scene = await REFERENCE_SCENES[id]();

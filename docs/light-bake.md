@@ -39,7 +39,16 @@ The unwrap gives the texel count before any ray is traced, so the work of a bake
 
 A node that hosts cloth is skipped like a hair host: the cloth simulation replaces its geometry every frame, so a lightmap built on the rest geometry would not follow it (and the renderer refuses a light map on geometry without `lightUvs`, which failed every frame after t=0). Baked parts read every other material field live, so motion tracks on colour still work; the lightmap itself is fixed at the rest pose.
 
-## What it bakes
+## GPU backend
+
+```js
+import { bakeLightmapsAsync } from '67js/addons/light-bake-gpu';
+
+const { parts: bakedParts, report } = await bakeLightmapsAsync(parts, lighting, { backend: 'gpu', samples: 512, bounces: 2 });
+```
+
+`backend` is `cpu` (the default and the reference) or `gpu`, named as for the path tracer's `backend`. `bakeLightmapsAsync` takes the same arguments and options as `bakeLightmaps` and resolves with the same `{ parts, report }`; the synchronous `bakeLightmaps` throws a `TypeError` for `gpu` and names this addon. A GPU bake rasterizes the texels as the CPU bake does, then sends all covered texels of all parts to the path tracer's kernel in one batch (`src/light-bake-gpu.js`, `src/path-tracer-gpu.js`): the kernel starts a cosine weighted path at each texel, follows `bounces` hits with the tracer's own lights, materials and maps, and returns the light that arrives. The albedo, smoothing, dilation, sky visibility and the baked parts then come from the same code as on the CPU. It is its own addon (`67js/addons/light-bake-gpu`), so the CPU bake and the core bundle do not carry it. It needs a page with WebGL2 and float render targets (`EXT_color_buffer_float`, `EXT_float_blend`) and throws without them. It takes up to 1,024 parts where the CPU bake takes 256 (`MAX_GPU_BAKE_PARTS`; the texel and ray work limits are the same). It does not take a light with `affects` (the kernel has no light linking) or `skyOnly`, and `report` adds `gpu` and `gpuCompileSeconds` (the kernel compiles once per page). The GPU result is not byte identical to the CPU one: the CPU gatherer treats every part as a diffuse surface, while the kernel also follows specular lobes, clear coat and glass, and it draws other random numbers.
+
 
 The bake traces cosine-weighted paths from each texel through up to `bounces` reflections. Each hit adds its own emission and the direct light it receives from the point lights and the sun, with shadow rays. A texel stores that light times its own albedo. Direct light is not baked: it stays live, so shadows and moving lights keep working. The stored light is only what has bounced at least once, so a scene needs the same lights at run time that it gave the bake.
 
@@ -99,3 +108,16 @@ The result is deterministic: the same parts, lights and options give the same by
 ## Measured
 
 The `lit-interior` reference scene (25,648 texels at the defaults) bakes in about 6 s in the page on an RTX 3060 machine, running at below-normal priority. Its score against Cycles goes from 0.5055 to 0.1444 with the bake (`npm run reference -- --bake lit-interior`; details in `bench/reference/README.md`). Frame time on the same scene (960x540, 4 samples, RTX 3060, below-normal priority, 200 frames read back after each draw, two runs of each in alternating order): median 2.08 and 2.02 ms without the bake, 1.88 and 1.66 ms with it, so the bake costs no measurable draw time (one extra texture read per baked part; the spread between runs is load on the machine). `node bench/reference/frame-time.mjs lit-interior gpu` repeats it. The recipe path on a closed room with 8 boxes bakes 13,184 texels in 4.8 s at `standard`.
+
+### GPU against CPU (issue #302)
+
+`lit-interior` (28,784 texels at texelsPerUnit 6, 3 bounces), RTX 3060, headless Chrome, kernel already compiled, measured 2026-11-04 with `node bench/reference/bake-compare.mjs lit-interior '<variants>'`:
+
+| Bake | Samples | Path steps | Seconds | Mean light against the CPU bake at 512 samples | Mean gap, share of that light |
+| --- | --- | --- | --- | --- | --- |
+| CPU | 512 | 44.2 M | 17.8 | 1.000 | 0 |
+| CPU | 128 | 11.1 M | 6.7 | 1.002 | 0.018 |
+| GPU | 128 | 11.1 M | 0.26 | 1.049 | 0.056 |
+| GPU | 512 | 44.2 M | 0.70 | 1.054 | 0.055 |
+
+The recipe preset `standard` resolves to 81 samples, 3 bounces and 4.86 texels per unit on this scene (4.7 M path steps, 1.7 s on the CPU), so the GPU bake at 512 samples runs 9.4 times those path steps in 0.70 s. The kernel compiles once per page and that takes 7.4 s, which comes on top of the first GPU bake of a page (a cold `run.mjs` row measured 32 s for the bake with the compile, other sessions using the machine). The GPU light is about 5 percent above the CPU's and the gap does not shrink with samples (0.056 at 128, 0.055 at 512, against 0.018 for the CPU's own noise at 128), so it is a bias, not noise; the likely cause (inferred, not isolated) is that the CPU gatherer treats every part as a diffuse surface, while the kernel also traces the specular lobe of a rough dielectric. Score of the baked `lit-interior` against Cycles (FLIP, 960 by 540, same Cycles frame): CPU bake 0.1129, GPU bake at 512 samples 0.0914.

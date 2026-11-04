@@ -17,7 +17,45 @@ void main() {
   gl_Position = vec4(corner * 2.0 - 1.0, 0.0, 1.0);
 }`;
 
-const buildSource = hasSubsurface => `#version 300 es
+// Camera mode: one pixel is one jittered camera ray.
+const CAMERA_MAIN = `void main() {
+  ivec2 pixelCoordinate = ivec2(gl_FragCoord.xy);
+  int row = pixelCoordinate.y;
+  uint pixel = uint(row * uSize.x + pixelCoordinate.x);
+  uint sampleIndex = uint(uSample);
+  if (uHasSun) sunFrame = buildFrame(uSunDirection);
+  float jitterX = hashJitter(pixel, sampleIndex, uSeed, 1u);
+  float jitterY = hashJitter(pixel, sampleIndex, uSeed, 2u);
+  float screenX = ((float(pixelCoordinate.x) + jitterX) / float(uSize.x) * 2.0 - 1.0) * uHalfSize.x;
+  float screenY = (1.0 - (float(row) + jitterY) / float(uSize.y) * 2.0) * uHalfSize.y;
+  vec3 rayDirection = normalize(uForward + uRight * screenX + uAbove * screenY);
+  tracePath(uEye, rayDirection, pixel, sampleIndex);`;
+
+// Texel mode: one pixel is one lightmap texel. The path starts on the texel's surface with a cosine weighted direction,
+// so the radiance it returns is the light arriving at the texel (the caller multiplies by the albedo). The first
+// uBounces + 1 hits are followed, which is the bake's bounce count.
+const TEXEL_UNIFORM = `uniform sampler2D uTexelPoints;
+uniform sampler2D uTexelNormals;
+uniform int uTexelCount;
+uniform int uSampleCount;`;
+
+const TEXEL_MAIN = `void main() {
+  ivec2 pixelCoordinate = ivec2(gl_FragCoord.xy);
+  int texelIndex = pixelCoordinate.y * uSize.x + pixelCoordinate.x;
+  uint pixel = uint(texelIndex);
+  uint sampleIndex = uint(uSample);
+  if (uHasSun) sunFrame = buildFrame(uSunDirection);
+  vec3 normal = texelFetch(uTexelNormals, pixelCoordinate, 0).xyz;
+  vec3 origin = texelFetch(uTexelPoints, pixelCoordinate, 0).xyz + normal * uSurfaceOffset;
+  float firstUnit = (float(uSample) + hashJitter(pixel, sampleIndex, uSeed, 1u)) / float(uSampleCount);
+  float secondUnit = hashJitter(pixel, sampleIndex, uSeed, 2u);
+  float coneRadius = sqrt(firstUnit);
+  float angle = TWO_PI * secondUnit;
+  vec3 rayDirection = buildFrame(normal) * vec3(coneRadius * cos(angle), coneRadius * sin(angle), sqrt(max(0.0, 1.0 - firstUnit)));
+  if (texelIndex >= uTexelCount) rayDirection = normal;
+  tracePath(origin, rayDirection, pixel, sampleIndex);`;
+
+const buildSource = (hasSubsurface, texelBake) => `#version 300 es
 precision highp float;
 precision highp int;
 precision highp sampler2D;
@@ -71,6 +109,7 @@ uniform vec3 uVolumeMinimum;
 uniform vec3 uVolumeMaximum;
 uniform vec3 uVolumeAlbedo;
 uniform vec3 uVolumeShape;
+${texelBake ? TEXEL_UNIFORM : ''}
 ${hasSubsurface ? SUBSURFACE_UNIFORM : ''}
 layout(location = 0) out vec4 outRadiance;
 layout(location = 1) out vec4 outAlbedo;
@@ -730,6 +769,7 @@ mat3 sunFrame;
 vec3 featureAlbedo;
 vec3 featureNormal;
 float featureDepth;
+float firstLegEscaped = 0.0;
 
 void addRadiance(int depth, vec3 amount) {
   if (depth > 0) {
@@ -952,6 +992,7 @@ void tracePath(vec3 origin, vec3 startDirection, uint pixel, uint sampleIndex) {
     bool found = intersectScene(position, direction);
     bool inFog = uHasVolume && scatterInFog(position, found ? hitDistance : uFarDistance);
     if (!inFog && !found) {
+      if (depth == 0) firstLegEscaped = 1.0;
       addEscape(depth, previousPdf, afterMirror);
       break;
     }
@@ -1028,18 +1069,7 @@ ${hasSubsurface ? SUBSURFACE_LOBE : ''}
   }
 }
 
-void main() {
-  ivec2 pixelCoordinate = ivec2(gl_FragCoord.xy);
-  int row = pixelCoordinate.y;
-  uint pixel = uint(row * uSize.x + pixelCoordinate.x);
-  uint sampleIndex = uint(uSample);
-  if (uHasSun) sunFrame = buildFrame(uSunDirection);
-  float jitterX = hashJitter(pixel, sampleIndex, uSeed, 1u);
-  float jitterY = hashJitter(pixel, sampleIndex, uSeed, 2u);
-  float screenX = ((float(pixelCoordinate.x) + jitterX) / float(uSize.x) * 2.0 - 1.0) * uHalfSize.x;
-  float screenY = (1.0 - (float(row) + jitterY) / float(uSize.y) * 2.0) * uHalfSize.y;
-  vec3 rayDirection = normalize(uForward + uRight * screenX + uAbove * screenY);
-  tracePath(uEye, rayDirection, pixel, sampleIndex);
+${texelBake ? TEXEL_MAIN : CAMERA_MAIN}
   // A sample that went through a NaN or an infinity (a grazing ray, a zero pdf) counts as black, so it cannot spread through the denoiser.
   if (!(all(greaterThanEqual(radiance, vec3(0.0))) && all(lessThan(radiance, vec3(1e30))))) radiance = vec3(0.0);
   if (!(featureDepth >= 0.0 && featureDepth < 1e30)) featureDepth = 0.0;
@@ -1049,13 +1079,16 @@ void main() {
   outRadiance = vec4(radiance, featureDepth);
   outAlbedo = vec4(featureAlbedo, 0.0);
   outNormal = vec4(featureNormal, 0.0);
-  outStatistics = vec4(sampleLuminance, sampleLuminance * sampleLuminance, 0.0, 0.0);
+  outStatistics = vec4(sampleLuminance, sampleLuminance * sampleLuminance, firstLegEscaped, 0.0);
 }
 `;
 
-/** The kernel; `hasSubsurface` compiles in the random walk, which only scenes with a subsurface part need. */
-export function buildFragmentSource({ hasSubsurface = false } = {}) {
-  return buildSource(hasSubsurface);
+/**
+ * The kernel; `hasSubsurface` compiles in the random walk, which only scenes with a subsurface part need. `texelBake`
+ * starts every path at a lightmap texel instead of the camera (see light-bake-gpu.js).
+ */
+export function buildFragmentSource({ hasSubsurface = false, texelBake = false } = {}) {
+  return buildSource(hasSubsurface, texelBake);
 }
 
 export const FRAGMENT_SOURCE = buildFragmentSource();
