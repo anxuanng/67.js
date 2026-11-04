@@ -1202,19 +1202,9 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
     return objectReflectionCache.result;
   }
 
-  // A closed room a sun lights gets the sky each floor texel sees (src/floor-sky-visibility.js), unless environment.floorSkyTrace is false. It runs
-  // only when that code is loaded, which a recipe that names its sun does; open scenes and lamp-only rooms come back unchanged. The result is kept while the parts are the same objects.
-  let floorSkyCache = null;
+  // A closed room a sun lights gets the sky each floor texel sees; the lazy module decides, keeps its result and honours environment.floorSkyTrace.
   function stageFloorSky(recipe, parts) {
-    if (recipe.environment.floorSkyTrace === false || !agentSceneModuleLoaded('floorSky')) {
-      return parts;
-    }
-    if (floorSkyCache?.parts === parts && floorSkyCache.environment === recipe.environment) {
-      return floorSkyCache.result;
-    }
-    const result = agentSceneModule('floorSky').applyDefaultFloorSky(parts, recipe.environment).parts;
-    floorSkyCache = { parts, environment: recipe.environment, result };
-    return result;
+    return agentSceneModuleLoaded('floorSky') ? agentSceneModule('floorSky').stageFloorSky(recipe.environment, parts) : parts;
   }
 
   // A scene that asks for no bake and looks like a closed room gets one diagnostic naming the bake. The ray test costs a

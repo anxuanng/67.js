@@ -291,7 +291,21 @@ export function environmentHasSun(environment) {
  * a room lit by lamps alone) comes back unchanged, because the trace made those worse against Cycles. `environment.floorSkyTrace: false`
  * turns it off. The recipe path (`createAgentScene`) and the reference harness both call this, so they draw the same frame.
  */
-export function applyDefaultFloorSky(parts, environment) {
+export function applyDefaultFloorSky(parts, environment, options = {}) {
   if (environment?.floorSkyTrace === false || !environmentHasSun(environment)) return { parts, report: null };
-  return applyFloorSkyVisibility(parts, { onlyClosedRooms: true });
+  return applyFloorSkyVisibility(parts, { onlyClosedRooms: true, ...options });
+}
+
+const defaultResults = new WeakMap();
+
+/** The recipe path's call: the default for these parts and this environment, kept until either is replaced. */
+export function stageFloorSky(environment, parts) {
+  if (environment.floorSkyTrace === false) return parts;
+  let byEnvironment = defaultResults.get(parts);
+  if (!byEnvironment) {
+    byEnvironment = new WeakMap();
+    defaultResults.set(parts, byEnvironment);
+  }
+  if (!byEnvironment.has(environment)) byEnvironment.set(environment, applyDefaultFloorSky(parts, environment).parts);
+  return byEnvironment.get(environment);
 }

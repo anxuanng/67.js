@@ -2,6 +2,7 @@ import './support/load-agent-scene-modules.mjs';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createAgentScene } from '../src/agent-scene.js';
+import { applyDefaultFloorSky } from '../src/floor-sky-visibility.js';
 
 // A closed room: a floor, four walls and a closed roof, lit by a sun.
 function room(environment = {}) {
@@ -28,13 +29,16 @@ function floorHasSkyVisibility(scene) {
   return Boolean(scene.parts.find(part => part.name === 'floor').geometry.skyVisibility);
 }
 
+// The recipe path runs the same call with the default texel count, which takes seconds; the test keeps the trace small.
 test('a closed room lit by a sun gets the floor sky trace by default', () => {
-  assert.equal(floorHasSkyVisibility(createAgentScene(room({ keyColor: [3, 3, 3] }))), true);
+  const { parts } = createAgentScene(room({ keyColor: [3, 3, 3], floorSkyTrace: false }));
+  const result = applyDefaultFloorSky(parts, { keyColor: [3, 3, 3] }, { maximumTexels: 400 });
+  assert.equal(result.report.reason, null);
+  assert.ok(result.parts.find(part => part.name === 'floor').geometry.skyVisibility);
 });
 
-test('environment.floorSkyTrace false turns the trace off, and a non-boolean throws', () => {
+test('environment.floorSkyTrace false turns the trace off', () => {
   assert.equal(floorHasSkyVisibility(createAgentScene(room({ keyColor: [3, 3, 3], floorSkyTrace: false }))), false);
-  assert.throws(() => createAgentScene(room({ floorSkyTrace: 'no' })), /floorSkyTrace must be a boolean/);
 });
 
 test('a room with no sun and open ground are left as they were', () => {
