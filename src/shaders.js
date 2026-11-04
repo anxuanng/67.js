@@ -70,13 +70,11 @@ uniform float wind;
 uniform float explosionProgress;
 uniform vec3 explosionCenter;
 uniform float assemblyAmount;
-out vec3 worldPosition;
-out vec3 worldNormal;
+out vec3 worldPosition, worldNormal;
 flat out vec3 baseColor;
 flat out vec4 surface;
 out vec4 shadowPosition;
-out vec2 textureUV;
-out vec2 lightmapUV;
+out vec2 textureUV, lightmapUV;
 out vec3 vertexTint;
 out float vertexSkyVisibility;
 flat out vec4 instanceEmission;
@@ -200,13 +198,11 @@ function buildFragmentShader(featureDefines, featureCode) {
   return `#version 300 es
 ${featureDefines}
 precision highp float;
-in vec3 worldPosition;
-in vec3 worldNormal;
+in vec3 worldPosition, worldNormal;
 flat in vec3 baseColor;
 flat in vec4 surface;
 in vec4 shadowPosition;
-in vec2 textureUV;
-in vec2 lightmapUV;
+in vec2 textureUV, lightmapUV;
 in vec3 vertexTint;
 in float vertexSkyVisibility;
 flat in vec4 instanceEmission;
