@@ -172,16 +172,29 @@ export function normalizeProbeList(list) {
 export function worldBounds(part) {
   const { positions } = part.geometry;
   const { matrix } = part;
-  const minimum = [Infinity, Infinity, Infinity];
-  const maximum = [-Infinity, -Infinity, -Infinity];
+  const [xx, xy, xz, , yx, yy, yz, , zx, zy, zz, , tx, ty, tz] = matrix;
+  let minimumX = Infinity;
+  let minimumY = Infinity;
+  let minimumZ = Infinity;
+  let maximumX = -Infinity;
+  let maximumY = -Infinity;
+  let maximumZ = -Infinity;
+  // Scalars, not arrays indexed by axis: this runs over every vertex of every part, millions of them in a terrain scene.
   for (let vertex = 0; vertex < positions.length; vertex += 3) {
-    for (let axis = 0; axis < 3; axis++) {
-      const value = matrix[axis] * positions[vertex] + matrix[4 + axis] * positions[vertex + 1] + matrix[8 + axis] * positions[vertex + 2] + matrix[12 + axis];
-      minimum[axis] = Math.min(minimum[axis], value);
-      maximum[axis] = Math.max(maximum[axis], value);
-    }
+    const x = positions[vertex];
+    const y = positions[vertex + 1];
+    const z = positions[vertex + 2];
+    const worldX = xx * x + yx * y + zx * z + tx;
+    const worldY = xy * x + yy * y + zy * z + ty;
+    const worldZ = xz * x + yz * y + zz * z + tz;
+    minimumX = Math.min(minimumX, worldX);
+    minimumY = Math.min(minimumY, worldY);
+    minimumZ = Math.min(minimumZ, worldZ);
+    maximumX = Math.max(maximumX, worldX);
+    maximumY = Math.max(maximumY, worldY);
+    maximumZ = Math.max(maximumZ, worldZ);
   }
-  return { minimum, maximum };
+  return { minimum: [minimumX, minimumY, minimumZ], maximum: [maximumX, maximumY, maximumZ] };
 }
 
 export function boundsCentre({ minimum, maximum }) {
