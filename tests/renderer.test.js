@@ -532,3 +532,34 @@ test('the shadow depth pass draws both faces of a single-sided batch, so the sun
   renderer.applyAlphaState(singleSided, true);
   assert.equal(culling[0][0], 'enable', 'the colour pass still culls back faces of a single-sided batch');
 });
+
+test('blend batches draw their opaque texels with depth writes before the blended pass', () => {
+  const draws = [];
+  const state = { depthMask: true, blend: false };
+  const context = new Proxy({}, {
+    get(target, name) {
+      if (name === 'depthMask') return (value) => { state.depthMask = value; };
+      if (name === 'enable') return (capability) => { if (capability === 'BLEND') state.blend = true; };
+      if (name === 'disable') return (capability) => { if (capability === 'BLEND') state.blend = false; };
+      if (typeof name === 'string' && name === name.toUpperCase()) return name;
+      return () => {};
+    },
+  });
+  const renderer = Object.create(Renderer67.prototype);
+  renderer.context = context;
+  renderer.uniforms = { shadowMap: 'shadowMap' };
+  renderer.canvas = { width: 4, height: 4 };
+  const baked = { alphaMode: 'blend', alphaCutoff: 0, opacity: 1, instanceCount: 1, instanceData: new Float32Array(41) };
+  const glass = { alphaMode: 'blend', alphaCutoff: 0, opacity: 0.3, instanceCount: 1, instanceData: new Float32Array(41) };
+  renderer.batches = [baked, glass];
+  renderer.uploadSortedInstances = () => {};
+  renderer.drawAlphaBatch = (batch) => {
+    draws.push({ opacity: batch.opacity, depthMask: state.depthMask, blend: state.blend, alphaMode: batch.alphaMode, alphaCutoff: batch.alphaCutoff });
+  };
+  renderer.drawBlendBatches({ eye: [0, 0, 0] });
+  assert.equal(draws.length, 3);
+  assert.deepEqual(draws[0], { opacity: 1, depthMask: true, blend: false, alphaMode: 'mask', alphaCutoff: 0.999 });
+  assert.ok(draws.slice(1).every(draw => draw.blend && !draw.depthMask && draw.alphaMode === 'blend'));
+  assert.equal(draws.filter(draw => draw.opacity === 0.3).length, 1, 'a translucent material has no opaque texels to draw first');
+  assert.equal(baked.alphaCutoff, 0);
+});

@@ -1700,3 +1700,46 @@ Blended water (a `water` part with opacity below one) now draws its own backgrou
 The dark band at the foot of a shadow in the first preview was not a doubled shadow: the bed point takes its sun visibility once and the surface lift applies only to water fragments. Along the shadow the bed is even (green channel 0.178 to 0.173 at 1 m, 0.157 to 0.152 at 4 m, seen from above), and a close render shows no band. The band was the shaded side of the submerged post, which got darker with depth and had no scattered light, so it joined the shadow. The scattered light fixes it.
 
 The new preview uses Poly Haven CC0 assets (boulder_01, rock_07, modular_wooden_pier and the gravel_ground_01 material) read from `out/assets`, which is ignored by Git.
+
+## The bump edge of a graph wall: normal map resolution (2026-11-04, part of issue #50, RTX 3060 960 x 540)
+
+Main reproduced the stored rows first: `brick-graph` 0.0734, `brick-flat` 0.0556 against Cycles, excess 0.0178 against EEVEE's 0.0120 (EEVEE against Cycles 0.1249 and 0.1129).
+
+Node level, Blender 5.2.2 headless against 67js, on the unit square of the brick wall (a 6 by 4 plane, Bump Distance 0.15, strength 1):
+
+- Height: the translated Math, Map Range and Wave nodes baked to a float array by Cycles (EMIT, 2048 x 2048) against the graph's `height` at the same pixel centres: max difference 0.00029, mean 0.000023. The brick factor and the joint profile are the same, so the Brick Texture candidates (mortar size, smoothing, offset) are ruled out; the graph does not use Blender's Brick node.
+- Bump: Cycles bake of the NORMAL pass (tangent space, Diffuse BSDF; with a Principled BSDF the baked normal is the average of the closure normals and the specular one is clamped, so it is not the bump normal) at 2048 x 2048. Its slope `-n.xy / n.z`, divided by Distance over the world size of each UV axis, equals the analytic derivative of the height to float precision (peak 299.7 against 296.0 per UV unit across a course joint, the difference being the analytic gradient's own 2048 grid). Blender differentiates the height at each pixel, so a joint edge about 2.6 texels wide at 512 loses nothing.
+- 67js bakes `normalMapFromHeightFunction` at the colour resolution (512), the slope read half a texel either side (the step is right). Sampled bilinearly at the 2048 grid and compared with Blender's normal (the 67js slope is `bump / 32` per UV unit, Blender's `0.15 / L`, so the scale differs by 1.25 along U and 0.83 along V and is left in both rows): mean angle 3.51 degrees, mean Lambert difference for the sun 0.0340. At 1024 texels: 2.14 degrees, 0.0186. At 2048: 1.36 degrees, 0.0097. The cause is the texel size: bilinear filtering blends the unit normals of two texels, and a joint edge is a few texels wide, so the tilt of its middle pixels reads weaker than the analytic one.
+
+Whole frame, FLIP against the stored Cycles array, `brick-graph` only (every variant rendered in one session, `brick-flat` is 0.0556 throughout):
+
+| Normal map | Texels | Mips | `brick-graph` | Excess over `brick-flat` |
+| --- | --- | --- | --- | --- |
+| Colour resolution (before) | 512 | yes | 0.0734 | 0.0178 |
+| Twice (kept) | 1024 | yes | 0.0714 | 0.0158 |
+| Four times | 2048 | yes | 0.0705 | 0.0149 |
+| Twice, `LINEAR` only | 1024 | no | 0.0694 | 0.0138 |
+| Four times, `LINEAR` only | 2048 | no | 0.0690 | 0.0134 |
+| Colour resolution, `LINEAR` only | 512 | no | 0.0728 | 0.0172 |
+
+Kept: twice the colour resolution, capped at 1024 texels, with the default trilinear filter. The map without mips scores 0.002 better, but a normal map with no mips shimmers where the wall is far away, and the shader samples it once per pixel, so it was not kept. Four times costs 16.8 MB for a 512 pattern. The bake reads the height four times per texel; the brick wall's height costs 20 work units, so the finer map is 84 million units (0.35 s in Node, 81 ms before) against a new allowance of four times the graph limit, and a graph whose height is too costly keeps the colour resolution.
+
+Tried and not kept (all at 2048 texels with mips unless stated; against Cycles):
+
+| Variant | `brick-graph` |
+| --- | --- |
+| Blender's world scale (0.8 along U, 1.2 along V) | 0.0732 (from 0.0705) |
+| U only 0.8 / V only 1.2 | 0.0728 / 0.0709 |
+| U 1.25 / V 0.8 (the opposite) | 0.0697 / 0.0700 |
+| Map shifted by a quarter or half a texel along V or U | 0.0704 to 0.0733 (no offset: 0.0705) |
+| Sky lobe moved towards the geometric normal (blend 0.5 / 1 / 2, 1024 texels) | 0.0705 / 0.0714 / 0.0725 (no blend 0.0714) |
+
+The world scale is the exact match to Blender and scores worse, and there is no offset between the two renders (the wall's top and bottom edges sit within 0.1 pixel). So what remains is not the normal.
+
+Where the rest is, measured from the 2048 texel render by the sign of the bump slope at each pixel centre (display luminance, 67js minus Cycles): ledges that tilt up towards the sun are +0.046 and +0.057 too bright, ledges that tilt down -0.078 (gentle) and -0.022 (steep) too dark, and the vertical joints are +0.03 too bright on both sides. EEVEE is 0.27 off Cycles on every wall pixel, flat or not, because its flat wall is darker; 67js is 0.057 on the flat wall and 0.146 to 0.196 on the pixels at or next to a bump edge (0.0705 render; 0.0576 for the same pixels of `brick-flat`), which is where its excess sits. Which side is "up-tilted" is read from the sign of the slope (inferred). Cause (inferred, not isolated): Cycles removes the part of the lobe that falls below the geometric plane, which for an up-tilted ledge is the bright upper sky and for a down-tilted one the dark lower half, while the shader scales the whole sky term by one share. Moving the sky lookup towards the geometric normal helped by 0.0009 at best (table) and moved the render away from EEVEE, so it was not kept; it would also add to `scene:lit-box`.
+
+After the change: `brick-graph` 0.0714 on the GPU (CPU render not redone), `brick-flat` 0.0556, excess 0.0158 against EEVEE's 0.0120. The first Done-when box of #50 stays open by 0.0038. Only `brick-graph` reads a graph with a height output among the suite's scenes (no other scene has a normal map from a graph), so no other scene's pixels changed and the full suite was not run.
+
+### Normal map resolution reverted (2026-11-04, issue #50)
+
+The twice-resolution normal bake above is reverted as a default: 0.0020 of FLIP on `brick-graph` did not justify 4 times the normal map memory per graph pattern. A graph normal map bakes at the colour resolution again (`brick-graph` 0.0734).

@@ -6,9 +6,16 @@ import { rawFrameInputArguments } from './gpu-frame-reader.mjs';
 /** Drain and finalization wait this long: below-normal priority jobs on a busy machine need more than 5 s. */
 export const DEFAULT_ENCODER_TIMEOUT_MS = 30000;
 
+/** AAC adds priming and padding at both ends of a part; PCM does not, so parts meant to be joined use PCM. */
+export function audioCodecArguments(audioCodec) {
+  if (audioCodec === 'aac') return ['-c:a', 'aac', '-b:a', '192k'];
+  if (audioCodec === 'pcm') return ['-c:a', 'pcm_s16le'];
+  throw new TypeError('Audio codec must be aac or pcm.');
+}
+
 /** One streamed frame at a time. The caller owns output publication and cleanup. */
 export function createFrameEncoder({ executable = 'ffmpeg', output, fps, format = 'jpeg', backend = 'cpu',
-  audioArguments = [], width, height, signal, maximumFrameBytes = 1024 * 1024,
+  audioArguments = [], audioCodec = 'aac', width, height, signal, maximumFrameBytes = 1024 * 1024,
   maximumOutputBytes = 128 * 1024 * 1024, timeoutMs = DEFAULT_ENCODER_TIMEOUT_MS } = {}) {
   if (typeof output !== 'string' || !output || !Number.isFinite(fps) || fps < 1 || fps > 60 ||
       !['jpeg', 'png', 'rawvideo', 'h264'].includes(format) || !['cpu', 'gpu'].includes(backend)) {
@@ -31,7 +38,7 @@ export function createFrameEncoder({ executable = 'ffmpeg', output, fps, format 
   const argumentsValue = ['-hide_banner', '-loglevel', 'error', '-y', ...(encoded ? ['-f', 'h264', '-framerate', String(fps)] : raw ? raw.input : ['-f', 'image2pipe', '-framerate', String(fps), '-vcodec', format === 'jpeg' ? 'mjpeg' : 'png']),
     '-i', 'pipe:0', ...audioArguments, ...(raw ? raw.filter : []), ...codec,
     ...(encoded ? [] : ['-pix_fmt', 'yuv420p']), '-color_primaries', 'bt709', '-color_trc', 'bt709', '-colorspace', 'bt709',
-    '-movflags', '+faststart', ...(audioArguments.length ? ['-c:a', 'aac', '-b:a', '192k', '-shortest'] : []),
+    '-movflags', '+faststart', ...(audioArguments.length ? [...audioCodecArguments(audioCodec), '-shortest'] : []),
     '-f', 'mp4', output];
   const child = spawn(executable, argumentsValue, { windowsHide: true, stdio: ['pipe', 'ignore', 'pipe'] });
   let diagnostics = '';

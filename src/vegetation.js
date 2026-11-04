@@ -14,7 +14,7 @@ import {
   createMeshBuilder, createRandom, crossProduct, lerp, lerpVectors, normalized, randomInRange, scaleVector,
   subtractVectors, valueNoise, vectorLength,
 } from './vegetation-geometry.js';
-import { computeCrownSkyVisibility } from './tree-sky.js';
+import { createCrownSkyField, matchMeanVisibility } from './tree-sky.js';
 import { LEVEL_SETTINGS, SPECIES, TREE_LEVEL_DISTANCES } from './vegetation-species.js';
 import { barkTextureDescriptor, leafTextureDescriptor } from './vegetation-textures.js';
 import { pixelErrorScale, selectBlendedLevels } from './vegetation-impostors.js';
@@ -414,22 +414,31 @@ function createMaterials(preset, mode, scannedBark, scannedLeaves) {
   };
 }
 
-// Every level describes the same crown, so each vertex of a thinner level stands for more leaf than one of level 0.
+// Every level describes the same crown, so every level reads one sky visibility field, measured on the leaves of level 0.
 // `skyVisibility` is worked out the first time something reads it (the renderer, when it uploads the geometry), so a
 // tree that is only measured or exported costs nothing extra, and a forest of distinct trees pays for the ones drawn.
+function meanOf(values) {
+  let sum = 0;
+  for (const value of values) sum += value;
+  return sum / values.length;
+}
+
 function bakeCrownSkyVisibility(levels) {
   const foliageOf = level => level.parts.find(part => part.role === 'foliage').geometry;
-  const fullVertexCount = foliageOf(levels[0]).positions.length / 3;
-  for (const level of levels) {
+  let field = null;
+  for (const [levelIndex, level] of levels.entries()) {
     const geometry = foliageOf(level);
-    const vertexCount = geometry.positions.length / 3;
-    if (vertexCount === 0) continue;
+    if (geometry.positions.length === 0) continue;
     let skyVisibility = null;
     Object.defineProperty(geometry, 'skyVisibility', {
       enumerable: true,
       configurable: true,
       get() {
-        skyVisibility ??= computeCrownSkyVisibility(geometry.positions, fullVertexCount / vertexCount);
+        field ??= createCrownSkyField(foliageOf(levels[0]).positions);
+        if (!skyVisibility) {
+          skyVisibility = field.visibilityOf(geometry.positions);
+          if (levelIndex > 0) skyVisibility = matchMeanVisibility(skyVisibility, meanOf(foliageOf(levels[0]).skyVisibility));
+        }
         return skyVisibility;
       },
     });

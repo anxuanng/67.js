@@ -1938,6 +1938,11 @@ export class Renderer67 {
       return total / batch.instanceCount;
     };
     const ordered = blendBatches.map(batch => ({ batch, distance: distance(batch) })).sort((first, second) => second.distance - first.distance);
+    // Fully opaque texels (most of a baked scene exported as BLEND) draw first as a cutout that writes depth, so they hide
+    // whatever lies behind them in any draw order. The blend pass below then shades only the translucent texels (depth LESS).
+    for (const { batch } of ordered) {
+      if (batch.opacity >= 0.999) this.drawAlphaBatch({ ...batch, alphaMode: 'mask', alphaCutoff: 0.999 }, true);
+    }
     context.enable(context.BLEND);
     context.blendFuncSeparate(context.SRC_ALPHA, context.ONE_MINUS_SRC_ALPHA, context.ONE, context.ONE_MINUS_SRC_ALPHA);
     context.depthMask(false);
