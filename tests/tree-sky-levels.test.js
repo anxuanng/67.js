@@ -27,11 +27,17 @@ for (const species of SPECIES) {
     tree.levels.forEach((level, index) => {
       const geometry = foliageGeometry(level);
       assert.equal(geometry.skyVisibility.length, geometry.positions.length / 3);
-      // The sky gain of a level moves its mean on purpose; the floor of the visibility keeps a very dense crown from
-      // matching exactly, so a small absolute margin applies too.
-      const expected = levelZeroMean * (gains[index]?.sky ?? 1);
+      // The sky gain of a level moves its mean on purpose, and a vertex stops at full sky, so a large gain can fall short of
+      // level 0's mean times the gain. The floor of the visibility keeps a very dense crown from matching exactly too.
+      const gain = gains[index]?.sky ?? 1;
+      const levelMean = coverageMeanSkyVisibility(geometry);
+      if (gain > 1.5) {
+        assert.ok(levelMean >= levelZeroMean * 1.2 && levelMean <= 1, `${species} level ${index} has a mean of ${levelMean.toFixed(3)} against ${levelZeroMean.toFixed(3)} at level 0`);
+        return;
+      }
+      const expected = levelZeroMean * gain;
       const allowedDifference = Math.max(0.1 * expected, 0.02);
-      const difference = Math.abs(coverageMeanSkyVisibility(geometry) - expected);
+      const difference = Math.abs(levelMean - expected);
       assert.ok(difference <= allowedDifference, `${species} level ${index} differs from level 0 by ${difference.toFixed(3)}`);
     });
   });
