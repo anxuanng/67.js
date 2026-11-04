@@ -53,8 +53,6 @@ try {
     const marked = applyWaterReflection([...terrain.parts, ...smallParts, sea]);
     const renderer = new Renderer67(canvas, marked.parts, { hdr: true, depth: true, world: true, ground: false, pixelRatio: 1, samples: 4 });
     const context = renderer.context;
-    // Coarse mirror-only terrain levels stay hidden from lit frames once the addon has seen the renderer, also in the "off" runs.
-    attachWaterReflection(renderer, marked.surface)();
     const timer = context.getExtension('EXT_disjoint_timer_query_webgl2');
     if (!timer && !countsOnly) throw new Error('Native GPU timer unavailable');
 
@@ -80,6 +78,9 @@ try {
       }
     };
 
+    // Coarse mirror-only terrain levels stay hidden from lit frames once the addon has seen the renderer, also in the "off" runs.
+    // This comes after the render wrapper above, because detaching puts back the render function it found.
+    attachWaterReflection(renderer, marked.surface)();
     const frame = { eye: [0, 70, 380], target: [0, 0, 0], time: 1 };
     // The old mirror draw: every part through the whole scene, with no CPU culling and no coarser levels. The renderer
     // reads `mirrorCulling` when it selects instances, so a setter that drops the addon's value leaves the draw uncut.
