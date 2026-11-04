@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
+import { parseGltf } from '../src/gltf.js';
 import { parseRadianceHdr } from '../src/hdri.js';
 
 const SHOWCASE_SOURCE = new URL('../src/showcase.js', import.meta.url);
@@ -9,6 +10,8 @@ const WORLDS = ['port', 'airport', 'datacenter'];
 // The first part is what a visitor waits for: at 5 Mbps every megabyte is about 1.7 s, and the first frame is due within 5 s.
 const FIRST_PART_BYTE_BUDGET = 3.1 * MEGABYTE;
 const REST_PART_BYTE_BUDGET = 16 * MEGABYTE;
+// Node has no image decoder, so the test stubs createImageBitmap and only the geometry is real.
+const SHOWCASE_LIMITS = { maxBytes: 64 * MEGABYTE, maxVertices: 4_000_000, maxParts: 20_000, maxTexturePixels: 512 * MEGABYTE, maxTextureImagePixels: 100_000_000 };
 
 function readGltfJson(buffer) {
   const jsonLength = buffer.readUInt32LE(12);
@@ -55,11 +58,22 @@ for (const world of WORLDS) {
   });
 }
 
-test('the showcase page supplies the meshopt decoder to the glTF loader', async () => {
+test('the showcase page leaves meshopt decoding to the glTF loader', async () => {
   const source = await readFile(SHOWCASE_SOURCE, 'utf8');
-  assert.match(source, /meshopt_decoder\.module\.js/);
-  assert.match(source, /decoders/);
+  assert.doesNotMatch(source, /meshopt_decoder/);
+  assert.doesNotMatch(source, /decoders/);
 });
+
+for (const world of WORLDS) {
+  test(`the ${world} showcase files load through loadGltf without a decoder option`, async () => {
+    const { first, rest } = await readWorld(world);
+    globalThis.createImageBitmap ??= async () => ({ width: 4, height: 4, close() {} });
+    for (const buffer of [first, rest]) {
+      const asset = await parseGltf(buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength), SHOWCASE_LIMITS);
+      assert.ok(asset.parts.length > 0);
+    }
+  });
+}
 
 test('the showcase page draws the first part before it streams the rest', async () => {
   const source = await readFile(SHOWCASE_SOURCE, 'utf8');

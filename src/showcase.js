@@ -217,12 +217,6 @@ async function readDescription(id) {
   return response.json();
 }
 
-// Showcase GLBs may use EXT_meshopt_compression; the decoder is a small chunk fetched beside the model download.
-async function loadDecoders() {
-  const { MeshoptDecoder } = await import('three/addons/libs/meshopt_decoder.module.js');
-  return { meshopt: MeshoptDecoder };
-}
-
 function showCredits(credits = []) {
   creditList.replaceChildren(...credits.map(credit => {
     const item = document.createElement('li');
@@ -256,7 +250,7 @@ async function finishWorld(world) {
     const files = [{ parts: asset.parts, ranks: world.ranks }];
     for (const [index, model] of remainingModels.entries()) {
       const baseUrl = new URL('.', new URL(description.glbRest[index], location.href)).href;
-      const remaining = await loadGltf(model, { baseUrl, decoders: world.decoders, ...(description.gltfOptions ?? {}) });
+      const remaining = await loadGltf(model, { baseUrl, ...(description.gltfOptions ?? {}) });
       files.push({ parts: remaining.parts, ranks: await readPartRanks(model) });
     }
     if (!isCurrent()) return;
@@ -311,10 +305,9 @@ async function selectScene(id) {
       meter.register(url);
       readByteLength(url, abort.signal).then(total => meter.setTotal(url, total), () => {});
     }
-    const [model, map, decoders] = await Promise.all([
+    const [model, map] = await Promise.all([
       download(glbUrl.href, 'model/gltf-binary'),
       loadSky(previewUrl ?? skyUrl),
-      loadDecoders(),
     ]);
     // The rest starts the moment the first part is in, so the link stays busy while the page decodes and draws it.
     const remainingDownloads = Promise.all([
@@ -322,7 +315,7 @@ async function selectScene(id) {
       previewUrl ? loadSky(skyUrl) : null,
     ]);
     remainingDownloads.catch(() => {});
-    const asset = await loadGltf(model, { baseUrl: new URL('.', glbUrl).href, decoders, ...(description.gltfOptions ?? {}) });
+    const asset = await loadGltf(model, { baseUrl: new URL('.', glbUrl).href, ...(description.gltfOptions ?? {}) });
     if (request !== loadingRequest) return;
     renderer?.dispose();
     const rendererOptions = description.renderer ?? {};
@@ -356,7 +349,7 @@ async function selectScene(id) {
     }
     progressLabel = `Loading the rest of ${SCENE_LABELS[id]}`;
     showProgress(progressLabel, meter);
-    finishWorld({ id, request, description, asset, ranks: await readPartRanks(model), detachReflection, remainingDownloads, decoders, abort });
+    finishWorld({ id, request, description, asset, ranks: await readPartRanks(model), detachReflection, remainingDownloads, abort });
   } catch (error) {
     if (request !== loadingRequest) return;
     markPressedTab(currentId);
