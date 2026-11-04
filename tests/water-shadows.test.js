@@ -64,3 +64,11 @@ test('the refraction blur averages only the taps that saw the bed, so the bed ed
   assert.ok(source.includes('return seen > 0.5 ? seenColor / seen : fallback;'));
   assert.ok(!source.includes('seen / 16.0'), 'a share of missed taps must not mix the water colour into the blur');
 });
+
+test('the sun leg is absorbed over the refracted path and the murky scatter only adds light to the lit side', () => {
+  const source = createFragmentShader(['water']);
+  assert.ok(source.includes('/ 1.33;'), 'Snell with n = 1.33 sets the refracted sun angle');
+  assert.ok(source.includes('/ sqrt(1.0 - sunSine * sunSine)'), 'the sun path is depth / cos(theta_t)');
+  assert.ok(source.includes('waterScatterShare * 3.4'), 'the in-scatter is a positive term scaled by the shadow visibility');
+  assert.ok(!source.includes('mix(filtered, 1.0'), 'the shadow is not lifted toward the lit side, which inverted it in a murky river');
+});

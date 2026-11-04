@@ -13,7 +13,7 @@ setPriority(0, constants.priority.PRIORITY_BELOW_NORMAL);
 const WIDTH = 480;
 const HEIGHT = 270;
 const BLENDER = process.env.BLENDER_PATH ?? 'C:/Program Files/Blender Foundation/Blender 5.2/blender.exe';
-const work = resolve(process.argv[2] ?? 'artifacts/water-shadows');
+const work = resolve(process.argv.slice(2).find(argument => !argument.startsWith('--')) ?? 'artifacts/water-shadows');
 await mkdir(work, { recursive: true });
 
 const cases = [];
@@ -57,9 +57,11 @@ try {
 }
 
 await writeFile(resolve(work, 'cases.json'), JSON.stringify({ width: WIDTH, height: HEIGHT, calibration, cases }));
-const blender = spawnSync(BLENDER, ['-b', '--factory-startup', '-t', '6', '--python', resolve('bench/reference/water-shadows-cycles.py'), '--', resolve(work, 'cases.json'), work], { stdio: 'inherit' });
-if (blender.status !== 0) {
-  throw new Error(`Blender exited with ${blender.status}`);
+if (!process.argv.includes('--skip-blender')) {
+  const blender = spawnSync(BLENDER, ['-b', '--factory-startup', '-t', '6', '--python', resolve('bench/reference/water-shadows-cycles.py'), '--', resolve(work, 'cases.json'), work], { stdio: 'inherit' });
+  if (blender.status !== 0) {
+    throw new Error(`Blender exited with ${blender.status}`);
+  }
 }
 const score = spawnSync('uv', ['run', '--no-project', '--python', '3.12', '--with', 'flip-evaluator', '--with', 'pillow', '--with', 'numpy', 'python', '-I', resolve('bench/reference/water-shadows-score.py'), work], { stdio: 'inherit' });
 if (score.status !== 0) {
