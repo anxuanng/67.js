@@ -229,6 +229,7 @@ function draw(record, time = 0, camera = record.scene.camera, frameOptions = {})
     record.shadowKey = shadowKey;
   }
   record.renderer.world = environment.world;
+  record.renderer.userPasses?.set(record.scene.postPasses ?? []);
   applyRecipeWindHeading(record.renderer, environment);
   record.renderer.render({ ...camera, environment: litEnvironment(record.scene.parts, environment, Boolean(record.renderer.groundPart)), effects, exposure: effects.exposure, time, lines: environment.lines, ...windFrame(environment), ...frameOptions });
   const error = record.renderer.context.getError();
@@ -323,8 +324,8 @@ function initializeRenderer(scene, { memoryBudgetMiB, backend }) {
     samples: backend === 'cpu' ? 1 : 4,
     memoryBudgetMiB,
   }))));
-  // Outlines, toon light and polylines draw only for a frame that carries environment.lines.
-  return agentSceneModule('lineArt').installLineArt(renderer);
+  // Outlines, toon light and polylines draw only for a frame that carries environment.lines; user passes run last, on the finished frame.
+  return agentSceneModule('userPass').installUserPasses(agentSceneModule('lineArt').installLineArt(renderer));
 }
 
 // Camera fields from a timeline shot on top of the sampled camera, checked with the scene's own camera rules.
