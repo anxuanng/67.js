@@ -1781,3 +1781,20 @@ What was measured:
 - Data only, this round (no engine byte changes): a 768 texel graph is not a valid resolution (256, 512 or 1024 only); 1024 is over the work limit of 30,000,000 (52 work units per pixel with 2 noise octaves, about 28 allowed), so a finer bake needs a smaller graph or a faster evaluator. Wider bevels in the scene graph (Blender gets the same graph and was rendered again): joint widths 0.10 to 0.36 and 0.06 to 0.26 gave `brick-graph` 0.0708 and `brick-flat` 0.0544 (excess 0.0164, EEVEE 0.0134 on the new renders), and 0.08 to 0.5 and 0.04 to 0.4 gave 0.0738 and 0.0529 (excess 0.0209, EEVEE 0.0166). The gap to EEVEE stays at 0.003 to 0.006 whichever bevel is used, and EEVEE's own excess moves with it, so changing the scene only moves the target. The scene was left as it is.
 
 What would close it is a finer height-to-normal source than a 512 texel map (an analytic or 1024 texel bake of a graph that fits the work limit), which is engine work and costs memory or bytes; it is outside the data-only brief and the size goals. `brick-graph` is 0.0734 against Cycles, 0.1249 for EEVEE against Cycles on the same scene, so 67js is closer to Cycles than EEVEE is on this wall.
+
+## Water shadows against Cycles (2026-11-04, closes the last box of issue #349)
+
+`GPU_LOCK_WEIGHT=heavy bash ~/.agents/tools/gpu-lock.sh node scripts/score-water-shadows.mjs` draws the pool of the section above from overhead in 67js (480 x 270, 40 degree view) and in Blender 5.2 Cycles (CPU, 6 threads, 96 samples, denoised): the water is a box with Volume Absorption (`1 - absorption / density` as colour, so the coefficient is the preset's per metre) plus Volume Scatter (density = the preset's turbidity per metre, an assumed mapping, since turbidity has no physical unit). The sky and sun in Cycles are set from the dry bed 67js measured (sky = shadowed bed / albedo, sun from the lit minus shadowed difference), so a dry pool is the same exposure in both. `bench/reference/water-shadows-cycles.py` builds it and `bench/reference/water-shadows-score.py` scores it.
+
+Whole frame FLIP of 67js against Cycles (Cycles tone mapped like 67js), and the bed shadow contrast (lit minus shadowed against the same pool dry; red, green, blue):
+
+| Pool | FLIP | FLIP, same pool dry | 67js | Cycles | `exp(-absorption * depth)` |
+| --- | --- | --- | --- | --- | --- |
+| lake 0.2 m | 0.3027 | 0.3358 | 0.939, 0.970, 0.999 | 0.858, 0.964, 0.979 | 0.932, 0.986, 0.992 |
+| lake 1 m | 0.4530 | 0.3735 | 0.699, 0.918, 0.937 | 0.463, 0.842, 0.901 | 0.705, 0.932, 0.961 |
+| lake 4 m | 0.5628 | 0.4834 | 0.227, 0.694, 0.788 | 0.064, 0.527, 0.679 | 0.247, 0.756, 0.852 |
+| river 0.2 m | 0.4654 | 0.3358 | 0.734, 0.720, 0.631 | 0.710, 0.682, 0.513 | 0.852, 0.835, 0.726 |
+| river 1 m | 0.5890 | 0.3735 | 0.206, 0.179, 0.089 | 0.294, 0.276, 0.166 | 0.449, 0.407, 0.202 |
+| river 4 m | 0.5408 | 0.4834 | -0.042, -0.036, -0.035 | 0.254, 0.247, 0.159 | 0.041, 0.027, 0.002 |
+
+Reading it: the FLIP of the dry pool is already 0.34 to 0.48, so most of the score is the dry pool (the bed, the post, the sun's penumbra and the sky are not the same picture in the two renderers), and water adds 0.0 to 0.2 on top. The shadow contrast agrees in trend. Cycles fades the clear lake faster than the formula because the sun's path to the bed is longer than the eye's (slant of 1/cos 59 degrees), which `exp(-absorption * depth)` does not count: the shadow difference is lit (two paths) against shadowed (the eye's path only). The murky river is where the two differ most: Cycles keeps 0.25 of the contrast at 4 m, where scattered light still reaches the shadow, and 67js reaches zero (slightly negative, -0.04: the lift overshoots the lit side). A river that clears to nothing at 4 m is a known simplification of the in-scatter lift; it is recorded here and not changed.
