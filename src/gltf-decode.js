@@ -27,6 +27,27 @@ const WEBP_SIGNATURE = [0x52, 0x49, 0x46, 0x46, null, null, null, null, 0x57, 0x
 const LINEAR_SRGB = 'srgb-linear';
 const COMPONENT_CODES = new Map(Object.entries(COMPONENT_TYPES).map(([code, ArrayType]) => [ArrayType, Number(code)]));
 
+/**
+ * Record a limit the file goes over: what was measured, the option, its value and the option value that fits.
+ * `perUnit` is for ceilings that are a multiple of the option, such as twelve indices per allowed vertex.
+ */
+export function overLimit(overruns, what, measured, option, limit, perUnit = 1) {
+  if (measured > limit * perUnit) {
+    const ceiling = perUnit > 1 ? ` x ${perUnit}` : '';
+    overruns.push({ text: `${what} ${measured}, over ${option} ${limit}${ceiling}`, option, needed: Math.ceil(measured / perUnit) });
+  }
+  return overruns;
+}
+
+/** Throw one error for every recorded limit, so a single failed call names each option to raise and the value that fits. */
+export function throwOverruns(overruns) {
+  if (!overruns.length) return;
+  const needed = new Map();
+  for (const overrun of overruns) needed.set(overrun.option, Math.max(needed.get(overrun.option) ?? 0, overrun.needed));
+  const fix = [...needed].map(([option, value]) => `${option}: ${value}`).join(', ');
+  throw new RangeError(`glTF over its limits: ${overruns.map(overrun => overrun.text).join('; ')}. Fix: pass { ${fix} }.`);
+}
+
 /** POINTS, LINES, LINE_LOOP and LINE_STRIP (modes 0 to 3) are not drawn, so the decoder leaves them out. */
 export function isLinePrimitive(primitive) {
   return primitive.mode >= 0 && primitive.mode <= 3;
@@ -296,7 +317,7 @@ export async function decodeGltf({ document, glbBinary, resourceBytes, decoders,
     const rotations = ROTATION === undefined ? null : attributeFloats(reader.readAccessor(ROTATION));
     const scales = SCALE === undefined ? null : attributeFloats(reader.readAccessor(SCALE));
     const count = [TRANSLATION, ROTATION, SCALE].filter(index => index !== undefined).map(index => document.accessors[index].count)[0];
-    if (count > limits.maxInstances) throw new Error(`Decoded instance count ${count} exceeds maxInstances (${limits.maxInstances}).`);
+    throwOverruns(overLimit([], `node ${nodeIndex} instances`, count, 'maxInstances', limits.maxInstances));
     const matrices = new Float64Array(count * 16);
     for (let instance = 0; instance < count; instance++) {
       mat4.fromRotationTranslationScale(

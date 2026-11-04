@@ -195,8 +195,8 @@ test('byte, vertex, part and input guards reject oversized or malformed assets',
   const malformed = data.slice(0);
   new DataView(malformed).setUint32(8, data.byteLength + 10, true);
   await assert.rejects(parseGltf(malformed), /declared length/);
-  const oversizedAccessor = triangleAsset(document => { document.accessors.push({ componentType: 5126, count: 10_000_000, type: 'MAT4' }); });
-  await assert.rejects(parseGltf(oversizedAccessor), /Decoded glTF accessors/);
+  const oversizedAccessor = triangleAsset(document => { document.accessors.push({ componentType: 5126, count: 30_000_000, type: 'MAT4' }); });
+  await assert.rejects(parseGltf(oversizedAccessor), /decoded accessor bytes/);
   await assert.rejects(loadGltf(new Blob([data]), { maxBytes: 10 }), /maxBytes/);
   await assert.rejects(loadGltf({ arrayBuffer: () => Promise.resolve(data) }), /File\/Blob/);
   const asset = await loadGltf(new Blob([data]));
@@ -215,7 +215,7 @@ test('texture pixel budgets reject compressed images before browser decoding', a
   const oversized = triangleAsset(document => {
     document.images = [{ uri: `data:image/png;base64,${Buffer.from(header).toString('base64')}` }];
   });
-  await assert.rejects(parseGltf(oversized), /maxTextureImagePixels before decoding/);
+  await assert.rejects(parseGltf(oversized), /pixels [0-9]+, over maxTextureImagePixels/);
 });
 
 function pngHeaderUri(width, height) {
@@ -278,11 +278,39 @@ test('the single image ceiling still rejects a hostile image whatever the combin
   const hostile = triangleAsset(document => {
     document.images = [{ uri: pngHeaderUri(100000, 100000) }];
   });
-  await assert.rejects(parseGltf(hostile, { maxTexturePixels: 1_000_000_000_000 }), /maxTextureImagePixels before decoding/);
+  await assert.rejects(parseGltf(hostile, { maxTexturePixels: 1_000_000_000_000 }), /pixels [0-9]+, over maxTextureImagePixels/);
   const large = triangleAsset(document => {
     document.images = [{ uri: pngHeaderUri(2048, 2048) }];
   });
-  await assert.rejects(parseGltf(large, { maxTextureImagePixels: 1024 * 1024 }), /maxTextureImagePixels before decoding/);
+  await assert.rejects(parseGltf(large, { maxTextureImagePixels: 1024 * 1024 }), /pixels [0-9]+, over maxTextureImagePixels/);
+});
+
+test('one limit error names every option a file goes over, its measured value and the value that fits', async () => {
+  const overLimits = triangleAsset(document => {
+    document.images = [{ uri: pngHeaderUri(16, 16) }, { uri: pngHeaderUri(64, 32) }];
+  });
+  await assert.rejects(parseGltf(overLimits, { maxVertices: 2, maxTextureImagePixels: 100 }), error => {
+    assert.match(error.message, /^glTF over its limits: vertices 3, over maxVertices 2;/);
+    assert.match(error.message, /image 0 [(]16x16[)] pixels 256, over maxTextureImagePixels 100/);
+    assert.match(error.message, /image 1 [(]64x32[)] pixels 2048, over maxTextureImagePixels 100/);
+    assert.match(error.message, /Fix: pass \{ maxVertices: 3, maxTextureImagePixels: 2048 \}\.$/);
+    return true;
+  });
+  await assert.rejects(parseGltf(triangleAsset(), { maxBytes: 32 }), /bytes [0-9]+, over maxBytes 32[.] Fix: pass [{] maxBytes: [0-9]+ [}]/);
+});
+
+test('the default limits take a large exported scene: a 240 MB file, 8 million vertices and a 6144 x 3072 texture', async context => {
+  const limits = GLTF_CAPABILITIES.limits;
+  assert.ok(limits.maxBytes >= 240_000_000);
+  assert.ok(limits.maxVertices >= 8_000_000);
+  assert.ok(limits.maxTextureImagePixels >= 6144 * 3072);
+  assert.ok(limits.maxInstances >= 65_536 && limits.maxParts >= 65_536 && limits.maxResources >= 256);
+  mockImageBitmapWithResize(context);
+  const asset = await parseGltf(triangleAsset(document => {
+    document.images = [{ uri: pngHeaderUri(6144, 3072) }];
+  }));
+  assert.deepEqual(asset.scaledTextures, [{ name: 'image 0', from: [6144, 3072], to: [3072, 1536] }]);
+  asset.dispose();
 });
 
 test('hierarchy depth guards reject long chains regardless of node ordering', async () => {
@@ -540,7 +568,7 @@ test('skin preflight guards joints, influence shapes, raw zero weights, indices 
   await assert.rejects(parseGltf(skinnedStripAsset(document => {
     document.nodes.push({ name: 'Second strip', mesh: 0, skin: 0 });
     document.nodes[0].children.push(4);
-  }), { maxJoints: 2 }), /Instanced skin poses/);
+  }), { maxJoints: 2 }), /skin pose joints/);
 });
 
 test('invalid skeletal animation fails before public matrices or palettes change', async () => {
@@ -656,5 +684,5 @@ test('WebP image sizes count toward the texture budgets before decoding', async 
   const oversized = triangleAsset(document => {
     useWebpTexture(document, [{ uri: webpExtendedUri(10000, 10000) }], { extensions: { EXT_texture_webp: { source: 0 } } });
   });
-  await assert.rejects(parseGltf(oversized), /maxTextureImagePixels before decoding/);
+  await assert.rejects(parseGltf(oversized), /pixels [0-9]+, over maxTextureImagePixels/);
 });
