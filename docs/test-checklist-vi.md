@@ -52,7 +52,7 @@ Các recipe nằm ở cuối file (A1 đến A9). Mỗi recipe đã chạy qua `
 - Mở: recipe A4 qua MCP, rồi gọi `scene_inspect`.
 - Nhìn: `vegetation` báo 99 cây (42 broadleaf, 30 bush, 27 conifer) và mỗi loài có mảng `levels`. Lá chuyển màu cam vì `season` 0.6.
 - Đạt: số cây khớp và ảnh có rừng trên đồi. Trượt: số cây khác với cùng `seed`, hoặc ảnh không có cây.
-- Impostor (#382) chỉ có trong code. Chạy `node --test tests/vegetation-impostors.test.js`. Đạt khi 15 test pass.
+- Impostor (#382) chỉ có trong code. Chạy `node --test tests/vegetation-impostors.test.js`. Đạt khi 11 test pass.
 
 ## 6. Đám đông (#383)
 
