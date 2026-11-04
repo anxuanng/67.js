@@ -985,7 +985,17 @@ export async function parseGltf(data, options = {}) {
   const document = documentFrom(data, limits.maxBytes);
   const fallbackWarnings = await applyFallbacksTo(document);
   const decoders = options.decoders ?? {};
-  const { ignoredExtensions } = validateDocument(document, limits, allowedExtensionsFor(decoders));
+  let resampler = null;
+  let validated;
+  try {
+    validated = validateDocument(document, limits, allowedExtensionsFor(decoders));
+  } catch (error) {
+    // Maps with different transforms are resampled by a module that only a file with such a material loads.
+    resampler = (await import('./gltf-map-resample.js')).planMapResampling(document, { materialTextureReferences, textureUvTransform });
+    if (!resampler) throw error;
+    validated = validateDocument(document, limits, allowedExtensionsFor(decoders));
+  }
+  const { ignoredExtensions } = validated;
   await loadLayerShadersFor(document);
   const warnings = [...fallbackWarnings, ...ignoredExtensions.map(extension => `${extension} is accepted but not rendered.`), ...skippedPrimitiveWarnings(document)];
   const dataBytes = typeof data === 'string' ? new TextEncoder().encode(data).byteLength : data.byteLength;
@@ -997,6 +1007,7 @@ export async function parseGltf(data, options = {}) {
   let gltf;
   try {
     gltf = await decodeGltf({ document, glbBinary: binaryChunk(data), resourceBytes, decoders, limits, imageTargets: textureScaling.targetByImageIndex });
+    if (resampler) warnings.push(...resampler.apply(gltf, limits));
     const parts = [];
     const bindings = [];
     const skinBindings = [];
