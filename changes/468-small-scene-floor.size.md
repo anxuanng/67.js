@@ -1,0 +1,6 @@
+- entry:core: +166 B for the studio floor height: one pass over the parts' cached local boxes. It fixes small objects that drew an empty frame under the default floor.
+- scene:lit-box: the same core code, +181 B.
+- scene:gltf-box: the same core code, +179 B.
+- scene:gltf-box+lazy: the same core code, +179 B.
+- scene:agent-scene: the same core code, +172 B.
+- scene:agent-scene+lazy: the same core code, +174 B.

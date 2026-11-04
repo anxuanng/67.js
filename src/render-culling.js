@@ -33,7 +33,7 @@ export function geometryBoundingSphere(geometry) {
     const dz = positions[index + 2] - center[2];
     radiusSquared = Math.max(radiusSquared, dx * dx + dy * dy + dz * dz);
   }
-  const sphere = Object.freeze({ center: Object.freeze(center), radius: Math.sqrt(radiusSquared) });
+  const sphere = Object.freeze({ center: Object.freeze(center), radius: Math.sqrt(radiusSquared), minimum, maximum });
   boundingSpheres.set(geometry, sphere);
   return sphere;
 }
