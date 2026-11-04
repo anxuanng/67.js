@@ -1,4 +1,2 @@
-- entry:terrain: 279 bytes for the mirror meshes (coarse levels, their error and the option check); terrain is the only place that builds them (#316).
-- scene:agent-scene+lazy: 317 bytes, the terrain code above plus 37 bytes of core in the renderer, in a scene that bundles terrain.
-- goal:lit-box: asks for 37 bytes over the 50 KB goal; the core part is two lines in the renderer that let a `lods` level be skipped in a normal frame.
-- goal:agent-scene: asks for 36 bytes over the 100 KB goal, the same two lines.
+- entry:terrain: the option builds the coarse mirror meshes with finest-grid chunk edges (about 100 lines of mesh code, which only the terrain module can hold), so the terrain entry grows past its allowance.
+- scene:agent-scene+lazy: the lazy bundle of this scene contains the terrain module, so it carries the same 762 bytes of mesh code.
