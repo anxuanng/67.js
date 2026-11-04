@@ -53,6 +53,10 @@ function postUniformLocations(context, program) {
 }
 
 const MAP_SHADER_FEATURES = ['baseMap', 'normalMap', 'metallicRoughnessMap', 'occlusionMap', 'emissiveMap'];
+// Part or material fields that name their shader feature and switch it on when set.
+const PRESENT_SHADER_FEATURES = ['skin', 'crowd', 'morph', 'lightMap', 'waterReflection'];
+// Material fields that name their shader feature and switch it on above zero.
+const POSITIVE_SHADER_FEATURES = ['moss', 'anisotropy', 'iridescence', 'toon', 'boxMapScale'];
 // Tags whose look the main fragment shader draws with code that other tags never reach.
 const TAG_SHADER_FEATURES = new Set(['floor', 'water', 'foliage', 'terrain', 'grass', 'fire', 'smoke', 'unlit']);
 
@@ -67,24 +71,22 @@ function shaderFeaturesOfLighting(lighting) {
 
 function shaderFeaturesOfParts(parts) {
   const features = new Set();
-  for (const { material, skin, morph, crowd } of parts) {
-    if (skin) features.add('skin');
-    if (crowd) features.add('crowd');
-    if (morph) features.add('morph');
+  for (const part of parts) {
+    const { material } = part;
+    for (const name of PRESENT_SHADER_FEATURES) {
+      if (part[name] || material[name]) features.add(name);
+    }
     MATERIAL_MAPS.forEach((field, index) => {
       if (material[field]) features.add(MAP_SHADER_FEATURES[index]);
     });
-    if (material.lightMap) features.add('lightMap');
     if (material.environmentProbe) features.add('probe');
-    if (material.waterReflection) features.add('waterReflection');
     if (material.normalMap?.uvTransform) features.add('normalMapTransform');
     Object.keys(material.layerMaps ?? {}).forEach(name => features.add(name));
     if (material.layers) features.add('splat');
-    if (material.moss > 0) features.add('moss');
-    if (material.anisotropy > 0) features.add('anisotropy');
+    for (const name of POSITIVE_SHADER_FEATURES) {
+      if (material[name] > 0) features.add(name);
+    }
     if (material.lightMask !== undefined) features.add('lightLinking');
-    if (material.iridescence > 0) features.add('iridescence');
-    if (material.toon > 0) features.add('toon');
     if ((material.alphaMode ?? 'opaque') !== 'opaque') features.add('alphaMode');
     if (material.subsurface?.weight > 0) features.add('subsurface');
     if (materialLayerValue(material, 'clearcoat') > 0) features.add('clearcoat');
