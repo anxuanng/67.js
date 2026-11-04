@@ -357,21 +357,35 @@ function bakeSheet(sheet, cloth, node, geometry, colliders, frameCount, movingSe
     density: sheet.density, damping: sheet.damping, friction: sheet.friction, thickness: sheet.thickness,
     colliders, frameCount, framesPerSecond: FRAMES_PER_SECOND,
   }], bakeCloth) });
-  return { recording, welded, inverse: mat4.invert(mat4.create(), matrix), geometry, particleScratch: new Float32Array(recording.particleCount * 3) };
+  return { recording, welded, inverse: mat4.invert(mat4.create(), matrix), geometry, particleScratch: new Float32Array(recording.particleCount * 3), live: liveGeometry(geometry) };
 }
 
-function frozenGeometry(baked, time) {
-  const { recording, welded, inverse, geometry, particleScratch } = baked;
+// One geometry per sheet whose arrays every seek rewrites, so a renderer keeps the same part and only uploads new values.
+const liveGeometries = new WeakSet();
+
+function liveGeometry(geometry) {
+  const live = Object.freeze({ ...geometry, positions: Float32Array.from(geometry.positions), normals: Float32Array.from(geometry.normals) });
+  liveGeometries.add(live);
+  return live;
+}
+
+/** True for a sheet geometry that every cloth sample rewrites in place; a renderer uploads its positions and normals after a seek. */
+export function isLiveClothGeometry(geometry) {
+  return liveGeometries.has(geometry);
+}
+
+function sampleLiveGeometry(baked, time) {
+  const { recording, welded, inverse, geometry, particleScratch, live } = baked;
   sampleClothFrames(recording, time, particleScratch);
-  const positions = new Float32Array(geometry.positions.length);
+  const positions = live.positions;
   for (let vertex = 0; vertex < welded.particleOfVertex.length; vertex++) {
     const source = welded.particleOfVertex[vertex] * 3;
     for (let axis = 0; axis < 3; axis++) {
       positions[vertex * 3 + axis] = inverse[axis] * particleScratch[source] + inverse[4 + axis] * particleScratch[source + 1] + inverse[8 + axis] * particleScratch[source + 2] + inverse[12 + axis];
     }
   }
-  const normals = recomputeNormals(geometry, positions);
-  return Object.freeze({ ...geometry, positions, normals });
+  live.normals.set(recomputeNormals(geometry, positions));
+  return live;
 }
 
 function sheetReport(baked, node, sheet) {
@@ -396,7 +410,8 @@ function sheetReport(baked, node, sheet) {
 
 /**
  * Bake the cloth section. The result is a pure function of time: `sample(t)` returns the deformed geometry of each
- * sheet node (null at time zero, where the sheet is at rest), and a seek never runs the solver again.
+ * sheet node (null at time zero, where the sheet is at rest), and a seek never runs the solver again. The geometry of a
+ * sheet is one object whose positions and normals are rewritten by every sample.
  */
 export function bakeAgentCloth(cloth, recipe, geometries, motionSampler = null) {
   const nodes = new Map(recipe.nodes.map(node => [node.id, node]));
@@ -415,7 +430,7 @@ export function bakeAgentCloth(cloth, recipe, geometries, motionSampler = null) 
     sample(time) {
       if (time <= 0) return null;
       const clamped = Math.min(time, cloth.duration);
-      return new Map([...baked].map(([nodeId, sheetBake]) => [nodeId, frozenGeometry(sheetBake, clamped)]));
+      return new Map([...baked].map(([nodeId, sheetBake]) => [nodeId, sampleLiveGeometry(sheetBake, clamped)]));
     },
     /** Particle counts and where each sheet ends, as numbers an agent can read without a picture. */
     report() {

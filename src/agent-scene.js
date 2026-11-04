@@ -894,15 +894,17 @@ function sampledGeometries(stagedState, time) {
   return geometries.size ? geometries : null;
 }
 
-// Deformed cloth is a new geometry per sampled time, so those parts are replaced and the renderer sees a topology change.
-function partsWithCloth(restParts, clothGeometries) {
+// Cloth keeps one geometry per sheet that every sample rewrites, so the parts of a later seek are the previous ones and the
+// renderer sees no topology change. Particles still bring a new geometry per time, so those parts are replaced.
+function partsWithCloth(restParts, clothGeometries, previousParts) {
   if (!clothGeometries) {
     return restParts;
   }
-  return Object.freeze(restParts.map(part => {
+  const next = restParts.map((part, index) => {
     const geometry = clothGeometries.get(part.name);
-    return geometry ? Object.freeze({ ...part, geometry }) : part;
-  }));
+    return !geometry ? part : previousParts[index]?.geometry === geometry ? previousParts[index] : Object.freeze({ ...part, geometry });
+  });
+  return next.every((part, index) => part === previousParts[index]) ? previousParts : Object.freeze(next);
 }
 
 /** Returns true when the parts handed to a renderer changed, which the caller counts as a topology change. */
@@ -924,7 +926,7 @@ function publishPose(stagedState, pose) {
   for (const sequence of stagedState.sequences) sequence.seek(pose.time);
   stagedState.renderCamera = pose.camera;
   stagedState.motionTime = pose.time;
-  const nextParts = partsWithCloth(stagedState.restParts, pose.clothGeometries);
+  const nextParts = partsWithCloth(stagedState.restParts, pose.clothGeometries, stagedState.parts);
   const partsChanged = nextParts !== stagedState.parts;
   stagedState.parts = nextParts;
   return partsChanged;
