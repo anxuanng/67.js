@@ -1,1 +1,3 @@
-- entry:floor-sky-visibility: +93 bytes gzip (15101 to 15194) for the onlyClosedRooms option, the room strength constant and the mean visibility in the report; core entries unchanged
+- entry:floor-sky-visibility: +202 bytes gzip (15101 to 15303) for the onlyClosedRooms option, the room strength, the mean visibility in the report and applyDefaultFloorSky
+- scene:agent-scene: +448 bytes gzip (102996 to 103444) for the floorSkyTrace field, the staging call and the lazy module entry that give closed rooms lit by a sun the floor sky trace by default
+- scene:agent-scene+lazy: +3836 bytes gzip (351298 to 355134), the same code plus the floor sky module loaded

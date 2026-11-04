@@ -13,7 +13,7 @@ const MAX_LOOK_ARRAY_ENTRIES = Math.max(MAX_POINT_LIGHTS, MAX_SPOT_LIGHTS, MAX_A
 
 const ENVIRONMENT_FIELDS = [
   'world', 'ground', 'setup', 'environmentIntensity', 'environmentRotation', 'lightDirection', 'keyColor', 'keyIntensity', 'fillIntensity', 'ambientIntensity',
-  'daylight', 'pointLights', 'spotLights', 'areaLights', 'skyTop', 'skyBottom', 'fogColor', 'fogDensity', 'volumeFog', 'liquid', 'shadowCascades', 'keyAffects', 'objectReflections', 'lines', 'resolveCoplanar', 'viewTransform', 'look', 'wind',
+  'daylight', 'pointLights', 'spotLights', 'areaLights', 'skyTop', 'skyBottom', 'fogColor', 'fogDensity', 'volumeFog', 'liquid', 'shadowCascades', 'keyAffects', 'objectReflections', 'floorSkyTrace', 'lines', 'resolveCoplanar', 'viewTransform', 'look', 'wind',
 ];
 const EFFECT_FIELDS = ['exposure', 'saturation', 'contrast', 'temperature', 'vignette', 'grain', 'ambientOcclusion', 'ambientOcclusionRadius', 'bloom', 'depthOfField', 'motionBlur'];
 const SHADOW_FIELDS = ['target', 'extent', 'distance', 'near', 'far'];
@@ -271,6 +271,12 @@ function environmentFrom(input = {}) {
       throw new TypeError('environment.objectReflections must be a boolean.');
     }
     environment.objectReflections = input.objectReflections;
+  }
+  if (input.floorSkyTrace !== undefined) {
+    if (typeof input.floorSkyTrace !== 'boolean') {
+      throw new TypeError('environment.floorSkyTrace must be a boolean.');
+    }
+    environment.floorSkyTrace = input.floorSkyTrace;
   }
   // Outlines and line geometry; null clears them. The module checks the fields and loads on demand.
   if (input.lines !== undefined && input.lines !== null) {

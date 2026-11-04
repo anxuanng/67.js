@@ -55,7 +55,7 @@ const BACKEND_ARGUMENTS = {
 
 const argumentsGiven = process.argv.slice(2);
 // --floor-sky-rooms also traces closed rooms, which are left as they are otherwise.
-// Closed rooms lit by a sun get the floor sky trace by default; --no-floor-sky draws without it, --floor-sky-sun is the same as the default.
+// Closed rooms lit by a sun get the floor sky trace by default, as in the recipe path; --no-floor-sky draws without it (environment.floorSkyTrace: false).
 // --floor-sky [<strength>] traces the sky each floor texel sees (src/floor-sky-visibility.js) and scales the world light on floors by it (strength 1 when none follows).
 const floorSkyFlag = argumentsGiven.indexOf('--floor-sky');
 const floorSkyStrength = floorSkyFlag < 0 ? 0 : Number(argumentsGiven[floorSkyFlag + 1]) || 1;
@@ -114,7 +114,7 @@ const sceneIdsGiven = lookIds ?? (sceneFlag >= 0 ? argumentsGiven[sceneFlag + 1]
 // The fresh bake.json lands in the work directory and is checked against the committed one (compare-scores.mjs); --update-baseline replaces
 // the committed bake.json and images/<id>-baked.jpg with it.
 const bakeScoreRun = bakedSceneIds !== null && !sceneSet && !pathTracerFlag;
-const bakeVariantFlags = ['--sky-only', '--bake-preset', '--bake-backend', '--bake-samples', '--bake-density', '--probes', '--ambient', '--ambient-occlusion', '--cascades', '--no-object-probes', '--object-probes', '--no-water', '--ssr-water', '--no-ground-bounce', '--floor-sky', '--floor-sky-rooms', '--floor-sky-sun', '--no-floor-sky'];
+const bakeVariantFlags = ['--sky-only', '--bake-preset', '--bake-backend', '--bake-samples', '--bake-density', '--probes', '--ambient', '--ambient-occlusion', '--cascades', '--no-object-probes', '--object-probes', '--no-water', '--ssr-water', '--no-ground-bounce', '--floor-sky', '--floor-sky-rooms', '--no-floor-sky'];
 const bakeScoreIsBaseline = bakeScoreRun && argumentsGiven.includes('--update-baseline') && !bakeVariantFlags.some(flag => argumentsGiven.includes(flag));
 const onlyScenes = sceneIdsGiven ?? (bakeScoreRun ? bakedSceneIds : null);
 const skipCpu = skipCpuFlag || bakeScoreRun || Boolean(viewTransform);
@@ -128,7 +128,7 @@ async function renderBackend(backend, serverUrl, graphics) {
     page.on('console', message => message.text().includes('GL_') && console.log('PAGE', message.text().slice(0, 200)));
     // Each scene gets a fresh page, so a large scene leaves no GL state or memory behind for the next one.
     const openHarness = async () => {
-      const harnessQuery = [sceneSet ? `set=${sceneSet}` : null, argumentsGiven.includes('--no-water') ? 'water=off' : argumentsGiven.includes('--ssr-water') ? 'water=ssr' : null, argumentsGiven.includes('--no-ground-bounce') ? 'groundBounce=off' : null, floorSkyStrength ? `floorSky=${floorSkyStrength}` : argumentsGiven.includes('--no-floor-sky') ? 'floorSky=0' : null, argumentsGiven.includes('--floor-sky-rooms') ? 'floorSkyRooms=1' : argumentsGiven.includes('--floor-sky-sun') ? 'floorSkyRooms=sun' : null].filter(Boolean).join('&');
+      const harnessQuery = [sceneSet ? `set=${sceneSet}` : null, argumentsGiven.includes('--no-water') ? 'water=off' : argumentsGiven.includes('--ssr-water') ? 'water=ssr' : null, argumentsGiven.includes('--no-ground-bounce') ? 'groundBounce=off' : null, floorSkyStrength ? `floorSky=${floorSkyStrength}` : argumentsGiven.includes('--no-floor-sky') ? 'floorSky=0' : null, argumentsGiven.includes('--floor-sky-rooms') ? 'floorSkyRooms=1' : null].filter(Boolean).join('&');
       await page.goto(`${serverUrl}/bench/reference/harness.html${harnessQuery ? `?${harnessQuery}` : ''}`, { timeout: PAGE_LOAD_TIMEOUT });
       await page.waitForFunction(() => window.renderReferenceScene, null, { timeout: PAGE_LOAD_TIMEOUT });
     };

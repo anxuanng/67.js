@@ -279,3 +279,19 @@ export function applyFloorSkyVisibility(parts, { raysPerTexel = FLOOR_SKY_RAYS, 
   const meanVisibility = texels ? floors.reduce((total, floor) => total + floor.meanVisibility * floor.texels, 0) / texels : 1;
   return { parts: Object.freeze(nextParts), report: { floors, texels, meanVisibility, rays: totalRays, seconds: (performance.now() - started) / 1000, reason: null } };
 }
+
+/** True when the environment has a sun: a key light with a colour and intensity above zero. A recipe that sets neither has the default sun. */
+export function environmentHasSun(environment) {
+  const keyColor = environment?.keyColor ?? [1, 1, 1];
+  return (environment?.keyIntensity ?? 1) * (keyColor[0] + keyColor[1] + keyColor[2]) > 0;
+}
+
+/**
+ * The default for a scene: a closed room a sun lights gets the sky trace at `FLOOR_SKY_ROOM_STRENGTH`, and every other scene (open ground,
+ * a room lit by lamps alone) comes back unchanged, because the trace made those worse against Cycles. `environment.floorSkyTrace: false`
+ * turns it off. The recipe path (`createAgentScene`) and the reference harness both call this, so they draw the same frame.
+ */
+export function applyDefaultFloorSky(parts, environment) {
+  if (environment?.floorSkyTrace === false || !environmentHasSun(environment)) return { parts, report: null };
+  return applyFloorSkyVisibility(parts, { onlyClosedRooms: true });
+}

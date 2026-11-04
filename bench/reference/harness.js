@@ -18,7 +18,7 @@ import { applyLightLinks } from '/src/light-linking.js';
 import { applyWaterReflection, attachWaterReflection } from '/src/water-reflection.js';
 import { attachScreenSpaceWater } from './ssr-water.js';
 import { groundBounceEnvironment } from '/src/ground-bounce.js';
-import { applyFloorSkyVisibility } from '/src/floor-sky-visibility.js';
+import { applyDefaultFloorSky, applyFloorSkyVisibility } from '/src/floor-sky-visibility.js';
 import { installReversedDepth } from '/src/reversed-depth.js';
 
 // Water reflection is on the way a recipe gets it: found from the materials, no field. ?water=off draws the scenes without it, ?water=ssr with the screen-space reflection it was compared with.
@@ -36,20 +36,19 @@ const REVERSED_DEPTH = new URLSearchParams(location.search).get('reversedDepth')
 
 const WATER_REFLECTION = { off: false, ssr: 'ssr' }[new URLSearchParams(location.search).get('water')] ?? 'planar';
 
-// The sky each floor texel sees (src/floor-sky-visibility.js) scales the world light on floors. By default the scenes that are a closed room lit
-// by a sun (the temple halls, the shaft) get it at the addon's room strength; lamp-only rooms and open scenes draw without it, because it made them worse.
-// ?floorSky=0 draws every scene without it, ?floorSky=<strength> sets the strength, ?floorSkyRooms=1 traces every closed room and open scene alike.
+// The scenes draw with the default of the recipe path: a closed room a sun lights gets the floor sky trace (applyDefaultFloorSky, the same call
+// createAgentScene makes), and environment.floorSkyTrace: false turns it off. ?floorSky=0 sets that opt-out on every scene. ?floorSky=<strength>
+// is an experiment that traces every floor at that strength instead, and ?floorSkyRooms=1 adds the closed rooms to it.
 const FLOOR_SKY_PARAMETER = new URLSearchParams(location.search).get('floorSky');
-const FLOOR_SKY_ROOMS_MODE = new URLSearchParams(location.search).get('floorSkyRooms') ?? (FLOOR_SKY_PARAMETER === null ? 'sun' : null);
+const FLOOR_SKY_EXPERIMENT = FLOOR_SKY_PARAMETER !== null && FLOOR_SKY_PARAMETER !== '0';
 const floorSkyReports = {};
 
 function withFloorSky(id, parts, scene) {
-  if (FLOOR_SKY_PARAMETER === '0') return parts;
-  const sunlit = (scene?.environment?.keyColor ?? [0, 0, 0]).some(channel => channel > 0);
-  if (FLOOR_SKY_ROOMS_MODE === 'sun' && !sunlit) return parts;
-  const strength = FLOOR_SKY_PARAMETER === null ? undefined : Number(FLOOR_SKY_PARAMETER);
-  const result = applyFloorSkyVisibility(parts, { strength, includeClosedRooms: FLOOR_SKY_ROOMS_MODE === '1', onlyClosedRooms: FLOOR_SKY_ROOMS_MODE === 'sun' });
-  floorSkyReports[id] = result.report;
+  const environment = FLOOR_SKY_PARAMETER === '0' ? { ...scene.environment, floorSkyTrace: false } : scene.environment;
+  const result = FLOOR_SKY_EXPERIMENT
+    ? applyFloorSkyVisibility(parts, { strength: Number(FLOOR_SKY_PARAMETER), includeClosedRooms: new URLSearchParams(location.search).get('floorSkyRooms') === '1' })
+    : applyDefaultFloorSky(parts, environment);
+  if (result.report) floorSkyReports[id] = result.report;
   return result.parts;
 }
 
