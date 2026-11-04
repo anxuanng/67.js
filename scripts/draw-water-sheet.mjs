@@ -1,5 +1,5 @@
 // Draws a labelled before and after sheet of the water shadow pool: a checkout of main beside this one, same cameras.
-//   bash ~/.agents/tools/gpu-lock.sh node scripts/draw-water-sheet.mjs --before <folder with src and scripts> [--output out/438-sheet.png]
+//   node scripts/draw-water-sheet.mjs --before <folder with src and scripts> [--output out/438-sheet.png]
 // Rows: shallow clear water (lake, 0.2 m) and deep murky water (river, 4 m). Columns: main and this branch, each from an angle and from above.
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
