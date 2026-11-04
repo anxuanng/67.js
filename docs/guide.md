@@ -74,7 +74,8 @@ The bundled ES module includes its dependencies. Serve the HTML over HTTP. Relea
 
 A coding agent that has no MCP client can still produce an image from the installed package.
 The renderer needs a browser, so the script serves one page over HTTP and reads the canvas back through `playwright-core`, which the package already depends on.
-It needs an installed Google Chrome. Use `executablePath` instead of `channel` for another Chromium. Run it from the folder that holds `node_modules`:
+It needs an installed Google Chrome. Use `executablePath` instead of `channel` for another Chromium. Run it from the folder that holds `node_modules`.
+The import map assumes the alias install (`node_modules/67js`). After a plain `npm install @codepawlhq/67js`, use `node_modules/@codepawlhq/67js` in the map instead.
 
 ```js
 import { createServer } from 'node:http';
