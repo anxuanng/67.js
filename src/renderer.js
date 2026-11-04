@@ -608,6 +608,8 @@ export class Renderer67 {
       pending.bloom = startProgram(this.context, fullscreenVertex, bloomFragment);
       if (environment.map) this.startEnvironmentPrograms();
     }
+    // The driver links the programs on its own threads while the textures and buffers upload; only then is the link result read.
+    groups.forEach((group) => this.batches.push(this.uploadBatch(group)));
     this.finishMainProgram(pending.main);
     this.depthProgram = finishProgram(this.context, pending.depth);
     this.depthSkinUniforms = Object.fromEntries(SKIN_UNIFORMS.map(name => [name, this.context.getUniformLocation(this.depthProgram, name)]));
@@ -644,7 +646,6 @@ export class Renderer67 {
     }
     if (this.shaderFeatures.has('splat')) requireSplatSupport().initializePlaceholders(this);
     this.initializeEnvironment(environment.map);
-    groups.forEach((group) => this.batches.push(this.uploadBatch(group)));
     this.createShadowMap();
     this.resize();
     if (!this.benchmark && !this.multisampleFramebuffer) this.allocateFrameTargets(this.canvas.width, this.canvas.height);
