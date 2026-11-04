@@ -1,8 +1,7 @@
-// Gives the renderer updatePartVertices: new vertex positions (and normals) for a part that already drew, written into
-// its existing GPU buffers with bufferSubData. A deforming mesh such as cloth skips replaceParts, which would build a
-// new geometry object and upload every buffer again. Importing this module adds the method to the renderer class (the
-// pattern of texture-update.js), so a scene that never deforms a mesh does not carry the code.
-import { Renderer67 } from './renderer.js';
+// updatePartVertices(renderer, part, positions, normals): new vertex positions (and normals) for a part that already
+// drew, written into its existing GPU buffers with bufferSubData. A deforming mesh such as cloth skips replaceParts,
+// which would build a new geometry object and upload every buffer again. The renderer is a parameter, so this module
+// imports nothing from the renderer and a scene that never deforms a mesh does not carry it.
 
 function checkVertices(name, values, expectedLength, label) {
   if (!(values instanceof Float32Array) || values.length !== expectedLength) {
@@ -35,7 +34,7 @@ function boundingSphereOf(positions) {
  * geometry is shared by every part that uses it. Skinned, morphed, crowd and level-of-detail parts are refused.
  * Returns the part.
  */
-export function updateRendererPartVertices(renderer, part, positions, normals) {
+export function updatePartVertices(renderer, part, positions, normals) {
   const location = renderer.partLocations.get(part);
   if (!location) throw new Error(`Unknown part identity: ${part?.name}`);
   const geometry = location.geometry;
@@ -57,7 +56,3 @@ export function updateRendererPartVertices(renderer, part, positions, normals) {
   renderer.shadowsDirty = true;
   return part;
 }
-
-Renderer67.prototype.updatePartVertices = function updatePartVertices(part, positions, normals) {
-  return updateRendererPartVertices(this, part, positions, normals);
-};

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { Renderer67 } from '../src/renderer.js';
-import '../src/update-part-vertices.js';
+import { updatePartVertices } from '../src/update-part-vertices.js';
 
 /** A WebGL2 stand-in that records buffer writes, with one rigid part already uploaded. */
 function fakeRenderer() {
@@ -33,7 +33,7 @@ test('updatePartVertices rewrites the drawn buffers without a new batch or geome
   const batchesBefore = batch;
   const positions = new Float32Array([0, 0, 5, 1, 0, 5, 0, 1, 5]);
   const normals = new Float32Array([1, 0, 0, 1, 0, 0, 1, 0, 0]);
-  renderer.updatePartVertices(part, positions, normals);
+  updatePartVertices(renderer, part, positions, normals);
   assert.deepEqual(calls, [
     ['bindBuffer', 'positionBuffer'], ['bufferSubData', 0, Array.from(positions)],
     ['bindBuffer', 'normalBuffer'], ['bufferSubData', 0, Array.from(normals)],
@@ -47,15 +47,15 @@ test('updatePartVertices rewrites the drawn buffers without a new batch or geome
 
 test('updatePartVertices leaves normals alone when none are given', () => {
   const { renderer, part, calls } = fakeRenderer();
-  renderer.updatePartVertices(part, new Float32Array(9));
+  updatePartVertices(renderer, part, new Float32Array(9));
   assert.deepEqual(calls.map(call => call[0]), ['bindBuffer', 'bufferSubData']);
 });
 
 test('updatePartVertices refuses a changed vertex count, an unknown part and a skinned part', () => {
   const { renderer, part } = fakeRenderer();
-  assert.throws(() => renderer.updatePartVertices(part, new Float32Array(12)), /3 per vertex/);
-  assert.throws(() => renderer.updatePartVertices(part, [0, 0, 0, 0, 0, 0, 0, 0, 0]), TypeError);
-  assert.throws(() => renderer.updatePartVertices({ name: 'other' }, new Float32Array(9)), /Unknown part/);
+  assert.throws(() => updatePartVertices(renderer, part, new Float32Array(12)), /3 per vertex/);
+  assert.throws(() => updatePartVertices(renderer, part, [0, 0, 0, 0, 0, 0, 0, 0, 0]), TypeError);
+  assert.throws(() => updatePartVertices(renderer, { name: 'other' }, new Float32Array(9)), /Unknown part/);
   renderer.partLocations.get(part).skin = {};
-  assert.throws(() => renderer.updatePartVertices(part, new Float32Array(9)), /rigid/);
+  assert.throws(() => updatePartVertices(renderer, part, new Float32Array(9)), /rigid/);
 });

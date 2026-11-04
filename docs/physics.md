@@ -503,12 +503,12 @@ function frame(deltaSeconds) {
 
 ## Deforming a drawn part in place
 
-`renderer.updatePartVertices(part, positions, normals)` writes new vertex positions, and normals when given, into the buffers a rigid part already uses, with `bufferSubData`. It needs no `replaceParts`, no new geometry object and no new draw batch. Import `@codepawlhq/67js/addons/update-part-vertices` first; a scene that never deforms a mesh does not carry the code.
+`updatePartVertices(renderer, part, positions, normals)` writes new vertex positions, and normals when given, into the buffers a rigid part already uses, with `bufferSubData`. It needs no `replaceParts`, no new geometry object and no new draw batch. It comes from `@codepawlhq/67js/addons/update-part-vertices`, takes the renderer as its first argument and imports nothing from the renderer, so a scene that never deforms a mesh does not carry it.
 
 ```js
-import '@codepawlhq/67js/addons/update-part-vertices';
+import { updatePartVertices } from '@codepawlhq/67js/addons/update-part-vertices';
 
-renderer.updatePartVertices(sheetPart, sheetPositions, sheetNormals);
+updatePartVertices(renderer, sheetPart, sheetPositions, sheetNormals);
 renderer.render(frame);
 ```
 
