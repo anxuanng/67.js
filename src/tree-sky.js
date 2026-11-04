@@ -36,20 +36,22 @@ function boundsOfPositions(positions) {
 }
 
 /**
- * Returns one sky visibility in 0 to 1 for every vertex of a foliage geometry. `vertexWeight` scales how much leaf each
- * vertex stands for: a level that keeps fewer leaves passes a larger value for each one.
+ * Measures the leaf density of one foliage geometry and returns `{ visibilityOf(positions) }`, which gives one sky visibility
+ * in 0 to 1 for every vertex of any geometry of the same crown. A thinner level of detail asks the field of the fullest
+ * level, so every level reads the same value at the same place: working it out again from the few vertices of a thin level
+ * put them in cells that looked solid and left the far crown near black.
  */
-export function computeCrownSkyVisibility(positions, vertexWeight = 1) {
-  const vertexCount = positions.length / 3;
+export function createCrownSkyField(positions) {
   const { minimum, maximum } = boundsOfPositions(positions);
   const longest = Math.max(maximum[0] - minimum[0], maximum[1] - minimum[1], maximum[2] - minimum[2], 1e-6);
   const cell = longest / GRID_CELLS_ALONG_LONGEST_SIDE;
   const size = [0, 1, 2].map(axis => Math.floor((maximum[axis] - minimum[axis]) / cell) + 1);
   const density = new Float32Array(size[0] * size[1] * size[2]);
   const cellOf = (value, axis) => Math.floor((value - minimum[axis]) / cell);
+  const clampedCellOf = (value, axis) => Math.min(size[axis] - 1, Math.max(0, cellOf(value, axis)));
   for (let offset = 0; offset < positions.length; offset += 3) {
     const index = (cellOf(positions[offset + 2], 2) * size[1] + cellOf(positions[offset + 1], 1)) * size[0] + cellOf(positions[offset], 0);
-    density[index] += OPACITY_PER_VERTEX * vertexWeight;
+    density[index] += OPACITY_PER_VERTEX;
   }
   const step = cell / STEPS_PER_CELL;
   // Visibility is worked out once for each occupied cell, from its centre, and shared by the vertices inside it.
@@ -72,14 +74,34 @@ export function computeCrownSkyVisibility(positions, vertexWeight = 1) {
     return Math.max(MINIMUM_VISIBILITY, open / UP_DIRECTIONS.length);
   }
 
-  const visibility = new Float32Array(vertexCount);
-  for (let vertex = 0; vertex < vertexCount; vertex++) {
-    const column = cellOf(positions[vertex * 3], 0);
-    const row = cellOf(positions[vertex * 3 + 1], 1);
-    const layer = cellOf(positions[vertex * 3 + 2], 2);
-    const index = (layer * size[1] + row) * size[0] + column;
-    if (Number.isNaN(cellVisibility[index])) cellVisibility[index] = visibilityOfCell(column, row, layer);
-    visibility[vertex] = cellVisibility[index];
+  function visibilityOf(targetPositions) {
+    const vertexCount = targetPositions.length / 3;
+    const visibility = new Float32Array(vertexCount);
+    for (let vertex = 0; vertex < vertexCount; vertex++) {
+      const column = clampedCellOf(targetPositions[vertex * 3], 0);
+      const row = clampedCellOf(targetPositions[vertex * 3 + 1], 1);
+      const layer = clampedCellOf(targetPositions[vertex * 3 + 2], 2);
+      const index = (layer * size[1] + row) * size[0] + column;
+      if (Number.isNaN(cellVisibility[index])) cellVisibility[index] = visibilityOfCell(column, row, layer);
+      visibility[vertex] = cellVisibility[index];
+    }
+    return visibility;
   }
-  return visibility;
+
+  return { visibilityOf };
+}
+
+function meanOf(values) {
+  let sum = 0;
+  for (const value of values) sum += value;
+  return sum / values.length;
+}
+
+/**
+ * Scales `visibility` so its mean is `targetMean`, keeping the floor and 1 as the limits. The larger leaves of a thinner level
+ * sit further out in the crown than the leaves of level 0, so a field lookup alone leaves them seeing more sky on average.
+ */
+export function matchMeanVisibility(visibility, targetMean) {
+  const scale = targetMean / meanOf(visibility);
+  return visibility.map(value => Math.min(1, Math.max(MINIMUM_VISIBILITY, value * scale)));
 }
