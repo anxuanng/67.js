@@ -162,6 +162,8 @@ function validateOptions({ size, resolution, chunks, levels, mirrorLevels }) {
   }
 }
 
+/** Extra coarse mesh levels a terrain builds for the water mirror when it has water and its `mirrorLevels` is not set. */
+const MIRROR_LEVELS_WITH_WATER = 2;
 const SIDES = Object.freeze(['west', 'east', 'north', 'south']);
 const MAXIMUM_HOLES = 64;
 
@@ -193,8 +195,10 @@ function pointInsideHoles(holes, pointX, pointZ) {
  * Ground spans x and z from -size / 2 to size / 2. Call update(eye) each frame (or when the camera moves) and, when it
  * returns a non-empty list, pass the scene parts to renderer.replaceParts.
  */
-export function createTerrain({ size = 512, resolution = 32, chunks = 8, levels = 4, height, seed = 1, material = DEFAULT_MATERIAL, lodDistance, eye, holes, mirrorLevels = 0 } = {}) {
-  validateOptions({ size, resolution, chunks, levels, mirrorLevels });
+export function createTerrain({ size = 512, resolution = 32, chunks = 8, levels = 4, height, seed = 1, material = DEFAULT_MATERIAL, lodDistance, eye, holes, mirrorLevels } = {}) {
+  const mirrorLevelsExplicit = mirrorLevels !== undefined;
+  let activeMirrorLevels = mirrorLevelsExplicit ? mirrorLevels : 0;
+  validateOptions({ size, resolution, chunks, levels, mirrorLevels: activeMirrorLevels });
   const holeCircles = normalizeTerrainHoles(holes);
   const isHole = (worldX, worldZ) => holeCircles !== null && pointInsideHoles(holeCircles, worldX, worldZ);
   const heightFunction = resolveHeightFunction(height, size, seed);
@@ -335,6 +339,8 @@ export function createTerrain({ size = 512, resolution = 32, chunks = 8, levels 
     for (let chunkColumn = 0; chunkColumn < chunks; chunkColumn++) {
       const state = { chunkColumn, chunkRow, level: -1, edgeLevels: null, centerX: origin + (chunkColumn + 0.5) * chunkSize, centerZ: origin + (chunkRow + 0.5) * chunkSize };
       state.part = { name: `Terrain chunk ${chunkColumn},${chunkRow}`, geometry: null, matrix: identityMatrix(), material };
+      // Not enumerable, so copies and serialised parts do not carry it. The water reflection addon calls it for the parts it is given.
+      Object.defineProperty(state.part, 'prepareMirrorLevels', { value: prepareMirrorLevels });
       chunkStates.push(state);
       parts.push(state.part);
     }
@@ -431,12 +437,24 @@ export function createTerrain({ size = 512, resolution = 32, chunks = 8, levels 
   // mirrorLevels must be used with attachWaterReflection.
   function buildMirrorLods(state) {
     const lods = [{ geometry: state.part.geometry, error: 0 }];
-    for (let extra = 1; extra <= mirrorLevels; extra++) {
+    for (let extra = 1; extra <= activeMirrorLevels; extra++) {
       const level = state.targetLevel + extra;
       const error = Math.max(lods[extra - 1].error, coarseError(state, level));
       lods.push({ geometry: buildMirrorGeometry(state.chunkColumn, state.chunkRow, level), error, mirrorOnly: true });
     }
     return lods;
+  }
+
+  // A terrain that did not set mirrorLevels builds no coarse mirror meshes until the water reflection addon is given its parts, so
+  // terrain without water pays nothing. It then takes up to MIRROR_LEVELS_WITH_WATER extra halvings that the resolution allows.
+  // An explicit mirrorLevels, 0 included, is kept as it is.
+  function prepareMirrorLevels() {
+    if (mirrorLevelsExplicit || activeMirrorLevels > 0) return;
+    while (activeMirrorLevels < MIRROR_LEVELS_WITH_WATER && resolution % (2 ** (levels + activeMirrorLevels)) === 0) activeMirrorLevels++;
+    if (activeMirrorLevels === 0) return;
+    for (const state of chunkStates) {
+      if (state.part.geometry) state.part.lods = buildMirrorLods(state);
+    }
   }
 
   let triangleTotal = 0;
@@ -451,7 +469,7 @@ export function createTerrain({ size = 512, resolution = 32, chunks = 8, levels 
       if (unchanged) continue;
       if (state.part.geometry) triangleTotal -= state.part.geometry.indices.length / 3;
       state.part.geometry = buildChunkGeometry(state.chunkColumn, state.chunkRow, state.targetLevel, edgeLevels);
-      if (mirrorLevels > 0) state.part.lods = buildMirrorLods(state);
+      if (activeMirrorLevels > 0) state.part.lods = buildMirrorLods(state);
       triangleTotal += state.part.geometry.indices.length / 3;
       state.level = state.targetLevel;
       state.edgeLevels = edgeLevels;

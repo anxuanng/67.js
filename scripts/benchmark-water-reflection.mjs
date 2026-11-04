@@ -1,6 +1,6 @@
 // Times a lit frame of a large sea with dense terrain and many small parts, with the water reflection off and on, and counts
 // what the mirror pass draws. GPU time comes from a native timer query, so run it through the GPU lock:
-//   bash ~/.agents/tools/gpu-lock.sh node scripts/benchmark-water-reflection.mjs [--width 1920] [--height 1080] [--parts 20000] [--mirror-levels 2] [--rounds 3] [--stills folder]
+//   bash ~/.agents/tools/gpu-lock.sh node scripts/benchmark-water-reflection.mjs [--width 1920] [--height 1080] [--parts 20000] [--mirror-levels N] [--rounds 3] [--stills folder]
 // --counts-only skips the timer and runs on SwiftShader, so it needs no GPU lock and prints draw counts only.
 // --stills writes a PNG of the lit frame for the off, on and half-scale variants, for a side-by-side check.
 // The draw counts (calls, instances, triangles in the mirror pass) do not need the GPU and stay valid when the lock is busy.
@@ -19,7 +19,7 @@ const height = argument('height', 1080);
 const smallPartCount = argument('parts', 20000);
 const SAMPLES = argument('samples', 20);
 const ROUNDS = argument('rounds', 3);
-const mirrorLevels = argument('mirror-levels', 2);
+const mirrorLevels = argument('mirror-levels', undefined);
 const countsOnly = process.argv.includes('--counts-only');
 const stillsFolder =process.argv.includes('--stills') ? process.argv[process.argv.indexOf('--stills') + 1] : null;
 
@@ -51,7 +51,10 @@ try {
       smallParts.push({ name: `pebble-${index}`, geometry: pebble, matrix: new Float32Array([size, 0, 0, 0, 0, size, 0, 0, 0, 0, size, 0, x, y, z, 1]), material: { tag: 'surface', color: [0.4, 0.38, 0.34], metallic: 0, roughness: 0.8, emission: 0 } });
     }
     const sea = { name: 'sea', geometry: box(0, 1), matrix: new Float32Array([4000, 0, 0, 0, 0, 1, 0, 0, 0, 0, 4000, 0, 0, -0.5, 0, 1]), material: { tag: 'surface', color: [0.02, 0.06, 0.1], metallic: 0, roughness: 0.04, emission: 0 } };
+    const applyStarted = performance.now();
     const marked = applyWaterReflection([...terrain.parts, ...smallParts, sea]);
+    const applyMilliseconds = performance.now() - applyStarted;
+    const mirrorMeshBytes = terrain.parts.reduce((sum, part) => sum + (part.lods ?? []).filter(lod => lod.mirrorOnly).reduce((inner, lod) => inner + lod.geometry.positions.byteLength + lod.geometry.normals.byteLength + lod.geometry.uvs.byteLength + lod.geometry.skyVisibility.byteLength + lod.geometry.indices.byteLength, 0), 0);
     const renderer = new Renderer67(canvas, marked.parts, { hdr: true, depth: true, world: true, ground: false, pixelRatio: 1, samples: 4 });
     const context = renderer.context;
     const timer = context.getExtension('EXT_disjoint_timer_query_webgl2');
@@ -146,6 +149,22 @@ try {
     }
     for (const entry of Object.values(report)) {
       if (entry?.rawTimings) delete entry.rawTimings;
+    }
+    report.applyWaterReflectionMilliseconds = applyMilliseconds;
+    report.mirrorMeshMegabytes = mirrorMeshBytes / 1048576;
+    if (!countsOnly) {
+      // The first frame after attaching, on a camera the mirror has not seen: GPU time and wall time, against the "on" median above.
+      const detachFirst = attachWaterReflection(renderer, marked.surface);
+      const query = context.createQuery();
+      const wallStarted = performance.now();
+      context.beginQuery(timer.TIME_ELAPSED_EXT, query);
+      renderer.render({ ...frame, eye: [50, 70, 380], time: 5 });
+      context.endQuery(timer.TIME_ELAPSED_EXT);
+      const wallMilliseconds = performance.now() - wallStarted;
+      context.flush();
+      while (!context.getQueryParameter(query, context.QUERY_RESULT_AVAILABLE)) await new Promise(resolve => setTimeout(resolve, 2));
+      report.attachFrame = { gpuMilliseconds: context.getQueryParameter(query, context.QUERY_RESULT) / 1e6, wallMilliseconds };
+      detachFirst();
     }
     return report;
   }, { smallPartCount, samples: SAMPLES, rounds: ROUNDS, wantStills: stillsFolder !== null, countsOnly, mirrorLevels });

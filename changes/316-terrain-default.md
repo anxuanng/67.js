@@ -1,1 +1,0 @@
-- docs/terrain.md recommends `createTerrain({ mirrorLevels: 2 })` for terrain near water and gives its cost: about 22 MB more mesh data and 80% more build time on a 900 m terrain, for a mirror frame at +25% instead of +40% over reflection off (part of #316). The default stays 0, because the terrain has no way to know about water.
