@@ -7,6 +7,7 @@ import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import packageMetadata from '../package.json' with { type: 'json' };
 import { MODIFIER_OPERATIONS } from '../src/mesh-operations.js';
+import { VIEW_TRANSFORM_NAMES, LOOK_NAMES } from '../src/view-transform-names.js';
 import { MATERIAL_PATTERN_TYPES, MATERIAL_MAPPINGS, LIGHTING_SETUP_NAMES, RENDER_PASS_NAMES, VIDEO_ENCODERS, MAXIMUM_JOB_SIDE, MAXIMUM_MEMORY_MIB } from '../src/agent-scene-capabilities.js';
 import { MATERIAL_LAYER_SCALAR_RANGES, MATERIAL_LAYER_COLOR_RANGES } from '../src/material-layers.js';
 import { SUBSURFACE_RANGES } from '../src/subsurface-limits.js';
@@ -170,14 +171,14 @@ const volumeFog = z.strictObject({
   shadowAmbient: unit.optional(),
 });
 const affects = z.array(z.string()).optional();
-const lines = z.record(z.string(), z.unknown()).describe('Outlines, toon light and polylines as plain JSON; fields and limits in scene_capabilities lineArt. null clears.');
+const lines = z.record(z.string(), z.unknown()).describe('Line art JSON; see scene_capabilities lineArt. null clears.');
 const environment = z.strictObject({
   world: z.boolean().optional().describe('Draw the sky and apply surface fog.'),
   ground: z.boolean().optional().describe('false: no automatic floor.'),
-  setup: z.enum(LIGHTING_SETUP_NAMES).optional().describe('Named lighting; resets key, fill and ambient fields. Default daylight.'),
-  environmentIntensity: bounded(0, 100).optional().describe('Scales the setup environment light and its reflections.'),
-  environmentRotation: bounded(-100, 100).optional().describe('Turns the setup environment around the vertical axis, in radians.'),
-  lightDirection: boundedVector(-1e6, 1e6).optional().describe('Direction toward the key light; shadows follow.'),
+  setup: z.enum(LIGHTING_SETUP_NAMES).optional().describe('Named lighting; resets key, fill, ambient.'),
+  environmentIntensity: bounded(0, 100).optional().describe('Scales environment light.'),
+  environmentRotation: bounded(-100, 100).optional().describe('Radians about vertical.'),
+  lightDirection: boundedVector(-1e6, 1e6).optional().describe('Toward the key light.'),
   keyColor: boundedVector(0, 1000).optional(),
   keyIntensity: bounded(0, 100).optional(),
   fillIntensity: bounded(0, 100).optional(),
@@ -191,12 +192,12 @@ const environment = z.strictObject({
     intensity: bounded(0, 1e5).optional(),
     radius: bounded(0.001, 1e6).optional(),
     range: z.union([z.literal(0), bounded(0.001, 1e6)]).optional(),
-    castShadow: z.boolean().optional().describe('Casts a shadow; 6 atlas tiles.'),
+    castShadow: z.boolean().optional().describe('6 atlas tiles.'),
     affects,
-  })).max(8).optional().describe('Replaces the list; [] clears. Intensity in candela.'),
+  })).max(8).optional().describe('Replaces the list; [] clears. Candela.'),
   spotLights: z.array(z.strictObject({
     position: boundedVector(-1e6, 1e6),
-    direction: boundedVector(-1e6, 1e6).describe('Nonzero direction the cone points along.'),
+    direction: boundedVector(-1e6, 1e6).describe('Nonzero cone direction.'),
     angle: bounded(0.01, Math.PI / 2 - 0.01).optional().describe('Outer half angle, radians; default pi/4.'),
     penumbra: unit.optional().describe('Soft edge, 0 hard; default 0.15.'),
     color: color.optional(),
@@ -208,8 +209,8 @@ const environment = z.strictObject({
   })).max(8).optional().describe('Replaces the list; [] clears.'),
   areaLights: z.array(z.strictObject({
     position: boundedVector(-1e6, 1e6).describe('Center of the rectangle.'),
-    direction: boundedVector(-1e6, 1e6).describe('Direction the rectangle faces; emits that side only.'),
-    up: boundedVector(-1e6, 1e6).optional().describe('Height axis direction; default world up.'),
+    direction: boundedVector(-1e6, 1e6).describe('Facing direction; one side emits.'),
+    up: boundedVector(-1e6, 1e6).optional().describe('Height axis; default up.'),
     width: bounded(0.001, 1e4),
     height: bounded(0.001, 1e4),
     color: color.optional(),
@@ -221,9 +222,13 @@ const environment = z.strictObject({
   fogColor: color.optional(),
   fogDensity: bounded(0, 10).optional(),
   volumeFog: volumeFog.optional().describe('Directional scattering; needs HDR.'),
-  liquid: liquidOptics.optional().describe('Optics for materials tagged liquid or foam.'),
+  liquid: liquidOptics.optional().describe('For liquid or foam materials.'),
   lines: lines.nullable().optional(),
-  wind: z.strictObject({ strength: bounded(0, 4).optional(), direction: bounded(-360, 360).optional().describe('Degrees: 0 toward +x, 90 toward +z.') }).optional().describe('Sway of foliage and grass materials; strength defaults to 0.3.'),
+  objectReflections: z.boolean().optional(),
+  resolveCoplanar: z.union([z.literal('offset'), z.literal(false)]).optional(),
+  viewTransform: z.enum(VIEW_TRANSFORM_NAMES).optional(),
+  look: z.enum(LOOK_NAMES).nullable().optional(),
+  wind: z.strictObject({ strength: bounded(0, 4).optional(), direction: bounded(-360, 360).optional().describe('Degrees; 0 is +x, 90 is +z.') }).optional().describe('Foliage and grass sway; strength default 0.3.'),
 });
 const effects = z.strictObject({
   exposure: bounded(0.01, 16).optional(),
