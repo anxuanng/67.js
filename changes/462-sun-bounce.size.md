@@ -4,3 +4,4 @@
 - tool:scene_create: +105 bytes against #434 (67582 to 67687; +224 against main) for the `sunBounce` field and its one-line description, which the schema test needs. Accepted by the lead: the control An asked for has to be in the schema agents read.
 - tool-total: +224 bytes against main (187996 to 188220), the same `scene_create` growth: the `sunBounce` field (+105) and `floorSkyTrace` from #434 (+119), both controls the backend accepts and the schema test requires. Accepted by the lead.
 - goal:agent-scene: accepted by the lead for #462: sunBounce is an agent-facing control An asked for (stronger, weaker or off bounced sun light in closed rooms), so the gain is functional (+54 bytes gzip on top of #434, 103529 to 103583).
+- entry:floor-sky-visibility: +1936 bytes gzip against #434 (15386 to 17322), the sun bounce code, which loads with the floor sky trace in the same lazy chunk; part of the +1997 the lead accepted for agent-scene+lazy.
