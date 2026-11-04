@@ -184,7 +184,7 @@ function areaFacing(part, viewpoint) {
   return area
 }
 
-function partDiffuseAlbedo(material) {
+export function partDiffuseAlbedo(material) {
   const known = groundAlbedo(material)
   if (known) {
     return known

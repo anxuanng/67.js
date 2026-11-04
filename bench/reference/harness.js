@@ -18,6 +18,7 @@ import { applyLightLinks } from '/src/light-linking.js';
 import { applyWaterReflection, attachWaterReflection } from '/src/water-reflection.js';
 import { attachScreenSpaceWater } from './ssr-water.js';
 import { groundBounceEnvironment } from '/src/ground-bounce.js';
+import { withSunBounce } from '/src/sun-bounce.js';
 import { applyDefaultFloorSky, applyFloorSkyVisibility } from '/src/floor-sky-visibility.js';
 import { installReversedDepth } from '/src/reversed-depth.js';
 
@@ -27,7 +28,10 @@ const GROUND_BOUNCE = new URLSearchParams(location.search).get('groundBounce') !
 
 // The scene's environment with the light its floor bounces, when it has a plain one and nothing else gives that light (a bake, a closed room).
 function withDerivedGroundBounce(scene, drawnParts) {
-  return GROUND_BOUNCE ? groundBounceEnvironment(drawnParts, scene.environment) : scene.environment;
+  const lit = GROUND_BOUNCE ? groundBounceEnvironment(drawnParts, scene.environment) : scene.environment;
+  // ?sunBounce=<n> sets environment.sunBounce on every scene (default 1, 0 draws without the sunlit patches' lights).
+  const sunBounce = new URLSearchParams(location.search).get('sunBounce');
+  return withSunBounce(drawnParts, sunBounce === null ? lit : { ...lit, sunBounce: Number(sunBounce) });
 }
 
 // ?reversedDepth=on draws with reversed-Z (issue #310); the scenes draw with the standard depth buffer otherwise.
