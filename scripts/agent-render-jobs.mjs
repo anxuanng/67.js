@@ -172,11 +172,12 @@ function timelineStartFrom(input, recipe) {
 
 function audioFrom(audio, kind) {
   if (kind !== 'video') throw new TypeError('audio needs kind video.');
-  objectKeys(audio, ['file', 'offset'], 'audio');
+  objectKeys(audio, ['file', 'offset', 'track'], 'audio');
+  if (audio.track !== undefined && !['aac', 'pcm'].includes(audio.track)) throw new TypeError('audio.track must be aac or pcm.');
   if (typeof audio.file !== 'string' || !AUDIO_FILE_PATTERN.test(audio.file)) {
     throw new TypeError('audio.file must be a file name in the configured audio folder ending in .wav, .mp3, .ogg or .flac.');
   }
-  return { file: audio.file, offset: boundedNumber(audio.offset ?? 0, 0, 3600, 'audio offset') };
+  return { file: audio.file, offset: boundedNumber(audio.offset ?? 0, 0, 3600, 'audio offset'), track: audio.track ?? 'aac' };
 }
 
 function passesFrom(passes, kind) {

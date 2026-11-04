@@ -2,7 +2,7 @@
 import { Renderer67 } from '/src/renderer.js';
 import { REFERENCE_SCENES, KHRONOS_SCENES, KTX2_SCENES, loadBarnLampVariant, CLOTH_SCENES } from './scenes.js';
 import { GRAND_SCENES } from './grand-scenes.js';
-import { LOOK_OPTIONS } from './look-options.js';
+import { LOOK_OPTIONS, GRAND_PICKS } from './look-options.js';
 import { skinnedGeometry } from '/src/path-tracer-scene.js';
 import { boxProjectedGeometry } from '/src/export-box-uv.js';
 import '/src/material-layer-shaders.js';
@@ -47,7 +47,7 @@ function withFloorSky(id, parts) {
 
 // ?set=khronos draws the Khronos sample assets (npm run reference -- --khronos) and ?set=cloth the cloth scenes
 // (npm run reference -- --cloth) instead of the fixed scenes.
-const SCENE_SETS = { khronos: KHRONOS_SCENES, ktx2: KTX2_SCENES, cloth: CLOTH_SCENES, grand: GRAND_SCENES, look: LOOK_OPTIONS };
+const SCENE_SETS = { khronos: KHRONOS_SCENES, ktx2: KTX2_SCENES, cloth: CLOTH_SCENES, grand: { ...GRAND_SCENES, ...GRAND_PICKS }, look: LOOK_OPTIONS };
 const SCENES = SCENE_SETS[new URLSearchParams(location.search).get('set')] ?? REFERENCE_SCENES;
 
 function encodeBytes(typedArray) {
@@ -195,7 +195,7 @@ async function probeScene(scene, id, drawnParts, mode) {
   return { parts: placed.parts, report: placed.report, seconds: (performance.now() - started) / 1000 };
 }
 
-async function renderReferenceScene(id, { describe, ambientOcclusion = 0, ambientOcclusionRadius = 0.5, bake = null, cascades = 0, backgroundOnly = false, probes = false, ambient = null, fill = null, key = null, viewTransform = null }) {
+async function renderReferenceScene(id, { describe, ambientOcclusion = 0, ambientOcclusionRadius = 0.5, bake = null, cascades = 0, backgroundOnly = false, probes = false, ambient = null, fill = null, key = null, viewTransform = null, bloom = null }) {
   const scene = await SCENES[id]();
   // A view transform (agx, neutral) replaces the ACES fit in the shaders, as environment.viewTransform does in a recipe.
   if (viewTransform) scene.environment = { ...scene.environment, viewTransform };
@@ -211,7 +211,7 @@ async function renderReferenceScene(id, { describe, ambientOcclusion = 0, ambien
   const renderer = createSceneRenderer(backgroundOnly ? [] : withFloorSky(id, probed ? probed.parts : baked ? baked.parts : scene.parts), scene, cascades);
   renderer.resize();
   // Blender draws a still scene. The renderer's default wind (0.3) would move the leaf cards by up to four pixels at time 0.
-  const frame = { ...scene.camera, environment: scene.environment, time: 0, wind: 0, exposure: 1, effects: { ambientOcclusion, ambientOcclusionRadius } };
+  const frame = { ...scene.camera, environment: scene.environment, time: 0, wind: 0, exposure: 1, effects: { ambientOcclusion, ambientOcclusionRadius, ...(bloom ? { bloom } : {}) } };
   renderer.render(frame);
   renderer.render(frame);
   const debug = renderer.context.getExtension('WEBGL_debug_renderer_info');
@@ -223,6 +223,7 @@ async function renderReferenceScene(id, { describe, ambientOcclusion = 0, ambien
     bake: baked ? { seconds: baked.seconds, report: baked.report } : null,
     probes: probed ? { seconds: probed.seconds, report: probed.report } : null,
     floorSky: floorSkyReports[id] ?? null,
+    bounce: scene.environment.map?.bounce ?? null,
   };
   renderer.dispose();
   return result;

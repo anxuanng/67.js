@@ -1556,6 +1556,22 @@ Nothing is kept: `h^2.5` is 0.0002 better, inside the spread between runs, and p
 
 Terrain shape: the rim is rounded massifs (erosion noise) with a little ridged noise for crags, in place of the reference's needle ridges. Towers have a lit podium, one to three setbacks and a crown (plant, stepped or spire), and a facade graph gives panes in a wall with lit panes in drifts instead of full-width stripes. No downloaded textures or models are used: the terrain chunks and tower boxes carry no UV sets in the export, so a scanned texture would not reach Blender the same way.
 
+## The three picked looks are the grand scenes (2026-11-04, issue #168)
+
+An picked `mountain-valley:dawn`, `temple-hall:rose` and `megacity-dusk:blue-hour`. `GRAND_PICKS` in `look-options.js` adds them to the grand set (`?set=grand`), so `node bench/reference/run.mjs --grand --scene mountain-valley-dawn,temple-hall-rose,megacity-dusk-blue-hour` draws them and Blender renders them; the option names still work. Their entries sit in `grand.json` beside the letter variants, which are unchanged, and the old plain scenes are replaced by these picks (no old against new comparison is kept). `final-sheet.py` writes the contact sheet of the 67js and Cycles frames.
+
+Facade fix: the lit windows of `facadeMaterial` came from a voronoi, whose cells cut the 6 by 10 window grid into shards. A noise read at the centre of each window cell now lights a window as a whole, in drifts, and both noises use `"tile": false` so `render-blender.py` builds the same nodes.
+
+FLIP mean error, lower is better (measured, one run, Blender 5.2.2, 960 by 540):
+
+| Scene | 67js GPU vs Cycles | 67js GPU vs EEVEE | EEVEE vs Cycles |
+| --- | --- | --- | --- |
+| `mountain-valley-dawn` | 0.2008 | 0.3720 | 0.3039 |
+| `temple-hall-rose` | 0.5652 | 0.5727 | 0.8878 |
+| `megacity-dusk-blue-hour` | 0.1128 | 0.1081 | 0.0688 |
+
+Known gaps shown on purpose, not hidden by a per-scene setting: the dark band of mid-distance trees in the dawn frame is a 67js defect (the lower tree levels shade near black under sky light and a low sun, issue #394); the temple hall is lit flat in 67js while Cycles leaves it dark, the closed-room-without-bake gap (an open roof is not a bake).
+
 ## The reference harness drew `foliage` in a breeze (2026-11-03, part of issue #191)
 
 Found by comparing the leaf cards of the two sides. No engine code changed and no Blender render changed: the Cycles and EEVEE arrays are the ones of the earlier runs.
@@ -1603,19 +1619,21 @@ Fix: `harness.js` renders the reference frame with `wind: 0`. Re-run with 67js o
 
 `installReversedDepth(renderer, mode)` (`src/reversed-depth.js`, an addon: the renderer core carries none of it, so a scene that does not install it pays nothing in size) makes the colour pass draw with reversed-Z where `EXT_clip_control` exists. `mode` is `true` (on at once), `false` (off) or `'auto'`, which switches it on, once, at the start of a frame, when that frame's far / near passes 10,000, or when `renderer.requestReversedDepth()` is called; `installDepthPrecision(renderer, { reversedDepth })` installs it together with the coplanar warning and calls that request when the coplanar check finds a flush pair more than 40 units from the eye (a 24-bit buffer with a 0.1 near plane cannot separate a 1 mm gap much beyond that). Switching on respecifies the two depth stores as float and adds one stage that turns the resolved depth back to standard depth for the passes that read it. What it does: clip depth 0 to 1 with the near plane at 1, depth cleared to 0, `GREATER`, and a `DEPTH_COMPONENT32F` multisample buffer and scene depth texture. Everything else keeps the standard path: shadow maps (the sun, cascades and the local atlas), the sky and environment backgrounds and the post passes switch clip control back before they draw, so their projections do not change. The reversed projection is the standard one with its third row replaced by `(w - z) / 2` (`src/reversed-depth.js`), used only by the draw (`renderer.rasterProjection`, `rasterViewProjection`); culling, fog, inverse matrices and the CPU rasterizer keep the standard matrices. The passes that read the depth texture (ambient occlusion, depth of field and the other camera effects, volume fog, line art outlines and lines) are unchanged: a stage right after the resolve copies the depth and writes `1 - depth` back with `gl_FragDepth`, which is exactly the standard 0 to 1 value. The water mirror, render passes (their depth pass is eye distance, not buffer depth), liquid and foam, blended parts and Gaussian splats run inside the reversed window. A decal's polygon offset flips sign with it. `installReversedDepth(renderer, false)`, benchmark mode and a browser without the extension keep the old path (`renderer.reversedDepth` and `renderer.capabilities.reversedDepth` say which one is in use).
 
-Measured by `node bench/reference/depth-precision.mjs [gpu|cpu]` (scene in `depth-precision.js`): two 2.2-times-distance-wide planes at 1, 50 and 500 m, the near one `gap` closer (0, 0.1 and 1 mm), seen at about 30 degrees from their normal with the default near 0.1 and far 600, 8 camera positions about 1 to 10 cm apart per case. The number is the share of the red or blue pixels where the far (blue) plane wins, mean of the 8; 0 is right. Before is the renderer as it is, after is `installReversedDepth(renderer, true)`, same build. GPU is the RTX 3060 through Chrome (ANGLE), where the extension is present; the run was made without the GPU queue lock because it was busy and takes seconds, and is to be repeated through `gpu-lock.sh`.
+Measured by `node bench/reference/depth-precision.mjs [gpu|cpu]` (scene in `depth-precision.js`): two 2.2-times-distance-wide planes at 1, 50 and 500 m, the near one `gap` closer (0, 0.1 and 1 mm), seen at about 30 degrees from their normal with the default near 0.1 and far 600, 8 camera positions about 1 to 10 cm apart per case. The number is the share of the red or blue pixels where the far (blue) plane wins, mean of the 8; 0 is right. Before is the renderer as it is, "reversed, float" is `installReversedDepth(renderer, true)` without the camera-relative transform below (the first version of the addon), "camera-relative" is the addon as it is now, same build. GPU is the RTX 3060 through Chrome (ANGLE), where the extension is present; the camera-relative column was run through `gpu-lock.sh`.
 
-| Distance | Gap | Before (24-bit) | After (reversed, float) |
-| --- | --- | --- | --- |
-| 1 m | 0, 0.1, 1 mm | 0, 0, 0 | 0, 0, 0 |
-| 50 m | 0 mm | 0 | 0 |
-| 50 m | 0.1 mm | 0.150 | 0.009 |
-| 50 m | 1 mm | 0.079 | 0.000 |
-| 500 m | 0 mm | 0 | 0 |
-| 500 m | 0.1 mm | 0.190 | 0.134 |
-| 500 m | 1 mm | 0.188 | 0.015 |
+| Distance | Gap | Before (24-bit) | Reversed, float | Reversed, camera-relative |
+| --- | --- | --- | --- | --- |
+| 1 m | 0, 0.1, 1 mm | 0, 0, 0 | 0, 0, 0 | 0, 0, 0 |
+| 50 m | 0 mm | 0 | 0 | 0 |
+| 50 m | 0.1 mm | 0.150 | 0.009 | 0.009 |
+| 50 m | 1 mm | 0.079 | 0.000 | 0.000 |
+| 500 m | 0 mm | 0 | 0 | 0 |
+| 500 m | 0.1 mm | 0.190 | 0.134 | 0.069 |
+| 500 m | 1 mm | 0.188 | 0.015 | 0.014 |
 
-The gap-0 pair is two identical boxes, so every pixel ties and the first one drawn keeps it; it never flickers, and a coplanar pair of different size is what `decal` and `resolveCoplanar` are for. The wrong share falls to 1 percent or less at 50 m (0.1 and 1 mm) and at 500 m with a 1 mm gap, but not to zero: at 500 m the 0.1 mm case is still wrong on 13 percent of pixels, because a Float32 world position has a step of 0.03 mm there and the vertex transform adds more, which no depth buffer format removes. The next step, not done here, is a camera-relative vertex transform (the view translation applied to the instance matrix in double precision before the projection). SwiftShader also has the extension (the same page ran there). Its numbers are noisier and are not a precision measure: before 0.20 and 0.10 (50 m, 0.1 and 1 mm), 0.10 and 0.41 (500 m); after 0, 0.16, 0 and 0, with whole frames wrong in some jitters at 50 m and 1 mm. Both sets are 8 frames per case and move with the camera positions.
+The gap-0 pair is two identical boxes, so every pixel ties and the first one drawn keeps it; it never flickers, and a coplanar pair of different size is what `decal` and `resolveCoplanar` are for. The wrong share falls to 1 percent or less at 50 m (0.1 and 1 mm) and at 500 m with a 1 mm gap, but not to zero: at 500 m the 0.1 mm case was wrong on 13 percent of pixels with reversed-Z alone.
+
+**Camera-relative transform (2026-11-04, issue #310).** The vertex shader multiplied `viewProjection` by the world position, a sum of terms as large as the distance to the eye, so the view translation and the position cancelled in float32. When the addon switches on, `installReversedDepth` compiles the main vertex shader again through `shaderTransforms` (`src/shader-registry.js`) with `gl_Position = viewProjection * vec4(world.xyz - cameraOffset.xyz, 1.0 - cameraOffset.w) + cameraShift`: the eye is subtracted first, only the matrix's linear part multiplies it (w = 0), and the projection's own translation (`cameraShift`, its fourth column) is added. The 4 x 4 matrix stays whole, because the impostor cards and the water refraction read the eye or a world position through it; lighting, fog and shadows keep the absolute `worldPosition`; both uniforms are zero outside the reversed window, where the line is the old product. The renderer core is unchanged, so a scene without the addon draws the same bytes. The 500 m, 0.1 mm pair falls from 0.134 to 0.069 (an earlier trial that baked the camera offset into the planes' matrices in double precision, with the stock shader, gave the same 0.069, so the transform removes what it can); every other case is unchanged. What is left is the float32 step of the planes' own vertices: the matrices are Float32Array and the vertices sit 500 to 1000 m from the box centre, so each is rounded to 0.03 to 0.06 mm, a third to a half of the 0.1 mm gap, and no vertex transform removes that without subdividing the geometry or keeping a double-precision scene. SwiftShader has the extension too (the same page ran there), but this machine's SwiftShader build draws the standard path almost exactly (before 0 to 0.001 in all nine cases), so it is not a precision measure: after is 0 except 0.157 at 50 m with a 1 mm gap, where whole frames are wrong in some jitters, the same number on the base branch before this change.
 
 Pictures: `glass`, `brick-flat`, `outdoor-hdri` and `mountain-valley` drawn by SwiftShader with `render-gpu.mjs --cpu` (standard depth, then reversed through the installed addon), with and without `--reversed-depth`: the first three are byte for byte the same; `mountain-valley` differs on 0.055 percent of its pixels by more than 2 of 255 (largest step 31), the edges of far trees where the depth test breaks a tie differently. With `--ambient-occlusion 1` (which reads the depth texture) `brick-flat` is identical and `mountain-valley` differs on 0.13 percent, largest step 28. The GPU renders of the same four scenes are queued behind a path-tracer job and are not in these numbers.
 
@@ -1676,3 +1694,42 @@ Blended water (a `water` part with opacity below one) now draws its own backgrou
 The dark band at the foot of a shadow in the first preview was not a doubled shadow: the bed point takes its sun visibility once and the surface lift applies only to water fragments. Along the shadow the bed is even (green channel 0.178 to 0.173 at 1 m, 0.157 to 0.152 at 4 m, seen from above), and a close render shows no band. The band was the shaded side of the submerged post, which got darker with depth and had no scattered light, so it joined the shadow. The scattered light fixes it.
 
 The new preview uses Poly Haven CC0 assets (boulder_01, rock_07, modular_wooden_pier and the gravel_ground_01 material) read from `out/assets`, which is ignored by Git.
+
+## The bump edge of a graph wall: normal map resolution (2026-11-04, part of issue #50, RTX 3060 960 x 540)
+
+Main reproduced the stored rows first: `brick-graph` 0.0734, `brick-flat` 0.0556 against Cycles, excess 0.0178 against EEVEE's 0.0120 (EEVEE against Cycles 0.1249 and 0.1129).
+
+Node level, Blender 5.2.2 headless against 67js, on the unit square of the brick wall (a 6 by 4 plane, Bump Distance 0.15, strength 1):
+
+- Height: the translated Math, Map Range and Wave nodes baked to a float array by Cycles (EMIT, 2048 x 2048) against the graph's `height` at the same pixel centres: max difference 0.00029, mean 0.000023. The brick factor and the joint profile are the same, so the Brick Texture candidates (mortar size, smoothing, offset) are ruled out; the graph does not use Blender's Brick node.
+- Bump: Cycles bake of the NORMAL pass (tangent space, Diffuse BSDF; with a Principled BSDF the baked normal is the average of the closure normals and the specular one is clamped, so it is not the bump normal) at 2048 x 2048. Its slope `-n.xy / n.z`, divided by Distance over the world size of each UV axis, equals the analytic derivative of the height to float precision (peak 299.7 against 296.0 per UV unit across a course joint, the difference being the analytic gradient's own 2048 grid). Blender differentiates the height at each pixel, so a joint edge about 2.6 texels wide at 512 loses nothing.
+- 67js bakes `normalMapFromHeightFunction` at the colour resolution (512), the slope read half a texel either side (the step is right). Sampled bilinearly at the 2048 grid and compared with Blender's normal (the 67js slope is `bump / 32` per UV unit, Blender's `0.15 / L`, so the scale differs by 1.25 along U and 0.83 along V and is left in both rows): mean angle 3.51 degrees, mean Lambert difference for the sun 0.0340. At 1024 texels: 2.14 degrees, 0.0186. At 2048: 1.36 degrees, 0.0097. The cause is the texel size: bilinear filtering blends the unit normals of two texels, and a joint edge is a few texels wide, so the tilt of its middle pixels reads weaker than the analytic one.
+
+Whole frame, FLIP against the stored Cycles array, `brick-graph` only (every variant rendered in one session, `brick-flat` is 0.0556 throughout):
+
+| Normal map | Texels | Mips | `brick-graph` | Excess over `brick-flat` |
+| --- | --- | --- | --- | --- |
+| Colour resolution (before) | 512 | yes | 0.0734 | 0.0178 |
+| Twice (kept) | 1024 | yes | 0.0714 | 0.0158 |
+| Four times | 2048 | yes | 0.0705 | 0.0149 |
+| Twice, `LINEAR` only | 1024 | no | 0.0694 | 0.0138 |
+| Four times, `LINEAR` only | 2048 | no | 0.0690 | 0.0134 |
+| Colour resolution, `LINEAR` only | 512 | no | 0.0728 | 0.0172 |
+
+Kept: twice the colour resolution, capped at 1024 texels, with the default trilinear filter. The map without mips scores 0.002 better, but a normal map with no mips shimmers where the wall is far away, and the shader samples it once per pixel, so it was not kept. Four times costs 16.8 MB for a 512 pattern. The bake reads the height four times per texel; the brick wall's height costs 20 work units, so the finer map is 84 million units (0.35 s in Node, 81 ms before) against a new allowance of four times the graph limit, and a graph whose height is too costly keeps the colour resolution.
+
+Tried and not kept (all at 2048 texels with mips unless stated; against Cycles):
+
+| Variant | `brick-graph` |
+| --- | --- |
+| Blender's world scale (0.8 along U, 1.2 along V) | 0.0732 (from 0.0705) |
+| U only 0.8 / V only 1.2 | 0.0728 / 0.0709 |
+| U 1.25 / V 0.8 (the opposite) | 0.0697 / 0.0700 |
+| Map shifted by a quarter or half a texel along V or U | 0.0704 to 0.0733 (no offset: 0.0705) |
+| Sky lobe moved towards the geometric normal (blend 0.5 / 1 / 2, 1024 texels) | 0.0705 / 0.0714 / 0.0725 (no blend 0.0714) |
+
+The world scale is the exact match to Blender and scores worse, and there is no offset between the two renders (the wall's top and bottom edges sit within 0.1 pixel). So what remains is not the normal.
+
+Where the rest is, measured from the 2048 texel render by the sign of the bump slope at each pixel centre (display luminance, 67js minus Cycles): ledges that tilt up towards the sun are +0.046 and +0.057 too bright, ledges that tilt down -0.078 (gentle) and -0.022 (steep) too dark, and the vertical joints are +0.03 too bright on both sides. EEVEE is 0.27 off Cycles on every wall pixel, flat or not, because its flat wall is darker; 67js is 0.057 on the flat wall and 0.146 to 0.196 on the pixels at or next to a bump edge (0.0705 render; 0.0576 for the same pixels of `brick-flat`), which is where its excess sits. Which side is "up-tilted" is read from the sign of the slope (inferred). Cause (inferred, not isolated): Cycles removes the part of the lobe that falls below the geometric plane, which for an up-tilted ledge is the bright upper sky and for a down-tilted one the dark lower half, while the shader scales the whole sky term by one share. Moving the sky lookup towards the geometric normal helped by 0.0009 at best (table) and moved the render away from EEVEE, so it was not kept; it would also add to `scene:lit-box`.
+
+After the change: `brick-graph` 0.0714 on the GPU (CPU render not redone), `brick-flat` 0.0556, excess 0.0158 against EEVEE's 0.0120. The first Done-when box of #50 stays open by 0.0038. Only `brick-graph` reads a graph with a height output among the suite's scenes (no other scene has a normal map from a graph), so no other scene's pixels changed and the full suite was not run.
