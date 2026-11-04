@@ -229,7 +229,7 @@ function draw(record, time = 0, camera = record.scene.camera, frameOptions = {})
     record.shadowKey = shadowKey;
   }
   record.renderer.world = environment.world;
-  record.renderer.userPasses?.set(record.scene.postPasses);
+  record.renderer.userPasses?.set(record.scene.postPasses ?? []);
   applyRecipeWindHeading(record.renderer, environment);
   record.renderer.render({ ...camera, environment: litEnvironment(record.scene.parts, environment, Boolean(record.renderer.groundPart)), effects, exposure: effects.exposure, time, lines: environment.lines, ...windFrame(environment), ...frameOptions });
   const error = record.renderer.context.getError();
