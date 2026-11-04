@@ -1,6 +1,6 @@
 // node scripts/merge-tree-level-gains.mjs <gains file> <colour cap> <sky cap> <fit json>...
 // Writes the geometric mean, over the fit files of `measure-tree-level-luminance.mjs --fit`, of each species and level gain into the
-// gains file (src/tree-level-gains.js), capped, and keeps its header. A cap of 99 leaves the gains as fitted (issue #432).
+// gains file (src/tree-level-gains.js), capped, and keeps its header. The release caps are 1.6 and 2: larger gains made mountain-valley score worse against Cycles (issue #432).
 import { readFileSync, writeFileSync } from 'node:fs';
 const [target, colorCapText, skyCapText, ...files] = process.argv.slice(2);
 const colorCap = Number(colorCapText);
