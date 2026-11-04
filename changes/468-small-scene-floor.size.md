@@ -4,3 +4,5 @@
 - scene:gltf-box+lazy: the same core code, +179 B.
 - scene:agent-scene: the same core code, +172 B.
 - scene:agent-scene+lazy: the same core code, +174 B.
+- goal:lit-box: lead approved: small scenes (under 1 m) no longer sink under the studio floor, a visible bug fix; scenes 1 m or taller are unchanged.
+- goal:agent-scene: same reason, lead approved.
