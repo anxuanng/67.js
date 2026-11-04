@@ -317,8 +317,8 @@ function bindWater(renderer, mapState) {
 }
 
 const previousBind = layerTextureSupport.bind;
-layerTextureSupport.bind = (renderer, mapState, layerState) => {
-  previousBind?.(renderer, mapState, layerState);
+layerTextureSupport.bind = (renderer, mapState, layerState, batch) => {
+  previousBind?.(renderer, mapState, layerState, batch);
   bindWater(renderer, mapState);
 };
 

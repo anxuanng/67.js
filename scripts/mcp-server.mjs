@@ -122,6 +122,7 @@ const materialFields = {
   ...waterFields,
   ...materialLayerFields,
   subsurface: subsurface.optional(),
+  snippet: z.record(z.string(), z.unknown()).nullable().optional().describe('GLSL fragment hook; scene_capabilities materialSnippet.'),
   pattern: materialPattern.optional(),
   map: z.strictObject({ sequence: z.strictObject({
     frames: z.array(z.string().regex(/^[a-f0-9]{64}$/)).min(2).max(64),

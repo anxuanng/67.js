@@ -150,11 +150,18 @@ function syncSequenceTextures(record) {
 }
 
 function sceneIsTextured(scene) {
-  return hasPatternTextures(scene.parts) || (scene.sequenceTextures?.().length ?? 0) > 0;
+  // A material snippet adds code to the colour and shadow programs, which only a new renderer compiles.
+  return hasPatternTextures(scene.parts) || (scene.sequenceTextures?.().length ?? 0) > 0 || scene.parts.some(part => part.material.snippet);
 }
 
 // replaceParts streams only untextured parts, so a topology change around pattern textures takes a new renderer.
+// A material snippet is compiled alone first, so a compile error names the snippet's own lines and the running renderer stays.
+function probeSnippets(scene) {
+  if (agentSceneModuleLoaded('materialSnippet')) agentSceneModule('materialSnippet').probeMaterialSnippets(scene.parts);
+}
+
 function rebuildRenderer(record) {
+  probeSnippets(record.scene);
   record.renderer.dispose();
   record.renderer = null;
   resetCanvas();
@@ -306,6 +313,7 @@ function cascadesFor(scene) {
 }
 
 function initializeRenderer(scene, { memoryBudgetMiB, backend }) {
+  probeSnippets(scene);
   const placement = agentGroundPlacement(scene.parts, scene.environment);
   const renderer = installDepthPrecision(installRenderPasses(installCameraEffects(new Renderer67(canvas, scene.parts, {
     ground: placement ? createAgentGround(placement) : false,
