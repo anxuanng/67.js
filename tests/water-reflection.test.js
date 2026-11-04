@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { box, sphere } from '../src/geometry.js';
-import { applyWaterReflection, attachWaterReflection, findWaterSurface, waterMirrorLevel, waterMirrorWeight, WATER_BLUR_LIMIT_ROUGHNESS, WATER_MAXIMUM_BLUR_LEVEL } from '../src/water-reflection.js';
+import { applyWaterReflection, attachWaterReflection, canReuseMirrorImage, findWaterSurface, waterMirrorLevel, waterMirrorWeight, WATER_BLUR_LIMIT_ROUGHNESS, WATER_MAXIMUM_BLUR_LEVEL, WATER_MIRROR_LOD_SCALE, WATER_MIRROR_MINIMUM_PIXEL_RADIUS } from '../src/water-reflection.js';
 import { createFragmentShader } from '../src/shaders.js';
 import { Renderer67 } from '../src/renderer.js';
 
@@ -247,6 +247,35 @@ test('the shader samples a mip level taken from roughness', () => {
   const source = createFragmentShader(['studioLighting', 'waterReflection']);
   assert.match(source, /float mirrorLevel = 5\.0 \* clamp\(\(roughness - 0\.10\) \/ 0\.40, 0\.0, 1\.0\)/);
   assert.match(source, /textureLod\(waterReflection,/);
+});
+
+test('canReuseMirrorImage needs a drawn picture, the same frame and parts, or an updateEvery window that is still open', () => {
+  const drawnFrame = { eye: [0, 20, 100], target: [0, 0, 0], time: 1 };
+  const base = { ready: true, drawnFrame, partsRevision: 3, drawnRevision: 3, framesSinceDraw: 0, updateEvery: 1 };
+  assert.equal(canReuseMirrorImage({ ...base, ready: false }, drawnFrame), false);
+  assert.equal(canReuseMirrorImage({ ...base, drawnFrame: null }, drawnFrame), false);
+  assert.equal(canReuseMirrorImage(base, { ...drawnFrame, eye: [0, 20, 100] }), true);
+  assert.equal(canReuseMirrorImage(base, { ...drawnFrame, time: 2 }), false);
+  assert.equal(canReuseMirrorImage({ ...base, partsRevision: 4 }, drawnFrame), false);
+  assert.equal(canReuseMirrorImage({ ...base, updateEvery: 2 }, { ...drawnFrame, time: 2 }), true);
+  assert.equal(canReuseMirrorImage({ ...base, updateEvery: 2, framesSinceDraw: 1 }, { ...drawnFrame, time: 2 }), false);
+});
+
+test('only the mirror draw carries the mirror culling: parts under the plane, coarser levels and small far parts', () => {
+  const context = new Proxy({}, { get: (_, name) => (name === 'checkFramebufferStatus' ? () => 1 : name === 'FRAMEBUFFER_COMPLETE' ? 1 : typeof name === 'string' && name === name.toUpperCase() ? 0 : () => ({})) });
+  const cullingSeen = [];
+  const renderer = { context, canvas: { width: 960, height: 540 }, hdr: false, viewProjection: new Float32Array(16), mirrorCulling: null, render: frame => cullingSeen.push({ mirror: Boolean(frame.reflectionTarget), culling: renderer.mirrorCulling }), dispose() {} };
+  const surface = findWaterSurface(lakeScene());
+  const detach = attachWaterReflection(renderer, surface);
+  renderer.render({ eye: [0, 20, 100], target: [0, 0, 0] });
+  assert.equal(cullingSeen.length, 2);
+  assert.equal(cullingSeen[0].mirror, true);
+  assert.ok(cullingSeen[0].culling.belowHeight > surface.height);
+  assert.equal(cullingSeen[0].culling.lodScale, WATER_MIRROR_LOD_SCALE);
+  assert.equal(cullingSeen[0].culling.minimumPixelRadius, WATER_MIRROR_MINIMUM_PIXEL_RADIUS);
+  assert.equal(cullingSeen[1].mirror, false);
+  assert.equal(cullingSeen[1].culling, null);
+  detach();
 });
 
 test('worldBounds equals the per-axis formula it replaced, under a rotated and moved matrix', async () => {

@@ -36,7 +36,7 @@ export const WATER_REFLECTION_SCALE = 0.75;
 /** The mirror draw accepts this many times the level error that the lit frame accepts (`lodPixelError`). */
 export const WATER_MIRROR_LOD_SCALE = 3;
 /** The mirror draw skips a part whose bounding sphere covers a smaller radius than this on screen, in pixels. */
-export const WATER_MIRROR_MINIMUM_PIXEL_RADIUS = 1.5;
+export const WATER_MIRROR_MINIMUM_PIXEL_RADIUS = 5;
 // How the picture is treated before it reaches the surface (see afterEmission). Fresnel starts at the reflectance of water.
 const FRESNEL_BASE = '0.02';
 const REFLECTION_GAIN = '1.0';
