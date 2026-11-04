@@ -122,8 +122,13 @@ void main() {
 }
 
 // Built when a renderer starts, so the crowd addon can install its skinning code first.
+// A feature may rewrite the shadow shaders (the material snippet hook discards there too).
+export function withDepthCode(source, features) {
+  return [...features].reduce((text, feature) => registeredFeatureCode.get(feature)?.depth?.(text) ?? text, source);
+}
+
 export function createDepthVertexShader(features = []) {
-  return `#version 300 es
+  return withDepthCode(`#version 300 es
 ${vertexDefinitions(new Set(features))}
 precision highp float;
 layout(location=0) in vec3 position;
@@ -149,7 +154,7 @@ void main() {
   world.xyz += windOffset(position, world.xyz, uv, instanceSurface.w, time, wind);
   textureUV = uv;
   gl_Position = lightProjection * world;
-}`;
+}`, features);
 }
 
 export const depthVertexShader = createDepthVertexShader();
@@ -543,7 +548,7 @@ void main() {
     color *= sampledBase.rgb;
     textureAlpha = sampledBase.a;
   }
-  float alpha = surfaceAlpha(textureAlpha);
+${featureCode("surfaceHook")}  float alpha = surfaceAlpha(textureAlpha);
   vec3 emission = emissionColor * surface.z;
   if (USES_EMISSIVE_MAP) emission *= (BOX_MAPPED ? sampleBox(emissiveMap) : texture(emissiveMap, mapUV(hasEmissiveMap))).rgb;
   if (USES_RENDER_PASS) {
