@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Renderer67 } from '../src/renderer.js';
 import { RenderTargetLedger } from '../src/render-target-ledger.js';
+import { CascadedShadows } from '../src/cascaded-shadows.js';
 
 const BYTES_PER_MEGABYTE = 1048576;
 
@@ -89,4 +90,32 @@ test('the multisampled depth uses 16 bits unless a depth texture needs the same 
   const textureDepth = withTexture.memoryReport().targets.find(target => target.name === 'multisampleDepth');
   assert.equal(textureDepth.format, 'DEPTH_COMPONENT24');
   assert.equal(textureDepth.bytes, 960 * 540 * 4 * 4);
+});
+
+test('the single shadow map follows the casters: it grows when casters arrive and shrinks when they leave', () => {
+  const batches = [{ floor: true, castShadow: true }];
+  const { renderer, sizes } = shadowRenderer(batches);
+  renderer.createShadowMap();
+  batches.push({ castShadow: true });
+  renderer.createShadowMap();
+  batches.pop();
+  renderer.createShadowMap();
+  assert.deepEqual(sizes.map(size => size[0]), [1, 2048, 1]);
+  assert.equal(renderer.memoryReport().totalBytes, 4);
+});
+
+test('with cascades the single shadow map stays one texel unless volume fog or subsurface reads it', () => {
+  const cascaded = shadowRenderer([{ castShadow: true }]);
+  cascaded.renderer.shadowCascades = { replacesSingleMap: CascadedShadows.prototype.replacesSingleMap };
+  cascaded.renderer.shaderFeatures = new Set();
+  cascaded.renderer.createShadowMap();
+  assert.equal(cascaded.sizes[0][0], 1);
+  cascaded.renderer.volumeShadowWanted = true;
+  cascaded.renderer.createShadowMap();
+  assert.equal(cascaded.sizes[1][0], 2048);
+  const subsurface = shadowRenderer([{ castShadow: true }]);
+  subsurface.renderer.shadowCascades = { replacesSingleMap: CascadedShadows.prototype.replacesSingleMap };
+  subsurface.renderer.shaderFeatures = new Set(['subsurface']);
+  subsurface.renderer.createShadowMap();
+  assert.equal(subsurface.sizes[0][0], 2048);
 });
