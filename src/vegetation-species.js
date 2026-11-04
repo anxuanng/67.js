@@ -118,7 +118,7 @@ export const SPECIES = {
       texture: 'sprig', color: [54, 104, 40], foliageColor: [0.06, 0.2, 0.045], tint: [1, 1, 0.9],
       sitesPerMeter: 9, start: 0.1, upBias: 0.3,
       meshLength: 0.22, meshWidth: 0.14, meshPerSite: 3, meshSpread: 0.9, profile: OVATE_LEAF, droop: 0.25, fold: 0.12,
-      cardSize: [0.4, 0.42], cardsPerSite: 2, clumpScale: 0.35,
+      cardSize: [0.4, 0.42], cardsPerSite: 2, clumpScale: 0.5,
     },
   },
 };
