@@ -141,7 +141,9 @@ function mountainValleyDawn() {
     forestMix: { conifer: 1, birch: 0.12 },
     boulders: { innerRadius: 8, outerRadius: 70, count: 40, size: [0.5, 2.6], seed: 8, facing: -0.3 },
     treeExclusion: (x, z, eye) => Math.hypot(x - eye[0], z - eye[2]) < 70,
-    mist: { density: 0.0022, minimum: [-1600, -20, -1800], maximum: [1600, 38, 1200], color: [1, 0.84, 0.8], ambient: [0.02, 0.02, 0.03], anisotropy: 0.55, noiseAmount: 0, steps: 48, maxDistance: 2600 },
+    // The sun sits behind the massif, so this mist is lit by the sky, which Cycles does for any volume. Its ambient is about the
+    // sky's mean radiance; the 0.02 of the sunlit scenes left the veil dark and the far forest black.
+    mist: { density: 0.0022, minimum: [-1600, -20, -1800], maximum: [1600, 38, 1200], color: [1, 0.84, 0.8], ambient: [0.5, 0.47, 0.55], anisotropy: 0.55, noiseAmount: 0, steps: 48, maxDistance: 2600 },
   });
 }
 
