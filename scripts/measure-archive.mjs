@@ -4,7 +4,7 @@
 // Each run builds into its own staging package under build/ and packs that, so it never rewrites build/ or build/mcp while
 // another process (a live MCP test, a preview) reads them. build/ is ignored by git, so the MCP manifest still sees a clean tree.
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, copyFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, copyFileSync, readFileSync, rmSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
@@ -43,9 +43,18 @@ function copyPackageSources(npmCli, stagingRoot) {
   }
 }
 
+// The base measurement runs this script inside a throwaway checkout of the base branch, whose build-mcp.mjs may predate
+// --library-dir. Nothing else reads that checkout, so building in place there is safe and measures the same way.
+function measureInPlace(npmCli) {
+  run(['node_modules/vite/bin/vite.js', 'build', '--config', 'vite.lib.config.js']);
+  run(['scripts/build-mcp.mjs']);
+  return packedFiles(npmCli, '.').size;
+}
+
 export function measureArchiveBytes() {
   ensureRepository();
   const npmCli = process.env.npm_execpath ?? resolve(dirname(process.execPath), 'node_modules/npm/bin/npm-cli.js');
+  if (!readFileSync('scripts/build-mcp.mjs', 'utf8').includes('--library-dir')) return measureInPlace(npmCli);
   mkdirSync('build', { recursive: true });
   const stagingRoot = mkdtempSync(join('build', '.archive-'));
   try {
