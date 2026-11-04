@@ -127,7 +127,7 @@ test('invalid geometry and peak staging budgets reject before allocation and pre
   assert.throws(() => state.renderer.replaceParts([first, invalid]), /indices/);
   assert.equal(state.uploads.length, allocations);
   state.renderer.memoryBudgetMiB = 16;
-  assert.throws(() => state.renderer.replaceParts([first, part('new', sphere(24, 16))]), /staged/);
+  assert.throws(() => state.renderer.replaceParts([first, part('new', sphere(24, 16))]), /cannot hold geometry .* over memoryBudgetMiB 16\. Fix: pass [{] memoryBudgetMiB: 17 [}]/);
   assert.equal(state.renderer.batches[0], batch);
   assert.equal(state.uploads.length, allocations);
 });

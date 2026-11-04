@@ -713,22 +713,38 @@ async function prepareResources(document, data, dataBytes, options, limits, over
     imageSizes.push(validateImage(bytes, imageIndex, limits, ktx2Weight, overruns));
   }
   throwOverruns(overruns);
-  return { resourceBytes, textureScaling: planTextureScaling(document.images ?? [], imageSizes, limits.maxTexturePixels) };
+  return { resourceBytes, textureScaling: planTextureScaling(document.images ?? [], imageSizes, limits.maxTexturePixels, colorImageIndices(document)) };
+}
+
+/** Images that a material reads as base color or emission: the maps the eye sees most directly. */
+function colorImageIndices(document) {
+  const indices = new Set();
+  for (const material of document.materials ?? []) {
+    for (const reference of [material.pbrMetallicRoughness?.baseColorTexture, material.emissiveTexture]) {
+      const texture = reference && document.textures?.[reference.index];
+      if (texture) indices.add(textureSourceIndex(texture));
+    }
+  }
+  return indices;
 }
 
 /**
  * Fit the combined texture pixels into the budget by halving the largest images together, so equal maps stay equal.
+ * Base color and emission maps rank at a quarter of their pixels, so they keep twice the size of the normal,
+ * roughness and occlusion maps beside them.
  * KTX2 images cannot be resized before transcoding; they count toward the budget (compressed ones at their weight) and are never scaled.
  */
-function planTextureScaling(imageDefinitions, imageSizes, maxTexturePixels) {
+function planTextureScaling(imageDefinitions, imageSizes, maxTexturePixels, colorImages = new Set()) {
   const targets = imageSizes.map(({ width, height }) => ({ width, height }));
   const totalPixels = () => targets.reduce((sum, { width, height }, index) => sum + width * height * imageSizes[index].weight, 0);
   while (totalPixels() > maxTexturePixels) {
-    const scalable = targets.filter((target, index) => imageSizes[index].scalable && target.width * target.height > 1);
+    const rank = index => targets[index].width * targets[index].height * (colorImages.has(index) ? 0.25 : 1);
+    const scalable = targets.map((target, index) => index).filter(index => imageSizes[index].scalable && targets[index].width * targets[index].height > 1);
     if (!scalable.length) throw new Error('Texture images exceed maxTexturePixels and cannot be scaled down further.');
-    const largestPixels = Math.max(...scalable.map(target => target.width * target.height));
-    for (const target of scalable) {
-      if (target.width * target.height !== largestPixels) continue;
+    const largestRank = Math.max(...scalable.map(rank));
+    for (const index of scalable) {
+      const target = targets[index];
+      if (rank(index) !== largestRank) continue;
       target.width = Math.max(1, target.width >> 1);
       target.height = Math.max(1, target.height >> 1);
     }
@@ -1021,8 +1037,11 @@ export async function parseGltf(data, options = {}) {
   const dataBytes = typeof data === 'string' ? new TextEncoder().encode(data).byteLength : data.byteLength;
   const { resourceBytes, textureScaling } = await prepareResources(document, data, dataBytes, options, limits, overruns);
   if (textureScaling.scaledTextures.length) {
-    const names = textureScaling.scaledTextures.map(({ name, from, to }) => `${name} ${from.join('x')} to ${to.join('x')}`);
-    warnings.push(`Scaled ${names.length} texture image(s) to fit maxTexturePixels: ${names.join(', ')}.`);
+    // A large scene can scale hundreds of images; the warning names a few and asset.scaledTextures lists them all.
+    const names = textureScaling.scaledTextures.slice(0, 3).map(({ name, from, to }) => `${name} ${from.join('x')} to ${to.join('x')}`);
+    const more = textureScaling.scaledTextures.length - names.length;
+    const rest = more ? ` and ${more} more (see asset.scaledTextures)` : '';
+    warnings.push(`Scaled ${textureScaling.scaledTextures.length} texture image(s) to fit maxTexturePixels: ${names.join(', ')}${rest}.`);
   }
   let gltf;
   try {

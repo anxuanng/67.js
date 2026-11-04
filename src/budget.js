@@ -1,5 +1,14 @@
 const MEBIBYTE = 1024 * 1024;
 
+/**
+ * The error for a scene the memory budget cannot hold: the bytes it counted and the memoryBudgetMiB that fits them,
+ * so one failed call says what to pass.
+ */
+export function memoryBudgetError(geometry, textures, frame, memoryBudgetMiB) {
+  const mebibytes = bytes => (bytes / MEBIBYTE).toFixed(1);
+  return new RangeError(`Memory budget cannot hold geometry ${mebibytes(geometry)} MiB, textures ${mebibytes(textures)} MiB and frame ${mebibytes(frame)} MiB, over memoryBudgetMiB ${memoryBudgetMiB}. Fix: pass { memoryBudgetMiB: ${Math.ceil((geometry + textures + frame) / MEBIBYTE)} }.`);
+}
+
 export const RENDER_PRESETS = Object.freeze({
   preview: { width: 960, height: 540, samples: 2, fps: 24, memoryBudgetMiB: 256 },
   balanced: { width: 1280, height: 720, samples: 4, fps: 24, memoryBudgetMiB: 384 },
@@ -27,7 +36,15 @@ export function estimateFrameBytes(width, height, samples, shadowResolution = 20
   return frameBytes + bloomBytes + (depth ? width * height * 4 : 0) + shadowResolution ** 2 * 4;
 }
 
-export function planRenderSize({ width, height, pixelRatio = 1, samples = 4, memoryBudgetMiB = 256, geometryBytes = 0, textureBytes = 0, hdr = false, bloom = false, depth = false, shadowResolution = 2048, maximumSize = 8192 }) {
+/**
+ * Without memoryBudgetMiB the budget is sized to the scene: its geometry, textures and one full frame, at least 256 MiB
+ * and at most 1024 MiB on a device that reports 8 GiB of memory or more (512 MiB otherwise). The plan returns it.
+ */
+export function planRenderSize({ width, height, pixelRatio = 1, samples = 4, memoryBudgetMiB, geometryBytes = 0, textureBytes = 0, hdr = false, bloom = false, depth = false, shadowResolution = 2048, maximumSize = 8192 }) {
+  const requestedWidth = Math.max(1, Math.round(width * pixelRatio));
+  const requestedHeight = Math.max(1, Math.round(height * pixelRatio));
+  const fullFrameBytes = estimateFrameBytes(Math.min(requestedWidth, maximumSize), Math.min(requestedHeight, maximumSize), samples, shadowResolution, { hdr, bloom, depth });
+  memoryBudgetMiB ??= Math.min(globalThis.navigator?.deviceMemory >= 8 ? 1024 : 512, Math.max(256, Math.ceil((geometryBytes + textureBytes + fullFrameBytes) / MEBIBYTE)));
   for (const value of [width, height, pixelRatio, samples, memoryBudgetMiB, maximumSize]) {
     if (!Number.isFinite(value) || value <= 0) throw new Error('Render dimensions, sample count and budget must be positive finite numbers.');
   }
@@ -36,9 +53,8 @@ export function planRenderSize({ width, height, pixelRatio = 1, samples = 4, mem
   if (!Number.isFinite(shadowResolution) || shadowResolution < 0) throw new Error('Shadow resolution must be nonnegative and finite.');
   const available = memoryBudgetMiB * MEBIBYTE - geometryBytes - textureBytes - shadowResolution ** 2 * 4;
   const bytesPerPixel = (hdr ? 12 : 8) * Math.max(1, samples) + (hdr ? 24 : 20) + (bloom ? hdr ? 4 : 2 : 0) + (depth ? 4 : 0);
-  if (available < estimateFrameBytes(64, 64, samples, 0, { hdr, bloom, depth })) throw new Error('Memory budget cannot hold the scene and a minimum render target. Lower scene detail or increase the budget.');
-  const requestedWidth = Math.max(1, Math.round(width * pixelRatio));
-  const requestedHeight = Math.max(1, Math.round(height * pixelRatio));
+  // The suggested budget fits the full requested frame, not only the minimum target.
+  if (available < estimateFrameBytes(64, 64, samples, 0, { hdr, bloom, depth })) throw memoryBudgetError(geometryBytes, textureBytes, fullFrameBytes, memoryBudgetMiB);
   const scale = Math.min(1, maximumSize / requestedWidth, maximumSize / requestedHeight, Math.sqrt(available / (requestedWidth * requestedHeight * bytesPerPixel)));
   let renderWidth = Math.max(1, Math.floor(requestedWidth * scale));
   let renderHeight = Math.max(1, Math.floor(requestedHeight * scale));
@@ -47,5 +63,5 @@ export function planRenderSize({ width, height, pixelRatio = 1, samples = 4, mem
     renderWidth = Math.max(1, renderWidth - 1);
     renderHeight = Math.max(1, renderHeight - 1);
   }
-  return { width: renderWidth, height: renderHeight, samples, hdr, bloom, depth, textureBytes, estimatedBytes: estimateFrameBytes(renderWidth, renderHeight, samples, shadowResolution, { hdr, bloom, depth }) + geometryBytes + textureBytes, reduced: renderWidth < requestedWidth || renderHeight < requestedHeight };
+  return { width: renderWidth, height: renderHeight, samples, hdr, bloom, depth, textureBytes, estimatedBytes: estimateFrameBytes(renderWidth, renderHeight, samples, shadowResolution, { hdr, bloom, depth }) + geometryBytes + textureBytes, memoryBudgetMiB, reduced: renderWidth < requestedWidth || renderHeight < requestedHeight };
 }
