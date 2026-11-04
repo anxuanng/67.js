@@ -70,19 +70,15 @@ uniform float wind;
 uniform float explosionProgress;
 uniform vec3 explosionCenter;
 uniform float assemblyAmount;
-out vec3 worldPosition;
-out vec3 worldNormal;
+out vec3 worldPosition, worldNormal;
 flat out vec3 baseColor;
 flat out vec4 surface;
 out vec4 shadowPosition;
-out vec2 textureUV;
-out vec2 lightmapUV;
+out vec2 textureUV, lightmapUV;
 out vec3 vertexTint;
 out float vertexSkyVisibility;
-flat out vec3 emissionColor;
-flat out float instanceOrdinal;
-out vec3 boxPosition;
-out vec3 boxNormal;
+flat out vec4 instanceEmission;
+out vec3 boxPosition, boxNormal;
 flat out mat3 boxNormalMatrix;
 ${skinningShader(features)}
 ${morphingShader(features)}
@@ -104,17 +100,18 @@ void main() {
   vec3 localNormal = USES_MORPH ? morphedNormal(normal) : normal;
   vec3 deformedNormal = (USES_SKIN || USES_CROWD) ? transpose(inverse(mat3(deformation))) * localNormal : localNormal;
   worldNormal = normalize(instanceNormal * deformedNormal);
-  // Metres along the object's own axes, so a pattern follows a moving node and is not stretched by its scale.
+  // Metres along the object's own axes: a pattern follows its node and ignores scale.
+  if (${new Set(features).has('boxMapScale')}) {
   boxPosition = (USES_MORPH ? morphedPosition(position) : position) * vec3(length(instanceMatrix[0].xyz), length(instanceMatrix[1].xyz), length(instanceMatrix[2].xyz));
   boxNormal = deformedNormal;
   boxNormalMatrix = instanceNormal;
+  }
   baseColor = instanceColor;
   textureUV = uv;
   lightmapUV = uvSets.zw;
   vertexTint = USES_CROWD ? vec3(1.0) : vertexColor.rgb;
   vertexSkyVisibility = USES_CROWD ? 1.0 : vertexColor.a;
-  emissionColor = instanceEmissive;
-  instanceOrdinal = float(gl_InstanceID);
+  instanceEmission = vec4(instanceEmissive, gl_InstanceID);
   surface = instanceSurface;
   shadowPosition = lightProjection * world;
   gl_Position = viewProjection * world;
@@ -201,17 +198,14 @@ function buildFragmentShader(featureDefines, featureCode) {
   return `#version 300 es
 ${featureDefines}
 precision highp float;
-in vec3 worldPosition;
-in vec3 worldNormal;
+in vec3 worldPosition, worldNormal;
 flat in vec3 baseColor;
 flat in vec4 surface;
 in vec4 shadowPosition;
-in vec2 textureUV;
-in vec2 lightmapUV;
+in vec2 textureUV, lightmapUV;
 in vec3 vertexTint;
 in float vertexSkyVisibility;
-flat in vec3 emissionColor;
-flat in float instanceOrdinal;
+flat in vec4 instanceEmission;
 uniform sampler2D lightMap;
 uniform float lightMapScale;
 uniform float hasLightMap;
@@ -267,8 +261,7 @@ uniform float hasOcclusionMap;
 uniform float hasEmissiveMap;
 uniform vec2 normalScale;
 uniform float occlusionStrength;
-in vec3 boxPosition;
-in vec3 boxNormal;
+in vec3 boxPosition, boxNormal;
 flat in mat3 boxNormalMatrix;
 uniform float boxMapScale;
 uniform int boxMapAxis;
@@ -525,7 +518,7 @@ vec3 renderPassValue(vec3 color, vec3 normal, vec3 emission) {
     float high = floor(steps / 256.0);
     return vec3(high, steps - high * 256.0, 0.0) / 255.0;
   }
-  float identifier = renderPassObjectBase + instanceOrdinal + 1.0;
+  float identifier = renderPassObjectBase + instanceEmission.w + 1.0;
   float high = floor(identifier / 65536.0);
   float middle = floor((identifier - high * 65536.0) / 256.0);
   return vec3(identifier - high * 65536.0 - middle * 256.0, middle, high) / 255.0;
@@ -549,7 +542,7 @@ void main() {
     textureAlpha = sampledBase.a;
   }
 ${featureCode("surfaceHook")}  float alpha = surfaceAlpha(textureAlpha);
-  vec3 emission = emissionColor * surface.z;
+  vec3 emission = instanceEmission.rgb * surface.z;
   if (USES_EMISSIVE_MAP) emission *= (BOX_MAPPED ? sampleBox(emissiveMap) : texture(emissiveMap, mapUV(hasEmissiveMap))).rgb;
   if (USES_RENDER_PASS) {
     outputColor = vec4(renderPassValue(color, normal, emission), 1.0);
