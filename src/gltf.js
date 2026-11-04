@@ -980,6 +980,16 @@ function convertMaterial(source, limits, maps, definition = {}) {
   return material;
 }
 
+/**
+ * Shared state for the files of one world that split a texture between them. Pass the same object as `options.sharedTextures` to
+ * every parseGltf or loadGltf call, first file first: a texture whose definition carries `extras.sharedTexture` is decoded once, and
+ * a later file with the same key reuses it, so the parts of all files bind the same texture descriptors.
+ * The first file owns the decoded images; keep its asset alive while the later files are in use.
+ */
+export function createSharedTextures() {
+  return Object.assign(new Map(), { descriptors: new Map() });
+}
+
 /** Parse a bounded glTF 2.0 asset into Renderer67 parts. Draco and KTX2 decoders come from options.decoders; meshopt decodes in a chunk that loads on demand, unless options.decoders.meshopt replaces it. */
 export async function parseGltf(data, options = {}) {
   const limits = limitsFor(options);
@@ -1007,7 +1017,7 @@ export async function parseGltf(data, options = {}) {
   }
   let gltf;
   try {
-    gltf = await decodeGltf({ document, glbBinary: binaryChunk(data), resourceBytes, decoders, limits, imageTargets: textureScaling.targetByImageIndex });
+    gltf = await decodeGltf({ document, glbBinary: binaryChunk(data), resourceBytes, decoders, limits, imageTargets: textureScaling.targetByImageIndex, sharedTextures: options.sharedTextures });
     if (resampler) warnings.push(...resampler.apply(gltf, limits));
     const parts = [];
     const bindings = [];
@@ -1016,7 +1026,7 @@ export async function parseGltf(data, options = {}) {
     const geometries = new Map();
     const morphMetadata = new Map();
     const materials = new Map();
-    const maps = new Map();
+    const maps = options.sharedTextures?.descriptors ?? new Map();
     const nodes = [];
     const meshNamesWithIgnoredAlpha = new Set();
     const lightNodes = [];

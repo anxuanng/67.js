@@ -95,7 +95,7 @@ function normalizedWeights(weights) {
  * The result has the shape the Renderer67 conversion in gltf.js reads. Nothing here imports three.js: Draco, meshopt
  * and KTX2 decoders arrive as `decoders` objects that the caller supplies.
  */
-export async function decodeGltf({ document, glbBinary, resourceBytes, decoders, limits, imageTargets = new Map() }) {
+export async function decodeGltf({ document, glbBinary, resourceBytes, decoders, limits, imageTargets = new Map(), sharedTextures }) {
   const releasers = [];
   const usedNames = new Map();
   const nodeCache = new Map();
@@ -175,6 +175,11 @@ export async function decodeGltf({ document, glbBinary, resourceBytes, decoders,
   async function loadTexture(textureIndex) {
     if (textures.has(textureIndex)) return textures.get(textureIndex);
     const definition = document.textures[textureIndex];
+    // A texture that several files of one world carry is stored in the first file only; later files hold a stand-in image and
+    // the same key, and take the texture the first file decoded.
+    const shareKey = definition.extras?.sharedTexture;
+    const shared = shareKey && sharedTextures?.get(shareKey);
+    if (shared) return shared;
     const sampler = document.samplers?.[definition.sampler] ?? {};
     const { image, isCompressedTexture, format, mipmaps } = await loadTextureImage(definition);
     const texture = {
@@ -188,6 +193,7 @@ export async function decodeGltf({ document, glbBinary, resourceBytes, decoders,
       magFilter: sampler.magFilter ?? 9729,
     };
     textures.set(textureIndex, texture);
+    if (shareKey) sharedTextures?.set(shareKey, texture);
     return texture;
   }
 

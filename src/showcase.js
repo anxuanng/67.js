@@ -3,7 +3,7 @@ import './brand.js';
 import './showcase.css';
 import './pointer-light.js';
 import { Renderer67 } from './renderer.js';
-import { loadGltf } from './gltf.js';
+import { createSharedTextures, loadGltf } from './gltf.js';
 import { loadHdri } from './hdri.js';
 import { createCascadedShadows } from './cascaded-shadows.js';
 import { applyWaterReflection, attachWaterReflection } from './water-reflection.js';
@@ -242,7 +242,7 @@ function inWholeWorldOrder(files) {
 
 // Adds the other parts of a staged world once they have downloaded, then swaps the first frame's small sky for the full one.
 async function finishWorld(world) {
-  const { request, description, asset, detachReflection, remainingDownloads, abort } = world;
+  const { request, description, asset, sharedTextures, detachReflection, remainingDownloads, abort } = world;
   const isCurrent = () => request === loadingRequest;
   try {
     const [remainingModels, fullMap] = await remainingDownloads;
@@ -250,7 +250,7 @@ async function finishWorld(world) {
     const files = [{ parts: asset.parts, ranks: world.ranks }];
     for (const [index, model] of remainingModels.entries()) {
       const baseUrl = new URL('.', new URL(description.glbRest[index], location.href)).href;
-      const remaining = await loadGltf(model, { baseUrl, ...(description.gltfOptions ?? {}) });
+      const remaining = await loadGltf(model, { baseUrl, sharedTextures, ...(description.gltfOptions ?? {}) });
       files.push({ parts: remaining.parts, ranks: await readPartRanks(model) });
     }
     if (!isCurrent()) return;
@@ -315,7 +315,8 @@ async function selectScene(id) {
       previewUrl ? loadSky(skyUrl) : null,
     ]);
     remainingDownloads.catch(() => {});
-    const asset = await loadGltf(model, { baseUrl: new URL('.', glbUrl).href, ...(description.gltfOptions ?? {}) });
+    const sharedTextures = createSharedTextures();
+    const asset = await loadGltf(model, { baseUrl: new URL('.', glbUrl).href, sharedTextures, ...(description.gltfOptions ?? {}) });
     if (request !== loadingRequest) return;
     renderer?.dispose();
     const rendererOptions = description.renderer ?? {};
@@ -349,7 +350,7 @@ async function selectScene(id) {
     }
     progressLabel = `Loading the rest of ${SCENE_LABELS[id]}`;
     showProgress(progressLabel, meter);
-    finishWorld({ id, request, description, asset, ranks: await readPartRanks(model), detachReflection, remainingDownloads, abort });
+    finishWorld({ id, request, description, asset, sharedTextures, ranks: await readPartRanks(model), detachReflection, remainingDownloads, abort });
   } catch (error) {
     if (request !== loadingRequest) return;
     markPressedTab(currentId);
