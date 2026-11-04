@@ -1277,16 +1277,21 @@ export class Renderer67 {
     this.context.vertexAttribDivisor(location, 1);
   }
 
+  // A one texel map stays cleared to the far depth, so every point reads as lit. That is exact when nothing casts, and when
+  // cascades replace the main shader's lookup and nothing else (volume fog, subsurface thickness) still reads this map.
+  shadowMapSizeWanted() {
+    const casts = this.batches.some(batch => !batch.floor && batch.castShadow);
+    return casts && !this.shadowCascades?.replacesSingleMap(this) ? SHADOW_MAP_SIZE : 1;
+  }
+
   createShadowMap() {
     const context = this.context;
-    const allocateShadow = !this.shadowTexture;
-    // A scene with nothing to cast keeps a one texel map that stays cleared to the far depth, so every point reads as lit.
-    this.shadowMapSize ??= this.batches.some(batch => !batch.floor && batch.castShadow) ? SHADOW_MAP_SIZE : 1;
-    const mapSize = this.shadowMapSize;
-    if (allocateShadow) this.shadowTexture = context.createTexture();
+    const mapSize = this.shadowMapSizeWanted();
+    this.shadowTexture ??= context.createTexture();
     context.activeTexture(context.TEXTURE0);
     context.bindTexture(context.TEXTURE_2D, this.shadowTexture);
-    if (allocateShadow) {
+    if (mapSize !== this.shadowMapSize) {
+      this.shadowMapSize = mapSize;
       context.texImage2D(context.TEXTURE_2D, 0, context.DEPTH_COMPONENT24, mapSize, mapSize, 0, context.DEPTH_COMPONENT, context.UNSIGNED_INT, null);
       this.renderTargets.record('shadowMap', { width: mapSize, height: mapSize, format: 'DEPTH_COMPONENT24' });
     }
@@ -2073,7 +2078,8 @@ export class Renderer67 {
     this.requireFeatureNames(shaderFeaturesOfLighting(this.lighting));
     const passMode = this.preparePass(frame);
     this.renderingPass = passMode > 0;
-    if (casterChanged) {
+    this.volumeShadowWanted = volume.density > 0;
+    if (casterChanged || this.shadowMapSizeWanted() !== this.shadowMapSize) {
       this.assemblyAmount = assemblyAmount;
       this.createShadowMap();
     }
