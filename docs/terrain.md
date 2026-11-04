@@ -117,6 +117,8 @@ const geometry = createHeightfieldGeometry({ ...lines, heights: Float32Array.fro
 
 Load images as `createImageBitmap(await (await fetch(url)).blob(), { colorSpaceConversion: 'none', premultiplyAlpha: 'none' })` and pass the bitmap as a texture `image`. The renderer accepts it, it decodes off the main thread, and `texImage2D` from a bitmap takes about 0.2 of the time it takes from an `Image` (measured on 24-megapixel JPEGs: 64 ms against 300 ms), with identical pixels. The renderer also starts every program before it uploads textures and buffers, so the driver links them while the upload runs.
 
+Where the rest of the port's load goes (marks in a scratch copy, ms from navigation, quiet run of 2.7 to 3.4 s against 1.1 to 1.2 s for three.js): images and heights decoded by 0.65 s, four mask readbacks done by 0.94 s (each 24-megapixel image costs about 20 ms to draw, 37 ms to read and 19 ms to copy the channel, all in the browser), meshes by 1.5 s (the two raster passes are at about 50 ms per 24-megapixel mask in plain JavaScript, so a summed-area table would not help: the bilinear weights differ per vertex), buildings by 1.97 s, `applyWaterReflection` by 2.06 s, the renderer constructor by 2.9 s. The port runs these one after the other: reading each mask as its image arrives, starting the building fetches with the images, and building the three tiers while the next tier's mask reads are the steps still open, and they live in the scene's code.
+
 ## Navigation
 
 `addons/navmesh` finds walking routes over any triangle ground, so a character can go around holes, steep slopes and obstacles. It is pure JavaScript and gives the same path for the same input.

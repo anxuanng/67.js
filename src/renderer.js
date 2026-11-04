@@ -739,10 +739,14 @@ export class Renderer67 {
   // blurred level long before its detail is gone. Applies to the texture bound to `target`.
   applyAnisotropy(target) {
     const context = this.context;
-    const extension = context.getExtension('EXT_texture_filter_anisotropic');
-    if (!extension) return;
-    const supported = context.getParameter(extension.MAX_TEXTURE_MAX_ANISOTROPY_EXT);
-    context.texParameterf(target, extension.TEXTURE_MAX_ANISOTROPY_EXT, Math.min(MAX_TEXTURE_ANISOTROPY, supported));
+    // Asked once: reading the limit makes the browser wait for the GPU process, which would stall behind every texture upload before it.
+    if (!this.anisotropyExtension) {
+      const extension = context.getExtension('EXT_texture_filter_anisotropic');
+      if (!extension) return;
+      this.anisotropyExtension = extension;
+      this.anisotropyLevel = Math.min(MAX_TEXTURE_ANISOTROPY, context.getParameter(extension.MAX_TEXTURE_MAX_ANISOTROPY_EXT));
+    }
+    context.texParameterf(target, this.anisotropyExtension.TEXTURE_MAX_ANISOTROPY_EXT, this.anisotropyLevel);
   }
 
   createTexture(map) {
