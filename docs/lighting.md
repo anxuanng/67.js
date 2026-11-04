@@ -27,6 +27,8 @@ const renderer = new Renderer67(canvas, parts, {
 renderer.render({ eye: [0, 2, 5], target: [0, 1, 0], fov: 40 });
 ```
 
+With `world: true` the default `environment.fogDensity` is 0.006 per unit, which hazes a model 100 to 600 units wide into milky haze. Set a lower `fogDensity` for a large scene.
+
 ## Light controls
 
 `keyIntensity` scales the existing shadowed directional light. `keyColor` optionally replaces its linear RGB radiance color. `fillIntensity` scales the two existing fill/rim lights. `ambientIntensity` scales procedural reflection and hemisphere fill. Each intensity defaults to one, preserving previous lighting when no controls are supplied. Set all three to zero to isolate local lights on standard PBR surfaces.
@@ -127,6 +129,10 @@ Luminance of the 67js picture over Cycles (linear, whole frame and 20th percenti
 | `temple-hall` | 0.97 | 0.97 | 1.62 | 1.64 |
 
 The two `temple-hall` p20 values differ only by the rescaling of the picture (the scene has a sun, so no bounce is added). The outdoor shadow fill of the issue is not done.
+
+## Sky seen from the floor
+
+`applyFloorSkyVisibility(parts, { strength, includeClosedRooms })` (`67js/addons/floor-sky-visibility`) is opt-in and returns `{ parts, report }`. It cuts the floor parts into texels, shoots 64 cosine-weighted rays from each against the other opaque parts and stores the share that escapes as the floor's `skyVisibility`, so the world and sky light on a floor under a roof or between walls is scaled down and open ground is not. Pass the returned parts to the renderer. `strength` 1 uses the traced share, 0.5 keeps half of what it hides. A closed room is left alone unless `includeClosedRooms` is `true`, and a scene that is too large (over 200,000 triangles), has no floor or runs past `maxSeconds` (20) comes back unchanged with `report.reason`. It is not on by default: it moves the dark end of halls and studio floors toward Cycles, and makes sunlit streets too dark (`long-street` +0.0135 FLIP at 0.5). The trace takes 0.5 to 1.7 s, and the floor grows to about 66,000 triangles, which adds 0.1 to 0.3 ms per frame in the reference scenes. Numbers: `bench/reference/README.md`, "Sky visibility traced from the floor texels".
 
 ## Local shadows
 

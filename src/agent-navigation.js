@@ -53,3 +53,25 @@ export function queryAgentPath(query, ground, avoidBounds) {
     keyframes,
   };
 }
+
+/** The path option of scene_inspect: checks the query, resolves the ground and avoided node IDs through `nodeGeometry` and finds the route. */
+export function resolvePathQuery(query, nodeGeometry, boundsFor) {
+  if (query === null || typeof query !== 'object' || Array.isArray(query)) throw new TypeError('path must be an object.');
+  for (const key of Object.keys(query)) {
+    if (!NAVIGATION_FIELDS.includes(key)) throw new TypeError(`Unknown path field: ${key}. Allowed fields: ${NAVIGATION_FIELDS.join(', ')}.`);
+  }
+  if (query.avoid !== undefined && (!Array.isArray(query.avoid) || query.avoid.length > 64)) throw new RangeError('path avoid must list at most 64 node IDs.');
+  const { geometry, worldMatrix } = nodeGeometry(query.ground, 'ground');
+  const positions = new Float32Array(geometry.positions.length);
+  for (let offset = 0; offset < positions.length; offset += 3) {
+    for (let axis = 0; axis < 3; axis++) {
+      positions[offset + axis] = worldMatrix[axis] * geometry.positions[offset] + worldMatrix[4 + axis] * geometry.positions[offset + 1]
+        + worldMatrix[8 + axis] * geometry.positions[offset + 2] + worldMatrix[12 + axis];
+    }
+  }
+  const avoidBounds = (query.avoid ?? []).map(id => {
+    const avoided = nodeGeometry(id, 'avoid');
+    return boundsFor(avoided.geometry, avoided.worldMatrix);
+  });
+  return queryAgentPath(query, { positions, indices: geometry.indices }, avoidBounds);
+}

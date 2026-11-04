@@ -43,6 +43,7 @@ export default defineConfig({
         clutter: 'src/clutter.js',
         'light-bake': 'src/light-bake.js',
         'ground-bounce': 'src/ground-bounce.js',
+        'floor-sky-visibility': 'src/floor-sky-visibility.js',
         'path-tracer': 'src/path-tracer.js',
         'path-tracer-worker': 'src/path-tracer-worker.js',
         'kernel-worker': 'src/kernel-worker.js',

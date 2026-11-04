@@ -1,5 +1,5 @@
 import { MATERIAL_GRAPH_LIMITS, MATERIAL_GRAPH_OUTPUTS, MATERIAL_GRAPH_OPERATORS } from './agent-scene-capabilities.js';
-import { clampUnit, smoothStep, fractalNoise, cellularNoise, linearToSrgbByte, createImage, normalMapFromHeightFunction } from './material-texture-kit.js';
+import { clampUnit, smoothStep, wrapCell, cellularNoise, linearToSrgbByte, createImage, normalMapFromHeightFunction } from './material-texture-kit.js';
 
 // A bounded material node graph. Like a field expression (src/mesh-fields.js), a graph is data and never code: it is
 // walked as plain objects against a fixed table of operators, checked against its limits before any pixel is
@@ -121,14 +121,100 @@ function textureSettings(node, name, allowed) {
   return settings;
 }
 
+// Blender's Noise Texture node (2D, Perlin, fractal Brownian motion, Normalize on): Jenkins lookup3 hash of the lattice
+// corner, the 8 gradients of its 2D Perlin, 6t^5 - 15t^4 + 10t^3 fade, and the octave sum divided by the amplitude sum.
+// Detail is octaves - 1, Roughness 0.5 and Lacunarity 2, the node's defaults.
+const HASH_START = (0xdeadbeef + (2 << 2) + 13) >>> 0;
+const rotateLeft = (value, bits) => (value << bits) | (value >>> (32 - bits));
+const PERLIN_OUTPUT_SCALE = 0.6616;
+const NOISE_ROUGHNESS = 0.5;
+const NOISE_LACUNARITY = 2;
+
+function hashLatticeCorner(cellX, cellY) {
+  let a = (HASH_START + cellX) >>> 0;
+  let b = (HASH_START + cellY) >>> 0;
+  let c = HASH_START;
+  c = (c ^ b) - rotateLeft(b, 14);
+  a = ((a ^ c) >>> 0) - rotateLeft(c, 11);
+  b = ((b ^ a) >>> 0) - rotateLeft(a, 25);
+  c = ((c ^ b) >>> 0) - rotateLeft(b, 16);
+  a = ((a ^ c) >>> 0) - rotateLeft(c, 4);
+  b = ((b ^ a) >>> 0) - rotateLeft(a, 14);
+  c = ((c ^ b) >>> 0) - rotateLeft(b, 24);
+  return c >>> 0;
+}
+
+function cornerGradient(hash, offsetX, offsetY) {
+  const choice = hash & 7;
+  const major = choice < 4 ? offsetX : offsetY;
+  const minor = 2 * (choice < 4 ? offsetY : offsetX);
+  return ((choice & 1) ? -major : major) + ((choice & 2) ? -minor : minor);
+}
+
+const fade = value => value * value * value * (value * (value * 6 - 15) + 10);
+
+// A period of 0 leaves the lattice unwrapped, which is Blender's. A period in cells wraps the corner indices so the
+// noise repeats every period cells (only the cells at the far edge of the unit square then differ from Blender).
+function latticeHash(cellX, cellY, period) {
+  if (period === 0) return hashLatticeCorner(cellX, cellY);
+  return hashLatticeCorner(wrapCell(cellX, period), wrapCell(cellY, period));
+}
+
+function perlinNoise(x, y, period) {
+  const cellX = Math.floor(x);
+  const cellY = Math.floor(y);
+  const fractionX = x - cellX;
+  const fractionY = y - cellY;
+  const blendX = fade(fractionX);
+  const blendY = fade(fractionY);
+  const bottom = mixNumbers(
+    cornerGradient(latticeHash(cellX, cellY, period), fractionX, fractionY),
+    cornerGradient(latticeHash(cellX + 1, cellY, period), fractionX - 1, fractionY),
+    blendX,
+  );
+  const top = mixNumbers(
+    cornerGradient(latticeHash(cellX, cellY + 1, period), fractionX, fractionY - 1),
+    cornerGradient(latticeHash(cellX + 1, cellY + 1, period), fractionX - 1, fractionY - 1),
+    blendX,
+  );
+  return PERLIN_OUTPUT_SCALE * mixNumbers(bottom, top, blendY);
+}
+
+/**
+ * Blender's Noise Texture Fac at (x, y), already scaled by the node's Scale. `tileCells` is the first octave's number of
+ * cells across the unit square when the noise must repeat, or 0 for Blender's endless lattice.
+ */
+export function blenderNoise(x, y, octaves, tileCells = 0) {
+  let total = 0;
+  let amplitude = 1;
+  let amplitudeSum = 0;
+  let frequency = 1;
+  for (let octave = 0; octave < octaves; octave++) {
+    total += perlinNoise(x * frequency, y * frequency, tileCells * frequency) * amplitude;
+    amplitudeSum += amplitude;
+    amplitude *= NOISE_ROUGHNESS;
+    frequency *= NOISE_LACUNARITY;
+  }
+  return 0.5 * total / amplitudeSum + 0.5;
+}
+
+// The seed moves the lattice by whole cells, the same for Blender's side (bench/reference/render-blender.py).
+const SEED_SHIFT_X = 7919;
+const SEED_SHIFT_Y = 104729;
+const SEED_SHIFT_RANGE = 1024;
+
 function compileNoise(node, state, depth) {
-  const settings = textureSettings(node, 'noise', ['scale', 'seed', 'octaves', 'at']);
+  const settings = textureSettings(node, 'noise', ['scale', 'seed', 'octaves', 'tile', 'at']);
   const scale = integerInRange(settings.scale ?? 4, 1, NOISE_SCALE_LIMIT, 'noise scale');
   const seed = integerInRange(settings.seed ?? 0, 0, MAX_SEED, 'noise seed');
   const octaves = integerInRange(settings.octaves ?? 4, 1, NOISE_OCTAVE_LIMIT, 'noise octaves');
+  if (settings.tile !== undefined && typeof settings.tile !== 'boolean') throw graphError('noise tile must be true or false.');
+  const tileCells = settings.tile === false ? 0 : scale;
+  const shiftX = (seed * SEED_SHIFT_X) % SEED_SHIFT_RANGE;
+  const shiftY = (seed * SEED_SHIFT_Y) % SEED_SHIFT_RANGE;
   state.cost += octaves * NOISE_COST_PER_OCTAVE;
   const [positionU, positionV] = compilePosition(settings, state, depth);
-  return scalarValue((u, v) => fractalNoise(positionU(u, v), positionV(u, v), scale, scale, seed, octaves) * 0.5 + 0.5);
+  return scalarValue((u, v) => blenderNoise(positionU(u, v) * scale + shiftX, positionV(u, v) * scale + shiftY, octaves, tileCells));
 }
 
 const VORONOI_OUTPUTS = ['distance', 'edge', 'cell'];

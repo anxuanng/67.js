@@ -111,8 +111,10 @@ function settingsFrom(input, clips, recipe) {
     objectKeys(input.motion, ['start'], 'motion');
     // Clips of placed assets play on scene time, so a scene that places one needs no authored motion.
     const placesClips = recipe?.format === '67js.scene' && recipeAssetNeeds(recipe).some(need => need.copies > 1);
-    if (!['67js.scene', '67js.asset'].includes(recipe?.format) || (!recipe.motion && !placesClips)) {
-      throw new RangeError('Motion settings require a recipe with authored motion or a placed clip.');
+    // A map sequence reads the same clock.
+    const sequenced = JSON.stringify(recipe?.materials ?? []).includes('"sequence":{');
+    if (!['67js.scene', '67js.asset'].includes(recipe?.format) || (!recipe.motion && !placesClips && !sequenced)) {
+      throw new RangeError('Motion settings require a recipe with authored motion or a placed clip (or a map sequence).');
     }
     const motionDuration = recipe.motion ? boundedNumber(recipe.motion.duration, 0.1, 30, 'motion duration') : undefined;
     if (recipe.motion?.loop !== undefined && typeof recipe.motion.loop !== 'boolean') {

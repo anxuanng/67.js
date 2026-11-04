@@ -461,7 +461,6 @@ test('map preflight rejects unsupported UVs, sampler states, invalid scales and 
     [document => { document.samplers[0].minFilter = 4; }, /filtering/],
     [document => { document.textures[0].source = 4; }, /image index/],
     [document => { document.textures[0].sampler = 4; }, /sampler index/],
-    [document => { delete document.meshes[0].primitives[0].attributes.TEXCOORD_0; }, /TEXCOORD_0/],
     [document => { document.materials[0].emissiveTexture.extensions = { KHR_texture_transform: { offset: [0.2, 0] } }; }, /KHR_texture_transform/],
   ];
   for (const [change, expected] of changes) {

@@ -16,7 +16,7 @@ import { validateSubsurface, subsurfaceUniformValues } from './subsurface-limits
 // - Only the sun is treated; point, spot and area lights keep their plain diffuse.
 
 const REFERENCE_LENGTH = '0.1';
-const BACK_TRANSLUCENCY = '0.5';
+const BACK_TRANSLUCENCY = '1.0';
 
 const SUBSURFACE_DECLARATIONS = `uniform vec4 materialSubsurface;
 uniform vec3 materialSubsurfaceColor;
