@@ -1,3 +1,3 @@
 - entry:floor-sky-visibility: +285 bytes gzip (15101 to 15386) for the onlyClosedRooms option, the room strength, the mean visibility in the report, applyDefaultFloorSky and the recipe stage with its cache
-- scene:agent-scene: +375 bytes gzip (102996 to 103371) for the floorSkyTrace field, one conditional call into the lazy module and the module entry with its markers; the sun and closed-room tests live in the lazy chunk
-- scene:agent-scene+lazy: +3846 bytes gzip (352062 to 355908), the same code plus the floor sky module loaded
+- scene:agent-scene: +286 bytes gzip (103055 to 103341) for the floorSkyTrace field, one conditional call into the lazy module and the module entry with its markers; the sun and closed-room tests live in the lazy chunk
+- scene:agent-scene+lazy: +3739 bytes gzip (359885 to 363624), the same code plus the floor sky module loaded
