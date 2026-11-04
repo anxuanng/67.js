@@ -301,9 +301,18 @@ function facadeMaterial({ wall, glass, lit, litShare, warm, cool, seed }) {
   const across = { smoothstep: [0.22, 0.34, { wave: { frequency: 6, direction: 'u', shape: 'triangle' } }] };
   const along = { smoothstep: [0.18, 0.3, { wave: { frequency: 10, direction: 'v', shape: 'triangle' } }] };
   const pane = { min: [across, along] };
-  const litPane = { mul: [pane, { smoothstep: [1 - litShare, 1 - litShare + 0.02, { voronoi: { scale: 8, seed, output: 'cell' } }] }] };
-  // A cell of the voronoi is about a window across, so each window is lit or dark as a whole.
-  const tint = { ramp: { value: { noise: { scale: 4, seed: seed + 5 } }, stops: [[0, warm], [1, cool]] } };
+  // The lit test reads a noise at the centre of each window cell (the same 6 by 10 grid as the panes), so a window is lit or dark
+  // as a whole and the lit ones fall in drifts. A voronoi cell does not follow the grid and cut panes into shards.
+  const windowCentre = {
+    vec: [
+      { div: [{ add: [{ floor: { mul: [{ uv: 'u' }, 6] } }, 0.5] }, 6] },
+      { div: [{ add: [{ floor: { mul: [{ uv: 'v' }, 10] } }, 0.5] }, 10] },
+      0,
+    ],
+  };
+  const litThreshold = 0.5 + (0.5 - litShare) * 0.5;
+  const litPane = { mul: [pane, { smoothstep: [litThreshold, litThreshold + 0.03, { noise: { scale: 9, seed, tile: false, at: windowCentre } }] }] };
+  const tint = { ramp: { value: { noise: { scale: 4, seed: seed + 5, tile: false } }, stops: [[0, warm], [1, cool]] } };
   const graph = { color: { mix: [wall, glass, pane] }, emission: { mix: [[0, 0, 0], tint, litPane] } };
   const pattern = normalizeMaterialPattern({ type: 'graph', graph, size: 36, bump: 0, resolution: 512 });
   const textures = materialPatternTextures(pattern);
@@ -490,4 +499,12 @@ export const LOOK_OPTIONS = {
   'megacity-dusk-golden-avenue': megacityGoldenAvenue,
   'megacity-dusk-blue-hour': megacityBlueHour,
   'megacity-dusk-night-grid': megacityNightGrid,
+};
+
+// The three looks An picked (issue #168, 2026-11-04). The grand set of harness.js draws them beside the letters of grand-scenes.js, so
+// `npm run reference -- --grand --scene mountain-valley-dawn,temple-hall-rose,megacity-dusk-blue-hour` scores them into grand.json.
+export const GRAND_PICKS = {
+  'mountain-valley-dawn': LOOK_OPTIONS['mountain-valley-dawn'],
+  'temple-hall-rose': LOOK_OPTIONS['temple-hall-rose'],
+  'megacity-dusk-blue-hour': LOOK_OPTIONS['megacity-dusk-blue-hour'],
 };

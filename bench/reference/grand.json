@@ -37,6 +37,18 @@
   "mountain-valley-a": {
    "cycles": 26.3,
    "eevee": 20
+  },
+  "megacity-dusk-blue-hour": {
+   "cycles": 7.8,
+   "eevee": 2.7
+  },
+  "mountain-valley-dawn": {
+   "cycles": 19.3,
+   "eevee": 16.9
+  },
+  "temple-hall-rose": {
+   "cycles": 34.9,
+   "eevee": 8.7
   }
  },
  "graphics": {
@@ -115,6 +127,30 @@
    "cpu-vs-eevee": 0.3679,
    "eevee-vs-cycles": 0.3992,
    "gpu-vs-cpu": 0.0025
+  },
+  "megacity-dusk-blue-hour": {
+   "gpu-vs-cycles": 0.1128,
+   "gpu-vs-eevee": 0.1081,
+   "cpu-vs-cycles": 0.1132,
+   "cpu-vs-eevee": 0.1064,
+   "eevee-vs-cycles": 0.0688,
+   "gpu-vs-cpu": 0.0126
+  },
+  "mountain-valley-dawn": {
+   "gpu-vs-cycles": 0.2008,
+   "gpu-vs-eevee": 0.372,
+   "cpu-vs-cycles": 0.2008,
+   "cpu-vs-eevee": 0.3708,
+   "eevee-vs-cycles": 0.3039,
+   "gpu-vs-cpu": 0.0146
+  },
+  "temple-hall-rose": {
+   "gpu-vs-cycles": 0.5652,
+   "gpu-vs-eevee": 0.5727,
+   "cpu-vs-cycles": 0.5656,
+   "cpu-vs-eevee": 0.5724,
+   "eevee-vs-cycles": 0.8878,
+   "gpu-vs-cpu": 0.0072
   }
  }
 }
