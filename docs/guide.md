@@ -330,7 +330,7 @@ Tags select specialized behavior: `armor` allows studio finish overrides. `floor
 | --- | --- | --- |
 | batching | true | Share instance batches by geometry and map identity |
 | pixelRatio | 1.5 | Render scale relative to CSS size. Not automatically devicePixelRatio |
-| ground | true | Add the studio floor. Disable for worlds, 2D and assets |
+| ground | true | Add the studio floor at y 0.019, or 2% up from the lowest point of a scene it would bury more than a tenth of (small objects, scenes below y 0). Disable for worlds, 2D and assets |
 | world | false | Enable outdoor rendering and world clipping defaults |
 | samples | 4 | Requested MSAA count. Negotiated against hardware |
 | hdr | false | Request floating-point color targets |

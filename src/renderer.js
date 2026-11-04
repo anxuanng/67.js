@@ -297,11 +297,37 @@ function createLevelSet(levels, instanceCount) {
   return { levelErrors: levels.map(level => level.error), levelGeometries: levels.map(level => level.geometry), levelDraws: [], selection: new InstanceSelection(instanceCount, levels.length) };
 }
 
-function groundPart() {
+/**
+ * The studio floor sits at y 0.019. When that would hide more than a tenth of the scene's height (a pencil, a hand that
+ * hangs below y 0), it sits 2% up from the scene's lowest point instead, so small objects are not buried (issue #468).
+ * Scenes a metre or more tall resting on y 0, and large scenes that dip below it, keep the floor where it was.
+ */
+export function studioFloorHeight(parts) {
+  let bottom = Infinity;
+  let top = -Infinity;
+  for (const { geometry, matrix } of parts) {
+    if (!geometry?.positions?.length || !matrix) continue;
+    // The world heights of the part's local box: each axis adds its row-one term at the box's lower or upper end.
+    const { minimum, maximum } = geometryBoundingSphere(geometry);
+    let low = matrix[13];
+    let spread = 0;
+    for (let axis = 0; axis < 3; axis++) {
+      const scale = matrix[1 + axis * 4];
+      low += Math.min(scale * minimum[axis], scale * maximum[axis]);
+      spread += Math.abs(scale) * (maximum[axis] - minimum[axis]);
+    }
+    bottom = Math.min(bottom, low);
+    top = Math.max(top, low + spread);
+  }
+  const height = top - bottom;
+  return 0.019 - bottom > height * 0.1 ? bottom + height * 0.02 : 0.019;
+}
+
+function groundPart(height = 0.019) {
   return {
     name: 'Studio floor',
     geometry: {
-      positions: new Float32Array([-100, 0.019, -100, -100, 0.019, 100, 100, 0.019, 100, 100, 0.019, -100]),
+      positions: new Float32Array([-100, height, -100, -100, height, 100, 100, height, 100, 100, height, -100]),
       normals: new Float32Array([0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0]),
       indices: new Uint32Array([0, 1, 2, 0, 2, 3]),
     },
@@ -504,7 +530,7 @@ export class Renderer67 {
     this.geometryBytes = 0;
     this.geometryBuffers = new Map();
     this.batching = batching;
-    this.groundPart = ground === true ? groundPart() : ground || null;
+    this.groundPart = ground === true ? groundPart(studioFloorHeight(parts)) : ground || null;
     this.buffers = [];
     this.batches = [];
     this.partLocations = new Map();
