@@ -31,6 +31,7 @@ const MODULE_LOADERS = {
   lineArt: () => import('./line-art.js'),
   viewTransform: () => import('./view-transform-shader.js'),
   coplanar: () => import('./coplanar-overlap.js'),
+  floorSky: () => import('./floor-sky-visibility.js'),
   userPass: () => import('./user-pass.js'),
   materialSnippet: () => import('./material-snippet.js'),
 };
@@ -72,6 +73,8 @@ const MODULE_MARKERS = {
   viewTransform: ['"viewTransform":"agx"', '"viewTransform":"neutral"', '"look":"'],
   // The coplanar-overlap warning in scene_inspect appears only once this is loaded, which loadAllAgentSceneModules does; a recipe with resolveCoplanar needs it.
   coplanar: ['"resolveCoplanar"'],
+  // A closed room a sun lights gets the floor sky trace by default. The recipe text can not say whether a room is closed, so a recipe that names its sun loads it and the module skips an open scene.
+  floorSky: ['"keyColor"', '"keyIntensity"'],
   userPass: ['"postPasses"'],
   materialSnippet: ['"snippet":{'],
 };

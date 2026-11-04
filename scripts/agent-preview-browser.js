@@ -188,7 +188,9 @@ function syncAutomaticGround(record) {
 // The scene's environment lit by the sky map, with the light its floor bounces (src/ground-bounce.js): a floor part of the
 // recipe gives its own colour, and the automatic floor gives its own.
 function litEnvironment(parts, environment, hasAutomaticGround) {
-  return groundBounceEnvironment(parts, { ...environment, map: agentEnvironmentMap(environment) }, { automaticAlbedo: hasAutomaticGround ? FLOOR_COLOR : null });
+  const lit = groundBounceEnvironment(parts, { ...environment, map: agentEnvironmentMap(environment) }, { automaticAlbedo: hasAutomaticGround ? FLOOR_COLOR : null });
+  // A closed room a sun lights gets the lights of its sunlit patches (src/sun-bounce.js), once a recipe that names a sun has loaded the module.
+  return agentSceneModuleLoaded('floorSky') ? agentSceneModule('floorSky').withSunBounce(parts, lit) : lit;
 }
 
 // A renderer takes its cascades at construction, so a change of the count (or of the extent that picks it) rebuilds.

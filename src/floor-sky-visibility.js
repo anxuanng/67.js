@@ -3,6 +3,9 @@ import { buildWorld, cosineDirection, radicalInverse, sceneScale } from './light
 import { worldBounds } from './probe-trace.js';
 import { createTracer } from './ray-query.js';
 
+// The sunlit patches' lights (src/sun-bounce.js) load with the floor sky trace: both are for a closed room a sun lights.
+export { withSunBounce } from './sun-bounce.js';
+
 // Sky visibility traced from the texels of the floor itself. A floor part is cut into small triangles, every vertex shoots
 // cosine-weighted rays up into the scene's other parts, and the share that escapes goes into the geometry's `skyVisibility`,
 // which the shader already multiplies into the light the world gives that surface. A narrow street or a hall then darkens
@@ -13,6 +16,8 @@ export const FLOOR_SKY_RAYS = 64;
 export const FLOOR_SKY_MAXIMUM_TEXELS = 24_000;
 export const FLOOR_SKY_MAXIMUM_SECONDS = 20;
 export const FLOOR_SKY_STRENGTH = 1;
+// With onlyClosedRooms the default is lower: a hall also gets light that comes back from its walls and sunlit floor, which a sky trace does not hold.
+export const FLOOR_SKY_ROOM_STRENGTH = 0.2;
 
 const FLOOR_THINNESS = 0.1;
 const FLOOR_MINIMUM_FOOTPRINT_SHARE = 0.02;
@@ -199,7 +204,8 @@ function fixedSamples(sampleCount) {
  * larger than the bake's triangle limit, or the trace passes `maxSeconds`. It reads no clock to decide anything else, and
  * the rays are a fixed set, so the same scene gives the same bytes.
  */
-export function applyFloorSkyVisibility(parts, { raysPerTexel = FLOOR_SKY_RAYS, maximumTexels = FLOOR_SKY_MAXIMUM_TEXELS, maxSeconds = FLOOR_SKY_MAXIMUM_SECONDS, strength = FLOOR_SKY_STRENGTH, includeClosedRooms = false } = {}) {
+export function applyFloorSkyVisibility(parts, { raysPerTexel = FLOOR_SKY_RAYS, maximumTexels = FLOOR_SKY_MAXIMUM_TEXELS, maxSeconds = FLOOR_SKY_MAXIMUM_SECONDS, strength: requestedStrength, includeClosedRooms = false, onlyClosedRooms = false } = {}) {
+  const strength = requestedStrength ?? (onlyClosedRooms ? FLOOR_SKY_ROOM_STRENGTH : FLOOR_SKY_STRENGTH);
   const started = performance.now();
   const unchanged = reason => ({ parts, report: { floors: [], texels: 0, rays: 0, seconds: (performance.now() - started) / 1000, reason } });
   const floorIndices = findFloorParts(parts);
@@ -210,7 +216,10 @@ export function applyFloorSkyVisibility(parts, { raysPerTexel = FLOOR_SKY_RAYS, 
   if (occluders.length < 2) return unchanged('nothing above the floor');
   // A closed room has no sky to see: its walls and lamps give the light, and the shader's room term already handles it.
   const roomShare = closedRoomShare(parts, new Map(parts.map(part => [part.name, part.matrix])));
-  if (!includeClosedRooms && roomShare !== null && roomShare >= CLOSED_ROOM_SHARE) return unchanged('closed room');
+  const closedRoom = roomShare !== null && roomShare >= CLOSED_ROOM_SHARE;
+  if (closedRoom && !includeClosedRooms && !onlyClosedRooms) return unchanged('closed room');
+  // Open ground gets light back from sunlit facades and streets that a sky trace does not hold, so it comes out too dark.
+  if (onlyClosedRooms && !closedRoom) return unchanged('open scene');
   let world;
   try {
     world = buildWorld(occluders);
@@ -265,8 +274,41 @@ export function applyFloorSkyVisibility(parts, { raysPerTexel = FLOOR_SKY_RAYS, 
     if (builder.hasUvs) cutGeometryResult.uvs = new Float32Array(builder.uvs);
     if (builder.hasColors) cutGeometryResult.colors = new Float32Array(builder.colors);
     nextParts[index] = Object.freeze({ ...part, geometry: Object.freeze(cutGeometryResult) });
-    floors.push({ name: part.name, texels: upwardVertices.size, triangles: indices.length / 3 });
+    let sharedSum = 0;
+    for (const vertex of upwardVertices) sharedSum += skyVisibility[vertex];
+    floors.push({ name: part.name, texels: upwardVertices.size, triangles: indices.length / 3, meanVisibility: upwardVertices.size ? sharedSum / upwardVertices.size : 1 });
   }
   const texels = floors.reduce((total, floor) => total + floor.texels, 0);
-  return { parts: Object.freeze(nextParts), report: { floors, texels, rays: totalRays, seconds: (performance.now() - started) / 1000, reason: null } };
+  const meanVisibility = texels ? floors.reduce((total, floor) => total + floor.meanVisibility * floor.texels, 0) / texels : 1;
+  return { parts: Object.freeze(nextParts), report: { floors, texels, meanVisibility, rays: totalRays, seconds: (performance.now() - started) / 1000, reason: null } };
+}
+
+/** True when the environment has a sun: a key light with a colour and intensity above zero. A recipe that sets neither has the default sun. */
+export function environmentHasSun(environment) {
+  const keyColor = environment?.keyColor ?? [1, 1, 1];
+  return (environment?.keyIntensity ?? 1) * (keyColor[0] + keyColor[1] + keyColor[2]) > 0;
+}
+
+/**
+ * The default for a scene: a closed room a sun lights gets the sky trace at `FLOOR_SKY_ROOM_STRENGTH`, and every other scene (open ground,
+ * a room lit by lamps alone) comes back unchanged, because the trace made those worse against Cycles. `environment.floorSkyTrace: false`
+ * turns it off. The recipe path (`createAgentScene`) and the reference harness both call this, so they draw the same frame.
+ */
+export function applyDefaultFloorSky(parts, environment, options = {}) {
+  if (environment?.floorSkyTrace === false || !environmentHasSun(environment)) return { parts, report: null };
+  return applyFloorSkyVisibility(parts, { onlyClosedRooms: true, ...options });
+}
+
+const defaultResults = new WeakMap();
+
+/** The recipe path's call: the default for these parts and this environment, kept until either is replaced. */
+export function stageFloorSky(environment, parts) {
+  if (environment.floorSkyTrace === false) return parts;
+  let byEnvironment = defaultResults.get(parts);
+  if (!byEnvironment) {
+    byEnvironment = new WeakMap();
+    defaultResults.set(parts, byEnvironment);
+  }
+  if (!byEnvironment.has(environment)) byEnvironment.set(environment, applyDefaultFloorSky(parts, environment).parts);
+  return byEnvironment.get(environment);
 }

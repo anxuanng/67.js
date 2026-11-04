@@ -1141,7 +1141,7 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
     const sourceRestParts = sameParts ? state.sourceRestParts : Object.freeze(nextParts);
     const lightBakeResult = stageLightBake(recipe, sourceRestParts, graph);
     const reflected = stageObjectReflections(recipe, sourceRestParts, lightBakeResult ? lightBakeResult.parts : sourceRestParts, graph);
-    const restParts = stageCoplanarOffsets(recipe, stageLightLinks(recipe, reflected ? reflected.parts : lightBakeResult ? lightBakeResult.parts : sourceRestParts));
+    const restParts = stageCoplanarOffsets(recipe, stageLightLinks(recipe, stageFloorSky(recipe, reflected ? reflected.parts : lightBakeResult ? lightBakeResult.parts : sourceRestParts)));
     const stagedState = {
       recipe, geometryRecords, geometries, graph, materialHandles,
       // Part identity decides what the next stage reuses, so it compares the parts as built, before any bake.
@@ -1222,6 +1222,11 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
     }
     objectReflectionCache = agentSceneModule('reflections').stageObjectReflections(objectReflectionCache, recipe, sourceRestParts, drawnParts, graph, agentEnvironmentMap(recipe.environment));
     return objectReflectionCache.result;
+  }
+
+  // A closed room a sun lights gets the sky each floor texel sees; the lazy module decides, keeps its result and honours environment.floorSkyTrace.
+  function stageFloorSky(recipe, parts) {
+    return agentSceneModuleLoaded('floorSky') ? agentSceneModule('floorSky').stageFloorSky(recipe.environment, parts) : parts;
   }
 
   // A scene that asks for no bake and looks like a closed room gets one diagnostic naming the bake. The ray test costs a
@@ -1419,7 +1424,7 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
           knownKeys(operation, ['type', lookField], 'operation');
           const patch = operation[lookField];
           // Spot and area lights, cascades and sun links are absent from a recipe until it sets them.
-          const optionalFields = lookField === 'environment' ? ['ground', 'spotLights', 'areaLights', 'shadowCascades', 'keyAffects', 'objectReflections', 'lines', 'resolveCoplanar', 'viewTransform', 'look'] : [];
+          const optionalFields = lookField === 'environment' ? ['ground', 'spotLights', 'areaLights', 'shadowCascades', 'keyAffects', 'objectReflections', 'floorSkyTrace', 'sunBounce', 'lines', 'resolveCoplanar', 'viewTransform', 'look'] : [];
           knownKeys(patch, [...Object.keys(candidate[lookField]), ...optionalFields], lookField);
           const nestedField = lookField === 'environment' ? 'volumeFog' : lookField === 'effects' ? 'bloom' : null;
           const merged = { ...candidate[lookField], ...(lookField === 'environment' ? environmentPatchWithSetup(patch) : patch) };

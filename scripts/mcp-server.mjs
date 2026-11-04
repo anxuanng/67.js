@@ -226,6 +226,8 @@ const environment = z.strictObject({
   liquid: liquidOptics.optional().describe('Optics for materials tagged liquid or foam.'),
   lines: lines.nullable().optional(),
   objectReflections: z.boolean().optional().describe("false turns off reflection probes on smooth metal parts."),
+  floorSkyTrace: z.boolean().optional().describe('false turns off the sky traced into floors of sun-lit closed rooms.'),
+  sunBounce: z.number().min(0).optional().describe('Sun bounce in a closed room: 0 off, 1 default.'),
   resolveCoplanar: z.union([z.literal('offset'), z.literal(false)]).optional().describe("'offset' biases the smaller part of each coplanar pair at draw time; false clears."),
   viewTransform: z.enum(VIEW_TRANSFORM_NAMES).optional().describe('Display transform, for example agx to compare with Blender.'),
   look: z.enum(LOOK_NAMES).nullable().optional().describe('Named look preset; null clears.'),

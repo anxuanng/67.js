@@ -18,7 +18,8 @@ import { applyLightLinks } from '/src/light-linking.js';
 import { applyWaterReflection, attachWaterReflection } from '/src/water-reflection.js';
 import { attachScreenSpaceWater } from './ssr-water.js';
 import { groundBounceEnvironment } from '/src/ground-bounce.js';
-import { applyFloorSkyVisibility } from '/src/floor-sky-visibility.js';
+import { withSunBounce } from '/src/sun-bounce.js';
+import { applyDefaultFloorSky, applyFloorSkyVisibility } from '/src/floor-sky-visibility.js';
 import { installReversedDepth } from '/src/reversed-depth.js';
 
 // Water reflection is on the way a recipe gets it: found from the materials, no field. ?water=off draws the scenes without it, ?water=ssr with the screen-space reflection it was compared with.
@@ -27,7 +28,10 @@ const GROUND_BOUNCE = new URLSearchParams(location.search).get('groundBounce') !
 
 // The scene's environment with the light its floor bounces, when it has a plain one and nothing else gives that light (a bake, a closed room).
 function withDerivedGroundBounce(scene, drawnParts) {
-  return GROUND_BOUNCE ? groundBounceEnvironment(drawnParts, scene.environment) : scene.environment;
+  const lit = GROUND_BOUNCE ? groundBounceEnvironment(drawnParts, scene.environment) : scene.environment;
+  // ?sunBounce=<n> sets environment.sunBounce on every scene (default 1, 0 draws without the sunlit patches' lights).
+  const sunBounce = new URLSearchParams(location.search).get('sunBounce');
+  return withSunBounce(drawnParts, sunBounce === null ? lit : { ...lit, sunBounce: Number(sunBounce) });
 }
 
 // ?reversedDepth=on draws with reversed-Z (issue #310); the scenes draw with the standard depth buffer otherwise.
@@ -36,14 +40,19 @@ const REVERSED_DEPTH = new URLSearchParams(location.search).get('reversedDepth')
 
 const WATER_REFLECTION = { off: false, ssr: 'ssr' }[new URLSearchParams(location.search).get('water')] ?? 'planar';
 
-// ?floorSky=<strength> traces the sky each floor texel sees (src/floor-sky-visibility.js) and scales the world light there by it; the scenes draw without it otherwise.
-const FLOOR_SKY_STRENGTH = Number(new URLSearchParams(location.search).get('floorSky')) || 0;
+// The scenes draw with the default of the recipe path: a closed room a sun lights gets the floor sky trace (applyDefaultFloorSky, the same call
+// createAgentScene makes), and environment.floorSkyTrace: false turns it off. ?floorSky=0 sets that opt-out on every scene. ?floorSky=<strength>
+// is an experiment that traces every floor at that strength instead, and ?floorSkyRooms=1 adds the closed rooms to it.
+const FLOOR_SKY_PARAMETER = new URLSearchParams(location.search).get('floorSky');
+const FLOOR_SKY_EXPERIMENT = FLOOR_SKY_PARAMETER !== null && FLOOR_SKY_PARAMETER !== '0';
 const floorSkyReports = {};
 
-function withFloorSky(id, parts) {
-  if (!FLOOR_SKY_STRENGTH) return parts;
-  const result = applyFloorSkyVisibility(parts, { strength: FLOOR_SKY_STRENGTH, includeClosedRooms: new URLSearchParams(location.search).get('floorSkyRooms') === '1' });
-  floorSkyReports[id] = result.report;
+function withFloorSky(id, parts, scene) {
+  const environment = FLOOR_SKY_PARAMETER === '0' ? { ...scene.environment, floorSkyTrace: false } : scene.environment;
+  const result = FLOOR_SKY_EXPERIMENT
+    ? applyFloorSkyVisibility(parts, { strength: Number(FLOOR_SKY_PARAMETER), includeClosedRooms: new URLSearchParams(location.search).get('floorSkyRooms') === '1' })
+    : applyDefaultFloorSky(parts, environment);
+  if (result.report) floorSkyReports[id] = result.report;
   return result.parts;
 }
 
@@ -211,7 +220,7 @@ async function renderReferenceScene(id, { describe, ambientOcclusion = 0, ambien
   scene.environment = withDerivedGroundBounce(scene, probed ? probed.parts : baked ? baked.parts : scene.parts);
   const canvas = document.querySelector('canvas');
   // backgroundOnly draws the sky alone, so a score can be limited to the pixels the asset covers.
-  const renderer = createSceneRenderer(backgroundOnly ? [] : withFloorSky(id, probed ? probed.parts : baked ? baked.parts : scene.parts), scene, cascades);
+  const renderer = createSceneRenderer(backgroundOnly ? [] : withFloorSky(id, probed ? probed.parts : baked ? baked.parts : scene.parts, scene), scene, cascades);
   renderer.resize();
   // Blender draws a still scene. The renderer's default wind (0.3) would move the leaf cards by up to four pixels at time 0.
   const frame = { ...scene.camera, environment: scene.environment, time: 0, wind: 0, exposure: 1, effects: { ambientOcclusion, ambientOcclusionRadius, ...(bloom ? { bloom } : {}) } };
@@ -238,7 +247,7 @@ async function measureReferenceFrameTime(id, { bake, probes = false, cascades = 
   const baked = bake ? await bakeScene(scene, {}) : null;
   const probed = probes ? await probeScene(scene, id, baked ? baked.parts : scene.parts, probes) : null;
   scene.environment = withDerivedGroundBounce(scene, probed ? probed.parts : baked ? baked.parts : scene.parts);
-  const renderer = createSceneRenderer(withFloorSky(id, probed ? probed.parts : baked ? baked.parts : scene.parts), scene, cascades, { water });
+  const renderer = createSceneRenderer(withFloorSky(id, probed ? probed.parts : baked ? baked.parts : scene.parts, scene), scene, cascades, { water });
   renderer.resize();
   const frame = { ...scene.camera, environment: scene.environment, time: 0, exposure: 1, effects: { ambientOcclusion: 0, ambientOcclusionRadius: 0.5 } };
   // With orbit the camera moves a little every frame, so cascaded maps have to be redrawn each time, as in a camera move.
