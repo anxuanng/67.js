@@ -243,7 +243,7 @@ The [retarget contract](https://github.com/codepawl/67.js/blob/main/docs/retarge
 4. Each frame, call `renderer.replaceParts([...sceneParts, ...player.partsAt(seconds)])` and render.
 
 The [Spume contract](https://github.com/codepawl/67.js/blob/main/docs/spume.md) covers the cache format, whitewater options, placement and measured cost.
-Textured, skinned and morphed parts may stay in the list unchanged while frames are replaced; adding or removing them needs a new renderer.
+Skinned and morphed parts may stay in the list unchanged while frames are replaced; adding or removing them needs a new renderer. Textured parts can be added and removed once `import '@codepawlhq/67js/addons/replace-textured-parts'` has run; without it they must stay unchanged. The addon deletes a texture when no part uses it any more and keeps one another part still binds.
 
 ## Wheeled vehicles
 
@@ -334,6 +334,7 @@ Tags select specialized behavior: `armor` allows studio finish overrides. `floor
 | world | false | Enable outdoor rendering and world clipping defaults |
 | samples | 4 | Requested MSAA count. Negotiated against hardware |
 | hdr | false | Request floating-point color targets |
+| (compact colour) | off | `useCompactColor(renderer)` from `@codepawlhq/67js/addons/compact-color` stores the HDR frame and its multisample colour as R11F_G11F_B10F instead of RGBA16F: 39.55 MB less at 1920 x 1080 with 4 samples (110.92 to 71.37 MB). The format has no alpha, so it needs `hdr: true` and an opaque canvas and throws otherwise; it also throws when the device does not support the renderer's sample count in that format. Mean FLIP against the default is 0.002 to 0.030 (median 0.021) over the 26 reference scenes. Without the call nothing changes. `renderer.memoryReport()` lists the formats |
 | memoryBudgetMiB | 256 | Estimated render allocation budget |
 | environment | {} | Sky, light and fog settings |
 | shadowBounds | {} | Custom extent, eye and target for shadow framing |
@@ -566,7 +567,7 @@ The session keeps existing renderer-facing parts and matrices for transform, mat
 Agents can build from an empty recipe with `add-geometry`, `add-material` and `add-node` commands.
 Explicit removal and rebinding use the same atomic batch contract.
 Checkpoints retain shared geometry under the session budget. Release unused snapshots before increasing scene detail.
-The preview reconciles rigid, untextured topology while keeping unchanged geometry buffers and draw batches.
+The preview reconciles rigid topology, textured parts too with the `replace-textured-parts` addon, while keeping unchanged geometry buffers and draw batches.
 
 The CPU addon owns recipe state. The separate Node MCP server connects it to browser rendering. Background render jobs remain unsupported.
 

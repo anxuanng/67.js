@@ -34,7 +34,7 @@ const renderer = new Renderer67(canvas, [...terrain.parts, ...treeParts], { worl
 ```
 
 Each frame, `if (terrain.update(eye).length) renderer.replaceParts(sceneParts)` swaps the chunks whose level of detail changed.
-Textured parts such as leaf cards must stay unchanged in `replaceParts`, so rebuild the renderer when the vegetation levels change.
+Textured parts such as leaf cards can be added and removed in `replaceParts` after `import '@codepawlhq/67js/addons/replace-textured-parts'`; their textures are freed once no part uses them.
 
 ## loadTextureSet
 
@@ -99,7 +99,25 @@ In a recipe, the same ground is the `terrain` geometry (`size`, `resolution`, `s
 
 Combine the sampled arrays into `heights` in your own loop (for a sea mask: lower the vertex by the mask share), then build the geometry. A test pins the output against the per-vertex build it replaces: positions, normals, uvs and indices are bit-equal.
 
-Measured on the AIS port film (4.9 M vertices over three tiers, 10 m core mesh, sea mask averaged over each cell), page open to `stageReady`, RTX 3060, headless Chrome on ANGLE D3D11, four runs while other sessions loaded the machine: 5.5 to 13.1 s before (5.5 to 6.7 s in the quiet runs), 3.6 to 9.6 s after (3.6 to 3.7 s in three of four runs), against 1.0 to 1.4 s for the three.js build of the same scene. The terrain code fell from about 3.4 s of CPU to about 0.6 s; the frame at film second 1 is pixel-identical (max difference 0 of 255). What stays: image decode and mask readback (about 0.6 s), texture upload (about 0.7 s) and shader compile (about 0.6 s). The three.js build does the shoreline per pixel in a shader, so it needs no mask pass.
+Measured on the AIS port film (4.9 M vertices over three tiers, 10 m core mesh, sea mask averaged over each cell), page open to `stageReady`, RTX 3060, headless Chrome on ANGLE D3D11, four runs while other sessions loaded the machine: 5.5 to 13.1 s before (5.5 to 6.7 s in the quiet runs), 3.6 to 9.6 s after (3.6 to 3.7 s in three of four runs), against 1.0 to 1.4 s for the three.js build of the same scene. The terrain code fell from about 3.4 s of CPU to about 0.6 s; the frame at film second 1 is pixel-identical (max difference 0 of 255). With bitmaps for the images and the programs linking during the uploads, the same page loads in 2.8 to 6.6 s (2.8 to 3.4 s in the two quietest runs; three.js 1.1 to 2.1 s in the same runs), and the frame is still pixel-identical. What stays: mask readback (about 0.3 s), texture upload (about 0.35 s), the two raster passes (about 0.5 s) and building meshes in the port's own code. The three.js build does the shoreline per pixel in a shader, so it needs no mask pass.
+
+### Moving a per-vertex mask sampler over
+
+If you sample a mask yourself (a bilinear read or a cell mean for every vertex, through a closure), switch to `sampleRasterGrid` and `createHeightfieldGeometry`. The values and the mesh stay the same, and the work drops from a call per sample to two passes over the pixels:
+
+```js
+// before: 16 bilinear reads and a closure call for every vertex
+const heightAt = (east, north) => groundHeight(bilinear(heights, east, north), cellAverage(mask, east, north, spacing));
+const geometry = gridGeometry({ columns, rows, eastAt, northAt, heightAt, uvBox });
+// after: the whole grid at once, then the mesh
+const lines = { columns, rows, eastAt, northAt };
+const share = sampleRasterGrid(mask, { ...lines, cellSize: spacing, samplesPerSide: 4 }), raw = sampleRasterGrid(heights, lines);
+const geometry = createHeightfieldGeometry({ ...lines, heights: Float32Array.from(raw, (value, vertex) => groundHeight(value, share[vertex])), uvBox });
+```
+
+Load images as `createImageBitmap(await (await fetch(url)).blob(), { colorSpaceConversion: 'none', premultiplyAlpha: 'none' })` and pass the bitmap as a texture `image`. The renderer accepts it, it decodes off the main thread, and `texImage2D` from a bitmap takes about 0.2 of the time it takes from an `Image` (measured on 24-megapixel JPEGs: 64 ms against 300 ms), with identical pixels. The renderer also starts every program before it uploads textures and buffers, so the driver links them while the upload runs.
+
+Where the rest of the port's load goes (marks in a scratch copy, ms from navigation, quiet run of 2.7 to 3.4 s against 1.1 to 1.2 s for three.js): images and heights decoded by 0.65 s, four mask readbacks done by 0.94 s (each 24-megapixel image costs about 20 ms to draw, 37 ms to read and 19 ms to copy the channel, all in the browser), meshes by 1.5 s (the two raster passes are at about 50 ms per 24-megapixel mask in plain JavaScript, so a summed-area table would not help: the bilinear weights differ per vertex), buildings by 1.97 s, `applyWaterReflection` by 2.06 s, the renderer constructor by 2.9 s. The port runs these one after the other: reading each mask as its image arrives, starting the building fetches with the images, and building the three tiers while the next tier's mask reads are the steps still open, and they live in the scene's code.
 
 ## Navigation
 

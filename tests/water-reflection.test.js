@@ -105,6 +105,30 @@ test('the mirror image is drawn at three quarters of the canvas in each directio
   detach();
 });
 
+test('a mirrorOnly level is hidden from every draw but the mirror, and detaching puts the renderer back', () => {
+  const context = new Proxy({}, {
+    get: (_, name) => (name === 'checkFramebufferStatus' ? () => 1 : name === 'FRAMEBUFFER_COMPLETE' ? 1 : typeof name === 'string' && name === name.toUpperCase() ? 0 : () => ({})),
+  });
+  const coarse = { positions: new Float32Array(9), indices: new Uint32Array(3), mirrorOnly: true };
+  const batch = { levelErrors: [0, 0.01], levelGeometries: [{ positions: new Float32Array(9), indices: new Uint32Array(3) }, coarse] };
+  const seen = [];
+  const renderer = {
+    context, canvas: { width: 960, height: 540 }, hdr: false, viewProjection: new Float32Array(16), batches: [batch], dispose() {},
+    selectBatchInstances: chosen => seen.push([...chosen.levelErrors]),
+    render(frame) {
+      renderer.selectBatchInstances(batch);
+      seen.push(frame.reflectionTarget ? 'mirror' : 'lit');
+    },
+  };
+  const original = renderer.selectBatchInstances;
+  const detach = attachWaterReflection(renderer, findWaterSurface(lakeScene()));
+  renderer.render({ eye: [0, 20, 100], target: [0, 0, 0] });
+  assert.deepEqual(seen, [[0, 0.01], 'mirror', [0, Infinity], 'lit'], 'the mirror draw sees the true errors, the lit frame an infinite one');
+  assert.deepEqual(batch.levelErrors, [0, Infinity]);
+  detach();
+  assert.equal(renderer.selectBatchInstances, original);
+});
+
 test('a render pass frame skips the mirror image and the next lit frame draws it again', () => {
   const context = new Proxy({}, {
     get: (_, name) => {
@@ -223,4 +247,26 @@ test('the shader samples a mip level taken from roughness', () => {
   const source = createFragmentShader(['studioLighting', 'waterReflection']);
   assert.match(source, /float mirrorLevel = 5\.0 \* clamp\(\(roughness - 0\.10\) \/ 0\.40, 0\.0, 1\.0\)/);
   assert.match(source, /textureLod\(waterReflection,/);
+});
+
+test('worldBounds equals the per-axis formula it replaced, under a rotated and moved matrix', async () => {
+  const { worldBounds } = await import('../src/probe-trace.js');
+  const positions = new Float32Array(3 * 500);
+  let state = 11;
+  for (let index = 0; index < positions.length; index += 1) {
+    state = (state * 1664525 + 1013904223) >>> 0;
+    positions[index] = (state / 2 ** 32 - 0.5) * 400;
+  }
+  const angle = 0.7;
+  const matrix = [Math.cos(angle), 0, -Math.sin(angle), 0, 0, 1.5, 0, 0, Math.sin(angle), 0, Math.cos(angle), 0, 120.25, -3.5, 40];
+  const minimum = [Infinity, Infinity, Infinity];
+  const maximum = [-Infinity, -Infinity, -Infinity];
+  for (let vertex = 0; vertex < positions.length; vertex += 3) {
+    for (let axis = 0; axis < 3; axis++) {
+      const value = matrix[axis] * positions[vertex] + matrix[4 + axis] * positions[vertex + 1] + matrix[8 + axis] * positions[vertex + 2] + matrix[12 + axis];
+      minimum[axis] = Math.min(minimum[axis], value);
+      maximum[axis] = Math.max(maximum[axis], value);
+    }
+  }
+  assert.deepEqual(worldBounds({ geometry: { positions }, matrix }), { minimum, maximum });
 });

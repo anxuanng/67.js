@@ -327,7 +327,7 @@ function addCrownClumps(builder, skeleton, spec, mode, random, widthScale = 1) {
   for (const sites of cells.values()) {
     const center = scaleVector(sites.reduce((sum, site) => addVectors(sum, site.position), [0, 0, 0]), 1 / sites.length);
     const shading = crownShading(skeleton, center);
-    const radius = cellSize * (0.55 + 0.1 * Math.min(sites.length, 5)) * widthScale;
+    const radius = cellSize * (0.55 + 0.1 * Math.min(sites.length, 5)) * widthScale * (spec.clumpScale ?? 1);
     if (mode === 'mesh') {
       addBlob(builder, center, radius, shading);
       continue;

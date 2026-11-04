@@ -44,6 +44,37 @@ test('the same seed gives the same terrain and another seed differs', () => {
   assert.deepEqual(first.parts[3].geometry.positions, second.parts[3].geometry.positions);
 });
 
+test('mirrorLevels gives every chunk coarser mirrorOnly meshes with growing errors, and none without the option', () => {
+  const plain = createTerrain(SMALL);
+  assert.ok(plain.parts.every(part => part.lods === undefined));
+  const terrain = createTerrain({ ...SMALL, levels: 1, resolution: 64, mirrorLevels: 3 });
+  for (const part of terrain.parts) {
+    assert.equal(part.lods.length, 4);
+    assert.equal(part.lods[0].geometry, part.geometry);
+    assert.equal(part.lods[0].mirrorOnly, undefined);
+    assert.ok(part.lods.slice(1).every(level => level.mirrorOnly === true && level.geometry.mirrorOnly === true));
+    for (let index = 1; index < part.lods.length; index++) {
+      assert.ok(part.lods[index].error >= part.lods[index - 1].error);
+    }
+    assert.ok(part.lods[3].geometry.indices.length < part.lods[0].geometry.indices.length / 2);
+  }
+});
+
+test('a mirror mesh keeps every finest-grid vertex on the chunk edge, so it meets its neighbours without a crack', () => {
+  const terrain = createTerrain({ ...SMALL, levels: 1, resolution: 64, mirrorLevels: 3 });
+  const part = terrain.parts[5];
+  const finest = vertexList(part.geometry);
+  const lowestZ = Math.min(...finest.map(vertex => vertex[2]));
+  const edgeAt = vertices => new Set(vertices.filter(vertex => Math.abs(vertex[2] - lowestZ) < 1e-4).map(vertex => vertex[0].toFixed(3)));
+  const finestEdge = edgeAt(finest);
+  assert.equal(finestEdge.size, 65);
+  for (const level of part.lods.slice(1)) {
+    const mirrorEdge = edgeAt(vertexList(level.geometry));
+    assert.deepEqual([...mirrorEdge].sort(), [...finestEdge].sort());
+  }
+  assert.throws(() => createTerrain({ ...SMALL, levels: 3, mirrorLevels: 3 }), RangeError);
+});
+
 test('heightAt returns the vertex height at mesh vertices of the finest level', () => {
   const terrain = createTerrain(SMALL);
   terrain.update([0, 1, 0]);

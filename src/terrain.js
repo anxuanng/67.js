@@ -150,12 +150,15 @@ function resolveHeightFunction(height, size, seed) {
   return createNoiseHeight(height ?? {}, seed);
 }
 
-function validateOptions({ size, resolution, chunks, levels }) {
+function validateOptions({ size, resolution, chunks, levels, mirrorLevels }) {
   if (!(size > 0) || !Number.isFinite(size)) throw new RangeError('size must be a positive number of metres.');
   if (!Number.isInteger(chunks) || chunks < 1) throw new RangeError('chunks must be a positive integer.');
   if (!Number.isInteger(levels) || levels < 1) throw new RangeError('levels must be a positive integer.');
   if (!Number.isInteger(resolution) || resolution < 1 || resolution % (2 ** (levels - 1)) !== 0) {
     throw new RangeError(`resolution must be a positive integer divisible by 2^(levels - 1) = ${2 ** (levels - 1)}.`);
+  }
+  if (!Number.isInteger(mirrorLevels) || mirrorLevels < 0 || resolution % (2 ** (levels - 1 + mirrorLevels)) !== 0) {
+    throw new RangeError('mirrorLevels must be a whole number of extra halvings that the resolution divides by (2^(levels - 1 + mirrorLevels)).');
   }
 }
 
@@ -190,8 +193,8 @@ function pointInsideHoles(holes, pointX, pointZ) {
  * Ground spans x and z from -size / 2 to size / 2. Call update(eye) each frame (or when the camera moves) and, when it
  * returns a non-empty list, pass the scene parts to renderer.replaceParts.
  */
-export function createTerrain({ size = 512, resolution = 32, chunks = 8, levels = 4, height, seed = 1, material = DEFAULT_MATERIAL, lodDistance, eye, holes } = {}) {
-  validateOptions({ size, resolution, chunks, levels });
+export function createTerrain({ size = 512, resolution = 32, chunks = 8, levels = 4, height, seed = 1, material = DEFAULT_MATERIAL, lodDistance, eye, holes, mirrorLevels = 0 } = {}) {
+  validateOptions({ size, resolution, chunks, levels, mirrorLevels });
   const holeCircles = normalizeTerrainHoles(holes);
   const isHole = (worldX, worldZ) => holeCircles !== null && pointInsideHoles(holeCircles, worldX, worldZ);
   const heightFunction = resolveHeightFunction(height, size, seed);
@@ -346,6 +349,96 @@ export function createTerrain({ size = 512, resolution = 32, chunks = 8, levels 
     return Math.min(levels - 1, Math.floor(Math.log2(distance / nearDistance)) + 1);
   }
 
+  // How far a coarser mesh can sit from the finest one on this chunk: the largest second difference of the heights at that step.
+  function coarseError(state, level) {
+    const step = 2 ** level;
+    let largest = 0;
+    for (let row = 0; row <= resolution; row += step) {
+      for (let column = 0; column <= resolution; column += step) {
+        const gridColumn = state.chunkColumn * resolution + column;
+        const gridRow = state.chunkRow * resolution + row;
+        const middle = gridHeight(gridColumn, gridRow);
+        largest = Math.max(largest, Math.abs(gridHeight(gridColumn - step, gridRow) + gridHeight(gridColumn + step, gridRow) - 2 * middle) / 2, Math.abs(gridHeight(gridColumn, gridRow - step) + gridHeight(gridColumn, gridRow + step) - 2 * middle) / 2);
+      }
+    }
+    return largest;
+  }
+
+  /**
+   * A coarse mesh whose four chunk edges keep every finest-grid vertex, so they meet a neighbour's finest edge or another mirror
+   * mesh exactly; the cells on the border are fans around their centre. A neighbour whose own edge is
+   * already snapped to a coarser main level can still leave a thin gap.
+   */
+  function buildMirrorGeometry(chunkColumn, chunkRow, level) {
+    const step = 2 ** level;
+    const cells = resolution / step;
+    const side = cells + 1;
+    const firstColumn = chunkColumn * resolution;
+    const firstRow = chunkRow * resolution;
+    const positions = [];
+    const normals = [];
+    const uvs = [];
+    const skyVisibility = [];
+    const indices = [];
+    const normalScratch = new Float32Array(3);
+    function addVertex(gridColumn, gridRow) {
+      const worldX = origin + gridColumn * spacing;
+      const worldZ = origin + gridRow * spacing;
+      gridNormal(gridColumn, gridRow, 1, normalScratch, 0);
+      positions.push(worldX, gridHeight(gridColumn, gridRow), worldZ);
+      normals.push(normalScratch[0], normalScratch[1], normalScratch[2]);
+      uvs.push(worldX, worldZ);
+      skyVisibility.push(skyVisibilityAt(clamp(gridColumn, 0, gridCells), clamp(gridRow, 0, gridCells)));
+      return skyVisibility.length - 1;
+    }
+    for (let row = 0; row < side; row++) {
+      for (let column = 0; column < side; column++) addVertex(firstColumn + column * step, firstRow + row * step);
+    }
+    const borderVertices = new Map();
+    // Local finest-grid position (row, column in 0..resolution) to a vertex: a coarse corner, or a border vertex made once.
+    function vertexAt(fineRow, fineColumn) {
+      if (fineRow % step === 0 && fineColumn % step === 0) return (fineRow / step) * side + fineColumn / step;
+      const key = fineRow * (resolution + 1) + fineColumn;
+      if (!borderVertices.has(key)) borderVertices.set(key, addVertex(firstColumn + fineColumn, firstRow + fineRow));
+      return borderVertices.get(key);
+    }
+    for (let row = 0; row < cells; row++) {
+      for (let column = 0; column < cells; column++) {
+        const rowStart = row * step;
+        const rowEnd = rowStart + step;
+        const columnStart = column * step;
+        const columnEnd = columnStart + step;
+        if (isHole(origin + (firstColumn + columnStart + step / 2) * spacing, origin + (firstRow + rowStart + step / 2) * spacing)) continue;
+        const onBorder = { north: row === 0, south: row === cells - 1, west: column === 0, east: column === cells - 1 };
+        if (!onBorder.north && !onBorder.south && !onBorder.west && !onBorder.east) {
+          const corner00 = row * side + column;
+          indices.push(corner00, corner00 + side + 1, corner00 + 1, corner00, corner00 + side, corner00 + side + 1);
+          continue;
+        }
+        const ring = [];
+        for (let fine = columnStart; fine < (onBorder.north ? columnEnd : columnStart + 1); fine++) ring.push(vertexAt(rowStart, fine));
+        for (let fine = rowStart; fine < (onBorder.east ? rowEnd : rowStart + 1); fine++) ring.push(vertexAt(fine, columnEnd));
+        for (let fine = columnEnd; fine > (onBorder.south ? columnStart : columnEnd - 1); fine--) ring.push(vertexAt(rowEnd, fine));
+        for (let fine = rowEnd; fine > (onBorder.west ? rowStart : rowEnd - 1); fine--) ring.push(vertexAt(fine, columnStart));
+        const center = addVertex(firstColumn + columnStart + step / 2, firstRow + rowStart + step / 2);
+        for (let index = 0; index < ring.length; index++) indices.push(center, ring[(index + 1) % ring.length], ring[index]);
+      }
+    }
+    return { positions: new Float32Array(positions), normals: new Float32Array(normals), uvs: new Float32Array(uvs), skyVisibility: new Float32Array(skyVisibility), indices: new Uint32Array(indices), mirrorOnly: true };
+  }
+
+  // Coarser meshes for the water mirror only. The water reflection addon hides them from every other draw, so a terrain that sets
+  // mirrorLevels must be used with attachWaterReflection.
+  function buildMirrorLods(state) {
+    const lods = [{ geometry: state.part.geometry, error: 0 }];
+    for (let extra = 1; extra <= mirrorLevels; extra++) {
+      const level = state.targetLevel + extra;
+      const error = Math.max(lods[extra - 1].error, coarseError(state, level));
+      lods.push({ geometry: buildMirrorGeometry(state.chunkColumn, state.chunkRow, level), error, mirrorOnly: true });
+    }
+    return lods;
+  }
+
   let triangleTotal = 0;
   function update(eyePosition) {
     if (!Array.isArray(eyePosition) && !(eyePosition instanceof Float32Array)) throw new TypeError('update needs an eye position [x, y, z].');
@@ -358,6 +451,7 @@ export function createTerrain({ size = 512, resolution = 32, chunks = 8, levels 
       if (unchanged) continue;
       if (state.part.geometry) triangleTotal -= state.part.geometry.indices.length / 3;
       state.part.geometry = buildChunkGeometry(state.chunkColumn, state.chunkRow, state.targetLevel, edgeLevels);
+      if (mirrorLevels > 0) state.part.lods = buildMirrorLods(state);
       triangleTotal += state.part.geometry.indices.length / 3;
       state.level = state.targetLevel;
       state.edgeLevels = edgeLevels;
