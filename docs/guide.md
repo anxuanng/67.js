@@ -335,7 +335,7 @@ Tags select specialized behavior: `armor` allows studio finish overrides. `floor
 | samples | 4 | Requested MSAA count. Negotiated against hardware |
 | hdr | false | Request floating-point color targets |
 | (compact colour) | off | `useCompactColor(renderer)` from `@codepawlhq/67js/addons/compact-color` stores the HDR frame and its multisample colour as R11F_G11F_B10F instead of RGBA16F: 39.55 MB less at 1920 x 1080 with 4 samples (110.92 to 71.37 MB). The format has no alpha, so it needs `hdr: true` and an opaque canvas and throws otherwise; it also throws when the device does not support the renderer's sample count in that format. Mean FLIP against the default is 0.002 to 0.030 (median 0.021) over the 26 reference scenes. Without the call nothing changes. `renderer.memoryReport()` lists the formats |
-| memoryBudgetMiB | 256 | Estimated render allocation budget |
+| memoryBudgetMiB | sized to the scene | Estimated render allocation budget. Without it the renderer takes room for the scene and one full frame: at least 256 MiB, at most 1024 MiB on a device reporting 8 GiB of memory or more (512 MiB otherwise). A scene over the budget fails with an error that names the bytes and the `memoryBudgetMiB` that fits. |
 | environment | {} | Sky, light and fog settings |
 | shadowBounds | {} | Custom extent, eye and target for shadow framing |
 | benchmark | false | Diagnostic flat shader. Not the appearance renderer |
