@@ -59,8 +59,8 @@ test('a worker that dies mid-job leaves the work to the inline path with the sam
 
 test('an error a kernel raises on the worker comes back as the same class and message', async () => {
   const raised = answerKernelRequest({ name: 'pattern', args: [{ type: 'nope' }] });
-  assert.equal(raised.response.error.name, 'TypeError');
-  assert.equal(typeof raised.response.error.message, 'string');
+  assert.equal(raised.response.error.name, 'RangeError');
+  assert.match(raised.response.error.message, /type must be one of/);
   const raising = {
     postMessage() {
       setTimeout(() => raising.onmessage?.({ data: { error: { name: 'RangeError', message: 'Light bake passed maxSeconds (20).' } } }), 0);
