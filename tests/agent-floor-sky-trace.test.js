@@ -41,6 +41,12 @@ test('environment.floorSkyTrace false turns the trace off', () => {
   assert.equal(floorHasSkyVisibility(createAgentScene(room({ keyColor: [3, 3, 3], floorSkyTrace: false }))), false);
 });
 
+test('environment.floorSkyTrace that is not a boolean is refused, not read as on', () => {
+  for (const value of ['off', 0, null, { enabled: false }]) {
+    assert.throws(() => createAgentScene(room({ keyColor: [3, 3, 3], floorSkyTrace: value })), /floorSkyTrace must be a boolean/);
+  }
+});
+
 test('a room with no sun and open ground are left as they were', () => {
   assert.equal(floorHasSkyVisibility(createAgentScene(room({ keyColor: [0, 0, 0] }))), false);
   const open = room({ keyColor: [3, 3, 3] });
