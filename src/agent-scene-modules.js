@@ -31,6 +31,7 @@ const MODULE_LOADERS = {
   lineArt: () => import('./line-art.js'),
   viewTransform: () => import('./view-transform-shader.js'),
   coplanar: () => import('./coplanar-overlap.js'),
+  userPass: () => import('./user-pass.js'),
 };
 
 const loadedModules = {};
@@ -70,6 +71,7 @@ const MODULE_MARKERS = {
   viewTransform: ['"viewTransform":"agx"', '"viewTransform":"neutral"', '"look":"'],
   // The coplanar-overlap warning in scene_inspect appears only once this is loaded, which loadAllAgentSceneModules does; a recipe with resolveCoplanar needs it.
   coplanar: ['"resolveCoplanar"'],
+  userPass: ['"postPasses"'],
 };
 
 /** Whether a recipe, operation list or edit list contains a boolean edit, which needs loadMeshBooleans() first. */
