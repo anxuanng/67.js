@@ -272,8 +272,11 @@ function environmentFrom(input = {}) {
     }
     environment.objectReflections = input.objectReflections;
   }
-  // Only `false` opts out of the floor sky trace (src/floor-sky-visibility.js); any other value leaves it on.
+  // `false` opts out of the floor sky trace that src/floor-sky-visibility.js gives sun-lit closed rooms.
   if (input.floorSkyTrace !== undefined) {
+    if (typeof input.floorSkyTrace !== 'boolean') {
+      throw new TypeError('environment.floorSkyTrace must be a boolean.');
+    }
     environment.floorSkyTrace = input.floorSkyTrace;
   }
   // Outlines and line geometry; null clears them. The module checks the fields and loads on demand.
