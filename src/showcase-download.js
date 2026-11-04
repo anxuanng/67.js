@@ -65,10 +65,15 @@ export async function downloadBlob(url, { meter, name, type, signal }) {
   return new Blob(chunks, { type });
 }
 
-/** The rank list the split script writes into a GLB's scene extras, or null when the file has none. Reads the JSON chunk only. */
+/**
+ * The rank list the split script writes into a GLB's scene extras, or null when the file has none. Reads the JSON chunk only.
+ * The script stores it as runs of consecutive ranks, `partRankRuns: [[first, count], ...]`, which keeps the JSON small.
+ */
 export async function readPartRanks(blob) {
   const header = new DataView(await blob.slice(0, 20).arrayBuffer());
   const jsonLength = header.getUint32(12, true);
   const document = JSON.parse(await blob.slice(20, 20 + jsonLength).text());
-  return document.scenes?.[document.scene ?? 0]?.extras?.partRanks ?? null;
+  const extras = document.scenes?.[document.scene ?? 0]?.extras;
+  if (!extras?.partRankRuns) return extras?.partRanks ?? null;
+  return extras.partRankRuns.flatMap(([first, count]) => Array.from({ length: count }, (unused, offset) => first + offset));
 }

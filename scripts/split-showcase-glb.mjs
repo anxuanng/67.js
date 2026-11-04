@@ -10,6 +10,7 @@
 // and every kept node keeps its transform. The one thing rewritten is the shared meshopt index stream. Its indices are decoded,
 // cut per accessor and encoded again (a lossless step), because one stream serves every mesh and cannot be cut in its
 // compressed form. A mesh used by several nodes goes to one part together with all of its nodes, so instancing survives.
+import { createHash } from 'node:crypto';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -24,6 +25,9 @@ const BINARY_CHUNK = 0x004e4942;
 const MESHOPT = 'EXT_meshopt_compression';
 const PREVIEW_SKY_WIDTH = 128;
 const PREVIEW_SKY_HEIGHT = 64;
+// A 1x1 PNG that stands in for a shared texture's image in every file but the first. The page never decodes it: the later file
+// takes the texture the first file decoded, found by the key in the texture's extras.sharedTexture.
+const STAND_IN_IMAGE = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64');
 
 // The nodes (by name) that make the first part. They are the ground and the hero the default camera frames; every other
 // node goes to the rest. A name picks every node that carries it.
@@ -93,6 +97,8 @@ function collectTextureIndices(value, found) {
   }
 }
 
+const STAND_IN = Symbol('stand-in image');
+
 class SourceWorld {
   constructor(buffer) {
     ({ json: this.json, binary: this.binary } = readGlb(buffer));
@@ -146,9 +152,22 @@ class SourceWorld {
     return this.json.bufferViews[viewIndex].extensions?.[MESHOPT]?.mode === 'TRIANGLES';
   }
 
+  // Identifies a texture by what it shows: the bytes of its image and its sampler, so equal textures match across the parts.
+  textureKey(oldTexture) {
+    const texture = this.json.textures[oldTexture];
+    const view = this.json.bufferViews[this.json.images[texture.source].bufferView];
+    const start = view.byteOffset ?? 0;
+    const hash = createHash('sha1');
+    hash.update(this.binary.subarray(start, start + view.byteLength));
+    hash.update(JSON.stringify(this.json.samplers?.[texture.sampler] ?? null));
+    return hash.digest('hex').slice(0, 16);
+  }
+
   // The part holding exactly these nodes (mesh-carrying nodes) plus their ancestors; returns { json, binary }.
   // `keepPrimitive(meshIndex, primitive)` picks the primitives of each mesh that this part draws; a node left with none is dropped.
-  extract(requestedNodeIndices, keepPrimitive = () => true) {
+  // `share.keys` are the texture keys that more than one part uses. This part tags them with extras.sharedTexture; when
+  // `share.stripImages` is set it also swaps their images for the stand-in, so the bytes travel in the first part only.
+  extract(requestedNodeIndices, keepPrimitive = () => true, share = { keys: new Set(), stripImages: false }) {
     const source = this.json;
     const meshNodeIndices = requestedNodeIndices.filter(index => source.meshes[source.nodes[index].mesh].primitives.some(primitive => keepPrimitive(source.nodes[index].mesh, primitive)));
     const keptNodes = new Set();
@@ -229,14 +248,20 @@ class SourceWorld {
     const imageMap = new Map();
     const samplerOrder = [];
     const samplerMap = new Map();
-    const textures = textureOrder.map(oldTexture => {
+    const textureKeys = textureOrder.map(oldTexture => this.textureKey(oldTexture));
+    const textures = textureOrder.map((oldTexture, position) => {
       const texture = structuredClone(source.textures[oldTexture]);
       if (texture.extensions) throw new Error('The splitter does not handle texture extensions.');
-      if (!imageMap.has(texture.source)) {
-        imageMap.set(texture.source, imageOrder.length);
-        imageOrder.push(texture.source);
+      let imageSource = texture.source;
+      if (share.keys.has(textureKeys[position])) {
+        texture.extras = { ...texture.extras, sharedTexture: textureKeys[position] };
+        if (share.stripImages) imageSource = STAND_IN;
       }
-      texture.source = imageMap.get(texture.source);
+      if (!imageMap.has(imageSource)) {
+        imageMap.set(imageSource, imageOrder.length);
+        imageOrder.push(imageSource);
+      }
+      texture.source = imageMap.get(imageSource);
       if (texture.sampler !== undefined) {
         if (!samplerMap.has(texture.sampler)) {
           samplerMap.set(texture.sampler, samplerOrder.length);
@@ -328,6 +353,11 @@ class SourceWorld {
       return accessor;
     });
     const images = imageOrder.map(oldImage => {
+      if (oldImage === STAND_IN) {
+        const view = { buffer: 0, byteOffset: appendBinary(STAND_IN_IMAGE), byteLength: STAND_IN_IMAGE.length };
+        output.views.push(view);
+        return { mimeType: 'image/png', bufferView: output.views.length - 1 };
+      }
       const image = structuredClone(source.images[oldImage]);
       if (image.uri) throw new Error('The splitter does not handle images with a uri.');
       image.bufferView = copyView(image.bufferView);
@@ -357,16 +387,20 @@ class SourceWorld {
     const sceneRoots = (source.scenes[source.scene ?? 0].nodes).filter(root => nodeMap.has(root)).map(root => nodeMap.get(root));
 
     const keptNodeSet = new Set(meshNodeIndices);
-    const partRanks = [];
+    // Ranks as runs of consecutive values, [[first, count], ...]: a part keeps long stretches of the draw order.
+    const partRankRuns = [];
     this.drawOrder.forEach((entry, rank) => {
-      if (keptNodeSet.has(entry.nodeIndex) && keepPrimitive(source.nodes[entry.nodeIndex].mesh, entry.primitive)) partRanks.push(rank);
+      if (!keptNodeSet.has(entry.nodeIndex) || !keepPrimitive(source.nodes[entry.nodeIndex].mesh, entry.primitive)) return;
+      const lastRun = partRankRuns.at(-1);
+      if (lastRun && lastRun[0] + lastRun[1] === rank) lastRun[1] += 1;
+      else partRankRuns.push([rank, 1]);
     });
     const json = {
       asset: source.asset,
       extensionsUsed: source.extensionsUsed,
       extensionsRequired: source.extensionsRequired,
       scene: 0,
-      scenes: [{ ...source.scenes[source.scene ?? 0], nodes: sceneRoots, extras: { partRanks } }],
+      scenes: [{ ...source.scenes[source.scene ?? 0], nodes: sceneRoots, extras: { partRankRuns } }],
       nodes,
       meshes,
       materials,
@@ -378,7 +412,7 @@ class SourceWorld {
     if (textures.length) json.textures = textures;
     if (images.length) json.images = images;
     if (samplers.length) json.samplers = samplers;
-    return { json, binary: Buffer.concat(output.binaryChunks) };
+    return { json, binary: Buffer.concat(output.binaryChunks), textureKeys };
   }
 }
 
@@ -449,9 +483,30 @@ if (!firstNodes.length) throw new Error('No node matches the first part names.')
 // A hero mesh can hand its fine detail (by material name) to the rest, so the first part stays small.
 const laterMaterials = new Set(LATER_MATERIAL_NAMES[options.worldId] ?? []);
 const isLaterPrimitive = primitive => laterMaterials.has(world.json.materials[primitive.material]?.name);
-const first = writeGlb(...Object.values(world.extract(firstNodes, (mesh, primitive) => !isLaterPrimitive(primitive))));
-const rest = writeGlb(...Object.values(world.extract([...firstNodes, ...restNodes], (mesh, primitive) => !firstMeshes.has(mesh) || isLaterPrimitive(primitive))));
-console.log(`${options.worldId}: first ${first.length} bytes (${firstNodes.length} nodes), rest ${rest.length} bytes (${restNodes.length} nodes), source ${readFileSync(options.source).length} bytes`);
+const keepInFirst = (mesh, primitive) => !isLaterPrimitive(primitive);
+const keepInRest = (mesh, primitive) => !firstMeshes.has(mesh) || isLaterPrimitive(primitive);
+// A texture both parts use is stored in the first part only; the rest takes it by key once the first part has decoded it.
+const firstTextureKeys = new Set(world.extract(firstNodes, keepInFirst).textureKeys);
+const sharedKeys = new Set(world.extract([...firstNodes, ...restNodes], keepInRest).textureKeys.filter(key => firstTextureKeys.has(key)));
+const firstPart = world.extract(firstNodes, keepInFirst, { keys: sharedKeys, stripImages: false });
+const restPart = world.extract([...firstNodes, ...restNodes], keepInRest, { keys: sharedKeys, stripImages: true });
+// Every image's bytes must travel once across the parts; this names any that still travel twice.
+function imageHashes({ json, binary }) {
+  return new Map((json.images ?? []).map(image => {
+    const view = json.bufferViews[image.bufferView];
+    const bytes = binary.subarray(view.byteOffset ?? 0, (view.byteOffset ?? 0) + view.byteLength);
+    return [createHash('sha1').update(bytes).digest('hex'), bytes.length];
+  }));
+}
+const firstImages = imageHashes(firstPart);
+const duplicatedImages = [...imageHashes(restPart)].filter(([hash, length]) => firstImages.has(hash) && length > STAND_IN_IMAGE.length);
+if (duplicatedImages.length) {
+  const bytes = duplicatedImages.reduce((total, [, length]) => total + length, 0);
+  console.warn(`${options.worldId}: ${duplicatedImages.length} images (${bytes} bytes) are stored in both parts.`);
+}
+const first = writeGlb(firstPart.json, firstPart.binary);
+const rest = writeGlb(restPart.json, restPart.binary);
+console.log(`${options.worldId}: first ${first.length} bytes (${firstNodes.length} nodes), rest ${rest.length} bytes (${restNodes.length} nodes), source ${readFileSync(options.source).length} bytes, ${sharedKeys.size} shared textures`);
 if (!options.dryRun) {
   const directory = join(SHOWCASE_DIRECTORY, options.worldId);
   writeFileSync(join(directory, 'scene.glb'), first);
