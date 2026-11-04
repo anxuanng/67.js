@@ -9,8 +9,10 @@
 import { mat4 } from 'gl-matrix';
 import { installCoplanarDiagnostics } from './coplanar-overlap.js';
 import { compileProgram, fullscreenVertex } from './gl-program.js';
+import { shaderTransforms } from './shader-registry.js';
 
 export const FAR_TO_NEAR_LIMIT = 1e4;
+const ZERO_VECTOR = new Float32Array(4);
 const DEFAULT_NEAR = 0.1;
 
 /**
@@ -28,6 +30,21 @@ export function reverseProjectionDepth(out, projection) {
     out[depthIndex + 1] = clipW;
   }
   return out;
+}
+
+// Camera-relative vertex transform. The main vertex shader multiplies viewProjection by the world position, which is a sum of terms
+// as large as the distance to the eye, so at 500 m a float32 step of 0.03 mm already hides a 0.1 mm gap. The patched line subtracts
+// the eye first and sends w = 0 through the matrix (its linear part only), then adds the projection's own translation. The matrix
+// stays whole for the passes that read the eye out of it, and with both uniforms at zero the line is the old product.
+const WORLD_CLIP_LINE = 'gl_Position = viewProjection * world;';
+const CAMERA_RELATIVE_LINE = 'gl_Position = viewProjection * vec4(world.xyz - cameraOffset.xyz, 1.0 - cameraOffset.w) + cameraShift;';
+const CAMERA_UNIFORMS = 'uniform mat4 lightProjection;\nuniform vec4 cameraOffset;\nuniform vec4 cameraShift;';
+let patchingMainProgram = false;
+let transformInstalled = false;
+
+function makeVertexCameraRelative(source) {
+  if (!patchingMainProgram || !source.includes(WORLD_CLIP_LINE)) return source;
+  return source.replace('uniform mat4 lightProjection;', CAMERA_UNIFORMS).replace(WORLD_CLIP_LINE, CAMERA_RELATIVE_LINE);
 }
 
 /** Whether a frame's lens is stretched enough that a 24-bit depth buffer cannot tell close surfaces apart far away. */
@@ -142,10 +159,14 @@ export function installReversedDepth(renderer, mode = 'auto') {
   };
   const rasterProjection = mat4.create();
   const rasterViewProjection = mat4.create();
+  const cameraOffset = new Float32Array([0, 0, 0, 1]);
+  const cameraShift = new Float32Array(4);
   let clipControl = null;
   let requested = mode === true;
   let inFrame = false;
   let reversed = false;
+  let frameEye = null;
+  let cameraRelativeProgram = null;
 
   // Back to the standard range before the backgrounds, the post passes and the shadow maps draw.
   function endReversed() {
@@ -155,17 +176,54 @@ export function installReversedDepth(renderer, mode = 'auto') {
     clipControl.active = false;
   }
 
+  // The main program is in use. A program that a new shader feature builds starts with both uniforms at zero.
+  function setCameraRelative(offset, shift) {
+    context.uniform4fv(context.getUniformLocation(renderer.program, 'cameraOffset'), offset);
+    context.uniform4fv(context.getUniformLocation(renderer.program, 'cameraShift'), shift);
+    cameraRelativeProgram = renderer.program;
+  }
+
+  // The next frame, or a pass that draws with the standard matrix, expects the camera offset to be off.
+  function clearCameraRelative() {
+    if (cameraRelativeProgram !== renderer.program) return;
+    context.useProgram(renderer.program);
+    setCameraRelative(ZERO_VECTOR, ZERO_VECTOR);
+    cameraRelativeProgram = null;
+  }
+
   // Called with the main program in use, after its standard matrix is set: swap in the reversed one and clear to the far value.
   function beginReversed() {
     reverseProjectionDepth(rasterProjection, renderer.projection);
     mat4.multiply(rasterViewProjection, rasterProjection, renderer.view);
     context.uniformMatrix4fv(renderer.uniforms.viewProjection, false, rasterViewProjection);
+    cameraOffset.set(frameEye);
+    cameraShift.set(rasterProjection.subarray(12, 16));
+    setCameraRelative(cameraOffset, cameraShift);
     context.clearDepth(0);
     context.clear(context.DEPTH_BUFFER_BIT);
     context.clearDepth(1);
     clipControl.extension.clipControlEXT(clipControl.extension.LOWER_LEFT_EXT, clipControl.extension.ZERO_TO_ONE_EXT);
     context.depthFunc(context.GREATER);
     clipControl.active = true;
+  }
+
+  // Compiles the main program again with the patched line, now and whenever a new shader feature rebuilds it.
+  function useCameraRelativeProgram() {
+    if (!renderer.shaderFeatures) return;
+    if (!transformInstalled) {
+      shaderTransforms.push(makeVertexCameraRelative);
+      transformInstalled = true;
+    }
+    const startMainProgram = renderer.startMainProgram;
+    renderer.startMainProgram = function startCameraRelativeMainProgram() {
+      patchingMainProgram = true;
+      try {
+        return startMainProgram.call(this);
+      } finally {
+        patchingMainProgram = false;
+      }
+    };
+    renderer.rebuildMainProgram();
   }
 
   function enable() {
@@ -200,6 +258,7 @@ export function installReversedDepth(renderer, mode = 'auto') {
     };
     renderer.postStages.unshift(createDepthConversionStage());
     useFloatDepthTargets(renderer);
+    useCameraRelativeProgram();
     return true;
   }
 
@@ -209,12 +268,16 @@ export function installReversedDepth(renderer, mode = 'auto') {
   renderer.render = function renderReversed(frame) {
     if (!reversed && renderer.reversedDepth === undefined && (requested || exceedsFarToNearLimit(frame))) enable();
     if (!reversed) return original.render.call(this, frame);
+    const outerEye = frameEye;
+    frameEye = frame.eye;
     inFrame = true;
     try {
       return original.render.call(this, frame);
     } finally {
       inFrame = false;
+      frameEye = outerEye;
       endReversed();
+      clearCameraRelative();
     }
   };
   if (requested) enable();
