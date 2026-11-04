@@ -13,7 +13,7 @@ const MAX_LOOK_ARRAY_ENTRIES = Math.max(MAX_POINT_LIGHTS, MAX_SPOT_LIGHTS, MAX_A
 
 const ENVIRONMENT_FIELDS = [
   'world', 'ground', 'setup', 'environmentIntensity', 'environmentRotation', 'lightDirection', 'keyColor', 'keyIntensity', 'fillIntensity', 'ambientIntensity',
-  'daylight', 'pointLights', 'spotLights', 'areaLights', 'skyTop', 'skyBottom', 'fogColor', 'fogDensity', 'volumeFog', 'liquid', 'shadowCascades', 'keyAffects', 'objectReflections', 'floorSkyTrace', 'lines', 'resolveCoplanar', 'viewTransform', 'look', 'wind',
+  'daylight', 'pointLights', 'spotLights', 'areaLights', 'skyTop', 'skyBottom', 'fogColor', 'fogDensity', 'volumeFog', 'liquid', 'shadowCascades', 'keyAffects', 'objectReflections', 'floorSkyTrace', 'sunBounce', 'lines', 'resolveCoplanar', 'viewTransform', 'look', 'wind',
 ];
 const EFFECT_FIELDS = ['exposure', 'saturation', 'contrast', 'temperature', 'vignette', 'grain', 'ambientOcclusion', 'ambientOcclusionRadius', 'bloom', 'depthOfField', 'motionBlur'];
 const SHADOW_FIELDS = ['target', 'extent', 'distance', 'near', 'far'];
@@ -278,6 +278,13 @@ function environmentFrom(input = {}) {
       throw new TypeError('environment.floorSkyTrace must be a boolean.');
     }
     environment.floorSkyTrace = input.floorSkyTrace;
+  }
+  // Scales the light the sunlit patches of a sun-lit closed room bounce on (src/sun-bounce.js); 0 turns it off.
+  if (input.sunBounce !== undefined) {
+    if (!Number.isFinite(input.sunBounce) || input.sunBounce < 0) {
+      throw new TypeError('environment.sunBounce must be a number of 0 or more.');
+    }
+    environment.sunBounce = input.sunBounce;
   }
   // Outlines and line geometry; null clears them. The module checks the fields and loads on demand.
   if (input.lines !== undefined && input.lines !== null) {

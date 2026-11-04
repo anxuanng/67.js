@@ -58,6 +58,9 @@ const argumentsGiven = process.argv.slice(2);
 // Closed rooms lit by a sun get the floor sky trace by default, as in the recipe path; --no-floor-sky draws without it (environment.floorSkyTrace: false).
 // --floor-sky [<strength>] traces the sky each floor texel sees (src/floor-sky-visibility.js) and scales the world light on floors by it (strength 1 when none follows).
 const floorSkyFlag = argumentsGiven.indexOf('--floor-sky');
+// --sun-bounce <n> sets environment.sunBounce on every scene (0 draws without the sunlit patches' lights; the default is 1).
+const sunBounceFlag = argumentsGiven.indexOf('--sun-bounce');
+const sunBounceQuery = sunBounceFlag < 0 ? null : `sunBounce=${Number(argumentsGiven[sunBounceFlag + 1])}`;
 const floorSkyStrength = floorSkyFlag < 0 ? 0 : Number(argumentsGiven[floorSkyFlag + 1]) || 1;
 const scoreOnly = argumentsGiven.includes('--score-only');
 const skipBlender = argumentsGiven.includes('--skip-blender') || lookIds !== null;
@@ -128,7 +131,7 @@ async function renderBackend(backend, serverUrl, graphics) {
     page.on('console', message => message.text().includes('GL_') && console.log('PAGE', message.text().slice(0, 200)));
     // Each scene gets a fresh page, so a large scene leaves no GL state or memory behind for the next one.
     const openHarness = async () => {
-      const harnessQuery = [sceneSet ? `set=${sceneSet}` : null, argumentsGiven.includes('--no-water') ? 'water=off' : argumentsGiven.includes('--ssr-water') ? 'water=ssr' : null, argumentsGiven.includes('--no-ground-bounce') ? 'groundBounce=off' : null, floorSkyStrength ? `floorSky=${floorSkyStrength}` : argumentsGiven.includes('--no-floor-sky') ? 'floorSky=0' : null, argumentsGiven.includes('--floor-sky-rooms') ? 'floorSkyRooms=1' : null].filter(Boolean).join('&');
+      const harnessQuery = [sceneSet ? `set=${sceneSet}` : null, argumentsGiven.includes('--no-water') ? 'water=off' : argumentsGiven.includes('--ssr-water') ? 'water=ssr' : null, argumentsGiven.includes('--no-ground-bounce') ? 'groundBounce=off' : null, floorSkyStrength ? `floorSky=${floorSkyStrength}` : argumentsGiven.includes('--no-floor-sky') ? 'floorSky=0' : null, argumentsGiven.includes('--floor-sky-rooms') ? 'floorSkyRooms=1' : null, sunBounceQuery].filter(Boolean).join('&');
       await page.goto(`${serverUrl}/bench/reference/harness.html${harnessQuery ? `?${harnessQuery}` : ''}`, { timeout: PAGE_LOAD_TIMEOUT });
       await page.waitForFunction(() => window.renderReferenceScene, null, { timeout: PAGE_LOAD_TIMEOUT });
     };
