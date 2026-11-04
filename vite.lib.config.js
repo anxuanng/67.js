@@ -94,6 +94,7 @@ export default defineConfig({
         'subsurface-shader': 'src/subsurface-shader.js',
         'light-linking': 'src/light-linking.js',
         'cascaded-shadows': 'src/cascaded-shadows.js',
+        'compact-color': 'src/compact-color.js',
         'gaussian-splats': 'src/gaussian-splats.js',
         'texture-update': 'src/texture-update.js',
         // Page of the MCP preview. It imports the engine chunks above instead of bundling its own copy.
