@@ -17,6 +17,7 @@ import { parseGltf } from '../src/gltf.js';
 import { assetCopyKey, recipeAssetNeeds } from '../src/agent-scene-assets.js';
 import { exportGlb } from '../src/export.js';
 import '../src/texture-update.js';
+import { hasPatternTextures } from './agent-preview-textures.js';
 import { TEXTURE_SEQUENCE_LIMITS } from '../src/texture-sequence-limits.js';
 import { weightTracksFromGltfAnimation } from '../src/export-skeleton.js';
 import { clipFromGltfAnimation } from '../src/skeleton-pose.js';
@@ -151,10 +152,6 @@ function syncSequenceTextures(record) {
 function sceneIsTextured(scene) {
   // A material snippet adds code to the colour and shadow programs, which only a new renderer compiles.
   return hasPatternTextures(scene.parts) || (scene.sequenceTextures?.().length ?? 0) > 0 || scene.parts.some(part => part.material.snippet);
-}
-
-function hasPatternTextures(parts) {
-  return parts.some(part => part.material.boxMapScale || part.material.emissiveMap);
 }
 
 // replaceParts streams only untextured parts, so a topology change around pattern textures takes a new renderer.
