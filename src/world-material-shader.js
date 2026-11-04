@@ -367,7 +367,7 @@ void mossMasks(vec3 normal, float amount, out float sharpMask, out float softMas
     metallic = mix(metallic, 0.0, mossCover);
   }
 `,
-  worldLight: `  if (CANOPY_TAG) radiance += color * max(dot(-normal, normalize(lightDirection)), 0.0) * 0.3 * keyResponse * visibility;
+  worldLight: `  if (CANOPY_TAG) radiance += color * max(dot(gl_FrontFacing ? -normal : normal, normalize(lightDirection)), 0.0) * 0.5 * keyResponse * mix(visibility, 1.0, 0.7);
   if (mossCover > 0.001) {
     float sheen = pow(1.0 - max(dot(normal, viewDirection), 0.0), 4.0);
     float wrap = max(dot(normal, normalize(lightDirection)) + 0.5, 0.0) / 1.5;

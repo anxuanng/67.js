@@ -45,3 +45,9 @@ test('an unset volume shadow ambient follows how open the sky is above the fog',
   assert.equal(volumeShadowAmbient({ ...fog, shadowAmbient: 0.6 }, room, skyOpenness), 0.6);
   assert.equal(volumeShadowAmbient(fog, [floor]), 0.15, 'without a measure the scene counts as enclosed');
 });
+
+test('height falloff in metres keeps its metres, and a flat volume keeps zero', () => {
+  assert.equal(resolveVolumeFog({ density: 0.1 }).heightFalloff, 0);
+  assert.equal(resolveVolumeFog({ density: 0.1, heightFalloff: 25 }).heightFalloff, 25);
+  assert.equal(resolveVolumeFog({ density: 0.1, heightFalloff: 0 }).heightFalloff, 0);
+});
