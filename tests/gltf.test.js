@@ -254,8 +254,23 @@ test('forty 1024 px maps load with default options by scaling them down and nami
   }));
   assert.equal(asset.scaledTextures.length, 40);
   assert.deepEqual(asset.scaledTextures[3], { name: 'map 3', from: [1024, 1024], to: [512, 512] });
-  assert.match(asset.warnings.join(' '), /Scaled 40 texture image\(s\)/);
+  assert.match(asset.warnings.join(" "), /^Scaled 40 texture image[(]s[)] to fit maxTexturePixels: map 0 1024x1024 to 512x512, map 1 1024x1024 to 512x512, map 2 1024x1024 to 512x512 and 37 more [(]see asset.scaledTextures[)][.]$/);
   assert.equal(requests.length, 0, 'unreferenced images are not decoded');
+  asset.dispose();
+});
+
+test('base color keeps twice the size of a data map when textures are scaled', async context => {
+  mockImageBitmapWithResize(context);
+  const asset = await parseGltf(triangleAsset(document => {
+    addMaterialMaps(document);
+    document.images = [{ name: 'color', uri: pngHeaderUri(8, 8) }, { name: 'normal', uri: pngHeaderUri(8, 8) }];
+    document.textures = [{ source: 0, sampler: 0 }, { source: 1, sampler: 0 }];
+    const material = document.materials[0];
+    material.pbrMetallicRoughness.metallicRoughnessTexture = { index: 1 };
+    material.normalTexture = { index: 1 };
+    material.occlusionTexture = { index: 1 };
+  }), { maxTexturePixels: 80 });
+  assert.deepEqual(asset.scaledTextures, [{ name: 'normal', from: [8, 8], to: [4, 4] }]);
   asset.dispose();
 });
 

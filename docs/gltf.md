@@ -39,7 +39,7 @@ The optional `signal` aborts those fetches.
 | `maxVertices` | 8,000,000 | Declared and decoded geometry vertices. Indices have a separate ceiling of twelve times this value. |
 | `maxParts` | 65,536 | Declared nodes and decoded mesh parts. |
 | `maxResources` | 256 | Unique resource URIs. |
-| `maxTexturePixels` | 16,777,216 | Combined texture image pixels, checked from the file headers before decoding. Over the budget, the largest images are halved together until they fit, and `asset.scaledTextures` lists each one as `{ name, from, to }` (also summarised in `asset.warnings`). |
+| `maxTexturePixels` | 16,777,216 | Combined texture image pixels, checked from the file headers before decoding. Over the budget, the largest images are halved together until they fit, with base color and emission maps kept at twice the size of the normal, roughness and occlusion maps, and `asset.scaledTextures` lists each one as `{ name, from, to }` (also summarised in `asset.warnings`). |
 | `maxTextureImagePixels` | 67,108,864 | Hard ceiling for one image, checked before decoding. Larger images are rejected, never scaled. |
 | `maxJoints` | 4,096 | Combined declared joints and joint palettes for instantiated meshes. |
 | `maxInstances` | 65,536 | Instances of one `EXT_mesh_gpu_instancing` node. |
