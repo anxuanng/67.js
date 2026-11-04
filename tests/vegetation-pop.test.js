@@ -4,25 +4,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { createServer } from 'node:net';
+import { freePort } from './helpers/free-port.js';
 
 // A pop is a single-frame change of the mean RGB value (0 to 1) above this, or above this share of the change a hard switch
 // makes in one frame. Measured 2026-11-04 on SwiftShader: the fade's largest step is 0.083, a hard switch is 0.30, and plain
 // camera motion over the same dolly changes a frame by 0.006 on average and 0.010 at most.
 const POP_THRESHOLD = 0.1;
 const HARD_SWITCH_RATIO = 0.4;
-
-// A fixed port collided when several checkouts ran the suite at once, so ask the system for a free one.
-function freePort() {
-  return new Promise((resolve, reject) => {
-    const probe = createServer();
-    probe.once('error', reject);
-    probe.listen(0, '127.0.0.1', () => {
-      const { port } = probe.address();
-      probe.close(() => resolve(port));
-    });
-  });
-}
 
 async function startServer(port) {
   const server = spawn(process.execPath, ['node_modules/vite/bin/vite.js', '--host', '127.0.0.1', '--port', String(port), '--strictPort'], { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });

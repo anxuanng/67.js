@@ -5,6 +5,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
+import { freePort } from './helpers/free-port.js';
 
 // Measured 2026-11-04 on an RTX 3060, a closed 8 m room with one lamp, 512 samples, 3 bounces: diffuse-only surfaces (ior 1)
 // gave a GPU to CPU light ratio of 1.0034 on the floor, 1.0014 on the ceiling and 1.008 to 1.011 on the walls (0.6 percent over
@@ -12,10 +13,8 @@ import { spawn } from 'node:child_process';
 // This test's smaller room on SwiftShader (256 samples) gave 1.0046 for diffuse surfaces and 1.0766 for a glossy dielectric.
 const DIFFUSE_AGREEMENT = 0.01;
 const SPECULAR_GAP_AT_LEAST = 0.015;
-const PORT = 5188;
-
-async function startServer() {
-  const server = spawn(process.execPath, ['node_modules/vite/bin/vite.js', '--host', '127.0.0.1', '--port', String(PORT), '--strictPort'], { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
+async function startServer(port) {
+  const server = spawn(process.execPath, ['node_modules/vite/bin/vite.js', '--host', '127.0.0.1', '--port', String(port), '--strictPort'], { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
   await new Promise((resolve, reject) => {
     const timeout = setTimeout(() => reject(new Error('The dev server did not start.')), 30000);
     server.stdout.on('data', (data) => {
@@ -80,7 +79,8 @@ async function withPage(context, run) {
     context.skip('playwright is not installed');
     return;
   }
-  const server = await startServer();
+  const port = await freePort();
+  const server = await startServer(port);
   let browser;
   try {
     try {
@@ -91,7 +91,7 @@ async function withPage(context, run) {
     }
     const page = await browser.newPage({ viewport: { width: 320, height: 180 } });
     page.setDefaultTimeout(0);
-    await page.goto(`http://127.0.0.1:${PORT}/`);
+    await page.goto(`http://127.0.0.1:${port}/`);
     await run(material => page.evaluate(bakeRoomOnBothBackends, material));
   } finally {
     await browser?.close();
