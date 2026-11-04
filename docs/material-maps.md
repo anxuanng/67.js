@@ -111,7 +111,7 @@ Renderer disposal deletes every cached GPU texture. Asset disposal closes each s
 Final alpha is the base map alpha (when `material.map` is set) times `opacity`. Vertex colors stay RGB.
 
 - `mask` discards below `alphaCutoff` in the color pass and in the shadow pass, so shadows follow the cutout shape. With MSAA the edge uses alpha-to-coverage, sharpened by `fwidth`, so leaf edges stay smooth.
-- `blend` draws after all opaque and masked batches, with depth writes off. Batches sort back to front by their mean distance to the eye, and instances inside one batch sort by translation distance each frame. Intersecting translucent surfaces and large meshes can still show ordering artifacts. Blend parts skip shadows unless `castShadow: true` is set, and then they cast a fully opaque shadow.
+- `blend` draws after all opaque and masked batches. Texels with alpha 1 (opacity 1) are drawn first as a cutout that writes depth, so an opaque baked mesh hides what lies behind it in any order; the translucent texels then blend with depth writes off. Batches sort back to front by their mean distance to the eye, and instances inside one batch sort by translation distance each frame. Intersecting translucent surfaces and large meshes can still show ordering artifacts. Blend parts skip shadows unless `castShadow: true` is set, and then they cast a fully opaque shadow.
 - `alphaMode`, `alphaCutoff`, `opacity` and `doubleSided` are batch state like `castShadow`. Parts that differ never share a draw call, and `updateParts` rejects changes after upload. Rebuild the renderer to change them.
 - Invalid values (unknown mode, cutoff or opacity outside zero to one, a non-boolean `doubleSided`) throw.
 - The benchmark preset ignores alpha.
