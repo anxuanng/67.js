@@ -17,6 +17,7 @@ import { parseGltf } from '../src/gltf.js';
 import { assetCopyKey, recipeAssetNeeds } from '../src/agent-scene-assets.js';
 import { exportGlb } from '../src/export.js';
 import '../src/texture-update.js';
+import { updatePartVertices } from '../src/update-part-vertices.js';
 import { hasPatternTextures } from './agent-preview-textures.js';
 import { TEXTURE_SEQUENCE_LIMITS } from '../src/texture-sequence-limits.js';
 import { weightTracksFromGltfAnimation } from '../src/export-skeleton.js';
@@ -219,6 +220,13 @@ function draw(record, time = 0, camera = record.scene.camera, frameOptions = {})
     record.renderer.resize();
   } else {
     record.renderer.updateParts(record.scene.parts);
+  }
+  // Cloth rewrites its geometry in place, so a seek only uploads the new positions and normals.
+  if (agentSceneModuleLoaded('cloth')) {
+    const { isLiveClothGeometry } = agentSceneModule('cloth');
+    for (const part of record.scene.parts) {
+      if (isLiveClothGeometry(part.geometry)) updatePartVertices(record.renderer, part, part.geometry.positions, part.geometry.normals);
+    }
   }
   syncAutomaticGround(record);
   syncShadowCascades(record);
