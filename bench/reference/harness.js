@@ -2,7 +2,7 @@
 import { Renderer67 } from '/src/renderer.js';
 import { REFERENCE_SCENES, KHRONOS_SCENES, KTX2_SCENES, loadBarnLampVariant, CLOTH_SCENES } from './scenes.js';
 import { GRAND_SCENES } from './grand-scenes.js';
-import { LOOK_OPTIONS } from './look-options.js';
+import { LOOK_OPTIONS, GRAND_PICKS } from './look-options.js';
 import { skinnedGeometry } from '/src/path-tracer-scene.js';
 import { boxProjectedGeometry } from '/src/export-box-uv.js';
 import '/src/material-layer-shaders.js';
@@ -47,7 +47,7 @@ function withFloorSky(id, parts) {
 
 // ?set=khronos draws the Khronos sample assets (npm run reference -- --khronos) and ?set=cloth the cloth scenes
 // (npm run reference -- --cloth) instead of the fixed scenes.
-const SCENE_SETS = { khronos: KHRONOS_SCENES, ktx2: KTX2_SCENES, cloth: CLOTH_SCENES, grand: GRAND_SCENES, look: LOOK_OPTIONS };
+const SCENE_SETS = { khronos: KHRONOS_SCENES, ktx2: KTX2_SCENES, cloth: CLOTH_SCENES, grand: { ...GRAND_SCENES, ...GRAND_PICKS }, look: LOOK_OPTIONS };
 const SCENES = SCENE_SETS[new URLSearchParams(location.search).get('set')] ?? REFERENCE_SCENES;
 
 function encodeBytes(typedArray) {
