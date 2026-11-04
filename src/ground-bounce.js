@@ -292,8 +292,12 @@ function irradianceWithBounce(irradiance) {
   return bouncedIrradiance
 }
 
-// The map gets a `bounce` colour and the method that adds it to its diffuse light. The map's data stays shared, so a lamp
-// whose power changes every frame costs no new prefilter.
+// The map gets a `bounce` colour and the method that adds it to its diffuse light; without the method the renderer never draws
+// the colour. The map's data stays shared, so a lamp whose power changes every frame costs no new prefilter.
+function withBounce(map, bounce) {
+  return { ...map, bounce, irradianceWithBounce }
+}
+
 function roomBounceEnvironment(parts, environment) {
   if (environment.roomBounce === false || hasKeyLight(environment)) {
     return environment
@@ -303,7 +307,7 @@ function roomBounceEnvironment(parts, environment) {
     return environment
   }
   const bounce = roomBounceRadiance(room, environment)
-  return bounce.some(channel => channel > 0) ? { ...environment, map: { ...environment.map, bounce, irradianceWithBounce } } : environment
+  return bounce.some(channel => channel > 0) ? { ...environment, map: withBounce(environment.map, bounce) } : environment
 }
 
 
@@ -373,7 +377,7 @@ export function groundBounceEnvironment(parts, environment, { automaticAlbedo = 
   const ground = groundOf(parts, automaticAlbedo)
   const fill = outdoorFillBounce(parts, environment, ground)
   if (!ground) {
-    return fill ? { ...environment, map: { ...environment.map, bounce: fill } } : environment
+    return fill ? { ...environment, map: withBounce(environment.map, fill) } : environment
   }
   const { lightDirection } = environment
   const keyColor = environment.keyColor.map(channel => channel * (environment.keyIntensity ?? 1))
@@ -382,7 +386,7 @@ export function groundBounceEnvironment(parts, environment, { automaticAlbedo = 
   cache.set(environment.map, byInputs)
   if (!byInputs.has(key)) {
     const bounced = withGroundBounce(environment.map, { albedo: ground.albedo, keyColor, lightDirection })
-    byInputs.set(key, fill ? { ...bounced, bounce: fill } : bounced)
+    byInputs.set(key, fill ? withBounce(bounced, fill) : bounced)
   }
   return { ...environment, map: byInputs.get(key) }
 }
