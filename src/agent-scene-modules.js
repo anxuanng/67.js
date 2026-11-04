@@ -32,6 +32,7 @@ const MODULE_LOADERS = {
   viewTransform: () => import('./view-transform-shader.js'),
   coplanar: () => import('./coplanar-overlap.js'),
   floorSky: () => import('./floor-sky-visibility.js'),
+  userPass: () => import('./user-pass.js'),
 };
 
 const loadedModules = {};
@@ -73,6 +74,7 @@ const MODULE_MARKERS = {
   coplanar: ['"resolveCoplanar"'],
   // A closed room a sun lights gets the floor sky trace by default. The recipe text can not say whether a room is closed, so a recipe that names its sun loads it and the module skips an open scene.
   floorSky: ['"keyColor"', '"keyIntensity"'],
+  userPass: ['"postPasses"'],
 };
 
 /** Whether a recipe, operation list or edit list contains a boolean edit, which needs loadMeshBooleans() first. */
