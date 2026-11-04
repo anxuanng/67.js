@@ -321,8 +321,8 @@ const MAP_STATE_LAYER_MAPS = 18;
 
 // Other optional features (reflection probes) also bind per batch, so this keeps whatever was registered first.
 const previousBind = layerTextureSupport.bind;
-layerTextureSupport.bind = (renderer, mapState, layerState) => {
-  previousBind?.(renderer, mapState, layerState);
+layerTextureSupport.bind = (renderer, mapState, layerState, batch) => {
+  previousBind?.(renderer, mapState, layerState, batch);
   if (!renderer.shaderFeatures) return;
   const context = renderer.context;
   const layerMaps = mapState[MAP_STATE_LAYER_MAPS];

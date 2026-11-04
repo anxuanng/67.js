@@ -20,6 +20,7 @@ Các recipe nằm ở cuối file (A1 đến A9). Mỗi recipe đã chạy qua `
 
    Chạy server với `--assets` trỏ tới `artifacts/test-assets`. Gọi `scene_asset_catalog` để lấy id của từng file. Thay các `<id ...>` trong recipe bằng id đó.
 5. Prompt mẫu cho Claude Code: `Đọc recipe A1 trong docs/test-checklist-vi.md, gọi scene_create với recipe đó, rồi scene_look 960x540 và mô tả ảnh.`
+6. Server giữ một cảnh mỗi lần. Gọi `scene_dispose` trước khi `scene_create` recipe tiếp theo. `scene_render_submit` cần `expectedRevision`, lấy từ `revision` mà `scene_create` trả về (là 0 với cảnh vừa tạo).
 
 ## 1. Bóng và khúc xạ của nước (#363)
 
@@ -29,10 +30,10 @@ Các recipe nằm ở cuối file (A1 đến A9). Mỗi recipe đã chạy qua `
 
 ## 2. Phản chiếu nước nhám (#372)
 
-- Mở: `https://67js.codepawl.com/showcase.html?scene=port`. Tab Airport ramp và AI data center nằm cùng trang. Đợi cảnh tải xong, rồi kéo chuột để xoay camera.
-- Nhìn: mặt nước hoặc sàn bóng phản chiếu cảnh xung quanh và hơi nhòe, không mất hẳn.
+- Mở: `https://67js.codepawl.com/showcase.html?scene=port`. Cảnh Container port có mặt nước (`waterReflection: true`) và tải mất khoảng 30 giây. Đợi tới khi hết dòng "Loading", rồi kéo chuột để xoay camera.
+- Nhìn: mặt biển sau con tàu, ngay dưới đường bờ, có dải phản chiếu sáng ấm và hơi nhòe của bờ và trời.
 - Đạt: còn phản chiếu mờ. Trượt: mặt nước chỉ còn màu phẳng của môi trường.
-- (chưa kiểm được: trang tải không lỗi console, nhưng chưa xác nhận cảnh nào có mặt nước vì cảnh còn đang tải sau 12 giây trên máy test.) Chạy `node --test tests/water-reflection.test.js` để kiểm tra phần tính độ nhòe.
+- Chạy thêm `node --test tests/water-reflection.test.js` để kiểm tra phần tính độ nhòe.
 
 ## 3. Ánh sáng bù ngoài trời (#366)
 
@@ -63,7 +64,7 @@ Các recipe nằm ở cuối file (A1 đến A9). Mỗi recipe đã chạy qua `
 ## 7. Xe chạy (#360)
 
 - Mở: recipe A7 qua MCP (cần id của `car.glb`). Gọi `scene_look` với `motionTime` 0, rồi 1.5.
-- Nhìn: `scene_inspect` có `drive` với 4 bánh (`front-left`, `front-right`, `rear-left`, `rear-right`), bán kính 0.35 m. Xe ở chỗ khác giữa hai ảnh.
+- Nhìn: `scene_inspect` có `drive` với 4 bánh (`front-left`, `front-right`, `rear-left`, `rear-right`), bán kính 0.35 m. Xe ở chỗ khác giữa hai ảnh: lúc 0 xe ở gần đáy khung, lúc 1.5 xe đã chạy lên giữa khung.
 - Đạt: nhận ra 4 bánh và hai ảnh khác nhau. Trượt: `wheels` rỗng, hoặc xe đứng yên.
 
 ## 8. Asset từ catalog trong recipe và render job (#336, #375)
@@ -139,7 +140,7 @@ Dán nguyên JSON vào `scene_create`. Id asset là placeholder, thay bằng id 
 ### A7
 
 ```json
-{"format":"67js.scene","schemaVersion":1,"geometries":[{"id":"cube","type":"box","bevel":0,"subdivisions":1}],"materials":[{"id":"road","color":[0.2,0.2,0.22],"roughness":0.9}],"nodes":[{"id":"road","geometry":"cube","material":"road","translation":[8,-0.05,12],"scale":[40,0.1,40]},{"id":"car","asset":{"id":"<id của car.glb>","drive":{"path":[[0,0,0],[0,0,12],[6,0,22],[16,0,26]],"cruiseSpeed":8}}}],"camera":{"eye":[-8,7,4],"target":[6,0,14],"fov":50}}
+{"format":"67js.scene","schemaVersion":1,"geometries":[{"id":"cube","type":"box","bevel":0,"subdivisions":1}],"materials":[{"id":"road","color":[0.2,0.2,0.22],"roughness":0.9}],"nodes":[{"id":"road","geometry":"cube","material":"road","translation":[8,-0.05,12],"scale":[40,0.1,40]},{"id":"car","asset":{"id":"<id của car.glb>","drive":{"path":[[0,0,0],[0,0,12],[6,0,22],[16,0,26]],"cruiseSpeed":8}}}],"camera":{"eye":[-10,16,-10],"target":[6,0,13],"fov":50}}
 ```
 
 ### A8
