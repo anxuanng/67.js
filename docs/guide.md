@@ -243,7 +243,7 @@ The [retarget contract](https://github.com/codepawl/67.js/blob/main/docs/retarge
 4. Each frame, call `renderer.replaceParts([...sceneParts, ...player.partsAt(seconds)])` and render.
 
 The [Spume contract](https://github.com/codepawl/67.js/blob/main/docs/spume.md) covers the cache format, whitewater options, placement and measured cost.
-Textured, skinned and morphed parts may stay in the list unchanged while frames are replaced; adding or removing them needs a new renderer.
+Skinned and morphed parts may stay in the list unchanged while frames are replaced; adding or removing them needs a new renderer. Textured parts can be added and removed once `import '@codepawlhq/67js/addons/replace-textured-parts'` has run; without it they must stay unchanged. The addon deletes a texture when no part uses it any more and keeps one another part still binds.
 
 ## Wheeled vehicles
 
@@ -567,7 +567,7 @@ The session keeps existing renderer-facing parts and matrices for transform, mat
 Agents can build from an empty recipe with `add-geometry`, `add-material` and `add-node` commands.
 Explicit removal and rebinding use the same atomic batch contract.
 Checkpoints retain shared geometry under the session budget. Release unused snapshots before increasing scene detail.
-The preview reconciles rigid, untextured topology while keeping unchanged geometry buffers and draw batches.
+The preview reconciles rigid topology, textured parts too with the `replace-textured-parts` addon, while keeping unchanged geometry buffers and draw batches.
 
 The CPU addon owns recipe state. The separate Node MCP server connects it to browser rendering. Background render jobs remain unsupported.
 

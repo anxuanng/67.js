@@ -102,6 +102,7 @@
     "./addons/cascaded-shadows": "./build/cascaded-shadows.js",
     "./addons/compact-color": "./build/compact-color.js",
     "./addons/gaussian-splats": "./build/gaussian-splats.js",
+    "./addons/replace-textured-parts": "./build/replace-textured-parts.js",
     "./addons/texture-update": "./build/texture-update.js",
     "./package.json": "./package.json"
   },
@@ -153,6 +154,7 @@
     "smoke:character": "node scripts/smoke-character.mjs",
     "smoke:modeling": "node scripts/smoke-modeling.mjs",
     "smoke:material-maps": "node scripts/smoke-material-maps.mjs",
+    "smoke:replace-textured-parts": "node scripts/smoke-replace-textured-parts.mjs",
     "smoke:texture-update": "node scripts/smoke-texture-update.mjs",
     "benchmark:mesh-query": "node scripts/benchmark-mesh-query.mjs",
     "benchmark:update-parts": "node scripts/benchmark-update-parts.mjs",
