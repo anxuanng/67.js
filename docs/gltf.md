@@ -35,16 +35,19 @@ The optional `signal` aborts those fetches.
 
 | Option | Default | Limit |
 | --- | ---: | --- |
-| `maxBytes` | 33,554,432 | Total encoded input and fetched external resources. |
-| `maxVertices` | 2,000,000 | Declared and decoded geometry vertices. Indices have a separate ceiling of twelve times this value. |
-| `maxParts` | 20,000 | Declared nodes and decoded mesh parts. |
-| `maxResources` | 64 | Unique resource URIs. |
+| `maxBytes` | 268,435,456 | Total encoded input and fetched external resources. |
+| `maxVertices` | 8,000,000 | Declared and decoded geometry vertices. Indices have a separate ceiling of twelve times this value. |
+| `maxParts` | 65,536 | Declared nodes and decoded mesh parts. |
+| `maxResources` | 256 | Unique resource URIs. |
 | `maxTexturePixels` | 16,777,216 | Combined texture image pixels, checked from the file headers before decoding. Over the budget, the largest images are halved together until they fit, and `asset.scaledTextures` lists each one as `{ name, from, to }` (also summarised in `asset.warnings`). |
-| `maxTextureImagePixels` | 16,777,216 | Hard ceiling for one image, checked before decoding. Larger images are rejected, never scaled. |
+| `maxTextureImagePixels` | 67,108,864 | Hard ceiling for one image, checked before decoding. Larger images are rejected, never scaled. |
 | `maxJoints` | 4,096 | Combined declared joints and joint palettes for instantiated meshes. |
-| `maxInstances` | 4,096 | Instances of one `EXT_mesh_gpu_instancing` node. |
+| `maxInstances` | 65,536 | Instances of one `EXT_mesh_gpu_instancing` node. |
 
 Every numeric limit must be a positive safe integer.
+The defaults take one large exported scene, such as a 240 MB GLB with 8 million vertices and 8192 x 8192 textures, and `GLTF_CAPABILITIES.limits` holds them.
+A file over its limits fails with one `RangeError` that names each limit it goes over, the measured value and the value that fits, for example `glTF over its limits: vertices 9120000, over maxVertices 8000000; image 6 (6144x3072) pixels 18874368, over maxTextureImagePixels 16777216. Fix: pass { maxVertices: 9120000, maxTextureImagePixels: 18874368 }.`
+The file size and the decoded geometry and parts are checked as they are read, so they fail on their own.
 The importer rejects cyclic hierarchies, multiple parents, and hierarchies deeper than 256 levels.
 It checks PNG, JPEG and WebP dimensions before browser image decoding.
 Decoded accessor data has a separate ceiling of four times `maxBytes`.
@@ -206,7 +209,7 @@ The Khronos KTX2 files hold no mip chain, so the 5.3x saving mixes the format (4
 
 ### Instancing limits
 
-`maxInstances` (default 4,096) caps the instances of one node, and `maxParts` still caps the total number of parts.
+`maxInstances` (default 65,536) caps the instances of one node, and `maxParts` still caps the total number of parts.
 Both are checked from the accessor counts before any data is decoded.
 The bridge does not import cameras or scene environments into Renderer67. The caller supplies its own camera and base lighting.
 Lights from `KHR_lights_punctual` come back in `asset.lights` and are applied only when the caller passes them on (see the extension table).

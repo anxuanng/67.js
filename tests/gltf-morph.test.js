@@ -230,7 +230,7 @@ test('target expansion and primitive instance budgets reject before decoding', a
     primitive.attributes = { POSITION: positions, NORMAL: append(normals, 'VEC3') };
     primitive.targets = Array.from({ length: 64 }, () => ({ POSITION: positions }));
   });
-  await assert.rejects(parseGltf(repeated, { maxBytes: repeated.byteLength }), /Decoded glTF accessors/);
+  await assert.rejects(parseGltf(repeated, { maxBytes: repeated.byteLength }), /decoded accessor bytes/);
 });
 
 test('composed world bounds and changed public identities fail before any part publishes', async () => {

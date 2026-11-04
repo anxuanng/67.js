@@ -3,15 +3,28 @@ import { GLTF_LAYER_EXTENSIONS, layerTextureReferences, materialLayersFromGltf }
 import { attributeFloats } from './gltf-accessors.js';
 import { describeCompressedImage } from './compressed-texture.js';
 export { ktx2WorkerConfigFor } from './compressed-texture.js';
-import { decodeGltf, isLinePrimitive, textureSourceIndex } from './gltf-decode.js';
+import { decodeGltf, isLinePrimitive, overLimit, textureSourceIndex, throwOverruns } from './gltf-decode.js';
 import { readPunctualLights } from './gltf-lights.js';
 import { Matrix4 } from './gltf-nodes.js';
 import { textureDescriptorInfo } from './renderer.js';
 import { createSkinPose, updateSkinPose, validateSkinGeometry, validateSkinPose } from './skinning.js';
 import { MAX_MORPH_TARGETS, createMorphPose, validateMorphGeometry, validateMorphPose, validateMorphTransform } from './morph.js';
 
+// The defaults fit one large exported scene (a 240 MB GLB of 8 million vertices with 8K textures) and still bound a hostile file.
+const DEFAULT_LIMITS = Object.freeze({
+  maxBytes: 256 * 1024 * 1024,
+  maxVertices: 8_000_000,
+  maxParts: 65_536,
+  maxResources: 256,
+  maxTexturePixels: 16_777_216,
+  maxTextureImagePixels: 67_108_864,
+  maxJoints: 4096,
+  maxInstances: 65_536,
+});
+
 export const GLTF_CAPABILITIES = Object.freeze({
   formats: ['glb', 'gltf'],
+  limits: DEFAULT_LIMITS,
   supported: ['triangle meshes', 'world transforms', 'rigid node animations', 'four-influence skeletal skinning', 'joint node animations', 'relative POSITION/NORMAL morph targets', 'morph weight animations', 'PNG/JPEG/WebP base color textures', 'normal/occlusion/emissive/metallic-roughness textures', 'TEXCOORD_0', 'TEXCOORD_1 for occlusion, emissive and metallic-roughness textures', 'clearcoat, clearcoat roughness, clearcoat normal, anisotropy, sheen color and sheen roughness textures', 'linear RGB vertex colors, with the alpha of RGBA colors ignored and reported in warnings','metallic roughness factors', 'emissive factors', 'alpha mask and blend modes', 'double-sided materials', 'KHR_mesh_quantization', 'KHR_materials_emissive_strength', 'KHR_materials_clearcoat, transmission, volume, ior, specular, sheen, anisotropy and iridescence factors', 'KHR_texture_transform baked into UVs, with a normal map that differs by scale and offset applied in the shader', 'EXT_mesh_gpu_instancing expanded into parts', 'KHR_draco_mesh_compression with options.decoders.draco', 'EXT_meshopt_compression', 'KHR_texture_basisu with options.decoders.ktx2', 'EXT_texture_webp, with the PNG or JPEG fallback source when the browser cannot decode WebP', 'KHR_materials_unlit as the unlit material tag, with a base color map only', 'KHR_lights_punctual point and spot lights (up to eight each) and the first directional light, returned in lights as environment options'],
   // The primitive's own material is drawn; the other variants are not selectable.
   ignoredExtensions: ['KHR_materials_variants', 'KHR_materials_dispersion', 'KHR_materials_diffuse_roughness', 'EXT_materials_bump', 'EXT_texture_avif'],
@@ -45,10 +58,7 @@ async function applyFallbacksTo(document) {
   return applyGltfFallbacks(document);
 }
 
-const DEFAULT_MAX_BYTES = 32 * 1024 * 1024;
-const DEFAULT_MAX_VERTICES = 2_000_000;
 const GLTF_ALPHA_MODES = { OPAQUE: 'opaque', MASK: 'mask', BLEND: 'blend' };
-const DEFAULT_MAX_INSTANCES = 4096;
 // KHR_xmp_json_ld and its earlier name KHR_xmp only carry metadata (authors, licences) and change nothing drawn: the
 // Khronos sample assets list them, and a file must not be refused for them.
 const METADATA_EXTENSIONS = ['KHR_xmp_json_ld', 'KHR_xmp'];
@@ -92,16 +102,7 @@ function usesSecondUvSet(material) {
 }
 
 function limitsFor(options) {
-  const limits = {
-    maxBytes: options.maxBytes ?? DEFAULT_MAX_BYTES,
-    maxVertices: options.maxVertices ?? DEFAULT_MAX_VERTICES,
-    maxParts: options.maxParts ?? 20_000,
-    maxResources: options.maxResources ?? 64,
-    maxTexturePixels: options.maxTexturePixels ?? 16_777_216,
-    maxTextureImagePixels: options.maxTextureImagePixels ?? 16_777_216,
-    maxJoints: options.maxJoints ?? 4096,
-    maxInstances: options.maxInstances ?? DEFAULT_MAX_INSTANCES,
-  };
+  const limits = Object.fromEntries(Object.entries(DEFAULT_LIMITS).map(([name, value]) => [name, options[name] ?? value]));
   for (const [name, value] of Object.entries(limits)) {
     if (!Number.isSafeInteger(value) || value <= 0) throw new TypeError(`${name} must be a positive safe integer.`);
   }
@@ -110,11 +111,12 @@ function limitsFor(options) {
 
 function documentFrom(data, maxBytes) {
   if (typeof data === 'string') {
-    if (new TextEncoder().encode(data).byteLength > maxBytes) throw new Error('glTF exceeds maxBytes.');
+    const byteLength = new TextEncoder().encode(data).byteLength;
+    throwOverruns(overLimit([], 'bytes', byteLength, 'maxBytes', maxBytes));
     return JSON.parse(data);
   }
   if (!(data instanceof ArrayBuffer)) throw new TypeError('parseGltf expects an ArrayBuffer or glTF JSON string.');
-  if (data.byteLength > maxBytes) throw new Error('glTF exceeds maxBytes.');
+  throwOverruns(overLimit([], 'bytes', data.byteLength, 'maxBytes', maxBytes));
   if (data.byteLength < 4) throw new Error('glTF input is truncated.');
   const header = new DataView(data);
   if (header.getUint32(0, true) !== 0x46546c67) return JSON.parse(new TextDecoder().decode(data));
@@ -305,7 +307,7 @@ function validateMaterialExtensions(material) {
 }
 
 /** Validates EXT_mesh_gpu_instancing on a node and returns how many instances it expands to. */
-function nodeInstanceCount(document, node, limits) {
+function nodeInstanceCount(document, node, limits, overruns) {
   const instancing = node.extensions?.EXT_mesh_gpu_instancing;
   if (!instancing) return 1;
   const attributes = instancing.attributes;
@@ -321,7 +323,7 @@ function nodeInstanceCount(document, node, limits) {
     count = accessor.count;
   }
   if (count === undefined || count < 1) throw new Error('EXT_mesh_gpu_instancing needs TRANSLATION, ROTATION or SCALE instances.');
-  if (count > limits.maxInstances) throw new Error(`EXT_mesh_gpu_instancing node has ${count} instances, above maxInstances (${limits.maxInstances}).`);
+  overLimit(overruns, 'instances of one node', count, 'maxInstances', limits.maxInstances);
   return count;
 }
 
@@ -334,7 +336,8 @@ function validateDocument(document, limits, allowedExtensions) {
     // A meshopt fallback buffer holds the uncompressed copy of data that is decoded from the compressed buffer; it is never read.
     if (!buffer.extensions?.EXT_meshopt_compression?.fallback) declaredBytes += buffer.byteLength;
   }
-  if (declaredBytes > limits.maxBytes) throw new Error('glTF buffers exceed maxBytes.');
+  const overruns = [];
+  overLimit(overruns, 'buffer bytes', declaredBytes, 'maxBytes', limits.maxBytes);
   let vertices = 0;
   let indices = 0;
   let morphBytes = 0;
@@ -400,26 +403,27 @@ function validateDocument(document, limits, allowedExtensions) {
       indices += indexCount;
     }
   }
-  if (vertices > limits.maxVertices || indices > limits.maxVertices * 12) throw new Error('glTF geometry exceeds maxVertices or its index budget.');
-  if ((document.nodes?.length ?? 0) > limits.maxParts) throw new Error('glTF nodes exceed maxParts.');
+  overLimit(overruns, 'vertices', vertices, 'maxVertices', limits.maxVertices);
+  overLimit(overruns, 'indices', indices, 'maxVertices', limits.maxVertices, 12);
+  overLimit(overruns, 'nodes', document.nodes?.length ?? 0, 'maxParts', limits.maxParts);
   let jointCount = 0;
   for (const skin of document.skins ?? []) {
     if (!Array.isArray(skin.joints) || !skin.joints.length || new Set(skin.joints).size !== skin.joints.length || skin.joints.some(joint => !Number.isInteger(joint) || !document.nodes?.[joint])) throw new Error('Skin joints require distinct valid node indices.');
     jointCount += skin.joints.length;
-    if (jointCount > limits.maxJoints || skin.joints.length > 65536) throw new Error('Skin joints exceed maxJoints.');
+    if (skin.joints.length > 65536) throw new Error('A skin has more than 65536 joints.');
     if (skin.skeleton !== undefined && (!Number.isInteger(skin.skeleton) || !document.nodes?.[skin.skeleton])) throw new Error('Invalid skin skeleton node.');
     if (skin.inverseBindMatrices !== undefined) {
       const accessor = document.accessors?.[skin.inverseBindMatrices];
       if (!accessor || accessor.type !== 'MAT4' || accessor.componentType !== 5126 || accessor.normalized || accessor.count !== skin.joints.length) throw new Error('Inverse bind matrices require one float MAT4 per joint.');
     }
   }
+  overLimit(overruns, 'skin joints', jointCount, 'maxJoints', limits.maxJoints);
   let poseJointCount = 0;
   let declaredParts = 0;
   for (const node of document.nodes ?? []) {
     const mesh = document.meshes?.[node.mesh];
     if (node.mesh !== undefined && (!Number.isInteger(node.mesh) || !mesh)) throw new Error('Invalid mesh node index.');
-    declaredParts += (mesh?.primitives?.length ?? 0) * nodeInstanceCount(document, node, limits);
-    if (declaredParts > limits.maxParts) throw new Error('glTF primitive instances exceed maxParts.');
+    declaredParts += (mesh?.primitives?.length ?? 0) * nodeInstanceCount(document, node, limits, overruns);
     validateDefaultWeights(node.weights, morphCount(mesh));
     morphBytes += morphCount(mesh) * (mesh?.primitives?.length ?? 0) * 16;
     if (node.skin !== undefined) {
@@ -428,10 +432,11 @@ function validateDocument(document, limits, allowedExtensions) {
         if (isLinePrimitive(primitive)) continue;
         if (primitive.attributes?.JOINTS_0 === undefined || primitive.attributes?.WEIGHTS_0 === undefined) throw new Error('Skinned meshes require JOINTS_0 and WEIGHTS_0.');
         poseJointCount += document.skins[node.skin].joints.length;
-        if (poseJointCount > limits.maxJoints) throw new Error('Instanced skin poses exceed maxJoints.');
       }
     }
   }
+  overLimit(overruns, 'parts', declaredParts, 'maxParts', limits.maxParts);
+  overLimit(overruns, 'skin pose joints', poseJointCount, 'maxJoints', limits.maxJoints);
   validateHierarchy(document.nodes ?? []);
   validateAnimationChannels(document);
   for (const material of document.materials ?? []) {
@@ -478,14 +483,15 @@ function validateDocument(document, limits, allowedExtensions) {
   let decodedBytes = morphBytes;
   const components = { SCALAR: 1, VEC2: 2, VEC3: 3, VEC4: 4, MAT2: 4, MAT3: 9, MAT4: 16 };
   for (const accessor of document.accessors ?? []) {
-    if (!Number.isSafeInteger(accessor.count) || accessor.count < 0 || accessor.count > limits.maxVertices * 12) {
-      throw new Error('glTF accessor exceeds its element budget.');
+    if (!Number.isSafeInteger(accessor.count) || accessor.count < 0) throw new Error('Invalid glTF accessor count.');
+    if (accessor.count > limits.maxVertices * 12) {
+      throwOverruns(overLimit(overruns, 'accessor elements', accessor.count, 'maxVertices', limits.maxVertices, 12));
     }
     if (!components[accessor.type]) throw new Error('Unsupported glTF accessor shape.');
     decodedBytes += accessor.count * components[accessor.type] * 4;
   }
-  if (decodedBytes > limits.maxBytes * 4) throw new Error('Decoded glTF accessors exceed four times maxBytes.');
-  return { vertices, ignoredExtensions };
+  overLimit(overruns, 'decoded accessor bytes', decodedBytes, 'maxBytes', limits.maxBytes, 4);
+  return { vertices, ignoredExtensions, overruns };
 }
 
 const LINE_MODE_NAMES = ['POINTS', 'LINES', 'LINE_LOOP', 'LINE_STRIP'];
@@ -566,7 +572,7 @@ function webpImageSize(bytes, header) {
   return null;
 }
 
-function validateImage(bytes, maxImagePixels, ktx2Weight) {
+function validateImage(bytes, imageIndex, limits, ktx2Weight, overruns) {
   const header = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   let width;
   let height;
@@ -606,7 +612,7 @@ function validateImage(bytes, maxImagePixels, ktx2Weight) {
     weight = ktx2Weight;
   }
   if (!width || !height) throw new Error('Only valid PNG, JPEG, WebP and KTX2 texture images are supported.');
-  if (width * height > maxImagePixels) throw new Error('Texture image exceeds maxTextureImagePixels before decoding.');
+  overLimit(overruns, `image ${imageIndex} (${width}x${height}) pixels`, width * height, 'maxTextureImagePixels', limits.maxTextureImagePixels);
   return { width, height, scalable, weight };
 }
 
@@ -639,7 +645,7 @@ async function boundedFetch(url, maxBytes, signal) {
   const length = response.headers.get('content-length');
   if (length !== null && Number(length) > maxBytes) {
     await response.body?.cancel();
-    throw new Error('glTF resource exceeds maxBytes.');
+    throwOverruns(overLimit([], `${url} bytes`, Number(length), 'maxBytes', maxBytes));
   }
   if (!response.body?.getReader) throw new Error('Bounded glTF loading requires a streaming fetch response.');
   const reader = response.body.getReader();
@@ -650,7 +656,7 @@ async function boundedFetch(url, maxBytes, signal) {
       const { done, value } = await reader.read();
       if (done) break;
       total += value.byteLength;
-      if (total > maxBytes) throw new Error('glTF resource exceeds maxBytes.');
+      throwOverruns(overLimit([], `${url} bytes`, total, 'maxBytes', maxBytes));
       chunks.push(value);
     }
   } catch (error) {
@@ -668,11 +674,13 @@ async function boundedFetch(url, maxBytes, signal) {
   return { bytes, mimeType: response.headers.get('content-type') ?? 'application/octet-stream' };
 }
 
-async function prepareResources(document, data, dataBytes, options, limits) {
+async function prepareResources(document, data, dataBytes, options, limits, overruns) {
   const resourceBytes = new Map();
   const definitions = [...(document.buffers ?? []).filter(buffer => !buffer.extensions?.EXT_meshopt_compression?.fallback), ...(document.images ?? [])];
   const uris = new Set(definitions.map(resource => resource.uri).filter(uri => uri !== undefined));
-  if (uris.size > limits.maxResources) throw new Error('glTF resources exceed maxResources.');
+  overLimit(overruns, 'resource URIs', uris.size, 'maxResources', limits.maxResources);
+  // Fetching stays bounded: a file already over a limit is refused before any external request.
+  if ([...uris].some(uri => typeof uri === 'string' && !uri.startsWith('data:'))) throwOverruns(overruns);
   let usedBytes = dataBytes;
   for (const uri of uris) {
     if (typeof uri !== 'string') throw new Error('Invalid glTF resource URI.');
@@ -689,7 +697,7 @@ async function prepareResources(document, data, dataBytes, options, limits) {
   }
   const imageSizes = [];
   const ktx2Weight = ktx2BudgetWeight(options.decoders?.ktx2);
-  for (const image of document.images ?? []) {
+  for (const [imageIndex, image] of (document.images ?? []).entries()) {
     let bytes = resourceBytes.get(image.uri);
     if (!bytes && image.bufferView !== undefined) {
       const view = document.bufferViews?.[image.bufferView];
@@ -702,8 +710,9 @@ async function prepareResources(document, data, dataBytes, options, limits) {
       bytes = source.subarray(offset, offset + view.byteLength);
     }
     if (!bytes) throw new Error('glTF image has no supported source.');
-    imageSizes.push(validateImage(bytes, limits.maxTextureImagePixels, ktx2Weight));
+    imageSizes.push(validateImage(bytes, imageIndex, limits, ktx2Weight, overruns));
   }
+  throwOverruns(overruns);
   return { resourceBytes, textureScaling: planTextureScaling(document.images ?? [], imageSizes, limits.maxTexturePixels) };
 }
 
@@ -861,7 +870,7 @@ function validateNodeTransforms(nodes, pending, transform) {
 
 function instanceMatricesOf(node, maximumInstances) {
   if (!node.isInstancedMesh) return [null];
-  if (node.count > maximumInstances) throw new Error(`Decoded instance count ${node.count} exceeds maxInstances (${maximumInstances}).`);
+  throwOverruns(overLimit([], 'instances of one node', node.count, 'maxInstances', maximumInstances));
   return Array.from({ length: node.count }, (unused, index) => {
     const matrix = new Matrix4();
     node.getMatrixAt(index, matrix);
@@ -1006,11 +1015,11 @@ export async function parseGltf(data, options = {}) {
     if (!resampler) throw error;
     validated = validateDocument(document, limits, allowedExtensionsFor(decoders));
   }
-  const { ignoredExtensions } = validated;
+  const { ignoredExtensions, overruns } = validated;
   await loadLayerShadersFor(document);
   const warnings = [...fallbackWarnings, ...ignoredExtensions.map(extension => `${extension} is accepted but not rendered.`), ...skippedPrimitiveWarnings(document)];
   const dataBytes = typeof data === 'string' ? new TextEncoder().encode(data).byteLength : data.byteLength;
-  const { resourceBytes, textureScaling } = await prepareResources(document, data, dataBytes, options, limits);
+  const { resourceBytes, textureScaling } = await prepareResources(document, data, dataBytes, options, limits, overruns);
   if (textureScaling.scaledTextures.length) {
     const names = textureScaling.scaledTextures.map(({ name, from, to }) => `${name} ${from.join('x')} to ${to.join('x')}`);
     warnings.push(`Scaled ${names.length} texture image(s) to fit maxTexturePixels: ${names.join(', ')}.`);
@@ -1058,7 +1067,7 @@ export async function parseGltf(data, options = {}) {
         const geometryKey = `${node.geometry.uuid}:${geometryMirrored}:${uvKey}:${secondUvSet}`;
         if (!geometries.has(geometryKey)) {
           actualVertices += node.geometry.attributes.position.count * (1 + (primitive.targets?.length ?? 0));
-          if (actualVertices > limits.maxVertices) throw new Error('Decoded geometry exceeds maxVertices.');
+          throwOverruns(overLimit([], 'decoded vertices', actualVertices, 'maxVertices', limits.maxVertices));
           const converted = convertGeometry(node.geometry, geometryMirrored, primitive, secondUvSet, () => meshNamesWithIgnoredAlpha.add(node.name));
           if (converted.uvs) bakeUvTransform(converted.uvs, uvTransform);
           geometries.set(geometryKey, converted);
@@ -1090,7 +1099,7 @@ export async function parseGltf(data, options = {}) {
         if (!Array.from(part.matrix).every(Number.isFinite)) throw new Error('Mesh world matrix must be finite.');
         parts.push(part);
         bindings.push(transformBinding);
-        if (parts.length > limits.maxParts) throw new Error('Decoded parts exceed maxParts.');
+        throwOverruns(overLimit([], 'decoded parts', parts.length, 'maxParts', limits.maxParts));
       }
     });
     validateNodeTransforms(nodes, pendingNodeMatrix, pendingTransform);
@@ -1461,6 +1470,6 @@ export async function loadGltf(source, options = {}) {
   if (!source || typeof source.arrayBuffer !== 'function' || !Number.isSafeInteger(source.size)) {
     throw new TypeError('loadGltf expects a URL or a File/Blob.');
   }
-  if (source.size > limits.maxBytes) throw new Error('Local glTF file exceeds maxBytes.');
+  throwOverruns(overLimit([], 'file bytes', source.size, 'maxBytes', limits.maxBytes));
   return parseGltf(await source.arrayBuffer(), options);
 }
