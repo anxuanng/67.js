@@ -90,6 +90,17 @@ Memory: three `TEXTURE_2D_ARRAY`s on units 11 to 13 (sRGB colour, normal, roughn
 
 In a recipe, the same ground is the `terrain` geometry (`size`, `resolution`, `seed`, `amplitude`, `holes`): see [agent-scene](agent-scene.md).
 
+## Heightfield from rasters
+
+`67js/addons/heightfield` builds a mesh from georeferenced rasters (heights, a mask, a photo) when `createTerrain` does not fit, such as a shoreline cut from a sea mask. A raster is `{ values, width, height, box: { x_min, x_max, y_min, y_max } }`, pixel centres on the box, row 0 at the north edge.
+
+- `sampleRasterGrid(raster, { columns, rows, eastAt, northAt, cellSize, samplesPerSide, scale })` returns a `Float64Array` with the mean of the raster over a square cell around each vertex (`cellSize` 0 with one sample reads the raster at the vertex). The mean of bilinear samples is a weighted sum of pixels, so it runs as two passes over the pixels, not 16 bilinear reads and an allocation per vertex.
+- `createHeightfieldGeometry({ columns, rows, eastAt, northAt, heights, uvBox, keepCell })` returns `{ positions, normals, uvs, indices }` in one pass over typed arrays, with `keepCell(column, row)` dropping cells a finer tier covers.
+
+Combine the sampled arrays into `heights` in your own loop (for a sea mask: lower the vertex by the mask share), then build the geometry. A test pins the output against the per-vertex build it replaces: positions, normals, uvs and indices are bit-equal.
+
+Measured on the AIS port film (4.9 M vertices over three tiers, 10 m core mesh, sea mask averaged over each cell), page open to `stageReady`, RTX 3060, headless Chrome on ANGLE D3D11, four runs while other sessions loaded the machine: 5.5 to 13.1 s before (5.5 to 6.7 s in the quiet runs), 3.6 to 9.6 s after (3.6 to 3.7 s in three of four runs), against 1.0 to 1.4 s for the three.js build of the same scene. The terrain code fell from about 3.4 s of CPU to about 0.6 s; the frame at film second 1 is pixel-identical (max difference 0 of 255). What stays: image decode and mask readback (about 0.6 s), texture upload (about 0.7 s) and shader compile (about 0.6 s). The three.js build does the shoreline per pixel in a shader, so it needs no mask pass.
+
 ## Navigation
 
 `addons/navmesh` finds walking routes over any triangle ground, so a character can go around holes, steep slopes and obstacles. It is pure JavaScript and gives the same path for the same input.
