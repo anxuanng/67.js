@@ -334,6 +334,7 @@ Tags select specialized behavior: `armor` allows studio finish overrides. `floor
 | world | false | Enable outdoor rendering and world clipping defaults |
 | samples | 4 | Requested MSAA count. Negotiated against hardware |
 | hdr | false | Request floating-point color targets |
+| (compact colour) | off | `useCompactColor(renderer)` from `@codepawlhq/67js/addons/compact-color` stores the HDR frame and its multisample colour as R11F_G11F_B10F instead of RGBA16F: 39.55 MB less at 1920 x 1080 with 4 samples (110.92 to 71.37 MB). The format has no alpha, so it needs `hdr: true` and an opaque canvas and throws otherwise; it also throws when the device does not support the renderer's sample count in that format. Mean FLIP against the default is 0.002 to 0.030 (median 0.021) over the 26 reference scenes. Without the call nothing changes. `renderer.memoryReport()` lists the formats |
 | memoryBudgetMiB | 256 | Estimated render allocation budget |
 | environment | {} | Sky, light and fog settings |
 | shadowBounds | {} | Custom extent, eye and target for shadow framing |
