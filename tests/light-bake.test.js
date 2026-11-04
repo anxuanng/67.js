@@ -2,7 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { box } from '../src/geometry.js';
 import { exportGlb } from '../src/export.js';
-import { BAKE_LIMITS, MAX_BAKE_POINT_LIGHTS, MAX_BAKE_SPOT_LIGHTS, MAX_BAKE_AREA_LIGHTS, bakeLightmaps, normalizeBakeOptions } from '../src/light-bake.js';
+import { BAKE_LIMITS, MAX_BAKE_POINT_LIGHTS, MAX_BAKE_SPOT_LIGHTS, MAX_BAKE_AREA_LIGHTS, bakeLightmaps, normalizeBakeOptions, planLightmaps, MAX_BAKE_PARTS, MAX_GPU_BAKE_PARTS } from '../src/light-bake.js';
+import { bakeLightmapsAsync } from '../src/light-bake-gpu.js';
 
 const cube = box(0, 1);
 
@@ -139,7 +140,8 @@ test('a part marked as generating its own geometry is skipped', () => {
 });
 
 test('options are validated with their bounds', () => {
-  assert.deepEqual(normalizeBakeOptions({}), Object.fromEntries(Object.entries(BAKE_LIMITS).map(([name, limit]) => [name, limit.fallback])));
+  const fallbacks = Object.fromEntries(Object.entries(BAKE_LIMITS).map(([name, limit]) => [name, limit.fallback]));
+  assert.deepEqual(normalizeBakeOptions({}), { ...fallbacks, backend: 'cpu' });
   for (const [name, bad] of [['samples', 0], ['samples', 513], ['samples', Number.NaN], ['bounces', 5], ['maxResolution', 3], ['maxResolution', 1e9], ['texelsPerUnit', 0], ['texelsPerUnit', Infinity], ['maxSeconds', 0], ['maxSeconds', '60']]) {
     assert.throws(() => normalizeBakeOptions({ [name]: bad }), { name: 'RangeError', message: new RegExp(name) }, `${name} ${bad}`);
   }
@@ -254,4 +256,29 @@ test('the default bounces follow most of the light that a closed room keeps, whi
   assert.ok(two < byDefault && byDefault < four, `2 bounces ${two}, default ${byDefault}, 4 bounces ${four}`);
   assert.ok(byDefault > two * 1.05, `default ${byDefault} adds too little over 2 bounces ${two}`);
   assert.equal(BAKE_LIMITS.bounces.fallback, 3);
+});
+
+test('the backend option is cpu or gpu, and the synchronous bake refuses the GPU', async () => {
+  assert.equal(normalizeBakeOptions({ backend: 'gpu' }).backend, 'gpu');
+  for (const bad of ['webgpu', 'GPU', 1]) assert.throws(() => normalizeBakeOptions({ backend: bad }), { name: 'TypeError', message: /backend/ }, String(bad));
+  assert.throws(() => bakeLightmaps(smallRoom(), lamp, { ...fastOptions, backend: 'gpu' }), { name: 'TypeError', message: /light-bake-gpu/ });
+  const asynchronous = await bakeLightmapsAsync(smallRoom(), lamp, fastOptions);
+  const synchronous = bakeLightmaps(smallRoom(), lamp, fastOptions);
+  assert.equal(asynchronous.report.backend, 'cpu');
+  assert.deepEqual(Array.from(lightmapBytes(asynchronous.parts[0])), Array.from(lightmapBytes(synchronous.parts[0])));
+});
+
+test('a GPU bake needs a page with WebGL2 and does not take light linking or a sky-only run', async () => {
+  await assert.rejects(bakeLightmapsAsync(smallRoom(), lamp, { ...fastOptions, backend: 'gpu' }), /WebGL2/);
+  await assert.rejects(bakeLightmapsAsync(smallRoom(), lamp, { ...fastOptions, backend: 'gpu', skyOnly: true }), /CPU backend only/);
+  const linked = { pointLights: [{ ...lamp.pointLights[0], affects: ['floor'] }], keyColor: [0, 0, 0] };
+  await assert.rejects(bakeLightmapsAsync(smallRoom(), linked, { ...fastOptions, backend: 'gpu' }), /light linking/);
+});
+
+test('the GPU backend takes up to 1024 parts where the CPU bake takes 256', () => {
+  const crowd = Array.from({ length: MAX_BAKE_PARTS + 1 }, (_, index) => placed(`part-${index}`, [index, 0, 0], [0.5, 0.5, 0.5]));
+  assert.throws(() => planLightmaps(crowd, lamp, fastOptions), { name: 'RangeError', message: /1 to 256 parts/ });
+  assert.equal(planLightmaps(crowd, lamp, { ...fastOptions, backend: 'gpu' }).entries.length, crowd.length);
+  const tooMany = Array.from({ length: MAX_GPU_BAKE_PARTS + 1 }, (_, index) => placed(`part-${index}`, [index, 0, 0], [0.5, 0.5, 0.5]));
+  assert.throws(() => planLightmaps(tooMany, lamp, { ...fastOptions, backend: 'gpu' }), { name: 'RangeError', message: /1 to 1024 parts/ });
 });

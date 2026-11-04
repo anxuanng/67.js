@@ -34,10 +34,10 @@ function compileShader(gl, type, source) {
   return shader;
 }
 
-function createProgram(gl, hasSubsurface) {
+function createProgram(gl, variant) {
   const program = gl.createProgram();
   gl.attachShader(program, compileShader(gl, gl.VERTEX_SHADER, VERTEX_SOURCE));
-  gl.attachShader(program, compileShader(gl, gl.FRAGMENT_SHADER, buildFragmentSource({ hasSubsurface })));
+  gl.attachShader(program, compileShader(gl, gl.FRAGMENT_SHADER, buildFragmentSource(variant)));
   gl.linkProgram(program);
   if (!gl.getProgramParameter(program, gl.LINK_STATUS)) throw new Error(`The GPU path tracer program did not link: ${gl.getProgramInfoLog(program)}`);
   return program;
@@ -70,7 +70,6 @@ function uploadScene(gl, program, scene) {
   const materials = packMaterials(scene.materials, atlas);
   const floatTables = [['uNodes', nodes], ['uTriangles', triangles], ['uMaterials', materials], ['uLights', lights.table]];
   if (sceneUsesSubsurface(scene.materials)) floatTables.push(['uSubsurface', packSubsurface(scene.materials)]);
-  if (sceneUsesSubsurface(scene.materials)) floatTables.push(['uSubsurface', packSubsurface(scene.materials)]);
   let unit = 0;
   const bind = (name) => gl.uniform1i(gl.getUniformLocation(program, name), unit++);
   for (const [name, table] of floatTables) {
@@ -87,7 +86,7 @@ function uploadScene(gl, program, scene) {
     createTexture(gl, unit, gl.R32F, gl.RED, gl.FLOAT, table.width, table.height, table.data);
     bind(name);
   }
-  return { lightCount: lights.count };
+  return { lightCount: lights.count, nextUnit: unit };
 }
 
 function setSceneUniforms(gl, program, scene, camera, options, lightCount) {
@@ -193,15 +192,16 @@ function getContext() {
 }
 
 /** The kernel for a scene, compiled once per variant: a scene with a subsurface part gets the random walk, any other scene the plain kernel. */
-function getKernel(hasSubsurface) {
+function getKernel(hasSubsurface, texelBake = false) {
   const { gl, programs } = getContext();
-  if (!programs.has(hasSubsurface)) {
+  const key = `${hasSubsurface}:${texelBake}`;
+  if (!programs.has(key)) {
     const started = performance.now();
-    const program = createProgram(gl, hasSubsurface);
+    const program = createProgram(gl, { hasSubsurface, texelBake });
     gl.getProgramParameter(program, gl.LINK_STATUS);
-    programs.set(hasSubsurface, { program, compileSeconds: (performance.now() - started) / 1000 });
+    programs.set(key, { program, compileSeconds: (performance.now() - started) / 1000 });
   }
-  return programs.get(hasSubsurface);
+  return programs.get(key);
 }
 
 function releaseResources(gl) {
@@ -212,14 +212,8 @@ function releaseResources(gl) {
   resources.length = 0;
 }
 
-export async function traceOnGpu(scene, camera, options, shouldStop) {
-  const { gl, gpu } = getContext();
-  const { program, compileSeconds } = getKernel(sceneUsesSubsurface(scene.materials));
-  const { width, height, samples } = options;
-  gl.useProgram(program);
-  const { lightCount } = uploadScene(gl, program, scene);
-  setSceneUniforms(gl, program, scene, camera, options, lightCount);
-  createTargets(gl, width, height);
+/** Draws every sample of every pixel in bands that take about DRAW_SECONDS_TARGET each, giving the page a turn now and then. */
+async function drawSamples(gl, program, width, height, samples, shouldStop) {
   gl.viewport(0, 0, width, height);
   gl.enable(gl.BLEND);
   gl.blendFunc(gl.ONE, gl.ONE);
@@ -249,7 +243,61 @@ export async function traceOnGpu(scene, camera, options, shouldStop) {
     }
   }
   gl.disable(gl.SCISSOR_TEST);
+}
+
+export async function traceOnGpu(scene, camera, options, shouldStop) {
+  const { gl, gpu } = getContext();
+  const { program, compileSeconds } = getKernel(sceneUsesSubsurface(scene.materials));
+  const { width, height, samples } = options;
+  gl.useProgram(program);
+  const { lightCount } = uploadScene(gl, program, scene);
+  setSceneUniforms(gl, program, scene, camera, options, lightCount);
+  createTargets(gl, width, height);
+  await drawSamples(gl, program, width, height, samples, shouldStop);
   const buffers = averageBuffers(gl, width, height, samples);
   releaseResources(gl);
   return Object.assign(buffers, { gpu, compileSeconds });
+}
+
+const TEXEL_ROW_WIDTH = 2048;
+
+/**
+ * Traces `options.samples` cosine weighted paths from every texel of a lightmap and resolves with, per texel, the mean
+ * radiance that arrives (`radiance`, three floats) and the share of first rays that left the scene (`escaped`).
+ * `texels` holds `count`, `points` and `normals` (three floats each, world space). `options.bounces` counts hits, as in
+ * the CPU bake. The scene is traced as it is: its lights, materials and environment decide the light.
+ */
+export async function traceTexelsOnGpu(scene, texels, options, shouldStop) {
+  const { gl, gpu } = getContext();
+  const { program, compileSeconds } = getKernel(sceneUsesSubsurface(scene.materials), true);
+  const { count, points, normals } = texels;
+  const { samples, seed } = options;
+  const width = Math.min(count, TEXEL_ROW_WIDTH);
+  const height = Math.ceil(count / width);
+  gl.useProgram(program);
+  const { lightCount, nextUnit } = uploadScene(gl, program, scene);
+  const camera = { eye: [0, 0, 0], forward: [0, 0, 1], right: [1, 0, 0], above: [0, 1, 0], halfWidth: 1, halfHeight: 1 };
+  setSceneUniforms(gl, program, scene, camera, { width, height, seed, bounces: options.bounces - 1, fireflyClamp: options.fireflyClamp }, lightCount);
+  const upload = (unit, name, vectors) => {
+    const padded = new Float32Array(width * height * 4);
+    for (let texel = 0; texel < count; texel++) padded.set(vectors.subarray(texel * 3, texel * 3 + 3), texel * 4);
+    createTexture(gl, unit, gl.RGBA32F, gl.RGBA, gl.FLOAT, width, height, padded);
+    gl.uniform1i(gl.getUniformLocation(program, name), unit);
+  };
+  upload(nextUnit, 'uTexelPoints', points);
+  upload(nextUnit + 1, 'uTexelNormals', normals);
+  gl.uniform1i(gl.getUniformLocation(program, 'uTexelCount'), count);
+  gl.uniform1i(gl.getUniformLocation(program, 'uSampleCount'), samples);
+  createTargets(gl, width, height);
+  await drawSamples(gl, program, width, height, samples, shouldStop);
+  const radianceSums = readTarget(gl, 0, width, height);
+  const statistics = readTarget(gl, 3, width, height);
+  releaseResources(gl);
+  const radiance = new Float32Array(count * 3);
+  const escaped = new Float32Array(count);
+  for (let texel = 0; texel < count; texel++) {
+    for (let channel = 0; channel < 3; channel++) radiance[texel * 3 + channel] = radianceSums[texel * 4 + channel] / samples;
+    escaped[texel] = statistics[texel * 4 + 2] / samples;
+  }
+  return { radiance, escaped, gpu, compileSeconds };
 }

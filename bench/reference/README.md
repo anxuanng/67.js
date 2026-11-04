@@ -1570,7 +1570,13 @@ FLIP mean error, lower is better (measured, one run, Blender 5.2.2, 960 by 540):
 | `temple-hall-rose` | 0.5652 | 0.5727 | 0.8878 |
 | `megacity-dusk-blue-hour` | 0.1128 | 0.1081 | 0.0688 |
 
-Known gaps shown on purpose, not hidden by a per-scene setting: the dark band of mid-distance trees in the dawn frame is a 67js defect (the lower tree levels shade near black under sky light and a low sun, issue #394); the temple hall is lit flat in 67js while Cycles leaves it dark, the closed-room-without-bake gap (an open roof is not a bake).
+Known gaps shown on purpose, not hidden by a per-scene setting: the dark band of mid-distance trees in the dawn frame is a 67js defect (the lower tree levels shade near black under sky light and a low sun, issue #394); the temple hall is lit flat in 67js while Cycles leaves it dark, the closed-room-without-bake gap (an open roof is not a bake). The hall has an opt-in for it: `--bake temple-hall-rose` bakes it on the GPU (see below), which takes `temple-hall-rose` from 0.5652 to 0.1181 against Cycles (and makes EEVEE worse, 0.5727 to 0.9019, because EEVEE has no indirect light here); the committed rows above are the plain scene.
+
+### The hall baked on the GPU (2026-11-04, issue #302)
+
+`node bench/reference/run.mjs --grand --scene temple-hall-rose --skip-cpu --skip-blender --bake temple-hall-rose` draws the hall with the light bake on the GPU tracer's kernel (``bakeLightmapsAsync` with `backend: gpu`, which takes up to 1,024 parts where the CPU bake stops at 256; the hall has more than 256). The scene's `bakeOptions` in `look-options.js` are `{ backend: 'gpu', texelsPerUnit: 2, samples: 128, maxSeconds: 300 }`: 2 texels per unit is the density the closed `temple-hall` scene already uses, and the default 6 would need 1,542,896 texels against a limit of 1,000,000. At 2 the bake has 493,632 texels, 3 bounces, and took 16.7 s and 30.1 s in two runs, each including the 7 s kernel compile (RTX 3060, headless Chrome, other sessions on the machine; the two runs gave the same score). Against the same Cycles frame: 0.5652 without the bake, 0.1181 with it (FLIP, 960 by 540, measured). The frame is `images/grand-temple-hall-rose-baked.jpg`. Leave `--skip-cpu` on: the SwiftShader page would run the GPU bake on the CPU. At 256 samples the bake is refused by the ray work limit (758 million of 400 million), so 128 is the most the limit allows at this density. The committed `grand.json` row stays the plain scene.
+
+`lit-interior` with the GPU bake (`--bake lit-interior --bake-backend gpu --bake-samples 512`, the same Cycles frame, measured 2026-11-04): 0.0914 against Cycles, where the CPU bake at its defaults (128 samples) scores 0.1129. `bake-compare.mjs` bakes one scene with named option sets on either backend and prints seconds and the gap between lightmaps; the numbers are in `docs/light-bake.md`. `--bake-density <texels per unit>` and `--bake-samples <n>` set those two bake options for a run.
 
 ## The reference harness drew `foliage` in a breeze (2026-11-03, part of issue #191)
 
@@ -1737,3 +1743,28 @@ After the change: `brick-graph` 0.0714 on the GPU (CPU render not redone), `bric
 ### Normal map resolution reverted (2026-11-04, issue #50)
 
 The twice-resolution normal bake above is reverted as a default: 0.0020 of FLIP on `brick-graph` did not justify 4 times the normal map memory per graph pattern. A graph normal map bakes at the colour resolution again (`brick-graph` 0.0734).
+
+## Which term carries the tilted-ledge error, and the one fix that fits no size budget (2026-11-04, part of issue #50, RTX 3060 960 x 540)
+
+Method: `brick-graph` rendered on the GPU with one term at a time swapped from the mapped normal to the geometric one (shader switches that were not kept), scored by FLIP against the stored Cycles array and by the mean display-luminance residual (67js minus Cycles) over four wall regions, cut by the mapped normal of each pixel (flat: tilt below 0.03, 101,886 px; up ledge: normal.y above 0.03, 16,374 px; down ledge: below -0.03, 16,636 px; side joint: 25,104 px). Cycles was also rendered with only the sun (`--world-strength 0`) and with only the world (`--sun-strength 0`), 4 to 6 s each, to read each term's response to the tilt on the Cycles side. Main reproduces `brick-graph` 0.0734 and `brick-flat` 0.0556 (excess 0.0178 against EEVEE's 0.0120).
+
+| Variant (one change on main) | `brick-graph` | flat | up ledge | down ledge | side joint |
+| --- | --- | --- | --- | --- | --- |
+| main | 0.0734 | -0.0066 | +0.0370 | -0.0508 | +0.0111 |
+| sun diffuse and specular with the geometric normal | 0.0998 | -0.0070 | -0.0291 | +0.1309 | +0.1050 |
+| sun specular off | 0.0863 | -0.0198 | +0.0264 | -0.0543 | +0.0043 |
+| sun normal 0.8 / 0.6 / 0.4 of the way from geometric to mapped | 0.0747 / 0.0797 / 0.0810 | -0.0067 | +0.0385 / +0.0346 / +0.0215 | -0.0434 / -0.0292 / +0.0165 | +0.0241 / +0.0575 / +0.0871 |
+| environment diffuse with the geometric normal | 0.0766 | -0.0066 | +0.0312 | -0.0806 | -0.0081 |
+| environment diffuse normal halfway to geometric | 0.0734 | -0.0066 | +0.0300 | -0.0646 | -0.0032 |
+| environment specular reflection about the geometric normal | 0.0722 | -0.0066 | +0.0339 | -0.0537 | +0.0049 |
+| reflection sky term times `step(0, dot(reflected, geometric))` | 0.0721 | -0.0066 | +0.0339 | -0.0553 | +0.0035 |
+| the same with `smoothstep(-0.1, 0.1, ...)` or a ramp 0.05 to 1.0 wide | 0.0721 to 0.0722 | -0.0066 | +0.0337 | -0.0554 | +0.0035 to 0.0040 |
+| horizon exponent with the geometric environment specular: 1.5 / 2.5 / 3 | 0.0743 / 0.0737 / 0.0761 | -0.0066 | +0.0417 / +0.0272 / +0.0213 | -0.0314 / -0.0736 / -0.0910 | +0.0229 / -0.0113 / -0.0258 |
+
+The fill lights are zero in this scene, so that term cannot carry anything. Reading the table:
+
+- The tilt error is in the sun term and the environment diffuse term together, not in specular. With the geometric normal the sun swings the ledges by 0.066 (up) and 0.181 (down), so its response is the large one, and it is too strong on both sides: in linear light, with the albedo divided out and the floor bounce of Cycles estimated as its excess over 67js on the flat wall (inferred), the sun on an up ledge is 1.46 times its flat value in 67js and about 1.14 in Cycles, and on a down ledge 0.31 against 0.45. No blend between the geometric and the mapped normal fixes it, because the side joints get worse as fast as the down ledges improve (table, 0.8 / 0.6 / 0.4).
+- The environment diffuse term is too bright on up ledges: with only the world lit, a ledge reads 1.19 times the flat wall in 67js and 0.91 in Cycles (down 0.84 against 0.81, side 0.95 against 0.86). That is 0.018 of the 0.034 linear excess on up ledges. The geometric normal brings the up ledge to 0.88, but the same switch darkens the down ledges by 0.03 in the full image (0.0766), because the lit floor under the wall is part of the environment diffuse term and the mapped normal is what sees it, as in Cycles. So the squared horizon share is already the right shape for the sky; the missing piece is a floor term that keeps the mapped normal.
+- Environment specular is the only term that improved when cut like Cycles does: a reflection that points below the geometric plane should see no sky. `skyReflection *= step(0.0, dot(reflected, geometricNormal))` (guarded by `USES_NORMAL_MAP`, next to the squared share) takes `brick-graph` from 0.0734 to 0.0721 and the excess over the flat wall from 0.0178 to 0.0165, still above EEVEE's 0.0120. The gain is the steepest bump edges: at column 392 the pixels on the lit side of a joint (normal.y 0.87 to 1.0) are 0.03 to 0.05 too bright and the ones on the dark side (normal.y -0.35 to -0.72) 0.06 to 0.12 too dark, one to three pixels wide, which is a footprint difference (Cycles averages the bump over the pixel) that no lobe change reaches.
+- Not kept. The line costs 16 bytes of `scene:lit-box` (49957 to 49973) and 22 of `scene:agent-scene` (102827 to 102849), against 8 allowed there; merging it with the squared share into one `if` block did not change that (+16 and +22), the `smoothstep` form costs 5 bytes more, and removing trailing zeros from the shader's literals made the gzip larger (+48 / +34). The change is ready to take when a budget allows it: one line of GLSL, no other scene has a normal map in the suite, so no other reference scene could move. The full suite was not run because nothing changed.
+- Where the rest of the 0.0165 is, in order: the sun's tilt response (above), the one-to-three pixel footprint at steep joints, and the environment diffuse of up ledges. The sun's response is what a next worker should isolate with a per-pixel comparison against a Cycles Diffuse-only bake.

@@ -251,6 +251,9 @@ function templeHallRose() {
     environment: environment(lighting, { keyColor: [11, 9.6, 7.4], lightDirection: normalized(sunDirection), volumeFog: fogBox(0.012, [-HALL.halfWidth, 0, HALL.back], [HALL.halfWidth, HALL.roofHeight - 1, HALL.front + 2], 190, 0.55) }),
     camera: { eye: [0, 1.8, HALL.front - 3], target: [0, 13, HALL.back], up: [0, 1, 0], fov: 58, near: 0.1, far: 300 },
     shadow: sunShadow(sunDirection, [0, 15, NAVE_MIDDLE], 105, 200),
+    // Used by `--bake temple-hall-rose` (the hall has more parts and texels than the CPU bake takes): the GPU bake at the density the
+    // closed `temple-hall` scene uses. Without --bake the hall is drawn as before.
+    bakeOptions: { backend: 'gpu', texelsPerUnit: 2, samples: 128, maxSeconds: 300 },
   };
 }
 

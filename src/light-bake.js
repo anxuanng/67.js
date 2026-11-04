@@ -24,6 +24,8 @@ export const MAX_BAKE_RAY_WORK = 400_000_000;
 export const MAX_BAKE_TEXELS = 1_000_000;
 export const MAX_BAKE_TRIANGLES = 200_000;
 export const MAX_BAKE_PARTS = 256;
+// The GPU tracer takes as many parts as the path tracer does (MAX_TRACE_PARTS); the CPU bake keeps 256.
+export const MAX_GPU_BAKE_PARTS = 1024;
 export const MAX_BAKE_POINT_LIGHTS = MAX_POINT_LIGHTS;
 export const MAX_BAKE_SPOT_LIGHTS = MAX_SPOT_LIGHTS;
 export const MAX_BAKE_AREA_LIGHTS = MAX_AREA_LIGHTS;
@@ -62,6 +64,8 @@ export function normalizeBakeOptions(options = {}) {
   if (options === null || typeof options !== 'object' || Array.isArray(options)) throw new TypeError('Light bake options must be an object.');
   const normalized = {};
   for (const name of Object.keys(BAKE_LIMITS)) normalized[name] = boundedNumber(options, name);
+  normalized.backend = options.backend ?? 'cpu';
+  if (normalized.backend !== 'cpu' && normalized.backend !== 'gpu') throw new TypeError('Light bake backend must be "cpu" or "gpu".');
   return normalized;
 }
 
@@ -864,7 +868,8 @@ function createSkyVisibilityGatherer({ tracer, offset, samples }) {
 export function planLightmaps(parts, lighting, options = {}) {
   const settings = normalizeBakeOptions(options);
   const lights = normalizeLights(lighting);
-  if (!Array.isArray(parts) || parts.length === 0 || parts.length > MAX_BAKE_PARTS) throw new RangeError(`Light bake takes from 1 to ${MAX_BAKE_PARTS} parts.`);
+  const maximumParts = settings.backend === 'gpu' ? MAX_GPU_BAKE_PARTS : MAX_BAKE_PARTS;
+  if (!Array.isArray(parts) || parts.length === 0 || parts.length > maximumParts) throw new RangeError(`Light bake takes from 1 to ${maximumParts} parts.`);
   parts.forEach(validatePart);
   const triangleTotal = parts.reduce((total, part) => total + part.geometry.indices.length / 3, 0);
   if (triangleTotal > MAX_BAKE_TRIANGLES) throw new RangeError(`Light bake takes at most ${MAX_BAKE_TRIANGLES} triangles in total.`);
@@ -903,13 +908,31 @@ export function estimateBake(plan, { samples, bounces, texelsPerUnit }) {
   return { texels, rayWork: texels * samples * bounces * raysPerHit };
 }
 
-/** Traces a plan with the given settings (samples, bounces, texelsPerUnit, maxSeconds) and returns the baked parts and the report. */
-export function traceLightmaps(plan, tracedSettings) {
-  const { parts, lights, started, skipped } = plan;
-  const settings = { ...plan.settings, ...tracedSettings };
-  const { texels: texelTotal, rayWork } = estimateBake(plan, settings);
-  if (texelTotal > MAX_BAKE_TEXELS) throw new RangeError(`Light bake would use ${texelTotal} texels; the limit is ${MAX_BAKE_TEXELS}. Lower maxResolution or texelsPerUnit.`);
+export function checkedBakeSize(plan, settings) {
+  const { texels, rayWork } = estimateBake(plan, settings);
+  if (texels > MAX_BAKE_TEXELS) throw new RangeError(`Light bake would use ${texels} texels; the limit is ${MAX_BAKE_TEXELS}. Lower maxResolution or texelsPerUnit.`);
   if (rayWork > MAX_BAKE_RAY_WORK) throw new RangeError(`Light bake would trace about ${rayWork} rays; the limit is ${MAX_BAKE_RAY_WORK}. Lower samples, bounces or texelsPerUnit.`);
+  return { texels, rayWork };
+}
+
+export function checkBudget(plan, settings) {
+  if (performance.now() - plan.started > settings.maxSeconds * 1000) throw new Error(`Light bake passed maxSeconds (${settings.maxSeconds}).`);
+}
+
+/** Where every texel of every bakeable part sits in the world: the same input to the CPU and the GPU tracer. */
+export function rasterizeEntries(plan, settings) {
+  return plan.entries.map((entry) => {
+    const resolution = lightmapResolution(entry.area, entry.unwrapped.utilization, settings);
+    return { entry, resolution, ...rasterizeTexels(entry.unwrapped.geometry, entry.part.matrix, resolution) };
+  });
+}
+
+/**
+ * The CPU tracer's turn: for each rasterized part, `light` (the mean radiance that arrives at each texel, three floats)
+ * and `escaped` (the share of first rays that left the scene).
+ */
+function gatherOnCpu(plan, settings, rasterized) {
+  const { parts, lights } = plan;
   const world = buildWorld(parts);
   const scale = sceneScale(world.positions);
   const offset = scale * 1e-4;
@@ -920,44 +943,57 @@ export function traceLightmaps(plan, tracedSettings) {
   const gather = settings.skyOnly
     ? createSkyVisibilityGatherer({ tracer, offset, samples: settings.samples })
     : createGatherer({ world, tracer, albedoOfPart, emissionOfPart, directIrradiance, offset, samples: settings.samples, bounces: settings.bounces });
-  const baked = parts.slice();
-  const partReports = [];
   const sum = [0, 0, 0];
-  for (const { part, index, unwrapped, area, slot } of plan.entries) {
-    const resolution = lightmapResolution(area, unwrapped.utilization, settings);
-    const { positions, normals, covered, nearestDistance } = rasterizeTexels(unwrapped.geometry, part.matrix, resolution);
-    const radiance = new Float32Array(resolution * resolution * 3);
-    const skyVisibility = new Float32Array(resolution * resolution * 3);
-    let skySum = 0;
-    let skyTexels = 0;
-    const albedo = albedoOfPart[index];
-    const point = [0, 0, 0];
-    const normal = [0, 0, 0];
-    let peak = 0;
+  const point = [0, 0, 0];
+  const normal = [0, 0, 0];
+  return rasterized.map(({ entry, resolution, positions, normals, covered }) => {
+    const light = new Float32Array(resolution * resolution * 3);
+    const escaped = new Float32Array(resolution * resolution);
     for (let texel = 0; texel < resolution * resolution; texel++) {
       if (!covered[texel]) continue;
-      if (performance.now() - started > settings.maxSeconds * 1000) throw new Error(`Light bake passed maxSeconds (${settings.maxSeconds}).`);
+      checkBudget(plan, settings);
       for (let axis = 0; axis < 3; axis++) {
         point[axis] = positions[texel * 3 + axis];
         normal[axis] = normals[texel * 3 + axis];
       }
-      const visible = gather(point, normal, index * 1_000_003 + texel, sum);
-      skyVisibility.fill(visible, texel * 3, texel * 3 + 3);
+      escaped[texel] = gather(point, normal, entry.index * 1_000_003 + texel, sum);
+      light.set(sum, texel * 3);
+    }
+    return { light, escaped };
+  });
+}
+
+/** Lightmaps and parts from the gathered light: albedo, smoothing, dilation, sky visibility and the baked copies of the parts. */
+export function finishLightmaps(plan, settings, rasterized, gathered, sizes) {
+  const baked = plan.parts.slice();
+  const partReports = [];
+  rasterized.forEach(({ entry, resolution, positions, normals, covered, nearestDistance }, entryNumber) => {
+    const { part, index, unwrapped, area, slot } = entry;
+    const { light, escaped } = gathered[entryNumber];
+    const albedo = diffuseAlbedo(part.material);
+    const radiance = new Float32Array(resolution * resolution * 3);
+    const skyVisibility = new Float32Array(resolution * resolution * 3);
+    let skySum = 0;
+    let skyTexels = 0;
+    let peak = 0;
+    for (let texel = 0; texel < resolution * resolution; texel++) {
+      if (!covered[texel]) continue;
+      skyVisibility.fill(escaped[texel], texel * 3, texel * 3 + 3);
       // Only texels inside a chart count toward the mean, so the gutter around a chart does not change what the part sees on average.
       if (nearestDistance[texel] === 0) {
-        skySum += visible;
+        skySum += escaped[texel];
         skyTexels++;
       }
       for (let channel = 0; channel < 3; channel++) {
         // The lightMap slot stores the light that arrives; the shader multiplies it by the live surface colour.
-        radiance[texel * 3 + channel] = slot ? sum[channel] : sum[channel] * albedo[channel];
+        radiance[texel * 3 + channel] = slot ? light[texel * 3 + channel] : light[texel * 3 + channel] * albedo[channel];
         peak = Math.max(peak, radiance[texel * 3 + channel]);
       }
     }
     const meanSkyVisibility = skyTexels > 0 ? skySum / skyTexels : 1;
     partReports.push({ name: part.name, resolution, peak, skyVisibility: meanSkyVisibility });
     const sealed = meanSkyVisibility < SKY_VISIBLE_ENOUGH && !part.material.occlusionMap;
-    if (peak <= 0 && !sealed) continue;
+    if (peak <= 0 && !sealed) return;
     let bakedResult = part;
     const spacing = Math.sqrt(area / Math.max(skyTexels, 1));
     const [smoothRadiance, smoothSkyVisibility] = smoothTexels([radiance, skyVisibility], covered, positions, normals, resolution, spacing);
@@ -967,7 +1003,16 @@ export function traceLightmaps(plan, tracedSettings) {
     if (smoothPeak > 0) bakedResult = (slot ? lightMappedPart : bakedPart)(part, unwrapped.geometry, lightmapTexture(smoothRadiance, resolution, smoothPeak), smoothPeak);
     if (sealed) bakedResult = skyVisibilityPart(bakedResult, unwrapped.geometry, skyVisibilityTexture(smoothSkyVisibility, resolution), slot);
     baked[index] = bakedResult;
-  }
-  const report = { parts: partReports, skipped, texels: texelTotal, rayWork, seconds: (performance.now() - started) / 1000 };
+  });
+  const report = { parts: partReports, skipped: plan.skipped, texels: sizes.texels, rayWork: sizes.rayWork, backend: settings.backend, seconds: (performance.now() - plan.started) / 1000 };
   return { parts: baked, report };
+}
+
+/** Traces a plan with the given settings (samples, bounces, texelsPerUnit, maxSeconds) and returns the baked parts and the report. */
+export function traceLightmaps(plan, tracedSettings) {
+  const settings = { ...plan.settings, ...tracedSettings };
+  if (settings.backend !== 'cpu') throw new TypeError('Light bake backend "gpu" is asynchronous: use bakeLightmapsAsync from light-bake-gpu.js.');
+  const sizes = checkedBakeSize(plan, settings);
+  const rasterized = rasterizeEntries(plan, settings);
+  return finishLightmaps(plan, settings, rasterized, gatherOnCpu(plan, settings, rasterized), sizes);
 }
