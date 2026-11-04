@@ -75,10 +75,10 @@ test('height becomes a normal map: flat height is a flat normal, relief tilts it
 test('a height ramp tilts the normal by bump / 32 per UV unit at any resolution, the sign pointing downhill', () => {
   for (const resolution of [256, 512]) {
     const ramp = bakeMaterialPattern(normalizeMaterialPattern({ type: 'graph', graph: { height: { uv: 'u' } }, resolution, bump: 4 }));
-    const { data } = ramp.normalMap.image;
+    const { data, width } = ramp.normalMap.image;
     const slope = 4 / 32;
     const length = Math.hypot(slope, 1);
-    const offset = (Math.floor(resolution / 2) * resolution + Math.floor(resolution / 2)) * 4;
+    const offset = (Math.floor(width / 2) * width + Math.floor(width / 2)) * 4;
     assert.equal(data[offset], Math.round((-slope / length * 0.5 + 0.5) * 255));
     assert.equal(data[offset + 1], 128);
     assert.equal(data[offset + 2], Math.round((1 / length * 0.5 + 0.5) * 255));
@@ -89,8 +89,24 @@ test('the slope of a sharp joint edge stays within one texel of the edge instead
   const resolution = 256;
   const step = { smoothstep: [0.5, 0.5 + 1 / resolution, { uv: 'u' }] };
   const edge = bakeMaterialPattern(normalizeMaterialPattern({ type: 'graph', graph: { height: step }, resolution, bump: 1 }));
-  const tiltedColumns = Array.from({ length: resolution }, (_, column) => column).filter(column => edge.normalMap.image.data[(10 * resolution + column) * 4] !== 128);
-  assert.ok(tiltedColumns.length <= 2, `${tiltedColumns.length} texels are tilted`);
+  const { data, width } = edge.normalMap.image;
+  const tiltedColumns = Array.from({ length: width }, (_, column) => column).filter(column => data[(10 * width + column) * 4] !== 128);
+  const tiltedColorTexels = tiltedColumns.length * resolution / width;
+  assert.ok(tiltedColorTexels <= 2, `${tiltedColumns.length} normal texels are tilted`);
+});
+
+test('the normal map is baked at twice the colour resolution, and at the colour resolution when the height is too costly for that', () => {
+  const brick = bakeMaterialPattern(normalizeMaterialPattern(graphPattern()));
+  assert.equal(brick.map.image.width, 256);
+  assert.equal(brick.normalMap.image.width, 512);
+  assert.equal(brick.normalMap.image.height, 512);
+  const costly = { height: { add: [{ noise: { scale: 6, octaves: 6 } }, { noise: { scale: 9, octaves: 6, seed: 1 } }] } };
+  const small = bakeMaterialPattern(normalizeMaterialPattern({ type: 'graph', graph: costly, resolution: 256 }));
+  const large = bakeMaterialPattern(normalizeMaterialPattern({ type: 'graph', graph: costly, resolution: 512 }));
+  assert.equal(small.normalMap.image.width, 512);
+  assert.equal(large.normalMap.image.width, 512, 'twice 512 texels would be over the work limit for two six octave noises');
+  const largest = bakeMaterialPattern(normalizeMaterialPattern({ type: 'graph', graph: { height: { uv: 'u' } }, resolution: 1024 }));
+  assert.equal(largest.normalMap.image.width, 1024);
 });
 
 test('every graph texture node tiles across the seam', () => {

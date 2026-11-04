@@ -1,0 +1,1 @@
+- scene:agent-scene+lazy: the graph bake picks a finer normal map size (per-output cost, resolution and work allowance), 112 bytes in the lazy graph code; scene:lit-box and scene:agent-scene do not grow

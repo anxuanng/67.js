@@ -377,11 +377,14 @@ export function compileMaterialGraph(graph) {
   if (names.length === 0) throw graphError(`graph needs at least one output: ${MATERIAL_GRAPH_OUTPUTS.join(', ')}.`);
   const state = { nodeCount: 0, cost: 0 };
   const outputs = {};
+  const outputCosts = {};
   for (const name of names) {
+    const costBefore = state.cost;
     outputs[name] = compileNode(graph[name], state, 0);
+    outputCosts[name] = state.cost - costBefore;
     if (SCALAR_OUTPUTS.includes(name) && outputs[name].kind !== 'scalar') throw graphError(`${name} needs a number, not a vector.`);
   }
-  return { outputs, nodeCount: state.nodeCount, cost: state.cost };
+  return { outputs, outputCosts, nodeCount: state.nodeCount, cost: state.cost };
 }
 
 /** Throw when a graph is too costly to bake at this size. Called while normalizing, so a bad scene fails at once. */
@@ -415,6 +418,31 @@ function writeColor(data, offset, channels) {
   data[offset + 3] = 255;
 }
 
+// A joint edge is a few texels wide, and bilinear filtering blends the unit normals of its texels, which rounds the edge
+// off where Blender's Bump node differentiates the height at every pixel. Measured against Cycles (bench/reference/README.md,
+// 2026-11-04) a normal map at twice the colour resolution halves the mean angle error of the wall's normals.
+const NORMAL_MAP_RESOLUTION_FACTOR = 2;
+const NORMAL_MAP_RESOLUTION_LIMIT = 1024;
+// Four height reads per texel: half a texel either side along each axis. The work limit counts one evaluation per pixel of
+// every output, and a height read is cheaper than a full graph pixel, so the finer map may cost four times that limit
+// (the brick wall of the reference suite: 84 million units, about 0.35 s in Node).
+const HEIGHT_READS_PER_NORMAL_TEXEL = 4;
+const NORMAL_MAP_WORK_LIMIT = 4 * MATERIAL_GRAPH_LIMITS.maxWork;
+
+/** The size of the baked normal map: finer than the colour, unless the height is too costly to read that often. */
+function normalMapResolution(heightCost, resolution) {
+  const finer = Math.min(resolution * NORMAL_MAP_RESOLUTION_FACTOR, NORMAL_MAP_RESOLUTION_LIMIT);
+  const work = heightCost * HEIGHT_READS_PER_NORMAL_TEXEL * finer * finer;
+  return finer > resolution && work <= NORMAL_MAP_WORK_LIMIT ? finer : resolution;
+}
+
+function bakeNormalMap(heightOutput, heightCost, resolution, bump) {
+  const normalResolution = normalMapResolution(heightCost, resolution);
+  const heightAt = (u, v) => finiteOrZero(heightOutput.evaluate(u, v));
+  const normalData = normalMapFromHeightFunction(heightAt, normalResolution, bump);
+  return { image: createImage(normalData, normalResolution, normalResolution), colorSpace: 'linear' };
+}
+
 /** Bake a normalized graph into texture descriptors, one for each output the graph has. Deterministic. */
 export function bakeMaterialGraph(graph, { resolution, bump }) {
   const compiled = compileMaterialGraph(graph);
@@ -445,6 +473,6 @@ export function bakeMaterialGraph(graph, { resolution, bump }) {
     map: descriptor(colorData, 'srgb'),
     emissiveMap: descriptor(emissionData, 'srgb'),
     metallicRoughnessMap: descriptor(surfaceData, 'linear'),
-    normalMap: descriptor(height ? normalMapFromHeightFunction((u, v) => finiteOrZero(height.evaluate(u, v)), resolution, bump) : null, 'linear'),
+    normalMap: height ? bakeNormalMap(height, compiled.outputCosts.height, resolution, bump) : undefined,
   };
 }
