@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { box, sphere } from '../src/geometry.js';
-import { applyWaterReflection, attachWaterReflection, findWaterSurface } from '../src/water-reflection.js';
+import { applyWaterReflection, attachWaterReflection, findWaterSurface, waterMirrorLevel, waterMirrorWeight, WATER_BLUR_LIMIT_ROUGHNESS, WATER_MAXIMUM_BLUR_LEVEL } from '../src/water-reflection.js';
 import { createFragmentShader } from '../src/shaders.js';
 import { Renderer67 } from '../src/renderer.js';
 
@@ -39,7 +39,7 @@ test('a scene with no such surface gets no surface and keeps its parts', () => {
 test('a surface that is small, tall, rough, liquid or transmissive does not qualify', () => {
   assert.equal(findWaterSurface([placed('ground', [0, -2, 0], [4000, 2, 4000]), placed('puddle', [0, -1, 0], [20, 0.2, 20], WATER)]), null);
   assert.equal(findWaterSurface([placed('ground', [0, -2, 0], [4000, 2, 4000]), placed('tower', [0, 50, 0], [900, 400, 900], WATER)]), null);
-  assert.equal(findWaterSurface(lakeScene({ ...WATER, roughness: 0.3 })), null);
+  assert.equal(findWaterSurface(lakeScene({ ...WATER, roughness: 0.6 })), null);
   assert.equal(findWaterSurface(lakeScene({ ...WATER, tag: 'liquid' })), null);
   assert.equal(findWaterSurface(lakeScene({ ...WATER, transmission: 0.9 })), null);
 });
@@ -191,4 +191,36 @@ test('updateEvery 2 keeps the picture for one lit frame after each draw, and det
   assert.notEqual(renderer.updateParts.name, 'updateParts');
   detach();
   assert.equal(renderer.updateParts.name, 'updateParts');
+});
+
+test('rougher water keeps the mirror pass and blurs it instead of dropping it', () => {
+  for (const roughness of [0.05, 0.1, 0.13, 0.2, 0.35, 0.49]) {
+    const result = applyWaterReflection(lakeScene({ ...WATER, roughness }));
+    assert.equal(result.report.placed, true, `roughness ${roughness}`);
+    assert.deepEqual(result.surface.partIndices, [1]);
+  }
+  assert.equal(applyWaterReflection(lakeScene({ ...WATER, roughness: WATER_BLUR_LIMIT_ROUGHNESS })).surface, null);
+});
+
+test('the mirror level is 0 up to roughness 0.1 and rises continuously to the limit', () => {
+  assert.equal(waterMirrorLevel(0.04), 0);
+  assert.equal(waterMirrorLevel(0.1), 0);
+  assert.ok(waterMirrorLevel(0.13) > 0 && waterMirrorLevel(0.13) < 0.5, 'a step to 0.13 is a small blur, not a jump');
+  assert.ok(waterMirrorLevel(0.2) > waterMirrorLevel(0.13));
+  assert.ok(waterMirrorLevel(0.35) > waterMirrorLevel(0.2));
+  assert.equal(waterMirrorLevel(WATER_BLUR_LIMIT_ROUGHNESS), WATER_MAXIMUM_BLUR_LEVEL);
+  assert.equal(waterMirrorLevel(0.9), WATER_MAXIMUM_BLUR_LEVEL);
+});
+
+test('the mirror weight is 1 until the fade starts and 0 at the limit', () => {
+  assert.equal(waterMirrorWeight(0.13), 1);
+  assert.equal(waterMirrorWeight(0.35), 1);
+  assert.ok(waterMirrorWeight(0.42) > 0 && waterMirrorWeight(0.42) < 1);
+  assert.equal(waterMirrorWeight(WATER_BLUR_LIMIT_ROUGHNESS), 0);
+});
+
+test('the shader samples a mip level taken from roughness', () => {
+  const source = createFragmentShader(['studioLighting', 'waterReflection']);
+  assert.match(source, /float mirrorLevel = 5\.0 \* clamp\(\(roughness - 0\.10\) \/ 0\.40, 0\.0, 1\.0\)/);
+  assert.match(source, /textureLod\(waterReflection,/);
 });

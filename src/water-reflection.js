@@ -6,8 +6,26 @@ import { worldBounds } from './probe-trace.js';
 // This module is optional. A scene without such a surface never loads it, and the renderer's only links to it are the material
 // field `waterReflection`, which batches parts by it, and `frame.reflectionTarget`, which sends one draw into the target.
 
-/** A surface this smooth is a mirror for the scene (sharper than the 0.075 floor the shader gives every material). */
+/** A surface this smooth is a sharp mirror for the scene (sharper than the 0.075 floor the shader gives every material). */
 export const WATER_MAXIMUM_ROUGHNESS = 0.1;
+/** Above `WATER_MAXIMUM_ROUGHNESS` the mirror picture blurs with roughness, up to this one. A surface rougher than this is not water and gets no mirror. */
+export const WATER_BLUR_LIMIT_ROUGHNESS = 0.5;
+/** The mirror picture is sampled this many mip levels down at `WATER_BLUR_LIMIT_ROUGHNESS` (each level halves the picture, so the blur spans about 2^5 target pixels). */
+export const WATER_MAXIMUM_BLUR_LEVEL = 5;
+/** From this roughness the mirror picture fades out to the environment's own reflection, reaching nothing at `WATER_BLUR_LIMIT_ROUGHNESS`. */
+export const WATER_FADE_START_ROUGHNESS = 0.35;
+
+/** The mip level the mirror picture is sampled at for a roughness: 0 up to 0.1, rising linearly to `WATER_MAXIMUM_BLUR_LEVEL` at 0.5. */
+export function waterMirrorLevel(roughness) {
+  const share = (roughness - WATER_MAXIMUM_ROUGHNESS) / (WATER_BLUR_LIMIT_ROUGHNESS - WATER_MAXIMUM_ROUGHNESS);
+  return WATER_MAXIMUM_BLUR_LEVEL * Math.min(Math.max(share, 0), 1);
+}
+
+/** How much of the mirror picture shows: 1 up to 0.35, falling linearly to 0 at 0.5 where only the environment is left. */
+export function waterMirrorWeight(roughness) {
+  const share = (roughness - WATER_FADE_START_ROUGHNESS) / (WATER_BLUR_LIMIT_ROUGHNESS - WATER_FADE_START_ROUGHNESS);
+  return 1 - Math.min(Math.max(share, 0), 1);
+}
 /** The surface is flat when its bounds are at most this tall compared with their wider side. */
 export const WATER_MAXIMUM_THICKNESS_RATIO = 0.02;
 /** The surface is large when its footprint covers at least this share of the scene's footprint. */
@@ -38,7 +56,7 @@ function footprintOf({ minimum, maximum }) {
 }
 
 function isSmoothSurface(material) {
-  return !EXCLUDED_TAGS.has(material.tag) && !(material.transmission > 0) && (material.roughness ?? 1) <= WATER_MAXIMUM_ROUGHNESS;
+  return !EXCLUDED_TAGS.has(material.tag) && !(material.transmission > 0) && (material.roughness ?? 1) < WATER_BLUR_LIMIT_ROUGHNESS;
 }
 
 function isFlatSurface({ minimum, maximum }) {
@@ -47,7 +65,7 @@ function isFlatSurface({ minimum, maximum }) {
 }
 
 /**
- * The reflecting surface of a scene, or null. A part qualifies when its material is smooth (roughness at most 0.1 and not
+ * The reflecting surface of a scene, or null. A part qualifies when its material is smooth (roughness below 0.5, blurred above 0.1, and not
  * liquid, foam, unlit, fire, smoke or floor), its bounds are flat, and its footprint is at least 0.2% of the scene's. The largest
  * qualifying part sets the plane (its top); parts within a few centimetres of that height join it.
  * Returns `{ height, partIndices, footprint, sceneShare }`.
@@ -112,6 +130,8 @@ uniform float waterReflectionEnabled;
 `,
   // While the mirror image is drawn, nothing under the water plane is part of it.
   mainSetup: '  if (waterClip.y > 0.5 && worldPosition.y < waterClip.x + ' + CLIP_MARGIN.toFixed(2) + ') discard;\n',
+  // Above roughness 0.1 the picture is sampled from a coarser mip level (rougher water, blurrier reflection) and fades to the
+  // environment's reflection between 0.35 and 0.5: `waterMirrorLevel` and `waterMirrorWeight` written in GLSL.
   // The picture holds the light as the frame leaves the shader: scaled by exposure, and encoded when the frame is not HDR.
   // Still water is not a mirror: small ripples shake the picture (more with distance), a few taps smear it (more up and down,
   // as ripples stretch a reflection), and Fresnel makes it strong at grazing angles and faint when looking down into the water.
@@ -122,16 +142,18 @@ uniform float waterReflectionEnabled;
     vec3 shaken = worldPosition + vec3(slope.x, 0.0, slope.y) * (1.0 + eyeDistance * ${RIPPLE_REACH});
     vec4 mirrorClip = waterReflectionMatrix * vec4(shaken, 1.0);
     vec2 mirrorCentre = mirrorClip.xy / mirrorClip.w * 0.5 + 0.5;
+    float mirrorLevel = ${WATER_MAXIMUM_BLUR_LEVEL.toFixed(1)} * clamp((roughness - ${WATER_MAXIMUM_ROUGHNESS.toFixed(2)}) / ${(WATER_BLUR_LIMIT_ROUGHNESS - WATER_MAXIMUM_ROUGHNESS).toFixed(2)}, 0.0, 1.0);
+    float mirrorWeight = 1.0 - clamp((roughness - ${WATER_FADE_START_ROUGHNESS.toFixed(2)}) / ${(WATER_BLUR_LIMIT_ROUGHNESS - WATER_FADE_START_ROUGHNESS).toFixed(2)}, 0.0, 1.0);
     vec3 mirrored = vec3(0.0);
     for (int tap = 0; tap < ${BLUR_TAPS}; tap++) {
       float angle = float(tap) * 2.39996;
       vec2 offset = vec2(cos(angle), sin(angle)) * sqrt((float(tap) + 0.5) / ${BLUR_TAPS}.0);
-      mirrored += texture(waterReflection, mirrorCentre + offset * vec2(${BLUR_ACROSS}, ${BLUR_DOWN})).rgb;
+      mirrored += textureLod(waterReflection, mirrorCentre + offset * vec2(${BLUR_ACROSS}, ${BLUR_DOWN}), mirrorLevel).rgb;
     }
     mirrored = (hdrEnabled > 0.5 ? mirrored / ${BLUR_TAPS}.0 : pow(mirrored / ${BLUR_TAPS}.0, vec3(2.2))) / max(exposure, 1e-4);
-    float fresnelWeight = ${FRESNEL_BASE} + (1.0 - ${FRESNEL_BASE}) * pow(1.0 - max(viewDirection.y, 0.0), 5.0);
+    float fresnelWeight = (${FRESNEL_BASE} + (1.0 - ${FRESNEL_BASE}) * pow(1.0 - max(viewDirection.y, 0.0), 5.0)) * mirrorWeight;
     vec3 skyLight = ENVIRONMENT_ENABLED ? environmentLighting(normal, specularNormal, baseReflectance, viewDirection, reflect(-viewDirection, specularNormal), vec3(0.0), metallic, roughness, occlusion, ambientIntensity, skyReflection) : vec3(0.0);
-    radiance = ENVIRONMENT_ENABLED ? max(radiance - skyLight, vec3(0.0)) + mirrored * ${REFLECTION_GAIN} * fresnelWeight : mix(radiance, mirrored * ${REFLECTION_GAIN}, fresnelWeight);
+    radiance = ENVIRONMENT_ENABLED ? max(radiance - skyLight * mirrorWeight, vec3(0.0)) + mirrored * ${REFLECTION_GAIN} * fresnelWeight : mix(radiance, mirrored * ${REFLECTION_GAIN}, fresnelWeight);
   }
 `,
 }));
@@ -143,7 +165,7 @@ function createReflectionTarget(renderer, width, height) {
   const texture = context.createTexture();
   context.bindTexture(context.TEXTURE_2D, texture);
   context.texImage2D(context.TEXTURE_2D, 0, renderer.hdr ? context.RGBA16F : context.RGBA8, width, height, 0, context.RGBA, renderer.hdr ? context.HALF_FLOAT : context.UNSIGNED_BYTE, null);
-  context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MIN_FILTER, context.LINEAR);
+  context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MIN_FILTER, context.LINEAR_MIPMAP_LINEAR);
   context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MAG_FILTER, context.LINEAR);
   context.texParameteri(context.TEXTURE_2D, context.TEXTURE_WRAP_S, context.CLAMP_TO_EDGE);
   context.texParameteri(context.TEXTURE_2D, context.TEXTURE_WRAP_T, context.CLAMP_TO_EDGE);
@@ -256,6 +278,9 @@ function drawMirrorImage(renderer, state, frame, renderFrame) {
     renderer.mirrorCulling = null;
     state.drawing = false;
   }
+  // Rougher water samples the coarser levels, so they are built from the finished picture.
+  renderer.context.bindTexture(renderer.context.TEXTURE_2D, state.target.texture);
+  renderer.context.generateMipmap(renderer.context.TEXTURE_2D);
   state.matrix.set(renderer.viewProjection);
   state.drawnFrame = snapshotOf(frame);
   state.drawnRevision = state.partsRevision;
