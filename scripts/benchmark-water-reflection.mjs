@@ -53,6 +53,8 @@ try {
     const marked = applyWaterReflection([...terrain.parts, ...smallParts, sea]);
     const renderer = new Renderer67(canvas, marked.parts, { hdr: true, depth: true, world: true, ground: false, pixelRatio: 1, samples: 4 });
     const context = renderer.context;
+    // Coarse mirror-only terrain levels stay hidden from lit frames once the addon has seen the renderer, also in the "off" runs.
+    attachWaterReflection(renderer, marked.surface)();
     const timer = context.getExtension('EXT_disjoint_timer_query_webgl2');
     if (!timer && !countsOnly) throw new Error('Native GPU timer unavailable');
 

@@ -332,9 +332,10 @@ layerTextureSupport.bind = (renderer, mapState, layerState) => {
 /**
  * Hides the geometries flagged `mirrorOnly` (the coarse terrain meshes of `createTerrain({ mirrorLevels })`) from every draw but
  * the mirror: the batch keeps its true level errors in `mirrorErrors` and shows an infinite error for those levels, which no
- * frame or shadow selection can pass. Done once for each batch.
+ * frame or shadow selection can pass. Done once for each batch, also across attaching and detaching.
  */
-function hideMirrorOnlyLevels(batch, hiddenBatches) {
+const hiddenBatches = new WeakSet();
+function hideMirrorOnlyLevels(batch) {
   if (hiddenBatches.has(batch)) {
     return;
   }
@@ -351,15 +352,15 @@ export function attachWaterReflection(renderer, surface, { scale = WATER_REFLECT
   }
   const state = { height: surface.height, scale, updateEvery: Math.max(1, Math.floor(updateEvery)), partsRevision: 0, drawnRevision: -1, drawnFrame: null, framesSinceDraw: 0, target: null, ready: false, drawing: false, matrix: new Float32Array(16), program: null, locations: null };
   rendererStates.set(renderer, state);
+  renderer.batches?.forEach(hideMirrorOnlyLevels);
   const render = renderer.render;
   const dispose = renderer.dispose;
   const updateParts = renderer.updateParts;
   const renderFrame = frame => render.call(renderer, frame);
-  const hiddenBatches = new WeakSet();
   const selectBatchInstances = renderer.selectBatchInstances;
   // The mirror draw selects among all the levels of a batch; every other draw never sees the mirror-only ones.
   renderer.selectBatchInstances = batch => {
-    hideMirrorOnlyLevels(batch, hiddenBatches);
+    hideMirrorOnlyLevels(batch);
     if (!state.drawing || !batch.mirrorErrors) {
       return selectBatchInstances.call(renderer, batch);
     }
@@ -373,7 +374,7 @@ export function attachWaterReflection(renderer, surface, { scale = WATER_REFLECT
   };
   renderer.render = frame => {
     // The shadow passes of a lit frame run before its first draw, so every batch is checked first.
-    renderer.batches?.forEach(batch => hideMirrorOnlyLevels(batch, hiddenBatches));
+    renderer.batches?.forEach(hideMirrorOnlyLevels);
     // A render pass (albedo, depth, object ID...) never shows the reflection, so it skips the mirror draw.
     if (!frame.reflectionTarget && frame.pass === undefined) {
       drawMirrorImage(renderer, state, frame, renderFrame);
