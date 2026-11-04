@@ -44,6 +44,23 @@ test('the same seed gives the same terrain and another seed differs', () => {
   assert.deepEqual(first.parts[3].geometry.positions, second.parts[3].geometry.positions);
 });
 
+test('mirrorLevels gives every chunk coarser mirrorOnly meshes with growing errors, and none without the option', () => {
+  const plain = createTerrain(SMALL);
+  assert.ok(plain.parts.every(part => part.lods === undefined));
+  const terrain = createTerrain({ ...SMALL, levels: 1, resolution: 16, mirrorLevels: 3 });
+  for (const part of terrain.parts) {
+    assert.equal(part.lods.length, 4);
+    assert.equal(part.lods[0].geometry, part.geometry);
+    assert.equal(part.lods[0].mirrorOnly, undefined);
+    assert.ok(part.lods.slice(1).every(level => level.mirrorOnly === true));
+    for (let index = 1; index < part.lods.length; index++) {
+      assert.ok(part.lods[index].error >= part.lods[index - 1].error);
+      assert.ok(part.lods[index].geometry.indices.length < part.lods[index - 1].geometry.indices.length);
+    }
+  }
+  assert.throws(() => createTerrain({ ...SMALL, levels: 3, mirrorLevels: 3 }), RangeError);
+});
+
 test('heightAt returns the vertex height at mesh vertices of the finest level', () => {
   const terrain = createTerrain(SMALL);
   terrain.update([0, 1, 0]);

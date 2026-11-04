@@ -18,6 +18,7 @@ const width = argument('width', 1920);
 const height = argument('height', 1080);
 const smallPartCount = argument('parts', 20000);
 const SAMPLES = argument('samples', 20);
+const mirrorLevels = argument('mirror-levels', 0);
 const countsOnly = process.argv.includes('--counts-only');
 const stillsFolder =process.argv.includes('--stills') ? process.argv[process.argv.indexOf('--stills') + 1] : null;
 
@@ -29,14 +30,14 @@ try {
   const page = await browser.newPage({ viewport: { width, height } });
   await page.route('**/water-benchmark.html', route => route.fulfill({ contentType: 'text/html', body: `<canvas style="width:${width}px;height:${height}px;display:block"></canvas>` }));
   await page.goto(`${serverUrl}/water-benchmark.html`);
-  const results = await page.evaluate(async ({ smallPartCount, samples, wantStills, countsOnly }) => {
+  const results = await page.evaluate(async ({ smallPartCount, samples, wantStills, countsOnly, mirrorLevels }) => {
     const { Renderer67 } = await import('/src/renderer.js');
     const { box } = await import('/src/geometry.js');
     const { createTerrain } = await import('/src/terrain.js');
     const { applyWaterReflection, attachWaterReflection } = await import('/src/water-reflection.js');
     const canvas = document.querySelector('canvas');
 
-    const terrain = createTerrain({ size: 900, resolution: 128, chunks: 8, levels: 1, height: (x, z) => 22 * Math.sin(x * 0.009) * Math.cos(z * 0.011) + 9 * Math.sin(x * 0.03 + z * 0.02) - 4 });
+    const terrain = createTerrain({ size: 900, resolution: 128, chunks: 8, levels: 1, mirrorLevels, height: (x, z) => 22 * Math.sin(x * 0.009) * Math.cos(z * 0.011) + 9 * Math.sin(x * 0.03 + z * 0.02) - 4 });
     const pebble = box(0.05, 2);
     let seed = 12345;
     const random = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };
@@ -129,7 +130,7 @@ try {
     if (wantStills) report.halfScale = await measure('scale 0.5', true, { scale: 0.5 });
     report.stillCamera = await measure('still camera', true, {}, true);
     return report;
-  }, { smallPartCount, samples: SAMPLES, wantStills: stillsFolder !== null, countsOnly });
+  }, { smallPartCount, samples: SAMPLES, wantStills: stillsFolder !== null, countsOnly, mirrorLevels });
   if (stillsFolder) {
     await mkdir(stillsFolder, { recursive: true });
     for (const [name, entry] of Object.entries(results)) {

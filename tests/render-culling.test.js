@@ -232,7 +232,7 @@ test('the renderer lets the water mirror widen the level error, and a normal fra
   const { projection, viewProjection, planes } = cameraMatrices();
   const renderer = Object.create(Renderer67.prototype);
   Object.assign(renderer, { culling: true, canvas: { height: CANVAS_HEIGHT }, projection, viewProjection, frustumPlanes: planes, lodPixelError: 1, windState: { strength: 0 } });
-  const batch = { cullable: true, selection: new InstanceSelection(2, 2), instanceData: instanceData([[0, -5, 0], [0, 1, 0]]), instanceCount: 2, bounds: { center: [0, 0, 0], radius: 1 }, swayReach: 0, levelErrors: [0, 0.02] };
+  const batch = { cullable: true, selection: new InstanceSelection(2, 2), instanceData: instanceData([[0, -5, 0], [0, 1, 0]]), instanceCount: 2, bounds: { center: [0, 0, 0], radius: 1 }, swayReach: 0, levelErrors: [0, 0.02], mirrorErrors: [0, 0.02] };
   const levelOfSecond = () => {
     const selection = renderer.selectBatchInstances(batch);
     return selection.indices[1][0] === 1 ? 1 : 0;
@@ -244,3 +244,22 @@ test('the renderer lets the water mirror widen the level error, and a normal fra
   assert.equal(mirrored.visibleCount, 1);
   assert.equal(levelOfSecond(), 1);
 });
+
+test('a mirrorOnly level is never chosen by a normal frame and is chosen by the water mirror', () => {
+  const { projection, viewProjection, planes } = cameraMatrices();
+  const renderer = Object.create(Renderer67.prototype);
+  Object.assign(renderer, { culling: true, canvas: { height: CANVAS_HEIGHT }, projection, viewProjection, frustumPlanes: planes, lodPixelError: 1, windState: { strength: 0 } });
+  const geometry = box(0, 1);
+  const lods = [{ geometry, error: 0 }, { geometry: box(0, 1), error: 0.0001, mirrorOnly: true }];
+  const state = createLevelSetFor(lods);
+  const batch = { cullable: true, selection: state.selection, instanceData: instanceData([[0, 1, 0]]), instanceCount: 1, bounds: { center: [0, 0, 0], radius: 1 }, swayReach: 0, levelErrors: state.levelErrors, mirrorErrors: state.mirrorErrors };
+  assert.equal(renderer.selectBatchInstances(batch).counts[1], 0, 'the main camera keeps level 0 even when the error is tiny');
+  renderer.mirrorCulling = { belowHeight: -10, lodScale: 3, minimumPixelRadius: 0 };
+  assert.equal(renderer.selectBatchInstances(batch).counts[1], 1);
+});
+
+function createLevelSetFor(lods) {
+  const renderer = Object.create(Renderer67.prototype);
+  const part = { name: 'p', geometry: lods[0].geometry, lods, matrix: new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]), material: { tag: 'surface', color: [1, 1, 1], metallic: 0, roughness: 0.5, emission: 0 } };
+  return renderer.createCullingState([part]);
+}

@@ -150,12 +150,15 @@ function resolveHeightFunction(height, size, seed) {
   return createNoiseHeight(height ?? {}, seed);
 }
 
-function validateOptions({ size, resolution, chunks, levels }) {
+function validateOptions({ size, resolution, chunks, levels, mirrorLevels }) {
   if (!(size > 0) || !Number.isFinite(size)) throw new RangeError('size must be a positive number of metres.');
   if (!Number.isInteger(chunks) || chunks < 1) throw new RangeError('chunks must be a positive integer.');
   if (!Number.isInteger(levels) || levels < 1) throw new RangeError('levels must be a positive integer.');
   if (!Number.isInteger(resolution) || resolution < 1 || resolution % (2 ** (levels - 1)) !== 0) {
     throw new RangeError(`resolution must be a positive integer divisible by 2^(levels - 1) = ${2 ** (levels - 1)}.`);
+  }
+  if (!Number.isInteger(mirrorLevels) || mirrorLevels < 0 || resolution % (2 ** (levels - 1 + mirrorLevels)) !== 0) {
+    throw new RangeError('mirrorLevels must be a whole number of extra halvings that the resolution divides by (2^(levels - 1 + mirrorLevels)).');
   }
 }
 
@@ -190,8 +193,8 @@ function pointInsideHoles(holes, pointX, pointZ) {
  * Ground spans x and z from -size / 2 to size / 2. Call update(eye) each frame (or when the camera moves) and, when it
  * returns a non-empty list, pass the scene parts to renderer.replaceParts.
  */
-export function createTerrain({ size = 512, resolution = 32, chunks = 8, levels = 4, height, seed = 1, material = DEFAULT_MATERIAL, lodDistance, eye, holes } = {}) {
-  validateOptions({ size, resolution, chunks, levels });
+export function createTerrain({ size = 512, resolution = 32, chunks = 8, levels = 4, height, seed = 1, material = DEFAULT_MATERIAL, lodDistance, eye, holes, mirrorLevels = 0 } = {}) {
+  validateOptions({ size, resolution, chunks, levels, mirrorLevels });
   const holeCircles = normalizeTerrainHoles(holes);
   const isHole = (worldX, worldZ) => holeCircles !== null && pointInsideHoles(holeCircles, worldX, worldZ);
   const heightFunction = resolveHeightFunction(height, size, seed);
@@ -346,6 +349,33 @@ export function createTerrain({ size = 512, resolution = 32, chunks = 8, levels 
     return Math.min(levels - 1, Math.floor(Math.log2(distance / nearDistance)) + 1);
   }
 
+  // How far a coarser mesh can sit from the finest one on this chunk: the largest second difference of the heights at that step.
+  function coarseError(state, level) {
+    const step = 2 ** level;
+    let largest = 0;
+    for (let row = 0; row <= resolution; row += step) {
+      for (let column = 0; column <= resolution; column += step) {
+        const gridColumn = state.chunkColumn * resolution + column;
+        const gridRow = state.chunkRow * resolution + row;
+        const middle = gridHeight(gridColumn, gridRow);
+        largest = Math.max(largest, Math.abs(gridHeight(gridColumn - step, gridRow) + gridHeight(gridColumn + step, gridRow) - 2 * middle) / 2, Math.abs(gridHeight(gridColumn, gridRow - step) + gridHeight(gridColumn, gridRow + step) - 2 * middle) / 2);
+      }
+    }
+    return largest;
+  }
+
+  // Coarser meshes for the water mirror only (the renderer never picks them for the main camera): each has its own edges, so a
+  // seam can open between two chunks that the mirror draws at different levels, which the blurred reflection hides.
+  function buildMirrorLods(state) {
+    const lods = [{ geometry: state.part.geometry, error: 0 }];
+    for (let extra = 1; extra <= mirrorLevels; extra++) {
+      const level = state.targetLevel + extra;
+      const edgeLevels = { west: level, east: level, north: level, south: level };
+      lods.push({ geometry: buildChunkGeometry(state.chunkColumn, state.chunkRow, level, edgeLevels), error: Math.max(lods[extra - 1].error, coarseError(state, level)), mirrorOnly: true });
+    }
+    return lods;
+  }
+
   let triangleTotal = 0;
   function update(eyePosition) {
     if (!Array.isArray(eyePosition) && !(eyePosition instanceof Float32Array)) throw new TypeError('update needs an eye position [x, y, z].');
@@ -358,6 +388,7 @@ export function createTerrain({ size = 512, resolution = 32, chunks = 8, levels 
       if (unchanged) continue;
       if (state.part.geometry) triangleTotal -= state.part.geometry.indices.length / 3;
       state.part.geometry = buildChunkGeometry(state.chunkColumn, state.chunkRow, state.targetLevel, edgeLevels);
+      if (mirrorLevels > 0) state.part.lods = buildMirrorLods(state);
       triangleTotal += state.part.geometry.indices.length / 3;
       state.level = state.targetLevel;
       state.edgeLevels = edgeLevels;

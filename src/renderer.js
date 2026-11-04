@@ -293,7 +293,7 @@ function partGeometries(part) {
 
 /** The state of one list of levels: errors, geometries, the draw of each level once it is first needed, and a selection. */
 function createLevelSet(levels, instanceCount) {
-  return { levelErrors: levels.map(level => level.error), levelGeometries: levels.map(level => level.geometry), levelDraws: [], selection: new InstanceSelection(instanceCount, levels.length) };
+  return { levelErrors: levels.map(level => level.mirrorOnly ? Infinity : level.error), mirrorErrors: levels.map(level => level.error), levelGeometries: levels.map(level => level.geometry), levelDraws: [], selection: new InstanceSelection(instanceCount, levels.length) };
 }
 
 function groundPart() {
@@ -949,7 +949,7 @@ export class Renderer67 {
     if (!this.culling || !batch.cullable) return null;
     return selectInstances(batch.selection, {
       instanceData: batch.instanceData, instanceCount: batch.instanceCount, stride: INSTANCE_STRIDE, bounds: batch.bounds, margin: batch.swayReach * Math.abs(this.windState.strength),
-      levelErrors: batch.levelErrors, planes: this.frustumPlanes, viewProjection: this.viewProjection,
+      levelErrors: this.mirrorCulling ? batch.mirrorErrors : batch.levelErrors, planes: this.frustumPlanes, viewProjection: this.viewProjection,
       pixelsPerUnit: this.canvas.height / 2 * this.projection[5], pixelError: this.lodPixelError * (this.mirrorCulling?.lodScale ?? 1),
       belowHeight: this.mirrorCulling?.belowHeight, minimumPixelRadius: this.mirrorCulling?.minimumPixelRadius,
     });
