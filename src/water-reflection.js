@@ -36,7 +36,7 @@ export const WATER_REFLECTION_SCALE = 0.75;
 /** The mirror draw accepts this many times the level error that the lit frame accepts (`lodPixelError`). */
 export const WATER_MIRROR_LOD_SCALE = 3;
 /** The mirror draw skips a part whose bounding sphere covers a smaller radius than this on screen, in pixels. */
-export const WATER_MIRROR_MINIMUM_PIXEL_RADIUS = 1.5;
+export const WATER_MIRROR_MINIMUM_PIXEL_RADIUS = 5;
 // How the picture is treated before it reaches the surface (see afterEmission). Fresnel starts at the reflectance of water.
 const FRESNEL_BASE = '0.02';
 const REFLECTION_GAIN = '1.0';
@@ -115,6 +115,10 @@ export function applyWaterReflection(parts) {
   const surface = findWaterSurface(parts);
   if (!surface) {
     return { parts, surface: null, report: { placed: false, reason: 'no large flat smooth surface' } };
+  }
+  // Terrain parts build their coarse mirror levels now that the scene has water, before the renderer reads the parts.
+  for (const part of parts) {
+    part.prepareMirrorLevels?.();
   }
   const flagged = new Set(surface.partIndices);
   const marked = parts.map((part, index) => (flagged.has(index) ? Object.freeze({ ...part, material: withWaterReflectionFlag(part.material) }) : part));
@@ -317,8 +321,8 @@ function bindWater(renderer, mapState) {
 }
 
 const previousBind = layerTextureSupport.bind;
-layerTextureSupport.bind = (renderer, mapState, layerState) => {
-  previousBind?.(renderer, mapState, layerState);
+layerTextureSupport.bind = (renderer, mapState, layerState, batch) => {
+  previousBind?.(renderer, mapState, layerState, batch);
   bindWater(renderer, mapState);
 };
 

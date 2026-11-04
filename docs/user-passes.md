@@ -112,3 +112,52 @@ As a recipe section:
 ```
 
 `levels` of 2 gives a one-bit look, 8 a soft one. `spread` of 0 turns the dither off and leaves plain steps.
+
+# Material fragment hook
+
+A material can carry its own fragment code: a GLSL function that changes the surface colour and alpha, or discards the fragment. Use it for a dissolve, a shoreline cut from a mask, a leaf cutout or a stripe pattern. It works from the `snippet` field of a recipe material and from MCP (`scene_create`, `scene_apply` with `set-material`; `snippet: null` clears it). It follows the same rules as a post pass, and MCP accepts no host code.
+
+```json
+{ "id": "stone", "color": [0.5, 0.5, 0.5], "snippet": { "fragment": "...", "uniforms": { "threshold": 0.4 }, "mask": "map" } }
+```
+
+| Field | Meaning |
+| --- | --- |
+| `fragment` | GLSL ES 3.00 text that defines `void materialHook(inout vec3 color, inout float alpha, vec2 uv, vec3 worldPosition)`. Helper functions and `const` values may come before it. 4096 bytes at most. |
+| `uniforms` | Named values, as for a post pass: a number is a `float`, `[x, y]` to `[x, y, z, w]` are vectors, `{ "type": "int", "value": 4 }` is an int. At most 16. |
+| `mask` | Optional, `"map"`: the snippet may sample `snippetMask` (a `sampler2D`), which is the material's own map or pattern. Load the image as the material `map`; there are no remote URLs. |
+
+Inputs: `color` is the base colour after the map and the vertex tint, `alpha` is the map alpha before the material opacity, `uv` is the texture coordinate and `worldPosition` the position in the world. `discard` removes the fragment in every alpha mode. A lowered `alpha` cuts only when the material has `alphaMode: "mask"`.
+
+## Where the hook runs
+
+The hook runs in the colour pass, in the shadow pass and in the ID pass. A discarded fragment therefore casts no shadow and is not picked. In the shadow pass `color` starts white and `alpha` is the map alpha, so base a discard on `alpha`, `uv`, `worldPosition` and your uniforms, not on `color`. The path tracer and exports ignore the hook. Changing a snippet makes the MCP preview build a new renderer, so edit it between looks, not in a loop.
+
+The rules are the ones of [a pass](#limits-and-rules): no `#` lines, no `while` or `do`, counted `for` loops only, no `gl_` names but `gl_FragCoord`, no `u67_` names. Errors name the material's parts, the line, the column and a fix. A snippet that passes the check but fails the compiler comes back as `renderError` with the log mapped to snippet lines, and the session stays usable:
+
+```text
+Material snippet (used by caster) failed to compile as GLSL ES 3.00. Line numbers refer to your fragment snippet.
+ERROR: snippet line 3: '=' : dimension mismatch
+    | vec3 wrong = 1.0;
+```
+
+## Worked example: dissolve a wall with a noise threshold
+
+The wall breaks into hash cells; a cell is removed when its noise value is below `threshold`, and cells near the edge glow orange. Moving `threshold` from 0 to 1 dissolves the wall, and the shadow of the wall dissolves with it.
+
+```glsl
+float cellNoise(vec2 cell) { return fract(sin(dot(cell, vec2(12.9898, 78.233))) * 43758.5453); }
+
+void materialHook(inout vec3 color, inout float alpha, vec2 uv, vec3 worldPosition) {
+  float value = cellNoise(floor(worldPosition.xy * 6.0));
+  if (value < threshold) discard;
+  float edge = 1.0 - smoothstep(0.0, 0.08, value - threshold);
+  color = mix(color, glow, edge);
+}
+```
+
+```json
+{ "type": "set-material", "id": "wall", "snippet": { "uniforms": { "threshold": 0.35, "glow": [1.0, 0.45, 0.1] }, "fragment": "float cellNoise(vec2 cell) { return fract(sin(dot(cell, vec2(12.9898, 78.233))) * 43758.5453); }\n\nvoid materialHook(inout vec3 color, inout float alpha, vec2 uv, vec3 worldPosition) {\n  float value = cellNoise(floor(worldPosition.xy * 6.0));\n  if (value < threshold) discard;\n  float edge = 1.0 - smoothstep(0.0, 0.08, value - threshold);\n  color = mix(color, glow, edge);\n}" } }
+```
+
+For a leaf or shoreline cutout, give the material a `map` whose alpha or red channel holds the mask, set `"mask": "map"` and write `if (texture(snippetMask, uv).r < 0.5) discard;`.

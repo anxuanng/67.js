@@ -1,6 +1,6 @@
 import { materialTags } from './shader-registry.js';
 import { mat4, mat3 } from 'gl-matrix';
-import { SPLAT_UNITS, requireSplatSupport, layerTextureSupport, LIGHT_SHADING_FEATURE, SHADING_MODES, LIGHT_SHADING_MAXIMUM_SAMPLES, createVertexShader, vertexShader, liquidFragmentSource, createFragmentShader, liquidPassDrawer, depthFragmentShader, benchmarkVertexShader, benchmarkFragmentShader, viewTransformShader, createDepthVertexShader } from './shaders.js';
+import { SPLAT_UNITS, requireSplatSupport, layerTextureSupport, LIGHT_SHADING_FEATURE, SHADING_MODES, LIGHT_SHADING_MAXIMUM_SAMPLES, createVertexShader, vertexShader, liquidFragmentSource, createFragmentShader, liquidPassDrawer, depthFragmentShader, withDepthCode, benchmarkVertexShader, benchmarkFragmentShader, viewTransformShader, createDepthVertexShader } from './shaders.js';
 import { postFragment, createPostFragment, POST_STEPS, skyFragment, bloomFragment } from './post.js';
 import { fullscreenVertex, startProgram, finishProgram, compileProgram } from './gl-program.js';
 import { ambientOcclusionFragment } from './ambient-occlusion.js';
@@ -89,6 +89,7 @@ function shaderFeaturesOfParts(parts) {
     if (material.lightMask !== undefined) features.add('lightLinking');
     if ((material.alphaMode ?? 'opaque') !== 'opaque') features.add('alphaMode');
     if (material.subsurface?.weight > 0) features.add('subsurface');
+    if (material.snippet) features.add(material.snippet.feature);
     if (materialLayerValue(material, 'clearcoat') > 0) features.add('clearcoat');
     if (materialLayerValue(material, 'sheenColor').some(channel => channel !== 0)) features.add('sheen');
     if (TAG_SHADER_FEATURES.has(material.tag)) features.add(material.tag);
@@ -339,7 +340,7 @@ export function groupParts(parts, batching = true) {
     const key = batching ? part.geometry : part;
     if (!groups.has(key)) groups.set(key, new Map());
     let maps = groups.get(key);
-    for (const value of [...materialMapState(part.material), ...materialLayerState(part.material), part.skin ?? null, part.crowd ?? null, part.morph ?? null, castsShadow(part), depthLayerOf(part), renderPass(part.material), part.lods ?? null, part.shadowLods ?? null, ...materialAlphaState(part.material)]) {
+    for (const value of [...materialMapState(part.material), ...materialLayerState(part.material), part.skin ?? null, part.material.snippet, part.crowd ?? null, part.morph ?? null, castsShadow(part), depthLayerOf(part), renderPass(part.material), part.lods ?? null, part.shadowLods ?? null, ...materialAlphaState(part.material)]) {
       if (!maps.has(value)) maps.set(value, new Map());
       maps = maps.get(value);
     }
@@ -602,7 +603,7 @@ export class Renderer67 {
     if (shadowCascades) this.shaderFeatures.add(shadowCascades.shaderFeature);
     const pending = {
       main: this.startMainProgram(),
-      depth: startProgram(this.context, createDepthVertexShader(this.shaderFeatures), depthFragmentShader),
+      depth: startProgram(this.context, createDepthVertexShader(this.shaderFeatures), withDepthCode(depthFragmentShader, this.shaderFeatures)),
     };
     if (!benchmark) {
       pending.post = startProgram(this.context, fullscreenVertex, this.withViewTransform(postFragment, 'post'));
@@ -1878,6 +1879,7 @@ export class Renderer67 {
       context.uniform1f(uniforms.alphaCutoff, batch.alphaCutoff);
       context.uniform1f(uniforms.materialOpacity, batch.opacity);
       context.uniform1f(uniforms.hasBaseMap, batch.mapState[0] ? 1 : 0);
+      layerTextureSupport.bindDepth?.(this, batch);
       if (masked) {
         context.activeTexture(context.TEXTURE0 + 1);
         context.bindTexture(context.TEXTURE_2D, batch.textures[0]);
@@ -2027,7 +2029,7 @@ export class Renderer67 {
       this.context.uniform1f(this.uniforms.boxMapScale, batch.mapState[12]);
       this.context.uniform1i(this.uniforms.boxMapAxis, batch.mapState[13]);
       if (this.shaderFeatures?.has('splat')) requireSplatSupport().bind(this, batch.splat);
-      layerTextureSupport.bind?.(this, batch.mapState, layers);
+      layerTextureSupport.bind?.(this, batch.mapState, layers, batch);
       this.context.uniform1f(this.uniforms.hasLightMap, batch.lightMapTexture ? 1 : 0);
       if (batch.lightMapTexture) {
         this.context.activeTexture(this.context.TEXTURE0 + LIGHT_MAP_UNIT);
