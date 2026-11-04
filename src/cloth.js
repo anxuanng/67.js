@@ -391,6 +391,12 @@ export function createCloth(positions, triangles, options = {}) {
   const particleCount = positions.length / 3;
   const colliders = options.colliders ?? [];
   const moving = options.moving ?? null;
+  for (const collider of colliders) {
+    if (!Object.hasOwn(PUSH_OUT, collider?.kind ?? '')) throw new TypeError(`Cloth collider kind must be one of ${Object.keys(PUSH_OUT).join(', ')}.`);
+  }
+  for (const particle of options.pinned ?? []) {
+    if (!Number.isInteger(particle) || particle < 0 || particle >= particleCount) throw new RangeError(`Cloth pinned particle ${particle} does not exist; there are ${particleCount}.`);
+  }
   const constraints = buildConstraints(positions, triangles, particleCount, options.bend ?? 0.1, options.stiffness ?? 0.9);
   checkWork(particleCount, constraints.count, triangles.length / 3, colliders.length + (moving?.colliderCount ?? 0), options.frameCount ?? 1);
   const density = options.density ?? 0.2;
