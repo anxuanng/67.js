@@ -1,5 +1,5 @@
 // Frame time of a reference scene: plain, with the light bake, with reflection probes, and with both.
-// node bench/reference/frame-time.mjs [scene-id] [gpu|cpu] [--grand] [--floor-sky=<strength> [--floor-sky-rooms]]
+// node bench/reference/frame-time.mjs [scene-id] [gpu|cpu] [--grand] [--floor-sky=<strength> [--floor-sky-rooms]] [--no-floor-sky]
 import { constants, setPriority } from 'node:os';
 import { chromium } from 'playwright';
 import { createServer } from 'vite';
@@ -20,7 +20,7 @@ const browser = await chromium.launch({ executablePath: CHROME, headless: true, 
 try {
   const page = await browser.newPage({ viewport: { width: 960, height: 540 } });
   const floorSkyArgument = process.argv.find(argument => argument.startsWith('--floor-sky='));
-  const harnessQuery = [process.argv.includes('--grand') ? 'set=grand' : null, floorSkyArgument ? `floorSky=${floorSkyArgument.split('=')[1]}` : null, process.argv.includes('--floor-sky-rooms') ? 'floorSkyRooms=1' : null].filter(Boolean).join('&');
+  const harnessQuery = [process.argv.includes('--grand') ? 'set=grand' : null, floorSkyArgument ? `floorSky=${floorSkyArgument.split('=')[1]}` : null, process.argv.includes('--floor-sky-rooms') ? 'floorSkyRooms=1' : process.argv.includes('--no-floor-sky') ? 'floorSky=0' : null].filter(Boolean).join('&');
   await page.goto(`${serverUrl}/bench/reference/harness.html${harnessQuery ? `?${harnessQuery}` : ''}`, { timeout: PAGE_LOAD_TIMEOUT });
   await page.waitForFunction(() => window.measureReferenceFrameTime, null, { timeout: PAGE_LOAD_TIMEOUT });
   const results = [];

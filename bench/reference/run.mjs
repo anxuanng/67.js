@@ -55,6 +55,7 @@ const BACKEND_ARGUMENTS = {
 
 const argumentsGiven = process.argv.slice(2);
 // --floor-sky-rooms also traces closed rooms, which are left as they are otherwise.
+// Closed rooms lit by a sun get the floor sky trace by default; --no-floor-sky draws without it, --floor-sky-sun is the same as the default.
 // --floor-sky [<strength>] traces the sky each floor texel sees (src/floor-sky-visibility.js) and scales the world light on floors by it (strength 1 when none follows).
 const floorSkyFlag = argumentsGiven.indexOf('--floor-sky');
 const floorSkyStrength = floorSkyFlag < 0 ? 0 : Number(argumentsGiven[floorSkyFlag + 1]) || 1;
@@ -113,7 +114,7 @@ const sceneIdsGiven = lookIds ?? (sceneFlag >= 0 ? argumentsGiven[sceneFlag + 1]
 // The fresh bake.json lands in the work directory and is checked against the committed one (compare-scores.mjs); --update-baseline replaces
 // the committed bake.json and images/<id>-baked.jpg with it.
 const bakeScoreRun = bakedSceneIds !== null && !sceneSet && !pathTracerFlag;
-const bakeVariantFlags = ['--sky-only', '--bake-preset', '--bake-backend', '--bake-samples', '--bake-density', '--probes', '--ambient', '--ambient-occlusion', '--cascades', '--no-object-probes', '--object-probes', '--no-water', '--ssr-water', '--no-ground-bounce', '--floor-sky', '--floor-sky-rooms'];
+const bakeVariantFlags = ['--sky-only', '--bake-preset', '--bake-backend', '--bake-samples', '--bake-density', '--probes', '--ambient', '--ambient-occlusion', '--cascades', '--no-object-probes', '--object-probes', '--no-water', '--ssr-water', '--no-ground-bounce', '--floor-sky', '--floor-sky-rooms', '--floor-sky-sun', '--no-floor-sky'];
 const bakeScoreIsBaseline = bakeScoreRun && argumentsGiven.includes('--update-baseline') && !bakeVariantFlags.some(flag => argumentsGiven.includes(flag));
 const onlyScenes = sceneIdsGiven ?? (bakeScoreRun ? bakedSceneIds : null);
 const skipCpu = skipCpuFlag || bakeScoreRun || Boolean(viewTransform);
@@ -127,7 +128,7 @@ async function renderBackend(backend, serverUrl, graphics) {
     page.on('console', message => message.text().includes('GL_') && console.log('PAGE', message.text().slice(0, 200)));
     // Each scene gets a fresh page, so a large scene leaves no GL state or memory behind for the next one.
     const openHarness = async () => {
-      const harnessQuery = [sceneSet ? `set=${sceneSet}` : null, argumentsGiven.includes('--no-water') ? 'water=off' : argumentsGiven.includes('--ssr-water') ? 'water=ssr' : null, argumentsGiven.includes('--no-ground-bounce') ? 'groundBounce=off' : null, floorSkyStrength ? `floorSky=${floorSkyStrength}` : null, argumentsGiven.includes('--floor-sky-rooms') ? 'floorSkyRooms=1' : null].filter(Boolean).join('&');
+      const harnessQuery = [sceneSet ? `set=${sceneSet}` : null, argumentsGiven.includes('--no-water') ? 'water=off' : argumentsGiven.includes('--ssr-water') ? 'water=ssr' : null, argumentsGiven.includes('--no-ground-bounce') ? 'groundBounce=off' : null, floorSkyStrength ? `floorSky=${floorSkyStrength}` : argumentsGiven.includes('--no-floor-sky') ? 'floorSky=0' : null, argumentsGiven.includes('--floor-sky-rooms') ? 'floorSkyRooms=1' : argumentsGiven.includes('--floor-sky-sun') ? 'floorSkyRooms=sun' : null].filter(Boolean).join('&');
       await page.goto(`${serverUrl}/bench/reference/harness.html${harnessQuery ? `?${harnessQuery}` : ''}`, { timeout: PAGE_LOAD_TIMEOUT });
       await page.waitForFunction(() => window.renderReferenceScene, null, { timeout: PAGE_LOAD_TIMEOUT });
     };
@@ -155,7 +156,7 @@ async function renderBackend(backend, serverUrl, graphics) {
       }
       const bakeNote = result.bake?.report.refused ? `, bake REFUSED, drawn unbaked: ${result.bake.report.refused}` : result.bake ? `, bake ${result.bake.seconds.toFixed(1)} s, ${result.bake.report.texels} texels${result.bake.report.used ? ` (used ${result.bake.report.used.samples} samples, ${result.bake.report.used.bounces} bounces, ${result.bake.report.used.texelsPerUnit} texels per unit${result.bake.report.reduced ? ', reduced' : ''})` : ''}` : '';
       const probeNote = result.probes ? `, probes ${result.probes.report.placed.length} on ${result.probes.report.partsWithProbe} parts` : '';
-      const floorSkyNote = result.floorSky ? `, floor sky ${result.floorSky.reason ?? `${result.floorSky.texels} texels, ${result.floorSky.rays} rays, ${result.floorSky.seconds.toFixed(2)} s`}` : '';
+      const floorSkyNote = result.floorSky ? `, floor sky ${result.floorSky.reason ?? `${result.floorSky.texels} texels, mean visibility ${result.floorSky.meanVisibility?.toFixed(3)}, ${result.floorSky.rays} rays, ${result.floorSky.seconds.toFixed(2)} s`}` : '';
       console.log(`${id} on ${backend}: ${Math.round(performance.now() - started)} ms${bakeNote}${probeNote}${floorSkyNote}`);
     }
     if (errors.length) throw new Error(errors.join('\n'));

@@ -34,13 +34,19 @@ const REVERSED_DEPTH = new URLSearchParams(location.search).get('reversedDepth')
 
 const WATER_REFLECTION = { off: false, ssr: 'ssr' }[new URLSearchParams(location.search).get('water')] ?? 'planar';
 
-// ?floorSky=<strength> traces the sky each floor texel sees (src/floor-sky-visibility.js) and scales the world light there by it; the scenes draw without it otherwise.
-const FLOOR_SKY_STRENGTH = Number(new URLSearchParams(location.search).get('floorSky')) || 0;
+// The sky each floor texel sees (src/floor-sky-visibility.js) scales the world light on floors. By default the scenes that are a closed room lit
+// by a sun (the temple halls, the shaft) get it at the addon's room strength; lamp-only rooms and open scenes draw without it, because it made them worse.
+// ?floorSky=0 draws every scene without it, ?floorSky=<strength> sets the strength, ?floorSkyRooms=1 traces every closed room and open scene alike.
+const FLOOR_SKY_PARAMETER = new URLSearchParams(location.search).get('floorSky');
+const FLOOR_SKY_ROOMS_MODE = new URLSearchParams(location.search).get('floorSkyRooms') ?? (FLOOR_SKY_PARAMETER === null ? 'sun' : null);
 const floorSkyReports = {};
 
-function withFloorSky(id, parts) {
-  if (!FLOOR_SKY_STRENGTH) return parts;
-  const result = applyFloorSkyVisibility(parts, { strength: FLOOR_SKY_STRENGTH, includeClosedRooms: new URLSearchParams(location.search).get('floorSkyRooms') === '1' });
+function withFloorSky(id, parts, scene) {
+  if (FLOOR_SKY_PARAMETER === '0') return parts;
+  const sunlit = (scene?.environment?.keyColor ?? [0, 0, 0]).some(channel => channel > 0);
+  if (FLOOR_SKY_ROOMS_MODE === 'sun' && !sunlit) return parts;
+  const strength = FLOOR_SKY_PARAMETER === null ? undefined : Number(FLOOR_SKY_PARAMETER);
+  const result = applyFloorSkyVisibility(parts, { strength, includeClosedRooms: FLOOR_SKY_ROOMS_MODE === '1', onlyClosedRooms: FLOOR_SKY_ROOMS_MODE === 'sun' });
   floorSkyReports[id] = result.report;
   return result.parts;
 }
@@ -208,7 +214,7 @@ async function renderReferenceScene(id, { describe, ambientOcclusion = 0, ambien
   scene.environment = withDerivedGroundBounce(scene, probed ? probed.parts : baked ? baked.parts : scene.parts);
   const canvas = document.querySelector('canvas');
   // backgroundOnly draws the sky alone, so a score can be limited to the pixels the asset covers.
-  const renderer = createSceneRenderer(backgroundOnly ? [] : withFloorSky(id, probed ? probed.parts : baked ? baked.parts : scene.parts), scene, cascades);
+  const renderer = createSceneRenderer(backgroundOnly ? [] : withFloorSky(id, probed ? probed.parts : baked ? baked.parts : scene.parts, scene), scene, cascades);
   renderer.resize();
   // Blender draws a still scene. The renderer's default wind (0.3) would move the leaf cards by up to four pixels at time 0.
   const frame = { ...scene.camera, environment: scene.environment, time: 0, wind: 0, exposure: 1, effects: { ambientOcclusion, ambientOcclusionRadius, ...(bloom ? { bloom } : {}) } };
@@ -235,7 +241,7 @@ async function measureReferenceFrameTime(id, { bake, probes = false, cascades = 
   const baked = bake ? await bakeScene(scene, {}) : null;
   const probed = probes ? await probeScene(scene, id, baked ? baked.parts : scene.parts, probes) : null;
   scene.environment = withDerivedGroundBounce(scene, probed ? probed.parts : baked ? baked.parts : scene.parts);
-  const renderer = createSceneRenderer(withFloorSky(id, probed ? probed.parts : baked ? baked.parts : scene.parts), scene, cascades, { water });
+  const renderer = createSceneRenderer(withFloorSky(id, probed ? probed.parts : baked ? baked.parts : scene.parts, scene), scene, cascades, { water });
   renderer.resize();
   const frame = { ...scene.camera, environment: scene.environment, time: 0, exposure: 1, effects: { ambientOcclusion: 0, ambientOcclusionRadius: 0.5 } };
   // With orbit the camera moves a little every frame, so cascaded maps have to be redrawn each time, as in a camera move.

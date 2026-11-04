@@ -1,0 +1,1 @@
+- entry:floor-sky-visibility: +93 bytes gzip (15101 to 15194) for the onlyClosedRooms option, the room strength constant and the mean visibility in the report; core entries unchanged

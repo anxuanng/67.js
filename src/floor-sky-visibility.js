@@ -13,6 +13,8 @@ export const FLOOR_SKY_RAYS = 64;
 export const FLOOR_SKY_MAXIMUM_TEXELS = 24_000;
 export const FLOOR_SKY_MAXIMUM_SECONDS = 20;
 export const FLOOR_SKY_STRENGTH = 1;
+// With onlyClosedRooms the default is lower: a hall also gets light that comes back from its walls and sunlit floor, which a sky trace does not hold.
+export const FLOOR_SKY_ROOM_STRENGTH = 0.2;
 
 const FLOOR_THINNESS = 0.1;
 const FLOOR_MINIMUM_FOOTPRINT_SHARE = 0.02;
@@ -199,7 +201,8 @@ function fixedSamples(sampleCount) {
  * larger than the bake's triangle limit, or the trace passes `maxSeconds`. It reads no clock to decide anything else, and
  * the rays are a fixed set, so the same scene gives the same bytes.
  */
-export function applyFloorSkyVisibility(parts, { raysPerTexel = FLOOR_SKY_RAYS, maximumTexels = FLOOR_SKY_MAXIMUM_TEXELS, maxSeconds = FLOOR_SKY_MAXIMUM_SECONDS, strength = FLOOR_SKY_STRENGTH, includeClosedRooms = false } = {}) {
+export function applyFloorSkyVisibility(parts, { raysPerTexel = FLOOR_SKY_RAYS, maximumTexels = FLOOR_SKY_MAXIMUM_TEXELS, maxSeconds = FLOOR_SKY_MAXIMUM_SECONDS, strength: requestedStrength, includeClosedRooms = false, onlyClosedRooms = false } = {}) {
+  const strength = requestedStrength ?? (onlyClosedRooms ? FLOOR_SKY_ROOM_STRENGTH : FLOOR_SKY_STRENGTH);
   const started = performance.now();
   const unchanged = reason => ({ parts, report: { floors: [], texels: 0, rays: 0, seconds: (performance.now() - started) / 1000, reason } });
   const floorIndices = findFloorParts(parts);
@@ -210,7 +213,10 @@ export function applyFloorSkyVisibility(parts, { raysPerTexel = FLOOR_SKY_RAYS, 
   if (occluders.length < 2) return unchanged('nothing above the floor');
   // A closed room has no sky to see: its walls and lamps give the light, and the shader's room term already handles it.
   const roomShare = closedRoomShare(parts, new Map(parts.map(part => [part.name, part.matrix])));
-  if (!includeClosedRooms && roomShare !== null && roomShare >= CLOSED_ROOM_SHARE) return unchanged('closed room');
+  const closedRoom = roomShare !== null && roomShare >= CLOSED_ROOM_SHARE;
+  if (closedRoom && !includeClosedRooms && !onlyClosedRooms) return unchanged('closed room');
+  // Open ground gets light back from sunlit facades and streets that a sky trace does not hold, so it comes out too dark.
+  if (onlyClosedRooms && !closedRoom) return unchanged('open scene');
   let world;
   try {
     world = buildWorld(occluders);
@@ -265,8 +271,11 @@ export function applyFloorSkyVisibility(parts, { raysPerTexel = FLOOR_SKY_RAYS, 
     if (builder.hasUvs) cutGeometryResult.uvs = new Float32Array(builder.uvs);
     if (builder.hasColors) cutGeometryResult.colors = new Float32Array(builder.colors);
     nextParts[index] = Object.freeze({ ...part, geometry: Object.freeze(cutGeometryResult) });
-    floors.push({ name: part.name, texels: upwardVertices.size, triangles: indices.length / 3 });
+    let sharedSum = 0;
+    for (const vertex of upwardVertices) sharedSum += skyVisibility[vertex];
+    floors.push({ name: part.name, texels: upwardVertices.size, triangles: indices.length / 3, meanVisibility: upwardVertices.size ? sharedSum / upwardVertices.size : 1 });
   }
   const texels = floors.reduce((total, floor) => total + floor.texels, 0);
-  return { parts: Object.freeze(nextParts), report: { floors, texels, rays: totalRays, seconds: (performance.now() - started) / 1000, reason: null } };
+  const meanVisibility = texels ? floors.reduce((total, floor) => total + floor.meanVisibility * floor.texels, 0) / texels : 1;
+  return { parts: Object.freeze(nextParts), report: { floors, texels, meanVisibility, rays: totalRays, seconds: (performance.now() - started) / 1000, reason: null } };
 }

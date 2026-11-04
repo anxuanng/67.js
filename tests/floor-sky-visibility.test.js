@@ -92,6 +92,13 @@ test('parts that carry their own light, a cut-out or a tag are not floors', () =
   assert.deepEqual(findFloorParts([baked, leaves, water, own, roof]), []);
 });
 
+test('onlyClosedRooms leaves an open scene as it was', () => {
+  const parts = [square('floor', 20, 0), square('roof', 6, 2, { facing: -1 })];
+  const result = applyFloorSkyVisibility(parts, { onlyClosedRooms: true });
+  assert.equal(result.parts, parts);
+  assert.equal(result.report.reason, 'open scene');
+});
+
 test('a scene with no floor or nothing above it comes back unchanged', () => {
   const lone = [square('floor', 10, 0)];
   assert.equal(applyFloorSkyVisibility(lone).parts, lone);

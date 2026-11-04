@@ -1781,3 +1781,34 @@ What was measured:
 - Data only, this round (no engine byte changes): a 768 texel graph is not a valid resolution (256, 512 or 1024 only); 1024 is over the work limit of 30,000,000 (52 work units per pixel with 2 noise octaves, about 28 allowed), so a finer bake needs a smaller graph or a faster evaluator. Wider bevels in the scene graph (Blender gets the same graph and was rendered again): joint widths 0.10 to 0.36 and 0.06 to 0.26 gave `brick-graph` 0.0708 and `brick-flat` 0.0544 (excess 0.0164, EEVEE 0.0134 on the new renders), and 0.08 to 0.5 and 0.04 to 0.4 gave 0.0738 and 0.0529 (excess 0.0209, EEVEE 0.0166). The gap to EEVEE stays at 0.003 to 0.006 whichever bevel is used, and EEVEE's own excess moves with it, so changing the scene only moves the target. The scene was left as it is.
 
 What would close it is a finer height-to-normal source than a 512 texel map (an analytic or 1024 texel bake of a graph that fits the work limit), which is engine work and costs memory or bytes; it is outside the data-only brief and the size goals. `brick-graph` is 0.0734 against Cycles, 0.1249 for EEVEE against Cycles on the same scene, so 67js is closer to Cycles than EEVEE is on this wall.
+
+## Sky seen from the floor, on by default for sunlit closed rooms (2026-11-04, part of issue #197)
+
+The opt-in trace above helped halls and studio floors and hurt streets, cities and rooms lit by lamps alone. The split is by what lights the scene, not by geometry: the mean traced visibility of the floor did not separate them (`temple-hall` 0.45, `dark-shaft` 0.54, but also `lit-interior` 0.55, `metal-room` 0.49 and `brick-room` 0.26, measured at strength 1). The rule that does separate them: a closed room (the ray test of the ground bounce) that a sun lights. `applyFloorSkyVisibility(parts, { onlyClosedRooms: true })` traces only closed rooms, at `FLOOR_SKY_ROOM_STRENGTH` 0.2, and returns open scenes unchanged (`report.reason` `open scene`); the reference harness calls it for scenes whose `keyColor` is not zero, so lamp-only rooms and every open scene draw as before. `--no-floor-sky` draws without it, `--floor-sky <strength>` sets one. Nothing in core; `report.meanVisibility` is new.
+
+GPU, 960 x 540, FLIP against the stored Cycles arrays, change from a render of main on the same machine (24 scenes and the 9 grand options; a scene not listed changed by less than 0.002, and all open scenes and lamp-only rooms are identical by construction):
+
+| Strength | `temple-hall` | `temple-hall-a` | `-b` | `-c` | `dark-shaft` | any other scene |
+| --- | --- | --- | --- | --- | --- | --- |
+| 1 | +0.0113 | -0.0085 | -0.0080 | -0.0285 | +0.0176 | `foliage` +0.0068 |
+| 0.5 | -0.0030 | -0.0106 | -0.0209 | -0.0161 | +0.0073 | none past 0.002 |
+| 0.25 | -0.0032 | -0.0063 | -0.0116 | -0.0079 | +0.0025 | none past 0.002 |
+| 0.2 (kept) | -0.0023 | -0.0051 | -0.0096 | -0.0061 | +0.0017 | none past 0.002 |
+
+0.2 is the largest strength that keeps `dark-shaft` within the 0.002 limit; the shaft's walls and floor get sun bounce in Cycles that a sky trace does not hold, so the shaft is the scene that sets the strength (guessed, not isolated).
+
+Box 2, dark end (`shadow-depth.py`, display luminance, 67js before > after / Cycles):
+
+| Scene | p1 | p5 | p25 | contrast (log2) |
+| --- | --- | --- | --- | --- |
+| `dark-shaft` | 0.0437 > 0.0389 / 0.0293 | 0.0437 > 0.0400 / 0.0313 | 0.0468 > 0.0437 / 0.0430 | 2.46 > 2.48 / 1.96 |
+| `temple-hall` | 0.0246 > 0.0207 / 0.0200 | 0.0246 > 0.0235 / 0.0221 | 0.0389 > 0.0350 / 0.0282 | 1.74 > 1.74 / 1.80 |
+| `temple-hall-a` | 0.0487 > 0.0451 / 0.0334 | 0.0557 > 0.0555 / 0.0363 | 0.0669 > 0.0630 / 0.0466 | 1.16 > 1.17 / 1.33 |
+| `temple-hall-b` | 0.0709 > 0.0709 / 0.0339 | 0.0717 > 0.0717 / 0.0370 | 0.0787 > 0.0751 / 0.0449 | 0.78 > 0.77 / 1.80 |
+| `temple-hall-c` | 0.0386 > 0.0338 / 0.0163 | 0.0394 > 0.0347 / 0.0184 | 0.0552 > 0.0515 / 0.0222 | 1.33 > 1.33 / 2.02 |
+
+The dark percentiles move toward Cycles in every row but by small steps (p1 by 0.000 to 0.005, p25 by 0.003 to 0.004; `temple-hall` p1 is now within 0.0007 of Cycles). The lit to shadow contrast does not move (at most 0.02 log2 step), as the opt-in section said: a sky term lowers lit and shadowed tiles together. `temple-hall-b` p1 and p5 do not move because its darkest pixels are lit by its lamps, not by the sky. The contrast gap needs a deeper sun shadow, not sky light, and is still open.
+
+Cost, measured on a loaded machine (another heavy job ran beside, so read these as ranges; `frame-time.mjs --plain`, one run each): `temple-hall` 1.83 ms without and 2.23 ms with, `dark-shaft` 2.38 ms without and 2.11 ms with. The trace takes 1.2 s and 0.6 s when the scene is prepared. Size: `entry:floor-sky-visibility` +93 bytes gzip, no other entry changes.
+
+The full suite (`npm run reference`, then `--grand`, with Blender 5.2.2 and fresh Cycles renders) ran once on this change and reproduced the numbers above (`temple-hall` 0.0617, `dark-shaft` 0.0576). It also moved rows this change does not touch (fresh Cycles renders against a newer main), so `baseline.json`, `grand.json` and the sheet images are left as they were; the rows of `temple-hall`, `dark-shaft` and the three temple options are stale by the changes above until the next refresh.
