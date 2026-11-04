@@ -36,19 +36,57 @@ function findSetEnvironmentSchema(node) {
   return null;
 }
 
-async function mcpEnvironmentFields() {
+async function withMcpClient(use) {
   const server = createAgentMcpServer({ async close() {} });
   const client = new Client({ name: '67js-environment-schema-test', version: '1' });
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   await server.connect(serverTransport);
   await client.connect(clientTransport);
-  const { tools } = await client.listTools();
-  await client.close();
-  await server.close();
-  const schema = findSetEnvironmentSchema(tools.find(tool => tool.name === 'scene_apply').inputSchema);
-  assert.ok(schema, 'scene_apply no longer lists a set-environment operation');
-  return Object.keys(schema.properties);
+  try {
+    return await use(client);
+  } finally {
+    await client.close();
+    await server.close();
+  }
 }
+
+async function listedTools() {
+  return withMcpClient(async client => (await client.listTools()).tools);
+}
+
+function toolSchema(tools, name) {
+  return tools.find(tool => tool.name === name).inputSchema;
+}
+
+// scene_create publishes the one full environment schema; the other tools name it.
+async function mcpEnvironmentFields() {
+  const environment = toolSchema(await listedTools(), 'scene_create').properties.recipe.properties.environment;
+  assert.ok(environment?.properties, 'scene_create no longer publishes recipe.environment');
+  return Object.keys(environment.properties);
+}
+
+test('scene_apply and scene_create_asset point to the environment schema in scene_create instead of repeating it', async () => {
+  const tools = await listedTools();
+  const references = [
+    findSetEnvironmentSchema(toolSchema(tools, 'scene_apply')),
+    toolSchema(tools, 'scene_create_asset').properties.recipe.properties.environment,
+  ];
+  for (const reference of references) {
+    assert.equal(reference.properties, undefined);
+    assert.match(reference.description, /recipe.environment in scene_create/);
+  }
+});
+
+test('the server still checks every environment field of scene_apply and scene_create_asset', async () => {
+  await withMcpClient(async client => {
+    const apply = await client.callTool({ name: 'scene_apply', arguments: { expectedRevision: 0, operations: [{ type: 'set-environment', environment: { skyTop: 'blue', bogus: 1 } }] } });
+    const asset = await client.callTool({ name: 'scene_create_asset', arguments: { recipe: { format: '67js.asset', schemaVersion: 1, assetId: 'a'.repeat(64), environment: { world: 'yes' } } } });
+    for (const result of [apply, asset]) assert.equal(result.isError, true);
+    assert.match(apply.content[0].text, /bogus/);
+    assert.match(apply.content[0].text, /skyTop/);
+    assert.match(asset.content[0].text, /world/);
+  });
+});
 
 test('the MCP environment schema lists exactly the fields the backend allows', async () => {
   const backend = (await backendEnvironmentFields()).sort();
