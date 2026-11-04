@@ -34,7 +34,7 @@ const renderer = new Renderer67(canvas, [...terrain.parts, ...treeParts], { worl
 ```
 
 Each frame, `if (terrain.update(eye).length) renderer.replaceParts(sceneParts)` swaps the chunks whose level of detail changed.
-Textured parts such as leaf cards can be added and removed in `replaceParts`; their textures are freed once no part uses them.
+Textured parts such as leaf cards can be added and removed in `replaceParts` after `import '@codepawlhq/67js/addons/replace-textured-parts'`; their textures are freed once no part uses them.
 
 ## loadTextureSet
 

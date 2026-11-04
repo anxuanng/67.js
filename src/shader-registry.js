@@ -18,6 +18,9 @@ export const viewTransformShader = {};
 // texture-update.js sets update(renderer, descriptor, update): the body of renderer.updateTexture.
 export const textureUpdateSupport = {};
 
+// replace-textured-parts.js sets begin(renderer) for replaceParts; it returns settle(previousBatches, nextBatches), which rolls back when called with no arguments.
+export const texturedReplaceSupport = {};
+
 // splat-shader.js sets the JavaScript half of the splat ground material: validate, textureBytes, resolveSize,
 // packParameters and buildPixels. The renderer calls them only for a material with layers.
 const splatSupport = {};

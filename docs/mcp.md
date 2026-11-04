@@ -228,8 +228,8 @@ Geometry resources remain immutable. Remove an unused definition and add its rep
 Checkpoints retain their resource handles for exact restoration. Active, checkpoint and staged geometry share a bounded allocation budget.
 Release unused checkpoints to free that ownership before adding detail.
 
-The preview reconciles rigid parts, textured or not, while retaining shader programs, render targets and shared geometry buffers.
-A scene with material patterns gets a new renderer on each topology change instead. Skinned, morphed and layered parts are not streamed either; `replaceParts` rejects adding or removing them.
+The preview reconciles rigid parts, textured ones with the `replace-textured-parts` addon, while retaining shader programs, render targets and shared geometry buffers.
+A scene with material patterns gets a new renderer on each topology change instead. Skinned and morphed parts are not streamed either; `replaceParts` rejects adding or removing them.
 Unchanged draw batches remain allocated. Changed instance groups receive new instance buffers. Retired buffers are released.
 
 Staging must fit alongside the current render allocations, so a replacement can fail its GPU budget even when the final scene alone fits.

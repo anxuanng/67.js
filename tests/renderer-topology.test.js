@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { mat4 } from 'gl-matrix';
 import { box, sphere } from '../src/geometry.js';
 import { Renderer67 } from '../src/renderer.js';
+import '../src/replace-textured-parts.js';
 
 function part(name, geometry) {
   return { name, geometry, matrix: mat4.create(), material: { tag: 'surface', color: [0.5, 0.6, 0.7], metallic: 0, roughness: 0.5 } };
