@@ -1,5 +1,5 @@
-import { FRAGMENT_SOURCE, VERTEX_SOURCE } from './path-tracer-gpu-shader.js';
-import { packAtlas, packEnvironment, packLights, packMaterials, packNodes, packTriangles } from './path-tracer-gpu-pack.js';
+import { buildFragmentSource, VERTEX_SOURCE } from './path-tracer-gpu-shader.js';
+import { packAtlas, packEnvironment, packLights, packMaterials, packNodes, packSubsurface, packTriangles, sceneUsesSubsurface } from './path-tracer-gpu-pack.js';
 
 // The GPU backend of the path tracer: one WebGL2 fragment pass per sample draws every pixel of a band, and four float
 // targets add the samples up. It needs a page with WebGL2 (a canvas), EXT_color_buffer_float and EXT_float_blend. The
@@ -34,10 +34,10 @@ function compileShader(gl, type, source) {
   return shader;
 }
 
-function createProgram(gl) {
+function createProgram(gl, hasSubsurface) {
   const program = gl.createProgram();
   gl.attachShader(program, compileShader(gl, gl.VERTEX_SHADER, VERTEX_SOURCE));
-  gl.attachShader(program, compileShader(gl, gl.FRAGMENT_SHADER, FRAGMENT_SOURCE));
+  gl.attachShader(program, compileShader(gl, gl.FRAGMENT_SHADER, buildFragmentSource({ hasSubsurface })));
   gl.linkProgram(program);
   if (!gl.getProgramParameter(program, gl.LINK_STATUS)) throw new Error(`The GPU path tracer program did not link: ${gl.getProgramInfoLog(program)}`);
   return program;
@@ -69,6 +69,8 @@ function uploadScene(gl, program, scene) {
   const triangles = packTriangles(scene);
   const materials = packMaterials(scene.materials, atlas);
   const floatTables = [['uNodes', nodes], ['uTriangles', triangles], ['uMaterials', materials], ['uLights', lights.table]];
+  if (sceneUsesSubsurface(scene.materials)) floatTables.push(['uSubsurface', packSubsurface(scene.materials)]);
+  if (sceneUsesSubsurface(scene.materials)) floatTables.push(['uSubsurface', packSubsurface(scene.materials)]);
   let unit = 0;
   const bind = (name) => gl.uniform1i(gl.getUniformLocation(program, name), unit++);
   for (const [name, table] of floatTables) {
@@ -179,18 +181,27 @@ const nextTask = () => new Promise(resolve => setTimeout(resolve, 0));
  * (color, albedo, normal, depth, variance, samplesTaken) plus a `gpu` note. `noiseThreshold` is not used: every pixel
  * draws all its samples. `shouldStop` throws when the time limit passes.
  */
-function getSession() {
+function getContext() {
   if (session) return session;
   const canvas = createCanvas();
   const gl = canvas?.getContext('webgl2', { antialias: false, depth: false, stencil: false, alpha: false, powerPreference: 'high-performance' });
   if (!gl) throw new Error('The GPU path tracer needs WebGL2.');
   if (!gl.getExtension('EXT_color_buffer_float') || !gl.getExtension('EXT_float_blend')) throw new Error('The GPU path tracer needs float render targets with blending.');
-  const started = performance.now();
-  const program = createProgram(gl);
-  gl.getProgramParameter(program, gl.LINK_STATUS);
   const debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
-  session = { gl, program, compileSeconds: (performance.now() - started) / 1000, gpu: debugInfo ? gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL) : 'unknown' };
+  session = { gl, programs: new Map(), gpu: debugInfo ? gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL) : 'unknown' };
   return session;
+}
+
+/** The kernel for a scene, compiled once per variant: a scene with a subsurface part gets the random walk, any other scene the plain kernel. */
+function getKernel(hasSubsurface) {
+  const { gl, programs } = getContext();
+  if (!programs.has(hasSubsurface)) {
+    const started = performance.now();
+    const program = createProgram(gl, hasSubsurface);
+    gl.getProgramParameter(program, gl.LINK_STATUS);
+    programs.set(hasSubsurface, { program, compileSeconds: (performance.now() - started) / 1000 });
+  }
+  return programs.get(hasSubsurface);
 }
 
 function releaseResources(gl) {
@@ -202,7 +213,8 @@ function releaseResources(gl) {
 }
 
 export async function traceOnGpu(scene, camera, options, shouldStop) {
-  const { gl, program, compileSeconds, gpu } = getSession();
+  const { gl, gpu } = getContext();
+  const { program, compileSeconds } = getKernel(sceneUsesSubsurface(scene.materials));
   const { width, height, samples } = options;
   gl.useProgram(program);
   const { lightCount } = uploadScene(gl, program, scene);

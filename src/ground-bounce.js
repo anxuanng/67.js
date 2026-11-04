@@ -64,18 +64,8 @@ function groundAlbedo(material) {
  * texture's albedo is its mean in linear space times the material colour.
  */
 export function findGroundSurface(parts) {
-  const index = findGroundIndex(parts)
-  if (index < 0) {
-    return null
-  }
-  const albedo = groundAlbedo(parts[index].material)
-  return albedo ? { albedo } : null
-}
-
-// The index of the lowest, thin part that spans the scene, or -1.
-function findGroundIndex(parts) {
   if (parts.length < 2) {
-    return -1
+    return null
   }
   const boundsList = parts.map(part => worldBounds(part))
   const scene = sceneBoundsOf(boundsList)
@@ -89,10 +79,11 @@ function findGroundIndex(parts) {
     const isThin = partHeight <= GROUND_THINNESS * Math.max(partX, partZ)
     const isLowest = bounds.minimum[1] <= scene.minimum[1] + GROUND_LOWEST_TOLERANCE
     if (spansScene && isThin && isLowest) {
-      return index
+      const albedo = groundAlbedo(parts[index].material)
+      return albedo ? { albedo } : null
     }
   }
-  return -1
+  return null
 }
 
 /**
@@ -323,6 +314,45 @@ function hasLocalLights(environment) {
   return [environment.pointLights, environment.spotLights, environment.areaLights].some(lights => lights?.length > 0)
 }
 
+// Under a low sun a shadow is lit by more than the sky and the level ground: slopes, walls and roofs that face the sun send
+// it back too, and the ground term above does not see them (`mountain-valley` has no level ground at all). The sky's own light
+// is already in the map. The fill is a constant diffuse light, a `bounce` colour like the room's: the sun on a surface of the
+// ground's albedo (at least 0.2) over pi, times a fitted gain, and times how much more a vertical face gets than the ground,
+// squared: nothing for a high sun, whose ground bounce is the whole story (the studio scenes, `long-street`), most for a sun
+// near the horizon (`mountain-valley`, `megacity-dusk`). A closed room, a bake or no sun gets none, so `temple-hall` and
+// `dark-shaft` keep their shadows.
+const OUTDOOR_FILL_GAIN = 0.4
+const OUTDOOR_MINIMUM_ALBEDO = 0.2
+
+const openAirOfParts = new WeakMap()
+
+function isOpenAir(parts) {
+  const remembered = openAirOfParts.get(parts)
+  if (remembered?.length === parts.length) {
+    return remembered.openAir
+  }
+  const openAir = !isDrawnWithBakedLight(parts) && !isClosedRoom(parts)
+  openAirOfParts.set(parts, { length: parts.length, openAir })
+  return openAir
+}
+
+// The fill as a `bounce` colour, or null when the scene gets none.
+function outdoorFillBounce(parts, environment, ground) {
+  if (environment.outdoorFill === false || !environment.keyColor || !hasKeyLight(environment) || !isOpenAir(parts)) {
+    return null
+  }
+  const { lightDirection } = environment
+  const sunLength = Math.hypot(...lightDirection)
+  const sunOnGround = Math.max(lightDirection[1] / sunLength, 0)
+  const sunOnWall = Math.hypot(lightDirection[0], lightDirection[2]) / sunLength
+  const lowSun = Math.max(sunOnWall - sunOnGround, 0) ** 2
+  if (lowSun === 0) {
+    return null
+  }
+  const albedo = (ground?.albedo ?? [0, 0, 0]).map(channel => Math.max(channel, OUTDOOR_MINIMUM_ALBEDO))
+  return albedo.map((channel, index) => (OUTDOOR_FILL_GAIN * channel * environment.keyColor[index] * (environment.keyIntensity ?? 1) * lowSun) / Math.PI)
+}
+
 /**
  * The environment with the ground's bounce in its map, found from the parts: the same environment when the scene has no
  * plain floor, a baked part (its light map already holds the bounce), a closed room (a bake or the room's own walls
@@ -331,99 +361,6 @@ function hasLocalLights(environment) {
  * `environment.groundBounce: false` turns it off.
  */
 export function groundBounceEnvironment(parts, environment, { automaticAlbedo = null } = {}) {
-  const bounced = surfaceBounceEnvironment(parts, environment, automaticAlbedo)
-  return bounced.map ? emissiveSpillEnvironment(parts, bounced) : bounced
-}
-
-// Emissive parts of an open scene light the surfaces around them: windows light facades, lamps light the street. Their
-// emitted power, radiance L over area A, is exitance pi * L, so the light that reaches an average surface of the scene after
-// one bounce is L * A_emissive * rho / (A * (1 - rho)) in the unit of an environment map's diffuse light, as in the room term.
-// The open sky takes most of it, which the gain stands for (fitted on `megacity-dusk` against Cycles with its emission set to 0
-// and on, and checked on the other reference scenes). A closed room or a baked scene has this light already, and a scene with
-// next to no emission keeps its environment.
-const SPILL_GAIN = 1.6
-const SPILL_MINIMUM = 2e-3
-
-function surfaceArea(part) {
-  const { positions, indices } = part.geometry
-  if (!positions) {
-    return 0
-  }
-  const count = indices ? indices.length : positions.length / 3
-  const first = [0, 0, 0]
-  const second = [0, 0, 0]
-  const third = [0, 0, 0]
-  let area = 0
-  for (let corner = 0; corner + 2 < count; corner += 3) {
-    transformPoint(part.matrix, positions, indices ? indices[corner] : corner, first)
-    transformPoint(part.matrix, positions, indices ? indices[corner + 1] : corner + 1, second)
-    transformPoint(part.matrix, positions, indices ? indices[corner + 2] : corner + 2, third)
-    const normalX = (second[1] - first[1]) * (third[2] - first[2]) - (second[2] - first[2]) * (third[1] - first[1])
-    const normalY = (second[2] - first[2]) * (third[0] - first[0]) - (second[0] - first[0]) * (third[2] - first[2])
-    const normalZ = (second[0] - first[0]) * (third[1] - first[1]) - (second[1] - first[1]) * (third[0] - first[0])
-    area += 0.5 * Math.hypot(normalX, normalY, normalZ)
-  }
-  return area
-}
-
-/**
- * The light the emissive parts of an open scene send to the rest of it, as a linear colour in the unit of an environment
- * map's diffuse light, or null: none of it for a scene with a bake, a closed room, no emissive part or a negligible one.
- */
-export function emissiveSpill(parts) {
-  if (isDrawnWithBakedLight(parts) || isClosedRoom(parts)) {
-    return null
-  }
-  const emitted = [0, 0, 0]
-  const reflected = [0, 0, 0]
-  let totalArea = 0
-  const groundIndex = findGroundIndex(parts)
-  for (const [index, part] of parts.entries()) {
-    const material = part.material ?? {}
-    if (index === groundIndex || material.alphaMode === 'blend' || !part.geometry?.positions) {
-      continue
-    }
-    const area = surfaceArea(part)
-    totalArea += area
-    if (material.emission > 0 && !material.emissiveMap) {
-      const color = material.emissiveColor ?? material.color ?? [1, 1, 1]
-      for (let channel = 0; channel < 3; channel++) {
-        emitted[channel] += color[channel] * material.emission * area
-      }
-    } else {
-      const albedo = partDiffuseAlbedo(material)
-      for (let channel = 0; channel < 3; channel++) {
-        reflected[channel] += albedo[channel] * area
-      }
-    }
-  }
-  if (totalArea === 0) {
-    return null
-  }
-  const spill = emitted.map((power, channel) => {
-    const albedo = Math.min(reflected[channel] / totalArea, ROOM_MAXIMUM_ALBEDO)
-    return SPILL_GAIN * power * albedo / (totalArea * (1 - albedo))
-  })
-  return spill.some(channel => channel >= SPILL_MINIMUM) ? spill : null
-}
-
-const spillOfParts = new WeakMap()
-
-function emissiveSpillEnvironment(parts, environment) {
-  if (environment.emissiveSpill === false) {
-    return environment
-  }
-  const remembered = spillOfParts.get(parts)
-  const spill = remembered?.length === parts.length ? remembered.spill : emissiveSpill(parts)
-  spillOfParts.set(parts, { length: parts.length, spill })
-  if (!spill) {
-    return environment
-  }
-  const bounce = environment.map.bounce ? environment.map.bounce.map((channel, index) => channel + spill[index]) : spill
-  return { ...environment, map: { ...environment.map, bounce, irradianceWithBounce } }
-}
-
-function surfaceBounceEnvironment(parts, environment, automaticAlbedo) {
   if (!environment.map) {
     return environment
   }
@@ -434,16 +371,18 @@ function surfaceBounceEnvironment(parts, environment, automaticAlbedo) {
     return environment
   }
   const ground = groundOf(parts, automaticAlbedo)
+  const fill = outdoorFillBounce(parts, environment, ground)
   if (!ground) {
-    return environment
+    return fill ? { ...environment, map: { ...environment.map, bounce: fill, irradianceWithBounce } } : environment
   }
   const { lightDirection } = environment
   const keyColor = environment.keyColor.map(channel => channel * (environment.keyIntensity ?? 1))
-  const key = JSON.stringify([ground.albedo, keyColor, lightDirection])
+  const key = JSON.stringify([ground.albedo, keyColor, lightDirection, fill])
   const byInputs = cache.get(environment.map) ?? new Map()
   cache.set(environment.map, byInputs)
   if (!byInputs.has(key)) {
-    byInputs.set(key, withGroundBounce(environment.map, { albedo: ground.albedo, keyColor, lightDirection }))
+    const bounced = withGroundBounce(environment.map, { albedo: ground.albedo, keyColor, lightDirection })
+    byInputs.set(key, fill ? { ...bounced, bounce: fill, irradianceWithBounce } : bounced)
   }
   return { ...environment, map: byInputs.get(key) }
 }

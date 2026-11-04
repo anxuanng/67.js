@@ -119,8 +119,6 @@ A closed room lit by point, spot or area lights gets the light its walls bounce 
 
 It is left out when the scene has a bake (its light map holds the bounce), a sun (`keyColor` above zero or unset, as in `temple-hall` and `dark-shaft`, which already read lighter than Cycles in their shadows), no map, or `environment.roomBounce` is `false`. It is one average colour for the whole room, with no brighter corner beside a lamp and no colour bleeding next to a wall; a bake gives those, and `scene_inspect` names it (`closed-room-without-bake`, with the `standard` preset) for a closed room lit by lamps only.
 
-Emissive parts light their surroundings too (issue #392). In an open scene without a bake, `groundBounceEnvironment` adds their emitted power (emissive colour times `emission` times area, per channel) over the area of everything but the ground, times the mean albedo over one minus it, times a gain of 1.6, to the same `bounce` colour. Mapped emission, a closed room and a faint emitter (under 0.002) add nothing, and `environment.emissiveSpill: false` turns it off. On `megacity-dusk` against a Cycles render with its own emission on, the facades are 0.96 to 1.07 of Cycles' luminance where they were 0.75 to 0.77, and FLIP goes from 0.1580 to 0.1364 (SwiftShader). One colour for the whole scene cannot follow the fall-off from a window, so the darkest fifth of the picture ends 1.4 times too light; a per-position grid would fix that.
-
 Luminance of the 67js picture over Cycles (linear, whole frame and 20th percentile, `bench/reference/luminance-ratio.py`, GPU renders against the committed Cycles panels):
 
 | Scene | Mean before | Mean after | p20 before | p20 after |
@@ -130,7 +128,22 @@ Luminance of the 67js picture over Cycles (linear, whole frame and 20th percenti
 | `brick-room` | 0.57 | 0.86 | 0.37 | 0.95 |
 | `temple-hall` | 0.97 | 0.97 | 1.62 | 1.64 |
 
-The two `temple-hall` p20 values differ only by the rescaling of the picture (the scene has a sun, so no bounce is added). The outdoor shadow fill of the issue is not done.
+The two `temple-hall` p20 values differ only by the rescaling of the picture (the scene has a sun, so no bounce is added).
+
+## Sun shadows fill under a low sun
+
+A scene with a sun that is not a closed room or a bake gets one more constant diffuse light under a low sun, the same `bounce` colour the room uses, so it costs nothing per frame and changes no shader. Slopes, walls and roofs that face a low sun send its light back into the shadows, and the ground term does not see them (`mountain-valley` has no level ground at all). The fill is `0.4 * albedo * sun colour / pi * (wall - ground)^2`, where `ground` is the sun's vertical share on a level surface, `wall` its horizontal share on a vertical one and `albedo` the floor's (at least 0.2). A high sun gives zero, so the studio scenes and `long-street` are unchanged, and so are `temple-hall` and `dark-shaft`. `environment.outdoorFill: false` turns it off.
+
+Measured on SwiftShader against the committed Cycles panels (960 x 540 picture scaled to the panel, FLIP of the panel pair):
+
+| Scene | Mean before | Mean after | p20 before | p20 after | FLIP before | FLIP after |
+| --- | --- | --- | --- | --- | --- | --- |
+| `mountain-valley` | 0.90 | 0.99 | 0.60 | 0.79 | 0.1699 | 0.1259 |
+| `megacity-dusk` | 0.93 | 0.97 | 0.59 | 0.85 | 0.1686 | 0.1431 |
+| `fog-valley` | 1.07 | 1.09 | 0.86 | 0.92 | 0.1906 | 0.1810 |
+| `temple-hall`, `dark-shaft` | | | | unchanged | | unchanged |
+
+The other 19 reference scenes drew the same pixels (mean, p20 and FLIP identical).
 
 ## Sky seen from the floor
 

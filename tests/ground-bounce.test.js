@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createEnvironmentMap, computeIrradianceCoefficients, evaluateIrradiance } from '../src/environment.js';
-import { emissiveSpill, findGroundSurface, groundBounceEnvironment, withGroundBounce } from '../src/ground-bounce.js';
+import { findGroundSurface, groundBounceEnvironment, withGroundBounce } from '../src/ground-bounce.js';
 
 const WIDTH = 8;
 const HEIGHT = 4;
@@ -144,24 +144,21 @@ test('the mean of a texture is found once per image', () => {
   assert.ok(findGroundSurface(openScene({ ...GRASS, map })).albedo[0] > 0.1);
 });
 
-const LAMP_WINDOW = { tag: 'surface', color: [1, 0.7, 0.35], emission: 4 };
-
-test('emissive parts of an open scene add their spill to the map bounce, tinted by their colour', () => {
-  const environment = environmentOf(uniformSky(0.5));
-  const lit = [...openScene(), slab('windows', [0, 2, 1], [4, 2, 0.2], LAMP_WINDOW)];
-  const spill = emissiveSpill(lit);
-  assert.ok(spill[0] > spill[1] && spill[1] > spill[2] && spill[2] > 0);
-  const bounced = groundBounceEnvironment(lit, environment);
-  assert.deepEqual(bounced.map.bounce, spill);
-  assert.ok(bounced.map.irradianceSource);
-});
-
-test('a scene with no emission, a faint one, a mapped one or emissiveSpill false keeps its map bounce', () => {
-  const environment = environmentOf(uniformSky(0.5));
-  assert.equal(emissiveSpill(openScene()), null);
-  assert.equal(groundBounceEnvironment(openScene(), environment).map.bounce, undefined);
-  assert.equal(emissiveSpill([...openScene(), slab('faint', [0, 2, 1], [1, 1, 0.1], { ...LAMP_WINDOW, emission: 0.001 })]), null);
-  assert.equal(emissiveSpill([...openScene(), slab('sign', [0, 2, 1], [4, 2, 0.2], { ...LAMP_WINDOW, emissiveMap: {} })]), null);
-  const lit = [...openScene(), slab('windows', [0, 2, 1], [4, 2, 0.2], LAMP_WINDOW)];
-  assert.equal(groundBounceEnvironment(lit, { ...environment, emissiveSpill: false }).map.bounce, undefined);
+test('a low sun adds a bounce colour to the map, a high sun, no sun or outdoorFill false add none', () => {
+  const parts = openScene();
+  const lowSun = { map: uniformSky(0.5), keyColor: [3, 3, 3], lightDirection: [-5, 1, 4] };
+  const filled = groundBounceEnvironment(parts, lowSun);
+  assert.ok(filled.map.irradianceSource);
+  assert.ok(filled.map.bounce.every(channel => channel > 0));
+  // The renderer adds a bounce through this method; without it the colour is never drawn (issue #392).
+  const coefficients = computeIrradianceCoefficients(filled.map);
+  const lit = filled.map.irradianceWithBounce(coefficients);
+  assert.ok(lit[0] > coefficients[0] && lit[1] > coefficients[1] && lit[2] > coefficients[2]);
+  assert.ok(groundBounceEnvironment(parts.slice(1), lowSun).map.irradianceWithBounce);
+  assert.equal(groundBounceEnvironment(parts, lowSun).map, filled.map);
+  assert.equal(groundBounceEnvironment(parts, environmentOf(uniformSky(0.5))).map.bounce, undefined);
+  assert.equal(groundBounceEnvironment(parts, { ...lowSun, keyColor: [0, 0, 0] }).map.bounce, undefined);
+  assert.equal(groundBounceEnvironment(parts, { ...lowSun, outdoorFill: false }).map.bounce, undefined);
+  const withoutFloor = groundBounceEnvironment(parts.slice(1), lowSun);
+  assert.ok(withoutFloor.map.bounce.every(channel => channel > 0));
 });
