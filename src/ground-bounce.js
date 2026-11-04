@@ -292,8 +292,12 @@ function irradianceWithBounce(irradiance) {
   return bouncedIrradiance
 }
 
-// The map gets a `bounce` colour and the method that adds it to its diffuse light. The map's data stays shared, so a lamp
-// whose power changes every frame costs no new prefilter.
+// The map gets a `bounce` colour and the method that adds it to its diffuse light; without the method the renderer never draws
+// the colour. The map's data stays shared, so a lamp whose power changes every frame costs no new prefilter.
+function withBounce(map, bounce) {
+  return { ...map, bounce, irradianceWithBounce }
+}
+
 function roomBounceEnvironment(parts, environment) {
   if (environment.roomBounce === false || hasKeyLight(environment)) {
     return environment
@@ -303,7 +307,7 @@ function roomBounceEnvironment(parts, environment) {
     return environment
   }
   const bounce = roomBounceRadiance(room, environment)
-  return bounce.some(channel => channel > 0) ? { ...environment, map: { ...environment.map, bounce, irradianceWithBounce } } : environment
+  return bounce.some(channel => channel > 0) ? { ...environment, map: withBounce(environment.map, bounce) } : environment
 }
 
 
@@ -312,6 +316,45 @@ function roomBounceEnvironment(parts, environment) {
 // `light-linking` and `spot-area`).
 function hasLocalLights(environment) {
   return [environment.pointLights, environment.spotLights, environment.areaLights].some(lights => lights?.length > 0)
+}
+
+// Under a low sun a shadow is lit by more than the sky and the level ground: slopes, walls and roofs that face the sun send
+// it back too, and the ground term above does not see them (`mountain-valley` has no level ground at all). The sky's own light
+// is already in the map. The fill is a constant diffuse light, a `bounce` colour like the room's: the sun on a surface of the
+// ground's albedo (at least 0.2) over pi, times a fitted gain, and times how much more a vertical face gets than the ground,
+// squared: nothing for a high sun, whose ground bounce is the whole story (the studio scenes, `long-street`), most for a sun
+// near the horizon (`mountain-valley`, `megacity-dusk`). A closed room, a bake or no sun gets none, so `temple-hall` and
+// `dark-shaft` keep their shadows.
+const OUTDOOR_FILL_GAIN = 0.4
+const OUTDOOR_MINIMUM_ALBEDO = 0.2
+
+const openAirOfParts = new WeakMap()
+
+function isOpenAir(parts) {
+  const remembered = openAirOfParts.get(parts)
+  if (remembered?.length === parts.length) {
+    return remembered.openAir
+  }
+  const openAir = !isDrawnWithBakedLight(parts) && !isClosedRoom(parts)
+  openAirOfParts.set(parts, { length: parts.length, openAir })
+  return openAir
+}
+
+// The fill as a `bounce` colour, or null when the scene gets none.
+function outdoorFillBounce(parts, environment, ground) {
+  if (environment.outdoorFill === false || !environment.keyColor || !hasKeyLight(environment) || !isOpenAir(parts)) {
+    return null
+  }
+  const { lightDirection } = environment
+  const sunLength = Math.hypot(...lightDirection)
+  const sunOnGround = Math.max(lightDirection[1] / sunLength, 0)
+  const sunOnWall = Math.hypot(lightDirection[0], lightDirection[2]) / sunLength
+  const lowSun = Math.max(sunOnWall - sunOnGround, 0) ** 2
+  if (lowSun === 0) {
+    return null
+  }
+  const albedo = (ground?.albedo ?? [0, 0, 0]).map(channel => Math.max(channel, OUTDOOR_MINIMUM_ALBEDO))
+  return albedo.map((channel, index) => (OUTDOOR_FILL_GAIN * channel * environment.keyColor[index] * (environment.keyIntensity ?? 1) * lowSun) / Math.PI)
 }
 
 /**
@@ -332,16 +375,18 @@ export function groundBounceEnvironment(parts, environment, { automaticAlbedo = 
     return environment
   }
   const ground = groundOf(parts, automaticAlbedo)
+  const fill = outdoorFillBounce(parts, environment, ground)
   if (!ground) {
-    return environment
+    return fill ? { ...environment, map: withBounce(environment.map, fill) } : environment
   }
   const { lightDirection } = environment
   const keyColor = environment.keyColor.map(channel => channel * (environment.keyIntensity ?? 1))
-  const key = JSON.stringify([ground.albedo, keyColor, lightDirection])
+  const key = JSON.stringify([ground.albedo, keyColor, lightDirection, fill])
   const byInputs = cache.get(environment.map) ?? new Map()
   cache.set(environment.map, byInputs)
   if (!byInputs.has(key)) {
-    byInputs.set(key, withGroundBounce(environment.map, { albedo: ground.albedo, keyColor, lightDirection }))
+    const bounced = withGroundBounce(environment.map, { albedo: ground.albedo, keyColor, lightDirection })
+    byInputs.set(key, fill ? withBounce(bounced, fill) : bounced)
   }
   return { ...environment, map: byInputs.get(key) }
 }

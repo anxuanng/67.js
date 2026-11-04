@@ -1,4 +1,5 @@
 import { DATA_TEXTURE_WIDTH, TRIANGLE_TEXELS, MATERIAL_TEXELS, LIGHT_TEXELS } from './path-tracer-gpu-shader.js';
+import { SUBSURFACE_TEXELS } from './path-tracer-gpu-subsurface.js';
 
 // Lays a traced scene (path-tracer-scene.js) out as the float textures the GPU kernel reads. Everything here is plain
 // typed arrays, so it runs and is tested without a GPU. Each table is a run of RGBA texels, DATA_TEXTURE_WIDTH to a row.
@@ -126,6 +127,28 @@ export function packMaterials(materials, atlas) {
       data[base + 17 + fieldIndex] = textureFlags(texture);
       data.set([place.x, place.y, texture.width, texture.height], base + (6 + fieldIndex) * 4);
     });
+  });
+  return table;
+}
+
+/** True when a part has a subsurface weight above 0, which is when the kernel needs the random walk. */
+export function sceneUsesSubsurface(materials) {
+  return materials.some(material => material.subsurface);
+}
+
+/**
+ * Two texels per material: (weight, mean free path in metres for red, green and blue) and (colour, unused). The colour red is
+ * -1 for the base colour. A material without a block packs a weight of 0, which the kernel treats as the unchanged path.
+ */
+export function packSubsurface(materials) {
+  const table = createTable(materials.length * SUBSURFACE_TEXELS);
+  const { data } = table;
+  materials.forEach((material, index) => {
+    const base = index * SUBSURFACE_TEXELS * 4;
+    const block = material.subsurface;
+    if (!block) return;
+    data.set([block.weight, ...block.meanFreePath], base);
+    data.set([...(block.color ?? [-1, -1, -1]), 0], base + 4);
   });
   return table;
 }

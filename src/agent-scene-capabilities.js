@@ -16,6 +16,14 @@ export const AGENT_SCENE_DEFAULT_LIMITS = Object.freeze({
   maxOperations: 256, maxCheckpoints: 8, maxRecipeBytes: 1024 * 1024,
 });
 
+// The values of the water presets (src/world-material-shader.js holds the same numbers; a test keeps them in step), written out
+// here so the capabilities do not pull the shader addon into every agent scene.
+const WATER_PRESETS_SUMMARY = Object.freeze({
+  lake: Object.freeze({ absorption: Object.freeze([0.35, 0.07, 0.04]), turbidity: 0.02 }),
+  sea: Object.freeze({ absorption: Object.freeze([0.4, 0.06, 0.02]), turbidity: 0.1 }),
+  river: Object.freeze({ absorption: Object.freeze([0.8, 0.9, 1.6]), turbidity: 0.75 }),
+});
+
 // What each recipe material layer does, beside its range; the MCP schema keeps one short line per field.
 const MATERIAL_LAYER_NOTES = Object.freeze({
   clearcoat: 'Lacquer lobe over the base, surface tag.',
@@ -171,7 +179,9 @@ export const AGENT_SCENE_CAPABILITIES = Object.freeze({
     'add-geometry', 'remove-geometry', 'add-material', 'remove-material',
     'set-environment', 'set-effects', 'set-shadow', 'set-motion', 'set-armatures', 'set-physics', 'set-cloth', 'set-timeline', 'set-particles', 'set-bake', 'edit-mesh', 'set-mesh-stack',
   ]),
-  materialTags: Object.freeze(['surface', 'unlit', 'liquid', 'foam', 'foliage', 'grass']),
+  materialTags: Object.freeze(['surface', 'unlit', 'liquid', 'foam', 'foliage', 'grass', 'water']),
+  // A flat water sheet; the largest sets the level. A bed d metres down keeps exp(-absorption * d) per channel (RGB per metre).
+  water: Object.freeze({ presets: WATER_PRESETS_SUMMARY, default: 'lake', note: 'absorption 0..20, turbidity 0..1 softens shadows below; opacity under 1 shows the bed.' }),
   materialLayers: Object.freeze(Object.fromEntries(MATERIAL_LAYER_FIELDS.map(field => [field, Object.freeze({
     range: MATERIAL_LAYER_SCALAR_RANGES[field] ?? MATERIAL_LAYER_COLOR_RANGES[field] ?? 'above 0',
     note: MATERIAL_LAYER_NOTES[field],

@@ -2,8 +2,9 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { buildTraceScene } from '../src/path-tracer-scene.js';
-import { packAtlas, packLights, packMaterials, packNodes, packTriangles } from '../src/path-tracer-gpu-pack.js';
-import { LIGHT_TEXELS, MATERIAL_TEXELS, TRIANGLE_TEXELS } from '../src/path-tracer-gpu-shader.js';
+import { packAtlas, packLights, packMaterials, packNodes, packSubsurface, packTriangles, sceneUsesSubsurface } from '../src/path-tracer-gpu-pack.js';
+import { buildFragmentSource, FRAGMENT_SOURCE, LIGHT_TEXELS, MATERIAL_TEXELS, TRIANGLE_TEXELS } from '../src/path-tracer-gpu-shader.js';
+import { SUBSURFACE_TEXELS } from '../src/path-tracer-gpu-subsurface.js';
 
 function quad(offset) {
   return {
@@ -89,4 +90,40 @@ test('lights are packed as points, then spots, then areas', () => {
   assert.equal(table.data[LIGHT_TEXELS * 4 + 3], 2, 'area type');
   assert.equal(table.data[LIGHT_TEXELS * 4 + 11], 0.5, 'area width');
   assert.equal(table.data[20], 4, 'point intensity');
+});
+
+function subsurfaceScene(weight) {
+  const parts = [
+    { name: 'wax', geometry: quad(0), material: { color: [0.8, 0.6, 0.4], subsurface: { weight, radius: [1, 0.5, 0.25], scale: 0.02, color: [0.9, 0.5, 0.2] } } },
+    { name: 'stone', geometry: quad(2), material: { color: [0.5, 0.5, 0.5], subsurface: { weight, radius: [1, 1, 1], scale: 0.1 } } },
+    { name: 'plain', geometry: quad(3), material: { color: [1, 1, 1] } },
+  ];
+  return buildTraceScene(parts, { keyColor: [1, 1, 1], lightDirection: [0, 1, 0] });
+}
+
+test('the subsurface block is packed as two texels per material, with -1 for the base colour', () => {
+  const scene = subsurfaceScene(0.75);
+  assert.equal(sceneUsesSubsurface(scene.materials), true);
+  const table = packSubsurface(scene.materials);
+  const wax = scene.materials.findIndex(material => material.subsurface?.color);
+  const stone = scene.materials.findIndex(material => material.subsurface && !material.subsurface.color);
+  const plain = scene.materials.findIndex(material => !material.subsurface);
+  const waxBase = wax * SUBSURFACE_TEXELS * 4;
+  assert.deepEqual([...table.data.subarray(waxBase, waxBase + 4)].map(value => Number(value.toFixed(5))), [0.75, 0.02, 0.01, 0.005]);
+  assert.deepEqual([...table.data.subarray(waxBase + 4, waxBase + 8)].map(value => Number(value.toFixed(5))), [0.9, 0.5, 0.2, 0]);
+  assert.equal(table.data[stone * SUBSURFACE_TEXELS * 4 + 4], -1, 'no colour means the base colour');
+  assert.equal(table.data[plain * SUBSURFACE_TEXELS * 4], 0, 'a part without a block has weight 0');
+});
+
+test('weight 0 and no block both leave the kernel without the random walk', () => {
+  assert.equal(sceneUsesSubsurface(subsurfaceScene(0).materials), false);
+  assert.equal(sceneUsesSubsurface(sampleScene().materials), false);
+  assert.equal(buildFragmentSource({ hasSubsurface: false }), FRAGMENT_SOURCE);
+  assert.equal(FRAGMENT_SOURCE.includes('uSubsurface'), false);
+  assert.equal(FRAGMENT_SOURCE.includes('randomWalk'), false);
+  const withWalk = buildFragmentSource({ hasSubsurface: true });
+  for (const name of ['uniform sampler2D uSubsurface', 'int randomWalk(', 'bool enterSubsurface(', 'subsurfaceWeight = splitSubsurface()']) {
+    assert.equal(withWalk.includes(name), true, name);
+  }
+  assert.equal(withWalk.includes('const int WALK_STEPS = 32;'), true);
 });

@@ -1,7 +1,8 @@
 // Draws chosen reference scenes with 67js on the GPU only, into a directory of your choice, with measurement switches. No Blender, no scoring.
 //   node bench/reference/render-gpu.mjs <output directory> <scene id>,<scene id> [--ambient <scale>] [--fill <scale>] [--key <scale>]
-//     [--ambient-occlusion <strength>] [--ambient-occlusion-radius <units>] [--reversed-depth] [--cpu]
+//     [--bloom <strength,threshold,radius>] [--ambient-occlusion <strength>] [--ambient-occlusion-radius <units>] [--reversed-depth] [--cpu]
 // Files are <output directory>/<scene id>-gpu.png, the names measure-depth.py and score.py read. Used to find what makes shadows light (issue #197).
+// --bloom <strength,threshold,radius> draws with that bloom; --bake-preset <draft|standard|fine> bakes as a recipe does (and prints the refusal, e.g. over 256 parts); a scene whose map has a bounce colour prints it.
 import { mkdir, writeFile } from 'node:fs/promises';
 import { constants, setPriority } from 'node:os';
 import { resolve } from 'node:path';
@@ -20,6 +21,18 @@ const waterIndex = argumentsGiven.indexOf('--water');
 const waterOption = waterIndex >= 0 ? argumentsGiven[waterIndex + 1] : null;
 const reversedDepth = argumentsGiven.includes('--reversed-depth');
 
+function bakePresetOption() {
+  const index = argumentsGiven.indexOf('--bake-preset');
+  return index >= 0 ? { preset: argumentsGiven[index + 1] } : null;
+}
+
+function bloomOption() {
+  const index = argumentsGiven.indexOf('--bloom');
+  if (index < 0) return null;
+  const [strength, threshold, radius] = argumentsGiven[index + 1].split(',').map(Number);
+  return { strength, threshold, radius };
+}
+
 function numberAfter(flag) {
   const index = argumentsGiven.indexOf(flag);
   return index >= 0 ? Number(argumentsGiven[index + 1]) : null;
@@ -31,6 +44,8 @@ const options = {
   key: numberAfter('--key'),
   ambientOcclusion: numberAfter('--ambient-occlusion') ?? 0,
   ambientOcclusionRadius: numberAfter('--ambient-occlusion-radius') ?? 0.5,
+  bloom: bloomOption(),
+  bake: bakePresetOption(),
 };
 
 setPriority(0, constants.priority.PRIORITY_BELOW_NORMAL);
@@ -48,6 +63,8 @@ try {
     const result = await page.evaluate(([sceneId, renderOptions]) => window.renderReferenceScene(sceneId, { describe: false, ...renderOptions }), [id, options]);
     if (result.glError !== 0) throw new Error(`${id} gave WebGL error ${result.glError}.`);
     await writeFile(`${outputDirectory}/${id}-gpu.png`, Buffer.from(result.image, 'base64'));
+    if (result.bounce) console.log('bounce', JSON.stringify(result.bounce));
+    if (result.bake) console.log(JSON.stringify(result.bake).slice(0, 600));
     console.log(`${id} drawn`);
   }
 } finally {

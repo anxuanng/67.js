@@ -102,8 +102,9 @@ Shared resource IDs generate geometry once, regardless of the number of mesh nod
 
 Materials contain `id`, `tag`, `color`, `metallic`, `roughness`, `emission`, optional `emissiveColor`, `opacity`, `alphaMode`, `doubleSided`, `pattern` and `map`.
 The defaults are `surface`, `[0.5, 0.5, 0.5]`, `0`, `0.5`, `0`, opacity `1`, `opaque` and `false`.
-The tag can be `surface`, `unlit`, `liquid`, `foam`, `foliage` or `grass` (the last two sway in `environment.wind`) and remains fixed during editing.
+The tag can be `surface`, `unlit`, `liquid`, `foam`, `water`, `foliage` or `grass` (the last two sway in `environment.wind`) and remains fixed during editing.
 `liquid` refracts and tints what lies behind it: its color is the light one metre lets through, so `[0.56, 0.84, 0.88]` is clear water. `foam` draws soft blended droplets.
+`water` is a flat mirror sheet (a plane or thin box). The largest one sets the water level: everything below it fades by `exp(-absorption * depth)` per colour channel (`absorption` is RGB per metre), and its shadows are lifted and softened with depth times `turbidity` (0 clear to 1 murky). `waterPreset` fills both: `lake` (default), `sea` or `river`. A shadow on the surface is faint and never darkens the reflection; give the sheet an `opacity` below one when the bed should show.
 Any `opacity` below one draws the material blended after opaque geometry, which suits glass, windows and visors. `alphaMode` accepts `opaque` or `blend`; cutout masking needs a texture and is not available in procedural recipes.
 `doubleSided` draws and lights both faces of thin sheets.
 Changing the tag, opacity, blending, sidedness or pattern replaces the affected parts in the renderer; color, metallic, roughness and emission edits keep them.

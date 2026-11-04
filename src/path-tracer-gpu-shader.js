@@ -1,3 +1,5 @@
+import { SUBSURFACE_FUNCTIONS, SUBSURFACE_LOBE, SUBSURFACE_SPLIT, SUBSURFACE_UNIFORM } from './path-tracer-gpu-subsurface.js';
+
 // The GPU path tracer kernel: a WebGL2 fragment shader that follows the same paths as the CPU tracer in
 // path-tracer.js. It reads the BVH, triangles, materials, lights and environment from float textures
 // (path-tracer-gpu-pack.js), draws the same random numbers in the same order, and writes one sample per pixel into four
@@ -15,7 +17,7 @@ void main() {
   gl_Position = vec4(corner * 2.0 - 1.0, 0.0, 1.0);
 }`;
 
-const SHARED_SOURCE = `#version 300 es
+const buildSource = hasSubsurface => `#version 300 es
 precision highp float;
 precision highp int;
 precision highp sampler2D;
@@ -69,7 +71,7 @@ uniform vec3 uVolumeMinimum;
 uniform vec3 uVolumeMaximum;
 uniform vec3 uVolumeAlbedo;
 uniform vec3 uVolumeShape;
-
+${hasSubsurface ? SUBSURFACE_UNIFORM : ''}
 layout(location = 0) out vec4 outRadiance;
 layout(location = 1) out vec4 outAlbedo;
 layout(location = 2) out vec4 outNormal;
@@ -217,6 +219,7 @@ float hitClearcoatRoughness;
 float hitTransmission;
 float hitIor;
 float hitCutoff;
+int hitMaterialIndex;
 uint hitMask;
 
 vec3 srgbToLinear(vec3 encoded) {
@@ -301,7 +304,8 @@ float fillHit(vec3 origin, vec3 direction, float distance) {
   hitNormal = normal / (normalLength == 0.0 ? 1.0 : normalLength);
   vec3 vertexColor = firstWeight * colorOneData.xyz + secondWeight * colorTwoData.xyz + thirdWeight * colorThreeData.xyz;
   vec2 uv = firstWeight * vec2(normalOneData.w, colorOneData.w) + secondWeight * vec2(normalTwoData.w, colorTwoData.w) + thirdWeight * vec2(normalThreeData.w, colorThreeData.w);
-  int material = int(cornerData.w) * MATERIAL_TEXELS;
+  hitMaterialIndex = int(cornerData.w);
+  int material = hitMaterialIndex * MATERIAL_TEXELS;
   vec4 colorMetallic = fetchData(uMaterials, material);
   vec4 emissionRoughness = fetchData(uMaterials, material + 1);
   vec4 coating = fetchData(uMaterials, material + 2);
@@ -549,6 +553,7 @@ float surfaceCoatChance;
 bool surfaceSampledCoat;
 float surfaceCoatAlpha;
 float surfaceDiffuseChance;
+float surfaceDiffuseShare;
 float surfaceSpecularChance;
 vec3 surfaceValue;
 float surfacePdf;
@@ -573,6 +578,7 @@ void prepareSurface(vec3 normal, vec3 view) {
   float underCoat = 1.0 - surfaceCoatWeight;
   float diffuseShare = (1.0 - hitMetallic) * (1.0 - dielectricFresnel) * underCoat;
   surfaceDiffuse = hitColor * diffuseShare;
+  surfaceDiffuseShare = diffuseShare;
   surfaceSpecularNormal = vec3(dielectricNormalReflectance * (1.0 - hitMetallic)) + hitColor * hitMetallic;
   float specularLuminance = luminance(surfaceSpecularNormal);
   surfaceSpecularWeight = underCoat;
@@ -928,6 +934,7 @@ bool scatterInFog(vec3 origin, float segmentLength) {
   return true;
 }
 
+${hasSubsurface ? SUBSURFACE_FUNCTIONS : ''}
 void tracePath(vec3 origin, vec3 startDirection, uint pixel, uint sampleIndex) {
   resetRandom(pixel, sampleIndex, uSeed);
   radiance = vec3(0.0);
@@ -966,7 +973,10 @@ void tracePath(vec3 origin, vec3 startDirection, uint pixel, uint sampleIndex) {
       }
       addRadiance(depth, throughput * hitEmission);
       needsLights = !isGlass;
-      if (needsLights) prepareSurface(normal, -direction);
+      if (needsLights) {
+        prepareSurface(normal, -direction);
+${hasSubsurface ? SUBSURFACE_SPLIT : ''}
+      }
     }
     if (needsLights) addLights(depth, normal);
     inMedium = false;
@@ -994,6 +1004,7 @@ void tracePath(vec3 origin, vec3 startDirection, uint pixel, uint sampleIndex) {
       afterMirror = true;
     } else {
       float lobeUnit = nextRandom();
+${hasSubsurface ? SUBSURFACE_LOBE : ''}
       float firstUnit = nextRandom();
       float secondUnit = nextRandom();
       vec3 sampledDirection;
@@ -1042,4 +1053,9 @@ void main() {
 }
 `;
 
-export const FRAGMENT_SOURCE = SHARED_SOURCE;
+/** The kernel; `hasSubsurface` compiles in the random walk, which only scenes with a subsurface part need. */
+export function buildFragmentSource({ hasSubsurface = false } = {}) {
+  return buildSource(hasSubsurface);
+}
+
+export const FRAGMENT_SOURCE = buildFragmentSource();

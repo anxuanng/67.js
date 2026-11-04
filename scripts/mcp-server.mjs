@@ -104,6 +104,11 @@ const materialLayerFields = {
 };
 
 
+const waterFields = {
+  waterPreset: z.enum(['lake', 'sea', 'river']).optional().describe('Water tag.'),
+  absorption: z.array(z.number().min(0).max(20)).length(3).optional().describe('Water tag: RGB per metre.'),
+  turbidity: unit.optional().describe('Water tag: 0 clear to 1 murky.'),
+};
 const subsurfaceTriple = ([minimum, maximum]) => z.tuple([0, 1, 2].map(() => z.number().min(minimum).max(maximum)));
 const subsurface = z.strictObject({
   weight: z.number().min(SUBSURFACE_RANGES.weight[0]).max(SUBSURFACE_RANGES.weight[1]).optional(),
@@ -113,6 +118,7 @@ const subsurface = z.strictObject({
 }).describe('Subsurface scattering (skin, wax, leaves) as Blender Principled BSDF; details in scene_capabilities materialSubsurface.');
 
 const materialFields = {
+  ...waterFields,
   ...materialLayerFields,
   subsurface: subsurface.optional(),
   pattern: materialPattern.optional(),
@@ -130,7 +136,7 @@ const materialFields = {
   alphaMode: z.enum(['opaque', 'blend']).optional().describe('blend draws after opaque geometry, sorted back to front.'),
   doubleSided: z.boolean().optional().describe('Draw and light both faces (thin sheets, leaves, cloth).'),
 };
-const materialTag = z.enum(['surface', 'unlit', 'liquid', 'foam', 'foliage', 'grass']).optional().describe('liquid refracts what lies behind it and absorbs by thickness: color is the light one metre lets through. foam is soft blended whitewater. foliage and grass sway in environment.wind.');
+const materialTag = z.enum(['surface', 'unlit', 'liquid', 'foam', 'foliage', 'grass', 'water']).optional().describe('liquid refracts what lies behind it and absorbs by thickness: color is the light one metre lets through. foam is soft blended whitewater. foliage and grass sway in environment.wind. water is a flat mirror sheet; scene_capabilities water has its fields.');
 const liquidOptics = z.strictObject({
   thickness: z.number().min(0).max(100).optional().describe('Metres of liquid where it faces the camera.'),
   ior: z.number().min(1).max(3).optional(),

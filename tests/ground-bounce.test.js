@@ -143,3 +143,22 @@ test('the mean of a texture is found once per image', () => {
   map.image.data.fill(0);
   assert.ok(findGroundSurface(openScene({ ...GRASS, map })).albedo[0] > 0.1);
 });
+
+test('a low sun adds a bounce colour to the map, a high sun, no sun or outdoorFill false add none', () => {
+  const parts = openScene();
+  const lowSun = { map: uniformSky(0.5), keyColor: [3, 3, 3], lightDirection: [-5, 1, 4] };
+  const filled = groundBounceEnvironment(parts, lowSun);
+  assert.ok(filled.map.irradianceSource);
+  assert.ok(filled.map.bounce.every(channel => channel > 0));
+  // The renderer adds a bounce through this method; without it the colour is never drawn (issue #392).
+  const coefficients = computeIrradianceCoefficients(filled.map);
+  const lit = filled.map.irradianceWithBounce(coefficients);
+  assert.ok(lit[0] > coefficients[0] && lit[1] > coefficients[1] && lit[2] > coefficients[2]);
+  assert.ok(groundBounceEnvironment(parts.slice(1), lowSun).map.irradianceWithBounce);
+  assert.equal(groundBounceEnvironment(parts, lowSun).map, filled.map);
+  assert.equal(groundBounceEnvironment(parts, environmentOf(uniformSky(0.5))).map.bounce, undefined);
+  assert.equal(groundBounceEnvironment(parts, { ...lowSun, keyColor: [0, 0, 0] }).map.bounce, undefined);
+  assert.equal(groundBounceEnvironment(parts, { ...lowSun, outdoorFill: false }).map.bounce, undefined);
+  const withoutFloor = groundBounceEnvironment(parts.slice(1), lowSun);
+  assert.ok(withoutFloor.map.bounce.every(channel => channel > 0));
+});
