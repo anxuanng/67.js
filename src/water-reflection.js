@@ -116,6 +116,10 @@ export function applyWaterReflection(parts) {
   if (!surface) {
     return { parts, surface: null, report: { placed: false, reason: 'no large flat smooth surface' } };
   }
+  // Terrain parts build their coarse mirror levels now that the scene has water, before the renderer reads the parts.
+  for (const part of parts) {
+    part.prepareMirrorLevels?.();
+  }
   const flagged = new Set(surface.partIndices);
   const marked = parts.map((part, index) => (flagged.has(index) ? Object.freeze({ ...part, material: withWaterReflectionFlag(part.material) }) : part));
   const report = { placed: true, height: surface.height, parts: surface.partIndices.length, footprint: surface.footprint, sceneShare: surface.sceneShare };

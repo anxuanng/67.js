@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { box, sphere } from '../src/geometry.js';
 import { applyWaterReflection, attachWaterReflection, canReuseMirrorImage, findWaterSurface, waterMirrorLevel, waterMirrorWeight, WATER_BLUR_LIMIT_ROUGHNESS, WATER_MAXIMUM_BLUR_LEVEL, WATER_MIRROR_LOD_SCALE, WATER_MIRROR_MINIMUM_PIXEL_RADIUS } from '../src/water-reflection.js';
+import { createTerrain } from '../src/terrain.js';
 import { createFragmentShader } from '../src/shaders.js';
 import { Renderer67 } from '../src/renderer.js';
 
@@ -276,6 +277,54 @@ test('only the mirror draw carries the mirror culling: parts under the plane, co
   assert.equal(cullingSeen[1].mirror, false);
   assert.equal(cullingSeen[1].culling, null);
   detach();
+});
+
+function terrainWithSea(terrainOptions) {
+  const terrain = createTerrain({ size: 128, chunks: 2, resolution: 32, levels: 1, height: { amplitude: 4, featureSize: 40 }, seed: 3, ...terrainOptions });
+  const sea = placed('sea', [0, -0.5, 0], [4000, 1, 4000], WATER);
+  return { terrain, parts: [...terrain.parts, sea] };
+}
+
+function mirrorOnlyLevelCount(terrain) {
+  return terrain.parts.reduce((total, part) => total + (part.lods ?? []).filter(lod => lod.mirrorOnly).length, 0);
+}
+
+test('a terrain with no mirrorLevels builds no coarse mirror meshes until the scene gets water', () => {
+  const { terrain, parts } = terrainWithSea({});
+  assert.equal(mirrorOnlyLevelCount(terrain), 0);
+  assert.ok(terrain.parts.every(part => part.lods === undefined));
+  applyWaterReflection(parts);
+  assert.equal(mirrorOnlyLevelCount(terrain), terrain.parts.length * 2);
+  assert.ok(terrain.parts.every(part => part.lods.length === 3 && part.lods[0].geometry === part.geometry));
+});
+
+test('a scene with no water surface leaves the terrain without coarse mirror meshes', () => {
+  const terrain = createTerrain({ size: 128, chunks: 2, resolution: 32, levels: 1, height: { amplitude: 4, featureSize: 40 } });
+  const result = applyWaterReflection(terrain.parts);
+  assert.equal(result.surface, null);
+  assert.equal(mirrorOnlyLevelCount(terrain), 0);
+});
+
+test('an explicit mirrorLevels wins over the lazy default, 0 included', () => {
+  const none = terrainWithSea({ mirrorLevels: 0 });
+  applyWaterReflection(none.parts);
+  assert.equal(mirrorOnlyLevelCount(none.terrain), 0);
+  const one = terrainWithSea({ mirrorLevels: 1 });
+  applyWaterReflection(one.parts);
+  assert.equal(mirrorOnlyLevelCount(one.terrain), one.terrain.parts.length);
+});
+
+test('the lazy levels follow later terrain updates and are built once, and a resolution that allows fewer halvings takes fewer', () => {
+  const { terrain, parts } = terrainWithSea({});
+  applyWaterReflection(parts);
+  const built = terrain.parts.map(part => part.lods);
+  applyWaterReflection(parts);
+  assert.deepEqual(terrain.parts.map(part => part.lods), built);
+  terrain.update([0, 500, 0]);
+  assert.equal(mirrorOnlyLevelCount(terrain), terrain.parts.length * 2);
+  const coarse = terrainWithSea({ resolution: 2 });
+  applyWaterReflection(coarse.parts);
+  assert.equal(mirrorOnlyLevelCount(coarse.terrain), coarse.terrain.parts.length);
 });
 
 test('worldBounds equals the per-axis formula it replaced, under a rotated and moved matrix', async () => {
