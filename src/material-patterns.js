@@ -229,6 +229,7 @@ export function bakeMaterialPattern(pattern) {
   };
   if (pattern.type === GRAPH_TYPE) return { ...bakeMaterialGraph(pattern.graph, pattern), ...placement };
   const { resolution, type, seed, count, colors, bump } = pattern;
+  if (!Object.hasOwn(PATTERN_SAMPLERS, type)) throw patternError(`type must be one of ${MATERIAL_PATTERN_TYPES.join(', ')}.`);
   const sampler = PATTERN_SAMPLERS[type];
   const pixelCount = resolution * resolution;
   const heights = new Float32Array(pixelCount);

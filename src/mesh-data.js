@@ -5,6 +5,7 @@ export const DOMAINS = Object.freeze(['point', 'edge', 'face', 'corner']);
 export const MAX_MESH_VERTICES = 4_000_000;
 export const MAX_MESH_CORNERS = 16_000_000;
 export const TAG_PREFIX = 'tag:';
+const RESERVED_ATTRIBUTE_NAMES = new Set(['__proto__', 'constructor', 'prototype']);
 
 const ATTRIBUTE_TYPES = new Map([
   [Float32Array, 'float32'], [Uint8Array, 'uint8'], [Uint16Array, 'uint16'],
@@ -26,6 +27,8 @@ function domainCount(mesh, domain) {
 }
 
 function validateAttribute(name, attribute, expectedCount) {
+  // Attributes are stored by name on plain objects, where these names would reach the prototype instead of an attribute.
+  if (RESERVED_ATTRIBUTE_NAMES.has(name)) throw new TypeError(`Attribute name ${name} is reserved; pick another name.`);
   if (!attribute || typeof attribute !== 'object') throw new TypeError(`Attribute ${name} must be { data, size }.`);
   const { data, size } = attribute;
   if (!ATTRIBUTE_TYPES.has(data?.constructor)) throw new TypeError(`Attribute ${name} needs a Float32, Uint8, Uint16, Uint32 or Int32 array.`);
