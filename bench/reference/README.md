@@ -1651,3 +1651,28 @@ Which scenes fail, and why (inferred, not isolated): `long-street` (+0.0135 at 0
 Cost, measured (GPU, `frame-time.mjs --plain`, median of 3 runs in two rounds): the trace takes 0.5 to 1.7 s for the usual 33,000 to 56,000 texels (2.1 to 3.6 million rays, 64 per texel; `brick-room` 6.4 s for 253,000 texels because its floor part is large). Frame time rises because the floor goes from 2 triangles to about 66,000: `long-street` 0.40 to 0.61 ms, `material-spheres` 0.52 to 0.63 ms, `temple-hall-a` 1.50 to 1.80 ms (+0.1 to +0.3 ms; the shadow pass draws the triangles too). A 2D texture read in the shader would avoid that and needs a core hook; it was not tried.
 
 Box 4 fails: four default scenes pass the 0.002 limit at the best variant (`long-street` +0.0135 is the worst), so the term is not on by default. It stays as an opt-in addon, off unless a scene calls `applyFloorSkyVisibility` or the harness flag is given, so the default frames, `baseline.json` and `grand.json` are unchanged. It helps `car-paint`, `brick-flat`, `brick-graph`, `brushed-film`, `material-spheres` (-0.004 to -0.010) and the three temple options (-0.011 to -0.021), and costs the street and city scenes. Next idea, if taken up: a per-texel map that also carries the light that comes back from the lit walls (the sun-lit side of the facades seen from the floor texel), so a street is darkened by the sky it loses and lit by what the facades give, instead of by sky visibility alone.
+
+## Water shadows (2026-11-03, part of issue #349)
+
+A post stands in a 12 m pool and the camera looks straight down (`scripts/water-shadow-scene.js`, run by `node scripts/measure-water-shadows.mjs`). Shadow contrast is the lit minus the shadowed bed, per channel, against the same pool dry, so the absorption of the column is what is left. Measured in Chrome with 8 bit output, inverted to linear:
+
+| Preset | Depth | Red | Green | Blue | `exp(-absorption * depth)` for the clear lake (red, green, blue) |
+| --- | --- | --- | --- | --- | --- |
+| lake | 0.2 m | 0.928 | 0.978 | 1.010 | 0.932, 0.986, 0.992 |
+| lake | 1 m | 0.699 | 0.907 | 0.948 | 0.705, 0.932, 0.961 |
+| lake | 4 m | 0.227 | 0.694 | 0.785 | 0.247, 0.756, 0.852 |
+| sea | 4 m | 0.139 | 0.520 | 0.619 | |
+| river | 1 m | 0.204 | 0.190 | 0.087 | |
+| river | 4 m | 0.005 | 0.005 | 0.000 | |
+
+The clear lake stays within 10 percent of the formula (the largest gap, 8 percent at 4 m, is the in-scatter of turbidity 0.02). `RENDER_TESTS=1 node --test tests/water-shadows-render.test.js` checks it. On an opaque water surface the post's shadow darkened the steep view by 9.5 to 14 percent before and darkens it by 3 to 4 percent now (river 1.5 percent); the grazing view, which is nearly all reflection, shows 0 percent both times, so the shadow never reaches the mirrored sky.
+
+The reference scenes draw their water as a smooth `surface` part with the planar reflection, not the `water` tag, and the shader code they run is unchanged, so they were not rescored. The Blender Cycles reference of the pool (volume absorption and scatter) and its FLIP score are not taken yet; they wait for a look at the preview.
+
+### Refraction and a dark band (2026-11-04, part of issue #349)
+
+Blended water (a `water` part with opacity below one) now draws its own background: the opaque pass leaves the depth below the water level in the alpha channel of every submerged surface, the water bends the view ray at the surface (n = 1.33, with the wave normal), reads the frame texture where the bent ray meets the bed, and blurs it with a disc of radius turbidity times depth. Where nothing submerged is seen it keeps its own colour. A submerged surface also gets a share of the daylight the water scattered toward the eye, so it fades into the water colour instead of going dark. The bed contrast numbers above hold (lake 4 m: 0.226, 0.688, 0.787 against 0.247, 0.756, 0.852).
+
+The dark band at the foot of a shadow in the first preview was not a doubled shadow: the bed point takes its sun visibility once and the surface lift applies only to water fragments. Along the shadow the bed is even (green channel 0.178 to 0.173 at 1 m, 0.157 to 0.152 at 4 m, seen from above), and a close render shows no band. The band was the shaded side of the submerged post, which got darker with depth and had no scattered light, so it joined the shadow. The scattered light fixes it.
+
+The new preview uses Poly Haven CC0 assets (boulder_01, rock_07, modular_wooden_pier and the gravel_ground_01 material) read from `out/assets`, which is ignored by Git.

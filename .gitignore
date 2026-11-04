@@ -61,3 +61,6 @@ public/gaussian-splats.md
 
 # Optional denoiser binaries fetched by packages/denoise-oidn/fetch-oidn.mjs
 packages/denoise-oidn/vendor/
+
+# Renders and previews that are not part of the package
+out/
