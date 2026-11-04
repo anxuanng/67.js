@@ -68,3 +68,25 @@ test('the local shadow atlas holds one row of tiles per four shadow tiles and re
   assert.deepEqual(sizes, [[2048, 512], [2048, 1024]]);
   assert.equal(renderer.memoryReport().targets[0].height, 1024);
 });
+
+function frameTargetRenderer(depth) {
+  const { context } = recordingContext();
+  const renderer = Object.create(Renderer67.prototype);
+  Object.assign(renderer, {
+    context, depth, hdr: true, multisampleSamples: 4, renderTargets: new RenderTargetLedger(), releaseFrameTargets() {},
+  });
+  return renderer;
+}
+
+test('the multisampled depth uses 16 bits unless a depth texture needs the same format as its resolve', () => {
+  const plain = frameTargetRenderer(false);
+  plain.allocateFrameTargets(960, 540);
+  const plainDepth = plain.memoryReport().targets.find(target => target.name === 'multisampleDepth');
+  assert.equal(plainDepth.format, 'DEPTH_COMPONENT16');
+  assert.equal(plainDepth.bytes, 960 * 540 * 4 * 2);
+  const withTexture = frameTargetRenderer(true);
+  withTexture.allocateFrameTargets(960, 540);
+  const textureDepth = withTexture.memoryReport().targets.find(target => target.name === 'multisampleDepth');
+  assert.equal(textureDepth.format, 'DEPTH_COMPONENT24');
+  assert.equal(textureDepth.bytes, 960 * 540 * 4 * 4);
+});
