@@ -41,6 +41,7 @@ uniform float volumeShadowAmbient;
 uniform float volumeNoiseAmount;
 uniform float volumeNoiseScale;
 uniform float volumeMaxDistance;
+uniform float volumeHeightFalloff;
 uniform float orthographic;
 uniform highp sampler3D fogSkyVisibility;
 uniform sampler2D occlusionTexture;
@@ -94,6 +95,7 @@ vec3 volumeFog(vec3 background) {
     vec3 position = origin + direction * (entry + (float(index) + jitter) * stepSize);
     float noise = 1.0;
     if (volumeNoiseAmount > 0.0) noise = mix(1.0, cloudNoise((position - volumeDrift * time) * volumeNoiseScale) * 2.0, volumeNoiseAmount);
+    if (volumeHeightFalloff > 0.0) noise *= exp((volumeMinimum.y - position.y) / volumeHeightFalloff);
     float opacity = 1.0 - exp(-volumeDensity * noise * stepSize);
     vec4 lightPosition = volumeLightProjection * vec4(position, 1);
     vec3 shadow = lightPosition.xyz / lightPosition.w * 0.5 + 0.5;
