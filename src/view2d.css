@@ -16,6 +16,8 @@ h1 { font-size: 16px; font-weight: 500; margin: 0 12px 0 0; }
 .scene-picker { display: flex; align-items: center; gap: 10px; color: #b6c2c5; }
 select { color: #eef1ef; border: 0; background: #ffffff0b; border-radius: 8px; padding: 9px 12px; }
 nav { display: flex; gap: 4px; }
+.toolbar .studio-nav a { color: #b6c2c5; text-decoration: none; font-size: 13px; }
+.toolbar .studio-nav a:hover { color: #eef1ef; }
 [hidden] { display: none !important; }
 .toolbar-actions { display: flex; gap: 8px; margin-left: auto; }
 .primary { color: #213016; background: #c5f091; font-weight: 600; }
@@ -46,6 +48,8 @@ output { font-variant-numeric: tabular-nums; color: #bec9cc; min-width: 98px; fo
   select { padding: 8px; max-width: 130px; }
   .toolbar-actions { margin-left: 0; }
   nav { order: 2; flex: 1; }
+  .toolbar .studio-nav { order: 3; flex: 1 1 100%; }
+  .toolbar .studio-nav a { padding: 8px 10px; }
   nav button { padding: 9px 11px; font-size: 12px; }
   .toolbar-actions button { padding: 9px 12px; font-size: 12px; }
   .stage { min-height: 310px; }
