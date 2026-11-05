@@ -280,7 +280,7 @@ This conservative repair step prevents two recovery processes from deleting a ne
 | Combined output bytes per job | 128 MiB |
 | PNG artifact bytes | 12 MiB each (a 1920x1080 frame) |
 | Snapshot JSON | 1 MiB |
-| Asset bytes | 16 MiB |
+| Asset bytes | 64 MiB |
 | Dimensions | 64 to 1920 pixels each, at most 1920x1080 pixels in all (1080x1920 fits) |
 | Video frame rate | 1 to 30 fps |
 | Duration | 0.1 to 60 seconds |
