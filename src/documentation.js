@@ -3,6 +3,7 @@ import './documentation.css';
 import guide from '../docs/guide.md?raw';
 import { highlightCode } from './code-highlight.js';
 import { createLiveExample, autoRunVisibleExamples } from './docs-live.js';
+import { createApiReference } from './docs-api.js';
 import { topicAliases, topicSlug, guideTopics, learnTopics, orderTopics } from './documentation-topics.js';
 
 const learnSources = import.meta.glob('../docs/learn/*.md', { query: '?raw', import: 'default', eager: true });
@@ -213,6 +214,8 @@ function renderFence(block, section) {
     section.append(installBlock(info, currentTopic.title));
   } else if (info.language === 'cards') {
     section.append(cardList(info));
+  } else if (info.language === 'api') {
+    section.append(createApiReference());
   } else if (info.language === 'check') {
     section.append(webglCheck());
   } else {
@@ -396,6 +399,10 @@ function openTopic(focus = false) {
   renderNavigation();
   renderOutline(section);
   exampleStarter = autoRunVisibleExamples(article);
+  section.addEventListener('api-ready', () => {
+    renderOutline(section);
+    if (requestedSection) document.getElementById(requestedSection)?.scrollIntoView();
+  }, { once: true });
   if (requestedSection) {
     requestAnimationFrame(() => document.getElementById(requestedSection)?.scrollIntoView());
   } else if (focus) {

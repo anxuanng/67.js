@@ -171,3 +171,20 @@
   .documentation .live-status { order:5; flex-basis:100%; margin:6px 0 0; }
   .documentation .live-status:empty { display:none; }
 }
+
+/* API reference: a filter, then one block per module and one row per export. */
+.api-filter { display:block; margin:8px 0 10px; }
+.api-filter > span { display:block; font-size:13px; color:var(--muted); margin-bottom:8px; }
+.documentation .api-filter input { width:100%; min-height:44px; padding:11px 13px; font-size:14px; border-radius:var(--radius); background:var(--bg); border:1px solid var(--border); color:var(--text); }
+.documentation #doc-article .api-count { font-size:13px; color:var(--muted); margin:0 0 8px; }
+.documentation #doc-article .api-module h3 { display:flex; align-items:baseline; gap:10px; margin:40px 0 6px; font-size:17px; }
+.api-module h3 code { background:none !important; padding:0 !important; font-size:16px !important; }
+.api-module h3 span { font-size:12px; font-weight:500; color:var(--muted); }
+.documentation #doc-article .api-import { margin:0 0 12px; font-size:13px; color:var(--muted); }
+.api-entry { margin:0 0 6px; padding:14px 16px; border-radius:var(--radius); background:var(--bg); scroll-margin-top:calc(var(--navigation-height,80px) + 24px); }
+.api-entry-heading { display:flex; flex-wrap:wrap; align-items:baseline; gap:4px 10px; }
+.documentation #doc-article .api-entry h4 { margin:0; font:600 14px ui-monospace,Consolas,monospace; min-width:0; overflow-wrap:anywhere; }
+.api-kind { font-size:12px; color:var(--muted); }
+.documentation #doc-article .api-source { margin-left:auto; font-size:12px; color:var(--muted); }
+.documentation .docs .api-entry pre { padding:6px 0 0; font-size:12.5px; line-height:1.6; white-space:pre-wrap; overflow-wrap:anywhere; }
+.documentation #doc-article .api-entry p { margin:6px 0 0; font-size:13.5px; line-height:1.65; color:var(--muted); }
