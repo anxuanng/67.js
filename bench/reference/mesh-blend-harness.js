@@ -70,7 +70,7 @@ window.setupScene = async ({ scene, mode }) => {
     const { installMeshBlend } = await import(/* @vite-ignore */ ['/src/mesh', 'blend.js'].join('-'));
     installMeshBlend(renderer);
   }
-  watch(renderer.context);
+  if (location.search.includes('debug')) watch(renderer.context);
   renderer.resize();
   frame ={ ...built.camera, environment: { lightDirection: [-3, 6, 4] }, time: 0, exposure: 1, effects: { ambientOcclusion: 0 } };
   renderer.render(frame);
