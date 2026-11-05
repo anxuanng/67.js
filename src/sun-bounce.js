@@ -27,7 +27,7 @@ const LIFT_IN_RADII = 1;
 // Fitted against Cycles on the reference halls (docs/lighting.md); environment.sunBounce multiplies it.
 export const SUN_BOUNCE_GAIN = 0.3;
 // The strength a scene gets when it sets no `environment.sunBounce`.
-export const DEFAULT_SUN_BOUNCE = 3;
+export const DEFAULT_SUN_BOUNCE = 1;
 // A light closer than this share of the scene to a surface blows up as 1/d^2 into a hard speck, so a patch with less free space in front is left out.
 const MINIMUM_LIFT_SHARE = 0.03;
 const KEY_THRESHOLD = 1e-3;
@@ -212,7 +212,7 @@ export function findSunBounceLights(parts, environment, { strength = 1, maximumL
 const lightsOfParts = new WeakMap();
 
 /**
- * The environment with the sunlit patches' lights added to its point lights. `environment.sunBounce` (default 3) scales
+ * The environment with the sunlit patches' lights added to its point lights. `environment.sunBounce` (default 1) scales
  * them; 0 returns the environment itself. The patches are found once for these parts and this sun and kept.
  */
 export function withSunBounce(parts, environment) {
