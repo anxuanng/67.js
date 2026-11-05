@@ -5,6 +5,7 @@ import { skyOpenness } from '../src/closed-room.js';
 import { fogSkyVisibility } from '../src/fog-sky-visibility.js';
 import { installCameraEffects } from '../src/camera-effects.js';
 import { installRenderPasses } from '../src/render-passes.js';
+import { installMeshBlend, normalizeBlend } from '../src/mesh-blend.js';
 import { installDepthPrecision } from '../src/reversed-depth.js';
 import { applyProjection } from '../src/camera.js';
 import { mat4 } from 'gl-matrix';
@@ -243,6 +244,7 @@ function draw(record, time = 0, camera = record.scene.camera, frameOptions = {})
     record.shadowKey = shadowKey;
   }
   record.renderer.world = environment.world;
+  syncMeshBlend(record);
   record.renderer.userPasses?.set(record.scene.postPasses ?? []);
   applyRecipeWindHeading(record.renderer, environment);
   record.renderer.render({ ...camera, environment: litEnvironment(record.scene.parts, environment, Boolean(record.renderer.groundPart)), effects, exposure: effects.exposure, time, lines: environment.lines, ...windFrame(environment), ...frameOptions });
@@ -250,6 +252,19 @@ function draw(record, time = 0, camera = record.scene.camera, frameOptions = {})
   if (error !== 0) {
     throw new Error(`WebGL render failed with error ${error}.`);
   }
+}
+
+// The radius of each node's `blend`, by part name. Checked again only when the scene revision changes; a bad value throws here
+// with the field's message, which the render reports.
+function syncMeshBlend(record) {
+  if (record.blendRevision === record.scene.revision && record.blendRenderer === record.renderer) return;
+  record.blendRevision = record.scene.revision;
+  record.blendRenderer = record.renderer;
+  const radii = new Map();
+  for (const node of record.scene.exportRecipe().nodes ?? []) {
+    if (node.blend !== undefined) radii.set(node.id, normalizeBlend(node.blend).radius);
+  }
+  record.renderer.meshBlend.radii = radii;
 }
 
 function status(record) {
@@ -340,7 +355,9 @@ function initializeRenderer(scene, { memoryBudgetMiB, backend }) {
     memoryBudgetMiB,
   }))));
   // Outlines, toon light and polylines draw only for a frame that carries environment.lines; user passes run last, on the finished frame.
-  return agentSceneModule('userPass').installUserPasses(agentSceneModule('lineArt').installLineArt(renderer));
+  // Mesh blend installs before line art, so its stage runs first and the lines draw over the blended colour; it blends only the
+  // parts whose nodes carry `blend` (syncMeshBlend), so a recipe without it draws as before.
+  return agentSceneModule('userPass').installUserPasses(agentSceneModule('lineArt').installLineArt(installMeshBlend(renderer)));
 }
 
 // Camera fields from a timeline shot on top of the sampled camera, checked with the scene's own camera rules.

@@ -84,6 +84,7 @@ export default defineConfig({
         'render-passes': 'src/render-passes.js',
         'user-pass': 'src/user-pass.js',
         'line-art': 'src/line-art.js',
+        'mesh-blend': 'src/mesh-blend.js',
         'coplanar-overlap': 'src/coplanar-overlap.js',
         'reversed-depth': 'src/reversed-depth.js',
         'material-layer-shaders': 'src/material-layer-shaders.js',

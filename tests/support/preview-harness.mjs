@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { Script, createContext } from 'node:vm';
 import { mat4 } from 'gl-matrix';
 import { createAgentScene, needsMeshBooleans, loadMeshBooleans, meshBooleansLoaded, needsPhysics, loadPhysicsEngine, physicsEngineLoaded, loadAllAgentSceneModules, allAgentSceneModulesLoaded } from '../../src/agent-scene.js';
+import { normalizeBlend } from '../../src/mesh-blend.js';
 import { applyProjection } from '../../src/camera.js';
 import { resolveAgentShadow, agentEnvironmentMap } from '../../src/agent-look.js';
 import { agentSceneModule, agentSceneModuleLoaded } from '../../src/agent-scene-modules.js';
@@ -84,6 +85,7 @@ export function previewHarness() {
     agentGroundPlacement: () => null, createAgentGround: () => null, placeAgentGround: () => {}, FLOOR_COLOR: [0.22, 0.22, 0.21], groundBounceEnvironment: (parts, environment) => environment,
     // The optional addons only plug stages into a real renderer; the fault-injected one needs none.
     installCameraEffects: renderer => renderer, installRenderPasses: renderer => renderer, installDepthPrecision: renderer => renderer,
+    installMeshBlend: renderer => Object.assign(renderer, { meshBlend: { radii: new Map() } }), normalizeBlend,
   });
   // Evaluate only trusted repository adapter code; inject the driver boundary for failure cases.
   new Script(source).runInContext(context);
