@@ -1,12 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, writeFile, rm, symlink } from 'node:fs/promises';
+import { mkdtemp, writeFile, rm, symlink, readdir, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { mat4 } from 'gl-matrix';
 import { box } from '../src/geometry.js';
 import { exportGlb } from '../src/export.js';
 import { createAgentAssetCatalog } from '../scripts/agent-asset-catalog.mjs';
+import { AGENT_ASSET_LIMITS, agentAssetDecodeOptions, withCatalogLimitAdvice } from '../src/agent-asset-limits.js';
+import { GLTF_CAPABILITIES, parseGltf } from '../src/gltf.js';
 
 async function fixture(context) {
   const directory = await mkdtemp(join(tmpdir(), '67js-catalog-'));
@@ -65,8 +67,9 @@ test('catalog rejects external resources and malformed or over-budget GLBs befor
   const { directory, bytes } = await fixture(context);
   await writeFile(join(directory, 'cube.glb'), withDocument(bytes, document => { document.buffers[0].uri = 'https://example.invalid/private'; }));
   await assert.rejects(createAgentAssetCatalog(directory), /embed all/);
-  await writeFile(join(directory, 'cube.glb'), Buffer.alloc(16 * 1024 * 1024 + 1));
-  await assert.rejects(createAgentAssetCatalog(directory), /16 MiB/);
+  await writeFile(join(directory, 'cube.glb'), Buffer.alloc(AGENT_ASSET_LIMITS.maxBytes + 1));
+  await assert.rejects(createAgentAssetCatalog(directory), error => error instanceof RangeError
+    && error.message.includes('cube.glb: Asset is 67108865 bytes, over the catalog maxBytes 67108864 (64 MiB)'));
   await writeFile(join(directory, 'cube.glb'), Buffer.alloc(28));
   await assert.rejects(createAgentAssetCatalog(directory), /complete glTF/);
 });
@@ -82,7 +85,7 @@ test('declared clip metadata stays bounded even when a GLB contains many animati
   assert.equal(listing.assets[0].animations.length, 16);
   assert.equal(listing.assets[0].animationsTruncated, true);
   assert.ok(Buffer.byteLength(JSON.stringify(listing)) < 4096);
-  await assert.rejects(catalog.read(listing.assets[0].assetId), /256-clip/);
+  await assert.rejects(catalog.read(listing.assets[0].assetId), /100000 animation clips, over the catalog maxClips 256/);
 });
 
 test('catalog rejects linked assets and requires an explicitly absolute directory', async context => {
@@ -90,4 +93,37 @@ test('catalog rejects linked assets and requires an explicitly absolute director
   await assert.rejects(createAgentAssetCatalog('relative-assets'), /absolute/);
   await symlink(join(directory, 'cube.glb'), join(directory, 'linked.glb'), 'file');
   await assert.rejects(createAgentAssetCatalog(directory), /without links/);
+});
+
+test('the catalog limits are the documented values and never exceed the loadGltf defaults', () => {
+  assert.deepEqual({ ...AGENT_ASSET_LIMITS }, {
+    maxBytes: 64 * 1024 * 1024, maxAssets: 64, maxVertices: 1_000_000, maxParts: 4096,
+    maxTexturePixels: 4_194_304, maxJoints: 1024, maxClips: 256,
+  });
+  const defaults = GLTF_CAPABILITIES.limits;
+  for (const [name, value] of Object.entries(agentAssetDecodeOptions())) {
+    assert.ok(value <= defaults[name], `${name} ${value} is above the loadGltf default ${defaults[name]}`);
+    assert.equal(value, AGENT_ASSET_LIMITS[name]);
+  }
+});
+
+test('no MCP script writes an asset limit as a literal number', async () => {
+  const names = (await readdir(new URL('../scripts/', import.meta.url))).filter(name => /^agent-.*\.(mjs|js)$/.test(name));
+  for (const name of names) {
+    const source = await readFile(new URL(`../scripts/${name}`, import.meta.url), 'utf8');
+    assert.doesNotMatch(source, /maxVertices: 250000|maximumVertices: 250000|MAXIMUM_ASSET_BYTES = 16|MAXIMUM_BYTES = 16/, name);
+  }
+});
+
+test('a decode limit error names the catalog limit and the value the file hit, with no code-only advice', async context => {
+  const { bytes } = await fixture(context);
+  const tight = { ...agentAssetDecodeOptions(), maxVertices: 4 };
+  const failure = await parseGltf(new Uint8Array(bytes).buffer, tight).then(() => null, error => error);
+  assert.ok(failure instanceof RangeError);
+  const advised = withCatalogLimitAdvice(failure);
+  assert.match(advised.message, /vertices \d+, over maxVertices 4/);
+  assert.match(advised.message, new RegExp(`MCP catalog limits are maxBytes ${AGENT_ASSET_LIMITS.maxBytes}, maxVertices ${AGENT_ASSET_LIMITS.maxVertices}`));
+  assert.doesNotMatch(advised.message, /Fix: pass/);
+  const other = new Error('unrelated');
+  assert.equal(withCatalogLimitAdvice(other), other);
 });
