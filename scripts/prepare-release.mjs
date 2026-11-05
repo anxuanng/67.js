@@ -4,6 +4,7 @@ import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { changelogWithUnreleased, readChangelogData } from './changelog-fragments.mjs';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const metadata = JSON.parse(await readFile(resolve(root, 'package.json'), 'utf8'));
@@ -32,7 +33,11 @@ let integrity = `sha512-${createHash('sha512').update(archive).digest('base64')}
 await cp(resolve(root, 'build'), resolve(releases, metadata.version), { recursive: true });
 run(process.execPath, ['node_modules/vite/bin/vite.js', 'build', '--config', 'vite.browser.config.js']);
 await copyFile(resolve(root, 'build-browser/67.module.js'), resolve(releases, metadata.version, '67.module.js'));
-await copyFile(resolve(root, 'CHANGELOG.md'), resolve(root, 'public/changelog.md'));
+// The site shows pending change notes above the released sections. Nothing here is kept by hand.
+const changelogText = await readFile(resolve(root, 'CHANGELOG.md'), 'utf8');
+await writeFile(resolve(root, 'public/changelog.md'), await changelogWithUnreleased(changelogText));
+await writeFile(resolve(root, 'public/changelog.json'), `${JSON.stringify(await readChangelogData({ changelogText, version: metadata.version }), null, 2)}
+`);
 await copyFile(resolve(root, 'docs/guide.md'), resolve(root, 'public/guide.md'));
 await copyFile(resolve(root, 'docs/gltf.md'), resolve(root, 'public/gltf.md'));
 const sourceDocuments = [
@@ -90,6 +95,7 @@ const release = {
   packageBytes: archive.length,
   api: './docs.html#renderer-reference',
   changelog: '/changelog.md',
+  changelogData: '/changelog.json',
 };
 await writeFile(resolve(root, 'public/release.json'), `${JSON.stringify(release, null, 2)}\n`);
 console.log(`Prepared ${metadata.name}@${metadata.version}: ${packed.size} bytes, commit ${commit.slice(0, 8)}, registry published ${registryPublished}.`);

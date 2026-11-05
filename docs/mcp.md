@@ -10,6 +10,8 @@ Release `0.7.0` adds [procedural motion](agent-motion.md), transient preview see
 Release `0.8.0` adds [imported character motion](agent-character-motion.md) with source joints and independent clip timing.
 Release `0.9.0` adds [visual review](agent-review.md) for several labeled views or poses from one isolated snapshot.
 
+To see what changed, including changes not yet released, read `https://67js.codepawl.com/changelog.json`: `released` sections, `unreleased` entries and each entry's issue number and `breaking` flag.
+
 It renders one active scene and returns PNG images through MCP image content.
 Tool results also contain JSON text and structured metadata.
 The image bytes appear only in the image content block.
