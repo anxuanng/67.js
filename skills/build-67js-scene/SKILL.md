@@ -85,3 +85,7 @@ Do not claim Blender parity or general Three.js speed superiority from one scene
 Deliver the scene link, a rendered image, relevant checks and known limits.
 To see what changed, including unreleased changes and breaking ones, read `https://67js.codepawl.com/changelog.json`.
 Keep this skill aligned with the checked-out renderer API when changing that API.
+
+## Bugs
+
+If you find a 67js bug or instability, file it at once with `gh issue create -R codepawl/67.js`. Give the steps, the scene and a still.
