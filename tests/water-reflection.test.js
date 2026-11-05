@@ -262,6 +262,15 @@ test('canReuseMirrorImage needs a drawn picture, the same frame and parts, or an
   assert.equal(canReuseMirrorImage({ ...base, updateEvery: 2, framesSinceDraw: 1 }, { ...drawnFrame, time: 2 }), false);
 });
 
+test('canReuseMirrorImage compares small typed arrays by value and a large one, a sky payload, by identity', () => {
+  const sky = new Float32Array(2_000_000);
+  const drawnFrame = { eye: new Float32Array([0, 20, 100]), environment: { map: { pixels: sky } } };
+  const base = { ready: true, drawnFrame, partsRevision: 1, drawnRevision: 1, framesSinceDraw: 0, updateEvery: 1 };
+  assert.equal(canReuseMirrorImage(base, { eye: new Float32Array([0, 20, 100]), environment: { map: { pixels: sky } } }), true);
+  assert.equal(canReuseMirrorImage(base, { eye: new Float32Array([0, 21, 100]), environment: { map: { pixels: sky } } }), false);
+  assert.equal(canReuseMirrorImage(base, { eye: new Float32Array([0, 20, 100]), environment: { map: { pixels: new Float32Array(2_000_000) } } }), false);
+});
+
 test('only the mirror draw carries the mirror culling: parts under the plane, coarser levels and small far parts', () => {
   const context = new Proxy({}, { get: (_, name) => (name === 'checkFramebufferStatus' ? () => 1 : name === 'FRAMEBUFFER_COMPLETE' ? 1 : typeof name === 'string' && name === name.toUpperCase() ? 0 : () => ({})) });
   const cullingSeen = [];
