@@ -23,7 +23,7 @@ const MAX_MESH_REPORTS = 16;
 // Terrain meshes carry one more float for each vertex (sky visibility) than the 56 bytes the budget estimates.
 const TERRAIN_SKY_VISIBILITY_BYTES = 4;
 const CAMERA_DEFAULTS = Object.freeze({ eye: [4, 3, 5], target: [0, 0, 0], up: [0, 1, 0], fov: 45, near: 0.1, far: 1000 });
-const NODE_FIELDS = ['translation', 'rotation', 'scale', 'parent', 'label', 'geometry', 'material', 'skin', 'relations', 'asset', 'vegetation', 'decal', 'depthLayer'];
+const NODE_FIELDS = ['translation', 'rotation', 'scale', 'parent', 'label', 'geometry', 'material', 'skin', 'relations', 'asset', 'vegetation', 'decal', 'depthLayer', 'blend'];
 const MATERIAL_FIELDS = ['color', 'metallic', 'roughness', 'emission', 'emissiveColor', 'opacity', 'alphaMode', 'doubleSided', 'pattern', 'map', 'subsurface', 'snippet', 'waterPreset', 'absorption', 'turbidity', ...MATERIAL_LAYER_FIELDS];
 const PATTERN_TEXTURE_FIELDS = ['map', 'normalMap', 'metallicRoughnessMap', 'emissiveMap', 'boxMapScale', 'boxMapAxis'];
 const CAMERA_FIELDS = Object.keys(CAMERA_DEFAULTS);
