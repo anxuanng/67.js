@@ -361,7 +361,8 @@ body.site > main > section { scroll-margin-top: 96px; }
 .site .site-footer p { display: flex; align-items: center; gap: 5px; }
 .site .site-footer p a:not(.brand) { color: var(--text); }
 .site .footer-links { display: flex; flex-wrap: wrap; gap: 4px 18px; }
-.site .footer-links a { display: inline-flex; align-items: center; min-height: 26px; color: var(--muted); }
+.site .footer-links a { display: inline-flex; align-items: center; gap: 8px; min-height: 26px; color: var(--muted); }
+.site .footer-links .package-logo { width: 14px; height: 14px; }
 .site .footer-links a:hover { color: var(--text); text-decoration: underline; }
 
 /* Docs: the reading page keeps its own layout (documentation.css) on these tokens. */
