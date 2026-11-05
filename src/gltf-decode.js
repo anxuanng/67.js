@@ -48,9 +48,12 @@ export function throwOverruns(overruns) {
   throw new RangeError(`glTF over its limits: ${overruns.map(overrun => overrun.text).join('; ')}. Fix: pass { ${fix} }.`);
 }
 
-/** POINTS, LINES, LINE_LOOP and LINE_STRIP (modes 0 to 3) are not drawn, so the decoder leaves them out. */
+/** Primitives the loader found unusable (bad accessors) before decoding; the decoder leaves them out and the file still loads. */
+export const unusablePrimitives = new WeakSet();
+
+/** POINTS, LINES, LINE_LOOP and LINE_STRIP (modes 0 to 3) and primitives marked unusable are not drawn, so the decoder leaves them out. */
 export function isLinePrimitive(primitive) {
-  return primitive.mode >= 0 && primitive.mode <= 3;
+  return (primitive.mode >= 0 && primitive.mode <= 3) || unusablePrimitives.has(primitive);
 }
 
 export function textureSourceIndex(texture) {
