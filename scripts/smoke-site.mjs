@@ -22,7 +22,7 @@ try {
     if (route === '/downloads.html') await page.waitForURL(origin + '/#downloads');
     if (route === '/getting-started.html') await page.waitForURL(origin + '/docs.html#install');
     if (['/', '/downloads.html', '/docs.html', '/getting-started.html'].includes(route)) {
-      await page.locator('.navigation nav a .nav-label').waitFor();
+      await page.locator('.navigation nav a .nav-label').first().waitFor();
     }
     if (route.includes('object')) await page.waitForFunction(() => window.__studio?.renderer);
     if (route.includes('motion')) await page.waitForFunction(() => window.__motion?.renderer);
@@ -58,7 +58,7 @@ try {
     await page.setViewportSize({ width:1440,height:1000 });
     if (['/', '/downloads.html', '/docs.html', '/getting-started.html'].includes(route)) {
       assert.equal(await page.locator('aside.navigation').count(), 0);
-      assert.deepEqual(await page.locator('.navigation nav .nav-label').allTextContents(), ['Docs']);
+      assert.deepEqual(await page.locator('.navigation nav .nav-label').allTextContents(), ['Docs', 'Changelog']);
       assert.equal(await page.locator('.navigation nav a[aria-current="page"]').count(), ['/', '/downloads.html'].includes(route) ? 0 : 1);
       assert.equal(await page.locator('a[href$="llms.txt"]').count(), 0, 'Machine guide appears in public UI');
       assert.equal(await page.locator('.navigation a[href*="getting-started.html"]').count(), 0, 'Getting started still has separate navigation');
