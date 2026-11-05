@@ -6,6 +6,7 @@ import { RENDER_PASS_NAMES, VIDEO_ENCODERS, AUDIO_FILE_PATTERN, MAXIMUM_VIDEO_SE
 import { recipeAssetNeeds } from '../src/agent-scene-assets.js';
 import { normalizeFilmTimeline, filmTimelineDuration } from '../src/film-timeline.js';
 import { OIDN_DEFAULT_SAMPLES, PATH_TRACER_DENOISERS, PATH_TRACER_JOB_LIMITS } from '../src/path-tracer-capabilities.js';
+import { AGENT_ASSET_LIMITS, describeAssetBytes } from '../src/agent-asset-limits.js';
 
 const UUID =/^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
 const STATES = ['queued', 'running', 'finalizing', 'completed', 'cancelling', 'cancelled', 'failed', 'interrupted'];
@@ -32,7 +33,7 @@ export function jobDeadlineMs({ frameCount, width, height, renderer }, maximumMs
   return Math.min(maximumMs, Math.max(frameDeadline, traceDeadline));
 }
 const MAXIMUM_JSON_BYTES = 1024 ** 2;
-const MAXIMUM_ASSET_BYTES = 16 * 1024 ** 2;
+const MAXIMUM_ASSET_BYTES = AGENT_ASSET_LIMITS.maxBytes;
 /** Sibling folder of the job directories where the runtime keeps GLB exports; the store never reads or counts it. */
 export const EXPORT_DIRECTORY_NAME = 'exports';
 const STORE_FILES = ['store.json', 'store.lock', EXPORT_DIRECTORY_NAME];
@@ -529,7 +530,7 @@ export async function createAgentRenderJobs({ root, run, limits: inputLimits = {
       if (!recipe || typeof recipe !== 'object' || Array.isArray(recipe)) throw new TypeError('Snapshot recipe must be a JSON object.');
       const snapshotMetadata = jsonCopy({ recipe, clips });
       const settings = settingsFrom(input.settings, clips, recipe);
-      if (input.snapshot.assetBytes !== undefined && (!Buffer.isBuffer(input.snapshot.assetBytes) || input.snapshot.assetBytes.length > MAXIMUM_ASSET_BYTES || !input.snapshot.assetBytes.length)) throw new RangeError('Asset snapshot must be a nonempty Buffer of at most 16 MiB.');
+      if (input.snapshot.assetBytes !== undefined && (!Buffer.isBuffer(input.snapshot.assetBytes) || input.snapshot.assetBytes.length > MAXIMUM_ASSET_BYTES || !input.snapshot.assetBytes.length)) throw new RangeError(`Asset snapshot must be a nonempty Buffer of at most ${MAXIMUM_ASSET_BYTES} bytes (${describeAssetBytes(MAXIMUM_ASSET_BYTES)}).`);
       const snapshot = { recipe, clips, ...(input.snapshot.assetBytes ? { assetBytes: Buffer.from(input.snapshot.assetBytes) } : {}) };
       if (recipe.format === '67js.asset' && (!snapshot.assetBytes || createHash('sha256').update(snapshot.assetBytes).digest('hex') !== recipe.assetId)) throw new Error('Asset snapshot bytes must match the recipe SHA256 assetId.');
       const operation = (async () => {

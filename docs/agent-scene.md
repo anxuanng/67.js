@@ -106,7 +106,7 @@ Materials contain `id`, `tag`, `color`, `metallic`, `roughness`, `emission`, opt
 The defaults are `surface`, `[0.5, 0.5, 0.5]`, `0`, `0.5`, `0`, opacity `1`, `opaque` and `false`.
 The tag can be `surface`, `unlit`, `liquid`, `foam`, `water`, `foliage` or `grass` (the last two sway in `environment.wind`) and remains fixed during editing.
 `liquid` refracts and tints what lies behind it: its color is the light one metre lets through, so `[0.56, 0.84, 0.88]` is clear water. `foam` draws soft blended droplets.
-`water` is a flat mirror sheet (a plane or thin box). The largest one sets the water level: everything below it fades by `exp(-absorption * depth)` per colour channel (`absorption` is RGB per metre), and its shadows are lifted and softened with depth times `turbidity` (0 clear to 1 murky). `waterPreset` fills both: `lake` (default), `sea` or `river`. A shadow on the surface is faint and never darkens the reflection; give the sheet an `opacity` below one when the bed should show.
+`water` is a flat mirror sheet (a plane or thin box). The largest one sets the water level: everything below it fades by `exp(-absorption * depth)` per colour channel (`absorption` is RGB per metre), and its shadows are lifted and softened with depth times `turbidity` (0 clear to 1 murky). `waterPreset` fills both: `lake` (default), `sea` or `river`. A shadow on the surface is faint and never darkens the reflection; give the sheet an `opacity` below one when the bed should show. The sun's leg to a bed is bent at n = 1.33 and absorbed over `depth / cos(theta_t)`, so a clear lake keeps little shadow contrast on a bed 4 m down, and a murky river keeps about a quarter.
 Any `opacity` below one draws the material blended after opaque geometry, which suits glass, windows and visors. `alphaMode` accepts `opaque` or `blend`; cutout masking needs a texture and is not available in procedural recipes.
 `doubleSided` draws and lights both faces of thin sheets.
 Changing the tag, opacity, blending, sidedness or pattern replaces the affected parts in the renderer; color, metallic, roughness and emission edits keep them.
@@ -204,7 +204,7 @@ and the geometry UVs.
 { "id": "screen", "map": { "sequence": { "frames": ["<catalog image id>", "<catalog image id>"], "fps": 12 } } }
 ```
 
-- `frames` lists 2 to 64 IDs from `scene_asset_catalog`. The `--assets` folder takes PNG, JPEG and WebP files next to GLBs, with the same 16 MiB file budget, content-bound SHA-256 IDs and no links. An extension that does not match the file signature rejects the catalog. Entries report `kind: "image"` and `mimeType`; GLBs report `kind: "glb"`. No remote URLs are read.
+- `frames` lists 2 to 64 IDs from `scene_asset_catalog`. The `--assets` folder takes PNG, JPEG and WebP files next to GLBs, with the same 64 MiB file budget, content-bound SHA-256 IDs and no links. An extension that does not match the file signature rejects the catalog. Entries report `kind: "image"` and `mimeType`; GLBs report `kind: "glb"`. No remote URLs are read.
 - All frames share one size, at most 1024 pixels a side, and a scene decodes at most 64 MiB of frames. Frames are read without colour conversion and should be opaque.
 - `fps` is above 0 and at most 60. The frame at scene time `t` is `floor(t * fps)`: wrapped around the list when `loop` is true (the default), held on the last frame when `loop` is false. Frame 0 shows before any motion time is set.
 - The clock is `motionTime`, the one `scene_look`, `scene_review` and `motion` use. A seek is deterministic: the same time gives the same frame and the same PNG bytes. `scene_render_submit` reads it from `settings.motion.start` plus the elapsed time (or a timeline shot), so a still or video frame shows the frame that `scene_look` shows at that time. A recipe with a sequence and no authored `motion` accepts `settings.motion`.
@@ -302,6 +302,10 @@ An asset placement with a `crowd` field fills its group node with `count` (1 to 
 
 - `clip` is a clip index, `layout` is `grid` or `scatter`, and the pose is a pure function of scene time, `seed` and the recipe camera, so a render at a time equals the frame reached by playing. People farther than `farDistance` from the recipe camera hold each pose for `1 / farRate` seconds.
 - The crowd takes one decoded copy of the asset, the generated part nodes (count times materials) count against `maxNodes`, and `scene_inspect` lists it under `assets` with `kind: "crowd"`, `instances`, `batches`, `frames`, `paletteBytes` and `boundsRadius`.
+
+### Seams between meshes
+
+Three node fields fix what looks wrong where meshes meet; `add-node` and `set-node` take all of them. `blend: { "radius": 0.15 }` (metres, 0.005 to 2) softens the seam where a rock or trunk cuts into the ground and needs a preview with depth; see [mesh-blend.md](mesh-blend.md). `decal: true` and `depthLayer` (0 to 4) stop z-fighting on flush faces; see `depthBias` in `scene_capabilities`.
 
 ### Relations between parts
 

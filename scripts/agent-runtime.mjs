@@ -15,6 +15,7 @@ import { AGENT_SCENE_CAPABILITIES, AGENT_SCENE_DEFAULT_LIMITS, RENDER_PASS_NAMES
 import { PATH_TRACER_CAPABILITIES } from '../src/path-tracer-capabilities.js';
 import { chooseDenoiser, finishWithOidn } from './agent-path-trace-denoise.mjs';
 import { createAgentAssetCatalog } from './agent-asset-catalog.mjs';
+import { AGENT_ASSET_LIMITS } from '../src/agent-asset-limits.js';
 import { recipeAssetNeeds } from '../src/agent-scene-assets.js';
 import { sequenceFrameIds } from '../src/agent-texture-sequence.js';
 import { TEXTURE_SEQUENCE_CAPABILITIES } from '../src/texture-sequence-limits.js';
@@ -587,8 +588,9 @@ export function createAgentRuntime({ kernelWorkers = true, backend = 'gpu', brow
         availableIn: packageMetadata.version,
         assets: {
           configured: Boolean(assetRoot), formats: ['self-contained GLB', 'PNG, JPEG or WebP image (map sequence frame)'],
-          maximumBytes: 16 * 1024 * 1024, maximumAssets: 64,
-          maximumVertices: 250000, maximumParts: 4096, maximumTexturePixels: 4194304, maximumJoints: 1024, maximumClips: 256,
+          maximumBytes: AGENT_ASSET_LIMITS.maxBytes, maximumAssets: AGENT_ASSET_LIMITS.maxAssets,
+          maximumVertices: AGENT_ASSET_LIMITS.maxVertices, maximumParts: AGENT_ASSET_LIMITS.maxParts, maximumTexturePixels: AGENT_ASSET_LIMITS.maxTexturePixels,
+          maximumJoints: AGENT_ASSET_LIMITS.maxJoints, maximumClips: AGENT_ASSET_LIMITS.maxClips,
           commands: ['set-root', 'set-asset-node', 'set-motion', 'set-animation', 'set-material', 'set-camera', 'set-environment', 'set-effects', 'set-shadow'],
         },
         jobs: { configured: Boolean(jobRoot), kinds: ['image', 'stills', 'video'], passes: RENDER_PASS_NAMES, pathTracer: PATH_TRACER_CAPABILITIES, maximumActiveJobs: 1,
