@@ -25,6 +25,7 @@ import { weightTracksFromGltfAnimation } from '../src/export-skeleton.js';
 import { clipFromGltfAnimation } from '../src/skeleton-pose.js';
 import { sessionProblem } from '../src/agent-errors.js';
 import { BRANCH_LIMITS, createBranchStore, printableLabel } from '../src/agent-branches.js';
+import { agentAssetDecodeOptions, withCatalogLimitAdvice } from '../src/agent-asset-limits.js';
 
 let active = null;
 let canvas = document.querySelector('canvas');
@@ -49,7 +50,7 @@ function bytesFromBase64(data) {
 async function decodeMotionSources(encoded = {}) {
   const decoded = {};
   for (const [assetId, data] of Object.entries(encoded)) {
-    const source = await parseGltf(bytesFromBase64(data).buffer, { maxBytes: 16 * 1024 * 1024, maxVertices: 250000, maxParts: 4096, maxTexturePixels: 4194304, maxJoints: 1024 });
+    const source = await parseCatalogAsset(bytesFromBase64(data).buffer);
     decoded[assetId] = { animations: source.animations, nodes: source.nodes };
     source.dispose();
   }
@@ -411,7 +412,16 @@ setPhysicsModuleLoader(() => import(/* @vite-ignore */ new URL('/vendor/rapier.j
 // The preview bundle is one file, so the on-demand scene modules load together on the first call and later calls stay
 // synchronous. The boolean engine is WebAssembly and loads asynchronously, once, only for calls that need it.
 
-const ASSET_DECODE_LIMITS = { maxBytes: 16 * 1024 * 1024, maxVertices: 250000, maxParts: 4096, maxTexturePixels: 4194304, maxJoints: 1024 };
+const ASSET_DECODE_LIMITS = agentAssetDecodeOptions();
+
+// An agent cannot pass loadGltf options, so a limit error names the catalog limits instead of "Fix: pass { ... }".
+async function parseCatalogAsset(buffer) {
+  try {
+    return await parseGltf(buffer, ASSET_DECODE_LIMITS);
+  } catch (error) {
+    throw withCatalogLimitAdvice(error);
+  }
+}
 
 function disposePlacedAssets(pool) {
   for (const asset of pool?.values() ?? []) asset.dispose();
@@ -426,7 +436,7 @@ async function loadPlacedAssets(pool, value, assetData) {
       const key = assetCopyKey(id, copy);
       if (pool.has(key)) continue;
       if (!assetData?.[id]) throw new Error(`Asset ${id.slice(0, 12)} was not supplied. Check asset_catalog for its id.`);
-      pool.set(key, await parseGltf(bytesFromBase64(assetData[id]).buffer, ASSET_DECODE_LIMITS));
+      pool.set(key, await parseCatalogAsset(bytesFromBase64(assetData[id]).buffer));
     }
   }
 }
@@ -823,7 +833,7 @@ window.__agentPreview = {
     try {
       // Labels, mesh reports and motion read the on-demand modules on any asset, not only one with mesh edits.
       await loadAllAgentSceneModules();
-      asset = await parseGltf(bytes.buffer, { maxBytes: 16 * 1024 * 1024, maxVertices: 250000, maxParts: 4096, maxTexturePixels: 4194304, maxJoints: 1024 });
+      asset = await parseCatalogAsset(bytes.buffer);
       return createPreview(createAgentAssetScene(asset, input.recipe, { sources: await decodeMotionSources(input.sources) }), input, asset);
     } catch (error) {
       asset?.dispose();
