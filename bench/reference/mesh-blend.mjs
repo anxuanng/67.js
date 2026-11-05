@@ -1,4 +1,5 @@
-// Mesh blend check for issue #478: before/after still, pixel identity against main, and the frame cost at 1080p.
+// Mesh blend check for issues #478 and #489: before/after still, pixel identity against main, and the frame cost at 1080p
+// (wall clock and, where the browser exposes EXT_disjoint_timer_query_webgl2, GPU time).
 //   node bench/reference/mesh-blend.mjs --main-root <dir with src/ of main, bench/reference/mesh-blend-harness.html, node_modules>
 //        [--out <folder>] [--rounds <n>] [--frames <n>] [--skip-cost]
 // Writes the PNGs and out/478-sheet.png (before, after, and a 2x crop of a seam) to the output folder.
@@ -62,21 +63,36 @@ async function maxDifference(firstPng, secondPng) {
   return { largest, differing };
 }
 
+const middle = values => [...values].sort((first, second) => first - second)[Math.floor(values.length / 2)];
+
+// Each round measures the three modes back to back, so the cost is the per-round difference: on a shared GPU the clock and
+// the load drift between rounds, and a pooled median mixes those states.
+function reportCost(name, rows) {
+  const costs = rows.map(row => row.on - row.off).sort((first, second) => first - second);
+  const pooled = key => middle(rows.map(row => row[key]));
+  console.log(`${name}, ${rows.length} rounds x ${frames} frames: no addon ${pooled('plain').toFixed(3)} ms, off ${pooled('off').toFixed(3)} ms, on ${pooled('on').toFixed(3)} ms; cost per round median ${middle(costs).toFixed(3)} ms, range ${costs[0].toFixed(3)} to ${costs.at(-1).toFixed(3)} ms`);
+}
+
 async function measureCost() {
-  const times = { plain: [], off: [], on: [] };
+  const wallRows = [];
+  const gpuRows = [];
   await withPage(resolve('.'), async page => {
     for (let round = 0; round < rounds; round++) {
+      const wall = {};
+      const gpu = {};
       for (const [label2, mode] of round % 2 ? [['plain', 'plain'], ['off', 'installed'], ['on', 'blend']] : [['on', 'blend'], ['off', 'installed'], ['plain', 'plain']]) {
         await page.evaluate(options => window.setupScene(options), { scene: 'nature', mode });
-        times[label2].push(...await page.evaluate(count => window.measureFrames(count), frames));
+        wall[label2] = middle(await page.evaluate(count => window.measureFrames(count), frames));
+        const gpuTimes = await page.evaluate(count => window.measureGpuFrames(count), frames);
+        if (gpuTimes?.length) gpu[label2] = middle(gpuTimes);
         await page.evaluate(() => window.teardown());
       }
+      wallRows.push(wall);
+      if (Object.keys(gpu).length === 3) gpuRows.push(gpu);
     }
   });
-  const middle = values => [...values].sort((first, second) => first - second)[Math.floor(values.length / 2)];
-  const off = middle(times.off);
-  const on = middle(times.on);
-  console.log(`1080p frame, ${rounds} rounds x ${frames} frames pooled: no addon ${middle(times.plain).toFixed(3)} ms, off ${off.toFixed(3)} ms, on ${on.toFixed(3)} ms, cost ${(on - off).toFixed(3)} ms`);
+  reportCost('1080p frame, wall clock', wallRows);
+  if (gpuRows.length) reportCost('1080p frame, GPU timer', gpuRows);
 }
 
 if (argumentsGiven.includes('--only-cost')) {

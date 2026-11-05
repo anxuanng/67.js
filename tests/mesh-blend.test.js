@@ -78,7 +78,11 @@ test('pixels of one part, and the background (ID 0), never blend with themselves
 
 test('the reference and the shader use the same tap pattern', () => {
   assert.ok(blendFragment.includes(`< ${MESH_BLEND_TAPS.count}; index++`));
-  assert.ok(blendFragment.includes(`float(index) * ${MESH_BLEND_TAPS.angleStep}`));
+  const lastIndex = MESH_BLEND_TAPS.count - 1;
+  const lastFraction = Math.sqrt((lastIndex + 0.5) / MESH_BLEND_TAPS.count);
+  const lastX = Math.fround(Math.cos(lastIndex * MESH_BLEND_TAPS.angleStep) * lastFraction);
+  assert.ok(blendFragment.includes(`vec3[${MESH_BLEND_TAPS.count}](vec3(${Math.fround(Math.sqrt(0.5 / MESH_BLEND_TAPS.count))}, 0.0, `), 'the first tap lies on the x axis');
+  assert.ok(blendFragment.includes(`vec3(${lastX}, `), 'the last tap follows the golden angle');
   assert.ok(blendFragment.includes('smoothstep(0.05, 0.4, 1.0 - dot('));
 });
 
@@ -164,6 +168,18 @@ test('a blend part needs no extra draw: the frame asks for the ID output and the
   assert.equal(drawn[0].cullableWhileDrawing, false, 'a batch with a blend part draws all instances so IDs stay in order');
   assert.equal(batch.cullable, true, 'culling is restored after the frame');
   assert.equal(renderer.postStages[0].apply(renderer, frame, {}, {}), null, 'the stage is off again after the frame');
+});
+
+test('a batch whose parts share one radius and one level keeps its culling, since any ID in its range reads that radius', () => {
+  const shared = fakeRenderer([{ name: 'rock-a', blend: { radius: 0.2 } }, { name: 'rock-b', blend: { radius: 0.2 } }]);
+  installMeshBlend(shared.renderer);
+  shared.renderer.render({ eye: [0, 0, 5] });
+  assert.equal(shared.drawn[0].cullableWhileDrawing, true);
+  const levelled = fakeRenderer([{ name: 'rock-a', blend: { radius: 0.2 } }, { name: 'rock-b', blend: { radius: 0.2 } }]);
+  levelled.batch.levelErrors = [0, 4];
+  installMeshBlend(levelled.renderer);
+  levelled.renderer.render({ eye: [0, 0, 5] });
+  assert.equal(levelled.drawn[0].cullableWhileDrawing, false, 'each level draw restarts the instance numbers, so IDs would collide');
 });
 
 test('a radius from the radii map opts a part in like its own blend field', () => {
