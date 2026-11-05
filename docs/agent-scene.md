@@ -8,6 +8,8 @@ It does not execute JavaScript, access the DOM, or provide an MCP transport.
 Recipes also retain [lighting, fog, effects and directional shadow coverage](agent-look.md).
 Their patches and checkpoints share the same atomic revision contract as model edits.
 
+To see what changed, including changes not yet released, read `https://67js.codepawl.com/changelog.json`.
+
 Release `0.7.0` adds optional [procedural motion](agent-motion.md) and transient `sampleMotion(time)` seeks.
 Recipe edits retain authored keyframes. Sampling preserves revisions and geometry while updating rendered transforms, materials and camera.
 

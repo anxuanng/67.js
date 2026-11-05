@@ -5,6 +5,7 @@ build/
 public/releases/
 public/release.json
 public/changelog.md
+public/changelog.json
 public/guide.md
 public/gltf.md
 public/gltf-morph.md
