@@ -17,6 +17,9 @@ body input[type=range] { accent-color:#d7d7d7; }
 .studio-nav a { padding:10px 14px; border-radius:var(--radius); }
 nav a:has(> .icon) { display:flex; align-items:center; gap:8px; }
 nav a > .icon { margin-right:0; }
+/* Centre the icon and the arrow glyph on the label instead of the inline text baseline. */
+button:has(> .icon), .doc-pagination strong { display:inline-flex; align-items:center; gap:7px; }
+button:has(> .icon) > .icon { margin-right:0; }
 .nav-label { display:block; line-height:1.4; }
 .studio-nav a[aria-current] { background-color:var(--surface); background-image:var(--dither); }
 .controls button:not(.swatch)[aria-pressed=true], .demo-presets button[aria-pressed=true] { background-image:var(--dither); }

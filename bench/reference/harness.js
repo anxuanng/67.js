@@ -31,7 +31,27 @@ function withDerivedGroundBounce(scene, drawnParts) {
   const lit = GROUND_BOUNCE ? groundBounceEnvironment(drawnParts, scene.environment) : scene.environment;
   // ?sunBounce=<n> sets environment.sunBounce on every scene (default 1, 0 draws without the sunlit patches' lights).
   const sunBounce = new URLSearchParams(location.search).get('sunBounce');
-  return withSunBounce(drawnParts, sunBounce === null ? lit : { ...lit, sunBounce: Number(sunBounce) });
+  const started = performance.now();
+  const withLights = withSunBounce(drawnParts, sunBounce === null ? lit : { ...lit, sunBounce: Number(sunBounce) });
+  // The time the sunlit patches took to find (the search runs once for these parts; later calls hit the cache), read by render-gpu.mjs.
+  window.sunBounceSeconds = Math.max(window.sunBounceSeconds ?? 0, (performance.now() - started) / 1000);
+  window.sunBounceLights = (withLights.pointLights ?? []).slice((lit.pointLights ?? []).length);
+  return withSunBounceExperiment(withLights, (lit.pointLights ?? []).length);
+}
+
+// ?sunBounceRange=<k> cuts each sunlit patch's light off at k times its height above the patch, and ?sunBounceGain=<g> multiplies
+// its intensity: switches for fitting the bounce, not used by a recipe.
+function withSunBounceExperiment(environment, ownLightCount) {
+  const query = new URLSearchParams(location.search);
+  const rangeFactor = query.get('sunBounceRange');
+  const gain = query.get('sunBounceGain');
+  if ((rangeFactor === null && gain === null) || !environment.pointLights || environment.pointLights.length === ownLightCount) return environment;
+  const pointLights = environment.pointLights.map((light, index) => (index < ownLightCount ? light : {
+    ...light,
+    range: rangeFactor === null ? light.range : Number(rangeFactor) * light.radius,
+    intensity: light.intensity * (gain === null ? 1 : Number(gain)),
+  }));
+  return { ...environment, pointLights };
 }
 
 // ?reversedDepth=on draws with reversed-Z (issue #310); the scenes draw with the standard depth buffer otherwise.

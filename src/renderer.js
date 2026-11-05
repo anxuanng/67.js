@@ -93,6 +93,8 @@ function shaderFeaturesOfParts(parts) {
     if (materialLayerValue(material, 'clearcoat') > 0) features.add('clearcoat');
     if (materialLayerValue(material, 'sheenColor').some(channel => channel !== 0)) features.add('sheen');
     if (TAG_SHADER_FEATURES.has(material.tag)) features.add(material.tag);
+    // Without vertex colours the tint and sky visibility are the constants of the unbound attribute, so no varying carries them.
+    if ([part.geometry, ...(part.lods ?? []).map(level => level.geometry)].some(geometry => geometry.colors || geometry.skyVisibility)) features.add('vertexColors');
   }
   return features;
 }
@@ -622,6 +624,7 @@ export class Renderer67 {
     this.shadowBiasPerSlope = 0;
     this.inverseViewProjection = mat4.create();
     this.shaderFeatures = shaderFeaturesOfParts(groups.flat());
+    if (groups.some(group => group.length > 1)) this.shaderFeatures.add('instanced');
     this.shaderFeatures.add(environment.map ? 'environmentMap' : 'studioLighting');
     shaderFeaturesOfLighting(this.lighting).forEach(feature => this.shaderFeatures.add(feature));
     if (shading === 'light') this.shaderFeatures.add(LIGHT_SHADING_FEATURE);
@@ -728,7 +731,7 @@ export class Renderer67 {
 
   finishMainProgram(pendingProgram) {
     this.program = finishProgram(this.context, pendingProgram);
-    this.uniforms = Object.fromEntries(['materialDielectric', 'materialCoat', 'materialSheen', 'materialAnisotropy', 'materialIridescence', 'lightLinkMask', 'boxMapScale', 'boxMapAxis', 'lightMap', 'lightMapScale', 'hasLightMap', 'viewProjection', 'lightProjection', 'eye', 'armorColor', 'armorSurface', 'exposure', 'inspection', 'shadowMap', 'shadowBiasPerSlope', ...MAP_UNIFORMS, ...MAP_FLAGS, ...SKIN_UNIFORMS, ...MORPH_UNIFORMS, 'normalScale', 'occlusionStrength', 'materialMoss', ...SPLAT_UNIFORMS, 'hdrEnabled', 'time', 'wind', 'worldMode', 'daylight', 'fogColor', 'lightDirection', 'fogDensity', 'waterRipple', 'rippleTime', 'explosionProgress', 'explosionCenter', 'assemblyAmount', 'renderPassMode', 'renderPassDepthRange', 'renderPassObjectBase', ...ALPHA_UNIFORMS].map((name) => [name, this.context.getUniformLocation(this.program, name)]));
+    this.uniforms = Object.fromEntries(['materialDielectric', 'materialCoat', 'materialSheen', 'materialAnisotropy', 'materialIridescence', 'lightLinkMask', 'boxMapScale', 'boxMapAxis', 'lightMap', 'lightMapScale', 'hasLightMap', 'viewProjection', 'lightProjection', 'eye', 'armorColor', 'armorSurface', 'exposure', 'inspection', 'shadowMap', 'shadowBiasPerSlope', ...MAP_UNIFORMS, ...MAP_FLAGS, ...SKIN_UNIFORMS, ...MORPH_UNIFORMS, 'normalScale', 'occlusionStrength', 'materialMoss', ...SPLAT_UNIFORMS, 'hdrEnabled', 'time', 'wind', 'worldMode', 'daylight', 'fogColor', 'lightDirection', 'fogDensity', 'waterRipple', 'rippleTime', 'explosionProgress', 'explosionCenter', 'assemblyAmount', 'renderPassMode', 'renderPassDepthRange', 'renderPassObjectBase', 'baseColor', 'surface', 'instanceEmission', 'boxNormalMatrix', ...ALPHA_UNIFORMS].map((name) => [name, this.context.getUniformLocation(this.program, name)]));
     for (const name of LIGHT_UNIFORMS) {
       this.uniforms[name] = this.context.getUniformLocation(this.program, name);
     }
@@ -819,7 +822,7 @@ export class Renderer67 {
   // Parts can arrive after construction (replaceParts) or change their tag (updateParts). When one needs a shader feature
   // that the program left out, the program is compiled again with that feature added.
   requireShaderFeatures(parts) {
-    this.requireFeatureNames([...shaderFeaturesOfParts(parts)]);
+    this.requireFeatureNames([...shaderFeaturesOfParts(parts), ...(parts.length > 1 ? ['instanced'] : [])]);
   }
 
   requireFeatureNames(features) {
@@ -2004,6 +2007,15 @@ export class Renderer67 {
     this.drawBatch(batch, textured, selection);
   }
 
+  // When every batch holds one instance, its flat values (colour, surface, emission, box normal matrix) are uniforms, not varyings.
+  setSingleInstanceUniforms(data) {
+    const context = this.context;
+    context.uniform3f(this.uniforms.baseColor, data[25], data[26], data[27]);
+    context.uniform4f(this.uniforms.surface, data[28], data[29], data[30], data[31]);
+    context.uniform4f(this.uniforms.instanceEmission, data[38], data[39], data[40], 0);
+    if (this.shaderFeatures.has('boxMapScale')) context.uniformMatrix3fv(this.uniforms.boxNormalMatrix, false, data.subarray(16, 25));
+  }
+
   drawBatch(batch, textured = false, selection = null, levelSet = batch) {
     if (this.hasMorphs) {
       const uniforms = textured ? this.uniforms : this.depthMorphUniforms;
@@ -2063,6 +2075,7 @@ export class Renderer67 {
         this.context.uniform1f(this.uniforms.lightMapScale, batch.mapState[15]);
       }
     }
+    if (textured && !this.benchmark && this.shaderFeatures?.has('instanced') === false)this.setSingleInstanceUniforms(batch.instanceData);
     if (selection && !selection.isEverything) {
       this.drawSelectedLevels(batch, selection, levelSet);
       return;

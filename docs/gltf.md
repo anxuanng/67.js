@@ -48,6 +48,7 @@ Every numeric limit must be a positive safe integer.
 The defaults take one large exported scene, such as a 240 MB GLB with 8 million vertices and 8192 x 8192 textures, and `GLTF_CAPABILITIES.limits` holds them.
 A file over its limits fails with one `RangeError` that names each limit it goes over, the measured value and the value that fits, for example `glTF over its limits: vertices 9120000, over maxVertices 8000000; image 6 (6144x3072) pixels 18874368, over maxTextureImagePixels 16777216. Fix: pass { maxVertices: 9120000, maxTextureImagePixels: 18874368 }.`
 The file size and the decoded geometry and parts are checked as they are read, so they fail on their own.
+The MCP server decodes catalog files with tighter limits: 64 MiB a file, 1,000,000 vertices, 4,096 parts, 1,024 joints, 4,194,304 texture pixels (larger images are scaled down), 256 clips and 64 files, all from `src/agent-asset-limits.js`. The reason is the hand-off: the server reads the whole file, base64-encodes it and sends it to the preview page in one browser call. Measured with a local Chrome, a 64 MiB file crossed that call (a 128 MiB rise in server memory, 2.7 s), 72 MiB took 4.9 s, and 80 MiB and above crashed the page. A file over a limit fails with an error that names the limit and the value it hit. A larger scene loads through `loadGltf` in code, where the defaults above apply and the file never crosses that call; meshopt compression shrinks a file for the catalog. See [mcp.md](mcp.md).
 The importer rejects cyclic hierarchies, multiple parents, and hierarchies deeper than 256 levels.
 It checks PNG, JPEG and WebP dimensions before browser image decoding.
 Decoded accessor data has a separate ceiling of four times `maxBytes`.
@@ -113,7 +114,7 @@ The importer rejects animation poses that become singular or change triangle win
 
 The current source supports four-influence [GPU skinning](https://67js.codepawl.com/skinning.md). GPU skinning is available from version `0.4.0`.
 The current source also supports relative POSITION/NORMAL morph targets and weight animations. See [morph import](https://67js.codepawl.com/gltf-morph.md).
-Morph primitives require authored base normals. TANGENT targets and per-target flat normal generation remain unsupported.
+A morph primitive without an authored base NORMAL loads with normals generated from its triangles; its morph NORMAL deltas are dropped, with a warning. TANGENT targets remain unsupported.
 
 The caller owns the Renderer67 instance.
 `asset.dispose()` releases importer textures, image bitmaps, parser resources, and temporary object URLs.
@@ -134,6 +135,7 @@ It supports base-color, normal, metallic-roughness, occlusion and emissive textu
 An optional extension that 67js does not read is ignored and named in `warnings`, as the glTF specification allows. An extension listed in `extensionsRequired` that 67js does not read still fails the load with `Unsupported glTF extension`.
 `KHR_materials_pbrSpecularGlossiness` (also when listed in `extensionsRequired`) is converted to metallic-roughness: the diffuse color and texture become the base color, metallic is 0, roughness is 1 minus `glossinessFactor`. The specular color and `specularGlossinessTexture` are not read, and `warnings` says so. A texture on a primitive without `TEXCOORD_0` is dropped from that primitive with a warning instead of failing the load.
 A triangle primitive that cannot be drawn is skipped with one warning that names its mesh, its index and the reason, and the rest of the file loads: a missing or short POSITION accessor (fewer than 3 vertices), an index accessor with fewer than 3 indices or a count that is not a multiple of 3, an index outside the POSITION range, or only zero-area triangles. A file with no primitive left, no skin and no animation throws, and the error repeats those warnings.
+Repairs keep the file loading and add one warning each: authored vertex normals of zero length are rebuilt from the triangles ("Repaired primitive ..."), and a mesh on a node whose world transform is singular or non-finite (a zero scale, for example) is skipped ("Skipped node ..."). A pose that later makes a node singular still throws.
 A file with a skin or animation but no mesh (a skeleton-only clip such as the 100STYLE skeletons) loads with `parts: []`. `nodes` marks the skin's joints with `joint: true` and `animations` holds the clips, so `clipFromGltfAnimation`, `createAssetPose` and `pose.jointWorld` work on it. `skins` is empty because no mesh uses one.
 POINTS, LINES, LINE_LOOP and LINE_STRIP primitives are skipped with a warning that names the mesh and their count. Drawing them is not supported. TRIANGLE_STRIP and TRIANGLE_FAN primitives are still refused.
 
