@@ -97,7 +97,7 @@ test('catalog rejects linked assets and requires an explicitly absolute director
 
 test('the catalog limits are the documented values and never exceed the loadGltf defaults', () => {
   assert.deepEqual({ ...AGENT_ASSET_LIMITS }, {
-    maxBytes: 64 * 1024 * 1024, maxAssets: 64, maxVertices: 1_000_000, maxParts: 4096,
+    maxBytes: 64 * 1024 * 1024, maxAssets: 64, maxCombinedBytes: 64 * 1024 * 1024, maxVertices: 1_000_000, maxParts: 4096,
     maxTexturePixels: 4_194_304, maxJoints: 1024, maxClips: 256,
   });
   const defaults = GLTF_CAPABILITIES.limits;
