@@ -91,17 +91,45 @@ export function createCrownSkyField(positions) {
   return { visibilityOf };
 }
 
-function meanOf(values) {
-  let sum = 0;
-  for (const value of values) sum += value;
-  return sum / values.length;
+// How much leaf each vertex stands for: a third of the area of every triangle it belongs to. A level of large clumps has few
+// vertices that each stand for a lot of leaf, so a plain mean over vertices does not say how much sky the leaf sees.
+export function vertexCoverage(positions, indices) {
+  const coverage = new Float32Array(positions.length / 3);
+  for (let corner = 0; corner < indices.length; corner += 3) {
+    const [first, second, third] = [indices[corner], indices[corner + 1], indices[corner + 2]];
+    const edgeX = [positions[second * 3] - positions[first * 3], positions[second * 3 + 1] - positions[first * 3 + 1], positions[second * 3 + 2] - positions[first * 3 + 2]];
+    const edgeY = [positions[third * 3] - positions[first * 3], positions[third * 3 + 1] - positions[first * 3 + 1], positions[third * 3 + 2] - positions[first * 3 + 2]];
+    const crossX = edgeX[1] * edgeY[2] - edgeX[2] * edgeY[1];
+    const crossY = edgeX[2] * edgeY[0] - edgeX[0] * edgeY[2];
+    const crossZ = edgeX[0] * edgeY[1] - edgeX[1] * edgeY[0];
+    const share = Math.hypot(crossX, crossY, crossZ) / 6;
+    coverage[first] += share;
+    coverage[second] += share;
+    coverage[third] += share;
+  }
+  return coverage;
+}
+
+export function coverageMean(values, coverage) {
+  let weighted = 0;
+  let total = 0;
+  for (let vertex = 0; vertex < values.length; vertex++) {
+    weighted += values[vertex] * coverage[vertex];
+    total += coverage[vertex];
+  }
+  return total > 0 ? weighted / total : 0;
 }
 
 /**
- * Scales `visibility` so its mean is `targetMean`, keeping the floor and 1 as the limits. The larger leaves of a thinner level
- * sit further out in the crown than the leaves of level 0, so a field lookup alone leaves them seeing more sky on average.
+ * Scales `visibility` so its mean over the leaf it stands for (`coverage`, from `vertexCoverage`) is `targetMean`, keeping the
+ * floor and 1 as the limits. The larger leaves of a thinner level sit further out in the crown than the leaves of level 0, so a field
+ * lookup alone leaves them seeing more sky on average.
  */
-export function matchMeanVisibility(visibility, targetMean) {
-  const scale = targetMean / meanOf(visibility);
+export function matchMeanVisibility(visibility, targetMean, coverage) {
+  const scale = targetMean / coverageMean(visibility, coverage);
+  return scaleVisibility(visibility, scale);
+}
+
+export function scaleVisibility(visibility, scale) {
   return visibility.map(value => Math.min(1, Math.max(MINIMUM_VISIBILITY, value * scale)));
 }

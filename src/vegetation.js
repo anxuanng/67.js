@@ -14,7 +14,8 @@ import {
   createMeshBuilder, createRandom, crossProduct, lerp, lerpVectors, normalized, randomInRange, scaleVector,
   subtractVectors, valueNoise, vectorLength,
 } from './vegetation-geometry.js';
-import { createCrownSkyField, matchMeanVisibility } from './tree-sky.js';
+import { coverageMean, createCrownSkyField, matchMeanVisibility, scaleVisibility, vertexCoverage } from './tree-sky.js';
+import { TREE_LEVEL_GAINS } from './tree-level-gains.js';
 import { LEVEL_SETTINGS, SPECIES, TREE_LEVEL_DISTANCES } from './vegetation-species.js';
 import { barkTextureDescriptor, leafTextureDescriptor } from './vegetation-textures.js';
 import { pixelErrorScale, selectBlendedLevels } from './vegetation-impostors.js';
@@ -349,7 +350,8 @@ function addCrownClumps(builder, skeleton, spec, mode, random, widthScale = 1) {
         rows: [[0, 1], [1, 1]],
         backFaces: false,
         canopyNormal: shading.canopyNormal,
-        canopyBlend: 0.7,
+        // Their own normals: blended toward the crown's, a sun behind the tree left the far levels near black (issue #432).
+        canopyBlend: spec.clumpCanopyBlend ?? 0,
         colorBase: LEAF_COLOR_BASE,
         colorTip: LEAF_COLOR_TIP,
         brightness: shading.brightness,
@@ -424,18 +426,20 @@ function createMaterials(preset, mode, scannedBark, scannedLeaves) {
 // Every level describes the same crown, so every level reads one sky visibility field, measured on the leaves of level 0.
 // `skyVisibility` is worked out the first time something reads it (the renderer, when it uploads the geometry), so a
 // tree that is only measured or exported costs nothing extra, and a forest of distinct trees pays for the ones drawn.
-function meanOf(values) {
-  let sum = 0;
-  for (const value of values) sum += value;
-  return sum / values.length;
-}
+// A level's mean is taken over the leaf its vertices stand for, not over the vertices, because a clump has few vertices for a lot of leaf.
 
-function bakeCrownSkyVisibility(levels) {
+function bakeCrownSkyVisibility(levels, species) {
   const foliageOf = level => level.parts.find(part => part.role === 'foliage').geometry;
+  const coverageOf = geometry => vertexCoverage(geometry.positions, geometry.indices);
   let field = null;
   for (const [levelIndex, level] of levels.entries()) {
     const geometry = foliageOf(level);
     if (geometry.positions.length === 0) continue;
+    const gain = TREE_LEVEL_GAINS[species]?.[levelIndex];
+    if (gain) {
+      const colorGain = gain.color * leafAreaCorrection(geometry, foliageOf(levels[0]), gain.area, TREE_LEVEL_GAINS[species].areaExponent);
+      geometry.colors = geometry.colors.map(channel => channel * colorGain);
+    }
     let skyVisibility = null;
     Object.defineProperty(geometry, 'skyVisibility', {
       enumerable: true,
@@ -444,12 +448,26 @@ function bakeCrownSkyVisibility(levels) {
         field ??= createCrownSkyField(foliageOf(levels[0]).positions);
         if (!skyVisibility) {
           skyVisibility = field.visibilityOf(geometry.positions);
-          if (levelIndex > 0) skyVisibility = matchMeanVisibility(skyVisibility, meanOf(foliageOf(levels[0]).skyVisibility));
+          if (levelIndex > 0) {
+            const levelZero = foliageOf(levels[0]);
+            const targetMean = coverageMean(levelZero.skyVisibility, coverageOf(levelZero));
+            skyVisibility = matchMeanVisibility(skyVisibility, targetMean, coverageOf(geometry));
+            if (gain) skyVisibility = scaleVisibility(skyVisibility, gain.sky);
+          }
         }
         return skyVisibility;
       },
     });
   }
+}
+
+// A tree whose lower level carries more leaf area against level 0 than the species usually does draws that level darker (its
+// clumps overlap and shade each other more), so the colour gain grows with the area ratio (issue #432). `meanLogArea` is the
+// species' usual log area ratio for that level, and the exponent how strongly the brightness follows it.
+function leafAreaCorrection(geometry, levelZero, meanLogArea, exponent) {
+  if (meanLogArea === undefined || !exponent) return 1;
+  const leafArea = foliage => vertexCoverage(foliage.positions, foliage.indices).reduce((sum, share) => sum + share, 0);
+  return Math.exp(exponent * (Math.log(leafArea(geometry) / leafArea(levelZero)) - meanLogArea));
 }
 
 function boundsOf(geometries) {
@@ -505,7 +523,7 @@ export function createTree(speciesOrOptions = 'broadleaf', seed = 1) {
       },
     ]);
   });
-  bakeCrownSkyVisibility(levels);
+  bakeCrownSkyVisibility(levels, options.species);
   return {
     kind: 'tree', species: options.species, seed, height, leaves, levels, materials,
     distances: TREE_LEVEL_DISTANCES,
