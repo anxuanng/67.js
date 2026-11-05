@@ -3,7 +3,7 @@ import { GLTF_LAYER_EXTENSIONS, layerTextureReferences, materialLayersFromGltf }
 import { attributeFloats } from './gltf-accessors.js';
 import { describeCompressedImage } from './compressed-texture.js';
 export { ktx2WorkerConfigFor } from './compressed-texture.js';
-import { decodeGltf, isLinePrimitive, overLimit, textureSourceIndex, throwOverruns } from './gltf-decode.js';
+import { decodeGltf, isLinePrimitive, overLimit, textureSourceIndex, throwOverruns, unusablePrimitives } from './gltf-decode.js';
 import { readPunctualLights } from './gltf-lights.js';
 import { Matrix4 } from './gltf-nodes.js';
 import { textureDescriptorInfo } from './renderer.js';
@@ -502,7 +502,7 @@ function skippedPrimitiveWarnings(document) {
   (document.meshes ?? []).forEach((mesh, meshIndex) => {
     const counts = new Map();
     for (const primitive of mesh.primitives ?? []) {
-      if (!isLinePrimitive(primitive)) continue;
+      if (!(primitive.mode >= 0 && primitive.mode <= 3)) continue;
       const modeName = LINE_MODE_NAMES[primitive.mode];
       counts.set(modeName, (counts.get(modeName) ?? 0) + 1);
     }
@@ -510,6 +510,41 @@ function skippedPrimitiveWarnings(document) {
     const summary = [...counts].map(([modeName, count]) => `${count} ${modeName}`).join(', ');
     const meshLabel = mesh.name ? `"${mesh.name}"` : meshIndex;
     warnings.push(`Skipped ${summary} primitive(s) in mesh ${meshLabel}: 67js draws triangles only.`);
+  });
+  return warnings;
+}
+
+function primitiveLabel(document, meshIndex, primitiveIndex) {
+  const name = document.meshes[meshIndex].name;
+  return `primitive ${primitiveIndex} of mesh ${name ? `"${name}"` : meshIndex}`;
+}
+
+/** Why a triangle primitive cannot be drawn judging by its accessors alone, or null. Index values and areas need the decoded data. */
+function accessorProblemOf(document, primitive) {
+  const position = document.accessors?.[primitive.attributes?.POSITION];
+  if (!position || position.type !== 'VEC3' || !Number.isSafeInteger(position.count) || position.count < 3) {
+    return 'its POSITION accessor is missing, is not VEC3 or has fewer than 3 vertices';
+  }
+  const index = primitive.indices === undefined ? null : document.accessors?.[primitive.indices];
+  if (primitive.indices !== undefined && (!index || index.type !== 'SCALAR' || !Number.isSafeInteger(index.count) || index.count < 3)) {
+    return 'its index accessor is missing or has fewer than 3 indices';
+  }
+  const indexCount = index?.count ?? position.count;
+  if (indexCount % 3 !== 0) return `its index count ${indexCount} is not a multiple of 3`;
+  return null;
+}
+
+/** Marks triangle primitives with unusable accessors so the loader skips them, and returns one warning for each. */
+function skipUnusablePrimitives(document) {
+  const warnings = [];
+  (document.meshes ?? []).forEach((mesh, meshIndex) => {
+    (mesh.primitives ?? []).forEach((primitive, primitiveIndex) => {
+      if (!primitive || (primitive.mode ?? 4) !== 4) return;
+      const problem = accessorProblemOf(document, primitive);
+      if (!problem) return;
+      unusablePrimitives.add(primitive);
+      warnings.push(`Skipped ${primitiveLabel(document, meshIndex, primitiveIndex)}: ${problem}.`);
+    });
   });
   return warnings;
 }
@@ -767,18 +802,34 @@ function copyAttribute(attribute, size) {
   return values;
 }
 
+/** The corner offsets of a triangle and its area-weighted normal (the cross product of two edges). */
+function triangleAt(positions, indices, corner) {
+  const [first, second, third] = [indices[corner] * 3, indices[corner + 1] * 3, indices[corner + 2] * 3];
+  const edgeAB = [positions[second] - positions[first], positions[second + 1] - positions[first + 1], positions[second + 2] - positions[first + 2]];
+  const edgeAC = [positions[third] - positions[first], positions[third + 1] - positions[first + 1], positions[third + 2] - positions[first + 2]];
+  const cross = [edgeAB[1] * edgeAC[2] - edgeAB[2] * edgeAC[1], edgeAB[2] * edgeAC[0] - edgeAB[0] * edgeAC[2], edgeAB[0] * edgeAC[1] - edgeAB[1] * edgeAC[0]];
+  return { corners: [first, second, third], cross };
+}
+
 function computeVertexNormals(positions, indices) {
   const normals = new Float32Array(positions.length);
   for (let corner = 0; corner < indices.length; corner += 3) {
-    const [first, second, third] = [indices[corner] * 3, indices[corner + 1] * 3, indices[corner + 2] * 3];
-    const edgeAB = [positions[second] - positions[first], positions[second + 1] - positions[first + 1], positions[second + 2] - positions[first + 2]];
-    const edgeAC = [positions[third] - positions[first], positions[third + 1] - positions[first + 1], positions[third + 2] - positions[first + 2]];
-    const cross = [edgeAB[1] * edgeAC[2] - edgeAB[2] * edgeAC[1], edgeAB[2] * edgeAC[0] - edgeAB[0] * edgeAC[2], edgeAB[0] * edgeAC[1] - edgeAB[1] * edgeAC[0]];
-    for (const vertexOffset of [first, second, third]) {
+    const { corners, cross } = triangleAt(positions, indices, corner);
+    for (const vertexOffset of corners) {
       for (let axis = 0; axis < 3; axis++) normals[vertexOffset + axis] += cross[axis];
     }
   }
   return normals;
+}
+
+/** A primitive whose decoded data cannot be drawn; the loader skips it with a warning instead of refusing the file. */
+class UnusablePrimitiveError extends Error {}
+
+function hasTriangleWithArea(positions, indices) {
+  for (let corner = 0; corner < indices.length; corner += 3) {
+    if (Math.hypot(...triangleAt(positions, indices, corner).cross) > 0) return true;
+  }
+  return false;
 }
 
 function convertGeometry(source, mirrored, primitive, secondUvSet, onIgnoredVertexAlpha) {
@@ -787,14 +838,20 @@ function convertGeometry(source, mirrored, primitive, secondUvSet, onIgnoredVert
   const indices = new Uint32Array(source.index?.count ?? position.count);
   for (let index = 0; index < indices.length; index++) {
     const value = source.index ? source.index.array[index] : index;
-    if (!Number.isInteger(value) || value < 0 || value >= position.count) throw new Error('Mesh index is out of range.');
+    if (!Number.isInteger(value) || value < 0 || value >= position.count) throw new UnusablePrimitiveError('an index is out of range of its POSITION accessor');
     indices[index] = value;
   }
   if (normal && normal.count !== position.count) throw new Error('NORMAL and POSITION counts must match.');
+  if (!hasTriangleWithArea(positions, indices)) throw new UnusablePrimitiveError('every triangle has zero area');
   const normals = normal ? copyAttribute(normal, 3) : computeVertexNormals(positions, indices);
   const geometry = { positions, normals, indices };
   for (let offset = 0; offset < normals.length; offset += 3) {
     const length = Math.hypot(...normals.subarray(offset, offset + 3));
+    if (length < 1e-8 && !normal) {
+      // A vertex that no triangle with area touches has no generated normal; it draws nothing, so any unit vector will do.
+      normals[offset + 1] = 1;
+      continue;
+    }
     if (length < 1e-8) throw new Error('Degenerate geometry has no usable vertex normal.');
     for (let axis = 0; axis < 3; axis++) normals[offset + axis] /= length;
   }
@@ -1023,6 +1080,7 @@ export async function parseGltf(data, options = {}) {
   const decoders = options.decoders ?? {};
   let resampler = null;
   let validated;
+  const unusablePrimitiveWarnings = skipUnusablePrimitives(document);
   try {
     validated = validateDocument(document, limits, allowedExtensionsFor(decoders));
   } catch (error) {
@@ -1033,7 +1091,7 @@ export async function parseGltf(data, options = {}) {
   }
   const { ignoredExtensions, overruns } = validated;
   await loadLayerShadersFor(document);
-  const warnings = [...fallbackWarnings, ...ignoredExtensions.map(extension => `${extension} is accepted but not rendered.`), ...skippedPrimitiveWarnings(document)];
+  const warnings = [...fallbackWarnings, ...ignoredExtensions.map(extension => `${extension} is accepted but not rendered.`), ...skippedPrimitiveWarnings(document), ...unusablePrimitiveWarnings];
   const dataBytes = typeof data === 'string' ? new TextEncoder().encode(data).byteLength : data.byteLength;
   const { resourceBytes, textureScaling } = await prepareResources(document, data, dataBytes, options, limits, overruns);
   if (textureScaling.scaledTextures.length) {
@@ -1087,11 +1145,19 @@ export async function parseGltf(data, options = {}) {
         if (!geometries.has(geometryKey)) {
           actualVertices += node.geometry.attributes.position.count * (1 + (primitive.targets?.length ?? 0));
           throwOverruns(overLimit([], 'decoded vertices', actualVertices, 'maxVertices', limits.maxVertices));
-          const converted = convertGeometry(node.geometry, geometryMirrored, primitive, secondUvSet, () => meshNamesWithIgnoredAlpha.add(node.name));
-          if (converted.uvs) bakeUvTransform(converted.uvs, uvTransform);
-          geometries.set(geometryKey, converted);
+          try {
+            const converted = convertGeometry(node.geometry, geometryMirrored, primitive, secondUvSet, () => meshNamesWithIgnoredAlpha.add(node.name));
+            if (converted.uvs) bakeUvTransform(converted.uvs, uvTransform);
+            geometries.set(geometryKey, converted);
+          } catch (error) {
+            if (!(error instanceof UnusablePrimitiveError)) throw error;
+            const warning = `Skipped ${primitiveLabel(document, association.meshes, association.primitives)}: ${error.message}.`;
+            if (!warnings.includes(warning)) warnings.push(warning);
+            geometries.set(geometryKey, null);
+          }
         }
         const geometry = geometries.get(geometryKey);
+        if (!geometry) continue;
         const firstSetMaps = [...MATERIAL_TEXTURES.map(([field]) => material[field]), ...Object.values(material.layerMaps ?? {})];
         if (firstSetMaps.some(map => map && map.uvChannel === 0) && !geometry.uvs) throw new Error('Material textures require TEXCOORD_0.');
         const part = { name: node.name || `glTF mesh ${parts.length + 1}`, geometry, matrix: new Float32Array(worldMatrixOf(node, instanceMatrix, pendingTransform).elements), material };
@@ -1122,7 +1188,11 @@ export async function parseGltf(data, options = {}) {
       }
     });
     validateNodeTransforms(nodes, pendingNodeMatrix, pendingTransform);
-    if (!parts.length) throw new Error('glTF scene contains no supported triangle meshes.');
+    // A skeleton-only file (a skin or clips, no mesh) loads with zero parts so it can be posed and retargeted.
+    if (!parts.length && !document.skins?.length && !gltf.animations.length) {
+      const skipped = warnings.filter(warning => warning.startsWith('Skipped '));
+      throw new Error(`glTF scene contains no supported triangle meshes and no skin or animation.${skipped.length ? ` ${skipped.join(' ')}` : ''}`);
+    }
     const { lights, warnings: lightWarnings } = readPunctualLights(document, lightNodes);
     warnings.push(...lightWarnings);
     if (meshNamesWithIgnoredAlpha.size) {
@@ -1140,6 +1210,11 @@ export async function parseGltf(data, options = {}) {
     }
     const sourceIds = new Map([...sourceNodes].map(([id, node]) => [node, id]));
     const jointNodes = new Set(skinBindings.flatMap(binding => binding.node.skeleton.bones));
+    // A skin no mesh uses (a skeleton-only file) still names joints.
+    const skinJointIndices = new Set((document.skins ?? []).flatMap(skin => skin.joints));
+    for (const node of sourceNodes.values()) {
+      if (skinJointIndices.has(node.association.nodes)) jointNodes.add(node);
+    }
     const meshIdsByNode = new Map([...sourceNodes.values()].map(node => [node, []]));
     for (let index = 0; index < bindings.length; index++) {
       let ancestor = bindings[index].node;
