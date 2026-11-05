@@ -2,10 +2,20 @@ import { mat4, vec3 } from 'gl-matrix';
 
 export function applyProjection(matrix, frame, aspect, { world = false } = {}) {
   if (!Number.isFinite(aspect) || aspect <= 0) throw new RangeError('Camera aspect must be positive and finite');
-  if (frame.projection === undefined && frame.fov === undefined) return matrix;
+  const hasLens = frame.projection !== undefined || frame.fov !== undefined;
+  const hasClipping = frame.near !== undefined || frame.far !== undefined;
+  if (!hasLens && !hasClipping) return matrix;
   const near = frame.near ?? 0.1;
   const far = frame.far ?? (world ? 600 : 100);
   if (!Number.isFinite(near) || !Number.isFinite(far) || near <= 0 || far <= near) throw new RangeError('Camera clipping planes must satisfy 0 < near < far');
+  if (!hasLens) {
+    // Only the clipping planes are given: keep the renderer's own lens (its field of view and off-centre shift) and replace the planes.
+    const fieldOfView = 2 * Math.atan(1 / matrix[5]);
+    const shift = matrix[8];
+    mat4.perspective(matrix, fieldOfView, aspect, near, far);
+    matrix[8] = shift;
+    return matrix;
+  }
   if (frame.projection === 'orthographic') {
     const height = frame.orthographicHeight ?? 4;
     if (!Number.isFinite(height) || height <= 0) throw new RangeError('Orthographic height must be positive and finite');
