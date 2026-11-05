@@ -2075,7 +2075,7 @@ export class Renderer67 {
         this.context.uniform1f(this.uniforms.lightMapScale, batch.mapState[15]);
       }
     }
-    if (textured && !this.benchmark && !this.shaderFeatures.has('instanced')) this.setSingleInstanceUniforms(batch.instanceData);
+    if (textured && !this.benchmark && this.shaderFeatures?.has('instanced') === false)this.setSingleInstanceUniforms(batch.instanceData);
     if (selection && !selection.isEverything) {
       this.drawSelectedLevels(batch, selection, levelSet);
       return;
