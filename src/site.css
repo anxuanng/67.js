@@ -412,3 +412,8 @@ body.site > main > section { scroll-margin-top: 96px; }
   .site .example.is-lead .work-title { font-size: 15px; padding: 0; }
   .site .work-index, .site .work-date { color: var(--muted); }
 }
+/* A phone keeps the header on one row: the GitHub button shows only its mark. */
+@media (max-width: 480px) {
+  .site .site-nav-cta { width: 34px; padding: 0; }
+  .site .site-nav-cta-label { display: none; }
+}
