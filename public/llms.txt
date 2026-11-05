@@ -3,6 +3,7 @@
 > A WebGL2 toolkit for interactive browser scenes and deterministic PNG/MP4 output. Reuse the scene across preview and export.
 
 This file is a compact map for LLMs and coding agents. The linked guide contains the API contract and runnable examples.
+Unreleased changes, with issue numbers and breaking flags, are in changelog.json next to release.json on the site. Check it before you rely on a feature from the docs.
 The installed package determines available APIs. Release metadata describes the website's release, which can differ from a local checkout.
 
 ## Read only what your task needs
@@ -156,7 +157,7 @@ Nearest projection can collapse vertices on coarse meshes. Preserve the error an
 
 Vertex clearance does not certify whole-triangle clearance. Compatible static output can become a GPU morph target without repeating queries per frame.
 
-GLB support excludes transparent and double-sided materials and compressed geometry. Unsupported features require visible errors.
+GLB support loads transparent, double-sided and meshopt-compressed files. Unsupported features require visible errors. The MCP asset catalog takes 16 MiB and 250,000 vertices a file. A file with a skin or clips but no mesh loads with `parts: []` and works as a clip source (`motion.layers[].from`).
 
 Version `0.4.1` adds `addons/surface-attachment`. Read `docs/surface-attachment.md` before binding.
 Bind a triangle and barycentric coordinates once. Assign the retained attachment.matrix to the accessory.

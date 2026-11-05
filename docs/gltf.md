@@ -48,6 +48,7 @@ Every numeric limit must be a positive safe integer.
 The defaults take one large exported scene, such as a 240 MB GLB with 8 million vertices and 8192 x 8192 textures, and `GLTF_CAPABILITIES.limits` holds them.
 A file over its limits fails with one `RangeError` that names each limit it goes over, the measured value and the value that fits, for example `glTF over its limits: vertices 9120000, over maxVertices 8000000; image 6 (6144x3072) pixels 18874368, over maxTextureImagePixels 16777216. Fix: pass { maxVertices: 9120000, maxTextureImagePixels: 18874368 }.`
 The file size and the decoded geometry and parts are checked as they are read, so they fail on their own.
+The MCP server decodes catalog files with tighter limits: 16 MiB a file, 250,000 vertices (see [mcp.md](mcp.md)). A larger scene loads through `loadGltf` in code or split into parts; meshopt compression shrinks the file.
 The importer rejects cyclic hierarchies, multiple parents, and hierarchies deeper than 256 levels.
 It checks PNG, JPEG and WebP dimensions before browser image decoding.
 Decoded accessor data has a separate ceiling of four times `maxBytes`.

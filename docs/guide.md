@@ -315,6 +315,7 @@ An attachment positions one rigid frame. It does not conform the accessory footp
 The optional GLB addon creates these descriptors. HDR requires `EXT_color_buffer_float`. Inspect `renderer.capabilities.hdr` and `hdrFallbackReason`. The renderer falls back when floating-point targets are unavailable.
 
 Tags select specialized behavior: `armor` allows studio finish overrides. `floor` is a studio floor. `water` adds animated normals and ripples. `foliage` and `grass` add wind and accept a base-colour `map` with alpha mask, a `normalMap` and `doubleSided` for leaf cards.
+In code, a renderer that draws a `water`, `foliage`, `grass`, `terrain`, `moss`, `fire` or `smoke` part needs `import '@codepawlhq/67js/addons/world-material-shader'` first, and one that draws a transmissive, `liquid` or `foam` part needs `import '@codepawlhq/67js/addons/liquid-shader'`. The terrain, vegetation, grass, clutter and film addons and the MCP server import them for you.
 
 `material.alphaMode` is `'opaque'` (default), `'mask'` (cutout at `alphaCutoff`, default 0.5, shadows follow it) or `'blend'` (drawn last, back to front, no depth write). `material.opacity` (default 1) multiplies the base map alpha. `material.doubleSided` (default false) disables back-face culling and lights both faces. These are batch state and cannot change after upload. See `docs/material-maps.md`.
 

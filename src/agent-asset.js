@@ -262,9 +262,12 @@ function framedCamera(bounds) {
 
 /** Own authoring state around one exclusively owned, decoded parseGltf asset. */
 export function createAgentAssetScene(asset, inputRecipe, { sources } = {}) {
-  if (!asset || !Array.isArray(asset.parts) || !asset.parts.length || !Array.isArray(asset.animations) ||
+  if (!asset || !Array.isArray(asset.parts) || !Array.isArray(asset.animations) ||
       typeof asset.stagePose !== 'function' || !Array.isArray(asset.nodes)) {
     throw new TypeError('createAgentAssetScene requires a decoded parseGltf asset.');
+  }
+  if (!asset.parts.length) {
+    throw new TypeError('This file has no meshes, so there is nothing to draw. A skeleton-only file works as a clip source: set motion.layers[].from on a character that has a mesh.');
   }
   if (asset.parts.length > 4096 || asset.animations.length > 256 ||
       new Set(asset.parts.map(part => part.material)).size > 4096) {
