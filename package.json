@@ -127,6 +127,7 @@
     "smoke:vegetation-impostors": "node scripts/smoke-vegetation-impostors.mjs",
     "smoke:transport": "node scripts/smoke-film-transport.mjs",
     "render": "node scripts/render-media.mjs",
+    "docs:media": "node scripts/render-doc-media.mjs",
     "score": "node scripts/score.mjs",
     "export:model": "node scripts/export-model.mjs",
     "smoke:package": "node scripts/smoke-package.mjs",
