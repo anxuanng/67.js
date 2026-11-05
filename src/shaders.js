@@ -71,15 +71,19 @@ uniform float explosionProgress;
 uniform vec3 explosionCenter;
 uniform float assemblyAmount;
 out vec3 worldPosition, worldNormal;
+#ifdef INSTANCED
 flat out vec3 baseColor;
 flat out vec4 surface;
-out vec4 shadowPosition;
-out vec2 textureUV, lightmapUV;
+flat out vec4 instanceEmission;
+flat out mat3 boxNormalMatrix;
+#endif
+#ifdef VERTEX_COLORS
 out vec3 vertexTint;
 out float vertexSkyVisibility;
-flat out vec4 instanceEmission;
+#endif
+out vec4 shadowPosition;
+out vec2 textureUV, lightmapUV;
 out vec3 boxPosition, boxNormal;
-flat out mat3 boxNormalMatrix;
 ${skinningShader(features)}
 ${morphingShader(features)}
 ${windShader(features)}
@@ -104,15 +108,21 @@ void main() {
   if (${new Set(features).has('boxMapScale')}) {
   boxPosition = (USES_MORPH ? morphedPosition(position) : position) * vec3(length(instanceMatrix[0].xyz), length(instanceMatrix[1].xyz), length(instanceMatrix[2].xyz));
   boxNormal = deformedNormal;
+#ifdef INSTANCED
   boxNormalMatrix = instanceNormal;
+#endif
   }
-  baseColor = instanceColor;
   textureUV = uv;
   lightmapUV = uvSets.zw;
-  vertexTint = USES_CROWD ? vec3(1.0) : vertexColor.rgb;
-  vertexSkyVisibility = USES_CROWD ? 1.0 : vertexColor.a;
+#ifdef INSTANCED
+  baseColor = instanceColor;
   instanceEmission = vec4(instanceEmissive, gl_InstanceID);
   surface = instanceSurface;
+#endif
+#ifdef VERTEX_COLORS
+  vertexTint = USES_CROWD ? vec3(1.0) : vertexColor.rgb;
+  vertexSkyVisibility = USES_CROWD ? 1.0 : vertexColor.a;
+#endif
   shadowPosition = lightProjection * world;
   gl_Position = viewProjection * world;
 }`;
@@ -199,13 +209,26 @@ function buildFragmentShader(featureDefines, featureCode) {
 ${featureDefines}
 precision highp float;
 in vec3 worldPosition, worldNormal;
+#ifdef INSTANCED
 flat in vec3 baseColor;
 flat in vec4 surface;
-in vec4 shadowPosition;
-in vec2 textureUV, lightmapUV;
+flat in vec4 instanceEmission;
+flat in mat3 boxNormalMatrix;
+#else
+uniform vec3 baseColor;
+uniform vec4 surface;
+uniform vec4 instanceEmission;
+uniform mat3 boxNormalMatrix;
+#endif
+#ifdef VERTEX_COLORS
 in vec3 vertexTint;
 in float vertexSkyVisibility;
-flat in vec4 instanceEmission;
+#else
+const vec3 vertexTint = vec3(1.0);
+const float vertexSkyVisibility = 1.0;
+#endif
+in vec4 shadowPosition;
+in vec2 textureUV, lightmapUV;
 uniform sampler2D lightMap;
 uniform float lightMapScale;
 uniform float hasLightMap;
@@ -262,7 +285,6 @@ uniform float hasEmissiveMap;
 uniform vec2 normalScale;
 uniform float occlusionStrength;
 in vec3 boxPosition, boxNormal;
-flat in mat3 boxNormalMatrix;
 uniform float boxMapScale;
 uniform int boxMapAxis;
 // Dielectric reflectance at normal incidence, clear coat (strength, roughness) and sheen (colour, roughness)
@@ -729,7 +751,7 @@ export const LIGHT_SHADING_MAXIMUM_SAMPLES = 2;
 export const ENVIRONMENT_FEATURES =Object.freeze(['environmentMap', 'studioLighting']);
 
 // Features that only the vertex shader reads: a part with a skeleton or morph targets.
-const VERTEX_ONLY_FEATURES = Object.freeze(['skin', 'morph', 'crowd']);
+const VERTEX_ONLY_FEATURES = Object.freeze(['skin', 'morph', 'crowd', 'vertexColors', 'instanced']);
 
 function environmentCondition(enabled) {
   const hasMap = enabled.has('environmentMap');
@@ -795,6 +817,11 @@ export const SHADER_FEATURES = Object.freeze([...Object.keys(SHADER_FEATURE_COND
 
 // The vertex shader pays on every vertex for skinning, morphing, wind, waves and the explosion, and SwiftShader runs a
 // choice between them whether or not the uniform picks it, so a renderer without those parts compiles them out.
+// The varyings that both shaders carry: per-vertex colours, and the per-instance values that a draw of one instance sets as uniforms.
+function interpolantDefines(enabled) {
+  return [['vertexColors', 'VERTEX_COLORS'], ['instanced', 'INSTANCED']].filter(([feature]) => enabled.has(feature)).map(([, macro]) => `#define ${macro}`);
+}
+
 function vertexDefinitions(enabled) {
   const condition = (active, expression) => (active ? `(${expression})` : 'false');
   return [
@@ -804,6 +831,7 @@ function vertexDefinitions(enabled) {
     `#define USES_WIND ${condition(enabled.has('foliage') || enabled.has('grass'), 'true')}`,
     `#define USES_WAVES ${condition(enabled.has('water'), 'true')}`,
     `#define USES_EXPLOSION ${condition(enabled.has('fire') || enabled.has('smoke'), 'true')}`,
+    ...interpolantDefines(enabled),
   ].join('\n');
 }
 
@@ -819,7 +847,7 @@ export const vertexShader = createVertexShader(SHADER_FEATURES.filter(feature =>
 export function createFragmentShader(features = SHADER_FEATURES) {
   const enabled = new Set(features);
   const lines = Object.entries(SHADER_FEATURE_CONDITIONS).map(([feature, [macro, condition]]) => `#define ${macro} ${enabled.has(feature) ? `(${condition})` : 'false'}`);
-  lines.push('#define CANOPY_TAG (TAG_FOLIAGE || TAG_GRASS)');
+  lines.push('#define CANOPY_TAG (TAG_FOLIAGE || TAG_GRASS)', ...interpolantDefines(enabled));
   lines.push(`#define ENVIRONMENT_ENABLED ${environmentCondition(enabled)}`);
   // Not in SHADER_FEATURES: the preset is chosen by the renderer, so a shader built from every feature keeps the full look.
   lines.push(`#define LIGHT_SHADING ${enabled.has(LIGHT_SHADING_FEATURE) ? 'true' : 'false'}`);
