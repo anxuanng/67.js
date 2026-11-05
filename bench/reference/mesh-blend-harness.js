@@ -67,14 +67,14 @@ window.setupScene = async ({ scene, mode }) => {
     ...(built.shadowBounds ? { shadowBounds: built.shadowBounds } : {}),
   });
   if (mode !== 'plain') {
-    const { installRenderPasses } = await import('/src/render-passes.js');
     const { installMeshBlend } = await import(/* @vite-ignore */ ['/src/mesh', 'blend.js'].join('-'));
-    installMeshBlend(installRenderPasses(renderer));
+    installMeshBlend(renderer);
   }
+  watch(renderer.context);
   renderer.resize();
-  frame = { ...built.camera, environment: { lightDirection: [-3, 6, 4] }, time: 0, exposure: 1, effects: { ambientOcclusion: 0 } };
+  frame ={ ...built.camera, environment: { lightDirection: [-3, 6, 4] }, time: 0, exposure: 1, effects: { ambientOcclusion: 0 } };
   renderer.render(frame);
-  return { width: canvas.width, height: canvas.height, glError: renderer.context.getError() };
+  return { width: canvas.width, height: canvas.height, glError: window.debugFirstError ? 1 : 0, debug: window.debugFirstError };
 };
 
 window.snapshot = () => {
@@ -103,4 +103,20 @@ window.teardown = () => {
   renderer.dispose();
   renderer = null;
 };
+window.debugFirstError = null;
+function watch(context) {
+  const proto = Object.getPrototypeOf(context);
+  for (const name of Object.getOwnPropertyNames(proto)) {
+    if (name === 'getError' || name === 'constructor' || typeof context[name] !== 'function') continue;
+    const original = context[name].bind(context);
+    context[name] = (...args) => {
+      const result = original(...args);
+      if (!window.debugFirstError) {
+        const error = context.getError();
+        if (error) window.debugFirstError = `${name}(${args.map(value => (typeof value === 'number' ? value : typeof value)).join(',')}) -> ${error}`;
+      }
+      return result;
+    };
+  }
+}
 window.harnessReady = true;

@@ -62,6 +62,28 @@ async function maxDifference(firstPng, secondPng) {
   return { largest, differing };
 }
 
+async function measureCost() {
+  const times = { plain: [], off: [], on: [] };
+  await withPage(resolve('.'), async page => {
+    for (let round = 0; round < rounds; round++) {
+      for (const [label2, mode] of round % 2 ? [['plain', 'plain'], ['off', 'installed'], ['on', 'blend']] : [['on', 'blend'], ['off', 'installed'], ['plain', 'plain']]) {
+        await page.evaluate(options => window.setupScene(options), { scene: 'nature', mode });
+        times[label2].push(...await page.evaluate(count => window.measureFrames(count), frames));
+        await page.evaluate(() => window.teardown());
+      }
+    }
+  });
+  const middle = values => [...values].sort((first, second) => first - second)[Math.floor(values.length / 2)];
+  const off = middle(times.off);
+  const on = middle(times.on);
+  console.log(`1080p frame, ${rounds} rounds x ${frames} frames pooled: no addon ${middle(times.plain).toFixed(3)} ms, off ${off.toFixed(3)} ms, on ${on.toFixed(3)} ms, cost ${(on - off).toFixed(3)} ms`);
+}
+
+if (argumentsGiven.includes('--only-cost')) {
+  await measureCost();
+  process.exit(0);
+}
+
 const stills = {};
 await withPage(resolve('.'), async page => {
   for (const [scene, mode] of [['nature', 'plain'], ['nature', 'installed'], ['nature', 'blend'], ['lit-box', 'plain'], ['lit-box', 'installed']]) {
@@ -138,19 +160,4 @@ tiles.forEach((tile, index) => {
 await sharp({ create: { width: half * 2, height: (halfHeight + 44) * 2, channels: 3, background: '#14161a' } }).composite(composites).png().toFile(`${output}/478-sheet.png`);
 console.log(`sheet: ${resolve(output, '478-sheet.png')}`);
 
-if (!argumentsGiven.includes('--skip-cost')) {
-  const times = { off: [], on: [] };
-  await withPage(resolve('.'), async page => {
-    for (let round = 0; round < rounds; round++) {
-      for (const [label2, mode] of round % 2 ? [['off', 'installed'], ['on', 'blend']] : [['on', 'blend'], ['off', 'installed']]) {
-        await page.evaluate(options => window.setupScene(options), { scene: 'nature', mode });
-        times[label2].push(...await page.evaluate(count => window.measureFrames(count), frames));
-        await page.evaluate(() => window.teardown());
-      }
-    }
-  });
-  const middle = values => [...values].sort((first, second) => first - second)[Math.floor(values.length / 2)];
-  const off = middle(times.off);
-  const on = middle(times.on);
-  console.log(`1080p frame, ${rounds} rounds x ${frames} frames pooled: off ${off.toFixed(3)} ms, on ${on.toFixed(3)} ms, cost ${(on - off).toFixed(3)} ms`);
-}
+if (!argumentsGiven.includes('--skip-cost')) await measureCost();

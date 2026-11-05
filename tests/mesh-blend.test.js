@@ -118,66 +118,85 @@ function fakeContext() {
 
 function fakeRenderer(parts) {
   const drawn = [];
+  const required = [];
+  const batch = { parts, cullable: true };
   const renderer = {
     context: fakeContext(),
     canvas: { width: 8, height: 8 },
     benchmark: false,
     hdr: true,
     depthTexture: {},
+    multisampleFramebuffer: {},
+    multisampleSamples: 4,
     projection: new Float32Array(16),
     inverseViewProjection: new Float32Array(16),
     postStages: [],
-    passSupport: { framebuffer: {} },
-    batches: [{ parts }],
+    renderTargets: { record() {}, release() {} },
+    batches: [batch],
+    requireFeatureNames: names => required.push(...names),
     drawsInOpaqueLoop: () => true,
-    render: frame => drawn.push(frame),
+    render: frame => drawn.push({ frame, cullableWhileDrawing: batch.cullable }),
   };
-  return { renderer, drawn };
+  return { renderer, drawn, required, batch };
 }
 
-test('installing needs the render passes addon', () => {
-  const { renderer } = fakeRenderer([]);
-  renderer.passSupport = null;
-  assert.throws(() => installMeshBlend(renderer), /installRenderPasses/);
-});
-
-test('with no blend part a frame is drawn once, as given, and the stage does nothing', () => {
-  const { renderer, drawn } = fakeRenderer([{ name: 'ground' }, { name: 'rock' }]);
+test('with no blend part a frame is drawn once, as given, and nothing is added to the renderer', () => {
+  const { renderer, drawn, required, batch } = fakeRenderer([{ name: 'ground' }, { name: 'rock' }]);
   installMeshBlend(renderer);
   const frame = { eye: [0, 0, 5] };
   renderer.render(frame);
   assert.equal(drawn.length, 1);
-  assert.equal(drawn[0], frame, 'the very same frame object reaches the renderer');
+  assert.equal(drawn[0].frame, frame, 'the very same frame object reaches the renderer');
+  assert.deepEqual(required, [], 'no shader feature is requested, so the main program keeps its single output');
+  assert.equal(drawn[0].cullableWhileDrawing, true);
+  assert.equal(batch.cullable, true);
   assert.equal(renderer.postStages[0].apply(renderer, frame, {}, {}), null);
 });
 
-test('a blend part adds one object ID draw before the frame, and the stage runs only for that frame', () => {
-  const { renderer, drawn } = fakeRenderer([{ name: 'ground' }, { name: 'rock', blend: { radius: 0.2 } }]);
+test('a blend part needs no extra draw: the frame asks for the ID output and the stage runs for that frame only', () => {
+  const { renderer, drawn, required, batch } = fakeRenderer([{ name: 'ground' }, { name: 'rock', blend: { radius: 0.2 } }]);
   installMeshBlend(renderer);
   const frame = { eye: [0, 0, 5] };
   renderer.render(frame);
-  assert.equal(drawn.length, 2);
-  assert.equal(drawn[0].pass, 'objectId');
-  assert.equal(drawn[1], frame);
+  assert.equal(drawn.length, 1, 'one draw of the scene, not two');
+  assert.equal(drawn[0].frame, frame);
+  assert.deepEqual(required, ['meshBlend']);
+  assert.equal(drawn[0].cullableWhileDrawing, false, 'a batch with a blend part draws all instances so IDs stay in order');
+  assert.equal(batch.cullable, true, 'culling is restored after the frame');
   assert.equal(renderer.postStages[0].apply(renderer, frame, {}, {}), null, 'the stage is off again after the frame');
 });
 
 test('a radius from the radii map opts a part in like its own blend field', () => {
-  const { renderer, drawn } = fakeRenderer([{ name: 'ground' }, { name: 'rock' }]);
+  const { renderer, required } = fakeRenderer([{ name: 'ground' }, { name: 'rock' }]);
   installMeshBlend(renderer);
   renderer.meshBlend.radii = new Map([['rock', 0.2]]);
   renderer.render({ eye: [0, 0, 5] });
-  assert.equal(drawn.length, 2);
+  assert.deepEqual(required, ['meshBlend']);
 });
 
 test('passes, mirrors and benchmark frames are never blended', () => {
-  const { renderer, drawn } = fakeRenderer([{ name: 'rock', blend: { radius: 0.2 } }]);
+  const { renderer, drawn, required } = fakeRenderer([{ name: 'rock', blend: { radius: 0.2 } }]);
   installMeshBlend(renderer);
   renderer.render({ eye: [0, 0, 5], pass: 'normal' });
   renderer.render({ eye: [0, 0, 5], reflectionTarget: {} });
   renderer.benchmark = true;
   renderer.render({ eye: [0, 0, 5] });
   assert.equal(drawn.length, 3);
+  assert.deepEqual(required, []);
+});
+
+test('the ID output is a registered shader feature with a checksum and an explicit colour location', async () => {
+  const { registeredFeatureCode, shaderTransforms } = await import('../src/shader-registry.js');
+  const slots = registeredFeatureCode.get('meshBlend');
+  assert.match(slots.declarations, /layout\(location = 1\) out highp vec4 partIdentifier/);
+  assert.match(slots.surfaceHook, /renderPassObjectBase \+ instanceEmission\.w \+ 1\.0/);
+  assert.match(slots.surfaceHook, /alphaMode > 1\.5 \? 0u/, 'blended parts write no ID');
+  const withOutput = '\nout vec4 outputColor;\nvoid main() { partIdentifier = vec4(0.0); }';
+  const transformed = shaderTransforms.reduce((text, transform) => transform(text), withOutput);
+  assert.match(transformed, /layout\(location = 0\) out vec4 outputColor;/);
+  const plain = '\nout vec4 outputColor;\nvoid main() {}';
+  assert.equal(shaderTransforms.reduce((text, transform) => transform(text), plain), plain, 'a shader without the ID output is untouched');
+  assert.ok(blendFragment.includes('% 251 + 1'), 'the stage checks the same checksum the shader writes');
 });
 
 test('a recipe node takes blend and keeps it through export and set-node', () => {

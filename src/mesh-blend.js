@@ -6,9 +6,11 @@
 // A pixel of a blend part looks at taps on a spiral within `radius` (in screen pixels at its distance) and counts the taps
 // that show another part. A tap counts only when its surface point lies within a short reach of this pixel (a depth match:
 // a silhouette against the sky or a far wall is skipped) and the surfaces do not run parallel (a normal discontinuity,
-// rebuilt from the depth). The part IDs come from the object ID render pass, drawn just before the frame; the depth is the
-// depth texture of the frame, so the renderer needs `depth: true`, as line art does. Cost: one extra draw of the opaque
-// geometry in the ID mode, plus a fullscreen pass that exits early for every pixel outside a blend part.
+// rebuilt from the depth). The part IDs are written by the lit pass itself into a second colour attachment (the shader feature
+// `meshBlend`, requested only when a part has `blend`), so there is no second draw; the depth is the depth texture of the frame,
+// so the renderer needs `depth: true`. Cost: the extra attachment and a fullscreen pass that exits early outside blend parts.
+
+import { registerShaderFeatureCode, shaderTransforms } from './shader-registry.js';
 
 export const MESH_BLEND_LIMITS = Object.freeze({ radius: Object.freeze([0.005, 2]) });
 export const MESH_BLEND_TAPS = Object.freeze({ count: 24, angleStep: 2.39996323 });
@@ -66,8 +68,13 @@ uniform float pixelsPerMetre;
 uniform float orthographic;
 out vec4 outputColor;
 ivec2 lastPixel;
+// The far depth marks the background. The multisample resolve averages the IDs of an edge pixel into a value that is no ID, so
+// the alpha channel carries a checksum of the three ID bytes; a pixel that fails it is an edge pixel and reads as no part.
 int partAt(ivec2 pixel) {
-  ivec3 bytes = ivec3(texelFetch(partTexture, clamp(pixel, ivec2(0), lastPixel), 0).rgb * 255.0 + 0.5);
+  ivec2 clamped = clamp(pixel, ivec2(0), lastPixel);
+  if (texelFetch(sceneDepth, clamped, 0).r >= 1.0) return 0;
+  ivec4 bytes = ivec4(texelFetch(partTexture, clamped, 0) * 255.0 + 0.5);
+  if (bytes.w != (bytes.x * 3 + bytes.y * 5 + bytes.z * 11) % 251 + 1) return 0;
   return bytes.x + bytes.y * 256 + bytes.z * 65536;
 }
 vec3 positionAt(ivec2 pixel) {
@@ -175,22 +182,53 @@ function sameTable(first, second) {
   return first?.length === second.length && first.every((value, index) => value === second[index]);
 }
 
+// The main opaque pass writes the part ID into a second colour attachment while this feature is on. The ID is the object ID of the
+// render passes (the draw order of opaque instances, plus one) in three bytes, with a checksum byte (WebGL2 has no multisampled
+// integer target, so the resolve averages; see partAt). Blended parts write 0: they draw over the opaque pixel without writing depth.
+registerShaderFeatureCode('meshBlend', Object.freeze({
+  declarations: 'layout(location = 1) out highp vec4 partIdentifier;\n',
+  surfaceHook: `  uint partNumber = alphaMode > 1.5 ? 0u : uint(renderPassObjectBase + instanceEmission.w + 1.0);
+  uvec3 partBytes = uvec3(partNumber & 255u, (partNumber >> 8) & 255u, partNumber >> 16);
+  partIdentifier = vec4(vec3(partBytes), float((partBytes.x * 3u + partBytes.y * 5u + partBytes.z * 11u) % 251u + 1u)) / 255.0;
+`,
+}));
+
+// With two outputs the colour output needs its own location too, so a source that declares the ID output gets it spelled out.
+shaderTransforms.push(source => (source.includes('partIdentifier') ? source.replace('\nout vec4 outputColor;', '\nlayout(location = 0) out vec4 outputColor;') : source));
+
+function createPartTarget(context, width, height) {
+  const texture = context.createTexture();
+  context.bindTexture(context.TEXTURE_2D, texture);
+  context.texImage2D(context.TEXTURE_2D, 0, context.RGBA8, width, height, 0, context.RGBA, context.UNSIGNED_BYTE, null);
+  context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MIN_FILTER, context.NEAREST);
+  context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MAG_FILTER, context.NEAREST);
+  const framebuffer = context.createFramebuffer();
+  context.bindFramebuffer(context.FRAMEBUFFER, framebuffer);
+  context.framebufferTexture2D(context.FRAMEBUFFER, context.COLOR_ATTACHMENT0, context.TEXTURE_2D, texture, 0);
+  if (context.checkFramebufferStatus(context.FRAMEBUFFER) !== context.FRAMEBUFFER_COMPLETE) {
+    throw new Error('Mesh blend framebuffer allocation failed. Choose a lower quality preset.');
+  }
+  return { texture, framebuffer };
+}
+
 /**
- * Adds the seam blend to a renderer. The renderer needs `depth: true` and installRenderPasses first. A part opts in with
- * `blend: { radius }`; a frame whose parts have none draws exactly as before.
+ * Adds the seam blend to a renderer. The renderer needs `depth: true`. A part opts in with `blend: { radius }`; a frame whose
+ * parts have none draws exactly as before (no shader output, no attachment, no pass). With a blend part, the lit pass writes the
+ * part IDs into an extra attachment of the multisample framebuffer and the stage resolves it, so there is no second draw.
  */
 export function installMeshBlend(renderer) {
   if (renderer.meshBlend) return renderer;
-  if (!renderer.passSupport) throw new Error('Mesh blend needs installRenderPasses(renderer) from 67js/addons/render-passes first.');
   const state = { active: false, table: null };
   let program = null;
   let uniforms = null;
   let partTarget = null;
+  let partRenderbuffer = null;
+  let attachedFramebuffer = null;
   let outputTarget = null;
   let radiusTexture = null;
 
-  function opaqueParts() {
-    return renderer.batches.filter(batch => renderer.drawsInOpaqueLoop(batch)).flatMap(batch => batch.parts);
+  function opaqueBatches() {
+    return renderer.batches.filter(batch => renderer.drawsInOpaqueLoop(batch));
   }
 
   function uploadTable(table) {
@@ -207,18 +245,50 @@ export function installMeshBlend(renderer) {
     context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MAG_FILTER, context.NEAREST);
   }
 
-  function captureParts() {
+  function releasePartAttachment(context) {
+    if (partRenderbuffer) context.deleteRenderbuffer(partRenderbuffer);
+    if (partTarget) {
+      context.deleteTexture(partTarget.texture);
+      context.deleteFramebuffer(partTarget.framebuffer);
+    }
+    partRenderbuffer = null;
+    partTarget = null;
+    attachedFramebuffer = null;
+  }
+
+  // The multisample framebuffer is made again on every resize, so the attachment follows it.
+  function attachPartBuffer() {
     const { context, canvas } = renderer;
-    partTarget ??= createColorTarget(context, canvas.width, canvas.height, false, context.NEAREST);
-    context.bindFramebuffer(context.READ_FRAMEBUFFER, renderer.passSupport.framebuffer);
+    if (attachedFramebuffer === renderer.multisampleFramebuffer) return;
+    releasePartAttachment(context);
+    partRenderbuffer = context.createRenderbuffer();
+    context.bindRenderbuffer(context.RENDERBUFFER, partRenderbuffer);
+    context.renderbufferStorageMultisample(context.RENDERBUFFER, renderer.multisampleSamples, context.RGBA8, canvas.width, canvas.height);
+    context.bindFramebuffer(context.FRAMEBUFFER, renderer.multisampleFramebuffer);
+    context.framebufferRenderbuffer(context.FRAMEBUFFER, context.COLOR_ATTACHMENT1, context.RENDERBUFFER, partRenderbuffer);
+    context.drawBuffers([context.COLOR_ATTACHMENT0, context.NONE]);
+    context.bindFramebuffer(context.FRAMEBUFFER, null);
+    partTarget = createPartTarget(context, canvas.width, canvas.height);
+    renderer.renderTargets.record('partId', { width: canvas.width, height: canvas.height, format: 'RGBA8', samples: renderer.multisampleSamples });
+    renderer.renderTargets.record('partIdResolved', { width: canvas.width, height: canvas.height, format: 'RGBA8' });
+    attachedFramebuffer = renderer.multisampleFramebuffer;
+  }
+
+  // The resolve averages the samples of an edge pixel; the checksum byte in the shader finds those pixels.
+  function resolveParts() {
+    const { context, canvas } = renderer;
+    context.bindFramebuffer(context.READ_FRAMEBUFFER, renderer.multisampleFramebuffer);
+    context.readBuffer(context.COLOR_ATTACHMENT1);
     context.bindFramebuffer(context.DRAW_FRAMEBUFFER, partTarget.framebuffer);
     context.blitFramebuffer(0, 0, canvas.width, canvas.height, 0, 0, canvas.width, canvas.height, context.COLOR_BUFFER_BIT, context.NEAREST);
+    context.readBuffer(context.COLOR_ATTACHMENT0);
   }
 
   function apply(rendererInUse, frame, effects, sourceTexture) {
     if (!state.active) return null;
     if (!renderer.depthTexture) throw new Error('Mesh blend requires depth:true on the renderer.');
     const { context, canvas } = renderer;
+    resolveParts();
     if (!program) {
       program = compileProgram(context, fullscreenVertex, blendFragment);
       uniforms = Object.fromEntries(['sourceTexture', 'sceneDepth', 'partTexture', 'radiusTexture', 'inverseViewProjection', 'eye', 'pixelsPerMetre', 'orthographic']
@@ -245,13 +315,13 @@ export function installMeshBlend(renderer) {
   }
 
   function releaseTargets(context) {
-    for (const target of [partTarget, outputTarget]) {
-      if (!target) continue;
-      context.deleteTexture(target.texture);
-      context.deleteFramebuffer(target.framebuffer);
+    if (outputTarget) {
+      context.deleteTexture(outputTarget.texture);
+      context.deleteFramebuffer(outputTarget.framebuffer);
     }
-    partTarget = null;
     outputTarget = null;
+    releasePartAttachment(context);
+    renderer.renderTargets.release('partId', 'partIdResolved');
   }
 
   function dispose(context) {
@@ -263,16 +333,45 @@ export function installMeshBlend(renderer) {
     state.table = null;
   }
 
+  // A batch the frustum culls draws its visible instances packed, which renumbers them; a batch with a blend part draws all
+  // of its instances in order for the frame, so the part IDs the shader writes stay the table's indices.
+  function pinBlendBatches(table) {
+    const pinned = [];
+    let firstId = 1;
+    for (const batch of opaqueBatches()) {
+      const hasBlend = table.subarray(firstId, firstId + batch.parts.length).some(radius => radius > 0);
+      if (hasBlend && batch.cullable) {
+        batch.cullable = false;
+        pinned.push(batch);
+      }
+      firstId += batch.parts.length;
+    }
+    return pinned;
+  }
+
+  // A draw into an enabled draw buffer its program has no output for is an error, and only the main program writes the ID, so
+  // the ID attachment is enabled while that program draws into the multisample framebuffer and off for the sky, liquid and others.
+  const { context } = renderer;
+  const useProgram = context.useProgram.bind(context);
+  context.useProgram = program => {
+    useProgram(program);
+    if (state.active && context.getParameter(context.DRAW_FRAMEBUFFER_BINDING) === renderer.multisampleFramebuffer) {
+      context.drawBuffers([context.COLOR_ATTACHMENT0, program === renderer.program ? context.COLOR_ATTACHMENT1 : context.NONE]);
+    }
+  };
+
   renderer.postStages.push({ name: 'Mesh blend', apply, releaseTargets, dispose });
   const drawFrame = renderer.render.bind(renderer);
   renderer.render = frame => {
     state.active = false;
+    let pinned = [];
     if (frame.pass === undefined && !frame.reflectionTarget && !renderer.benchmark) {
-      const table = blendRadiusTable(opaqueParts(), renderer.meshBlend.radii);
+      const table = blendRadiusTable(opaqueBatches().flatMap(batch => batch.parts), renderer.meshBlend.radii);
       if (table.some(radius => radius > 0)) {
         uploadTable(table);
-        drawFrame({ ...frame, pass: 'objectId' });
-        captureParts();
+        renderer.requireFeatureNames(['meshBlend']);
+        attachPartBuffer();
+        pinned = pinBlendBatches(table);
         state.active = true;
       }
     }
@@ -280,6 +379,7 @@ export function installMeshBlend(renderer) {
       drawFrame(frame);
     } finally {
       state.active = false;
+      for (const batch of pinned) batch.cullable = true;
     }
   };
   renderer.meshBlend = { limits: MESH_BLEND_LIMITS, radii: new Map() };
