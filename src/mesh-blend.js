@@ -18,6 +18,20 @@ const TAP_COUNT = MESH_BLEND_TAPS.count;
 const MAXIMUM_PIXEL_RADIUS = 40;
 const TABLE_WIDTH = 1024;
 
+// The taps lie on a golden-angle spiral, denser near the pixel; a tap's weight falls off with its distance. The shader reads
+// them from a constant table, so it computes no square root, sine or cosine per tap.
+function spiralTaps() {
+  return Array.from({ length: TAP_COUNT }, (unused, index) => {
+    const fraction = Math.sqrt((index + 0.5) / TAP_COUNT);
+    const angle = index * MESH_BLEND_TAPS.angleStep;
+    return [Math.cos(angle) * fraction, Math.sin(angle) * fraction, 1 - fraction];
+  });
+}
+const glslFloat = value => (Number.isInteger(value) ? `${value}.0` : String(Math.fround(value)));
+const TAPS = spiralTaps();
+const TAP_TABLE = TAPS.map(tap => `vec3(${tap.map(glslFloat).join(', ')})`).join(', ');
+const TAP_TOTAL_WEIGHT = glslFloat(TAPS.reduce((sum, tap) => sum + tap[2], 0));
+
 // gl-program.js is not imported on purpose: this module loads on demand (see line-art.js).
 const fullscreenVertex = `#version 300 es
 precision highp float;
@@ -56,6 +70,10 @@ export function blendRadiusTable(parts, radii = new Map()) {
 // What scene_capabilities reports: one line, since every byte there is paid on each call. The limits are in the docs.
 export const MESH_BLEND_CAPABILITIES = 'nodes[].blend {radius: metres 0.005-2} softens seams; needs depth; docs/mesh-blend.md';
 
+// tapOffsets holds each tap's offset at a radius of one pixel (x, y) and its weight (z). partAt needs no depth fetch: the ID
+// attachment is cleared to zero each frame, which fails the checksum, so the background reads as no part. The multisample
+// resolve averages the IDs of an edge pixel into a value that is no ID, so the alpha channel carries a checksum of the three
+// ID bytes; a pixel that fails it is an edge pixel and reads as no part too.
 export const blendFragment = `#version 300 es
 precision highp float;
 uniform sampler2D sourceTexture;
@@ -67,12 +85,10 @@ uniform vec3 eye;
 uniform float pixelsPerMetre;
 uniform float orthographic;
 out vec4 outputColor;
+const vec3 tapOffsets[${TAP_COUNT}] = vec3[${TAP_COUNT}](${TAP_TABLE});
 ivec2 lastPixel;
-// The far depth marks the background. The multisample resolve averages the IDs of an edge pixel into a value that is no ID, so
-// the alpha channel carries a checksum of the three ID bytes; a pixel that fails it is an edge pixel and reads as no part.
 int partAt(ivec2 pixel) {
   ivec2 clamped = clamp(pixel, ivec2(0), lastPixel);
-  if (texelFetch(sceneDepth, clamped, 0).r >= 1.0) return 0;
   ivec4 bytes = ivec4(texelFetch(partTexture, clamped, 0) * 255.0 + 0.5);
   if (bytes.w != (bytes.x * 3 + bytes.y * 5 + bytes.z * 11) % 251 + 1) return 0;
   return bytes.x + bytes.y * 256 + bytes.z * 65536;
@@ -116,26 +132,27 @@ void main() {
   float reach = radius * 3.0;
   vec3 colorSum = vec3(0.0);
   float otherWeight = 0.0;
-  float totalWeight = 0.0;
   ivec2 nearestTap = pixel;
+  vec3 nearestPosition = center;
   bool found = false;
   for (int index = 0; index < ${TAP_COUNT}; index++) {
-    float fraction = sqrt((float(index) + 0.5) / ${TAP_COUNT}.0);
-    float angle = float(index) * ${MESH_BLEND_TAPS.angleStep};
-    ivec2 tap = pixel + ivec2(round(vec2(cos(angle), sin(angle)) * pixelRadius * fraction));
-    float weight = 1.0 - fraction;
-    totalWeight += weight;
+    vec3 tapOffset = tapOffsets[index];
+    ivec2 tap = pixel + ivec2(round(tapOffset.xy * pixelRadius));
     int tapPart = partAt(tap);
     if (tapPart == 0 || tapPart == part) continue;
-    if (distance(positionAt(tap), center) > reach) continue;
-    if (!found) nearestTap = tap;
+    vec3 tapPosition = positionAt(tap);
+    if (distance(tapPosition, center) > reach) continue;
+    if (!found) {
+      nearestTap = tap;
+      nearestPosition = tapPosition;
+    }
     found = true;
-    colorSum += weight * texelFetch(sourceTexture, clamp(tap, ivec2(0), lastPixel), 0).rgb;
-    otherWeight += weight;
+    colorSum += tapOffset.z * texelFetch(sourceTexture, clamp(tap, ivec2(0), lastPixel), 0).rgb;
+    otherWeight += tapOffset.z;
   }
   if (!found) return;
-  float creased = smoothstep(0.05, 0.4, 1.0 - dot(normalAt(pixel, center), normalAt(nearestTap, positionAt(nearestTap))));
-  float amount = smoothstep(0.0, 0.5, otherWeight / totalWeight) * creased;
+  float creased = smoothstep(0.05, 0.4, 1.0 - dot(normalAt(pixel, center), normalAt(nearestTap, nearestPosition)));
+  float amount = smoothstep(0.0, 0.5, otherWeight / ${TAP_TOTAL_WEIGHT}) * creased;
   outputColor.rgb = mix(source.rgb, colorSum / otherWeight, amount);
 }`;
 
@@ -274,6 +291,16 @@ export function installMeshBlend(renderer) {
     attachedFramebuffer = renderer.multisampleFramebuffer;
   }
 
+  // The sky never writes the ID attachment and the frame's clear may leave it out, so it is cleared here: the background then
+  // reads as no part.
+  function clearParts() {
+    const { context } = renderer;
+    context.bindFramebuffer(context.FRAMEBUFFER, renderer.multisampleFramebuffer);
+    context.drawBuffers([context.NONE, context.COLOR_ATTACHMENT1]);
+    context.clearBufferfv(context.COLOR, 1, [0, 0, 0, 0]);
+    context.drawBuffers([context.COLOR_ATTACHMENT0, context.NONE]);
+  }
+
   // The resolve averages the samples of an edge pixel; the checksum byte in the shader finds those pixels.
   function resolveParts() {
     const { context, canvas } = renderer;
@@ -333,14 +360,21 @@ export function installMeshBlend(renderer) {
     state.table = null;
   }
 
-  // A batch the frustum culls draws its visible instances packed, which renumbers them; a batch with a blend part draws all
-  // of its instances in order for the frame, so the part IDs the shader writes stay the table's indices.
+  // A batch the frustum culls draws its visible instances packed, which renumbers them within the batch's own ID range. When
+  // every part of the batch has the same radius and the batch draws in one call (a single level), any ID in that range still
+  // reads the right radius and the IDs stay distinct, so the batch keeps its culling. Any other batch with a blend part draws
+  // all of its instances in order for the frame, so the part IDs the shader writes stay the table's indices.
+  function needsStableIds(radii, batch) {
+    if (!radii.some(radius => radius > 0)) return false;
+    if ((batch.levelErrors?.length ?? 1) > 1) return true;
+    return radii.some(radius => radius !== radii[0]);
+  }
+
   function pinBlendBatches(table) {
     const pinned = [];
     let firstId = 1;
     for (const batch of opaqueBatches()) {
-      const hasBlend = table.subarray(firstId, firstId + batch.parts.length).some(radius => radius > 0);
-      if (hasBlend && batch.cullable) {
+      if (batch.cullable && needsStableIds(table.subarray(firstId, firstId + batch.parts.length), batch)) {
         batch.cullable = false;
         pinned.push(batch);
       }
@@ -371,6 +405,7 @@ export function installMeshBlend(renderer) {
         uploadTable(table);
         renderer.requireFeatureNames(['meshBlend']);
         attachPartBuffer();
+        clearParts();
         pinned = pinBlendBatches(table);
         state.active = true;
       }

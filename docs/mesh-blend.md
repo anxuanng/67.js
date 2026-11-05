@@ -19,7 +19,7 @@ For each pixel of a blend part, the pass looks at 24 taps on a spiral within `ra
 - Opaque and cutout parts only. A blended part writes no ID, and translucent water or glass drawn over a blend part leaves that pixel unblended or with a stale ID (the liquid programs do not write the attachment).
 - A blend part mixes toward the part on the other side of its seam; the other part changes only if it has `blend` too. Marking both gives the soft seam from both sides.
 - A seam under about one pixel wide (a tiny radius far from the camera) is left alone. The path tracer does not run the pass.
-- The part ID is the draw order of opaque instances. A batch (one geometry and material) that holds a blend part is drawn without frustum culling or level selection while the pass is on, so its IDs stay in order; a large instanced forest with one blend part pays that. More than 16 million parts is not supported (the ID has 24 bits).
+- The part ID is the draw order of opaque instances. Culling packs the visible instances of a batch (one geometry and material) inside its own ID range, so a batch whose parts all share one radius and draw at one level keeps its frustum culling. A batch that mixes radii, or one with LOD levels (each level draw restarts the instance numbers), is drawn without culling or level selection while the pass is on, so its IDs stay in order; a large instanced forest of mixed radii pays that. More than 16 million parts is not supported (the ID has 24 bits).
 - In a recipe, a wrong `blend` value (`radius` outside 0.005 to 2, an unknown field) is reported when the preview draws the frame, with the message of the field.
 
 ## Code

@@ -99,6 +99,29 @@ window.measureFrames = (count) => {
   return times;
 };
 
+// GPU milliseconds per frame from EXT_disjoint_timer_query_webgl2, or null where the browser does not expose it.
+window.measureGpuFrames = async (count) => {
+  const context = renderer.context;
+  const timer = context.getExtension('EXT_disjoint_timer_query_webgl2');
+  if (!timer) return null;
+  for (let index = 0; index < 30; index++) renderer.render(frame);
+  const queries = [];
+  for (let index = 0; index < count; index++) {
+    const query = context.createQuery();
+    context.beginQuery(timer.TIME_ELAPSED_EXT, query);
+    renderer.render(frame);
+    context.endQuery(timer.TIME_ELAPSED_EXT);
+    queries.push(query);
+  }
+  const times = [];
+  for (const query of queries) {
+    while (!context.getQueryParameter(query, context.QUERY_RESULT_AVAILABLE)) await new Promise(done => setTimeout(done, 1));
+    if (!context.getParameter(timer.GPU_DISJOINT_EXT)) times.push(context.getQueryParameter(query, context.QUERY_RESULT) / 1e6);
+    context.deleteQuery(query);
+  }
+  return times;
+};
+
 window.teardown = () => {
   renderer.dispose();
   renderer = null;
