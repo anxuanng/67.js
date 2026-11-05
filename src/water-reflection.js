@@ -204,6 +204,25 @@ function mirroredFrame(frame, height, target) {
 }
 
 const SNAPSHOT_DEPTH = 4;
+// A typed array longer than this is a texture or map payload (a sky's pixels run to millions of values). Copying and comparing it
+// every frame cost about 170 ms a frame in the container port, so a frame snapshot keeps it by reference and a frame matches it by identity.
+const LARGE_ARRAY_LENGTH = 65536;
+
+function isTypedArray(value) {
+  return ArrayBuffer.isView(value) && !(value instanceof DataView);
+}
+
+function sameTypedArray(first, second) {
+  if (first.constructor !== second.constructor || first.length !== second.length || first.length > LARGE_ARRAY_LENGTH) {
+    return false;
+  }
+  for (let index = 0; index < first.length; index++) {
+    if (first[index] !== second[index]) {
+      return false;
+    }
+  }
+  return true;
+}
 
 // A copy of the frame's values (arrays, typed arrays and plain objects are copied, anything else is kept by reference), so a later
 // frame can be compared with what this one held even when the caller changes the same arrays in place.
@@ -212,7 +231,7 @@ function snapshotOf(value, depth = 0) {
     return value;
   }
   if (ArrayBuffer.isView(value)) {
-    return value.slice();
+    return isTypedArray(value) && value.length > LARGE_ARRAY_LENGTH ? value : value.slice();
   }
   if (Array.isArray(value)) {
     return value.map(item => snapshotOf(item, depth + 1));
@@ -229,6 +248,9 @@ function sameValue(first, second, depth = 0) {
   }
   if (depth >= SNAPSHOT_DEPTH || first === null || second === null || typeof first !== 'object' || typeof second !== 'object') {
     return false;
+  }
+  if (isTypedArray(first) && isTypedArray(second)) {
+    return sameTypedArray(first, second);
   }
   const firstKeys = Object.keys(first);
   if (Object.getPrototypeOf(first) !== Object.getPrototypeOf(second) || firstKeys.length !== Object.keys(second).length) {
