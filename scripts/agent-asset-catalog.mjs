@@ -2,8 +2,10 @@ import { createHash } from 'node:crypto';
 import { open, readdir, realpath, lstat } from 'node:fs/promises';
 import { basename, isAbsolute, join, relative, sep } from 'node:path';
 
-const MAXIMUM_ASSETS = 64;
-const MAXIMUM_BYTES = 16 * 1024 * 1024;
+import { AGENT_ASSET_LIMITS, assetBytesLimitMessage } from '../src/agent-asset-limits.js';
+
+const MAXIMUM_ASSETS = AGENT_ASSET_LIMITS.maxAssets;
+const MAXIMUM_BYTES = AGENT_ASSET_LIMITS.maxBytes;
 
 const IMAGE_EXTENSIONS = { png: /\.png$/i, jpeg: /\.jpe?g$/i, webp: /\.webp$/i };
 const IMAGE_MIME = { png: 'image/png', jpeg: 'image/jpeg', webp: 'image/webp' };
@@ -66,8 +68,11 @@ export async function createAgentAssetCatalog(root) {
     const handle = await open(resolved, 'r');
     try {
       const current = await handle.stat();
-      if (!current.isFile() || current.dev !== original.dev || current.ino !== original.ino || current.size < 20 || current.size > MAXIMUM_BYTES) {
-        throw new Error('Asset changed during opening or exceeds the 16 MiB file budget.');
+      if (current.isFile() && current.size > MAXIMUM_BYTES) {
+        throw new RangeError(`${filename}: ${assetBytesLimitMessage(current.size)}`);
+      }
+      if (!current.isFile() || current.dev !== original.dev || current.ino !== original.ino || current.size < 20) {
+        throw new Error('Asset changed during opening or is too small to be a GLB.');
       }
       const bytes = Buffer.alloc(current.size);
       let position = 0;
@@ -93,7 +98,7 @@ export async function createAgentAssetCatalog(root) {
 
   const files = (await readdir(directory, { withFileTypes: true }))
     .filter(entry => /\.(glb|png|jpe?g|webp)$/i.test(entry.name)).sort((left, right) => left.name.localeCompare(right.name));
-  if (files.length > MAXIMUM_ASSETS) throw new Error('Asset catalog exceeds the 64-file budget.');
+  if (files.length > MAXIMUM_ASSETS) throw new RangeError(`Asset catalog has ${files.length} files, over its maxAssets ${MAXIMUM_ASSETS}. Remove files from the --assets directory.`);
   for (const file of files) {
     const { bytes, document, assetId, imageFormat } = await readFile(file.name);
     if (entries.has(assetId)) continue;
@@ -125,7 +130,8 @@ export async function createAgentAssetCatalog(root) {
       if (!entry) throw new Error('Unknown asset ID. Read the configured asset catalog first.');
       const result = await readFile(entry.filename);
       if (result.assetId !== assetId) throw new Error('Asset bytes changed since catalog creation. Restart the runtime to refresh the catalog.');
-      if ((result.document?.animations?.length ?? 0) > 256) throw new Error('Asset exceeds the 256-clip decoding budget.');
+      const clipCount = result.document?.animations?.length ?? 0;
+      if (clipCount > AGENT_ASSET_LIMITS.maxClips) throw new RangeError(`Asset has ${clipCount} animation clips, over the catalog maxClips ${AGENT_ASSET_LIMITS.maxClips}. Remove clips from the file.`);
       return result.bytes;
     },
   });
