@@ -30,7 +30,7 @@ export const GLTF_CAPABILITIES = Object.freeze({
   ignoredExtensions: ['KHR_materials_variants', 'KHR_materials_dispersion', 'KHR_materials_diffuse_roughness', 'EXT_materials_bump', 'EXT_texture_avif'],
   optionalExtensions: 'Any other optional extension is ignored and named in warnings. One listed in extensionsRequired that 67js does not read is refused.',
   skippedPrimitives: ['POINTS', 'LINES', 'LINE_LOOP', 'LINE_STRIP'],
-  unsupported: ['more than four skin influences', 'singular weighted skin transforms', 'reflected skin transforms', 'TANGENT morph targets', 'morph targets without authored base normals', 'drawing vertex alpha (it is ignored with a warning)','different texture transforms on one material, except a normal map that differs by scale and offset', 'skinned or morphed GPU instancing', 'transmission, iridescence and specular textures (their factors are used)', 'texture transforms on TEXCOORD_1'],
+  unsupported: ['more than four skin influences', 'singular weighted skin transforms', 'reflected skin transforms', 'TANGENT morph targets', 'drawing vertex alpha (it is ignored with a warning)','different texture transforms on one material, except a normal map that differs by scale and offset', 'skinned or morphed GPU instancing', 'transmission, iridescence and specular textures (their factors are used)', 'texture transforms on TEXCOORD_1'],
 });
 
 const LAYER_SHADER_EXTENSIONS = Object.freeze(['KHR_materials_anisotropy', 'KHR_materials_iridescence']);
@@ -354,13 +354,13 @@ function validateDocument(document, limits, allowedExtensions) {
       }
       if (primitive.targets !== undefined && (!Array.isArray(primitive.targets) || !primitive.targets.length || primitive.targets.length !== targetCount)) throw new Error('Morph target counts must match across all mesh primitives.');
       if ((primitive.targets?.length ?? 0) !== targetCount) throw new Error('Morph target counts must match across all mesh primitives.');
-      if (targetCount && primitive.attributes?.NORMAL === undefined) throw new Error('Morph targets require authored base NORMAL. Per-target flat normal generation is unsupported.');
       for (const target of primitive.targets ?? []) {
         if (!target || typeof target !== 'object' || Array.isArray(target) || !Object.keys(target).length) throw new Error('Morph targets require POSITION or NORMAL channels.');
         for (const [semantic, accessorIndex] of Object.entries(target)) {
           if (!['POSITION', 'NORMAL'].includes(semantic)) throw new Error(`Unsupported morph target semantic: ${semantic}.`);
           const accessor = document.accessors?.[accessorIndex];
-          if (primitive.attributes?.[semantic] === undefined) throw new Error('Morph target channels require corresponding base attributes.');
+          // A morph NORMAL without a base NORMAL is dropped at conversion with a warning, so it needs no base attribute here.
+          if (primitive.attributes?.[semantic] === undefined && semantic !== 'NORMAL') throw new Error('Morph target channels require corresponding base attributes.');
           if (!Number.isInteger(accessorIndex) || !accessor || accessor.type !== 'VEC3' || accessor.componentType !== 5126 || accessor.normalized || accessor.count !== position.count) throw new Error('Morph target channels require matching float VEC3 accessors.');
           if (semantic === 'POSITION' && (!Array.isArray(accessor.min) || !Array.isArray(accessor.max) || accessor.min.length !== 3 || accessor.max.length !== 3
               || accessor.min.some((value, axis) => typeof value !== 'number' || !Number.isFinite(Math.fround(value)) || typeof accessor.max[axis] !== 'number' || !Number.isFinite(Math.fround(accessor.max[axis])) || value > accessor.max[axis]))) throw new Error('Morph POSITION requires finite ordered min/max bounds.');
@@ -832,7 +832,7 @@ function hasTriangleWithArea(positions, indices) {
   return false;
 }
 
-function convertGeometry(source, mirrored, primitive, secondUvSet, onIgnoredVertexAlpha) {
+function convertGeometry(source, mirrored, primitive, secondUvSet, onIgnoredVertexAlpha, onRepair) {
   const { position, normal, uv, uv1, color, skinIndex, skinWeight } = source.attributes;
   const positions = copyAttribute(position, 3);
   const indices = new Uint32Array(source.index?.count ?? position.count);
@@ -845,6 +845,7 @@ function convertGeometry(source, mirrored, primitive, secondUvSet, onIgnoredVert
   if (!hasTriangleWithArea(positions, indices)) throw new UnusablePrimitiveError('every triangle has zero area');
   const normals = normal ? copyAttribute(normal, 3) : computeVertexNormals(positions, indices);
   const geometry = { positions, normals, indices };
+  const repairedNormals = [];
   for (let offset = 0; offset < normals.length; offset += 3) {
     const length = Math.hypot(...normals.subarray(offset, offset + 3));
     if (length < 1e-8 && !normal) {
@@ -852,8 +853,20 @@ function convertGeometry(source, mirrored, primitive, secondUvSet, onIgnoredVert
       normals[offset + 1] = 1;
       continue;
     }
-    if (length < 1e-8) throw new Error('Degenerate geometry has no usable vertex normal.');
+    if (length < 1e-8) {
+      repairedNormals.push(offset);
+      continue;
+    }
     for (let axis = 0; axis < 3; axis++) normals[offset + axis] /= length;
+  }
+  if (repairedNormals.length) {
+    // An authored normal of zero length cannot light anything: use the face normal of the triangles at that vertex, or up.
+    const faceNormals = computeVertexNormals(positions, indices);
+    for (const offset of repairedNormals) {
+      const length = Math.hypot(...faceNormals.subarray(offset, offset + 3));
+      for (let axis = 0; axis < 3; axis++) normals[offset + axis] = length > 1e-8 ? faceNormals[offset + axis] / length : axis === 1 ? 1 : 0;
+    }
+    onRepair(`${repairedNormals.length} vertex normal(s) had zero length and were rebuilt from the triangles`);
   }
   if (mirrored) {
     for (let index = 0; index < indices.length; index += 3) {
@@ -876,9 +889,12 @@ function convertGeometry(source, mirrored, primitive, secondUvSet, onIgnoredVert
     geometry.morphTargets = primitive.targets.map((target, index) => {
       const channels = {};
       if (target.POSITION !== undefined) channels.positions = copyAttribute(source.morphPositions[index], 3);
-      if (target.NORMAL !== undefined) channels.normals = copyAttribute(source.morphNormals[index], 3);
+      if (target.NORMAL !== undefined && normal) channels.normals = copyAttribute(source.morphNormals[index], 3);
       return channels;
     });
+    if (!normal && primitive.targets.some(target => target.NORMAL !== undefined)) {
+      onRepair('it has morph targets but no base NORMAL; normals are generated from the triangles and the morph normal deltas are dropped');
+    }
   }
   return geometry;
 }
@@ -932,12 +948,19 @@ function prepareMorphBinding(binding) {
   validateMorphPose(binding.pendingPose, binding.metadata);
 }
 
-function validateNodeTransforms(nodes, pending, transform) {
+/**
+ * Rejects a pose that makes a node's world matrix non-finite or singular. A node that was already singular at load
+ * (its meshes were skipped with a warning) is listed in `tolerated` and is not checked again.
+ */
+function validateNodeTransforms(nodes, pending, transform, tolerated) {
   for (const node of nodes) {
     pending.set(node.matrixWorld.elements);
-    for (const value of pending) if (!Number.isFinite(value)) throw new Error('Animation creates a non-finite Float32 world matrix.');
-    const determinant = transform.fromArray(pending).determinant();
-    if (!Number.isFinite(determinant) || Math.abs(determinant) < 1e-12) throw new Error('Animation creates a singular Float32 node transform.');
+    const finite = pending.every(Number.isFinite);
+    const determinant = finite ? transform.fromArray(pending).determinant() : NaN;
+    if (finite && Number.isFinite(determinant) && Math.abs(determinant) >= 1e-12) continue;
+    if (tolerated.has(node)) continue;
+    if (!tolerated.collecting) throw new Error(finite ? 'Animation creates a singular Float32 node transform.' : 'Animation creates a non-finite Float32 world matrix.');
+    tolerated.add(node);
   }
 }
 
@@ -1138,7 +1161,11 @@ export async function parseGltf(data, options = {}) {
       const material = materials.get(node.material);
       for (const instanceMatrix of instanceMatricesOf(node, limits.maxInstances)) {
         const determinant = worldMatrixOf(node, instanceMatrix, pendingTransform).determinant();
-        if (!Number.isFinite(determinant) || Math.abs(determinant) < 1e-12) throw new Error('Mesh world transform is singular or non-finite.');
+        if (!Number.isFinite(determinant) || Math.abs(determinant) < 1e-12) {
+          const warning = `Skipped node ${node.name ? `"${node.name}"` : association.nodes}: its world transform is singular or non-finite.`;
+          if (!warnings.includes(warning)) warnings.push(warning);
+          continue;
+        }
         const mirrored = determinant < 0;
         const geometryMirrored = node.isSkinnedMesh ? false : mirrored;
         const geometryKey = `${node.geometry.uuid}:${geometryMirrored}:${uvKey}:${secondUvSet}`;
@@ -1146,7 +1173,11 @@ export async function parseGltf(data, options = {}) {
           actualVertices += node.geometry.attributes.position.count * (1 + (primitive.targets?.length ?? 0));
           throwOverruns(overLimit([], 'decoded vertices', actualVertices, 'maxVertices', limits.maxVertices));
           try {
-            const converted = convertGeometry(node.geometry, geometryMirrored, primitive, secondUvSet, () => meshNamesWithIgnoredAlpha.add(node.name));
+            const onRepair = reason => {
+              const warning = `Repaired ${primitiveLabel(document, association.meshes, association.primitives)}: ${reason}.`;
+              if (!warnings.includes(warning)) warnings.push(warning);
+            };
+            const converted = convertGeometry(node.geometry, geometryMirrored, primitive, secondUvSet, () => meshNamesWithIgnoredAlpha.add(node.name), onRepair);
             if (converted.uvs) bakeUvTransform(converted.uvs, uvTransform);
             geometries.set(geometryKey, converted);
           } catch (error) {
@@ -1187,7 +1218,9 @@ export async function parseGltf(data, options = {}) {
         throwOverruns(overLimit([], 'decoded parts', parts.length, 'maxParts', limits.maxParts));
       }
     });
-    validateNodeTransforms(nodes, pendingNodeMatrix, pendingTransform);
+    const toleratedNodes = Object.assign(new Set(), { collecting: true });
+    validateNodeTransforms(nodes, pendingNodeMatrix, pendingTransform, toleratedNodes);
+    toleratedNodes.collecting = false;
     // A skeleton-only file (a skin or clips, no mesh) loads with zero parts so it can be posed and retargeted.
     if (!parts.length && !document.skins?.length && !gltf.animations.length) {
       const skipped = warnings.filter(warning => warning.startsWith('Skipped '));
@@ -1291,7 +1324,7 @@ export async function parseGltf(data, options = {}) {
 
     function preparePose() {
       gltf.scene.updateMatrixWorld(true);
-      validateNodeTransforms(nodes, pendingNodeMatrix, pendingTransform);
+      validateNodeTransforms(nodes, pendingNodeMatrix, pendingTransform, toleratedNodes);
       const worldMatrix = new Matrix4();
       for (const { node, instanceMatrix, part, mirrored, matrix, pendingMatrix, skin } of bindings) {
         if (part.matrix !== matrix || matrix.length !== 16) {
