@@ -26,7 +26,10 @@ const CLUSTER_PASSES = 6;
 const LIFT_IN_RADII = 1;
 // Fitted against Cycles on the reference halls (docs/lighting.md); environment.sunBounce multiplies it.
 export const SUN_BOUNCE_GAIN = 0.3;
-const MINIMUM_LIFT = 0.02;
+// The strength a scene gets when it sets no `environment.sunBounce`.
+export const DEFAULT_SUN_BOUNCE = 3;
+// A light closer than this share of the scene to a surface blows up as 1/d^2 into a hard speck, so a patch with less free space in front is left out.
+const MINIMUM_LIFT_SHARE = 0.03;
 const KEY_THRESHOLD = 1e-3;
 const EXCLUDED_TAGS = new Set(['liquid', 'foam', 'unlit', 'fire', 'smoke']);
 
@@ -155,7 +158,7 @@ function clusterSamples(samples, count, scale) {
   return centres.map((centre, index) => samples.filter((sample, sampleIndex) => assignment[sampleIndex] === index)).filter(group => group.length > 0);
 }
 
-function lightOfPatch(group, strength, tracer, probeOffset) {
+function lightOfPatch(group, strength, tracer, probeOffset, sceneSize) {
   const flux = [0, 0, 0];
   const centre = [0, 0, 0];
   const facing = [0, 0, 0];
@@ -174,7 +177,9 @@ function lightOfPatch(group, strength, tracer, probeOffset) {
   const middle = centre.map(component => component / weight);
   const radius = Math.sqrt(group.reduce((total, sample) => total + luminanceOf(sample.flux) * sample.point.reduce((sum, value, axis) => sum + (value - middle[axis]) ** 2, 0), 0) / weight);
   const freeDistance = probeOffset + tracer.trace(middle[0] + normal[0] * probeOffset, middle[1] + normal[1] * probeOffset, middle[2] + normal[2] * probeOffset, normal[0], normal[1], normal[2], Infinity, false).nearestDistance;
-  const lift = Math.max(Math.min(radius * LIFT_IN_RADII, freeDistance / 2), MINIMUM_LIFT);
+  const minimumLift = sceneSize * MINIMUM_LIFT_SHARE;
+  if (freeDistance / 2 < minimumLift) return null;
+  const lift = Math.max(Math.min(radius * LIFT_IN_RADII, freeDistance / 2), minimumLift);
   // Spread over the half space in front of the patch: intensity = flux / (2 pi).
   const intensity = flux.map(channel => (strength * SUN_BOUNCE_GAIN * channel) / (2 * Math.PI));
   const peak = Math.max(...intensity, 1e-9);
@@ -201,17 +206,17 @@ export function findSunBounceLights(parts, environment, { strength = 1, maximumL
   const { samples, tracer } = sampled;
   if (samples.length === 0) return [];
   const sceneSize = Math.max(...[0, 1, 2].map(axis => Math.max(...samples.map(sample => sample.point[axis])) - Math.min(...samples.map(sample => sample.point[axis]))), 1e-3);
-  return clusterSamples(samples, maximumLights, sceneSize).map(group => lightOfPatch(group, strength, tracer, sceneSize * 1e-3));
+  return clusterSamples(samples, maximumLights, sceneSize).map(group => lightOfPatch(group, strength, tracer, sceneSize * 1e-3, sceneSize)).filter(Boolean);
 }
 
 const lightsOfParts = new WeakMap();
 
 /**
- * The environment with the sunlit patches' lights added to its point lights. `environment.sunBounce` (default 1) scales
+ * The environment with the sunlit patches' lights added to its point lights. `environment.sunBounce` (default 3) scales
  * them; 0 returns the environment itself. The patches are found once for these parts and this sun and kept.
  */
 export function withSunBounce(parts, environment) {
-  const strength = environment.sunBounce ?? 1;
+  const strength = environment.sunBounce ?? DEFAULT_SUN_BOUNCE;
   if (strength <= 0 || !hasSun(environment)) return environment;
   const existing = environment.pointLights ?? [];
   const room = Math.min(SUN_BOUNCE_PATCH_LIGHTS, MAX_POINT_LIGHTS - existing.length);
