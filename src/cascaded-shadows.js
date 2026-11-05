@@ -173,7 +173,7 @@ function fitCovers(fit, sphere, towardLight, casterReach) {
 }
 
 // While the camera moves, a slice past the first is drawn this much wider than it needs, so it stays valid for many frames.
-const HOLD_MARGIN = 0.25;
+const HOLD_MARGIN = 0.1;
 
 export class CascadedShadows {
   constructor({ count = 3, resolution = DEFAULT_RESOLUTION, maximumDistance = DEFAULT_MAXIMUM_DISTANCE, splitLambda = DEFAULT_SPLIT_LAMBDA, casterReach = DEFAULT_CASTER_REACH } = {}) {
@@ -186,6 +186,7 @@ export class CascadedShadows {
     this.matrices = new Float32Array(MAXIMUM_CASCADES * 16);
     this.drawnMatrices = new Float32Array(MAXIMUM_CASCADES * 16);
     this.holds = [];
+    this.holdMargin = HOLD_MARGIN;
     this.splits = new Float32Array(MAXIMUM_CASCADES).fill(1e9);
     this.texels = new Float32Array(MAXIMUM_CASCADES).fill(1);
     this.ranges = new Float32Array(MAXIMUM_CASCADES).fill(1);
@@ -249,7 +250,7 @@ export class CascadedShadows {
       hold.fit = tight;
     } else if (!fitCovers(hold.fit, sphere, towardLight, this.casterReach)) {
       const wide = { matrix: new Float32Array(16), towardLight: vec3.clone(towardLight) };
-      Object.assign(wide, writeCascadeMatrix(wide.matrix, { center: sphere.center, radius: sphere.radius * (1 + HOLD_MARGIN) }, towardLight, this.resolution, this.casterReach));
+      Object.assign(wide, writeCascadeMatrix(wide.matrix, { center: sphere.center, radius: sphere.radius * (1 + this.holdMargin) }, towardLight, this.resolution, this.casterReach));
       hold.fit = wide;
     }
     return hold.fit;
