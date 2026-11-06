@@ -2303,3 +2303,5 @@ export class Renderer67 {
     this.updateBatches?.clear();
   }
 }
+
+export { Renderer67 as Glaze, Renderer67 as Mog };

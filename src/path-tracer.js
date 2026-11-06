@@ -1069,4 +1069,5 @@ export async function renderPathTracedImage({ parts, environment = {}, camera },
   };
 }
 
+export const Cook = renderPathTracedImage;
 export const Trace67 = renderPathTracedImage;

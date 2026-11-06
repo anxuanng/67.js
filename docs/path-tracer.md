@@ -1,9 +1,9 @@
-# Trace67 (path tracer)
+# Cook (path tracer)
 
-**Trace67** (`67js/addons/path-tracer`) is the 67js offline path tracer. Alongside `Renderer67` for real-time WebGL2, `Trace67` draws one still by following light paths on the CPU or GPU: it follows light paths on the CPU instead of rasterizing. It is in the current source and not yet published. It loads only when a render job asks for it, so a normal scene pays nothing (issue #57).
+**Cook** (`67js/addons/path-tracer`) is the 67js offline path tracer (a nod to both the Cook-Torrance microfacet BSDF and *"let it cook"*). Alongside `Glaze` (`Renderer67`) for real-time WebGL2, `Cook` draws one still by following light paths on the CPU or GPU. It loads only when a render job asks for it, so a normal scene pays nothing (issue #57).
 
 ```js
-import { Trace67, renderPathTracedImage } from '67js/addons/path-tracer';
+import { Cook, renderPathTracedImage } from '67js/addons/path-tracer';
 
 const { rgba, linear, report } = await renderPathTracedImage(
   { parts, environment, camera },        // the same objects the rasterizer takes
