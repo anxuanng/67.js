@@ -813,10 +813,20 @@ function triangleAt(positions, indices, corner) {
 
 function computeVertexNormals(positions, indices) {
   const normals = new Float32Array(positions.length);
+  const firstFace = new Float32Array(positions.length);
   for (let corner = 0; corner < indices.length; corner += 3) {
     const { corners, cross } = triangleAt(positions, indices, corner);
+    const area = Math.hypot(...cross);
     for (const vertexOffset of corners) {
       for (let axis = 0; axis < 3; axis++) normals[vertexOffset + axis] += cross[axis];
+      if (area > 1e-8 && !firstFace[vertexOffset] && !firstFace[vertexOffset + 1] && !firstFace[vertexOffset + 2]) {
+        for (let axis = 0; axis < 3; axis++) firstFace[vertexOffset + axis] = cross[axis] / area;
+      }
+    }
+  }
+  for (let offset = 0; offset < normals.length; offset += 3) {
+    if (Math.hypot(...normals.subarray(offset, offset + 3)) < 1e-8 && (firstFace[offset] || firstFace[offset + 1] || firstFace[offset + 2])) {
+      for (let axis = 0; axis < 3; axis++) normals[offset + axis] = firstFace[offset + axis];
     }
   }
   return normals;
@@ -848,11 +858,6 @@ function convertGeometry(source, mirrored, primitive, secondUvSet, onIgnoredVert
   const repairedNormals = [];
   for (let offset = 0; offset < normals.length; offset += 3) {
     const length = Math.hypot(...normals.subarray(offset, offset + 3));
-    if (length < 1e-8 && !normal) {
-      // A vertex that no triangle with area touches has no generated normal; it draws nothing, so any unit vector will do.
-      normals[offset + 1] = 1;
-      continue;
-    }
     if (length < 1e-8) {
       repairedNormals.push(offset);
       continue;
@@ -860,8 +865,8 @@ function convertGeometry(source, mirrored, primitive, secondUvSet, onIgnoredVert
     for (let axis = 0; axis < 3; axis++) normals[offset + axis] /= length;
   }
   if (repairedNormals.length) {
-    // An authored normal of zero length cannot light anything: use the face normal of the triangles at that vertex, or up.
-    const faceNormals = computeVertexNormals(positions, indices);
+    // A vertex normal of zero length cannot light anything: use the face normal of the triangles at that vertex, or up.
+    const faceNormals = normal ? computeVertexNormals(positions, indices) : normals;
     for (const offset of repairedNormals) {
       const length = Math.hypot(...faceNormals.subarray(offset, offset + 3));
       for (let axis = 0; axis < 3; axis++) normals[offset + axis] = length > 1e-8 ? faceNormals[offset + axis] / length : axis === 1 ? 1 : 0;

@@ -122,7 +122,9 @@ export async function renderMedia(values = process.argv.slice(2)) {
   const root = fileURLToPath(new URL('..', import.meta.url));
   const ffmpeg = process.platform === 'win32' ? resolve(process.env.USERPROFILE, '.local/bin/ffmpeg.exe') : 'ffmpeg';
   const encoderBackend = kind === 'video' ? await selectEncoderBackend(plan.encoderBackend, () => probeNvenc(ffmpeg)) : null;
-  const chrome = 'C:/Program Files/Google/Chrome/Application/chrome.exe';
+  const chrome = process.platform === 'darwin'
+    ? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
+    : 'C:/Program Files/Google/Chrome/Application/chrome.exe';
   const serverPort = await freePort();
   const server = spawn(process.execPath, ['node_modules/vite/bin/vite.js', '--config', 'scripts/render-vite.config.mjs', '--host', '127.0.0.1', '--port', String(serverPort), '--strictPort'], { cwd: root, windowsHide: true, stdio: 'pipe' });
   let browser;
@@ -150,6 +152,7 @@ export async function renderMedia(values = process.argv.slice(2)) {
     });
     const args = ['--enable-webgl', '--ignore-gpu-blocklist'];
     if (backend === 'cpu') args.push('--use-angle=swiftshader', '--enable-unsafe-swiftshader');
+    else if (process.platform === 'darwin') args.push('--use-angle=metal', '--enable-gpu');
     browser = await chromium.launch({ headless: true, ...(existsSync(chrome) ? { executablePath: chrome } : {}), args });
     const page = await browser.newPage({ viewport: { width, height }, deviceScaleFactor: 1 });
     const errors = [];
