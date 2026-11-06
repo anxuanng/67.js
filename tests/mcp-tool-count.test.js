@@ -34,7 +34,7 @@ async function countStatedIn(file, pattern) {
 test('documented MCP tool counts match the protocol listing', async () => {
   const listed = await listedToolCount();
   const statements = {
-    'docs/guide.md': /([\w-]+) tools for authoring/,
+    'docs/learn/models-and-ai-agents.md': /(\d+) tools for authoring/,
     'docs/mcp.md': /Lists all (\d+) tools/,
     'index.html': /(\d+) MCP tools/,
     'scripts/smoke-mcp.mjs': /listing\.tools\.length, (\d+)\)/,

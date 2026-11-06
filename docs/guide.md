@@ -242,21 +242,6 @@ Updates sample the selected triangle without rebuilding a BVH.
 Static raycast hits can supply binding coordinates, but query indices cannot raycast a visibly skinned or morphed surface.
 An attachment positions one rigid frame. It does not conform the accessory footprint or prevent every intersection.
 
-## Materials and color
-
-`color` and `emissiveColor` are linear RGB. `metallic` and `roughness` describe the PBR surface. `emission` sets emission intensity. `material.map` is a decoded texture descriptor with an image, UV channel 0, color space and supported sampler settings.
-
-The optional GLB addon creates these descriptors. HDR requires `EXT_color_buffer_float`. Inspect `renderer.capabilities.hdr` and `hdrFallbackReason`. The renderer falls back when floating-point targets are unavailable.
-
-Tags select specialized behavior: `armor` allows studio finish overrides. `floor` is a studio floor. `water` adds animated normals and ripples. `foliage` and `grass` add wind and accept a base-colour `map` with alpha mask, a `normalMap` and `doubleSided` for leaf cards.
-In code, a renderer that draws a `water`, `foliage`, `grass`, `terrain`, `moss`, `fire` or `smoke` part needs `import '@codepawlhq/67js/addons/world-material-shader'` first, and one that draws a transmissive, `liquid` or `foam` part needs `import '@codepawlhq/67js/addons/liquid-shader'`. The terrain, vegetation, grass, clutter and film addons and the MCP server import them for you.
-
-`material.alphaMode` is `'opaque'` (default), `'mask'` (cutout at `alphaCutoff`, default 0.5, shadows follow it) or `'blend'` (drawn last, back to front, no depth write). `material.opacity` (default 1) multiplies the base map alpha. `material.doubleSided` (default false) disables back-face culling and lights both faces. These are batch state and cannot change after upload. See `docs/material-maps.md`.
-
-`terrain` adds surface variation. `fire` and `smoke` support film effects. `unlit` is a flat color. Other tags use ordinary PBR shading.
-
-`water` flattens normals into a rippled pond and only suits horizontal surfaces. Shaped water uses `liquid`: it is drawn after the opaque scene, refracts what lies behind it, darkens with thickness and reflects the environment by the Fresnel term. Its `color` is the light one metre of liquid lets through, so `[0.56, 0.84, 0.88]` is clear blue-green water. `foam` draws soft alpha-blended droplets for whitewater. Tune both with `frame.liquid` or `environment.liquid`: `{ thickness: 0.5, ior: 1.33, refraction: 1, scattering: 1, foamOpacity: 0.55, foamSoftness: 1 }`. A liquid refracts opaque parts only.
-
 ## Renderer reference
 
 `new Renderer67(canvas, parts, options)` owns GPU geometry, texture and target allocations. Constructor options:
@@ -283,43 +268,6 @@ In code, a renderer that draws a `water`, `foliage`, `grass`, `terrain`, `moss`,
 Construct a new renderer for a new graph. `dispose()` releases owned resources.
 
 Read `memoryPlan` for actual width, height, estimatedBytes and reduced status. `capabilities` for HDR and MSAA negotiation. `triangles`, `batches.length` and `cpuMilliseconds` for diagnostics. CPU submission time is not GPU frame time.
-
-## Cameras and framing
-
-A perspective frame supplies `eye`, `target`, optional `up`, `fov` in degrees, `near` and `far`. Set `projection: 'orthographic'` and `orthographicHeight` for axis views. Clipping planes must satisfy `0 < near < far`.
-
-`cameraView('front' | 'right' | 'top' | 'perspective', { target, height, distance })` creates an axis camera. `fitOrthographicHeight(bounds, view, aspect, padding)` frames the bounds without cropping. Bounds have `minimum` and `maximum` vectors. Flat 2D uses XY geometry, the `unlit` tag and a front orthographic camera.
-
-The canvas2d addon supplies a reusable poster scene.
-
-## Effects and lighting
-
-```js
-renderer.render({
-  eye: [3,2,4], target: [0,0,0], exposure: 1,
-  effects: {
-    bloom: { strength: 0.18, threshold: 0.9, radius: 1.2 },
-    saturation: 1, contrast: 1.04, temperature: 0.03, vignette: 0.12, grain: 0,
-  },
-});
-```
-
-`EFFECT_PRESETS` provides ready-made looks. `resolveEffects` validates and resolves settings. Bloom uses retained half-resolution targets included in the memory estimate. Start with neutral settings and small changes.
-
-Bloom cannot recover missing geometry or lighting detail.
-
-### Depth of field, motion blur and render passes
-
-Depth of field and camera motion blur live in `67js/addons/camera-effects`, so the core carries none of their shader text.
-Call `installCameraEffects(renderer)` on a renderer made with `depth: true`, then set `effects.depthOfField: { blur: 0.6, focusDistance: 4 }` or `effects.motionBlur: { shutter: 0.1 }`.
-Motion blur also needs `frame.previousCamera` (`eye`, `target`, `up` and the lens fields) for the camera at `time - shutter`; derive it from the frame time and the result repeats on every seek.
-Each effect compiles and allocates its targets on the first frame that turns it on. These targets are not in the memory estimate.
-
-`renderer.render({ ...camera, pass: 'depth' })` draws a raw pass instead of the lit image: `albedo`, `normal`, `emission`, `depth` (with `passDepthRange` metres, default 100) or `objectId`.
-Passes draw without multisampling into their own target, and `renderer.passObjectNames()` lists the part behind each object ID.
-The pass branch of the main shader compiles on the first pass request. MCP render jobs write passes to files; see [agent render jobs](agent-render-jobs.md#render-passes).
-
-Outdoor `environment` accepts `skyTop`, `skyBottom` (display RGB), `fogColor` (linear RGB), `fogDensity` (unset, it is 0.006, thinned to 1.2 divided by the scene diagonal for scenes wider than about 200 m), `lightDirection` and `daylight`. Set `world: true` and `ground: false`. Frames can override environment and supply `time`, `wind`, `waterRipple` and `rippleTime`.
 
 ## Local lights and volume fog
 
@@ -422,25 +370,6 @@ Explodable parts include `assembly: { layer: 'exterior' | 'interior', section, o
 
 The object studio implements pointer capture for orbit, wheel zoom, keyboard arrows and a slider. Render only after a change when the scene is static. Use a ResizeObserver to call `resize()` and redraw. Offer keyboard controls and honor `prefers-reduced-motion`.
 
-## Import and export models
-
-```js
-import { loadGltf } from '67js/addons/gltf';
-const asset = await loadGltf('/model.glb');
-const renderer = new Renderer67(canvas, asset.parts, { ground: false, hdr: true });
-if (asset.animations.length) renderer.updateParts(asset.applyAnimation(1));
-renderer.render({ eye: [3,2,4], target: [0,0,0] });
-// Close in this order: renderer.dispose(); asset.dispose();
-```
-
-Version `0.4.0` imports supported opaque meshes, vertex colors, five PBR texture channels, skins, relative morph targets and animation.
-Transparent or double-sided materials and compressed geometry remain unsupported.
-The optional decoder uses Three.js GLTFLoader without its renderer. Read the [asset contract](/gltf.md) before choosing a model.
-
-Core `exportGlb(parts)` returns GLB geometry. This geometry exporter is not a full texture/animation round-trip. For exploded output, apply `assemblyOffset` to copied matrices. Use the browser demo's PNG controls for a still.
-
-Render immediately before canvas capture.
-
 ## Images and films
 
 Offline media commands run from the repository checkout, not from an installed npm package. Install checkout dependencies and provide Chrome and FFmpeg. The exporter reports missing tools. On Windows it uses Chrome's standard install path and `~/.local/bin/ffmpeg.exe`.
@@ -470,53 +399,6 @@ Pause hidden scenes and avoid simultaneous GPU exports. For static previews, red
 The planner includes geometry, textures and mipmaps, shadows, MSAA, HDR, bloom and one capture staging frame. It reduces render dimensions when necessary. The exporter keeps one pending capture and respects encoder backpressure. This is an estimated allocation budget, not a hard process RAM/VRAM cap.
 
 Driver/browser allocations can still fail. Sampled browser JS heap and Node RSS do not measure total graphics memory.
-
-## Lifecycle and troubleshooting
-
-WebGL2 unavailable: enable hardware acceleration or choose a supported browser. CPU export can use SwiftShader. Jagged edges: inspect actual render size and negotiated samples. Increase pixelRatio only within the budget.
-
-Blown highlights: lower exposure and bloom, check linear color values. Missing asset: inspect its unsupported-feature error and convert the asset to the supported subset. Memory error: reduce resolution, MSAA, textures or scene detail. Context loss: stop playback, dispose the renderer and recreate on restoration.
-
-Release mismatch: compare VERSION and homepage release metadata.
-
-Disconnect observers, cancel animation frames, release pointer state and call `dispose()` on page/component teardown. Dispose decoded assets after the renderer. Keep errors visible. Do not silently substitute a different asset.
-
-## Models and AI agents
-
-Version `0.5.0` includes [agent scene sessions](/agent-scene.md) and the `67js-mcp` command.
-Its [MCP server](/mcp.md) provides twenty-two tools for authoring, previewing and exporting scenes through a persistent browser runtime.
-Release `0.7.0` adds [agent motion](/agent-motion.md) for deterministic joint, material and camera keyframes.
-Read the MCP guide for npm installation, client configuration and CPU/GPU selection.
-The [agent look contract](/agent-look.md) adds retained lighting, volumetric fog, grading and directional shadows to recipe edits and checkpoints.
-Release `0.8.0` adds [imported character motion](/agent-character-motion.md) with editable joints and retained skin, morph and texture resources.
-
-Release `0.9.0` adds [visual review](/agent-review.md) for several labeled views or motion samples in one PNG grid.
-Review uses an isolated snapshot and preserves the source preview pose, revision and checkpoint handles.
-
-The [asset adapter](/agent-asset.md) imports local catalog GLBs with supported textures, rigs, morphs and deterministic clip sampling.
-
-The addon accepts JSON recipes with stable object IDs, shared geometry and material resources, hierarchy and a camera.
-Edits use an expected revision and commit as one batch. Checkpoints restore the supported scene state.
-The session keeps existing renderer-facing parts and matrices for transform, material and camera edits.
-
-Agents can build from an empty recipe with `add-geometry`, `add-material` and `add-node` commands.
-Explicit removal and rebinding use the same atomic batch contract.
-Checkpoints retain shared geometry under the session budget. Release unused snapshots before increasing scene detail.
-The preview reconciles rigid topology, textured parts too with the `replace-textured-parts` addon, while keeping unchanged geometry buffers and draw batches.
-
-The CPU addon owns recipe state. The separate Node MCP server connects it to browser rendering. Background render jobs remain unsupported.
-
-Give the agent this guide and the matching repository skill. Start with a scene brief: focal subject, visual references, camera, output size, required interaction, GPU/CPU backend and memory budget. Read the matching scene recipe and run the smallest trial first.
-
-Suggested prompt: “Use 67js to build an interactive mechanical study. Reuse meshes, use a 256MiB render budget, provide orbit and keyboard controls, pause hidden playback, and capture a real wide and mobile preview. List unsupported features. Do not claim speed superiority without a comparable benchmark.”
-
-Agent workflow: inspect the installed `VERSION` and supported exports. Create finite invertible transforms. Share geometry identities. Validate bounds.
-
-Render and inspect edges/highlights. Exercise interactions. Run project tests. Export one deterministic frame.
-
-Report actual dimensions and estimated memory separately from observed process metrics. Never infer visual quality from successful compilation.
-
-Repository skills: `skills/build-67js-scene/SKILL.md` and `skills/render-67js-media/SKILL.md` contain the scene and media procedures. Copy or reference them in your agent's skill system. They are also included in the npm archive. A model can use the plain-text guide without a skill runtime.
 
 ## Addons and limits
 
