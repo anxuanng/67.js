@@ -813,10 +813,20 @@ function triangleAt(positions, indices, corner) {
 
 function computeVertexNormals(positions, indices) {
   const normals = new Float32Array(positions.length);
+  const firstFace = new Float32Array(positions.length);
   for (let corner = 0; corner < indices.length; corner += 3) {
     const { corners, cross } = triangleAt(positions, indices, corner);
+    const area = Math.hypot(...cross);
     for (const vertexOffset of corners) {
       for (let axis = 0; axis < 3; axis++) normals[vertexOffset + axis] += cross[axis];
+      if (area > 1e-8 && !firstFace[vertexOffset] && !firstFace[vertexOffset + 1] && !firstFace[vertexOffset + 2]) {
+        for (let axis = 0; axis < 3; axis++) firstFace[vertexOffset + axis] = cross[axis] / area;
+      }
+    }
+  }
+  for (let offset = 0; offset < normals.length; offset += 3) {
+    if (Math.hypot(...normals.subarray(offset, offset + 3)) < 1e-8 && (firstFace[offset] || firstFace[offset + 1] || firstFace[offset + 2])) {
+      for (let axis = 0; axis < 3; axis++) normals[offset + axis] = firstFace[offset + axis];
     }
   }
   return normals;

@@ -563,3 +563,23 @@ test('blend batches draw their opaque texels with depth writes before the blende
   assert.equal(draws.filter(draw => draw.opacity === 0.3).length, 1, 'a translucent material has no opaque texels to draw first');
   assert.equal(baked.alphaCutoff, 0);
 });
+
+test('resize keeps the projection centered at 699 px and 1440 px', () => {
+  const renderer = Object.create(Renderer67.prototype);
+  renderer.context = { getParameter: () => 8192 };
+  renderer.projection = new Float32Array(16);
+  renderer.pixelRatio = 1;
+  renderer.multisampleSamples = 1;
+  renderer.memoryBudgetMiB = 64;
+  renderer.geometryBytes = 0;
+  renderer.textureBytes = 0;
+  renderer.hdr = false;
+  renderer.benchmark = true;
+  renderer.depth = false;
+  renderer.world = null;
+  for (const width of [699, 1440]) {
+    renderer.canvas = { clientWidth: width, clientHeight: 500, width: 0, height: 0 };
+    renderer.resize();
+    assert.equal(renderer.projection[8], 0);
+  }
+});
