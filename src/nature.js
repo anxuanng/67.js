@@ -21,8 +21,8 @@ function randomGenerator(seed) {
 
 // Seam softening where a rock or a trunk meets the ground (mesh-blend.js), in metres. One radius per group keeps the
 // instanced batches culled.
-const ROCK_BLEND = Object.freeze({ radius: 0.1 });
-const TRUNK_BLEND = Object.freeze({ radius: 0.08 });
+const ROCK_BLEND = Object.freeze({ radius: 0.16 });
+const TRUNK_BLEND = Object.freeze({ radius: 0.12 });
 
 export const FLAG_SIZE = Object.freeze({ width: 1.2, height: 0.75, segments: 12 });
 
@@ -367,8 +367,9 @@ export function createNatureWorld({ seed = 67, detail = 'balanced' } = {}) {
     add(`River stone ${index}`, rockMesh, [horizontal, ground + radius * 0.19, depth], [radius * 1.3, radius * 0.64, radius], stones[index % stones.length], [random() * 0.3, random() * FULL_TURN, random() * 0.4], ROCK_BLEND);
   }
   add('Glacial boulder', rockMesh, [-7.8, terrainHeight(-7.8, 12) + 0.6, 12], [2.3, 1.25, 1.65], stones[1], [0.1, 0.4, 0.2], ROCK_BLEND);
-  add('Moss on glacial boulder', rockMesh, [-7.85, terrainHeight(-7.8, 12) + 1.56, 12], [1.65, 0.25, 1.14], foliage[0], [0.1, 0.4, 0.2]);
+  add('Moss on glacial boulder', organicSphere(12, 8, 4, 0.11), [-7.85, terrainHeight(-7.8, 12) + 1.56, 12], [1.65, 0.25, 1.14], foliage[0], [0.1, 0.4, 0.2]);
 
+  const stemMesh = cylinder(10);
   const flowerPatches = [[-7, 16], [8, 4], [-11, -3], [4, -18]];
   for (let index = 0; index < settings.flowers; index++) {
     const patch = flowerPatches[index % flowerPatches.length];
@@ -377,7 +378,7 @@ export function createNatureWorld({ seed = 67, detail = 'balanced' } = {}) {
     if (Math.abs(horizontal - streamCenter(depth)) < streamWidth(depth) + 0.7) continue;
     const ground = terrainHeight(horizontal, depth);
     const height = 0.3 + random() * 0.36;
-    add(`Wildflower ${index} stem`, trunkMesh, [horizontal, ground + height / 2, depth], [0.013, height, 0.013], meadow[2]);
+    add(`Wildflower ${index} stem`, stemMesh, [horizontal, ground + height / 2, depth], [0.013, height, 0.013], meadow[2]);
     add(`Wildflower ${index} blossom`, blossomMesh, [horizontal, ground + height, depth], [1, 1, 1], flowerColors[index % flowerColors.length], [0.1, random() * FULL_TURN, 0.12]);
   }
 
