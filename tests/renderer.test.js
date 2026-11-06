@@ -569,7 +569,7 @@ test('resize keeps the projection centered at 699 px and 1440 px', () => {
   renderer.context = { getParameter: () => 8192 };
   renderer.projection = new Float32Array(16);
   renderer.pixelRatio = 1;
-  renderer.samples = 1;
+  renderer.multisampleSamples = 1;
   renderer.memoryBudgetMiB = 64;
   renderer.geometryBytes = 0;
   renderer.textureBytes = 0;

@@ -858,6 +858,11 @@ function convertGeometry(source, mirrored, primitive, secondUvSet, onIgnoredVert
   const repairedNormals = [];
   for (let offset = 0; offset < normals.length; offset += 3) {
     const length = Math.hypot(...normals.subarray(offset, offset + 3));
+    if (length < 1e-8 && !normal) {
+      // A vertex that no triangle with area touches has no generated normal; it draws nothing, so any unit vector will do.
+      normals[offset + 1] = 1;
+      continue;
+    }
     if (length < 1e-8) {
       repairedNormals.push(offset);
       continue;
@@ -865,8 +870,8 @@ function convertGeometry(source, mirrored, primitive, secondUvSet, onIgnoredVert
     for (let axis = 0; axis < 3; axis++) normals[offset + axis] /= length;
   }
   if (repairedNormals.length) {
-    // A vertex normal of zero length cannot light anything: use the face normal of the triangles at that vertex, or up.
-    const faceNormals = normal ? computeVertexNormals(positions, indices) : normals;
+    // An authored normal of zero length cannot light anything: use the face normal of the triangles at that vertex, or up.
+    const faceNormals = computeVertexNormals(positions, indices);
     for (const offset of repairedNormals) {
       const length = Math.hypot(...faceNormals.subarray(offset, offset + 3));
       for (let axis = 0; axis < 3; axis++) normals[offset + axis] = length > 1e-8 ? faceNormals[offset + axis] / length : axis === 1 ? 1 : 0;

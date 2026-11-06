@@ -72,7 +72,7 @@ test('morph targets without a base NORMAL load: normals are generated and the mo
   assert.match(asset.warnings[0], /^Repaired primitive 0 of mesh "Tri": it has morph targets but no base NORMAL/);
 });
 
-test('a primitive without NORMAL repairs vertices on zero-area or opposing faces with a warning', async () => {
+test('a primitive without NORMAL falls back to a touching face normal or up when generated normals cancel out', async () => {
   const floats = new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0, 5, 5, 5]);
   const indices = new Uint16Array([0, 1, 2, 0, 2, 1, 3, 3, 3, 0, 1, 2]);
   const bytes = new Uint8Array(floats.byteLength + indices.byteLength);
@@ -97,5 +97,5 @@ test('a primitive without NORMAL repairs vertices on zero-area or opposing faces
   const asset = await parseGltf(JSON.stringify(document));
   assert.equal(asset.parts.length, 1);
   assert.deepEqual(Array.from(asset.parts[0].geometry.normals), [0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 1, 0]);
-  assert.deepEqual(asset.warnings, ['Repaired primitive 0 of mesh "Tile": 1 vertex normal(s) had zero length and were rebuilt from the triangles.']);
+  assert.deepEqual(asset.warnings, []);
 });
