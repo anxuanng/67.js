@@ -166,7 +166,12 @@ export function createLiveExample({ source, title, poster, file = 'main.js', asp
 
   function setStatus(kind, text) {
     status.dataset.kind = kind;
-    status.innerHTML = text ? `${icon(kind === 'error' ? 'warning' : 'check')}<span>${text}</span>` : '';
+    status.replaceChildren();
+    if (!text) return;
+    status.insertAdjacentHTML('afterbegin', icon(kind === 'error' ? 'warning' : 'check'));
+    const label = document.createElement('span');
+    label.textContent = text;
+    status.append(label);
   }
 
   async function run() {

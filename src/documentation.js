@@ -48,7 +48,7 @@ function inlineText(value) {
   return escapeHtml(value)
     .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
     .replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (match, label, href) => {
-      const external = /^https?:/.test(href) && !href.startsWith('https://67js.codepawl.com');
+      const external = /^https?:/.test(href) && new URL(href, 'https://67js.codepawl.com').origin !== 'https://67js.codepawl.com';
       return `<a href="${href}"${external ? ' rel="noopener"' : ''}>${label}</a>`;
     });
 }
