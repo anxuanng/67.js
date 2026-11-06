@@ -17,7 +17,7 @@ For procedural motion, read `docs/agent-motion.md` and select `settings.motion.s
 
 For imported character motion from `0.8.0`, read `docs/agent-character-motion.md`. Use independent `settings.animation` and `settings.motion` clocks.
 
-For a still that must look like Blender's Cycles (glass, soft indirect light, many lights), read `docs/path-tracer.md` and submit an `image` job with `settings.renderer: { type: "pathTracer" }`. It is slow, bounded and offline: read `scene_capabilities` `pathTracer` for its limits and what it skips, and keep rasterizer jobs for video and passes.
+For an offline path-traced still with **Trace67** (glass refraction, soft multi-bounce indirect light, subsurface random walk, many lights), read `docs/path-tracer.md` and submit an `image` job with `settings.renderer: { type: "trace67" }` (or `"pathTracer"`). It is slow, bounded and offline: read `scene_capabilities` `pathTracer` for its limits and what it skips, and keep rasterizer jobs for video and passes.
 
 ## Choose and render
 

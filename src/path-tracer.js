@@ -1068,3 +1068,5 @@ export async function renderPathTracedImage({ parts, environment = {}, camera },
     },
   };
 }
+
+export const Trace67 = renderPathTracedImage;

@@ -29,7 +29,7 @@ const PATH_TRACE_OVERHEAD_MS = 60 * 1000;
 export function jobDeadlineMs({ frameCount, width, height, renderer }, maximumMs = MAXIMUM_JOB_DEADLINE_MS) {
   const sizeScale = Math.max(1, (width * height) / REFERENCE_FRAME_PIXELS);
   const frameDeadline = Math.ceil(BASE_DEADLINE_MS + frameCount * FRAME_ALLOWANCE_MS * sizeScale);
-  const traceDeadline = renderer?.type === 'pathTracer' ? Math.ceil(renderer.maxSeconds * 1000) + PATH_TRACE_OVERHEAD_MS : 0;
+  const traceDeadline = (renderer?.type === 'pathTracer' || renderer?.type === 'trace67') ? Math.ceil(renderer.maxSeconds * 1000) + PATH_TRACE_OVERHEAD_MS : 0;
   return Math.min(maximumMs, Math.max(frameDeadline, traceDeadline));
 }
 const MAXIMUM_JSON_BYTES = 1024 ** 2;
@@ -149,7 +149,7 @@ const FRACTIONAL_RENDERER_FIELDS = new Set(['maxSeconds', 'noiseThreshold']);
 
 function rendererFrom(renderer, kind, passes) {
   objectKeys(renderer, ['type', 'samples', 'bounces', 'denoise', 'seed', 'maxSeconds', 'noiseThreshold'], 'renderer');
-  if (renderer.type !== 'pathTracer') throw new TypeError('renderer.type must be pathTracer.');
+  if (renderer.type !== 'pathTracer' && renderer.type !== 'trace67') throw new TypeError('renderer.type must be trace67 or pathTracer.');
   if (kind !== 'image') throw new RangeError('The path tracer renders one image: use kind image.');
   if (passes !== undefined) throw new RangeError('The path tracer writes the lit image only: leave passes out.');
   const denoise = renderer.denoise ?? true;
