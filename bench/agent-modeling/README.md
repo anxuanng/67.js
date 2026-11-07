@@ -390,3 +390,7 @@ Not run:
 | Gemini CLI | Needs a Google sign-in or API key, which this setup does not have |
 | VS Code | Interactive client behind a Copilot subscription that is not set up here |
 | Claude Desktop | A GUI app that cannot be driven without computer use |
+
+### Antigravity CLI (2026-11-07)
+
+`llms-only.mjs --agent agy --agy <agy executable> --model <model>` drives the Antigravity CLI, which offers Gemini 4 Argon, Gemini 3.8 Flash and GPT-OSS 120B. A first run of 2 attempts per model passed 0 of 6, but not on the docs: headless mode denies every shell command it cannot prompt for, so the agents read `llms.txt` and the package, wrote `render.mjs` (Gemini 4 Argon), and were refused `node render.mjs`. Those results are not kept. A valid run needs a session-only allow rule for commands, passed with `--settings`, which An has to approve; the runner records any web tool call as `usedWeb` and fails it, since the CLI cannot switch its web tools off.
