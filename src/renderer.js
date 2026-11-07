@@ -2304,4 +2304,5 @@ export class Renderer67 {
   }
 }
 
-export { Renderer67 as Glaze, Renderer67 as Mog };
+// Glaze is the public name of the real-time renderer; Renderer67 stays for existing code.
+export { Renderer67 as Glaze };

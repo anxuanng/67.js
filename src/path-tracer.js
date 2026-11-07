@@ -1069,5 +1069,5 @@ export async function renderPathTracedImage({ parts, environment = {}, camera },
   };
 }
 
+// Cook is the public name of the path tracer.
 export const Cook = renderPathTracedImage;
-export const Trace67 = renderPathTracedImage;
