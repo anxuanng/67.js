@@ -74,6 +74,32 @@ async function importMapFor(source) {
   return imports;
 }
 
+// The example's console.log, info, warn and error go to the page as text, so the docs can show what a call returns.
+// Typed arrays print their length and first values; deep objects stop at three levels.
+const consoleRelay = `
+  const formatValue = (value, depth = 0) => {
+    if (typeof value === 'string') return value;
+    if (typeof value === 'number') return String(Math.round(value * 1e4) / 1e4);
+    if (value === null || typeof value !== 'object') return String(value);
+    if (ArrayBuffer.isView(value)) {
+      const head = Array.from(value.slice(0, 6), number => formatValue(number)).join(', ');
+      return value.constructor.name + '(' + value.length + ') [' + head + (value.length > 6 ? ', …' : '') + ']';
+    }
+    if (value instanceof Error) return value.message;
+    if (depth >= 3) return Array.isArray(value) ? '[…]' : '{…}';
+    if (Array.isArray(value)) return '[' + value.slice(0, 20).map(item => formatValue(item, depth + 1)).join(', ') + (value.length > 20 ? ', …' : '') + ']';
+    const entries = Object.entries(value).slice(0, 20).map(([key, item]) => key + ': ' + formatValue(item, depth + 1));
+    return '{ ' + entries.join(', ') + ' }';
+  };
+  for (const level of ['log', 'info', 'warn', 'error']) {
+    const original = console[level].bind(console);
+    console[level] = (...values) => {
+      original(...values);
+      report({ log: { level, text: values.map(value => formatValue(value)).join(' ') } });
+    };
+  }`;
+const CONSOLE_LINE_LIMIT = 200;
+
 // Capture mode replaces the clock, so the media script can step a loop frame by frame and get the same picture every time.
 const captureClock = `
   let virtualTime = 0;
@@ -98,6 +124,7 @@ function frameDocument(source, imports, exampleId, capture) {
   const report = message => parent.postMessage({ docsLive: ${JSON.stringify(exampleId)}, ...message }, parent.location.origin);
   addEventListener('error', event => report({ error: event.message || 'The example failed.' }));
   addEventListener('unhandledrejection', event => report({ error: String(event.reason?.message ?? event.reason) }));
+  ${consoleRelay}
   ${capture ? captureClock : ''}
 </script></head><body><canvas id="scene"></canvas>
 <script type="module">${code}</script>
@@ -134,9 +161,10 @@ export function createLiveExample({ source, title, poster, file = 'main.js', asp
       ${poster ? `<img class="live-poster" src="/docs-media/${poster}.webp" alt="" loading="lazy" decoding="async" onerror="this.remove()">` : ''}
       <button class="live-start" type="button">${icon('run')}Run example</button>
     </div>
+    <pre class="live-console" aria-label="Console output" hidden></pre>
     <div class="live-toolbar">
       <span class="live-file">${file}</span>
-      <p class="live-status" role="status" aria-live="polite"></p>
+      <span class="live-status" role="status" aria-live="polite"></span>
       <button class="live-run" type="button" title="Run (Ctrl+Enter)">${icon('run')}Run</button>
       <button class="live-reset" type="button" disabled>${icon('reset')}Reset</button>
       <button class="live-copy" type="button">${icon('copy')}Copy</button>
@@ -148,6 +176,7 @@ export function createLiveExample({ source, title, poster, file = 'main.js', asp
   const stage = root.querySelector('.live-stage');
   const startButton = root.querySelector('.live-start');
   const status = root.querySelector('.live-status');
+  const consoleOutput = root.querySelector('.live-console');
   const resetButton = root.querySelector('.live-reset');
   const copyButton = root.querySelector('.live-copy');
   const editor = root.querySelector('textarea');
@@ -174,9 +203,26 @@ export function createLiveExample({ source, title, poster, file = 'main.js', asp
     status.append(label);
   }
 
+  function clearConsole() {
+    consoleOutput.replaceChildren();
+    consoleOutput.hidden = true;
+  }
+
+  function appendConsoleLine({ level, text }) {
+    if (consoleOutput.childElementCount >= CONSOLE_LINE_LIMIT) consoleOutput.firstElementChild.remove();
+    const line = document.createElement('span');
+    line.className = 'live-console-line';
+    line.dataset.level = level;
+    line.textContent = text;
+    consoleOutput.append(line);
+    consoleOutput.hidden = false;
+    consoleOutput.scrollTop = consoleOutput.scrollHeight;
+  }
+
   async function run() {
     const thisRun = ++runNumber;
     running = true;
+    clearConsole();
     root.classList.add('is-running');
     setStatus('busy', '');
     let imports;
@@ -208,7 +254,8 @@ export function createLiveExample({ source, title, poster, file = 'main.js', asp
   }
 
   messageHandlers.set(exampleId, message => {
-    if (message.error) setStatus('error', message.error);
+    if (message.log) appendConsoleLine(message.log);
+    else if (message.error) setStatus('error', message.error);
     else if (message.ready && status.dataset.kind !== 'error') {
       setStatus('ok', 'Running');
       root.dataset.ready = 'true';
