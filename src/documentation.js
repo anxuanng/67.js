@@ -349,7 +349,7 @@ function renderOutline(section) {
 
 function parseHash() {
   const [requestedTopic = '', requestedSection = ''] = decodeURIComponent(location.hash.slice(1)).split('/');
-  return { requestedTopic: topicAliases[requestedTopic] ?? requestedTopic, requestedSection };
+  return { hashTopic: requestedTopic, requestedTopic: topicAliases[requestedTopic] ?? requestedTopic, requestedSection };
 }
 
 function stopExamples() {
@@ -358,7 +358,7 @@ function stopExamples() {
 }
 
 function openTopic(focus = false) {
-  const { requestedTopic, requestedSection } = parseHash();
+  const { hashTopic, requestedTopic, requestedSection } = parseHash();
   const sameTopic = currentTopic && currentTopic.id === requestedTopic;
   if (sameTopic && requestedSection) {
     document.getElementById(requestedSection)?.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
@@ -366,7 +366,8 @@ function openTopic(focus = false) {
   }
   stopExamples();
   currentTopic = topics.find(topic => topic.id === requestedTopic) ?? topics.find(topic => topic.id === 'introduction');
-  if (requestedTopic !== currentTopic.id) history.replaceState(null, '', `#${currentTopic.id}`);
+  // Compare the raw hash, so an alias such as #getting-started is rewritten to the topic it names.
+  if (hashTopic !== currentTopic.id) history.replaceState(null, '', `#${currentTopic.id}`);
   const section = document.createElement('section');
   section.id = currentTopic.id;
   const title = document.createElement('h1');

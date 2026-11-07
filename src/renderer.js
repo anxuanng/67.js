@@ -2304,3 +2304,6 @@ export class Renderer67 {
     this.updateBatches?.clear();
   }
 }
+
+// Glaze is the public name of the real-time renderer; Renderer67 stays for existing code.
+export { Renderer67 as Glaze };
