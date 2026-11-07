@@ -146,14 +146,14 @@ function boundingSphere(points) {
  * does not change its size, and the sphere centre is snapped to whole texels so the shadow edges do not crawl.
  * Returns the world size of a texel and the depth range in metres.
  */
-export function writeCascadeMatrix(target, { center, radius }, towardLight, resolution, casterReach) {
+export function writeCascadeMatrix(target, { center, radius }, towardLight, resolution, casterReach, extraReach = 0) {
   const rotation = mat4.lookAt(mat4.create(), [0, 0, 0], [-towardLight[0], -towardLight[1], -towardLight[2]], Math.abs(towardLight[1]) > 0.99 ? [0, 0, 1] : [0, 1, 0]);
   const lightSpaceCenter = vec3.transformMat4(vec3.create(), center, rotation);
   const texel = (2 * radius) / resolution;
   const snappedX = Math.round(lightSpaceCenter[0] / texel) * texel;
   const snappedY = Math.round(lightSpaceCenter[1] / texel) * texel;
   const snappedZ = Math.round(lightSpaceCenter[2] / texel) * texel;
-  const near = -(snappedZ + casterReach);
+  const near = -(snappedZ + casterReach + extraReach);
   const far = -(snappedZ - radius);
   const projection = mat4.ortho(mat4.create(), snappedX - radius, snappedX + radius, snappedY - radius, snappedY + radius, near, far);
   mat4.multiply(target, projection, rotation);
@@ -250,7 +250,9 @@ export class CascadedShadows {
       hold.fit = tight;
     } else if (!fitCovers(hold.fit, sphere, towardLight, this.casterReach)) {
       const wide = { matrix: new Float32Array(16), towardLight: vec3.clone(towardLight) };
-      Object.assign(wide, writeCascadeMatrix(wide.matrix, { center: sphere.center, radius: sphere.radius * (1 + this.holdMargin) }, towardLight, this.resolution, this.casterReach));
+      // The depth range gets the same margin on the light side, so a slice that drifts toward the light stays covered too.
+      const margin = sphere.radius * this.holdMargin;
+      Object.assign(wide, writeCascadeMatrix(wide.matrix, { center: sphere.center, radius: sphere.radius + margin }, towardLight, this.resolution, this.casterReach, margin));
       hold.fit = wide;
     }
     return hold.fit;
