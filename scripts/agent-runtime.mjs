@@ -910,8 +910,10 @@ export function createAgentRuntime({ kernelWorkers = true, backend = 'gpu', brow
         cancelReview?.(new Error('The agent runtime is closing.'));
         closing = (async () => {
           try {
-            await reviewPage?.close().catch(() => {});
+            // The job store goes first: a client that closes the connection waits only a couple of seconds before it kills this
+            // process, and the lock must be given back before the slower browser shutdown.
             if (jobsPromise) await (await jobsPromise).close();
+            await reviewPage?.close().catch(() => {});
           } finally {
             await queue;
             await shutdownResources();

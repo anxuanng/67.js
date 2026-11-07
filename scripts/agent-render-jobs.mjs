@@ -1,3 +1,4 @@
+import { readFileSync, unlinkSync } from 'node:fs';
 import { mkdir, open, readFile, writeFile, rename, unlink, rmdir, readdir, lstat, realpath } from 'node:fs/promises';
 import { randomUUID, createHash } from 'node:crypto';
 import { isAbsolute, join, resolve } from 'node:path';
@@ -265,6 +266,7 @@ export async function createAgentRenderJobs({ root, run, limits: inputLimits = {
       try { await lock.writeFile(JSON.stringify({ schemaVersion: 1, pid: process.pid, token: lockToken })); }
       finally { await lock.close(); }
       lockHeld = true;
+      process.once('exit', releaseLockOnExit);
     } catch (error) {
       if (error.code !== 'EEXIST') throw error;
       await regularFile(lockPath);
@@ -282,11 +284,24 @@ export async function createAgentRenderJobs({ root, run, limits: inputLimits = {
     }
   }
 
+  // A process that ends without a clean close (an exit call, an uncaught error, a signal Node turns into an exit) still gives the
+  // lock back, so the next run does not meet a "stale" lock. Only the owner's own token is removed.
+  function releaseLockOnExit() {
+    if (!lockHeld) return;
+    try {
+      if (JSON.parse(readFileSync(lockPath, 'utf8')).token === lockToken) unlinkSync(lockPath);
+    } catch {
+      // The lock is already gone or no longer ours: nothing to give back.
+    }
+    lockHeld = false;
+  }
+
   async function unlock() {
     if (!lockHeld) return;
     if ((await readJson(lockPath, 4096)).token !== lockToken) throw new Error('Job store lock ownership changed.');
     await unlink(lockPath);
     lockHeld = false;
+    process.removeListener('exit', releaseLockOnExit);
   }
 
   async function directoryFor(jobId) {
