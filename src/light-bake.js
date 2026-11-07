@@ -235,7 +235,7 @@ export function averageMapColor(map) {
   return sum.map(total => total / (AVERAGE_GRID * AVERAGE_GRID));
 }
 
-function diffuseAlbedo(material) {
+export function diffuseAlbedo(material) {
   const keep = 1 - (material.metallic ?? 0);
   const mapAverage = averageMapColor(material.map);
   return material.color.map((channel, index) => Math.max(channel, 0) * keep * mapAverage[index]);

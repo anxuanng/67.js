@@ -80,6 +80,7 @@ function shaderFeaturesOfParts(parts) {
       if (material[field]) features.add(MAP_SHADER_FEATURES[index]);
     });
     if (material.environmentProbe) features.add('probe');
+    if (material.irradianceGrid) features.add('irradianceGrid');
     if (material.normalMap?.uvTransform) features.add('normalMapTransform');
     Object.keys(material.layerMaps ?? {}).forEach(name => features.add(name));
     if (material.layers) features.add('splat');
@@ -168,7 +169,7 @@ function materialMapState(material) {
   const occlusionStrength = material.occlusionStrength ?? 1;
   if (material.layers || material.splat) requireSplatSupport().validate(material);
   if (material.layers && PROCEDURAL_MATERIAL_TAGS.has(material.tag)) throw new Error('Splat layers require a standard PBR material tag.');
-  return [...MATERIAL_MAPS.map(field => material[field] ?? null), normalScale[0], normalScale[1], occlusionStrength, ...mossState(material), material.boxMapScale ?? 0, material.boxMapAxis ?? 1, ...lightMapState(material), material.layers ?? null, material.splat ?? null, material.layerMaps ?? null, material.environmentProbe ?? null, material.waterReflection ?? null];
+  return [...MATERIAL_MAPS.map(field => material[field] ?? null), normalScale[0], normalScale[1], occlusionStrength, ...mossState(material), material.boxMapScale ?? 0, material.boxMapAxis ?? 1, ...lightMapState(material), material.layers ?? null, material.splat ?? null, material.layerMaps ?? null, material.environmentProbe ?? null, material.waterReflection ?? null, material.irradianceGrid ?? null];
 }
 
 // A baked light map reads the second UV set, so it is only drawn for parts that cannot be skinned or morphed.
