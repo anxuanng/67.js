@@ -958,6 +958,44 @@ function prepareMorphBinding(binding) {
   validateMorphPose(binding.pendingPose, binding.metadata);
 }
 
+const COLLAPSED_SCALE = 2e-4;
+const collapseScratch = new Matrix4();
+
+/**
+ * Replaces a singular or non-finite world matrix, in place, with a uniform scale of 0.0002 at the same position so the
+ * part is a speck that stays finite and invertible. Returns true when it replaced the matrix.
+ */
+function collapseSingularMatrix(elements) {
+  const finite = elements.every(Number.isFinite);
+  const determinant = finite ? collapseScratch.fromArray(elements).determinant() : NaN;
+  if (finite && Number.isFinite(determinant) && Math.abs(determinant) >= 1e-12) return false;
+  const position = [elements[12], elements[13], elements[14]];
+  const keepPosition = position.every(Number.isFinite);
+  elements.fill(0);
+  elements[0] = elements[5] = elements[10] = COLLAPSED_SCALE;
+  elements[15] = 1;
+  if (keepPosition) elements.set(position, 12);
+  return true;
+}
+
+/** Indices of the source nodes that any animation clip keys. */
+function nodesKeyedInClips(document) {
+  const keyed = new Set();
+  for (const animation of document.animations ?? []) {
+    for (const channel of animation.channels ?? []) {
+      if (Number.isInteger(channel.target?.node)) keyed.add(channel.target.node);
+    }
+  }
+  return keyed;
+}
+
+function isKeyedInClip(node, keyedNodeIndices) {
+  for (let current = node; current; current = current.parent) {
+    if (keyedNodeIndices.has(current.association?.nodes)) return true;
+  }
+  return false;
+}
+
 /**
  * Rejects a pose that makes a node's world matrix non-finite or singular. A node that was already singular at load
  * (its meshes were skipped with a warning) is listed in `tolerated` and is not checked again.
@@ -1151,6 +1189,7 @@ export async function parseGltf(data, options = {}) {
     const lightNodes = [];
     const pendingTransform = new Matrix4();
     const pendingNodeMatrix = new Float32Array(16);
+    const keyedNodeIndices = nodesKeyedInClips(document);
     let actualVertices = 0;
     gltf.scene.traverse(node => {
       nodes.push(node);
@@ -1171,12 +1210,17 @@ export async function parseGltf(data, options = {}) {
       const material = materials.get(node.material);
       for (const instanceMatrix of instanceMatricesOf(node, limits.maxInstances)) {
         const determinant = worldMatrixOf(node, instanceMatrix, pendingTransform).determinant();
-        if (!Number.isFinite(determinant) || Math.abs(determinant) < 1e-12) {
-          const warning = `Skipped node ${node.name ? `"${node.name}"` : association.nodes}: its world transform is singular or non-finite.`;
+        const singular = !Number.isFinite(determinant) || Math.abs(determinant) < 1e-12;
+        if (singular) {
+          const keyed = isKeyedInClip(node, keyedNodeIndices);
+          const label = node.name ? `"${node.name}"` : association.nodes;
+          const warning = keyed
+            ? `Node ${label} starts with a singular or non-finite world transform; it draws nothing while its scale is zero.`
+            : `Skipped node ${label}: its world transform is singular or non-finite.`;
           if (!warnings.includes(warning)) warnings.push(warning);
-          continue;
+          if (!keyed) continue;
         }
-        const mirrored = determinant < 0;
+        const mirrored = singular ? false : determinant < 0;
         const geometryMirrored = node.isSkinnedMesh ? false : mirrored;
         const geometryKey = `${node.geometry.uuid}:${geometryMirrored}:${uvKey}:${secondUvSet}`;
         if (!geometries.has(geometryKey)) {
@@ -1201,7 +1245,9 @@ export async function parseGltf(data, options = {}) {
         if (!geometry) continue;
         const firstSetMaps = [...MATERIAL_TEXTURES.map(([field]) => material[field]), ...Object.values(material.layerMaps ?? {})];
         if (firstSetMaps.some(map => map && map.uvChannel === 0) && !geometry.uvs) throw new Error('Material textures require TEXCOORD_0.');
-        const part = { name: node.name || `glTF mesh ${parts.length + 1}`, geometry, matrix: new Float32Array(worldMatrixOf(node, instanceMatrix, pendingTransform).elements), material };
+        const initialMatrix = new Float32Array(worldMatrixOf(node, instanceMatrix, pendingTransform).elements);
+        collapseSingularMatrix(initialMatrix);
+        const part = { name: node.name || `glTF mesh ${parts.length + 1}`, geometry, matrix: initialMatrix, material };
         const transformBinding = { node, instanceMatrix, part, mirrored, matrix: part.matrix, pendingMatrix: new Float32Array(16) };
         let pendingSkin;
         if (node.isSkinnedMesh) {
@@ -1257,6 +1303,10 @@ export async function parseGltf(data, options = {}) {
     const skinJointIndices = new Set((document.skins ?? []).flatMap(skin => skin.joints));
     for (const node of sourceNodes.values()) {
       if (skinJointIndices.has(node.association.nodes)) jointNodes.add(node);
+    }
+    // A mesh or group node posed to zero scale draws nothing; only skin joints still refuse a singular pose.
+    for (const node of nodes) {
+      if (!jointNodes.has(node)) toleratedNodes.add(node);
     }
     const meshIdsByNode = new Map([...sourceNodes.values()].map(node => [node, []]));
     for (let index = 0; index < bindings.length; index++) {
@@ -1344,6 +1394,7 @@ export async function parseGltf(data, options = {}) {
           throw new Error('Imported skin pose identity must remain unchanged.');
         }
         pendingMatrix.set(worldMatrixOf(node, instanceMatrix, worldMatrix).elements);
+        if (collapseSingularMatrix(pendingMatrix)) continue;
         for (const value of pendingMatrix) {
           if (!Number.isFinite(value)) {
             throw new Error('Animation creates a non-finite Float32 world matrix.');
