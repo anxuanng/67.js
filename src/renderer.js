@@ -46,7 +46,7 @@ const DEFORMING_TAGS = new Set(['foliage', 'grass', 'water', 'fire', 'smoke']);
 // strength, so they can be culled and given levels like rigid parts.
 const SWAY_REACH_PER_STRENGTH = 0.56;
 
-const POST_UNIFORMS = ['transparent', 'frameTexture', 'bloomTexture', 'bloomStrength', 'hdrEnabled', 'grade', 'vignette', 'grainAmount', 'resolution', 'monochrome', 'fade', 'cinematic', 'time', 'volumeExplosion', 'explosionProgress', 'inverseViewProjection', 'eye', 'sceneDepth', 'volumeShadowMap', 'volumeLightProjection', 'volumeLightDirection', 'volumeLightColor', 'volumeDensity', 'volumeMinimum', 'volumeMaximum', 'volumeColor', 'volumeAmbient', 'volumeDrift', 'volumeSteps', 'volumeAnisotropy', 'volumeShadowAmbient', 'volumeNoiseAmount', 'volumeNoiseScale', 'volumeHeightFalloff', 'volumeMaxDistance', 'fogSkyVisibility', 'orthographic', 'occlusionTexture', 'occlusionStrength', 'occlusionTexel'];
+const POST_UNIFORMS = ['transparent', 'frameTexture', 'bloomTexture', 'bloomStrength', 'hdrEnabled', 'grade', 'vignette', 'grainAmount', 'resolution', 'monochrome', 'fade', 'cinematic', 'time', 'volumeExplosion', 'explosionProgress', 'inverseViewProjection', 'eye', 'sceneDepth', 'volumeShadowMap', 'volumeLightProjection', 'volumeLightDirection', 'volumeLightColor', 'volumeDensity', 'volumeMinimum', 'volumeMaximum', 'volumeColor', 'volumeAmbient', 'volumeDrift', 'volumeSteps', 'volumeAnisotropy', 'volumeShadowAmbient', 'volumeGridFog', 'volumeNoiseAmount', 'volumeNoiseScale', 'volumeHeightFalloff', 'volumeMaxDistance', 'fogSkyVisibility', 'orthographic', 'occlusionTexture', 'occlusionStrength', 'occlusionTexel'];
 
 function postUniformLocations(context, program) {
   return Object.fromEntries(POST_UNIFORMS.map(name => [name, context.getUniformLocation(program, name)]));
@@ -1813,6 +1813,7 @@ export class Renderer67 {
     context.uniform1f(post.uniforms.volumeHeightFalloff, volume.heightFalloff);
     context.uniform1f(post.uniforms.orthographic, frame.projection === 'orthographic' ? 1 : 0);
     context.uniform1i(post.uniforms.fogSkyVisibility, 5);
+    context.uniform1f(post.uniforms.volumeGridFog, this.sceneParts.some(part => part.material?.irradianceGrid) ? 1 : 0);
     context.activeTexture(context.TEXTURE2);
     context.bindTexture(context.TEXTURE_2D, effects.bloom.strength > 0 ? this.bloomTargets[1].texture : this.whiteTexture);
     context.uniform1i(post.uniforms.bloomTexture, 2);
