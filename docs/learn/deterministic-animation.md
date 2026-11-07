@@ -9,8 +9,6 @@ The cube moves along a smooth path and turns, and the sphere pulses and glows. P
 ```js live poster=deterministic-animation
 import { Renderer67, box, sphere, createAnimationClip, sampleAnimationClip, createAnimationPlayer } from '67js';
 
-// The docs frame shares the engine of the page, so take the typed arrays that the engine checks for. In your own project this line changes nothing.
-const { Float32Array, Uint16Array, Uint32Array } = window.parent;
 
 function placeAt(x, y, z, size) {
   return new Float32Array([size, 0, 0, 0, 0, size, 0, 0, 0, 0, size, 0, x, y, z, 1]);

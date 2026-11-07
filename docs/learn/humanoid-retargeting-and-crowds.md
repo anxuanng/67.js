@@ -4,18 +4,12 @@
 
 ## One clip, many walkers
 
-The docs run with the core module only and cannot load a rigged character, so this example shows the part of the pipeline that matters for a crowd: one shared clip, and for every instance a seeded placement, a time offset and a playback rate. The clip only has rotations, so it plays on figures of any size, which is the same reason a retargeted clip works on another skeleton. Drag the slider to change the count. The console prints the first instances the way `createCrowd` reports them.
+The example calls the real `createCrowd` for a seeded placement, a time offset and a playback rate per walker, and `crowd.sample(seconds)` for each walker's pose tracks. The docs host cannot load a rigged character, so the walkers are blocks posed from those tracks, and the clip only has rotations, so it plays on figures of any size, which is the same reason a retargeted clip works on another skeleton. Drag the slider to change the count and press the button to switch between a grid and a scatter layout. The console prints the first instances, how `mapHumanoidBones` reads the joint names of two rig families, and the cost of each batch of frames.
 
 ```js live poster=crowd-walk
-import { Renderer67, box, sphere, createAnimationClip, sampleAnimationClip } from '67js';
+import { Renderer67, box, sphere, createAnimationClip } from '67js';
+import { createCrowd, mapHumanoidBones } from '67js/addons/retarget';
 
-function random(seed) {
-  let value = seed >>> 0;
-  return () => {
-    value = (value * 1664525 + 1013904223) >>> 0;
-    return value / 4294967296;
-  };
-}
 const multiply = (a, b) => {
   const out = new Float32Array(16);
   for (let column = 0; column < 4; column++) {
@@ -29,7 +23,6 @@ const multiply = (a, b) => {
 };
 const move = (x, y, z) => new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, x, y, z, 1]);
 const scale = (x, y, z) => new Float32Array([x, 0, 0, 0, 0, y, 0, 0, 0, 0, z, 0, 0, 0, 0, 1]);
-const turnY = a => new Float32Array([Math.cos(a), 0, -Math.sin(a), 0, 0, 1, 0, 0, Math.sin(a), 0, Math.cos(a), 0, 0, 0, 0, 1]);
 function fromQuaternion([x, y, z, w]) {
   return new Float32Array([
     1 - 2 * (y * y + z * z), 2 * (x * y + z * w), 2 * (x * z - y * w), 0,
@@ -46,18 +39,13 @@ const track = (target, phase) => ({
 });
 const clip = createAnimationClip({ duration: 1, loop: true, tracks: [track('LegL', 1), track('LegR', -1), track('ArmL', -1), track('ArmR', 1)] });
 
-// createCrowd in the addon returns position, yawRadians, timeOffset, playbackRate and matrix per instance, deterministic for a seed.
-function createCrowd({ count, seed, columns, spacing, rateJitter = 0.15 }) {
-  const next = random(seed);
-  const instances = Array.from({ length: count }, (unused, index) => ({
-    position: [(index % columns - (columns - 1) / 2) * spacing, 0, (Math.floor(index / columns) - 1.5) * spacing],
-    yawRadians: (next() - 0.5) * 0.8,
-    timeOffset: next() * clip.duration,
-    playbackRate: 1 + (next() * 2 - 1) * rateJitter,
-    height: 0.9 + next() * 0.25,
-    shirt: Math.floor(next() * 4),
-  }));
-  return { instances, clipTime: (index, seconds) => (instances[index].timeOffset + seconds * instances[index].playbackRate) % clip.duration };
+// Which canonical bones does the addon find in a rig? Real joint names of two families.
+for (const [family, jointNames] of [
+  ['Mixamo', ['mixamorig:Hips', 'mixamorig:Spine', 'mixamorig:Head', 'mixamorig:LeftArm', 'mixamorig:LeftHand', 'mixamorig:RightArm', 'mixamorig:RightHand', 'mixamorig:LeftUpLeg', 'mixamorig:LeftFoot', 'mixamorig:RightUpLeg', 'mixamorig:RightFoot']],
+  ['Unreal', ['pelvis', 'spine_01', 'head', 'upperarm_l', 'hand_l', 'upperarm_r', 'hand_r', 'thigh_l', 'foot_l', 'thigh_r', 'foot_r']],
+]) {
+  const { mapping, unmapped, missing } = mapHumanoidBones(jointNames);
+  console.log(`${family}: ${Object.keys(mapping).length} bones mapped, ${unmapped.length} unmapped, missing`, missing);
 }
 
 const shirts = [[0.8, 0.25, 0.2], [0.2, 0.5, 0.8], [0.9, 0.75, 0.2], [0.3, 0.65, 0.35]].map(color => ({ color, metallic: 0, roughness: 0.7 }));
@@ -73,33 +61,34 @@ const limbs = [
 ];
 
 function buildParts(crowd) {
-  return crowd.instances.flatMap((instance, index) => [
-    { name: `P${index} torso`, geometry: block, matrix: scale(1, 1, 1), material: shirts[instance.shirt] },
-    { name: `P${index} head`, geometry: headShape, matrix: scale(1, 1, 1), material: skin },
-    ...limbs.map(limb => ({ name: `P${index} ${limb.name}`, geometry: block, matrix: scale(1, 1, 1), material: limb.name.startsWith('Leg') ? trousers : skin })),
+  return crowd.instances.flatMap(instance => [
+    { name: `P${instance.index} torso`, geometry: block, matrix: scale(1, 1, 1), material: shirts[instance.index % 4] },
+    { name: `P${instance.index} head`, geometry: headShape, matrix: scale(1, 1, 1), material: skin },
+    ...limbs.map(limb => ({ name: `P${instance.index} ${limb.name}`, geometry: block, matrix: scale(1, 1, 1), material: limb.name.startsWith('Leg') ? trousers : skin })),
   ]);
 }
 
 function pose(parts, crowd, seconds) {
-  crowd.instances.forEach((instance, index) => {
-    const samples = sampleAnimationClip(clip, crowd.clipTime(index, seconds));
-    const frame = multiply(multiply(move(...instance.position), turnY(instance.yawRadians)), scale(instance.height, instance.height, instance.height));
-    const base = index * 6;
+  crowd.sample(seconds).forEach(({ instance, tracks }) => {
+    const height = 0.9 + (instance.index * 7 % 5) * 0.06;
+    const frame = multiply(instance.matrix, scale(height, height, height));
+    const base = instance.index * 6;
     parts[base].matrix = multiply(frame, multiply(move(0, 1.0, 0), scale(0.5, 0.7, 0.28)));
     parts[base + 1].matrix = multiply(frame, multiply(move(0, 1.55, 0), scale(0.18, 0.18, 0.18)));
     limbs.forEach((limb, limbIndex) => {
-      const rotation = samples.find(sample => sample.target === limb.name).value;
+      const rotation = tracks.find(sample => sample.target === limb.name).output;
       parts[base + 2 + limbIndex].matrix = multiply(frame, multiply(move(...limb.pivot), multiply(fromQuaternion(rotation), multiply(move(0, -limb.size[1] / 2, 0), scale(...limb.size)))));
     });
   });
 }
 
 const canvas = document.querySelector('#scene');
-let crowd = createCrowd({ count: 24, seed: 7, columns: 6, spacing: 1.4 });
+const state = { count: 24, layout: 'grid' };
+const makeCrowd = () => createCrowd({ count: state.count, clip, seed: 7, layout: state.layout, spacing: 1.4, columns: 6, size: 8, randomYaw: state.layout === 'scatter' });
+let crowd = makeCrowd();
 let parts = buildParts(crowd);
 const renderer = new Renderer67(canvas, parts);
 console.log('first instances:', crowd.instances.slice(0, 3).map(instance => ({ timeOffset: instance.timeOffset, playbackRate: instance.playbackRate })));
-console.log('parts', parts.length, 'draws are batched by shared geometry and material');
 
 const bar = document.createElement('div');
 bar.style.cssText = 'position:fixed;left:8px;bottom:8px;display:flex;gap:10px;align-items:center;color:#dde;font:12px system-ui;background:#000a;padding:6px 8px;border-radius:6px';
@@ -108,15 +97,22 @@ slider.type = 'range';
 slider.min = 6;
 slider.max = 60;
 slider.step = 6;
-slider.value = 24;
-slider.addEventListener('change', () => {
-  const count = Number(slider.value);
-  crowd = createCrowd({ count, seed: 7, columns: 6, spacing: 1.4 });
+slider.value = state.count;
+const layoutButton = document.createElement('button');
+layoutButton.textContent = 'layout: grid';
+function rebuild() {
+  crowd = makeCrowd();
   parts = buildParts(crowd);
   renderer.replaceParts(parts);
-  console.log(`crowd of ${count}: ${parts.length} parts`);
+  console.log(`crowd of ${state.count} in a ${state.layout}: ${parts.length} parts`);
+}
+slider.addEventListener('change', () => { state.count = Number(slider.value); rebuild(); });
+layoutButton.addEventListener('click', () => {
+  state.layout = state.layout === 'grid' ? 'scatter' : 'grid';
+  layoutButton.textContent = `layout: ${state.layout}`;
+  rebuild();
 });
-bar.append('count', slider);
+bar.append('count', slider, layoutButton);
 document.body.append(bar);
 
 const started = performance.now();
@@ -126,9 +122,9 @@ function frame(now) {
   const before = performance.now();
   pose(parts, crowd, elapsed / 1000);
   renderer.updateParts(parts);
-  renderer.render({ eye: [0, 5, 9], target: [0, 0.9, 0], fov: 42 });
+  renderer.render({ eye: [0, 6, 10], target: [0, 0.9, 0], fov: 42 });
   if (elapsed > nextReport) {
-    console.log(`pose + upload + render: ${(performance.now() - before).toFixed(2)} ms for ${crowd.instances.length} walkers`);
+    console.log(`sample + pose + upload + render: ${(performance.now() - before).toFixed(2)} ms for ${crowd.instances.length} walkers`);
     nextReport = elapsed + 3000;
   }
   requestAnimationFrame(frame);
@@ -138,7 +134,7 @@ requestAnimationFrame(frame);
 addEventListener('pagehide', () => renderer.dispose());
 ```
 
-Every walker plays the same clip at its own time, so the legs are never in step. The pose code touches every instance each frame, which is the cost the GPU crowd path removes.
+Every walker plays the same clip at its own time and rate, so the legs are never in step. The pose code touches every instance each frame, which is the cost the GPU crowd path removes. A real character is retargeted with `retargetClip` and baked with `crowd-skinning`, as in the next section.
 
 ## Retarget a real clip
 

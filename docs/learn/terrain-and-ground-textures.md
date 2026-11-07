@@ -2,100 +2,62 @@
 
 `67js/addons/terrain` builds a chunked, seeded heightfield with distance level of detail. `67js/addons/texture-set` loads CC0 scans and a four-layer ground material draws them with slope, height and mask rules, height-based edge blending, triplanar cliffs and anti-tiling. Both are available from version `0.10.0`.
 
-## The idea: a height function and rules
+## Try the real terrain
 
-The docs run in the browser with the core module only, so the example builds a small heightfield by hand and sorts its triangles with the same kind of rules that the splat material uses: a slope range and a height range per layer. Drag the sliders. Grass takes what the other layers leave, rock takes the steep triangles and snow takes the high, flat ones. The console prints how many triangles each layer got and what `heightAt` returns for the ball.
+`createTerrain` builds the ground in chunks and swaps each chunk between detail levels as the eye moves. The example below calls it with a noise height, one circular hole and three levels. Drag to orbit, change the distance, and move the red ball with the slider. The console prints `heightAt` for the ball, whether it is over the hole, and after each `update(eye)` how many chunks changed level and how many triangles the ground holds.
 
 ```js live poster=terrain-rules
 import { Renderer67, sphere } from '67js';
+import { createTerrain } from '67js/addons/terrain';
 
-// The docs frame shares the engine of the page, so take the typed arrays that the engine checks for. In your own project this line changes nothing.
-const { Float32Array, Uint16Array, Uint32Array } = window.parent;
-
-const size = 40;
-const cells = 64;
-const heightAt = (x, z) => 2.2 * Math.sin(x * 0.22 + 0.5) * Math.cos(z * 0.19) + 1.1 * Math.sin(x * 0.5 + z * 0.4)
-  + 0.5 * Math.sin(z * 0.9 - x * 0.3) + 4.5 * Math.exp(-((x - 7) ** 2 + (z + 5) ** 2) / 70);
-
-function build(slopeLimit, snowLine) {
-  const layers = { grass: [], rock: [], snow: [] };
-  const step = size / cells;
-  for (let row = 0; row < cells; row++) {
-    for (let column = 0; column < cells; column++) {
-      const x0 = -size / 2 + column * step;
-      const z0 = -size / 2 + row * step;
-      const corner = (dx, dz) => [x0 + dx * step, heightAt(x0 + dx * step, z0 + dz * step), z0 + dz * step];
-      for (const triangle of [[corner(0, 0), corner(0, 1), corner(1, 0)], [corner(1, 0), corner(0, 1), corner(1, 1)]]) {
-        const [a, b, c] = triangle;
-        const edgeA = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
-        const edgeB = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
-        const normal = [edgeA[1] * edgeB[2] - edgeA[2] * edgeB[1], edgeA[2] * edgeB[0] - edgeA[0] * edgeB[2], edgeA[0] * edgeB[1] - edgeA[1] * edgeB[0]];
-        const length = Math.hypot(...normal);
-        const unit = normal.map(value => value / length);
-        const slope = Math.acos(unit[1]) * 180 / Math.PI;
-        const height = (a[1] + b[1] + c[1]) / 3;
-        const layer = slope > slopeLimit ? 'rock' : height > snowLine ? 'snow' : 'grass';
-        layers[layer].push({ triangle, unit });
-      }
-    }
-  }
-  return layers;
-}
-
-function geometryOf(entries) {
-  const positions = new Float32Array(entries.length * 9);
-  const normals = new Float32Array(entries.length * 9);
-  entries.forEach(({ triangle, unit }, index) => {
-    triangle.forEach((point, corner) => {
-      positions.set(point, index * 9 + corner * 3);
-      normals.set(unit, index * 9 + corner * 3);
-    });
-  });
-  return { positions, normals, indices: Uint32Array.from({ length: entries.length * 3 }, (unused, index) => index) };
-}
-
-const materials = {
-  grass: { color: [0.25, 0.5, 0.18], metallic: 0, roughness: 0.9 },
-  rock: { color: [0.42, 0.4, 0.38], metallic: 0, roughness: 0.85 },
-  snow: { color: [0.92, 0.94, 0.97], metallic: 0, roughness: 0.6 },
+const material = { color: [0.3, 0.5, 0.22], metallic: 0, roughness: 0.9 };
+const terrain = createTerrain({
+  size: 240, chunks: 8, resolution: 16, levels: 3, seed: 7, material,
+  height: { amplitude: 9, mountainAmplitude: 22, featureSize: 70 },
+  holes: [{ center: [20, 12], radius: 7 }],
+});
+const marker = {
+  name: 'Marker', geometry: sphere(24, 16), material: { color: [0.9, 0.2, 0.2], metallic: 0, roughness: 0.4 },
+  matrix: new Float32Array(16),
 };
-const marker = { name: 'Marker', geometry: sphere(24, 16), matrix: new Float32Array([0.5, 0, 0, 0, 0, 0.5, 0, 0, 0, 0, 0.5, 0, 0, heightAt(0, 0) + 0.5, 0, 1]), material: { color: [0.9, 0.2, 0.2], metallic: 0, roughness: 0.4 } };
-
-function partsFor(slopeLimit, snowLine) {
-  const layers = build(slopeLimit, snowLine);
-  const parts = Object.entries(layers).filter(([unused, entries]) => entries.length).map(([name, entries]) => ({
-    name: `Terrain ${name}`, geometry: geometryOf(entries), matrix: new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]), material: materials[name],
-  }));
-  console.log(`slope limit ${slopeLimit}°, snow line ${snowLine} m:`, Object.fromEntries(Object.entries(layers).map(([name, entries]) => [name, entries.length])));
-  return [...parts, marker];
+function placeMarker(x) {
+  const z = 12;
+  const y = terrain.heightAt(x, z);
+  marker.matrix.set([0.6, 0, 0, 0, 0, 0.6, 0, 0, 0, 0, 0.6, 0, x, y + 0.6, z, 1]);
+  console.log(`heightAt(${x}, ${z}) = ${y.toFixed(2)} m, over a hole: ${terrain.isHole(x, z)}`);
 }
+placeMarker(0);
 
 const canvas = document.querySelector('#scene');
 canvas.style.touchAction = 'none';
-const state = { slope: 32, snow: 3.2, yaw: 0.6, pitch: 0.55, distance: 54 };
-const renderer = new Renderer67(canvas, partsFor(state.slope, state.snow), { world: true });
-console.log(`heightAt(0, 0) = ${heightAt(0, 0).toFixed(3)} m, ${cells * cells * 2} triangles`);
+const renderer = new Renderer67(canvas, [...terrain.parts, marker], { world: true });
+const state = { yaw: 0.5, pitch: 0.5, distance: 40 };
+console.log(`${terrain.triangleCount} triangles, chunk size ${terrain.chunkSize} m, bounds`, terrain.bounds);
 
 function draw() {
   const flat = Math.cos(state.pitch) * state.distance;
-  renderer.render({ eye: [Math.sin(state.yaw) * flat, Math.sin(state.pitch) * state.distance, Math.cos(state.yaw) * flat], target: [0, 1, 0], fov: 40 });
-}
-function rebuild() {
-  renderer.replaceParts(partsFor(state.slope, state.snow));
-  draw();
+  const eye = [Math.sin(state.yaw) * flat, Math.sin(state.pitch) * state.distance + 2, Math.cos(state.yaw) * flat];
+  const changed = terrain.update(eye);
+  if (changed.length) {
+    renderer.replaceParts([...terrain.parts, marker]);
+    console.log(`${changed.length} chunks changed level, ${terrain.triangleCount} triangles, levels`, terrain.chunkLevels().join(''));
+  }
+  renderer.render({ eye, target: [0, 2, 0], fov: 45 });
 }
 
 const bar = document.createElement('div');
 bar.style.cssText = 'position:fixed;left:8px;bottom:8px;display:flex;gap:12px;color:#dde;font:12px system-ui;background:#000a;padding:6px 8px;border-radius:6px';
-for (const [label, key, min, max] of [['slope limit', 'slope', 10, 70], ['snow line', 'snow', 0, 6]]) {
+for (const [label, min, max, start, apply] of [
+  ['distance', 8, 200, state.distance, value => { state.distance = value; }],
+  ['ball x', -40, 40, 0, value => { placeMarker(value); renderer.updateParts([marker]); }],
+]) {
   const wrap = document.createElement('label');
   const input = document.createElement('input');
   input.type = 'range';
   input.min = min;
   input.max = max;
-  input.step = 0.5;
-  input.value = state[key];
-  input.addEventListener('change', () => { state[key] = Number(input.value); rebuild(); });
+  input.value = start;
+  input.addEventListener('input', () => { apply(Number(input.value)); draw(); });
   wrap.append(label + ' ', input);
   bar.append(wrap);
 }
@@ -104,24 +66,24 @@ canvas.addEventListener('pointerdown', event => canvas.setPointerCapture(event.p
 canvas.addEventListener('pointermove', event => {
   if (!canvas.hasPointerCapture(event.pointerId)) return;
   state.yaw -= event.movementX * 0.01;
-  state.pitch = Math.min(1.3, Math.max(0.15, state.pitch + event.movementY * 0.01));
+  state.pitch = Math.min(1.3, Math.max(0.1, state.pitch + event.movementY * 0.01));
   draw();
 });
 new ResizeObserver(() => { renderer.resize(); draw(); }).observe(canvas);
 addEventListener('pagehide', () => renderer.dispose());
 ```
 
-The sliders apply on release (the `change` event), because each change rebuilds the triangle lists. The real addon does this per vertex in the shader, so the rules cost nothing on the CPU and blend smoothly instead of switching per triangle.
+Slide the ball to x = 20: it sits over the hole, and `heightAt` still returns a number, because it ignores holes. That is why the common mistakes below say to check `isHole` first.
 
-## Build the real terrain
+## Ground textures and splat rules
+
+The docs host has no CC0 scans to load, so the splat part of the call stays a plain block. The rules work per vertex in the shader. A layer with a `slope` range takes the steep parts, a `height` range takes a band of altitude, and a layer with no rule takes what the others leave. Put grass first with no rule, rock second with a slope rule and snow last with a height rule.
 
 1. Load a texture set per layer, then give the layers to one material: `const set = await loadTextureSet('/textures/leafy_grass')`, `material.layers = [{ ...set, scale: 3 }, ...]` and `material.splat = { rules }`.
-2. Create the heightfield: `const terrain = createTerrain({ size, chunks, resolution, levels, seed })`. Give every entry of `terrain.parts` the one shared material.
+2. Create the heightfield with that material, as in the example above. Every entry of `terrain.parts` shares it.
 3. Pass `terrain.heightAt` to `scatterVegetation` and to vehicles, and call `renderer.replaceParts` when `terrain.update(eye)` returns parts.
 
 ```js
-import { Renderer67 } from '67js';
-import { createTerrain } from '67js/addons/terrain';
 import { loadTextureSet } from '67js/addons/texture-set';
 
 const material = { color: [1, 1, 1], metallic: 0, roughness: 1, tag: 'standard' };
@@ -130,14 +92,6 @@ material.layers = [
   { ...await loadTextureSet('/textures/rock'), scale: 4, triplanar: true },
 ];
 material.splat = { rules: [undefined, { slope: [32, 90], slopeSoftness: 6 }] };
-
-const terrain = createTerrain({ size: 600, chunks: 10, resolution: 32, levels: 4, seed: 7, material });
-const renderer = new Renderer67(canvas, terrain.parts, { world: true });
-function draw(eye) {
-  const changed = terrain.update(eye);
-  if (changed.length) renderer.replaceParts(terrain.parts);
-  renderer.render({ eye, target: [0, 0, 0] });
-}
 ```
 
 ## Options

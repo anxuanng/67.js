@@ -4,87 +4,46 @@
 
 ## Scatter, then pick detail by distance
 
-The docs run with the core module only, so this example scatters trees by hand and mirrors what the addon returns: a seeded scatter with a slope limit and an exclusion zone, and a per-camera level choice. Drag to orbit and the near trees get the detailed crown while the far ones get a coarse one. The slider changes the density. The console prints what `selectLevels` reports: level counts and triangles.
+The example calls `scatterVegetation` for a seeded scatter with a slope limit and an exclusion zone, then `selectLevels` for the detail of each tree from the camera. Drag to orbit and scroll to move closer: the near trees get the detailed crown, the far ones a coarse one. The slider changes the density. The console prints what the two calls return: counts per species, level counts, culled instances and triangles. Leaf cards use the built-in 128 px sprites here, because the docs host has no scanned leaf textures.
 
 ```js live poster=trees-scatter
-import { Renderer67, cylinder, sphere } from '67js';
+import { Renderer67 } from '67js';
+import { scatterVegetation, selectLevels } from '67js/addons/vegetation';
 
-function random(seed) {
-  let value = seed >>> 0;
-  return () => {
-    value = (value * 1664525 + 1013904223) >>> 0;
-    return value / 4294967296;
-  };
-}
 const terrainHeight = (x, z) => 1.5 * Math.sin(x * 0.18) * Math.cos(z * 0.15);
-const slopeAt = (x, z) => Math.atan(Math.hypot(terrainHeight(x + 0.6, z) - terrainHeight(x - 0.6, z), terrainHeight(x, z + 0.6) - terrainHeight(x, z - 0.6)) / 1.2) * 180 / Math.PI;
 const exclusion = (x, z) => Math.hypot(x, z) < 3.5;
+const area = { minX: -25, maxX: 25, minZ: -25, maxZ: 25 };
 
-// Jittered grid: each cell holds at most one tree, so spacing is at least about half a cell.
-function scatter({ area, density, slopeLimit, seed }) {
-  const next = random(seed);
-  const cell = Math.sqrt(1 / density);
-  const instances = [];
-  for (let x = -area / 2; x < area / 2; x += cell) {
-    for (let z = -area / 2; z < area / 2; z += cell) {
-      const px = x + next() * cell;
-      const pz = z + next() * cell;
-      if (exclusion(px, pz) || slopeAt(px, pz) > slopeLimit) continue;
-      instances.push({ x: px, z: pz, y: terrainHeight(px, pz), scale: 0.8 + next() * 0.6, variant: Math.floor(next() * 3) });
-    }
-  }
-  return instances;
+function scatter(density) {
+  const started = performance.now();
+  const forest = scatterVegetation({
+    area, density, terrainHeight, slopeLimit: 14, exclusion, seed: 11,
+    mix: { broadleaf: 3, birch: 1, bush: 2 }, variants: 2,
+  });
+  console.log(`density ${density} per m²:`, forest.counts, `${Math.round(performance.now() - started)} ms`);
+  return forest;
 }
 
-const trunk = cylinder(12, 0.02, 2);
-const crownLevels = [sphere(20, 14), sphere(8, 6)];
-const crownMaterials = [0, 1, 2].map(variant => ({ color: [0.12 + variant * 0.04, 0.38 + variant * 0.05, 0.14], metallic: 0, roughness: 0.8 }));
-const trunkMaterial = { color: [0.3, 0.2, 0.12], metallic: 0, roughness: 0.9 };
-const triangles = geometry => geometry.indices.length / 3;
-
-const state = { density: 0.35, yaw: 0.7, distance: 24, pitch: 0.5 };
-let instances = scatter({ area: 40, density: state.density, slopeLimit: 14, seed: 11 });
-let levels = [];
+const state = { density: 0.02, yaw: 0.7, distance: 30, pitch: 0.5 };
+let forest = scatter(state.density);
 
 function eye() {
   const flat = Math.cos(state.pitch) * state.distance;
   return [Math.sin(state.yaw) * flat, Math.sin(state.pitch) * state.distance + 2, Math.cos(state.yaw) * flat];
 }
 
-// Level 0 within 14 m of the camera, level 1 beyond it. Part objects are cached, so unchanged instances keep their identity.
-function selectLevels(position) {
-  let changed = false;
-  const counts = [0, 0];
-  let totalTriangles = 0;
-  instances.forEach((tree, index) => {
-    const level = Math.hypot(tree.x - position[0], tree.z - position[2]) < 14 ? 0 : 1;
-    if (levels[index] !== level) changed = true;
-    levels[index] = level;
-    counts[level]++;
-    totalTriangles += triangles(trunk) + triangles(crownLevels[level]);
-  });
-  return { changed, counts, totalTriangles };
-}
-
-function partsFor() {
-  return instances.flatMap((tree, index) => [
-    { name: `Trunk ${index}`, geometry: trunk, matrix: new Float32Array([0.18 * tree.scale, 0, 0, 0, 0, 1.2 * tree.scale, 0, 0, 0, 0, 0.18 * tree.scale, 0, tree.x, tree.y + 0.6 * tree.scale, tree.z, 1]), material: trunkMaterial },
-    { name: `Crown ${index}`, geometry: crownLevels[levels[index]], matrix: new Float32Array([0.9 * tree.scale, 0, 0, 0, 0, 1.1 * tree.scale, 0, 0, 0, 0, 0.9 * tree.scale, 0, tree.x, tree.y + 1.7 * tree.scale, tree.z, 1]), material: crownMaterials[tree.variant] },
-  ]);
-}
-
 const canvas = document.querySelector('#scene');
 canvas.style.touchAction = 'none';
-const first = selectLevels(eye());
-console.log(`scattered ${instances.length} trees, 3 variants, slope limit 14°`, first);
-const renderer = new Renderer67(canvas, partsFor(), { world: true });
+let view = selectLevels(forest.instances, eye());
+const renderer = new Renderer67(canvas, view.parts, { world: true });
+console.log('first view:', { levelCounts: view.levelCounts, culled: view.culled, triangles: view.triangles });
 
 function draw() {
   const position = eye();
-  const result = selectLevels(position);
-  if (result.changed) {
-    renderer.replaceParts(partsFor());
-    console.log('levels changed:', { levelCounts: result.counts, triangles: result.totalTriangles });
+  view = selectLevels(forest.instances, position);
+  if (view.changed) {
+    renderer.replaceParts(view.parts);
+    console.log('levels changed:', { levelCounts: view.levelCounts, culled: view.culled, triangles: view.triangles });
   }
   renderer.render({ eye: position, target: [0, 1, 0], fov: 45 });
 }
@@ -98,25 +57,24 @@ canvas.addEventListener('pointermove', event => {
 });
 canvas.addEventListener('wheel', event => {
   event.preventDefault();
-  state.distance = Math.min(40, Math.max(6, state.distance * Math.exp(event.deltaY * 0.001)));
+  state.distance = Math.min(45, Math.max(5, state.distance * Math.exp(event.deltaY * 0.001)));
   draw();
 }, { passive: false });
 
 const slider = document.createElement('input');
 slider.type = 'range';
-slider.min = 0.1;
-slider.max = 0.8;
-slider.step = 0.05;
+slider.min = 0.01;
+slider.max = 0.06;
+slider.step = 0.005;
 slider.value = state.density;
 slider.setAttribute('aria-label', 'Trees per square metre');
 slider.style.cssText = 'position:fixed;left:8px;bottom:8px;width:40%';
 slider.addEventListener('change', () => {
   state.density = Number(slider.value);
-  instances = scatter({ area: 40, density: state.density, slopeLimit: 14, seed: 11 });
-  levels = [];
-  selectLevels(eye());
-  renderer.replaceParts(partsFor());
-  console.log(`density ${state.density} per m²: ${instances.length} trees`);
+  forest = scatter(state.density);
+  view = selectLevels(forest.instances, eye());
+  renderer.replaceParts(view.parts);
+  console.log('after scatter:', { levelCounts: view.levelCounts, triangles: view.triangles });
   draw();
 });
 document.body.append(slider);
@@ -125,11 +83,13 @@ draw();
 addEventListener('pagehide', () => renderer.dispose());
 ```
 
-## Grow the real forest
+Levels change only after a distance passes a threshold by `hysteresis`, so a tree on the boundary does not flicker between two crowns while you orbit.
+
+## Grow the real forest with scanned leaves
+
+The scanned leaf cards need the CC0 files, which the docs host does not serve, so this call stays a plain block. It is the example above with `leafTextures` added:
 
 ```js
-import { Renderer67 } from '67js';
-import { scatterVegetation, selectLevels } from '67js/addons/vegetation';
 import { loadLeafTextures } from '67js/addons/texture-set';
 
 const forest = scatterVegetation({
@@ -141,9 +101,6 @@ const forest = scatterVegetation({
   mix: { broadleaf: 3, birch: 1, bush: 2 },
   leafTextures: await loadLeafTextures('/textures/leaves'),
 });
-let view = selectLevels(forest.instances, eye);
-const renderer = new Renderer67(canvas, view.parts, { world: true });
-console.log(forest.counts, view.levelCounts, view.triangles);
 ```
 
 1. Scatter with `scatterVegetation({ area, density, terrainHeight, slopeLimit, exclusion, mix, leaves })`.

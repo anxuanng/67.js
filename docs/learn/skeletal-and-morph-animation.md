@@ -9,8 +9,6 @@ The column has two joints. The upper joint bends it at the middle. A morph targe
 ```js live poster=skeletal-morph
 import { Renderer67, box, createSkinPose, updateSkinPose, createMorphPose } from '67js';
 
-// The docs frame shares the engine of the page, so take the typed arrays that the engine checks for. In your own project this line changes nothing.
-const { Float32Array, Uint16Array, Uint32Array } = window.parent;
 
 function translation(x, y, z) {
   return new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, x, y, z, 1]);
