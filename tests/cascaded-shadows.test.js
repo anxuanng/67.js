@@ -97,6 +97,14 @@ test('an update redraws only the slices whose matrix changed, and every slice wh
   assert.deepEqual(drawnLayers.splice(0), [1, 2, 4], 'a changed caster redraws every slice');
 });
 
+test('a far slice that drifts toward the light keeps its map, because the wide fit also reaches further on the light side', () => {
+  const cascades = createCascadedShadows({ count: 2, resolution: 2048 });
+  const sphereAlongLight = distance => ({ center: TOWARD_LIGHT.map(value => value * distance), radius: 80 });
+  cascades.chooseFit(1, sphereAlongLight(0), TOWARD_LIGHT);
+  const wide = cascades.chooseFit(1, sphereAlongLight(1), TOWARD_LIGHT);
+  assert.equal(cascades.chooseFit(1, sphereAlongLight(4), TOWARD_LIGHT), wide, 'a drift toward the light stays covered');
+});
+
 test('a moving camera keeps a far slice\'s map until the slice leaves it, and a stopped camera settles on the exact fit', () => {
   const cascades = createCascadedShadows({ count: 2, resolution: 2048 });
   const sphereAt = x => ({ center: [x, 0, -100], radius: 80 });
