@@ -3,14 +3,25 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="description" content="A WebGL2 3D engine that AI agents drive: Glaze real-time rendering, Cook path tracing, and an MCP server in one light package." />
-    <title>67js — A 3D engine agents can drive</title>
+    <meta name="theme-color" content="#09070f" />
+    <meta name="description" content="67js is a WebGL2 3D engine that AI agents drive: Glaze real-time rendering, Cook path tracing, GLB, PNG and MP4 export, and an MCP server. Install with npm i @codepawlhq/67js." />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="67js" />
+    <meta property="og:title" content="67js · a 3D engine agents can drive" />
+    <meta property="og:description" content="Real-time WebGL2, offline path tracing and an MCP server in one npm package." />
+    <meta property="og:url" content="https://67js.codepawl.com/" />
+    <meta property="og:image" content="https://67js.codepawl.com/previews/showcase-airport.webp" />
+    <meta property="og:image:alt" content="An airport ramp rendered by 67js" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="canonical" href="https://67js.codepawl.com/" />
+    <title>67js · a 3D engine agents can drive</title>
     <link rel="icon" href="/favicon.svg" />
   </head>
-  <body class="home site">
+  <body class="site">
     <a class="skip-link" href="#content">Skip to content</a>
     <header class="navigation">
       <a class="brand" href="/" aria-label="67js home">67js</a>
+      <span class="version" data-release-version>Loading release</span>
       <nav aria-label="Library">
         <a href="/docs.html">Docs</a><a href="/changelog.html">Changelog</a>
       </nav>
@@ -20,9 +31,9 @@
       <section class="hero" aria-label="67js introduction and live preview">
         <div class="hero-frame" data-glow="#ff6a2b">
           <a class="hero-shot" href="./showcase.html?scene=airport" aria-label="Open the airport ramp as a live 3D scene">
-            <img src="./previews/helios-relay.webp" alt="Helios-67 orbital Dyson relay with counter-rotating gimbals and basalt monoliths, rendered by 67js" width="1280" height="720" fetchpriority="high" />
+            <img src="./previews/showcase-airport.webp" alt="An airport ramp with a 787 at its stand and the turnaround crew, rendered by 67js" width="1280" height="720" fetchpriority="high" />
           </a>
-          <canvas id="hero-viewport" class="hero-viewport" aria-label="Live 3D Dyson relay scene. Drag to orbit or switch agent prompts."></canvas>
+          <canvas id="hero-viewport" class="hero-viewport" aria-label="Live 3D airport ramp. Drag to orbit, or pick a shot."></canvas>
           <aside class="hero-prompt" aria-label="Agent prompt presets">
             <div class="hero-prompt-tabs" role="group" aria-label="Agent prompt">
               <button type="button" data-prompt-preset="model" aria-pressed="true">Stand</button>
@@ -76,13 +87,13 @@ renderer.render({ eye: [58, 31, 84], target: [-8, 3, -18] });</code></pre>
             <button data-copy-code="home-code" aria-label="Copy the code example">Copy</button>
           </div>
         </div>
-        <img class="code-result" src="./previews/helios-relay.webp" alt="Helios-67 orbital Dyson relay rendered in real time by Glaze in 67js" width="1280" height="720" loading="lazy" />
+        <img class="code-result" src="./previews/showcase-datacenter.webp" alt="A cutaway AI data center hall rendered by 67js from a GLB and an HDRI" width="1280" height="720" loading="lazy" />
       </section>
 
       <section id="examples" class="examples" aria-labelledby="examples-title">
         <div class="section-heading"><h2 id="examples-title">Showcase</h2><a href="./showcase.html">Open the live scenes</a></div>
         <ul class="capability-list" aria-label="Engine capabilities">
-          <li>PBR materials</li><li>Shadows</li><li>HDR and bloom</li><li>MSAA</li><li>Mesh blend</li><li>Live cloth</li><li>Volumetric fog</li><li>Skinning and morphs</li><li>Physics</li><li>Spume liquid</li><li>HDRI lighting</li><li>Textured terrain</li><li>Trees and grass</li><li>Vehicles</li><li>GLB import and export</li><li>Cook path tracer</li>
+          <li>PBR materials</li><li>Shadows</li><li>HDR and bloom</li><li>MSAA</li><li>Mesh blend</li><li>Live cloth</li><li>Volumetric fog</li><li>Skinning and morphs</li><li>Physics</li><li>Spume liquid</li><li>Glass and leaf cutouts</li><li>HDRI lighting</li><li>Textured terrain</li><li>Trees and grass</li><li>Vehicles</li><li>GLB import and export</li><li>Cook path tracer</li>
         </ul>
         <div class="gallery">
           <a class="example is-lead" href="./showcase.html?scene=airport" data-glow="#ff6a2b"><span class="work-media"><img src="./previews/showcase-airport.webp" alt="Airport ramp, rendered by 67js" width="1280" height="720" loading="lazy" /></span><span class="work-title"><span class="work-index" aria-hidden="true">01</span><span class="work-name">Airport ramp</span><span class="work-date">A widebody at the stand with its service trucks</span></span></a>
@@ -94,7 +105,7 @@ renderer.render({ eye: [58, 31, 84], target: [-8, 3, -18] });</code></pre>
       <section id="agents" class="agents" aria-labelledby="agents-title">
         <div class="agents-intro">
           <h2 id="agents-title">Built for agents</h2>
-          <p>An agent gets a live scene to edit, glaze in real time or cook with path tracing, and review at 2.6× smaller bundle weight.</p>
+          <p>An agent gets a live scene to edit, glaze in real time or cook with path tracing, and review.</p>
           <div class="code-block">
             <pre><code id="home-mcp" data-language="shell">npx 67js-mcp --backend gpu --memory 192</code></pre>
             <button data-copy-code="home-mcp" aria-label="Copy the MCP server command">Copy</button>
@@ -112,7 +123,7 @@ renderer.render({ eye: [58, 31, 84], target: [-8, 3, -18] });</code></pre>
         </div>
         <div class="agent-cards">
           <a href="/mcp.md" data-icon="cube"><h3>22 MCP tools</h3><p>Create, edit, explode, blend and render over stdio.</p></a>
-          <a href="/path-tracer.md" data-icon="code"><h3>Glaze + Cook</h3><p>Sub-millisecond WebGL2 frames or path-traced stills.</p></a>
+          <a href="/path-tracer.md" data-icon="code"><h3>Glaze + Cook</h3><p>Real-time WebGL2 frames or path-traced stills.</p></a>
           <a href="/agent-review.md" data-icon="image"><h3>Visual review</h3><p>Compare labeled views and normals from one snapshot.</p></a>
         </div>
       </section>

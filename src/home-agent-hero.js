@@ -1,7 +1,6 @@
-// Live 3D AAA showcase hero for the homepage, powered by Glaze (Renderer67).
-// Loads the staged Airport Ramp AAA world (Boeing 787-9 widebody, ground crew characters, pushback tug,
-// catering & fuel trucks, terminal pier, control tower, hangars, 3-cascade shadows, and Industrial Sunset HDRI sky)
-// and lets users or agents smoothly orbit and switch between 4 camera shots and surface-normal inspection.
+// Live hero for the homepage, drawn by Glaze (Renderer67): the staged airport ramp world
+// (a 787 at its stand, the turnaround crew, service trucks, terminal and tower) with cascaded
+// shadows and an HDRI sky. Visitors orbit it or pick one of four shots, one a surface-normal view.
 import './replace-textured-parts.js';
 import { Glaze } from './renderer.js';
 import { createSharedTextures, loadGltf } from './gltf.js';
@@ -90,8 +89,41 @@ async function fetchBlob(url) {
   return response.blob();
 }
 
+const LIVE_HERO_QUERY = '(min-width: 961px) and (prefers-reduced-motion: no-preference)';
+const AUTO_CYCLE_MS = 7500;
+
+// The live hero only runs where it is cheap to: a wide screen, no data saver, motion allowed.
+// Everywhere else the poster image stays, so phones never download the world.
+function liveHeroAllowed() {
+  if (navigator.connection?.saveData) return false;
+  return window.matchMedia(LIVE_HERO_QUERY).matches;
+}
+
+function afterPageSettles(start) {
+  const whenIdle = () => {
+    if ('requestIdleCallback' in window) requestIdleCallback(start, { timeout: 2500 });
+    else setTimeout(start, 300);
+  };
+  if (document.readyState === 'complete') whenIdle();
+  else window.addEventListener('load', whenIdle, { once: true });
+}
+
 export function mountHeroAgentWorkbench() {
-  return mountHomeAgentHero();
+  if (!liveHeroAllowed()) return;
+  afterPageSettles(() => mountHomeAgentHero());
+}
+
+function createOrbitState(preset) {
+  const orbit = orbitFromCamera(preset.state.eye, preset.state.target);
+  return {
+    yaw: orbit.yaw,
+    pitch: orbit.pitch,
+    distance: orbit.distance,
+    target: [...orbit.target],
+    fov: preset.state.fov,
+    exposure: preset.state.exposure,
+    inspection: preset.state.inspection,
+  };
 }
 
 export async function mountHomeAgentHero() {
@@ -102,38 +134,29 @@ export async function mountHomeAgentHero() {
   let renderer = null;
   let activeMap = null;
   let sceneDescription = null;
+  let sharedTextures = null;
+  let firstAsset = null;
+  let firstRanks = null;
 
   try {
-    const descResp = await fetch('/showcase/airport/scene.json');
-    if (!descResp.ok) throw new Error(`Airport scene description unavailable (${descResp.status})`);
-    sceneDescription = await descResp.json();
+    const descriptionResponse = await fetch('/showcase/airport/scene.json');
+    if (!descriptionResponse.ok) throw new Error(`Airport scene description unavailable (${descriptionResponse.status})`);
+    sceneDescription = await descriptionResponse.json();
 
     const glbUrl = new URL(sceneDescription.glb, location.href);
-    const previewSkyUrl = new URL(
-      sceneDescription.hdriPreview ?? sceneDescription.hdri,
-      location.href,
-    ).href;
-    const fullSkyUrl = new URL(sceneDescription.hdri, location.href).href;
-    const restUrls = (sceneDescription.glbRest ?? []).map(p => new URL(p, location.href).href);
-
-    // Kick off stage-2 downloads in parallel while stage-1 decodes
-    const remainingPromise = Promise.all([
-      Promise.all(restUrls.map(url => fetchBlob(url))),
-      loadHdri(fullSkyUrl, sceneDescription.hdriOptions ?? {}).catch(() => null),
-    ]);
-
+    const previewSkyUrl = new URL(sceneDescription.hdriPreview ?? sceneDescription.hdri, location.href).href;
     const [firstBlob, previewMap] = await Promise.all([
       fetchBlob(glbUrl.href),
       loadHdri(previewSkyUrl, sceneDescription.hdriOptions ?? {}),
     ]);
 
-    const sharedTextures = createSharedTextures();
-    const firstAsset = await loadGltf(firstBlob, {
+    sharedTextures = createSharedTextures();
+    firstAsset = await loadGltf(firstBlob, {
       baseUrl: new URL('.', glbUrl).href,
       sharedTextures,
       ...(sceneDescription.gltfOptions ?? {}),
     });
-    const firstRanks = await readPartRanks(firstBlob);
+    firstRanks = await readPartRanks(firstBlob);
 
     activeMap = previewMap;
     const rendererOptions = sceneDescription.renderer ?? {};
@@ -155,54 +178,45 @@ export async function mountHomeAgentHero() {
         map: activeMap,
       },
     });
-
-    frame.dataset.live = 'true';
-    frame.classList.add('is-live-3d');
-
-    // Finish loading full world parts + full HDRI sky
-    const [restBlobs, fullMap] = await remainingPromise;
-    if (restBlobs.length > 0) {
-      const files = [{ parts: firstAsset.parts, ranks: firstRanks }];
-      for (let i = 0; i < restBlobs.length; i++) {
-        const baseUrl = new URL('.', new URL(sceneDescription.glbRest[i], location.href)).href;
-        const restAsset = await loadGltf(restBlobs[i], {
-          baseUrl,
-          sharedTextures,
-          ...(sceneDescription.gltfOptions ?? {}),
-        });
-        files.push({ parts: restAsset.parts, ranks: await readPartRanks(restBlobs[i]) });
-      }
-      const allParts = inWholeWorldOrder(files);
-      renderer.replaceParts(allParts);
-    }
-    if (fullMap) {
-      activeMap = fullMap;
-    }
-  } catch (err) {
-    window.__heroWorkbench = { error: err.message };
+  } catch (error) {
+    window.__heroWorkbench = { error: error.message };
     return;
   }
 
-  const initialOrbit = orbitFromCamera(PROMPTS.model.state.eye, PROMPTS.model.state.target);
-  const current = {
-    yaw: initialOrbit.yaw,
-    pitch: initialOrbit.pitch,
-    distance: initialOrbit.distance,
-    target: [...initialOrbit.target],
-    fov: PROMPTS.model.state.fov,
-    exposure: PROMPTS.model.state.exposure,
-    inspection: PROMPTS.model.state.inspection,
-  };
-  let target = {
-    yaw: initialOrbit.yaw,
-    pitch: initialOrbit.pitch,
-    distance: initialOrbit.distance,
-    target: [...initialOrbit.target],
-    fov: PROMPTS.model.state.fov,
-    exposure: PROMPTS.model.state.exposure,
-    inspection: PROMPTS.model.state.inspection,
-  };
+  // The rest of the world (about 11 MB) and the full sky (about 4 MB) load only once someone
+  // engages with the hero, so a visitor who scrolls past pays for the first stage alone.
+  let fullWorldRequested = false;
+  async function loadFullWorld() {
+    if (fullWorldRequested) return;
+    fullWorldRequested = true;
+    try {
+      const restPaths = sceneDescription.glbRest ?? [];
+      const fullSkyUrl = new URL(sceneDescription.hdri, location.href).href;
+      const [restBlobs, fullMap] = await Promise.all([
+        Promise.all(restPaths.map(path => fetchBlob(new URL(path, location.href).href))),
+        loadHdri(fullSkyUrl, sceneDescription.hdriOptions ?? {}).catch(() => null),
+      ]);
+      if (restBlobs.length > 0) {
+        const files = [{ parts: firstAsset.parts, ranks: firstRanks }];
+        for (let index = 0; index < restBlobs.length; index++) {
+          const baseUrl = new URL('.', new URL(restPaths[index], location.href)).href;
+          const restAsset = await loadGltf(restBlobs[index], {
+            baseUrl,
+            sharedTextures,
+            ...(sceneDescription.gltfOptions ?? {}),
+          });
+          files.push({ parts: restAsset.parts, ranks: await readPartRanks(restBlobs[index]) });
+        }
+        renderer.replaceParts(inWholeWorldOrder(files));
+      }
+      if (fullMap) activeMap = fullMap;
+    } catch (error) {
+      window.__heroWorkbench = { ...window.__heroWorkbench, restError: error.message };
+    }
+  }
 
+  const current = createOrbitState(PROMPTS.model);
+  let target = createOrbitState(PROMPTS.model);
   let activeKey = 'model';
   let dragging = false;
   let userInteracted = false;
@@ -210,47 +224,45 @@ export async function mountHomeAgentHero() {
   let orbitStart = [0, 0];
   let simTime = 0;
   let lastNow = performance.now();
+  let rafId = 0;
+  let heroVisible = true;
 
-  const promptEl = document.querySelector('[data-agent-prompt]');
+  const promptElement = document.querySelector('[data-agent-prompt]');
   const presetButtons = [...document.querySelectorAll('[data-prompt-preset]')];
+
+  function markInteracted() {
+    userInteracted = true;
+    loadFullWorld();
+  }
 
   function applyPresetUI(key) {
     const preset = PROMPTS[key];
     if (!preset) return;
     activeKey = key;
-    const nextOrbit = orbitFromCamera(preset.state.eye, preset.state.target);
-    target = {
-      yaw: nextOrbit.yaw,
-      pitch: nextOrbit.pitch,
-      distance: nextOrbit.distance,
-      target: [...nextOrbit.target],
-      fov: preset.state.fov,
-      exposure: preset.state.exposure,
-      inspection: preset.state.inspection,
-    };
-    presetButtons.forEach(btn => {
-      btn.setAttribute('aria-pressed', String(btn.dataset.promptPreset === key));
+    target = createOrbitState(preset);
+    presetButtons.forEach(button => {
+      button.setAttribute('aria-pressed', String(button.dataset.promptPreset === key));
     });
-    if (promptEl) promptEl.textContent = preset.prompt;
+    if (promptElement) promptElement.textContent = preset.prompt;
   }
 
-  presetButtons.forEach(btn => {
-    btn.addEventListener('click', () => {
-      userInteracted = true;
-      applyPresetUI(btn.dataset.promptPreset);
+  presetButtons.forEach(button => {
+    button.addEventListener('click', () => {
+      markInteracted();
+      applyPresetUI(button.dataset.promptPreset);
     });
   });
 
   const presetKeys = Object.keys(PROMPTS);
   const autoCycle = setInterval(() => {
-    if (userInteracted || document.hidden) return;
-    const nextIdx = (presetKeys.indexOf(activeKey) + 1) % presetKeys.length;
-    applyPresetUI(presetKeys[nextIdx]);
-  }, 7500);
+    if (userInteracted || document.hidden || !heroVisible) return;
+    const nextIndex = (presetKeys.indexOf(activeKey) + 1) % presetKeys.length;
+    applyPresetUI(presetKeys[nextIndex]);
+  }, AUTO_CYCLE_MS);
 
   canvas.addEventListener('pointerdown', event => {
     dragging = true;
-    userInteracted = true;
+    markInteracted();
     pointerStart = [event.clientX, event.clientY];
     orbitStart = [target.yaw, target.pitch];
     canvas.setPointerCapture?.(event.pointerId);
@@ -258,10 +270,10 @@ export async function mountHomeAgentHero() {
 
   canvas.addEventListener('pointermove', event => {
     if (!dragging) return;
-    const dx = event.clientX - pointerStart[0];
-    const dy = event.clientY - pointerStart[1];
-    target.yaw = orbitStart[0] - dx * 0.0055;
-    target.pitch = Math.max(0.05, Math.min(1.35, orbitStart[1] + dy * 0.0045));
+    const deltaX = event.clientX - pointerStart[0];
+    const deltaY = event.clientY - pointerStart[1];
+    target.yaw = orbitStart[0] - deltaX * 0.0055;
+    target.pitch = Math.max(0.05, Math.min(1.35, orbitStart[1] + deltaY * 0.0045));
   });
 
   const endDrag = () => {
@@ -278,36 +290,14 @@ export async function mountHomeAgentHero() {
   const frameDefaults = sceneDescription.frame ?? {};
   const baseEffects = frameDefaults.effects ?? {};
 
-  let rafId = 0;
-  function tick(now) {
-    const dt = Math.min(0.05, Math.max(0.001, (now - lastNow) / 1000));
-    lastNow = now;
-    simTime += dt;
-
-    const blend = 1 - Math.exp(-dt * 5.2);
-    if (!dragging) {
-      target.yaw += dt * 0.018;
-    }
-
-    current.yaw += (target.yaw - current.yaw) * blend;
-    current.pitch += (target.pitch - current.pitch) * blend;
-    current.distance += (target.distance - current.distance) * blend;
-    for (let i = 0; i < 3; i++) {
-      current.target[i] += (target.target[i] - current.target[i]) * blend;
-    }
-    current.fov += (target.fov - current.fov) * blend;
-    current.exposure += (target.exposure - current.exposure) * blend;
-    current.inspection = target.inspection;
-
-    const eye = eyeFromOrbit(current);
-
+  function renderFrame(time) {
     renderer.render({
       ...frameDefaults,
-      eye,
+      eye: eyeFromOrbit(current),
       target: current.target,
       fov: current.fov,
       exposure: current.exposure,
-      time: simTime,
+      time,
       inspection: current.inspection,
       environment: {
         ...(sceneDescription.renderer?.environment ?? {}),
@@ -319,37 +309,63 @@ export async function mountHomeAgentHero() {
         ambientOcclusionRadius: 4.5,
       },
     });
+  }
 
+  function tick(now) {
+    rafId = 0;
+    const deltaSeconds = Math.min(0.05, Math.max(0.001, (now - lastNow) / 1000));
+    lastNow = now;
+    simTime += deltaSeconds;
+
+    const blend = 1 - Math.exp(-deltaSeconds * 5.2);
+    if (!dragging) target.yaw += deltaSeconds * 0.018;
+
+    current.yaw += (target.yaw - current.yaw) * blend;
+    current.pitch += (target.pitch - current.pitch) * blend;
+    current.distance += (target.distance - current.distance) * blend;
+    for (let axis = 0; axis < 3; axis++) {
+      current.target[axis] += (target.target[axis] - current.target[axis]) * blend;
+    }
+    current.fov += (target.fov - current.fov) * blend;
+    current.exposure += (target.exposure - current.exposure) * blend;
+    current.inspection = target.inspection;
+
+    renderFrame(simTime);
+    scheduleTick();
+  }
+
+  // Stop drawing while the hero is off screen or the tab is hidden, so the GPU idles while people read.
+  function scheduleTick() {
+    if (rafId || !heroVisible || document.hidden) return;
     rafId = requestAnimationFrame(tick);
   }
 
-  renderer.resize();
-  // Render one synchronous frame before exposing __heroWorkbench so screenshots are guaranteed ready
-  renderer.render({
-    ...frameDefaults,
-    eye: eyeFromOrbit(current),
-    target: current.target,
-    fov: current.fov,
-    exposure: current.exposure,
-    time: 0,
-    inspection: current.inspection,
-    environment: {
-      ...(sceneDescription.renderer?.environment ?? {}),
-      map: activeMap,
-    },
-    effects: {
-      ...baseEffects,
-      ambientOcclusion: 0.55,
-      ambientOcclusionRadius: 4.5,
-    },
+  const visibilityObserver = new IntersectionObserver(entries => {
+    heroVisible = entries.some(entry => entry.isIntersecting);
+    lastNow = performance.now();
+    scheduleTick();
   });
-  rafId = requestAnimationFrame(tick);
+  visibilityObserver.observe(frame);
+  const onVisibilityChange = () => {
+    lastNow = performance.now();
+    scheduleTick();
+  };
+  document.addEventListener('visibilitychange', onVisibilityChange);
 
-  window.__heroWorkbench = { renderer, applyPresetUI, complete: true };
+  renderer.resize();
+  // One synchronous frame before going live, so the canvas never fades in empty.
+  renderFrame(0);
+  frame.dataset.live = 'true';
+  frame.classList.add('is-live-3d');
+  scheduleTick();
+
+  window.__heroWorkbench = { renderer, applyPresetUI, loadFullWorld, complete: true };
   window.addEventListener('pagehide', () => {
     clearInterval(autoCycle);
-    cancelAnimationFrame(rafId);
+    if (rafId) cancelAnimationFrame(rafId);
     resizeObserver.disconnect();
+    visibilityObserver.disconnect();
+    document.removeEventListener('visibilitychange', onVisibilityChange);
     renderer.dispose();
   });
 }
