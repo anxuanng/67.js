@@ -59,7 +59,7 @@ test('a singular group node skips the meshes under it', async () => {
   assert.match(asset.warnings[0], /Skipped node "Child"/);
 });
 
-test('morph targets without a base NORMAL load: normals are generated and the morph normal deltas are dropped', async () => {
+test('morph targets without a base NORMAL load: normals are generated and the morph normal deltas are recomputed', async () => {
   const asset = await parseGltf(documentWith(FACE_NORMALS, document => {
     const primitive = document.meshes[0].primitives[0];
     delete primitive.attributes.NORMAL;
@@ -68,7 +68,7 @@ test('morph targets without a base NORMAL load: normals are generated and the mo
   assert.equal(asset.parts.length, 2);
   assert.deepEqual(Array.from(asset.parts[0].geometry.normals), FACE_NORMALS);
   assert.equal(asset.parts[0].geometry.morphTargets.length, 2);
-  assert.equal(asset.parts[0].geometry.morphTargets[0].normals, undefined);
+  assert.equal(asset.parts[0].geometry.morphTargets[0].normals.length, 9);
   assert.match(asset.warnings[0], /^Repaired primitive 0 of mesh "Tri": it has morph targets but no base NORMAL/);
 });
 

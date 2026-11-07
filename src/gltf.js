@@ -802,6 +802,38 @@ function copyAttribute(attribute, size) {
   return values;
 }
 
+/** Like copyAttribute, but a NaN or Infinity becomes 0 and is reported through `onNonFinite(count)` instead of refusing the file. */
+function copyAttributeZeroingNonFinite(attribute, size, onNonFinite) {
+  if (attribute.itemSize !== size) throw new Error(`Expected a ${size}-component mesh attribute.`);
+  const values = attributeFloats(attribute);
+  let nonFiniteCount = 0;
+  for (let index = 0; index < values.length; index++) {
+    if (Number.isFinite(values[index])) continue;
+    values[index] = 0;
+    nonFiniteCount++;
+  }
+  if (nonFiniteCount) onNonFinite(nonFiniteCount);
+  return values;
+}
+
+/**
+ * Per-target normal deltas for a primitive that has no authored base NORMAL: the normals of the morphed triangles minus
+ * the base normals, so lighting follows the morph. A vertex whose morphed normal has no direction keeps the base normal.
+ */
+function computeMorphNormalDeltas(positions, indices, baseNormals, positionDeltas) {
+  const morphedPositions = new Float32Array(positions.length);
+  for (let index = 0; index < positions.length; index++) morphedPositions[index] = positions[index] + positionDeltas[index];
+  const deltas = computeVertexNormals(morphedPositions, indices);
+  for (let offset = 0; offset < deltas.length; offset += 3) {
+    const length = Math.hypot(deltas[offset], deltas[offset + 1], deltas[offset + 2]);
+    for (let axis = 0; axis < 3; axis++) {
+      const morphedNormal = length > 1e-8 ? deltas[offset + axis] / length : baseNormals[offset + axis];
+      deltas[offset + axis] = morphedNormal - baseNormals[offset + axis];
+    }
+  }
+  return deltas;
+}
+
 /** The corner offsets of a triangle and its area-weighted normal (the cross product of two edges). */
 function triangleAt(positions, indices, corner) {
   const [first, second, third] = [indices[corner] * 3, indices[corner + 1] * 3, indices[corner + 2] * 3];
@@ -844,7 +876,8 @@ function hasTriangleWithArea(positions, indices) {
 
 function convertGeometry(source, mirrored, primitive, secondUvSet, onIgnoredVertexAlpha, onRepair) {
   const { position, normal, uv, uv1, color, skinIndex, skinWeight } = source.attributes;
-  const positions = copyAttribute(position, 3);
+  const zeroedBy = label => count => onRepair(`${count} non-finite ${label} value(s) were set to 0`);
+  const positions = copyAttributeZeroingNonFinite(position, 3, zeroedBy('POSITION'));
   const indices = new Uint32Array(source.index?.count ?? position.count);
   for (let index = 0; index < indices.length; index++) {
     const value = source.index ? source.index.array[index] : index;
@@ -878,6 +911,19 @@ function convertGeometry(source, mirrored, primitive, secondUvSet, onIgnoredVert
     }
     onRepair(`${repairedNormals.length} vertex normal(s) had zero length and were rebuilt from the triangles`);
   }
+  if (primitive.targets?.length) {
+    geometry.morphTargets = primitive.targets.map((target, index) => {
+      const channels = {};
+      if (target.POSITION !== undefined) channels.positions = copyAttributeZeroingNonFinite(source.morphPositions[index], 3, zeroedBy('morph POSITION'));
+      if (target.NORMAL !== undefined && normal) channels.normals = copyAttribute(source.morphNormals[index], 3);
+      // Without a base NORMAL the authored deltas have nothing to add to: derive them from the morphed positions.
+      if (!normal && channels.positions) channels.normals = computeMorphNormalDeltas(positions, indices, normals, channels.positions);
+      return channels;
+    });
+    if (!normal && geometry.morphTargets.some(channels => channels.normals)) {
+      onRepair('it has morph targets but no base NORMAL; base and per-target normals are generated from the triangles');
+    }
+  }
   if (mirrored) {
     for (let index = 0; index < indices.length; index += 3) {
       const second = indices[index + 1];
@@ -895,17 +941,6 @@ function convertGeometry(source, mirrored, primitive, secondUvSet, onIgnoredVert
   if (color) geometry.colors = convertVertexColors(color, position.count, onIgnoredVertexAlpha);
   if (skinIndex) geometry.skinIndices = new Uint16Array(copyAttribute(skinIndex, 4));
   if (skinWeight) geometry.skinWeights = copyAttribute(skinWeight, 4);
-  if (primitive.targets?.length) {
-    geometry.morphTargets = primitive.targets.map((target, index) => {
-      const channels = {};
-      if (target.POSITION !== undefined) channels.positions = copyAttribute(source.morphPositions[index], 3);
-      if (target.NORMAL !== undefined && normal) channels.normals = copyAttribute(source.morphNormals[index], 3);
-      return channels;
-    });
-    if (!normal && primitive.targets.some(target => target.NORMAL !== undefined)) {
-      onRepair('it has morph targets but no base NORMAL; normals are generated from the triangles and the morph normal deltas are dropped');
-    }
-  }
   return geometry;
 }
 
@@ -914,15 +949,24 @@ function makeSkinBinding(node) {
   const pose = createSkinPose(count);
   const pendingPose = createSkinPose(count);
   const inverseBindMatrices = new Float32Array(count * 16);
+  let repairedInverseBindMatrices = 0;
   const jointWorldMatrices = new Float32Array(count * 16);
   const pendingWorld = new Float32Array(count * 16);
   const joints = node.skeleton.bones.map((bone, index) => {
-    inverseBindMatrices.set(node.skeleton.boneInverses[index].elements, index * 16);
+    const inverse = inverseBindMatrices.subarray(index * 16, index * 16 + 16);
+    inverse.set(node.skeleton.boneInverses[index].elements);
+    if (!inverse.every(Number.isFinite)) {
+      // A non-finite inverse bind matrix would turn every vertex of the joint into NaN: bind that joint at the identity.
+      inverse.set(IDENTITY_MATRIX);
+      repairedInverseBindMatrices++;
+    }
     return { name: bone.name, parent: node.skeleton.bones.indexOf(bone.parent) };
   });
   const skin = Object.assign(pose, { joints, inverseBindMatrices, jointWorldMatrices, bindMatrix: new Float32Array(node.bindMatrix.elements) });
-  return { node, skin, pendingPose, pendingWorld, palette: skin.jointMatrices, jointWorld: skin.jointWorldMatrices };
+  return { node, skin, pendingPose, pendingWorld, palette: skin.jointMatrices, jointWorld: skin.jointWorldMatrices, repairedInverseBindMatrices };
 }
+
+const IDENTITY_MATRIX = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
 
 function prepareSkinBinding(binding, geometry) {
   const { node, skin, pendingPose, pendingWorld } = binding;
@@ -1261,6 +1305,10 @@ export async function parseGltf(data, options = {}) {
           prepareSkinBinding(binding, geometry);
           if (binding.collapsedJoints) {
             const warning = `Skin of ${node.name ? `"${node.name}"` : association.nodes} has a joint with zero or non-finite scale; its vertices collapse to a point while it is singular.`;
+            if (!warnings.includes(warning)) warnings.push(warning);
+          }
+          if (binding.repairedInverseBindMatrices) {
+            const warning = `Skin of ${node.name ? `"${node.name}"` : association.nodes} has ${binding.repairedInverseBindMatrices} non-finite inverse bind matrix(es); they were replaced with the identity.`;
             if (!warnings.includes(warning)) warnings.push(warning);
           }
           commitSkinBinding(binding);
