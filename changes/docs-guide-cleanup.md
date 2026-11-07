@@ -1,0 +1,1 @@
+- Docs: the 22 guide sections that now have their own interactive learn pages are removed from docs/guide.md, so each fact lives in one place; the fog and shrinkwrap posters are re-rendered from their final examples.
