@@ -685,7 +685,7 @@ ${featureCode("probeSurroundings")}    radiance += surroundings * reflectance * 
   }
   // Baked bounced light arrives as irradiance, so the surface colour (pattern and texture included) tints it here.
   if (USES_LIGHT_MAP) radiance += color * (1.0 - metallic) * texture(lightMap, lightmapUV).rgb * lightMapScale;
-  vec3 keyResponse = keyColor / mix(vec3(5.2, 4.7, 4.1), vec3(3.7, 3.4, 2.9), worldMode);
+${featureCode("irradianceGrid")}  vec3 keyResponse = keyColor / mix(vec3(5.2, 4.7, 4.1), vec3(3.7, 3.4, 2.9), worldMode);
   keyResponse *= mix(daylight, 1.0, worldMode);
 ${featureCode("worldLight")}  if (USES_SHEEN) radiance = sheenLayer(radiance, normal, viewDirection, visibility);
   if (USES_CLEARCOAT) radiance = clearCoatLayer(radiance, normal, viewDirection, visibility);

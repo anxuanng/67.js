@@ -1,0 +1,105 @@
+import './support/load-agent-scene-modules.mjs';
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import { box } from '../src/geometry.js';
+import { createAgentScene } from '../src/agent-scene.js';
+import { normalizeAgentBake } from '../src/agent-bake.js';
+import { evaluateIrradianceGrid, normalizeIrradianceGrid, placeIrradianceGrid, traceIrradianceGrid } from '../src/irradiance-grid.js';
+import { createFragmentShader } from '../src/shaders.js';
+
+const cube = box(0, 1);
+
+function placed(name, translation, scale, color) {
+  const matrix = new Float32Array([scale[0], 0, 0, 0, 0, scale[1], 0, 0, 0, 0, scale[2], 0, translation[0], translation[1], translation[2], 1]);
+  return { name, geometry: cube, matrix, material: { tag: 'surface', color, metallic: 0, roughness: 0.8, emission: 0 } };
+}
+
+// A closed room with a warm floor and white walls. The ceiling has a slit, so the sun lights a strip of the floor.
+function sunlitRoom() {
+  const white = [0.8, 0.8, 0.8];
+  return [
+    placed('floor', [0, -0.05, 0], [6, 0.1, 6], [0.8, 0.4, 0.1]),
+    placed('ceiling-left', [-2.2, 3.05, 0], [1.6, 0.1, 6], white),
+    placed('ceiling-right', [2.2, 3.05, 0], [3.6, 0.1, 6], white),
+    placed('back', [0, 1.5, -3.05], [6.2, 3.2, 0.1], white),
+    placed('front', [0, 1.5, 3.05], [6.2, 3.2, 0.1], white),
+    placed('left', [-3.05, 1.5, 0], [0.1, 3.2, 6], white),
+    placed('right', [3.05, 1.5, 0], [0.1, 3.2, 6], white),
+  ];
+}
+
+const sun = { keyColor: [3, 3, 3], lightDirection: [0.2, 1, 0.1] };
+
+test('the recipe field is true, an integer node count or off, and anything else is refused', () => {
+  assert.equal(normalizeIrradianceGrid(undefined), null);
+  assert.equal(normalizeIrradianceGrid(false), null);
+  assert.equal(normalizeIrradianceGrid(true), 24);
+  assert.equal(normalizeIrradianceGrid(16), 16);
+  for (const bad of [4, 49, 1.5, 'big', {}]) {
+    assert.throws(() => normalizeIrradianceGrid(bad), /bake\.irradianceGrid/);
+  }
+  assert.equal(normalizeAgentBake({ preset: 'draft' }).irradianceGrid, undefined);
+  assert.equal(normalizeAgentBake({ preset: 'draft', irradianceGrid: true }).irradianceGrid, 24);
+});
+
+test('a warm floor sends warm light to a wall the sun never reaches, and the same input gives the same bytes', () => {
+  const first = traceIrradianceGrid(sunlitRoom(), sun, { resolution: 12, samples: 16, bounces: 2 });
+  const second = traceIrradianceGrid(sunlitRoom(), sun, { resolution: 12, samples: 16, bounces: 2 });
+  assert.deepEqual(Array.from(first.data), Array.from(second.data));
+  const [red, green, blue] = evaluateIrradianceGrid(first, [0, 1.5, -2.8], [0, 0, 1]);
+  assert.ok(red > 0.01 && red / blue > 1.5, `bounced light is warm: ${red} ${green} ${blue}`);
+  const lookingAtFloor = evaluateIrradianceGrid(first, [0, 1.5, 0], [0, -1, 0]);
+  const lookingAtCeiling = evaluateIrradianceGrid(first, [0, 1.5, 0], [0, 1, 0]);
+  assert.ok(lookingAtFloor[0] > lookingAtCeiling[0], 'the lit floor is seen from above, so the downward lobe is brighter');
+});
+
+test('nodes inside a solid are found and filled from their neighbours', () => {
+  const solid = traceIrradianceGrid([placed('block', [0, 0, 0], [4, 4, 4], [0.5, 0.5, 0.5])], sun, { resolution: 9, samples: 4, bounces: 1 });
+  assert.ok(solid.solidNodes > 0 && solid.solidNodes < solid.nodes, `${solid.solidNodes} of ${solid.nodes}`);
+});
+
+test('nodes inside walls are filled and every coefficient is finite', () => {
+  const grid = traceIrradianceGrid(sunlitRoom(), sun, { resolution: 10, samples: 8, bounces: 1 });
+  assert.ok(grid.data.every(Number.isFinite));
+  assert.equal(grid.data.length, grid.nodes * 12);
+});
+
+test('placing the grid wraps each material once and keeps reading the live material', () => {
+  const parts = sunlitRoom();
+  const grid = traceIrradianceGrid(parts, sun, { resolution: 8, samples: 4, bounces: 1 });
+  const wrapped = placeIrradianceGrid(parts, grid);
+  assert.ok(wrapped.every(part => part.material.irradianceGrid === grid));
+  parts[0].material.color = [0.1, 0.2, 0.3];
+  assert.deepEqual(wrapped[0].material.color, [0.1, 0.2, 0.3]);
+});
+
+test('the shader carries the grid code only for a renderer that asks for the feature', () => {
+  assert.match(createFragmentShader(['irradianceGrid']), /irradianceGridDiffuse\(worldPosition, normal\)/);
+  assert.doesNotMatch(createFragmentShader([]), /irradianceGrid/);
+});
+
+test('a recipe with bake.irradianceGrid skips lightmaps, reports the grid and gives every part the grid', () => {
+  const boxNode = (id, translation, scale, material) => ({ id, geometry: 'box', material, translation, scale });
+  const scene = createAgentScene({
+    format: '67js.scene', schemaVersion: 1,
+    geometries: [{ id: 'box', type: 'box' }],
+    materials: [{ id: 'floor', color: [0.8, 0.4, 0.1] }, { id: 'white', color: [0.8, 0.8, 0.8] }],
+    nodes: [
+      boxNode('floor', [0, -0.05, 0], [4, 0.1, 4], 'floor'),
+      boxNode('ceiling', [0, 3.05, 0], [4, 0.1, 4], 'white'),
+      boxNode('back', [0, 1.5, -2.05], [4.2, 3.2, 0.1], 'white'),
+      boxNode('front', [0, 1.5, 2.05], [4.2, 3.2, 0.1], 'white'),
+      boxNode('left', [-2.05, 1.5, 0], [0.1, 3.2, 4.2], 'white'),
+      boxNode('right', [2.05, 1.5, 0], [0.1, 3.2, 4.2], 'white'),
+    ],
+    camera: { eye: [0, 1.5, 1.9], target: [0, 1.4, -2], fov: 70, near: 0.05, far: 20 },
+    environment: { pointLights: [{ position: [0, 2.7, 0], intensity: 14, radius: 0.1 }], keyIntensity: 0, fillIntensity: 0 },
+    bake: { preset: 'draft', irradianceGrid: 10 },
+  });
+  const report = scene.inspect().bake;
+  assert.equal(report.texels, 0);
+  assert.equal(report.irradianceGrid.size.length, 3);
+  assert.ok(report.irradianceGrid.nodes > 0 && report.irradianceGrid.data === undefined);
+  const parts = scene.getParts?.() ?? scene.parts;
+  assert.ok(parts.every(part => part.material.irradianceGrid && !part.material.lightMap));
+});
