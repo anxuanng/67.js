@@ -4,7 +4,7 @@ import test from 'node:test';
 import { box } from '../src/geometry.js';
 import { createAgentScene } from '../src/agent-scene.js';
 import { normalizeAgentBake } from '../src/agent-bake.js';
-import { evaluateIrradianceGrid, normalizeIrradianceGrid, placeIrradianceGrid, traceIrradianceGrid } from '../src/irradiance-grid.js';
+import { IRRADIANCE_GRID_TEXTURE_UNIT, evaluateIrradianceGrid, normalizeIrradianceGrid, placeIrradianceGrid, traceIrradianceGrid } from '../src/irradiance-grid.js';
 import { createFragmentShader } from '../src/shaders.js';
 
 const cube = box(0, 1);
@@ -102,4 +102,14 @@ test('a recipe with bake.irradianceGrid skips lightmaps, reports the grid and gi
   assert.ok(report.irradianceGrid.nodes > 0 && report.irradianceGrid.data === undefined);
   const parts = scene.getParts?.() ?? scene.parts;
   assert.ok(parts.every(part => part.material.irradianceGrid && !part.material.lightMap));
+});
+
+test('a scene with splat layers and the grid keeps the two on different texture units', async () => {
+  const { SPLAT_UNITS } = await import('../src/shader-registry.js');
+  await import('../src/splat-shader.js');
+  const taken = [...Object.values(SPLAT_UNITS), 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15];
+  assert.ok(!taken.includes(IRRADIANCE_GRID_TEXTURE_UNIT), 'the grid sampler has its own unit');
+  const source = createFragmentShader(['splat', 'irradianceGrid']);
+  assert.match(source, /irradianceGridDiffuse/);
+  assert.match(source, /splatColor/);
 });

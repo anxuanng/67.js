@@ -23,7 +23,10 @@ const FILL_PASSES = 12;
 const COEFFICIENTS_PER_NODE = 12;
 // The grid is one 3D texture: node (x, y, z) takes three texels along x, one per colour channel, each holding the channel's
 // constant term and its x, y and z terms.
-const TEXTURE_UNIT = 12;
+// Unit 16, past the 16 the renderer's other samplers use (splat layers take 11 to 14, local shadows 15). A unit index is limited by
+// MAX_COMBINED_TEXTURE_IMAGE_UNITS (at least 32 in WebGL2), not by the 16 samplers a fragment shader may declare.
+export const IRRADIANCE_GRID_TEXTURE_UNIT = 16;
+const TEXTURE_UNIT = IRRADIANCE_GRID_TEXTURE_UNIT;
 
 function buildValidityDirections() {
   const directions = [];
@@ -141,6 +144,48 @@ function fillInvalidNodes(data, valid, size) {
   }
 }
 
+// A [1 2 1] x [1 2 1] x [1 2 1] filter over the coefficients of valid neighbours removes the low-frequency noise of the few
+// samples each node gets, at the cost of a little blur across a wall. Nodes inside solids keep their filled values.
+function smoothNodes(data, valid, size) {
+  const [width, height, depth] = size;
+  const source = Float32Array.from(data);
+  const weights = [1, 2, 1];
+  for (let node = 0; node < valid.length; node++) {
+    if (!valid[node]) {
+      continue;
+    }
+    const x = node % width;
+    const y = Math.floor(node / width) % height;
+    const z = Math.floor(node / (width * height));
+    const sum = new Float64Array(COEFFICIENTS_PER_NODE);
+    let total = 0;
+    for (let dz = -1; dz <= 1; dz++) {
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          const nx = x + dx;
+          const ny = y + dy;
+          const nz = z + dz;
+          if (nx < 0 || ny < 0 || nz < 0 || nx >= width || ny >= height || nz >= depth) {
+            continue;
+          }
+          const neighbour = nx + width * (ny + height * nz);
+          if (!valid[neighbour]) {
+            continue;
+          }
+          const weight = weights[dx + 1] * weights[dy + 1] * weights[dz + 1];
+          for (let slot = 0; slot < COEFFICIENTS_PER_NODE; slot++) {
+            sum[slot] += weight * source[neighbour * COEFFICIENTS_PER_NODE + slot];
+          }
+          total += weight;
+        }
+      }
+    }
+    for (let slot = 0; slot < COEFFICIENTS_PER_NODE; slot++) {
+      data[node * COEFFICIENTS_PER_NODE + slot] = sum[slot] / total;
+    }
+  }
+}
+
 /**
  * Traces the grid. For each node, the cosine weighted light arriving along the six axis directions (the bake's gatherer:
  * emission and direct light at every hit, bounced over `bounces` reflections) becomes a first order fit per colour channel:
@@ -200,6 +245,7 @@ export function traceIrradianceGrid(parts, lighting, { resolution = DEFAULT_GRID
     }
   }
   fillInvalidNodes(data, valid, layout.size);
+  smoothNodes(data, valid, layout.size);
   return { ...layout, data, nodes: nodeCount, solidNodes, seconds: (performance.now() - started) / 1000 };
 }
 
