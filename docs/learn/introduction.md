@@ -2,12 +2,13 @@
 
 67js is a 3D engine for the browser. It draws with WebGL2 and runs in every current desktop and phone browser. You describe a scene as a list of parts, and the renderer draws a frame from a camera.
 
-The program below is a complete 67js scene. It runs on this page. Change a number in the code, and the picture changes.
+The program below is a complete 67js scene. It runs on this page. Drag the picture to turn the camera. Change a number in the code, and the picture changes.
 
 ```js live poster=introduction-cube
 import { Renderer67, box } from '67js';
 
 const canvas = document.querySelector('#scene');
+canvas.style.touchAction = 'none';
 const cube = {
   name: 'Cube',
   geometry: box(),
@@ -15,9 +16,25 @@ const cube = {
   material: { color: [0.85, 0.45, 0.2], metallic: 0, roughness: 0.4 },
 };
 const renderer = new Renderer67(canvas, [cube]);
+const orbit = { yaw: 0.6, pitch: 0.4, distance: 4.7 };
+
+function draw() {
+  const flat = Math.cos(orbit.pitch) * orbit.distance;
+  const eye = [Math.sin(orbit.yaw) * flat, Math.sin(orbit.pitch) * orbit.distance + 0.5, Math.cos(orbit.yaw) * flat];
+  renderer.render({ eye, target: [0, 0.5, 0] });
+}
+
+// Drag to orbit: each pointer move changes the angles and draws one frame.
+canvas.addEventListener('pointerdown', event => canvas.setPointerCapture(event.pointerId));
+canvas.addEventListener('pointermove', event => {
+  if (!canvas.hasPointerCapture(event.pointerId)) return;
+  orbit.yaw -= event.movementX * 0.01;
+  orbit.pitch = Math.min(1.4, Math.max(0.05, orbit.pitch + event.movementY * 0.01));
+  draw();
+});
 new ResizeObserver(() => {
   renderer.resize();
-  renderer.render({ eye: [2.5, 1.8, 3.5], target: [0, 0.5, 0] });
+  draw();
 }).observe(canvas);
 ```
 
