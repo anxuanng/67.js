@@ -361,7 +361,7 @@ function validateDocument(document, limits, allowedExtensions) {
           const accessor = document.accessors?.[accessorIndex];
           // A morph NORMAL without a base NORMAL is dropped at conversion with a warning, so it needs no base attribute here.
           if (primitive.attributes?.[semantic] === undefined && semantic !== 'NORMAL') throw new Error('Morph target channels require corresponding base attributes.');
-          if (!Number.isInteger(accessorIndex) || !accessor || accessor.type !== 'VEC3' || accessor.componentType !== 5126 || accessor.normalized || accessor.count !== position.count) throw new Error('Morph target channels require matching float VEC3 accessors.');
+          if (!Number.isInteger(accessorIndex) || !accessor || accessor.type !== 'VEC3' || ![5120, 5122, 5126].includes(accessor.componentType) || (accessor.normalized && accessor.componentType === 5126) || accessor.count !== position.count) throw new Error('Morph target channels require matching VEC3 (float, or int8 or int16 with KHR_mesh_quantization) accessors.');
           if (semantic === 'POSITION' && (!Array.isArray(accessor.min) || !Array.isArray(accessor.max) || accessor.min.length !== 3 || accessor.max.length !== 3
               || accessor.min.some((value, axis) => typeof value !== 'number' || !Number.isFinite(Math.fround(value)) || typeof accessor.max[axis] !== 'number' || !Number.isFinite(Math.fround(accessor.max[axis])) || value > accessor.max[axis]))) throw new Error('Morph POSITION requires finite ordered min/max bounds.');
         }
@@ -927,7 +927,12 @@ function makeSkinBinding(node) {
 function prepareSkinBinding(binding, geometry) {
   const { node, skin, pendingPose, pendingWorld } = binding;
   if (skin.jointMatrices !== binding.palette || skin.jointWorldMatrices !== binding.jointWorld || binding.palette.length !== pendingPose.jointMatrices.length || binding.jointWorld.length !== pendingWorld.length) throw new Error('Imported skin palette identities must remain unchanged.');
-  for (let joint = 0; joint < node.skeleton.bones.length; joint++) pendingWorld.set(node.skeleton.bones[joint].matrixWorld.elements, joint * 16);
+  for (let joint = 0; joint < node.skeleton.bones.length; joint++) {
+    const jointWorld = pendingWorld.subarray(joint * 16, joint * 16 + 16);
+    jointWorld.set(node.skeleton.bones[joint].matrixWorld.elements);
+    // A joint at zero scale collapses its vertices to a point instead of refusing the pose.
+    if (collapseSingularMatrix(jointWorld, undefined, COLLAPSED_JOINT_SCALE)) binding.collapsedJoints = true;
+  }
   updateSkinPose(pendingPose, pendingWorld, skin.inverseBindMatrices, node.matrixWorld.elements, skin.bindMatrix);
   validateSkinPose(pendingPose, geometry, node.matrixWorld.elements);
 }
@@ -959,20 +964,21 @@ function prepareMorphBinding(binding) {
 }
 
 const COLLAPSED_SCALE = 2e-4;
+const COLLAPSED_JOINT_SCALE = 1e-2;
 const collapseScratch = new Matrix4();
 
 /**
  * Replaces a singular or non-finite world matrix, in place, with a uniform scale of 0.0002 at the same position so the
  * part is a speck that stays finite and invertible. Returns true when it replaced the matrix.
  */
-function collapseSingularMatrix(elements) {
+function collapseSingularMatrix(elements, determinantFloor = 1e-12, collapsedScale = COLLAPSED_SCALE) {
   const finite = elements.every(Number.isFinite);
   const determinant = finite ? collapseScratch.fromArray(elements).determinant() : NaN;
-  if (finite && Number.isFinite(determinant) && Math.abs(determinant) >= 1e-12) return false;
+  if (finite && Number.isFinite(determinant) && Math.abs(determinant) >= determinantFloor) return false;
   const position = [elements[12], elements[13], elements[14]];
   const keepPosition = position.every(Number.isFinite);
   elements.fill(0);
-  elements[0] = elements[5] = elements[10] = COLLAPSED_SCALE;
+  elements[0] = elements[5] = elements[10] = collapsedScale;
   elements[15] = 1;
   if (keepPosition) elements.set(position, 12);
   return true;
@@ -1253,6 +1259,10 @@ export async function parseGltf(data, options = {}) {
         if (node.isSkinnedMesh) {
           const binding = makeSkinBinding(node);
           prepareSkinBinding(binding, geometry);
+          if (binding.collapsedJoints) {
+            const warning = `Skin of ${node.name ? `"${node.name}"` : association.nodes} has a joint with zero or non-finite scale; its vertices collapse to a point while it is singular.`;
+            if (!warnings.includes(warning)) warnings.push(warning);
+          }
           commitSkinBinding(binding);
           part.skin = binding.skin;
           skinBindings.push({ ...binding, geometry });
@@ -1304,9 +1314,9 @@ export async function parseGltf(data, options = {}) {
     for (const node of sourceNodes.values()) {
       if (skinJointIndices.has(node.association.nodes)) jointNodes.add(node);
     }
-    // A mesh or group node posed to zero scale draws nothing; only skin joints still refuse a singular pose.
+    // A node posed to zero scale draws nothing; a zero-scale skin joint collapses its vertices to a point.
     for (const node of nodes) {
-      if (!jointNodes.has(node)) toleratedNodes.add(node);
+      toleratedNodes.add(node);
     }
     const meshIdsByNode = new Map([...sourceNodes.values()].map(node => [node, []]));
     for (let index = 0; index < bindings.length; index++) {
