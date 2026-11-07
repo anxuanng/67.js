@@ -9,8 +9,6 @@ Four balls travel the same distance in two seconds. From the back: `LINEAR`, `ST
 ```js live poster=animation-curves
 import { Renderer67, sphere, createAnimationClip, createAnimationPlayer, sampleAnimationClip } from '67js';
 
-// The docs frame shares the engine of the page, so take the typed arrays that the engine checks for. In your own project this line changes nothing.
-const { Float32Array, Uint16Array, Uint32Array } = window.parent;
 
 const modes = [
   { name: 'LINEAR', interpolation: 'LINEAR' },
@@ -103,8 +101,6 @@ A keyframe on a `LINEAR` or `SMOOTH` track can carry `easing`. The value is `lin
 ```js live poster=animation-mixer
 import { Renderer67, box, createAnimationClip, createAnimationMixer } from '67js';
 
-// The docs frame shares the engine of the page, so take the typed arrays that the engine checks for. In your own project this line changes nothing.
-const { Float32Array, Uint16Array, Uint32Array } = window.parent;
 
 const rotation = angle => [0, Math.sin(angle / 2), 0, Math.cos(angle / 2)];
 const part = { name: 'Blade', geometry: box(0.05, 4), matrix: new Float32Array([1.6, 0, 0, 0, 0, 0.25, 0, 0, 0, 0, 0.4, 0, 0, 0.6, 0, 1]), material: { color: [0.9, 0.5, 0.25], metallic: 0, roughness: 0.5 } };

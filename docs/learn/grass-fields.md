@@ -4,129 +4,69 @@
 
 ## Tiles and levels of detail
 
-The docs run with the core module only, so this example draws flat blade strips by hand with the same tile rule as the addon: three levels that keep all, 35 percent and 12 percent of the blades, at up to 10 m, 26 m and 60 m, with wider blades farther out. Move the slider to walk the eye across the field and watch tiles change level. The console prints what `grass.stats()` would: tiles per level, triangles and an estimate of geometry bytes.
+The example calls `createGrass` for a 40 by 40 m meadow with a path cleared by `mask`. The slider walks the eye along the field: tiles near it keep every blade and tiles farther out keep 35 percent and then 12 percent, as the default levels say. A coarser level keeps a fixed subset of the same blades, so a tile that changes level does not reshuffle. The buttons rebuild the field with another preset. The console prints `grass.stats()` and the build time, and says when `update(eye)` returned true.
 
 ```js live poster=grass-tiles
 import { Renderer67 } from '67js';
+import { createGrass } from '67js/addons/grass';
 
-function random(seed) {
-  let value = seed >>> 0;
-  return () => {
-    value = (value * 1664525 + 1013904223) >>> 0;
-    return value / 4294967296;
-  };
+const area = { minX: -20, maxX: 20, minZ: -20, maxZ: 20 };
+const mask = (x, z) => (Math.abs(z) < 0.8 ? 0 : 1);
+const state = { eyeX: -14, preset: 'meadow' };
+
+function eye() {
+  return [state.eyeX, 1.3, 0];
+}
+function build(preset) {
+  const started = performance.now();
+  const built = createGrass({ preset, area, mask, density: 120, eye: eye() });
+  console.log(`${preset}: built in ${Math.round(performance.now() - started)} ms`, built.stats());
+  return built;
 }
 
-const fieldSize = 48;
-const tileSize = 4;
-const levels = [
-  { distance: 10, keep: 1, widthScale: 1 },
-  { distance: 26, keep: 0.35, widthScale: 2 },
-  { distance: 60, keep: 0.12, widthScale: 4.5 },
-];
-const density = 4;
-const bladesPerTile = Math.round(density * tileSize * tileSize);
-
-// One blade is a two-sided strip: a quad of two triangles, front and back.
-const blade = {
-  positions: new Float32Array([-0.5, 0, 0, 0.5, 0, 0, 0, 1, 0, -0.5, 0, 0, 0, 1, 0, 0.5, 0, 0]),
-  normals: new Float32Array([0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, -1, 0, 0, -1, 0, 0, -1]),
-  indices: new Uint32Array([0, 1, 2, 3, 4, 5]),
-};
-const triangles = 2;
-const material = { color: [0.3, 0.55, 0.16], metallic: 0, roughness: 0.8 };
-
-// Blades of a tile come from the tile's own seed, in a fixed order, so keeping the first N keeps the same blades.
-const tiles = [];
-for (let row = 0; row < fieldSize / tileSize; row++) {
-  for (let column = 0; column < fieldSize / tileSize; column++) {
-    const next = random(row * 1000 + column + 7);
-    const blades = Array.from({ length: bladesPerTile }, () => ({
-      x: -fieldSize / 2 + (column + next()) * tileSize,
-      z: -fieldSize / 2 + (row + next()) * tileSize,
-      yaw: next() * Math.PI,
-      height: 0.25 + next() * 0.3,
-    }));
-    tiles.push({ centerX: -fieldSize / 2 + (column + 0.5) * tileSize, centerZ: -fieldSize / 2 + (row + 0.5) * tileSize, blades, level: -1 });
-  }
-}
-
-function levelFor(tile, eyeX) {
-  const distance = Math.hypot(tile.centerX - eyeX, tile.centerZ);
-  const boundary = levels.findIndex(entry => distance < entry.distance);
-  const target = boundary === -1 ? levels.length : boundary;
-  // Hysteresis: a tile moves to a coarser level only when it is 10 percent past the boundary.
-  if (tile.level >= 0 && target > tile.level && distance < levels[tile.level].distance * 1.1) return tile.level;
-  return target;
-}
-
-function update(eyeX) {
-  let changed = false;
-  const stats = { tiles: [0, 0, 0], culled: 0, triangles: 0 };
-  for (const tile of tiles) {
-    const level = levelFor(tile, eyeX);
-    if (level !== tile.level) changed = true;
-    tile.level = level;
-    if (level >= levels.length) stats.culled++;
-    else {
-      stats.tiles[level]++;
-      stats.triangles += Math.ceil(bladesPerTile * levels[level].keep) * triangles;
-    }
-  }
-  stats.geometryBytes = stats.triangles * 3 * 24;
-  return { changed, stats };
-}
-
-function partsFor() {
-  const parts = [];
-  for (const [tileIndex, tile] of tiles.entries()) {
-    if (tile.level >= levels.length) continue;
-    const { keep, widthScale } = levels[tile.level];
-    for (const [bladeIndex, entry] of tile.blades.slice(0, Math.ceil(bladesPerTile * keep)).entries()) {
-      const c = Math.cos(entry.yaw);
-      const s = Math.sin(entry.yaw);
-      const width = 0.03 * widthScale;
-      parts.push({ name: `Blade ${tileIndex}-${bladeIndex}`, geometry: blade, material, matrix: new Float32Array([c * width, 0, -s * width, 0, 0, entry.height, 0, 0, s, 0, c, 0, entry.x, 0, entry.z, 1]) });
-    }
-  }
-  return parts;
-}
-
+let grass = build(state.preset);
 const canvas = document.querySelector('#scene');
-let eyeX = -12;
-let { stats } = update(eyeX);
-console.log('tiles', tiles.length, 'blades per tile at full detail', bladesPerTile);
-console.log('stats()', stats);
-const renderer = new Renderer67(canvas, partsFor(), { world: true });
+const renderer = new Renderer67(canvas, grass.parts, { world: true });
 
 function draw() {
-  renderer.render({ eye: [eyeX, 1.3, 0], target: [eyeX + 12, 0.3, 4], fov: 60, wind: 0.3 });
+  renderer.render({ eye: eye(), target: [state.eyeX + 12, 0.3, 4], fov: 60, wind: 0.3 });
 }
 
+const bar = document.createElement('div');
+bar.style.cssText = 'position:fixed;left:8px;bottom:8px;display:flex;gap:8px;align-items:center;color:#dde;font:12px system-ui;background:#000a;padding:6px 8px;border-radius:6px';
 const slider = document.createElement('input');
 slider.type = 'range';
 slider.min = -16;
 slider.max = 16;
 slider.step = 0.5;
-slider.value = eyeX;
+slider.value = state.eyeX;
 slider.setAttribute('aria-label', 'Eye position along the field');
-slider.style.cssText = 'position:fixed;left:8px;bottom:8px;width:40%';
 slider.addEventListener('input', () => {
-  eyeX = Number(slider.value);
-  const result = update(eyeX);
-  if (result.changed) {
-    renderer.replaceParts(partsFor());
-    console.log('update(eye) = true', result.stats);
+  state.eyeX = Number(slider.value);
+  if (grass.update(eye())) {
+    renderer.replaceParts(grass.parts);
+    console.log('update(eye) = true', grass.stats());
   }
   draw();
 });
-document.body.append(slider);
+bar.append(slider);
+for (const preset of ['meadow', 'lawn', 'savanna', 'wild']) {
+  const button = document.createElement('button');
+  button.textContent = preset;
+  button.addEventListener('click', () => {
+    grass = build(preset);
+    renderer.replaceParts(grass.parts);
+    draw();
+  });
+  bar.append(button);
+}
+document.body.append(bar);
 new ResizeObserver(() => { renderer.resize(); draw(); }).observe(canvas);
 draw();
 addEventListener('pagehide', () => renderer.dispose());
 ```
 
-The `update` function returns `changed` the way `grass.update(eye)` returns `true`: rebuild the part list only then, not every frame.
+`update(eye)` returns true only when a tile changed level, so rebuild the part list then and not every frame.
 
 ## Grow a real field
 
@@ -134,23 +74,11 @@ The `update` function returns `changed` the way `grass.update(eye)` returns `tru
 2. Add `grass.parts` to the renderer and pass `wind` in each frame.
 3. When `grass.update(eye)` returns true, call `renderer.replaceParts` with the new part list.
 
-```js
-import { Renderer67 } from '67js';
-import { createGrass } from '67js/addons/grass';
+With a terrain from `createTerrain`, pass its `heightAt` as `terrainHeight` and put its parts next to the grass:
 
-const grass = createGrass({
-  preset: 'meadow',
-  area: { minX: -40, maxX: 40, minZ: -50, maxZ: 50 },
-  terrainHeight: terrain.heightAt,
-  mask: (x, z) => (Math.abs(x) < 1.5 ? 0 : 1),
-  eye,
-});
+```js
+const grass = createGrass({ preset: 'meadow', area, terrainHeight: terrain.heightAt, mask, eye });
 const renderer = new Renderer67(canvas, [...terrain.parts, ...grass.parts], { world: true, memoryBudgetMiB: 512 });
-function draw(eye, seconds) {
-  if (grass.update(eye)) renderer.replaceParts([...terrain.parts, ...grass.parts]);
-  renderer.render({ eye, target, wind: 0.5, time: seconds });
-}
-console.log(grass.stats());
 ```
 
 Tint the ground under the grass with `grass.groundColor`. On a splat terrain, darken every layer the grass covers, not only the grass layer, because soil under a sward sits in the blades' shade and a bright floor between blades is what makes a field look fake.

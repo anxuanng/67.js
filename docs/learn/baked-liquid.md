@@ -4,111 +4,118 @@
 
 ## Cache, frame, time
 
-The docs run with the core module only and cannot load a Spume cache, so this example bakes a tiny cache itself, packs every frame into int16 (the way Spume stores frames), and plays it back with a `partsAt(seconds)` function shaped like the addon's. Drag the slider to scrub. Tick Loop to wrap time instead of holding the last frame. The console prints the cache size, the frame index for a time and how long each `replaceParts` took.
+The docs host has no baked cache to serve, so the example writes a small one in memory in Spume's own file format: a `meta.json` and one `frame_NNNN.glb` per frame, with positions packed as int16 over each frame's own bounding box and normals as int8. It then loads that cache with `loadSpumeCache` through a reader function, which is the same call that loads a folder from a server, and plays it with `createSpumePlayer`. The cache is a rippling water surface over a stone slab. Drag the slider to scrub. Tick Loop to wrap time instead of holding the last frame. The console prints the cache size, the frame index for a time and how long each `replaceParts` took.
 
 ```js live poster=spume-playback
-import { Renderer67, sphere, box } from '67js';
+import { Renderer67, box } from '67js';
+import { loadSpumeCache, createSpumePlayer } from '67js/addons/spume';
 
-function random(seed) {
-  let value = seed >>> 0;
-  return () => {
-    value = (value * 1664525 + 1013904223) >>> 0;
-    return value / 4294967296;
+// Bake: a ripple that spreads from the middle. In the real workflow the Spume solver does this offline.
+const fps = 20;
+const frameCount = 40;
+const gridSide = 25;
+const halfWidth = 3;
+function surfaceHeight(x, z, seconds) {
+  const distance = Math.hypot(x, z);
+  return 0.22 * Math.sin(2.4 * distance - 5 * seconds) / (1 + 0.6 * distance) + 0.05 * Math.sin(3 * x + 2 * seconds);
+}
+function bakeFrame(seconds) {
+  const positions = [];
+  const normals = [];
+  const step = 0.01;
+  for (let row = 0; row < gridSide; row++) {
+    for (let column = 0; column < gridSide; column++) {
+      const x = -halfWidth + column / (gridSide - 1) * halfWidth * 2;
+      const z = -halfWidth + row / (gridSide - 1) * halfWidth * 2;
+      positions.push(x, 0.5 + surfaceHeight(x, z, seconds), z);
+      const slopeX = (surfaceHeight(x + step, z, seconds) - surfaceHeight(x - step, z, seconds)) / (2 * step);
+      const slopeZ = (surfaceHeight(x, z + step, seconds) - surfaceHeight(x, z - step, seconds)) / (2 * step);
+      const length = Math.hypot(slopeX, 1, slopeZ);
+      normals.push(-slopeX / length, 1 / length, -slopeZ / length);
+    }
+  }
+  const indices = [];
+  for (let row = 0; row < gridSide - 1; row++) {
+    for (let column = 0; column < gridSide - 1; column++) {
+      const corner = row * gridSide + column;
+      indices.push(corner, corner + gridSide, corner + 1, corner + 1, corner + gridSide, corner + gridSide + 1);
+    }
+  }
+  return { positions, normals, indices };
+}
+
+// Pack one frame like Spume's export: int16 positions over the frame's own min..max box, int8 normals, a binary glTF.
+function padToFour(bytes, fill = 0) {
+  const padded = new Uint8Array(Math.ceil(bytes.byteLength / 4) * 4).fill(fill);
+  padded.set(new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.byteLength));
+  return padded;
+}
+function encodeFrame({ positions, normals, indices }) {
+  const minimum = [0, 1, 2].map(axis => Math.min(...positions.filter((unused, index) => index % 3 === axis)));
+  const maximum = [0, 1, 2].map(axis => Math.max(...positions.filter((unused, index) => index % 3 === axis)));
+  const span = maximum.map((value, axis) => Math.max(value - minimum[axis], 1e-6));
+  const packedPositions = Int16Array.from(positions, (value, index) => Math.round((value - minimum[index % 3]) / span[index % 3] * 65535 - 32768));
+  const packedNormals = Int8Array.from(normals, value => Math.round(value * 127));
+  const indexBytes = padToFour(Uint16Array.from(indices));
+  const positionBytes = padToFour(packedPositions);
+  const normalBytes = padToFour(packedNormals);
+  const description = {
+    asset: { version: '2.0', generator: 'docs example' },
+    buffers: [{ byteLength: indexBytes.length + positionBytes.length + normalBytes.length }],
+    bufferViews: [
+      { buffer: 0, byteOffset: 0, byteLength: indexBytes.length },
+      { buffer: 0, byteOffset: indexBytes.length, byteLength: positionBytes.length },
+      { buffer: 0, byteOffset: indexBytes.length + positionBytes.length, byteLength: normalBytes.length },
+    ],
+    accessors: [
+      { bufferView: 0, componentType: 5123, count: indices.length, type: 'SCALAR' },
+      { bufferView: 1, componentType: 5122, count: positions.length / 3, type: 'VEC3', min: minimum, max: maximum },
+      { bufferView: 2, componentType: 5120, normalized: true, count: normals.length / 3, type: 'VEC3' },
+    ],
+    meshes: [{ primitives: [{ attributes: { POSITION: 1, NORMAL: 2 }, indices: 0 }] }],
+    nodes: [{ mesh: 0 }],
+    scenes: [{ nodes: [0] }],
+    scene: 0,
   };
+  const json = padToFour(new TextEncoder().encode(JSON.stringify(description)), 32);
+  const binary = new Uint8Array([...indexBytes, ...positionBytes, ...normalBytes]);
+  const total = 12 + 8 + json.length + 8 + binary.length;
+  const glb = new Uint8Array(total);
+  const view = new DataView(glb.buffer);
+  view.setUint32(0, 0x46546c67, true);
+  view.setUint32(4, 2, true);
+  view.setUint32(8, total, true);
+  view.setUint32(12, json.length, true);
+  view.setUint32(16, 0x4e4f534a, true);
+  glb.set(json, 20);
+  view.setUint32(20 + json.length, binary.length, true);
+  view.setUint32(24 + json.length, 0x004e4942, true);
+  glb.set(binary, 28 + json.length);
+  return glb.buffer;
 }
 
-// Bake: droplets leave a spout and bounce on the floor. Done once, offline in the real workflow.
-const fps = 30;
-const frameCount = 75;
-const dropletCount = 180;
-const next = random(5);
-const droplets = Array.from({ length: dropletCount }, () => ({
-  start: next() * 1.2,
-  velocity: [1.5 + next() * 2.2, 2.2 + next() * 2, (next() - 0.5) * 1.6],
-  position: null,
-  speed: null,
-}));
-const baked = [];
+const files = { 'meta.json': new TextEncoder().encode(JSON.stringify({ name: 'ripple', fps, frameCount, frameFile: 'frame_%04d.glb' })).buffer };
 for (let frame = 0; frame < frameCount; frame++) {
-  const time = frame / fps;
-  const positions = new Float32Array(dropletCount * 3);
-  droplets.forEach((droplet, index) => {
-    const age = Math.max(0, time - droplet.start);
-    let y = 1.4 + droplet.velocity[1] * age - 4.9 * age * age;
-    let bounces = 0;
-    let vy = droplet.velocity[1] - 9.8 * age;
-    while (y < 0.05 && bounces < 3) { y = 0.05 - (y - 0.05) * 0.45; vy = -vy * 0.45; bounces++; }
-    const x = -3 + droplet.velocity[0] * age;
-    const z = droplet.velocity[2] * age;
-    positions.set(age === 0 ? [-3, 1.4, 0] : [x, Math.max(0.05, y), z], index * 3);
-  });
-  baked.push(positions);
+  files[`frame_${String(frame).padStart(4, '0')}.glb`] = encodeFrame(bakeFrame(frame / fps));
 }
+const totalBytes = Object.values(files).reduce((sum, bytes) => sum + bytes.byteLength, 0);
 
-// Pack each frame over its own min..max box into int16, like Spume's frame files.
-function pack(positions) {
-  const low = [Infinity, Infinity, Infinity];
-  const high = [-Infinity, -Infinity, -Infinity];
-  for (let index = 0; index < positions.length; index++) {
-    low[index % 3] = Math.min(low[index % 3], positions[index]);
-    high[index % 3] = Math.max(high[index % 3], positions[index]);
-  }
-  const packed = new Int16Array(positions.length);
-  for (let index = 0; index < positions.length; index++) {
-    const span = high[index % 3] - low[index % 3] || 1;
-    packed[index] = Math.round(((positions[index] - low[index % 3]) / span - 0.5) * 65534);
-  }
-  return { packed, low, high };
-}
-function unpack({ packed, low, high }) {
-  const positions = new Float32Array(packed.length);
-  for (let index = 0; index < packed.length; index++) positions[index] = low[index % 3] + (packed[index] / 65534 + 0.5) * (high[index % 3] - low[index % 3]);
-  return positions;
-}
-const cache = baked.map(pack);
-const packedBytes = cache.reduce((sum, frame) => sum + frame.packed.byteLength, 0);
-const floatBytes = baked.reduce((sum, frame) => sum + frame.byteLength, 0);
-console.log(`cache: ${frameCount} frames at ${fps} fps, ${dropletCount} droplets, ${(packedBytes / 1024).toFixed(1)} KiB packed vs ${(floatBytes / 1024).toFixed(1)} KiB as floats`);
+const cache = await loadSpumeCache(async fileName => files[fileName] ?? null);
+const player = createSpumePlayer(cache, { loop: false });
+console.log(`cache: ${player.frameCount} frames at ${player.fps} fps, ${player.duration.toFixed(2)} s, ${(totalBytes / 1024).toFixed(1)} KiB in ${Object.keys(files).length} files`);
 
-const state = { loop: false };
-const duration = frameCount / fps;
-function frameIndexAt(seconds) {
-  const frame = Math.floor(seconds * fps);
-  return state.loop ? ((frame % frameCount) + frameCount) % frameCount : Math.min(frameCount - 1, Math.max(0, frame));
-}
-
-const decoded = new Map();
-function partsAt(seconds) {
-  const index = frameIndexAt(seconds);
-  if (!decoded.has(index)) {
-    decoded.set(index, unpack(cache[index]));
-    if (decoded.size > 4) decoded.delete(decoded.keys().next().value);
-  }
-  const positions = decoded.get(index);
-  return Array.from({ length: dropletCount }, (unused, droplet) => ({
-    name: `Droplet ${droplet}`,
-    geometry: dropletShape,
-    matrix: new Float32Array([0.07, 0, 0, 0, 0, 0.07, 0, 0, 0, 0, 0.07, 0, positions[droplet * 3], positions[droplet * 3 + 1], positions[droplet * 3 + 2], 1]),
-    material: dropletMaterial,
-  }));
-}
-
-const dropletShape = sphere(10, 8);
-const dropletMaterial = { color: [0.45, 0.78, 0.9], metallic: 0, roughness: 0.15 };
-const scenery = [{ name: 'Spout', geometry: box(0.08, 3), matrix: new Float32Array([0.5, 0, 0, 0, 0, 0.3, 0, 0, 0, 0, 0.5, 0, -3.3, 1.4, 0, 1]), material: { color: [0.5, 0.5, 0.55], metallic: 0.6, roughness: 0.4 } }];
-
+const scenery = [{ name: 'Slab', geometry: box(0.1, 3), matrix: new Float32Array([6.4, 0, 0, 0, 0, 0.5, 0, 0, 0, 0, 6.4, 0, 0, -0.1, 0, 1]), material: { color: [0.45, 0.43, 0.4], metallic: 0, roughness: 0.8 } }];
 const canvas = document.querySelector('#scene');
-const renderer = new Renderer67(canvas, [...scenery, ...partsAt(0)]);
+const renderer = new Renderer67(canvas, [...scenery, ...player.partsAt(0)]);
 const timings = [];
-let seconds = 1;
-let playing = true;
+const state = { seconds: 0.5, playing: true, loop: false };
 let last = performance.now();
 
 function draw() {
   const start = performance.now();
-  renderer.replaceParts([...scenery, ...partsAt(seconds)]);
+  renderer.replaceParts([...scenery, ...player.partsAt(state.seconds)]);
   timings.push(performance.now() - start);
-  renderer.render({ eye: [0, 3, 8], target: [0, 0.8, 0], fov: 40 });
+  renderer.render({ eye: [0, 4, 8], target: [0, 0.5, 0], fov: 40 });
 }
 
 const bar = document.createElement('div');
@@ -118,35 +125,34 @@ toggle.textContent = 'Pause';
 const slider = document.createElement('input');
 slider.type = 'range';
 slider.min = 0;
-slider.max = duration;
+slider.max = player.duration;
 slider.step = 0.01;
-slider.value = seconds;
+slider.value = state.seconds;
 const loopLabel = document.createElement('label');
 const loopBox = document.createElement('input');
 loopBox.type = 'checkbox';
 loopLabel.append(loopBox, 'loop');
 bar.append(toggle, slider, loopLabel);
 document.body.append(bar);
-toggle.addEventListener('click', () => { playing = !playing; toggle.textContent = playing ? 'Pause' : 'Play'; last = performance.now(); });
+toggle.addEventListener('click', () => { state.playing = !state.playing; toggle.textContent = state.playing ? 'Pause' : 'Play'; last = performance.now(); });
 loopBox.addEventListener('change', () => { state.loop = loopBox.checked; console.log('loop', state.loop); });
-slider.addEventListener('input', () => { playing = false; toggle.textContent = 'Play'; seconds = Number(slider.value); draw(); });
-slider.addEventListener('change', () => console.log(`t=${seconds.toFixed(2)} s -> frameIndexAt ${frameIndexAt(seconds)}`));
+slider.addEventListener('input', () => { state.playing = false; toggle.textContent = 'Play'; state.seconds = Number(slider.value); draw(); });
+slider.addEventListener('change', () => console.log(`t=${state.seconds.toFixed(2)} s -> frameIndexAt ${player.frameIndexAt(state.seconds)}`));
 
 let nextReport = 1;
 function frame(now) {
-  if (playing) {
-    seconds += (now - last) / 1000;
-    if (!state.loop) seconds = Math.min(seconds, duration);
-    else seconds %= duration;
-    slider.value = seconds % duration;
+  if (state.playing) {
+    state.seconds += (now - last) / 1000;
+    state.seconds = state.loop ? state.seconds % player.duration : Math.min(state.seconds, player.duration);
+    slider.value = state.seconds;
     draw();
   }
   last = now;
-  if (playing && seconds >= nextReport) {
+  if (state.playing && timings.length && performance.now() / 1000 > nextReport) {
     const average = timings.reduce((sum, value) => sum + value, 0) / timings.length;
     console.log(`replaceParts averaged ${average.toFixed(2)} ms over ${timings.length} frames`);
     timings.length = 0;
-    nextReport = seconds + 1;
+    nextReport = performance.now() / 1000 + 2;
   }
   requestAnimationFrame(frame);
 }
@@ -155,9 +161,9 @@ requestAnimationFrame(frame);
 addEventListener('pagehide', () => renderer.dispose());
 ```
 
-The droplets are plain parts, replaced each frame. The real cache holds a liquid mesh per frame and whitewater points, and draws them with the `liquid` and `foam` materials that refract opaque parts.
+The player is made with `loop: false`, so time past the last frame holds it, and the example wraps time itself when you tick Loop. A real cache also holds whitewater points per frame, which the player draws with the `foam` material next to the `liquid` mesh that refracts the slab.
 
-## Play a real cache
+## Play a real cache from a folder
 
 1. Bake a cache folder with Spume's `run.py` or its Blender add-on.
 2. Load it with `loadSpumeCache(folderUrl)`.
@@ -171,17 +177,8 @@ uv run python run.py --out out/geyser --name geyser --pressure cg --iterations 2
 A low-resolution check takes seconds after the first kernel compile: `uv run python run.py --out out/test --cell 0.2 --width 6 --height 12 --frames 40 --mesh-cell 0.25`. Units are metres with +Y up and the floor at y = 0, which matches 67js. Serve the output folder next to the page. It holds `meta.json`, one `frame_NNNN.glb` per frame and the whitewater files `spray.bin`, `spray_ids.bin` and `spray_kinds.bin`.
 
 ```js
-import { Renderer67 } from '67js';
-import { loadSpumeCache, createSpumePlayer } from '67js/addons/spume';
-
 const cache = await loadSpumeCache('/caches/geyser/');
 const player = createSpumePlayer(cache, { matrix: placeAt(0, 0, 0), loop: true });
-console.log(player.frameCount, player.fps, player.duration);
-const renderer = new Renderer67(canvas, [...sceneParts, ...player.partsAt(0)]);
-function draw(seconds) {
-  renderer.replaceParts([...sceneParts, ...player.partsAt(seconds)]);
-  renderer.render({ eye, target });
-}
 ```
 
 `loadSpumeCache(source)` accepts a folder URL or an `async (fileName) => ArrayBuffer | null` reader, so the same cache loads from a server, from disk in Node or from a dropped folder. It validates `meta.json`, reads every frame file and keeps frames int16-packed until they are played, which is about a fifth of the decoded size. The frame files are not general glTF: positions are int16 spread over each frame's own min..max box, so standard loaders, including `67js/addons/gltf`, read them at the wrong scale. Use `decodeSpumeFrame(bytes)` for one frame.
