@@ -4,13 +4,64 @@
 // this page already loaded, so the docs run the same build as the site and need no published package.
 import { highlightCode } from './code-highlight.js';
 
+// Every addon the package exports, loaded only when an example imports it (67js/addons/<name>).
 const addonLoaders = import.meta.glob([
+  './model.js',
+  './nature.js',
+  './motion.js',
+  './canvas2d.js',
   './gltf.js',
   './modeling.js',
+  './sculpt.js',
+  './surface.js',
+  './mesh-query.js',
+  './mesh.js',
+  './shrinkwrap.js',
+  './surface-attachment.js',
+  './physics.js',
+  './spume.js',
+  './retarget.js',
+  './crowd-skinning.js',
+  './skeleton-pose.js',
+  './vehicle.js',
+  './vegetation.js',
+  './terrain.js',
+  './heightfield.js',
+  './navmesh.js',
+  './grass.js',
+  './clutter.js',
+  './light-bake.js',
+  './light-bake-gpu.js',
+  './ground-bounce.js',
+  './floor-sky-visibility.js',
+  './path-tracer.js',
+  './texture-set.js',
+  './agent-scene.js',
+  './agent-asset.js',
   './hdri.js',
-  './canvas2d.js',
   './camera-effects.js',
+  './water-reflection.js',
+  './render-passes.js',
+  './user-pass.js',
+  './line-art.js',
+  './mesh-blend.js',
+  './coplanar-overlap.js',
+  './reversed-depth.js',
+  './material-layer-shaders.js',
+  './view-transform-shader.js',
+  './view-transform.js',
+  './liquid-shader.js',
   './world-material-shader.js',
+  './splat-shader.js',
+  './subsurface-shader.js',
+  './light-linking.js',
+  './cascaded-shadows.js',
+  './compact-color.js',
+  './gaussian-splats.js',
+  './replace-textured-parts.js',
+  './texture-update.js',
+  './cloth.js',
+  './update-part-vertices.js',
 ]);
 const moduleCache = new Map();
 // One message listener for all examples: each iframe reports by its example id.
@@ -74,6 +125,13 @@ async function importMapFor(source) {
   return imports;
 }
 
+// The engine runs in the page and checks `instanceof Float32Array` and friends, which fails for arrays made in the iframe's
+// own realm. The iframe uses the page's typed array constructors, so example code can write `new Float32Array(...)` as usual.
+const typedArrayAliases = `
+  for (const name of ['Int8Array', 'Uint8Array', 'Uint8ClampedArray', 'Int16Array', 'Uint16Array', 'Int32Array', 'Uint32Array', 'Float32Array', 'Float64Array']) {
+    window[name] = parent[name];
+  }`;
+
 // The example's console.log, info, warn and error go to the page as text, so the docs can show what a call returns.
 // Typed arrays print their length and first values; deep objects stop at three levels.
 const consoleRelay = `
@@ -124,6 +182,7 @@ function frameDocument(source, imports, exampleId, capture) {
   const report = message => parent.postMessage({ docsLive: ${JSON.stringify(exampleId)}, ...message }, parent.location.origin);
   addEventListener('error', event => report({ error: event.message || 'The example failed.' }));
   addEventListener('unhandledrejection', event => report({ error: String(event.reason?.message ?? event.reason) }));
+  ${typedArrayAliases}
   ${consoleRelay}
   ${capture ? captureClock : ''}
 </script></head><body><canvas id="scene"></canvas>
