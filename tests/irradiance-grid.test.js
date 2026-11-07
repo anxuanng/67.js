@@ -89,6 +89,7 @@ test('placing the grid wraps each material once and keeps reading the live mater
 test('the shader carries the grid code only for a renderer that asks for the feature', () => {
   assert.match(createFragmentShader(['irradianceGrid']), /irradianceGridSample\(worldPosition, normal\)/);
   assert.match(createFragmentShader(['irradianceGrid']), /occlusion \*= min\(irradianceGridValue\.a, 1\.0\)/);
+  assert.match(createFragmentShader(['irradianceGrid']), /irradianceGridAlong\(worldPosition, normal, reflected\)/);
   assert.doesNotMatch(createFragmentShader([]), /irradianceGrid/);
 });
 

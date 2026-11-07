@@ -66,6 +66,12 @@ const WATER_REFLECTION = { off: false, ssr: 'ssr' }[new URLSearchParams(location
 const FLOOR_SKY_PARAMETER = new URLSearchParams(location.search).get('floorSky');
 const FLOOR_SKY_EXPERIMENT = FLOOR_SKY_PARAMETER !== null && FLOOR_SKY_PARAMETER !== '0';
 const floorSkyReports = {};
+// ?glossy=0 is a measurement switch (issue #506): every material loses its metallic and specular, so the frame shows diffuse light and emission only.
+const GLOSSY_OFF = new URLSearchParams(location.search).get('glossy') === '0';
+
+function removeGlossy(scene) {
+  for (const part of scene.parts) part.material = { ...part.material, metallic: 0, specular: 0, clearcoat: 0 };
+}
 
 function withFloorSky(id, parts, scene) {
   const environment = FLOOR_SKY_PARAMETER === '0' ? { ...scene.environment, floorSkyTrace: false } : scene.environment;
@@ -229,6 +235,7 @@ async function probeScene(scene, id, drawnParts, mode) {
 
 async function renderReferenceScene(id, { describe, ambientOcclusion = 0, ambientOcclusionRadius = 0.5, bake = null, cascades = 0, backgroundOnly = false, probes = false, ambient = null, fill = null, key = null, viewTransform = null, bloom = null }) {
   const scene = await SCENES[id]();
+  if (GLOSSY_OFF) removeGlossy(scene);
   // A view transform (agx, neutral) replaces the ACES fit in the shaders, as environment.viewTransform does in a recipe.
   if (viewTransform) scene.environment = { ...scene.environment, viewTransform };
   // A measurement switch: 0 removes the world's light from every surface, to show how much of a picture comes from it.

@@ -326,14 +326,15 @@ registerShaderFeatureCode('irradianceGrid', Object.freeze({
     'uniform vec3 irradianceGridSize;',
     // The grid stores light for the cosine lobe already, so this is the same unit as environmentDiffuse. The x axis is
     // lerped by hand because three nodes share a row of texels (one per colour channel); y and z use the hardware filter.
-    'vec4 irradianceGridSample(vec3 position, vec3 normal) {',
+    // The lookup sits half a cell off the surface along its normal; a reflection reads the same node with the lobe turned to the reflected direction.
+    'vec4 irradianceGridAlong(vec3 position, vec3 normal, vec3 lobe) {',
     '  vec3 grid = clamp((position + normal * irradianceGridOrigin.w * 0.5 - irradianceGridOrigin.xyz) / irradianceGridOrigin.w, vec3(0.0), irradianceGridSize - 1.0);',
     '  float left = floor(grid.x);',
     '  float right = min(left + 1.0, irradianceGridSize.x - 1.0);',
     '  float blend = grid.x - left;',
     '  vec2 across = (grid.yz + 0.5) / irradianceGridSize.yz;',
     '  float rowWidth = 4.0 * irradianceGridSize.x;',
-    '  vec4 direction = vec4(1.0, normal);',
+    '  vec4 direction = vec4(1.0, lobe);',
     '  vec4 result = vec4(0.0);',
     '  for (int channel = 0; channel < 4; channel++) {',
     '    float slot = float(channel) + 0.5;',
@@ -343,10 +344,13 @@ registerShaderFeatureCode('irradianceGrid', Object.freeze({
     '  }',
     '  return max(result, vec4(0.0));',
     '}',
+    'vec4 irradianceGridSample(vec3 position, vec3 normal) { return irradianceGridAlong(position, normal, normal); }',
     '',
   ].join('\n'),
   irradianceGridOcclusion: '  vec4 irradianceGridValue = irradianceGridEnabled > 0.5 ? irradianceGridSample(worldPosition, normal) : vec4(0.0, 0.0, 0.0, 1.0);\n  occlusion *= min(irradianceGridValue.a, 1.0);\n',
-  irradianceGrid: '  if (irradianceGridEnabled > 0.5) radiance += color * (1.0 - metallic) * irradianceGridValue.rgb;\n',
+  // A glossy surface also mirrors the bounced light: the grid read along the reflected direction, scaled by the Fresnel reflectance
+  // and fading out as the lobe widens (the cosine-weighted grid already blurs it).
+  irradianceGrid: '  if (irradianceGridEnabled > 0.5) {\n    radiance += color * (1.0 - metallic) * irradianceGridValue.rgb;\n    radiance += reflectance * irradianceGridAlong(worldPosition, normal, reflected).rgb * (1.0 - roughness * roughness);\n  }\n',
 }));
 
 const rendererStates = new WeakMap();
