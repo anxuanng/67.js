@@ -15,11 +15,13 @@ import { worldBounds } from './probe-trace.js';
 // material field `irradianceGrid`, which batches parts by grid.
 
 export const IRRADIANCE_GRID_LIMITS = Object.freeze({ resolution: [8, 48], samples: [4, 128], bounces: [1, 3], maxNodes: 65536 });
-// `true` picks the cell size itself: at most this many nodes along the longest side and at most AUTO_NODE_BUDGET in all, so a
-// cube-shaped scene stays under the hard node limit and the trace stays within a few seconds. A coarser grid smears the sun's
-// patches into the shade (measured on the grand halls: a 9.7 m cell read 1.6 times the light of a brute-force gather).
+// `true` picks the cell size itself: at most this many nodes along the longest side and at most AUTO_NODE_BUDGET in all. The
+// budget keeps the trace inside the bake's time limit (20 s on the page's thread): a closed 68 m hall with 31,768 nodes took
+// 40 s, the bake was refused and the scene was drawn with no grid at all (temple-hall-b, FLIP 0.1535 against 0.1211 with a grid).
+// A long hall still gets about twice the resolution of the old 24 nodes, and a coarse grid smears the sun's patches into the
+// shade (measured on the grand halls: a 9.7 m cell read 1.6 times the light of a brute-force gather).
 export const AUTO_GRID_RESOLUTION = 48;
-const AUTO_NODE_BUDGET = 32768;
+const AUTO_NODE_BUDGET = 8192;
 const DEFAULT_GRID_SAMPLES = 32;
 const VALIDITY_DIRECTIONS = buildValidityDirections();
 const BACKFACE_INVALID_SHARE = 0.5;

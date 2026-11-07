@@ -38,6 +38,7 @@ uniform vec3 volumeDrift;
 uniform int volumeSteps;
 uniform float volumeAnisotropy;
 uniform float volumeShadowAmbient;
+uniform float volumeGridFog; // 1 when an irradiance grid lights the fog: the ambient then stands for the sky only
 uniform float volumeNoiseAmount;
 uniform float volumeNoiseScale;
 uniform float volumeMaxDistance;
@@ -105,7 +106,9 @@ vec3 volumeFog(vec3 background) {
     }
     vec4 skyCell = POST_SKY ? texture(fogSkyVisibility, (position - volumeMinimum) / (volumeMaximum - volumeMinimum)) : vec4(0);
     float shadowShare = POST_SKY ? 0.1 + 0.9 * min(1.0, 30.0 * skyCell.r) : volumeShadowAmbient;
-    vec3 scattering = volumeColor * (volumeAmbient * mix(shadowShare, 1.0, visibility) + volumeLightColor * phase * visibility + 0.6 * skyCell.gba);
+    float ambientShare = mix(shadowShare, 1.0, visibility);
+    if (volumeGridFog > 0.5) ambientShare = min(1.0, 30.0 * skyCell.r);
+    vec3 scattering = volumeColor * (volumeAmbient * ambientShare + volumeLightColor * phase * visibility + 0.6 * skyCell.gba);
     accumulated += transmittance * opacity * scattering;
     transmittance *= 1.0 - opacity;
     if (transmittance < 0.001) break;
