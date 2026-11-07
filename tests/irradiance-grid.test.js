@@ -33,13 +33,13 @@ const sun = { keyColor: [3, 3, 3], lightDirection: [0.2, 1, 0.1] };
 test('the recipe field is true, an integer node count or off, and anything else is refused', () => {
   assert.equal(normalizeIrradianceGrid(undefined), null);
   assert.equal(normalizeIrradianceGrid(false), null);
-  assert.equal(normalizeIrradianceGrid(true), 24);
+  assert.equal(normalizeIrradianceGrid(true), true);
   assert.equal(normalizeIrradianceGrid(16), 16);
   for (const bad of [4, 49, 1.5, 'big', {}]) {
     assert.throws(() => normalizeIrradianceGrid(bad), /bake\.irradianceGrid/);
   }
   assert.equal(normalizeAgentBake({ preset: 'draft' }).irradianceGrid, undefined);
-  assert.equal(normalizeAgentBake({ preset: 'draft', irradianceGrid: true }).irradianceGrid, 24);
+  assert.equal(normalizeAgentBake({ preset: 'draft', irradianceGrid: true }).irradianceGrid, true);
 });
 
 test('a warm floor sends warm light to a wall the sun never reaches, and the same input gives the same bytes', () => {

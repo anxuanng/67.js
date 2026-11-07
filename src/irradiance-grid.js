@@ -15,7 +15,11 @@ import { worldBounds } from './probe-trace.js';
 // material field `irradianceGrid`, which batches parts by grid.
 
 export const IRRADIANCE_GRID_LIMITS = Object.freeze({ resolution: [8, 48], samples: [4, 128], bounces: [1, 3], maxNodes: 65536 });
-export const DEFAULT_GRID_RESOLUTION = 24;
+// `true` picks the cell size itself: at most this many nodes along the longest side and at most AUTO_NODE_BUDGET in all, so a
+// cube-shaped scene stays under the hard node limit and the trace stays within a few seconds. A coarser grid smears the sun's
+// patches into the shade (measured on the grand halls: a 9.7 m cell read 1.6 times the light of a brute-force gather).
+export const AUTO_GRID_RESOLUTION = 48;
+const AUTO_NODE_BUDGET = 32768;
 const DEFAULT_GRID_SAMPLES = 32;
 const VALIDITY_DIRECTIONS = buildValidityDirections();
 const BACKFACE_INVALID_SHARE = 0.5;
@@ -56,7 +60,10 @@ export function normalizeIrradianceGrid(input) {
   if (input === undefined || input === null || input === false) {
     return null;
   }
-  const resolution = input === true ? DEFAULT_GRID_RESOLUTION : input;
+  if (input === true) {
+    return true;
+  }
+  const resolution = input;
   const [minimum, maximum] = IRRADIANCE_GRID_LIMITS.resolution;
   if (!Number.isInteger(resolution) || resolution < minimum || resolution > maximum) {
     throw new RangeError(`bake.irradianceGrid must be true or an integer node count from ${minimum} to ${maximum}.`);
@@ -82,9 +89,14 @@ function gridLayout(parts, resolution) {
     }
   }
   const extent = maximum.map((value, axis) => Math.max(value - minimum[axis], 1e-3));
-  const cellSize = Math.max(...extent) / (resolution - 1);
-  const size = extent.map(length => Math.max(2, Math.round(length / cellSize) + 1));
-  return { origin: minimum, cellSize, size };
+  const sizeFor = cell => extent.map(length => Math.max(2, Math.round(length / cell) + 1));
+  let cellSize = Math.max(...extent) / ((resolution === true ? AUTO_GRID_RESOLUTION : resolution) - 1);
+  if (resolution === true) {
+    while (sizeFor(cellSize).reduce((product, count) => product * count, 1) > AUTO_NODE_BUDGET) {
+      cellSize *= 1.05;
+    }
+  }
+  return { origin: minimum, cellSize, size: sizeFor(cellSize) };
 }
 
 // A node inside a solid sees the back of the surfaces around it; its light would be the inside of a wall, not the room's.
@@ -207,7 +219,7 @@ function smoothNodes(data, valid, size, isConnected) {
  * the mean of the opposite pair is the constant term and half their difference the slope. Nodes inside solids are filled from
  * their neighbours. Returns `{ origin, cellSize, size, data, seconds, nodes, solidNodes }`; the same input gives the same bytes.
  */
-export function traceIrradianceGrid(parts, lighting, { resolution = DEFAULT_GRID_RESOLUTION, samples = DEFAULT_GRID_SAMPLES, bounces = 3, maxSeconds = 60 } = {}) {
+export function traceIrradianceGrid(parts, lighting, { resolution = true, samples = DEFAULT_GRID_SAMPLES, bounces = 3, maxSeconds = 60 } = {}) {
   if (!Array.isArray(parts) || parts.length === 0 || parts.length > MAX_BAKE_PARTS) {
     throw new RangeError(`The irradiance grid takes from 1 to ${MAX_BAKE_PARTS} parts.`);
   }
@@ -279,8 +291,14 @@ export function traceIrradianceGrid(parts, lighting, { resolution = DEFAULT_GRID
   };
   fillInvalidNodes(data, valid, layout.size);
   smoothNodes(data, valid, layout.size, isConnected);
-  return { ...layout, data, nodes: nodeCount, solidNodes, seconds: (performance.now() - started) / 1000 };
+  const grid = { ...layout, data, nodes: nodeCount, solidNodes, seconds: (performance.now() - started) / 1000 };
+  // The fog's scattering reads the grid without importing this lazy module: the mean light arriving at a point from every
+  // direction is the constant term of the fit. Not enumerable, so the report that copies the grid's fields stays plain data.
+  Object.defineProperty(grid, 'meanRadiance', { value: position => evaluateIrradianceGrid(grid, position, NO_DIRECTION) });
+  return grid;
 }
+
+const NO_DIRECTION = Object.freeze([0, 0, 0]);
 
 /** The light a surface with this normal receives from the grid at a point (trilinear, as the shader reads it): what the shader multiplies by the albedo. */
 export function evaluateIrradianceGrid(grid, position, normal) {
