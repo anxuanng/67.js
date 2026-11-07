@@ -118,7 +118,7 @@ export function withGroundBounce(map, { albedo, keyColor = [0, 0, 0], lightDirec
 const cache = new WeakMap()
 
 function isDrawnWithBakedLight(parts) {
-  return parts.some(part => part.material?.lightMap)
+  return parts.some(part => part.material?.lightMap || part.material?.irradianceGrid)
 }
 
 function isClosedRoom(parts) {

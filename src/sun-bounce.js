@@ -192,7 +192,7 @@ function lightOfPatch(group, strength, tracer, probeOffset, sceneSize) {
  * `maximumLights` caps how many patches there are.
  */
 export function findSunBounceLights(parts, environment, { strength = 1, maximumLights = SUN_BOUNCE_PATCH_LIGHTS } = {}) {
-  if (strength <= 0 || maximumLights <= 0 || !hasSun(environment) || parts.some(part => part.material?.lightMap)) return [];
+  if (strength <= 0 || maximumLights <= 0 || !hasSun(environment) || parts.some(part => part.material?.lightMap || part.material?.irradianceGrid)) return [];
   const share = fittedClosedRoomShare(parts, new Map(parts.map(part => [part.name, part.matrix])));
   if (share === null || share < CLOSED_ROOM_SHARE) return [];
   const surfaces = parts.filter(isBounceSurface);

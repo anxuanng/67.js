@@ -20,7 +20,10 @@ const DEFAULT_GRID_SAMPLES = 32;
 const VALIDITY_DIRECTIONS = buildValidityDirections();
 const BACKFACE_INVALID_SHARE = 0.5;
 const FILL_PASSES = 12;
-const COEFFICIENTS_PER_NODE = 12;
+const COEFFICIENTS_PER_NODE = 16;
+// The fourth texel of a node holds the share of sky the node sees (rays that leave the scene on their first leg), in the same
+// constant plus slope form, so the shader can darken the world's light where the sky cannot reach.
+const SKY_SLOT = 12;
 // The grid is one 3D texture: node (x, y, z) takes three texels along x, one per colour channel, each holding the channel's
 // constant term and its x, y and z terms.
 // Unit 16, past the 16 the renderer's other samplers use (splat layers take 11 to 14, local shadows 15). A unit index is limited by
@@ -59,6 +62,13 @@ export function normalizeIrradianceGrid(input) {
     throw new RangeError(`bake.irradianceGrid must be true or an integer node count from ${minimum} to ${maximum}.`);
   }
   return resolution;
+}
+
+function nodePoint(layout, node, point) {
+  const [width, height] = layout.size;
+  point[0] = layout.origin[0] + (node % width) * layout.cellSize;
+  point[1] = layout.origin[1] + (Math.floor(node / width) % height) * layout.cellSize;
+  point[2] = layout.origin[2] + Math.floor(node / (width * height)) * layout.cellSize;
 }
 
 function gridLayout(parts, resolution) {
@@ -110,8 +120,10 @@ function fillInvalidNodes(data, valid, size) {
         continue;
       }
       const coordinates = [node % width, Math.floor(node / width) % height, Math.floor(node / (width * height))];
-      const sum = new Float32Array(COEFFICIENTS_PER_NODE);
-      let count = 0;
+      // A node inside a wall copies its darkest valid neighbour. A mean would carry the sunlit outside of a thin wall into the
+      // room, because a surface on the wall reads this node through the trilinear lookup.
+      let darkest = -1;
+      let darkestLight = Infinity;
       for (let axis = 0; axis < 3; axis++) {
         for (const step of [-1, 1]) {
           const moved = coordinates[axis] + step;
@@ -122,15 +134,17 @@ function fillInvalidNodes(data, valid, size) {
           if (!valid[neighbour]) {
             continue;
           }
-          for (let slot = 0; slot < COEFFICIENTS_PER_NODE; slot++) {
-            sum[slot] += data[neighbour * COEFFICIENTS_PER_NODE + slot];
+          const base = neighbour * COEFFICIENTS_PER_NODE;
+          const light = data[base] + data[base + 4] + data[base + 8];
+          if (light < darkestLight) {
+            darkestLight = light;
+            darkest = neighbour;
           }
-          count++;
         }
       }
-      if (count > 0) {
+      if (darkest >= 0) {
         for (let slot = 0; slot < COEFFICIENTS_PER_NODE; slot++) {
-          data[node * COEFFICIENTS_PER_NODE + slot] = sum[slot] / count;
+          data[node * COEFFICIENTS_PER_NODE + slot] = data[darkest * COEFFICIENTS_PER_NODE + slot];
         }
         newlyValid.push(node);
       }
@@ -146,7 +160,7 @@ function fillInvalidNodes(data, valid, size) {
 
 // A [1 2 1] x [1 2 1] x [1 2 1] filter over the coefficients of valid neighbours removes the low-frequency noise of the few
 // samples each node gets, at the cost of a little blur across a wall. Nodes inside solids keep their filled values.
-function smoothNodes(data, valid, size) {
+function smoothNodes(data, valid, size, isConnected) {
   const [width, height, depth] = size;
   const source = Float32Array.from(data);
   const weights = [1, 2, 1];
@@ -169,7 +183,8 @@ function smoothNodes(data, valid, size) {
             continue;
           }
           const neighbour = nx + width * (ny + height * nz);
-          if (!valid[neighbour]) {
+          // A neighbour across a wall is another room's light: it only counts when a ray between the two nodes is free.
+          if (!valid[neighbour] || (neighbour !== node && !isConnected(node, neighbour))) {
             continue;
           }
           const weight = weights[dx + 1] * weights[dy + 1] * weights[dz + 1];
@@ -216,6 +231,7 @@ export function traceIrradianceGrid(parts, lighting, { resolution = DEFAULT_GRID
   const valid = new Uint8Array(nodeCount);
   const point = [0, 0, 0];
   const axisLight = [new Float64Array(3), new Float64Array(3)];
+  const axisSky = [0, 0];
   const axisNormal = [0, 0, 0];
   const [width, height] = layout.size;
   let solidNodes = 0;
@@ -235,8 +251,11 @@ export function traceIrradianceGrid(parts, lighting, { resolution = DEFAULT_GRID
       for (let side = 0; side < 2; side++) {
         axisNormal.fill(0);
         axisNormal[axis] = side === 0 ? 1 : -1;
-        gather(point, axisNormal, node * 6 + axis * 2 + side, axisLight[side]);
+        axisSky[side] = gather(point, axisNormal, node * 6 + axis * 2 + side, axisLight[side]);
       }
+      const skyBase = node * COEFFICIENTS_PER_NODE + SKY_SLOT;
+      data[skyBase] += (axisSky[0] + axisSky[1]) / 6;
+      data[skyBase + 1 + axis] = (axisSky[0] - axisSky[1]) / 2;
       for (let channel = 0; channel < 3; channel++) {
         const base = node * COEFFICIENTS_PER_NODE + channel * 4;
         data[base] += (axisLight[0][channel] + axisLight[1][channel]) / 6;
@@ -244,8 +263,22 @@ export function traceIrradianceGrid(parts, lighting, { resolution = DEFAULT_GRID
       }
     }
   }
+  const traced = Uint8Array.from(valid);
+  const target = [0, 0, 0];
+  const isConnected = (from, to) => {
+    if (!traced[from] || !traced[to]) {
+      return false;
+    }
+    nodePoint(layout, from, point);
+    nodePoint(layout, to, target);
+    const dx = target[0] - point[0];
+    const dy = target[1] - point[1];
+    const dz = target[2] - point[2];
+    const length = Math.hypot(dx, dy, dz);
+    return tracer.trace(point[0], point[1], point[2], dx / length, dy / length, dz / length, length, true).nearestTriangle < 0;
+  };
   fillInvalidNodes(data, valid, layout.size);
-  smoothNodes(data, valid, layout.size);
+  smoothNodes(data, valid, layout.size, isConnected);
   return { ...layout, data, nodes: nodeCount, solidNodes, seconds: (performance.now() - started) / 1000 };
 }
 
@@ -293,26 +326,27 @@ registerShaderFeatureCode('irradianceGrid', Object.freeze({
     'uniform vec3 irradianceGridSize;',
     // The grid stores light for the cosine lobe already, so this is the same unit as environmentDiffuse. The x axis is
     // lerped by hand because three nodes share a row of texels (one per colour channel); y and z use the hardware filter.
-    'vec3 irradianceGridDiffuse(vec3 position, vec3 normal) {',
+    'vec4 irradianceGridSample(vec3 position, vec3 normal) {',
     '  vec3 grid = clamp((position + normal * irradianceGridOrigin.w * 0.5 - irradianceGridOrigin.xyz) / irradianceGridOrigin.w, vec3(0.0), irradianceGridSize - 1.0);',
     '  float left = floor(grid.x);',
     '  float right = min(left + 1.0, irradianceGridSize.x - 1.0);',
     '  float blend = grid.x - left;',
     '  vec2 across = (grid.yz + 0.5) / irradianceGridSize.yz;',
-    '  float rowWidth = 3.0 * irradianceGridSize.x;',
+    '  float rowWidth = 4.0 * irradianceGridSize.x;',
     '  vec4 direction = vec4(1.0, normal);',
-    '  vec3 result = vec3(0.0);',
-    '  for (int channel = 0; channel < 3; channel++) {',
+    '  vec4 result = vec4(0.0);',
+    '  for (int channel = 0; channel < 4; channel++) {',
     '    float slot = float(channel) + 0.5;',
-    '    vec4 first = texture(irradianceGridTexture, vec3((3.0 * left + slot) / rowWidth, across));',
-    '    vec4 second = texture(irradianceGridTexture, vec3((3.0 * right + slot) / rowWidth, across));',
+    '    vec4 first = texture(irradianceGridTexture, vec3((4.0 * left + slot) / rowWidth, across));',
+    '    vec4 second = texture(irradianceGridTexture, vec3((4.0 * right + slot) / rowWidth, across));',
     '    result[channel] = dot(mix(first, second, blend), direction);',
     '  }',
-    '  return max(result, vec3(0.0));',
+    '  return max(result, vec4(0.0));',
     '}',
     '',
   ].join('\n'),
-  irradianceGrid: '  if (irradianceGridEnabled > 0.5) radiance += color * (1.0 - metallic) * irradianceGridDiffuse(worldPosition, normal);\n',
+  irradianceGridOcclusion: '  vec4 irradianceGridValue = irradianceGridEnabled > 0.5 ? irradianceGridSample(worldPosition, normal) : vec4(0.0, 0.0, 0.0, 1.0);\n  occlusion *= min(irradianceGridValue.a, 1.0);\n',
+  irradianceGrid: '  if (irradianceGridEnabled > 0.5) radiance += color * (1.0 - metallic) * irradianceGridValue.rgb;\n',
 }));
 
 const rendererStates = new WeakMap();
@@ -340,7 +374,7 @@ function uploadGrid(renderer, grid) {
   const texture = context.createTexture();
   const previous = context.getParameter(context.TEXTURE_BINDING_3D);
   context.bindTexture(context.TEXTURE_3D, texture);
-  context.texImage3D(context.TEXTURE_3D, 0, context.RGBA16F, nodesX * 3, nodesY, nodesZ, 0, context.RGBA, context.FLOAT, grid.data);
+  context.texImage3D(context.TEXTURE_3D, 0, context.RGBA16F, nodesX * 4, nodesY, nodesZ, 0, context.RGBA, context.FLOAT, grid.data);
   context.texParameteri(context.TEXTURE_3D, context.TEXTURE_MIN_FILTER, context.LINEAR);
   context.texParameteri(context.TEXTURE_3D, context.TEXTURE_MAG_FILTER, context.LINEAR);
   for (const wrap of [context.TEXTURE_WRAP_S, context.TEXTURE_WRAP_T, context.TEXTURE_WRAP_R]) {

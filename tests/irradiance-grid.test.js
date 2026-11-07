@@ -53,6 +53,19 @@ test('a warm floor sends warm light to a wall the sun never reaches, and the sam
   assert.ok(lookingAtFloor[0] > lookingAtCeiling[0], 'the lit floor is seen from above, so the downward lobe is brighter');
 });
 
+test('the grid stores the sky a node sees: little in a closed room, a lot under open sky', () => {
+  const skyAtRoomCentre = grid => {
+    const [x, y, z] = [0, 1.5, 0].map((value, axis) => Math.round((value - grid.origin[axis]) / grid.cellSize));
+    return grid.data[(x + grid.size[0] * (y + grid.size[1] * z)) * 16 + 12];
+  };
+  const withoutCeiling = sunlitRoom().filter(part => part.name !== 'ceiling-left' && part.name !== 'ceiling-right');
+  const closed = traceIrradianceGrid(withoutCeiling.concat([placed('roof', [0, 3.05, 0], [6.2, 0.1, 6.2], [0.8, 0.8, 0.8])]), sun, { resolution: 10, samples: 16, bounces: 1 });
+  const open = traceIrradianceGrid(withoutCeiling, sun, { resolution: 10, samples: 16, bounces: 1 });
+  const closedSky = skyAtRoomCentre(closed);
+  const openSky = skyAtRoomCentre(open);
+  assert.ok(closedSky < 0.05 && openSky > 0.2, `closed ${closedSky}, open ${openSky}`);
+});
+
 test('nodes inside a solid are found and filled from their neighbours', () => {
   const solid = traceIrradianceGrid([placed('block', [0, 0, 0], [4, 4, 4], [0.5, 0.5, 0.5])], sun, { resolution: 9, samples: 4, bounces: 1 });
   assert.ok(solid.solidNodes > 0 && solid.solidNodes < solid.nodes, `${solid.solidNodes} of ${solid.nodes}`);
@@ -61,7 +74,7 @@ test('nodes inside a solid are found and filled from their neighbours', () => {
 test('nodes inside walls are filled and every coefficient is finite', () => {
   const grid = traceIrradianceGrid(sunlitRoom(), sun, { resolution: 10, samples: 8, bounces: 1 });
   assert.ok(grid.data.every(Number.isFinite));
-  assert.equal(grid.data.length, grid.nodes * 12);
+  assert.equal(grid.data.length, grid.nodes * 16);
 });
 
 test('placing the grid wraps each material once and keeps reading the live material', () => {
@@ -74,7 +87,8 @@ test('placing the grid wraps each material once and keeps reading the live mater
 });
 
 test('the shader carries the grid code only for a renderer that asks for the feature', () => {
-  assert.match(createFragmentShader(['irradianceGrid']), /irradianceGridDiffuse\(worldPosition, normal\)/);
+  assert.match(createFragmentShader(['irradianceGrid']), /irradianceGridSample\(worldPosition, normal\)/);
+  assert.match(createFragmentShader(['irradianceGrid']), /occlusion \*= min\(irradianceGridValue\.a, 1\.0\)/);
   assert.doesNotMatch(createFragmentShader([]), /irradianceGrid/);
 });
 
@@ -110,6 +124,6 @@ test('a scene with splat layers and the grid keeps the two on different texture 
   const taken = [...Object.values(SPLAT_UNITS), 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15];
   assert.ok(!taken.includes(IRRADIANCE_GRID_TEXTURE_UNIT), 'the grid sampler has its own unit');
   const source = createFragmentShader(['splat', 'irradianceGrid']);
-  assert.match(source, /irradianceGridDiffuse/);
+  assert.match(source, /irradianceGridSample/);
   assert.match(source, /splatColor/);
 });
