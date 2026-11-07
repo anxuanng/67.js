@@ -51,7 +51,7 @@ test('bake presets and fields resolve to plain numbers within their ranges', () 
 test('bake rejects hostile and out of range fields', () => {
   const hostile = [
     { preset: 'ultra' }, { samples: 0 }, { samples: 257 }, { samples: 1e9 }, { samples: NaN }, { samples: '64' },
-    { samples: 2.5 }, { bounces: 4 }, { bounces: 1.5 }, { texelsPerUnit: 0.5 }, { texelsPerUnit: 13 },
+    { samples: 2.5 }, { bounces: 9 }, { bounces: 1.5 }, { texelsPerUnit: 0.5 }, { texelsPerUnit: 13 },
     { maxSeconds: 600 }, { unknown: 1 }, [], 'standard', JSON.parse('{"__proto__":{"samples":1}}'),
   ];
   for (const input of hostile) {

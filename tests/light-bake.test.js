@@ -142,7 +142,7 @@ test('a part marked as generating its own geometry is skipped', () => {
 test('options are validated with their bounds', () => {
   const fallbacks = Object.fromEntries(Object.entries(BAKE_LIMITS).map(([name, limit]) => [name, limit.fallback]));
   assert.deepEqual(normalizeBakeOptions({}), { ...fallbacks, backend: 'cpu' });
-  for (const [name, bad] of [['samples', 0], ['samples', 513], ['samples', Number.NaN], ['bounces', 5], ['maxResolution', 3], ['maxResolution', 1e9], ['texelsPerUnit', 0], ['texelsPerUnit', Infinity], ['maxSeconds', 0], ['maxSeconds', '60']]) {
+  for (const [name, bad] of [['samples', 0], ['samples', 513], ['samples', Number.NaN], ['bounces', 9], ['maxResolution', 3], ['maxResolution', 1e9], ['texelsPerUnit', 0], ['texelsPerUnit', Infinity], ['maxSeconds', 0], ['maxSeconds', '60']]) {
     assert.throws(() => normalizeBakeOptions({ [name]: bad }), { name: 'RangeError', message: new RegExp(name) }, `${name} ${bad}`);
   }
   for (const bad of [null, [], 'fast', 3]) assert.throws(() => normalizeBakeOptions(bad), TypeError);

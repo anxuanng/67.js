@@ -16,7 +16,7 @@ export const BAKE_LIMITS = Object.freeze({
   maxResolution: { minimum: 4, maximum: 256, fallback: 128 },
   texelsPerUnit: { minimum: 0.5, maximum: 64, fallback: 6 },
   samples: { minimum: 1, maximum: 512, fallback: 128 },
-  bounces: { minimum: 1, maximum: 4, fallback: 3 },
+  bounces: { minimum: 1, maximum: 8, fallback: 3 },
   maxSeconds: { minimum: 1, maximum: 600, fallback: 60 },
 });
 // Total ray work (texels x samples x bounces x rays per hit) a bake may ask for, checked before any ray is traced.
