@@ -176,7 +176,7 @@ function describeScene(id, scene) {
 // Blender always gets the original parts: the bake is 67js's approximation of what Cycles computes.
 async function bakeScene(scene, bakeOptions) {
   if (bakeOptions.preset) {
-    return bakeScenePreset(scene, bakeOptions.preset, bakeOptions.irradianceGrid);
+    return bakeScenePreset(scene, bakeOptions.preset, bakeOptions.irradianceGrid, { bounces: bakeOptions.bounces });
   }
   const { bakeLightmapsAsync } = await import('/src/light-bake-gpu.js');
   const { pointLights, keyColor, lightDirection } = scene.environment;
@@ -188,9 +188,9 @@ async function bakeScene(scene, bakeOptions) {
 
 // The bake an agent gets from `bake: { preset }`: the same settings and budget fit as a recipe. Probes stay out of it and come
 // from --probes, as in the other rows.
-async function bakeScenePreset(scene, preset, irradianceGrid = false) {
+async function bakeScenePreset(scene, preset, irradianceGrid = false, overrides = {}) {
   const { normalizeAgentBake, bakeAgentParts } = await import('/src/agent-bake.js');
-  const settings = normalizeAgentBake({ preset, probes: false, ...(irradianceGrid ? { irradianceGrid } : {}) });
+  const settings = normalizeAgentBake({ preset, probes: false, ...(overrides.bounces ? { bounces: overrides.bounces } : {}), ...(irradianceGrid ? { irradianceGrid } : {}) });
   const started = performance.now();
   let baked;
   try {
