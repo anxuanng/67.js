@@ -969,13 +969,12 @@ function collapseSingularMatrix(elements) {
   const finite = elements.every(Number.isFinite);
   const determinant = finite ? collapseScratch.fromArray(elements).determinant() : NaN;
   if (finite && Number.isFinite(determinant) && Math.abs(determinant) >= 1e-12) return false;
-  const positionIsFinite = [elements[12], elements[13], elements[14]].every(Number.isFinite);
+  const position = [elements[12], elements[13], elements[14]];
+  const keepPosition = position.every(Number.isFinite);
   elements.fill(0);
   elements[0] = elements[5] = elements[10] = COLLAPSED_SCALE;
   elements[15] = 1;
-  if (positionIsFinite) {
-    for (const index of [12, 13, 14]) elements[index] = collapseScratch.elements[index];
-  }
+  if (keepPosition) elements.set(position, 12);
   return true;
 }
 
